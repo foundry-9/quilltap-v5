@@ -7151,7 +7151,133 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323) — ORDERED 2026-10-19
+## The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323) — UNIFIED 2026-10-19 (ordered 2026-10-19)
+
+**UNIFIED on main (2026-10-19). ALL NINE LANES LANDED WHOLE, and the oracle
+baseline MOVES `25b8fab6a` → `e8e17b2d9`.**
+- **Ledger.** The fourteen rows through `e8e17b2d9` retire to §6 (eleven
+  ABSORBED, three NO-PORT-RATIFIED(P4.D323) — the two Inventory specs'
+  vendoring DEFERRED to round (2) by name). The six commits past the pin stay
+  in §3 UNPROCESSED, two annotated `PORTED(P4.D322) — baseline not yet past`
+  (`102a23648` bug 254's progressions guard; `4fbdad186` the `Inventory/`
+  archive keep); the close `/driftcheck` appended EIGHT more (`7263105c6` …
+  `e27fb6b34`, all 2026-10-19 — bug 256 and the Inventory title lint, the
+  moderated-image-prompt re-ruling of bug 133, `edit_custom_tool`, the
+  `/photos` album selector, vault custom tools as the character's only, **the
+  Log WITH THE SIXTEENTH D23 MOVE** (`log_entries`, the first table in the
+  llm-logs partition, lazily created — no migration), its date-bounds rider,
+  the Inventory icon). The LIVE-DATA block's "archiving a character in v5
+  deletes its Inventory" hazard RETIRES by measurement.
+- **The probe.** The §2 probe FAILED at unify start (eight new v4 commits,
+  tree clean, `bugfix` unmoved) — an observation under the pin rule; every
+  regen, the whole sweep and every live-checkout guard ran from
+  `/tmp/qt-v4-pin-unify-e8e17b2d9` with its own `npm ci --offline` tree
+  (openai 7.34.0, zod 4.6.7, plugin-utils 2.7.1 ×14); P4.D322's two families
+  from their own second pins.
+- **The picks.** 47 commits in §S.1's order (P4.D316 through its stacked
+  follow-up branch, items 24–25 included). Four source-level unions, each
+  predicted: three `pub mod` lines, two census constants summed across three
+  lanes (487; 125), one spec's appended describes; ONE union compile error —
+  the R-G literal line both lane records had named.
+- **§S.5 / §S.9.** The definition corpus regenerated ONCE from the pin (458
+  rows, P4.D319's sha) for both consumers; the run-custom extender idempotent
+  on the union pair; the 21 HANDOFF help/docs sections byte-equal; both
+  schema guards green; the logging inventory unmoved (243); the three gated
+  beats LIVE; `V4_APP_VERSION` at the pin's stamp.
+
+**The §3 review (six parallel readers + the unifier): NO blocking defect —
+the seventeenth such round; one false lint claim caught by the gate, four
+should-fixes landed, one review premise falsified, all with tests.**
+- **Caught by the gate:** P4.D321's gallery host class had NO CSS rule
+  (`check-qt-classes` red on the union — the inline-host bug class; the lane
+  record's "lint 0" was false). Fixed beside the Avatar Rolls precedent.
+- **Should-fixes (fixed, red-first):** the rollback POST resolved the
+  operator provenance before the pool load (v4 after — the lane inverted two
+  DEBUG lines; the route pin follows the line onto the writer thread); the
+  wearable-title rule spelled twice (`find_by_title` now delegates to
+  `match_wearable_title`, v4's shape); `announcerNamesOf` without v4's
+  truthiness guards (a nameless seat blanked an off-scene card's name); the
+  unrecorded non-numeric-`entryIndex` raw-row class (now a corpus row + the
+  both-ways `NAN_ENTRY_INDEX_READS_ZERO` carve); two `js_truthy` copies; a
+  dead helper; an unreachable arm that would have dropped a landed commit's
+  stage.
+- **Falsified:** "the vantage loader wedges on a refused read" — both inner
+  loaders fail soft; a spec row pins the invariant, no production change.
+- **Union red fixed in the oracle:** `system_import_state` RED 2/2 (not the
+  2-of-~6 flake P4.D317 recorded) — v4's import schedules a FORCED 5 s
+  debounced refit whose timer fired into a later case's dump; `settle()` now
+  clears the timers (neither side's refit row belongs to this family).
+
+**Gate on the final tree:**
+- fmt / clippy (both feature sets) / release clean.
+- The sweep from the pin: 725 ok / 6 / 1 refused / 2 non-extractable of 734
+  — the two standing reds, P4.D322's two by-design pin flips (green from
+  their second pins), one sweep-order artifact (green by name), the import
+  determinism finding (fixed, green).
+- Tier R: 422 / 0.
+- `cargo test --workspace`: 827 binaries / 5,455 / 8 (the two standing + five env-block artifacts, each green by name — Tier R without `QT_NODE`, the refused uuid-remap family's absent oracle, three shared-`/tmp` fixtures a later family rebuilt — + one unifier-caused source-text-guard red, fixed) / 3 ignored, zero SKIP.
+- SPA: `npm run lint` clean (960 `qt-*` classes, every reference resolves); `npm test` 531 files / 11,268 tests, 0 failed (6 pre-existing unhandled `scrollIntoView` errors under `memory-tab.spec.ts`, files the round never touched); `npm run build` clean.
+- Full Playwright: 411 / 12 / 7 (17.4 m); every red re-run by file: nine the recorded Salon-streaming cluster (green alone; the regenerate-stream intermittent 3/3 on a quiet machine), one teardown race (`wardrobe-flow` 20/20 again), and TWO spec premises in P4.D320's flipped beats — a `radio` asked as a `button` + a coin-flip outcome row, and a Salon page on a fixture pair without `chat_settings` — fixed in the spec (`3ed3b811a`), the file 8 / 8.
+
+**Versions:** core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34, SPA
+0.5.881. Round record: `status-log.md` → "The `e8e17b2d9` … round —
+UNIFICATION record (2026-10-19)". Each order's status header carries its
+Unification paragraph and exactly what stays OPEN.
+
+**NEXT (in order):**
+1. **The owed dogfood pass** (`/dogfood`) on a Friday COPY taken at ANY v4
+   point (the table is boot-created; a pre-`83387d0e5` copy gets it on the
+   first boot, a post-`4ae20977f` copy sees NO-OP ensures) — the §S.8 queue
+   in `dogfood-findings.md`'s standing note of 2026-10-19, headline row the
+   copy's first boot with its vintage recorded FIRST. ⚠ v4 past the pin has
+   the Inventory, the Log and bug 255: a v5 at this baseline ignores their
+   tables and columns (non-corrupting; the ledger's §1), but a custom tool
+   with an Inventory / Log gate or effect is REFUSED at load and drops off
+   the roster.
+2. **The follow-ups smalls round** (`/setupphase`):
+   - **First rider:** the ready branch `claude/import-chat-record-columns-
+     f49fb0` (`cb88a3840`, judged sound at this unification; mechanical
+     conflicts only — the core version, the import state family's appended
+     cases, the CHANGELOG / status-log unions).
+   - **This review's recorded items:** the non-numeric `entryIndex` settle
+     consequence (recorded, undriven); the GET history route's 500 on a
+     degraded mount index (dogfood #156's class); R-10's route-level status
+     on a degraded mount (a byte-compare owed); the jsdom `scrollIntoView`
+     stub for the pre-existing six vitest unhandled errors; the stale
+     `host_help_docs_boot` assert text and the older archive extender's
+     "ONLY consumers" sentence; P4.D316's Tier 2 item 30 (`history_dresser`)
+     and Tier 3 items 31–37; P4.D321's Tier 2 #22 / #23; P4.D318's unwritten
+     Aurora-announcement assertion in beat A.
+   - **Carried from the `25b8fab6a` round's NEXT item 2:**
+     `CHEAP_LLM_KEY_ORDER`; `ZOD_STRING_LENGTH_PAST_INVALID_TYPE` on the four
+     zod twins; the strict `users` read in `user_identity_resolver`;
+     `run_custom`'s two v4 WARNs; the enclave turn's missing consult runner;
+     the stale L8 note; and the `83334b9a5` round's items (the repository-
+     fallback `?` reads, P4.D291 #24's probe fixture, P4.D298's smalls, the
+     lock's lines, the scenario parser WARNs, the D301 toast,
+     `DQS_QUOTED_IDENTIFIER_FALLBACK`, the two human rulings
+     `OFFSET_OCCURRED_AT_ROW_SCHEMA` / P4.D294 item 19).
+   - **Also:** the earlier OPEN lists (the `4a38222e6` and `01a83539d`
+     headers, the P4.D273 ruling, dogfood #156 / #157).
+3. **Round (2) — the Inventory + Log drift catch-up** (`/driftcheck` first
+   if v4 has moved further): the Inventory programme (`4fbdad186` →
+   `e1872c94f` → `102a23648`, the THIRTEENTH + FOURTEENTH D23 moves; bug 253;
+   the title lint `7263105c6`; the icon `e27fb6b34`), bug 256 (`7263105c6` —
+   v5 HAS it; a standalone PORT lane candidate), the moderated-image-prompt
+   re-ruling (`406dbdd5a` — the bug-133 pins will trip by design),
+   `edit_custom_tool` (`ea2cb60ab`), the `/photos` album selector
+   (`680b71044` — v5 still lists and can delete vault photo links), vault
+   custom tools as the character's only (`cfa0cba29`), the scenario sort
+   (`1d0a31132`), the test (`cad017599`, NO-PORT), bug 255 (`a6292f169`, the
+   FIFTEENTH move + the terminal-emulator crate ruling), **the Log**
+   (`e4a60ad9e` + `a495faa26`, the SIXTEENTH move — `log_entries` in the
+   llm-logs partition, three tools, a Pascal `log` effect, a SQL `regexp`
+   function — a provisioning ruling owed FIRST: v4 creates it lazily at first
+   repository use; the 2026-10-19 "v5's schema is self-sufficient" ruling
+   leans to a boot ensure or a `fresh_schema.json` row). ONE
+   `fresh_schema.json` re-dump for the thirteenth / fourteenth / fifteenth
+   (and, by ruling, sixteenth) moves at a later pin.
+
 
 **Baseline `25b8fab6a`. The round is PINNED at v4 `e8e17b2d9`** ("Fix:
 restore and import keep chat outfits (bug 252) (#101)", `package.json`

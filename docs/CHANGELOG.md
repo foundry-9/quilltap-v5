@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-20 — unify: the `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round — nine lanes (P4.D315–P4.D323), the baseline moves `25b8fab6a` → `e8e17b2d9`
+
+_Docs-only change._
+
+The round record, the phase plan's UNIFIED block and NEXT list, the drift ledger (§1 rewritten for the new baseline; the fourteen absorbed rows retired to §6 — eleven ABSORBED, three NO-PORT-RATIFIED(P4.D323); the two P4.D322 riders annotated PORTED on their rows; the eight v4 commits the close probe found appended as UNPROCESSED rows — bug 256 and the Inventory title lint, the moderated-image-prompt re-ruling of bug 133, `edit_custom_tool`, the `/photos` album selector, vault custom tools as the character's only, the Log with the SIXTEENTH D23 move (`log_entries`, lazily created in the llm-logs partition), its date-bounds rider, the Inventory icon; the "archiving a character deletes its Inventory" live-data hazard retired), CLAUDE.md's round bullet and baseline bullet, the nine orders' Unification paragraphs with what stays OPEN, the dogfood standing note (the §S.8 queue, the R-W filing candidates), and the sweep results artifact.
+
+Scope landed: the outfit-history programme whole (the twelfth D23 move as the first boot-created table, recording with provenance, the two tools, the rollback POST, the History tab with the ruled R-L divergence, the backup / restore / `.qtap` carriers), bug 252 fixed in both carriers, `{{character}}` + `announceAsCharacter` + the Workbench wardrobe lens (server + SPA), the gallery's Wardrobe Pictures, bug 254 fixed and the `Inventory/` archive keep (two ahead-of-pin riders), `help/` 131 + 11 `docs/v4/` operations.
+
+Wires: the R-G literal union; the shared definition corpus at 458 rows for both consumers; the run-custom extender idempotent on the union pair; the 21 HANDOFF help/docs sections byte-equal; both schema guards green; the logging inventory unmoved (243); the three gated beats LIVE; `V4_APP_VERSION` at the pin's stamp.
+
+Gate: fmt / clippy (both feature sets) / release clean; the sweep from the pin 725 ok / 6 / 1 refused / 2 non-extractable of 734 (two standing reds, P4.D322's two by-design pin flips green from their second pins, one sweep-order artifact, one import-determinism finding fixed in the oracle); Tier R 422 / 0; `cargo test --workspace` 827 binaries / 5,455 / 8 (two standing + five env-block artifacts each green by name + one source-text-guard red the unifier caused and fixed) / 3 ignored, zero SKIP; SPA 531 files / 11,268 tests; Playwright 411 / 12 / 7 (17.4 m); every red re-run by file: nine the recorded Salon-streaming cluster (green alone; the regenerate-stream intermittent 3/3 on a quiet machine), one teardown race (`wardrobe-flow` 20/20 again), and TWO spec premises in P4.D320's flipped beats — a `radio` asked as a `button` + a coin-flip outcome row, and a Salon page on a fixture pair without `chat_settings` — fixed in the spec (`3ed3b811a`), the file 8 / 8.
+
+Final versions: core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9, SPA 0.5.881; harness frozen 0.0.1110.
+
 #### 2026-10-20 — test(e2e): the Workbench wardrobe-picker beats on the union — the radio's role, a deterministic operand, the planted `chat_settings`
 
 _No crate versions bumped._

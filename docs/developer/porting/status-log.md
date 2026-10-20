@@ -190546,3 +190546,262 @@ as her and as nobody; the run dialog's `{{character}}` row on a real roster.
 
 **Versions at close:** SPA 0.5.878; core / host / web / cli / tauri
 unchanged; harness frozen.
+
+## The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323) — UNIFICATION record (2026-10-19)
+
+**UNIFIED on main (2026-10-19). ALL NINE LANES LANDED WHOLE; the oracle
+baseline MOVES `25b8fab6a` → `e8e17b2d9`.** Unify branch `unify/e8e17b2d9`,
+cut from `main` at the orders' commit `e8b0cea6c`, fast-forwarded onto `main`.
+
+### The probe and the pin
+
+- The ledger's §2 probe FAILED at unify start (an observation under the pin
+  rule, not a stop): v4 `main` CLEAN at `e27fb6b34`, FOURTEEN commits past
+  the pin and EIGHT past the ledger's recorded HEAD `a6292f169` (`7263105c6`
+  … `e27fb6b34`, all 2026-10-19); `bugfix` `489b228b6` and `release`
+  `2432b9057` unmoved (`log 489b228b6..bugfix` EMPTY; `diff 2432b9057 bugfix
+  -- lib app packages plugins` EMPTY); local tips = `origin`. The eight were
+  classified from the hunks at the close probe (below, §"The close
+  `/driftcheck`") and appended to the ledger's §3.
+- The pin `/tmp/qt-v4-pin-unify-e8e17b2d9` (`rev-parse` =
+  `e8e17b2d92095bda008f03bb963eb4b1c470e680`, `package.json`
+  `4.11.0-dev.26`), root `node_modules` by `npm ci --offline` (1,044
+  packages: `openai` 7.34.0, `zod` 4.6.7; `@quilltap/plugin-utils` 2.7.1 ×14
+  through the plugin symlinks; `@xterm/headless` present in the tree but
+  imported by nothing at the pin). P4.D322's two second pins rebuilt the same
+  way (`/tmp/qt-v4-pin-unify-102a23648`, `-4fbdad186`; each `npm ci
+  --offline`, `openai` 7.34.0). `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the round
+  pin for every live-checkout guard.
+
+### The picks (§S.1)
+
+47 lane commits cherry-picked in the pick order P4.D315 → P4.D316 (the
+stacked follow-up branch `claude/p4.d316-rollback-tier2-and-orchestrator`,
+which carries the lane's seven + items 24–25) → P4.D317 → P4.D319 → P4.D322
+→ P4.D321 → P4.D323 → P4.D318 → P4.D320. Conflicts: the version files
+(highest wins), `Cargo.lock` / `package-lock.json` (re-synced), the
+CHANGELOG (newest first) and `status-log.md` (append) unions on nearly every
+lane boundary; FOUR source-level unions, each the kind the orders predicted:
+`wardrobe.rs`'s three `pub mod` lines (P4.D316 + P4.D319, §R.10 (d)); the
+`dispatch_wrong_type_census` route-identifier count (P4.D315 +2, P4.D316 +1,
+P4.D321 +1 → 487) and the `tri_state_edges_share_the_decoder` total (123 →
+124 → 125) — each lane had moved the same constant from the same base;
+`realtime-topic-map.spec.ts`'s appended describes (P4.D318 + P4.D321). ONE
+union compile error, the one both lane records predicted: P4.D319's
+`rolling_character_tests` literal in `pascal/run_service.rs` lacked
+P4.D316's `pending_wardrobe_history: None` (R-G) — added at the wires.
+
+### §S.5 — the wires (commit `ee47241db`)
+
+- (1) `api/chat_outfits.rs` / `wardrobe_routes.rs`: the function-carved and
+  two-list unions merged clean (no conflict).
+- (2) the `RunCustomToolParams` literal union — the one missing line, above;
+  `cargo build --workspace --all-targets` green.
+- (3) `pascal-run-custom`: P4.D316 shipped NO extender ("ids added: none"),
+  so the union pair is P4.D319's widened pair (`41aec783…` mount); P4.D319's
+  `extend-pascal-run-custom-announcer.ts` re-run on a staged copy answered
+  "already carries announced_dresser — unchanged" (mount byte-identical).
+- (4) R-F: the shared definition corpus regenerated ONCE from the pin — 458
+  rows (10 title + 396 definition + 52 gate), sha256 `888f32ad…` = the sha
+  P4.D319 recorded; installed as the SPA copy (449 → 458); P4.D320's two
+  suffixed ids collide with nothing.
+- (5)–(7) `core-contract.ts`'s three fences, the `wardrobe.api.ts` fence
+  and every `mod.rs` append merged clean.
+- (8) P4.D323's HANDOFF table: all 21 section md5s EQUAL against `git show
+  e8e17b2d9:`; the whole `help/` tree 131 = 131, 0 mismatches.
+- (9) both schema guards green on the union (44,021 / 108,678).
+- (10) `handler-logging-inventory.md` regenerated once from the pin: 243 rows
+  (27 / 115 / 8 / 93), unmoved.
+- (11) `tool-message.ts`'s rows read `restored_index` / `skipped` /
+  `coverage_summary` — C2 §4's keys, matched against the Rust tool output.
+- §S.2 before: `ai_import_tier3`'s `V4_APP_VERSION` → `4.11.0-dev.26`.
+- §S.9: `P4D315_SERVER_LANDED`, `P4D316_SERVER_LANDED`,
+  `P4D319_SERVER_LANDED` flipped `true`.
+- §S.3: core 0.0.1321 → 0.0.1322, SPA 0.5.879 → 0.5.880 at the wires (the
+  `package-lock.json` had sat at 0.5.878 — P4.D318's bumps never touched it).
+
+### The §3 review (six parallel readers + the unifier) — NO BLOCKING DEFECT
+
+The seventeenth such round. What the review found and what was done (fix
+commit ``7af5f9ebe``, core 0.0.1323, SPA 0.5.881):
+
+- **Caught by the unifier's gate before the readers:** P4.D321's
+  `qt-wardrobe-pictures-section` host class resolved to NO CSS rule —
+  `check-qt-classes` RED on the union (the inline-host bug class #97 / #107);
+  the lane record's "`npm run lint` 0" was a FALSE claim (the host class was
+  on the lane branch). FIXED beside the Avatar Rolls precedent in
+  `_surfaces.css`.
+- **P4.D316 (S1, fixed):** the rollback POST resolved the operator
+  provenance BEFORE the write where v4 `outfit.ts:383-389` loads the pool
+  first — the two DEBUG lines' order inverted (the order's "got wrong" 4
+  named exactly this; the lane did the opposite). Resolved inside the write
+  after `load_wearable_pool`; the route pin follows the line onto the writer
+  thread (the per-thread rig is blind there — its ABSENCE on the caller
+  thread is now the tripwire; the bytes stay pinned by `operator_provenance`'s
+  unit tests). Also: the dead `RollbackSkippedItem::to_tool_value` removed;
+  the tool's unreachable state-read `Err` arm now hands the landed stage out
+  (v4's notify + settle already fired). Recorded: the missing-chat + invalid-
+  body gate order (v4 404, v5 400 — the standing `chat_item_post` class).
+- **P4.D319 (S1, fixed):** `wardrobe/wearable_ref.rs` shipped as dead
+  production code beside `WearablePool::find_by_title`'s own copy of the
+  trim / lower-case rule (the lane even ported v4's delegation test as a
+  "regression pin" of a delegation v5 lacked). `find_by_title` now DELEGATES
+  to `match_wearable_title` (v4's `findByTitle → matchWearableTitle`); a
+  blanket `RefTarget for &T`; `wearable_pool` / `_tier2` /
+  `pascal_bench_wardrobe` green. Notes: R-10's arm pinned at the lens not the
+  route (a seated preview 500s earlier on a degraded mount — a dogfood row);
+  the writer's `tool` `""` fallback unobservable.
+- **P4.D315 (S1 + S2, fixed):** an UNRECORDED raw-row class — a non-numeric
+  `entryIndex` string inserts on both sides but v4 reads `NaN` (JSON `null`)
+  and v5 `0` (the order's item 3 named the class; the corpus planted only
+  `"1"`). The tier-2 corpus gains the `"abc"` row and the family carves
+  `NAN_ENTRY_INDEX_READS_ZERO` both ways (the settle consequence — v4's
+  `NaN + 1` INSERT fails and skips, v5 appends 1 — recorded in the header,
+  not driven). Two more `js_truthy` copies replaced by the crate's one.
+  Notes: the GET's 500 on a degraded mount index joins dogfood #156's
+  standing class; the seed's BLOB cell unplanted (recorded).
+- **P4.D320 (S2, fixed; S1 FALSIFIED):** `announcerNamesOf` dropped v4's two
+  truthiness guards (`SalonView.tsx:258/261`) — a nameless seat could blank
+  an off-scene card's name and the Staff chip fell back to Pascal; ported,
+  red-first. The review's S1 — "the vantage loader has no failure arm and
+  wedges on a refused read" — MEASURED FALSE: both inner loaders fail soft
+  per tier, so the unfixed loader already lands `[]` / loading false /
+  fetched true; no production change, a spec row pins the invariant.
+- **P4.D317, P4.D318, P4.D321, P4.D322, P4.D323:** no should-fix. NOTEs
+  recorded: P4.D317's hand-rolled slots hash (documented); P4.D321's
+  `isPending` vs v4's `isLoading` (paused-query only), the unreachable
+  `None`-mount arm; P4.D323's stale `host_help_docs_boot` assert text
+  (`01a83539d`); P4.D322's stale "ONLY consumers" header sentence in the
+  older extender. P4.D318's R-L implemented and pinned exactly as ruled.
+- **Pre-existing, not the round's:** vitest reports six unhandled
+  `scrollIntoView is not a function` errors from `ui/collapsible-card.ts`
+  under `memory-tab.spec.ts` (neither file touched) — a jsdom stub is a
+  smalls item.
+- **The tenth branch `claude/import-chat-record-columns-f49fb0`
+  (`cb88a3840`)** — P4.D317's spawned follow-up (the `.qtap` chat import
+  refuses non-record keyed columns as v4's `ChatMetadataSchema` does) — was
+  READ and judged SOUND (it validates the MERGED object after `chat_patch`, so
+  v4's `remintChatMessageIds` null-ing of a non-object `courierCheckpoints` is
+  matched; its only production hunk is `quilltap_import/entities.rs`, which
+  the union does not touch) but NOT taken: outside the round's orders, and
+  its family would have needed a post-sweep regen. It stays on its branch +
+  worktree as the follow-ups round's first rider.
+
+### The gate (the final tree)
+
+- **The full sweep from the pin** (`recipe_sweep.py --run-all --v4 $PIN
+  --v5w ~/source/quilltap-v5`, 21:38 → 23:14 CDT; results artifact
+  `harness/tools/sweep-results/2026-10-19-e8e17b2d9-outfit-history-unify.json`):
+  **725 ok / 6 run_failed / 1 refused (repo-write) / 2 refused
+  (non-extractable) of 734.** The six, each classified: `ariel_writers_tier3`
+  and `search_replace` (the two standing reds); `build_context_tier3` and
+  `character_archive_tier2` (P4.D322's by-design flips at the round pin —
+  GREEN from their second pins through the driver, `102a23648` /
+  `4fbdad186`); `extraction_context_degrade` (a sweep-ORDER artifact: its
+  fixture's producer `memory_processor_tier3` ran 128 families later — green
+  by name once it had); **`system_import_state` — a UNION FINDING, 2 of 2
+  runs:** v4's import schedules a FORCED 5 s debounced vocabulary refit and
+  the timer fired into a later case's dump (one stray `EMBEDDING_REFIT` row,
+  every minted id after it shifted) — P4.D317 had recorded it as a 2-of-~6
+  flake; the outfit-history cases lengthened the run past the debounce. FIXED
+  in the oracle (`settle()` clears `embedding.refitDebounceTimers`; neither
+  side's refit row belongs to this dump — v5 answers the profile after the
+  write and its debounce needs a host tick); both import families green.
+  The eight families the should-fixes touch re-run from the pin by name: 8 /
+  8 ok after the route pin moved.
+- fmt clean; `cargo clippy --workspace --all-targets -D warnings` clean in
+  BOTH feature sets (`apps/web/dist` rebuilt from the final SPA source).
+- **`cargo test --workspace --no-fail-fast`** (`CARGO_INCREMENTAL=0`, the
+  harvested env block — 951 variables from every family's `--show` run
+  stage, the 8 that two or more families spell differently withheld so their
+  families SKIP here and stand on the sweep; `QT_V4_CHECKOUT` = `QT_V4_ROOT`
+  = the pin; P4.D322's two families on their second-pin oracles):
+  **827 binaries / 5,455 passed / 8 failed / 3 ignored, zero `SKIP:`.** The
+  eight, each classified: `ariel_writers_tier3` + `search_replace` (the two
+  standing reds); FIVE env-block artifacts, each green by name afterwards —
+  `cli_differential` (the gate's env carried no `QT_NODE` and no Node on
+  `PATH`: `spawn CLI: NotFound`; Tier R re-run by name below), `backup_uuid_
+  remap` (the sweep REFUSES its repo-writing recipe by design, so its oracle
+  never existed at the env's path — generated BY HAND from the pin with a
+  unify-private mirror: 58 cases green, the committed hashed
+  `uuid-remap-corpus.json` byte-unmoved), `doc_mount_files_tier2`,
+  `wardrobe_folder_writes_tier2` and `orchestrator_tier3` (shared `/tmp`
+  fixtures a later family rebuilt or removed after the sweep — re-minted ids
+  / a missing table; 3 / 3 ok through the driver by name); and ONE the
+  unifier caused — `archived_wearer_read_guard`, a SOURCE-TEXT guard whose
+  900-char window over `find_by_title` lost the literal `self.wearable()`
+  when the delegation's comment (and rustfmt's line break) pushed it out —
+  the literal restored on one line, green (folded into the fixes commit).
+- Tier R `cli_differential`: **422 cases / 0 failures** (by name, `QT_NODE` = Node 24.13.1, the pin as `QT_V4_CHECKOUT`).
+- SPA: `npm run lint` clean (960 `qt-*` classes, every reference
+  resolves); `npm test` 531 files / 11,268 tests, 0 failed (6 pre-existing unhandled `scrollIntoView` errors under `memory-tab.spec.ts` — files the round never touched); `npm run build` clean.
+- **Full Playwright** **411 passed / 12 failed / 7 skipped (17.4 m)** — the seven skips the
+  standing parks; the twelve reds re-run by FILE alone afterwards, one
+  invocation at a time: NINE the recorded Salon-streaming timing cluster and
+  its neighbours, each green alone (`character-avatar-rolls-flow` 1/1,
+  `salon-impersonation-voice-flow` 3/3, `salon-roleplay-template-flow` 2/2,
+  `salon-streaming-avatar-flow` 2/2, `salon-thinking-indicator` 1/1,
+  `salon-transcript-subscribed-read` 2/2; `salon-regenerate-stream-flow` the
+  recorded intermittent — 2/3, 2/3, 1/3 while a stray whole-disk `find` the
+  unifier had launched was still scanning, then **3/3** on the quiet machine;
+  `wardrobe-flow` 20/20 then 19/20 — the file's LAST beat red in the spec's
+  own `afterAll` `rmSync(INSTANCE_DIR)`, `ENOTEMPTY` as the stopped server
+  released a file, a teardown race, not the port — then 20/20); and the TWO
+  real reds, both P4.D320's P4D319-gated beats on premises the lane could not
+  see blind, neither a port defect, both FIXED in the spec (commit
+  `3ed3b811a`): (g) asked `getByRole('button', …)` for a `role="radio"`
+  control, and its `{{character}}` message sat on the first outcome row whose
+  default condition `value ≥ 0.5` made it a coin flip (measured: raw 0.1604,
+  the catch-all row won) — the operand pinned to 0; (h) opened the Salon on
+  the characters fixture pair, whose vintage predates `chat_settings` — the
+  server log's `[Chats v1] Error fetching chat … no such table:
+  chat_settings` (the operator run itself posted, the INFO carrying
+  `announcerCharacterId`) — the table joins the spec's materialization list.
+  `workbench-wardrobe-picker-flow` **8 / 8** alone.; the three §S.9 flips LIVE:
+  `wardrobe-flow` 20/20 (P4.D318's two beats — the History tab reading
+  the GET, *Wear again* through the POST), `workbench-wardrobe-picker-flow`
+  8/8 (P4.D320's (f) would apply / would skip, (g) a `{{character}}` roll,
+  (h) a character-announced bubble naming Aria), `character-wardrobe-pictures-
+  flow` 1/1 (P4.D321, LIVE in-lane).
+
+### The close `/driftcheck`
+
+The §2 probe failed at unify start (eight v4 `main` commits past the
+ledger's `a6292f169`); the `/driftcheck` procedure ran at the close with a
+reader classifying each from the hunks and the unifier spot-checking the
+load-bearing claims. **Verdict: DRIFT PENDING — 14 commits**, all UNPROCESSED
+(two with a `PORTED(P4.D322)` part): the Inventory programme (`4fbdad186`,
+`e1872c94f`, `102a23648` — the THIRTEENTH + FOURTEENTH D23 moves), the
+scenario sort (`1d0a31132`), a test (`cad017599`), bug 255 (`a6292f169`, the
+FIFTEENTH move + `@xterm/headless`), and the eight NEW: `7263105c6` bug 256
+(v5 HAS it — `qtap://self` addresses; a standalone PORT lane candidate) + the
+Inventory title lint; `406dbdd5a` the moderated-image-prompt RE-RULING of bug
+133 (the bug-133 both-direction pins will trip at the next baseline move by
+design); `ea2cb60ab` `edit_custom_tool` (a new built-in tool) + `run_custom`
+→ category `pascal`; `680b71044` `/photos` leaves out character vaults + an
+album selector (v5 still lists vault photos and can delete a vault photo
+link); `cfa0cba29` vault custom tools are that character's only (the roster's
+`participant` tier removed); **`e4a60ad9e` the Log WITH THE SIXTEENTH D23
+MOVE** (`log_entries`, a NEW table in the LLM-LOGS partition — the first
+schema move there — rendered by generateDDL but created LAZILY at first
+repository use, no migration; three `log_*` tools, a Pascal `log` effect, a
+SQLite `regexp` function; a provisioning ruling owed); `a495faa26` its date-
+bounds rider; `e27fb6b34` the Inventory icon. No CONVERGENCE (bugs 252–256
+are v4-found). No new runtime dependency in the eight. `help/` 134 at HEAD.
+Regen rule: PIN REQUIRED at `e8e17b2d9`. The ledger's §1 is rewritten
+wholesale; the eight rows appended to §3; the LIVE-DATA block carries the
+`log_entries` notes (v5 never prunes it; v5's `replace` restore deletes
+`llm_logs` rows through the repository and never recreates the llm-logs file,
+so a v4-created table survives untouched).
+
+### Versions at close
+
+core **0.0.1323**, host **0.0.211**, web **0.0.243**, cli 0.0.34, tauri
+0.0.9, SPA **0.5.881**; harness frozen 0.0.1110; `quilltap-sqlite3mc-sys`
+pinned.
+
+### 💸 Owed to the next `/dogfood`
+
+`dogfood-findings.md`'s standing note of 2026-10-19 (the §S.8 queue; the
+headline row — the first v5 boot of a Friday copy, its vintage recorded
+first; the R-W filing candidates).

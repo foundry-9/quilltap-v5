@@ -1016,10 +1016,67 @@ records THERE. Update this summary only when a phase or round completes.
     `83334b9a5` round's items and two rulings); then the `f46cf40a2`
     outfit-history catch-up (its D23 ruling first) — `phase-4.md`. Round
     record: `status-log.md`.
-- **Oracle baseline: `25b8fab6a` (2026-10-16, v4 main — "fix: month-word
-  prototype keys (bug 247); orphaned typeahead menu (bug 250)",
-  `4.11.0-dev.10`), adopted at the `25b8fab6a` round's unification
-  (2026-10-17).** **Drift state, the drift-check method,
+- **The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252
+  drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥
+  P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323): UNIFIED on main (2026-10-19) — ALL
+  NINE LANES LANDED WHOLE; the oracle baseline MOVES to `e8e17b2d9`. The
+  ledger's §3 holds FOURTEEN rows past the pin (the six known — the
+  Inventory programme, the scenario sort, a test, bug 255 — plus EIGHT the
+  close `/driftcheck` classified: bug 256 + the Inventory title lint, the
+  moderated-image-prompt re-ruling of bug 133, `edit_custom_tool`, the
+  `/photos` album selector, vault custom tools as the character's only, **the
+  Log WITH THE SIXTEENTH D23 MOVE** — `log_entries`, the first table in the
+  llm-logs partition, created lazily with no migration — its date-bounds
+  rider, the Inventory icon), PIN REQUIRED.**
+  - **Absorbed:** the TWELFTH D23 move as the first BOOT-CREATED table
+    (`chat_wardrobe_history` through three ported ensures — table →
+    `actorToolName` → seed, the seed stamped; `fresh_schema.json` UNMOVED;
+    the `BOOT_CREATED_HISTORY_TABLE` / `BOOT_CREATED_INDEXES` both-ways
+    carves — P4.D315); the recording on the chat spine with provenance at
+    every site, the two orders, the arrival settles in the commit's own
+    write, `wardrobe_rollback` / `wardrobe_history` (57 → 59 tools), the
+    rollback POST (P4.D316); the backup / restore / `.qtap` carriers + **bug
+    252 FIXED** in both carriers (P4.D317); the History tab + *Wear again*
+    with the ruled R-L divergence (P4.D318); `{{character}}` +
+    `announceAsCharacter` + the Workbench wardrobe lens (P4.D319 server,
+    P4.D320 SPA); the gallery's Wardrobe Pictures (P4.D321); the two
+    ahead-of-pin riders — **bug 254 FIXED** and the `Inventory/` archive keep
+    (the ledger's live-data hazard RETIRED by measurement) — each A/B-proven
+    at both pins (P4.D322); `help/` 131 + 11 `docs/v4/` operations + three
+    NO-PORT ratifications (P4.D323).
+  - **The §3 review (six readers + the unifier): NO blocking defect — the
+    seventeenth such round; one false lint claim caught by the gate (a
+    gallery host class with no CSS rule — the inline-host bug class), four
+    should-fixes landed red-first (the rollback POST's provenance resolved
+    before the pool load where v4 resolves after; two copies of the
+    wearable-title rule; `announcerNamesOf` without v4's truthiness guards;
+    an unrecorded non-numeric-`entryIndex` raw-row class, now a corpus row +
+    the `NAN_ENTRY_INDEX_READS_ZERO` carve), one review premise FALSIFIED
+    (the vantage loader cannot wedge — both inner loaders fail soft), and
+    one union red fixed in the oracle (`system_import_state` RED 2 / 2 —
+    v4's import schedules a FORCED 5 s refit debounce whose timer fired into
+    a later case's dump; `settle()` now clears it).**
+  - **Gate:** fmt / clippy (both feature sets) / release clean; the sweep
+    from the pin 725 ok / 6 / 1 refused / 2 non-extractable of 734 (the two
+    standing, P4.D322's two pin flips green from their second pins, one
+    sweep-order artifact, the import finding); Tier R 422 / 0;
+    `cargo test --workspace` 827 binaries / 5,455 / 8 (two standing + five
+    env-block artifacts each green by name + one source-text-guard red the
+    unifier caused and fixed) / 3 ignored, zero SKIP; SPA 531 / 11,268;
+    Playwright 411 / 12 / 7 (17.4 m) — every red green by file alone (nine the recorded Salon-streaming cluster + one teardown race) or a spec premise fixed (two of P4.D320's blind-authored beats), the three gated beats LIVE (8 / 8, 20 / 20, 1 / 1).
+  - **Versions:** core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34,
+    SPA 0.5.881.
+  - **Next:** the owed dogfood pass (a Friday copy at ANY v4 point — the
+    standing note of 2026-10-19), the follow-ups smalls round (the ready
+    rider branch `claude/import-chat-record-columns-f49fb0` first), then
+    round (2) — the Inventory + Log drift catch-up with the thirteenth to
+    sixteenth D23 moves in ONE re-dump (two rulings owed first: the
+    terminal-emulator crate for bug 255, the `log_entries` provisioning
+    shape) — `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `e8e17b2d9` (2026-10-18, v4 main — "Fix: restore and
+  import keep chat outfits (bug 252) (#101)", `4.11.0-dev.26`), adopted at
+  the `e8e17b2d9` round's unification
+  (2026-10-19).** **Drift state, the drift-check method,
   and the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
   and by `/unify` at baseline moves; the other porting commands run the

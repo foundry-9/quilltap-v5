@@ -641,6 +641,114 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the `e8e17b2d9` unification (2026-10-19): the owed dogfood pass's queue, the review's checks, and the v4 filing candidates
+
+1. **The copy rule.** A v5 at the `e8e17b2d9` baseline reads, writes and
+   carries `chat_wardrobe_history`: the table is BOOT-CREATED through three
+   ported ensures (table → `actorToolName` → seed, the seed STAMPED, the
+   human's 2026-10-19 standing ruling), so **a Friday copy taken at any v4
+   point opens** — on a pre-`83387d0e5` copy the first v5 boot CREATES the
+   table and seeds entry 0 per dressed `(chat, character)`; on a copy v4
+   ALTERed (`4ae20977f`) or created whole, every ensure is a measured NO-OP.
+   Outfit history now SURVIVES a v5 backup / restore / `.qtap` round trip;
+   `{{character}}` / `announceAsCharacter` definitions LOAD; archiving a
+   character KEEPS its `Inventory/` folder (the ledger's hazard RETIRED by
+   `character_archive_tier2_equivalence` 21 / 21 against the `4fbdad186`
+   oracle). The general rule stands: a v5 build from BEFORE this round must
+   not open an instance this round's ensures have altered. ⚠ v4 past the pin
+   (the Inventory, the Log, bug 255 — see the ledger's §3) adds columns and
+   tables v5 at this baseline never reads; a v5 backup omits them, and a
+   custom tool with an Inventory / Log gate or effect is REFUSED at load.
+2. **Headline row:** the first v5 boot of a Friday copy. Record the copy's
+   vintage FIRST — `SELECT sql FROM sqlite_master WHERE name =
+   'chat_wardrobe_history'` and the three `migrations_state` rows
+   (`add-chat-wardrobe-history-table-v1`,
+   `add-chat-wardrobe-history-tool-name-v1`, `seed-chat-wardrobe-history-v1`):
+   mode A a fresh 11-column table, mode B a 10-column table v4 ALTERed, or
+   none — plus the non-null `equippedOutfit` count and how many of those chats
+   have a NULL `updatedAt` (a NULL fails the WHOLE seed, as in v4). Then boot:
+   every ensure a NO-OP, or the exact `Seeded N outfit record(s) across M
+   chat(s)` INFO; a second boot silent.
+3. **The §S.8 queue** (each lane's own 💸 rows are in its lane record):
+   - **A real outfit change on a Salon turn** recorded with `character`
+     provenance and read back in the Wardrobe dialog's History tab (`you` /
+     the character's name as `changedBy`; the boot seed's `seeded` entry 0).
+   - **⭐ *Wear again*** on an earlier entry: ONE commit through the
+     chokepoint, Aurora's announcement, the cursor moved with nothing
+     appended, the avatar repaint (💸 one image if avatar generation is on);
+     with staged Live edits the native confirm, the staging gone; **the ruled
+     R-L clean path** — a Live gesture after a clean *Wear again*, then Done:
+     the restored outfit SURVIVES (v4 undoes it; the human files the bug).
+   - **`wardrobe_rollback` / `wardrobe_history` on a real turn** (💸 one
+     model call each): `Returned to outfit N (from M).` … `Now wearing:`; the
+     `← wearing now` marker and the `…` gap on a long record; the `Earlier
+     Outfit` / `Outfit History` tool rows.
+   - **A Pascal effect dressing the rolling character** recorded with
+     `pascal` provenance and `actorToolName`.
+   - **The operator's equip** with a Speaking-As seat (`the operator, as
+     <name>`) and without (`the operator`); `POST ?action=wardrobe-rollback`
+     from curl (one commit, the cursor moved, `skipped` for an archived
+     garment); a new chat's arrivals `chat-start` 0; a participant added
+     mid-chat `participant-added`.
+   - **A full backup → `replace` restore** keeping every timeline and cursor
+     (`Restored outfit history total=N restored=N`; a second restore does not
+     double rows); **a `.qtap` export / import** of a chat with history (fresh
+     ids, a second import writes nothing); **a `new-account` restore** of a
+     real backup with the four character-keyed columns RE-KEYED (bug 252 —
+     the outfit, the avatars and the courier checkpoints survive).
+   - **The Workbench's wardrobe lens** on a tool in Friday's vault (chip,
+     origin, wear line), `Choose…` over her real wardrobe, `Reference by: id`,
+     a group-store tool opening on the group; 💸 the bench with Friday seated
+     (would apply / would skip / the archived sentence; the hand-typed and
+     empty-id sheets 200 with no key).
+   - 💸 **A `{{character}}` roll** on a real Salon turn at each entrance; 💸 a
+     **character-announced custom tool** naming her on the Staff bar (the
+     row's `customAnnouncer`, the INFO's `announcerCharacterId`, the next
+     turn's `[<Name>] ` tag, the Courier's `[Staff: pascal]` raw key); the
+     Character name insert run as her and as nobody; the run dialog's
+     `{{character}}` row.
+   - **The gallery's Wardrobe Pictures shelf** below Avatar Rolls on a
+     Friday-copy character with generated garment pictures: captioned plates
+     newest first, `(archived)`, `Group · <name>` / `Shared · Quilltap
+     General`, NO project-wardrobe or uploaded picture, hover → Download only,
+     click → the shared modal with Prev / Next and no prompt, *Save to my
+     gallery* twice; an archived or garment-less character → no shelf.
+   - **Bug 254 live:** a progression carrier in a multi-character chat — the
+     chained second speaker, a Nudge, a Continue each show the report in the
+     LLM Inspector; the Core whisper still absent on those turns (three or
+     four real turns).
+   - **The `Inventory/` keep live** (free): on a copy v4 has given an
+     Inventory, archive the character from v5 — `Inventory/**`, its picture
+     links and an empty subfolder survive; `Mail/` still pruned; rehydrate
+     opens with the Inventory intact.
+   - **Help:** the four re-vendored pages render (`wardrobe.md`'s Outfit
+     Record section, `custom-tools.md`'s `announceAsCharacter`,
+     `pascals-workbench.md`, `character-gallery.md`'s Wardrobe Pictures).
+4. **v4 filing candidates (the human's call — R-W):**
+   - **(a) R-L (CONFIRMED, ruled "fix in v5"):** after a clean *Wear again*
+     v4's Live tab keeps the pre-rollback staging, so a later gesture + Done
+     UNDOES the rollback (`outfit-history-tab.tsx:160-169` discards only
+     inside the confirm arm; P4.D318's measurement table is the evidence).
+   - **(b) R-K (i):** the new-account history remap MINTS a phantom
+     `characterId` / `actorCharacterId` for a character the backup does not
+     carry while bug 252's chat pass DROPS that character's entry.
+   - **(c) R-K (ii):** a non-array slot value (or a `null` row) makes
+     `remapBackupData` THROW, so a new-account restore of a hand-edited
+     archive fails whole while `replace` salvages it.
+   - **(d) R-K (iii):** import phase 7f's never-merge check guards only a
+     NON-EMPTY local timeline — a skipped-duplicate bundle chat's rows are
+     written into a LOCAL chat of that id whose timeline is empty.
+   - **(e) `help/character-gallery.md`'s "with its generation prompt"** — no
+     prompt reaches the modal (`ImageData` has no prompt field).
+   - **(f) `a05c6f755`'s message** says the Courier credits the announcing
+     character; the code says `[Staff: pascal]` (no `pascal` key in
+     `COURIER_SYSTEM_SENDER_LABELS`).
+   - **(g) P4.D315 R-7:** `settle`'s empty-timeline one-row arm records
+     `seeded` with no actor and no tool name (a Pascal change that leaves a
+     pre-history seat empty).
+   - **(h) carried:** `{{params.constructor}}` (the `25b8fab6a` round's
+     (a)).
+
 ### From the `25b8fab6a` unification (2026-10-17): the owed dogfood pass's queue, the review's checks, and two v4 filing candidates
 
 1. **The copy rule RETIRES.** A v5 at the `25b8fab6a` baseline carries both
