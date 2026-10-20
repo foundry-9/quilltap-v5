@@ -93,7 +93,10 @@ test.describe('P4.D320 — the Workbench wardrobe picker and the character annou
     // Quilltap General) and the projects / groups schema the destinations verb
     // reads on every request (absent, it answers `no such table: projects` —
     // measured). Instance MATERIALIZATION from the committed D23 dump, never a
-    // fixture regen: the committed pair is untouched.
+    // fixture regen: the committed pair is untouched. `chat_settings` joined the
+    // list at the `e8e17b2d9` unification: beat (h) is this file's one Salon
+    // page, and the chat GET reads the settings row (absent, `[Chats v1] Error
+    // fetching chat … no such table: chat_settings` — measured on the union).
     const freshSchema = JSON.parse(
       readFileSync(
         resolve(REPO_ROOT, 'crates/quilltap-core/src/services/provisioning/fresh_schema.json'),
@@ -104,6 +107,7 @@ test.describe('P4.D320 — the Workbench wardrobe picker and the character annou
       ['main', 'instance_settings'],
       ['main', 'projects'],
       ['main', 'groups'],
+      ['main', 'chat_settings'],
       ['mountIndex', 'group_doc_mount_links'],
     ] as const) {
       const create = freshSchema[partition].find((sql) => sql.startsWith(`CREATE TABLE "${table}"`));
@@ -320,8 +324,12 @@ test.describe('P4.D320 — the Workbench wardrobe picker and the character annou
     test.skip(!P4D319_SERVER_LANDED, GATE_REASON);
     await newContrivance(page);
     await fillValidIdentity(page, 'E2E Character Roll', 'e2e_character_roll');
+    // The first outcome row's default condition is `value ≥ 0.5` — a coin flip
+    // the catch-all row wins half the time (measured at the `e8e17b2d9`
+    // unification: raw 0.1604 → "The wheel gives 0.1604."). `≥ 0` always holds.
+    await page.getByLabel('Operand number').first().fill('0');
     await page.getByLabel('Outcome message').first().fill(`${CHARACTER_PLACEHOLDER} steps up.`);
-    await page.getByRole('button', { name: 'Pick a character' }).click();
+    await page.getByRole('radio', { name: 'Pick a character' }).click();
     await page.getByLabel('Character whose fact sheet to use').selectOption(ARIA_ID);
     await page.getByRole('button', { name: 'Roll', exact: true }).click();
     await expect(page.getByText('Aria steps up.').first()).toBeVisible({ timeout: 15_000 });

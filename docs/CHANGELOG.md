@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-20 — test(e2e): the Workbench wardrobe-picker beats on the union — the radio's role, a deterministic operand, the planted `chat_settings`
+
+_No crate versions bumped._
+
+P4.D320's three P4D319-gated beats went LIVE at the `e8e17b2d9` unification; two were red for premises the lane could not see blind, none for the port. (g) asked for a `button` named "Pick a character" where the bench's fact-sheet mode control is a `radio`, and its `{{character}}` message sat on the first outcome row whose default condition is `value ≥ 0.5` — a coin flip the catch-all row won half the time (measured: raw 0.1604); the operand is pinned to 0. (h) opened the Salon on the characters fixture pair, whose vintage predates `chat_settings`: the operator run posted (the INFO carries `announcerCharacterId`) but the chat GET answered `no such table: chat_settings`; the table joins the spec's materialization list. The file is 8 / 8 alone.
+
 #### 2026-10-19 — fix(unify): the `e8e17b2d9` round's §3 review — the gallery host rule, the announcer-name guards, the rollback's provenance order, one wearable-title rule, one `js_truthy`, the non-numeric `entryIndex` carve
 
 _Versions: core 0.0.1323, SPA 0.5.881._
