@@ -1,0 +1,426 @@
+{
+  "_comment": "P4.D316 Tier 2 item 24 — the wardrobe_rollback_tier2 corpus. Runs over the committed wardrobe-routes fixture pair (crates/quilltap-web/tests/fixtures/wardrobe-routes-{main,mount}.db, ids from fixtures/wardrobe-routes.json); item / chat / character values are wardrobe-routes.json `ids` KEYS. Setup on both sides: the project's allowAnyCharacter set false (its roster is empty), so Aria is OFF the roster of chat1's project (T14). Each op first clears that pair's chat_wardrobe_history rows and every background_jobs row, plants `plants` (setEquippedOutfit + settle append with the step's provenance), then `cursor` (settle cursor), `dropIndex` (delete one entry — a gap), `live` (setEquippedOutfit with no settle), then rolls back with v4's REAL rollbackWardrobe. The first DRESSED plant on an empty timeline is recorded as entry 1 behind v4's first-touch EMPTY `seeded` entry 0 (`chat-wardrobe-history.repository.ts:236-252`); an EMPTY first plant is entry 0 alone.",
+  "operatorProvenance": {
+    "source": "operator"
+  },
+  "toolProvenance": {
+    "source": "character",
+    "actorCharacterId": "aria"
+  },
+  "ops": [
+    {
+      "name": "ui_step_back_operator_pool",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "wDress"
+            ],
+            "bottom": [
+              "wDress"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "tool_pool_project_item_missing_t14",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "accessories": [
+              "pScarf"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "index": 1,
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "operator_pool_project_item_restored_t14",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "accessories": [
+              "pScarf"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "index": 1,
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "tool_archived_item_left_off",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "bottom": [
+              "gArch"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "ui_archived_item_still_worn_kept",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "bottom": [
+              "gArch"
+            ],
+            "footwear": [
+              "wBoots"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "bottom": [
+              "gArch"
+            ],
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "ui_unknown_item_missing_and_archived_together",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "bottom": [
+              "gArch"
+            ],
+            "accessories": [
+              "unknownItem",
+              "gHat"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "index": 1,
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "tool_forward_after_cursor",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ],
+            "footwear": [
+              "wBoots"
+            ]
+          }
+        }
+      ],
+      "cursor": 1,
+      "live": {
+        "top": [
+          "wTop"
+        ]
+      },
+      "rollback": {
+        "index": 3,
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "tool_in_turn_cursor_deferred",
+      "chat": "chat1",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "footwear": [
+              "wBoots"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "tool",
+        "pool": "tool",
+        "inTurn": true
+      }
+    },
+    {
+      "name": "tool_no_project_chat_project_item_missing",
+      "chat": "chat2",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ],
+            "accessories": [
+              "pScarf"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "ui_second_character_same_chat",
+      "chat": "chat2",
+      "who": "bram",
+      "plants": [
+        {
+          "slots": {
+            "accessories": [
+              "wShared"
+            ],
+            "top": [
+              "gCoat"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "refuse_no_history",
+      "chat": "chat2",
+      "who": "bram",
+      "plants": [],
+      "rollback": {
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "refuse_at_first",
+      "chat": "chat2",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {}
+        }
+      ],
+      "rollback": {
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "refuse_out_of_range",
+      "chat": "chat2",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "index": 5,
+        "source": "ui",
+        "pool": "operator"
+      }
+    },
+    {
+      "name": "refuse_already_current",
+      "chat": "chat2",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        }
+      ],
+      "rollback": {
+        "index": 2,
+        "source": "tool",
+        "pool": "tool"
+      }
+    },
+    {
+      "name": "gap_at_target_throws",
+      "chat": "chat2",
+      "who": "aria",
+      "plants": [
+        {
+          "slots": {
+            "top": [
+              "wTop"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "top": [
+              "gCoat"
+            ]
+          }
+        },
+        {
+          "slots": {
+            "footwear": [
+              "wBoots"
+            ]
+          }
+        }
+      ],
+      "dropIndex": 2,
+      "rollback": {
+        "source": "tool",
+        "pool": "tool"
+      }
+    }
+  ]
+}

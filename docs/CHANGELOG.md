@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-19 — test(harness): the rollback's Tier 2 family + two wardrobe turns in the orchestrator corpus (P4.D316 Tier 2 items 24–25)
+
+_No crate versions bumped._
+
+New `wardrobe_rollback_tier2_equivalence`: v4's real `rollbackWardrobe` against `rollback_in_write` + `finish_rollback`, route-free, over 15 seeded timelines on the wardrobe-routes fixture pair, with `source` `ui` and `tool` and the pool passed both ways. The project roster is closed, so the project-tier scarf comes back `missing` on the character's pool and is restored on the operator's (T14). Each op compares the outcome, the equipped outfit, the whole wear ledger (`wornBundles: []`), the history rows, the queued jobs, the turn's set and map, and 42 log lines; three core mutants are killed. `orchestrator_tier3_equivalence` gains two calls at the end of its corpus: one turn that wears, wears and takes off (ONE `character` history entry at turn end), and an in-turn `wardrobe_rollback` whose cursor waits for the flush (a second rollback in the same response is refused `already wearing outfit 1`). Both fixtures get the history table and the wear ledger planted per run.
+
 #### 2026-10-19 — docs(porting): P4.D316 lane record — LANE COMPLETE
 
 _Docs-only change._

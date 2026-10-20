@@ -64,6 +64,20 @@
 //! fail to shrink junk and pass the stored bytes through, MEASURED by the
 //! recorded base64 lengths (307,200 in, 307,200 on the wire).
 //!
+//! **P4.D316 Tier 2 item 25** adds the corpus's LAST two calls, both on one
+//! new chat (Friday alone): `wardrobe_wear_then_take_off_one_turn` plants two
+//! items in Friday's vault IN-CASE (`wardrobeItems`, pinned ids, through each
+//! side's REAL vault writer) and streams ONE response carrying three native
+//! calls — wear the coat, wear the cap, take the coat off — so the turn's
+//! containers absorb three outfit changes and the turn-end flush settles ONE
+//! `character` history entry (behind the first-touch empty `seeded` 0) and
+//! enqueues ONE announcement; `wardrobe_rollback_in_turn` then calls
+//! `wardrobe_rollback` twice in one response — the second (`index: 1`) is
+//! refused `already wearing outfit 1` because the cursor still waits in the
+//! Map — and the table ends with entry 0 current (settled at the flush). Both sides plant
+//! `chat_wardrobe_history` and the wear ledger (the fixture predates both);
+//! the history table is compared whole minus its minted `id` / `createdAt`.
+//!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout; jest ignores
 //! `.claude/` paths, so the case is staged in a /tmp mirror). The oracle must
 //! come from a case at or after P4.129 — an older case's `llmlogs` line carries
@@ -73,7 +87,7 @@
 //!   TMPO=/tmp/qt-orch-oracle
 //!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/orchestrator-tier3.test.ts" "$TMPO/cases/"
-//!   cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$TMPO/lib/"
+//!   cp "$V5W/harness/oracle/lib/pinned-draws.ts" "$V5W/harness/oracle/lib/v4-migrations.ts" "$TMPO/lib/"
 //!   cp "$V5W/harness/oracle/fixtures/orchestrator-tier3.json" "$TMPO/fixtures/"
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-orch-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-orch-mount.db \
@@ -187,6 +201,11 @@ struct CallW {
     /// P4.D291 (bug 227): a letter planted IN-CASE before the call.
     #[serde(default)]
     letter: Option<LetterW>,
+    /// P4.D316 Tier 2 item 25: wardrobe items planted IN-CASE into a
+    /// character's vault before the call (never discarded — the wardrobe calls
+    /// are the corpus's last).
+    #[serde(default)]
+    wardrobe_items: Vec<WardrobeItemW>,
     /// P4.D186 (v4 bug 137): attachment ids on the send. A held post still
     /// persists them (the seam sits below the attachment work), so the corpus
     /// needed a way to hang one on a call.
@@ -267,6 +286,18 @@ struct LetterW {
     from_character_id: String,
     sent_at: String,
     body: String,
+}
+
+/// P4.D316 Tier 2 item 25: an in-case wardrobe item (the oracle case's
+/// `CallSpec.wardrobeItems`).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct WardrobeItemW {
+    character_id: String,
+    id: String,
+    title: String,
+    types: Vec<String>,
+    created_at: String,
 }
 
 fn spec_path() -> PathBuf {
@@ -1602,6 +1633,16 @@ fn orchestrator_tier3_matches_oracle() {
     let _ = std::fs::remove_file(&work_ll);
     common::materialize_llm_logs(&work_ll, &spec.test_pepper_base64);
 
+    // P4.D316 Tier 2 item 25: the outfit history table (P4.D315's one v5-side
+    // plant) and the wear ledger the fixture predates, on this copy — the
+    // oracle plants both through v4's own DDL.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&work_main, &spec.test_pepper_base64)
+            .expect("open main for the history plant");
+        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+    }
+
     let db = Db::open(
         DbPaths {
             main: work_main.clone(),
@@ -1796,6 +1837,43 @@ fn orchestrator_tier3_matches_oracle() {
                 .unwrap_or_else(|e| panic!("{}: deliver the letter: {e}", call.name));
             (vault, path)
         });
+        // P4.D316 Tier 2 item 25: the call's in-case wardrobe items, through the
+        // REAL vault writer (v4's `repos.wardrobe.create`), pinned ids / stamps.
+        for item in &call.wardrobe_items {
+            let item = quilltap_core::vault_overlay::WardrobeItem {
+                id: item.id.clone(),
+                character_id: Some(Some(item.character_id.clone())),
+                title: item.title.clone(),
+                description: Some(None),
+                image_prompt: Some(None),
+                types: item.types.clone(),
+                component_item_ids: vec![],
+                appropriateness: Some(None),
+                is_default: false,
+                replace: false,
+                migrated_from_clothing_record_id: Some(None),
+                image_file_id: None,
+                archived_at: Some(None),
+                folder: String::new(),
+                created_at: item.created_at.clone(),
+                updated_at: item.created_at.clone(),
+            };
+            db.write_blocking(move |ws| {
+                let main = ws.main().connection();
+                let mount = ws.mount_index().expect("mount").connection();
+                let links =
+                    quilltap_core::db::doc_mount_file_links::DocMountFileLinksRepository::new(
+                        mount,
+                    );
+                let docs =
+                    quilltap_core::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
+                quilltap_core::db::vault_wardrobe_public::create_vault_wardrobe_item(
+                    main, &links, &docs, &item,
+                )
+                .map_err(|e| quilltap_core::db::DbError::Internal(format!("{e:?}")))
+            })
+            .unwrap_or_else(|e| panic!("{}: plant a wardrobe item: {e}", call.name));
+        }
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
         // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
         // extraction → MEMORY_EXTRACTION, per-call characterId) and the summary
@@ -3098,6 +3176,87 @@ fn orchestrator_tier3_matches_oracle() {
     assert_table_eq("chat_messages", &got_msgs, &want_msgs);
     assert_table_eq("background_jobs", &got_jobs, &want_jobs);
     assert_table_eq("chat_informs", &got_informs, &want_informs);
+    // P4.D316 Tier 2 item 25: the outfit history the two wardrobe turns settled
+    // at their flushes (the row `id` / `createdAt` are minted — dropped both
+    // sides). `wardrobe_wear_then_take_off_one_turn` wears the coat, the cap,
+    // then takes the coat off — THREE outfit changes, ONE `character` entry
+    // (behind the first-touch empty `seeded` 0) at turn end; the follow-on
+    // `wardrobe_rollback_in_turn` moves the cursor back to 0 at ITS flush,
+    // appending nothing.
+    {
+        let strip = |t: &Value| -> Value {
+            let rows: Vec<Value> = t["rows"]
+                .as_array()
+                .expect("chat_wardrobe_history rows")
+                .iter()
+                .map(|r| {
+                    let mut r = r.clone();
+                    let o = r.as_object_mut().unwrap();
+                    o.shift_remove("id");
+                    o.shift_remove("createdAt");
+                    r
+                })
+                .collect();
+            Value::Array(rows)
+        };
+        let got = strip(
+            &db.read_main(|c| {
+                quilltap_core::db::dump_table_json_conn(c, "chat_wardrobe_history", "entryIndex")
+            })
+            .expect("history dump"),
+        );
+        let want = strip(
+            &want_tables
+                .remove("chat_wardrobe_history")
+                .expect("oracle chat_wardrobe_history — regenerate the oracle"),
+        );
+        assert_eq!(
+            serde_json::to_string(&got).unwrap(),
+            serde_json::to_string(&want).unwrap(),
+            "chat_wardrobe_history diverged"
+        );
+        let rows = want.as_array().unwrap();
+        assert_eq!(rows.len(), 2, "one seed + ONE character entry: {want}");
+        assert_eq!(rows[0]["source"], json!("seeded"));
+        assert_eq!(rows[1]["source"], json!("character"));
+        assert_eq!(
+            rows[0]["isCurrent"],
+            json!(1),
+            "the rollback's cursor settled at its flush"
+        );
+        let announcements = want_jobs["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|j| j["type"] == "WARDROBE_OUTFIT_ANNOUNCEMENT")
+            .count();
+        // v4 collapses an announcement onto a still-PENDING one for the same
+        // character (`queue-service.ts:1543-1559`), so the second turn's reuses
+        // the first's: ONE row. The count cannot see the deferral — the history
+        // above is the proof (three changes settled at once would be three
+        // entries). The cursor's proof is the SECOND rollback in the same
+        // response (`index: 1`): with the cursor still on 1 mid-turn it is
+        // refused `already_current` (an immediate settle would have moved it
+        // to 0 and let the second rollback through). A `wardrobe_history`
+        // probe cannot be used — its entries carry the row's creation stamp,
+        // which v4 takes from the oracle's frozen clock and v5 from the real
+        // one, so the continuation's canned key could never match.
+        assert_eq!(
+            announcements, 1,
+            "the second turn's announcement reuses the PENDING one"
+        );
+        let mid_turn = serde_json::to_string(
+            want_events
+                .get("wardrobe_rollback_in_turn")
+                .expect("the rollback turn's events"),
+        )
+        .unwrap();
+        assert!(
+            mid_turn.contains("Returned to outfit 0 (from 1).")
+                && mid_turn.contains("Friday is already wearing outfit 1."),
+            "inside the turn the cursor has NOT moved yet (deferred to the flush)"
+        );
+    }
     // Non-vacuous by construction: the corpus plants seven rows and three calls
     // consume; the dump must carry them and at least one consumption.
     {

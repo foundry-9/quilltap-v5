@@ -2592,6 +2592,32 @@
     }
    ],
    "messages": []
+  },
+  {
+   "id": "d3160006-0000-4000-8000-000000000d16",
+   "chatType": "salon",
+   "contextSummary": null,
+   "isPaused": true,
+   "participants": [
+    {
+     "id": "d316000b-0000-4000-8000-0000000000d1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active",
+     "connectionProfileId": "cb110001-0000-4000-8000-000000000c11"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3160106-0000-4000-8000-000000000d06",
+     "role": "ASSISTANT",
+     "content": "Friday surveys the dressing room.",
+     "participantId": "d316000b-0000-4000-8000-0000000000d1",
+     "rawResponse": {
+      "id": "resp_prior"
+     }
+    }
+   ]
   }
  ],
  "calls": [
@@ -3491,6 +3517,48 @@
    "streamLabel": "trigger_phrase",
    "cheapLLMSettings": false,
    "summaryCheck": false
+  },
+  {
+   "name": "wardrobe_wear_then_take_off_one_turn",
+   "streamLabel": "wardrobe_wear_then_take_off_one_turn",
+   "wardrobeItems": [
+    {
+     "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "id": "d316e001-0000-4000-8000-000000000001",
+     "title": "Brass-buttoned greatcoat",
+     "types": [
+      "top"
+     ],
+     "createdAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+     "characterId": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "id": "d316e001-0000-4000-8000-000000000002",
+     "title": "Aviator cap",
+     "types": [
+      "accessories"
+     ],
+     "createdAt": "2026-01-01T00:00:00.000Z"
+    }
+   ],
+   "kind": "chain",
+   "chatId": "d3160006-0000-4000-8000-000000000d16",
+   "content": "",
+   "continueMode": true,
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d316000b-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "wardrobe_rollback_in_turn",
+   "streamLabel": "wardrobe_rollback_in_turn",
+   "kind": "chain",
+   "chatId": "d3160006-0000-4000-8000-000000000d16",
+   "content": "",
+   "continueMode": true,
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d316000b-0000-4000-8000-0000000000d1"
   }
  ],
  "streams": {
@@ -5069,6 +5137,112 @@
      }
     }
    ]
+  ],
+  "wardrobe_wear_then_take_off_one_turn": [
+   [
+    {
+     "content": "Friday tries on the greatcoat and the cap."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 25,
+      "completionTokens": 9,
+      "totalTokens": 34
+     },
+     "rawResponse": {
+      "marker": "wardrobe_wear_take_off",
+      "tool_calls": [
+       {
+        "id": "wwt-0001",
+        "type": "function",
+        "function": {
+         "name": "wardrobe_wear",
+         "arguments": "{\"operations\":[{\"item_id\":\"d316e001-0000-4000-8000-000000000001\"}]}"
+        }
+       },
+       {
+        "id": "wwt-0002",
+        "type": "function",
+        "function": {
+         "name": "wardrobe_wear",
+         "arguments": "{\"operations\":[{\"item_id\":\"d316e001-0000-4000-8000-000000000002\"}]}"
+        }
+       },
+       {
+        "id": "wwt-0003",
+        "type": "function",
+        "function": {
+         "name": "wardrobe_take_off",
+         "arguments": "{\"operations\":[{\"item_id\":\"d316e001-0000-4000-8000-000000000001\"}]}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " The coat goes back on its peg; the cap stays."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 11,
+      "totalTokens": 51
+     }
+    }
+   ]
+  ],
+  "wardrobe_rollback_in_turn": [
+   [
+    {
+     "content": "Friday thinks better of the cap."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 27,
+      "completionTokens": 7,
+      "totalTokens": 34
+     },
+     "rawResponse": {
+      "marker": "wardrobe_rollback_in_turn",
+      "tool_calls": [
+       {
+        "id": "wrb-0001",
+        "type": "function",
+        "function": {
+         "name": "wardrobe_rollback",
+         "arguments": "{}"
+        }
+       },
+       {
+        "id": "wrb-0002",
+        "type": "function",
+        "function": {
+         "name": "wardrobe_rollback",
+         "arguments": "{\"index\":1}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " Back to how she began."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 42,
+      "completionTokens": 6,
+      "totalTokens": 48
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -5098,6 +5272,55 @@
     "name": "read_conversation",
     "arguments": {},
     "callId": "aff-0001"
+   }
+  ],
+  "wardrobe_wear_take_off": [
+   {
+    "name": "wardrobe_wear",
+    "arguments": {
+     "operations": [
+      {
+       "item_id": "d316e001-0000-4000-8000-000000000001"
+      }
+     ]
+    },
+    "callId": "wwt-0001"
+   },
+   {
+    "name": "wardrobe_wear",
+    "arguments": {
+     "operations": [
+      {
+       "item_id": "d316e001-0000-4000-8000-000000000002"
+      }
+     ]
+    },
+    "callId": "wwt-0002"
+   },
+   {
+    "name": "wardrobe_take_off",
+    "arguments": {
+     "operations": [
+      {
+       "item_id": "d316e001-0000-4000-8000-000000000001"
+      }
+     ]
+    },
+    "callId": "wwt-0003"
+   }
+  ],
+  "wardrobe_rollback_in_turn": [
+   {
+    "name": "wardrobe_rollback",
+    "arguments": {},
+    "callId": "wrb-0001"
+   },
+   {
+    "name": "wardrobe_rollback",
+    "arguments": {
+     "index": 1
+    },
+    "callId": "wrb-0002"
    }
   ]
  },

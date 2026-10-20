@@ -117,6 +117,11 @@ interface CallSpec {
    *  discarded after; the call's `mail` row records which letters stayed
    *  unalerted and every `markMailAlertsDelivered` DEBUG (the `via` mark). */
   letter?: { characterId: string; fromName: string; fromCharacterId: string; sentAt: string; body: string };
+  /** P4.D316 Tier 2 item 25: wardrobe items planted IN-CASE into a character's
+   *  vault before the call, through v4's REAL `repos.wardrobe.create` with pinned
+   *  ids / stamps. NOT discarded: the wardrobe calls are the corpus's last, so no
+   *  later call's premise moves (the follow-on rollback call wears them). */
+  wardrobeItems?: Array<{ characterId: string; id: string; title: string; types: string[]; createdAt: string }>;
   /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
    *  persists them, so the corpus needed a way to hang one on a call. */
   fileIds?: string[];
@@ -791,6 +796,18 @@ async function main(): Promise<void> {
 
   await initializeDatabase();
   const repos = getRepositories();
+  // P4.D316 Tier 2 item 25: the outfit history table on this per-run copy
+  // (P4.D315's helper; the Rust side `ensure_chat_wardrobe_history_on`).
+  {
+    const { plantChatWardrobeHistoryTable } = await import('../lib/v4-migrations');
+    await plantChatWardrobeHistoryTable();
+    // The fixture predates the wear ledger too: v4's own DDL (the Rust side
+    // `test_support::ensure_wear_ledger_on`), so the wardrobe tools' commits land.
+    const { WARDROBE_WEAR_STATS_DDL } = await import(
+      '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
+    );
+    for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
+  }
 
   // W4.10a: `findApiKeyByIdAndUserId` is NO LONGER monkey-patched — v4's REAL repo
   // reads the fixture-seeded `api_keys` rows (the Rust `DbApiKeys` resolver reads
@@ -887,6 +904,24 @@ async function main(): Promise<void> {
         })
       ).path;
     }
+    for (const item of call.wardrobeItems ?? []) {
+      await repos.wardrobe.create(
+        {
+          characterId: item.characterId,
+          title: item.title,
+          description: null,
+          imagePrompt: null,
+          types: item.types,
+          componentItemIds: [],
+          appropriateness: null,
+          isDefault: false,
+          replace: false,
+          migratedFromClothingRecordId: null,
+          archivedAt: null,
+        } as never,
+        { id: item.id, createdAt: item.createdAt, updatedAt: item.createdAt } as never,
+      );
+    }
     try {
       const stream = await handleSendMessage(repos, call.chatId, spec.userId, {
         content: call.continueMode ? undefined : call.content,
@@ -960,6 +995,14 @@ async function main(): Promise<void> {
   // rows; the finalizer / the preserve-partial path write `consumedAt`,
   // `consumedByMessageId` and `updatedAt`).
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_informs', 'id')) }));
+  // P4.D316 Tier 2 item 25: the outfit history the wardrobe turns settled at
+  // their flush (ids / createdAt minted — the harness masks them).
+  lines.push(
+    JSON.stringify({
+      kind: 'table',
+      ...(await dumpTable('chat_wardrobe_history', 'entryIndex')),
+    }),
+  );
 
   // W4.11a: the `llm_logs` rows the un-mocked `logLLMCall` wrote (read through the
   // llm-logs handle BEFORE closeDatabase(); id/createdAt/updatedAt placeholdered,
