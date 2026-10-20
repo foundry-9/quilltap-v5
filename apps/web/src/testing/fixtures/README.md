@@ -300,6 +300,12 @@ a second run reproduces each file byte for byte (`cmp`, measured).
   (`harness/oracle/cases/pascal-custom-tool-definition.ts`, `TZ=UTC`): 449 rows,
   byte-identical to the committed copy, sha256
   `48765f04b4132131f044758e116afb59fb5338000aeacfe86f0c82abf4780427` — nothing
+  moved at that lane's close. **Superseded at the `e8e17b2d9` round's
+  unification (2026-10-19):** the generator (grown by P4.D319's fenced
+  `announceAsCharacter` + `{{character}}` block) was regenerated ONCE from the
+  `e8e17b2d9` pin for both consumers — **458 rows**, sha256
+  `888f32ad231cc104ceb91d1d07cff8777a7bde33ed5a64a981c6048b515f639e`, the sha
+  P4.D319 recorded, so the server family and this copy agree (R-F) — nothing
   moved, so the copy was not re-committed. The unifier's one regen of the
   generator P4.D319 grows supersedes this copy.
 - **`pascal-character` retires at union.** Its definition row ids are the ones

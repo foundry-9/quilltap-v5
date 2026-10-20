@@ -135,7 +135,7 @@ const COPY_TO_WARDROBE = P4D286_ROW_LANDED ? 'Copy to another wardrobe…' : 'Co
  * answers `unknown variant`, so the tab shows an error line forever. Flip to
  * `true` at unification (§S.9).
  */
-const P4D315_SERVER_LANDED = false;
+const P4D315_SERVER_LANDED = true;
 
 /**
  * ACTIVATE-AT-UNIFY (P4.D318 → P4.D316). *Wear again* posts
@@ -144,7 +144,7 @@ const P4D315_SERVER_LANDED = false;
  * change is ever recorded, so the timeline is empty. Flip to `true` at
  * unification (§S.9).
  */
-const P4D316_SERVER_LANDED = false;
+const P4D316_SERVER_LANDED = true;
 
 /** The garment the wear-ledger beats create fresh, so its tally starts at zero. */
 const LEDGER_GARMENT = 'Ledger Spats';

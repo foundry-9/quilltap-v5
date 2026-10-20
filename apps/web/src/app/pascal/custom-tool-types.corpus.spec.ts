@@ -7,9 +7,11 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 449 rows (10 title + 387
+ * This replays the COMMITTED oracle corpus — 458 rows (10 title + 396
  * definition + 52 gate; 425 at P4.D307's lane close, 449 once the generator's
- * blocks were merged BY ID at the round's unification) RE-RECORDED from v4's REAL `QtapCustomToolSchema` at the
+ * blocks were merged BY ID at the `25b8fab6a` round's unification, 458 at the
+ * `e8e17b2d9` round's unification with P4.D319's nine `announceAsCharacter` /
+ * `{{character}}` rows, regenerated ONCE from that pin — R-F) RE-RECORDED from v4's REAL `QtapCustomToolSchema` at the
  * `25b8fab6a` pin under Zod 4.6.7 (P4.D307: the generator's fenced
  * `P4.D307 rows` block added 63 definition rows — 20 `triggers-*`, 30
  * `effects-wardrobe-*`, and the effect-union / shape / Zod-4.6.7 length rows —
@@ -121,7 +123,7 @@ const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 const P4D307_ROW_FLOORS = { 'triggers-': 20, 'effects-wardrobe-': 18 } as const;
 
 /**
- * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family; 425 since the `25b8fab6a` pin, P4.D307; 449 at the round's unification —
+ * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family; 425 since the `25b8fab6a` pin, P4.D307; 449 at the round's unification; 458 at the `e8e17b2d9` round's unification —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
  * guard stay as the mechanism for the NEXT drift window (fill it only with

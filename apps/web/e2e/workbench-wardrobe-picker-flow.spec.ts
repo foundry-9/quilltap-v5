@@ -50,7 +50,7 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * constant once P4.D319's C3 is on the union. A NAMED constant, never a
  * capability probe.
  */
-const P4D319_SERVER_LANDED = false;
+const P4D319_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D319’s C3 — §1 the preview’s `wardrobeResolution`, §3 `{{character}}` rendering, §4 the character-announced post — wired at unification';
 

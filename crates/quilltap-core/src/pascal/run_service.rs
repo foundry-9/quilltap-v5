@@ -862,6 +862,7 @@ mod rolling_character_tests {
                 trigger_phrase: None,
                 now_ms: 0,
                 pending_wardrobe_announcements: None,
+                pending_wardrobe_history: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![]),
             None,
