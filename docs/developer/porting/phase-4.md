@@ -7151,6 +7151,174 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round (P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥ P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339) — ORDERED 2026-10-20
+
+**Baseline `e8e17b2d9`. The round is PINNED at v4 `322a5488e`** ("Fix:
+custom-tool LLM consult can narrate a verdict the table already reached
+(bug 257)", `package.json` `4.11.0-dev.53`, 2026-10-20 16:50 −0500) — v4
+HEAD at planning; the `/setupphase` probe PASSED (branch `main`, tree
+clean, `bugfix` `489b228b6` / `release` `2432b9057` unmoved). It is round
+(2) of the split the ledger's §1 recorded on 2026-10-19 and absorbs ALL
+TWENTY-TWO §3 rows `e8e17b2d9..322a5488e`: the Inventory programme
+(`4fbdad186` → `e1872c94f` → `102a23648` — the THIRTEENTH + FOURTEENTH D23
+moves, bug 253; bug 254 and the archive keep were P4.D322's), the scenario
+sort, the test (`cad017599`, NO-PORT), bug 255 (`a6292f169` — the FIFTEENTH
+move + `@xterm/headless`), the Inventory title lint + bug 256
+(`7263105c6`), the bug-133 re-ruling (`406dbdd5a`), `edit_custom_tool` +
+its `schema` action (`ea2cb60ab`, `c56fe278c`), the `/photos` vault
+exclusion + album selector (`680b71044`), vault custom tools as the
+character's only (`cfa0cba29`), **the Log** (`e4a60ad9e` + `a495faa26` —
+the SIXTEENTH move, `log_entries` in the llm-logs partition), the Inventory
+icon + hint (`e27fb6b34`, `d88c1ce39`), the toast z-index (`5a8338b30`),
+**raise a hand / stop** (`2b5e8ee24` + `b8362beb5`), the gate-broadening
+spec (`cc57e6cbc`, NO-PORT), OR / any-of gates + `inventoryAggregate`
+(`a53024d3c`) and bug 257 (`322a5488e`). **The human's standing ruling
+(2026-10-09): the work follows the PIN.**
+
+**What the eight planning surveys found that shaped the round** (under
+`work-orders/surveys/2026-10-20-setupphase-*.md`): NOTHING is import-dead
+at the pin (37 `-export` lines, all alive under the old name — no REAIM
+lane), but ten RUNTIME breaks exist, each owned by a lane (the `buildTools`
+13th positional, the `determineTextBlockToolOptions` 8th, the seven-arg
+`sanitizeAppearancesIfNeeded`, the arrival write of `chats.equippedInventory`
+on every chat create / seat add / merge — the round's stacking constraint,
+`table_shape`'s 11 → 12, the `workspace-core` fixture's `inventory` tab row,
+the `qtap://self` rows, the 13-column terminal pairs, the `characterIds`
+rows with a one-sided-`unwrap` panic, and the definition corpus no single
+twin parses alone); the Log's "lazy" premise is FALSE in effect (v4's PHASE
+3.1 structural pass creates `log_entries` at every boot and the dumper's
+`count()` pass materialises it), so the SIXTEENTH move provisions through
+v5's existing structural pass with ONE `STRUCTURAL_TABLES` row; the
+FIFTEENTH move's fresh shape is `REAL`, not the ledger's `INTEGER`; the
+catalog is 76 tools at the pin, not 72; `a53024d3c` changes PORTED behaviour
+in two hunks (the `metadata` list rule, the `invalid_key` sentence); the
+effect-kind sentences name FOUR kinds; v4's one `abortSignal` site is seven
+`watch_stream` sites in v5; the custom-tool schema becomes an ENGINE input
+(`edit_custom_tool`'s `schema` action); v5's dispatch error envelope lacks
+the `details` v4's Inventory client reads; and two NEW Rust crates are
+needed (`vt100` 0.18.1 for the screen model, `regress` for a V8-faithful
+`regexp()`), each a human YES before its lane starts.
+
+**Scope — twenty-two ledger §3 rows as ONE round, split by FILE OWNERSHIP:
+seventeen lanes, seventeen worktrees, ONE stacking point (`INVENTORY`).**
+The rulings (R-A … R-Z) are in every order's §R.11; the binding Shared
+contracts C1–C10 and the Ownership table are byte-identical in every order.
+
+- **Wave 0, from `main` at the orders' commit:**
+  - **P4.D324 — the Inventory KEYSTONE**
+    (`work-orders/p4.d324-inventory-keystone-module-columns-redump-equip-arrivals-prompt-section.md`):
+    the `inventory` module whole bar the lint / tools (types, the
+    item-folder lift, readers / writers, pool / resolve / dependents /
+    equipped-set / errors / svg, images / mutations / transfers, `equip.rs`
+    whole RETURNING the change), the two D23 columns as boot ensures, **the
+    ONE `fresh_schema.json` re-dump carrying moves 13–16 (R-A)**, the
+    arrival defaults, the prompt section + bug 253, `db/chats_inventory.rs`,
+    the `inventory` realtime topic, the `canManageInventory` plumbing — ends
+    in `INVENTORY`.
+  - **P4.D333 — the custom-tool grammar twins**
+    (`…/p4.d333-custom-tool-grammar-twins-anyof-list-rule-bug-257-corpus-schema.md`):
+    any-of / OR gates, the metadata list rule, bug 257's `brief` + consult
+    order, the ONE definition-corpus regen (R-F), the vendored schema
+    (63,595 B), the SPA `pascal/*` twins parsing EVERY grammar.
+  - **P4.D335 — interrupts, server**
+    (`…/p4.d335-interrupts-server-turn-control-stop-yield-watchdog-guards.md`):
+    `turn_control.rs` (a core registry keyed by chat id, no new dependency —
+    R-J), the watchdog race at seven sites, the eleven guards, the yield
+    note / Host message, the two actions + the SSE frames (C6).
+  - **P4.D332 — vault-only rosters + `edit_custom_tool` + `schema`**
+    (`…/p4.d332-custom-tools-vault-only-rosters-edit-custom-tool-schema-action.md`):
+    the `participant` tier retired, the new built-in tool with crate-local
+    schema + specimen embeds under a byte guard (R-E), `run_custom` →
+    `pascal`.
+  - **P4.D338 — the four smalls**
+    (`…/p4.d338-smalls-scenario-sort-bug-256-photos-vault-album-toast-zindex.md`):
+    the scenario sort (ICU `localeCompare` twins), bug 256 at eleven
+    producer sites, the `/photos` vault exclusion + `?album=` /
+    `?action=albums` (server), the toast z-index.
+  - **P4.D339 — vendor + NO-PORT**
+    (`…/p4.d339-vendor-help-135-docs-v4-theme-noport-record.md`): `help/`
+    131 → 135 whole, `docs/v4/` 20 operations (→ 502, the two deferred
+    Inventory specs land), the theme file + three SVGs, the four help
+    guards, `V4_APP_VERSION` → `dev.53`, the NO-PORT record (R-P).
+- **Wave 1, from `main` (the SPA lanes, gated on their servers — R-V):**
+  - **P4.D330 — the Inventory SPA + the `/photos` selector + the icon**
+    (`…/p4.d330-inventory-spa-dialog-browser-item-browser-tab-photos-album-icon.md`):
+    the dialog / browser / editor / pane / pickers, the item-browser pieces
+    ported NEW with the wardrobe browser refactored onto them (R-X), the
+    `inventory` tab kind, the Prospero / Aurora / participant-card /
+    sidebar consumers, `error.details` (R-L), the album selector.
+  - **P4.D334 — the Workbench SPA**
+    (`…/p4.d334-workbench-spa-condition-groups-briefs-inventory-log-effect-ui.md`):
+    condition groups, briefs, the inventory / log effect UI,
+    `tool-draft.ts` whole, the proving bench's lines.
+  - **P4.D336 — interrupts, SPA**
+    (`…/p4.d336-interrupts-spa-composer-raise-hand-stop-buttons-frames.md`):
+    the composer's Send / raise-hand / Stop stack, the reducer's three
+    frame keys, the participant card's Stop removed, the CSS rule-order
+    fix.
+- **Wave A, from `INVENTORY`:**
+  - **P4.D328 — the Inventory tools + the turn container + the spine**
+    (`…/p4.d328-inventory-tools-nine-handlers-turn-container-spine-flags.md`):
+    the nine `inventory_*` tools, `inventory_change_effects.rs`, the third
+    turn container, the `buildTools` / pseudo-tool positional fixes, the
+    orchestrator's `finally` drain, the off-site callers (R-R).
+  - **P4.D329 — the Pascal inventory grammar**
+    (`…/p4.d329-pascal-inventory-grammar-aggregate-effects-bench-vocabulary.md`):
+    `inventory` / `inventoryCount` / `inventoryAggregate` gates and whens,
+    the `$inventory` operand, the inventory effect + applier pass, the
+    bench, the vocabulary keys, the 13th positional (R-Q), `cad017599`'s
+    seven cases mirrored.
+  - **P4.D325 — the Inventory routes**
+    (`…/p4.d325-inventory-routes-verb-family-rest-edges-chat-actions-error-details.md`):
+    ONE `inventory*` verb family with `container` (R-M), REST edges for all
+    four tiers, the chat `?action=inventory*` actions, the item-image
+    routes, `CoreError.details` on every transport (R-L).
+  - **P4.D326 — the Inventory image side + the bug-133 re-ruling**
+    (`…/p4.d326-inventory-image-side-appearance-carry-bug-133-moderated-reruling.md`):
+    the carry phrase in every appearance prompt, `refresh_avatar_for_
+    appearance`, the seven-arg sanitizer + the re-ruling with its 30-case
+    grid RE-SHAPED.
+  - **P4.D327 — the Inventory carriers**
+    (`…/p4.d327-inventory-carriers-backup-restore-qtap-keyed-fields-export-schema.md`):
+    `equippedInventory` through uuid-remap / restore 22f-quater / the
+    five-field keyed twin / the `.qtap` keyed arm (R-S measured first), the
+    export schema (109,559 B), the restore census +3.
+  - **P4.D331 — the Log**
+    (`…/p4.d331-the-log-entries-table-regexp-tools-effect-cleanup.md`):
+    `log_entries` through the structural pass (R-B), the partition-scoped
+    `regexp()` scalar over `regress` (R-I — a human YES before that unit),
+    the three `log_*` tools, the Pascal `log` effect, the cleanup prune, the
+    Brahma / `run_sql` prompt bytes.
+  - **P4.D337 — bug 255**
+    (`…/p4.d337-bug-255-terminal-screen-vt100-geometry-columns.md`): the
+    screen model over `vt100` 0.18.1 (R-C — a human YES before the lane
+    starts; reflow recorded, R-D), the geometry columns' ensure, the
+    rendered `terminal_read`, Ariel's `screen` summaries.
+  - **P4.D340 — the Inventory title lint**
+    (`…/p4.d340-inventory-title-lint-scope-gate-keys.md`): the lint + its
+    documents + the explicit `linted` scope, `tool_gate_keys.rs` over
+    P4.D328's library reshape and P4.D329's refs (by contract; last).
+
+**Left out of the round, deliberately (R-Z):** the follow-ups smalls round
+(incl. the ready rider branch `claude/import-chat-record-columns-f49fb0` =
+`cb88a3840` and the carried items from the `25b8fab6a` / `83334b9a5`
+rounds); the owed `e8e17b2d9` dogfood pass — ⚠ it now wants a PRE-round
+build on its Friday copy, or the union build after this round unifies
+(this round's ensures alter every instance they open); the CLI `db schema`
+verb; a Rust re-implementation of xterm's reflow; the wardrobe `participant`
+tier in `db/tiered_mount_pool.rs` (search keeps it).
+
+**Recommended arrangement:** Wave 0's six worktrees at once (P4.D324 and
+P4.D333 on the Opus / Fable tier; P4.D335 Opus; P4.D332 / P4.D338 / P4.D339
+Sonnet), the three SPA lanes as slots free (P4.D330 Opus, the other two
+Sonnet), then Wave A from `INVENTORY` with P4.D328 + P4.D329 FIRST (Opus),
+P4.D331 and P4.D337 only after their crate YESes, P4.D340 last.
+`CARGO_INCREMENTAL=0`, the two-gate cap, one sweep and one Playwright at a
+time. Unify in §S.1's pick order; the unifier regenerates the catalog and
+the definition corpus ONCE, byte-compares the ONE `fresh_schema.json`
+re-dump, flips the R-V gates, moves the baseline to `322a5488e` and retires
+all twenty-two rows.
+
 ## The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift catch-up round (P4.D315 → {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥ P4.D323) — UNIFIED 2026-10-19 (ordered 2026-10-19)
 
 **UNIFIED on main (2026-10-19). ALL NINE LANES LANDED WHOLE, and the oracle

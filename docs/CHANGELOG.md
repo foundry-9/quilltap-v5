@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-21 — docs(porting): order the `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round — seventeen lanes (P4.D324–P4.D340)
+
+_Docs-only change._
+
+Planned the next porting round from the drift ledger. The §2 probe passed: v4 `main` at `322a5488e` (`4.11.0-dev.53`), tree clean, `bugfix` and `release` unchanged. The round pins at `322a5488e` and absorbs all twenty-two §3 rows past the `e8e17b2d9` baseline: the Inventory (the 13th and 14th D23 moves, bug 253, the title lint), the Log (the 16th move, `log_entries` in the llm-logs partition), bug 255 (the 15th move), raise a hand / stop, OR gates and `inventoryAggregate`, bug 257, `edit_custom_tool`, vault-only custom tools, the `/photos` vault exclusion and album selector, the scenario sort, bug 256, the bug-133 re-ruling, the toast z-index, and two NO-PORT rows.
+
+Eight read-only planning surveys under `work-orders/surveys/2026-10-20-setupphase-*.md` mapped the hunks onto v5. Findings that shaped the round: no import-dead exports at the pin (no REAIM lane); ten runtime breaks in existing oracles, each owned by a lane; `log_entries` is created at every v4 boot by the structural pass, so it provisions through v5's existing structural-table pass with one `STRUCTURAL_TABLES` row; the 15th move's fresh shape is `REAL`; the tool catalog is 76 at the pin; one `fresh_schema.json` re-dump carries moves 13–16.
+
+Seventeen work orders, `work-orders/p4.d324-*.md` through `p4.d340-*.md`, each ending in the identical round block (§R meeting points, §S unifier wires, contracts C1–C10, the Ownership table). One stacking point: P4.D324's `INVENTORY` commit. Two new Rust crates need a human yes before their lanes start: `vt100` 0.18.1 (P4.D337) and `regress` (P4.D331's `regexp()` unit). The ledger marks all twenty-two rows `ORDERED(…)`; `phase-4.md` carries the round block.
+
 #### 2026-10-20 — docs(porting): drift check — seven v4 commits past `5a8338b30` (interrupts, any-of custom-tool gates, bug 257)
 
 _Docs-only change._
