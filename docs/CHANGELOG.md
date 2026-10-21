@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-20 — docs(porting): drift check — seven v4 commits past `5a8338b30` (interrupts, any-of custom-tool gates, bug 257)
+
+_Docs-only change._
+
+v4 `main` moved to `322a5488e` (`4.11.0-dev.53`); `bugfix` and `release` unchanged, checkout clean on `main`. Seven new §3 rows, classified from the hunks: the composer's raise-hand / stop interrupts (`2b5e8ee24`, PORT-NEW on the chat spine, with its CSS rider `b8362beb5`); OR in custom-tool gates and `when` tests plus `inventoryAggregate` (`a53024d3c`); bug 257's outcome `brief` and table-before-consult run order (`322a5488e`); `edit_custom_tool`'s `schema` action (`c56fe278c`); an Inventory editor hint (`d88c1ce39`); a docs-only spec (`cc57e6cbc`). No schema move, no new dependency. §1 now reads 22 commits past the `e8e17b2d9` baseline; pin still required.
+
 #### 2026-10-20 — docs(porting): drift check — one commit past the close probe (`5a8338b30`, the toast container's z-index)
 
 _Docs-only change._

@@ -28,7 +28,20 @@ probe verifies against._
   P4.D323. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
   bullet both name `e8e17b2d9`, and they AGREE with this file (checked
   2026-10-19 at the unification).
-- **Checked:** 2026-10-19 (late evening), by `/unify`'s §2 probe FAILING at
+- **Checked:** 2026-10-20 (evening), by `/driftcheck` — the §2 probe FAILED
+  (seven new `main` commits past the ledger's recorded HEAD `5a8338b30`).
+  Both branches re-probed locally AND against the remote after a fetch
+  (`git ls-remote origin`: `main` = `322a5488e`, `bugfix` = `489b228b6`,
+  `release` = `2432b9057` — local equals remote). The seven were classified
+  from their hunks: the `?action=stop-turn` / `raise-hand` handlers,
+  `lib/chat/turn-control.ts`, the watchdog's `abortSignal` race and the
+  finalizer's `turnStopped` guards; `edit_custom_tool`'s `action: "schema"`
+  refine; `ToolGateSchema` / `WhenSchema` / `EffectConditionSchema` as
+  any-of unions + `inventoryAggregate`; bug 257's `brief` + the
+  consult-first switch; the lockfile diff `5a8338b30..322a5488e` (version
+  stamps only); NO hunk in `migrations/`, `lib/schemas/` or
+  `lib/database/`.
+- **Before that:** 2026-10-19 (late evening), by `/unify`'s §2 probe FAILING at
   unify start (eight new `main` commits past the ledger's recorded HEAD
   `a6292f169`) and the `/driftcheck` procedure run at the close probe. Both
   branches re-probed locally AND against the remote (`git ls-remote origin`:
@@ -41,12 +54,11 @@ probe verifies against._
     check — three rows); 2026-10-18 evening (`102a23648`, six rows) and
     morning (`1cfc9b504`, two rows); 2026-10-17 twice; 2026-10-16 twice;
     2026-10-15; and the earlier checks the §6 bullets record.
-- **v4 `main` HEAD at check: `5a8338b30`** ("Fix: toasts raised from inside a
-  dialog were hidden behind it", 2026-10-19 22:26, `4.11.0-dev.47`) — observed
-  at the unification's CLEANUP, one commit past the `e27fb6b34` the close
-  probe classified; classified from its hunk below (a SPA z-index change,
-  nothing else).
-  - **FIFTEEN commits past the baseline** (all §3 rows, UNPROCESSED):
+- **v4 `main` HEAD at check: `322a5488e`** ("Fix: custom-tool LLM consult can
+  narrate a verdict the table already reached (bug 257)", 2026-10-20 16:50,
+  `4.11.0-dev.53`) — seven commits past the `5a8338b30` the unification's
+  cleanup recorded.
+  - **TWENTY-TWO commits past the baseline** (all §3 rows, UNPROCESSED):
     - **The Inventory programme + the 10-19 trio (recorded 2026-10-18 /
       -19):** `4fbdad186` the Inventory WITH THE THIRTEENTH D23 move
       (`PORTED(P4.D322)` for its `Inventory/` archive keep ONLY),
@@ -79,16 +91,33 @@ probe verifies against._
       container's z-index 50 → 1000 so a toast raised inside a dialog shows
       (PORT — ONE line in `lib/toast.tsx`; the SPA's `_toast.css`
       `.qt-toast-container` is the twin).
-  - **Stamps:** dev.33 → dev.47, one per commit from dev.39 (`cad017599`
-    stamps nothing).
+    - **NEW 2026-10-20 (classified by this check):** `2b5e8ee24` raise a
+      hand / stop from the composer (PORT-NEW on the ported chat spine — a
+      soft `[YIELD]` interrupt with a Host `turn-yield` message and a hard
+      stop that abandons the provider stream and keeps the streamed prose;
+      two new `?action=`s; `help/interrupting.md`); `cc57e6cbc` the
+      gate-broadening spec (NO-PORT? — `docs/developer/features/` only);
+      `c56fe278c` `edit_custom_tool`'s `action: "schema"` (PORT-NEW, rides
+      the UNPORTED `ea2cb60ab`); `a53024d3c` OR (any-of arrays) in gates,
+      outcome `when`s and effect `when`s (PORT — v5's definition loader
+      REFUSES the new shapes) + `inventoryAggregate` (PORT-NEW, rides the
+      UNPORTED Inventory); `b8362beb5` the composer's buttons stacked (PORT
+      — a CSS rider on `2b5e8ee24`); `d88c1ce39` the Inventory drawing
+      description hint (PORT-NEW, a one-line rider on the Inventory editor);
+      **`322a5488e` bug 257** (PORT — the consult runs AFTER the table when
+      no row tests `llm`, outcome `brief`, `{{outcome.*}}` placeholders;
+      v4-ORIGINATED, found live on `Friday`).
+  - **Stamps:** dev.33 → dev.53, one per commit from dev.39 (`cad017599`
+    and `cc57e6cbc` stamp nothing).
 - **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
   branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY, and by
   content `git diff 2432b9057 bugfix -- lib app packages plugins` is EMPTY.
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe BOTH
   branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `5a8338b30`.
-  HEAD is fifteen commits past the baseline, so it poisons a regen by DRIFT.
-- **Verdict: DRIFT PENDING — 15 commits (§3), all UNPROCESSED (two with a
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `322a5488e`.
+  HEAD is twenty-two commits past the baseline, so it poisons a regen by
+  DRIFT.
+- **Verdict: DRIFT PENDING — 22 commits (§3), all UNPROCESSED (two with a
   `PORTED(P4.D322)` part).**
   - **Classes:**
     - 1 PORT-NEW + PORT **WITH THE THIRTEENTH D23 MOVE** (`4fbdad186`; the
@@ -98,19 +127,22 @@ probe verifies against._
       (`a6292f169`, bug 255 — `@xterm/headless`).
     - 1 PORT-NEW **WITH THE SIXTEENTH D23 MOVE** (`e4a60ad9e`, the Log —
       `log_entries` in the llm-logs partition, no migration).
-    - 3 PORT-NEW (`ea2cb60ab`, `e27fb6b34`; `7263105c6`'s lint half).
-    - 7 PORT (`102a23648` bug 254 PORTED + bug 253 + the Inventory fixes;
+    - 6 PORT-NEW (`ea2cb60ab`, `e27fb6b34`; `7263105c6`'s lint half;
+      `2b5e8ee24` the interrupts; `c56fe278c`; `d88c1ce39`).
+    - 10 PORT (`102a23648` bug 254 PORTED + bug 253 + the Inventory fixes;
       `1d0a31132`; `7263105c6`'s bug-256 half; `406dbdd5a`; `680b71044`;
-      `cfa0cba29`; `a495faa26`; `5a8338b30` the toast z-index).
-    - 1 NO-PORT? (`cad017599`).
-  - **No CONVERGENCE:** bugs 252–256 were all found by v4 itself (v5 status
+      `cfa0cba29`; `a495faa26`; `5a8338b30` the toast z-index; `a53024d3c`
+      the any-of gates; `b8362beb5`; `322a5488e` bug 257).
+    - 2 NO-PORT? (`cad017599`, `cc57e6cbc`).
+  - **No CONVERGENCE:** bugs 252–257 were all found by v4 itself (v5 status
     `Owed` in v4's rows; none appears in v5's filings); `406dbdd5a` cites bug
     133 (a v4-found bug v5 ported as P4.D178) as a RE-RULING, not a fix of a
     v5 filing — its pins trip by design.
   - **Production surface:** the Inventory span `4fbdad186` … `102a23648`
     347 files, +22,253 / −1,656; the 10-19 trio 37 files, +1,126 / −84; the
-    eight new commits 106 files, +3,115 / −397 (`lib app packages plugins
-    components public migrations`).
+    eight 10-19 commits 106 files, +3,115 / −397; the seven 10-20 commits 64
+    files, +3,260 / −558 (`lib app packages plugins components public
+    migrations`).
   - **Regen rule: PIN REQUIRED at `e8e17b2d9`** (§5.1).
 
 ### ⚠ LIVE-DATA — what stands at this baseline
@@ -163,7 +195,13 @@ probe verifies against._
   whole, v5's logical backup / `.qtap` export skip it exactly as v4's do, and
   v5's `replace` restore deletes `llm_logs` ROWS through the repository and
   never recreates the llm-logs file, so a v4-created `log_entries` table
-  survives it untouched (`services/delete_all.rs:338-480`). The `Inventory/`
+  survives it untouched (`services/delete_all.rs:338-480`). **Added
+  2026-10-20 (no schema move in the seven):** a definition v4 can now write
+  with an any-of ARRAY as its gate / outcome `when` / effect `when`, an
+  `inventoryAggregate` test, or an outcome `brief` is REFUSED by v5's loader
+  and drops off its roster; a v5 `edit_custom_tool` does not exist; a v5
+  consult on a table with no `llm` test still runs BEFORE the table (bug 257
+  live in v5); a v5 Salon has neither raised hand nor server-side stop. The `Inventory/`
   files themselves survive v5's mount-index backup / restore intact. Measure
   first at port time: that `store_name_reconcile.rs` `read_vault_owner_rows`'
   `SELECT *` tolerates the extra `characters` cell.
@@ -262,18 +300,26 @@ probe verifies against._
     (the oracle cases that build one will need re-aiming — an IMPORT-DEAD
     census at round (2)'s `/setupphase`); `e4a60ad9e` moves the tool catalog
     (+3 tools, +`edit_custom_tool` from `ea2cb60ab`: 59 → 63 on v4) and the
-    Pascal effect schema (`log`).
+    Pascal effect schema (`log`); `c56fe278c` re-shapes
+    `editCustomToolInputSchema` (a `.refine`, all fields optional — the
+    definitions snapshot moves); `a53024d3c` + `322a5488e` move the
+    custom-tool definition schema (any-of unions, `inventoryAggregate`,
+    `brief`) and `public/schemas/qtap-custom-tool.schema.json`.
 - **Dependencies:** `openai` 7.34.0 at the root, re-bundled into the ten
   `plugins/dist` bundles; `zod` 4.6.7; plugin-utils 2.7.1. `provider_sdk_
   version_guard` and `zod_version_guard` pin them (P4.D311). **Past the
   pin: `a6292f169` adds `@xterm/headless ^6.0.0`** — the one runtime
   dependency added since the openai 7.34.0 move; `a6292f169..e27fb6b34`'s
-  lockfile diff is version stamps only (no new dependency in the eight).
+  lockfile diff is version stamps only (no new dependency in the eight), and
+  so is `5a8338b30..322a5488e`'s (none in the seven).
 - **Help / docs:** `help/` is **131 files at the pin**, md5-identical
   (P4.D323); `docs/v4/` has 494 files with TWO recorded deferrals (the
-  Inventory spec docs, round (2)'s — R-Q). Past the pin: `help/` is **134 at
+  Inventory spec docs, round (2)'s — R-Q). Past the pin: `help/` is **135 at
   v4 HEAD** (+`inventory.md`, `project-inventory.md` from the Inventory
-  span; +`the-log.md` from `e4a60ad9e`), with 15 pages modified
+  span; +`the-log.md` from `e4a60ad9e`; +`interrupting.md` from
+  `2b5e8ee24`), with 15 pages modified by 10-19 (the seven add
+  `custom-tools.md` ×3, `pascals-workbench.md` ×2, `inventory.md`,
+  `chats.md`, `chat-turn-manager.md`, `chat-participants.md`)
   (`custom-tools.md` +33 / −3 by `ea2cb60ab` / `cfa0cba29` / `e4a60ad9e`;
   `the-concierge.md` +24 / −7; `inventory.md`; `photo-gallery.md`;
   `pascals-workbench.md`; `document-editing-tools.md`;
@@ -302,7 +348,16 @@ probe verifies against._
     `a6292f169`, and the eight 10-19 commits `7263105c6` … `e27fb6b34` —
     the THIRTEENTH + FOURTEENTH + FIFTEENTH (+ SIXTEENTH, by ruling) moves in
     ONE `fresh_schema.json` re-dump at a later pin; bug 256 (`7263105c6`) is
-    small enough for a standalone PORT lane inside it.
+    small enough for a standalone PORT lane inside it. **Plus the seven
+    10-20 commits** (no schema move): the interrupts `2b5e8ee24` +
+    `b8362beb5` as their own chat-spine lane (server: `turn-control`, the
+    watchdog's abort, the finalizer / tool-loop / failover guards, the yield
+    note + Host message; SPA: the composer buttons, the SSE `handAnswered` /
+    `stopped` / `yielded` events); the Pascal pair `a53024d3c` (OR on the
+    ported gates; `inventoryAggregate` only after the Inventory grammar) +
+    `322a5488e` bug 257 on the run service; `c56fe278c` folded into the
+    `edit_custom_tool` lane; `d88c1ce39` into the Inventory SPA;
+    `cc57e6cbc` ratified with the docs lane.
 
 ## §2 The freshness probe
 
@@ -358,6 +413,13 @@ passes the commit.
 | `a495faa26` | 2026-10-19 | Fix: the Log's date bounds and regex errors | **PORT on an UNPORTED surface — a rider on `e4a60ad9e` (fold into the Log lane; port the post-fix shape directly); NO D23 move** (11 files +55 / −16; prod 5 files +25 / −9; `dev.45`; parent `e4a60ad9e`). `lib/tools/log-read-tool.ts` NEW `BARE_DATE = /^\d{4}-\d{2}-\d{2}$/` + exported `logReadBoundInstant(value, 'from' \| 'to')`: a bare-date `to` → `${value}T23:59:59.999Z`, everything else `new Date(value).toISOString()`; the refine compares the two bound STRINGS; `to`'s description → `A bare date means the end of that day (UTC), so from and to may name the same date.` (snapshot +1 / −1). `log-handler.ts` `executeLogReadTool` uses the helper for both bounds. `regexp-function.ts` `compileSqlRegexp` strips V8's `^Invalid regular expression:\s*` from `reason` (callers add the prefix once). Help `the-log.md` 2 lines. | None (see `e4a60ad9e`). | **UNPROCESSED** — past the baseline; absorbed with the Log. |
 | `e27fb6b34` | 2026-10-19 | Change: the Inventory gets its own icon | **PORT-NEW (an SPA asset + a registry entry, riding the UNPORTED Inventory SPA); NO D23 move** (22 files +85 / −17; prod 12 files +21 / −9, plus `themes/` 3 files +14 / −3; `dev.46`; parent `a495faa26`). `components/ui/icons/icon-registry.ts` + `'inventory': { defaultFile: '/images/icons/inventory.svg', defaultMode: 'mask' }`; `app/styles/qt-components/_icons.css` + `[data-icon="inventory"]`; NEW `public/images/icons/inventory.svg` (24×24 stroke, an open box with two flaps); `dice` → `inventory` at `InventoryCard.tsx:39`, `ParticipantCard.tsx:369`, `sidebar-footer.tsx:277`, `lib/workspace/tab-meta.ts:40` (`inventory: { title: 'The Inventory', icon: 'inventory' }`); `dice` stays for RNG + the Workbench. The Madman's Box override `themes/bundled/madmans-box/icons/inventory.svg` + `theme.json`; the icon preview tool 79 → 86 (also adding the already-missing `mail`, `thinking`, `brahma-console`); `theme-storybook` (NO-PORT); `ICON_INVENTORY.md`; help `inventory.md` 2; a NEW guard test. | SPA `apps/web/src/app/ui/icon.ts:20` (has `dice`, no `inventory`), `apps/web/public/images/icons/` (has `dice.svg`), `apps/web/src/app/theme/bundled-themes.ts` (madmans-box), `workspace/core/tab-meta.ts:48` (no `inventory` tab kind yet — the tab lands with `4fbdad186`'s SPA). | **UNPROCESSED** — past the baseline; rides the Inventory SPA lane. |
 | `5a8338b30` | 2026-10-19 | Fix: toasts raised from inside a dialog were hidden behind it | **PORT — ONE production line, NO D23 move** (observed at the `e8e17b2d9` unification's cleanup; 6 files +12 / −6, prod 1 file +3 / −1; `4.11.0-dev.47`; parent `e27fb6b34`). `lib/toast.tsx`: the toast container's `style.zIndex` `'50'` → `'1000'` with the why-comment "Above every dialog overlay (z-[60]–z-[101]) so a toast raised from inside a modal is visible; below the full-screen startup gates at z-[9999]". README badge + CHANGELOG + stamps otherwise. | SPA `apps/web/src/styles/qt-components/_toast.css` `.qt-toast-container` (the container's stacking rule) / `apps/web/src/app/ui/toast-container.ts` — the toast vertical (P4.6-era). **Measured at the cleanup: `_toast.css:35` `.qt-toast-container { z-index: 50 }` — v4's OLD value, so v5 SHARES the defect** (a toast raised inside a dialog overlay sits behind it); a one-line SPA port, with v5's own overlay z-tiers checked at port time. | **UNPROCESSED** — past the baseline; a smalls-round rider. |
+| `2b5e8ee24` | 2026-10-20 | Feature: raise a hand or stop from the composer | **PORT-NEW on the PORTED chat spine — NO D23 move, NO new dependency; model-visible (the yield Turn note) + a new Host message kind** (classified 2026-10-20 from the hunks; 56 files +1,823 / −206 incl. ~390 lines of tests; `dev.47` → `dev.48`; parent `5a8338b30`). NEW `lib/chat/turn-control.ts` (189 — a `processSingleton` registry of open Salon streams per chat + an `AsyncLocalStorage` handle per stream; `setHandRaised`, `stopActiveTurns` (aborts, then waits bounded for the partial save), `isCurrentTurnStopped`, `currentTurnStopSignal`). NEW `app/api/v1/chats/[id]/actions/interrupt.ts`: `?action=stop-turn` (a non-autonomous multi-character room is PAUSED first via `repos.chats.update({isPaused:true})`, then every stream aborted; `{stopped, settled, paused}`; `[Interrupt] Stop handled`) and `?action=raise-hand` (`raiseHandSchema = { raised: z.boolean().prefault(true) }`, body parse `.catch(() => ({}))`; `{raised: raised && streams > 0, active}`; `[Interrupt] Hand state changed`). NEW `lib/chat/turn-manager/yield-signal.ts` (114 — `buildTurnYieldInstruction(operatorName)` + the `[YIELD]` sentinel through a NEW shared `matchesSentinelLine(line, phrase)` that `skip-signal.ts`'s `[NOTHING TO ADD]` matcher now delegates to); `buildContext`'s NEW `offerYield` option appends the yield note LAST (after the turn-skip note) with a `[TurnYield]` debug line. `host-notifications/writer.ts`: NEW `postHostTurnYieldAnnouncement` (`systemKind` `turn-yield`, persona + opaque texts, `hostEvent.participantId`). `lib/llm/stream-watchdog.ts`: NEW `abortSignal` option — the next-chunk await races a STOPPED promise; on stop the stream ENDS quietly (no error, so no fallback / recovery reads it as a provider failure), `[LLMStream] Abandoned a provider stream at the operator's stop` INFO; `streaming.service.ts` passes `currentTurnStopSignal()` at every chat-message call site. `message-finalizer.service.ts`: a stopped reply skips answer confirmation, RNG auto-detect, reply triggers and the Carina pass. `orchestrator.service.ts` (334 lines changed) / `turn-orchestrator.service.ts` / both tool loops / `provider-failover.service.ts` / `context-builder.service.ts`: no further tool call, recovery retry or chained turn after a stop; chain end reasons gain `'yielded'` / `'stopped'`; SSE `encodeHandAnsweredEvent` (`{handAnswered, participantId, characterName, yielded}`) + `done` flags `yielded` / `stopped`. SPA: `ChatComposer.tsx` Send + amber raised-hand + red stop-sign buttons, `useSSEStreaming.ts` (+124), `ParticipantCard.tsx` LOSES its Stop button, `.qt-chat-interrupt-button`, two new icons (+ Madman's Box overrides), the `.qt-chat-stop-button` specificity fix; theme-storybook 1.0.76; `help/interrupting.md` NEW, `chat-turn-manager.md` / `chats.md` / `chat-participants.md` edited; `docs/developer/API.md` documents the two actions. **v5 intersection:** the chat spine + chain (P4.2 / P4.6 Salon, the turn chain), `model/stream_watchdog.rs` (the stream-watchdog port), `skip_signal.rs` (turn-skipping, P4.d), `turn_state.rs`'s Host turn-pass, the finalizer's answer confirmation / dice / trigger-phrase (P4.D305) / Carina sites, the SPA `chat/chat-composer.ts` (its client-side `qt-chat-stop-button`) and participant card. A standalone chat-spine lane. | UNPROCESSED |
+| `cc57e6cbc` | 2026-10-20 | Docs: spec for broader custom-tool gates (inventory aggregates, OR, numeric folds) | **NO-PORT? — docs only, VERIFIED** (classified 2026-10-20 from the hunks; 3 files +214: `docs/CHANGELOG.md`, `docs/developer/features/ROADMAP.md`, NEW `docs/developer/features/pascal-gate-broadening.md`; no stamp; parent `2b5e8ee24`). The spec is MOVED to `features/complete/` and edited by `a53024d3c` — ratify with the docs lane's `docs/v4/` re-vendor at its post-`a53024d3c` path. | UNPROCESSED |
+| `c56fe278c` | 2026-10-20 | Add schema action to edit_custom_tool (#104) | **PORT-NEW riding the UNPORTED `ea2cb60ab` (`edit_custom_tool`) — NO D23 move; model-visible** (classified 2026-10-20 from the hunks; 11 files +127 / −36; prod 5 files; `dev.49`; parent `cc57e6cbc`). `lib/tools/edit-custom-tool-tool.ts`: `editCustomToolInputSchema` gains `action: z.enum(['schema']).optional()`, `mount_point` / `file` become `.optional()`, and a `.refine` requires both unless `action === 'schema'` (message: "`mount_point` and `file` are required unless `action` is \"schema\"."); the tool description gains "or fetch the definition format (JSON Schema and worked examples)"; the output's `action` widens to `'saved' \| 'validated' \| 'schema'` with `schema` / `examples`. The handler answers `action: 'schema'` touching NO store: it imports `public/schemas/qtap-custom-tool.schema.json` and returns the two reference specimens. `lib/chat/tool-executor.ts` forwards `schema` / `examples`; `app/api/v1/tools/route.ts` one line; the tool-definitions snapshot moves (15 lines). Fold into the `edit_custom_tool` lane and port the post-fix shape directly. | UNPROCESSED |
+| `a53024d3c` | 2026-10-20 | Feature: OR and inventoryAggregate in custom-tool gates and when tests | **PORT (any-of arrays on the PORTED gate / outcome / effect grammar — v5's loader REFUSES the new shapes) + PORT-NEW (`inventoryAggregate`, riding the UNPORTED Inventory grammar — v5 has no `inventory` / `inventoryCount` subject) — NO D23 move; model-visible (schema `.describe` texts, the `run_custom` description)** (classified 2026-10-20 from the hunks; 41 files +2,501 / −388 incl. ~770 lines of tests; `dev.50`; parent `c56fe278c`). `lib/pascal/custom-tool.types.ts`: NEW `MAX_WHEN_GROUPS = 8`; `ToolGateSchema` = `z.union([ToolGateGroupSchema, z.array(ToolGateGroupSchema).min(1).max(8, 'at most 8 groups')])` with `gateGroups()`; `WhenSchema` = `true` \| object \| array (`whenGroups()` — `[]` for the catch-all); NEW `EffectConditionSchema` (`effectWhenGroups()`); every reader goes through those three; the gate placeholder check iterates groups with an index in the issue path; the "must test something" messages gain `inventoryAggregate`; `availableWhen` / `withheldWhen` describe texts reworded. NEW `lib/pascal/inventory-aggregate.ts` (208 — `parseAggregateKey` `"<scope>.<field>"`, scopes `equipped` / `owned` / `reachable`, fields `count` / `names` / `titles` / `metadata.<key>` / `.min` / `.max` / `.sum` / `.count`; list comparands match entry-wise). Touches `custom-tools.ts`, `tool-gate.ts`, `metadata-match.ts`, `tool-draft.ts` (241 lines changed), `tool-vocabulary.ts`, `tool-gate-keys.ts`, `bench-inventory.ts`, `inventory-subjects.ts`, `run-service.ts`, `lib/inventory/refs.ts`, `lib/tools/run-custom-tool.ts` (+61). SPA: Workbench `GateSection` / `OutcomesSection` / `ProvingBench` + NEW `ConditionGroups.tsx` / `AggregateKeyField.tsx`; `CustomToolRunDialog.tsx`. `public/schemas/qtap-custom-tool.schema.json` (274 lines changed), `docs/developer/CUSTOM_TOOL_SPEC.json`, `help/custom-tools.md` +79, `pascals-workbench.md`. **v5 intersection:** `pascal/custom_tool_types.rs` (the Rust definition twin + its Zod 4.6.7 census, P4.D311), `tool_gate.rs`, `metadata_match.rs`, `custom_tools.rs`, `tool_vocabulary.rs`, the Workbench SPA (P4.D307 / P4.D320), the vendored public schema (P4.D313). Split: OR now; the aggregate after the Inventory lane. | UNPROCESSED |
+| `b8362beb5` | 2026-10-20 | Fix: stack the composer's Send / raise-hand / Stop buttons vertically | **PORT — a CSS rider on `2b5e8ee24` (fold into the interrupts lane; port the post-fix shape); NO D23 move** (classified 2026-10-20 from the hunks; 9 files +24 / −31; prod: `app/styles/qt-components/_chat.css` +8 / −13 and its storybook twin; `help/interrupting.md` one line; `dev.51`; parent `a53024d3c`). | UNPROCESSED |
+| `d88c1ce39` | 2026-10-20 | Docs: say blank Inventory drawing descriptions are invisible | **PORT-NEW — a one-line rider on the UNPORTED Inventory item editor; NO D23 move** (classified 2026-10-20 from the hunks; 8 files +53 / −7, of which a 42-line test of existing behavior; prod: `components/inventory/inventory-item-editor.tsx` one hint string, `help/inventory.md` one line; `dev.52`; parent `b8362beb5`). The message says "Docs" but the editor string ships — fold into the Inventory SPA lane. | UNPROCESSED |
+| `322a5488e` | 2026-10-20 | Fix: custom-tool LLM consult can narrate a verdict the table already reached (bug 257) | **PORT on the PORTED Pascal run path — v4-ORIGINATED bug 257 (found live on `Friday`; v5 status **Owed**), NOT a convergence; v5 HAS the old run order; NO D23 move; model-visible** (classified 2026-10-20 from the hunks; 18 files +913 / −32 incl. a 287-line test and the 256-line bug doc; prod 9 files; `dev.53`; parent `d88c1ce39`). `lib/pascal/custom-tool.types.ts`: outcome rows gain `brief: z.string().min(1).max(MAX_MESSAGE_LENGTH).optional()`; NEW exported `outcomeTableTestsLlm(outcomes)` (any group of any row with `llm !== undefined`); NEW `validateOutcomeBriefs` in the definition refine — a `{{outcome.*}}` in `llm.prompt` is REJECTED when a row tests `llm`; a `brief` without an `llm` block is REJECTED; a `brief` quoting `{{llm}}` / `{{outcome.*}}` is REJECTED (three new issue messages, verbatim in the hunk); the `llm.prompt` describe text gains the brief guidance. `lib/pascal/custom-tools.ts`: `consultFirst = definition.llm !== undefined && outcomeTableTestsLlm(outcomes)` — when false the table is dealt BEFORE the consult and the prompt renders `{{outcome.state}}` / `{{outcome.index}}` / `{{outcome.brief}}`; the result's `outcome` gains `brief`. `lib/pascal/placeholders.ts`: an `outcome` ref kind + a debug line when it cannot render. `tool-draft.ts` +121 (Workbench lint / audit: comparing prompts, missing briefs), `tool-vocabulary.ts`; SPA `OutcomesSection.tsx` (a brief field) + `ProvingBench.tsx`; `public/schemas/qtap-custom-tool.schema.json` +10; `help/custom-tools.md` +37. **v5 intersection:** `pascal/run_service.rs` / `custom_tools.rs` (P4.D305's one run service), `llm_consult.rs` (the consult wire, P4.D305's `OrchestratorDeps.consult`), `placeholders.rs`, `custom_tool_types.rs` + its Zod census, the Workbench SPA (P4.D307). Pair with `a53024d3c`. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
