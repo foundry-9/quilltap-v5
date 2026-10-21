@@ -7197,7 +7197,7 @@ effect-kind sentences name FOUR kinds; v4's one `abortSignal` site is seven
 (`edit_custom_tool`'s `schema` action); v5's dispatch error envelope lacks
 the `details` v4's Inventory client reads; and two NEW Rust crates are
 needed (`vt100` 0.18.1 for the screen model, `regress` for a V8-faithful
-`regexp()`), each a human YES before its lane starts.
+`regexp()`), both APPROVED by the human on 2026-10-21.
 
 **Scope — twenty-two ledger §3 rows as ONE round, split by FILE OWNERSHIP:
 seventeen lanes, seventeen worktrees, ONE stacking point (`INVENTORY`).**
@@ -7286,13 +7286,12 @@ contracts C1–C10 and the Ownership table are byte-identical in every order.
   - **P4.D331 — the Log**
     (`…/p4.d331-the-log-entries-table-regexp-tools-effect-cleanup.md`):
     `log_entries` through the structural pass (R-B), the partition-scoped
-    `regexp()` scalar over `regress` (R-I — a human YES before that unit),
+    `regexp()` scalar over `regress` (R-I — APPROVED 2026-10-21),
     the three `log_*` tools, the Pascal `log` effect, the cleanup prune, the
     Brahma / `run_sql` prompt bytes.
   - **P4.D337 — bug 255**
     (`…/p4.d337-bug-255-terminal-screen-vt100-geometry-columns.md`): the
-    screen model over `vt100` 0.18.1 (R-C — a human YES before the lane
-    starts; reflow recorded, R-D), the geometry columns' ensure, the
+    screen model over `vt100` 0.18.1 (R-C — APPROVED 2026-10-21; reflow recorded, R-D), the geometry columns' ensure, the
     rendered `terminal_read`, Ariel's `screen` summaries.
   - **P4.D340 — the Inventory title lint**
     (`…/p4.d340-inventory-title-lint-scope-gate-keys.md`): the lint + its
@@ -7312,7 +7311,7 @@ tier in `db/tiered_mount_pool.rs` (search keeps it).
 P4.D333 on the Opus / Fable tier; P4.D335 Opus; P4.D332 / P4.D338 / P4.D339
 Sonnet), the three SPA lanes as slots free (P4.D330 Opus, the other two
 Sonnet), then Wave A from `INVENTORY` with P4.D328 + P4.D329 FIRST (Opus),
-P4.D331 and P4.D337 only after their crate YESes, P4.D340 last.
+P4.D331 and P4.D337 (both crates approved 2026-10-21), P4.D340 last.
 `CARGO_INCREMENTAL=0`, the two-gate cap, one sweep and one Playwright at a
 time. Unify in §S.1's pick order; the unifier regenerates the catalog and
 the definition corpus ONCE, byte-compares the ONE `fresh_schema.json`

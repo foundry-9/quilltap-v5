@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-21 — docs(porting): record the human's approval of the `vt100` and `regress` crates for the `322a5488e` round
+
+_Docs-only change._
+
+The two new Rust dependencies the round's orders held for approval are approved: `vt100` 0.18.1 for P4.D337 (bug 255's screen model) and `regress` for P4.D331's `regexp()` unit (version measured at lane start and pinned exactly). Recorded in the round block's R-C and R-I (all seventeen orders, re-spliced identically), in the two lanes' status headers and Rulings sections, in the drift ledger and in `phase-4.md`. Neither lane is gated on a ruling any more; both still start from `INVENTORY`.
+
 #### 2026-10-21 — docs(porting): order the `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round — seventeen lanes (P4.D324–P4.D340)
 
 _Docs-only change._
