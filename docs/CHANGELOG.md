@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(host): a pre-round instance gains log_entries at boot (P4.D331)
+
+_No crate versions bumped._
+
+`host_boot_hardness` boots a fresh instance whose llm-logs file lacks `log_entries` (every v5 instance provisioned before this round): the structural pass creates it from the re-dump with v4's three index texts, verifies it sound in the twelve-table summary, and writes no `migrations_state` row.
+
 #### 2026-10-26 — test(harness): log_entries damage plants and the regexp() registration census (P4.D331)
 
 _No crate versions bumped._

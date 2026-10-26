@@ -568,6 +568,64 @@ async fn an_absent_group_link_table_is_created_and_reported_sound() {
     );
 }
 
+/// P4.D331 (Tier 2 item 24) — a PRE-ROUND instance: an llm-logs file without
+/// the Log's `log_entries` (every v5 instance provisioned before the round).
+/// The structural pass CREATES it at boot from the re-dumped `llmLogs` block —
+/// v4's PHASE 3.1 sequence (R-B: no ensure, no `migrations_state` row) — and
+/// reports it sound in the twelve-table summary; the table carries v4's three
+/// indexes, the two `onTableEnsured` ones in their UNQUOTED spelling.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_absent_log_entries_table_is_created_at_boot_and_reported_sound() {
+    let _serial = SERIAL.lock().await;
+    let booted = boot_planted(Substrate::Fresh, &[(LLM, "DROP TABLE log_entries;")]).await;
+    booted.assert_structural(&[]);
+    booted.assert_line(STRUCTURE_VERIFIED);
+    booted.assert_line("DEBUG quilltap::db Verified dedicated-database table structure collection=log_entries dbTarget=llmLogs ok=true");
+    booted.assert_silent("Failed to ensure log_entries");
+    let w = Writer::open_writable(&booted.data.join(LLM), PEPPER).unwrap();
+    let mut stmt = w
+        .connection()
+        .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND tbl_name = 'log_entries' \
+             AND sql IS NOT NULL ORDER BY name",
+        )
+        .unwrap();
+    let indexes: Vec<String> = stmt
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        indexes,
+        [
+            "CREATE INDEX idx_log_entries_characterId ON log_entries (\"characterId\", \"createdAt\" DESC)",
+            "CREATE INDEX idx_log_entries_chatId ON log_entries (\"chatId\", \"createdAt\" DESC)",
+            "CREATE INDEX \"idx_log_entries_createdAt\" ON \"log_entries\" (\"createdAt\" DESC)",
+        ]
+    );
+    // No migration ledger row — v4 writes none for this table.
+    let main = Writer::open_writable(&booted.data.join("quilltap.db"), PEPPER).unwrap();
+    let stamped: i64 = main
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE name = 'migrations_state'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    if stamped > 0 {
+        let rows: i64 = main
+            .connection()
+            .query_row(
+                "SELECT COUNT(*) FROM migrations_state WHERE id LIKE '%log%entr%'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 0, "no migrations_state row names the Log");
+    }
+}
+
 /// P4.D248 — the record is REPLACED on every assemble (v4's
 /// `setStructuralProblems` replaces): a damaged boot records the problem; the
 /// operator repairs the table; a lock/unlock (a fresh assembly) clears it.
