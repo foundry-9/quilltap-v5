@@ -1,0 +1,58 @@
+{"fn":"withArticle","id":"titled","args":[{"name":"sword","title":"Excalibur"}],"out":"\"Excalibur\""}
+{"fn":"withArticle","id":"titled-padded","args":[{"name":"sword","title":"  Excalibur "}],"out":"\"Excalibur\""}
+{"fn":"withArticle","id":"title-empty","args":[{"name":"lantern","title":""}],"out":"\"a lantern\""}
+{"fn":"withArticle","id":"title-null","args":[{"name":"lantern","title":null}],"out":"\"a lantern\""}
+{"fn":"withArticle","id":"title-whitespace","args":[{"name":"lantern","title":"   "}],"out":"\"a lantern\""}
+{"fn":"withArticle","id":"vowel-a","args":[{"name":"amulet"}],"out":"\"an amulet\""}
+{"fn":"withArticle","id":"vowel-e","args":[{"name":"egg"}],"out":"\"an egg\""}
+{"fn":"withArticle","id":"vowel-i","args":[{"name":"inkwell"}],"out":"\"an inkwell\""}
+{"fn":"withArticle","id":"vowel-o","args":[{"name":"oar"}],"out":"\"an oar\""}
+{"fn":"withArticle","id":"vowel-u","args":[{"name":"umbrella"}],"out":"\"an umbrella\""}
+{"fn":"withArticle","id":"unicorn","args":[{"name":"unicorn horn"}],"out":"\"an unicorn horn\""}
+{"fn":"withArticle","id":"Unicorn","args":[{"name":"Unicorn horn"}],"out":"\"an Unicorn horn\""}
+{"fn":"withArticle","id":"hour","args":[{"name":"hourglass"}],"out":"\"a hourglass\""}
+{"fn":"withArticle","id":"consonant","args":[{"name":"magic bow"}],"out":"\"a magic bow\""}
+{"fn":"withArticle","id":"upper-vowel","args":[{"name":"Elixir"}],"out":"\"an Elixir\""}
+{"fn":"withArticle","id":"name-missing","args":[{}],"out":"\"an object\""}
+{"fn":"withArticle","id":"name-empty","args":[{"name":""}],"out":"\"a \""}
+{"fn":"withArticle","id":"name-padded","args":[{"name":" apple"}],"out":"\"a  apple\""}
+{"fn":"withArticle","id":"astral","args":[{"name":"🍎 apple"}],"out":"\"a 🍎 apple\""}
+{"fn":"inventoryRowLabel","id":"undefined","args":[],"out":"null"}
+{"fn":"inventoryRowLabel","id":"titled","args":[{"name":"sword","title":"Excalibur"}],"out":"\"Excalibur\""}
+{"fn":"inventoryRowLabel","id":"title-whitespace","args":[{"name":"sword","title":"  "}],"out":"\"sword\""}
+{"fn":"inventoryRowLabel","id":"name-only","args":[{"name":"sword"}],"out":"\"sword\""}
+{"fn":"inventoryRowLabel","id":"name-empty","args":[{"name":""}],"out":"null"}
+{"fn":"inventoryRowLabel","id":"nothing","args":[{}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"list-no-notice","args":[{"toolName":"inventory_list","success":true,"result":{"items":[{"id":"i1","name":"sword","title":"Excalibur"}]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"read-no-notice","args":[{"toolName":"inventory_read","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"}}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"failed","args":[{"toolName":"inventory_equip","success":false,"result":{"equipped":[{"id":"i1","name":"sword","title":"Excalibur"}]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"no-tool-name","args":[{"success":true,"result":{"equipped":[{"id":"i1","name":"sword","title":"Excalibur"}]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"result-string","args":[{"toolName":"inventory_equip","success":true,"result":"Equipped it"}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"result-missing","args":[{"toolName":"inventory_equip","success":true}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"result-null","args":[{"toolName":"inventory_equip","success":true,"result":null}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"wardrobe-tool","args":[{"toolName":"wardrobe_wear","success":true,"result":{"operations":[]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"equip-one","args":[{"toolName":"inventory_equip","success":true,"result":{"equipped":[{"id":"i1","name":"sword","title":"Excalibur"}],"created":[],"already_equipped":[],"skipped":[]}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Equipped Excalibur.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"equip-three","args":[{"toolName":"inventory_equip","success":true,"result":{"equipped":[{"id":"i1","name":"sword","title":"Excalibur"},{"id":"i2","name":"signet ring","title":null},{"id":"i3","name":"lantern","title":""}]}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Equipped Excalibur, signet ring, lantern.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"equip-empty","args":[{"toolName":"inventory_equip","success":true,"result":{"equipped":[]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"equip-absent","args":[{"toolName":"inventory_equip","success":true,"result":{}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"equip-label-less","args":[{"toolName":"inventory_equip","success":true,"result":{"equipped":[{"id":"x"},{"id":"i1","name":"sword","title":"Excalibur"}]}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Equipped Excalibur.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"unequip-two","args":[{"toolName":"inventory_unequip","success":true,"result":{"unequipped":[{"id":"i1","name":"sword","title":"Excalibur"},{"id":"i2","name":"signet ring","title":null}],"not_equipped":[]}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Set down Excalibur, signet ring.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"unequip-empty","args":[{"toolName":"inventory_unequip","success":true,"result":{"unequipped":[]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"pick-up-equipped","args":[{"toolName":"inventory_pick_up","success":true,"result":{"item":{"id":"i2","name":"signet ring","title":null},"archetype":{"id":"a","name":"signet ring","title":null},"equipped":true}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Picked up a signet ring and equipped it.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"pick-up-not-equipped","args":[{"toolName":"inventory_pick_up","success":true,"result":{"item":{"id":"i2","name":"signet ring","title":null},"equipped":false}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Picked up a signet ring.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"pick-up-titled","args":[{"toolName":"inventory_pick_up","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"equipped":true}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Picked up Excalibur and equipped it.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"pick-up-unicorn","args":[{"toolName":"inventory_pick_up","success":true,"result":{"item":{"id":"u","name":"unicorn horn","title":null},"equipped":true}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Picked up an unicorn horn and equipped it.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"pick-up-no-item","args":[{"toolName":"inventory_pick_up","success":true,"result":{"equipped":true}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"create-equipped","args":[{"toolName":"inventory_create","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"equipped":true}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Made \\\"Excalibur\\\" and equipped it.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"create-plain","args":[{"toolName":"inventory_create","success":true,"result":{"item":{"id":"i3","name":"lantern","title":""},"equipped":false}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Made \\\"lantern\\\".\"]}"}
+{"fn":"buildInventoryActionSummary","id":"create-no-item","args":[{"toolName":"inventory_create","success":true,"result":{}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"update","args":[{"toolName":"inventory_update","success":true,"result":{"item":{"id":"i2","name":"signet ring","title":null},"fields":["description"]}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Updated \\\"signet ring\\\".\"]}"}
+{"fn":"buildInventoryActionSummary","id":"update-no-item","args":[{"toolName":"inventory_update","success":true,"result":{"fields":[]}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"archive-true","args":[{"toolName":"inventory_archive","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"archived":true}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Put away \\\"Excalibur\\\".\"]}"}
+{"fn":"buildInventoryActionSummary","id":"archive-false","args":[{"toolName":"inventory_archive","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"archived":false}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Restored \\\"Excalibur\\\".\"]}"}
+{"fn":"buildInventoryActionSummary","id":"archive-absent-flag","args":[{"toolName":"inventory_archive","success":true,"result":{"item":{"id":"i3","name":"lantern","title":""}}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Restored \\\"lantern\\\".\"]}"}
+{"fn":"buildInventoryActionSummary","id":"give-titled","args":[{"toolName":"inventory_give","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"recipient":{"id":"c","name":"Vivienne"}}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Handed Excalibur to Vivienne.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"give-untitled","args":[{"toolName":"inventory_give","success":true,"result":{"item":{"id":"i3","name":"lantern","title":""},"recipient":{"id":"c","name":"Marcus"}}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Handed the lantern to Marcus.\"]}"}
+{"fn":"buildInventoryActionSummary","id":"give-no-recipient","args":[{"toolName":"inventory_give","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"}}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"give-recipient-nameless","args":[{"toolName":"inventory_give","success":true,"result":{"item":{"id":"i1","name":"sword","title":"Excalibur"},"recipient":{"id":"c"}}}],"out":"null"}
+{"fn":"buildInventoryActionSummary","id":"give-nameless-item","args":[{"toolName":"inventory_give","success":true,"result":{"item":{"id":"z","title":null},"recipient":{"id":"c","name":"Marcus"}}}],"out":"{\"label\":\"Inventory\",\"lines\":[\"Handed the object to Marcus.\"]}"}

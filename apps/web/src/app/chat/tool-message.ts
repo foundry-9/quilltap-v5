@@ -14,6 +14,7 @@ import { injectImagesHidden } from './hidden-image/images-hidden';
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
+import { buildInventoryActionSummary } from './inventory-action-summary';
 
 /**
  * The parsed tool-result envelope (v4 `ToolMessage.tsx:55-75`, `ToolResult`).
@@ -86,6 +87,16 @@ const TOOL_INFO: Record<string, ToolDisplay> = {
   wardrobe_create: { displayName: 'New Wardrobe Item', icon: '🧵' },
   wardrobe_update: { displayName: 'Edit Wardrobe Item', icon: '🧵' },
   wardrobe_archive: { displayName: 'Archive Wardrobe Item', icon: '🧵' },
+  // P4.D330 — v4 `e1872c94f` (:437-481); every Inventory row wears 🎒.
+  inventory_list: { displayName: 'Inventory', icon: '🎒' },
+  inventory_read: { displayName: 'Inspect Object', icon: '🎒' },
+  inventory_equip: { displayName: 'Equip', icon: '🎒' },
+  inventory_unequip: { displayName: 'Set Down', icon: '🎒' },
+  inventory_pick_up: { displayName: 'Pick Up', icon: '🎒' },
+  inventory_create: { displayName: 'New Object', icon: '🎒' },
+  inventory_update: { displayName: 'Edit Object', icon: '🎒' },
+  inventory_archive: { displayName: 'Put Away Object', icon: '🎒' },
+  inventory_give: { displayName: 'Give Object', icon: '🎒' },
 };
 
 /** A human-readable wardrobe action notice (v4 `buildWardrobeActionSummary` :103-173 at `e8e17b2d9`). */
@@ -474,7 +485,10 @@ export class ToolMessage {
     return TOOL_INFO[name] ?? { displayName: name, icon: '⚙️' };
   });
 
-  protected readonly wardrobeSummary = computed(() => buildWardrobeActionSummary(this.toolData()));
+  // v4 `:335-338` — the wardrobe's notice, else the Inventory's (P4.D330).
+  protected readonly wardrobeSummary = computed(
+    () => buildWardrobeActionSummary(this.toolData()) ?? buildInventoryActionSummary(this.toolData()),
+  );
 
   protected readonly isWhisper = computed(() => {
     const ids = this.message().targetParticipantIds;

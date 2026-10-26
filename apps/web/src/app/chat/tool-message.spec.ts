@@ -448,6 +448,89 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
     });
   });
 
+  // P4.D330 — v4 `e1872c94f`'s ToolMessage.tsx hunk: the Inventory notice
+  // (:175-245, chained after the wardrobe's at :335-338) and the nine
+  // toolInfo rows (:437-481), every one 🎒.
+  describe('inventory notice (:175-245, :335-338) and rows (:437-481)', () => {
+    const lines = (fixture: ReturnType<typeof render>): string[] =>
+      [...el(fixture).querySelectorAll('.qt-chat-wardrobe-summary > div')].map((d) => d.textContent ?? '');
+
+    it("inventory_pick_up's success reads \"Picked up a signet ring and equipped it.\" under the Inventory label", () => {
+      const content = JSON.stringify({
+        toolName: 'inventory_pick_up',
+        success: true,
+        result: { item: { id: 'r', name: 'signet ring', title: null }, archetype: { id: 'a', name: 'signet ring', title: null }, equipped: true },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      const notice = el(fixture).querySelector('.qt-chat-wardrobe-notice')!;
+      expect(notice).not.toBeNull();
+      expect(notice.querySelector('.qt-chat-wardrobe-label')!.textContent).toBe('Inventory');
+      expect(lines(fixture)).toEqual(['Picked up a signet ring and equipped it.']);
+    });
+
+    it('inventory_give reads "Handed Excalibur to Vivienne."', () => {
+      const content = JSON.stringify({
+        toolName: 'inventory_give',
+        success: true,
+        result: { item: { id: 's', name: 'sword', title: 'Excalibur' }, recipient: { id: 'c', name: 'Vivienne' } },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(lines(fixture)).toEqual(['Handed Excalibur to Vivienne.']);
+    });
+
+    it('inventory_list shows no notice', () => {
+      const content = JSON.stringify({
+        toolName: 'inventory_list',
+        success: true,
+        result: { items: [{ id: 's', name: 'sword', title: 'Excalibur' }] },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
+    });
+
+    it('a failed inventory_equip shows no notice', () => {
+      const content = JSON.stringify({
+        toolName: 'inventory_equip',
+        success: false,
+        result: { equipped: [{ id: 's', name: 'sword', title: null }] },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
+    });
+
+    it('the wardrobe notice still wins for a wardrobe tool (the `??` chain)', () => {
+      const content = JSON.stringify({
+        toolName: 'wardrobe_create',
+        success: true,
+        result: { title: 'Velvet Coat', equipped: true },
+      });
+      const fixture = render({ message: msg({ content, participantId: 'p1' }) });
+      expect(el(fixture).querySelector('.qt-chat-wardrobe-label')!.textContent).toBe('Wardrobe');
+    });
+
+    it("the nine inventory tools' display names, each with 🎒", () => {
+      for (const [toolName, displayName] of [
+        ['inventory_list', 'Inventory'],
+        ['inventory_read', 'Inspect Object'],
+        ['inventory_equip', 'Equip'],
+        ['inventory_unequip', 'Set Down'],
+        ['inventory_pick_up', 'Pick Up'],
+        ['inventory_create', 'New Object'],
+        ['inventory_update', 'Edit Object'],
+        ['inventory_archive', 'Put Away Object'],
+        ['inventory_give', 'Give Object'],
+      ]) {
+        const content = JSON.stringify({ toolName, success: true, result: { formattedText: 'x' } });
+        TestBed.resetTestingModule();
+        const fixture = render({ message: msg({ content }), embedded: true });
+        const names = [...el(fixture).querySelectorAll('span.font-semibold')].map((s) => s.textContent);
+        expect(names).toContain(displayName);
+        const icon = el(fixture).querySelector('span.text-base.leading-none')!;
+        expect(icon.textContent!.trim()).toBe('🎒');
+      }
+    });
+  });
+
   describe('copy feedback (inline status; v5 has no toast — chat-section §2)', () => {
     it('surfaces v4\'s "Request copied to clipboard" copy on the status line', async () => {
       const writes: string[] = [];

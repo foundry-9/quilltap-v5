@@ -380,3 +380,36 @@ worktree at `322a5488e`, run it with `LANG=en_US.UTF-8` under Node 24 (v4's
 `localeCompare(…, undefined, …)` is the HOST default locale), `rm` the copy. The
 spec compares the host's `localeCompare` to the recording, so run `npm test` under
 an en-US host as well.
+
+
+
+## P4.D330 — the Inventory SPA (`inventory-display`, `inventory-refusal`, `inventory-action-summary`)
+
+Three tier-1 corpora recorded 2026-10-26 by P4.D330 at the round pin v4
+`322a5488e` (`4.11.0-dev.53`) from a lane-unique detached worktree
+(`/tmp/qt-v4-pin-p4d330-322a5488e`), Node 24.13.1, `TZ=UTC`, each through v4's
+REAL module. Every recorder lives under `apps/web/oracle/` with its invocation
+in its header (`cp` it into the pin as `zz-p4d330-<name>.recorder.ts`, `npx tsx`
+it there, redirect into this directory, `rm -f` the output first); a second run
+reproduces each file byte for byte (`cmp`, measured).
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `inventory-display.oracle.ndjson` | 67 — 14 `inventoryDisplayName`, 14 `inventoryLabel`, 5 `isKin`, 6 `isEquippable`, 10 `kitState`, 7 `inventoryOriginLabel`, 11 `containerOfOrigin` | `22d38e39ebac3912fc852455d2bcec5d9eb2374d63746418d79f1e36e629c21a` | `lib/inventory/resolve.ts` + `lib/inventory/container.ts` | `app/inventory/inventory-display.oracle.spec.ts` |
+| `inventory-refusal.oracle.ndjson` | 24 | `167b9f356b10108e50df9aad8c9dd85bf5d0ae9edf654507954bc1d40cdcb971` | `components/inventory/hooks/useInventoryItemActions.ts` `describeInventoryRefusal` + `lib/hooks/use-inventory.ts` `InventoryRequestError` | `app/inventory/inventory-refusal.oracle.spec.ts` |
+| `inventory-action-summary.oracle.ndjson` | 58 — 19 `withArticle`, 6 `inventoryRowLabel`, 33 `buildInventoryActionSummary` | `9cc04322501b21136ed5e785fa4d3b39985c6ef9331c6b429e7f157db455f618` | `components/chat/ToolMessage.tsx:175-245` (module-private — through an exporting copy) | `app/chat/inventory-action-summary.oracle.spec.ts` |
+
+- **The `ToolMessage` export patch.** The three functions are module-private
+  in v4. The recorder imports a copy of v4's file placed BESIDE the original
+  inside the pin (`components/chat/zz-p4d330-ToolMessage.export.tsx`, so its
+  relative imports resolve from the pin's tree) with exactly one appended line,
+  `export { withArticle, inventoryRowLabel, buildInventoryActionSummary };` —
+  `diff` against the original shows only that line. The copy is deleted with
+  the pin.
+- **The recorded pair (R-6).** Two rows read `an unicorn horn` — v4's client
+  rule (`/^[aeiou]/i`); the server's Pascal line spells it `a unicorn horn`.
+- **A `refusal` row's input** is rebuilt on the SPA side as the
+  `CoreDispatchError` the transports throw (`code` + `details`, R-L), where v4
+  threw `InventoryRequestError(message, 400, code, details)`.
+- `kitState`'s resolver travels as a plain map `{ id: member }`, wrapped into
+  a lookup on both sides.

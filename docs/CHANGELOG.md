@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory tool rows — nine names and the action notice (v4 `e1872c94f`)
+
+_Versions: SPA 0.5.885._
+
+`tool-message.ts` gains the nine Inventory tools' display names (every one 🎒) and chains NEW `chat/inventory-action-summary.ts` after the wardrobe's notice: `Equipped …`, `Set down …`, `Picked up a …`, `Made "…"`, `Updated "…"`, `Put away` / `Restored`, `Handed … to …` under the `Inventory` label; list and read show none. `withArticle` keeps v4's client rule verbatim (`an unicorn horn`; the server's line says `a` — recorded). A third tier-1 corpus, `inventory-action-summary` (58 rows), drives v4's module-private functions through an exporting copy of `ToolMessage.tsx`; the fixtures README gains the P4.D330 section. P4.D330, Tier 1 items 14 + 20.
+
 #### 2026-10-26 — feat(spa): the Inventory's pure display, origin and refusal helpers + two v4 corpora
 
 _Versions: SPA 0.5.884._
