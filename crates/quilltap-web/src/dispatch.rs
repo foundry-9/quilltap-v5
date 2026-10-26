@@ -103,38 +103,47 @@ pub async fn dispatch_body(state: &SharedState, body_bytes: &[u8]) -> (StatusCod
                 );
             }
         }
-        // The store-unavailable 503 merges v4's contextful body keys
-        // (`{error: "<…> unavailable", "<entity>Id": <id>}` —
-        // context.ts:176-205) alongside the typed envelope, the same pattern
-        // as the Locked readiness body above (P4.23).
-        if e.kind == ErrorKind::Unavailable {
-            if let (Some(obj), Some(Value::Object(wire))) =
-                (body.as_object_mut(), e.unavailable_wire_body())
-            {
-                for (k, v) in wire {
-                    obj.insert(k, v);
-                }
-            }
-        }
-        // v4's `validationError(err)` body (`{error: 'Validation error',
-        // details: [...]}` — P4.D138's image-profile LoRA guard) merges the
-        // same way, so a dispatch client reads v4's exact keys.
+        merge_error_wire(e, &mut body);
+    }
+    (status, body)
+}
+
+/// The error wire's three merges beside the typed envelope, in one place (the
+/// dispatch route and the Tauri IPC command share them through
+/// [`dispatch_body`]):
+///
+/// - the store-unavailable 503 merges v4's contextful body keys (`{error:
+///   "<…> unavailable", "<entity>Id": <id>}` — context.ts:176-205), the same
+///   pattern as the Locked readiness body (P4.23);
+/// - an error carrying `details` merges v4's `{error, details}` — the Zod
+///   `validationError(err)` array (`{error: 'Validation error', details:
+///   [...]}`, P4.D138's image-profile LoRA guard) AND the Inventory's
+///   `errorResponse(message, status, {code, ...details})` object (P4.D325,
+///   R-L) share the slot, so a dispatch client reads v4's exact keys at v4's
+///   status (`status_for` keeps a details-bearing 409 a 409);
+/// - v4's ALREADY_SAVED 409 (`actions/save-image.ts:118-125`) answers four
+///   FLAT siblings — `{error, code, relativePath, keptAt}` — and the save
+///   dialog reads `body.code` / `body.keptAt` off the top level, so the riders
+///   merge beside the typed envelope the same way (P4.D174 §C.3; the §3
+///   unification review of the `78b381a96` round caught them nested under
+///   `details`, unreachable by any client).
+pub(crate) fn merge_error_wire(e: &quilltap_core::api::CoreError, body: &mut Value) {
+    if e.kind == ErrorKind::Unavailable {
         if let (Some(obj), Some(Value::Object(wire))) =
-            (body.as_object_mut(), e.validation_wire_body())
+            (body.as_object_mut(), e.unavailable_wire_body())
         {
             for (k, v) in wire {
                 obj.insert(k, v);
             }
         }
-        // v4's ALREADY_SAVED 409 (`actions/save-image.ts:118-125`) answers four
-        // FLAT siblings — `{error, code, relativePath, keptAt}` — and the save
-        // dialog reads `body.code` / `body.keptAt` off the top level, so the
-        // riders merge beside the typed envelope the same way (P4.D174 §C.3;
-        // the §3 unification review of the `78b381a96` round caught them
-        // nested under `details`, unreachable by any client).
-        merge_already_saved_riders(e, &mut body);
     }
-    (status, body)
+    if let (Some(obj), Some(Value::Object(wire))) = (body.as_object_mut(), e.validation_wire_body())
+    {
+        for (k, v) in wire {
+            obj.insert(k, v);
+        }
+    }
+    merge_already_saved_riders(e, body);
 }
 
 /// The verb a dispatch body names — its internally-tagged `type` — for the IPC
@@ -163,6 +172,73 @@ fn merge_already_saved_riders(e: &quilltap_core::api::CoreError, body: &mut Valu
 pub async fn dispatch(State(state): State<SharedState>, body: Bytes) -> AxumResponse {
     let (status, body) = dispatch_body(&state, &body).await;
     json_response(status, &body)
+}
+
+#[cfg(test)]
+mod details_wire_tests {
+    //! R-L / R-2 (P4.D325): `CoreError.details` reaches the dispatch client at
+    //! v4's status, the bag's keys in insertion order. The Tauri IPC
+    //! `dispatch` command is `dispatch_inner` → this same [`dispatch_body`]
+    //! (`quilltap-tauri/src/commands.rs`), so these pins cover both transports
+    //! by construction. Mutation: drop the details merge from
+    //! [`merge_error_wire`] and (a) reddens.
+    use super::*;
+
+    fn conflict_with_cap_details() -> Response {
+        let mut resp = Response::error(
+            ErrorKind::Conflict,
+            "\"Excalibur\" can be carried at most 1 at a time",
+        );
+        if let Response::Error(e) = &mut resp {
+            e.details = Some(Box::new(json!({
+                "code": "CAP_EXCEEDED",
+                "itemId": "11111111-1111-4111-8111-111111111111",
+                "itemName": "Excalibur",
+                "cap": 1,
+            })));
+        }
+        resp
+    }
+
+    fn wire(resp: &Response) -> (StatusCode, Value) {
+        let mut body = serde_json::to_value(resp).unwrap();
+        let Response::Error(e) = resp else {
+            unreachable!()
+        };
+        merge_error_wire(e, &mut body);
+        (status_for(resp), body)
+    }
+
+    #[test]
+    fn a_details_bearing_conflict_keeps_409_and_the_bag_in_order() {
+        let (status, body) = wire(&conflict_with_cap_details());
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(
+            body["error"],
+            "\"Excalibur\" can be carried at most 1 at a time"
+        );
+        assert_eq!(
+            body["details"].to_string(),
+            r#"{"code":"CAP_EXCEEDED","itemId":"11111111-1111-4111-8111-111111111111","itemName":"Excalibur","cap":1}"#
+        );
+        // The typed envelope keeps the bag for a typed reader.
+        assert_eq!(body["data"]["details"]["code"], "CAP_EXCEEDED");
+        // No flat `code` — v4's Inventory body nests it under `details`.
+        assert!(body.get("code").is_none());
+    }
+
+    #[test]
+    fn a_details_bearing_400_renders_the_same_shape() {
+        let mut resp =
+            Response::error(ErrorKind::BadRequest, "Source and destination are the same");
+        if let Response::Error(e) = &mut resp {
+            e.details = Some(Box::new(json!({ "code": "INVALID_SHAPE" })));
+        }
+        let (status, body) = wire(&resp);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"], "Source and destination are the same");
+        assert_eq!(body["details"].to_string(), r#"{"code":"INVALID_SHAPE"}"#);
+    }
 }
 
 #[cfg(test)]

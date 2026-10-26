@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(web): every error `details` bag rides the dispatch wire through one merge (P4.D325)
+
+_Versions: web 0.0.244._
+
+`dispatch_body`'s three error-wire merges (the store-unavailable keys, an error's `{error, details}`, the `ALREADY_SAVED` riders) now live in one `merge_error_wire`, shared by the HTTP dispatch route and the Tauri IPC command. New `details_wire_tests` pin that a details-bearing 409 keeps its status and its bag's keys in order on the wire, with the typed envelope keeping the bag too.
+
 #### 2026-10-26 — docs(porting): P4.D332 lane record, the tools-inventory count pins, and the clippy header fix
 
 _Versions: core 0.0.1326._
