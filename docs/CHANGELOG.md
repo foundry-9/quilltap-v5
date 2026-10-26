@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(harness): the Inventory through a backup and a `.qtap` export, proven against v4 at the pin (P4.D327)
+
+_Harness-only change (no crate version moves)._
+
+`system_backup_equivalence` gains `backup_with_inventory`. The same SQL plants one object file in Lorian's vault, its link, the picture's `linkedTo`, a carried set and `canManageInventory` on both sides. The archive carries all of it byte for byte with no new file and no new count (v4's backup has no Inventory hunk, so this proves carriage). Every case now also asserts that no backup stages a `log_entries` file (the Log is not carried). `system_export_equivalence` gains `stream_chats_all_inventory` and `stream_characters_all_inventory` over a copy with the two cells set. Both keys land where v4 puts them: after the nearest present preceding key in the regenerated Zod order. Before the regen, v5 appended both after `updatedAt`.
+
 #### 2026-10-26 — feat(restore): step 22f-quater repoints Inventory pictures on a new-account restore, and the restore carries `canManageInventory` (P4.D327)
 
 _Versions: core 0.0.1330._

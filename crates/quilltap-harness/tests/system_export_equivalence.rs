@@ -90,6 +90,18 @@ fn fresh_db(tag: &str) -> ScratchDb {
                 .execute_batch(SCENARIO_TEXT_CELL_SQL)
                 .expect("plant the scenario text cell");
         }
+        // [P4.D327] the oracle's `INVENTORY_CELLS_SQL`, for the `…_inventory` cases.
+        if tag.ends_with("_inventory") {
+            for sql in INVENTORY_CELLS_SQL {
+                assert_eq!(
+                    w.connection()
+                        .execute(sql, [])
+                        .expect("plant an Inventory cell"),
+                    1,
+                    "{sql}"
+                );
+            }
+        }
         if tag.ends_with("_cursor_throw") {
             w.connection()
                 .execute_batch(&THROWING_CURSORS_SQL.join(";\n"))
@@ -177,6 +189,9 @@ fn system_export_matches_oracle() {
     // `…_no_history_table` one without the table.
     let history = fresh_db("reads_outfit_history");
     let no_history_table = fresh_db("reads_no_history_table");
+    // [P4.D327] the `…_inventory` cases read a copy with the two cells set.
+    let inventory = fresh_db("reads_inventory");
+    let mut inventory_cases = 0usize;
     let mut history_cases = 0usize;
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
@@ -197,6 +212,9 @@ fn system_export_matches_oracle() {
         } else if name.ends_with("_no_history_table") {
             history_cases += 1;
             &no_history_table
+        } else if name.ends_with("_inventory") {
+            inventory_cases += 1;
+            &inventory
         } else {
             &plain
         };
@@ -395,7 +413,12 @@ fn system_export_matches_oracle() {
     // `…_scenario_text` stream, Tier 2 #19).
     // P4.D317: 64 + 4 = 68 (three `…_outfit_history` cases + the
     // `…_no_history_table` stream).
-    assert_eq!(ran, 68, "expected 68 cases to run, ran {ran}");
+    // P4.D327: 68 + 2 = 70 (the two `…_inventory` streams).
+    assert_eq!(ran, 70, "expected 70 cases to run, ran {ran}");
+    assert_eq!(
+        inventory_cases, 2,
+        "the two P4.D327 Inventory cases read their own copy"
+    );
     assert_eq!(
         wardrobe_cases, 4,
         "the four P4.D264 wardrobe cases read the planted copy"
@@ -855,4 +878,11 @@ fn assert_cursor_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Ve
 /// SKIPS the chat silently; v5's STRICT export (the 2026-10-02 ruling) FAILS
 /// whole with the ZodError — MEASURED DIFFERENT and pinned both ways below
 /// (P4.D294 item 19; flagged for the human: keep or converge).
+/// [P4.D327] The oracle's `INVENTORY_CELLS_SQL`, statement for statement.
+const INVENTORY_CELLS_SQL: [&str; 3] = [
+    r#"UPDATE "chats" SET "equippedInventory" = '{"a1000000-0000-4000-8000-000000000001":["1e000000-0000-4000-8000-0000000000c1"]}' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'"#,
+    r#"UPDATE "characters" SET "canManageInventory" = 0 WHERE "id" = 'a1000000-0000-4000-8000-000000000001'"#,
+    r#"UPDATE "characters" SET "canManageInventory" = 1 WHERE "id" = 'a1000000-0000-4000-8000-000000000002'"#,
+];
+
 const SCENARIO_TEXT_CELL_SQL: &str = r#"UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'"#;

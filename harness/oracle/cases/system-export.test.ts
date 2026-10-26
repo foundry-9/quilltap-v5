@@ -161,6 +161,8 @@ interface CaseSpec {
   outfitHistory?: boolean;
   /** [P4.D317] Do NOT plant `chat_wardrobe_history`: the per-chat read throws. */
   noHistoryTable?: boolean;
+  /** [P4.D327] `INVENTORY_CELLS_SQL`: the two Inventory cells set on the copy. */
+  inventoryCells?: boolean;
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -437,6 +439,20 @@ function buildCases(spec: Spec): CaseSpec[] {
     noHistoryTable: true,
   });
 
+  // 11. [P4.D327] The two Inventory keys in their Zod slots (`INVENTORY_CELLS_SQL`):
+  //     a `chats` export's CHAT_1 line carries `equippedInventory` right after
+  //     `equippedOutfit`; a `characters` export's lines carry
+  //     `canManageInventory` right after `canCreateOutfits`.
+  const inventory = (c: CaseSpec): CaseSpec => ({ ...c, inventoryCells: true });
+  cases.push(
+    inventory(streamCase('stream_chats_all_inventory', { type: 'chats', scope: 'all', includeMemories: false })),
+  );
+  cases.push(
+    inventory(
+      streamCase('stream_characters_all_inventory', { type: 'characters', scope: 'all', includeMemories: false }),
+    ),
+  );
+
   // 9. [P4.D294 Tier 2 #19] A non-object TEXT `scenarioSource` cell, exported.
   cases.push({
     ...streamCase('stream_chats_selected_one_scenario_text', {
@@ -637,6 +653,20 @@ const THROWING_CURSORS_SQL = [
  * cell (`"Scenarios/Harbour.md"` — valid JSON, a STRING): what v4's chats
  * repository read and C1-9's `chats_read` each make of it, exported.
  */
+/**
+ * [P4.D327] The two Inventory cells (v4 `4fbdad186` / `e1872c94f`): CHAT_1
+ * carries an object for Lorian, Lorian `canManageInventory = 0`, Riya `1`. v4
+ * has no `lib/export` hunk — the row is spread whole and `schema.parse`
+ * orders it, so each key lands in its Zod slot (`equippedInventory` after
+ * `equippedOutfit`, `canManageInventory` after `canCreateOutfits`). The Rust
+ * side runs the identical statements on `…_inventory` cases.
+ */
+const INVENTORY_CELLS_SQL = [
+  `UPDATE "chats" SET "equippedInventory" = '{"a1000000-0000-4000-8000-000000000001":["1e000000-0000-4000-8000-0000000000c1"]}' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'`,
+  `UPDATE "characters" SET "canManageInventory" = 0 WHERE "id" = 'a1000000-0000-4000-8000-000000000001'`,
+  `UPDATE "characters" SET "canManageInventory" = 1 WHERE "id" = 'a1000000-0000-4000-8000-000000000002'`,
+];
+
 const SCENARIO_TEXT_CELL_SQL = `UPDATE "chats" SET "scenarioSource" = '"Scenarios/Harbour.md"' WHERE "id" = 'c1000000-0000-4000-8000-000000000001'`;
 
 /**
@@ -780,6 +810,12 @@ async function runCase(
   if (c.cursorThrow) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     plantThrowingCursors(getRawDatabase()!);
+  }
+  if (c.inventoryCells) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    for (const sql of INVENTORY_CELLS_SQL) {
+      if (getRawDatabase()!.prepare(sql).run().changes !== 1) throw new Error(`inventory cell plant: ${sql}`);
+    }
   }
   if (c.scenarioTextCell) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');

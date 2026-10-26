@@ -519,6 +519,64 @@ fn plant_wardrobe_wear(db: &Db) {
     .expect("plant wardrobe_wear_stats on the fixture copy");
 }
 
+// === P4.D327: the Inventory carriage plant ===
+/// [P4.D327] The oracle's `plantInventory`, statement for statement (the same
+/// SQL text and parameters — see `system-backup.test.ts`): v4's backup has no
+/// Inventory hunk, so the object file, its link, the picture's `linkedTo`, the
+/// carried set and the flag ride rows the backup already carries.
+const INVENTORY_PLANT_CONTENT: &str = "{\n  \"id\": \"1e000000-0000-4000-8000-0000000000b1\",\n  \"kind\": \"item\",\n  \"name\": \"compass\",\n  \"title\": \"Compass\",\n  \"equippedByDefault\": false,\n  \"maxEquipped\": 1,\n  \"canCopy\": false,\n  \"isArchetype\": false,\n  \"parentId\": null,\n  \"itemIds\": [],\n  \"metadata\": {},\n  \"createdAt\": \"2026-03-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-03-01T00:00:00.000Z\"\n}\n";
+const INVENTORY_PLANT_SHA: &str =
+    "64c6f9459fdc660abc8681404380f829f27660673ed53429a076dd485911036e";
+const INVENTORY_PLANT_MAIN_SQL: [&str; 3] = [
+    "UPDATE characters SET canManageInventory = 1 WHERE name = 'Lorian'",
+    "UPDATE chats SET equippedInventory = json_object((SELECT id FROM characters WHERE name = 'Lorian'), \
+     json_array('1e000000-0000-4000-8000-0000000000b1')) WHERE id = (SELECT MIN(id) FROM chats)",
+    "UPDATE files SET linkedTo = json_insert(COALESCE(linkedTo, '[]'), '$[#]', \
+     '1e000000-0000-4000-8000-0000000000b1') WHERE id = (SELECT MIN(id) FROM files)",
+];
+const INVENTORY_PLANT_VAULT_SQL: &str =
+    "SELECT characterDocumentMountPointId AS v FROM characters WHERE name = 'Lorian'";
+const INVENTORY_PLANT_MOUNT_SQL: [&str; 3] = [
+    "INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) \
+     VALUES ('1d000000-0000-4000-8000-0000000000b1', ?, 347, 'json', 'database', \
+     '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+    "INSERT INTO doc_mount_documents (id, fileId, content, contentSha256, plainTextLength, createdAt, updatedAt) \
+     VALUES ('1b000000-0000-4000-8000-0000000000b1', '1d000000-0000-4000-8000-0000000000b1', ?, ?, 347, \
+     '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+    "INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, plainTextLength, \
+     lastModified, createdAt, updatedAt) \
+     VALUES ('1c000000-0000-4000-8000-0000000000b1', '1d000000-0000-4000-8000-0000000000b1', ?, \
+     'Inventory/Compass.json', 'Compass.json', 347, '2026-03-01T00:00:00.000Z', \
+     '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+];
+
+fn plant_inventory(db: &Db) {
+    db.write_blocking(|w| {
+        let main = w.main().connection();
+        for sql in INVENTORY_PLANT_MAIN_SQL {
+            assert_eq!(
+                main.execute(sql, [])?,
+                1,
+                "inventory plant changed nothing: {sql}"
+            );
+        }
+        let vault: String = main.query_row(INVENTORY_PLANT_VAULT_SQL, [], |r| r.get(0))?;
+        let mount = w
+            .mount_index()
+            .expect("fixture has a mount partition")
+            .connection();
+        mount.execute(INVENTORY_PLANT_MOUNT_SQL[0], [INVENTORY_PLANT_SHA])?;
+        mount.execute(
+            INVENTORY_PLANT_MOUNT_SQL[1],
+            [INVENTORY_PLANT_CONTENT, INVENTORY_PLANT_SHA],
+        )?;
+        mount.execute(INVENTORY_PLANT_MOUNT_SQL[2], [vault.as_str()])?;
+        Ok(())
+    })
+    .expect("plant the Inventory carriage on the fixture copy");
+}
+// === end P4.D327 ===
+
 /// [P4.D317] The oracle's `HISTORY_PLANT_ROWS` + `HISTORY_PRE_HAIR_SQL`, cell
 /// for cell: the five rows through the keystone's `upsert_raw_rows` (v4's
 /// `upsertRows` semantics — the hash RECOMPUTED), then the same raw pre-hair
@@ -905,7 +963,8 @@ fn system_backup_equivalence() {
             || name == "backup_with_wardrobe_wear"
             || name == "backup_with_memory_carriers"
             || name == "backup_cursor_read_fails"
-            || name == "backup_with_wardrobe_history";
+            || name == "backup_with_wardrobe_history"
+            || name == "backup_with_inventory";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the four derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -936,6 +995,9 @@ fn system_backup_equivalence() {
         }
         if name == "backup_with_wardrobe_history" {
             plant_wardrobe_history(&db);
+        }
+        if name == "backup_with_inventory" {
+            plant_inventory(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the
@@ -1063,6 +1125,33 @@ fn system_backup_equivalence() {
             Value::from(want_rows),
             "[{name}] the manifest's wardrobeWear count"
         );
+
+        // [P4.D327] The Log is not carried (vendor survey §E.5.2 — v4's
+        // `createBackup` reads no `log_entries` at the pin): no staged file
+        // names it, on any case. And non-vacuity for the Inventory plant: the
+        // staged files carry the object document, its link, the carried set
+        // and the flag (the tree diff below compares the bytes to v4's).
+        for rel in walk(&staging) {
+            assert!(
+                !rel.contains("log-entries") && !rel.contains("log_entries"),
+                "[{name}] a backup staged a Log file: {rel}"
+            );
+        }
+        if name == "backup_with_inventory" {
+            for (file, needle) in [
+                ("data/chats.json", "1e000000-0000-4000-8000-0000000000b1"),
+                ("data/files.json", "1e000000-0000-4000-8000-0000000000b1"),
+                (
+                    "data/doc-mount-documents.json",
+                    "1e000000-0000-4000-8000-0000000000b1",
+                ),
+                ("data/doc-mount-file-links.json", "Inventory/Compass.json"),
+                ("data/characters.json", "\"canManageInventory\": true"),
+            ] {
+                let text = std::fs::read_to_string(staging.join(file)).expect("staged file");
+                assert!(text.contains(needle), "[{name}] {file} lacks {needle}");
+            }
+        }
 
         // P4.149 (Ruling R-C) — non-vacuity for the plant: the clone IS in the
         // table, and NOT in the staged `data/connection-profiles.json` (v4's

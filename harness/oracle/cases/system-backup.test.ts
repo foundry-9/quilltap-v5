@@ -203,6 +203,8 @@ interface CaseSpec {
    * `BACKUP_ABSENT_HISTORY_TABLE`).
    */
   withoutHistoryTable?: boolean;
+  /** [P4.D327] `INVENTORY_PLANT_*`: an object file, its picture link, a carried set, a flag. */
+  plantInventory?: boolean;
 }
 
 /**
@@ -356,6 +358,64 @@ const WEAR_PLANT_ROWS = [
     updatedAt: '2026-03-04T00:00:00.000Z',
   },
 ];
+
+// === P4.D327 — the Inventory carriage plant (v4 `4fbdad186` / `e1872c94f`) ===
+/**
+ * [P4.D327] v4's backup has NO Inventory hunk (`backup-service.ts` unmoved in
+ * the span): the Inventory rides rows the backup already carries. So this is a
+ * CARRIAGE proof, planted with the same SQL on both sides (fixed ids and
+ * stamps — the family compares the archive byte for byte and has no id
+ * normaliser, so a writer-minted plant could not line up): one object file in
+ * Lorian's vault (`doc_mount_files` + `doc_mount_documents` +
+ * `doc_mount_file_links`, the `.json` the keystone writer would project), the
+ * user file's `linkedTo` gaining the object id, the first chat's
+ * `equippedInventory` carrying it for Lorian, Lorian's `canManageInventory = 1`.
+ * The Rust family runs the identical statements (`plant_inventory`).
+ */
+const INVENTORY_PLANT_OBJECT = '1e000000-0000-4000-8000-0000000000b1';
+const INVENTORY_PLANT_CONTENT =
+  '{\n  "id": "1e000000-0000-4000-8000-0000000000b1",\n  "kind": "item",\n  "name": "compass",\n' +
+  '  "title": "Compass",\n  "equippedByDefault": false,\n  "maxEquipped": 1,\n  "canCopy": false,\n' +
+  '  "isArchetype": false,\n  "parentId": null,\n  "itemIds": [],\n  "metadata": {},\n' +
+  '  "createdAt": "2026-03-01T00:00:00.000Z",\n  "updatedAt": "2026-03-01T00:00:00.000Z"\n}\n';
+const INVENTORY_PLANT_SHA = '64c6f9459fdc660abc8681404380f829f27660673ed53429a076dd485911036e';
+const INVENTORY_PLANT_MAIN_SQL = [
+  "UPDATE characters SET canManageInventory = 1 WHERE name = 'Lorian'",
+  "UPDATE chats SET equippedInventory = json_object((SELECT id FROM characters WHERE name = 'Lorian'), " +
+    "json_array('1e000000-0000-4000-8000-0000000000b1')) WHERE id = (SELECT MIN(id) FROM chats)",
+  "UPDATE files SET linkedTo = json_insert(COALESCE(linkedTo, '[]'), '$[#]', " +
+    "'1e000000-0000-4000-8000-0000000000b1') WHERE id = (SELECT MIN(id) FROM files)",
+];
+const INVENTORY_PLANT_VAULT_SQL = "SELECT characterDocumentMountPointId AS v FROM characters WHERE name = 'Lorian'";
+const INVENTORY_PLANT_MOUNT_SQL = [
+  'INSERT INTO doc_mount_files (id, sha256, fileSizeBytes, fileType, source, createdAt, updatedAt) ' +
+    "VALUES ('1d000000-0000-4000-8000-0000000000b1', ?, 347, 'json', 'database', " +
+    "'2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+  'INSERT INTO doc_mount_documents (id, fileId, content, contentSha256, plainTextLength, createdAt, updatedAt) ' +
+    "VALUES ('1b000000-0000-4000-8000-0000000000b1', '1d000000-0000-4000-8000-0000000000b1', ?, ?, 347, " +
+    "'2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+  'INSERT INTO doc_mount_file_links (id, fileId, mountPointId, relativePath, fileName, plainTextLength, ' +
+    'lastModified, createdAt, updatedAt) ' +
+    "VALUES ('1c000000-0000-4000-8000-0000000000b1', '1d000000-0000-4000-8000-0000000000b1', ?, " +
+    "'Inventory/Compass.json', 'Compass.json', 347, '2026-03-01T00:00:00.000Z', " +
+    "'2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z')",
+];
+
+async function plantInventory(): Promise<void> {
+  const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+  const { getRawMountIndexDatabase } = await import('@/lib/database/backends/sqlite/mount-index-client');
+  const main = getRawDatabase()!;
+  for (const sql of INVENTORY_PLANT_MAIN_SQL) {
+    if (main.prepare(sql).run().changes !== 1) throw new Error(`inventory plant changed nothing: ${sql}`);
+  }
+  const vault = (main.prepare(INVENTORY_PLANT_VAULT_SQL).get() as { v: string }).v;
+  const mount = getRawMountIndexDatabase()!;
+  mount.prepare(INVENTORY_PLANT_MOUNT_SQL[0]).run(INVENTORY_PLANT_SHA);
+  mount.prepare(INVENTORY_PLANT_MOUNT_SQL[1]).run(INVENTORY_PLANT_CONTENT, INVENTORY_PLANT_SHA);
+  mount.prepare(INVENTORY_PLANT_MOUNT_SQL[2]).run(vault);
+  if (!INVENTORY_PLANT_CONTENT.includes(INVENTORY_PLANT_OBJECT)) throw new Error('inventory plant content');
+}
+// === end P4.D327 ===
 
 async function plantWardrobeWear(): Promise<void> {
   const { rawQuery } = await import('@/lib/database/manager');
@@ -551,6 +611,10 @@ const CASES: CaseSpec[] = [
   { name: 'backup_with_wardrobe_history', seedFileBytes: true, plantWardrobeHistory: true },
   // [P4.D317 R-J] no table at all: v4 throws (`BACKUP_ABSENT_HISTORY_TABLE`).
   { name: 'backup_absent_history_table', seedFileBytes: true, withoutHistoryTable: true },
+  // [P4.D327] the Inventory's carriage (`plantInventory`): the object document,
+  // its link, the picture's `linkedTo`, the carried set and the flag ride the
+  // existing data files — no new archive file, no new count, no `log_entries`.
+  { name: 'backup_with_inventory', seedFileBytes: true, plantInventory: true },
 ];
 
 async function runCase(
@@ -604,6 +668,7 @@ async function runCase(
   if (c.plantWardrobeWear) await plantWardrobeWear();
   if (c.plantMemoryCarriers) await plantMemoryCarriers();
   if (c.plantThrowingCursors) await plantThrowingCursors();
+  if (c.plantInventory) await plantInventory();
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {
