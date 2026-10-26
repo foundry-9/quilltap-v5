@@ -145,6 +145,8 @@ use quilltap_core::services::provider_failover::{
     FailoverLogCtx, RouteResult, TextUnderstudy,
 };
 use quilltap_core::services::recovery::{self, RecoveryContext};
+use quilltap_core::services::turn_control;
+use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -241,6 +243,9 @@ struct AttachedFileW {
 struct CallW {
     name: String,
     kind: String,
+    /// P4.D335 (v4 `2b5e8ee24`): the operator hard-stopped this turn.
+    #[serde(default)]
+    turn_stopped: bool,
     #[serde(default)]
     chat_id: Option<String>,
     #[serde(default)]
@@ -863,6 +868,8 @@ fn normalize_result_ids(result: &mut Value, id_map: &mut HashMap<String, String>
 
 #[tokio::test]
 async fn primary_stream_tier3_matches_oracle() {
+    // P4.D335: the skip INFO is captured through the process-global rig.
+    global_capture::install();
     let oracle_path = match std::env::var("QT_ORACLE_PRIMARY_STREAM") {
         Ok(p) => p,
         Err(_) => {
@@ -889,6 +896,8 @@ async fn primary_stream_tier3_matches_oracle() {
 
     let mut oracle_results: Vec<(String, Value)> = Vec::new();
     let mut oracle_events: HashMap<String, Value> = HashMap::new();
+    // P4.D335: v4's `Skipping empty-response recovery…` INFO, per call.
+    let mut oracle_skip_logs: HashMap<String, Value> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
@@ -906,6 +915,10 @@ async fn primary_stream_tier3_matches_oracle() {
             }
             Some("events") => {
                 oracle_events.insert(v["call"].as_str().unwrap().to_string(), v["events"].clone());
+            }
+            Some("skipLog") => {
+                oracle_skip_logs
+                    .insert(v["call"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
             Some("table") => {
@@ -1142,6 +1155,7 @@ async fn primary_stream_tier3_matches_oracle() {
     let mut result_pairs: Vec<(String, Value, Value)> = Vec::new();
     let mut event_pairs: Vec<(String, Value, Value)> = Vec::new();
 
+    let mut skips_seen = 0usize;
     for (call, (oracle_name, oracle_result)) in spec.calls.iter().zip(oracle_results.into_iter()) {
         assert_eq!(call.name, oracle_name, "call order mismatch");
         let name = call.name.clone();
@@ -1291,9 +1305,19 @@ async fn primary_stream_tier3_matches_oracle() {
             }
             "failover" => {
                 let marker = call.original_message.clone().unwrap_or_default();
+                // P4.D335: a stopped turn's registration (v4's mock answers
+                // `isCurrentTurnStopped()` true for the call).
+                let registration = call
+                    .turn_stopped
+                    .then(|| turn_control::register_active_turn(call.chat_id.as_deref().unwrap()));
+                if let Some(r) = &registration {
+                    turn_control::stop_active_turns(r.chat_id(), Some(std::time::Duration::ZERO))
+                        .await;
+                }
                 let mut state = StreamingState {
                     effective_profile: Some(primary_of(&spec, call).to_effective()),
                     effective_api_key: "primary-key".into(),
+                    turn_control: registration.as_ref().map(|r| r.handle()),
                     ..Default::default()
                 };
                 let opts = AttemptEmptyResponseRecoveryOptions {
@@ -1335,33 +1359,59 @@ async fn primary_stream_tier3_matches_oracle() {
                 // `provider_failover` had said so all along.)
                 let msg_id = call.pre_generated_message_id.clone().unwrap();
                 let log_ctx = quilltap_core::services::llm_logging::LogContext::none();
-                let flags = provider_failover::attempt_empty_response_recovery::<
-                    _,
-                    _,
-                    _,
-                    _,
-                    quilltap_core::model::completion::CannedCompletionProvider,
-                >(
-                    &provider,
-                    &sink,
-                    &router,
-                    Some(&fallback_repos),
-                    // The reroute's attachment re-decide (v4 `a1d88aa3a`, bug
-                    // 106) is exercised by `file_attachment_tier3`'s (E) family,
-                    // over the fixture that HAS a describer and image bytes.
-                    // This family's arrays carry no attachments at all, so the
-                    // adapter would answer "unchanged" for every case here;
-                    // `None` is v4's own falsy-`repos` arm and keeps the canned
-                    // router (which has no profile row to hand over) honest.
-                    None,
-                    opts,
-                    Some(FailoverLogCtx {
-                        db: &db,
-                        message_id: &msg_id,
-                        log_context: &log_ctx,
-                    }),
+                let (flags, lines) = global_capture::capture_async(
+                    provider_failover::attempt_empty_response_recovery::<
+                        _,
+                        _,
+                        _,
+                        _,
+                        quilltap_core::model::completion::CannedCompletionProvider,
+                    >(
+                        &provider,
+                        &sink,
+                        &router,
+                        Some(&fallback_repos),
+                        // The reroute's attachment re-decide (v4 `a1d88aa3a`, bug
+                        // 106) is exercised by `file_attachment_tier3`'s (E) family,
+                        // over the fixture that HAS a describer and image bytes.
+                        // This family's arrays carry no attachments at all, so the
+                        // adapter would answer "unchanged" for every case here;
+                        // `None` is v4's own falsy-`repos` arm and keeps the canned
+                        // router (which has no profile row to hand over) honest.
+                        None,
+                        opts,
+                        Some(FailoverLogCtx {
+                            db: &db,
+                            message_id: &msg_id,
+                            log_context: &log_ctx,
+                        }),
+                    ),
                 )
                 .await;
+                // P4.D335: the skip INFO (v4's bag: `chatId`), its silence leg on
+                // every other failover call.
+                let want_skip: Vec<String> = oracle_skip_logs
+                    .get(&call.name)
+                    .unwrap_or_else(|| panic!("oracle skipLog missing for {}", call.name))
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|l| {
+                        format!(
+                            "INFO quilltap::failover {} chat_id={}",
+                            l["message"].as_str().unwrap(),
+                            l["context"]["chatId"].as_str().unwrap()
+                        )
+                    })
+                    .collect();
+                let got_skip: Vec<String> = lines
+                    .iter()
+                    .filter(|l| l.contains("Skipping empty-response recovery"))
+                    .cloned()
+                    .collect();
+                assert_eq!(got_skip, want_skip, "{}: the stop's skip INFO", call.name);
+                skips_seen += want_skip.len();
+                drop(registration);
                 json!({
                     "uncensoredRetryAttempted": flags.uncensored_retry_attempted,
                     "sameProviderRetryAttempted": flags.same_provider_retry_attempted,
@@ -1566,6 +1616,10 @@ async fn primary_stream_tier3_matches_oracle() {
         }
         result_pairs.push((name, got_result, oracle_result));
     }
+    assert_eq!(
+        skips_seen, 1,
+        "exactly `empty_stopped_skips_recovery` skips at the stop"
+    );
 
     // Now dump the tables.
     let mut got_msgs = db

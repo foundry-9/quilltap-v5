@@ -43,6 +43,9 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use quilltap_core::services::turn_control;
+use quilltap_core::test_support::global_capture;
+
 use quilltap_core::model::completion::{CompletionMessage, CompletionRole};
 use quilltap_core::model::stream::{
     canned_stream_key, StreamChunk, StreamChunkResult, StreamError, StreamParams, StreamUsage,
@@ -147,6 +150,9 @@ struct ChunkW {
     thought_signature: Option<String>,
     #[serde(default)]
     error: Option<String>,
+    /// P4.D335: the operator's stop lands right after this chunk is read.
+    #[serde(rename = "stopTurn", default)]
+    stop_turn: bool,
 }
 
 #[derive(Deserialize, Clone, Copy)]
@@ -175,8 +181,14 @@ fn spec_path() -> PathBuf {
 // Stateful canned streaming provider (per-key queue + stop recording).
 // ---------------------------------------------------------------------------
 
+/// One queued canned sequence and its P4.D335 `stopTurn` flag.
+type QueuedSequence = (Vec<StreamChunkResult>, bool);
+
 struct QueuedStreamingProvider {
-    queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    /// Per key, the queued sequences — each with its P4.D335 `stopTurn` flag.
+    queues: Mutex<HashMap<String, std::collections::VecDeque<QueuedSequence>>>,
+    /// P4.D335: the chat the current case's turn is registered under.
+    current_chat: Mutex<String>,
     /// Stop sequences forwarded on each stream call, in call order (proves the
     /// engine forwards `strategy.stop_sequences()` to the continuation).
     stops: Mutex<Vec<Vec<String>>>,
@@ -184,7 +196,7 @@ struct QueuedStreamingProvider {
 
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedRowW]) -> Self {
-        let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
+        let mut queues: HashMap<String, std::collections::VecDeque<QueuedSequence>> =
             HashMap::new();
         for row in rows {
             let messages: Vec<CompletionMessage> = row
@@ -199,12 +211,16 @@ impl QueuedStreamingProvider {
             let key = canned_stream_key(&row.provider, &row.model, row.temperature, &messages);
             let q = queues.entry(key).or_default();
             for seq in &row.sequences {
-                q.push_back(seq.iter().map(chunk_to_result).collect());
+                q.push_back((
+                    seq.iter().map(chunk_to_result).collect(),
+                    seq.iter().any(|c| c.stop_turn),
+                ));
             }
         }
         Self {
             queues: Mutex::new(queues),
             stops: Mutex::new(Vec::new()),
+            current_chat: Mutex::new(String::new()),
         }
     }
 
@@ -252,22 +268,38 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             params.temperature,
             &params.messages,
         );
-        let sequence: Vec<StreamChunkResult> = {
+        let chat = self.current_chat.lock().unwrap().clone();
+        let (sequence, stop_turn): (Vec<StreamChunkResult>, bool) = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some(seq) => seq,
-                None => vec![Err(StreamError::new(format!(
-                    "no canned stream queued for key ({provider}, model {}, temperature {:?}, {} msgs)",
-                    params.model,
-                    params.temperature,
-                    params.messages.len(),
-                )))],
+                None => (
+                    vec![Err(StreamError::new(format!(
+                        "no canned stream queued for key ({provider}, model {}, temperature {:?}, {} msgs)",
+                        params.model,
+                        params.temperature,
+                        params.messages.len(),
+                    )))],
+                    false,
+                ),
             }
         };
         async move {
             let (tx, rx) = tokio::sync::mpsc::channel(sequence.len().max(1));
             for item in sequence {
                 let _ = tx.send(item).await;
+            }
+            if stop_turn {
+                // P4.D335: v4's mock aborts the turn when the consumer pulls
+                // past the flagged chunk. Twin: hold the sender (the channel
+                // stays open), wait until every item was READ, then stop.
+                tokio::spawn(async move {
+                    while tx.capacity() < tx.max_capacity() {
+                        tokio::task::yield_now().await;
+                    }
+                    turn_control::stop_active_turns(&chat, Some(std::time::Duration::ZERO)).await;
+                    drop(tx);
+                });
             }
             rx
         }
@@ -311,6 +343,8 @@ fn tool_message_value(m: &ToolMessage) -> Value {
 
 #[tokio::test]
 async fn text_tool_loop_tier3_matches_oracle() {
+    // P4.D335: the halt INFO is captured through the process-global rig.
+    global_capture::install();
     let Ok(oracle_path) = std::env::var("QT_ORACLE_TEXT_TOOL_LOOP") else {
         eprintln!("SKIP: set QT_ORACLE_TEXT_TOOL_LOOP to the oracle NDJSON (see header).");
         return;
@@ -328,6 +362,8 @@ async fn text_tool_loop_tier3_matches_oracle() {
     let mut oracle_stops: HashMap<String, Value> = HashMap::new();
     let mut oracle_canned: Vec<CannedRowW> = Vec::new();
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
+    // P4.D335: v4's `Text tool loop halted…` INFO, per case.
+    let mut oracle_halt_logs: HashMap<String, Value> = HashMap::new();
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
         let v: Value = serde_json::from_str(line).expect("parse oracle line");
         match v.get("kind").and_then(Value::as_str) {
@@ -336,6 +372,9 @@ async fn text_tool_loop_tier3_matches_oracle() {
             }
             Some("events") => {
                 oracle_events.insert(v["case"].as_str().unwrap().into(), v["events"].clone());
+            }
+            Some("haltLog") => {
+                oracle_halt_logs.insert(v["case"].as_str().unwrap().into(), v["lines"].clone());
             }
             Some("stops") => {
                 oracle_stops.insert(v["case"].as_str().unwrap().into(), v["stopPerCall"].clone());
@@ -378,6 +417,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
         }
     }
 
+    let mut halts_seen = 0usize;
     for c in &spec.cases {
         let sink = RecordingSink::new();
         let mut preserve = PreservePartialOnError::new(
@@ -466,7 +506,12 @@ async fn text_tool_loop_tier3_matches_oracle() {
         };
 
         let stops_start = provider.stops_len();
-        let result = run_text_tool_pass(
+        // P4.D335: every case runs under a registered turn (v4's oracle hands
+        // every case a live stop signal); only the c11 case fires it.
+        let registration = turn_control::register_active_turn(&c.chat_id);
+        state.turn_control = Some(registration.handle());
+        *provider.current_chat.lock().unwrap() = c.chat_id.clone();
+        let (result, lines) = global_capture::capture_async(run_text_tool_pass(
             &db,
             &provider,
             &sink,
@@ -489,8 +534,32 @@ async fn text_tool_loop_tier3_matches_oracle() {
                 generated_image_paths: &mut generated_image_paths,
                 log_context: quilltap_core::services::llm_logging::LogContext::none(),
             },
-        )
+        ))
         .await;
+        drop(registration);
+        // P4.D335: the loop-head halt line, v4's bag (`chatId`, `iterations`).
+        let want_halt: Vec<String> = oracle_halt_logs
+            .get(&c.name)
+            .unwrap_or_else(|| panic!("oracle haltLog missing for {}", c.name))
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| {
+                format!(
+                    "INFO quilltap::text_tool_loop {} chat_id={} iterations={}",
+                    l["message"].as_str().unwrap(),
+                    l["context"]["chatId"].as_str().unwrap(),
+                    l["context"]["iterations"]
+                )
+            })
+            .collect();
+        let got_halt: Vec<String> = lines
+            .iter()
+            .filter(|l| l.contains("Text tool loop halted"))
+            .cloned()
+            .collect();
+        assert_eq!(got_halt, want_halt, "{}: the loop-head halt INFO", c.name);
+        halts_seen += want_halt.len();
         let threw = result.is_err();
 
         let got_result = json!({
@@ -532,6 +601,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
             c.name
         );
     }
+    assert_eq!(halts_seen, 1, "exactly the c11 case halts at the loop head");
 
     // P4.121 (dogfood #129): each continuation leg's own CHAT_MESSAGE row,
     // byte-for-byte against v4's real `streamMessage` funnel — this segment's own

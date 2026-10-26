@@ -123,6 +123,9 @@ struct CallW {
     is_multi_character: bool,
     pre_generated_assistant_message_id: String,
     full_response: String,
+    /// P4.D335 (v4 `2b5e8ee24`): the operator hard-stopped this turn.
+    #[serde(default)]
+    turn_stopped: bool,
     usage: UsageW,
     reasoning_content: Option<String>,
     reasoning_segments: Vec<SegW>,
@@ -925,7 +928,7 @@ fn message_finalizer_tier3_matches_oracle() {
             // source. `[0]` reproduces the frozen 0.0 this family always pinned.
             draws: DrawSource::sequence(vec![0.0]),
             consult: None,
-            turn_stopped: false,
+            turn_stopped: call.turn_stopped,
         };
 
         let result = rt
@@ -1054,8 +1057,12 @@ fn message_finalizer_tier3_matches_oracle() {
                 ("USER".to_string(), None),
                 ("ASSISTANT".to_string(), None),
                 ("ASSISTANT".to_string(), Some("pascal".to_string())),
+                // P4.D335: `turn-stopped-trigger` (the same room, the same
+                // phrase) saves its reply and posts NO Pascal row (G1c).
+                ("ASSISTANT".to_string(), None),
             ],
-            "trigger-phrase-reply: the Pascal row lands after the saved reply"
+            "trigger-phrase-reply: the Pascal row lands after the saved reply; \
+             turn-stopped-trigger adds the reply alone"
         );
         let events = &got_events
             .iter()

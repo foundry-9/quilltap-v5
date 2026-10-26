@@ -587,6 +587,87 @@
         ]
       ],
       "dumpChats": false
+    },
+    {
+      "name": "stop-between-batches",
+      "chatId": "30000000-0000-4000-8000-000000000030",
+      "characterId": "20000000-0000-4000-8000-000000000002",
+      "characterName": "Ada",
+      "provider": "ANTHROPIC",
+      "model": "claude",
+      "temperature": 0.7,
+      "agentMode": {
+        "enabled": false,
+        "maxTurns": 10
+      },
+      "initialFullResponse": "Let me look. ",
+      "initialRawResponse": {
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call-1",
+            "name": "read_conversation",
+            "input": {
+              "limit": 5
+            }
+          }
+        ],
+        "stop_reason": "end_turn"
+      },
+      "formattedMessages": [
+        {
+          "role": "system",
+          "content": "You are Ada."
+        },
+        {
+          "role": "user",
+          "content": "How many messages?"
+        }
+      ],
+      "cannedTools": [
+        {
+          "name": "read_conversation",
+          "arguments": {
+            "limit": 5
+          },
+          "callId": "call-1",
+          "success": true,
+          "result": {
+            "formattedText": "5 messages"
+          }
+        }
+      ],
+      "streams": [
+        [
+          {
+            "content": "Found it. One more look."
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "content": [
+                {
+                  "type": "tool_use",
+                  "id": "call-2",
+                  "name": "read_conversation",
+                  "input": {
+                    "limit": 9
+                  }
+                }
+              ],
+              "stop_reason": "tool_use"
+            },
+            "usage": {
+              "promptTokens": 10,
+              "completionTokens": 5,
+              "totalTokens": 15
+            },
+            "stopTurn": true
+          }
+        ]
+      ],
+      "dumpChats": false,
+      "_comment": "P4.D335 (v4 2b5e8ee24): the operator's stop lands right after the re-stream's done is read (`stopTurn` on that chunk). Its rawResponse asks for a SECOND batch, which the loop head refuses to start — 'Native tool loop halted: the operator stopped the turn' with toolIterations 1; call-2 is never executed."
     }
   ]
 }

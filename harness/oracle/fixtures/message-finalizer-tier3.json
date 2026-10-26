@@ -1124,6 +1124,103 @@
       "participantCharacters": [
         "c5000305-0000-4000-8000-0000000000c1"
       ]
+    },
+    {
+      "name": "turn-stopped-carina",
+      "chatId": "976a8015-b82b-40a8-8dde-43dfb4f1cd5b",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "a124f7db-0318-4764-9346-a3f81b1d2020",
+      "userParticipantId": "74173d67-8d32-4d82-8be3-b6565e9ebd3b",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "5a000001-0000-4000-8000-0000000d3350",
+      "fullResponse": "[Ada] Let me check.\n@Deputy: what is the time?",
+      "usage": {
+        "promptTokens": 20,
+        "completionTokens": 14,
+        "totalTokens": 34
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "carina": {
+        "characterName": "Deputy",
+        "whisper": false,
+        "answererParticipantId": "92624159-9d03-4f3c-9ac2-fb49c62d8c76",
+        "answererCharacterId": "9799010f-ae5d-41a3-8ad0-d4aca7df73c0",
+        "answererName": "Deputy",
+        "messageId": "9c74c19f-a9e8-4c11-9fc9-fb7cfb721879",
+        "answer": "It is high noon.",
+        "askerParticipantId": "a124f7db-0318-4764-9346-a3f81b1d2020"
+      },
+      "turnStopped": true
+    },
+    {
+      "name": "turn-stopped-rng",
+      "chatId": "f1000000-0000-4000-8000-000000000001",
+      "responderCharacter": "ee695fae-b7e4-4fad-a992-343214b5b4d5",
+      "responderParticipant": "f1000000-0000-4000-8000-0000000000b1",
+      "userParticipantId": "f1000000-0000-4000-8000-0000000000a1",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "5a000002-0000-4000-8000-0000000d3350",
+      "fullResponse": "You take 2d6 damage now.",
+      "usage": {
+        "promptTokens": 30,
+        "completionTokens": 8,
+        "totalTokens": 38
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "ee695fae-b7e4-4fad-a992-343214b5b4d5"
+      ],
+      "turnStopped": true
+    },
+    {
+      "name": "turn-stopped-trigger",
+      "chatId": "f5000305-0000-4000-8000-000000000305",
+      "responderCharacter": "c5000305-0000-4000-8000-0000000000c1",
+      "responderParticipant": "f5030501-0000-4000-8000-0000000000c1",
+      "userParticipantId": "f5030502-0000-4000-8000-0000000000ff",
+      "isMultiCharacter": false,
+      "preGeneratedAssistantMessageId": "5a000003-0000-4000-8000-0000000d3350",
+      "fullResponse": "[Chime] Very well — I ring the brass bell.",
+      "usage": {
+        "promptTokens": 40,
+        "completionTokens": 12,
+        "totalTokens": 52
+      },
+      "reasoningContent": null,
+      "reasoningSegments": [],
+      "normalizeRewroteBody": false,
+      "generatedImageIds": [],
+      "compression": {
+        "enabled": false,
+        "selection": false,
+        "systemPrompt": false
+      },
+      "chatSettings": true,
+      "participantCharacters": [
+        "c5000305-0000-4000-8000-0000000000c1"
+      ],
+      "turnStopped": true
     }
   ],
   "randomBytes": [

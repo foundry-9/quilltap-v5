@@ -2618,6 +2618,228 @@
      }
     }
    ]
+  },
+  {
+   "id": "d3350001-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350100-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350101-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350199-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350101-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350002-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350200-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350201-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350299-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350201-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350003-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350300-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350301-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350302-0000-4000-8000-00000000d335",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350399-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350301-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350004-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350400-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350401-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350499-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350401-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350005-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350500-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350501-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350599-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350501-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350006-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350600-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350601-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350699-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350601-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350007-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350700-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350701-0000-4000-8000-00000000d335",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350799-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350700-0000-4000-8000-00000000d335"
+    }
+   ]
+  },
+  {
+   "id": "d3350008-0000-4000-8000-00000000d335",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d3350800-0000-4000-8000-00000000d335",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d3350801-0000-4000-8000-00000000d335",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d3350899-0000-4000-8000-00000000d335",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d3350801-0000-4000-8000-00000000d335"
+    }
+   ]
   }
  ],
  "calls": [
@@ -3702,6 +3924,94 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
+  },
+  {
+   "name": "interrupt_yield_bare",
+   "kind": "chain",
+   "chatId": "d3350001-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_yield_bare",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350100-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_yield_with_words",
+   "kind": "chain",
+   "chatId": "d3350002-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_yield_with_words",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350200-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_yield_and_skip_both",
+   "kind": "chain",
+   "chatId": "d3350003-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_yield_and_skip_both",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350300-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_decline",
+   "kind": "chain",
+   "chatId": "d3350004-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_decline",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350400-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_stop_prose_streamed",
+   "kind": "chain",
+   "chatId": "d3350005-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_prose_streamed",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350500-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_stop_before_first_chunk",
+   "kind": "chain",
+   "chatId": "d3350006-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_before_first_chunk",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350600-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_stop_single_character",
+   "kind": "chain",
+   "chatId": "d3350007-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_single_character",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350700-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_stop_chained_turn",
+   "kind": "chain",
+   "chatId": "d3350008-0000-4000-8000-00000000d335",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_chained_turn",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d3350800-0000-4000-8000-00000000d335"
   }
  ],
  "streams": {
@@ -5524,6 +5834,259 @@
       "promptTokens": 62,
       "completionTokens": 4,
       "totalTokens": 66
+     }
+    }
+   ]
+  ],
+  "interrupt_yield_bare": [
+   [
+    {
+     "content": "Friday clears her throat."
+    },
+    {
+     "raiseHand": true
+    },
+    {
+     "content": " Then she pauses."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ],
+   [
+    {
+     "content": "[YIELD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 2,
+      "totalTokens": 62
+     }
+    }
+   ]
+  ],
+  "interrupt_yield_with_words": [
+   [
+    {
+     "raiseHand": true
+    },
+    {
+     "content": "Friday sets down her cup."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 6,
+      "totalTokens": 46
+     }
+    }
+   ],
+   [
+    {
+     "content": "\"After you, my dear.\"\n\n[YIELD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 7,
+      "totalTokens": 67
+     }
+    }
+   ]
+  ],
+  "interrupt_yield_and_skip_both": [
+   [
+    {
+     "raiseHand": true
+    },
+    {
+     "content": "Friday glances toward the back of the room."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 8,
+      "totalTokens": 48
+     }
+    }
+   ],
+   [
+    {
+     "content": "[YIELD]\n[NOTHING TO ADD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 70,
+      "completionTokens": 5,
+      "totalTokens": 75
+     }
+    }
+   ]
+  ],
+  "interrupt_decline": [
+   [
+    {
+     "raiseHand": true
+    },
+    {
+     "content": "Friday raises an eyebrow."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 5,
+      "totalTokens": 45
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves carries on regardless."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 5,
+      "totalTokens": 65
+     }
+    }
+   ],
+   [
+    {
+     "content": "Friday answers him."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 62,
+      "completionTokens": 4,
+      "totalTokens": 66
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves concludes."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 64,
+      "completionTokens": 3,
+      "totalTokens": 67
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_prose_streamed": [
+   [
+    {
+     "reasoning": "Pondering the dice."
+    },
+    {
+     "content": "I roll [1d20] and "
+    },
+    {
+     "content": "the room holds its breath"
+    },
+    {
+     "latch": "stop"
+    },
+    {
+     "content": " never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 12,
+      "totalTokens": 52
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_before_first_chunk": [
+   [
+    {
+     "latch": "stop"
+    },
+    {
+     "content": "never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 2,
+      "totalTokens": 42
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_single_character": [
+   [
+    {
+     "content": "Alone at the window, Friday "
+    },
+    {
+     "latch": "stop"
+    },
+    {
+     "content": " never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 6,
+      "totalTokens": 46
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_chained_turn": [
+   [
+    {
+     "content": "Friday makes her point."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 5,
+      "totalTokens": 45
+     }
+    }
+   ],
+   [
+    {
+     "content": "Jeeves begins to "
+    },
+    {
+     "latch": "stop"
+    },
+    {
+     "content": " never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 5,
+      "totalTokens": 65
      }
     }
    ]

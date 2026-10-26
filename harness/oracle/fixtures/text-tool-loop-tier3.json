@@ -626,6 +626,55 @@
           }
         ]
       ]
+    },
+    {
+      "name": "c11_stop_between_iterations",
+      "chatId": "31000000-0000-4000-8000-000000000011",
+      "characterId": "21000000-0000-4000-8000-000000000001",
+      "characterName": "Friday",
+      "provider": "ANTHROPIC",
+      "model": "m",
+      "temperature": 0.7,
+      "strategy": "simple-json",
+      "initialFullResponse": "Let me check.\n<tool_call>{\"name\": \"state\", \"arguments\": {\"key\": \"mood\"}}</tool_call>",
+      "formattedMessages": [
+        {
+          "role": "user",
+          "content": "hi c11"
+        }
+      ],
+      "cannedTools": [
+        {
+          "name": "state",
+          "arguments": {
+            "key": "mood"
+          },
+          "success": true,
+          "result": {
+            "mood": "curious"
+          }
+        }
+      ],
+      "streams": [
+        [
+          {
+            "content": " Now the weather.\n<tool_call>{\"name\": \"state\", \"arguments\": {\"key\": \"weather\"}}</tool_call>"
+          },
+          {
+            "done": true,
+            "rawResponse": {
+              "marker": "fin11"
+            },
+            "usage": {
+              "promptTokens": 6,
+              "completionTokens": 9,
+              "totalTokens": 15
+            },
+            "stopTurn": true
+          }
+        ]
+      ],
+      "_comment": "P4.D335 (v4 2b5e8ee24): the operator's stop lands right after the continuation's done is read (`stopTurn`). The continuation streamed a SECOND tool block; the loop head refuses it — 'Text tool loop halted: the operator stopped the turn' with iterations 1; the weather call never runs."
     }
   ]
 }

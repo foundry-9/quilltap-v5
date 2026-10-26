@@ -85,6 +85,12 @@ function canonicalizeRows(opts: {
 }
 
 interface ChunkSpec {
+  /** P4.D335 (v4 `2b5e8ee24`): the operator raises a hand at this point of the
+   *  stream (the REAL `setHandRaised` on the open turn). */
+  raiseHand?: boolean;
+  /** P4.D335: the operator presses Stop here — the REAL `handleStopTurn` (the
+   *  pause write, then the abort) — and the provider goes silent forever. */
+  latch?: 'stop';
   content?: string;
   reasoning?: string;
   done?: boolean;
@@ -229,6 +235,12 @@ async function main(): Promise<void> {
   // The current call's stream label (steered per-call so the streamMessage mock
   // pops the right attempt sequence).
   let currentLabel: string | undefined;
+  // P4.D335: the current call's chat, the interrupt actions fired mid-stream,
+  // and the repos the stop action reads (bound once the database is up).
+  let currentChatId: string | undefined;
+  let interruptRaises: number[] = [];
+  let interruptStops: Array<Promise<unknown>> = [];
+  let interruptRepos: unknown = null;
   // P4.133: the API key each `streamMessage` call of the current case received.
   let currentStreamKeys: string[] = [];
   // The current call's RNG byte stream (steered per-call for the crypto.randomBytes
@@ -378,6 +390,26 @@ async function main(): Promise<void> {
           else cannedStreams.set(key, { provider, model, temperature, messages, tools: toolsAtWire, modelParams: modelParamsAtWire, sampling: samplingAtWire, attachments: attachmentsAtWire, previousResponseId: previousResponseIdAtWire, stop: stopAtWire, cacheKey: cacheKeyAtWire, sequences: [chunks] });
 
           for (const chunk of chunks) {
+            if (chunk.raiseHand) {
+              // P4.D335: the REAL registry, reached the way the action reaches it.
+              const { setHandRaised } = await import('@/lib/chat/turn-control');
+              interruptRaises.push(setHandRaised(currentChatId as string, true));
+              continue;
+            }
+            if (chunk.latch === 'stop') {
+              // P4.D335: the REAL action — the pause write, then the abort. Not
+              // awaited (it waits for the stream to settle); the provider then
+              // goes silent, as a socket mid-reply would.
+              const { handleStopTurn } = await import('@/app/api/v1/chats/[id]/actions/interrupt');
+              const repos = interruptRepos as { chats: { findById: (id: string) => Promise<unknown> } };
+              const chat = await repos.chats.findById(currentChatId as string);
+              interruptStops.push(
+                handleStopTurn(currentChatId as string, chat as never, { repos } as never).then((r) =>
+                  r.json(),
+                ),
+              );
+              await new Promise(() => {});
+            }
             if (chunk.error) throw new Error(chunk.error);
             if (chunk.reasoning) {
               yield { reasoningContent: chunk.reasoning };
@@ -718,6 +750,40 @@ async function main(): Promise<void> {
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { handleSendMessage } = await import('@/lib/services/chat-message/orchestrator.service');
 
+  // P4.D335: the interrupt lines (v4 `2b5e8ee24`), INFO and DEBUG, off the
+  // `Logger` prototype (before the level check). The `[TurnControl]` /
+  // `[Interrupt]` lines are the registry's and the action's families'.
+  const INTERRUPT_MESSAGES = new Set([
+    '[TurnYield] Asking the next speaker whether to yield to the raised hand',
+    '[TurnYield] Offering the yield note to the next speaker',
+    '[TurnYield] Character yielded the floor to the raised hand',
+    '[TurnYield] Character carried on past the raised hand',
+    '[TurnYield] Bare yield closed without a reply',
+    '[TurnStop] Turn stopped by the operator; keeping what streamed',
+    '[TurnOrchestrator] Chain stopped: the floor was yielded to the operator',
+    '[TurnOrchestrator] Chain stopped: the operator stopped the turn',
+    "[LLMStream] Abandoned a provider stream at the operator's stop",
+    'Skipping empty-response recovery: the operator stopped the turn',
+  ]);
+  let interruptLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['info', 'debug'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (INTERRUPT_MESSAGES.has(message)) {
+          interruptLines.push({ level, message, context: context ?? null });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+  }
+
   // P4.114: the Salon's `Injected tool change notification` INFO
   // (`orchestrator.service.ts:1329`), recorded off the `Logger` prototype
   // (singleton and children alike, before the level check) — the
@@ -882,8 +948,22 @@ async function main(): Promise<void> {
 
   const lines: string[] = [];
 
+  // P4.D335: `QT_ORCH_CALLS` (comma-separated call names) runs a SUBSET — the
+  // Rust side honours the same variable, so the whole-run dumps (tables, the
+  // llm_logs rows) cover exactly the same calls. Unset = every call.
+  const onlyCalls = process.env.QT_ORCH_CALLS
+    ? new Set(process.env.QT_ORCH_CALLS.split(',').map((s) => s.trim()).filter(Boolean))
+    : null;
+  // …and `QT_ORCH_SKIP_CALLS` the complement (a sibling's red calls left out).
+  const skipCalls = new Set(
+    (process.env.QT_ORCH_SKIP_CALLS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
+  );
   for (const call of spec.calls) {
+    if (onlyCalls && !onlyCalls.has(call.name)) continue;
+    if (skipCalls.has(call.name)) continue;
     currentLabel = call.streamLabel;
+    currentChatId = call.chatId;
+    interruptRepos = repos;
     currentRngBytes = call.rngBytes ?? [];
     rngCursor = 0;
     // P4.87: this case's draws, from index 0. `[0]` is the pre-rotation freeze.
@@ -961,6 +1041,14 @@ async function main(): Promise<void> {
         JSON.stringify({ kind: 'threw', call: call.name, message: err instanceof Error ? err.message : String(err) })
       );
     }
+    // P4.D335: the stop action resolves once the send settled (its registry
+    // entry unregisters when `handleSendMessage`'s stream body finishes).
+    const stops = await Promise.all(interruptStops);
+    lines.push(JSON.stringify({ kind: 'interrupts', call: call.name, raises: interruptRaises, stops }));
+    lines.push(JSON.stringify({ kind: 'interruptLog', call: call.name, lines: interruptLines }));
+    interruptRaises = [];
+    interruptStops = [];
+    interruptLines = [];
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events, threw }));
     lines.push(JSON.stringify({ kind: 'toolChangeLog', call: call.name, lines: toolChangeLines }));
     lines.push(

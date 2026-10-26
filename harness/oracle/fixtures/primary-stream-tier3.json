@@ -2034,6 +2034,21 @@
       ],
       "originalMessage": "[Bob] what is the news tonight",
       "comment": "P4.128: the family's first multi-character chat (two seats, an OPENAI primary). v4's funnel hashes the history's participant `name` into `historyTailHash` (`cache-prefix-hashes.ts:80`); no plugin sends it. RED on the llm_logs row's `requestHashes` while v5's hash projection read `Tool` names only."
+    },
+    {
+      "name": "empty_stopped_skips_recovery",
+      "kind": "failover",
+      "chatId": "dd000007-0000-4000-8000-000000000007",
+      "participantId": "ee000007-0000-4000-8000-000000000007",
+      "preGeneratedMessageId": "ff0000d3-0000-4000-8000-0000000d3350",
+      "contentWasFlaggedDangerous": false,
+      "streamLabel": "retry_ok",
+      "originalMessage": "the operator stopped this one",
+      "concierge": {
+        "enabled": false
+      },
+      "turnStopped": true,
+      "_comment": "P4.D335 (v4 2b5e8ee24): the operator stopped the turn, so the empty reply is what they asked for \u2014 'Skipping empty-response recovery: the operator stopped the turn', BEFORE the route-trail record; no retry leg, no chain, routeFailures []."
     }
   ],
   "authPrimaryProfile": {

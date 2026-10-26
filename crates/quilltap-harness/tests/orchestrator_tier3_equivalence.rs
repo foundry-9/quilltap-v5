@@ -114,6 +114,7 @@ use quilltap_core::model::completion::{
 use quilltap_core::model::embedding::{
     EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
+use quilltap_core::services::turn_control;
 
 /// v4's oracle mock: every text embeds as `[0.1, 0.2, 0.3]`, provider
 /// `canned` (P4.D291 — the recall record now carries `embedded`).
@@ -329,6 +330,13 @@ struct CannedMsgW {
 }
 #[derive(Deserialize)]
 struct ChunkW {
+    /// P4.D335 (v4 `2b5e8ee24`): the operator raises a hand at this point.
+    #[serde(rename = "raiseHand", default)]
+    raise_hand: bool,
+    /// P4.D335: the operator presses Stop here (`"stop"`); the provider then
+    /// goes silent.
+    #[serde(default)]
+    latch: Option<String>,
     #[serde(default)]
     content: Option<String>,
     #[serde(default)]
@@ -961,8 +969,34 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 // Stateful canned streaming provider (per-key queue of sequences).
 // ---------------------------------------------------------------------------
 
+/// One step of a canned sequence: a chunk, or (P4.D335) an interrupt the
+/// operator fires at that point of the stream. (A test-only queue: the size
+/// gap between a chunk and a marker costs nothing worth boxing for.)
+#[allow(clippy::large_enum_variant)]
+enum Step {
+    Item(StreamChunkResult),
+    RaiseHand,
+    LatchStop,
+}
+
+fn chunk_to_step(c: &ChunkW) -> Step {
+    if c.raise_hand {
+        return Step::RaiseHand;
+    }
+    if c.latch.as_deref() == Some("stop") {
+        return Step::LatchStop;
+    }
+    Step::Item(chunk_to_result(c))
+}
+
 struct QueuedStreamingProvider {
-    queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>>>,
+    queues: Mutex<HashMap<String, std::collections::VecDeque<Vec<Step>>>>,
+    /// P4.D335: the instance the stop action writes through, the chat the
+    /// current call's turn is registered under, and what the interrupts did.
+    interrupt_db: Mutex<Option<Db>>,
+    current_chat: Mutex<String>,
+    interrupt_raises: Arc<Mutex<Vec<usize>>>,
+    interrupt_stops: Mutex<Vec<tokio::task::JoinHandle<Option<Value>>>>,
     /// The tool slate the ORACLE recorded reaching the wire, per call key (W4.1g).
     expected_tools: HashMap<String, Value>,
     /// The `modelParams` bag the ORACLE recorded reaching the wire, per call key
@@ -1018,8 +1052,7 @@ fn sampling_object(temperature: Option<f64>, max_tokens: Option<i64>, top_p: Opt
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
-        let mut queues: HashMap<String, std::collections::VecDeque<Vec<StreamChunkResult>>> =
-            HashMap::new();
+        let mut queues: HashMap<String, std::collections::VecDeque<Vec<Step>>> = HashMap::new();
         let mut expected_tools: HashMap<String, Value> = HashMap::new();
         let mut expected_model_params: HashMap<String, Value> = HashMap::new();
         let mut expected_sampling: HashMap<String, Value> = HashMap::new();
@@ -1032,7 +1065,7 @@ impl QueuedStreamingProvider {
             let key = keyed_stream(&row.provider, &row.model, row.temperature, &messages);
             let q = queues.entry(key.clone()).or_default();
             for seq in &row.sequences {
-                q.push_back(seq.iter().map(chunk_to_result).collect());
+                q.push_back(seq.iter().map(chunk_to_step).collect());
             }
             // Normalize a missing/null recorded tools to `[]` (v4 records `[]` for
             // an empty slate).
@@ -1070,6 +1103,10 @@ impl QueuedStreamingProvider {
         }
         Self {
             queues: Mutex::new(queues),
+            interrupt_db: Mutex::new(None),
+            current_chat: Mutex::new(String::new()),
+            interrupt_raises: Arc::new(Mutex::new(Vec::new())),
+            interrupt_stops: Mutex::new(Vec::new()),
             expected_tools,
             expected_model_params,
             recorded_tools: Mutex::new(HashMap::new()),
@@ -1188,7 +1225,7 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 .entry(key.clone())
                 .or_insert_with(|| params.cache_key.clone());
         }
-        let sequence: Vec<StreamChunkResult> = {
+        let sequence: Vec<Step> = {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some(seq) => seq,
@@ -1196,7 +1233,7 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                 // miss. The counts alone said "5 msgs" for both halves of a
                 // two-step diagnosis (first the model was wrong, then a message
                 // body was), and neither told which.
-                None => vec![Err(StreamError::new(format!(
+                None => vec![Step::Item(Err(StreamError::new(format!(
                     "no canned stream queued for key ({provider}, model {}, temperature {:?}, \
                      {} msgs)\n{}",
                     params.model,
@@ -1216,13 +1253,72 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                         })
                         .collect::<Vec<_>>()
                         .join("\n"),
-                )))],
+                ))))],
             }
         };
+        let interrupts = sequence
+            .iter()
+            .any(|s| matches!(s, Step::RaiseHand | Step::LatchStop));
+        let chat = self.current_chat.lock().unwrap().clone();
+        let db = self.interrupt_db.lock().unwrap().clone();
+        let raises = Arc::clone(&self.interrupt_raises);
+        let (tx, rx) = tokio::sync::mpsc::channel(sequence.len().max(1) + 1);
+        // P4.D335: v4's mock is a LAZY generator — an interrupt step runs only
+        // once the consumer has pulled past every chunk before it. Twin: feed the
+        // channel from a task that waits for the consumer to drain it before each
+        // interrupt (a stop that found a chunk still buffered would abandon it —
+        // measured v4 behaviour, `stop_vs_buffered_chunk`).
+        let plain = if interrupts {
+            let handle = tokio::spawn(async move {
+                let drained = |tx: &tokio::sync::mpsc::Sender<StreamChunkResult>| {
+                    tx.capacity() == tx.max_capacity()
+                };
+                let mut stop_result: Option<Value> = None;
+                for step in sequence {
+                    match step {
+                        Step::Item(item) => {
+                            let _ = tx.send(item).await;
+                        }
+                        Step::RaiseHand => {
+                            while !drained(&tx) {
+                                tokio::task::yield_now().await;
+                            }
+                            raises
+                                .lock()
+                                .unwrap()
+                                .push(turn_control::set_hand_raised(&chat, true));
+                        }
+                        Step::LatchStop => {
+                            while !drained(&tx) {
+                                tokio::task::yield_now().await;
+                            }
+                            let db = db.as_ref().expect("the interrupt db is bound");
+                            let resp =
+                                quilltap_core::api::chat_interrupt::chat_stop_turn(db, &chat).await;
+                            stop_result = serde_json::to_value(&resp)
+                                .ok()
+                                .and_then(|v| v.get("data").cloned());
+                            // The provider goes silent for good: the channel closes
+                            // only now, long after the watchdog stopped waiting.
+                            break;
+                        }
+                    }
+                }
+                drop(tx);
+                stop_result
+            });
+            self.interrupt_stops.lock().unwrap().push(handle);
+            None
+        } else {
+            Some((tx, sequence))
+        };
         async move {
-            let (tx, rx) = tokio::sync::mpsc::channel(sequence.len().max(1) + 1);
-            for item in sequence {
-                let _ = tx.send(item).await;
+            if let Some((tx, sequence)) = plain {
+                for step in sequence {
+                    if let Step::Item(item) = step {
+                        let _ = tx.send(item).await;
+                    }
+                }
             }
             rx
         }
@@ -1492,9 +1588,34 @@ fn orchestrator_tier3_matches_oracle() {
     // match the old v4 mock; that twin is gone from THIS family only — the
     // other families that install the seam twin their own oracles' mocks.
 
-    let spec: Spec =
+    let mut spec: Spec =
         serde_json::from_str(&std::fs::read_to_string(spec_path()).expect("spec readable"))
             .expect("spec parses");
+    // P4.D335: `QT_ORCH_CALLS` (comma-separated call names) runs a SUBSET — the
+    // oracle case honours the same variable, so the whole-run dumps compare the
+    // same calls. Unset = every call. (A lane proving its own rows while a
+    // sibling's §R.13 red sits elsewhere in the corpus.)
+    if let Some(only) = std::env::var("QT_ORCH_CALLS")
+        .ok()
+        .filter(|v| !v.is_empty())
+    {
+        let only: Vec<&str> = only
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        spec.calls.retain(|c| only.contains(&c.name.as_str()));
+        assert!(!spec.calls.is_empty(), "QT_ORCH_CALLS named no corpus call");
+    }
+    // …and `QT_ORCH_SKIP_CALLS` the complement (a sibling's red calls left out).
+    if let Ok(skip) = std::env::var("QT_ORCH_SKIP_CALLS") {
+        let skip: Vec<&str> = skip
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        spec.calls.retain(|c| !skip.contains(&c.name.as_str()));
+    }
 
     // Parse the oracle NDJSON.
     let oracle_text = std::fs::read_to_string(&oracle_path).expect("oracle readable");
@@ -1515,6 +1636,9 @@ fn orchestrator_tier3_matches_oracle() {
     // P4.D328: each Inventory call's room in rowid order (role, systemSender,
     // systemKind).
     let mut want_inventory_rows: HashMap<String, Vec<RoomRow>> = HashMap::new();
+    // P4.D335: the interrupts v4's provider fired, and the interrupt lines.
+    let mut want_interrupts: HashMap<String, Value> = HashMap::new();
+    let mut want_interrupt_log: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
     // filtered event comparison drops the frame; the requires-gate arms compare
     // its message against `process_message`'s `Err`).
@@ -1646,6 +1770,24 @@ fn orchestrator_tier3_matches_oracle() {
                     .collect();
                 want_inventory_rows.insert(parsed.call.clone().unwrap(), rows);
             }
+            "interrupts" => {
+                want_interrupts.insert(
+                    parsed.call.clone().unwrap(),
+                    json!({
+                        "raises": parsed.rest.get("raises").cloned().unwrap_or(Value::Null),
+                        "stops": parsed.rest.get("stops").cloned().unwrap_or(Value::Null),
+                    }),
+                );
+            }
+            "interruptLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("interruptLog carries `lines`");
+                want_interrupt_log.insert(parsed.call.clone().unwrap(), lines);
+            }
             other => panic!("unknown oracle line kind: {other}"),
         }
     }
@@ -1701,6 +1843,8 @@ fn orchestrator_tier3_matches_oracle() {
     // the inner ask_carina query / Brahma console draw from the SAME per-key queues
     // the single v4 mock served — the whole point of the Arc ownership work.
     let streaming = Arc::new(QueuedStreamingProvider::from_oracle(&canned_streams));
+    // P4.D335: the stop action writes through the same instance.
+    *streaming.interrupt_db.lock().unwrap() = Some(db.clone());
     let mut completion = CannedCompletionProvider::new();
     for row in &canned_completions {
         let messages = to_completion_messages(&row.messages);
@@ -1808,6 +1952,9 @@ fn orchestrator_tier3_matches_oracle() {
     // error — the ONLY two corpus cases that reach the chain loop's two
     // stop-with-a-line branches; every other case must stay silent on both.
     let mut chain_logs: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.D335: per call, the interrupts the provider fired (`raises`: how many
+    // streams heard each raise; `stops`: each stop action's body).
+    let mut got_interrupts: HashMap<String, Value> = HashMap::new();
     // P4.D186: the INITIAL `process_message`'s tracing output, per case.
     let mut initial_logs: HashMap<String, Vec<String>> = HashMap::new();
 
@@ -1847,6 +1994,10 @@ fn orchestrator_tier3_matches_oracle() {
         } else {
             room_rows_in_rowid_order(&db, &call.chat_id).len()
         };
+        // P4.D335: the send's turn-control registration (dropped once the chain
+        // and the post-cycle render are done — v4's `runWithTurnControl` span).
+        let turn_registration = turn_control::register_active_turn(&call.chat_id);
+        *streaming.current_chat.lock().unwrap() = call.chat_id.clone();
         // P4.D291: the call's in-case letter, through the REAL mailbox.
         let letter_at: Option<(String, String)> = call.letter.as_ref().map(|l| {
             let cid = l.character_id.clone();
@@ -2015,7 +2166,9 @@ fn orchestrator_tier3_matches_oracle() {
             image_describe: None,
             photo_bytes: None,
             consult: None,
-            turn_control: None,
+            // P4.D335: every call runs under a registered turn, as v4's
+            // `handleSendMessage` always does (`runWithTurnControl`).
+            turn_control: Some(turn_registration.handle()),
         };
         // The spine now constructs the real registry-backed tool detector +
         // provider-text strategy internally (W4.7c). Exactly ONE corpus case
@@ -2273,6 +2426,23 @@ fn orchestrator_tier3_matches_oracle() {
             .expect("discard the letter");
             got_unalerted.insert(call.name.clone(), Value::Array(paths));
         }
+        // P4.D335: the send settles; the stop actions it fired mid-stream resolve.
+        drop(turn_registration);
+        let stop_handles: Vec<tokio::task::JoinHandle<Option<Value>>> = streaming
+            .interrupt_stops
+            .lock()
+            .unwrap()
+            .drain(..)
+            .collect();
+        let stops: Vec<Value> = stop_handles
+            .into_iter()
+            .filter_map(|h| rt.block_on(h).expect("the stop action task"))
+            .collect();
+        let raises = std::mem::take(&mut *streaming.interrupt_raises.lock().unwrap());
+        got_interrupts.insert(
+            call.name.clone(),
+            json!({ "raises": raises, "stops": stops }),
+        );
         got_events.push((call.name.clone(), filter_events(&sink.events_json())));
         if !call.inventory_objects.is_empty() {
             let rows = room_rows_in_rowid_order(&db, &call.chat_id);
@@ -2295,7 +2465,8 @@ fn orchestrator_tier3_matches_oracle() {
     // user-controlled CHARACTER would make `findUserControlled` return two and
     // move every persona-less call to the `users` profile read (the §3
     // review's catch at the `25b8fab6a` unification — 22 calls changed premise).
-    {
+    // (P4.D335: skipped only when `QT_ORCH_CALLS` filtered the call out.)
+    if spec.calls.iter().any(|c| c.name == "trigger_phrase") {
         const ROOM: &str = "e0000305-0000-4000-8000-000000000305";
         const PASCAL_LINE: &str = "The bell rings out over the square.";
         let name = "trigger_phrase";
@@ -2623,6 +2794,94 @@ fn orchestrator_tier3_matches_oracle() {
     }
 
     // --- events ---
+    // P4.D335: under `QT_ORCH_CALLS` / `QT_ORCH_SKIP_CALLS` a corpus-integrity
+    // pin below is checked only when its call ran.
+    let ran = |name: &str| spec.calls.iter().any(|c| c.name == name);
+    // …and a corpus-wide vacuity floor is checked only on the WHOLE corpus.
+    let full_corpus = ["QT_ORCH_CALLS", "QT_ORCH_SKIP_CALLS"]
+        .iter()
+        .all(|k| std::env::var(k).ok().filter(|v| !v.is_empty()).is_none());
+
+    // === P4.D335: the interrupts, per call ===
+    // What the provider fired (the raise's stream count, the stop action's
+    // `{stopped, settled, paused}` body) and the interrupt lines — v4's bag,
+    // keys snake_cased, `elapsedMs` masked, the target dropped. Every call is a
+    // silence leg for the lines it does not fire.
+    let mut interrupt_lines_seen = 0usize;
+    let elapsed = regex::Regex::new(r"elapsed_ms=\d+").unwrap();
+    // The pre-generated assistant message id is minted per run on each side.
+    let minted = regex::Regex::new(r"message_id=[0-9a-f-]{36}").unwrap();
+    let mask = |line: &str| {
+        let line = elapsed.replace_all(line, "elapsed_ms=<ms>");
+        minted.replace_all(&line, "message_id=<msgid>").into_owned()
+    };
+    for call in &spec.calls {
+        let want = want_interrupts
+            .get(&call.name)
+            .unwrap_or_else(|| panic!("{}: no `interrupts` oracle row — regenerate", call.name));
+        let got = &got_interrupts[&call.name];
+        assert_eq!(
+            serde_json::to_string(got).unwrap(),
+            serde_json::to_string(want).unwrap(),
+            "{}: the interrupts fired mid-stream",
+            call.name
+        );
+        let want_lines: Vec<String> = want_interrupt_log[&call.name]
+            .iter()
+            .map(|l| {
+                let mut line = format!(
+                    "{} {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    let key: String = k
+                        .chars()
+                        .flat_map(|c| {
+                            if c.is_ascii_uppercase() {
+                                vec!['_', c.to_ascii_lowercase()]
+                            } else {
+                                vec![c]
+                            }
+                        })
+                        .collect();
+                    let v = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    line.push_str(&format!(" {key}={v}"));
+                }
+                mask(&line)
+            })
+            .collect();
+        const TAGS: [&str; 6] = [
+            "[TurnYield] ",
+            "[TurnStop] ",
+            "[TurnOrchestrator] Chain stopped: the floor was yielded",
+            "[TurnOrchestrator] Chain stopped: the operator stopped",
+            "[LLMStream] Abandoned a provider stream at the operator's stop",
+            "Skipping empty-response recovery: the operator stopped the turn",
+        ];
+        let got_lines: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| TAGS.iter().any(|t| l.contains(t)))
+            .map(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let level = parts.next().unwrap_or_default();
+                let _target = parts.next();
+                mask(&format!("{level} {}", parts.next().unwrap_or_default()))
+            })
+            .collect();
+        assert_eq!(got_lines, want_lines, "{}: the interrupt lines", call.name);
+        interrupt_lines_seen += want_lines.len();
+    }
+    if ran("interrupt_yield_bare") {
+        assert!(
+            interrupt_lines_seen > 0,
+            "the interrupt corpus logged nothing"
+        );
+    }
     let event_divergence_failures = apply_expected_event_divergences(&got_events, &mut want_events);
     assert!(
         event_divergence_failures.is_empty(),
@@ -2649,9 +2908,10 @@ fn orchestrator_tier3_matches_oracle() {
     // the tool call, on the provider the chain fell over to. (The `2075242f9`
     // round's §3 review.)
     assert!(
-        canned_streams.iter().any(|s| s.provider == "OPENAI"
-            && s.model == "gpt-stands-in"
-            && s.messages.iter().any(|m| m.role == "tool")),
+        !ran("failover_then_native_tool_call")
+            || canned_streams.iter().any(|s| s.provider == "OPENAI"
+                && s.model == "gpt-stands-in"
+                && s.messages.iter().any(|m| m.role == "tool")),
         "failover_then_native_tool_call: v4 recorded no understudy-keyed (OPENAI / \
          gpt-stands-in) re-stream carrying a `tool` message — the oracle no longer \
          fails over before the tool loop, so the arm measures nothing"
@@ -2669,20 +2929,22 @@ fn orchestrator_tier3_matches_oracle() {
     // message) on the case's seat, showing the field v4 DROPPED. (The
     // `1fefadb9a` round's §3 review.)
     assert!(
-        canned_streams.iter().any(|s| s.provider == "OPENAI"
-            && s.model == "gpt-chains"
-            && s.previous_response_id.is_none()
-            && s.messages.iter().any(|m| m.role == "tool")),
+        !ran("openai_chained_then_native_tool_call")
+            || canned_streams.iter().any(|s| s.provider == "OPENAI"
+                && s.model == "gpt-chains"
+                && s.previous_response_id.is_none()
+                && s.messages.iter().any(|m| m.role == "tool")),
         "openai_chained_then_native_tool_call: v4 recorded no re-stream (OPENAI / \
          gpt-chains, carrying a `tool` message) WITHOUT a previousResponseId — the \
          case no longer reaches the native loop, so the previous_response_id strip \
          measures nothing"
     );
     assert!(
-        canned_streams.iter().any(|s| s.provider == "OPENAI"
-            && s.model == "o1-mini"
-            && s.stop.is_empty()
-            && s.messages.iter().any(|m| m.role == "tool")),
+        !ran("simple_json_then_native_tool_call")
+            || canned_streams.iter().any(|s| s.provider == "OPENAI"
+                && s.model == "o1-mini"
+                && s.stop.is_empty()
+                && s.messages.iter().any(|m| m.role == "tool")),
         "simple_json_then_native_tool_call: v4 recorded no re-stream (OPENAI / \
          o1-mini, carrying a `tool` message) with EMPTY stop sequences — the case \
          no longer reaches the native loop, so the stop strip measures nothing"
@@ -2856,7 +3118,8 @@ fn orchestrator_tier3_matches_oracle() {
         tool_change_fired += want.len();
     }
     assert_eq!(
-        tool_change_fired, 1,
+        tool_change_fired,
+        usize::from(ran("tool_settings_changed")),
         "exactly one corpus case (tool_settings_changed) fires the tool-change INFO"
     );
 
@@ -2937,10 +3200,27 @@ fn orchestrator_tier3_matches_oracle() {
                 panic!("Rust made a stream call with no oracle-recorded tools for key:\n{key}")
             });
             if got_tools != want_tools {
-                let gn = wire_tool_names(got_tools);
-                let wn = wire_tool_names(want_tools);
+                let names = |v: &Value| -> Vec<String> {
+                    v.as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|t| wire_tool_name(t).unwrap_or("?").to_string())
+                        .collect()
+                };
+                let first_diff = got_tools
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .zip(want_tools.as_array().into_iter().flatten())
+                    .find(|(g, w)| g != w)
+                    .map(|(g, w)| {
+                        format!("\n  first differing tool:\n    got:  {g}\n    want: {w}")
+                    })
+                    .unwrap_or_default();
+                let gn = names(got_tools);
+                let wn = names(want_tools);
                 panic!(
-                    "tool slate at wire mismatch for key:\n{key}\n  got:  {gn:?}\n  want: {wn:?}"
+                    "tool slate at wire mismatch for key:\n{key}\n  got:  {gn:?}\n  want: {wn:?}{first_diff}"
                 );
             }
         }
@@ -3156,6 +3436,7 @@ fn orchestrator_tier3_matches_oracle() {
         //     FALLBACK_PRICING resolves `simple-json` — so v4 passes
         //     `SIMPLE_JSON_STOP` on the primary.
         assert!(
+            !full_corpus ||
             streaming
                 .expected_previous_response_id
                 .values()
@@ -3163,6 +3444,7 @@ fn orchestrator_tier3_matches_oracle() {
             "no oracle row recorded a previousResponseId: the oracle predates the P4.92 recording, or the chaining case stopped chaining; every previousResponseId arm above is vacuous"
         );
         assert!(
+            !full_corpus ||
             streaming.expected_stop.values().any(|v| !v.is_empty()),
             "no oracle row recorded a non-empty stop: the oracle predates the P4.92 recording, or no case resolves simple-json any more; every stop arm above is vacuous"
         );
@@ -3191,7 +3473,7 @@ fn orchestrator_tier3_matches_oracle() {
             })
             .count();
         assert!(
-            text_continuations_with_stop > 0,
+            !full_corpus || text_continuations_with_stop > 0,
             "no oracle row is a text continuation carrying stop sequences: text_tool_loop's `params.stop = strategy.stop_sequences()` is untested, and a mutation deleting it would survive"
         );
 
@@ -3264,7 +3546,7 @@ fn orchestrator_tier3_matches_oracle() {
             })
             .count();
         assert!(
-            keyless_restreams >= 2,
+            !full_corpus || keyless_restreams >= 2,
             "fewer than two oracle rows are KEYLESS re-streams: v4 drops the characterId on the native force-final (`:421-431`) and on the text continuation (`text-tool-loop.service.ts:390-400`), and if neither leg is reached the two `params.cache_key = None` clears in the loops are untested — a mutation deleting them would survive (got {keyless_restreams})"
         );
     }
@@ -3699,9 +3981,15 @@ fn orchestrator_tier3_matches_oracle() {
     // through each side's message idmap.
     let (got_tail_blanked, got_render_rows) = normalize_llm_log_rows(&mut got_logs, &idmap);
     let (want_tail_blanked, want_render_rows) = normalize_llm_log_rows(&mut want_logs, &idmap2);
+    // (A `QT_ORCH_*` subset compares the two sides with each other only.)
+    let render_rows_want = if full_corpus {
+        RENDER_BEARING_ROWS
+    } else {
+        want_render_rows
+    };
     assert_eq!(
         (got_render_rows, want_render_rows),
-        (RENDER_BEARING_ROWS, RENDER_BEARING_ROWS),
+        (render_rows_want, render_rows_want),
         "the render-bearing CHAT_MESSAGE rows (v5, v4) are not exactly RENDER_BEARING_ROWS — the blanking widened or narrowed"
     );
     let chat_of_case: HashMap<String, String> = spec
@@ -3765,102 +4053,105 @@ fn orchestrator_tier3_matches_oracle() {
         "the two-profile (failover) turns differ between v4's CHAT_MESSAGE rows and v5's"
     );
 
-    // --- P4.129 non-vacuity: the rows the CHAT_MESSAGE comparand must carry ---
-    // (read off v5's rows, which the compare above has just made v4's)
-    let leg_rows = |case: &str| -> Vec<&Value> {
-        let chat = &chat_of_case[case];
-        got_logs
-            .iter()
-            .filter(|r| r["type"] == "CHAT_MESSAGE" && r["chatId"] == chat.as_str())
-            .collect()
-    };
-    let reply_of = |r: &Value| -> String {
-        let resp: Value =
-            serde_json::from_str(&decoded_log_cell(&r["response"]).unwrap_or_default())
-                .unwrap_or(Value::Null);
-        resp["content"].as_str().unwrap_or_default().to_string()
-    };
-    // (1) P4.90's arm: the primary throws before `done` (no row); the hard-error
-    // failover re-stream and the native re-stream both log under the
-    // UNDERSTUDY's profile, for Friday, sharing the pre-generated messageId.
-    {
-        let rows = leg_rows("failover_then_native_tool_call");
-        let replies: Vec<String> = rows.iter().map(|r| reply_of(r)).collect();
-        assert_eq!(
-            rows.len(),
-            2,
-            "failover_then_native_tool_call: want the failover leg + the native re-stream, got {replies:?}"
-        );
-        for r in &rows {
+    // (P4.D335: the named-case floors below run on the WHOLE corpus only.)
+    if full_corpus {
+        // --- P4.129 non-vacuity: the rows the CHAT_MESSAGE comparand must carry ---
+        // (read off v5's rows, which the compare above has just made v4's)
+        let leg_rows = |case: &str| -> Vec<&Value> {
+            let chat = &chat_of_case[case];
+            got_logs
+                .iter()
+                .filter(|r| r["type"] == "CHAT_MESSAGE" && r["chatId"] == chat.as_str())
+                .collect()
+        };
+        let reply_of = |r: &Value| -> String {
+            let resp: Value =
+                serde_json::from_str(&decoded_log_cell(&r["response"]).unwrap_or_default())
+                    .unwrap_or(Value::Null);
+            resp["content"].as_str().unwrap_or_default().to_string()
+        };
+        // (1) P4.90's arm: the primary throws before `done` (no row); the hard-error
+        // failover re-stream and the native re-stream both log under the
+        // UNDERSTUDY's profile, for Friday, sharing the pre-generated messageId.
+        {
+            let rows = leg_rows("failover_then_native_tool_call");
+            let replies: Vec<String> = rows.iter().map(|r| reply_of(r)).collect();
             assert_eq!(
-                r["connectionProfileId"],
-                FAILOVER_UNDERSTUDY_PROFILE,
-                "a P4.90 leg logged off the understudy: {}",
-                reply_of(r)
+                rows.len(),
+                2,
+                "failover_then_native_tool_call: want the failover leg + the native re-stream, got {replies:?}"
             );
-            assert_eq!(r["modelName"], "gpt-stands-in");
+            for r in &rows {
+                assert_eq!(
+                    r["connectionProfileId"],
+                    FAILOVER_UNDERSTUDY_PROFILE,
+                    "a P4.90 leg logged off the understudy: {}",
+                    reply_of(r)
+                );
+                assert_eq!(r["modelName"], "gpt-stands-in");
+                assert!(
+                    r["characterId"].is_string(),
+                    "a P4.90 leg lost its characterId: {}",
+                    reply_of(r)
+                );
+                assert_eq!(
+                    r["messageId"], rows[0]["messageId"],
+                    "the P4.90 legs share one messageId"
+                );
+            }
             assert!(
-                r["characterId"].is_string(),
-                "a P4.90 leg lost its characterId: {}",
-                reply_of(r)
+                rows[0]["messageId"]
+                    .as_str()
+                    .is_some_and(|m| m.starts_with("<m") && m != "<msgref>"),
+                "the P4.90 legs' messageId must remap to a chat_messages token (not the unmapped `<msgref>` fallback): {}",
+                rows[0]["messageId"]
             );
+            let mut replies = replies;
+            replies.sort();
             assert_eq!(
-                r["messageId"], rows[0]["messageId"],
-                "the P4.90 legs share one messageId"
+                replies,
+                [
+                    " The ledger is not written up yet.",
+                    "The understudy reaches for the ledger."
+                ],
             );
         }
-        assert!(
-            rows[0]["messageId"]
-                .as_str()
-                .is_some_and(|m| m.starts_with("<m") && m != "<msgref>"),
-            "the P4.90 legs' messageId must remap to a chat_messages token (not the unmapped `<msgref>` fallback): {}",
-            rows[0]["messageId"]
-        );
-        let mut replies = replies;
-        replies.sort();
-        assert_eq!(
-            replies,
-            [
-                " The ledger is not written up yet.",
-                "The understudy reaches for the ledger."
-            ],
-        );
-    }
-    // (2) the native force-final passes NO characterId (v4
-    // `native-tool-loop.service.ts:421-431`), where the re-stream before it does.
-    {
-        let rows = leg_rows("agent_force_final");
-        let force_final = rows
-            .iter()
-            .find(|r| reply_of(r) == " Nothing more to report.")
-            .expect("agent_force_final: the force-final leg's row");
-        assert!(
-            force_final["characterId"].is_null(),
-            "the force-final leg must log no characterId"
-        );
-        assert!(
-            rows.iter()
-                .any(|r| reply_of(r) == " The ledger is blank." && r["characterId"].is_string()),
-            "agent_force_final: the native re-stream's row must carry the characterId"
-        );
-    }
-    // (3) the TEXT continuation passes no characterId either
-    // (`text-tool-loop.service.ts:390-400`).
-    {
-        let rows = leg_rows("simple_json_text_tool_continuation");
-        let continuation = rows
-            .iter()
-            .find(|r| reply_of(r) == "Nothing is written there yet.")
-            .expect("simple_json_text_tool_continuation: the continuation leg's row");
-        assert!(
-            continuation["characterId"].is_null(),
-            "the text continuation must log no characterId"
-        );
-        assert_eq!(
-            rows.len(),
-            2,
-            "simple_json_text_tool_continuation: the primary + the continuation"
-        );
+        // (2) the native force-final passes NO characterId (v4
+        // `native-tool-loop.service.ts:421-431`), where the re-stream before it does.
+        {
+            let rows = leg_rows("agent_force_final");
+            let force_final = rows
+                .iter()
+                .find(|r| reply_of(r) == " Nothing more to report.")
+                .expect("agent_force_final: the force-final leg's row");
+            assert!(
+                force_final["characterId"].is_null(),
+                "the force-final leg must log no characterId"
+            );
+            assert!(
+                rows.iter()
+                    .any(|r| reply_of(r) == " The ledger is blank." && r["characterId"].is_string()),
+                "agent_force_final: the native re-stream's row must carry the characterId"
+            );
+        }
+        // (3) the TEXT continuation passes no characterId either
+        // (`text-tool-loop.service.ts:390-400`).
+        {
+            let rows = leg_rows("simple_json_text_tool_continuation");
+            let continuation = rows
+                .iter()
+                .find(|r| reply_of(r) == "Nothing is written there yet.")
+                .expect("simple_json_text_tool_continuation: the continuation leg's row");
+            assert!(
+                continuation["characterId"].is_null(),
+                "the text continuation must log no characterId"
+            );
+            assert_eq!(
+                rows.len(),
+                2,
+                "simple_json_text_tool_continuation: the primary + the continuation"
+            );
+        }
     }
 
     drop(db);
@@ -4067,20 +4358,12 @@ fn room_rows_in_rowid_order(db: &Db, chat_id: &str) -> Vec<RoomRow> {
     .expect("read the room in rowid order")
 }
 
-fn wire_tool_names(tools: &Value) -> Vec<String> {
-    tools
-        .as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|t| {
-                    t.get("function")
-                        .and_then(|f| f.get("name"))
-                        .and_then(Value::as_str)
-                        .map(String::from)
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+/// A wire tool's name in either shape (`{function: {name}}` / `{name}`).
+fn wire_tool_name(t: &Value) -> Option<&str> {
+    t.get("function")
+        .and_then(|f| f.get("name"))
+        .or_else(|| t.get("name"))
+        .and_then(Value::as_str)
 }
 
 /// Whole-frame compare — P4.D173's `routeTrail` on the `done` frame is a

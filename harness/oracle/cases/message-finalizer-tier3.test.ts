@@ -87,6 +87,9 @@ interface CarinaSpec {
 }
 interface CallSpec {
   name: string;
+  /** P4.D335 (v4 `2b5e8ee24`): the operator hard-stopped this turn — the
+   *  finalizer's ONE `isCurrentTurnStopped()` read answers true. */
+  turnStopped?: boolean;
   chatId: string;
   responderCharacter: string;
   responderParticipant: string;
@@ -171,6 +174,8 @@ async function main(): Promise<void> {
   const costTracks: Array<Record<string, unknown>> = [];
   // The carina message for the current call (steered per-call for the mock).
   let currentCarina: CarinaSpec | undefined;
+  // P4.D335: the current call's stopped flag (the turn-control mock reads it).
+  let currentTurnStopped = false;
 
   // W4.1e e.2: the finalizer's assistant-response RNG auto-detect is now REAL
   // (detectAndConvertRngPatterns + executeRngTool run inline). Pin ONLY the
@@ -279,6 +284,13 @@ async function main(): Promise<void> {
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
+  // P4.D335: the finalizer's ONE `isCurrentTurnStopped()` read, steered per
+  // call (the real registry's ambient store is the orchestrator's, absent here).
+  jest.doMock('@/lib/chat/turn-control', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/chat/turn-control'),
+    isCurrentTurnStopped: () => currentTurnStopped,
+  }));
   const { getRepositories } = await import('@/lib/repositories/factory');
   const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
   const { finalizeMessageResponse } = await import(
@@ -321,6 +333,7 @@ async function main(): Promise<void> {
 
   for (const call of spec.calls) {
     currentCarina = call.carina;
+    currentTurnStopped = call.turnStopped === true;
 
     const chat = await repos.chats.findById(call.chatId);
     if (!chat) throw new Error(`chat not found: ${call.chatId}`);

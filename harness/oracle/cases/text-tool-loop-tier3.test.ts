@@ -119,6 +119,8 @@ async function main(): Promise<void> {
 
   // Per-case mutable state the mocks read lazily.
   let currentCase: CaseSpec = spec.cases[0];
+  // P4.D335: the current case's turn stop.
+  let mockStop = new AbortController();
   let streamCallIndex = 0;
   let currentStops: Array<string[]> = [];
   const cannedRows: Array<{
@@ -208,6 +210,8 @@ async function main(): Promise<void> {
           for (const chunk of seq) {
             if (chunk.error) throw new Error(chunk.error);
             yield chunk;
+            // P4.D335: the operator's stop, right after this chunk was read.
+            if ((chunk as { stopTurn?: boolean }).stopTurn) mockStop.abort();
           }
         },
       }),
@@ -217,6 +221,33 @@ async function main(): Promise<void> {
   // The simple-json / text-block RESPONSE functions live in pseudo-tool.service
   // (the orchestrator imports them from there); only hasTextBlockMarkers is in
   // @/lib/tools.
+  // P4.D335 (v4 `2b5e8ee24`): the turn's stop, per case — the loop head's
+  // `isCurrentTurnStopped()` and the funnel's `currentTurnStopSignal()` read
+  // the SAME controller (the orchestrator's ambient store is absent here).
+  jest.doMock('@/lib/chat/turn-control', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/chat/turn-control'),
+    isCurrentTurnStopped: () => mockStop.signal.aborted,
+    currentTurnStopSignal: () => mockStop.signal,
+  }));
+  // …and the halt INFO, off the `Logger` prototype (before the level check).
+  let haltLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    const original = Logger.prototype.info;
+    Logger.prototype.info = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (message === 'Text tool loop halted: the operator stopped the turn') {
+        haltLines.push({ level: 'info', message, context: context ?? null });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
+
   const pseudo = await import('@/lib/services/chat-message/pseudo-tool.service');
   const { hasTextBlockMarkers } = await import('@/lib/tools');
   const { createToolContext } = await import('@/lib/services/chat-message/tool-execution.service');
@@ -249,6 +280,8 @@ async function main(): Promise<void> {
     currentCase = c;
     streamCallIndex = 0;
     currentStops = [];
+    mockStop = new AbortController();
+    haltLines = [];
 
     const streaming: Record<string, unknown> = {
       fullResponse: c.initialFullResponse,
@@ -356,6 +389,7 @@ async function main(): Promise<void> {
       })
     );
     lines.push(JSON.stringify({ kind: 'events', case: c.name, events: eventSink }));
+    lines.push(JSON.stringify({ kind: 'haltLog', case: c.name, lines: haltLines }));
     lines.push(JSON.stringify({ kind: 'stops', case: c.name, stopPerCall: currentStops }));
   }
 

@@ -193,6 +193,8 @@ interface AttachedFileSpec {
 }
 interface CallSpec {
   name: string;
+  /** P4.D335 (v4 `2b5e8ee24`): the operator hard-stopped this turn. */
+  turnStopped?: boolean;
   kind: 'primary' | 'recovery' | 'failover' | 'hardFailover' | 'findPrevResponseId';
   chatId?: string;
   participantId?: string;
@@ -612,6 +614,13 @@ async function main(): Promise<void> {
     };
   });
 
+  // P4.D335: the failover's ONE `isCurrentTurnStopped()` read, steered per call
+  // (the orchestrator's ambient store is absent here).
+  jest.doMock('@/lib/chat/turn-control', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/chat/turn-control'),
+    isCurrentTurnStopped: () => currentCall?.turnStopped === true,
+  }));
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { getRepositories } = await import('@/lib/repositories/factory');
   const {
@@ -625,6 +634,24 @@ async function main(): Promise<void> {
   const { attemptEmptyResponseRecovery } = await import(
     '@/lib/services/chat-message/provider-failover.service'
   );
+  // P4.D335: the failover's `Skipping empty-response recovery` INFO, per call,
+  // off the `Logger` prototype (before the level check).
+  let skipLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    const original = Logger.prototype.info;
+    Logger.prototype.info = function (
+      this: unknown,
+      message: string,
+      context?: Record<string, unknown>,
+      ...rest: unknown[]
+    ) {
+      if (message === 'Skipping empty-response recovery: the operator stopped the turn') {
+        skipLines.push({ level: 'info', message, context: context ?? null });
+      }
+      return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+    } as never;
+  }
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -693,6 +720,7 @@ async function main(): Promise<void> {
   for (const call of spec.calls) {
     currentCall = call;
     understudyLookups = [];
+    skipLines = [];
     if (call.offDutyNow) await setOnDuty(false);
     const events: unknown[] = [];
     const { controller, encoder } = makeRecordingController(events);
@@ -922,6 +950,7 @@ async function main(): Promise<void> {
     if (call.offDutyNow) await setOnDuty(true);
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
     lines.push(JSON.stringify({ kind: 'events', call: call.name, events }));
+    lines.push(JSON.stringify({ kind: 'skipLog', call: call.name, lines: skipLines }));
   }
 
   for (const entry of cannedRecorded.values()) {

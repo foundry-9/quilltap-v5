@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(interrupts): tier-3 stop and raise-a-hand corpora over v4's real spine (P4.D335 unit 3)
+
+_No crate versions bumped._
+
+Differential coverage for the interrupts' spine half, every row driving v4's real code at `322a5488e`. `orchestrator_tier3` gains eight calls (bare yield, yield with words, yield plus `[NOTHING TO ADD]`, decline, stop mid-prose with reasoning and a dice notation, stop before the first chunk, stop on a single-character chat, stop on a chained turn): the canned streams carry `raiseHand` / `latch: "stop"` markers that call v4's real `setHandRaised` / `handleStopTurn` mid-stream (and v5's `set_hand_raised` / `chat_stop_turn` once the consumer has drained the channel), and the comparison covers the frames, the action results, the `chats` / `chat_messages` / `llm_logs` deltas and every `[TurnYield]` / `[TurnStop]` / `[LLMStream]` / chain-stop line. The harness registers every call's turn, as `handleSendMessage` does. New `QT_ORCH_CALLS` / `QT_ORCH_SKIP_CALLS` run a subset on both sides, and a by-name `SIBLING_TOOL_RESIDUE` carve (the nine Inventory tools, the three Log tools, `edit_custom_tool`, plus `terminal_read`'s reshaped text) lets this branch prove its calls while seven corpus calls stay red at the pin until P4.D328 lands. Also: three stopped-turn finalizer rows (no Carina answer, no dice rows, no Pascal post), a native and a text tool-loop row where the stop lands after the re-stream (the second batch is never run), and a failover row that skips empty-response recovery before the route-trail record.
+
 #### 2026-10-26 — feat(interrupts): stop and raise-a-hand on the Salon spine, the two actions, the frames (P4.D335 unit 2)
 
 _Versions: core 0.0.1325, host 0.0.212, web 0.0.244._
