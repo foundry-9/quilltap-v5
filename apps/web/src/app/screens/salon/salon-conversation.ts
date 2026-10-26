@@ -146,7 +146,7 @@ import {
   reduceChatFrame,
   type ChatStreamState,
 } from '../../core/chat-stream.reducer';
-import { CoreClient } from '../../core/core-client';
+import { CoreClient, coreErrorMessage } from '../../core/core-client';
 import {
   SEND_FAILURE_TOAST_MS,
   STREAM_FAILURE_ERROR,
@@ -406,7 +406,6 @@ interface CascadePrompt {
           (queue)="onSidebarQueue($event)"
           (dequeue)="onSidebarDequeue($event)"
           (skip)="onSidebarSkip()"
-          (stopStreaming)="stop()"
           (impersonate)="onImpersonate($event)"
           (stopImpersonate)="onStopImpersonate($event)"
           (regenerateAvatar)="onRegenerateAvatar($event)"
@@ -503,6 +502,9 @@ interface CascadePrompt {
 
       <qt-chat-composer
         [busy]="busy()"
+        [handRaised]="handRaised()"
+        [canRaiseHand]="canRaiseHand()"
+        [stopping]="stopping()"
         [disabled]="regeneration.isRegenerating()"
         [chatId]="chatId()!"
         [speakingAs]="speakingAsSeat()"
@@ -527,6 +529,7 @@ interface CascadePrompt {
         (removePendingToolResult)="onRemovePendingToolResult($event)"
         (send)="send($event)"
         (stop)="stop()"
+        (toggleRaisedHand)="toggleRaisedHand()"
         (continue)="continueTurn()"
         (openTerminal)="onOpenTerminal()"
         (openDocument)="showDocumentPicker.set(true)"
@@ -1578,6 +1581,22 @@ export class SalonConversation {
   // --- streaming ---
   protected readonly stream = signal<ChatStreamState | null>(null);
   protected readonly busy = computed(() => this.stream() != null);
+
+  // --- the operator's interrupts (v4 `useSSEStreaming` `2b5e8ee24`) -------
+  /** The operator's hand is up, waiting on the next speaker's answer. */
+  protected readonly handRaised = signal(false);
+  /** A hard stop is being put away on the server. */
+  protected readonly stopping = signal(false);
+  /**
+   * v4's `isPausedRef` ORDERING: a stop flips the pause belief BEFORE the
+   * dispatch, so the chain-close's pause is not news at the reconcile. v5's
+   * `pausedBefore` reads a query signal that lags an invalidate, so the belief
+   * needs this explicit latch. Cleared at the reconcile's tail.
+   */
+  private pauseBeliefFromStop = false;
+  /** The live turn's token; frames of an abandoned turn no longer fold (R-8). */
+  private liveTurnToken: object | null = null;
+  private abandonedTurnToken: object | null = null;
 
   // --- the subscribed transcript (v4 `useChatData`, `5029075bb`) ----------
   //
@@ -2693,6 +2712,36 @@ export class SalonConversation {
   );
 
   /**
+   * v4 `useParticipants.isSingleCharacterChat` (`:74-76`) — exactly ONE active
+   * CHARACTER seat, user-controlled seats INCLUDED (no `controlledBy` filter).
+   */
+  private readonly isSingleCharacterChat = computed(
+    () =>
+      (this.chat()?.participants ?? []).filter((p) => p.type === 'CHARACTER' && p.isActive)
+        .length === 1,
+  );
+
+  /**
+   * v4 `isMultiCharacterChat` (`lib/chat/turn-manager/utils.ts:204`): two or
+   * more present user-controlled seats, or one present LLM character seat.
+   */
+  private readonly isMultiCharacterRoom = computed(() => {
+    const seats = this.chat()?.participants ?? [];
+    const userControlled = seats.filter(
+      (p) => isParticipantPresent(p.status) && p.controlledBy === 'user',
+    );
+    const llm = seats.filter(
+      (p) => isParticipantPresent(p.status) && p.character && p.controlledBy === 'llm',
+    );
+    return userControlled.length >= 2 || llm.length >= 1;
+  });
+
+  /** v4 `SalonView.tsx:1830` — anyone to ask, and not an autonomous room. */
+  protected readonly canRaiseHand = computed(
+    () => !this.isSingleCharacterChat() && this.chat()?.chatType !== 'autonomous',
+  );
+
+  /**
    * Whether the rotation has actually landed on the banner's seat — the fact
    * that picks between v4's two non-must-speak sentences
    * (`SalonView.tsx:1465`).
@@ -3737,9 +3786,13 @@ export class SalonConversation {
     // before it — both read after the reconcile, where the one toast goes.
     let sendFailure: unknown = null;
     let frameError: string | null = null;
+    const token = {};
+    this.liveTurnToken = token;
     const sub = this.core.events$
       .pipe(filter((frame) => frame.chatId === chatId))
       .subscribe((frame) => {
+        // An abandoned turn's frames no longer fold (v4 aborts its reader).
+        if (this.abandonedTurnToken === token) return;
         const before = state;
         state = reduceChatFrame(state, frame);
         this.stream.set(state);
@@ -3808,7 +3861,7 @@ export class SalonConversation {
     // client believed BEFORE the reconcile — a pause is only news if the user
     // did not already know about it. React's ref lags the fetch by a render;
     // v5 has no such lag, so the snapshot is explicit and taken here.
-    const pausedBefore = this.chat()?.isPaused === true;
+    const pausedBefore = this.chat()?.isPaused === true || this.pauseBeliefFromStop;
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
     // v4's `fetchChat()` applies its rows through a SYNCHRONOUS ref mirror, so
     // the sweep at the end of this turn already sees them; v5's seeding effect
@@ -3858,6 +3911,14 @@ export class SalonConversation {
     // the outcome.
     this.clearPendingToolExecutionStatus();
     this.stream.set(null);
+    // v4's two `finally` blocks (`:1255-1260` / `:1433-1435`): the stream is
+    // over — any hand still up has nobody left to ask, and a stop has finished
+    // putting the reply away. After `announceChainPause` has read the belief.
+    this.handRaised.set(false);
+    this.stopping.set(false);
+    this.pauseBeliefFromStop = false;
+    if (this.abandonedTurnToken === token) this.abandonedTurnToken = null;
+    if (this.liveTurnToken === token) this.liveTurnToken = null;
     // v4 `useSSEStreaming.ts:1031-1039`, the last act of the streaming
     // `finally`: the turn is over, so every provisional bubble has had its
     // chance. The reads above retired the ones the server persisted; anything
@@ -4105,6 +4166,17 @@ export class SalonConversation {
  *    the failure carrying the tool's own sentence (Bug 84).
    */
   private reportStreamTransitions(before: ChatStreamState, after: ChatStreamState): void {
+    // v4 `useSSEStreaming.ts:734-742`: the raised hand has been answered. A
+    // yield speaks for itself (the Host's note, then the floor); a decline is
+    // said here, or the hand would simply go down with no word of why.
+    if (after.handAnsweredSeq !== before.handAnsweredSeq && after.handAnswered) {
+      this.handRaised.set(false);
+      if (!after.handAnswered.yielded) {
+        this.toasts.showInfo(
+          `${after.handAnswered.characterName || 'The speaker'} carried on regardless. Your hand is lowered.`,
+        );
+      }
+    }
     // v4 `useSSEStreaming.ts:508-519` (`65f5021c8`): `retrying` is the same
     // provider having another go after an empty response, `failing-over` is an
     // understudy from the profile's fallback chain taking the turn. Both are
@@ -4219,16 +4291,98 @@ export class SalonConversation {
     }
   }
 
-  protected stop(): void {
-    // The server turn rides the shared SSE and can't be aborted from here yet;
-    // clear the local streaming overlay (tracked deferral: a real stop dispatch).
-    // v4 `stopStreaming` (:1055-1057) reports only when prose had begun.
-    // v4 `stopStreaming:1128` dismisses outright — aborting a turn clears the
-    // notice at once, settled or not.
+  /**
+   * Hard stop. The server pauses a room with a rotation, abandons the provider
+   * stream, keeps the prose that had streamed as the character's reply (tools
+   * already run stay run, the thinking goes), and closes the stream — whose own
+   * done / chainComplete events then settle this side as on any turn.
+   */
+  protected async stop(): Promise<void> {
+    if (this.stopping()) return;
+    this.stopping.set(true);
+    this.handRaised.set(false);
+    const isMultiChar = this.isMultiCharacterRoom();
+    const chatId = this.chatId();
+    // Reflect the pause at once; the server writes it before it aborts, so the
+    // chain's next decision already reads it.
+    if (isMultiChar) {
+      this.pauseBeliefFromStop = true;
+      void this.setPauseState(true);
+    }
+    let serverStopped = false;
+    if (chatId) {
+      try {
+        const res = await this.core.dispatchExpect({ type: 'chatStopTurn', chatId }, 'stopTurn');
+        serverStopped = (res.data.stopped ?? 0) > 0;
+      } catch (err) {
+        // v5's dispatch REJECTS on the engine's error envelope, so this is also
+        // the "old server" path (an unlanded `chatStopTurn` variant).
+        console.error(
+          '[Salon] Stop request failed; abandoning the stream locally',
+          coreErrorMessage(err, 'Request failed'),
+        );
+      }
+      if (!serverStopped) {
+        this.abandonLocalStream();
+        await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+      } else {
+        // The server has put the reply away and closed its stream; give the
+        // reader a moment to drain the closing events before letting go.
+        window.setTimeout(() => {
+          if (this.stopping() && this.stream() != null) {
+            this.abandonLocalStream();
+            void this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+          }
+        }, 3000);
+      }
+    } else {
+      this.abandonLocalStream();
+    }
+    this.toasts.showInfo(
+      isMultiChar
+        ? 'Stopped. The floor is yours, and the room is paused.'
+        : 'Stopped. The floor is yours.',
+    );
+  }
+
+  /**
+   * Abandon the local stream outright — the old Stop, now only the fallback for
+   * when the server cannot be told (an old server, a dropped request) or its
+   * stream never closes after it was. v4 aborts its fetch reader; v5's frames
+   * ride the shared `events$`, so the abandon TOKEN stops folding this turn's
+   * frames. (v4 `stopStreaming:1128` dismisses the tool notice outright.)
+   */
+  private abandonLocalStream(): void {
+    this.abandonedTurnToken = this.liveTurnToken;
     this.dismissToolExecutionStatus();
-    if (this.stream()?.content) this.toasts.showInfo('Response stopped - chat paused');
     this.stream.set(null);
     this.clearProvisionalMessages();
+    this.stopping.set(false);
+  }
+
+  /**
+   * Soft interrupt: raise (or lower) the operator's hand. The next character
+   * built to speak is asked whether to yield; the answer arrives as a
+   * `handAnswered` event, and the stream's end lowers any hand left up.
+   */
+  protected async toggleRaisedHand(): Promise<void> {
+    const raise = !this.handRaised();
+    const chatId = this.chatId();
+    if (!chatId) return;
+    this.handRaised.set(raise);
+    try {
+      const res = await this.core.dispatchExpect(
+        { type: 'chatRaiseHand', chatId, raised: raise },
+        'raiseHand',
+      );
+      this.handRaised.set(res.data.raised === true);
+      if (raise && res.data.active === false) {
+        this.toasts.showInfo('Nobody is speaking just now. The floor is already yours.');
+      }
+    } catch (err) {
+      this.handRaised.set(false);
+      this.toasts.showError(`Could not raise your hand: ${coreErrorMessage(err, 'Request failed')}`);
+    }
   }
 
   // -------------------------------------------------------------------------

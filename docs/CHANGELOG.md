@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): raise a hand / stop — the composer's interrupt trio, a real stop dispatch (P4.D336)
+
+_Versions: SPA 0.5.882._
+
+v4 `2b5e8ee24` + `b8362beb5`, SPA half. The composer always renders Send, a raised-hand button and a Stop (octagon) in the stacked `.qt-chat-composer-actions` column, with v4's enablement, aria and title ladders. `stop()` is v4's server-first `stopStreaming`: pause belief first in a room with a rotation, `chatStopTurn` dispatched, local abandon only when the server stopped nothing, rejected or stayed open 3 s, then the two `Stopped.` toasts. A refused dispatch (server without the variant) takes the same fallback. New `toggleRaisedHand()` (`chatRaiseHand`), the reducer's `stopped` / `yielded` / `handAnswered` keys, and the C6 contract types in a fenced region. The participant card's Stop and its four `stopStreaming` outputs are gone; the two icons and the CSS follow v4, which also fixes v5's stop-button rule order (the composer Stop rendered in Send colours). One new Playwright file with the server-dependent beats gated behind `P4D335_SERVER_LANDED`.
+
 #### 2026-10-26 — docs(porting): P4.D334 order status — lane complete
 
 _Docs-only change._

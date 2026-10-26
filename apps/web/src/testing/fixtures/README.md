@@ -445,3 +445,15 @@ whose code the row's truth reads (`P4D333`: the list rule, `compareOrdered`,
   `DRAFT_ROUNDTRIP_PENDING_P4D334` carve (the draft round trip over array clauses
   and the five gate records) is lifted by the unifier on this lane's code; the
   same law is proved here over hand-written gates in `tool-draft.spec.ts`.
+
+
+## P4.D336 — raise a hand / stop (no fixture)
+
+This lane vendors no NDJSON: v4 shipped no test for the composer's buttons, the
+hook's `stopStreaming` / `toggleRaisedHand`, or the frame reader, so the corpora
+are the v5 specs (composer, reducer, salon vertical) written from the `2b5e8ee24`
+hunks. The one v4 case, `ParticipantCard.test.tsx`'s "shows the Speaking button,
+not a Stop button, while this participant is generating", is transcribed name for
+name. `e2e/salon-interrupt-flow.spec.ts` carries a spec-local sequenced mock
+(`createServer`; `/models`, then SSE word deltas `plan.delayMs` apart, the reply
+taken from `plan.replies[callIndex]`); `e2e/support/mock-llm.ts` is untouched.

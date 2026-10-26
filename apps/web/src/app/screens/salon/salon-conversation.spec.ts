@@ -2819,7 +2819,9 @@ describe('SalonConversation tool-execution notice (Bug 77)', () => {
       state([{ id: 't0', status: 'pending' }]),
       state([{ id: 't0', status: 'success', result: { images: [{}] } }]),
     );
-    (fixture.componentInstance as unknown as { stop(): void })['stop']();
+    // The stub's `ack` for `chatStopTurn` is the refused-dispatch path: abandon locally.
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await (fixture.componentInstance as unknown as { stop(): Promise<void> })['stop']();
     expect(notice(fixture)).toBeNull();
   });
 
@@ -5028,5 +5030,292 @@ describe('SalonConversation — the composer’s `/` commands (v4 4877fc2da)', (
     expect(invalidate.mock.calls.map(([f]) => f?.queryKey)).toEqual(
       expect.arrayContaining([chatKeys.detail('chat-1'), ['customTools', 'chat-1']]),
     );
+  });
+});
+
+describe('SalonConversation — raise a hand / stop (v4 useSSEStreaming 2b5e8ee24)', () => {
+  type Host = {
+    send(p: { content: string; fileIds: string[] }): void;
+    stop(): Promise<void>;
+    toggleRaisedHand(): Promise<void>;
+    abandonLocalStream(): void;
+    stream(): ChatStreamState | null;
+    stopping(): boolean;
+    handRaised(): boolean;
+    canRaiseHand(): boolean;
+  };
+
+  type Answers = {
+    stopTurn?: () => unknown;
+    raiseHand?: (req: CoreRequest) => unknown;
+  };
+
+  function interruptClient(
+    chat: ChatDetail,
+    events$: Subject<ScopedEvent>,
+    answers: Answers = {},
+  ): { client: Partial<CoreClient>; requests: CoreRequest[] } {
+    const requests: CoreRequest[] = [];
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      requests.push(req);
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat } } as unknown as CoreResponse;
+      if (req.type === 'chatSettings') {
+        return {
+          type: 'chatSettings',
+          data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' },
+        } as unknown as CoreResponse;
+      }
+      if (req.type === 'chatSend') return new Promise<CoreResponse>(() => {});
+      if (req.type === 'chatStopTurn') {
+        const r = (answers.stopTurn ?? (() => ({ stopped: 1, settled: true, paused: true })))();
+        if (r instanceof Error) throw r;
+        return { type: 'stopTurn', data: r } as unknown as CoreResponse;
+      }
+      if (req.type === 'chatRaiseHand') {
+        const r = (
+          answers.raiseHand ??
+          ((q: CoreRequest) => ({ raised: (q as { raised?: boolean }).raised ?? true, active: true }))
+        )(req);
+        if (r instanceof Error) throw r;
+        return { type: 'raiseHand', data: r } as unknown as CoreResponse;
+      }
+      return { type: 'ack', data: {} } as unknown as CoreResponse;
+    });
+    const client: Partial<CoreClient> = {
+      events$: events$.asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: vi.fn(async () => ({})) as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+    return { client, requests };
+  }
+
+  /** A room whose seats are exactly these. */
+  function room(seats: ParticipantDetail[], over: Partial<ChatDetail> = {}): ChatDetail {
+    return { ...chatDetail(), participants: seats, ...over };
+  }
+  const userSeat = () =>
+    participant({
+      id: 'pu',
+      controlledBy: 'user',
+      character: { id: 'u', name: 'Bertie', title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+    });
+  const llmSeat = (id: string, charId: string) =>
+    participant({
+      id,
+      character: { id: charId, name: id, title: null, avatarUrl: null, defaultImageId: null, defaultImage: null },
+    });
+
+  async function mountLive(
+    chat: ChatDetail = chatDetail(),
+    answers: Answers = {},
+  ): Promise<{ fixture: ComponentFixture<SalonConversation>; inst: Host; events$: Subject<ScopedEvent>; requests: CoreRequest[] }> {
+    const events$ = new Subject<ScopedEvent>();
+    const { client, requests } = interruptClient(chat, events$, answers);
+    const fixture = await render(client);
+    const inst = fixture.componentInstance as unknown as Host;
+    return { fixture, inst, events$, requests };
+  }
+
+  /** Start a turn the server never finishes, so the overlay stays up. */
+  async function beginTurn(inst: Host): Promise<void> {
+    inst.send({ content: 'hello', fileIds: [] });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(inst.stream()).not.toBeNull();
+  }
+
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  const newToasts = (n: number) => toasts().slice(n).map((t) => t.message);
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('stop() on a room with a rotation pauses FIRST, then dispatches chatStopTurn, and toasts the paused sentence', async () => {
+    const { inst, requests } = await mountLive(room([userSeat(), llmSeat('p1', 'c1')]));
+    await beginTurn(inst);
+    const n = toasts().length;
+    await inst.stop();
+    const types = requests.map((r) => r.type);
+    const pauseAt = requests.findIndex(
+      (r) => r.type === 'chatUpdate' && (r as { chat: { isPaused?: boolean } }).chat.isPaused === true,
+    );
+    expect(pauseAt).toBeGreaterThan(-1);
+    expect(pauseAt).toBeLessThan(types.indexOf('chatStopTurn'));
+    expect(requests.find((r) => r.type === 'chatStopTurn')).toEqual({ type: 'chatStopTurn', chatId: 'chat-1' });
+    expect(newToasts(n)).toEqual(['Stopped. The floor is yours, and the room is paused.']);
+  });
+
+  it('stop() with no LLM seat to rotate writes no pause and toasts the short sentence', async () => {
+    const { inst, requests } = await mountLive(room([userSeat()]));
+    await beginTurn(inst);
+    const n = toasts().length;
+    await inst.stop();
+    expect(requests.some((r) => r.type === 'chatUpdate')).toBe(false);
+    expect(newToasts(n)).toEqual(['Stopped. The floor is yours.']);
+  });
+
+  it('keeps the overlay when the server stopped something, and lets go after 3 s if it never closes', async () => {
+    const { inst } = await mountLive();
+    await beginTurn(inst);
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    await inst.stop();
+    expect(inst.stream()).not.toBeNull();
+    expect(inst.stopping()).toBe(true);
+    vi.advanceTimersByTime(3000);
+    expect(inst.stream()).toBeNull();
+    expect(inst.stopping()).toBe(false);
+  });
+
+  it('does nothing at 3 s when the stream already reconciled', async () => {
+    const { inst } = await mountLive();
+    await beginTurn(inst);
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    await inst.stop();
+    // The turn ended on its own (v4's `finally`): nothing left for the timer to do.
+    (inst as unknown as { stream: { set(v: null): void } }).stream.set(null);
+    const spy = vi.spyOn(inst as unknown as { abandonLocalStream(): void }, 'abandonLocalStream');
+    vi.advanceTimersByTime(3000);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('abandons at once when nothing was running (stopped: 0), and still toasts', async () => {
+    const { inst } = await mountLive(chatDetail(), {
+      stopTurn: () => ({ stopped: 0, settled: true, paused: false }),
+    });
+    await beginTurn(inst);
+    const n = toasts().length;
+    await inst.stop();
+    expect(inst.stream()).toBeNull();
+    expect(newToasts(n)).toHaveLength(1);
+  });
+
+  it('degrades on a refused dispatch: logs v4’s line, clears the overlay, toasts', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { inst } = await mountLive(chatDetail(), {
+      stopTurn: () => new Error('unknown variant chatStopTurn'),
+    });
+    await beginTurn(inst);
+    const n = toasts().length;
+    await inst.stop();
+    expect(err).toHaveBeenCalledWith(
+      '[Salon] Stop request failed; abandoning the stream locally',
+      expect.stringContaining('unknown variant'),
+    );
+    expect(inst.stream()).toBeNull();
+    expect(newToasts(n)).toHaveLength(1);
+  });
+
+  it('is re-entrancy latched: a second stop() while stopping dispatches nothing', async () => {
+    const { inst, requests } = await mountLive();
+    await beginTurn(inst);
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    await inst.stop();
+    const count = requests.filter((r) => r.type === 'chatStopTurn').length;
+    await inst.stop();
+    expect(requests.filter((r) => r.type === 'chatStopTurn')).toHaveLength(count);
+  });
+
+  it('the stop’s own chain close raises exactly ONE toast, not the generic pause', async () => {
+    const { inst, events$ } = await mountLive();
+    await beginTurn(inst);
+    const n = toasts().length;
+    await inst.stop();
+    events$.next({ chatId: 'chat-1', chainComplete: true, reason: 'stopped', paused: true });
+    // The server finishes the turn: resolve the held chatSend by abandoning is
+    // not possible here, so run the reconcile's announce directly.
+    const announce = inst as unknown as {
+      announceChainPause(reason: string, paused: boolean, before: boolean, held: boolean): void;
+      pauseBeliefFromStop: boolean;
+    };
+    announce.announceChainPause('stopped', true, announce.pauseBeliefFromStop, false);
+    const out = newToasts(n);
+    expect(out).toEqual(['Stopped. The floor is yours, and the room is paused.']);
+    expect(out.join('|')).not.toContain('Auto-responses are paused');
+  });
+
+  it('toggleRaisedHand raises optimistically, keeps an active answer, and always sends a boolean', async () => {
+    const { inst, requests } = await mountLive();
+    const p = inst.toggleRaisedHand();
+    expect(inst.handRaised()).toBe(true);
+    await p;
+    expect(inst.handRaised()).toBe(true);
+    await inst.toggleRaisedHand();
+    expect(inst.handRaised()).toBe(false);
+    const sent = requests.filter((r) => r.type === 'chatRaiseHand') as { raised?: unknown }[];
+    expect(sent.map((r) => r.raised)).toEqual([true, false]);
+  });
+
+  it('lowers the hand and toasts when nobody was speaking (only when RAISING)', async () => {
+    const { inst } = await mountLive(chatDetail(), {
+      raiseHand: () => ({ raised: false, active: false }),
+    });
+    const n = toasts().length;
+    await inst.toggleRaisedHand();
+    expect(inst.handRaised()).toBe(false);
+    expect(newToasts(n)).toEqual(['Nobody is speaking just now. The floor is already yours.']);
+    const m = toasts().length;
+    await inst.toggleRaisedHand(); // raise again → ... then lower
+    expect(newToasts(m)).toEqual(['Nobody is speaking just now. The floor is already yours.']);
+  });
+
+  it('a rejected raise lowers the hand and toasts the error', async () => {
+    const { inst } = await mountLive(chatDetail(), {
+      raiseHand: () => new Error('boom'),
+    });
+    const n = toasts().length;
+    await inst.toggleRaisedHand();
+    expect(inst.handRaised()).toBe(false);
+    expect(toasts().slice(n).map((t) => t.type)).toEqual(['error']);
+    expect(newToasts(n)[0]).toMatch(/^Could not raise your hand: /);
+  });
+
+  it('a declined handAnswered frame lowers the hand and names the speaker; a yield is silent', async () => {
+    const { inst, events$ } = await mountLive();
+    await beginTurn(inst);
+    await inst.toggleRaisedHand();
+    const n = toasts().length;
+    events$.next({ chatId: 'chat-1', handAnswered: true, participantId: 'p1', characterName: 'Friday', yielded: false });
+    expect(inst.handRaised()).toBe(false);
+    expect(newToasts(n)).toEqual(['Friday carried on regardless. Your hand is lowered.']);
+    events$.next({ chatId: 'chat-1', handAnswered: true, participantId: 'p1', yielded: false });
+    expect(newToasts(n)[1]).toBe('The speaker carried on regardless. Your hand is lowered.');
+    const m = toasts().length;
+    await inst.toggleRaisedHand();
+    events$.next({ chatId: 'chat-1', handAnswered: true, participantId: 'p1', characterName: 'Friday', yielded: true });
+    expect(inst.handRaised()).toBe(false);
+    expect(newToasts(m)).toEqual([]);
+  });
+
+  it('after an abandon, the abandoned turn’s frames no longer fold', async () => {
+    const { inst, events$ } = await mountLive();
+    await beginTurn(inst);
+    inst.abandonLocalStream();
+    expect(inst.stream()).toBeNull();
+    events$.next({ chatId: 'chat-1', content: 'late words' });
+    expect(inst.stream()).toBeNull();
+  });
+
+  it('canRaiseHand: false on an autonomous room or with one active character, true with two', async () => {
+    const two = await mountLive(chatDetail());
+    expect(two.inst.canRaiseHand()).toBe(true);
+    TestBed.resetTestingModule();
+    const one = await mountLive(room([llmSeat('p1', 'c1')]));
+    expect(one.inst.canRaiseHand()).toBe(false);
+    TestBed.resetTestingModule();
+    const auto = await mountLive(room([llmSeat('p1', 'c1'), llmSeat('p2', 'c2')], { chatType: 'autonomous' }));
+    expect(auto.inst.canRaiseHand()).toBe(false);
+    TestBed.resetTestingModule();
+    const inactive = await mountLive(
+      room([llmSeat('p1', 'c1'), { ...llmSeat('p2', 'c2'), isActive: false }]),
+    );
+    expect(inactive.inst.canRaiseHand()).toBe(false);
   });
 });

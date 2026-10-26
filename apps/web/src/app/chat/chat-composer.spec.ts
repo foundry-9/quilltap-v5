@@ -432,7 +432,8 @@ describe('ChatComposer — composerLocked (v4 bug (c), f564b0de3)', () => {
     // is the control the red-first cases above are measured AGAINST: it proves
     // the fixture really is in a locked state, and that the gutter's openness
     // was the defect rather than the test's setup. (While `busy` the button is
-    // swapped for Stop, which is why this arm raises `disabled` instead.)
+    // DISABLED — v4's `isGenerating` arm — which this arm's `disabled` flag
+    // reaches by the other road.)
     const fixture = render();
     richEditor(fixture).setMarkdown('a remark');
     // The settle is load-bearing: `RichEditor.replaceContent` defers its emit
@@ -750,20 +751,18 @@ describe('ChatComposer — the voice-rehearsal cue', () => {
   });
 
   /**
-   * v4's second ladder arm. Both composers swap a Stop button in while a reply is
-   * in flight — v4 under `(streaming || waitingForResponse) && !hideStopButton`,
-   * v5 unconditionally — so v4 reaches this title only with its participant
-   * sidebar open (`SalonView.tsx:1679`'s `hideStopButton`), a prop v5 has never
-   * had. The ARM is carried verbatim; its reachability at this site is the
-   * pre-existing gap, recorded rather than papered over. Read through the
-   * computed, since the DOM node it would title does not exist while busy.
+   * v4's second ladder arm. v5 now matches v4's always-rendered Send (the
+   * `2b5e8ee24` trio): while a reply is in flight the Send button is still
+   * there — greyed and titled `Generating...` — beside the two interrupt
+   * buttons, so the arm is reachable through the DOM.
    */
   it('"Generating..." outranks the cue (v4\'s ladder order)', async () => {
     const fixture = await armed({ busy: true });
-    const inst = fixture.componentInstance as unknown as { sendTitle(): string };
-    expect(inst.sendTitle()).toBe('Generating...');
-    // …and at this site v5 shows Stop instead of a titled Send.
-    expect(sendTitle(fixture)).toBe('Stop generating');
+    expect(sendTitle(fixture)).toBe('Generating...');
+    const send = fixture.nativeElement.querySelector(
+      'button[aria-label="Send message"]',
+    ) as HTMLButtonElement;
+    expect(send.disabled).toBe(true);
   });
 
   it('the no-characters sentence outranks everything', async () => {
@@ -1174,5 +1173,128 @@ describe('ChatComposer — the / command host (v4 4877fc2da)', () => {
     await settle(fixture);
     expect(host(fixture)).not.toBe(first);
     expect(host(fixture).chatId).toBe('chat-2');
+  });
+});
+
+describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const hand = (f: ComponentFixture<ChatComposer>) =>
+    f.nativeElement.querySelector('.qt-chat-interrupt-button') as HTMLButtonElement;
+  const stopBtn = (f: ComponentFixture<ChatComposer>) =>
+    f.nativeElement.querySelector('.qt-chat-stop-button') as HTMLButtonElement;
+  const sendBtn = (f: ComponentFixture<ChatComposer>) =>
+    f.nativeElement.querySelector('button[aria-label="Send message"]') as HTMLButtonElement;
+
+  function mount(inputs: Record<string, unknown> = {}): ComponentFixture<ChatComposer> {
+    const fixture = render();
+    for (const [k, v] of Object.entries(inputs)) fixture.componentRef.setInput(k, v);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders all three buttons inside the actions column at rest', () => {
+    const f = mount();
+    const col = f.nativeElement.querySelector('.qt-chat-composer-actions') as HTMLElement;
+    expect(col.contains(sendBtn(f))).toBe(true);
+    expect(col.contains(hand(f))).toBe(true);
+    expect(col.contains(stopBtn(f))).toBe(true);
+    expect(sendBtn(f).title).toBe('Send message');
+    expect(hand(f).disabled).toBe(true);
+    expect(hand(f).title).toBe('Raise your hand (while someone is speaking)');
+    expect(hand(f).getAttribute('aria-label')).toBe('Raise your hand to interrupt');
+    expect(stopBtn(f).disabled).toBe(true);
+    expect(stopBtn(f).title).toBe('Stop (while someone is speaking)');
+    expect(stopBtn(f).getAttribute('aria-label')).toBe('Stop');
+  });
+
+  it('opens both interrupt buttons while busy, and greys Send', () => {
+    const f = mount({ busy: true, canRaiseHand: true });
+    expect(hand(f).disabled).toBe(false);
+    expect(stopBtn(f).disabled).toBe(false);
+    expect(sendBtn(f).disabled).toBe(true);
+    expect(sendBtn(f).title).toBe('Generating...');
+    expect(hand(f).title).toBe('Raise your hand — the next speaker may yield the floor to you');
+    expect(stopBtn(f).title).toBe('Stop — cut the reply off here and take the floor');
+  });
+
+  it('greys the hand, not Stop, when only one character is present', () => {
+    const f = mount({ busy: true, canRaiseHand: false });
+    expect(hand(f).disabled).toBe(true);
+    expect(hand(f).title).toBe(
+      'Only one character is present — the floor returns to you after this reply',
+    );
+    expect(stopBtn(f).disabled).toBe(false);
+  });
+
+  it('shows the raised state through the class, aria-pressed, label and title', () => {
+    const f = mount({ busy: true, canRaiseHand: true, handRaised: true });
+    expect(hand(f).classList.contains('qt-chat-interrupt-button-raised')).toBe(true);
+    expect(hand(f).getAttribute('aria-pressed')).toBe('true');
+    expect(hand(f).getAttribute('aria-label')).toBe('Lower your hand');
+    expect(hand(f).title).toBe(
+      'Hand raised — the next speaker will be asked to yield. Click to lower it.',
+    );
+    f.componentRef.setInput('handRaised', false);
+    f.detectChanges();
+    expect(hand(f).getAttribute('aria-pressed')).toBe('false');
+    expect(hand(f).classList.contains('qt-chat-interrupt-button-raised')).toBe(false);
+  });
+
+  it('greys both while a stop is being put away, in v4\'s title order', () => {
+    const f = mount({ busy: true, canRaiseHand: true, stopping: true });
+    expect(hand(f).disabled).toBe(true);
+    expect(stopBtn(f).disabled).toBe(true);
+    expect(stopBtn(f).title).toBe('Stopping\u2026');
+    // `stopping` is not in the hand's ladder — busy + canRaiseHand is the else arm.
+    expect(hand(f).title).toBe('Raise your hand — the next speaker may yield the floor to you');
+  });
+
+  it('emits toggleRaisedHand once on a hand click, without submitting or bubbling', () => {
+    const f = mount({ busy: true, canRaiseHand: true });
+    const toggled = vi.fn();
+    const sent = vi.fn();
+    const stopped = vi.fn();
+    f.componentInstance.toggleRaisedHand.subscribe(toggled);
+    f.componentInstance.send.subscribe(sent);
+    f.componentInstance.stop.subscribe(stopped);
+    const form = f.nativeElement.querySelector('form') as HTMLFormElement;
+    const formClick = vi.fn();
+    form.addEventListener('click', formClick);
+    hand(f).click();
+    expect(toggled).toHaveBeenCalledTimes(1);
+    expect(sent).not.toHaveBeenCalled();
+    expect(stopped).not.toHaveBeenCalled();
+    expect(formClick).not.toHaveBeenCalled();
+  });
+
+  it('emits stop once on a Stop click, and never send', () => {
+    const f = mount({ busy: true, canRaiseHand: true });
+    const stopped = vi.fn();
+    const sent = vi.fn();
+    const toggled = vi.fn();
+    f.componentInstance.stop.subscribe(stopped);
+    f.componentInstance.send.subscribe(sent);
+    f.componentInstance.toggleRaisedHand.subscribe(toggled);
+    stopBtn(f).click();
+    expect(stopped).toHaveBeenCalledTimes(1);
+    expect(sent).not.toHaveBeenCalled();
+    expect(toggled).not.toHaveBeenCalled();
+  });
+
+  it('keeps the interrupt buttons type="button" so Enter and submit reach only Send', () => {
+    const f = mount();
+    expect(sendBtn(f).type).toBe('submit');
+    expect(hand(f).type).toBe('button');
+    expect(stopBtn(f).type).toBe('button');
+  });
+
+  it('carries v4\'s class tokens exactly', () => {
+    const f = mount();
+    for (const b of [sendBtn(f), hand(f), stopBtn(f)]) {
+      expect(b.classList.contains('qt-chat-composer-send')).toBe(true);
+    }
+    expect(hand(f).classList.contains('qt-chat-interrupt-button')).toBe(true);
+    expect(stopBtn(f).classList.contains('qt-chat-stop-button')).toBe(true);
   });
 });

@@ -113,10 +113,17 @@ export interface FinalDoneInfo {
   turn: NextSpeakerInfo | null;
   skipped: boolean;
   skippedParticipantId: string | null;
+  /** v4 `done.yielded`: the character yielded the floor to the raised hand. */
+  yielded: boolean;
   emptyResponse: boolean;
   emptyResponseReason: string | null;
   pendingExternalTurn: boolean;
   toolsExecuted: boolean;
+  /**
+   * v4 `done.stopped`: the operator hard-stopped the turn before any prose
+   * streamed — reset without a bubble or a toast, as `skipped` does.
+   */
+  stopped: boolean;
   /**
    * The provider plugin's attachment ledger, carried STRAIGHT off the frame
    * (bug 94). The reducer neither reads nor reshapes it: the render site raises
@@ -126,6 +133,13 @@ export interface FinalDoneInfo {
    * key (the Courier's `pendingExternalTurn` patch spreads it forward unchanged).
    */
   attachmentResults: AttachmentResults | null;
+}
+
+/** A raised hand's answer (v4 `handAnswered` frame) — see {@link ChatStreamState.handAnswered}. */
+export interface HandAnswered {
+  participantId: string | null;
+  characterName: string | null;
+  yielded: boolean;
 }
 
 /** The folded per-chat streaming state. */
@@ -182,6 +196,15 @@ export interface ChatStreamState {
    * been folded away.
    */
   chainHeldUserTurn: boolean;
+  /**
+   * The latest `handAnswered` frame (v4 `useSSEStreaming.ts:734-742`): the
+   * character asked about the operator's raised hand has answered it. CARRIED
+   * on the state for the same reason as {@link chainPaused}: the fold must
+   * carry it, the toast and the lowering are raised by the vertical.
+   */
+  handAnswered: HandAnswered | null;
+  /** Bumped per `handAnswered` frame so two answers in one chain each report. */
+  handAnsweredSeq: number;
   /** The terminal `done` payload for dispatch-reply reconciliation. */
   finalDone: FinalDoneInfo | null;
   // --- internal bookkeeping ---
@@ -207,6 +230,8 @@ export function initialChatStreamState(): ChatStreamState {
     chainReason: null,
     chainPaused: false,
     chainHeldUserTurn: false,
+    handAnswered: null,
+    handAnsweredSeq: 0,
     finalDone: null,
     toolBatchSeq: 0,
   };
@@ -285,6 +310,19 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   // a Host announcement (turn-pass note) surfaced mid-turn — insert, deduped by id
   if (frame.hostAnnouncement) {
     s = { ...s, messages: dedupePush(s.messages, { kind: 'host', id: frame.hostAnnouncement.id, message: frame.hostAnnouncement }) };
+  }
+
+  // the raised hand has been answered — carried, not toasted here (R-5)
+  if (frame.handAnswered) {
+    s = {
+      ...s,
+      handAnswered: {
+        participantId: frame.participantId ?? null,
+        characterName: frame.characterName ?? null,
+        yielded: frame.yielded === true,
+      },
+      handAnsweredSeq: s.handAnsweredSeq + 1,
+    };
   }
 
   // a Pascal custom-tool outcome (an LLM's run_custom reach) surfaced mid-turn —
@@ -376,17 +414,20 @@ function reduceDone(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamSt
     turn: frame.turn ?? null,
     skipped: frame.skipped ?? false,
     skippedParticipantId: frame.skippedParticipantId ?? null,
+    yielded: frame.yielded ?? false,
     emptyResponse: frame.emptyResponse ?? false,
     emptyResponseReason: frame.emptyResponseReason ?? null,
     pendingExternalTurn: frame.pendingExternalTurn ?? false,
     toolsExecuted: frame.toolsExecuted ?? false,
+    stopped: frame.stopped ?? false,
     attachmentResults: frame.attachmentResults ?? null,
   };
   let s: ChatStreamState = { ...prev, finalDone };
 
   // "Nothing to add" turn-pass: the Host note already surfaced via
   // hostAnnouncement. Reset without appending a bubble.
-  if (frame.skipped) {
+  // A hard stop before any prose is the same silent reset (v4 `done.skipped || done.stopped`).
+  if (frame.skipped || frame.stopped) {
     return { ...s, content: '', reasoning: '', toolBatches: [], streaming: false };
   }
 
@@ -506,10 +547,12 @@ function emptyDone(): FinalDoneInfo {
     turn: null,
     skipped: false,
     skippedParticipantId: null,
+    yielded: false,
     emptyResponse: false,
     emptyResponseReason: null,
     pendingExternalTurn: false,
     toolsExecuted: false,
+    stopped: false,
     attachmentResults: null,
   };
 }

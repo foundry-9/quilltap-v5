@@ -2714,6 +2714,10 @@ export type CoreRequest =
   // --- Inform, the out-of-character word to the cast (§S.1; P4.D205 owns the
   //     server half) ---
   | ChatInformRequest
+  // === P4.D336: raise a hand / stop (append-only) ===
+  | ChatStopTurnRequest
+  | ChatRaiseHandRequest
+  // === end P4.D336 ===
   | ChatInformsListRequest
   | ChatInformCancelRequest
   // --- The Host's Scenario Builder (the d1c06cd9d round's §S.1; P4.D217 serves
@@ -4856,6 +4860,10 @@ export type CoreResponse =
   | { type: 'chat'; data: { chat: ChatDetail } }
   | { type: 'chatSettings'; data: ChatSettingsDto }
   | { type: 'turnAction'; data: TurnActionDto }
+  // === P4.D336: raise a hand / stop (append-only) ===
+  | { type: 'stopTurn'; data: StopTurnResult }
+  | { type: 'raiseHand'; data: RaiseHandResult }
+  // === end P4.D336 ===
   | { type: 'message'; data: { message: MessageDto } }
   | { type: 'messageDelete'; data: MessageDeleteDto }
   // --- The Settings surface (P4.6d implements the server side) ---
@@ -5143,6 +5151,14 @@ export interface ChatStreamFrame {
   toolsExecuted?: boolean;
   skipped?: boolean;
   skippedParticipantId?: string | null;
+  // === P4.D336: raise a hand / stop (C6) ===
+  /** done: the operator hard-stopped the turn before any prose streamed (v4 `useSSEStreaming.ts:136`). Like `skipped`, the client resets its buffer without a bubble or a toast. */
+  stopped?: boolean;
+  /** done / handAnswered: the character yielded the floor to the raised hand (v4 `:138`). Rides with `skipped` on a bare yield. */
+  yielded?: boolean;
+  /** The character asked about the operator's raised hand has answered it (v4 `:140`); `participantId` / `characterName` / `yielded` ride beside it. */
+  handAnswered?: boolean;
+  // === end P4.D336 ===
   pendingExternalTurn?: boolean;
   usage?: TokenUsage | null;
   cacheUsage?: CacheUsage | null;
@@ -9133,6 +9149,34 @@ export interface ChatInformResult {
   /** The persisted Host record, or `null` when the record write failed. */
   message: PostedMessage | null;
 }
+
+// === P4.D336: raise a hand / stop (C6) ===
+/** Hard stop (v4 `?action=stop-turn`, `interrupt.ts:32-51`): pause a room with a rotation, abort every open stream, wait ≤ 15 s for it to settle. No body. */
+export interface ChatStopTurnRequest {
+  type: 'chatStopTurn';
+  chatId: string;
+}
+
+/** v4 `successResponse({ stopped, settled, paused })` — key order kept. `stopped: 0` with `settled: true` is "nothing was running". */
+export interface StopTurnResult {
+  stopped: number;
+  settled: boolean;
+  paused: boolean;
+}
+
+/** Soft interrupt (v4 `?action=raise-hand`, `interrupt.ts:58-62`). `raised` absent → `true` on the server (v4 `prefault`); the SPA always sends it. */
+export interface ChatRaiseHandRequest {
+  type: 'chatRaiseHand';
+  chatId: string;
+  raised?: boolean;
+}
+
+/** v4 `successResponse({ raised: raised && streams > 0, active: streams > 0 })`. */
+export interface RaiseHandResult {
+  raised: boolean;
+  active: boolean;
+}
+// === end P4.D336 ===
 
 /** v4 `GET /api/v1/chats/[id]?action=informs` — the batches still owed. */
 export interface ChatInformsListRequest {

@@ -258,7 +258,6 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             (queue)="queue.emit($event)"
             (dequeue)="dequeue.emit($event)"
             (skip)="skip.emit()"
-            (stopStreaming)="stopStreaming.emit()"
             (impersonate)="impersonate.emit($event)"
             (stopImpersonate)="stopImpersonate.emit($event)"
             (regenerateAvatar)="regenerateAvatar.emit($event)"
@@ -441,7 +440,6 @@ export class ChatSidebar implements OnInit {
   readonly queue = output<string>();
   readonly dequeue = output<string>();
   readonly skip = output<void>();
-  readonly stopStreaming = output<void>();
   readonly impersonate = output<string>();
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();

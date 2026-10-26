@@ -528,3 +528,20 @@ describe('ParticipantCard — the inventory button', () => {
   });
 });
 // === end P4.D330 ===
+
+describe('ParticipantCard — Stop button (moved to the composer)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('shows the Speaking button, not a Stop button, while this participant is generating', () => {
+    const fixture = mount({ turnStatus: 'generating', isGenerating: true, isCurrentTurn: true });
+    const buttons = [...fixture.nativeElement.querySelectorAll('button')] as HTMLButtonElement[];
+    expect(buttons.some((b) => /stop generating/i.test(b.getAttribute('aria-label') ?? ''))).toBe(
+      false,
+    );
+    const speaking = buttons.find((b) => (b.textContent ?? '').includes('Speaking...'));
+    expect(speaking).toBeDefined();
+    expect(speaking!.disabled).toBe(true);
+    // v4 deleted the output with the button — the composer is its only home.
+    expect((fixture.componentInstance as unknown as { stopStreaming?: unknown }).stopStreaming).toBeUndefined();
+  });
+});

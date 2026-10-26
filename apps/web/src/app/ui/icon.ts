@@ -14,7 +14,12 @@ export type IconName =
   | 'chevron-down' | 'chevron-right' | 'chevron-left' | 'arrow-left'
   | 'arrow-right' | 'arrow-up' | 'arrow-down' | 'sort' | 'alert-triangle'
   | 'alert-circle' | 'shield' | 'ban' | 'clock' | 'calendar' | 'image'
-  | 'camera' | 'play' | 'pause' | 'stop' | 'zoom-in' | 'zoom-out' | 'projects'
+  | 'camera' | 'play' | 'pause' | 'stop'
+  // The composer's hard stop (an octagon, not the media square above) and its
+  // soft interrupt — the operator's raised hand.
+  | 'stop-sign'
+  | 'hand-raised'
+  | 'zoom-in' | 'zoom-out' | 'projects'
   | 'files' | 'file' | 'file-plus' | 'folder' | 'folder-plus' | 'book'
   | 'characters' | 'scriptorium' | 'photos' | 'scenarios' | 'profile' | 'user'
   | 'user-plus' | 'users' | 'megaphone' | 'mail' | 'dice' | 'sparkles' | 'wand'

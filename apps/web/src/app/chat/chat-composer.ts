@@ -524,17 +524,10 @@ export interface PendingToolResultChip extends RngPendingResult {
           (imagePaste)="onEditorImagePaste($event)"
         />
 
-        @if (busy()) {
-          <button
-            type="button"
-            class="qt-chat-composer-send qt-chat-stop-button"
-            title="Stop generating"
-            aria-label="Stop generating"
-            (click)="stop.emit()"
-          >
-            <qt-icon name="stop" class="w-5 h-5" />
-          </button>
-        } @else {
+        <!-- Right side buttons: Send, raise a hand (soft interrupt), Stop (hard).
+             v4 ChatComposer.tsx:606-660; stacked per b8362beb5. All three are
+             ALWAYS rendered — greyed, never swapped. -->
+        <div class="qt-chat-composer-actions">
           <button
             type="submit"
             class="qt-chat-composer-send"
@@ -544,7 +537,29 @@ export interface PendingToolResultChip extends RngPendingResult {
           >
             <qt-icon name="send" class="w-5 h-5" />
           </button>
-        }
+          <button
+            type="button"
+            class="qt-chat-composer-send qt-chat-interrupt-button"
+            [class.qt-chat-interrupt-button-raised]="handRaised()"
+            [attr.aria-pressed]="handRaised()"
+            [attr.aria-label]="raiseHandAriaLabel()"
+            [title]="raiseHandTitle()"
+            [disabled]="!canRaise()"
+            (click)="$event.stopPropagation(); toggleRaisedHand.emit()"
+          >
+            <qt-icon name="hand-raised" class="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            class="qt-chat-composer-send qt-chat-stop-button"
+            aria-label="Stop"
+            [title]="stopTitle()"
+            [disabled]="!canStop()"
+            (click)="$event.stopPropagation(); stop.emit()"
+          >
+            <qt-icon name="stop-sign" class="w-5 h-5" />
+          </button>
+        </div>
       </form>
      </div>
     </div>
@@ -592,8 +607,17 @@ export class ChatComposer implements OnInit {
     () => fetchCharacterList(this.core),
   );
 
-  /** Streaming/awaiting in flight — swaps Send for Stop and blocks input. */
+  /** Streaming/awaiting in flight — blocks input and opens the two interrupt buttons. */
   readonly busy = input(false);
+  /** The operator's hand is up, waiting on the next speaker's answer. */
+  readonly handRaised = input(false);
+  /**
+   * Whether anyone could be asked to yield — a room with a rotation (more than
+   * one character). A lone character's reply hands the floor back anyway.
+   */
+  readonly canRaiseHand = input(false);
+  /** A hard stop is being put away on the server. */
+  readonly stopping = input(false);
   readonly disabled = input(false);
   readonly hasActiveCharacters = input(true);
   /** Terminal Mode is showing a pane — hide the open-terminal button (v4). */
@@ -679,7 +703,10 @@ export class ChatComposer implements OnInit {
   readonly slashDefaultCharacterId = input<string | null>(null);
 
   readonly send = output<ComposerSend>();
+  /** Hard stop: cut the reply off, keep what streamed, cede the floor. */
   readonly stop = output<void>();
+  /** Soft interrupt: raise (or lower) the operator's hand. */
+  readonly toggleRaisedHand = output<void>();
   readonly continue = output<void>();
   readonly openTerminal = output<void>();
   readonly openDocument = output<void>();
@@ -887,6 +914,37 @@ export class ChatComposer implements OnInit {
     const cue = this.voiceRehearsal();
     if (cue && seat) return voiceRehearsalTitle(cue, seat.name, 'send');
     return 'Send message';
+  });
+
+  /** v4 `disabled={!isGenerating || !canRaiseHand || stopping}`, negated. */
+  protected readonly canRaise = computed(
+    () => this.busy() && this.canRaiseHand() && !this.stopping(),
+  );
+
+  /** v4 `disabled={!isGenerating || stopping}`, negated. */
+  protected readonly canStop = computed(() => this.busy() && !this.stopping());
+
+  protected readonly raiseHandAriaLabel = computed(() =>
+    this.handRaised() ? 'Lower your hand' : 'Raise your hand to interrupt',
+  );
+
+  /** v4's ladder, in v4's order (the `!isGenerating` arm first). */
+  protected readonly raiseHandTitle = computed(() => {
+    if (!this.busy()) return 'Raise your hand (while someone is speaking)';
+    if (!this.canRaiseHand()) {
+      return 'Only one character is present — the floor returns to you after this reply';
+    }
+    if (this.handRaised()) {
+      return 'Hand raised — the next speaker will be asked to yield. Click to lower it.';
+    }
+    return 'Raise your hand — the next speaker may yield the floor to you';
+  });
+
+  /** v4's ladder — note `stopping` comes FIRST here, unlike the hand's. */
+  protected readonly stopTitle = computed(() => {
+    if (this.stopping()) return 'Stopping…';
+    if (this.busy()) return 'Stop — cut the reply off here and take the floor';
+    return 'Stop (while someone is speaking)';
   });
 
   /** Rules only take effect when the feature gate is on (v4). */

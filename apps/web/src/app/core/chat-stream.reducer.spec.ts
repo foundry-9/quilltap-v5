@@ -468,3 +468,68 @@ describe('chat stream reducer — the error frame persistence flags (bug 241)', 
     expect(sub(initialChatStreamState())).toBeNull();
   });
 });
+
+describe('chat stream reducer — raise a hand / stop (v4 2b5e8ee24)', () => {
+  const fold = (frames: ChatStreamFrame[]) => frames.reduce(reduceChatFrame, initialChatStreamState());
+
+  it('a done{stopped} resets without a bubble, and carries the flag', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 0 },
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, stopped: true },
+    ]);
+    expect(s.finalDone?.stopped).toBe(true);
+    expect(s.content).toBe('');
+    expect(s.toolBatches).toEqual([]);
+    expect(s.streaming).toBe(false);
+    expect(assistant(s.messages)).toHaveLength(0);
+  });
+
+  it('a stop with prose is an ordinary done', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 0 },
+      { content: 'Well, as I was say' },
+      { done: true, messageId: 'm1', participantId: 'p2', toolsExecuted: false },
+    ]);
+    expect(s.finalDone?.stopped).toBe(false);
+    expect(assistant(s.messages)).toHaveLength(1);
+  });
+
+  it('a bare yield carries yielded + skipped and emits no bubble', () => {
+    const s = fold([
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, skipped: true, skippedParticipantId: 'p2', yielded: true },
+    ]);
+    expect(s.finalDone).toMatchObject({ yielded: true, skipped: true, skippedParticipantId: 'p2' });
+    expect(assistant(s.messages)).toHaveLength(0);
+  });
+
+  it('carries handAnswered as a counted transition', () => {
+    const one = fold([{ handAnswered: true, participantId: 'p2', characterName: 'Bertie', yielded: false }]);
+    expect(one.handAnswered).toEqual({ participantId: 'p2', characterName: 'Bertie', yielded: false });
+    expect(one.handAnsweredSeq).toBe(1);
+    const two = reduceChatFrame(one, { handAnswered: true, participantId: 'p3', yielded: true });
+    expect(two.handAnsweredSeq).toBe(2);
+    expect(two.handAnswered).toEqual({ participantId: 'p3', characterName: null, yielded: true });
+  });
+
+  it('carries the yielded / stopped chain reasons', () => {
+    const y = fold([{ chainComplete: true, reason: 'yielded', paused: false }]);
+    expect(y.chainReason).toBe('yielded');
+    expect(y.chainPaused).toBe(false);
+    const st = fold([{ chainComplete: true, reason: 'stopped', paused: true }]);
+    expect(st.chainReason).toBe('stopped');
+    expect(st.chainPaused).toBe(true);
+  });
+
+  it('folds the bare-yield frame order whole: one host note, no assistant bubble', () => {
+    const s = fold([
+      { turnStart: true, participantId: 'p2', characterName: 'Bertie', chainDepth: 1 },
+      { handAnswered: true, participantId: 'p2', characterName: 'Bertie', yielded: true },
+      { hostAnnouncement: { id: 'host-y', type: 'message', systemSender: 'host', content: 'Bertie yields the floor to you.' } },
+      { done: true, messageId: null, participantId: 'p2', toolsExecuted: false, skipped: true, skippedParticipantId: 'p2', yielded: true },
+      { chainComplete: true, reason: 'yielded', paused: false },
+    ]);
+    expect(s.messages.filter((m) => m.kind === 'host')).toHaveLength(1);
+    expect(assistant(s.messages)).toHaveLength(0);
+    expect(s.finished).toBe(true);
+  });
+});

@@ -296,18 +296,7 @@ export interface ConnectionProfileOption {
       </div>
 
       <div class="qt-participant-card-actions">
-        @if (turnStatus() === 'generating') {
-          <button
-            type="button"
-            class="flex-1 qt-button qt-button-sm qt-participant-stop-button"
-            title="Stop generating"
-            aria-label="Stop generating"
-            (click)="stopStreaming.emit()"
-          >
-            <qt-icon name="stop" class="w-3.5 h-3.5 mr-1" />
-            Stop
-          </button>
-        } @else if (isUserParticipant()) {
+        @if (isUserParticipant()) {
           <button
             type="button"
             [class]="
@@ -461,7 +450,6 @@ export class ParticipantCard {
   readonly queue = output<string>();
   readonly dequeue = output<string>();
   readonly skip = output<void>();
-  readonly stopStreaming = output<void>();
   readonly impersonate = output<string>();
   readonly stopImpersonate = output<string>();
   readonly regenerateAvatar = output<string>();
