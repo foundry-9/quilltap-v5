@@ -122,6 +122,27 @@ pub fn resolve_actor_origin(main: &Connection, ctx: &DocEditToolContext) -> Libr
     LibrarianActorOrigin::ByUser
 }
 
+/// v4 `publishedMountPoint` (`shared.ts:38-52`, bug 256): the store a published
+/// record or announcement names — the resolved store's own name, never the
+/// `mount_point` the caller typed. A caller's `self` means the caller's vault;
+/// written into a Librarian announcement or a `chat_documents` row, every other
+/// reader would follow it into their own vault instead. Falls back to the
+/// request only outside document-store scope, where the scope itself is the
+/// address. JS truthiness: an EMPTY resolved name falls back too.
+pub fn published_mount_point(
+    resolved: Option<&ResolvedPath>,
+    requested: Option<&str>,
+) -> Option<String> {
+    if let Some(r) = resolved {
+        if r.scope == DocEditScope::DocumentStore {
+            if let Some(name) = r.mount_point_name.as_deref().filter(|n| !n.is_empty()) {
+                return Some(name.to_string());
+            }
+        }
+    }
+    requested.map(str::to_string)
+}
+
 /// Synchronous sibling of
 /// [`crate::services::librarian_notifications::document_hidden_from_characters`]:
 /// true when the indexed document at `(mount_point_id, relative_path)` is

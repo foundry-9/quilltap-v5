@@ -586,9 +586,13 @@ fn resolve_document_store_path(
 ) -> Result<ResolvedPath, ResolveError> {
     let Some(mount_point_ref) = &context.mount_point else {
         tracing::warn!("document_store scope requires mountPoint in context");
+        // A path alone names no one: every character vault has a `metadata.json`,
+        // so a bare filename matches every vault and must never pick one (bug 256).
         return Err(ResolveError::path(
             PathErrorCode::MissingContext,
-            "Mount point is required for document_store scope",
+            "Mount point is required for document_store scope: a path names no store on its own \
+             (every character vault has a metadata.json), so say which store — by name, ID or \
+             qtap:// address",
         ));
     };
 
@@ -710,7 +714,9 @@ fn resolve_document_store_path(
         );
         return Err(ResolveError::path(
             PathErrorCode::NotFound,
-            "Mount point not found or not accessible in this context",
+            format!(
+                "No document store \"{mount_point_ref}\" is reachable in this context — nothing was read"
+            ),
         ));
     };
 
@@ -1098,7 +1104,7 @@ mod tests {
                 assert_eq!(code, PathErrorCode::NotFound);
                 assert_eq!(
                     message,
-                    "Mount point not found or not accessible in this context"
+                    "No document store \"Leilani Character Vault\" is reachable in this context — nothing was read"
                 );
             }
             other => panic!("expected NOT_FOUND, got {other:?}"),

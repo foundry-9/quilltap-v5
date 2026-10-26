@@ -197,11 +197,22 @@ async function main(): Promise<void> {
     rows.push({ kind: 'resolve', id: c.id, result: sentinelize(result) });
   }
 
-  // URI producers.
+  // URI producers. P4.D338 (v4 `7263105c6`, bug 256): no producer yields
+  // `qtap://self/…` and none takes a character — `uri-self` / `res-self` keep
+  // their ids but now an EMPTY name (ambiguous) prints the vault's UUID, and the
+  // `-vault-named` rows pass the vault's REAL name, the form a character's own
+  // vault prints in practice.
+  const vaultRow = await getRepositories().docMountPoints.findById(charAVault);
+  const vaultName = vaultRow?.name as string;
   rows.push({
     kind: 'uri',
     id: 'uri-self',
-    result: await docStoreUriFor({ mountPointId: charAVault, mountPointName: '', relativePath: 'Mail/x.md', characterId: A }),
+    result: await docStoreUriFor({ mountPointId: charAVault, mountPointName: '', relativePath: 'Mail/x.md' }),
+  });
+  rows.push({
+    kind: 'uri',
+    id: 'uri-vault-named',
+    result: await docStoreUriFor({ mountPointId: charAVault, mountPointName: vaultName, relativePath: 'metadata.json' }),
   });
   rows.push({
     kind: 'uri',
@@ -222,12 +233,12 @@ async function main(): Promise<void> {
     id: 'uri-resolved-project',
     result: await uriForResolvedPath(
       { absolutePath: '', scope: 'project', basePath: '', relativePath: 'Outline.md' } as never,
-      { characterId: A },
     ),
   });
 
-  const resolver = await buildDocStoreUriResolver(A);
+  const resolver = await buildDocStoreUriResolver();
   rows.push({ kind: 'uri', id: 'res-self', result: resolver.uriForMount('', charAVault, 'x.md') });
+  rows.push({ kind: 'uri', id: 'res-vault-named', result: resolver.uriForMount(vaultName, charAVault, 'metadata.json') });
   rows.push({ kind: 'uri', id: 'res-name', result: resolver.uriForMount('Project Docs', spec.normalStore, 'k.md') });
   // `res-ambiguous` omitted for the same P4.d7 divergence reason as `uri-ambiguous` above.
   rows.push({ kind: 'uri', id: 'res-scope', result: resolver.uriForScope('general', 'g.md') });

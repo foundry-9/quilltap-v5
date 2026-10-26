@@ -16,9 +16,9 @@ use super::shared::{
     assert_character_may_read, assert_character_may_write, basename, build_read_resolution_context,
     build_write_resolution_context, collect_peer_character_ids_for_reads,
     get_accessible_mount_points, get_character_blocked_read_paths, is_text_file,
-    librarian_scope_from, read_file_with_mtime, resolve_actor_origin, resolve_error_message,
-    resolve_official_project_mount, scope_from_str, write_file_with_mtime_check,
-    AccessibleMountPointsQuery, DocEditToolContext,
+    librarian_scope_from, published_mount_point, read_file_with_mtime, resolve_actor_origin,
+    resolve_error_message, resolve_official_project_mount, scope_from_str,
+    write_file_with_mtime_check, AccessibleMountPointsQuery, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::db::database_store::list_database_files;
@@ -98,14 +98,7 @@ pub fn handle_read_file(
     )
     .map_err(resolve_error_message)?;
     assert_character_may_read(mount, &resolved, ctx)?;
-    let uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     if !is_text_file(&resolved.relative_path) {
         // The converted-blob `extractedText` read branch is a tracked deferral;
@@ -355,14 +348,7 @@ pub fn handle_write_file(
 
     let mtime = write_file_with_mtime_check(main, mount, &resolved, &content_to_write)?;
     // triggerReindexIfNeeded: no-op seam.
-    let written_uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let written_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
     let change = match &previous_content {
@@ -378,7 +364,7 @@ pub fn handle_write_file(
         display_title,
         uri: written_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
         change,
         hidden_from_characters: content_hidden_from_characters(&content_to_write),
@@ -536,21 +522,14 @@ pub fn handle_str_replace(
     );
     let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     let line_number = get_line_number(&content, index);
-    let edited_uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
     let announcement = LibrarianWriteAnnouncement {
         chat_id: ctx.chat_id.clone(),
         uri: edited_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
         change: LibrarianWriteChange::Edited {
             diff: generate_unified_diff(&content, &new_content, &display_title),
@@ -686,21 +665,14 @@ pub fn handle_insert_text(
     );
     let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     let line_number = get_line_number(&new_content, insert_offset);
-    let edited_uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
     let announcement = LibrarianWriteAnnouncement {
         chat_id: ctx.chat_id.clone(),
         uri: edited_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
         change: LibrarianWriteChange::Edited {
             diff: generate_unified_diff(&content, &new_content, &display_title),
@@ -757,7 +729,7 @@ pub fn handle_grep(
         arg_str(args, "path"),
         arg_str_ref(args, "uri"),
     )?;
-    let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
+    let resolver = DocStoreUriResolver::build(mount);
 
     let query = arg_str(args, "query").unwrap_or_default();
     let is_regex = arg_bool(args, "is_regex").unwrap_or(false);
@@ -1168,7 +1140,7 @@ pub fn handle_list_files(
             arg_str(args, "folder"),
         )
     };
-    let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
+    let resolver = DocStoreUriResolver::build(mount);
     let pattern = arg_str(args, "pattern");
     let include_auto = arg_bool(args, "includeAutomaticImages").unwrap_or(false);
     // v4: `const recursive = input.recursive !== false;` (only the fs walks honour it).

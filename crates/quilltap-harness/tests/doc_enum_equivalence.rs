@@ -14,8 +14,9 @@
 //! `match` (+ optional context) — no minted values. list files carry a `modified`
 //! integer (`new Date(link.lastModified).getTime()`), which is baked into the
 //! shared fixture and read identically by both sides, so it is compared EXACTLY
-//! (proving list-modified correctness). The `uri` values are `qtap://self/…` /
-//! `qtap://<store>/…` / `qtap://project/…` — stable text, no UUIDs. The shared
+//! (proving list-modified correctness). The `uri` values are `qtap://<store>/…`
+//! (a vault names itself — never `qtap://self/…`, bug 256 / P4.D338) /
+//! `qtap://project/…` — stable text, UUIDs only where a name is ambiguous. The shared
 //! `normalize` (positional UUID remap + ISO-timestamp collapse, from the doc-text
 //! differential) is therefore a no-op on these values but is retained verbatim so
 //! any stray minted id/timestamp would surface identically on both sides.

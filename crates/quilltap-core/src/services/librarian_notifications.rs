@@ -103,28 +103,45 @@ pub async fn document_hidden_from_characters(
 // ---------------------------------------------------------------------------
 
 /// v4 `librarianUri`: the single canonical `qtap://` URI for an announced
-/// document. `mount_point` may be the reserved `self` literal or empty.
+/// document, built from the scope / mount point / path the announcement already
+/// carries.
+///
+/// An announcement is read by everyone in the chat, so it never prints
+/// `qtap://self/…`: `self` means the vault of whoever follows it, and another
+/// character following one character's `self` address opens their own file with
+/// no error (bug 256). Callers pass the resolved store's name
+/// (`published_mount_point`); a `self` or missing store that still arrives (an
+/// old `chat_documents` row) is printed as a bare path, which names no store and
+/// so cannot open the wrong one.
 fn librarian_uri(scope: LibrarianScope, mount_point: Option<&str>, path: &str) -> String {
-    use crate::doc_edit::qtap_uri::{
-        format_doc_store_uri, format_scoped_uri, format_self_uri, ScopedAuthority,
-    };
+    use crate::doc_edit::qtap_uri::{format_doc_store_uri, format_scoped_uri, ScopedAuthority};
     match scope {
         LibrarianScope::Project => format_scoped_uri(ScopedAuthority::Project, path, None, None),
         LibrarianScope::General => format_scoped_uri(ScopedAuthority::General, path, None, None),
-        LibrarianScope::DocumentStore => {
-            // v4: `if (!mountPoint || mountPoint.toLowerCase() === 'self') return formatSelfUri(path);`
-            match mount_point {
-                Some(mp) if !mp.is_empty() && mp.to_lowercase() != "self" => {
-                    format_doc_store_uri(mp, "", path, false, None, None)
-                }
-                _ => format_self_uri(path, None, None),
+        LibrarianScope::DocumentStore => match mount_point {
+            Some(mp) if !mp.is_empty() && mp.to_lowercase() != "self" => {
+                format_doc_store_uri(mp, "", path, false, None, None)
             }
-        }
+            _ => {
+                tracing::debug!(
+                    context = "librarian-notifications",
+                    mountPoint = mount_point.unwrap_or("null"),
+                    path = %path,
+                    "[LibrarianNotification] No store name for an announced path; printing the bare path"
+                );
+                format!("path \"{path}\" in a character's vault")
+            }
+        },
     }
 }
 
 /// v4 `scopeLabel`.
 fn scope_label(scope: LibrarianScope, mount_point: Option<&str>) -> String {
+    if scope == LibrarianScope::DocumentStore
+        && mount_point.is_some_and(|mp| mp.to_lowercase() == "self")
+    {
+        return "a character's vault".to_string();
+    }
     if scope == LibrarianScope::DocumentStore {
         if let Some(mp) = mount_point {
             if !mp.is_empty() {

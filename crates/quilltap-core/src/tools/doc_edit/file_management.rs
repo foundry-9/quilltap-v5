@@ -37,9 +37,9 @@ use super::shared::{
     apply_qtap_uri, arg_str, assert_character_may_read, assert_character_may_write,
     assert_folder_has_no_write_protected_descendants, basename, build_read_resolution_context,
     build_write_resolution_context, document_hidden_from_characters, is_text_file,
-    librarian_scope_from, read_file_with_mtime, resolve_actor_origin, resolve_error_message,
-    scope_from_str, store_error_message, write_file_with_mtime_check, Addressing,
-    DocEditToolContext,
+    librarian_scope_from, published_mount_point, read_file_with_mtime, resolve_actor_origin,
+    resolve_error_message, scope_from_str, store_error_message, write_file_with_mtime_check,
+    Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::db::database_store::{self, database_document_exists, database_folder_exists};
@@ -71,20 +71,8 @@ fn posix_join(dir: &str, name: &str) -> String {
 
 /// The doc-store URI for a resolved path (no heading/level fragment for file-mgmt
 /// results).
-fn uri_for(
-    main: &Connection,
-    mount: &Connection,
-    resolved: &ResolvedPath,
-    ctx: &DocEditToolContext,
-) -> String {
-    uri_for_resolved_path(
-        main,
-        mount,
-        resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    )
+fn uri_for(mount: &Connection, resolved: &ResolvedPath) -> String {
+    uri_for_resolved_path(mount, resolved, None, None)
 }
 
 // ============================================================================
@@ -185,16 +173,19 @@ pub fn handle_move_file(
             )
             .map_err(store_error_message)?;
             // syncChatDocumentsAfterFileMove: no-op seam (see the module header).
-            let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+            let moved_uri = uri_for(mount, &resolved_dest);
             let np = new_path.clone().unwrap_or_default();
             let announcement = LibrarianMoveAnnouncement {
                 chat_id: ctx.chat_id.clone(),
                 old_display_title: basename(&path).to_string(),
                 new_display_title: basename(&np).to_string(),
-                old_uri: uri_for(main, mount, &resolved_source, ctx),
+                old_uri: uri_for(mount, &resolved_source),
                 new_uri: moved_uri.clone(),
                 scope: librarian_scope_from(scope),
-                mount_point: addressing.mount_point.clone(),
+                mount_point: published_mount_point(
+                    Some(&resolved_source),
+                    addressing.mount_point.as_deref(),
+                ),
                 origin: resolve_actor_origin(main, ctx),
                 is_folder: false,
                 hidden_from_characters,
@@ -245,15 +236,18 @@ pub fn handle_move_file(
     std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
     // syncChatDocumentsAfterFileMove + the document_store reindex: no-op seams.
-    let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+    let moved_uri = uri_for(mount, &resolved_dest);
     let announcement = LibrarianMoveAnnouncement {
         chat_id: ctx.chat_id.clone(),
         old_display_title: basename(&path).to_string(),
         new_display_title: basename(&np).to_string(),
-        old_uri: uri_for(main, mount, &resolved_source, ctx),
+        old_uri: uri_for(mount, &resolved_source),
         new_uri: moved_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(
+            Some(&resolved_source),
+            addressing.mount_point.as_deref(),
+        ),
         origin: resolve_actor_origin(main, ctx),
         is_folder: false,
         hidden_from_characters,
@@ -518,7 +512,7 @@ pub fn handle_copy_file(
     let mtime = write_file_with_mtime_check(main, mount, &resolved_dest, &content)?;
     // triggerReindexIfNeeded: no-op seam (see the module header).
 
-    let copied_uri = uri_for(main, mount, &resolved_dest, ctx);
+    let copied_uri = uri_for(mount, &resolved_dest);
     let src_label = resolved_source
         .mount_point_name
         .clone()
@@ -534,7 +528,7 @@ pub fn handle_copy_file(
         dest_display_title: posix_basename(&final_dest_rel).to_string(),
         source_mount_point: src_label.clone(),
         dest_mount_point: dst_label.clone(),
-        source_uri: uri_for(main, mount, &resolved_source, ctx),
+        source_uri: uri_for(mount, &resolved_source),
         dest_uri: copied_uri.clone(),
         origin: resolve_actor_origin(main, ctx),
         // Gate by the source's read-policy: a character_read:false source must not
@@ -620,13 +614,16 @@ pub fn handle_delete_file(
                 }
                 return Ok(DocEditToolResult::fail(format!("File not found: {path}")));
             }
-            let deleted_uri = uri_for(main, mount, &resolved, ctx);
+            let deleted_uri = uri_for(mount, &resolved);
             let announcement = LibrarianDeleteAnnouncement {
                 chat_id: ctx.chat_id.clone(),
                 display_title: basename(&path).to_string(),
                 file_path: path.clone(),
                 scope: librarian_scope_from(scope),
-                mount_point: addressing.mount_point.clone(),
+                mount_point: published_mount_point(
+                    Some(&resolved),
+                    addressing.mount_point.as_deref(),
+                ),
                 origin: resolve_actor_origin(main, ctx),
                 hidden_from_characters,
             };
@@ -650,13 +647,13 @@ pub fn handle_delete_file(
     }
     std::fs::remove_file(&resolved.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "unlink", &e))?;
-    let deleted_uri = uri_for(main, mount, &resolved, ctx);
+    let deleted_uri = uri_for(mount, &resolved);
     let announcement = LibrarianDeleteAnnouncement {
         chat_id: ctx.chat_id.clone(),
         display_title: basename(&path).to_string(),
         file_path: path.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
         hidden_from_characters,
     };
@@ -704,12 +701,15 @@ pub fn handle_create_folder(
             // error message on failure.
             match database_store::create_database_folder(mount, mp, &resolved.relative_path) {
                 Ok(_) => {
-                    let uri = uri_for(main, mount, &resolved, ctx);
+                    let uri = uri_for(mount, &resolved);
                     let announcement = LibrarianFolderCreatedAnnouncement {
                         chat_id: ctx.chat_id.clone(),
                         folder_path: path.clone(),
                         scope: librarian_scope_from(scope),
-                        mount_point: addressing.mount_point.clone(),
+                        mount_point: published_mount_point(
+                            Some(&resolved),
+                            addressing.mount_point.as_deref(),
+                        ),
                         origin: resolve_actor_origin(main, ctx),
                     };
                     return Ok(DocEditToolResult::ok(
@@ -729,12 +729,12 @@ pub fn handle_create_folder(
     // creates the directory itself, recursive + idempotent — no existence check).
     std::fs::create_dir_all(&resolved.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "mkdir", &e))?;
-    let uri = uri_for(main, mount, &resolved, ctx);
+    let uri = uri_for(mount, &resolved);
     let announcement = LibrarianFolderCreatedAnnouncement {
         chat_id: ctx.chat_id.clone(),
         folder_path: path.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
     };
     Ok(DocEditToolResult::ok(
@@ -781,12 +781,15 @@ pub fn handle_delete_folder(
         if let Some(mp) = resolved.mount_point_id.as_deref() {
             match database_store::delete_database_folder(mount, mp, &resolved.relative_path) {
                 Ok(()) => {
-                    let uri = uri_for(main, mount, &resolved, ctx);
+                    let uri = uri_for(mount, &resolved);
                     let announcement = LibrarianFolderDeletedAnnouncement {
                         chat_id: ctx.chat_id.clone(),
                         folder_path: path.clone(),
                         scope: librarian_scope_from(scope),
-                        mount_point: addressing.mount_point.clone(),
+                        mount_point: published_mount_point(
+                            Some(&resolved),
+                            addressing.mount_point.as_deref(),
+                        ),
                         origin: resolve_actor_origin(main, ctx),
                     };
                     return Ok(DocEditToolResult::ok(
@@ -843,12 +846,12 @@ pub fn handle_delete_folder(
     }
     std::fs::remove_dir(&resolved.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved.absolute_path, "rmdir", &e))?;
-    let uri = uri_for(main, mount, &resolved, ctx);
+    let uri = uri_for(mount, &resolved);
     let announcement = LibrarianFolderDeletedAnnouncement {
         chat_id: ctx.chat_id.clone(),
         folder_path: path.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
     };
     Ok(DocEditToolResult::ok(
@@ -917,7 +920,7 @@ pub fn handle_move_folder(
             ) {
                 Ok(()) => {
                     // syncChatDocumentsAfterFolderMove: no-op seam (see module header).
-                    let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+                    let moved_uri = uri_for(mount, &resolved_dest);
                     let np = new_path.clone().unwrap_or_default();
                     // v4's folder-move site passes NO `hiddenFromCharacters`
                     // (→ falsy); the file-move site does. Match: `false` here.
@@ -925,10 +928,13 @@ pub fn handle_move_folder(
                         chat_id: ctx.chat_id.clone(),
                         old_display_title: basename(&path).to_string(),
                         new_display_title: basename(&np).to_string(),
-                        old_uri: uri_for(main, mount, &resolved_source, ctx),
+                        old_uri: uri_for(mount, &resolved_source),
                         new_uri: moved_uri.clone(),
                         scope: librarian_scope_from(scope),
-                        mount_point: addressing.mount_point.clone(),
+                        mount_point: published_mount_point(
+                            Some(&resolved_source),
+                            addressing.mount_point.as_deref(),
+                        ),
                         origin: resolve_actor_origin(main, ctx),
                         is_folder: true,
                         hidden_from_characters: false,
@@ -991,16 +997,19 @@ pub fn handle_move_folder(
     std::fs::rename(&resolved_source.absolute_path, &resolved_dest.absolute_path)
         .map_err(|e| super::shared::fs_io_error(&resolved_dest.absolute_path, "rename", &e))?;
     // syncChatDocumentsAfterFolderMove: no-op seam (see the module header).
-    let moved_uri = uri_for(main, mount, &resolved_dest, ctx);
+    let moved_uri = uri_for(mount, &resolved_dest);
     // v4's folder-move site passes NO `hiddenFromCharacters` (→ falsy).
     let announcement = LibrarianMoveAnnouncement {
         chat_id: ctx.chat_id.clone(),
         old_display_title: basename(&path).to_string(),
         new_display_title: basename(&np).to_string(),
-        old_uri: uri_for(main, mount, &resolved_source, ctx),
+        old_uri: uri_for(mount, &resolved_source),
         new_uri: moved_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(
+            Some(&resolved_source),
+            addressing.mount_point.as_deref(),
+        ),
         origin: resolve_actor_origin(main, ctx),
         is_folder: true,
         hidden_from_characters: false,

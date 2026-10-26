@@ -32,6 +32,7 @@
 use rusqlite::Connection;
 use serde_json::{Map, Value};
 
+use super::shared::published_mount_point;
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_str, arg_str_ref, assert_character_may_read, basename,
     build_read_resolution_context, document_hidden_from_characters, librarian_scope_from,
@@ -121,6 +122,9 @@ pub fn handle_open_document(
         is_new: bool,
         hidden_from_characters: bool,
         display_title: String,
+        /// What the `chat_documents` row, the result and the announcement name
+        /// — the resolved store, never a reader-relative `self` (bug 256).
+        store_name: Option<String>,
     }
 
     let resolution: OpenResolution = if let Some(file_path) = addressing.path.clone() {
@@ -153,14 +157,9 @@ pub fn handle_open_document(
             resolved.mount_point_id.as_deref(),
             &resolved.relative_path,
         );
-        let doc_uri = uri_for_resolved_path(
-            main,
-            mount,
-            &resolved,
-            ctx.character_id.as_deref(),
-            None,
-            None,
-        );
+        // What the row, the result and the announcement name (bug 256).
+        let store_name = published_mount_point(Some(&resolved), addressing.mount_point.as_deref());
+        let doc_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
         // Existence check + mtime. Database mount: existence via the store + a
         // minted `Date.now()`. Filesystem mount: `fs.stat(...).mtimeMs` (a stat
@@ -195,6 +194,7 @@ pub fn handle_open_document(
             is_new: false,
             hidden_from_characters,
             display_title,
+            store_name,
         }
     } else {
         // Creating a new blank document (v4 `document-ui-handlers.ts:116-135`): mint
@@ -241,14 +241,7 @@ pub fn handle_open_document(
             // mount type) — the shared fs writer does exactly that.
             let mtime =
                 super::shared::write_fs_file_with_mtime_check(&resolved.absolute_path, "", None)?;
-            let doc_uri = uri_for_resolved_path(
-                main,
-                mount,
-                &resolved,
-                ctx.character_id.as_deref(),
-                None,
-                None,
-            );
+            let doc_uri = uri_for_resolved_path(mount, &resolved, None, None);
             Ok((doc_uri, mtime))
         })();
         let (doc_uri, mtime) = match created {
@@ -268,6 +261,10 @@ pub fn handle_open_document(
             is_new: true,
             hidden_from_characters: false,
             display_title,
+            // v4 reassigns `storeName` on the existing-file branch ONLY: a typed
+            // `self` on a NEW blank document is still stored and announced
+            // (R-13, v4's own asymmetry — pinned, never fixed here).
+            store_name: addressing.mount_point.clone(),
         }
     };
 
@@ -278,6 +275,7 @@ pub fn handle_open_document(
         is_new,
         hidden_from_characters,
         display_title,
+        store_name,
     } = resolution;
 
     // Persist: chat_documents.openDocument + chats.update({ documentMode: mode }).
@@ -290,8 +288,7 @@ pub fn handle_open_document(
                 &OpenDocumentInput {
                     file_path: file_path.clone(),
                     scope: scope_str.to_string(),
-                    // v4 passes input.mount_point (the ORIGINAL/URI mount_point).
-                    mount_point: addressing.mount_point.clone(),
+                    mount_point: store_name.clone(),
                     display_title: Some(display_title.clone()),
                 },
             )
@@ -323,7 +320,7 @@ pub fn handle_open_document(
     result.insert("filePath".into(), Value::String(file_path.clone()));
     result.insert("uri".into(), Value::String(doc_uri));
     result.insert("scope".into(), Value::String(scope_str.to_string()));
-    if let Some(mp) = &addressing.mount_point {
+    if let Some(mp) = &store_name {
         result.insert("mountPoint".into(), Value::String(mp.clone()));
     }
     result.insert("displayTitle".into(), Value::String(display_title.clone()));
@@ -356,7 +353,7 @@ pub fn handle_open_document(
         display_title: display_title.clone(),
         file_path: file_path.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: store_name.clone(),
         is_new,
         origin,
         hidden_from_characters,

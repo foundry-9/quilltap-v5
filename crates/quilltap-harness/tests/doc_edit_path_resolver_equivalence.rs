@@ -449,15 +449,25 @@ fn doc_edit_path_resolver_matches_oracle() {
     let uri = |id: &str, got: String| {
         assert_eq!(json!(got), want("uri", id), "uri mismatch for '{id}'");
     };
+    // P4.D338 (bug 256): no producer takes a character or yields `self`.
+    let vault_name: String = mount
+        .query_row(
+            "SELECT name FROM doc_mount_points WHERE id = ?1",
+            [&char_a_vault],
+            |r| r.get(0),
+        )
+        .expect("the minted vault's name");
     uri(
         "uri-self",
+        doc_store_uri_for(mount, &char_a_vault, "", "Mail/x.md", None, None),
+    );
+    uri(
+        "uri-vault-named",
         doc_store_uri_for(
-            main,
             mount,
             &char_a_vault,
-            "",
-            "Mail/x.md",
-            Some(&a),
+            &vault_name,
+            "metadata.json",
             None,
             None,
         ),
@@ -465,12 +475,10 @@ fn doc_edit_path_resolver_matches_oracle() {
     uri(
         "uri-name",
         doc_store_uri_for(
-            main,
             mount,
             &spec.normal_store,
             "Project Docs",
             "k.md",
-            None,
             None,
             None,
         ),
@@ -494,13 +502,17 @@ fn doc_edit_path_resolver_matches_oracle() {
     };
     uri(
         "uri-resolved-project",
-        uri_for_resolved_path(main, mount, &proj_resolved, Some(&a), None, None),
+        uri_for_resolved_path(mount, &proj_resolved, None, None),
     );
 
-    let resolver = DocStoreUriResolver::build(main, mount, Some(&a));
+    let resolver = DocStoreUriResolver::build(mount);
     uri(
         "res-self",
         resolver.uri_for_mount("", &char_a_vault, "x.md"),
+    );
+    uri(
+        "res-vault-named",
+        resolver.uri_for_mount(&vault_name, &char_a_vault, "metadata.json"),
     );
     uri(
         "res-name",
@@ -516,7 +528,7 @@ fn doc_edit_path_resolver_matches_oracle() {
     let _ = std::fs::remove_dir_all(&root);
 
     eprintln!(
-        "doc_edit_path_resolver: {} resolve + 6 uri cases matched the oracle.",
+        "doc_edit_path_resolver: {} resolve + 8 uri cases matched the oracle.",
         cases.len()
     );
 }

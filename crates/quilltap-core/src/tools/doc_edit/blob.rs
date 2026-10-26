@@ -252,16 +252,7 @@ pub fn handle_write_blob(
         })
         .map_err(|e| e.to_string())?;
 
-    let stored_uri = doc_store_uri_for(
-        main,
-        mount,
-        &mp.id,
-        &mp.name,
-        &stored.relative_path,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let stored_uri = doc_store_uri_for(mount, &mp.id, &mp.name, &stored.relative_path, None, None);
 
     // v4 passes the RAW `input.description` (undefined when absent), NOT the
     // repo-defaulted `''` — mirror with the optional arg.
@@ -326,16 +317,7 @@ pub fn handle_read_blob(
         None => return Ok(DocEditToolResult::fail(format!("Blob not found: {path}"))),
     };
 
-    let uri = doc_store_uri_for(
-        main,
-        mount,
-        &mp.id,
-        &mp.name,
-        &meta.relative_path,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let uri = doc_store_uri_for(mount, &mp.id, &mp.name, &meta.relative_path, None, None);
 
     let mut result = json!({
         "mount_point": mp.name,
@@ -411,7 +393,7 @@ pub fn handle_list_blobs(
         .list_by_mount_point(&mp.id, folder.as_deref())
         .map_err(|e| e.to_string())?;
 
-    let resolver = DocStoreUriResolver::build(main, mount, ctx.character_id.as_deref());
+    let resolver = DocStoreUriResolver::build(mount);
     let blobs: Vec<Value> = metas
         .iter()
         .map(|m| {
@@ -496,16 +478,7 @@ pub fn handle_delete_blob(
         return Ok(DocEditToolResult::fail(format!("Blob not found: {path}")));
     }
 
-    let deleted_uri = doc_store_uri_for(
-        main,
-        mount,
-        &mp.id,
-        &mp.name,
-        &path,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let deleted_uri = doc_store_uri_for(mount, &mp.id, &mp.name, &path, None, None);
 
     // v4 fires the shared delete announcement with scope 'document_store' and no
     // `hiddenFromCharacters` (→ false); its args differ from a doc_delete_file's.

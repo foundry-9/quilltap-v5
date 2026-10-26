@@ -655,7 +655,7 @@ fn build_pool_context(
 ) -> Result<PoolContext, DbError> {
     db.read_main(|main| {
         db.read_mount_index(|mount| {
-            let resolver = DocStoreUriResolver::build(main, mount, context.character_id.as_deref());
+            let resolver = DocStoreUriResolver::build(mount);
             let mut pool = TieredMountPool {
                 character_mount_point_id: None,
                 participant_mount_point_ids: Vec::new(),

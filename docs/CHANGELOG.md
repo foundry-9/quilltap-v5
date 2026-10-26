@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — fix(doc-edit): published vault addresses name the vault, never self (v4 7263105c6, bug 256)
+
+_Versions: core 0.0.1325._
+
+`qtap://self/…` means the reader's vault, so no address v5 produces says it any more: the three URI producers lose the character argument and the `main` connection, a vault names itself (UUID when the name is ambiguous); `published_mount_point` makes every doc-tool announcement and Document Mode's row/result/announcement name the resolved store (the source for moves); the Librarian prints `path "<p>" in a character's vault` for a legacy self row with v4's DEBUG and a `a character's vault` scope label; `self_inventory` names the vault, gives a legacy self row no uri plus the `unknown store:` how-to-reach and the new footer; the two resolver errors read v4's new sentences. The owner-only knowledge injector and Prospero surfaces keep `format_self_uri`. A typed `self` on a NEW blank Document Mode file is still stored and announced, as in v4 (ported as-is). Red-first: 10 of 14 families red at the pin (scriptorium, mail, qtap_uri and album-options unmoved), all green after; the path-resolver case gains named-vault rows.
+
 #### 2026-10-26 — feat(spa): scenario picker lists in title order (v4 1d0a31132)
 
 _Versions: SPA 0.5.882._

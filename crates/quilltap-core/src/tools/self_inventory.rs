@@ -60,7 +60,7 @@ use crate::format_bytes::format_bytes;
 use crate::jsnum::to_fixed;
 use crate::model_context::{get_model_context_limit, ModelInfo, PricingRow};
 use crate::services::knowledge_injector::qtap_uri::{
-    format_doc_store_uri, format_scoped_uri, format_self_uri, ScopedAuthority,
+    format_doc_store_uri, format_scoped_uri, ScopedAuthority,
 };
 use crate::services::tool_execution::LoadedMemoriesContext;
 
@@ -940,9 +940,10 @@ fn build_vault_character_section(
     };
 
     let rows = find_vault_rows(db, &mount_point_id)?;
-    // The character's own vault → the stable, readable `self` form.
+    // Named, not `qtap://self/…`: this tool result is read by everyone in the
+    // chat, and another reader's `self` is their own vault (bug 256).
     let files = map_vault_files(&rows, &mp_name, include_automatic_images, true, |rel| {
-        format_self_uri(rel, None, None)
+        format_doc_store_uri(&mp_name, &mp_id, rel, false, None, None)
     });
 
     Ok(VaultCharacterSection::Available {
@@ -1937,7 +1938,12 @@ fn build_context_characters(
 }
 
 /// v4 `buildContextFileUri` — the qtap:// URI for a chat-context document from the
-/// stored triple.
+/// stored triple. The row carries only the mount-point *name*, so document-store
+/// URIs use the name form; that is enough for a copy-pasteable hint. An older row
+/// may carry the reserved `self` literal (or none): that named the OPENER's
+/// vault, and printed as `qtap://self/…` it would send every other reader into
+/// their own (bug 256), so such a row gets no URI at all. JS `!mountPoint`
+/// covers the empty string too.
 fn build_context_file_uri(scope: &str, mount_point: Option<&str>, file_path: &str) -> String {
     if scope == "project" {
         return format_scoped_uri(ScopedAuthority::Project, file_path, None, None);
@@ -1946,10 +1952,21 @@ fn build_context_file_uri(scope: &str, mount_point: Option<&str>, file_path: &st
         return format_scoped_uri(ScopedAuthority::General, file_path, None, None);
     }
     match mount_point {
-        None => format_self_uri(file_path, None, None),
-        Some(mp) if mp.to_lowercase() == "self" => format_self_uri(file_path, None, None),
+        None => String::new(),
+        Some(mp) if mp.is_empty() || mp.to_lowercase() == "self" => String::new(),
         Some(mp) => format_doc_store_uri(mp, "", file_path, false, None, None),
     }
+}
+
+/// v4 `buildHowToReach` — an empty `uri` (an old `self` row) cannot be reached by
+/// address, so it says how to find the file instead.
+fn build_how_to_reach(uri: &str, file_path: &str) -> String {
+    if uri.is_empty() {
+        return format!(
+            "unknown store: \"{file_path}\" was opened from someone's own vault before stores were recorded by name; find it with doc_list_files in the vault you mean"
+        );
+    }
+    format!("doc_read_file({{ uri: \"{uri}\" }})")
 }
 
 fn build_context_files(db: &Db, chat_id: &str) -> Result<ContextFiles, DbError> {
@@ -1960,7 +1977,7 @@ fn build_context_files(db: &Db, chat_id: &str) -> Result<ContextFiles, DbError> 
         .into_iter()
         .map(|d| {
             let uri = build_context_file_uri(&d.scope, d.mount_point.as_deref(), &d.file_path);
-            let how_to_reach = format!("doc_read_file({{ uri: \"{uri}\" }})");
+            let how_to_reach = build_how_to_reach(&uri, &d.file_path);
             ContextFile {
                 scope: d.scope,
                 mount_point: d.mount_point,
@@ -2436,9 +2453,7 @@ fn format_vault_character(section: &VaultCharacterSection) -> String {
                 return format!("{header}\n(no files)");
             }
             let lines: Vec<String> = files.iter().map(format_vault_file_line).collect();
-            let footer = format!(
-                "(To read one of these files: doc_read_file({{ uri: \"qtap://self/<relativePath>\" }}) — the reserved authority 'self' always addresses your own vault, whatever its name. The triple form doc_read_file(scope='document_store', mount_point='self', path='<relativePath>') still works, as do the name '{mount_point_name}' and its ID.)"
-            );
+            let footer = "(To read one of these files, use its uri, which names this vault and so reads the same whoever follows it. In your own calls the reserved authority 'self' is shorthand for YOUR vault — qtap://self/<relativePath> — but never hand a 'self' address to anyone else: it would open theirs.)";
             format!("{header}\n{}\n{footer}", lines.join("\n"))
         }
     }

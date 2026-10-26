@@ -1,47 +1,46 @@
 //! Server-side `qtap://` URI producers — v4 `lib/doc-edit/uri-producers.ts`.
 //!
 //! Build human-/model-facing URIs from resolved documents. They touch the DB (to
-//! detect the self-vault and count name collisions) but stay free of the heavier
-//! doc-edit modules. Every URI is an additive convenience, so any failure
-//! degrades to `""` rather than throwing (v4's defensive `try/catch`).
+//! count name collisions) but stay free of the heavier doc-edit modules. Every
+//! URI is an additive convenience, so any failure degrades to `""` rather than
+//! throwing (v4's defensive `try/catch`).
 //!
-//! v4's functions are async; the Rust reads are synchronous over the MAIN
-//! connection (`characters.findByIdRaw`) + the MOUNT connection
-//! (`doc_mount_points.{countByName, findEnabled}`).
+//! ## No `self` here
+//!
+//! A produced address must not depend on who reads it. `qtap://self/…` means
+//! the vault of whoever follows it, and these URIs land in tool results and
+//! announcements that every character in a chat reads — so one character's
+//! `qtap://self/metadata.json`, followed by another, opened the follower's own
+//! file with no error (bug 256). Every producer here names the store (its UUID
+//! when the name is ambiguous). A character may still TYPE `self` for its own
+//! vault; the resolver honours it. Owner-only surfaces (the knowledge
+//! injector, the Prospero vault whisper) may still teach the shorthand.
+//!
+//! v4's functions are async; the Rust reads are synchronous over the MOUNT
+//! connection (`doc_mount_points.{countByName, findEnabled}`).
 
 use rusqlite::Connection;
 
-use super::path_resolver::{resolve_self_vault_mount_point_id, ResolvedPath};
+use super::path_resolver::ResolvedPath;
 use super::qtap_uri::{
-    doc_store_authority, format_doc_store_uri, format_scoped_uri, format_self_uri, ScopedAuthority,
+    doc_store_authority, format_doc_store_uri, format_scoped_uri, ScopedAuthority,
 };
 use super::DocEditScope;
 use crate::db::doc_mount_points::DocMountPointsRepository;
 
 /// Build a `qtap://` URI for a single document-store document from its mount
-/// id/name (v4 `docStoreUriFor`). Prefers `qtap://self/…` for the acting
-/// character's own vault, else the store name (UUID when the name is ambiguous).
-#[allow(clippy::too_many_arguments)]
+/// id/name (v4 `docStoreUriFor` — the form blob handlers and search hold
+/// instead of a `ResolvedPath`): the store name, or its UUID when the name is
+/// ambiguous — a character's own vault included. The URI is an additive
+/// convenience, so any failure degrades to `""` rather than throwing.
 pub fn doc_store_uri_for(
-    main: &Connection,
     mount: &Connection,
     mount_point_id: &str,
     mount_point_name: &str,
     relative_path: &str,
-    character_id: Option<&str>,
     heading: Option<&str>,
     level: Option<u8>,
 ) -> String {
-    if let Some(cid) = character_id {
-        if !cid.is_empty() && !mount_point_id.is_empty() {
-            if let Some(self_id) = resolve_self_vault_mount_point_id(main, Some(cid)) {
-                if mount_point_id == self_id {
-                    return format_self_uri(relative_path, heading, level);
-                }
-            }
-        }
-    }
-
     // Empty name → ambiguous (must use the UUID); else count collisions.
     let mut name_is_ambiguous = mount_point_name.is_empty();
     if !mount_point_name.is_empty() {
@@ -60,13 +59,14 @@ pub fn doc_store_uri_for(
     )
 }
 
-/// Build the most stable readable URI for a resolved document (v4
-/// `uriForResolvedPath`).
+/// Build a human-/model-facing `qtap://` URI for a single resolved document
+/// (v4 `uriForResolvedPath`): project/general scope → the scoped authority; any
+/// document store, a character's own vault included → its name (or UUID when
+/// ambiguous). For multi-row tools that emit many URIs at once, prefer
+/// [`DocStoreUriResolver`].
 pub fn uri_for_resolved_path(
-    main: &Connection,
     mount: &Connection,
     resolved: &ResolvedPath,
-    character_id: Option<&str>,
     heading: Option<&str>,
     level: Option<u8>,
 ) -> String {
@@ -84,12 +84,10 @@ pub fn uri_for_resolved_path(
             level,
         ),
         DocEditScope::DocumentStore => doc_store_uri_for(
-            main,
             mount,
             resolved.mount_point_id.as_deref().unwrap_or(""),
             resolved.mount_point_name.as_deref().unwrap_or(""),
             &resolved.relative_path,
-            character_id,
             heading,
             level,
         ),
@@ -97,10 +95,9 @@ pub fn uri_for_resolved_path(
 }
 
 /// A precomputed, synchronous batch URI resolver (v4 `buildDocStoreUriResolver`) —
-/// resolves the self-vault id + the set of ambiguous (duplicated) store names ONCE
-/// so many URIs can be built without a per-row DB lookup.
+/// resolves the set of ambiguous (duplicated) store names ONCE so many URIs can
+/// be built without a per-row DB lookup.
 pub struct DocStoreUriResolver {
-    self_vault_id: Option<String>,
     /// Ambiguous store names, each `name.trim().to_lowercase()`.
     ambiguous: Vec<String>,
 }
@@ -108,21 +105,14 @@ pub struct DocStoreUriResolver {
 impl DocStoreUriResolver {
     /// Precompute (v4's async body). A degraded mount index leaves the ambiguity
     /// set empty (the name form is still readable).
-    pub fn build(main: &Connection, mount: &Connection, character_id: Option<&str>) -> Self {
-        let self_vault_id = resolve_self_vault_mount_point_id(main, character_id);
+    pub fn build(mount: &Connection) -> Self {
         DocStoreUriResolver {
-            self_vault_id,
             ambiguous: collect_ambiguous_store_names(mount),
         }
     }
 
     /// Build a URI for a document-store row (v4's `uriForMount`).
     pub fn uri_for_mount(&self, name: &str, id: &str, relative_path: &str) -> String {
-        if let Some(self_id) = &self.self_vault_id {
-            if id == self_id.as_str() {
-                return format_self_uri(relative_path, None, None);
-            }
-        }
         let name_is_ambiguous = name.is_empty()
             || self
                 .ambiguous
@@ -142,15 +132,6 @@ impl DocStoreUriResolver {
 /// can't address a store on its own, so producers fall back to the UUID.
 /// Degrades to an empty set on a broken mount index — the readable name form is
 /// still the better guess than nothing.
-///
-/// ⚠ v4's `b220999d` also fixed a real bug here in passing: before the
-/// extraction, `buildDocStoreUriResolver` computed the ambiguity set INSIDE the
-/// same `try` as the self-vault resolution, so a throw from
-/// `selfVaultMountPointId` left the set empty and every ambiguous name silently
-/// resolved to its (ambiguous) name form. **v5 never had it** —
-/// `DocStoreUriResolver::build` has always computed the two independently, and
-/// `resolve_self_vault_mount_point_id` returns `Option` rather than throwing.
-/// Nothing to port from that half; only the new `refForMount` sibling below.
 fn collect_ambiguous_store_names(mount: &Connection) -> Vec<String> {
     let mut ambiguous: Vec<String> = Vec::new();
     // P4.163: v4 `findEnabled()` (`uri-producers.ts:158`) is a fallback — the
@@ -185,9 +166,7 @@ fn collect_ambiguous_store_names(mount: &Connection) -> Vec<String> {
 /// global search bar's document results, whose click targets and deep links
 /// carry `mountPoint=<ref>`.
 ///
-/// There is **no self-vault shorthand** here: `self` only means anything inside
-/// a character's own prompt, and these references are handed to operator
-/// surfaces.
+/// Like every producer here, it never yields `self` (see the module note).
 pub struct DocStoreRefResolver {
     /// Ambiguous store names, each `name.trim().to_lowercase()`.
     ambiguous: Vec<String>,

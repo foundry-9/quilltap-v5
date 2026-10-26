@@ -179,7 +179,7 @@ pub fn execute_send_mail_in_zone(
         if let Ok(Some(mp)) = DocMountPointsRepository::new(mount).find_by_id_for_docedit(mount_id)
         {
             // v4 passes NO characterId → never resolves to self.
-            let uri = doc_store_uri_for(main, mount, &mp.id, &mp.name, &path, None, None, None);
+            let uri = doc_store_uri_for(mount, &mp.id, &mp.name, &path, None, None);
             if !uri.is_empty() {
                 postbox_ref = uri;
             }

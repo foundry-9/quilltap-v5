@@ -11,9 +11,9 @@ use serde_json::{json, Map, Value};
 use super::shared::{
     apply_qtap_uri, arg_bool, arg_i64, arg_str, arg_str_ref, assert_character_may_read,
     assert_character_may_write, basename, build_read_resolution_context,
-    build_write_resolution_context, is_text_file, librarian_scope_from, read_file_with_mtime,
-    resolve_actor_origin, resolve_error_message, scope_from_str, write_file_with_mtime_check,
-    Addressing, DocEditToolContext,
+    build_write_resolution_context, is_text_file, librarian_scope_from, published_mount_point,
+    read_file_with_mtime, resolve_actor_origin, resolve_error_message, scope_from_str,
+    write_file_with_mtime_check, Addressing, DocEditToolContext,
 };
 use super::DocEditToolResult;
 use crate::doc_edit::markdown_parser::{
@@ -60,14 +60,7 @@ pub fn handle_read_frontmatter(
         )));
     }
 
-    let uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let uri = uri_for_resolved_path(mount, &resolved, None, None);
     let content = read_file_with_mtime(mount, &resolved)?.content;
     let parsed = parse_frontmatter(&content);
 
@@ -146,21 +139,14 @@ pub fn handle_update_frontmatter(
     let new_content = update_frontmatter_in_content(&content, &updates, replace_all);
     let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     // reindex: no-op seam.
-    let edited_uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
 
     let display_title = basename(&path).to_string();
     let announcement = LibrarianWriteAnnouncement {
         chat_id: ctx.chat_id.clone(),
         uri: edited_uri.clone(),
         scope: librarian_scope_from(scope),
-        mount_point: addressing.mount_point.clone(),
+        mount_point: published_mount_point(Some(&resolved), addressing.mount_point.as_deref()),
         origin: resolve_actor_origin(main, ctx),
         change: LibrarianWriteChange::Edited {
             diff: generate_unified_diff(&content, &new_content, &display_title),
@@ -218,14 +204,7 @@ pub fn handle_read_heading(
         )));
     }
 
-    let uri = uri_for_resolved_path(
-        main,
-        mount,
-        &resolved,
-        ctx.character_id.as_deref(),
-        None,
-        None,
-    );
+    let uri = uri_for_resolved_path(mount, &resolved, None, None);
     let content = read_file_with_mtime(mount, &resolved)?.content;
 
     // v4 wraps this in a try/catch returning `{ success:false, error }` (no
@@ -297,20 +276,16 @@ pub fn handle_update_heading(
             let new_content = replace_heading_content(&content, &heading, &new_section, preserve);
             let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
             // reindex: no-op seam.
-            let edited_uri = uri_for_resolved_path(
-                main,
-                mount,
-                &resolved,
-                ctx.character_id.as_deref(),
-                None,
-                None,
-            );
+            let edited_uri = uri_for_resolved_path(mount, &resolved, None, None);
             let display_title = basename(&path).to_string();
             let announcement = LibrarianWriteAnnouncement {
                 chat_id: ctx.chat_id.clone(),
                 uri: edited_uri.clone(),
                 scope: librarian_scope_from(scope),
-                mount_point: addressing.mount_point.clone(),
+                mount_point: published_mount_point(
+                    Some(&resolved),
+                    addressing.mount_point.as_deref(),
+                ),
                 origin: resolve_actor_origin(main, ctx),
                 change: LibrarianWriteChange::Edited {
                     diff: generate_unified_diff(&content, &new_content, &display_title),
