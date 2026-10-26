@@ -18,15 +18,19 @@
 //!
 //! The table is a byte-exact dump of v4's real schemas — regenerate it with
 //! `harness/oracle/fixtures/dump-export-key-order.ts` (recipe in that file's
-//! header) whenever a v4 schema drifts. Last regenerated at v4 `83334b9a5`
-//! (P4.D294): `chat` lost `otherExtractionWatermarkMessageId` (`ac6348c5f` —
+//! header) whenever a v4 schema drifts. Last regenerated at v4 `322a5488e`
+//! (P4.D327): `chat` gained `equippedInventory` after `equippedOutfit`
+//! (`4fbdad186`), 103 → 104; `character` gained `canManageInventory` after
+//! `canCreateOutfits` (`e1872c94f`), 46 → 47 — exactly two lines; nothing
+//! else moved in `83334b9a5..322a5488e`. (Before: v4 `83334b9a5`,
+//! P4.D294: `chat` lost `otherExtractionWatermarkMessageId` (`ac6348c5f` —
 //! the cursors moved to `memory_extraction_cursors`; a bundle still CARRIES
 //! the three cursor keys, but as non-template keys the writer appends after
 //! every schema key) and gained `scenarioSource` / `scenarioNotes` after
 //! `scenarioText` (`545e299bb`), 102 → 103; `memory` gained `supersededAt`
 //! after `supersededById` (`c2795733f`, bug 225), 29 → 30 — exactly four
 //! lines; the other ten kinds did not move. (Before: v4 `01a83539d`, P4.D272 —
-//! `memory` 25 → 29, `chat` 101 → 102.)
+//! `memory` 25 → 29, `chat` 101 → 102.))
 
 use serde_json::{Map, Value};
 use std::sync::OnceLock;
@@ -180,6 +184,43 @@ mod tests {
     /// end. The D65 lesson: `schema-key-order.json` stales on every D23 re-dump
     /// and the non-lossy `reorder` would happily ship a new key at the tail,
     /// which is a silent byte divergence in the `.qtap` artifact.
+    // === P4.D327: the two Inventory keys (v4 `4fbdad186` / `e1872c94f`) ===
+    #[test]
+    fn chat_carries_equipped_inventory_in_its_schema_slot() {
+        let t = template("chat").expect("template");
+        let idx = t
+            .iter()
+            .position(|k| k == "equippedInventory")
+            .expect("equippedInventory is in the regenerated table");
+        assert_eq!(t[idx - 1], "equippedOutfit", "it follows equippedOutfit");
+        assert_eq!(
+            t[idx + 1],
+            "characterAvatars",
+            "and precedes characterAvatars"
+        );
+        assert_eq!(t.len(), 104);
+    }
+
+    #[test]
+    fn character_carries_can_manage_inventory_in_its_schema_slot() {
+        let t = template("character").expect("template");
+        let idx = t
+            .iter()
+            .position(|k| k == "canManageInventory")
+            .expect("canManageInventory is in the regenerated table");
+        assert_eq!(
+            t[idx - 1],
+            "canCreateOutfits",
+            "it follows canCreateOutfits"
+        );
+        assert_eq!(
+            t[idx + 1],
+            "canChooseOutfit",
+            "and precedes canChooseOutfit"
+        );
+        assert_eq!(t.len(), 47);
+    }
+
     #[test]
     fn connection_profile_carries_the_prefill_in_its_schema_slot() {
         let t = template("connection_profile").expect("template");

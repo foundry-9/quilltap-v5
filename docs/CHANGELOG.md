@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(export): regenerate the `.qtap` key-order table at the `322a5488e` pin (P4.D327)
+
+_Versions: core 0.0.1327._
+
+`schema-key-order.json` re-dumped by `dump-export-key-order.ts` from v4's real Zod schemas at `322a5488e`. Exactly two lines move: `chat` gains `equippedInventory` after `equippedOutfit` (103 → 104, `4fbdad186`) and `character` gains `canManageInventory` after `canCreateOutfits` (46 → 47, `e1872c94f`). Without the regen, the export's non-lossy reorder put both keys at the end of the line. Two new slot-pin tests fail on the old table.
+
 #### 2026-10-26 — feat(export): re-vendor `qtap-export.schema.json` at the `322a5488e` pin — `canManageInventory` and `equippedInventory` (P4.D327)
 
 _Versions: core 0.0.1326._
