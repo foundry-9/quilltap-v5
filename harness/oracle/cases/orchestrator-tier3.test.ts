@@ -122,6 +122,10 @@ interface CallSpec {
    *  ids / stamps. NOT discarded: the wardrobe calls are the corpus's last, so no
    *  later call's premise moves (the follow-on rollback call wears them). */
   wardrobeItems?: Array<{ characterId: string; id: string; title: string; types: string[]; createdAt: string }>;
+  /** P4.D328: Inventory objects planted IN-CASE before the call, through v4's
+   *  REAL `resolveInventoryLocation(…, { ensure: true }).create` with pinned
+   *  ids / stamps. The inventory calls follow the wardrobe ones, last. */
+  inventoryObjects?: Array<{ scope: string; owner: string | null; record: Record<string, unknown> }>;
   /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
    *  persists them, so the corpus needed a way to hang one on a call. */
   fileIds?: string[];
@@ -807,6 +811,10 @@ async function main(): Promise<void> {
       '@/lib/database/backends/sqlite/wardrobe-wear-stats-ddl'
     );
     for (const statement of WARDROBE_WEAR_STATS_DDL) await rawQuery(statement);
+    // P4.D328: the two Inventory columns the fixture predates (the keystone's
+    // helper; the Rust side `test_support::ensure_inventory_columns_on`).
+    const { plantInventoryColumns } = await import('../lib/v4-migrations');
+    await plantInventoryColumns();
   }
 
   // W4.10a: `findApiKeyByIdAndUserId` is NO LONGER monkey-patched — v4's REAL repo
@@ -922,6 +930,13 @@ async function main(): Promise<void> {
         { id: item.id, createdAt: item.createdAt, updatedAt: item.createdAt } as never,
       );
     }
+    // P4.D328: the call's in-case Inventory objects.
+    for (const o of call.inventoryObjects ?? []) {
+      const { resolveInventoryLocation } = await import('@/lib/inventory/location');
+      const loc = await resolveInventoryLocation(o.scope as never, o.owner, repos, spec.userId, { ensure: true });
+      if (!loc) throw new Error(`${call.name}: no inventory location for ${o.scope}:${o.owner}`);
+      await loc.create(o.record as never);
+    }
     try {
       const stream = await handleSendMessage(repos, call.chatId, spec.userId, {
         content: call.continueMode ? undefined : call.content,
@@ -969,6 +984,16 @@ async function main(): Promise<void> {
     }
     lines.push(JSON.stringify({ kind: 'mail', call: call.name, unalerted, lines: mailLines }));
     mailLines = [];
+    // P4.D328: an Inventory call's room in INSERTION order (the dump carries
+    // no rowid) — the turn's Pascal line lands AFTER the saved turn (v4
+    // `102a23648`'s `finally`).
+    if ((call.inventoryObjects ?? []).length > 0) {
+      const rows = (await rawQuery(
+        'SELECT role, systemSender, systemKind FROM chat_messages WHERE chatId = ? ORDER BY rowid',
+        [call.chatId],
+      )) as Array<{ role: string; systemSender: string | null; systemKind: string | null }>;
+      lines.push(JSON.stringify({ kind: 'inventoryRowOrder', call: call.name, rows }));
+    }
   }
 
   // Restore the real Date + Math.random before dumping (be tidy).

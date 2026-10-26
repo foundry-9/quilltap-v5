@@ -206,6 +206,10 @@ struct CallW {
     /// are the corpus's last).
     #[serde(default)]
     wardrobe_items: Vec<WardrobeItemW>,
+    /// P4.D328: Inventory objects planted IN-CASE before the call (the
+    /// inventory calls follow the wardrobe ones, last).
+    #[serde(default)]
+    inventory_objects: Vec<InventoryObjectW>,
     /// P4.D186 (v4 bug 137): attachment ids on the send. A held post still
     /// persists them (the seam sits below the attachment work), so the corpus
     /// needed a way to hang one on a call.
@@ -298,6 +302,15 @@ struct WardrobeItemW {
     title: String,
     types: Vec<String>,
     created_at: String,
+}
+
+/// P4.D328: an in-case Inventory object (the oracle case's
+/// `CallSpec.inventoryObjects`).
+#[derive(Deserialize, Clone)]
+struct InventoryObjectW {
+    scope: String,
+    owner: Option<String>,
+    record: serde_json::Map<String, Value>,
 }
 
 fn spec_path() -> PathBuf {
@@ -1499,6 +1512,9 @@ fn orchestrator_tier3_matches_oracle() {
     let mut got_unalerted: HashMap<String, Value> = HashMap::new();
     // P4.133: the keys v4's `streamMessage` received, per case, in call order.
     let mut want_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.D328: each Inventory call's room in rowid order (role, systemSender,
+    // systemKind).
+    let mut want_inventory_rows: HashMap<String, Vec<RoomRow>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
     // filtered event comparison drops the frame; the requires-gate arms compare
     // its message against `process_message`'s `Err`).
@@ -1612,6 +1628,24 @@ fn orchestrator_tier3_matches_oracle() {
                     .collect();
                 want_stream_keys.insert(parsed.call.clone().unwrap(), keys);
             }
+            "inventoryRowOrder" => {
+                let rows = parsed
+                    .rest
+                    .get("rows")
+                    .and_then(Value::as_array)
+                    .expect("inventoryRowOrder carries `rows`")
+                    .iter()
+                    .map(|r| {
+                        let text = |k: &str| r.get(k).and_then(Value::as_str).map(str::to_string);
+                        (
+                            text("role").unwrap_or_default(),
+                            text("systemSender"),
+                            text("systemKind"),
+                        )
+                    })
+                    .collect();
+                want_inventory_rows.insert(parsed.call.clone().unwrap(), rows);
+            }
             other => panic!("unknown oracle line kind: {other}"),
         }
     }
@@ -1641,6 +1675,8 @@ fn orchestrator_tier3_matches_oracle() {
             .expect("open main for the history plant");
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
         quilltap_core::test_support::ensure_wear_ledger_on(w.connection());
+        // P4.D328: the two Inventory columns the fixture predates.
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
     }
 
     let db = Db::open(
@@ -1758,6 +1794,8 @@ fn orchestrator_tier3_matches_oracle() {
     // P4.133: per case, the keys the Rust streams carried + `process_message`'s
     // `Err` message (if any).
     let mut got_stream_keys: HashMap<String, Vec<String>> = HashMap::new();
+    // P4.D328: (rows before the call, the room after it) per Inventory call.
+    let mut got_inventory_rows: HashMap<String, (usize, Vec<RoomRow>)> = HashMap::new();
     let mut got_errors: HashMap<String, String> = HashMap::new();
     // P4.D301: the submission ledger v5 hands the transport shell per failing call.
     let mut got_error_flags: HashMap<String, ErrorFlags> = HashMap::new();
@@ -1803,6 +1841,11 @@ fn orchestrator_tier3_matches_oracle() {
     for call in &spec.calls {
         let sink = RecordingSink::new();
         streaming.recorded_api_keys.lock().unwrap().clear();
+        let inventory_rows_before = if call.inventory_objects.is_empty() {
+            0
+        } else {
+            room_rows_in_rowid_order(&db, &call.chat_id).len()
+        };
         // P4.D291: the call's in-case letter, through the REAL mailbox.
         let letter_at: Option<(String, String)> = call.letter.as_ref().map(|l| {
             let cid = l.character_id.clone();
@@ -1873,6 +1916,37 @@ fn orchestrator_tier3_matches_oracle() {
                 .map_err(|e| quilltap_core::db::DbError::Internal(format!("{e:?}")))
             })
             .unwrap_or_else(|e| panic!("{}: plant a wardrobe item: {e}", call.name));
+        }
+        // P4.D328: the call's in-case Inventory objects, through the REAL
+        // location writer (v4's `resolveInventoryLocation(…, { ensure: true })
+        // .create`), pinned ids / stamps.
+        for o in &call.inventory_objects {
+            let scope = quilltap_core::inventory::types::InventoryScope::parse(&o.scope)
+                .unwrap_or_else(|| panic!("{}: an inventory scope {}", call.name, o.scope));
+            let owner = o.owner.clone();
+            let record = quilltap_core::inventory::types::InventoryRecord::new(o.record.clone());
+            let user_id = spec.user_id.clone();
+            db.write_blocking(move |ws| {
+                let main = ws.main().connection();
+                let mount = ws.mount_index().expect("mount").connection();
+                let loc = quilltap_core::inventory::location::resolve_inventory_location(
+                    main,
+                    mount,
+                    scope,
+                    owner.as_deref(),
+                    &user_id,
+                    quilltap_core::inventory::location::ResolveInventoryLocationOptions {
+                        ensure: true,
+                    },
+                )?
+                .ok_or_else(|| {
+                    quilltap_core::db::DbError::Internal("no inventory location".into())
+                })?;
+                loc.create(main, mount, &record)
+                    .map(|_| ())
+                    .map_err(|e| quilltap_core::db::DbError::Internal(format!("{e:?}")))
+            })
+            .unwrap_or_else(|e| panic!("{}: plant an inventory object: {e}", call.name));
         }
         // W4.11a: a per-call executor that logs each cheap-LLM provider call into
         // `llm_logs` (v4's un-mocked `logLLMCall`). The distill (memory-keyword-
@@ -2197,6 +2271,10 @@ fn orchestrator_tier3_matches_oracle() {
             got_unalerted.insert(call.name.clone(), Value::Array(paths));
         }
         got_events.push((call.name.clone(), filter_events(&sink.events_json())));
+        if !call.inventory_objects.is_empty() {
+            let rows = room_rows_in_rowid_order(&db, &call.chat_id);
+            got_inventory_rows.insert(call.name.clone(), (inventory_rows_before, rows));
+        }
         got_stream_keys.insert(
             call.name.clone(),
             std::mem::take(&mut *streaming.recorded_api_keys.lock().unwrap()),
@@ -2322,6 +2400,64 @@ fn orchestrator_tier3_matches_oracle() {
         eprintln!("OK: {name} — the user-message trigger site matched v4 by name.");
     }
     // === end P4.D305 ===
+
+    // === P4.D328: the turn's Inventory line AFTER the saved turn, by name ===
+    // v4 `102a23648` drains the turn's pending Inventory changes in the
+    // orchestrator's `finally`, once whichever branch saved the turn has saved
+    // it, so the ONE Pascal line follows the tool rows and the reply it sums
+    // up. Both sides' rooms in rowid order (the dump carries no rowid), then
+    // the three premises on v5's rows this call added.
+    {
+        const PASCAL_LINE: (&str, Option<&str>, Option<&str>) =
+            ("ASSISTANT", Some("pascal"), Some("inventory-change"));
+        let is_pascal = |r: &RoomRow| (r.0.as_str(), r.1.as_deref(), r.2.as_deref()) == PASCAL_LINE;
+        let inventory_calls: Vec<&CallW> = spec
+            .calls
+            .iter()
+            .filter(|c| !c.inventory_objects.is_empty())
+            .collect();
+        assert_eq!(inventory_calls.len(), 3, "the three Inventory calls");
+        for call in inventory_calls {
+            let name = call.name.as_str();
+            let (before, got) = &got_inventory_rows[name];
+            let want = want_inventory_rows
+                .get(name)
+                .unwrap_or_else(|| panic!("{name}: v4 recorded no inventoryRowOrder row"));
+            assert_eq!(
+                got, want,
+                "{name}: the room in rowid order (rust left, v4 right)"
+            );
+            let added = &got[*before..];
+            let pascal: Vec<usize> = (0..added.len()).filter(|&i| is_pascal(&added[i])).collect();
+            match name {
+                // Two `inventory_equip` calls, ONE line, LAST — after the
+                // tool rows and the reply.
+                "inventory_equip_two_one_turn" | "inventory_equip_then_skip_sentinel_ignored" => {
+                    assert_eq!(
+                        pascal,
+                        vec![added.len() - 1],
+                        "{name}: one Pascal line, last"
+                    );
+                    assert!(
+                        added[..added.len() - 1].iter().any(|r| r.0 == "TOOL")
+                            && added[..added.len() - 1]
+                                .iter()
+                                .any(|r| r.0 == "ASSISTANT" && r.1.is_none()),
+                        "{name}: the tool rows and the reply precede the Pascal line: {added:?}"
+                    );
+                }
+                // Equip then unequip of the same object nets to nothing.
+                "inventory_equip_then_unequip_nets_none" => {
+                    assert!(
+                        pascal.is_empty(),
+                        "{name}: a netted turn posts no line: {added:?}"
+                    )
+                }
+                other => panic!("an unexpected Inventory call {other}"),
+            }
+        }
+    }
+    // === end P4.D328 ===
 
     // --- P4.D291 (bug 227): the deferred mail flip, per call ---
     // Every call records its `mail` row; a call with an in-case letter compares
@@ -3908,6 +4044,24 @@ impl Normalizer {
             }
         }
     }
+}
+
+/// P4.D328: one room row — (role, systemSender, systemKind).
+type RoomRow = (String, Option<String>, Option<String>);
+
+/// P4.D328: a chat's rows in INSERTION order (rowid).
+fn room_rows_in_rowid_order(db: &Db, chat_id: &str) -> Vec<RoomRow> {
+    let chat_id = chat_id.to_string();
+    db.read_main(move |c| {
+        let mut st = c.prepare(
+            "SELECT role, systemSender, systemKind FROM chat_messages WHERE chatId = ?1 ORDER BY rowid",
+        )?;
+        let rows = st
+            .query_map([&chat_id], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    })
+    .expect("read the room in rowid order")
 }
 
 fn wire_tool_names(tools: &Value) -> Vec<String> {

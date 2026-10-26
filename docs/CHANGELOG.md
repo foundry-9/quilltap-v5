@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — A turn's Inventory line lands after the saved turn (P4.D328)
+
+_Versions: core 0.0.1331._
+
+The chat turn mints a third per-turn container for Inventory changes and drains it once the turn is saved, whichever branch saved it, so Pascal's one line per character follows the tool rows and the reply it sums up. A turn that takes an object up and sets it down again posts nothing. The character's `canManageInventory` flag (null reads on) gates the nine tools on the native slate and in the text-block prompt. Three new rows in the orchestrator differential, with both sides' rooms compared in insertion order.
+
 #### 2026-10-26 — Characters get v4's nine Inventory tools (P4.D328)
 
 _Versions: core 0.0.1330._

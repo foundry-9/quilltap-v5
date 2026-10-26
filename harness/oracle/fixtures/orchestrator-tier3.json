@@ -3559,6 +3559,149 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "d316000b-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "inventory_equip_two_one_turn",
+   "streamLabel": "inventory_equip_two_one_turn",
+   "inventoryObjects": [
+    {
+     "scope": "character",
+     "owner": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "record": {
+      "id": "d328a001-0000-4000-8000-000000000001",
+      "name": "lantern",
+      "title": "Brass Lantern",
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+     }
+    },
+    {
+     "scope": "character",
+     "owner": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "record": {
+      "id": "d328a001-0000-4000-8000-000000000002",
+      "name": "compass",
+      "title": null,
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+     }
+    }
+   ],
+   "kind": "chain",
+   "chatId": "d3160006-0000-4000-8000-000000000d16",
+   "content": "",
+   "continueMode": true,
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d316000b-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "inventory_equip_then_unequip_nets_none",
+   "streamLabel": "inventory_equip_then_unequip_nets_none",
+   "inventoryObjects": [
+    {
+     "scope": "character",
+     "owner": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "record": {
+      "id": "d328a001-0000-4000-8000-000000000003",
+      "name": "umbrella",
+      "title": null,
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+     }
+    }
+   ],
+   "kind": "chain",
+   "chatId": "d3160006-0000-4000-8000-000000000d16",
+   "content": "",
+   "continueMode": true,
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d316000b-0000-4000-8000-0000000000d1"
+  },
+  {
+   "name": "inventory_equip_then_skip_sentinel_ignored",
+   "streamLabel": "inventory_equip_then_skip_sentinel_ignored",
+   "inventoryObjects": [
+    {
+     "scope": "character",
+     "owner": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "record": {
+      "id": "d328a001-0000-4000-8000-000000000004",
+      "name": "kettle",
+      "title": "Copper Kettle",
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+     }
+    }
+   ],
+   "kind": "chain",
+   "chatId": "5f000001-0000-4000-8000-0000000000f1",
+   "content": "",
+   "continueMode": true,
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "5f0a0001-0000-4000-8000-0000000000a1"
   }
  ],
  "streams": {
@@ -5243,6 +5386,147 @@
      }
     }
    ]
+  ],
+  "inventory_equip_two_one_turn": [
+   [
+    {
+     "content": "Friday lights the lantern and pockets the compass."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 25,
+      "completionTokens": 9,
+      "totalTokens": 34
+     },
+     "rawResponse": {
+      "marker": "inventory_equip_two_one_turn",
+      "tool_calls": [
+       {
+        "id": "inv-0001",
+        "type": "function",
+        "function": {
+         "name": "inventory_equip",
+         "arguments": "{\"refs\":[\"Brass Lantern\"]}"
+        }
+       },
+       {
+        "id": "inv-0002",
+        "type": "function",
+        "function": {
+         "name": "inventory_equip",
+         "arguments": "{\"refs\":[\"compass\"]}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " Both will be wanted in the fog."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 11,
+      "totalTokens": 51
+     }
+    }
+   ]
+  ],
+  "inventory_equip_then_unequip_nets_none": [
+   [
+    {
+     "content": "Friday takes up the umbrella, then thinks better of it."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 25,
+      "completionTokens": 9,
+      "totalTokens": 34
+     },
+     "rawResponse": {
+      "marker": "inventory_equip_then_unequip_nets_none",
+      "tool_calls": [
+       {
+        "id": "inv-0003",
+        "type": "function",
+        "function": {
+         "name": "inventory_equip",
+         "arguments": "{\"refs\":[\"umbrella\"]}"
+        }
+       },
+       {
+        "id": "inv-0004",
+        "type": "function",
+        "function": {
+         "name": "inventory_unequip",
+         "arguments": "{\"refs\":[\"umbrella\"]}"
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": " The umbrella goes back in its stand."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 40,
+      "completionTokens": 11,
+      "totalTokens": 51
+     }
+    }
+   ]
+  ],
+  "inventory_equip_then_skip_sentinel_ignored": [
+   [
+    {
+     "content": "Friday sets the copper kettle on the hob."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 9,
+      "totalTokens": 69
+     },
+     "rawResponse": {
+      "marker": "inventory_equip_then_skip_sentinel_ignored",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "inv-0005",
+        "name": "inventory_equip",
+        "input": {
+         "refs": [
+          "Copper Kettle"
+         ]
+        }
+       }
+      ]
+     }
+    }
+   ],
+   [
+    {
+     "content": "[NOTHING TO ADD]"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 62,
+      "completionTokens": 4,
+      "totalTokens": 66
+     }
+    }
+   ]
   ]
  },
  "detection": {
@@ -5321,6 +5605,57 @@
      "index": 1
     },
     "callId": "wrb-0002"
+   }
+  ],
+  "inventory_equip_two_one_turn": [
+   {
+    "name": "inventory_equip",
+    "arguments": {
+     "refs": [
+      "Brass Lantern"
+     ]
+    },
+    "callId": "inv-0001"
+   },
+   {
+    "name": "inventory_equip",
+    "arguments": {
+     "refs": [
+      "compass"
+     ]
+    },
+    "callId": "inv-0002"
+   }
+  ],
+  "inventory_equip_then_unequip_nets_none": [
+   {
+    "name": "inventory_equip",
+    "arguments": {
+     "refs": [
+      "umbrella"
+     ]
+    },
+    "callId": "inv-0003"
+   },
+   {
+    "name": "inventory_unequip",
+    "arguments": {
+     "refs": [
+      "umbrella"
+     ]
+    },
+    "callId": "inv-0004"
+   }
+  ],
+  "inventory_equip_then_skip_sentinel_ignored": [
+   {
+    "name": "inventory_equip",
+    "arguments": {
+     "refs": [
+      "Copper Kettle"
+     ]
+    },
+    "callId": "inv-0005"
    }
   ]
  },

@@ -3669,6 +3669,21 @@ where
     )
     .await;
 
+    // === P4.D328: the Inventory drain AFTER the saved turn (v4 finally, 102a23648) ===
+    // v4 opens a `try` here (`orchestrator.service.ts:1758`, right after the
+    // wardrobe flush) and drains the turn's Inventory changes in its `finally`
+    // (`:2043-2044`) — so Pascal's `*X takes up a lantern.*` lands AFTER the
+    // assistant row and the tool-save rows, on EVERY exit, the turn-skip
+    // included. The twin: the rest of the turn is ONE inner `async` block (a
+    // `return` inside it — the skip — leaves the BLOCK, which is the `finally`
+    // semantics, and every `?` lands in `turn_outcome`), then the drain, then
+    // the outcome. The block's body is deliberately NOT re-indented
+    // (`#[rustfmt::skip]`): P4.D335's regions live inside it and must union
+    // line for line (R-4). The wardrobe drain stays where it is, above.
+    #[rustfmt::skip]
+    let turn_outcome: Result<ProcessMessageResult, DbError> = async {
+    // === end P4.D328 ===
+
     // ========================================================================
     // "Nothing to add" turn-skipping — sentinel handling
     //     (orchestrator.service.ts:1454–1498)
@@ -4019,6 +4034,16 @@ where
             skipped_participant_id: None,
         })
     }
+    // === P4.D328: the Inventory drain AFTER the saved turn (v4 finally, 102a23648) ===
+    }
+    .await;
+    crate::services::inventory_change_effects::flush_pending_inventory_announcements(
+        Some(&pending_inventory),
+        db,
+    )
+    .await;
+    turn_outcome
+    // === end P4.D328 ===
 }
 
 /// What the sentinel handling does with the streamed response (the decision half
