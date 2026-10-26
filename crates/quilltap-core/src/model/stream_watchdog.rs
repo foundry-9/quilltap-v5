@@ -37,6 +37,27 @@
 //! `stream_message` call is armed with an abort today, and this module does not
 //! arm one.
 //!
+//! ## The operator's stop (P4.D335, v4 `2b5e8ee24`'s `abortSignal`)
+//!
+//! [`watch_stream_with_stop`] races each `recv` against the Salon stream's
+//! [`StopSignal`] (`services::turn_control`). When it fires the stream simply
+//! ends — no error, so no fallback or recovery reads it as a provider failure —
+//! and the caller keeps whatever it has accumulated. The stall budget wraps
+//! the race (v4's `Promise.race([withTimeout(next), stopRequested])`): a stop
+//! that lands first is a quiet end, a stop that lands after the stall fired is
+//! a stall. The receiver is dropped exactly as on a stall (v4 `void`s
+//! `iterator.return()` on a stop too — the source may be parked mid-await);
+//! there is NO socket abort on a stop either, so the provider's bytes keep
+//! flowing until the pump's next send fails (`streaming_provider.rs`).
+//!
+//! v4's funnel carries the stop at ONE site (`streamMessage`'s
+//! `abortSignal: currentTurnStopSignal()`); v5 has no funnel, so the SEVEN
+//! Salon-side wrap sites call [`watch_stream_with_stop`] and the five others
+//! (greeting, help chat, one-shot loop, Brahma, swipe — v4's
+//! `currentTurnStopSignal()` is `undefined` there) keep [`watch_stream`]. A
+//! canned differential pre-pushes and closes its channel, so only
+//! `stream_watchdog_wrap_census` can see which sites carry the stop.
+//!
 //! ## Where the budget starts — one sentence v4 does not need
 //!
 //! v4's `provider.streamMessage(...)` is a LAZY generator, so the SDK's
@@ -63,6 +84,7 @@ use tokio::sync::mpsc::Receiver;
 use tokio::time::{Duration, Instant};
 
 use super::stream::{StreamChunkResult, StreamError};
+use crate::services::turn_control::StopSignal;
 
 /// Budget for the first chunk of a stream — the model's whole time-to-first-
 /// token, which on a long context with extended thinking is legitimately
@@ -160,6 +182,11 @@ pub struct WatchedStream<'a> {
     /// stream is over. Kept for the `Debug` rendering — the live state the
     /// `recv` path consults is `rx.is_none()`.
     stalled: bool,
+    /// The operator's stop for the Salon stream this call belongs to (P4.D335);
+    /// `None` off the Salon spine.
+    stop: Option<&'a StopSignal>,
+    /// The stop fired and the stream ended quietly.
+    stopped_by_operator: bool,
 }
 
 impl fmt::Debug for WatchedStream<'_> {
@@ -169,6 +196,7 @@ impl fmt::Debug for WatchedStream<'_> {
             .field("ctx", &self.ctx)
             .field("chunks_received", &self.chunks_received)
             .field("stalled", &self.stalled)
+            .field("stopped_by_operator", &self.stopped_by_operator)
             .field("open", &self.rx.is_some())
             .finish()
     }
@@ -184,6 +212,18 @@ pub fn watch_stream(
     budgets: StallBudgets,
     ctx: StallWatchdogContext<'_>,
 ) -> WatchedStream<'_> {
+    watch_stream_with_stop(rx, budgets, ctx, None)
+}
+
+/// [`watch_stream`] that also ends quietly, mid-stream, when the operator's
+/// `stop` fires (v4 `withStallWatchdog`'s `abortSignal`). The seven Salon-side
+/// sites call this; `stop` is `None` wherever no turn is registered.
+pub fn watch_stream_with_stop<'a>(
+    rx: Receiver<StreamChunkResult>,
+    budgets: StallBudgets,
+    ctx: StallWatchdogContext<'a>,
+    stop: Option<&'a StopSignal>,
+) -> WatchedStream<'a> {
     WatchedStream {
         rx: Some(rx),
         budgets,
@@ -191,6 +231,8 @@ pub fn watch_stream(
         chunks_received: 0,
         started_at: Instant::now(),
         stalled: false,
+        stop,
+        stopped_by_operator: false,
     }
 }
 
@@ -198,6 +240,11 @@ impl WatchedStream<'_> {
     /// How many items the source has produced so far (v4 `chunksReceived`).
     pub fn chunks_received(&self) -> u64 {
         self.chunks_received
+    }
+
+    /// Did the operator's stop end this stream?
+    pub fn stopped_by_operator(&self) -> bool {
+        self.stopped_by_operator
     }
 
     /// The same signature as [`Receiver::recv`](tokio::sync::mpsc::Receiver::recv),
@@ -214,12 +261,54 @@ impl WatchedStream<'_> {
             self.budgets.idle_ms
         };
 
-        match tokio::time::timeout(Duration::from_millis(budget_ms), rx.recv()).await {
+        let stop = self.stop;
+        // The stop race lives INSIDE the budget (v4 `Promise.race([withTimeout(
+        // next), stopRequested])`): the stall timer keeps running underneath.
+        let next = async move {
+            match stop {
+                Some(stop) => {
+                    // The STOP is polled first: measured at the pin (P4.D335,
+                    // `stop_vs_buffered_chunk`), v4's race answers `STOPPED` even
+                    // when the source already holds its next chunk — an aborted
+                    // signal's settled promise beats `withTimeout(next())`.
+                    let stopped = std::pin::pin!(stop.wait());
+                    let recv = std::pin::pin!(rx.recv());
+                    match futures_util::future::select(stopped, recv).await {
+                        futures_util::future::Either::Left(((), _)) => Err(StoppedByOperator),
+                        futures_util::future::Either::Right((item, _)) => Ok(item),
+                    }
+                }
+                None => Ok(rx.recv().await),
+            }
+        };
+        match tokio::time::timeout(Duration::from_millis(budget_ms), next).await {
+            Ok(Err(StoppedByOperator)) => {
+                self.stopped_by_operator = true;
+                let elapsed_ms = self.started_at.elapsed().as_millis() as u64;
+                // v4's bag: `logContext` spread first, then provider, modelName,
+                // chunksReceived, elapsedMs — no `budgetMs` on a stop.
+                tracing::info!(
+                    target: "quilltap::llm_stream",
+                    context = %self.ctx.context,
+                    user_id = self.ctx.user_id,
+                    chat_id = self.ctx.chat_id,
+                    character_id = self.ctx.character_id,
+                    message_id = self.ctx.message_id,
+                    provider = %self.ctx.provider,
+                    model_name = %self.ctx.model_name,
+                    chunks_received = self.chunks_received,
+                    elapsed_ms = elapsed_ms,
+                    "[LLMStream] Abandoned a provider stream at the operator's stop"
+                );
+                // Abandoned, not cancelled — the same receiver drop as a stall.
+                self.rx = None;
+                None
+            }
             // The source closed, or produced an item. An `Err` from the source
             // passes through AS ITSELF — v4: "a real provider error arrives as
             // itself, not the class".
-            Ok(None) => None,
-            Ok(Some(item)) => {
+            Ok(Ok(None)) => None,
+            Ok(Ok(Some(item))) => {
                 // v4 counts `result.value`s: EVERY yielded chunk, reasoning-only
                 // and usage-only and `done` included — and NOT a thrown error,
                 // which never reaches `chunksReceived++`. v5's seam carries a
@@ -265,10 +354,15 @@ impl WatchedStream<'_> {
     }
 }
 
+/// The operator's stop won a `recv`'s race (the `Err` of its outcome; the
+/// `Ok` is the source's next item, or its close).
+struct StoppedByOperator;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::model::stream::{StreamChunk, StreamErrorKind};
+    use crate::services::turn_control::{self, TurnControlRegistration};
     use crate::test_support::CaptureLayer;
     use std::sync::{Arc, Mutex};
     use tokio::sync::mpsc;
@@ -588,6 +682,172 @@ mod tests {
                 .any(|l| l.contains("[LLMStream] Abandoned a stalled provider stream")),
             "{lines:?}"
         );
+    }
+
+    // --- P4.D335: the operator's stop (v4 `stream-watchdog.test.ts:139-186`) ---
+
+    const SLOW: StallBudgets = StallBudgets {
+        first_chunk_ms: 5000,
+        idle_ms: 5000,
+    };
+
+    fn stop_signal(test: &str) -> (TurnControlRegistration, StopSignal) {
+        let reg = turn_control::register_active_turn(&format!(
+            "watchdog-{test}-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let stop = reg.handle().stop_signal();
+        (reg, stop)
+    }
+
+    async fn stop(reg: &TurnControlRegistration) {
+        // A zero settle budget: the registration is still held by the test.
+        let _ = turn_control::stop_active_turns(reg.chat_id(), Some(Duration::ZERO)).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn ends_quietly_keeping_what_arrived_when_the_stop_lands_mid_stream() {
+        let (reg, sig) = stop_signal("mid");
+        let (rx, _held) = silent_after(vec!["a", "b"]);
+        let mut s = watch_stream_with_stop(rx, SLOW, ctx(), Some(&sig));
+        assert!(matches!(s.recv().await, Some(Ok(_))));
+        assert!(matches!(s.recv().await, Some(Ok(_))));
+        let third = {
+            let waiting = s.recv();
+            tokio::pin!(waiting);
+            tokio::select! {
+                biased;
+                _ = &mut waiting => panic!("no third chunk"),
+                _ = tokio::time::sleep(Duration::from_millis(10)) => {}
+            }
+            stop(&reg).await;
+            waiting.await
+        };
+        assert!(third.is_none(), "a stop is a quiet end, not an error");
+        assert!(s.stopped_by_operator());
+        assert_eq!(s.chunks_received(), 2);
+        assert!(s.recv().await.is_none());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn abandons_a_provider_still_waiting_on_its_first_chunk() {
+        let (reg, sig) = stop_signal("first");
+        let (rx, _held) = silent_after(vec![]);
+        let started = Instant::now();
+        let s = watch_stream_with_stop(rx, SLOW, ctx(), Some(&sig));
+        let collecting = collect(s);
+        tokio::pin!(collecting);
+        tokio::select! {
+            biased;
+            _ = &mut collecting => panic!("nothing has stopped it yet"),
+            _ = tokio::time::sleep(Duration::from_millis(15)) => {}
+        }
+        stop(&reg).await;
+        let (seen, err) = collecting.await;
+        assert!(seen.is_empty() && err.is_none());
+        assert!(started.elapsed() < Duration::from_millis(1000));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn yields_nothing_when_already_stopped_before_it_starts() {
+        let (reg, sig) = stop_signal("before");
+        stop(&reg).await;
+        let (seen, err) = collect(watch_stream_with_stop(
+            paced(vec!["a"], 5),
+            SLOW,
+            ctx(),
+            Some(&sig),
+        ))
+        .await;
+        assert!(seen.is_empty() && err.is_none());
+    }
+
+    /// Measured at the pin (`stop_vs_buffered_chunk`): with the next chunk
+    /// already buffered, v4's race still answers the stop — the chunk is
+    /// abandoned, not delivered.
+    #[tokio::test(start_paused = true)]
+    async fn stop_vs_buffered_chunk() {
+        let (reg, sig) = stop_signal("buffered");
+        let (rx, _held) = silent_after(vec!["a", "b", "c"]);
+        let mut s = watch_stream_with_stop(rx, SLOW, ctx(), Some(&sig));
+        assert!(matches!(s.recv().await, Some(Ok(_))));
+        stop(&reg).await;
+        assert!(s.recv().await.is_none(), "the buffered 'b' is abandoned");
+        assert_eq!(s.chunks_received(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn leaves_a_healthy_stream_alone_when_the_stop_never_fires() {
+        let (_reg, sig) = stop_signal("healthy");
+        let (seen, err) = collect(watch_stream_with_stop(
+            paced(vec!["a", "b"], 5),
+            BUDGETS,
+            ctx(),
+            Some(&sig),
+        ))
+        .await;
+        assert_eq!(seen, vec!["a", "b"]);
+        assert!(err.is_none());
+    }
+
+    /// T14: the budget wraps the race, so a stop that lands AFTER the stall
+    /// timer fired is a stall, not a quiet end.
+    #[tokio::test(start_paused = true)]
+    async fn a_stop_after_the_stall_is_a_stall() {
+        let (reg, sig) = stop_signal("after-stall");
+        let (rx, _held) = silent_after(vec![]);
+        let mut s = watch_stream_with_stop(rx, BUDGETS, ctx(), Some(&sig));
+        assert!(matches!(s.recv().await, Some(Err(ref e)) if e.is_stalled()));
+        stop(&reg).await;
+        assert!(s.recv().await.is_none());
+        assert!(!s.stopped_by_operator());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_stop_info_fires_once_with_v4s_bag() {
+        let (logs, subscriber) = capture();
+        {
+            let _g = tracing::subscriber::set_default(subscriber);
+            let (reg, sig) = stop_signal("info");
+            let (rx, _held) = silent_after(vec!["a"]);
+            let mut s = watch_stream_with_stop(rx, SLOW, ctx(), Some(&sig));
+            assert!(matches!(s.recv().await, Some(Ok(_))));
+            stop(&reg).await;
+            assert!(s.recv().await.is_none());
+            assert!(s.recv().await.is_none());
+            // The silence leg: a stall-less, stop-less stream says nothing.
+            let _ = collect(watch_stream_with_stop(
+                paced(vec!["a"], 5),
+                BUDGETS,
+                ctx(),
+                None,
+            ))
+            .await;
+        }
+        let lines = logs.lock().unwrap().clone();
+        let hits: Vec<_> = lines
+            .iter()
+            .filter(|l| {
+                l.contains("[LLMStream] Abandoned a provider stream at the operator's stop")
+            })
+            .collect();
+        assert_eq!(hits.len(), 1, "exactly one info per stop: {lines:?}");
+        let hit = hits[0];
+        assert!(hit.starts_with("INFO quilltap::llm_stream"), "{hit}");
+        for f in [
+            "context=streaming.service",
+            "user_id=u1",
+            "chat_id=c1",
+            "message_id=m1",
+            "provider=DEEPSEEK",
+            "model_name=deepseek-v4-flash",
+            "chunks_received=1",
+            "elapsed_ms=",
+        ] {
+            assert!(hit.contains(f), "missing {f} in {hit}");
+        }
+        assert!(!hit.contains("budget_ms="), "{hit}");
+        assert!(!hit.contains("character_id="), "{hit}");
     }
 
     #[test]

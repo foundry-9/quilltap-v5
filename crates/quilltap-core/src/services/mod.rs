@@ -201,6 +201,7 @@ pub mod tool_build;
 pub mod tool_call_threading;
 pub mod tool_execution;
 pub mod trigger_phrase_sites;
+pub mod turn_control; // P4.D335
 pub mod turn_extras;
 pub mod turn_orchestrator;
 pub mod turn_transcript;

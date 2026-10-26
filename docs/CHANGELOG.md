@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(interrupts): the turn-control registry, the `[YIELD]` detector and the watchdog's stop race (P4.D335 unit 1)
+
+_Versions: core 0.0.1324._
+
+Ports the pure and registry half of v4's raise-a-hand / Stop (`2b5e8ee24`, pinned at `322a5488e`). New `services::turn_control`: a process-static registry keyed by chat id (v4's `processSingleton`), a `TurnControlRegistration` guard that unregisters and settles on drop, `TurnControlHandle` (`is_stopped`, `take_raised_hand`, `stop_signal`), `set_hand_raised`, and `stop_active_turns` with v4's snapshot-then-signal order and 15 s bounded settle wait, plus v4's seven `[TurnControl]` lines. New `yield_signal`: `detect_yield_sentinel`, `build_turn_yield_instruction`, `YIELD_SENTINEL`, `TURN_YIELD_SYSTEM_KIND`. `skip_signal`'s line matcher is now the shared `matches_sentinel_line(line, phrase)`. `model::stream_watchdog` gains `watch_stream_with_stop`: each `recv` races the operator's stop inside the stall budget, ends quietly (no error) with v4's `[LLMStream] Abandoned a provider stream at the operator's stop` INFO, and polls the stop first (measured at the pin: v4 abandons an already-buffered chunk once stopped). No call site uses it yet. New tier-1 differential `turn_control_equivalence` over v4's real `turn-control.ts`, `yield-signal.ts`, `matchesSentinelLine` and `withStallWatchdog` (101 rows: the registry scenarios with their log lines, 46 detection rows incl. JS-whitespace edges, the note, 40 sentinel-line rows, five watchdog rows).
+
 #### 2026-10-27 — docs(porting): P4.D337 lane record and LANE COMPLETE status
 
 _Docs only._

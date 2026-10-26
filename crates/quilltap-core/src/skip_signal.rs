@@ -234,6 +234,14 @@ pub fn detect_skip_sentinel(
 /// equal the sentinel phrase? Brackets are optional; matching is
 /// case-insensitive.
 fn is_sentinel_line(line: &str) -> bool {
+    matches_sentinel_line(line, "nothing to add")
+}
+
+/// Does a single line, once its wrapping markdown / quotes, optional square
+/// brackets and trailing punctuation are shed, equal `phrase` (lower-case)?
+/// Shared by every bracketed turn sentinel (`[NOTHING TO ADD]`, `[YIELD]` —
+/// v4 `matchesSentinelLine`, `2b5e8ee24`).
+pub fn matches_sentinel_line(line: &str, phrase: &str) -> bool {
     let mut s = js_trim(line).to_string();
     // Shed matched wrapping markdown / quote characters, repeatedly.
     // (e.g. **[NOTHING TO ADD]**, "_[nothing to add]_", `[NOTHING TO ADD]`)
@@ -267,7 +275,7 @@ fn is_sentinel_line(line: &str) -> bool {
     // Drop trailing punctuation (`/[.!?,;:]+$/`).
     let t = t.trim_end_matches(['.', '!', '?', ',', ';', ':']);
     let t = js_trim(t);
-    t.to_lowercase() == "nothing to add"
+    t.to_lowercase() == phrase
 }
 
 // ---------------------------------------------------------------------------

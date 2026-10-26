@@ -263,6 +263,7 @@ pub mod staff_display_names;
 pub mod standing_instructions;
 pub mod state;
 pub mod store_names;
+pub mod yield_signal;
 // === P4.D163 ===
 pub mod subprompts;
 // === end P4.D163 ===
