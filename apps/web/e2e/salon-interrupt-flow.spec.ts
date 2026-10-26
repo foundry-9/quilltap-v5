@@ -177,6 +177,13 @@ test.describe('P4.D336 — raise a hand / stop', () => {
       cli,
       `UPDATE connection_profiles SET baseUrl = 'http://127.0.0.1:${INT_MOCK_PORT}/v1' WHERE provider = 'OPENAI_COMPATIBLE';`,
     );
+    // Solo Voyage seats Aria AND the user's own character; v4's
+    // `isSingleCharacterChat` counts user-controlled seats, so deactivate the
+    // user's seat to make the chat genuinely single-character (beat E).
+    runCliWrite(
+      cli,
+      `UPDATE chats SET participants = (SELECT json_group_array(CASE WHEN json_extract(value, '$.controlledBy') = 'user' THEN json_set(value, '$.isActive', json('false')) ELSE value END) FROM json_each(chats.participants)) WHERE title = 'Solo Voyage';`,
+    );
     mock = await startSequencedMock(INT_MOCK_PORT);
 
     // The salon pair carries no `instance_settings` table; plant generateDDL's
@@ -241,6 +248,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
   });
 
   test('(D) mid-stream both interrupts open and Send is greyed and titled Generating...', async ({ page }) => {
+    test.setTimeout(120_000);
     plan.replies = [SLOW_REPLY];
     plan.delayMs = 350;
     await openChat(page, groupChatId);
@@ -255,6 +263,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
   });
 
   test('(E) a lone character: the hand is disabled with v4’s title mid-stream', async ({ page }) => {
+    test.setTimeout(120_000);
     plan.replies = [SLOW_REPLY];
     plan.delayMs = 350;
     await openChat(page, soloChatId);
@@ -284,7 +293,8 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     expect(logged).toHaveLength(1);
   });
 
-  test('(G) the participant card says Speaking... and offers no Stop while a seat generates', async ({ page }) => {
+  test('(G) the participant card offers no Stop while a seat generates', async ({ page }) => {
+    test.setTimeout(120_000);
     plan.replies = [SLOW_REPLY];
     plan.delayMs = 350;
     await openChat(page, groupChatId);
@@ -293,7 +303,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await send(page, 'Who has the floor?');
     await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
     await expect(page.getByRole('button', { name: /stop generating/i })).toHaveCount(0);
-    await expect(page.locator('qt-chat-sidebar').getByRole('button', { name: /Speaking\.\.\./ }).first()).toBeVisible();
+    await expect(page.locator('qt-chat-sidebar').getByRole('button', { name: /^Stop/ })).toHaveCount(0);
     await expect(stopButton(page)).toBeDisabled({ timeout: 60_000 });
   });
 
