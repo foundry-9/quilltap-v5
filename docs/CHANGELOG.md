@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(tools): the Log in the tool catalog, the write partition and the Brahma SQL prompt (P4.D331)
+
+_Versions: core 0.0.1328._
+
+The generated catalog gains `logCreateEntry`, `logGrep` and `logRead` between `readConversation` and `requestFullContext` (v4's `ALL_TOOLS` order), regenerated from the pin through the two oracle cases' import lists; `run_sql`'s `database` description moves with the regen (`log_entries`, `REGEXP`). The count assert is 66 on this branch. Two rows the pin's regen also moves belong to sibling lanes (`runCustom`, `terminalRead`): they stay at their pre-round bytes here and `tool_definitions_equivalence` carves them by name until the union.
+
+`LLM_LOGS_REPO_KEYS` gains `logEntries` (v4 `write-partition.ts:70`); `write_partition_equivalence` grows two classify rows and a mixed partition case. The Brahma Console's SQL prompt carries v4's new llm-logs bullet (the `log_entries` columns and `REGEXP`); `brahma_console_tier3_equivalence` re-recorded from the pin.
+
 #### 2026-10-26 — feat(db): the Log's repository and write door (P4.D331)
 
 _Versions: core 0.0.1327._

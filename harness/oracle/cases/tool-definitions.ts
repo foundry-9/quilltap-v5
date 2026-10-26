@@ -69,6 +69,9 @@ import { listImagesToolDefinition } from '@/lib/tools/list-images-tool';
 import { sendMailToolDefinition } from '@/lib/tools/send-mail-tool';
 import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
 import { readConversationToolDefinition } from '@/lib/tools/read-conversation-tool';
+import { logCreateEntryToolDefinition } from '@/lib/tools/log-create-entry-tool';
+import { logGrepToolDefinition } from '@/lib/tools/log-grep-tool';
+import { logReadToolDefinition } from '@/lib/tools/log-read-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
@@ -150,6 +153,10 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   sendMail: sendMailToolDefinition,
   projectInfo: projectInfoToolDefinition,
   readConversation: readConversationToolDefinition,
+  // P4.D331: the Log (v4 ALL_TOOLS order — between readConversation and requestFullContext).
+  logCreateEntry: logCreateEntryToolDefinition,
+  logGrep: logGrepToolDefinition,
+  logRead: logReadToolDefinition,
   requestFullContext: requestFullContextToolDefinition,
   rng: rngToolDefinition,
   runCustom: runCustomToolDefinition,

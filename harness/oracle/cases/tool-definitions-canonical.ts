@@ -66,6 +66,9 @@ import { listImagesToolDefinition } from '@/lib/tools/list-images-tool';
 import { sendMailToolDefinition } from '@/lib/tools/send-mail-tool';
 import { projectInfoToolDefinition } from '@/lib/tools/project-info-tool';
 import { readConversationToolDefinition } from '@/lib/tools/read-conversation-tool';
+import { logCreateEntryToolDefinition } from '@/lib/tools/log-create-entry-tool';
+import { logGrepToolDefinition } from '@/lib/tools/log-grep-tool';
+import { logReadToolDefinition } from '@/lib/tools/log-read-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
@@ -147,6 +150,10 @@ const ALL: UniversalTool[] = [
   sendMailToolDefinition,
   projectInfoToolDefinition,
   readConversationToolDefinition,
+  // P4.D331: the Log.
+  logCreateEntryToolDefinition,
+  logGrepToolDefinition,
+  logReadToolDefinition,
   requestFullContextToolDefinition,
   rngToolDefinition,
   runCustomToolDefinition,

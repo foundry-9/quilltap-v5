@@ -61,6 +61,9 @@ const classifyCases: Array<[string, string]> = [
   ['group-character-member', 'groupCharacterMembers.create'],
   ['llm-logs-dotted', 'llmLogs.create'],
   ['llm-logs-bare', 'llmLogs'],
+  // P4.D331 (v4 `e4a60ad9e`): the Log's entries live in the llm-logs DB too.
+  ['log-entries-dotted', 'logEntries.create'],
+  ['log-entries-bare', 'logEntries'],
   ['mount-folder-bare', 'docMountFolders'],
   ['unknown-repo', 'someRepo.update'],
   ['no-dot', 'foo'],
@@ -94,6 +97,17 @@ const partitionCases: Array<[string, Write[]]> = [
       w('chats.update', [{ id: 'c1' }]),
       w('groupDocMountLinks.create', [{ id: 'g1' }]),
       w('groupCharacterMembers.create', [{ id: 'g2' }]),
+    ],
+  ],
+  [
+    // P4.D331: a `logEntries.create` among main / mount writes lands in the
+    // llm-logs partition, in order beside `llmLogs.create`.
+    'log-entries-mixed',
+    [
+      w('chats.update', [{ id: 'c1' }]),
+      w('logEntries.create', [{ message: 'a line' }]),
+      w('docMountFolders.create', [{ id: 'f1' }]),
+      w('llmLogs.create', [{ id: 'l1' }]),
     ],
   ],
 ];

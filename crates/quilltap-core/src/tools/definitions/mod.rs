@@ -104,7 +104,9 @@ mod tests {
         // — the old memory-only tool collided with the Scriptorium `search` on
         // the wire name `search`). The count is the tripwire for a regenerated
         // catalog silently gaining or losing a tool.
-        assert_eq!(TOOL_DEFINITIONS.len(), 72);
+        // 66 on P4.D331's branch: + `logCreateEntry` / `logGrep` / `logRead`
+        // (the unifier's ONE regen sets the round's 76 — R-H).
+        assert_eq!(TOOL_DEFINITIONS.len(), 66);
         for d in TOOL_DEFINITIONS {
             let v: Value = serde_json::from_str(d.json).expect("valid JSON");
             assert_eq!(v.get("name").and_then(Value::as_str), Some(d.name));

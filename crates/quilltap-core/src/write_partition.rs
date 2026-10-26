@@ -64,8 +64,9 @@ pub const MOUNT_INDEX_REPO_KEYS: &[&str] = &[
     "groupCharacterMembers",
 ];
 
-/// Repository keys whose rows live in the dedicated llm-logs database.
-pub const LLM_LOGS_REPO_KEYS: &[&str] = &["llmLogs"];
+/// Repository keys whose rows live in the dedicated llm-logs database
+/// (P4.D331: v4 `e4a60ad9e` adds the Log's `logEntries`).
+pub const LLM_LOGS_REPO_KEYS: &[&str] = &["llmLogs", "logEntries"];
 
 /// The dotted method that creates a `doc_mount_folders` row.
 pub const DOC_MOUNT_FOLDER_CREATE: &str = "docMountFolders.create";
