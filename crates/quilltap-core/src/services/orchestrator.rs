@@ -2123,6 +2123,10 @@ where
         character.get("canDressThemselves").and_then(Value::as_bool) != Some(false);
     let can_create_outfits =
         character.get("canCreateOutfits").and_then(Value::as_bool) != Some(false);
+    // v4 `orchestrator.service.ts:1015` (`e1872c94f`): the nine `inventory_*`
+    // tools follow `canManageInventory`, null reading ON.
+    let can_manage_inventory =
+        character.get("canManageInventory").and_then(Value::as_bool) != Some(false);
 
     // Document editing enabled when the chat's project has linked doc stores
     // (orchestrator.service.ts:766–773). Reads the mount-index sibling DB; a read
@@ -2292,6 +2296,7 @@ where
                 help_tools_enabled,
                 can_dress_themselves,
                 can_create_outfits,
+                can_manage_inventory,
                 // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
                 // v4 `orchestrator.service.ts:1021`: `documentEditingEnabled ? 'full' : 'off'`.
                 doc_tools_mode: if document_editing_enabled {

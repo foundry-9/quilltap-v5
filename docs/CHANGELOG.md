@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The native tool slate offers the nine Inventory tools behind canManageInventory (P4.D328)
+
+_Versions: core 0.0.1326._
+
+New `tools/inventory_tool_flags.rs` holds v4's one rule for the nine `inventory_*` flags: all on unless the character's `canManageInventory` is `false` (null reads on), in a fixed offer order. `build_tools` takes `can_manage_inventory` and pushes the nine after the wardrobe tools and before `submit_final_response`. The orchestrator reads the flag from the character; Brahma, the Scenario Builder and Carina pass `false`; the help chat passes `true`, as v4's eleven-argument call does. The tool-build oracle inserts v4's new thirteenth positional under a pin probe, with three new cases.
+
 #### 2026-10-26 — The tool catalog gains v4's nine Inventory tool definitions (P4.D328)
 
 _Versions: core 0.0.1325._

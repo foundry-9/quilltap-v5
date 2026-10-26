@@ -556,6 +556,8 @@ where
             help_tools_enabled: b(&answerer, "defaultHelpToolsEnabled") == Some(true),
             can_dress_themselves: false,
             can_create_outfits: false,
+            // v4 `false,  // canManageInventory — no inventory_* tools here`.
+            can_manage_inventory: false,
             // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
             // v4 `carina.service.ts:640`: `documentEditingEnabled ? 'full' : 'off'`.
             doc_tools_mode: if document_editing_enabled {

@@ -765,6 +765,11 @@ where
             help_tools_enabled: true,
             can_dress_themselves: true,
             can_create_outfits: true,
+            // v4 passes ELEVEN positionals to `buildTools` here (`help-chat/
+            // orchestrator.service.ts:237-249`), so `canManageInventory` is
+            // `undefined` → the nine are ON (R-R, a v4 filing candidate: the help
+            // chat has no character to act for).
+            can_manage_inventory: true,
             // P4.D216 OUT-OF-MANDATE — the `build_tools` caller's owner preserves (v4 `d1c06cd9d`: `documentEditingEnabled` → `docToolsMode` + the `extras` bag).
             doc_tools_mode: crate::services::tool_build::DocToolsMode::Off,
             extras: crate::services::tool_build::BuildToolsExtras::default(),

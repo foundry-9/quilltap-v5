@@ -12,6 +12,7 @@ pub mod executor;
 pub mod generate_image;
 pub mod help;
 pub mod help_search;
+pub mod inventory_tool_flags;
 pub mod list_mail;
 pub mod llm_number;
 pub mod native_tool_prompt;

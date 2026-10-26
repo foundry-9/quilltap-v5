@@ -62,6 +62,20 @@ import * as searchScriptoriumTools from '@/lib/tools/search-scriptorium-tool';
 const PIN_HAS_DOC_TOOLS_MODE =
   'searchScriptoriumScenarioToolDefinition' in (searchScriptoriumTools as Record<string, unknown>);
 
+// P4.D328: `e1872c94f` inserted a 13th positional `canManageInventory` BEFORE
+// `docToolsMode` (`streaming.service.ts:180`). The same probe idiom: a pre-
+// `e1872c94f` pin has no `inventory-tool-flags` module (and no positional), so
+// the argument is inserted only when the pinned tree exports the flag helper.
+const PIN_HAS_INVENTORY_FLAG = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const flags = require('@/lib/tools/inventory-tool-flags') as Record<string, unknown>;
+    return 'inventoryToolFlags' in flags;
+  } catch {
+    return false;
+  }
+})();
+
 interface RawCase {
   name: string;
   provider?: string;
@@ -80,6 +94,10 @@ interface RawCase {
   helpToolsEnabled?: boolean;
   canDressThemselves?: boolean;
   canCreateOutfits?: boolean;
+  /** P4.D328 (v4 `e1872c94f`): the positional `canManageInventory` at index 12.
+   * Absent → `true` (v4's orchestrator default); `null` reaches v4 as `null`
+   * (`inventoryToolFlags(null)` reads ON). */
+  canManageInventory?: boolean | null;
   documentEditingEnabled?: boolean;
   /** P4.D216 (v4 `d1c06cd9d`): the positional `docToolsMode` at index 13. Absent
    * → derived from `documentEditingEnabled` the way every v4 caller maps it
@@ -153,6 +171,9 @@ test('tool-build oracle', async () => {
       c.helpToolsEnabled ?? false,
       c.canDressThemselves ?? true,
       c.canCreateOutfits ?? true,
+      ...((PIN_HAS_INVENTORY_FLAG
+        ? [c.canManageInventory === undefined ? true : c.canManageInventory]
+        : []) as never[]),
       (PIN_HAS_DOC_TOOLS_MODE ? docToolsMode : docToolsMode === 'full') as never,
       c.askCarinaEnabled ?? false,
       c.includeWorkspaceTools ?? true,

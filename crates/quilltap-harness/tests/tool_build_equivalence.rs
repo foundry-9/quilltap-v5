@@ -112,6 +112,10 @@ struct CaseW {
     can_dress_themselves: bool,
     #[serde(default = "default_true")]
     can_create_outfits: bool,
+    /// P4.D328 (v4 `e1872c94f`): the positional `canManageInventory` at index
+    /// 12. Absent and `null` both read ON (the oracle passes `true` / `null`).
+    #[serde(default)]
+    can_manage_inventory: Option<bool>,
     #[serde(default)]
     document_editing_enabled: bool,
     /// P4.D216 (v4 `d1c06cd9d`): `"off"`/`"read"`/`"full"`; absent → derived
@@ -247,6 +251,7 @@ fn tool_build_matches_oracle() {
                 help_tools_enabled: c.help_tools_enabled,
                 can_dress_themselves: c.can_dress_themselves,
                 can_create_outfits: c.can_create_outfits,
+                can_manage_inventory: c.can_manage_inventory != Some(false),
                 doc_tools_mode: c.doc_tools_mode.unwrap_or(if c.document_editing_enabled {
                     DocToolsMode::Full
                 } else {
@@ -326,9 +331,17 @@ fn tool_build_matches_oracle() {
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle row missing for {}", c.name));
 
-        if got_tools != want_row.tools {
+        let want_tools = without_sibling_tools(&want_row.tools);
+        let (got_tools, want_tools) = match carve_sibling_bytes(&got_tools, &want_tools) {
+            Ok(pair) => pair,
+            Err(stale) => {
+                failures.push(format!("case {}: {stale}", c.name));
+                (got_tools, want_tools)
+            }
+        };
+        if got_tools != want_tools {
             let g = tool_names(&got_tools);
-            let w = tool_names(&want_row.tools);
+            let w = tool_names(&want_tools);
             failures.push(format!(
                 "case {}: tools mismatch\n  got:  {:?}\n  want: {:?}",
                 c.name, g, w
@@ -354,6 +367,83 @@ fn tool_build_matches_oracle() {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
     assert_eq!(mail_only_rows, 1, "the P4.124 INFO pin ran");
     assert!(allowed_autonomous_rows > 0, "the P4.124 silence leg ran");
+}
+
+/// P4.D328 (R-H): tools v4's slate builds at `322a5488e` that SIBLING lanes of
+/// the round port — the Log's three (P4.D331) and `edit_custom_tool`
+/// (P4.D332). They are dropped from the ORACLE side only: on the union v5
+/// builds them too, the compare reds, and the unifier deletes this const.
+const SIBLING_TOOLS_UNTIL_UNION: &[&str] = &[
+    "log_create_entry",
+    "log_grep",
+    "log_read",
+    "edit_custom_tool",
+];
+
+fn without_sibling_tools(tools: &Value) -> Value {
+    Value::Array(
+        tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter(|t| {
+                let name = t
+                    .pointer("/function/name")
+                    .or_else(|| t.get("name"))
+                    .and_then(Value::as_str)
+                    .unwrap_or_default();
+                !SIBLING_TOOLS_UNTIL_UNION.contains(&name)
+            })
+            .cloned()
+            .collect(),
+    )
+}
+
+/// P4.D328: slate tools whose catalog bytes MOVED at the pin under a sibling
+/// lane's commit (`tool_definitions_equivalence`'s `SIBLING_BYTES_UNTIL_UNION`)
+/// — `terminal_read` (bug 255, P4.D337) and `run_sql` (the Log, P4.D331). They
+/// are compared by PRESENCE only; both ways, a carved tool whose bytes already
+/// equal the pin's is a stale carve and fails the case.
+const SIBLING_BYTES_UNTIL_UNION: &[&str] = &["terminal_read", "run_sql"];
+
+fn slate_tool_name(t: &Value) -> &str {
+    t.pointer("/function/name")
+        .or_else(|| t.get("name"))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+}
+
+fn carve_sibling_bytes(got: &Value, want: &Value) -> Result<(Value, Value), String> {
+    for name in SIBLING_BYTES_UNTIL_UNION {
+        let pick = |v: &Value| {
+            v.as_array()
+                .and_then(|a| a.iter().find(|t| slate_tool_name(t) == *name).cloned())
+        };
+        if let (Some(g), Some(w)) = (pick(got), pick(want)) {
+            if g == w {
+                return Err(format!(
+                    "{name}'s bytes now equal the pin's — delete it from SIBLING_BYTES_UNTIL_UNION"
+                ));
+            }
+        }
+    }
+    let carved = |v: &Value| {
+        Value::Array(
+            v.as_array()
+                .expect("tools array")
+                .iter()
+                .map(|t| {
+                    let name = slate_tool_name(t);
+                    if SIBLING_BYTES_UNTIL_UNION.contains(&name) {
+                        serde_json::json!({ "carvedUntilUnion": name })
+                    } else {
+                        t.clone()
+                    }
+                })
+                .collect(),
+        )
+    };
+    Ok((carved(got), carved(want)))
 }
 
 fn tool_names(tools: &Value) -> Vec<String> {

@@ -43,6 +43,9 @@
     { "name": "p4d216_plugin_allowlist_curl_neutral", "extras": { "pluginToolAllowlist": ["curl"] } },
     { "name": "p4d216_plugin_allowlist_empty_neutral", "extras": { "pluginToolAllowlist": [] } },
     { "name": "p4d216_scenario_builder_real_slate", "agentModeEnabled": true, "includeWorkspaceTools": false, "allowWebSearch": true, "docToolsMode": "read", "extras": { "documentsOnlySearch": true, "pluginToolAllowlist": ["curl"], "webSearch": true } },
-    { "name": "p4d216_scenario_builder_in_world_slate", "agentModeEnabled": true, "includeWorkspaceTools": false, "allowWebSearch": true, "docToolsMode": "read", "extras": { "documentsOnlySearch": true, "pluginToolAllowlist": [], "webSearch": false } }
+    { "name": "p4d216_scenario_builder_in_world_slate", "agentModeEnabled": true, "includeWorkspaceTools": false, "allowWebSearch": true, "docToolsMode": "read", "extras": { "documentsOnlySearch": true, "pluginToolAllowlist": [], "webSearch": false } },
+    { "name": "p4d328_inventory_off", "canManageInventory": false, "canDressThemselves": true },
+    { "name": "p4d328_inventory_null", "canManageInventory": null, "canDressThemselves": true },
+    { "name": "p4d328_inventory_and_dress_off", "canManageInventory": false, "canDressThemselves": false }
   ]
 }

@@ -50,6 +50,9 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::pascal::roster::DiscoveredCustomTool;
 use crate::tools::definitions::universal_tool_by_key;
+use crate::tools::inventory_tool_flags::{
+    enabled_inventory_tool_keys, inventory_tool_flags, InventoryToolFlags,
+};
 use crate::tools::run_custom::build_run_custom_description;
 
 /// v4 `ImageProviderConstraints` (the two fields `applyImageConstraintsToTool`
@@ -232,6 +235,18 @@ pub struct BuildToolsForProviderOptions {
     pub wardrobe_create: bool,
     pub wardrobe_update: bool,
     pub wardrobe_archive: bool,
+    /// The nine `inventory_*` flags (v4 `BuildToolsOptions extends
+    /// InventoryToolFlags`, `e1872c94f`), all set from the character's
+    /// `canManageInventory` by [`build_tools`].
+    pub inventory_list: bool,
+    pub inventory_read: bool,
+    pub inventory_equip: bool,
+    pub inventory_unequip: bool,
+    pub inventory_pick_up: bool,
+    pub inventory_create: bool,
+    pub inventory_update: bool,
+    pub inventory_archive: bool,
+    pub inventory_give: bool,
     pub agent_mode: bool,
     /// v4 `docToolsMode` (`d1c06cd9d` — it replaced `documentEditing: boolean`).
     pub doc_tools_mode: DocToolsMode,
@@ -370,6 +385,22 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
     if options.wardrobe_archive {
         push_key(&mut universal, "wardrobeArchive");
     }
+    // Inventory tools (gated by canManageInventory), in offer order — after the
+    // wardrobe, before `submit_final_response` (v4 `plugin-tool-builder.ts:578-580`).
+    let inventory = InventoryToolFlags {
+        list: options.inventory_list,
+        read: options.inventory_read,
+        equip: options.inventory_equip,
+        unequip: options.inventory_unequip,
+        pick_up: options.inventory_pick_up,
+        create: options.inventory_create,
+        update: options.inventory_update,
+        archive: options.inventory_archive,
+        give: options.inventory_give,
+    };
+    for key in enabled_inventory_tool_keys(&inventory) {
+        push_key(&mut universal, key);
+    }
     if options.agent_mode {
         push_key(&mut universal, "submitFinalResponse");
     }
@@ -503,6 +534,10 @@ pub struct BuildToolsInput<'a> {
     pub can_dress_themselves: bool,
     /// `character.canCreateOutfits !== false` (already resolved).
     pub can_create_outfits: bool,
+    /// `character.canManageInventory !== false` (already resolved) — v4
+    /// `buildTools`' positional `canManageInventory` (index 12, `e1872c94f`).
+    /// Turns the nine `inventory_*` tools on together.
+    pub can_manage_inventory: bool,
     /// v4 `buildTools`' positional `docToolsMode` (index 13; `d1c06cd9d`
     /// replaced the `documentEditingEnabled` boolean there).
     pub doc_tools_mode: DocToolsMode,
@@ -602,6 +637,8 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         None => Vec::new(),
     };
 
+    // v4 `streaming.service.ts:309` `...inventoryToolFlags(canManageInventory)`.
+    let inventory = inventory_tool_flags(Some(input.can_manage_inventory));
     let options = BuildToolsForProviderOptions {
         image_generation: input.image_profile_id.is_some(),
         image_provider_constraints: input.image_provider_constraints.clone(),
@@ -624,6 +661,15 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         wardrobe_create: input.can_create_outfits,
         wardrobe_update: input.can_create_outfits,
         wardrobe_archive: input.can_create_outfits,
+        inventory_list: inventory.list,
+        inventory_read: inventory.read,
+        inventory_equip: inventory.equip,
+        inventory_unequip: inventory.unequip,
+        inventory_pick_up: inventory.pick_up,
+        inventory_create: inventory.create,
+        inventory_update: inventory.update,
+        inventory_archive: inventory.archive,
+        inventory_give: inventory.give,
         agent_mode: input.agent_mode_enabled,
         doc_tools_mode: input.doc_tools_mode,
         plugin_tool_allowlist: input.extras.plugin_tool_allowlist.clone(),

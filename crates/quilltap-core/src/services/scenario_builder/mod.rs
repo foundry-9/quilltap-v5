@@ -13,7 +13,7 @@
 //! groups' stores, the project's stores, Quilltap General), never
 //! `operator_surface`.
 //!
-//! ## The `buildTools` call — v4's 20 positionals, mapped
+//! ## The `buildTools` call — v4's 21 positionals, mapped
 //!
 //! | # | v4 positional            | v4 value                       | v5 [`BuildToolsInput`] field |
 //! |---|--------------------------|--------------------------------|------------------------------|
@@ -30,13 +30,14 @@
 //! |11 | `helpToolsEnabled`       | `false`                        | `help_tools_enabled: false` |
 //! |12 | `canDressThemselves`     | `false`                        | `can_dress_themselves: false` |
 //! |13 | `canCreateOutfits`       | `false`                        | `can_create_outfits: false` |
-//! |14 | `docToolsMode`           | `'read'`                       | `doc_tools_mode: DocToolsMode::Read` |
-//! |15 | `askCarinaEnabled`       | `false`                        | `ask_carina_enabled: false` |
-//! |16 | `includeWorkspaceTools`  | `false`                        | `include_workspace_tools: false` |
-//! |17 | `excludeMemorySearch`    | `true`                         | `exclude_memory_search: true` |
-//! |18 | `sqlAccess`              | `false`                        | `sql_access: false` |
-//! |19 | `customToolContext`      | `null`                         | `custom_tool_context: None` |
-//! |20 | `extras`                 | `{ documentsOnlySearch: true, webSearch: webAvailable, pluginToolAllowlist: real ? ['curl'] : [] }` | `extras: BuildToolsExtras { documents_only_search: true, web_search: Some(web_available), plugin_tool_allowlist: Some(…) }` |
+//! |14 | `canManageInventory`     | `false` (`e1872c94f`)          | `can_manage_inventory: false` |
+//! |15 | `docToolsMode`           | `'read'`                       | `doc_tools_mode: DocToolsMode::Read` |
+//! |16 | `askCarinaEnabled`       | `false`                        | `ask_carina_enabled: false` |
+//! |17 | `includeWorkspaceTools`  | `false`                        | `include_workspace_tools: false` |
+//! |18 | `excludeMemorySearch`    | `true`                         | `exclude_memory_search: true` |
+//! |19 | `sqlAccess`              | `false`                        | `sql_access: false` |
+//! |20 | `customToolContext`      | `null`                         | `custom_tool_context: None` |
+//! |21 | `extras`                 | `{ documentsOnlySearch: true, webSearch: webAvailable, pluginToolAllowlist: real ? ['curl'] : [] }` | `extras: BuildToolsExtras { documents_only_search: true, web_search: Some(web_available), plugin_tool_allowlist: Some(…) }` |
 //!
 //! plus the two injected facts v5's builder takes in place of v4's runtime
 //! reads (`model_supports_native_tools`, `provider_supports_web_search`). v5
@@ -364,6 +365,8 @@ where
                 help_tools_enabled: false,
                 can_dress_themselves: false,
                 can_create_outfits: false,
+                // v4 `false,  // canManageInventory — no inventory_* tools here`.
+                can_manage_inventory: false,
                 doc_tools_mode: DocToolsMode::Read,
                 ask_carina_enabled: false,
                 include_workspace_tools: false,

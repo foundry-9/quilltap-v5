@@ -235,6 +235,8 @@ where
             help_tools_enabled: false,
             can_dress_themselves: false,
             can_create_outfits: false,
+            // v4 `false,  // canManageInventory — no inventory_* tools here`.
+            can_manage_inventory: false,
             // v4 `d1c06cd9d`: `'full'` for the old `true`.
             doc_tools_mode: DocToolsMode::Full,
             extras: BuildToolsExtras::default(),
