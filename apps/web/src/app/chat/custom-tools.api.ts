@@ -81,6 +81,16 @@ export interface CustomToolReferences {
   takesOff?: string[];
   /** Slots this tool's wardrobe effects may clear. Absent on older servers. */
   clearsSlots?: string[];
+  // === P4.D330: the inventory vocabulary (v4 `e1872c94f`) ===
+  /** Inventory object references this tool reads (tests, quotes, draws from). Absent on older servers. */
+  inventoryReads?: string[];
+  /** References this tool's inventory effects may equip, verbatim. Absent on older servers. */
+  equips?: string[];
+  /** References this tool's inventory effects may unequip, verbatim. Absent on older servers. */
+  unequips?: string[];
+  /** Archetype references this tool's inventory effects may pick up, verbatim. Absent on older servers. */
+  picksUp?: string[];
+  // === end P4.D330 ===
 }
 
 /** A roster entry, plus §1's `references` (absent on a roster from an older server). */

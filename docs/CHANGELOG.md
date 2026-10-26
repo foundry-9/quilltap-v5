@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory wire types — the P4.D330 `core-contract.ts` fence
+
+_Versions: SPA 0.5.883._
+
+The Inventory's DTOs (`InventoryItemDto` in v4's schema key order, `ResolvedInventoryItem`, `InventoryContainer`, `InventoryOrigin`, `KitState`, the eleven inheritable fields, the 16 KB glyph cap, `InventoryItemBody`, `InventoryDependent`, `InventoryImageSummary`, `CarriedEntry`, the equip / unequip results, `MockInventoryRow`) and every C7 request — one `inventory*` family carrying a `container`, plus `chatInventory{Get,Equip,Unequip,ResetDefaults}` — in a fenced append, with the `CoreRequest` union row in a second fence. In place: `CoreError` / `CoreDispatchError` gain `details` (R-L), `CharacterDto.canManageInventory`, `customToolPreview` / `customToolAudit` gain `inventory`, and `CustomToolReferences` gains `inventoryReads` / `equips` / `unequips` / `picksUp`. P4.D330, Tier 1 item 3.
+
 #### 2026-10-26 — feat(spa): the `inventory` icon (v4 `e27fb6b34`)
 
 _Versions: SPA 0.5.882._

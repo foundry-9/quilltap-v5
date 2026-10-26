@@ -2913,7 +2913,10 @@ export type CoreRequest =
   // --- The general files family (P4.6af; p4.6ae server side) ---
   | FilesFamilyRequest
   // --- Autonomous rooms (P4.6ad — lane C's own delimited block) ---
-  | AutonomousRoomRequest;
+  | AutonomousRoomRequest
+  // === P4.D330: the Inventory SPA (append-only) ===
+  | InventoryRequest;
+  // === end P4.D330 ===
 
 export type RequestType = CoreRequest['type'];
 
@@ -3670,6 +3673,13 @@ export interface CharacterDetail {
   defaultHelpToolsEnabled: boolean | null;
   canDressThemselves: boolean | null;
   canCreateOutfits: boolean | null;
+  /**
+   * v4 `e1872c94f` `useCharacterView.ts` / `types.ts:84`: may this character
+   * see, pick up, equip, set down, make and give away objects with the
+   * inventory tools (`null` inherits the global default — enabled). P4.D324
+   * reads the column; P4.D325 / P4.D328 carry it on the wire.
+   */
+  canManageInventory?: boolean | null;
   /**
    * v4 `8bf3cb5f`: the vault `properties.json` "let this character choose their
    * opening outfit" flag. Response never sends null (default `false`); optional
@@ -4821,6 +4831,12 @@ export interface CoreError {
    */
   submission?: { userMessagePersisted: boolean; pendingToolResultsPersisted: boolean };
   // === end P4.D301 ===
+  /**
+   * R-L: v4's `body.details` — the Inventory's four coded refusals read it
+   * (P4.D325 carries it through every transport). v4's bytes are
+   * `{code, ...details}`; absent on every other error.
+   */
+  details?: Record<string, unknown>;
 }
 
 // ===========================================================================
@@ -5029,6 +5045,9 @@ export class CoreDispatchError extends Error {
   readonly keptAt?: string;
   /** P4.D301: the failed send's persistence flags (see {@link CoreError.submission}). */
   readonly submission?: { userMessagePersisted: boolean; pendingToolResultsPersisted: boolean };
+  /** R-L: v4's `body.details` — the Inventory's four coded refusals read it
+   *  (P4.D325 carries it through every transport). */
+  readonly details?: Record<string, unknown>;
   constructor(error: CoreError) {
     super(error.message);
     this.name = 'CoreDispatchError';
@@ -5037,6 +5056,7 @@ export class CoreDispatchError extends Error {
     this.code = error.code;
     this.keptAt = error.alreadySaved?.keptAt;
     this.submission = error.submission;
+    this.details = error.details;
   }
 }
 
@@ -7760,6 +7780,11 @@ export interface CustomToolPreviewRequest {
    * consulting tool takes its author's errorMessage path.
    */
   llm?: { live: true } | { output: string } | { fail: true } | null;
+  /**
+   * C3 (P4.D329, v4 `e1872c94f`): the mock inventory the bench's inventory
+   * gates and gestures read (at most 64 rows).
+   */
+  inventory?: MockInventoryRow[];
 }
 
 /** v4 `POST ?action=audit` — deal ten thousand hands and report where they landed. */
@@ -7779,6 +7804,11 @@ export interface CustomToolAuditRequest {
    * paid consults. Scripted answer or silence only.
    */
   llm?: { output: string } | { fail: true } | null;
+  /**
+   * C3 (P4.D329, v4 `e1872c94f`): the mock inventory the bench's inventory
+   * gates and gestures read (at most 64 rows).
+   */
+  inventory?: MockInventoryRow[];
 }
 
 /**
@@ -9355,3 +9385,397 @@ export interface PhotoGalleryAlbumsResult {
   albums: PhotoAlbumOption[];
 }
 // === end P4.D338 ===
+
+// === P4.D330: the Inventory SPA (C7 / C1 / C3) ===
+// The Inventory's wire, as the SPA reads it (v4 `322a5488e`
+// `lib/schemas/inventory.types.ts`, `lib/hooks/use-inventory.ts`,
+// `lib/inventory/{dependents,item-images,equip}.ts`). The verb spellings are
+// C7's — ONE `inventory*` family carrying a `container` (R-M), never the
+// wardrobe's per-tier quartet. P4.D325 lands the Rust variants; a
+// disagreement is the unifier's §S.5 (10) check.
+
+/** v4 `InventoryScopeSchema` — the four tiers (the wardrobe's own scope strings). */
+export type InventoryScope = WardrobeOriginScope;
+
+/**
+ * v4 `lib/inventory/container.ts:20` `InventoryContainer = WardrobeContainer`
+ * — the wardrobe's `{ scope, id }` shape (`id` null only for General).
+ * Structurally the SPA's `WardrobeContainer` (`wardrobe/wardrobe-container.ts`),
+ * spelled here because the contract imports nothing.
+ */
+export interface InventoryContainer {
+  scope: InventoryScope;
+  id: string | null;
+}
+
+/** v4 `InventoryKindSchema`: one object, or a kit naming objects equipped as one. */
+export type InventoryKind = 'item' | 'kit';
+
+/** v4 `InventoryOrigin` — where a collection read found an object. */
+export interface InventoryOrigin {
+  scope: InventoryScope;
+  id: string | null;
+  name: string;
+}
+
+/** v4 `KitState` — how many of a kit's resolvable members a character carries. */
+export type KitState = 'all' | 'some' | 'none';
+
+/** v4 `INVENTORY_SVG_MAX_BYTES` — the inline SVG glyph cap, in bytes. */
+export const INVENTORY_SVG_MAX_BYTES = 16 * 1024;
+
+/**
+ * v4 `INVENTORY_INHERITABLE_FIELDS` — what an instance inherits from its
+ * archetype when its file omits it, in v4's order.
+ */
+export const INVENTORY_INHERITABLE_FIELDS = [
+  'name',
+  'title',
+  'description',
+  'imageDescription',
+  'equippedByDefault',
+  'maxEquipped',
+  'canCopy',
+  'emoji',
+  'svg',
+  'imageFileId',
+  'metadata',
+] as const;
+export type InventoryInheritableField = (typeof INVENTORY_INHERITABLE_FIELDS)[number];
+
+/** v4 `InventoryItem` — every key in the schema's order. */
+export interface InventoryItemDto {
+  id: string;
+  kind: InventoryKind;
+  /** The official name ("sword"). Kin share it, case-insensitively. */
+  name: string;
+  /** A proper title ("Excalibur"), shown first when set. */
+  title?: string | null;
+  /** What characters read while the object is equipped. */
+  description?: string | null;
+  /** Rendering hints for the image pipelines; the subject of its own picture. */
+  imageDescription?: string | null;
+  equippedByDefault: boolean;
+  maxEquipped: number;
+  canCopy: boolean;
+  isArchetype: boolean;
+  parentId: string | null;
+  itemIds: string[];
+  emoji?: string | null;
+  svg?: string | null;
+  imageFileId?: string | null;
+  metadata: Record<string, unknown>;
+  folder: string;
+  archivedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** v4 `ResolvedInventoryItem` — an object as every reader outside the writer sees it. */
+export type ResolvedInventoryItem = InventoryItemDto & {
+  /** For an instance, the inheritable fields its own file sets. */
+  overriddenFields?: InventoryInheritableField[];
+  /** An instance whose archetype could not be found resolves to its own fields. */
+  parentMissing?: boolean;
+  /** The archetype's display name, for "Instance of X". */
+  parentName?: string | null;
+  origin?: InventoryOrigin;
+};
+
+/** v4 `use-inventory.ts:187-206` `InventoryItemBody` — what the editor sends. */
+export type InventoryItemBody = Partial<
+  Pick<
+    ResolvedInventoryItem,
+    | 'kind'
+    | 'name'
+    | 'title'
+    | 'description'
+    | 'imageDescription'
+    | 'equippedByDefault'
+    | 'maxEquipped'
+    | 'canCopy'
+    | 'isArchetype'
+    | 'itemIds'
+    | 'emoji'
+    | 'svg'
+    | 'metadata'
+    | 'folder'
+    | 'imageFileId'
+  >
+> & { archived?: boolean };
+
+/** v4 `InventoryFolder = ItemFolder` — the wardrobe's folder row. */
+export type InventoryFolderDto = WardrobeFolderDto;
+
+/** v4 `lib/inventory/dependents.ts:30-41` — one instance of an archetype, wherever it lives. */
+export interface InventoryDependent {
+  id: string;
+  name: string | null;
+  title: string | null;
+  mountPointId: string;
+  scope: InventoryScope | 'unknown';
+  /** The owning character, group or project id; null for General. */
+  ownerId: string | null;
+  ownerName: string | null;
+  /** The owner is an archived character: its vault is a tombstone. */
+  ownerArchived: boolean;
+}
+
+/** v4 `lib/inventory/item-images.ts:50` — an archetype's pictures arrive `inherited`. */
+export type InventoryImageSummary = WardrobeItemImageSummary & { inherited?: boolean };
+
+/** v4 `use-inventory.ts:281-284` — one cast member's carried objects and kit states. */
+export interface CarriedEntry {
+  equipped: ResolvedInventoryItem[];
+  kits: Record<string, KitState>;
+}
+
+/** v4 `lib/inventory/equip.ts:69` — why a kit member stayed behind. */
+export type InventorySkipReason = 'missing' | 'archived' | 'is_kit';
+
+/** v4 `lib/inventory/equip.ts:71-80` `EquipResult` — the equip 200 body. */
+export interface InventoryEquipResult {
+  equipped: ResolvedInventoryItem[];
+  created: ResolvedInventoryItem[];
+  skipped: Array<{ id: string; kitId: string; reason: InventorySkipReason }>;
+  alreadyEquipped: string[];
+}
+
+/** v4 `lib/inventory/equip.ts:82-86` `UnequipResult` — the unequip 200 body. */
+export interface InventoryUnequipResult {
+  unequipped: ResolvedInventoryItem[];
+  notEquipped: string[];
+}
+
+/**
+ * C3 (P4.D329) — one row of the Workbench's mock inventory, the preview /
+ * audit body's `inventory` key: `ref` 1..200 chars, `count` 0..999, at most
+ * 64 rows (the bounds are the server's).
+ */
+export interface MockInventoryRow {
+  ref: string;
+  state: 'equipped' | 'carried' | 'reachable' | 'absent';
+  count?: number;
+  metadata?: Record<string, unknown>;
+}
+
+/** v4 GET `<tier>/inventory[?includeArchived&shared&projectId]` → `{ items }`. `shared` only for a character. */
+export interface InventoryListRequest {
+  type: 'inventoryList';
+  container: InventoryContainer;
+  includeArchived?: boolean;
+  shared?: boolean;
+  projectId?: string;
+}
+/** v4 GET `<tier>/inventory?action=folders` → `{ folders }`. */
+export interface InventoryFoldersRequest {
+  type: 'inventoryFolders';
+  container: InventoryContainer;
+}
+/** v4 GET `<tier>/inventory?action=archetypes[&projectId]` → `{ items }`. */
+export interface InventoryArchetypesRequest {
+  type: 'inventoryArchetypes';
+  container: InventoryContainer;
+  projectId?: string;
+}
+/** v4 GET `<tier>/inventory/<itemId>` → `{ item }`. */
+export interface InventoryItemGetRequest {
+  type: 'inventoryItemGet';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 GET `<tier>/inventory/<itemId>?action=dependents` → `{ dependents }`. */
+export interface InventoryDependentsRequest {
+  type: 'inventoryDependents';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 POST `<tier>/inventory[?projectId]` → `{ item }`. */
+export interface InventoryCreateRequest {
+  type: 'inventoryCreate';
+  container: InventoryContainer;
+  projectId?: string;
+  body: InventoryItemBody;
+}
+/** v4 PUT `<tier>/inventory/<itemId>[?projectId]` → `{ item }`. */
+export interface InventoryUpdateRequest {
+  type: 'inventoryUpdate';
+  container: InventoryContainer;
+  itemId: string;
+  projectId?: string;
+  body: InventoryItemBody;
+}
+/** v4 PUT `<tier>/inventory/<itemId>?action=clear-override` `{ fields }` → `{ item }`. */
+export interface InventoryClearOverrideRequest {
+  type: 'inventoryClearOverride';
+  container: InventoryContainer;
+  itemId: string;
+  fields: InventoryInheritableField[];
+}
+/** v4 PUT `<tier>/inventory/<itemId>?action=detach` → `{ item }`. */
+export interface InventoryDetachRequest {
+  type: 'inventoryDetach';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 DELETE `<tier>/inventory/<itemId>[?force=true]`. */
+export interface InventoryDeleteRequest {
+  type: 'inventoryDelete';
+  container: InventoryContainer;
+  itemId: string;
+  force?: boolean;
+}
+/** v4 POST `<tier>/inventory?action=instantiate` → `{ item }`. */
+export interface InventoryInstantiateRequest {
+  type: 'inventoryInstantiate';
+  container: InventoryContainer;
+  archetypeId: string;
+  folder?: string;
+  projectId?: string | null;
+  chatId?: string | null;
+}
+/** v4 POST `<tier>/inventory?action=duplicate` `{ itemId }` → `{ item }`. */
+export interface InventoryDuplicateRequest {
+  type: 'inventoryDuplicate';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 POST `<tier>/inventory?action=create-folder` → `{ folder }`. */
+export interface InventoryFolderCreateRequest {
+  type: 'inventoryFolderCreate';
+  container: InventoryContainer;
+  path: string;
+}
+/** v4 POST `<tier>/inventory?action=rename-folder` → `{ folder }`. */
+export interface InventoryFolderRenameRequest {
+  type: 'inventoryFolderRename';
+  container: InventoryContainer;
+  path: string;
+  name: string;
+}
+/** v4 POST `<tier>/inventory?action=delete-folder` → `{ movedItems, movedFolders }`. */
+export interface InventoryFolderDeleteRequest {
+  type: 'inventoryFolderDelete';
+  container: InventoryContainer;
+  path: string;
+}
+/** v4 POST `<tier>/inventory?action=move-items` → `{ items }`. */
+export interface InventoryItemsMoveRequest {
+  type: 'inventoryItemsMove';
+  container: InventoryContainer;
+  itemIds: string[];
+  folder: string;
+}
+/** v4 POST `<tier>/inventory?action=copy-items` → `{ items }`. */
+export interface InventoryItemsCopyRequest {
+  type: 'inventoryItemsCopy';
+  container: InventoryContainer;
+  itemIds: string[];
+  folder: string;
+}
+/** v4 POST `/api/v1/inventory/transfers` → `{ item }`. */
+export interface InventoryTransferRequest {
+  type: 'inventoryTransfer';
+  action: 'move' | 'copy';
+  itemId: string;
+  from: InventoryContainer;
+  to: InventoryContainer;
+}
+/** v4 GET `/api/v1/inventory/<itemId>/images?scope&id` → `{ current, images }`. */
+export interface InventoryItemImagesListRequest {
+  type: 'inventoryItemImagesList';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 POST `…/images?…&action=generate`. */
+export interface InventoryItemImageGenerateRequest {
+  type: 'inventoryItemImageGenerate';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 POST `…/images?…&action=set-current` `{ fileId }`. */
+export interface InventoryItemImageSetCurrentRequest {
+  type: 'inventoryItemImageSetCurrent';
+  container: InventoryContainer;
+  itemId: string;
+  fileId: string;
+}
+/** v4 DELETE `…/images?…&fileId=`. */
+export interface InventoryItemImageDeleteRequest {
+  type: 'inventoryItemImageDelete';
+  container: InventoryContainer;
+  itemId: string;
+  fileId: string;
+}
+/** v4 GET `…/images?…&action=save-targets` → `{ albums }`. */
+export interface InventoryItemImageSaveTargetsRequest {
+  type: 'inventoryItemImageSaveTargets';
+  container: InventoryContainer;
+  itemId: string;
+}
+/** v4 POST `…/images?…&action=save-to-store` → the wardrobe's save body. */
+export interface InventoryItemImageSaveToStoreRequest {
+  type: 'inventoryItemImageSaveToStore';
+  container: InventoryContainer;
+  itemId: string;
+  fileId: string;
+  mountPointId: string;
+  caption?: string;
+}
+/** v4 GET `/api/v1/chats/<id>?action=inventory` → `{ inventory, projectId }`. */
+export interface ChatInventoryGetRequest {
+  type: 'chatInventoryGet';
+  chatId: string;
+}
+/** v4 POST `/api/v1/chats/<id>?action=inventory-equip` → {@link InventoryEquipResult}. */
+export interface ChatInventoryEquipRequest {
+  type: 'chatInventoryEquip';
+  chatId: string;
+  characterId: string;
+  ids: string[];
+}
+/** v4 POST `/api/v1/chats/<id>?action=inventory-unequip` → {@link InventoryUnequipResult}. */
+export interface ChatInventoryUnequipRequest {
+  type: 'chatInventoryUnequip';
+  chatId: string;
+  characterId: string;
+  ids: string[];
+}
+/** v4 POST `/api/v1/chats/<id>?action=inventory-reset-defaults` → `{ equipped }`. */
+export interface ChatInventoryResetDefaultsRequest {
+  type: 'chatInventoryResetDefaults';
+  chatId: string;
+  characterId: string;
+}
+
+/** Every C7 verb, for the `CoreRequest` union. */
+export type InventoryRequest =
+  | InventoryListRequest
+  | InventoryFoldersRequest
+  | InventoryArchetypesRequest
+  | InventoryItemGetRequest
+  | InventoryDependentsRequest
+  | InventoryCreateRequest
+  | InventoryUpdateRequest
+  | InventoryClearOverrideRequest
+  | InventoryDetachRequest
+  | InventoryDeleteRequest
+  | InventoryInstantiateRequest
+  | InventoryDuplicateRequest
+  | InventoryFolderCreateRequest
+  | InventoryFolderRenameRequest
+  | InventoryFolderDeleteRequest
+  | InventoryItemsMoveRequest
+  | InventoryItemsCopyRequest
+  | InventoryTransferRequest
+  | InventoryItemImagesListRequest
+  | InventoryItemImageGenerateRequest
+  | InventoryItemImageSetCurrentRequest
+  | InventoryItemImageDeleteRequest
+  | InventoryItemImageSaveTargetsRequest
+  | InventoryItemImageSaveToStoreRequest
+  | ChatInventoryGetRequest
+  | ChatInventoryEquipRequest
+  | ChatInventoryUnequipRequest
+  | ChatInventoryResetDefaultsRequest;
+// === end P4.D330 ===
