@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D338 lane record — the four smalls
+
+_Docs-only change._
+
+The lane record for the scenario sort, bug 256, the `/photos` vault album and the toast z-index (red-first counts, mutation proofs, measurements, handoffs, gate) is appended to `status-log.md`; the order's status header reads LANE COMPLETE.
+
 #### 2026-10-26 — fix(spa): toasts raised from inside a dialog show above it (v4 5a8338b30)
 
 _Versions: SPA 0.5.883._
