@@ -17,6 +17,7 @@
 
 import { QtapCustomToolSchema } from '@/lib/pascal/custom-tool.types';
 import { simulateOutcomes } from '@/lib/pascal/custom-tools';
+import { mockInventoryContext, type MockInventoryRow } from '@/lib/pascal/bench-inventory';
 
 interface Case {
   id: string;
@@ -32,7 +33,73 @@ interface Case {
    * a plain subject, not an invoker.
    */
   llm?: { ok: boolean; output: string };
+  /** P4.D329: the bench's mock bag rows (`null` = the bag is unreadable). */
+  inventory?: MockInventoryRow[] | null;
 }
+
+// === P4.D329 (v4 `e1872c94f` + `a53024d3c`): the audit under a mock bag ====
+const BAG: MockInventoryRow[] = [
+  { ref: 'sword', state: 'equipped', metadata: { bonus: 3, damage: '2d6' } },
+  { ref: 'ring', state: 'equipped', count: 2, metadata: { power: 4 } },
+  { ref: 'lantern', state: 'carried', metadata: { lumens: 40 } },
+  { ref: 'rope', state: 'reachable' },
+];
+const INVENTORY_TABLE = {
+  name: 'bag',
+  description: 'b',
+  roll: { min: 5, max: 5 },
+  outcomes: [
+    { when: { inventory: { sword: { eq: 'equipped' } }, inventoryCount: { ring: { gte: 2 } } }, message: 'armed', state: 'success' },
+    { when: { inventoryCount: { axe: { lt: 1 } } }, message: 'no axe', state: 'info' },
+    { when: true, message: 'fallback', state: 'failure' },
+  ],
+};
+const AGGREGATE_TABLE = {
+  name: 'stock',
+  description: 's',
+  roll: { min: 1, max: 1 },
+  outcomes: [
+    { when: { inventoryAggregate: { 'equipped.count': { gte: 3 }, 'owned.metadata.power.max': { eq: 4 } } }, message: 'stocked', state: 'success' },
+    { when: { inventoryAggregate: { 'reachable.count': { gte: 1 } } }, message: 'some', state: 'info' },
+    { when: true, message: 'bare', state: 'failure' },
+  ],
+};
+const inventoryCases: Case[] = [
+  { id: 'inventory-mock-bag', definition: INVENTORY_TABLE, runs: 40, inventory: BAG },
+  { id: 'inventory-null-bag', definition: INVENTORY_TABLE, runs: 40, inventory: null },
+  { id: 'inventory-absent-bag', definition: INVENTORY_TABLE, runs: 40 },
+  { id: 'inventory-sword-carried', definition: INVENTORY_TABLE, runs: 40, inventory: [{ ref: 'sword', state: 'carried' }, { ref: 'axe', state: 'equipped' }] },
+  { id: 'aggregate-mock-bag', definition: AGGREGATE_TABLE, runs: 30, inventory: BAG },
+  { id: 'aggregate-null-bag', definition: AGGREGATE_TABLE, runs: 30, inventory: null },
+  { id: 'aggregate-empty-bag', definition: AGGREGATE_TABLE, runs: 30, inventory: [] },
+  {
+    id: 'inventory-operand-roll-bound',
+    definition: {
+      name: 'bonus',
+      description: 'b',
+      roll: { min: { $inventory: 'sword.metadata.bonus', fallback: 0 }, max: { $inventory: 'sword.metadata.bonus', fallback: 0 } },
+      outcomes: [
+        { when: { gte: { $inventory: 'ring.metadata.power', fallback: 9 } }, message: 'hi', state: 'success' },
+        { when: true, message: 'lo', state: 'failure' },
+      ],
+    },
+    runs: 20,
+    inventory: BAG,
+  },
+  {
+    id: 'inventory-param-default-from-bag',
+    definition: {
+      name: 'pdef',
+      description: 'p',
+      parameters: { b: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 1 } } },
+      roll: { min: 0, max: 0, offset: { $param: 'b' } },
+      outcomes: [{ when: { eq: 3 }, message: 'three', state: 'success' }, { when: true, message: 'other', state: 'failure' }],
+    },
+    runs: 10,
+    inventory: BAG,
+  },
+];
+// === end P4.D329 ===
 
 const cases: Case[] = [
   // A fixed value, one catch-all → 100% on outcome 0.
@@ -209,10 +276,12 @@ const cases: Case[] = [
 ];
 
 const rows: unknown[] = [];
-for (const c of cases) {
+for (const c of [...cases, ...inventoryCases]) {
   const definition = QtapCustomToolSchema.parse(c.definition);
-  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata, c.llm, c.state ?? {});
+  const bag = c.inventory === undefined ? undefined : c.inventory === null ? null : mockInventoryContext(c.inventory);
+  const result = simulateOutcomes(definition, c.params ?? undefined, c.runs, c.metadata, c.llm, c.state ?? {}, {}, bag);
   rows.push({
+    ...(c.inventory === undefined ? {} : { inventory: c.inventory }),
     id: c.id,
     definition: c.definition,
     params: c.params ?? null,

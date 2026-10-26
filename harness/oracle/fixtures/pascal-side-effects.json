@@ -2664,6 +2664,381 @@
         }
       ],
       "wardrobeReturns": []
+    },
+    {
+      "name": "merge-inventory-partition — wardrobe then inventory gestures, merged by index (v4 side-effects-partition.test.ts)",
+      "chatId": "c",
+      "toolName": "t",
+      "characterId": "char",
+      "metadataSnapshot": {},
+      "cascade": null,
+      "userId": "u",
+      "effects": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "lantern"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "skipped": "condition did not hold"
+        },
+        {
+          "index": 2,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Hat"
+            ]
+          }
+        }
+      ],
+      "wardrobeReturns": [
+        {
+          "index": 2,
+          "applied": {
+            "target": "wardrobe.wear",
+            "next": {}
+          }
+        }
+      ],
+      "inventoryReturns": [
+        {
+          "index": 0,
+          "applied": {
+            "target": "inventory.equip",
+            "next": {}
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-inventory-writes-then-inventory — a write and a pick-up merged by index",
+      "chatId": "chat-1",
+      "toolName": "forage",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 2
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "magic bow"
+            ],
+            "equip": true
+          }
+        }
+      ],
+      "inventoryReturns": [
+        {
+          "index": 1,
+          "applied": {
+            "target": "inventory.pick_up",
+            "previous": [
+              "sword-1"
+            ],
+            "next": {
+              "item": {
+                "id": "bow-1",
+                "title": "magic bow"
+              },
+              "created": true,
+              "equipped": [
+                "bow-1",
+                "sword-1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-inventory-only — an inventory gesture alone, the run's bag and the turn's map handed to the pass",
+      "chatId": "chat-1",
+      "toolName": "draw",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": null,
+      "inventory": true,
+      "pendingInventoryAnnouncements": true,
+      "effects": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "Excalibur",
+              "{{params.x}}"
+            ]
+          }
+        }
+      ],
+      "inventoryReturns": [
+        {
+          "index": 0,
+          "applied": {
+            "target": "inventory.unequip",
+            "previous": [
+              "excalibur",
+              "r1"
+            ],
+            "next": {
+              "item": {
+                "id": "excalibur",
+                "title": "Excalibur"
+              },
+              "equipped": [
+                "r1"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-inventory-interleave — writes, wardrobe and inventory entries interleaved, stable within one effect",
+      "chatId": "chat-1",
+      "toolName": "regalia",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 3
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "kit of rings"
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "wardrobe": {
+            "action": "wear",
+            "items": [
+              "Vest"
+            ]
+          }
+        },
+        {
+          "index": 3,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "rope"
+            ],
+            "equip": false
+          }
+        },
+        {
+          "index": 4,
+          "target": {
+            "kind": "metadata",
+            "key": "k",
+            "raw": "metadata.k"
+          },
+          "value": {
+            "s": "v"
+          }
+        }
+      ],
+      "wardrobeReturns": [
+        {
+          "index": 2,
+          "applied": {
+            "target": "wardrobe.wear",
+            "previous": {
+              "top": []
+            },
+            "next": {
+              "slots": {
+                "top": [
+                  "vest"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "inventoryReturns": [
+        {
+          "index": 1,
+          "applied": {
+            "target": "inventory.equip",
+            "previous": [],
+            "next": {
+              "item": {
+                "id": "r1",
+                "title": "ring"
+              },
+              "equipped": [
+                "r1",
+                "r2"
+              ]
+            }
+          }
+        },
+        {
+          "index": 1,
+          "applied": {
+            "target": "inventory.equip",
+            "previous": [],
+            "next": {
+              "item": {
+                "id": "r2",
+                "title": "ring"
+              },
+              "equipped": [
+                "r1",
+                "r2"
+              ]
+            }
+          }
+        },
+        {
+          "index": 3,
+          "applied": {
+            "target": "inventory.pick_up",
+            "previous": [
+              "r1",
+              "r2"
+            ],
+            "next": {
+              "item": {
+                "id": "rope-1",
+                "title": "rope"
+              },
+              "created": true,
+              "equipped": [
+                "r1",
+                "r2"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "merge-inventory-none-landed — gestures that carried nothing return the writes alone",
+      "chatId": "chat-1",
+      "toolName": "draw",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "count": 1
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "axe"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "count"
+            ],
+            "raw": "state.count"
+          },
+          "value": {
+            "n": 9
+          }
+        }
+      ],
+      "inventoryReturns": []
+    },
+    {
+      "name": "merge-inventory-no-character — a run nobody made still hands its gestures to the pass (which skips them)",
+      "chatId": "chat-1",
+      "toolName": "draw",
+      "characterId": null,
+      "metadataSnapshot": {},
+      "cascade": null,
+      "effects": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "magic bow"
+            ],
+            "equip": true
+          }
+        }
+      ]
     }
   ]
 }

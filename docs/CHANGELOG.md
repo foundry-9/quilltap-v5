@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(pascal): the Inventory grammar in custom tools — subjects, aggregates, the `$inventory` operand, placeholders, effects, the bench bag, the vocabulary and the describers (P4.D329)
+
+_Versions: core 0.0.1325, web 0.0.244._
+
+Ports the `lib/pascal/*` half of v4 `e1872c94f` and the `inventoryAggregate` half of `a53024d3c`, at the pin `322a5488e`.
+
+Grammar (`custom_tool_types.rs`): the `inventory` / `inventoryCount` / `inventoryAggregate` records on outcome `when`s, effect conditions and the gate; the `$inventory` operand on every operand union, the parameter default and the whole-roll form; the `inventory` effect gesture (`equip` / `unequip` / `pick_up`, `equip` only with `pick_up`); the load-time rules (placeholder keys, aggregate keys, the four-kind effect sentences, the gate's and the `when`'s "must test …" sentences, the two-way `$state` / `$inventory` roll sentence).
+
+New pure modules: `pascal::inventory_subjects` (v4 `inventory-subjects.ts`), `pascal::inventory_aggregate` (v4 `inventory-aggregate.ts` — key parser, the three scopes, the folds, `describe_aggregate_value`), `pascal::bench_inventory` (v4 `bench-inventory.ts` — the bench's `MockInventorySchema` and mock bag). Placeholders gain `{{inventory.<ref>.<field>}}`.
+
+The deal (`custom_tools.rs`) threads the bag through params, roll fields, the whole roll, every comparator, the render and the gestures, with v4's DEBUG lines. `tool_gate.rs` takes the bag as its fourth argument. The roster reads the invoker's bag lazily, once, only when a gate names it. New `pascal::inventory_effects` applies the gestures (in-write half + after-commit announce) as the third pass of `apply_custom_tool_effects`; `run_service.rs` reads the rolling character's bag when the tool's vocabulary names it. The workbench library reports `rollForm: "inventory"`; preview and audit accept the bench's `inventory` rows on both transports. The vocabulary gains `inventoryReads`, `inventoryAggregates`, `equips`, `unequips`, `picksUp`; `run_custom`'s description gains the preamble clause, the `$inventory` roll, the three `when` clauses, the gesture clauses, `Reads:` and `Takes stock of:` (`data.rs`'s `runCustom` entry re-dumped from the pin).
+
+The Inventory bag loader, refs and change announcer are P4.D328's and are consumed through ONE stand-in module (`pascal::p4d329_c2_standins`, deleted at the union) that refuses with a typed `not available` — so every path that needs a real bag declines until then.
+
+Differentials: new `pascal_inventory_aggregate`, `pascal_bench_inventory`, `pascal_inventory_effects` (20 steps; 18 red by design until P4.D328's loader lands, named); grown `pascal_custom_tool_definition`, `pascal_custom_tools_execution` (inventory lines compared against v4's), `pascal_side_effects`, `pascal_roster`, `pascal_simulate`, `pascal_tool_vocabulary`, `pascal_run_custom`, `pascal_workbench` / `_route` (the workbench pair widened in place with one `$inventory`-rolled tool). Sibling residue named by row id: P4.D333's list rule and `invalid_key` arm, P4.D332's vault-only roster.
+
 #### 2026-10-26 — Lane close record for the Inventory tools and the turn container (P4.D328)
 
 _No crate versions bumped._

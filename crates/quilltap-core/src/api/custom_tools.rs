@@ -35,6 +35,7 @@ use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr::js_trim;
 use crate::pascal::bench_wardrobe::resolve_bench_wardrobe;
+// === LANE-REMOVE (P4.D329): C2 import ===
 use crate::pascal::custom_tool_types::{
     display_title, Visibility, MAX_LLM_OUTPUT_CEILING, MAX_LLM_OUTPUT_LENGTH,
 };
@@ -43,6 +44,7 @@ use crate::pascal::custom_tools::{
     LlmInvokeResult, LlmInvoker, LlmSubject,
 };
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
+use crate::pascal::p4d329_c2_standins::InventoryContext;
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };
@@ -158,6 +160,8 @@ fn resolve_for_perspective(
             // — the same sheet the roster already resolves their vault tier
             // through, and already in hand from `load_perspectives`.
             metadata: Some(perspective.metadata.clone()),
+            // P4.D329: the bag loads lazily, only when a gate names it.
+            inventory: None,
         },
         main,
         mount,
@@ -1036,6 +1040,22 @@ fn parse_params(raw: Option<&Value>) -> Result<Option<Map<String, Value>>, Respo
     }
 }
 
+// === P4.D329: the bench's mock bag ===
+/// v4 `inventory: MockInventorySchema.nullish()` — absent / `null` → no bag
+/// (`None`: inventory tests decline); `[]` is a bag with nothing in it; a bad
+/// row is v4's `badRequest('Invalid request body', issues)` (the `details`
+/// envelope stays the standing P4.6bb deferral).
+fn parse_bench_inventory(
+    raw: Option<&Value>,
+) -> Result<Option<crate::pascal::bench_inventory::MockInventoryContext>, Response> {
+    match crate::pascal::bench_inventory::parse_mock_inventory(raw) {
+        Ok(rows) => {
+            Ok(rows.map(|rows| crate::pascal::bench_inventory::mock_inventory_context(&rows)))
+        }
+        Err(_) => Err(bad_request("Invalid request body")),
+    }
+}
+
 /// §B (P4.d10): the `state` field — `z.record(z.string(), z.unknown()).nullish()`,
 /// with v4's `?? {}` collapse applied by the CALLER (absent/null → `None` here).
 fn parse_state(raw: Option<&Value>) -> Result<Option<Value>, Response> {
@@ -1306,6 +1326,8 @@ pub async fn custom_tool_preview(
     private: Option<bool>,
     metadata: Option<&Value>,
     state: Option<&Value>,
+    // P4.D329: the mock inventory rows (v4 `body.inventory`).
+    inventory: Option<&Value>,
     llm: Option<&Value>,
     user_id: &str,
     consult: Option<&dyn ConsultRunner>,
@@ -1316,6 +1338,12 @@ pub async fn custom_tool_preview(
     // v4 reads the chair from the RAW body (`benchCharacterId(body.metadata)`),
     // not the resolved sheet — taken before the sheet shadows it.
     let chair = bench_character_id(metadata).map(str::to_string);
+    // === P4.D329: the mock bag — part of v4's BODY schema, so a bad row is
+    // the body 400, ahead of the definition's ===
+    let inventory = match parse_bench_inventory(inventory) {
+        Ok(bag) => bag,
+        Err(r) => return r,
+    };
     let BenchRequest {
         params,
         state,
@@ -1391,6 +1419,8 @@ pub async fn custom_tool_preview(
         Some(&progress),
         now_ms,
         character_name.as_deref(),
+        // P4.D329: `body.inventory ? mockInventoryContext(…) : null`.
+        inventory.as_ref().map(|b| b as &dyn InventoryContext),
     )
     .await
     {
@@ -1423,6 +1453,7 @@ pub async fn custom_tool_preview(
                             &definition,
                             Some(&metadata),
                             Some(&progress),
+                            inventory.as_ref().map(|b| b as &dyn InventoryContext),
                         ))
                         .unwrap_or(Value::Null),
                     );
@@ -1449,12 +1480,15 @@ pub async fn custom_tool_preview(
 }
 
 /// v4 `handleAudit` — ten thousand hands, reported by where they landed.
+#[allow(clippy::too_many_arguments)]
 pub fn custom_tool_audit(
     db: &Db,
     definition: &Value,
     params: Option<&Value>,
     metadata: Option<&Value>,
     state: Option<&Value>,
+    // P4.D329: the mock inventory rows, held fixed across every draw.
+    inventory: Option<&Value>,
     llm: Option<&Value>,
     // The audit's one clock reading: the progress sheet is derived ONCE and held
     // fixed across every draw, so hit rates for a table branching on
@@ -1464,6 +1498,11 @@ pub fn custom_tool_audit(
 ) -> Response {
     // §B's mock state is held fixed across every draw. The audit never
     // renders, so it has no use for the seated name (v4 `handleAudit`).
+    // P4.D329: the mock bag — the body schema's, ahead of the definition.
+    let inventory = match parse_bench_inventory(inventory) {
+        Ok(bag) => bag,
+        Err(r) => return r,
+    };
     let BenchRequest {
         params,
         state,
@@ -1521,6 +1560,8 @@ pub fn custom_tool_audit(
         state.as_ref(),
         &mut rng,
         Some(&progress),
+        // P4.D329: the mock bag, held fixed across every draw.
+        inventory.as_ref().map(|b| b as &dyn InventoryContext),
     ) {
         Ok(result) => Response::CustomToolAudit(json!({
             "runs": result.runs,

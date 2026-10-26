@@ -1,0 +1,403 @@
+{
+  "_comment": "P4.D329 — the inventory-effects applier's step matrix (cases/pascal-inventory-effects.ts, crates/quilltap-harness/tests/pascal_inventory_effects_equivalence.rs). Runs over the Inventory KEYSTONE pair (fixtures/build-inventory-mutations-fixture.ts + inventory-keystone.json), reused read-only: Vivienne (V, on Lantern Hall's roster) and Wren (W, off it); chat The Hall (project, V equipped with Excalibur), The Inn (no project), The Cellar (V carrying the Old lantern). Every step runs on a FRESH copy. A gesture is v4's ResolvedInventoryGesture; `withPending` threads the turn's pendingInventoryAnnouncements map.",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "toolName": "satchel",
+  "characters": {
+    "V": "c1000000-0000-4000-8000-000000000001",
+    "W": "c2000000-0000-4000-8000-000000000002"
+  },
+  "chats": {
+    "hall": "b1000000-0000-4000-8000-000000000001",
+    "inn": "b3000000-0000-4000-8000-000000000001",
+    "cellar": "b5000000-0000-4000-8000-000000000001",
+    "missing": "b9000000-0000-4000-8000-000000000009"
+  },
+  "steps": [
+    {
+      "name": "no-gestures",
+      "chat": "hall",
+      "character": "V",
+      "gestures": []
+    },
+    {
+      "name": "nobody-rolled",
+      "chat": "hall",
+      "character": null,
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "coin"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "no-such-chat",
+      "chat": "missing",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "coin"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-general-archetype",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Lantern"
+            ],
+            "equip": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-equip-false",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 1,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Lantern"
+            ],
+            "equip": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-project-archetype-on-roster",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Guild badge"
+            ],
+            "equip": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-project-archetype-off-roster",
+      "chat": "hall",
+      "character": "W",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Guild badge"
+            ],
+            "equip": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-names-no-archetype",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "compass",
+              "nothing at all"
+            ],
+            "equip": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "equip-absent-reference",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "axe"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "equip-unresolvable-beside-resolvable",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 2,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "nothing here",
+              "coin",
+              "coin"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "equip-then-unequip-sees-the-first",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "coin"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "coin"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "unequip-nothing-to-unequip",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "locket"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "cap-breach-skips-then-next-lands",
+      "chat": "cellar",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "Spare lantern"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "locket"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "kit-equip-then-unequip-by-name",
+      "chat": "inn",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "spare kit"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "spare kit"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "equip-by-archetype-title-picks-the-instance",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "Lantern"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "unequip-by-kind-name",
+      "chat": "cellar",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "lantern"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "joined-turn-nets-one-entry",
+      "chat": "hall",
+      "character": "V",
+      "withPending": true,
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "coin"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "Excalibur"
+            ]
+          }
+        },
+        {
+          "index": 2,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Lantern"
+            ],
+            "equip": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "posted-now-three-lines",
+      "chat": "hall",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "coin"
+            ]
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "unequip",
+            "items": [
+              "Excalibur"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "wren-in-the-inn",
+      "chat": "inn",
+      "character": "W",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "sword",
+              "cup"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "pick-up-breaches-the-cap",
+      "chat": "cellar",
+      "character": "V",
+      "gestures": [
+        {
+          "index": 0,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Lantern"
+            ],
+            "equip": true
+          }
+        },
+        {
+          "index": 1,
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "Lantern"
+            ],
+            "equip": false
+          }
+        }
+      ]
+    }
+  ]
+}

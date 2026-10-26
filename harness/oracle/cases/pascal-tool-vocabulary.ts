@@ -291,6 +291,58 @@ const corpus: Array<[string, Record<string, unknown>]> = [
   // Only the exact key: a dotted spelling is `unknown` and names nothing.
   ['character-dotted-names-nothing', withMessage('Bare {{character.name}} key.')],
   ['character-only-is-not-empty', withMessage('{{character}}')],
+
+  // === P4.D329 (v4 `e1872c94f` + `a53024d3c`): the five Inventory keys ======
+  // `inventoryReads` gathers every door (an `inventory` / `inventoryCount`
+  // subject in an outcome, an effect condition or the gate; a
+  // `{{inventory.<ref>.*}}` placeholder; a `$inventory` operand anywhere);
+  // `inventoryAggregates` the third record's keys; `equips` / `unequips` /
+  // `picksUp` the gesture lists, verbatim. Each list sorted and deduplicated.
+  ['inventory-empty-shape-has-the-five-keys', def({})],
+  ['inventory-when-subject', def({ outcomes: [{ when: { inventory: { sword: { eq: 'equipped' } } }, message: '-', state: 'info' }, CATCH_ALL] })],
+  ['inventory-count-subject', def({ outcomes: [{ when: { inventoryCount: { ring: { gte: 2 } } }, message: '-', state: 'info' }, CATCH_ALL] })],
+  ['inventory-gate-subjects', def({ availableWhen: { inventory: { lantern: { eq: 'carried' } }, inventoryCount: { coin: { gt: 0 } } } })],
+  ['inventory-effect-condition', withEffects([{ when: { inventory: { rope: { neq: 'absent' } } }, target: 'state.roped', value: true }])],
+  ['inventory-placeholder-in-message', withMessage('{{inventory.Excalibur.title}} gleams; {{inventory.sword.metadata.damage}}.')],
+  ['inventory-placeholder-in-chip-and-prompt', def({ chipLabel: '{{inventory.sword.state}}', llm: { prompt: 'Describe {{inventory.lamp.description}}.', errorMessage: 'Silence.' } })],
+  ['inventory-placeholder-dotted-ref', withMessage('{{inventory.old.sword.title}}')],
+  ['inventory-operand-in-when', def({ outcomes: [{ when: { gte: { $inventory: 'sword.metadata.bonus', fallback: 0 } }, message: '-', state: 'info' }, CATCH_ALL] })],
+  ['inventory-operand-param-default', def({ parameters: { bonus: { type: 'number', default: { $inventory: 'ring.metadata.power', fallback: 1 } } } })],
+  ['inventory-operand-whole-roll', def({ roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' } })],
+  ['inventory-operand-roll-field', def({ roll: { min: 0, max: { $inventory: 'die.metadata.sides', fallback: 6 } } })],
+  ['inventory-dedup-and-sort', def({
+    availableWhen: { inventory: { sword: { eq: 'equipped' } } },
+    outcomes: [
+      { when: { inventoryCount: { sword: { gte: 1 }, axe: { eq: 0 } } }, message: '{{inventory.Bow.title}}', state: 'info' },
+      CATCH_ALL,
+    ],
+  })],
+  ['aggregate-keys-gate-and-when', def({
+    availableWhen: { inventoryAggregate: { 'equipped.count': { gte: 1 } } },
+    outcomes: [
+      { when: { inventoryAggregate: { 'owned.metadata.weight.sum': { lte: 20 }, 'equipped.names': { eq: 'sword' } } }, message: '-', state: 'info' },
+      CATCH_ALL,
+    ],
+  })],
+  ['aggregate-in-effect-condition', withEffects([{ when: { inventoryAggregate: { 'reachable.titles': { contains: 'rope' } } }, target: 'state.x', value: 1 }])],
+  ['inventory-gestures', withEffects([
+    { inventory: { action: 'equip', items: ['sword', 'shield', 'sword'] } },
+    { inventory: { action: 'unequip', items: ['{{params.material}} ring'] } },
+    { inventory: { action: 'pick_up', items: ['magic bow'], equip: false } },
+    { inventory: { action: 'pick_up', items: ['Arrow'] } },
+  ], STR_PARAM)],
+  ['inventory-gesture-only-is-not-empty', withEffects([{ inventory: { action: 'unequip', items: ['cloak'] } }])],
+  ['inventory-read-only-is-not-empty', withMessage('{{inventory.cloak.state}}')],
+  ['aggregate-only-is-not-empty', def({ availableWhen: { inventoryAggregate: { 'owned.count': { gte: 0 } } } })],
+  ['inventory-beside-state-and-wardrobe', def({
+    roll: { min: { $state: 'floor', fallback: 0 }, max: 6 },
+    effects: [
+      { wardrobe: { action: 'wear', items: ['Hat'] } },
+      { inventory: { action: 'equip', items: ['Hat pin'] } },
+    ],
+    outcomes: [{ when: { gte: { $inventory: 'pin.metadata.sharpness', fallback: 1 } }, message: '{{state.mood}}', state: 'info' }, CATCH_ALL],
+  })],
+  // === end P4.D329 ===
 ];
 
 for (const [id, doc] of corpus) {

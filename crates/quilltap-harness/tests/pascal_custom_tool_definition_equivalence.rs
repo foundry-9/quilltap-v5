@@ -36,6 +36,50 @@ use quilltap_core::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
+// P4.D329: the gate rows' bag — the bench's mock rows or v4's recorded answers.
+mod recorded_inventory;
+use recorded_inventory::RowBag;
+
+/// P4.D329: the rows of THIS lane's lane-private regen at the `322a5488e` pin
+/// that are P4.D333's to turn green (any-of, the `invalid_key` arm, the list
+/// rule) — MEASURED, not predicted. Pre-existing rows: the `invalid_key` arm's
+/// key sentences (`param-name-not-identifier` … `gate-progress-bad-key`), the
+/// gate's group-OR-array union (every gate rejection renders `availableWhen:
+/// <path>` at the pin), the effect `when`'s group-or-array union
+/// (`effect-when-*`), and the list rule (`withheld-key-holds-array-offers`).
+/// This lane's rows: the seven gate rejections, carved for the same union. On
+/// the union with P4.D333 every one is green; a carved row that turns green
+/// here fails the run.
+const P4D329_RESIDUE_P4D333: &[&str] = &[
+    "param-name-not-identifier",
+    "params-key-not-identifier",
+    "metadata-empty-string-key",
+    "gate-param-operand",
+    "gate-state-operand",
+    "gate-contains-param-operand",
+    "gate-empty-string-key",
+    "gate-ordering-string-operand",
+    "gate-ordering-boolean-operand",
+    "gate-contains-number-operand",
+    "gate-eq-object-operand",
+    "effect-when-unknown-outcome-state",
+    "effect-when-outcome-not-an-object",
+    "when-progress-bad-key-0",
+    "when-progress-bad-key-1",
+    "when-progress-bad-key-2",
+    "when-progress-bad-key-3",
+    "when-progress-bad-key-4",
+    "gate-progress-bad-key",
+    "withheld-key-holds-array-offers",
+    "inventory-gate-param-refused",
+    "inventory-gate-count-param-refused",
+    "aggregate-gate-param-refused",
+    "aggregate-gate-bad-key",
+    "inventory-gate-shape-order",
+    "inventory-gate-record-not-object",
+    "inventory-operand-in-gate-refused",
+];
+
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum Row {
@@ -73,6 +117,11 @@ enum Row {
         /// byte-identical.
         #[serde(default)]
         progress: Option<Map<String, Value>>,
+        /// [P4.D329] The invoker's bag: absent / `null` (every inventory test
+        /// declines), `{rows}` (the bench's mock), or `{recorded}` (v4's real
+        /// context, its answers recorded). Absent on every pre-existing row.
+        #[serde(default)]
+        inventory: Option<Value>,
         #[serde(rename = "hasGate")]
         has_gate: bool,
         verdict: String,
@@ -114,6 +163,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
     // every row after it; the family still fails, naming each row.
     let mut failed_rows: Vec<String> = Vec::new();
     let mut defs_with_triggers = 0usize;
+    let mut gates_with_bag = 0usize;
     let mut defs_with_wardrobe_effects = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
@@ -208,6 +258,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
                 input_json,
                 metadata,
                 progress,
+                inventory,
                 has_gate,
                 verdict,
             } => {
@@ -219,16 +270,29 @@ fn pascal_custom_tool_definition_matches_oracle() {
 
                 assert_eq!(has_tool_gate(&tool), has_gate, "hasToolGate '{id}'");
 
-                let got = serde_json::to_string(&evaluate_tool_gate(
-                    &tool,
-                    metadata.as_ref(),
-                    progress.as_ref(),
-                ))
-                .expect("a verdict serializes");
-                assert_eq!(
-                    got, verdict,
-                    "gate case '{id}': verdict differs (withheldBy's absence included)"
-                );
+                // P4.D329: a verdict mismatch is RECORDED (as the definition
+                // rows are) so the residue carve can name it.
+                let bag = RowBag::from_row(inventory.as_ref());
+                let row_id = id.clone();
+                let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let got = serde_json::to_string(&evaluate_tool_gate(
+                        &tool,
+                        metadata.as_ref(),
+                        progress.as_ref(),
+                        bag.as_dyn(),
+                    ))
+                    .expect("a verdict serializes");
+                    assert_eq!(
+                        got, verdict,
+                        "gate case '{id}': verdict differs (withheldBy's absence included)"
+                    );
+                }));
+                if walked.is_err() {
+                    failed_rows.push(row_id);
+                }
+                if inventory.is_some() {
+                    gates_with_bag += 1;
+                }
 
                 let seen: Value = serde_json::from_str(&verdict).expect("a verdict is JSON");
                 if let Some(clause) = seen.get("withheldBy").and_then(Value::as_str) {
@@ -266,10 +330,26 @@ fn pascal_custom_tool_definition_matches_oracle() {
         }
     }
 
+    // P4.D329: the sibling-owned residue, both ways — a carved row that turns
+    // GREEN fails the run (lift it then).
+    let residue_green: Vec<&str> = P4D329_RESIDUE_P4D333
+        .iter()
+        .copied()
+        .filter(|id| !failed_rows.iter().any(|f| f == id))
+        .collect();
+    failed_rows.retain(|id| !P4D329_RESIDUE_P4D333.contains(&id.as_str()));
     assert!(
         failed_rows.is_empty(),
         "{} definition row(s) differ from the oracle: {failed_rows:?}",
         failed_rows.len()
+    );
+    assert!(
+        residue_green.is_empty(),
+        "P4D329_RESIDUE_P4D333 rows turned GREEN — lift them: {residue_green:?}"
+    );
+    assert!(
+        gates_with_bag >= 20,
+        "only {gates_with_bag} gate rows posed a non-null Inventory bag (P4.D329)"
     );
     assert!(
         defs_with_triggers > 0,

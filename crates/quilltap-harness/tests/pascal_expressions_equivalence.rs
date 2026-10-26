@@ -82,6 +82,20 @@ fn placeholder_ref_json(r: &PlaceholderRef) -> String {
         PlaceholderRef::Progress { id, field } => {
             serde_json::json!({ "kind": "progress", "id": id, "field": field })
         }
+        // P4.D329: v4 `{ kind: 'inventory', ...parts }` — `ref`, `field`, then
+        // `key` only for the metadata field.
+        PlaceholderRef::Inventory {
+            reference,
+            field,
+            key,
+        } => match key {
+            Some(key) => serde_json::json!({
+                "kind": "inventory", "ref": reference, "field": field.as_str(), "key": key
+            }),
+            None => {
+                serde_json::json!({ "kind": "inventory", "ref": reference, "field": field.as_str() })
+            }
+        },
         PlaceholderRef::Unknown { key } => serde_json::json!({ "kind": "unknown", "key": key }),
     };
     serde_json::to_string(&v).expect("a ref serializes")

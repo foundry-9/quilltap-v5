@@ -451,6 +451,8 @@ fn workbench_route_matches_oracle() {
                                     case.get("private").and_then(Value::as_bool),
                                     metadata.as_ref(),
                                     case.get("state"),
+                                    // P4.D329: the mock bag rows.
+                                    case.get("inventory"),
                                     case.get("llm"),
                                     USER,
                                     Some(&runner),
@@ -468,6 +470,8 @@ fn workbench_route_matches_oracle() {
                         params.as_ref(),
                         metadata.as_ref(),
                         case.get("state"),
+                        // P4.D329: the mock bag rows.
+                        case.get("inventory"),
                         case.get("llm"),
                         bench_now_ms(case),
                     )),

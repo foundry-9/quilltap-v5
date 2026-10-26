@@ -39,6 +39,10 @@ use super::custom_tools::{
 };
 use super::roster::DiscoveredCustomTool;
 use super::side_effects::{apply_effects_for_run, AppliedEffect};
+// === P4.D329: the rolling character's bag ===
+use super::tool_vocabulary::collect_tool_vocabulary;
+// === LANE-REMOVE (P4.D329): C2 import ===
+use super::p4d329_c2_standins::{load_inventory_context, InventoryContext};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::js_trim;
@@ -244,6 +248,10 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         .map(|c| c.merged.clone())
         .unwrap_or_else(|| Value::Object(Map::new()));
 
+    // === P4.D329: the rolling character's bag, BETWEEN the cascade read and
+    // the deal (v4 `loadRunInventory`) ===
+    let inventory = load_run_inventory(db, &entry.definition, character_id, chat_id);
+
     let metadata_arg = if metadata.is_empty() {
         None
     } else {
@@ -263,6 +271,8 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         Some(&progress),
         now_ms,
         character_name.as_deref(),
+        // P4.D329: the LAST positional.
+        inventory.as_deref().map(|i| i as &dyn InventoryContext),
     )
     .await
     {
@@ -297,6 +307,10 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         now_ms,
         params.pending_wardrobe_announcements,
         params.pending_wardrobe_history,
+        // === P4.D329: the inventory pass's two inputs ===
+        inventory.clone(),
+        // LANE-REMOVE (P4.D329): params.pending_inventory_announcements once P4.D328 lands
+        None,
     )
     .await;
 
@@ -513,6 +527,57 @@ fn build_pascal_meta(
     pascal_meta
 }
 
+// === P4.D329: the rolling character's bag ===
+/// v4 `loadRunInventory` — the rolling character's Inventory for this run:
+/// loaded once, and only when the definition tests, quotes, draws from or
+/// changes it (its vocabulary names a read, an aggregate, or a gesture). `None`
+/// for a run nobody made, a definition that never mentions the bag, or a vault
+/// that cannot be read (logged). A different rule from the roster's lazy load
+/// (a gate naming an inventory subject) — two thunks, two tests.
+fn load_run_inventory(
+    db: &Db,
+    definition: &super::custom_tool_types::QtapCustomTool,
+    character_id: Option<&str>,
+    chat_id: &str,
+) -> Option<Arc<dyn InventoryContext + Send + Sync>> {
+    let character_id = character_id.filter(|c| !c.is_empty())?;
+    let vocabulary = collect_tool_vocabulary(definition);
+    let needed = vocabulary.inventory_reads.len()
+        + vocabulary.inventory_aggregates.len()
+        + vocabulary.equips.len()
+        + vocabulary.unequips.len()
+        + vocabulary.picks_up.len()
+        > 0;
+    if !needed {
+        return None;
+    }
+    let loaded = db.read_main(|main| {
+        db.read_mount_index(|mount| {
+            Ok(load_inventory_context(
+                main,
+                mount,
+                character_id,
+                Some(chat_id),
+            ))
+        })
+    });
+    let error = match loaded {
+        Ok(Ok(loaded)) => return Some(Arc::new(loaded)),
+        Ok(Err(e)) => e.to_string(),
+        Err(e) => e.to_string(),
+    };
+    tracing::warn!(
+        target: "quilltap::pascal",
+        context = CONTEXT,
+        chatId = chat_id,
+        characterId = character_id,
+        tool = definition.name.as_str(),
+        error,
+        "Custom tool run: the rolling character's inventory could not be read; inventory tests decline",
+    );
+    None
+}
+
 #[cfg(test)]
 mod tests {
     //! The service's own capture pins, each with its silence leg (every line
@@ -672,6 +737,7 @@ mod tests {
                 None,
                 0,
                 None,
+                None,
             ))
             .expect("dealt");
         let meta = |by, phrase| {
@@ -724,6 +790,7 @@ mod tests {
                 None,
                 0,
                 None,
+                None,
             ))
             .expect("dealt");
         let meta = |result: &CustomToolRunResult| {
@@ -747,6 +814,114 @@ mod tests {
             labelled.contains(r#""toolTitle":"Coin","chipLabel":"Heads","definitionTier""#),
             "{labelled}"
         );
+    }
+}
+
+#[cfg(test)]
+mod inventory_read_tests {
+    //! P4.D329 (R-15): `load_run_inventory`'s capture pins, each with its
+    //! silence leg. On this branch the loader is C2's stand-in, so the WARN's
+    //! `error` field is CARVED by name — the line, and every other field, pinned.
+    use super::*;
+    use crate::test_support::global_capture;
+    use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR: &str = "a1000000-0000-4000-8000-00000000000a";
+
+    fn db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    fn definition(extra: Value) -> super::super::custom_tool_types::QtapCustomTool {
+        let mut doc = json!({
+            "name": "probe",
+            "description": "A probe.",
+            "outcomes": [{ "when": true, "message": "-", "state": "info" }],
+        });
+        for (k, v) in extra.as_object().unwrap() {
+            doc[k] = v.clone();
+        }
+        crate::pascal::custom_tool_types::safe_parse(&doc).expect("the definition loads")
+    }
+
+    fn read(
+        db: &Db,
+        definition: &super::super::custom_tool_types::QtapCustomTool,
+        character_id: Option<&str>,
+    ) -> (bool, Vec<String>) {
+        global_capture::install();
+        let (bag, lines) =
+            global_capture::capture(|| load_run_inventory(db, definition, character_id, "chat-1"));
+        (
+            bag.is_some(),
+            lines
+                .into_iter()
+                .filter(|l| l.contains(" quilltap::pascal "))
+                .collect(),
+        )
+    }
+
+    #[test]
+    fn a_tool_naming_no_inventory_reads_nothing() {
+        let (db, _dir) = db();
+        let (bag, lines) = read(&db, &definition(json!({})), Some(CHAR));
+        assert!(!bag);
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn nobody_rolled_reads_nothing() {
+        let (db, _dir) = db();
+        let d = definition(
+            json!({ "outcomes": [{ "when": true, "message": "{{inventory.sword.title}}", "state": "info" }] }),
+        );
+        for who in [None, Some("")] {
+            let (bag, lines) = read(&db, &d, who);
+            assert!(!bag);
+            assert!(lines.is_empty(), "{lines:?}");
+        }
+    }
+
+    #[test]
+    fn every_door_reads_the_bag() {
+        let (db, _dir) = db();
+        // A message placeholder, a parameter default, a consult prompt, a
+        // gesture and an aggregate: each names the bag, so each reads it (and,
+        // on this branch, takes the stand-in's refusal).
+        for extra in [
+            json!({ "outcomes": [{ "when": true, "message": "{{inventory.sword.title}}", "state": "info" }] }),
+            json!({ "parameters": { "b": { "type": "number", "default": { "$inventory": "sword.metadata.bonus", "fallback": 0 } } } }),
+            json!({ "llm": { "prompt": "Describe {{inventory.sword.title}}.", "errorMessage": "Silence." } }),
+            json!({ "effects": [{ "inventory": { "action": "unequip", "items": ["cloak"] } }] }),
+            json!({ "availableWhen": { "inventoryAggregate": { "owned.count": { "gte": 1 } } } }),
+        ] {
+            let (bag, lines) = read(&db, &definition(extra.clone()), Some(CHAR));
+            assert!(!bag, "{extra}");
+            assert_eq!(lines.len(), 1, "{extra}: {lines:?}");
+            let line = &lines[0];
+            let carved = &line[..line.find(" error=").expect("the refusal rides `error`")];
+            assert_eq!(
+                carved,
+                format!(
+                    "WARN quilltap::pascal Custom tool run: the rolling character's inventory could not be read; inventory tests decline context=pascal.run-service chatId=chat-1 characterId={CHAR} tool=probe"
+                ),
+                "{extra}"
+            );
+        }
     }
 }
 

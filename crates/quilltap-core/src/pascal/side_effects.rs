@@ -74,6 +74,14 @@ use super::wardrobe_effects::{
     apply_wardrobe_effects, finish_wardrobe_effects, ApplyWardrobeEffectsParams,
     IndexedAppliedEffect,
 };
+// === P4.D329: the inventory pass ===
+use super::custom_tools::ResolvedInventoryGesture;
+use super::inventory_effects::{
+    apply_inventory_effects, finish_inventory_effects, ApplyInventoryEffectsParams,
+};
+use crate::inventory::equip::InventoryChange;
+// === LANE-REMOVE (P4.D329): C2 import ===
+use super::p4d329_c2_standins::{InventoryContext, PendingInventoryAnnouncements};
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::WriterSet;
 use crate::progressions::{
@@ -166,6 +174,23 @@ pub struct ApplyCustomToolEffectsParams<'a> {
     /// reading it already took, so the sheet the tables read and the entries the
     /// effects write cannot disagree about the moment.
     pub now_ms: i64,
+    // === P4.D329: the inventory pass's inputs (appended LAST) ===
+    /// The run's Inventory context, when the entrance loaded one (the pass
+    /// reuses a LOADED one and loads its own otherwise).
+    pub inventory: Option<&'a dyn InventoryContext>,
+    /// The turn's pending Inventory changes — an inventory effect joins the
+    /// turn's one Pascal line. Read by the after-commit half; in the write it
+    /// only shapes the pass's recorded call.
+    pub pending_inventory_announcements: Option<&'a PendingInventoryAnnouncements>,
+}
+
+// === P4.D329: the inventory pass's after-commit inputs ===
+/// What the inventory pass hands the after-commit half: the changes to notify
+/// and whether it reached its tail DEBUG.
+#[derive(Debug, Default)]
+pub struct InventoryPassTail {
+    pub changes: Vec<InventoryChange>,
+    pub finished: bool,
 }
 
 /// Every store an application may touch, for the ordered commit below.
@@ -202,11 +227,13 @@ struct Plan {
 /// interleave their store reads. The two applied lists merge back into effect
 /// order ([`merge_applied`]). Returns the landed effects for
 /// `pascalMeta.effects` and whether a wardrobe change landed (the caller then
-/// runs the after-commit notify). Never fails the run.
+/// runs the after-commit notify), and — P4.D329, appended THIRD (R-8) — the
+/// inventory pass's tail (`None` when there was no gesture: v4 never calls
+/// the pass then). Never fails the run.
 pub fn apply_custom_tool_effects(
     writers: &mut WriterSet,
     params: ApplyCustomToolEffectsParams<'_>,
-) -> (Vec<AppliedEffect>, bool) {
+) -> (Vec<AppliedEffect>, bool, Option<InventoryPassTail>) {
     let chat_id = params.chat_id;
     let tool_name = params.tool_name;
     let cascade = params.cascade;
@@ -250,7 +277,45 @@ pub fn apply_custom_tool_effects(
         )
     };
 
-    (merge_applied(writes, changes), changed)
+    // === P4.D329: inventory gestures after the wardrobe's (v4's order) ===
+    let inventory_gestures = inventory_gestures(params.effects);
+    let (carried, tail) = if inventory_gestures.is_empty() {
+        (Vec::new(), None)
+    } else {
+        let outcome = apply_inventory_effects(
+            writers.main().connection(),
+            writers.mount_index().map(|w| w.connection()),
+            ApplyInventoryEffectsParams {
+                user_id: params.user_id,
+                chat_id,
+                tool_name,
+                character_id,
+                gestures: &inventory_gestures,
+                inventory: params.inventory,
+            },
+        );
+        (
+            outcome.applied,
+            Some(InventoryPassTail {
+                changes: outcome.changes,
+                finished: outcome.finished,
+            }),
+        )
+    };
+
+    (merge_applied(writes, changes, carried), changed, tail)
+}
+
+// === P4.D329 ===
+/// v4 `effects.filter(isApplicableInventoryEffect)`, each with its index.
+fn inventory_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedInventoryGesture)> {
+    effects
+        .iter()
+        .filter_map(|e| match e {
+            ResolvedEffect::Inventory { index, inventory } => Some((*index, inventory)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// v4 `effects.filter(isApplicableWardrobeEffect)`, each with its index.
@@ -264,18 +329,22 @@ fn wardrobe_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedWardrob
         .collect()
 }
 
-/// v4's merge: no wardrobe change → the writes as they are; otherwise both
-/// lists by effect index with a STABLE sort, so entries of one effect keep
-/// their own order (a write at index 1 sits between two wear records at 0 and
-/// a clear at 2). `slice::sort_by_key` is stable, as V8's `sort` is.
+/// v4's merge: no wardrobe change and nothing carried → the writes as they
+/// are; otherwise every list by effect index with a STABLE sort, so entries of
+/// one effect keep their own order (a write at index 1 sits between two wear
+/// records at 0 and a clear at 2). `slice::sort_by_key` is stable, as V8's
+/// `sort` is. (P4.D329: `[writes, changes, carried]`; the Log appends
+/// `logged`.)
 fn merge_applied(
     writes: Vec<IndexedAppliedEffect>,
     changes: Vec<IndexedAppliedEffect>,
+    carried: Vec<IndexedAppliedEffect>,
 ) -> Vec<AppliedEffect> {
-    if changes.is_empty() {
+    if changes.is_empty() && carried.is_empty() {
         return writes.into_iter().map(|w| w.applied).collect();
     }
-    let mut all: Vec<IndexedAppliedEffect> = writes.into_iter().chain(changes).collect();
+    let mut all: Vec<IndexedAppliedEffect> =
+        writes.into_iter().chain(changes).chain(carried).collect();
     all.sort_by_key(|w| w.index);
     all.into_iter().map(|w| w.applied).collect()
 }
@@ -292,6 +361,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
         character_id,
         metadata_snapshot,
         now_ms,
+        ..
     } = params;
 
     // v4 `effects.filter(isApplicableEffect)`. The resolved value is a
@@ -306,7 +376,9 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
             } => Some((*index, target, value.to_value())),
             // v4 `isApplicableWriteEffect` — the write filter stays write-only;
             // the gestures are `wardrobe_effects`' business, after the writes.
-            ResolvedEffect::Wardrobe { .. } | ResolvedEffect::Skipped { .. } => None,
+            ResolvedEffect::Wardrobe { .. }
+            | ResolvedEffect::Inventory { .. }
+            | ResolvedEffect::Skipped { .. } => None,
         })
         .collect();
     if applicable.is_empty() {
@@ -936,6 +1008,11 @@ pub async fn apply_effects_for_run(
     now_ms: i64,
     pending: Option<&Arc<Mutex<HashSet<String>>>>,
     pending_history: Option<&crate::services::outfit_change_effects::PendingWardrobeHistory>,
+    // === P4.D329: the inventory pass's two inputs (appended LAST) ===
+    // The run's loaded context (shared into the write), and the turn's
+    // pending Inventory map (`Some` only on the model's `run_custom`).
+    inventory: Option<Arc<dyn InventoryContext + Send + Sync>>,
+    pending_inventory: Option<&PendingInventoryAnnouncements>,
 ) -> Vec<AppliedEffect> {
     let effects = match &result.effects {
         Some(e) if !e.is_empty() => e.clone(),
@@ -960,13 +1037,16 @@ pub async fn apply_effects_for_run(
                     character_id: character.as_deref(),
                     metadata_snapshot: &metadata,
                     now_ms,
+                    inventory: inventory.as_deref().map(|i| i as &dyn InventoryContext),
+                    // The after-commit half reads the map; the write never does.
+                    pending_inventory_announcements: None,
                 },
             ))
         })
         .await;
 
     match outcome {
-        Ok((applied, changed)) => {
+        Ok((applied, changed, inventory_tail)) => {
             if let (true, Some(character_id)) = (changed, character_id.as_deref()) {
                 // v4 logs the WARDROBE list here, not the merged one.
                 let targets: Vec<&str> = applied
@@ -985,6 +1065,28 @@ pub async fn apply_effects_for_run(
                     pending_history,
                 )
                 .await;
+            }
+            // === P4.D329: the inventory pass's after-commit half, AFTER the
+            // wardrobe's ===
+            if let (Some(tail), Some(character_id)) = (inventory_tail, character_id.as_deref()) {
+                if tail.finished {
+                    let targets: Vec<&str> = applied
+                        .iter()
+                        .map(|a| a.target.as_str())
+                        .filter(|t| t.starts_with("inventory."))
+                        .collect();
+                    finish_inventory_effects(
+                        db,
+                        user_id,
+                        chat_id,
+                        &result.tool,
+                        character_id,
+                        &tail.changes,
+                        &targets,
+                        pending_inventory,
+                    )
+                    .await;
+                }
             }
             applied
         }
@@ -1073,6 +1175,21 @@ pub mod differential {
         pub gestures: Vec<(usize, ResolvedWardrobeGesture)>,
     }
 
+    // === P4.D329: the inventory pass's recorded call ===
+    /// The inventory pass's argument object, as v4's mocked
+    /// `applyInventoryEffects` records it: who, where, which tool, the
+    /// applicable gestures with their indices, and whether a context and a
+    /// pending map rode the call.
+    pub struct InventoryCall {
+        pub user_id: String,
+        pub chat_id: String,
+        pub tool_name: String,
+        pub character_id: Option<String>,
+        pub gestures: Vec<(usize, ResolvedInventoryGesture)>,
+        pub inventory: bool,
+        pub pending_inventory_announcements: bool,
+    }
+
     /// What a run would have written, per store — the mocked repositories' view.
     pub struct PlannedRun {
         /// The applier's return value: the writes that landed merged with the
@@ -1081,6 +1198,8 @@ pub mod differential {
         /// The wardrobe pass's call, `None` when the run had no applicable
         /// gesture (v4 never calls it then).
         pub wardrobe_call: Option<WardrobeCall>,
+        /// P4.D329: the inventory pass's call, `None` without a gesture.
+        pub inventory_call: Option<InventoryCall>,
         /// The whole `metadata` object the ONE character write would carry, or
         /// `None` when no character write happens (nobody rolled, no metadata
         /// or progress effect applied, or every progress write rolled back).
@@ -1096,6 +1215,9 @@ pub mod differential {
     pub fn plan_run(
         params: ApplyCustomToolEffectsParams<'_>,
         wardrobe_plan: Option<Vec<IndexedAppliedEffect>>,
+        // P4.D329: what the inventory pass would return (scripted, as v4's
+        // suite mocks it).
+        inventory_plan: Option<Vec<IndexedAppliedEffect>>,
     ) -> PlannedRun {
         let chat_id = params.chat_id;
         let cascade = params.cascade;
@@ -1117,6 +1239,29 @@ pub mod differential {
             )
         };
 
+        let inventory_gestures = inventory_gestures(params.effects);
+        let (inventory_call, carried) = if inventory_gestures.is_empty() {
+            (None, Vec::new())
+        } else {
+            (
+                Some(InventoryCall {
+                    user_id: params.user_id.to_string(),
+                    chat_id: chat_id.to_string(),
+                    tool_name: params.tool_name.to_string(),
+                    character_id: character_id.map(str::to_string),
+                    gestures: inventory_gestures
+                        .iter()
+                        .map(|(i, g)| (*i, (*g).clone()))
+                        .collect(),
+                    inventory: params.inventory.is_some(),
+                    pending_inventory_announcements: params
+                        .pending_inventory_announcements
+                        .is_some(),
+                }),
+                inventory_plan.unwrap_or_default(),
+            )
+        };
+
         let Plan {
             tiers,
             metadata_next,
@@ -1127,8 +1272,9 @@ pub mod differential {
         // applies, so no store is observed at all.
         if pending.is_empty() {
             return PlannedRun {
-                applied: merge_applied(Vec::new(), changes),
+                applied: merge_applied(Vec::new(), changes, carried),
                 wardrobe_call,
+                inventory_call,
                 character_write: None,
                 state_writes: Vec::new(),
             };
@@ -1178,8 +1324,9 @@ pub mod differential {
             })
             .collect();
         PlannedRun {
-            applied: merge_applied(writes, changes),
+            applied: merge_applied(writes, changes, carried),
             wardrobe_call,
+            inventory_call,
             character_write,
             state_writes,
         }
@@ -1346,6 +1493,8 @@ mod tests {
             // are proven by the differential family, which freezes the same
             // clock on both sides. 2026-08-29T12:00:00Z.
             now_ms: 1_788_004_800_000,
+            inventory: None,
+            pending_inventory_announcements: None,
         })
     }
 
@@ -1616,6 +1765,8 @@ mod progress_fold_debug_tests {
                 character_id: Some("char-1"),
                 metadata_snapshot: metadata,
                 now_ms: NOW,
+                inventory: None,
+                pending_inventory_announcements: None,
             });
         })
     }
@@ -1728,6 +1879,8 @@ mod progress_key_order_tests {
             character_id: Some("char-1"),
             metadata_snapshot: metadata,
             now_ms: NOW,
+            inventory: None,
+            pending_inventory_announcements: None,
         })
         .metadata_next
         .expect("a metadata write")

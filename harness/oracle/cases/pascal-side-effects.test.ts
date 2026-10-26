@@ -54,6 +54,12 @@ jest.mock('@/lib/mount-index/general-state', () => ({ writeGeneralState: jest.fn
 // (`applyWriteEffects` + the pass) and the stable index merge are what is
 // compared — the applier itself is `pascal_wardrobe_effects_equivalence`'s.
 jest.mock('@/lib/pascal/wardrobe-effects', () => ({ applyWardrobeEffects: jest.fn(async () => []) }));
+// P4.D329 (v4 `e1872c94f`): the inventory pass, likewise a RECORDER returning
+// the row's SCRIPTED `IndexedAppliedEffect[]` — the third list and the
+// three-way merge are what is compared; the applier itself is
+// `pascal_inventory_effects_equivalence`'s. WITHOUT this mock the pre-existing
+// rows would reach the real applier through the mocked `getRepositories`.
+jest.mock('@/lib/pascal/inventory-effects', () => ({ applyInventoryEffects: jest.fn(async () => []) }));
 jest.mock('@/lib/logger', () => {
   // `child` matters: modules loaded transitively by the applier build service
   // loggers off this one at import time, and a mock without it fails the whole
@@ -69,11 +75,13 @@ import type { EffectTarget } from '@/lib/pascal/custom-tool.types';
 import { getRepositories } from '@/lib/repositories/factory';
 import { writeGeneralState } from '@/lib/mount-index/general-state';
 import { applyWardrobeEffects } from '@/lib/pascal/wardrobe-effects';
+import { applyInventoryEffects } from '@/lib/pascal/inventory-effects';
 
 const { logger } = require('@/lib/logger') as { logger: Record<string, jest.Mock> };
 const mockGetRepositories = getRepositories as jest.Mock;
 const mockWriteGeneralState = writeGeneralState as jest.Mock;
 const mockApplyWardrobeEffects = applyWardrobeEffects as jest.Mock;
+const mockApplyInventoryEffects = applyInventoryEffects as jest.Mock;
 
 const OUT = process.env.QT_ORACLE_OUT;
 const CORPUS = process.env.QT_SIDE_EFFECTS_CORPUS;
@@ -96,6 +104,8 @@ interface CorpusEffect {
   skipped?: string;
   /** P4.D306: a resolved wardrobe gesture (`ResolvedWardrobeGesture`). */
   wardrobe?: Record<string, unknown>;
+  /** P4.D329: a resolved inventory gesture (`ResolvedInventoryGesture`). */
+  inventory?: Record<string, unknown>;
 }
 
 interface CorpusCase {
@@ -113,6 +123,12 @@ interface CorpusCase {
   wardrobeReturns?: unknown[];
   /** P4.D306: the turn's announcement set, when the run is inside a model turn. */
   pendingWardrobeAnnouncements?: string[];
+  /** P4.D329: what the mocked inventory pass returns (`IndexedAppliedEffect[]`). */
+  inventoryReturns?: unknown[];
+  /** P4.D329: the run's context rode the call (a sentinel stands in for it). */
+  inventory?: boolean;
+  /** P4.D329: the turn's pending Inventory map, when inside a model turn. */
+  pendingInventoryAnnouncements?: boolean;
 }
 
 function repos() {
@@ -138,13 +154,16 @@ describe('applyCustomToolEffects', () => {
       mockGetRepositories.mockReturnValue(db);
 
       mockApplyWardrobeEffects.mockResolvedValue(c.wardrobeReturns ?? []);
+      mockApplyInventoryEffects.mockResolvedValue(c.inventoryReturns ?? []);
 
       const effects: ResolvedEffect[] = c.effects.map((e) =>
         e.skipped !== undefined
           ? ({ index: e.index, skipped: e.skipped } as ResolvedEffect)
           : e.wardrobe !== undefined
             ? ({ index: e.index, wardrobe: e.wardrobe } as unknown as ResolvedEffect)
-            : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
+            : e.inventory !== undefined
+              ? ({ index: e.index, inventory: e.inventory } as unknown as ResolvedEffect)
+              : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
       );
 
       // The snapshot the applier is handed, and an untouched twin to compare it
@@ -167,6 +186,9 @@ describe('applyCustomToolEffects', () => {
           ...(c.pendingWardrobeAnnouncements
             ? { pendingWardrobeAnnouncements: new Set(c.pendingWardrobeAnnouncements) }
             : {}),
+          // P4.D329: the run's context and the turn's pending map, by sentinel.
+          ...(c.inventory ? { inventory: { sentinel: 'the run bag' } as never } : {}),
+          ...(c.pendingInventoryAnnouncements ? { pendingInventoryAnnouncements: new Map() } : {}),
         });
       } catch (e) {
         threw = (e as Error).message;
@@ -213,6 +235,16 @@ describe('applyCustomToolEffects', () => {
           return {
             ...rest,
             ...(set ? { pendingWardrobeAnnouncements: [...(set as Set<string>)].sort() } : {}),
+          };
+        }),
+        // P4.D329: the inventory pass's EXACT argument objects — `inventory`
+        // and the pending map reported by PRESENCE (each stands in a sentinel).
+        inventoryCalls: mockApplyInventoryEffects.mock.calls.map(([arg]) => {
+          const { inventory, pendingInventoryAnnouncements: pending, ...rest } = arg as Record<string, unknown>;
+          return {
+            ...rest,
+            ...(inventory !== undefined ? { inventory: inventory === null ? null : 'the run bag' } : {}),
+            ...(pending ? { pendingInventoryAnnouncements: true } : {}),
           };
         }),
       });

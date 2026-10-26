@@ -2477,6 +2477,10 @@ pub enum Request {
         /// `{{state.path}}` templates. Absent/null → `{}`.
         #[serde(default)]
         state: Option<serde_json::Value>,
+        /// P4.D329: the mock inventory rows `{ ref, state, count?, metadata? }`
+        /// (≤ 64). Absent/null → no inventory (inventory tests decline).
+        #[serde(default)]
+        inventory: Option<serde_json::Value>,
         /// §B: which oracle answers the bench — the real one (`{live:true}`), a
         /// scripted answer (`{output}`), or a scripted failure (`{fail:true}`).
         /// Absent leaves the seam unwired, so the consult fails soft into the
@@ -2499,6 +2503,10 @@ pub enum Request {
         /// every draw. Absent/null → `{}`.
         #[serde(default)]
         state: Option<serde_json::Value>,
+        /// P4.D329: the mock inventory rows `{ ref, state, count?, metadata? }`
+        /// (≤ 64). Absent/null → no inventory (inventory tests decline).
+        #[serde(default)]
+        inventory: Option<serde_json::Value>,
         /// §B: the fixed consult every draw shares. **No `live` arm** — an audit
         /// is ten thousand hands, and the point of the bench is that it never
         /// spends ten thousand LLM calls. v4 enforces that by SHAPE (the audit

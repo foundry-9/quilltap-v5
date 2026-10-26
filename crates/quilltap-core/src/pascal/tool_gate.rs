@@ -44,6 +44,15 @@ use serde_json::{Map, Value};
 
 use super::custom_tool_types::{QtapCustomTool, ToolGate};
 use super::metadata_match::{metadata_comparator_holds, ResolvedValue};
+// === P4.D329: the gate's inventory subjects ===
+use super::custom_tool_types::{InventoryStateOperand, NumberOrParamRef, NumericComparator};
+use super::inventory_aggregate::inventory_aggregate_holds;
+use super::inventory_subjects::{
+    inventory_count_holds, inventory_state_holds, ResolvedInventoryCountTest,
+    ResolvedInventoryStateTest,
+};
+// === LANE-REMOVE (P4.D329): C2 import ===
+use super::p4d329_c2_standins::InventoryContext;
 
 /// What a gate decided, and which clause decided it (v4 `ToolGateVerdict`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -93,13 +102,17 @@ pub fn evaluate_tool_gate(
     // `"<id>.<field>"`. `None` → `{}`, so every `progress` test fails and the
     // fail-closed / fail-open reading applies to it unchanged.
     progress: Option<&Map<String, Value>>,
+    // === P4.D329: the 4th positional ===
+    // The invoker's Inventory context for this chat. `None` → every
+    // `inventory` / `inventoryCount` / `inventoryAggregate` test declines.
+    inventory: Option<&dyn InventoryContext>,
 ) -> ToolGateVerdict {
     let empty = Map::new();
     let sheet = metadata.unwrap_or(&empty);
     let progress_sheet = progress.unwrap_or(&empty);
 
     if let Some(gate) = definition.available_when.as_ref() {
-        if !gate_holds(gate, sheet, progress_sheet) {
+        if !gate_holds(gate, sheet, progress_sheet, inventory) {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::AvailableWhen),
@@ -108,7 +121,7 @@ pub fn evaluate_tool_gate(
     }
 
     if let Some(gate) = definition.withheld_when.as_ref() {
-        if gate_holds(gate, sheet, progress_sheet) {
+        if gate_holds(gate, sheet, progress_sheet, inventory) {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::WithheldWhen),
@@ -130,6 +143,7 @@ pub fn gate_holds(
     gate: &ToolGate,
     metadata: &Map<String, Value>,
     progress: &Map<String, Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> bool {
     for (sheet, tests) in [(metadata, &gate.metadata), (progress, &gate.progress)] {
         // v4: `Object.entries(gate.metadata ?? {})` — an absent record and an
@@ -154,7 +168,65 @@ pub fn gate_holds(
             }
         }
     }
+
+    // === P4.D329: the inventory loops ===
+    // Literal operands, literal keys: the comparison tables in
+    // `inventory_subjects` / `inventory_aggregate`, against the invoker's bag.
+    // No decline hook — the gate logs nothing.
+    for (reference, comparator) in gate.inventory.iter().flatten() {
+        let literal = |o: &Option<InventoryStateOperand>| match o {
+            Some(InventoryStateOperand::State(s)) => Some(s.as_str().to_string()),
+            Some(InventoryStateOperand::ParamRef(_)) => {
+                unreachable!("a gate's inventory operand is a literal state")
+            }
+            None => None,
+        };
+        let test = ResolvedInventoryStateTest {
+            eq: literal(&comparator.eq),
+            neq: literal(&comparator.neq),
+        };
+        if !inventory_state_holds(&test, reference, inventory, None) {
+            return false;
+        }
+    }
+    for (reference, comparator) in gate.inventory_count.iter().flatten() {
+        if !inventory_count_holds(&literal_count_test(comparator), reference, inventory, None) {
+            return false;
+        }
+    }
+    for (key, comparator) in gate.inventory_aggregate.iter().flatten() {
+        let holds = inventory_aggregate_holds::<Infallible>(
+            comparator,
+            key,
+            inventory,
+            &mut |comparator_key| Ok(literal_operand(comparator, comparator_key)),
+            &mut |_| {},
+        );
+        match holds {
+            Ok(true) => continue,
+            Ok(false) => return false,
+            Err(never) => match never {},
+        }
+    }
     true
+}
+
+/// A gate's `inventoryCount` comparator as the resolved test — its six
+/// operands are literal numbers by construction.
+fn literal_count_test(comparator: &NumericComparator) -> ResolvedInventoryCountTest {
+    let number = |v: &Option<NumberOrParamRef>| match v {
+        Some(NumberOrParamRef::Number(n)) => Some(*n),
+        Some(_) => unreachable!("a gate's inventoryCount operand is a literal number"),
+        None => None,
+    };
+    ResolvedInventoryCountTest {
+        gt: number(&comparator.gt),
+        gte: number(&comparator.gte),
+        lt: number(&comparator.lt),
+        lte: number(&comparator.lte),
+        eq: number(&comparator.eq),
+        neq: number(&comparator.neq),
+    }
 }
 
 /// The literal a gate comparator holds at `key`. Total by construction: the

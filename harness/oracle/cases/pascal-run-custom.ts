@@ -307,6 +307,83 @@ const wardrobeSecret = {
   outcomes: [{ when: true, message: 'x', state: 'info' }],
 };
 
+// === P4.D329 (v4 `e1872c94f` + `a53024d3c`): the Inventory describers ======
+const inventoryWhens = {
+  name: 'inventory_whens',
+  description: 'consult the bag',
+  parameters: { want: { type: 'string', default: 'carried' } },
+  outcomes: [
+    { when: { inventory: { sword: { eq: 'equipped' }, lantern: { eq: 'carried', neq: 'absent' } } }, message: 'a', state: 'success' },
+    { when: { inventory: { rope: { eq: { $param: 'want' } } } }, message: 'b', state: 'info' },
+    { when: { inventoryCount: { ring: { gte: 2, lt: 5 } } }, message: 'c', state: 'info' },
+    { when: { gte: { $inventory: 'sword.metadata.bonus', fallback: 3 } }, message: 'd', state: 'info' },
+    { when: true, message: 'e', state: 'failure' },
+  ],
+};
+const inventoryRolls = {
+  name: 'inventory_rolls',
+  description: 'swing what you hold',
+  roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' },
+  outcomes: [{ when: { gte: 7 }, message: 'hit', state: 'success' }, { when: true, message: 'miss', state: 'failure' }],
+};
+const inventoryRollField = {
+  name: 'inventory_roll_field',
+  description: 'reach',
+  roll: { min: 1, max: { $inventory: 'die.metadata.sides', fallback: 6 } },
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+const aggregateWhens = {
+  name: 'aggregate_whens',
+  description: 'take stock',
+  outcomes: [
+    { when: { inventoryAggregate: { 'equipped.count': { gte: 2 } } }, message: 'a', state: 'info' },
+    { when: { inventoryAggregate: { 'owned.count': { eq: 0 }, 'reachable.count': { lt: 3 } } }, message: 'b', state: 'info' },
+    { when: { inventoryAggregate: { 'owned.metadata.weight.sum': { lte: 20 } } }, message: 'c', state: 'info' },
+    { when: { inventoryAggregate: { 'equipped.metadata.power.max': { gt: 4 }, 'reachable.metadata.lumens.avg': { gte: 10 } } }, message: 'd', state: 'info' },
+    { when: { inventoryAggregate: { 'equipped.metadata.charge.count': { gte: 1 } } }, message: 'e', state: 'info' },
+    { when: { inventoryAggregate: { 'equipped.names': { eq: 'sword', neq: 'axe' } } }, message: 'f', state: 'info' },
+    { when: { inventoryAggregate: { 'owned.titles': { contains: 'Excal', ncontains: 'Broken' } } }, message: 'g', state: 'info' },
+    { when: { inventoryAggregate: { 'reachable.metadata.toolAbilities': { eq: 'light' } } }, message: 'h', state: 'info' },
+    { when: true, message: 'z', state: 'failure' },
+  ],
+};
+const inventoryGestures = {
+  name: 'inventory_gestures',
+  description: 'rearrange the bag',
+  parameters: { what: { type: 'string', default: 'sword' } },
+  effects: [
+    { inventory: { action: 'equip', items: ['{{params.what}}', 'shield'] } },
+    { inventory: { action: 'unequip', items: ['cloak'] } },
+    { inventory: { action: 'pick_up', items: ['magic bow'] } },
+    { inventory: { action: 'pick_up', items: ['rope'], equip: false } },
+    { wardrobe: { action: 'wear', items: ['Hat'] } },
+    { target: 'state.armed', value: true },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+const inventoryReadsLine = {
+  name: 'inventory_reads',
+  description: 'read the bag',
+  availableWhen: { inventory: { lantern: { eq: 'carried' } }, inventoryAggregate: { 'owned.count': { gte: 1 } } },
+  chipLabel: '{{inventory.sword.title}}',
+  outcomes: [
+    { when: { inventoryCount: { Bow: { gt: 0 } } }, message: '{{inventory.axe.state}}', state: 'info' },
+    { when: true, message: 'x', state: 'info' },
+  ],
+};
+const inventorySecret = {
+  name: 'inventory_secret',
+  description: 'a sealed bag',
+  revealOdds: false,
+  roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' },
+  effects: [{ inventory: { action: 'equip', items: ['sword'] } }],
+  outcomes: [
+    { when: { inventory: { sword: { eq: 'equipped' } }, inventoryAggregate: { 'equipped.count': { gte: 1 } } }, message: 'a', state: 'info' },
+    { when: true, message: 'b', state: 'info' },
+  ],
+};
+// === end P4.D329 ===
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -339,6 +416,16 @@ const cases: Array<[string, unknown[]]> = [
   // Every description embeds the preamble; this row names the sentence so a
   // future preamble move has a row to point at.
   ['preamble-sentence', [minimal]],
+  // === P4.D329 ===
+  ['inventory-whens', [inventoryWhens]],
+  ['inventory-whole-roll', [inventoryRolls]],
+  ['inventory-roll-field', [inventoryRollField]],
+  ['aggregate-whens', [aggregateWhens]],
+  ['inventory-gestures', [inventoryGestures]],
+  ['inventory-reads-and-takes-stock', [inventoryReadsLine]],
+  ['inventory-reveal-odds-false', [inventorySecret]],
+  ['inventory-multi-tool', [minimal, inventoryGestures, aggregateWhens]],
+  // === end P4.D329 ===
 ];
 
 const rows: unknown[] = [];

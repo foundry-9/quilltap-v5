@@ -37,6 +37,25 @@ use quilltap_core::pascal::roster::{
     is_root_tool_file, load_definitions, resolve_roster_from_pool, CustomToolRoster,
     DiscoveredCustomTool, ToolFileContent,
 };
+// P4.D329: the roster's lazy bag.
+use quilltap_core::pascal::bench_inventory::{mock_inventory_context, parse_mock_inventory};
+use quilltap_core::pascal::roster::{invoker_inventory, RosterContext, RosterInventory};
+
+/// v4's logger bag rendered as the capture rig renders a tracing line: the
+/// level, the target, the message, then each NON-null field as `k=v`
+/// (strings bare, numbers JS-bare). A `null` field is absent on the v5 side
+/// (`tracing` records no `None`), so it is skipped here.
+fn v4_debug_line(message: &str, bag: &Value) -> String {
+    let mut line = format!("DEBUG quilltap::pascal {message}");
+    for (k, v) in bag.as_object().into_iter().flatten() {
+        match v {
+            Value::Null => {}
+            Value::String(s) => line.push_str(&format!(" {k}={s}")),
+            other => line.push_str(&format!(" {k}={other}")),
+        }
+    }
+    line
+}
 use serde_json::{json, Map, Value};
 
 /// The roster's frozen wall clock. P4.D169 injects `resolve_roster_from_pool`'s
@@ -139,6 +158,13 @@ fn assert_roster_eq(got: &Value, want: &Value, id: &str) {
     }
 }
 
+/// P4.D329: regenerated at the pin `322a5488e`, the scenario whose roster v4's
+/// vault-only change moved (a participant's vault tool now loses to the group
+/// tier — v4's vault-only custom tools, P4.D332's to port). Its roster differs by
+/// design on this branch; the reads and the inventory lines still compare.
+/// MEASURED: exactly this one. A carved row that turns GREEN fails the run.
+const P4D332_RESIDUE: &[&str] = &["full-precedence-chain"];
+
 #[test]
 fn pascal_roster_matches_oracle() {
     let path = match std::env::var("QT_ORACLE_PASCAL_DISCOVERY") {
@@ -154,6 +180,8 @@ fn pascal_roster_matches_oracle() {
     let mut saw_is_root_reject = false;
     let mut saw_lazy_read = false;
     let mut saw_progress_gate = false;
+    let mut saw_bag_lines = 0usize;
+    let mut inventory_scenarios = 0usize;
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -199,50 +227,96 @@ fn pascal_roster_matches_oracle() {
             }
         };
 
-        let roster = resolve_roster_from_pool(
-            &pool,
-            |mount_point_id, tier| {
-                let Some(spec) = mounts.get(mount_point_id) else {
-                    return (Vec::new(), Vec::new());
-                };
-                if !spec["enabled"].as_bool().unwrap_or(false) {
-                    return (Vec::new(), Vec::new());
-                }
-                let mount_name = format!("store-{mount_point_id}");
-                // Mirror `list_tool_files_from_database`: drop folders + non-root
-                // files, so `is_root_tool_file` is exercised over the raw listing.
-                let files: Vec<(String, ToolFileContent)> = spec["files"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .filter(|f| {
-                        let rel = f["relativePath"].as_str().unwrap();
-                        let is_folder = f["kind"].as_str() == Some("folder");
-                        let ok = !is_folder && is_root_tool_file(rel);
-                        if !ok {
-                            saw_is_root_reject = true;
-                        }
-                        ok
-                    })
-                    .map(|f| {
-                        (
-                            f["relativePath"].as_str().unwrap().to_string(),
-                            ToolFileContent::Content(f["content"].as_str().unwrap().to_string()),
-                        )
-                    })
-                    .collect();
-                load_definitions(&files, mount_point_id, &mount_name, tier)
+        // P4.D329: the RosterContext the bag decision reads, built from the
+        // scenario exactly as the oracle built v4's.
+        let roster_ctx = RosterContext {
+            user_id: "u1".into(),
+            chat_id: if spec["noChat"].as_bool().unwrap_or(false) {
+                String::new()
+            } else {
+                "c1".into()
             },
-            load_sheet,
-            // P4.D169: the roster's clock. The discovery corpus carries no
-            // progression-gated definition yet — item 2 adds the
-            // weapon-recharge rows and the corpus will then supply the frozen
-            // instant both sides read.
-            ROSTER_NOW_MS,
-        );
+            character_id: (!no_character).then(|| "char1".to_string()),
+            inventory: spec.get("inventoryGiven").map(|given| {
+                (!given.is_null()).then(|| {
+                    let rows = parse_mock_inventory(Some(given))
+                        .expect("scenario rows parse")
+                        .unwrap_or_default();
+                    RosterInventory(std::sync::Arc::new(mock_inventory_context(&rows)))
+                })
+            }),
+            ..Default::default()
+        };
+        let load_error = spec["inventoryLoadError"]
+            .as_str()
+            .unwrap_or("that vault is unreachable")
+            .to_string();
+        let mut inventory_reads = 0usize;
+
+        let (roster, lines) = quilltap_core::test_support::captured_with(|| {
+            resolve_roster_from_pool(
+                &pool,
+                |mount_point_id, tier| {
+                    let Some(spec) = mounts.get(mount_point_id) else {
+                        return (Vec::new(), Vec::new());
+                    };
+                    if !spec["enabled"].as_bool().unwrap_or(false) {
+                        return (Vec::new(), Vec::new());
+                    }
+                    let mount_name = format!("store-{mount_point_id}");
+                    // Mirror `list_tool_files_from_database`: drop folders + non-root
+                    // files, so `is_root_tool_file` is exercised over the raw listing.
+                    let files: Vec<(String, ToolFileContent)> = spec["files"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter(|f| {
+                            let rel = f["relativePath"].as_str().unwrap();
+                            let is_folder = f["kind"].as_str() == Some("folder");
+                            let ok = !is_folder && is_root_tool_file(rel);
+                            if !ok {
+                                saw_is_root_reject = true;
+                            }
+                            ok
+                        })
+                        .map(|f| {
+                            (
+                                f["relativePath"].as_str().unwrap().to_string(),
+                                ToolFileContent::Content(
+                                    f["content"].as_str().unwrap().to_string(),
+                                ),
+                            )
+                        })
+                        .collect();
+                    load_definitions(&files, mount_point_id, &mount_name, tier)
+                },
+                load_sheet,
+                // P4.D329: v4's mocked `loadInventoryContext` throws the scenario's
+                // message; the decision and its lines are production's.
+                || {
+                    invoker_inventory(&roster_ctx, |_, _| {
+                        inventory_reads += 1;
+                        Err(load_error.clone())
+                    })
+                },
+                // P4.D169: the roster's clock. The discovery corpus carries no
+                // progression-gated definition yet — item 2 adds the
+                // weapon-recharge rows and the corpus will then supply the frozen
+                // instant both sides read.
+                ROSTER_NOW_MS,
+            )
+        });
 
         let got = serialize(&roster);
-        assert_roster_eq(&got, &row["output"], &id);
+        if P4D332_RESIDUE.contains(&id.as_str()) {
+            let same = std::panic::catch_unwind(|| assert_roster_eq(&got, &row["output"], &id));
+            assert!(
+                same.is_err(),
+                "case '{id}' is P4.D332's residue but turned GREEN — lift it"
+            );
+        } else {
+            assert_roster_eq(&got, &row["output"], &id);
+        }
         assert_eq!(
             sheet_reads as u64,
             row["sheetReads"].as_u64().unwrap(),
@@ -251,6 +325,37 @@ fn pascal_roster_matches_oracle() {
         );
         if sheet_reads > 0 {
             saw_lazy_read = true;
+        }
+        // P4.D329: the bag read at most once, only when a gate names it, and
+        // the roster's bag lines byte for byte.
+        assert_eq!(
+            inventory_reads as u64,
+            row["inventoryReads"].as_u64().unwrap_or(0),
+            "case '{id}': invoker inventory reads"
+        );
+        let got_bag_lines: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom-tool gates:") && l.contains("inventory"))
+            .collect();
+        let want_bag_lines: Vec<String> = row["inventoryLines"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|l| v4_debug_line(l["message"].as_str().unwrap(), &l["bag"]))
+            .collect();
+        assert_eq!(
+            got_bag_lines.iter().map(|l| l.as_str()).collect::<Vec<_>>(),
+            want_bag_lines
+                .iter()
+                .map(|l| l.as_str())
+                .collect::<Vec<_>>(),
+            "case '{id}': the roster's inventory lines"
+        );
+        if !want_bag_lines.is_empty() {
+            saw_bag_lines += 1;
+        }
+        if id.starts_with("inventory-") {
+            inventory_scenarios += 1;
         }
         // P4.D169's floor: a scenario whose invoker sheet carries a
         // `progressions` block AND whose definitions gate on `progress`. It was
@@ -274,6 +379,15 @@ fn pascal_roster_matches_oracle() {
     }
 
     assert!(count >= 15, "oracle looked short: only {count} rows");
+    // P4.D329's floors.
+    assert!(
+        inventory_scenarios >= 8,
+        "only {inventory_scenarios} inventory scenarios"
+    );
+    assert!(
+        saw_bag_lines >= 3,
+        "only {saw_bag_lines} scenarios logged a bag line"
+    );
     assert!(
         saw_is_root_reject,
         "no case exercised is_root_tool_file rejection"

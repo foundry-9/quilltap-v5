@@ -80,6 +80,8 @@ pub struct CustomToolLibraryEntry {
 pub enum RollForm {
     Range,
     Dice,
+    /// P4.D329: a whole roll drawn from an object's metadata.
+    Inventory,
 }
 
 /// Which clause a library entry's definition declares. `None` serializes as
@@ -389,6 +391,8 @@ pub fn build_custom_tool_library(
                 .unwrap_or(Visibility::Public),
             roll_form: match entry.definition.roll {
                 Some(Roll::Dice(_)) => RollForm::Dice,
+                // P4.D329: the whole-roll `$inventory` (v4 `'$inventory' in roll`).
+                Some(Roll::Inventory(_)) => RollForm::Inventory,
                 _ => RollForm::Range,
             },
             llm: entry.definition.llm.is_some(),

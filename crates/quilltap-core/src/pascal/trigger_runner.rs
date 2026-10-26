@@ -198,6 +198,8 @@ async fn run_triggered(
         character_ids: Some(params.character_ids.clone()),
         project_id: params.project_id.clone(),
         metadata: Some(metadata.clone()),
+        // P4.D329: the bag loads lazily, only when a gate names it.
+        inventory: None,
     };
     let roster = db.read_main(|main| {
         db.read_mount_index(|mount| {

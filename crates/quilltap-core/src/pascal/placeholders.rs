@@ -79,6 +79,16 @@ pub enum PlaceholderRef {
         id: String,
         field: String,
     },
+    // === P4.D329: the inventory placeholder ===
+    /// One object the rolling character carries or can reach —
+    /// `inventory.<ref>.<field>` or `inventory.<ref>.metadata.<key>`, read
+    /// through the one reference rule (v4 `e1872c94f`). `key` is present only
+    /// for the `metadata` field.
+    Inventory {
+        reference: String,
+        field: InventoryPlaceholderField,
+        key: Option<String>,
+    },
     Unknown {
         key: String,
     },
@@ -140,9 +150,91 @@ pub fn classify_placeholder(key: &str) -> PlaceholderRef {
             }
         }
     }
+    // === P4.D329: the inventory placeholder ===
+    // `inventory.<ref>.<field>` — one object the rolling character carries or
+    // can reach, read through the one reference rule (`inventory::refs`).
+    if let Some(rest) = key.strip_prefix(INVENTORY_PREFIX) {
+        if let Some((reference, field, key)) = split_inventory_reference(rest) {
+            return PlaceholderRef::Inventory {
+                reference,
+                field,
+                key,
+            };
+        }
+    }
     PlaceholderRef::Unknown {
         key: key.to_string(),
     }
+}
+
+// === P4.D329: the inventory placeholder ===
+
+/// v4 `InventoryPlaceholderField` — the fields an
+/// `{{inventory.<ref>.<field>}}` placeholder may name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InventoryPlaceholderField {
+    Title,
+    Name,
+    Description,
+    State,
+    Metadata,
+}
+
+impl InventoryPlaceholderField {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InventoryPlaceholderField::Title => "title",
+            InventoryPlaceholderField::Name => "name",
+            InventoryPlaceholderField::Description => "description",
+            InventoryPlaceholderField::State => "state",
+            InventoryPlaceholderField::Metadata => "metadata",
+        }
+    }
+}
+
+const INVENTORY_PREFIX: &str = "inventory.";
+const INVENTORY_METADATA_INFIX: &str = ".metadata.";
+const INVENTORY_TRAILING_FIELDS: [(&str, InventoryPlaceholderField); 4] = [
+    ("title", InventoryPlaceholderField::Title),
+    ("name", InventoryPlaceholderField::Name),
+    ("description", InventoryPlaceholderField::Description),
+    ("state", InventoryPlaceholderField::State),
+];
+
+/// v4 `splitInventoryReference(rest)` — split an inventory remainder
+/// (`<ref>.<field>` or `<ref>.metadata.<key>`) into its parts: the one rule the
+/// placeholder and the `$inventory` operand share. (1) The FIRST `.metadata.`
+/// splits it: everything before is the ref, everything after the metadata key,
+/// so a ref may not contain `.metadata.`. (2) Otherwise it must end in
+/// `.title` / `.name` / `.description` / `.state`, and the rest (dots and all)
+/// is the ref. Anything else is `None`.
+///
+/// v4's `indexOf` / `length` count UTF-16 units; the separators are ASCII and
+/// every test is emptiness at an end, so byte slicing cannot change an answer.
+pub fn split_inventory_reference(
+    rest: &str,
+) -> Option<(String, InventoryPlaceholderField, Option<String>)> {
+    if let Some(infix) = rest.find(INVENTORY_METADATA_INFIX) {
+        let reference = &rest[..infix];
+        let key = &rest[infix + INVENTORY_METADATA_INFIX.len()..];
+        return (!reference.is_empty() && !key.is_empty()).then(|| {
+            (
+                reference.to_string(),
+                InventoryPlaceholderField::Metadata,
+                Some(key.to_string()),
+            )
+        });
+    }
+    for (name, field) in INVENTORY_TRAILING_FIELDS {
+        if let Some(reference) = rest.strip_suffix(name) {
+            if let Some(reference) = reference.strip_suffix('.') {
+                if !reference.is_empty() {
+                    return Some((reference.to_string(), field, None));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// v4 `ScannedPlaceholder` — one placeholder as found in a string.

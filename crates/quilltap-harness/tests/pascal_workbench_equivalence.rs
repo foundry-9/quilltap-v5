@@ -166,8 +166,17 @@ fn workbench_matches_oracle() {
     // branch fails loudly rather than passing on a thinner world.
     let library = &oracle["library"]["value"];
     let tools = library["tools"].as_array().expect("tools array");
-    // P4.D305: 9 since `theta` (two `triggers`) joined the general store.
-    assert_eq!(tools.len(), 9, "library tool count");
+    // P4.D305: 9 since `theta` (two `triggers`) joined the general store;
+    // P4.D329: 10 since `kappa_inventory` (a `$inventory` whole roll) did.
+    assert_eq!(tools.len(), 10, "library tool count");
+    assert_eq!(
+        tools
+            .iter()
+            .filter(|t| t.get("rollForm").and_then(Value::as_str) == Some("inventory"))
+            .count(),
+        1,
+        "exactly one library entry reads rollForm \"inventory\" (P4.D329)"
+    );
     let counts: Vec<u64> = tools
         .iter()
         .filter_map(|t| t.get("triggerCount").and_then(Value::as_u64))

@@ -190,6 +190,9 @@ pub async fn workbench_post(
     // §B (P4.d10): the mock merged state — forwarded opaquely, validated in the
     // core (`z.record(...).nullish()`). Named apart from the web `state` handle.
     let mock_state = obj.get("state").cloned();
+    // P4.D329: the mock inventory rows — forwarded opaquely, validated in the
+    // core (`MockInventorySchema.nullish()`).
+    let inventory = obj.get("inventory").cloned();
 
     let req = if action == "preview" {
         // `private` is `z.boolean().optional()`: a present non-boolean is a body
@@ -205,6 +208,7 @@ pub async fn workbench_post(
             private,
             metadata,
             state: mock_state,
+            inventory,
             llm,
         }
     } else {
@@ -213,6 +217,7 @@ pub async fn workbench_post(
             params,
             metadata,
             state: mock_state,
+            inventory,
             llm,
         }
     };

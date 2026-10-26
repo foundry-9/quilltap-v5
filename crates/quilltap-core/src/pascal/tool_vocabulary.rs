@@ -32,6 +32,12 @@ use super::custom_tool_types::{
     is_state_ref_value, parse_effect_target, CustomToolEffectBody, EffectTarget, EffectValue,
     QtapCustomTool, WardrobeEffectAction, When,
 };
+// === P4.D329: the inventory vocabulary ===
+use super::custom_tool_types::{
+    is_inventory_ref_value, EffectWhen, InventoryEffectAction, ParamComparator, ToolGate,
+    WhenObject,
+};
+use super::inventory_subjects::parse_inventory_operand;
 use super::placeholders::{scan_placeholders, PlaceholderRef};
 use crate::collation::locale_compare;
 
@@ -109,6 +115,29 @@ pub struct ToolVocabulary {
     /// Slots this tool's wardrobe effects may CLEAR. Sorted.
     #[serde(rename = "clearsSlots")]
     pub clears_slots: Vec<String>,
+    // === P4.D329: the five Inventory keys, in the pin's wire order ===
+    /// Inventory object references this tool READS — tested by an `inventory`
+    /// / `inventoryCount` subject (outcomes, effect conditions, the gate),
+    /// quoted by `{{inventory.<ref>.*}}`, or drawn from by a `$inventory`
+    /// operand. Verbatim, sorted.
+    #[serde(rename = "inventoryReads")]
+    pub inventory_reads: Vec<String>,
+    /// `inventoryAggregate` keys this tool tests (`equipped.names`,
+    /// `owned.metadata.toolVersion.max`) — outcomes, effect conditions, the
+    /// gate. A metadata key read through an aggregate is the OBJECTS'
+    /// vocabulary, not the character's, so it is not added to `metadata`.
+    /// Sorted. (The key's presence is P4.D333's too — S3; the field line is
+    /// byte-identical in both lanes.)
+    #[serde(rename = "inventoryAggregates")]
+    pub inventory_aggregates: Vec<String>,
+    /// References this tool's inventory effects may EQUIP, verbatim. Sorted.
+    pub equips: Vec<String>,
+    /// References this tool's inventory effects may UNEQUIP, verbatim. Sorted.
+    pub unequips: Vec<String>,
+    /// Archetype references this tool's inventory effects may PICK UP,
+    /// verbatim. Sorted.
+    #[serde(rename = "picksUp")]
+    pub picks_up: Vec<String>,
 }
 
 /// True when a tool quotes nothing at all, and so has no vocabulary to show.
@@ -129,6 +158,12 @@ pub fn is_empty_vocabulary(vocabulary: &ToolVocabulary) -> bool {
         && vocabulary.wears.is_empty()
         && vocabulary.takes_off.is_empty()
         && vocabulary.clears_slots.is_empty()
+        // === P4.D329 ===
+        && vocabulary.inventory_reads.is_empty()
+        && vocabulary.inventory_aggregates.is_empty()
+        && vocabulary.equips.is_empty()
+        && vocabulary.unequips.is_empty()
+        && vocabulary.picks_up.is_empty()
 }
 
 /// The mutable accumulator v4 calls `found` — insertion-ordered lists standing
@@ -152,6 +187,96 @@ struct Found {
     wears: Vec<String>,
     takes_off: Vec<String>,
     clears_slots: Vec<String>,
+    // === P4.D329 ===
+    inventory: Vec<String>,
+    inventory_aggregates: Vec<String>,
+    equips: Vec<String>,
+    unequips: Vec<String>,
+    picks_up: Vec<String>,
+}
+
+// === P4.D329: one group's reads ===
+/// One group's reads — the same for an outcome row, an effect condition and a
+/// gate group (v4's `collectGroup`). On this branch a gate and a `when` are ONE
+/// group each; P4.D333's group loops wrap the calls at the union.
+trait GroupReads {
+    fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>>;
+    fn progress_tests(&self) -> Option<&Vec<(String, ParamComparator)>>;
+    /// The `inventory` keys, then the `inventoryCount` keys.
+    fn inventory_keys(&self) -> Vec<&String>;
+    fn inventory_aggregate_keys(&self) -> Vec<&String>;
+}
+
+impl GroupReads for WhenObject {
+    fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.metadata.as_ref()
+    }
+    fn progress_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.progress.as_ref()
+    }
+    fn inventory_keys(&self) -> Vec<&String> {
+        let states = self.inventory.iter().flatten().map(|(k, _)| k);
+        let counts = self.inventory_count.iter().flatten().map(|(k, _)| k);
+        states.chain(counts).collect()
+    }
+    fn inventory_aggregate_keys(&self) -> Vec<&String> {
+        self.inventory_aggregate
+            .iter()
+            .flatten()
+            .map(|(k, _)| k)
+            .collect()
+    }
+}
+
+impl GroupReads for EffectWhen {
+    fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.base.metadata_tests()
+    }
+    fn progress_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.base.progress_tests()
+    }
+    fn inventory_keys(&self) -> Vec<&String> {
+        self.base.inventory_keys()
+    }
+    fn inventory_aggregate_keys(&self) -> Vec<&String> {
+        self.base.inventory_aggregate_keys()
+    }
+}
+
+impl GroupReads for ToolGate {
+    fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.metadata.as_ref()
+    }
+    fn progress_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
+        self.progress.as_ref()
+    }
+    fn inventory_keys(&self) -> Vec<&String> {
+        let states = self.inventory.iter().flatten().map(|(k, _)| k);
+        let counts = self.inventory_count.iter().flatten().map(|(k, _)| k);
+        states.chain(counts).collect()
+    }
+    fn inventory_aggregate_keys(&self) -> Vec<&String> {
+        self.inventory_aggregate
+            .iter()
+            .flatten()
+            .map(|(k, _)| k)
+            .collect()
+    }
+}
+
+fn collect_group(group: &impl GroupReads, found: &mut Found) {
+    for (key, _) in group.metadata_tests().into_iter().flatten() {
+        add(&mut found.metadata, key);
+    }
+    for (key, _) in group.progress_tests().into_iter().flatten() {
+        add(&mut found.progress, progression_id(key));
+    }
+    for key in group.inventory_keys() {
+        add(&mut found.inventory, key);
+    }
+    for key in group.inventory_aggregate_keys() {
+        add(&mut found.inventory_aggregates, key);
+    }
 }
 
 /// The progression id out of a `"<id>.<field>"` sheet key. A key that somehow
@@ -185,12 +310,7 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         // A catch-all tests nothing, so it names nothing — but it still carries
         // a message, and that message may well quote a fact sheet.
         if let When::Object(when) = &outcome.when {
-            for (key, _) in when.metadata.iter().flatten() {
-                add(&mut found.metadata, key);
-            }
-            for (key, _) in when.progress.iter().flatten() {
-                add(&mut found.progress, progression_id(key));
-            }
+            collect_group(when.as_ref(), &mut found);
         }
         collect_placeholders(&outcome.message, &declared, &mut found);
     }
@@ -201,11 +321,8 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     // "programmable" is not, and is not said here. A gated-out tool never reaches
     // a roster listing at all, so this only ever describes one the reader has.
     for gate in [&definition.available_when, &definition.withheld_when] {
-        for (key, _) in gate.iter().flat_map(|g| g.metadata.iter().flatten()) {
-            add(&mut found.metadata, key);
-        }
-        for (key, _) in gate.iter().flat_map(|g| g.progress.iter().flatten()) {
-            add(&mut found.progress, progression_id(key));
+        for group in gate.iter() {
+            collect_group(group, &mut found);
         }
     }
 
@@ -233,15 +350,25 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
             collect_placeholders(source, &declared, &mut found);
         }
         for when in effect.when.iter() {
-            for (key, _) in when.base.metadata.iter().flatten() {
-                add(&mut found.metadata, key);
-            }
-            for (key, _) in when.base.progress.iter().flatten() {
-                add(&mut found.progress, progression_id(key));
-            }
+            collect_group(when, &mut found);
         }
 
         let target = match &effect.body {
+            // === P4.D329: the inventory gesture ===
+            CustomToolEffectBody::Inventory(gesture) => {
+                for item in &gesture.items {
+                    collect_placeholders(item, &declared, &mut found);
+                }
+                let list = match gesture.action {
+                    InventoryEffectAction::Equip => &mut found.equips,
+                    InventoryEffectAction::Unequip => &mut found.unequips,
+                    InventoryEffectAction::PickUp => &mut found.picks_up,
+                };
+                for item in &gesture.items {
+                    add(list, item);
+                }
+                continue;
+            }
             CustomToolEffectBody::Wardrobe(gesture) => {
                 let items = gesture.items.as_deref().unwrap_or_default();
                 for item in items {
@@ -287,7 +414,7 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     // v4 walks the parsed definition object; v5 walks its serialization, which is
     // the same object — the definition differential pins that byte-for-byte.
     let as_json = serde_json::to_value(definition).unwrap_or(Value::Null);
-    collect_state_refs(&as_json, &mut found.state);
+    collect_state_refs(&as_json, &mut found.state, &mut found.inventory);
 
     let sorted = |mut values: Vec<String>| -> Vec<String> {
         values.sort_by(|a, b| locale_compare(a, b));
@@ -311,6 +438,12 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         wears: sorted(found.wears),
         takes_off: sorted(found.takes_off),
         clears_slots: sorted(found.clears_slots),
+        // === P4.D329 ===
+        inventory_reads: sorted(found.inventory),
+        inventory_aggregates: sorted(found.inventory_aggregates),
+        equips: sorted(found.equips),
+        unequips: sorted(found.unequips),
+        picks_up: sorted(found.picks_up),
     }
 }
 
@@ -340,17 +473,21 @@ fn collect_placeholders(text: &str, declared: &[&str], found: &mut Found) {
             PlaceholderRef::Progress { ref id, .. } => add(&mut found.progress, id),
             PlaceholderRef::Now => found.now = true,
             PlaceholderRef::Character => found.character = true,
+            // === P4.D329 ===
+            PlaceholderRef::Inventory { ref reference, .. } => add(&mut found.inventory, reference),
             PlaceholderRef::Unknown { .. } => {}
         }
     }
 }
 
-/// Depth-first walk for `{ "$state": "..." }` objects anywhere in the tree.
-fn collect_state_refs(node: &Value, into: &mut Vec<String>) {
+/// Depth-first walk for `{ "$state": "..." }` objects anywhere in the tree,
+/// and beside them `{ "$inventory": "<ref>.metadata.<key>" }` (whose ref is an
+/// Inventory read — P4.D329; RETURNS, not walked further).
+fn collect_state_refs(node: &Value, into: &mut Vec<String>, inventory: &mut Vec<String>) {
     match node {
         Value::Array(items) => {
             for item in items {
-                collect_state_refs(item, into);
+                collect_state_refs(item, into, inventory);
             }
         }
         Value::Object(_) => {
@@ -360,8 +497,18 @@ fn collect_state_refs(node: &Value, into: &mut Vec<String>) {
                 }
                 return;
             }
+            if is_inventory_ref_value(node) {
+                if let Some((reference, _)) = node
+                    .get("$inventory")
+                    .and_then(Value::as_str)
+                    .and_then(parse_inventory_operand)
+                {
+                    add(inventory, &reference);
+                }
+                return;
+            }
             for value in node.as_object().expect("checked").values() {
-                collect_state_refs(value, into);
+                collect_state_refs(value, into, inventory);
             }
         }
         _ => {}

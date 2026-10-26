@@ -22,8 +22,9 @@
  * Run (v4 @ d68638b4, Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-pascal-exec-oracle
- *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+ *   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/lib"
  *   cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
+ *   cp "$V5W/harness/oracle/lib/recorded-inventory.ts" "$TMPO/lib/"
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -63,6 +64,17 @@ import { QtapCustomToolSchema, type QtapCustomTool, type When } from '@/lib/pasc
 // on each row, so this family stays a Pascal differential rather than a second
 // copy of P4.D167's engine one.
 import { flattenProgressions, UNIT_MS } from '@/lib/progressions/engine';
+// === P4.D329: the Inventory read side (v4 `e1872c94f` / `a53024d3c`) ===
+import {
+  inventoryCountHolds,
+  inventoryStateHolds,
+  parseInventoryOperand,
+  resolveInventoryValue,
+} from '@/lib/pascal/inventory-subjects';
+import { mockInventoryContext, type MockInventoryRow } from '@/lib/pascal/bench-inventory';
+import type { InventoryContext } from '@/lib/inventory/refs';
+import { logger } from '@/lib/logger';
+import { contextOver, obj, recording, vivienneItems } from '../lib/recorded-inventory';
 
 const OUT = process.env.QT_ORACLE_OUT;
 
@@ -1933,6 +1945,407 @@ describe('$state resolution', () => {
     }
   });
 });
+
+// ================================================================ P4.D329
+// The Inventory read side: `inventory-subjects.ts` driven directly
+// (`inventorySubject` rows), and `matchesWhen` / `renderTemplate` /
+// `resolveParams` / `executeCustomTool` posed against a bag — v4's REAL
+// `inventoryContextFrom` context with every answer RECORDED (R-3), the bench's
+// mock rows, or `null`. Each row also carries the inventory lines v4 logged
+// (`inventoryLines`), compared on the v5 side against the capture rig.
+describe('P4.D329 the Inventory read side', () => {
+  type Bag = { recorded: () => InventoryContext } | { rows: MockInventoryRow[] } | null;
+  const VIV: Bag = { recorded: () => contextOver('c-viv', 'chat-1', vivienneItems()) };
+  const TITLE = "Friday's Yellow Tape Measure";
+  const FRIDAY: Bag = {
+    recorded: () =>
+      contextOver('c-friday', 'chat-1', {
+        items: [
+          obj('tape-arch', { name: 'tape measure', isArchetype: true, metadata: { length_feet: 16 } }),
+          obj('tape-friday', { name: 'tape measure', title: TITLE, parentId: 'tape-arch', metadata: { length_feet: 25 } }),
+        ],
+        own: ['tape-friday'],
+        equipped: ['tape-friday'],
+      }),
+  };
+  const BARE: Bag = { recorded: () => contextOver('c', 'chat', { items: [obj('s')], own: ['s'], equipped: ['s'] }) };
+  const MOCK: Bag = { rows: [{ ref: 'sword', state: 'equipped' }, { ref: 'ring', state: 'equipped', count: 2 }] };
+
+  /** Open a bag: the context the call takes, and its JSON descriptor (read AFTER the call). */
+  function open(bag: Bag): { ctx: InventoryContext | null; descriptor: () => unknown } {
+    if (bag === null) return { ctx: null, descriptor: () => null };
+    if ('rows' in bag) return { ctx: mockInventoryContext(bag.rows), descriptor: () => ({ rows: bag.rows }) };
+    const r = recording(bag.recorded());
+    return { ctx: r.ctx, descriptor: () => ({ recorded: r.recorded }) };
+  }
+
+  const INVENTORY_LINE = /^Custom tool (inventory|message references an inventory|\$inventory roll fell back)/;
+  /** Run `f`, returning v4's inventory lines it logged (`{level, message, bag}`). */
+  async function linesOf<T>(f: () => T | Promise<T>): Promise<{ value: T; lines: unknown[] }> {
+    const debug = jest.spyOn(logger, 'debug');
+    try {
+      const value = await f();
+      const lines = debug.mock.calls
+        .filter(([message]) => typeof message === 'string' && INVENTORY_LINE.test(message))
+        .map(([message, bag]) => ({ level: 'DEBUG', message, bag: bag ?? null }));
+      return { value, lines };
+    } finally {
+      debug.mockRestore();
+    }
+  }
+
+  const tool = define({
+    name: 'probe',
+    description: 'A probe.',
+    parameters: {
+      weapon: { type: 'string', default: 'Excalibur' },
+      want: { type: 'string', default: 'carried' },
+      wanted: { type: 'string', default: 'Excalibur' },
+      n: { type: 'number', default: 2 },
+    },
+    outcomes: [CATCH_ALL],
+  });
+
+  it('emits the subject rows', () => {
+    for (const path of ['sword.metadata.damage', 'a.b.metadata.c.d', 'sword.title', 'sword.metadata.', '.metadata.k', 'sword', 'x.metadata.y.metadata.z', 'x.metadata.y.state']) {
+      emit({ kind: 'inventorySubject', id: `operand-parse-${path}`, fn: 'parseInventoryOperand', path, out: parseInventoryOperand(path), declines: [] });
+    }
+    const operands: Array<[string, { $inventory: string; fallback: number | string | boolean }, Bag]> = [
+      ['value-damage-string', { $inventory: 'sword.metadata.damage', fallback: '1d4' }, VIV],
+      ['value-bonus-number', { $inventory: 'sword.metadata.bonus', fallback: 0 }, VIV],
+      ['value-typeof-mismatch', { $inventory: 'sword.metadata.damage', fallback: 0 }, VIV],
+      ['value-number-vs-string-fallback', { $inventory: 'sword.metadata.bonus', fallback: '1d4' }, VIV],
+      ['value-array-falls-back', { $inventory: 'sword.metadata.tags', fallback: 'x' }, VIV],
+      ['value-null-falls-back', { $inventory: 'lantern.metadata.notes', fallback: 'n' }, VIV],
+      ['value-absent-object', { $inventory: 'axe.metadata.bonus', fallback: 1 }, VIV],
+      ['value-unparseable-path', { $inventory: 'sword.title', fallback: 7 }, VIV],
+      ['value-null-context', { $inventory: 'sword.metadata.bonus', fallback: 1 }, null],
+      ['value-float', { $inventory: 'Excalibur.metadata.edge', fallback: 0 }, VIV],
+      ['value-boolean-mismatch', { $inventory: 'sword.metadata.bonus', fallback: false }, VIV],
+      ['value-mock-item-null', { $inventory: 'sword.metadata.bonus', fallback: 9 }, MOCK],
+      ['value-dotted-ref', { $inventory: 'ring.metadata.toolVersion', fallback: 0 }, VIV],
+    ];
+    for (const [id, operand, bag] of operands) {
+      const b = open(bag);
+      const out = resolveInventoryValue(operand, b.ctx);
+      emit({ kind: 'inventorySubject', id: `operand-${id}`, fn: 'resolveInventoryValue', operand, inventory: b.descriptor(), out, declines: [] });
+    }
+    const states: Array<[string, { eq?: string; neq?: string }, string, Bag]> = [
+      ['state-equipped', { eq: 'equipped' }, 'sword', VIV],
+      ['state-carried', { eq: 'carried' }, 'lantern', VIV],
+      ['state-reachable', { eq: 'reachable' }, 'rope', VIV],
+      ['state-absent', { eq: 'absent' }, 'axe', VIV],
+      ['state-neq-fails', { neq: 'carried' }, 'lantern', VIV],
+      ['state-eq-mismatch-no-decline', { eq: 'equipped' }, 'lantern', VIV],
+      ['state-both', { eq: 'equipped', neq: 'absent' }, 'Excalibur', VIV],
+      ['state-null-eq-absent-declines', { eq: 'absent' }, 'axe', null],
+      ['state-null-neq-declines', { neq: 'equipped' }, 'axe', null],
+      ['state-mock', { eq: 'equipped' }, 'Sword', MOCK],
+      ['state-empty-test-holds', {}, 'sword', VIV],
+    ];
+    for (const [id, test, ref, bag] of states) {
+      const b = open(bag);
+      const declines: string[] = [];
+      const out = inventoryStateHolds(test, ref, b.ctx, (r) => declines.push(r));
+      emit({ kind: 'inventorySubject', id: `subject-${id}`, fn: 'inventoryStateHolds', test, ref, inventory: b.descriptor(), out, declines });
+    }
+    const counts: Array<[string, Record<string, number>, string, Bag]> = [
+      ['count-ring-gte2', { gte: 2 }, 'ring', VIV],
+      ['count-lantern-eq0', { eq: 0 }, 'lantern', VIV],
+      ['count-axe-lt1', { lt: 1 }, 'axe', VIV],
+      ['count-null-lt1-declines', { lt: 1 }, 'axe', null],
+      ['count-ring-neq2', { neq: 2 }, 'ring', VIV],
+      ['count-ring-gt2', { gt: 2 }, 'ring', VIV],
+      ['count-ring-lte2-gte2', { lte: 2, gte: 2 }, 'ring', VIV],
+      ['count-mock-ring', { eq: 2 }, 'RING', MOCK],
+      ['count-mock-absent', { eq: 0 }, 'axe', MOCK],
+      ['count-empty-test', {}, 'ring', VIV],
+    ];
+    for (const [id, test, ref, bag] of counts) {
+      const b = open(bag);
+      const declines: string[] = [];
+      const out = inventoryCountHolds(test, ref, b.ctx, (r) => declines.push(r));
+      emit({ kind: 'inventorySubject', id: `subject-${id}`, fn: 'inventoryCountHolds', test, ref, inventory: b.descriptor(), out, declines });
+    }
+  });
+
+  it('emits matchesWhen rows', async () => {
+    const whens: Array<[string, unknown, Bag, Record<string, unknown>?]> = [
+      ['inv-when-equipped', { inventory: { sword: { eq: 'equipped' } } }, VIV],
+      ['inv-when-carried', { inventory: { lantern: { eq: 'carried' } } }, VIV],
+      ['inv-when-reachable', { inventory: { rope: { eq: 'reachable' } } }, VIV],
+      ['inv-when-absent', { inventory: { axe: { eq: 'absent' } } }, VIV],
+      ['inv-when-neq-fails', { inventory: { lantern: { neq: 'carried' } } }, VIV],
+      ['inv-when-templated-key', { inventory: { '{{params.weapon}}': { eq: 'equipped' } } }, VIV, { weapon: 'Excalibur' }],
+      ['inv-when-templated-key-padded', { inventory: { '  {{params.weapon}} ': { eq: 'equipped' } } }, VIV, { weapon: 'Excalibur' }],
+      ['inv-when-dice-renders-empty', { inventory: { '{{dice}}sword': { eq: 'equipped' } } }, VIV],
+      ['inv-when-number-param-key', { inventory: { 'r{{params.n}}': { eq: 'absent' } } }, VIV, { n: 2 }],
+      ['inv-when-param-state-operand', { inventory: { lantern: { eq: { $param: 'want' } } } }, VIV, { want: 'carried' }],
+      ['inv-when-null-eq-absent', { inventory: { axe: { eq: 'absent' } } }, null],
+      ['inv-when-null-neq', { inventory: { axe: { neq: 'equipped' } } }, null],
+      ['inv-when-two-keys-second-fails', { inventory: { sword: { eq: 'equipped' }, lantern: { eq: 'equipped' } } }, VIV],
+      ['inv-count-ring-gte2', { inventoryCount: { ring: { gte: 2 } } }, VIV],
+      ['inv-count-lantern-eq0', { inventoryCount: { lantern: { eq: 0 } } }, VIV],
+      ['inv-count-axe-lt1', { inventoryCount: { axe: { lt: 1 } } }, VIV],
+      ['inv-count-null-lt1', { inventoryCount: { axe: { lt: 1 } } }, null],
+      ['inv-count-param-operand', { inventoryCount: { ring: { gte: { $param: 'n' } } } }, VIV, { n: 2 }],
+      ['inv-count-inventory-operand', { inventoryCount: { ring: { lte: { $inventory: 'sword.metadata.bonus', fallback: 0 } } } }, VIV],
+      ['inv-count-mock', { inventoryCount: { ring: { eq: 2 } } }, MOCK],
+      ['inv-state-then-count-order', { inventoryCount: { ring: { gte: 9 } }, inventory: { axe: { eq: 'equipped' } } }, VIV],
+      ['inv-agg-titles-param', { inventoryAggregate: { 'equipped.titles': { eq: { $param: 'wanted' } } } }, VIV, { wanted: 'Excalibur' }],
+      ['inv-agg-titles-param-miss', { inventoryAggregate: { 'equipped.titles': { eq: { $param: 'wanted' } } } }, VIV, { wanted: 'lantern' }],
+      ['inv-agg-owned-titles', { inventoryAggregate: { 'owned.titles': { eq: 'lantern' } } }, VIV],
+      ['inv-agg-equipped-count', { inventoryAggregate: { 'equipped.count': { eq: 3 } } }, VIV],
+      ['inv-agg-bonus-sum', { inventoryAggregate: { 'equipped.metadata.bonus.sum': { eq: 3 } } }, VIV],
+      ['inv-agg-null', { inventoryAggregate: { 'equipped.count': { gte: 0 } } }, null],
+      ['inv-agg-absent-fold', { inventoryAggregate: { 'equipped.metadata.nothing.max': { gte: 0 } } }, VIV],
+      ['inv-agg-inventory-operand', { inventoryAggregate: { 'equipped.count': { gte: { $inventory: 'sword.metadata.bonus', fallback: 0 } } } }, VIV],
+      ['inv-agg-mock', { inventoryAggregate: { 'equipped.count': { eq: 3 } } }, MOCK],
+      ['inv-all-three-and-metadata', { metadata: { house: { eq: 'Aurum' } }, inventory: { sword: { eq: 'equipped' } }, inventoryCount: { ring: { eq: 2 } }, inventoryAggregate: { 'reachable.count': { gte: 1 } } }, VIV],
+      ['inv-operand-gte', { gte: { $inventory: 'sword.metadata.bonus', fallback: 99 } }, VIV],
+      ['inv-operand-gte-null', { gte: { $inventory: 'sword.metadata.bonus', fallback: 99 } }, null],
+      ['inv-operand-metadata-eq', { metadata: { house: { eq: { $inventory: 'lantern.metadata.toolAbilities', fallback: 'x' } } } }, VIV],
+    ];
+    for (const [id, when, bag, supplied] of whens) {
+      let def: QtapCustomTool;
+      try {
+        def = define({ ...tool, outcomes: [{ when, message: '-', state: 'info' }, CATCH_ALL] });
+      } catch (e) {
+        throw new Error(`${id}: ${(e as Error).message}`);
+      }
+      const parsedWhen = def.outcomes[0].when as When;
+      const params = resolveParams(def, supplied ?? {});
+      const b = open(bag);
+      let out: unknown = null;
+      let error: string | null = null;
+      const { lines } = await linesOf(() => {
+        try {
+          out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params, metadata: { house: 'Aurum' }, inventory: b.ctx }, 'probe');
+        } catch (e) {
+          error = (e as Error).message;
+        }
+      });
+      emit({
+        kind: 'matchesWhen',
+        id,
+        tool: def,
+        when: parsedWhen,
+        ...(supplied ? { supplied } : {}),
+        metadata: { house: 'Aurum' },
+        llm: null,
+        inventory: b.descriptor(),
+        inventoryLines: lines,
+        out,
+        error,
+      });
+    }
+  });
+
+  it('emits renderTemplate and resolveParams rows', async () => {
+    const renders: Array<[string, string, Bag]> = [
+      ['inv-render-title-name', '{{inventory.sword.title}} / {{inventory.sword.name}}', VIV],
+      ['inv-render-title-falls-back-to-name', '{{inventory.lantern.title}}', VIV],
+      ['inv-render-whitespace-title', '[{{inventory.blade.title}}]', VIV],
+      ['inv-render-description', '{{inventory.sword.description}}', VIV],
+      ['inv-render-null-description', 'd={{inventory.blade.description}}', VIV],
+      ['inv-render-states', '{{inventory.sword.state}} {{inventory.axe.state}}', VIV],
+      ['inv-render-metadata', '{{inventory.sword.metadata.damage}}', VIV],
+      ['inv-render-metadata-number', '+{{inventory.sword.metadata.bonus}} / {{inventory.sword.metadata.edge}}', VIV],
+      ['inv-render-metadata-list', 'tags {{inventory.sword.metadata.tags}}', VIV],
+      ['inv-render-metadata-null', 'n {{inventory.lantern.metadata.notes}}', VIV],
+      ['inv-render-metadata-missing-key', 'k {{inventory.sword.metadata.nope}}', VIV],
+      ['inv-render-absent-title', '{{inventory.axe.title}}', VIV],
+      ['inv-render-null-context', '{{inventory.sword.state}} {{inventory.sword.title}}', null],
+      ['inv-render-mock-item-null', '{{inventory.sword.title}} is {{inventory.sword.state}}', MOCK],
+      ['inv-render-dotted-ref', '{{inventory.old.sword.title}}', VIV],
+      ['inv-render-metadata-infix-first', '{{inventory.x.metadata.y.state}}', VIV],
+      ['inv-render-unknown-family', '{{inventory.sword}} {{inventory.sword.metadata}}', VIV],
+      ['inv-render-apostrophe', "{{inventory.Friday's Yellow Tape Measure.title}} — {{inventory.Friday's Yellow Tape Measure.metadata.length_feet}} feet", FRIDAY],
+    ];
+    for (const [id, message, bag] of renders) {
+      const b = open(bag);
+      const { value: out, lines } = await linesOf(() =>
+        renderTemplate(message, { value: 12.3456, roll: 0.6789, dice: '3d6: [4, 2, 6] = 12', params: {}, inventory: b.ctx })
+      );
+      emit({ kind: 'renderTemplate', id, tool, message, metadata: null, llm: null, inventory: b.descriptor(), inventoryLines: lines, out });
+    }
+
+    const defaults: Array<[string, Record<string, unknown>, Bag]> = [
+      ['inv-default-number', { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 0 } } }, VIV],
+      ['inv-default-number-null', { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 0 } } }, null],
+      ['inv-default-string', { dmg: { type: 'string', default: { $inventory: 'sword.metadata.damage', fallback: '1d4' } } }, VIV],
+      ['inv-default-mismatch', { dmg: { type: 'string', default: { $inventory: 'sword.metadata.bonus', fallback: 'none' } } }, VIV],
+      ['inv-default-mock', { bonus: { type: 'integer', default: { $inventory: 'sword.metadata.bonus', fallback: 5 } } }, MOCK],
+    ];
+    for (const [id, parameters, bag] of defaults) {
+      const def = define({ name: 'probe', description: 'A probe.', parameters, outcomes: [CATCH_ALL] });
+      const b = open(bag);
+      let out: unknown = null;
+      let error: string | null = null;
+      try {
+        out = resolveParams(def, {}, {}, b.ctx);
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      emit({ kind: 'resolveParams', id, tool: def, supplied: null, inventory: b.descriptor(), out, error });
+    }
+  });
+
+  it('emits executeCustomTool rows', async () => {
+    const STRIKE = {
+      name: 'strike',
+      description: 'Strike.',
+      roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' },
+      outcomes: [{ when: true, message: 'With {{inventory.sword.title}}: {{value}}', state: 'info' }],
+    };
+    const cases: Array<[string, unknown, Bag, Record<string, unknown>?, ({ answer: string } | null)?]> = [
+      ['inv-exec-whole-roll-2d6', STRIKE, VIV],
+      ['inv-exec-whole-roll-bare-falls-back', STRIKE, BARE],
+      ['inv-exec-whole-roll-null-fallback', STRIKE, null],
+      ['inv-exec-whole-roll-number-held', { ...STRIKE, roll: { $inventory: 'sword.metadata.bonus', fallback: '1d4' } }, VIV],
+      ['inv-exec-whole-roll-prose-held', { ...STRIKE, roll: { $inventory: 'lantern.metadata.toolAbilities', fallback: '1d6' } }, VIV],
+      ['inv-exec-whole-roll-mock', STRIKE, MOCK],
+      [
+        'inv-exec-parry',
+        {
+          name: 'parry',
+          description: 'Parry.',
+          parameters: { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 0 } } },
+          roll: { min: 0, max: 0, offset: { $param: 'bonus' } },
+          outcomes: [
+            { when: { gte: { $inventory: 'sword.metadata.bonus', fallback: 99 } }, message: 'held', state: 'success' },
+            { when: true, message: 'dropped', state: 'failure' },
+          ],
+        },
+        VIV,
+      ],
+      [
+        'inv-exec-range-field',
+        {
+          name: 'reach',
+          description: 'Reach.',
+          roll: { min: { $inventory: 'sword.metadata.bonus', fallback: 0 }, max: { $inventory: 'sword.metadata.bonus', fallback: 0 } },
+          outcomes: [{ when: true, message: '{{value}}', state: 'info' }],
+        },
+        VIV,
+      ],
+      [
+        'inv-exec-measure-twice',
+        {
+          name: 'measure_twice',
+          description: 'Measure twice.',
+          availableWhen: { inventory: { [TITLE]: { eq: 'equipped' } } },
+          roll: '1d20',
+          outcomes: [
+            {
+              when: true,
+              message: `{{character}} unclips {{inventory.${TITLE}.title}} — {{inventory.${TITLE}.metadata.length_feet}} feet of yellow steel. The tape agrees with itself: {{roll}}. Measured twice.`,
+              state: 'info',
+            },
+          ],
+        },
+        FRIDAY,
+        { character: 'Friday' },
+      ],
+      [
+        'inv-exec-prompt-chip-effects',
+        {
+          name: 'oracle',
+          description: 'Ask.',
+          parameters: { wanted: { type: 'string', default: '' } },
+          roll: { min: 1, max: 1 },
+          chipLabel: '{{inventory.sword.title}} speaks',
+          llm: { prompt: 'Describe {{inventory.sword.title}} ({{inventory.sword.metadata.damage}}).', errorMessage: 'silent' },
+          effects: [
+            { wardrobe: { action: 'wear', items: ['{{inventory.sword.title}} scabbard'] } },
+            { inventory: { action: 'equip', items: ['{{inventory.lantern.title}}', '  '] } },
+            { inventory: { action: 'pick_up', items: ['magic bow'] } },
+            { inventory: { action: 'pick_up', items: ['rope'], equip: false } },
+            { inventory: { action: 'unequip', items: ['{{inventory.axe.title}}'] } },
+            { inventory: { action: 'equip', items: ['{{params.wanted}}'] } },
+            { when: { inventory: { sword: { eq: 'equipped' } } }, target: 'state.armed', value: true },
+            { when: { inventoryCount: { '{{dice}}ring': { gte: 2 } } }, target: 'state.rings', value: 2 },
+            { when: { inventoryAggregate: { 'equipped.count': { gte: 9 } } }, target: 'state.many', value: 1 },
+          ],
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        VIV,
+        { now: PROGRESS_START },
+        { answer: 'It hums.' },
+      ],
+      [
+        'inv-exec-empty-rendered-gesture',
+        {
+          name: 'empty',
+          description: 'Empty.',
+          roll: { min: 1, max: 1 },
+          effects: [{ inventory: { action: 'equip', items: ['{{character}}', ' '] } }],
+          outcomes: [CATCH_ALL],
+        },
+        VIV,
+      ],
+      [
+        'inv-exec-null-everything',
+        {
+          name: 'void',
+          description: 'Void.',
+          roll: { min: 1, max: 1 },
+          parameters: { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 4 } } },
+          effects: [{ when: { inventory: { sword: { eq: 'absent' } } }, target: 'state.x', value: 1 }],
+          outcomes: [
+            { when: { inventoryCount: { sword: { lt: 1 } } }, message: 'none', state: 'failure' },
+            { when: true, message: '{{inventory.sword.title}} {{params.bonus}}', state: 'info' },
+          ],
+        },
+        null,
+      ],
+    ];
+    let index = 900;
+    for (const [id, doc, bag, overrides, script] of cases) {
+      const def = define(doc);
+      const p = pool(index++);
+      mockRngState = { pool: p, cursor: 0 };
+      const b = open(bag);
+      const seen: { options: unknown; prompt: string | null } = { options: null, prompt: null };
+      const llmInvoke = script
+        ? async (prompt: string, options?: { maxOutputChars: number }) => {
+            seen.prompt = prompt;
+            seen.options = options ?? null;
+            return { ok: true as const, output: script.answer };
+          }
+        : undefined;
+      let out: unknown = null;
+      let error: string | null = null;
+      const { lines } = await linesOf(async () => {
+        try {
+          out = await executeCustomTool(def, {}, {
+            ...(overrides ?? {}),
+            inventory: b.ctx,
+            ...(llmInvoke ? { llmInvoke } : {}),
+          });
+        } catch (e) {
+          error = (e as Error).message;
+        }
+      });
+      emit({
+        kind: 'executeCustomTool',
+        id,
+        tool: def,
+        supplied: null,
+        overrides: { ...(overrides ?? {}), inventory: b.descriptor() },
+        llmScript: script ?? null,
+        llmPromptSeen: seen.prompt,
+        llmOptionsSeen: seen.options,
+        poolHex: p.toString('hex'),
+        bytesConsumed: mockRngState.cursor,
+        inventoryLines: lines,
+        out,
+        error,
+      });
+    }
+  });
+});
+// ================================================================ end P4.D329
 
 afterAll(() => {
   if (!OUT) throw new Error('set QT_ORACLE_OUT');

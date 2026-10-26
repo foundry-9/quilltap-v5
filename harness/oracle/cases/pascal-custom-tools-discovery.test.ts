@@ -62,17 +62,27 @@ jest.mock('@/lib/mount-index/read-file', () => ({
   readMountFileBytes: jest.fn(),
 }));
 
+// P4.D329 (v4 `e1872c94f`): the roster's lazy bag. v4's own inventory suite
+// mocks the loader the same way; here it THROWS the scenario's message, so the
+// decline path (the `could not be read` line) is what is compared — the real
+// load is the route family's, over the widened pair.
+jest.mock('@/lib/inventory/context', () => ({ loadInventoryContext: jest.fn() }));
+
 import { resolveCustomToolRoster } from '@/lib/pascal/custom-tools';
 import { MAX_ROSTER_SIZE } from '@/lib/pascal/custom-tool.types';
 import { getRepositories } from '@/lib/repositories/factory';
 import { resolveTieredMountPool } from '@/lib/mount-index/tiered-mount-pool';
 import { listDatabaseFiles } from '@/lib/mount-index/database-store';
 import { readMountFileBytes } from '@/lib/mount-index/read-file';
+import { loadInventoryContext } from '@/lib/inventory/context';
+import { mockInventoryContext, type MockInventoryRow } from '@/lib/pascal/bench-inventory';
+import { logger } from '@/lib/logger';
 
 const mockGetRepositories = getRepositories as jest.Mock;
 const mockResolvePool = resolveTieredMountPool as jest.Mock;
 const mockListDatabaseFiles = listDatabaseFiles as jest.Mock;
 const mockReadMountFileBytes = readMountFileBytes as jest.Mock;
+const mockLoadInventoryContext = loadInventoryContext as jest.Mock;
 
 const OUT = process.env.QT_ORACLE_OUT;
 const rows: unknown[] = [];
@@ -110,6 +120,12 @@ interface SheetSpec {
   vaultThrows?: boolean;
   /** No `characterId` on the context at all. */
   noCharacter?: boolean;
+  /** P4.D329: `ctx.inventory` given — bench rows (a mock bag), or `null`. Absent → lazy. */
+  inventoryGiven?: MockInventoryRow[] | null;
+  /** P4.D329: no chat on the context (`chatId: ''` — the Workbench library's shape). */
+  noChat?: boolean;
+  /** P4.D329: the lazy loader's thrown message. */
+  inventoryLoadError?: string;
 }
 
 /** Counts `characters.findById` calls, so laziness is a claim and not a hope. */
@@ -155,6 +171,14 @@ function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
 }
 
 const ctx = { userId: 'u1', chatId: 'c1', characterId: 'char1' };
+
+/** P4.D329: a definition gated on the Inventory. */
+function inventoryGated(name: string, clause: 'availableWhen' | 'withheldWhen', gate: Record<string, unknown>) {
+  return tool(name, { [clause]: gate });
+}
+const SWING = inventoryGated('swing', 'availableWhen', { inventory: { sword: { eq: 'equipped' } } });
+const LOOK = tool('look');
+const UNREACHABLE = 'that vault is unreachable';
 
 /** A gated definition, for the P4.d19 scenarios. */
 function gated(name: string, clause: 'availableWhen' | 'withheldWhen', metadata: Record<string, unknown>, extra: Record<string, unknown> = {}) {
@@ -619,6 +643,101 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSp
     },
     sheet: { ctxMetadata: { faction: 'Ordo Aurum' }, vaultMetadata: CHARGED_METADATA },
   },
+  // === P4.D329: the roster's lazy bag (item 9) ===
+  {
+    id: 'inventory-given-rows',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/look.tool.json', LOOK), file('Tools/swing.tool.json', SWING)] } },
+    sheet: { ctxMetadata: {}, inventoryGiven: [{ ref: 'sword', state: 'equipped' }] },
+  },
+  {
+    id: 'inventory-given-null',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/look.tool.json', LOOK), file('Tools/swing.tool.json', SWING)] } },
+    sheet: { ctxMetadata: {}, inventoryGiven: null },
+  },
+  {
+    id: 'inventory-no-character',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/look.tool.json', LOOK), file('Tools/swing.tool.json', SWING)] } },
+    sheet: { noCharacter: true },
+  },
+  {
+    id: 'inventory-no-chat',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: { m1: { enabled: true, files: [file('Tools/look.tool.json', LOOK), file('Tools/swing.tool.json', SWING)] } },
+    sheet: { ctxMetadata: {}, noChat: true },
+  },
+  {
+    id: 'inventory-empty-record-not-named',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/badge.tool.json', inventoryGated('badge', 'availableWhen', { metadata: { faction: { eq: 'Ordo Aurum' } }, inventory: {} }))],
+      },
+    },
+    sheet: { ctxMetadata: { faction: 'Ordo Aurum' } },
+  },
+  {
+    id: 'inventory-lazy-load-refused',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [
+          file('Tools/look.tool.json', LOOK),
+          file('Tools/swing.tool.json', SWING),
+          file('Tools/flee.tool.json', inventoryGated('flee', 'withheldWhen', { inventoryCount: { ring: { gte: 2 } } })),
+          file('Tools/tally.tool.json', inventoryGated('tally', 'availableWhen', { inventoryAggregate: { 'equipped.count': { gte: 0 } } })),
+        ],
+      },
+    },
+    sheet: { ctxMetadata: {}, inventoryLoadError: UNREACHABLE },
+  },
+  {
+    id: 'inventory-count-and-aggregate-given',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [
+          file('Tools/flee.tool.json', inventoryGated('flee', 'withheldWhen', { inventoryCount: { ring: { gte: 2 } } })),
+          file('Tools/brace.tool.json', inventoryGated('brace', 'withheldWhen', { inventoryCount: { lantern: { gte: 1 } } })),
+          file('Tools/tally.tool.json', inventoryGated('tally', 'availableWhen', { inventoryAggregate: { 'equipped.count': { gte: 3 } } })),
+          file('Tools/scry.tool.json', inventoryGated('scry', 'availableWhen', { inventoryAggregate: { 'owned.metadata.power.max': { gt: 4 } } })),
+        ],
+      },
+    },
+    sheet: {
+      ctxMetadata: {},
+      inventoryGiven: [
+        { ref: 'ring', state: 'equipped', count: 2 },
+        { ref: 'lantern', state: 'carried' },
+        { ref: 'orb', state: 'carried', metadata: { power: 5 } },
+      ],
+    },
+  },
+  {
+    id: 'inventory-metadata-then-progress-then-inventory',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [
+          file(
+            'Tools/salvo.tool.json',
+            inventoryGated('salvo', 'availableWhen', {
+              metadata: { faction: { eq: 'Ordo Aurum' } },
+              progress: { 'cannon.complete': { eq: true } },
+              inventory: { sword: { neq: 'absent' } },
+            })
+          ),
+        ],
+      },
+    },
+    sheet: { vaultMetadata: CHARGED_METADATA, inventoryLoadError: UNREACHABLE },
+  },
 ];
 
 function serializeRoster(roster: Awaited<ReturnType<typeof resolveCustomToolRoster>>) {
@@ -654,12 +773,26 @@ describe('discovery oracle', () => {
       jest.clearAllMocks();
       const sheet = scenario.sheet ?? {};
       prime(scenario.pool, scenario.mounts, sheet);
+      // P4.D329: the lazy loader throws the scenario's message; the lines the
+      // roster logs about the bag are recorded in order.
+      mockLoadInventoryContext.mockImplementation(async () => {
+        throw new Error(sheet.inventoryLoadError ?? UNREACHABLE);
+      });
+      const debug = jest.spyOn(logger, 'debug');
       const scenarioCtx = {
         ...ctx,
         ...(sheet.noCharacter ? { characterId: undefined } : {}),
+        ...(sheet.noChat ? { chatId: '' } : {}),
         ...('ctxMetadata' in sheet ? { metadata: sheet.ctxMetadata } : {}),
+        ...('inventoryGiven' in sheet
+          ? { inventory: sheet.inventoryGiven === null ? null : mockInventoryContext(sheet.inventoryGiven ?? []) }
+          : {}),
       };
       const roster = await resolveCustomToolRoster(scenarioCtx);
+      const inventoryLines = debug.mock.calls
+        .filter(([message]) => typeof message === 'string' && message.startsWith('Custom-tool gates:') && message.includes('inventory'))
+        .map(([message, bag]) => ({ message, bag: bag ?? null }));
+      debug.mockRestore();
       rows.push({
         kind: 'roster',
         id: scenario.id,
@@ -668,6 +801,10 @@ describe('discovery oracle', () => {
         // The lazy-read claim: no vault read unless a gated definition turns up,
         // and never more than one across every tier.
         sheetReads,
+        // P4.D329: the bag's lazy read — once at most, and only when a gate
+        // names an Inventory subject — and the lines it logged.
+        inventoryReads: mockLoadInventoryContext.mock.calls.length,
+        inventoryLines,
       });
     }
   });

@@ -162,6 +162,9 @@ function bodyFor(c: CaseSpec, corpus: Corpus): Record<string, unknown> {
   if (Object.prototype.hasOwnProperty.call(c, 'llm')) body.llm = (c as {llm: unknown}).llm;
   // P4.d10 §B: the mock merged state rides the same hasOwnProperty rule.
   if (Object.prototype.hasOwnProperty.call(c, 'state')) body.state = (c as {state: unknown}).state;
+  // P4.D329: the bench's mock bag rides the same rule (`null` is `.nullish()`'s
+  // distinct arm).
+  if (Object.prototype.hasOwnProperty.call(c, 'inventory')) body.inventory = (c as {inventory: unknown}).inventory;
   return body;
 }
 

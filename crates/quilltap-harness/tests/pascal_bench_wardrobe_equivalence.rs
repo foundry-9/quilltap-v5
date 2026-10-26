@@ -111,6 +111,8 @@ fn pascal_bench_wardrobe_matches_oracle() {
                         None,
                         NOW_MS,
                         row["character"].as_str(),
+                        // P4.D329: the lens rows read no bag.
+                        None,
                     ))
                     .unwrap_or_else(|e| panic!("lens '{id}': deal refused: {}", e.0));
                 let effects = result.effects.unwrap_or_default();

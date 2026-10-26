@@ -25,11 +25,19 @@ use crate::pascal::custom_tool_types::{
     WardrobeEffectAction, When, WhenObject,
 };
 use crate::pascal::custom_tools::LlmInvoker;
+// === P4.D329: the inventory describers ===
+use crate::pascal::custom_tool_types::{
+    InventoryEffectAction, InventoryStateOperand, StateRefFallback,
+};
+use crate::pascal::inventory_aggregate::{
+    is_list_aggregate, parse_aggregate_key, AggregateField, AggregateScope,
+};
 use crate::pascal::js_value::{json_stringify, number_to_string};
 use crate::pascal::roster::{resolve_custom_tool_roster, DiscoveredCustomTool, RosterContext};
 use crate::pascal::run_service::{
     run_custom_tool, InvokedBy, RunCustomToolOutcome, RunCustomToolParams,
 };
+use crate::pascal::tool_vocabulary::collect_tool_vocabulary;
 use crate::services::pascal_writer::PostedPascalMessage;
 use crate::services::prospero_notifications::{
     post_prospero_custom_tool_error, ProsperoCustomToolErrorArgs,
@@ -102,7 +110,7 @@ const RUN_CUSTOM_PREAMBLE: &str = concat!(
     "Do not describe the result before calling, and do not re-run a tool to get a better answer.\n",
     "An outcome table may also consult your own character's metadata, so the same tool can deal differently to different characters.\n",
     "Some tools additionally pose a question to a separate model mid-run and let its answer steer the outcome; that consult happens server-side too, and you never speak for it.\n",
-    "Some tools record side effects when they run — adjusting the scene's persistent state, the rolling character's own records, or what they are wearing, server-side, as part of the roll.\n",
+    "Some tools record side effects when they run — adjusting the scene's persistent state, the rolling character's own records, what they are wearing, or what they carry, server-side, as part of the roll.\n",
     "Some tools consult, or adjust, the rolling character's timed progressions — recharges, gestations, countdowns — server-side; you cannot set one yourself.\n",
     "\n",
     "Available tools:"
@@ -149,6 +157,23 @@ pub fn describe_effects(effects: &[CustomToolEffect]) -> String {
             clauses.push(clause);
         }
     }
+    // === P4.D329: one clause per inventory gesture — `equips Excalibur`,
+    // `unequips lantern`, `picks up magic bow` — AFTER the wardrobe clauses and
+    // BEFORE the Log's `writes to the log` (P4.D331's, LAST). ===
+    for effect in effects {
+        let CustomToolEffectBody::Inventory(gesture) = &effect.body else {
+            continue;
+        };
+        let verb = match gesture.action {
+            InventoryEffectAction::Equip => "equips",
+            InventoryEffectAction::Unequip => "unequips",
+            InventoryEffectAction::PickUp => "picks up",
+        };
+        let clause = format!("{verb} {}", gesture.items.join(", "));
+        if !clauses.contains(&clause) {
+            clauses.push(clause);
+        }
+    }
     clauses.join("; ")
 }
 
@@ -160,6 +185,8 @@ fn render_nopr(v: &NumberOrParamRef) -> String {
         NumberOrParamRef::Number(n) => number_to_string(*n),
         // v4's `${v}` template coercion on a $state object → "[object Object]".
         NumberOrParamRef::StateRef(_) => "[object Object]".to_string(),
+        // P4.D329: likewise a $inventory object.
+        NumberOrParamRef::InventoryRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -168,7 +195,24 @@ fn describe_roll(roll: &Option<Roll>) -> String {
     match roll {
         None => "random value from 0 to 1".to_string(),
         Some(Roll::Dice(notation)) => format!("dice {notation}"),
+        // === P4.D329: `dice from ${roll.$inventory} (else ${roll.fallback})` ===
+        // JS template coercion of the fallback: only a STRING fallback loads
+        // for a whole roll, but the arm stays total.
+        Some(Roll::Inventory(r)) => format!(
+            "dice from {} (else {})",
+            r.inventory,
+            fallback_template_text(&r.fallback)
+        ),
         Some(Roll::Range(range)) => describe_roll_range(range),
+    }
+}
+
+/// JS `${fallback}` over the three fallback types (P4.D329).
+fn fallback_template_text(fallback: &StateRefFallback) -> String {
+    match fallback {
+        StateRefFallback::Number(n) => number_to_string(*n),
+        StateRefFallback::String(s) => s.clone(),
+        StateRefFallback::Bool(b) => b.to_string(),
     }
 }
 
@@ -218,6 +262,8 @@ fn describe_string_operand(operand: &StringOperand) -> String {
         StringOperand::String(s) => json_stringify(&Value::String(s.clone())),
         // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
         StringOperand::StateRef(_) => "[object Object]".to_string(),
+        // P4.D329: nor a $inventory arm.
+        StringOperand::InventoryRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -238,6 +284,8 @@ fn describe_any_operand(operand: &AnyOperand) -> String {
         }
         // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
         AnyOperand::StateRef(_) => "[object Object]".to_string(),
+        // P4.D329: nor a $inventory arm.
+        AnyOperand::InventoryRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -248,6 +296,8 @@ fn describe_numeric_operand(operand: &NumberOrParamRef) -> String {
         NumberOrParamRef::Number(n) => number_to_string(*n),
         // v4 `describeOperand` has no $state arm: `String(object)` → "[object Object]".
         NumberOrParamRef::StateRef(_) => "[object Object]".to_string(),
+        // P4.D329: nor a $inventory arm.
+        NumberOrParamRef::InventoryRef(_) => "[object Object]".to_string(),
     }
 }
 
@@ -382,8 +432,103 @@ fn describe_when(when: &When) -> String {
     if let Some(llm) = &when.llm {
         parts.extend(describe_llm_comparator(llm));
     }
+    // === P4.D329: the three inventory clauses (after `llm`) ===
+    for (reference, cmp) in when.inventory.iter().flatten() {
+        if let Some(eq) = &cmp.eq {
+            parts.push(format!(
+                "your {reference} is {}",
+                describe_state_operand(eq)
+            ));
+        }
+        if let Some(neq) = &cmp.neq {
+            parts.push(format!(
+                "your {reference} is not {}",
+                describe_state_operand(neq)
+            ));
+        }
+    }
+    for (reference, cmp) in when.inventory_count.iter().flatten() {
+        parts.extend(describe_numeric_comparator(
+            cmp,
+            &format!("your equipped {reference} count"),
+        ));
+    }
+    for (key, cmp) in when.inventory_aggregate.iter().flatten() {
+        parts.extend(describe_aggregate(key, cmp));
+    }
 
     parts.join(" and ")
+}
+
+// === P4.D329: the aggregate describers ===
+/// v4 `describeOperand` over an `inventory` state operand: a literal state is
+/// JSON-quoted, a `$param` names its parameter.
+fn describe_state_operand(operand: &InventoryStateOperand) -> String {
+    match operand {
+        InventoryStateOperand::State(s) => json_stringify(&Value::String(s.as_str().to_string())),
+        InventoryStateOperand::ParamRef(ParamRef { param }) => param.clone(),
+    }
+}
+
+/// v4 `SCOPE_WORDS` — the possessive a scope reads as, and how its count is
+/// asked.
+fn scope_words(scope: AggregateScope) -> (&'static str, &'static str) {
+    match scope {
+        AggregateScope::Equipped => (
+            "your equipped objects'",
+            "how many objects you have equipped",
+        ),
+        AggregateScope::Owned => ("your owned objects'", "how many objects you own"),
+        AggregateScope::Reachable => ("your reachable objects'", "how many objects you can reach"),
+    }
+}
+
+/// v4 `LIST_WORDS` — the list comparators read as sentences about entries,
+/// not as symbols.
+const LIST_WORDS: [(&str, &str); 4] = [
+    ("eq", "includes"),
+    ("neq", "includes no"),
+    ("contains", "has an entry containing"),
+    ("ncontains", "has no entry containing"),
+];
+
+/// v4 `describeAggregate(key, comparator)` — render one `inventoryAggregate`
+/// test.
+fn describe_aggregate(key: &str, cmp: &ParamComparator) -> Vec<String> {
+    let parsed = match parse_aggregate_key(key) {
+        Ok(parsed) => parsed,
+        Err(_) => return describe_param_comparator(cmp, &format!("your inventory's {key}")),
+    };
+    let (possessive, count) = scope_words(parsed.scope);
+    let subject = match &parsed.field {
+        AggregateField::Count => return describe_param_comparator(cmp, count),
+        AggregateField::Metadata { key, fold } => match fold {
+            // `possessive.replace(/'$/, '')` — the trailing apostrophe off.
+            Some(crate::pascal::inventory_aggregate::AggregateFold::Count) => format!(
+                "how many of {} carry a numeric metadata.{key}",
+                possessive.strip_suffix('\'').unwrap_or(possessive)
+            ),
+            Some(fold) => format!("{possessive} metadata.{key}.{}", fold.as_str()),
+            None => format!("{possessive} metadata.{key}"),
+        },
+        AggregateField::Names => format!("{possessive} names"),
+        AggregateField::Titles => format!("{possessive} titles"),
+    };
+    if !is_list_aggregate(&parsed) {
+        return describe_param_comparator(cmp, &subject);
+    }
+    LIST_WORDS
+        .iter()
+        .filter_map(|(k, verb)| {
+            let operand = match *k {
+                "eq" => cmp.eq.as_ref().map(describe_any_operand),
+                "neq" => cmp.neq.as_ref().map(describe_any_operand),
+                "contains" => cmp.contains.as_ref().map(describe_string_operand),
+                _ => cmp.ncontains.as_ref().map(describe_string_operand),
+            }?;
+            Some(format!("{subject} {verb} {operand}"))
+        })
+        .collect()
 }
 
 /// Compose the tool description for a resolved roster (v4
@@ -456,6 +601,22 @@ pub fn build_run_custom_description(roster: &[DiscoveredCustomTool]) -> String {
             // their item references verbatim, placeholders and all — what may
             // be worn, not which outcome wears it.
             lines.push(format!("    Side effects: {}", describe_effects(effects)));
+        }
+        // === P4.D329: which objects the tool consults — vocabulary, never the
+        // odds (AFTER `Side effects:`, BEFORE the outcome rows; gone under
+        // `revealOdds: false` with the rest). ===
+        let vocabulary = collect_tool_vocabulary(definition);
+        if !vocabulary.inventory_reads.is_empty() {
+            lines.push(format!(
+                "    Reads: your inventory for {}",
+                vocabulary.inventory_reads.join(", ")
+            ));
+        }
+        if !vocabulary.inventory_aggregates.is_empty() {
+            lines.push(format!(
+                "    Takes stock of: {}",
+                vocabulary.inventory_aggregates.join(", ")
+            ));
         }
         for outcome in &definition.outcomes {
             lines.push(format!(
@@ -713,6 +874,8 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         project_id: ctx.project_id.clone(),
         // The sheet the gates are answered against, already in hand.
         metadata: Some(metadata.clone()),
+        // P4.D329: the bag loads lazily, only when a gate names it.
+        inventory: None,
     };
     let roster = match db.read_main(|main| {
         db.read_mount_index(|mount| {

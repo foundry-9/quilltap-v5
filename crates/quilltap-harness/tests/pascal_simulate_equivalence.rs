@@ -54,6 +54,12 @@ fn simulate_outcomes_matches_oracle() {
             Some(s @ Value::Object(_)) => Some(s.clone()),
             _ => None,
         };
+        // P4.D329: the mock bag (`inventory` rows), held fixed across every
+        // draw — v4's `mockInventoryContext(rows)`, absent → null.
+        let bag =
+            quilltap_core::pascal::bench_inventory::parse_mock_inventory(row.get("inventory"))
+                .unwrap_or_else(|e| panic!("case '{id}': bad mock inventory: {e:?}"))
+                .map(|rows| quilltap_core::pascal::bench_inventory::mock_inventory_context(&rows));
         let mut rng = FixedBytes::new(vec![]);
         let got = simulate_outcomes(
             &definition,
@@ -66,6 +72,8 @@ fn simulate_outcomes_matches_oracle() {
             // P4.D169: the audit's mock progress sheet, held fixed across every
             // draw. Absent on every pre-existing row.
             progress.as_ref(),
+            bag.as_ref()
+                .map(|b| b as &dyn quilltap_core::pascal::p4d329_c2_standins::InventoryContext),
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));
         assert_eq!(rng.consumed(), 0, "case '{id}' consumed bytes");

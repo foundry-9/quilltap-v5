@@ -408,6 +408,124 @@
           "state": "info"
         }
       ]
+    },
+    "inventoryBench": {
+      "name": "inventory_bench",
+      "description": "Consults the bag.",
+      "availableWhen": {
+        "inventory": {
+          "sword": {
+            "eq": "equipped"
+          }
+        }
+      },
+      "roll": {
+        "min": 2,
+        "max": 2
+      },
+      "effects": [
+        {
+          "inventory": {
+            "action": "equip",
+            "items": [
+              "{{inventory.rope.state}} rope"
+            ]
+          }
+        },
+        {
+          "when": {
+            "inventoryCount": {
+              "ring": {
+                "gte": 2
+              }
+            }
+          },
+          "inventory": {
+            "action": "pick_up",
+            "items": [
+              "magic bow"
+            ],
+            "equip": false
+          }
+        }
+      ],
+      "outcomes": [
+        {
+          "when": {
+            "inventoryCount": {
+              "ring": {
+                "gte": 2
+              }
+            },
+            "inventoryAggregate": {
+              "equipped.count": {
+                "gte": 2
+              }
+            }
+          },
+          "message": "{{inventory.sword.state}} with {{inventory.ring.state}} rings",
+          "state": "success"
+        },
+        {
+          "when": {
+            "inventory": {
+              "lantern": {
+                "eq": "carried"
+              }
+            }
+          },
+          "message": "lit",
+          "state": "info"
+        },
+        {
+          "when": true,
+          "message": "bare: {{inventory.sword.title}}",
+          "state": "failure"
+        }
+      ]
+    },
+    "inventoryRoll": {
+      "name": "inventory_roll",
+      "description": "Rolls what the bag holds.",
+      "parameters": {
+        "bonus": {
+          "type": "number",
+          "default": {
+            "$inventory": "sword.metadata.bonus",
+            "fallback": 4
+          }
+        }
+      },
+      "roll": {
+        "min": {
+          "$inventory": "sword.metadata.bonus",
+          "fallback": 3
+        },
+        "max": {
+          "$inventory": "sword.metadata.bonus",
+          "fallback": 3
+        },
+        "offset": {
+          "$param": "bonus"
+        }
+      },
+      "outcomes": [
+        {
+          "when": {
+            "gte": {
+              "$inventory": "ring.metadata.power",
+              "fallback": 7
+            }
+          },
+          "message": "{{value}}",
+          "state": "success"
+        },
+        {
+          "when": true,
+          "message": "low",
+          "state": "failure"
+        }
+      ]
     }
   },
   "cases": [
@@ -1116,6 +1234,460 @@
       "action": "audit",
       "definition": "wardrobeLens",
       "metadataCharacter": "imogen"
+    },
+    {
+      "name": "inventory-preview-mock-bag",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "equipped",
+          "metadata": {
+            "bonus": 3
+          }
+        },
+        {
+          "ref": "ring",
+          "state": "equipped",
+          "count": 2
+        },
+        {
+          "ref": "lantern",
+          "state": "carried"
+        },
+        {
+          "ref": "rope",
+          "state": "reachable"
+        }
+      ]
+    },
+    {
+      "name": "inventory-preview-lantern-only",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "lantern",
+          "state": "carried"
+        }
+      ]
+    },
+    {
+      "name": "inventory-preview-null-bag",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": null
+    },
+    {
+      "name": "inventory-preview-absent-bag",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench"
+    },
+    {
+      "name": "inventory-preview-empty-bag",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": []
+    },
+    {
+      "name": "inventory-audit-mock-bag",
+      "method": "POST",
+      "action": "audit",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "equipped",
+          "metadata": {
+            "bonus": 3
+          }
+        },
+        {
+          "ref": "ring",
+          "state": "equipped",
+          "count": 2
+        },
+        {
+          "ref": "lantern",
+          "state": "carried"
+        },
+        {
+          "ref": "rope",
+          "state": "reachable"
+        }
+      ]
+    },
+    {
+      "name": "inventory-audit-null-bag",
+      "method": "POST",
+      "action": "audit",
+      "definition": "inventoryBench",
+      "inventory": null
+    },
+    {
+      "name": "inventory-preview-operand-roll",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryRoll",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "equipped",
+          "metadata": {
+            "bonus": 3
+          }
+        },
+        {
+          "ref": "ring",
+          "state": "equipped",
+          "count": 2
+        },
+        {
+          "ref": "lantern",
+          "state": "carried"
+        },
+        {
+          "ref": "rope",
+          "state": "reachable"
+        }
+      ]
+    },
+    {
+      "name": "inventory-audit-operand-roll",
+      "method": "POST",
+      "action": "audit",
+      "definition": "inventoryRoll",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "equipped",
+          "metadata": {
+            "bonus": 3
+          }
+        },
+        {
+          "ref": "ring",
+          "state": "equipped",
+          "count": 2
+        },
+        {
+          "ref": "lantern",
+          "state": "carried"
+        },
+        {
+          "ref": "rope",
+          "state": "reachable"
+        }
+      ]
+    },
+    {
+      "name": "inventory-preview-bad-state",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "worn"
+        }
+      ]
+    },
+    {
+      "name": "inventory-preview-not-array",
+      "method": "POST",
+      "action": "preview",
+      "definition": "inventoryBench",
+      "inventory": {
+        "ref": "sword",
+        "state": "equipped"
+      }
+    },
+    {
+      "name": "inventory-audit-too-many-rows",
+      "method": "POST",
+      "action": "audit",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "r0",
+          "state": "carried"
+        },
+        {
+          "ref": "r1",
+          "state": "carried"
+        },
+        {
+          "ref": "r2",
+          "state": "carried"
+        },
+        {
+          "ref": "r3",
+          "state": "carried"
+        },
+        {
+          "ref": "r4",
+          "state": "carried"
+        },
+        {
+          "ref": "r5",
+          "state": "carried"
+        },
+        {
+          "ref": "r6",
+          "state": "carried"
+        },
+        {
+          "ref": "r7",
+          "state": "carried"
+        },
+        {
+          "ref": "r8",
+          "state": "carried"
+        },
+        {
+          "ref": "r9",
+          "state": "carried"
+        },
+        {
+          "ref": "r10",
+          "state": "carried"
+        },
+        {
+          "ref": "r11",
+          "state": "carried"
+        },
+        {
+          "ref": "r12",
+          "state": "carried"
+        },
+        {
+          "ref": "r13",
+          "state": "carried"
+        },
+        {
+          "ref": "r14",
+          "state": "carried"
+        },
+        {
+          "ref": "r15",
+          "state": "carried"
+        },
+        {
+          "ref": "r16",
+          "state": "carried"
+        },
+        {
+          "ref": "r17",
+          "state": "carried"
+        },
+        {
+          "ref": "r18",
+          "state": "carried"
+        },
+        {
+          "ref": "r19",
+          "state": "carried"
+        },
+        {
+          "ref": "r20",
+          "state": "carried"
+        },
+        {
+          "ref": "r21",
+          "state": "carried"
+        },
+        {
+          "ref": "r22",
+          "state": "carried"
+        },
+        {
+          "ref": "r23",
+          "state": "carried"
+        },
+        {
+          "ref": "r24",
+          "state": "carried"
+        },
+        {
+          "ref": "r25",
+          "state": "carried"
+        },
+        {
+          "ref": "r26",
+          "state": "carried"
+        },
+        {
+          "ref": "r27",
+          "state": "carried"
+        },
+        {
+          "ref": "r28",
+          "state": "carried"
+        },
+        {
+          "ref": "r29",
+          "state": "carried"
+        },
+        {
+          "ref": "r30",
+          "state": "carried"
+        },
+        {
+          "ref": "r31",
+          "state": "carried"
+        },
+        {
+          "ref": "r32",
+          "state": "carried"
+        },
+        {
+          "ref": "r33",
+          "state": "carried"
+        },
+        {
+          "ref": "r34",
+          "state": "carried"
+        },
+        {
+          "ref": "r35",
+          "state": "carried"
+        },
+        {
+          "ref": "r36",
+          "state": "carried"
+        },
+        {
+          "ref": "r37",
+          "state": "carried"
+        },
+        {
+          "ref": "r38",
+          "state": "carried"
+        },
+        {
+          "ref": "r39",
+          "state": "carried"
+        },
+        {
+          "ref": "r40",
+          "state": "carried"
+        },
+        {
+          "ref": "r41",
+          "state": "carried"
+        },
+        {
+          "ref": "r42",
+          "state": "carried"
+        },
+        {
+          "ref": "r43",
+          "state": "carried"
+        },
+        {
+          "ref": "r44",
+          "state": "carried"
+        },
+        {
+          "ref": "r45",
+          "state": "carried"
+        },
+        {
+          "ref": "r46",
+          "state": "carried"
+        },
+        {
+          "ref": "r47",
+          "state": "carried"
+        },
+        {
+          "ref": "r48",
+          "state": "carried"
+        },
+        {
+          "ref": "r49",
+          "state": "carried"
+        },
+        {
+          "ref": "r50",
+          "state": "carried"
+        },
+        {
+          "ref": "r51",
+          "state": "carried"
+        },
+        {
+          "ref": "r52",
+          "state": "carried"
+        },
+        {
+          "ref": "r53",
+          "state": "carried"
+        },
+        {
+          "ref": "r54",
+          "state": "carried"
+        },
+        {
+          "ref": "r55",
+          "state": "carried"
+        },
+        {
+          "ref": "r56",
+          "state": "carried"
+        },
+        {
+          "ref": "r57",
+          "state": "carried"
+        },
+        {
+          "ref": "r58",
+          "state": "carried"
+        },
+        {
+          "ref": "r59",
+          "state": "carried"
+        },
+        {
+          "ref": "r60",
+          "state": "carried"
+        },
+        {
+          "ref": "r61",
+          "state": "carried"
+        },
+        {
+          "ref": "r62",
+          "state": "carried"
+        },
+        {
+          "ref": "r63",
+          "state": "carried"
+        },
+        {
+          "ref": "r64",
+          "state": "carried"
+        }
+      ]
+    },
+    {
+      "name": "inventory-audit-unknown-key",
+      "method": "POST",
+      "action": "audit",
+      "definition": "inventoryBench",
+      "inventory": [
+        {
+          "ref": "sword",
+          "state": "equipped",
+          "colour": "red"
+        }
+      ]
     }
   ]
 }

@@ -43,6 +43,10 @@ use super::custom_tool_types::{
     TOOLS_FOLDER, TOOL_FILE_SUFFIX,
 };
 use super::tool_gate::{evaluate_tool_gate, has_tool_gate};
+// === P4.D329: the invoker's bag ===
+use super::inventory_subjects::gate_names_inventory;
+// === LANE-REMOVE (P4.D329): C2 import ===
+use super::p4d329_c2_standins::{load_inventory_context, InventoryContext, LoadedInventoryContext};
 use crate::progressions::flatten_progressions;
 
 /// Tier precedence, nearest first. A nearer tier shadows a farther one.
@@ -164,6 +168,94 @@ pub struct RosterContext {
     /// `Some(map)` — including `Some({})` — is v4's truthy `ctx.metadata` and
     /// short-circuits the read; `None` is v4's `null`/`undefined` and does not.
     pub metadata: Option<Map<String, Value>>,
+    // === P4.D329: the invoker's bag (appended LAST) ===
+    /// The invoking character's Inventory context for this chat, which gates on
+    /// `inventory` / `inventoryCount` / `inventoryAggregate` are answered
+    /// against. The tri-state is v4's: `None` (omitted) → loaded lazily, once,
+    /// and only when a gated definition names one of those subjects;
+    /// `Some(None)` (given `null`) → every inventory test declines, nothing is
+    /// read; `Some(Some(bag))` → that bag. A context without a chat or
+    /// character, or a vault that cannot be read, degrades to `null`.
+    pub inventory: Option<Option<RosterInventory>>,
+}
+
+// === P4.D329: the invoker's bag ===
+/// A bag handed to the roster (v4's `ctx.inventory`), shareable so
+/// [`RosterContext`] keeps its `Clone`.
+#[derive(Clone)]
+pub struct RosterInventory(pub std::sync::Arc<dyn InventoryContext + Send + Sync>);
+
+impl std::fmt::Debug for RosterInventory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("RosterInventory")
+            .field(&self.0.character_id())
+            .finish()
+    }
+}
+
+/// The invoking character's Inventory, for the availability gates (v4
+/// `loadInvokerInventory`). `None` when there is no character or chat to read
+/// it for, or it cannot be read — and a `None` bag declines every inventory
+/// comparator.
+///
+/// `load` is the one read (`load_inventory_context` over the roster's
+/// connections in production); its error is the text v4's `getErrorMessage`
+/// would log. Exposed so the discovery differential drives THIS decision and
+/// these lines, with the read injected — the `load` closure is v4's mocked
+/// `loadInventoryContext`.
+pub fn invoker_inventory(
+    ctx: &RosterContext,
+    load: impl FnOnce(&str, &str) -> Result<LoadedInventoryContext, String>,
+) -> Option<std::sync::Arc<dyn InventoryContext + Send + Sync>> {
+    if let Some(given) = &ctx.inventory {
+        return given.as_ref().map(|bag| bag.0.clone());
+    }
+    let chat_id = Some(ctx.chat_id.as_str()).filter(|c| !c.is_empty());
+    let (Some(character_id), Some(chat_id)) = (ctx.character_id.as_deref(), chat_id) else {
+        tracing::debug!(
+            target: "quilltap::pascal",
+            context = "pascal.custom-tools",
+            chatId = chat_id,
+            characterId = ctx.character_id.as_deref(),
+            "Custom-tool gates: no character or chat to read an inventory for; inventory tests decline",
+        );
+        return None;
+    };
+    match load(character_id, chat_id) {
+        Ok(loaded) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                chatId = chat_id,
+                characterId = character_id,
+                reachable = loaded.pool.items.len(),
+                equipped = loaded.equipped_ids.len(),
+                "Custom-tool gates: loaded the invoker\u{2019}s inventory",
+            );
+            Some(std::sync::Arc::new(loaded))
+        }
+        Err(error) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                chatId = chat_id,
+                characterId = character_id,
+                error,
+                "Custom-tool gates: the invoker\u{2019}s inventory could not be read; inventory tests decline",
+            );
+            None
+        }
+    }
+}
+
+fn load_invoker_inventory(
+    ctx: &RosterContext,
+    main: &Connection,
+    mount: &Connection,
+) -> Option<std::sync::Arc<dyn InventoryContext + Send + Sync>> {
+    invoker_inventory(ctx, |character_id, chat_id| {
+        load_inventory_context(main, mount, character_id, Some(chat_id)).map_err(|e| e.to_string())
+    })
 }
 
 /// The content of one candidate tool file, whichever kind of store held it.
@@ -392,6 +484,9 @@ pub fn resolve_roster_from_pool(
     pool: &TieredMountPool,
     mut load: impl FnMut(&str, MountTier) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>),
     mut invoker_metadata: impl FnMut() -> Map<String, Value>,
+    // === P4.D329: the invoker's bag, read at most once and only when a gate
+    // names `inventory` / `inventoryCount` / `inventoryAggregate` ===
+    mut invoker_inventory: impl FnMut() -> Option<std::sync::Arc<dyn InventoryContext + Send + Sync>>,
     // ONE clock reading for the whole roster resolution, so two gates cannot
     // disagree about whether the cannon has finished charging. Injected rather
     // than read here (v4 takes `Date.now()` at the top of the function) so the
@@ -411,6 +506,8 @@ pub fn resolve_roster_from_pool(
     // pays nothing for the feature. v4 memoises a thunk; synchronous Rust
     // memoises the value.
     let mut progress_sheet: Option<Map<String, Value>> = None;
+    // P4.D329: likewise the invoker's Inventory (v4 `bag ??= …`).
+    let mut bag: Option<Option<std::sync::Arc<dyn InventoryContext + Send + Sync>>> = None;
 
     for (tier, mount_point_id) in ordered_mounts(pool) {
         let (found, mount_errors) = load(&mount_point_id, tier);
@@ -465,8 +562,22 @@ pub fn resolve_roster_from_pool(
                 } else {
                     None
                 };
-                let verdict =
-                    evaluate_tool_gate(&entry.definition, Some(&metadata), progress.map(|p| &*p));
+                // === P4.D329: the invoker's bag, read only when a gate names it ===
+                let names_inventory =
+                    gate_names_inventory(entry.definition.available_when.as_ref())
+                        || gate_names_inventory(entry.definition.withheld_when.as_ref());
+                let inventory = if names_inventory {
+                    bag.get_or_insert_with(&mut invoker_inventory).clone()
+                } else {
+                    None
+                };
+                // === end P4.D329 ===
+                let verdict = evaluate_tool_gate(
+                    &entry.definition,
+                    Some(&metadata),
+                    progress.map(|p| &*p),
+                    inventory.as_deref().map(|b| b as &dyn InventoryContext),
+                );
                 if !verdict.available {
                     // v4's `logger.debug('Custom tool withheld by its
                     // availability gate', {…})`, same point, same fields.
@@ -765,6 +876,8 @@ pub fn resolve_custom_tool_roster(
         &pool,
         |mount_point_id, tier| load_tools_from_mount(mount, mount_point_id, tier),
         || load_invoker_metadata(ctx, main, mount),
+        // P4.D329
+        || load_invoker_inventory(ctx, main, mount),
         roster_now_ms,
     )
 }

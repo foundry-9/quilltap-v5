@@ -23,10 +23,23 @@ use super::custom_tool_types::{
     StateRefFallback, StringOperand, Visibility, WardrobeEffectAction, When, WhenObject,
     MAX_LLM_OUTPUT_LENGTH,
 };
+// === P4.D329: the inventory deal ===
+use super::custom_tool_types::{
+    is_inventory_ref_value, CustomToolInventoryGesture, InventoryEffectAction, InventoryRef,
+    InventoryStateOperand,
+};
+use super::inventory_aggregate::{describe_aggregate_value, inventory_aggregate_holds};
+use super::inventory_subjects::{
+    inventory_count_holds, inventory_state_holds, resolve_inventory_value,
+    ResolvedInventoryCountTest, ResolvedInventoryStateTest,
+};
+// === LANE-REMOVE (P4.D329): C2 import ===
 use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
 use super::expressions::{evaluate_expression, parse_expression};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
+use super::p4d329_c2_standins::InventoryContext;
+use super::placeholders::InventoryPlaceholderField;
 use super::placeholders::{classify_placeholder, PlaceholderRef, PLACEHOLDER_PATTERN};
 use crate::jsstr::{self, js_trim};
 
@@ -88,6 +101,24 @@ fn state_ref_from_default(v: &Value) -> Option<StateRef> {
         _ => return None,
     };
     Some(StateRef { state, fallback })
+}
+
+// === P4.D329: the `$inventory` parameter default ===
+/// Rehydrate a schema-validated `$inventory` parameter default (stored as its
+/// raw JSON object) into an [`InventoryRef`].
+fn inventory_ref_from_default(v: &Value) -> Option<InventoryRef> {
+    let obj = v.as_object()?;
+    let inventory = obj.get("$inventory")?.as_str()?.to_string();
+    let fallback = match obj.get("fallback")? {
+        Value::Number(n) => StateRefFallback::Number(n.as_f64()?),
+        Value::String(s) => StateRefFallback::String(s.clone()),
+        Value::Bool(b) => StateRefFallback::Bool(*b),
+        _ => return None,
+    };
+    Some(InventoryRef {
+        inventory,
+        fallback,
+    })
 }
 
 /// One resolved parameter value: v4's `number | string | boolean`.
@@ -260,6 +291,8 @@ pub fn resolve_params(
     definition: &QtapCustomTool,
     supplied: Option<&serde_json::Map<String, Value>>,
     state: Option<&Value>,
+    // P4.D329: the rolling character's bag, for a `$inventory` default.
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<ResolvedParams, CustomToolRunError> {
     let empty = Vec::new();
     let declared = definition.parameters.as_ref().unwrap_or(&empty);
@@ -286,7 +319,7 @@ pub fn resolve_params(
         let given = supplied.and_then(|g| g.get(name));
         resolved.push((
             name.clone(),
-            coerce_param(&definition.name, name, spec, given, state)?,
+            coerce_param(&definition.name, name, spec, given, state, inventory)?,
         ));
     }
     Ok(resolved)
@@ -302,16 +335,24 @@ fn coerce_param(
     spec: &CustomToolParameter,
     value: Option<&Value>,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<ResolvedValue, CustomToolRunError> {
     // `undefined` and `null` both fall back to the declared default, which may
-    // itself be a `$state` reference resolved against the merged state (its
-    // fallback is type-checked against this parameter's type at load time, so
-    // it always fits).
+    // itself be a `$state` reference resolved against the merged state, or a
+    // `$inventory` reference into an object the rolling character carries
+    // (each fallback is type-checked against this parameter's type at load
+    // time, so it always fits).
     let value = match value {
         None | Some(Value::Null) => {
             if is_state_ref_value(&spec.default) {
                 if let Some(r) = state_ref_from_default(&spec.default) {
                     return Ok(resolve_state_value(&r, state));
+                }
+            }
+            // === P4.D329: the `$inventory` default ===
+            if is_inventory_ref_value(&spec.default) {
+                if let Some(r) = inventory_ref_from_default(&spec.default) {
+                    return Ok(resolve_inventory_value(&r, inventory));
                 }
             }
             return Ok(default_value(spec));
@@ -406,12 +447,24 @@ fn resolve_roll_field(
     params: &ResolvedParams,
     fallback: f64,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<f64, CustomToolRunError> {
     let Some(spec) = spec else {
         return Ok(fallback);
     };
 
     match spec {
+        // === P4.D329: a `$inventory` roll field ===
+        // Resolves to the object's (numeric) metadata or its numeric fallback —
+        // never a failure, exactly as `$state` does. The throw arm is a
+        // regression tripwire (a non-numeric fallback is rejected at load).
+        NumberOrParamRef::InventoryRef(r) => match resolve_inventory_value(r, inventory) {
+            ResolvedValue::Number(n) if n.is_finite() => Ok(n),
+            other => Err(err(format!(
+                "{tool_name}: roll.{field} $inventory reference resolved to {} rather than a finite number",
+                other.stringify()
+            ))),
+        },
         // A `$state` roll field resolves to its (numeric, load-checked) value
         // or its numeric fallback — never a failure, so a roll is always
         // dealable. The throw arm is a regression tripwire (a non-numeric
@@ -474,11 +527,28 @@ fn roll_range(
     range: &RollRange,
     params: &ResolvedParams,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
     rng: &mut dyn RandomBytes,
 ) -> Result<(f64, f64), CustomToolRunError> {
     let name = &definition.name;
-    let min = resolve_roll_field(name, "min", range.min.as_ref(), params, 0.0, state)?;
-    let max = resolve_roll_field(name, "max", range.max.as_ref(), params, 1.0, state)?;
+    let min = resolve_roll_field(
+        name,
+        "min",
+        range.min.as_ref(),
+        params,
+        0.0,
+        state,
+        inventory,
+    )?;
+    let max = resolve_roll_field(
+        name,
+        "max",
+        range.max.as_ref(),
+        params,
+        1.0,
+        state,
+        inventory,
+    )?;
     let multiplier = resolve_roll_field(
         name,
         "multiplier",
@@ -486,8 +556,17 @@ fn roll_range(
         params,
         1.0,
         state,
+        inventory,
     )?;
-    let offset = resolve_roll_field(name, "offset", range.offset.as_ref(), params, 0.0, state)?;
+    let offset = resolve_roll_field(
+        name,
+        "offset",
+        range.offset.as_ref(),
+        params,
+        0.0,
+        state,
+        inventory,
+    )?;
 
     if min > max {
         return Err(err(format!(
@@ -555,6 +634,12 @@ pub struct OutcomeSubjects<'a> {
     /// the object is never serialized, so the position is unobservable and the
     /// field is appended here rather than reordering v5's struct (P4.D319 R-11).
     pub character: Option<&'a str>,
+    // === P4.D329: the rolling character's bag (appended LAST — never serialized) ===
+    /// The rolling character's Inventory for this chat, loaded once per run.
+    /// `None` for a run nobody made, or a vault that could not be read: every
+    /// `inventory` / `inventoryCount` / `inventoryAggregate` test then declines,
+    /// and every `$inventory` operand falls back.
+    pub inventory: Option<&'a dyn InventoryContext>,
 }
 
 /// A comparator operand as the evaluator sees it: a literal, a `$param`
@@ -563,6 +648,8 @@ enum OperandSpec<'a> {
     Literal(ResolvedValue),
     Ref(&'a str),
     State(&'a StateRef),
+    // === P4.D329 ===
+    Inventory(&'a InventoryRef),
 }
 
 fn number_operand(v: &NumberOrParamRef) -> OperandSpec<'_> {
@@ -570,6 +657,7 @@ fn number_operand(v: &NumberOrParamRef) -> OperandSpec<'_> {
         NumberOrParamRef::Number(n) => OperandSpec::Literal(ResolvedValue::Number(*n)),
         NumberOrParamRef::ParamRef(r) => OperandSpec::Ref(&r.param),
         NumberOrParamRef::StateRef(r) => OperandSpec::State(r),
+        NumberOrParamRef::InventoryRef(r) => OperandSpec::Inventory(r),
     }
 }
 
@@ -580,6 +668,7 @@ fn any_operand(v: &AnyOperand) -> OperandSpec<'_> {
         AnyOperand::Bool(b) => OperandSpec::Literal(ResolvedValue::Bool(*b)),
         AnyOperand::ParamRef(r) => OperandSpec::Ref(&r.param),
         AnyOperand::StateRef(r) => OperandSpec::State(r),
+        AnyOperand::InventoryRef(r) => OperandSpec::Inventory(r),
     }
 }
 
@@ -595,6 +684,7 @@ fn resolve_operand(
     params: &ResolvedParams,
     label: &str,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<ResolvedValue, CustomToolRunError> {
     match operand {
         OperandSpec::Literal(v) => Ok(v.clone()),
@@ -602,6 +692,9 @@ fn resolve_operand(
         // its own (load-typed) fallback — it never throws, matching the
         // metadata doctrine.
         OperandSpec::State(r) => Ok(resolve_state_value(r, state)),
+        // P4.D329: so does a `$inventory` operand, against the rolling
+        // character's bag.
+        OperandSpec::Inventory(r) => Ok(resolve_inventory_value(r, inventory)),
         OperandSpec::Ref(name) => match lookup(params, name) {
             Some(v) => Ok(v.clone()),
             None => Err(err(format!(
@@ -656,6 +749,7 @@ fn matches_comparator(
     subject_label: &str,
     params: &ResolvedParams,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<bool, CustomToolRunError> {
     for (key, operand) in operands {
         let Some(operand) = operand else { continue };
@@ -665,7 +759,7 @@ fn matches_comparator(
             // v4 evaluates the SUBJECT first, so a non-orderable subject is what
             // is reported even when the operand is also broken.
             let a = require_number(tool_name, subject, subject_label)?;
-            let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &label, state, inventory)?;
             let b = require_number(tool_name, &resolved, &label)?;
             let held = match key {
                 "gt" => a > b,
@@ -687,7 +781,7 @@ fn matches_comparator(
             // `.includes`), so a non-string subject is reported even when the
             // operand is also broken.
             let haystack = require_string(tool_name, subject, subject_label)?;
-            let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
+            let resolved = resolve_operand(tool_name, &operand, params, &label, state, inventory)?;
             let needle = require_string(tool_name, &resolved, &label)?;
             let held = haystack.contains(&needle);
             if key == "contains" {
@@ -700,7 +794,7 @@ fn matches_comparator(
             continue;
         }
 
-        let resolved = resolve_operand(tool_name, &operand, params, &label, state)?;
+        let resolved = resolve_operand(tool_name, &operand, params, &label, state, inventory)?;
         let held = if key == "eq" {
             subject.strict_eq(&resolved)
         } else {
@@ -719,6 +813,7 @@ fn string_operand(v: &StringOperand) -> OperandSpec<'_> {
         StringOperand::String(s) => OperandSpec::Literal(ResolvedValue::String(s.clone())),
         StringOperand::ParamRef(r) => OperandSpec::Ref(&r.param),
         StringOperand::StateRef(r) => OperandSpec::State(r),
+        StringOperand::InventoryRef(r) => OperandSpec::Inventory(r),
     }
 }
 
@@ -785,6 +880,7 @@ fn llm_operands(c: &LlmComparator) -> [(&'static str, Option<OperandSpec<'_>>); 
 ///
 /// `$param` operands still throw if they don't resolve: those ARE load-validated,
 /// so a failure there is a regression rather than a fact about the character.
+#[allow(clippy::too_many_arguments)]
 fn matches_metadata_comparator(
     tool_name: &str,
     comparator: &MetadataComparator,
@@ -794,6 +890,7 @@ fn matches_metadata_comparator(
     state: Option<&Value>,
     // Which sheet is being read, for the operand label and the debug log.
     subject: ComparatorSubject,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<bool, CustomToolRunError> {
     let operands = param_operands(comparator);
     let subject = subject.as_str();
@@ -813,6 +910,7 @@ fn matches_metadata_comparator(
                 params,
                 &format!("{subject} \"{key}\" {comparator_key}"),
                 state,
+                inventory,
             )
         },
         // v4's `logger.debug(`Custom tool ${subject} test did not match`, {…})`,
@@ -878,6 +976,7 @@ fn matches_llm_comparator(
     llm: &LlmSubject,
     params: &ResolvedParams,
     state: Option<&Value>,
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<bool, CustomToolRunError> {
     if let Some(want) = comparator.ok {
         if want != llm.ok {
@@ -905,7 +1004,7 @@ fn matches_llm_comparator(
         }
         let Some(operand) = operand else { continue };
         let label = format!("the llm answer {key}");
-        let resolved = resolve_operand(tool_name, operand, params, &label, state)?;
+        let resolved = resolve_operand(tool_name, operand, params, &label, state, inventory)?;
         let (Some(a), ResolvedValue::Number(b)) = (numeric_answer, &resolved) else {
             return Ok(false);
         };
@@ -947,19 +1046,19 @@ fn matches_llm_comparator(
         let label = format!("the llm answer {key}");
         let held = match *key {
             "eq" => {
-                let r = resolve_operand(tool_name, operand, params, &label, state)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state, inventory)?;
                 equals_answer(&r)
             }
             "neq" => {
-                let r = resolve_operand(tool_name, operand, params, &label, state)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state, inventory)?;
                 !equals_answer(&r)
             }
             "contains" => {
-                let r = resolve_operand(tool_name, operand, params, &label, state)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state, inventory)?;
                 contains_answer(&r)
             }
             "ncontains" => {
-                let r = resolve_operand(tool_name, operand, params, &label, state)?;
+                let r = resolve_operand(tool_name, operand, params, &label, state, inventory)?;
                 !contains_answer(&r)
             }
             _ => continue,
@@ -1036,10 +1135,22 @@ fn matches_when_object(
     subjects: &OutcomeSubjects,
     tool_name: &str,
 ) -> Result<bool, CustomToolRunError> {
+    matches_when_object_with(when, subjects, tool_name, None)
+}
+
+/// [`matches_when_object`] with an effect condition's extra template subjects
+/// (`{{dice}}`, `{{now}}` — P4.D329: an inventory key renders against them).
+fn matches_when_object_with(
+    when: &WhenObject,
+    subjects: &OutcomeSubjects,
+    tool_name: &str,
+    effect: Option<(&str, i64)>,
+) -> Result<bool, CustomToolRunError> {
     let params = subjects.params;
     // v4 `subjects.state ?? {}` — `None` behaves as the empty object, so every
     // `$state` operand falls to its own fallback.
     let state = subjects.state;
+    let inventory = subjects.inventory;
     let value = ResolvedValue::Number(subjects.value);
 
     if !matches_comparator(
@@ -1049,6 +1160,7 @@ fn matches_when_object(
         "the rolled value",
         params,
         state,
+        inventory,
     )? {
         return Ok(false);
     }
@@ -1062,6 +1174,7 @@ fn matches_when_object(
             "the raw roll",
             params,
             state,
+            inventory,
         )? {
             return Ok(false);
         }
@@ -1082,6 +1195,7 @@ fn matches_when_object(
             &label,
             params,
             state,
+            inventory,
         )? {
             return Ok(false);
         }
@@ -1101,6 +1215,7 @@ fn matches_when_object(
                 params,
                 state,
                 ComparatorSubject::Metadata,
+                inventory,
             )? {
                 return Ok(false);
             }
@@ -1122,10 +1237,16 @@ fn matches_when_object(
                 params,
                 state,
                 ComparatorSubject::Progress,
+                inventory,
             )? {
                 return Ok(false);
             }
         }
+    }
+
+    // === P4.D329: the inventory subjects ===
+    if !matches_inventory_subjects_with(when, subjects, tool_name, effect)? {
+        return Ok(false);
     }
 
     if let Some(comparator) = &when.llm {
@@ -1135,11 +1256,209 @@ fn matches_when_object(
         let Some(llm) = subjects.llm else {
             return Ok(false);
         };
-        if !matches_llm_comparator(tool_name, comparator, llm, params, state)? {
+        if !matches_llm_comparator(tool_name, comparator, llm, params, state, inventory)? {
             return Ok(false);
         }
     }
 
+    Ok(true)
+}
+
+// === P4.D329: the inventory subjects in a `when` ===
+/// The inventory half of a `when` (v4 `matchesWhen`, `custom-tools.ts:1304-1381`
+/// at the pin): `inventory` and `inventoryCount`, then `inventoryAggregate` —
+/// after `progress`, before `llm`.
+///
+/// Each `inventory` / `inventoryCount` key is a TEMPLATE, rendered against the
+/// run's subjects first (`{{params.weapon}}`), then resolved through the one
+/// reference rule. Fail-soft like `metadata`: with no context every comparator
+/// declines. `effect` carries an effect condition's extra template subjects
+/// (`{{dice}}`, `{{now}}`); an outcome row renders `{{dice}}` as `""` and has
+/// no run clock (v4 `{ ...subjects, dice: subjects.dice ?? '' }`).
+fn matches_inventory_subjects_with(
+    when: &WhenObject,
+    subjects: &OutcomeSubjects,
+    tool_name: &str,
+    effect: Option<(&str, i64)>,
+) -> Result<bool, CustomToolRunError> {
+    let params = subjects.params;
+    let state = subjects.state;
+    let inventory = subjects.inventory;
+    let states = when.inventory.as_deref().unwrap_or_default();
+    let counts = when.inventory_count.as_deref().unwrap_or_default();
+
+    if !states.is_empty() || !counts.is_empty() {
+        let render_vars = TemplateVars {
+            value: subjects.value,
+            roll: subjects.roll,
+            dice: effect.map_or("", |(dice, _)| dice),
+            params,
+            metadata: subjects.metadata,
+            progress: subjects.progress,
+            now: effect.map(|(_, now)| now),
+            llm: subjects.llm,
+            state,
+            character: subjects.character,
+            inventory,
+        };
+        let decline = |key: &str, reason: &str| {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                tool = tool_name,
+                key,
+                reason,
+                "Custom tool inventory test did not match",
+            );
+        };
+
+        for (raw_key, comparator) in states {
+            let reference = js_trim(&render_template(raw_key, &render_vars)).to_string();
+            let operand_for = |op: &str,
+                               operand: &Option<InventoryStateOperand>|
+             -> Result<Option<String>, CustomToolRunError> {
+                let Some(operand) = operand else {
+                    return Ok(None);
+                };
+                let resolved = match operand {
+                    InventoryStateOperand::State(s) => {
+                        ResolvedValue::String(s.as_str().to_string())
+                    }
+                    InventoryStateOperand::ParamRef(r) => resolve_operand(
+                        tool_name,
+                        &OperandSpec::Ref(&r.param),
+                        params,
+                        &format!("inventory \"{raw_key}\" {op}"),
+                        state,
+                        inventory,
+                    )?,
+                };
+                // v4 `String(resolveOperand(…))`.
+                Ok(Some(resolved_to_js_string(&resolved)))
+            };
+            let test = ResolvedInventoryStateTest {
+                eq: operand_for("eq", &comparator.eq)?,
+                neq: operand_for("neq", &comparator.neq)?,
+            };
+            let holds = inventory_state_holds(
+                &test,
+                &reference,
+                inventory,
+                Some(&mut |reason: &str| decline(raw_key, reason)),
+            );
+            let state_word = inventory.map(|ctx| ctx.state(&reference).as_str());
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                tool = tool_name,
+                key = raw_key.as_str(),
+                r#ref = reference.as_str(),
+                state = state_word,
+                holds,
+                "Custom tool inventory state test",
+            );
+            if !holds {
+                return Ok(false);
+            }
+        }
+
+        for (raw_key, comparator) in counts {
+            let reference = js_trim(&render_template(raw_key, &render_vars)).to_string();
+            let mut test = ResolvedInventoryCountTest::default();
+            for (op, operand, slot) in [
+                ("gt", &comparator.gt, &mut test.gt),
+                ("gte", &comparator.gte, &mut test.gte),
+                ("lt", &comparator.lt, &mut test.lt),
+                ("lte", &comparator.lte, &mut test.lte),
+                ("eq", &comparator.eq, &mut test.eq),
+                ("neq", &comparator.neq, &mut test.neq),
+            ] {
+                let Some(operand) = operand else { continue };
+                let label = format!("inventoryCount \"{raw_key}\" {op}");
+                let resolved = resolve_operand(
+                    tool_name,
+                    &number_operand(operand),
+                    params,
+                    &label,
+                    state,
+                    inventory,
+                )?;
+                *slot = Some(require_number(tool_name, &resolved, &label)?);
+            }
+            let holds = inventory_count_holds(
+                &test,
+                &reference,
+                inventory,
+                Some(&mut |reason: &str| decline(raw_key, reason)),
+            );
+            let count = inventory.map(|ctx| ctx.equipped_kin_count(&reference));
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                tool = tool_name,
+                key = raw_key.as_str(),
+                r#ref = reference.as_str(),
+                count,
+                holds,
+                "Custom tool inventory count test",
+            );
+            if !holds {
+                return Ok(false);
+            }
+        }
+    }
+
+    // The aggregate sheet: one attribute across a scope of the bag, through the
+    // same comparison table as `metadata`. The key is literal (it names a scope
+    // and a field, never an object); operands resolve like any other.
+    for (key, comparator) in when.inventory_aggregate.iter().flatten() {
+        let operands = param_operands(comparator);
+        let holds = inventory_aggregate_holds(
+            comparator,
+            key,
+            inventory,
+            &mut |comparator_key| {
+                let operand = operands
+                    .iter()
+                    .find(|(k, _)| *k == comparator_key)
+                    .and_then(|(_, o)| o.as_ref())
+                    .expect("the shared table only resolves operands it found present");
+                resolve_operand(
+                    tool_name,
+                    operand,
+                    params,
+                    &format!("inventoryAggregate \"{key}\" {comparator_key}"),
+                    state,
+                    inventory,
+                )
+            },
+            &mut |reason| {
+                tracing::debug!(
+                    target: "quilltap::pascal",
+                    context = "pascal.custom-tools",
+                    tool = tool_name,
+                    key = key.as_str(),
+                    reason,
+                    "Custom tool inventoryAggregate test did not match",
+                );
+            },
+        )?;
+        // v4's `value`: `null` (no field), `'absent'`, `list of N`, or the
+        // number — a scalar, logged bare.
+        let value = describe_aggregate_value(key, inventory).map(|v| scalar_text(&v.to_value()));
+        tracing::debug!(
+            target: "quilltap::pascal",
+            context = "pascal.custom-tools",
+            tool = tool_name,
+            key = key.as_str(),
+            value,
+            holds,
+            "Custom tool inventoryAggregate test",
+        );
+        if !holds {
+            return Ok(false);
+        }
+    }
     Ok(true)
 }
 
@@ -1187,7 +1506,14 @@ pub fn matches_effect_when(
         }
     }
 
-    matches_when_object(&when.base, &subjects.base, tool_name)
+    // P4.D329: an effect condition's inventory keys render with `{{dice}}` and
+    // `{{now}}` too (v4 hands `matchesWhen` the whole EffectSubjects).
+    matches_when_object_with(
+        &when.base,
+        &subjects.base,
+        tool_name,
+        Some((subjects.dice, subjects.now)),
+    )
 }
 
 /// One effect, resolved by the pure core: the value it would write, the
@@ -1208,6 +1534,12 @@ pub enum ResolvedEffect {
     Wardrobe {
         index: usize,
         wardrobe: ResolvedWardrobeGesture,
+    },
+    // === P4.D329: the inventory gesture (v4's THIRD arm) ===
+    /// v4 `{ index, inventory }`.
+    Inventory {
+        index: usize,
+        inventory: ResolvedInventoryGesture,
     },
     Skipped {
         index: usize,
@@ -1244,12 +1576,46 @@ impl Serialize for ResolvedWardrobeGesture {
     }
 }
 
+// === P4.D329: the inventory gesture ===
+/// An Inventory gesture with its object references rendered — ready for the
+/// applier (v4 `ResolvedInventoryGesture`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedInventoryGesture {
+    pub action: InventoryEffectAction,
+    /// Rendered, trimmed references in file order; empty ones dropped with a
+    /// debug log.
+    pub items: Vec<String>,
+    /// pick_up only: equip the new instances (default true). `None` on
+    /// equip / unequip, so the key is absent there.
+    pub equip: Option<bool>,
+}
+
+impl Serialize for ResolvedInventoryGesture {
+    /// `{ action, items }`, or `{ action, items, equip }` on a `pick_up`.
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("action", self.action.as_str())?;
+        m.serialize_entry("items", &self.items)?;
+        if let Some(equip) = self.equip {
+            m.serialize_entry("equip", &equip)?;
+        }
+        m.end()
+    }
+}
+
 impl ResolvedEffect {
-    /// True for a resolved effect of either kind that would apply — the
-    /// Proving Bench's count (v4 `isApplicableEffect`, whose meaning
-    /// `f0db8cbb8` widened from "would write").
+    /// True for a resolved effect of any kind that would apply — the Proving
+    /// Bench's count (v4 `isApplicableEffect`, widened by each kind).
     pub fn is_applicable(&self) -> bool {
-        self.is_applicable_write() || self.is_applicable_wardrobe()
+        self.is_applicable_write()
+            || self.is_applicable_wardrobe()
+            || self.is_applicable_inventory()
+    }
+
+    /// True for a resolved effect that would change what the rolling
+    /// character carries (v4 `isApplicableInventoryEffect`, P4.D329).
+    pub fn is_applicable_inventory(&self) -> bool {
+        matches!(self, ResolvedEffect::Inventory { .. })
     }
 
     /// True for a resolved effect that would actually write a value (v4
@@ -1281,6 +1647,11 @@ impl Serialize for ResolvedEffect {
             ResolvedEffect::Wardrobe { index, wardrobe } => {
                 m.serialize_entry("index", index)?;
                 m.serialize_entry("wardrobe", wardrobe)?;
+            }
+            // === P4.D329 ===
+            ResolvedEffect::Inventory { index, inventory } => {
+                m.serialize_entry("index", index)?;
+                m.serialize_entry("inventory", inventory)?;
             }
             ResolvedEffect::Skipped { index, reason } => {
                 m.serialize_entry("index", index)?;
@@ -1357,6 +1728,8 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
         // v4 `EffectSubjects` spreads the run's subjects, so an expression and
         // a wardrobe ref see the rolling character's name too.
         character: subjects.base.character,
+        // P4.D329: and the bag, for `{{inventory.*}}`.
+        inventory: subjects.base.inventory,
     };
     let mut resolve_ref = |refname: &str| -> Option<ResolvedValue> {
         resolve_placeholder_value(&classify_placeholder(refname), &template_vars)
@@ -1399,6 +1772,16 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
             let (target, value) = match &effect.body {
                 CustomToolEffectBody::Wardrobe(gesture) => {
                     return resolve_wardrobe_gesture(
+                        &definition.name,
+                        index,
+                        gesture,
+                        &template_vars,
+                        &skipped,
+                    )
+                }
+                // === P4.D329: after the wardrobe arm, before the write ===
+                CustomToolEffectBody::Inventory(gesture) => {
+                    return resolve_inventory_gesture(
                         &definition.name,
                         index,
                         gesture,
@@ -1492,6 +1875,49 @@ fn resolve_wardrobe_gesture(
     }
 }
 
+// === P4.D329: the inventory gesture ===
+/// Render an Inventory gesture's object references with the same subjects an
+/// outcome message gets — templates, not expressions (v4
+/// `resolveInventoryGesture`). A reference that renders empty is dropped; a
+/// gesture left with none is skipped with that reason.
+fn resolve_inventory_gesture(
+    tool_name: &str,
+    index: usize,
+    gesture: &CustomToolInventoryGesture,
+    vars: &TemplateVars,
+    skipped: &dyn Fn(usize, String) -> ResolvedEffect,
+) -> ResolvedEffect {
+    let mut items: Vec<String> = Vec::new();
+    for raw in &gesture.items {
+        let rendered = js_trim(&render_template(raw, vars)).to_string();
+        if rendered.is_empty() {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = "pascal.custom-tools",
+                tool = tool_name,
+                effectIndex = index,
+                reference = raw.as_str(),
+                "Custom tool inventory reference rendered empty; dropped",
+            );
+            continue;
+        }
+        items.push(rendered);
+    }
+    if items.is_empty() {
+        return skipped(index, "every object reference rendered empty".to_string());
+    }
+    ResolvedEffect::Inventory {
+        index,
+        inventory: ResolvedInventoryGesture {
+            action: gesture.action,
+            items,
+            // `gesture.equip !== false`, on a pick_up only.
+            equip: (gesture.action == InventoryEffectAction::PickUp)
+                .then_some(gesture.equip != Some(false)),
+        },
+    }
+}
+
 /// Render a number for display: integers plain, floats to 4 significant digits.
 ///
 /// Lives in [`super::expressions`] since v4 `c4d4b0de` moved it there — one
@@ -1519,6 +1945,10 @@ pub struct TemplateVars<'a> {
     /// The rolling character's name, for `{{character}}` (v4 `a05c6f755`).
     /// `None` when nobody in particular rolled (the placeholder stands).
     pub character: Option<&'a str>,
+    // === P4.D329: the rolling character's bag (LAST) ===
+    /// For `{{inventory.<ref>.<field>}}`. `None` for a run nobody made (the
+    /// placeholder stands).
+    pub inventory: Option<&'a dyn InventoryContext>,
 }
 
 /// Substitute the four placeholder families. Plain string replacement — user
@@ -1606,6 +2036,35 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                                 "Custom tool message references {{{{character}}}} but nobody in particular rolled",
                             );
                         }
+                        // === P4.D329: the inventory placeholder (v4's arm sits
+                        // between `character` and `state` in the switch) ===
+                        PlaceholderRef::Inventory {
+                            reference,
+                            field,
+                            key,
+                        } => {
+                            let reason = if vars.inventory.is_none() {
+                                "no inventory to read (nobody in particular rolled)"
+                            } else if inventory_placeholder_raw(
+                                reference,
+                                *field,
+                                key.as_deref(),
+                                vars.inventory,
+                            )
+                            .is_none()
+                            {
+                                "the object is absent, or has no such field or metadata key"
+                            } else {
+                                "the metadata key does not hold a primitive"
+                            };
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                context = "pascal.custom-tools",
+                                placeholder = whole,
+                                reason,
+                                "Custom tool message references an inventory object it cannot render",
+                            );
+                        }
                         PlaceholderRef::State { path } => {
                             let empty = Value::Object(Map::new());
                             let state = vars.state.unwrap_or(&empty);
@@ -1689,7 +2148,58 @@ pub fn resolve_placeholder_value(
             let state = vars.state.unwrap_or(&empty);
             get_at_path(state, &parse_path(Some(path))).and_then(|v| js_primitive(&v))
         }
+        // === P4.D329: the inventory placeholder ===
+        PlaceholderRef::Inventory {
+            reference,
+            field,
+            key,
+        } => inventory_placeholder_raw(reference, *field, key.as_deref(), vars.inventory)
+            .and_then(|v| js_primitive(&v)),
         PlaceholderRef::Unknown { .. } => None,
+    }
+}
+
+// === P4.D329: the inventory placeholder ===
+/// v4 `resolvePlaceholderValue`'s `inventory` case, RAW — `None` is JS
+/// `undefined`. No context (a run nobody made): nothing renders, not even
+/// `state`. `state` answers BEFORE the object is looked up, so an absent
+/// reference renders `absent`.
+fn inventory_placeholder_raw(
+    reference: &str,
+    field: InventoryPlaceholderField,
+    key: Option<&str>,
+    inventory: Option<&dyn InventoryContext>,
+) -> Option<Value> {
+    let ctx = inventory?;
+    if field == InventoryPlaceholderField::State {
+        return Some(Value::String(ctx.state(reference).as_str().to_string()));
+    }
+    let item = ctx.item(reference)?;
+    let fields = &item.0;
+    match field {
+        // A title, or the name — so a message can always say *the sword*
+        // (`item.title?.trim() || item.name`).
+        InventoryPlaceholderField::Title => match fields.get("title") {
+            Some(Value::String(t)) if !js_trim(t).is_empty() => {
+                Some(Value::String(js_trim(t).to_string()))
+            }
+            _ => fields.get("name").cloned(),
+        },
+        InventoryPlaceholderField::Name => fields.get("name").cloned(),
+        // `item.description ?? undefined`.
+        InventoryPlaceholderField::Description => match fields.get("description") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(v.clone()),
+        },
+        InventoryPlaceholderField::Metadata => {
+            let key = key?;
+            fields
+                .get("metadata")
+                .and_then(Value::as_object)
+                .and_then(|m| m.get(key))
+                .cloned()
+        }
+        InventoryPlaceholderField::State => None,
     }
 }
 
@@ -1718,6 +2228,7 @@ mod comparator_subject_debug_tests {
             llm: None,
             state: None,
             character: None,
+            inventory: None,
         }
     }
 
@@ -1830,6 +2341,7 @@ mod render_template_debug_tests {
             llm: None,
             state,
             character: None,
+            inventory: None,
         }
     }
 
@@ -2159,6 +2671,60 @@ async fn resolve_llm_consult(
 /// to announce the result. The one impurity is the optional LLM consult, which
 /// arrives as an injected [`LlmInvoker`] so this stays testable and the proving
 /// bench can substitute a pretend oracle.
+// === P4.D329: the whole-roll `$inventory` ===
+/// v4 `prepareRoll`'s `$inventory` arm: the notation an object's metadata
+/// holds, or the (load-checked) dice fallback when it holds none — or none
+/// this build can roll. Returns the notation STRING (what the run records as
+/// `notation`) with its parse.
+fn prepare_inventory_roll(
+    definition: &QtapCustomTool,
+    r: &InventoryRef,
+    inventory: Option<&dyn InventoryContext>,
+) -> Result<(String, super::dice::DiceNotation), CustomToolRunError> {
+    let resolved = resolve_inventory_value(r, inventory);
+    if let ResolvedValue::String(spec) = &resolved {
+        if let Some(parsed) = parse_dice_notation(spec) {
+            return Ok((spec.clone(), parsed));
+        }
+    }
+    let resolved_text = scalar_text(&resolved.to_value());
+    let fallback_text = scalar_text(&serde_json::to_value(&r.fallback).unwrap_or_default());
+    tracing::debug!(
+        target: "quilltap::pascal",
+        context = "pascal.custom-tools",
+        tool = definition.name.as_str(),
+        reference = r.inventory.as_str(),
+        resolved = resolved_text.as_str(),
+        fallback = fallback_text.as_str(),
+        "Custom tool $inventory roll fell back",
+    );
+    match &r.fallback {
+        StateRefFallback::String(spec) => match parse_dice_notation(spec) {
+            Some(parsed) => Ok((spec.clone(), parsed)),
+            None => Err(inventory_roll_fallback_error(definition)),
+        },
+        _ => Err(inventory_roll_fallback_error(definition)),
+    }
+}
+
+/// A primitive log field as v4's bag holds it: a string BARE, a number or a
+/// boolean as its JSON text (P4.D329).
+fn scalar_text(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Unreachable past load (`validate_roll_refs` demands a dice-notation
+/// fallback); a regression tripwire, kept as v4 keeps it.
+fn inventory_roll_fallback_error(definition: &QtapCustomTool) -> CustomToolRunError {
+    err(format!(
+        "{}: the $inventory roll's fallback is not dice notation this build can roll",
+        definition.name
+    ))
+}
+
 // P4.D169: mirrors v4 `executeCustomTool` plus the run clock — the ONE reading
 // `{{now}}` renders with and the progress sheet is derived against.
 #[allow(clippy::too_many_arguments)]
@@ -2184,11 +2750,16 @@ pub async fn execute_custom_tool(
     // The rolling character's name, for `{{character}}`. `None` for a run
     // nobody made (v4 `overrides.character`, `a05c6f755`).
     character: Option<&str>,
+    // === P4.D329: the LAST positional (R-Q) ===
+    // The rolling character's Inventory for this chat, loaded once by the
+    // entrance. `None` for a run nobody made — inventory tests decline,
+    // `$inventory` operands fall back, `{{inventory.*}}` renders as written.
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
     // v4 `overrides?.character?.trim() || undefined` — whitespace alone is
     // nobody, and the trim is JS's (`js_trim`, never `str::trim`).
     let character = character.map(js_trim).filter(|c| !c.is_empty());
-    let params = resolve_params(definition, supplied_params, state)?;
+    let params = resolve_params(definition, supplied_params, state, inventory)?;
 
     let raw: f64;
     let value: f64;
@@ -2217,6 +2788,19 @@ pub async fn execute_custom_tool(
             raw = rolled.total as f64;
             value = rolled.total as f64;
         }
+        // === P4.D329: a whole roll drawn from an object's metadata ===
+        // The run's form is `dice` and its notation the RESOLVED string —
+        // only the Workbench library calls this form `inventory`.
+        Some(Roll::Inventory(r)) => {
+            roll_form = RollForm::Dice;
+            let (spec, parsed) = prepare_inventory_roll(definition, r, inventory)?;
+            let rolled = roll_notation(&parsed, rng);
+            notation = Some(spec);
+            dice_rolls = Some(rolled.results.clone());
+            dice_breakdown = format_dice_breakdown(&rolled);
+            raw = rolled.total as f64;
+            value = rolled.total as f64;
+        }
         other => {
             roll_form = RollForm::Range;
             let default = RollRange::default();
@@ -2224,7 +2808,8 @@ pub async fn execute_custom_tool(
                 Some(Roll::Range(r)) => r,
                 _ => &default,
             };
-            let (drawn_raw, drawn_value) = roll_range(definition, range, &params, state, rng)?;
+            let (drawn_raw, drawn_value) =
+                roll_range(definition, range, &params, state, inventory, rng)?;
             raw = drawn_raw;
             value = drawn_value;
         }
@@ -2248,6 +2833,7 @@ pub async fn execute_custom_tool(
                     llm: None,
                     state,
                     character,
+                    inventory,
                 },
             );
             Some(resolve_llm_consult(spec, prompt, llm_invoke).await)
@@ -2265,6 +2851,7 @@ pub async fn execute_custom_tool(
         llm: llm_subject.as_ref(),
         state,
         character,
+        inventory,
     };
     let mut outcome_index = None;
     for (i, o) in definition.outcomes.iter().enumerate() {
@@ -2296,6 +2883,7 @@ pub async fn execute_custom_tool(
             llm: llm_subject.as_ref(),
             state,
             character,
+            inventory,
         },
     );
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
@@ -2317,6 +2905,7 @@ pub async fn execute_custom_tool(
                 llm: llm_subject.as_ref(),
                 state,
                 character,
+                inventory,
             },
         )
     });
@@ -2335,6 +2924,7 @@ pub async fn execute_custom_tool(
                     llm: llm_subject.as_ref(),
                     state,
                     character,
+                    inventory,
                 },
                 outcome: WinningOutcome {
                     state: outcome.state,
@@ -2427,8 +3017,11 @@ pub fn simulate_outcomes(
     // branches on `cannon.complete` is conditional on that one clock reading —
     // the same caveat the bench already states for a pretend consult.
     progress: Option<&Map<String, Value>>,
+    // === P4.D329: the LAST positional (v4's 8th, `inventory = null`) ===
+    // The mock Inventory (the bench's), held fixed across every draw.
+    inventory: Option<&dyn InventoryContext>,
 ) -> Result<CustomToolAuditResult, CustomToolRunError> {
-    let params = resolve_params(definition, supplied_params, state)?;
+    let params = resolve_params(definition, supplied_params, state, inventory)?;
 
     let mut parsed_dice = None;
     let default_range = RollRange::default();
@@ -2443,6 +3036,10 @@ pub fn simulate_outcomes(
             })?);
         }
         Some(Roll::Range(r)) => range_roll = r,
+        // P4.D329: resolved ONCE, before the loop (v4 `prepareRoll`).
+        Some(Roll::Inventory(r)) => {
+            parsed_dice = Some(prepare_inventory_roll(definition, r, inventory)?.1);
+        }
         None => {}
     }
 
@@ -2457,7 +3054,7 @@ pub fn simulate_outcomes(
                 let rolled = roll_notation(notation, rng);
                 (rolled.total as f64, rolled.total as f64)
             }
-            None => roll_range(definition, range_roll, &params, state, rng)?,
+            None => roll_range(definition, range_roll, &params, state, inventory, rng)?,
         };
 
         let subjects = OutcomeSubjects {
@@ -2471,6 +3068,7 @@ pub fn simulate_outcomes(
             // The audit never renders and never has a character (v4
             // `simulateOutcomes` — no hunk).
             character: None,
+            inventory,
         };
         let mut outcome_index = None;
         for (i, o) in definition.outcomes.iter().enumerate() {
@@ -2546,7 +3144,8 @@ mod simulate_tests {
             ],
         }));
         let mut rng = OsRandomBytes;
-        let r = simulate_outcomes(&d, None, 20_000, None, None, None, &mut rng, None).unwrap();
+        let r =
+            simulate_outcomes(&d, None, 20_000, None, None, None, &mut rng, None, None).unwrap();
         let low = r.outcomes[0].share;
         assert!(
             (0.2..0.4).contains(&low),
@@ -2576,14 +3175,25 @@ mod simulate_tests {
             None,
             &mut rng,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(empty.outcomes[0].hits, 0);
 
         let mut sheet = serde_json::Map::new();
         sheet.insert("luck".into(), serde_json::json!(7));
-        let carrying =
-            simulate_outcomes(&d, None, 100, Some(&sheet), None, None, &mut rng, None).unwrap();
+        let carrying = simulate_outcomes(
+            &d,
+            None,
+            100,
+            Some(&sheet),
+            None,
+            None,
+            &mut rng,
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(carrying.outcomes[0].hits, 100);
     }
 
@@ -2595,7 +3205,7 @@ mod simulate_tests {
             "outcomes": [{ "when": true, "message": "x", "state": "info" }],
         }));
         let mut rng = OsRandomBytes;
-        assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng, None).is_err());
+        assert!(simulate_outcomes(&d, None, 10, None, None, None, &mut rng, None, None).is_err());
     }
 }
 
@@ -2620,6 +3230,7 @@ mod wardrobe_gesture_tests {
             llm: None,
             state: None,
             character: None,
+            inventory: None,
         }
     }
 

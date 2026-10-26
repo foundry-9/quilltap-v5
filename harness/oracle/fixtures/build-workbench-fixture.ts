@@ -58,6 +58,7 @@ import { readFileSync, writeFileSync, existsSync, rmSync, mkdtempSync, mkdirSync
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { INVENTORY_ROLL_PATH, KAPPA_INVENTORY } from './workbench-inventory-roll';
 
 interface Spec {
   testPepperBase64: string;
@@ -353,6 +354,10 @@ async function main(): Promise<void> {
   // P4.D305 (v4 `362426c8f`): a tool listening for TWO trigger phrases, so the
   // library's `triggerCount` reads both 0 (every other tool) and 2.
   await writeFile(spec.generalMountPointId, 'Tools/theta.tool.json', THETA);
+  // P4.D329 (v4 `e1872c94f`): a `$inventory` whole roll, so the library reads
+  // `rollForm: "inventory"` (widened in place on the committed pair by
+  // `extend-workbench-inventory-roll.ts`).
+  await writeFile(spec.generalMountPointId, INVENTORY_ROLL_PATH, KAPPA_INVENTORY);
 
   // 2. The unattached + disabled stores.
   await provisionStore(spec.looseMountPointId, 'Loose Papers');

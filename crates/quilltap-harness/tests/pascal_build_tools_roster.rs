@@ -139,6 +139,7 @@ fn build_tools_resolves_and_offers_run_custom() {
         // No sheet in hand — the roster reads the invoker's vault lazily, and
         // only if a gated definition turns up (P4.d19).
         metadata: None,
+        inventory: None,
     };
 
     // A Some(context) → run_custom is offered, its description built from exactly
@@ -251,6 +252,7 @@ fn build_tools_resolves_and_offers_run_custom() {
         character_ids: Some(vec![CHAR_B.into()]),
         project_id: None,
         metadata: None,
+        inventory: None,
     };
     let db_b = open();
     let built_b = build_tools(&db_b, USER, &base_input(Some(ctx_b.clone()))).unwrap();

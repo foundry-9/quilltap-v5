@@ -51,6 +51,10 @@ use quilltap_core::pascal::custom_tool_types::{
     parse_effect_target, EffectTarget, PutOnMode, WardrobeEffectAction,
 };
 use quilltap_core::pascal::custom_tools::{ResolvedEffect, ResolvedValue, ResolvedWardrobeGesture};
+// P4.D329: the third pass.
+use quilltap_core::pascal::custom_tool_types::InventoryEffectAction;
+use quilltap_core::pascal::custom_tools::ResolvedInventoryGesture;
+use quilltap_core::pascal::p4d329_c2_standins::{InventoryContext, PendingInventoryAnnouncements};
 use quilltap_core::pascal::side_effects::{
     differential::plan_run, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
 };
@@ -216,6 +220,26 @@ fn wardrobe_gesture(v: &Value) -> ResolvedWardrobeGesture {
     }
 }
 
+/// P4.D329: a corpus `inventory` entry — v4's `ResolvedInventoryGesture`.
+fn inventory_gesture(v: &Value) -> ResolvedInventoryGesture {
+    let action = match v["action"].as_str().expect("gesture action") {
+        "equip" => InventoryEffectAction::Equip,
+        "unequip" => InventoryEffectAction::Unequip,
+        "pick_up" => InventoryEffectAction::PickUp,
+        other => panic!("unknown inventory action {other}"),
+    };
+    ResolvedInventoryGesture {
+        action,
+        items: v["items"]
+            .as_array()
+            .expect("gesture items")
+            .iter()
+            .map(|i| i.as_str().expect("item").to_string())
+            .collect(),
+        equip: v.get("equip").and_then(Value::as_bool),
+    }
+}
+
 /// A row's scripted `wardrobeReturns` — what v4's mocked pass hands back.
 fn wardrobe_plan(v: Option<&Value>) -> Option<Vec<IndexedAppliedEffect>> {
     let list = v?.as_array()?;
@@ -265,13 +289,14 @@ fn pascal_side_effects_planning_matches_v4() {
     // The corpus is what this family is for; a truncated one would pass every
     // remaining row silently.
     assert!(
-        cases.len() >= 55,
-        "corpus shrank to {} cases (>= 55 expected)",
+        cases.len() >= 61,
+        "corpus shrank to {} cases (>= 61 expected)",
         cases.len()
     );
 
     let mut warned_rows = 0usize;
     let mut wardrobe_call_rows = 0usize;
+    let mut inventory_call_rows = 0usize;
     let mut character_writes = 0usize;
     let mut progress_writes = 0usize;
     let mut state_write_rows = 0usize;
@@ -294,6 +319,12 @@ fn pascal_side_effects_planning_matches_v4() {
                     return ResolvedEffect::Wardrobe {
                         index,
                         wardrobe: wardrobe_gesture(g),
+                    };
+                }
+                if let Some(g) = e.get("inventory") {
+                    return ResolvedEffect::Inventory {
+                        index,
+                        inventory: inventory_gesture(g),
                     };
                 }
                 match e.get("skipped").and_then(Value::as_str) {
@@ -340,6 +371,17 @@ fn pascal_side_effects_planning_matches_v4() {
             .and_then(Value::as_str)
             .unwrap_or("user-1");
         let scripted = wardrobe_plan(case.get("wardrobeReturns"));
+        // P4.D329: the inventory pass's script (the wardrobe's reader — the
+        // returns share `IndexedAppliedEffect`'s shape), and the run's bag and
+        // turn map by sentinel.
+        let carried = wardrobe_plan(case.get("inventoryReturns"));
+        let bag = quilltap_core::pascal::bench_inventory::mock_inventory_context(&[]);
+        let bag_given = case.get("inventory").and_then(Value::as_bool) == Some(true);
+        let pending: PendingInventoryAnnouncements = Default::default();
+        let pending_given = case
+            .get("pendingInventoryAnnouncements")
+            .and_then(Value::as_bool)
+            == Some(true);
         let (run, lines) = quilltap_core::test_support::captured_with(|| {
             plan_run(
                 ApplyCustomToolEffectsParams {
@@ -351,8 +393,11 @@ fn pascal_side_effects_planning_matches_v4() {
                     character_id,
                     metadata_snapshot: &snapshot,
                     now_ms,
+                    inventory: bag_given.then_some(&bag as &dyn InventoryContext),
+                    pending_inventory_announcements: pending_given.then_some(&pending),
                 },
                 scripted,
+                carried,
             )
         });
 
@@ -405,6 +450,49 @@ fn pascal_side_effects_planning_matches_v4() {
         );
         if !got_calls.is_empty() {
             wardrobe_call_rows += 1;
+        }
+
+        // --- the inventory pass's call (P4.D329) ----------------------------
+        let got_inventory_calls: Vec<Value> = run
+            .inventory_call
+            .iter()
+            .map(|c| {
+                let mut m = Map::new();
+                m.insert("userId".into(), json!(c.user_id));
+                m.insert("chatId".into(), json!(c.chat_id));
+                m.insert("toolName".into(), json!(c.tool_name));
+                m.insert(
+                    "characterId".into(),
+                    c.character_id
+                        .clone()
+                        .map(Value::from)
+                        .unwrap_or(Value::Null),
+                );
+                m.insert(
+                    "gestures".into(),
+                    Value::Array(
+                        c.gestures
+                            .iter()
+                            .map(|(index, g)| json!({ "index": index, "inventory": g }))
+                            .collect(),
+                    ),
+                );
+                if c.inventory {
+                    m.insert("inventory".into(), json!("the run bag"));
+                }
+                if c.pending_inventory_announcements {
+                    m.insert("pendingInventoryAnnouncements".into(), json!(true));
+                }
+                Value::Object(m)
+            })
+            .collect();
+        assert_eq!(
+            serde_json::to_string(&got_inventory_calls).unwrap(),
+            serde_json::to_string(&want["inventoryCalls"]).unwrap(),
+            "the inventory pass's call differs: {name}"
+        );
+        if !got_inventory_calls.is_empty() {
+            inventory_call_rows += 1;
         }
 
         // --- the one character write ---------------------------------------
@@ -500,6 +588,11 @@ fn pascal_side_effects_planning_matches_v4() {
     assert!(
         state_write_rows >= 10,
         "only {state_write_rows} rows issue a state write"
+    );
+    // P4.D329: the six `merge-inventory-*` rows hand gestures to the pass.
+    assert!(
+        inventory_call_rows >= 6,
+        "only {inventory_call_rows} rows hand gestures to the inventory pass"
     );
     assert!(
         wardrobe_call_rows >= 5,

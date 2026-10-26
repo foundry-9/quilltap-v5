@@ -2267,6 +2267,8 @@ where
                         .cloned()
                         .unwrap_or_default(),
                 ),
+                // P4.D329: the bag loads lazily, only when a gate names it.
+                inventory: None,
             })
         } else {
             None

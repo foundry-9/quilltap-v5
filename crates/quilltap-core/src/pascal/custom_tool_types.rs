@@ -124,6 +124,14 @@ pub const MAX_WARDROBE_EFFECT_ITEMS: usize = 8;
 /// Cap on one wardrobe item reference (a title or id template), in characters.
 pub const MAX_WARDROBE_ITEM_REF_LENGTH: usize = 200;
 
+// === P4.D329: the inventory grammar — constants ===
+/// The longest Inventory reference (an object id, title or name, or a `when`
+/// key). A `$inventory` path may run 120 code units past it (`.metadata.<key>`).
+pub const MAX_INVENTORY_REF_LENGTH: usize = 200;
+
+/// The most object references one `inventory` gesture may name.
+pub const MAX_INVENTORY_EFFECT_ITEMS: usize = 8;
+
 /// Re-exported for the same reason v4 re-exports it here: the effect `value`
 /// cap belongs to the format, and the format's importers should not have to
 /// know that the grammar module owns the number.
@@ -402,6 +410,8 @@ pub enum NumberOrParamRef {
     Number(f64),
     ParamRef(ParamRef),
     StateRef(StateRef),
+    // === P4.D329: the `$inventory` operand (LAST — v4's union order) ===
+    InventoryRef(InventoryRef),
 }
 
 /// A reference to a declared numeric parameter, usable anywhere a roll takes a
@@ -454,6 +464,39 @@ pub fn is_state_ref_value(value: &Value) -> bool {
     value.as_object().is_some_and(|o| o.contains_key("$state"))
 }
 
+// === P4.D329: the `$inventory` reference ===
+/// A reference into one `metadata` key of one Inventory object the rolling
+/// character carries or can reach — `"<ref>.metadata.<key>"`, split at the
+/// FIRST `.metadata.` (the `{{inventory.*}}` placeholder's rule). Accepted
+/// wherever a `$state` reference is, and typed the same way: by its required
+/// fallback, which run-time resolution falls back to whenever the object, the
+/// key, or a value of the fallback's type is missing. Only `metadata` is
+/// addressable here — a title is never a number to roll against. A top-level
+/// `roll` may be one with a dice-notation fallback ("1d4"), so a sword's
+/// `metadata.damage` of "2d6" can be the roll itself (v4 `InventoryRefSchema`,
+/// `e1872c94f`).
+///
+/// The fallback is [`StateRefFallback`] — v4's schema spells the SAME union
+/// for both references, so one enum, one `type_name()`, one serializer.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct InventoryRef {
+    /// `"<object>.metadata.<key>"`: the object by id, title or name, then one
+    /// of its metadata keys.
+    #[serde(rename = "$inventory")]
+    pub inventory: String,
+    /// Required. Used whenever the object or key is absent or holds a value of
+    /// a different type.
+    pub fallback: StateRefFallback,
+}
+
+/// v4 `isInventoryRef` — true when a raw value is a `$inventory` reference
+/// (`'$inventory' in value`).
+pub fn is_inventory_ref_value(value: &Value) -> bool {
+    value
+        .as_object()
+        .is_some_and(|o| o.contains_key("$inventory"))
+}
+
 /// A comparator operand for eq/neq, which may address a parameter of any
 /// declared type — `{ "eq": "brass" }` is a legitimate test of a string — or a
 /// `$state` reference typed by its fallback.
@@ -466,6 +509,8 @@ pub enum AnyOperand {
     Bool(bool),
     ParamRef(ParamRef),
     StateRef(StateRef),
+    // === P4.D329: the `$inventory` operand (LAST) ===
+    InventoryRef(InventoryRef),
 }
 
 /// A comparator operand for contains/ncontains: the substring to look for — a
@@ -479,6 +524,8 @@ pub enum StringOperand {
     String(String),
     ParamRef(ParamRef),
     StateRef(StateRef),
+    // === P4.D329: the `$inventory` operand (LAST) ===
+    InventoryRef(InventoryRef),
 }
 
 /// A declared parameter. Every parameter requires a `default` so that a
@@ -526,6 +573,11 @@ pub enum Roll {
     /// Form B — dice notation, rolled by the shared dice module.
     Dice(String),
     Range(RollRange),
+    // === P4.D329: the whole-roll `$inventory` (LAST) ===
+    /// A `$inventory` reference whose resolved value (dice notation held in
+    /// an object's metadata) IS the roll, or its dice-notation fallback when
+    /// it holds none. Serializes as the reference object.
+    Inventory(InventoryRef),
 }
 
 /// A comparator against a number — the rolled value, or the raw draw. Keys AND
@@ -668,6 +720,73 @@ pub type MetadataComparator = ParamComparator;
 /// it too.
 pub type GateComparator = ParamComparator;
 
+// === P4.D329: the inventory comparators ===
+/// v4 `InventoryStateValueSchema` — the four states an `inventory` test
+/// compares against.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InventoryStateValue {
+    Equipped,
+    Carried,
+    Reachable,
+    Absent,
+}
+
+impl InventoryStateValue {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InventoryStateValue::Equipped => "equipped",
+            InventoryStateValue::Carried => "carried",
+            InventoryStateValue::Reachable => "reachable",
+            InventoryStateValue::Absent => "absent",
+        }
+    }
+}
+
+/// The enum's options in v4's declaration order — the `Invalid option` list.
+const INVENTORY_STATE_VALUES: [(&str, InventoryStateValue); 4] = [
+    ("equipped", InventoryStateValue::Equipped),
+    ("carried", InventoryStateValue::Carried),
+    ("reachable", InventoryStateValue::Reachable),
+    ("absent", InventoryStateValue::Absent),
+];
+
+/// An `inventory` state operand: one of the four states, or a `$param`
+/// naming a string parameter (a gate admits only the literal state).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum InventoryStateOperand {
+    State(InventoryStateValue),
+    ParamRef(ParamRef),
+}
+
+/// A test of one object's state (v4 `InventoryStateComparatorSchema`): `eq` /
+/// `neq` only — an ordering key is a rejection, since a state has no order.
+///
+/// A gate's (`GateInventoryStateComparatorSchema`) is the same Rust type,
+/// narrowed to literal states at the parse ([`parse_inventory_state_comparator`]),
+/// the [`GateComparator`] precedent.
+#[derive(Debug, Clone, PartialEq, Serialize, Default)]
+pub struct InventoryStateComparator {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eq: Option<InventoryStateOperand>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub neq: Option<InventoryStateOperand>,
+}
+
+/// The count test a gate may pose (v4 `GateInventoryCountComparatorSchema`):
+/// the six numeric keys with LITERAL numbers only — the [`NumericComparator`]
+/// type, narrowed at the parse.
+pub type GateInventoryCountComparator = NumericComparator;
+
+/// v4 `INVENTORY_AGGREGATE_DESCRIPTION` — the `inventoryAggregate` record's
+/// `.describe` (never a refusal; carried for the published schema's sake).
+pub const INVENTORY_AGGREGATE_DESCRIPTION: &str = "Test one attribute across every object in a scope of the rolling character's bag, keyed \"<scope>.<field>\": \
+scope equipped, owned (own tier, equipped or not) or reachable (everything they can see); field count, names, \
+titles, metadata.<key> (a list of the objects' values) or metadata.<key>.min/.max/.sum/.count (a number). \
+A list compares entry by entry: eq holds when any entry equals the operand, neq when none does, contains / \
+ncontains likewise; ordering needs a fold. With no character or chat, every test declines.";
+
 /// An availability gate: whether this invoker is offered the tool at all (v4
 /// `ToolGateSchema`, `6864bf0e`).
 ///
@@ -707,6 +826,30 @@ pub struct ToolGate {
         serialize_with = "ser_opt_param_comparators"
     )]
     pub progress: Option<Vec<(String, GateComparator)>>,
+    // === P4.D329: the gate's inventory records (shape order) ===
+    /// Test an object's state for the invoking character in this chat, keyed
+    /// by a LITERAL object reference (id, title or name) — e.g. `{ "sword": {
+    /// "eq": "equipped" } }`. With no character or chat, every test declines.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory: Option<Vec<(String, InventoryStateComparator)>>,
+    /// Test how many kin (same name) of an object the invoking character has
+    /// equipped in this chat.
+    #[serde(
+        rename = "inventoryCount",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory_count: Option<Vec<(String, GateInventoryCountComparator)>>,
+    /// [`INVENTORY_AGGREGATE_DESCRIPTION`].
+    #[serde(
+        rename = "inventoryAggregate",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory_aggregate: Option<Vec<(String, GateComparator)>>,
 }
 
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
@@ -769,6 +912,31 @@ pub struct WhenObject {
     /// valid on a tool that declares an `llm` block.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<LlmComparator>,
+    // === P4.D329: the when's inventory records (AFTER `llm` — v4's shape) ===
+    /// Test an object's state for the rolling character in this chat —
+    /// equipped, carried (own vault), reachable (a shared store) or absent —
+    /// keyed by object reference (a template). A run nobody made declines
+    /// every test.
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory: Option<Vec<(String, InventoryStateComparator)>>,
+    /// Test how many kin (same name) of an object the rolling character has
+    /// equipped in this chat.
+    #[serde(
+        rename = "inventoryCount",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory_count: Option<Vec<(String, NumericComparator)>>,
+    /// [`INVENTORY_AGGREGATE_DESCRIPTION`].
+    #[serde(
+        rename = "inventoryAggregate",
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "ser_opt_record"
+    )]
+    pub inventory_aggregate: Option<Vec<(String, MetadataComparator)>>,
 }
 
 /// An outcome test: either the literal `true` (catch-all) or a [`WhenObject`].
@@ -908,6 +1076,107 @@ impl Serialize for CustomToolWardrobeGesture {
     }
 }
 
+// === P4.D329: the inventory gesture ===
+/// What an `inventory` effect does for the rolling character (v4
+/// `InventoryEffectActionSchema`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InventoryEffectAction {
+    Equip,
+    Unequip,
+    PickUp,
+}
+
+impl InventoryEffectAction {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InventoryEffectAction::Equip => "equip",
+            InventoryEffectAction::Unequip => "unequip",
+            InventoryEffectAction::PickUp => "pick_up",
+        }
+    }
+}
+
+/// The enum's options in v4's declaration order.
+const INVENTORY_EFFECT_ACTIONS: [(&str, InventoryEffectAction); 3] = [
+    ("equip", InventoryEffectAction::Equip),
+    ("unequip", InventoryEffectAction::Unequip),
+    ("pick_up", InventoryEffectAction::PickUp),
+];
+
+/// An Inventory gesture: equip, unequip or pick up objects for the ROLLING
+/// character in this chat, through the chokepoints the operator's dialog uses
+/// (v4 `CustomToolInventoryGestureSchema`). Item references are TEMPLATES,
+/// rendered and then resolved through the one reference rule (id → title →
+/// name). Kits are allowed for equip and unequip; `pick_up` names archetypes
+/// and instantiates into the character's vault root, equipping unless `equip`
+/// is false.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomToolInventoryGesture {
+    /// "equip" takes up the listed objects (or kits); "unequip" sets them
+    /// down; "pick_up" makes an instance of each listed archetype in the
+    /// rolling character's vault.
+    pub action: InventoryEffectAction,
+    /// The objects, each by id, title or name (case-insensitive). A template:
+    /// `{{params.x}}` and the other placeholder families are substituted
+    /// before lookup. pick_up names archetypes.
+    pub items: Vec<String>,
+    /// pick_up only. Equip the new instances. Default true.
+    pub equip: Option<bool>,
+}
+
+impl Serialize for CustomToolInventoryGesture {
+    /// Zod's parsed output: schema order, `equip` only when present.
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        m.serialize_entry("action", self.action.as_str())?;
+        m.serialize_entry("items", &self.items)?;
+        if let Some(equip) = self.equip {
+            m.serialize_entry("equip", &equip)?;
+        }
+        m.end()
+    }
+}
+
+/// The field an [`inventory_gesture_problems`] entry is about.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InventoryGestureField {
+    Items,
+    Equip,
+}
+
+impl InventoryGestureField {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            InventoryGestureField::Items => "items",
+            InventoryGestureField::Equip => "equip",
+        }
+    }
+}
+
+/// v4 `inventoryGestureProblems` — the per-action rules of an Inventory
+/// gesture, the one statement of them (load-time validation and the
+/// Workbench's draft check read the same words).
+pub fn inventory_gesture_problems(
+    action: InventoryEffectAction,
+    items: &[String],
+    equip: Option<bool>,
+) -> Vec<(InventoryGestureField, String)> {
+    let mut problems = Vec::new();
+    if items.is_empty() {
+        problems.push((
+            InventoryGestureField::Items,
+            format!("{} needs at least one object", action.as_str()),
+        ));
+    }
+    if equip.is_some() && action != InventoryEffectAction::PickUp {
+        problems.push((
+            InventoryGestureField::Equip,
+            "equip is only used with pick_up".to_string(),
+        ));
+    }
+    problems
+}
+
 /// One side effect, recorded after the table has dealt: either a WRITE
 /// (`target` + `value`) or a WARDROBE GESTURE (`wardrobe`) — never both, never
 /// neither (v4 `CustomToolEffectSchema`, `f0db8cbb8`). v4 states that with one
@@ -936,6 +1205,10 @@ pub enum CustomToolEffectBody {
     Write { target: String, value: EffectValue },
     /// A wardrobe gesture on the rolling character instead of a write.
     Wardrobe(CustomToolWardrobeGesture),
+    // === P4.D329: the inventory gesture ===
+    /// An Inventory gesture on the rolling character instead of a write:
+    /// equip, unequip or pick up objects.
+    Inventory(CustomToolInventoryGesture),
 }
 
 impl CustomToolEffect {
@@ -947,6 +1220,12 @@ impl CustomToolEffect {
     /// v4 `isWardrobeEffect`.
     pub fn is_wardrobe_effect(&self) -> bool {
         matches!(self.body, CustomToolEffectBody::Wardrobe(_))
+    }
+
+    // === P4.D329: the inventory gesture ===
+    /// v4 `isInventoryEffect`.
+    pub fn is_inventory_effect(&self) -> bool {
+        matches!(self.body, CustomToolEffectBody::Inventory(_))
     }
 }
 
@@ -965,6 +1244,10 @@ impl Serialize for CustomToolEffect {
             }
             CustomToolEffectBody::Wardrobe(gesture) => {
                 m.serialize_entry("wardrobe", gesture)?;
+            }
+            // === P4.D329: the inventory gesture ===
+            CustomToolEffectBody::Inventory(gesture) => {
+                m.serialize_entry("inventory", gesture)?;
             }
         }
         m.end()
@@ -1053,17 +1336,21 @@ struct EffectParts {
     target: Option<String>,
     value: Option<EffectValue>,
     wardrobe: Option<CustomToolWardrobeGesture>,
+    // === P4.D329: the inventory gesture ===
+    inventory: Option<CustomToolInventoryGesture>,
 }
 
 impl EffectParts {
-    /// The parsed type, when the effect is exactly one of the two halves.
+    /// The parsed type, when the effect is exactly one of its kinds.
     fn complete(&self) -> Option<CustomToolEffect> {
-        let body = match (&self.target, &self.value, &self.wardrobe) {
-            (Some(target), Some(value), None) => CustomToolEffectBody::Write {
+        let body = match (&self.target, &self.value, &self.wardrobe, &self.inventory) {
+            (Some(target), Some(value), None, None) => CustomToolEffectBody::Write {
                 target: target.clone(),
                 value: value.clone(),
             },
-            (None, None, Some(gesture)) => CustomToolEffectBody::Wardrobe(gesture.clone()),
+            (None, None, Some(gesture), None) => CustomToolEffectBody::Wardrobe(gesture.clone()),
+            // === P4.D329: the inventory gesture ===
+            (None, None, None, Some(gesture)) => CustomToolEffectBody::Inventory(gesture.clone()),
             _ => return None,
         };
         Some(CustomToolEffect {
@@ -1279,8 +1566,9 @@ pub struct QtapCustomTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub llm: Option<CustomToolLlm>,
     /// Side effects applied after the run: writes into tiered persistent state
-    /// or the rolling character's metadata, or wardrobe gestures that change
-    /// what the rolling character is wearing.
+    /// or the rolling character's metadata, wardrobe gestures that change what
+    /// the rolling character is wearing, or inventory gestures that change
+    /// what they carry. (P4.D329 — the pin's `.describe`.)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<Vec<CustomToolEffect>>,
     pub outcomes: Vec<CustomToolOutcome>,
@@ -1348,6 +1636,25 @@ fn ser_opt_param_comparators<S: Serializer>(
 ) -> Result<S::Ok, S::Error> {
     match v {
         Some(entries) => ser_param_comparators(entries, s),
+        None => s.serialize_none(),
+    }
+}
+
+// === P4.D329: the inventory records' serializer ===
+/// A parsed record in authored key order (the inventory records' value types
+/// differ, so this is the generic form of [`ser_opt_param_comparators`]).
+fn ser_opt_record<S: Serializer, T: Serialize>(
+    v: &Option<Vec<(String, T)>>,
+    s: S,
+) -> Result<S::Ok, S::Error> {
+    match v {
+        Some(entries) => {
+            let mut m = s.serialize_map(Some(entries.len()))?;
+            for (k, val) in entries {
+                m.serialize_entry(k, val)?;
+            }
+            m.end()
+        }
         None => s.serialize_none(),
     }
 }
@@ -1574,9 +1881,83 @@ fn parse_state_ref(input: Option<&Value>) -> Res<StateRef> {
     Res { value, issues }
 }
 
+// === P4.D329: the `$inventory` reference ===
+/// v4 `InventoryRefSchema` (`e1872c94f`) — a strict object `{ $inventory,
+/// fallback }`: `$inventory` is `z.string().min(1).max(320)` refined to the
+/// `<object>.metadata.<key>` shape; `fallback` is `$state`'s union.
+///
+/// The length checks and the refine are all CHECKS, so a string collects every
+/// one that fails (an empty path is both too small and the wrong shape). The
+/// `.max` counts as Zod ≥ 4.5.4 does (`jsstr::zod_len_max_ok`).
+fn parse_inventory_ref(input: Option<&Value>) -> Res<InventoryRef> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let path = parse_string(
+        obj.get("$inventory"),
+        Some(1),
+        Some(MAX_INVENTORY_REF_LENGTH + 120),
+        false,
+    );
+    let mut path_issues = path.issues;
+    if let Some(text) = &path.value {
+        let is_metadata = crate::pascal::placeholders::split_inventory_reference(text).is_some_and(
+            |(_, field, _)| {
+                field == crate::pascal::placeholders::InventoryPlaceholderField::Metadata
+            },
+        );
+        if !is_metadata {
+            path_issues.push(Issue::check(
+                "must be \"<object>.metadata.<key>\", e.g. \"sword.metadata.damage\"",
+            ));
+        }
+    }
+    issues.extend(prefix("$inventory", path_issues));
+
+    let fallback = {
+        let input = obj.get("fallback");
+        let n = parse_finite_number(input);
+        let n = Res {
+            value: n.value.map(StateRefFallback::Number),
+            issues: n.issues,
+        };
+        let s = parse_string(input, None, None, false);
+        let s = Res {
+            value: s.value.map(StateRefFallback::String),
+            issues: s.issues,
+        };
+        let b = parse_bool(input);
+        let b = Res {
+            value: b.value.map(StateRefFallback::Bool),
+            issues: b.issues,
+        };
+        let r = union(vec![n, s, b]);
+        issues.extend(prefix("fallback", r.issues));
+        r.value
+    };
+    issues.extend(unrecognized_keys(obj, &["$inventory", "fallback"]));
+
+    let value = match (path.value, fallback) {
+        (Some(inventory), Some(fallback)) if !aborted(&issues) => Some(InventoryRef {
+            inventory,
+            fallback,
+        }),
+        _ => None,
+    };
+    Res { value, issues }
+}
+
 /// v4 `NumberOrParamRefSchema` / `NumberOperandSchema` — the two are the same
-/// union (number | `$param` | `$state`, in that order), and both roll fields
-/// and ordering operands take it.
+/// union (number | `$param` | `$state` | `$inventory`, in that order), and both
+/// roll fields and ordering operands take it.
 fn parse_number_or_param_ref(input: Option<&Value>) -> Res<NumberOrParamRef> {
     let n = parse_finite_number(input);
     let n = Res {
@@ -1593,7 +1974,13 @@ fn parse_number_or_param_ref(input: Option<&Value>) -> Res<NumberOrParamRef> {
         value: st.value.map(NumberOrParamRef::StateRef),
         issues: st.issues,
     };
-    union(vec![n, p, st])
+    // === P4.D329: the `$inventory` branch (LAST) ===
+    let inv = parse_inventory_ref(input);
+    let inv = Res {
+        value: inv.value.map(NumberOrParamRef::InventoryRef),
+        issues: inv.issues,
+    };
+    union(vec![n, p, st, inv])
 }
 
 /// v4 `AnyOperandSchema` — number | string | boolean | ParamRef, in that order.
@@ -1623,7 +2010,13 @@ fn parse_any_operand(input: Option<&Value>) -> Res<AnyOperand> {
         value: st.value.map(AnyOperand::StateRef),
         issues: st.issues,
     };
-    union(vec![n, s, b, p, st])
+    // === P4.D329: the `$inventory` branch (LAST) ===
+    let inv = parse_inventory_ref(input);
+    let inv = Res {
+        value: inv.value.map(AnyOperand::InventoryRef),
+        issues: inv.issues,
+    };
+    union(vec![n, s, b, p, st, inv])
 }
 
 /// v4 `StringOperandSchema` — a non-empty string literal (with the author's own
@@ -1655,7 +2048,13 @@ fn parse_string_operand(input: Option<&Value>) -> Res<StringOperand> {
         value: st.value.map(StringOperand::StateRef),
         issues: st.issues,
     };
-    union(vec![s, p, st])
+    // === P4.D329: the `$inventory` branch (LAST) ===
+    let inv = parse_inventory_ref(input);
+    let inv = Res {
+        value: inv.value.map(StringOperand::InventoryRef),
+        issues: inv.issues,
+    };
+    union(vec![s, p, st, inv])
 }
 
 fn parse_numeric_comparator(input: Option<&Value>) -> Res<NumericComparator> {
@@ -1924,22 +2323,53 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
             progress = None;
         }
     }
-    issues.extend(unrecognized_keys(obj, &["metadata", "progress"]));
+    // === P4.D329: the gate's inventory records (shape order) ===
+    let records = parse_inventory_records(obj, true, &mut issues);
+    issues.extend(unrecognized_keys(
+        obj,
+        &[
+            "metadata",
+            "progress",
+            "inventory",
+            "inventoryCount",
+            "inventoryAggregate",
+        ],
+    ));
 
-    // `.refine(gate => Object.keys(gate.metadata ?? {}).length +
-    // Object.keys(gate.progress ?? {}).length > 0, …)` — an object-level check,
-    // so it is skipped once anything inside aborted.
-    let value = match (metadata, progress) {
-        (Some(metadata), Some(progress)) if !aborted(&issues) => {
-            let tested =
-                metadata.as_ref().map_or(0, Vec::len) + progress.as_ref().map_or(0, Vec::len);
+    // `.refine(gate => <the five records' combined key count> > 0, …)` — an
+    // object-level check, so it is skipped once anything inside aborted.
+    let value = match (
+        metadata,
+        progress,
+        records.inventory,
+        records.inventory_count,
+        records.inventory_aggregate,
+    ) {
+        (
+            Some(metadata),
+            Some(progress),
+            Some(inventory),
+            Some(inventory_count),
+            Some(inventory_aggregate),
+        ) if !aborted(&issues) => {
+            let tested = metadata.as_ref().map_or(0, Vec::len)
+                + progress.as_ref().map_or(0, Vec::len)
+                + inventory.as_ref().map_or(0, Vec::len)
+                + inventory_count.as_ref().map_or(0, Vec::len)
+                + inventory_aggregate.as_ref().map_or(0, Vec::len);
             if tested == 0 {
                 issues.push(Issue::check(
-                    "must test at least one metadata key or progress field",
+                    "must test at least one metadata key, progress field, inventory object, or inventory aggregate",
                 ));
                 None
             } else {
-                Some(ToolGate { metadata, progress })
+                Some(ToolGate {
+                    metadata,
+                    progress,
+                    inventory,
+                    inventory_count,
+                    inventory_aggregate,
+                })
             }
         }
         _ => None,
@@ -2107,6 +2537,250 @@ fn parse_record<T>(
     Res { value, issues }
 }
 
+// === P4.D329: the inventory records ===
+/// A record whose KEY schema states its own reason: `inventory` /
+/// `inventoryCount` keys (`z.string().min(1).max(200)`) and `inventoryAggregate`
+/// keys (`AggregateKeySchema`, a `superRefine` over [`parse_aggregate_key`]).
+///
+/// At the pin a refused key is Zod's `invalid_key` carrying the key schema's
+/// own issues, and `flattenIssues`' `invalid_key` arm renders THOSE
+/// (`<path>.<key>: <reason>`), not "Invalid key in record". Pushing the reason
+/// itself at the key renders the same bytes through this file's plain arm
+/// (R-11), so this lane needs nothing of the `invalid_key` issue model; the
+/// unifier may fold this under that arm with the bytes unchanged. Aborting,
+/// like every `invalid_key`.
+///
+/// [`parse_aggregate_key`]: super::inventory_aggregate::parse_aggregate_key
+fn parse_reasoned_record<T>(
+    obj: &serde_json::Map<String, Value>,
+    key_reason: impl Fn(&str) -> Result<(), String>,
+    mut parse_value: impl FnMut(&Value) -> Res<T>,
+) -> Res<Vec<(String, T)>> {
+    let mut issues = Vec::new();
+    let mut out = Vec::new();
+    for (key, v) in obj {
+        if let Err(reason) = key_reason(key) {
+            issues.push(Issue::hard(reason).at(key));
+            continue;
+        }
+        let r = parse_value(v);
+        issues.extend(prefix(key, r.issues));
+        if let Some(val) = r.value {
+            out.push((key.clone(), val));
+        }
+    }
+    let value = if aborted(&issues) { None } else { Some(out) };
+    Res { value, issues }
+}
+
+/// v4 `InventoryKeySchema` — `z.string().min(1).max(MAX_INVENTORY_REF_LENGTH)`
+/// as a record key: Zod's own sentences, joined as `flattenIssues` joins a
+/// key's issues.
+fn inventory_key_reason(key: &str) -> Result<(), String> {
+    let mut reasons = Vec::new();
+    if !crate::jsstr::zod_len_min_ok(key, 1) {
+        reasons.push("Too small: expected string to have >=1 characters".to_string());
+    }
+    if !crate::jsstr::zod_len_max_ok(key, MAX_INVENTORY_REF_LENGTH) {
+        reasons.push(format!(
+            "Too big: expected string to have <={MAX_INVENTORY_REF_LENGTH} characters"
+        ));
+    }
+    if reasons.is_empty() {
+        Ok(())
+    } else {
+        Err(reasons.join("; "))
+    }
+}
+
+/// v4 `AggregateKeySchema` — the key grammar lives in ONE place,
+/// `inventory_aggregate::parse_aggregate_key`; this only adopts its reason.
+fn aggregate_key_reason(key: &str) -> Result<(), String> {
+    crate::pascal::inventory_aggregate::parse_aggregate_key(key).map(|_| ())
+}
+
+/// v4 `InventoryStateComparatorSchema` (a `when`'s — each operand a state or a
+/// `$param`) and `GateInventoryStateComparatorSchema` (`gate` — literal states
+/// only). The refine runs only when nothing aborted, over the parsed (stripped)
+/// object.
+fn parse_inventory_state_comparator(
+    input: Option<&Value>,
+    gate: bool,
+) -> Res<InventoryStateComparator> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut out = InventoryStateComparator::default();
+    for (key, slot) in [("eq", &mut out.eq), ("neq", &mut out.neq)] {
+        let Some(v) = obj.get(key) else {
+            continue;
+        };
+        let state = parse_enum(Some(v), &INVENTORY_STATE_VALUES);
+        let state = Res {
+            value: state.value.map(InventoryStateOperand::State),
+            issues: state.issues,
+        };
+        let r = if gate {
+            state
+        } else {
+            let p = parse_param_ref(Some(v));
+            let p = Res {
+                value: p.value.map(InventoryStateOperand::ParamRef),
+                issues: p.issues,
+            };
+            union(vec![state, p])
+        };
+        issues.extend(prefix(key, r.issues));
+        *slot = r.value;
+    }
+    issues.extend(unrecognized_keys(obj, &["eq", "neq"]));
+
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    if out.eq.is_none() && out.neq.is_none() {
+        issues.push(Issue::check(
+            "must test something: `eq` or `neq` against equipped, carried, reachable or absent",
+        ));
+    }
+    Res {
+        value: Some(out),
+        issues,
+    }
+}
+
+/// v4 `GateInventoryCountComparatorSchema` — the six numeric keys with LITERAL
+/// finite numbers, no containment, `.refine(hasComparator, AT_LEAST_ONE)`.
+fn parse_gate_inventory_count_comparator(
+    input: Option<&Value>,
+) -> Res<GateInventoryCountComparator> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+
+    let mut issues = Vec::new();
+    let mut out = NumericComparator::default();
+    let mut slots: [&mut Option<NumberOrParamRef>; 6] = [
+        &mut out.gt,
+        &mut out.gte,
+        &mut out.lt,
+        &mut out.lte,
+        &mut out.eq,
+        &mut out.neq,
+    ];
+    for (key, slot) in NUMERIC_COMPARATOR_KEYS.iter().zip(slots.iter_mut()) {
+        if let Some(v) = obj.get(*key) {
+            let r = parse_finite_number(Some(v));
+            issues.extend(prefix(key, r.issues));
+            **slot = r.value.map(NumberOrParamRef::Number);
+        }
+    }
+    issues.extend(unrecognized_keys(obj, &NUMERIC_COMPARATOR_KEYS));
+
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    if !NUMERIC_COMPARATOR_KEYS.iter().any(|k| obj.contains_key(*k)) {
+        issues.push(Issue::check(AT_LEAST_ONE));
+    }
+    Res {
+        value: Some(out),
+        issues,
+    }
+}
+
+/// The three inventory records one group carries, each tri-state like the
+/// gate's `metadata`: `Some(None)` absent, `Some(Some(v))` parsed, `None`
+/// failed.
+struct InventoryRecords {
+    inventory: Option<Option<Vec<(String, InventoryStateComparator)>>>,
+    inventory_count: Option<Option<Vec<(String, NumericComparator)>>>,
+    inventory_aggregate: Option<Option<Vec<(String, ParamComparator)>>>,
+}
+
+/// Parse the three inventory records of a gate group (`gate`) or a `when`, in
+/// SHAPE order — `inventory`, `inventoryCount`, `inventoryAggregate` — which is
+/// Zod's issue order. A gate's comparators take literals only.
+fn parse_inventory_records(
+    obj: &serde_json::Map<String, Value>,
+    gate: bool,
+    issues: &mut Vec<Issue>,
+) -> InventoryRecords {
+    fn record<T>(
+        obj: &serde_json::Map<String, Value>,
+        key: &str,
+        issues: &mut Vec<Issue>,
+        key_reason: impl Fn(&str) -> Result<(), String>,
+        parse_value: impl FnMut(&Value) -> Res<T>,
+    ) -> Option<Option<Vec<(String, T)>>> {
+        match obj.get(key) {
+            None => Some(None),
+            Some(Value::Object(m)) => {
+                let r = parse_reasoned_record(m, key_reason, parse_value);
+                issues.extend(prefix(key, r.issues));
+                r.value.map(Some)
+            }
+            other => {
+                // A `z.record` reports `record`, not `object`.
+                issues.extend(prefix(
+                    key,
+                    vec![Issue::hard(invalid_type("record", other))],
+                ));
+                None
+            }
+        }
+    }
+
+    let inventory = record(obj, "inventory", issues, inventory_key_reason, |v| {
+        parse_inventory_state_comparator(Some(v), gate)
+    });
+    let inventory_count = record(obj, "inventoryCount", issues, inventory_key_reason, |v| {
+        if gate {
+            parse_gate_inventory_count_comparator(Some(v))
+        } else {
+            parse_numeric_comparator(Some(v))
+        }
+    });
+    let inventory_aggregate = record(
+        obj,
+        "inventoryAggregate",
+        issues,
+        aggregate_key_reason,
+        |v| {
+            if gate {
+                parse_gate_comparator(Some(v))
+            } else {
+                parse_param_comparator(Some(v))
+            }
+        },
+    );
+    InventoryRecords {
+        inventory,
+        inventory_count,
+        inventory_aggregate,
+    }
+}
+
 fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
     let obj = match as_object(input) {
         Ok(o) => o,
@@ -2131,14 +2805,19 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
     );
     issues.extend(prefix("type", ty.issues));
 
-    // `default: z.union([number, string, boolean, StateRefSchema])` — no
-    // `.finite()` on the number branch. A `$state` default is kept as its raw
-    // object (the runtime resolves it against the merged state).
+    // `default: z.union([number, string, boolean, StateRefSchema,
+    // InventoryRefSchema])` — no `.finite()` on the number branch. A `$state`
+    // or `$inventory` default is kept as its raw object (the runtime resolves
+    // it against the merged state / the rolling character's bag).
     let default = match obj.get("default") {
         Some(v @ (Value::Number(_) | Value::String(_) | Value::Bool(_))) => Some(v.clone()),
         other => {
             let st = parse_state_ref(other);
-            if st.value.is_some() && st.issues.is_empty() {
+            // === P4.D329: the `$inventory` branch (LAST) ===
+            let inv = parse_inventory_ref(other);
+            if (st.value.is_some() && st.issues.is_empty())
+                || (inv.value.is_some() && inv.issues.is_empty())
+            {
                 other.cloned()
             } else {
                 let branches = vec![
@@ -2148,6 +2827,14 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
                     Res::<()> {
                         value: if st.issues.is_empty() { Some(()) } else { None },
                         issues: st.issues,
+                    },
+                    Res::<()> {
+                        value: if inv.issues.is_empty() {
+                            Some(())
+                        } else {
+                            None
+                        },
+                        issues: inv.issues,
                     },
                 ];
                 issues.extend(prefix("default", union(branches).issues));
@@ -2214,11 +2901,12 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
     // The declared default must satisfy the parameter's own declared type. A
     // `$state` default is typed by its fallback (which run-time resolution is
     // guaranteed to fall back to), so the fallback is what must match the type.
-    let effective_default: &Value = if is_state_ref_value(&default) {
-        default.get("fallback").unwrap_or(&Value::Null)
-    } else {
-        &default
-    };
+    let effective_default: &Value =
+        if is_state_ref_value(&default) || is_inventory_ref_value(&default) {
+            default.get("fallback").unwrap_or(&Value::Null)
+        } else {
+            &default
+        };
     if numeric && !effective_default.is_number() {
         issues.push(
             Issue::check(format!(
@@ -2334,7 +3022,13 @@ fn parse_roll(input: Option<&Value>) -> Res<Roll> {
         value: r.value.map(Roll::Range),
         issues: r.issues,
     };
-    union(vec![d, r])
+    // === P4.D329: the whole-roll `$inventory` (LAST) ===
+    let inv = parse_inventory_ref(input);
+    let inv = Res {
+        value: inv.value.map(Roll::Inventory),
+        issues: inv.issues,
+    };
+    union(vec![d, r, inv])
 }
 
 fn parse_when_object(input: Option<&Value>) -> Res<WhenObject> {
@@ -2454,6 +3148,16 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
         out.llm = r.value;
     }
 
+    // === P4.D329: the when's inventory records (AFTER `llm`, shape order) ===
+    let records = parse_inventory_records(obj, false, &mut issues);
+    let has_inventory = matches!(&records.inventory, Some(Some(r)) if !r.is_empty());
+    let has_inventory_count = matches!(&records.inventory_count, Some(Some(r)) if !r.is_empty());
+    let has_inventory_aggregate =
+        matches!(&records.inventory_aggregate, Some(Some(r)) if !r.is_empty());
+    out.inventory = records.inventory.flatten();
+    out.inventory_count = records.inventory_count.flatten();
+    out.inventory_aggregate = records.inventory_aggregate.flatten();
+
     // `outcome` closes the effect shape — the one subject an outcome row cannot
     // carry, because a row cannot test a verdict it has not yet won.
     let mut outcome: Option<OutcomeTest> = None;
@@ -2468,7 +3172,17 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     }
 
     let mut known: Vec<&str> = NUMERIC_COMPARATOR_KEYS.to_vec();
-    known.extend_from_slice(&["roll", "params", "metadata", "progress", "llm"]);
+    known.extend_from_slice(&[
+        "roll",
+        "params",
+        "metadata",
+        "progress",
+        "llm",
+        // === P4.D329 ===
+        "inventory",
+        "inventoryCount",
+        "inventoryAggregate",
+    ]);
     if effect {
         known.push("outcome");
     }
@@ -2490,7 +3204,12 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     let has_params = params_present && out.params.as_ref().is_some_and(|p| !p.is_empty());
     let has_metadata = metadata_present && out.metadata.as_ref().is_some_and(|m| !m.is_empty());
     let has_progress = progress_present && out.progress.as_ref().is_some_and(|m| !m.is_empty());
-    if !has_comparator
+    // P4.D329: v4's `testsSomething` tests the three inventory records FIRST,
+    // but it is one boolean — the order is unobservable.
+    if !has_inventory
+        && !has_inventory_aggregate
+        && !has_inventory_count
+        && !has_comparator
         && out.roll.is_none()
         && !llm_present
         && !outcome_present
@@ -2499,9 +3218,9 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
         && !has_progress
     {
         issues.push(Issue::check(if effect {
-            "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, or `progress`"
+            "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`"
         } else {
-            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`"
+            "must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`"
         }));
     }
     Res {
@@ -2574,20 +3293,21 @@ fn parse_outcome_test(input: Option<&Value>) -> Res<OutcomeTest> {
 /// and ABORTS; `.min(1)` is a continuable check; a non-array input with a
 /// `.length` also gets the length checks past its `invalid_type`.
 fn parse_wardrobe_items(v: &Value) -> Res<Vec<String>> {
+    parse_reference_items(v, MAX_WARDROBE_EFFECT_ITEMS, MAX_WARDROBE_ITEM_REF_LENGTH)
+}
+
+/// The shared body of a gesture's `items` (P4.D329: the wardrobe's and the
+/// inventory's schemas are the same shape with their own caps).
+fn parse_reference_items(v: &Value, max_items: usize, max_len: usize) -> Res<Vec<String>> {
     match v {
-        Value::Array(items) if items.len() > MAX_WARDROBE_EFFECT_ITEMS => Res::hard(format!(
-            "Too big: expected array to have <={MAX_WARDROBE_EFFECT_ITEMS} items"
+        Value::Array(items) if items.len() > max_items => Res::hard(format!(
+            "Too big: expected array to have <={max_items} items"
         )),
         Value::Array(items) => {
             let mut list = Vec::new();
             let mut issues = Vec::new();
             for (i, item) in items.iter().enumerate() {
-                let r = parse_string(
-                    Some(item),
-                    Some(1),
-                    Some(MAX_WARDROBE_ITEM_REF_LENGTH),
-                    false,
-                );
+                let r = parse_string(Some(item), Some(1), Some(max_len), false);
                 issues.extend(prefix(&i.to_string(), r.issues));
                 if let Some(reference) = r.value {
                     list.push(reference);
@@ -2601,11 +3321,7 @@ fn parse_wardrobe_items(v: &Value) -> Res<Vec<String>> {
         }
         other => {
             let mut issues = vec![Issue::hard(invalid_type("array", Some(other)))];
-            issues.extend(length_checks_past_invalid_type(
-                other,
-                1,
-                MAX_WARDROBE_EFFECT_ITEMS,
-            ));
+            issues.extend(length_checks_past_invalid_type(other, 1, max_items));
             Res {
                 value: None,
                 issues,
@@ -2669,6 +3385,67 @@ fn parse_custom_tool_wardrobe_gesture(input: Option<&Value>) -> Res<CustomToolWa
                 items,
                 mode,
                 slot,
+            }),
+            issues,
+        },
+        _ => Res {
+            value: None,
+            issues,
+        },
+    }
+}
+
+// === P4.D329: the inventory gesture ===
+/// v4 `CustomToolInventoryGestureSchema` — a strict object; `items` is
+/// REQUIRED (`.min(1).max(8)`, each `.min(1).max(200)`). The per-action rules
+/// are [`inventory_gesture_problems`], at load.
+fn parse_custom_tool_inventory_gesture(input: Option<&Value>) -> Res<CustomToolInventoryGesture> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+    let mut issues = Vec::new();
+
+    let action = parse_enum(obj.get("action"), &INVENTORY_EFFECT_ACTIONS);
+    issues.extend(prefix("action", action.issues));
+
+    let items = match obj.get("items") {
+        Some(v) => {
+            let r = parse_reference_items(v, MAX_INVENTORY_EFFECT_ITEMS, MAX_INVENTORY_REF_LENGTH);
+            issues.extend(prefix("items", r.issues));
+            r.value
+        }
+        None => {
+            issues.extend(prefix(
+                "items",
+                vec![Issue::hard(invalid_type("array", None))],
+            ));
+            None
+        }
+    };
+
+    let equip = match obj.get("equip") {
+        Some(v) => {
+            let r = parse_bool(Some(v));
+            issues.extend(prefix("equip", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(obj, &["action", "items", "equip"]));
+
+    match (action.value, items) {
+        (Some(action), Some(items)) if !aborted(&issues) => Res {
+            value: Some(CustomToolInventoryGesture {
+                action,
+                items,
+                equip,
             }),
             issues,
         },
@@ -2752,9 +3529,21 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
         None => None,
     };
 
+    // === P4.D329: the inventory gesture (after `wardrobe`, before the Log's `log`) ===
+    let inventory = match obj.get("inventory") {
+        Some(v) => {
+            let r = parse_custom_tool_inventory_gesture(Some(v));
+            issues.extend(prefix("inventory", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    // The PIN's strict-key list (R-G): `log` is P4.D331's key, written here
+    // with the pin's whole list so the union is textual.
     issues.extend(unrecognized_keys(
         obj,
-        &["when", "target", "value", "wardrobe"],
+        &["when", "target", "value", "wardrobe", "inventory", "log"],
     ));
 
     if aborted(&issues) {
@@ -2764,15 +3553,23 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
         };
     }
 
-    // ---- the superRefine (v4 `:721-741`)
+    // ---- the superRefine (v4 `:991-1010` at the pin) — the FOUR-kind
+    // sentences are the pin's whole bytes (R-G); P4.D331 adds `is_log`.
     let is_write = target.is_some() || value.is_some();
     let is_wardrobe = wardrobe.is_some();
-    if is_write && is_wardrobe {
+    let is_inventory = inventory.is_some();
+    let kinds = [is_write, is_wardrobe, is_inventory]
+        .into_iter()
+        .filter(|k| *k)
+        .count();
+    if kinds > 1 {
         issues.push(Issue::check(
-            "an effect is either a write (target + value) or a wardrobe gesture, not both",
+            "an effect is exactly one of a write (target + value), a wardrobe gesture, an inventory gesture, or a log line",
         ));
-    } else if !is_write && !is_wardrobe {
-        issues.push(Issue::check("an effect needs target + value, or wardrobe"));
+    } else if kinds == 0 {
+        issues.push(Issue::check(
+            "an effect needs target + value, wardrobe, inventory, or log",
+        ));
     } else if is_write && (target.is_none() || value.is_none()) {
         let field = if target.is_none() { "target" } else { "value" };
         issues.push(Issue::check("a write needs both target and value").at(field));
@@ -2784,6 +3581,7 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
             target,
             value,
             wardrobe,
+            inventory,
         }),
         issues,
     }
@@ -3252,6 +4050,51 @@ fn validate_gates(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
             .at("withheldWhen"),
         );
     }
+
+    // === P4.D329: a gate's inventory keys are literal ===
+    // A gate is answered at roster time, before any parameter exists, so a
+    // templated key would be its literal text for ever — and resolve to
+    // `absent` for ever. Outcome and effect `when` keys stay templates. (One
+    // group on this branch: path `[clause, subject, key]`; P4.D333's group
+    // walk adds the index for an any-of array.)
+    for (clause, gate) in [
+        ("availableWhen", &tool.available_when),
+        ("withheldWhen", &tool.withheld_when),
+    ] {
+        let Some(group) = gate else { continue };
+        let keys = [
+            (
+                "inventory",
+                group
+                    .inventory
+                    .iter()
+                    .flatten()
+                    .map(|(k, _)| k)
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "inventoryCount",
+                group
+                    .inventory_count
+                    .iter()
+                    .flatten()
+                    .map(|(k, _)| k)
+                    .collect::<Vec<_>>(),
+            ),
+        ];
+        for (subject, keys) in keys {
+            for key in keys {
+                if key.contains("{{") {
+                    issues.push(issue_at(
+                        format!(
+                            "a gate's {subject} key must be a literal object reference; \"{key}\" carries a placeholder, and a gate has no parameters to fill it"
+                        ),
+                        &[clause.to_string(), subject.to_string(), key.clone()],
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn validate_outcome_ordering(outcomes: &[CustomToolOutcome], issues: &mut Vec<Issue>) {
@@ -3405,6 +4248,120 @@ fn validate_when_subjects(
                 &path(vec!["metadata".into(), key.clone()]),
             );
         }
+
+        // === P4.D329: the when's inventory subjects ===
+        // An aggregate's key is the format's own (checked by its schema);
+        // whether a scope holds anything, and what types its values carry, are
+        // facts about a character — so, as with `metadata`, only the operands
+        // are checkable here.
+        for (key, comparator) in when.inventory_aggregate.iter().flatten() {
+            validate_metadata_operands(
+                tool,
+                comparator,
+                issues,
+                &path(vec!["inventoryAggregate".into(), key.clone()]),
+            );
+        }
+
+        // `inventory` and `inventoryCount` keys are TEMPLATES: their
+        // placeholders must resolve the way an item reference's do. The state
+        // operand is a literal state or a `$param` to a string parameter; the
+        // count's operands are numbers.
+        let has_llm_block = tool.llm.is_some();
+        for (key, comparator) in when.inventory.iter().flatten() {
+            validate_template_placeholders(
+                tool,
+                has_llm_block,
+                key,
+                issues,
+                &path(vec!["inventory".into(), key.clone()]),
+            );
+            for (op, operand) in [("eq", &comparator.eq), ("neq", &comparator.neq)] {
+                let Some(InventoryStateOperand::ParamRef(r)) = operand else {
+                    continue;
+                };
+                let p = path(vec!["inventory".into(), key.clone(), op.into()]);
+                match tool.parameter(&r.param) {
+                    None => issues.push(issue_at(
+                        format!("references undeclared parameter \"{}\"", r.param),
+                        &p,
+                    )),
+                    Some(target) if target.param_type.value_type() != ValueType::String => {
+                        issues.push(issue_at(
+                            format!(
+                                "{op} compares an inventory state with parameter \"{}\", which is {} rather than a string",
+                                r.param,
+                                target.param_type.as_str()
+                            ),
+                            &p,
+                        ))
+                    }
+                    Some(_) => {}
+                }
+            }
+        }
+        for (key, comparator) in when.inventory_count.iter().flatten() {
+            let p = path(vec!["inventoryCount".into(), key.clone()]);
+            validate_template_placeholders(tool, has_llm_block, key, issues, &p);
+            validate_numeric_comparator(
+                tool,
+                comparator,
+                ValueType::Number,
+                &format!("the equipped count of \"{key}\""),
+                issues,
+                &p,
+            );
+        }
+    }
+}
+
+// === P4.D329: the shared template-placeholder check ===
+/// v4 `validateTemplatePlaceholders(declared, hasLlmBlock, key, ctx, path)` — a
+/// template's placeholders resolve as an outcome message's must: a
+/// `{{params.x}}` names a declared parameter, a `{{llm}}` needs an `llm` block.
+/// Used for inventory keys and references, and (P4.D331) for log lines.
+///
+/// `declared` is the tool (v5 reads a declared parameter through
+/// [`QtapCustomTool::parameter`]); v4's `ctx` is `issues`.
+fn validate_template_placeholders(
+    declared: &QtapCustomTool,
+    has_llm_block: bool,
+    key: &str,
+    issues: &mut Vec<Issue>,
+    path: &[String],
+) {
+    scan_template_placeholders(declared, has_llm_block, key, "", issues, path);
+}
+
+/// The ONE scanner under [`validate_template_placeholders`] and the wardrobe
+/// gesture's item check — v4 states the two with different sentence subjects
+/// (`references …` vs `item references …`), so the subject is the parameter.
+fn scan_template_placeholders(
+    declared: &QtapCustomTool,
+    has_llm_block: bool,
+    text: &str,
+    subject: &str,
+    issues: &mut Vec<Issue>,
+    path: &[String],
+) {
+    for scanned in scan_placeholders(text) {
+        match &scanned.place_ref {
+            PlaceholderRef::Params { name } if declared.parameter(name).is_none() => {
+                issues.push(issue_at(
+                    format!("{subject}references undeclared parameter \"{name}\""),
+                    path,
+                ));
+            }
+            PlaceholderRef::Llm if !has_llm_block => {
+                issues.push(issue_at(
+                    format!(
+                        "{subject}references {{{{llm}}}}, but the tool declares no `llm` block"
+                    ),
+                    path,
+                ));
+            }
+            _ => {}
+        }
     }
 }
 
@@ -3435,6 +4392,26 @@ fn validate_effects(tool: &QtapCustomTool, effects: &[EffectParts], issues: &mut
 
         if let Some(gesture) = &effect.wardrobe {
             validate_wardrobe_gesture(tool, gesture, issues, &at("wardrobe"));
+            continue;
+        }
+
+        // (P4.D331's `log` arm lands HERE at the union — v4 `:1766-1769`
+        // checks the log line between the wardrobe and inventory arms.)
+
+        // === P4.D329: the inventory gesture ===
+        if let Some(gesture) = &effect.inventory {
+            for (field, message) in
+                inventory_gesture_problems(gesture.action, &gesture.items, gesture.equip)
+            {
+                let mut p = at("inventory");
+                p.push(field.as_str().to_string());
+                issues.push(issue_at(message, &p));
+            }
+            for (m, item) in gesture.items.iter().enumerate() {
+                let mut p = at("inventory");
+                p.extend(["items".to_string(), m.to_string()]);
+                validate_template_placeholders(tool, tool.llm.is_some(), item, issues, &p);
+            }
             continue;
         }
 
@@ -3512,23 +4489,8 @@ fn validate_wardrobe_gesture(
 
     for (m, item) in gesture.items.iter().flatten().enumerate() {
         let item_path = at(&["items".to_string(), m.to_string()]);
-        for scanned in scan_placeholders(item) {
-            match &scanned.place_ref {
-                PlaceholderRef::Params { name } if tool.parameter(name).is_none() => {
-                    issues.push(issue_at(
-                        format!("item references undeclared parameter \"{name}\""),
-                        &item_path,
-                    ));
-                }
-                PlaceholderRef::Llm if tool.llm.is_none() => {
-                    issues.push(issue_at(
-                        "item references {{llm}}, but the tool declares no `llm` block".into(),
-                        &item_path,
-                    ));
-                }
-                _ => {}
-            }
-        }
+        // P4.D329: the scan is the one [`scan_template_placeholders`].
+        scan_template_placeholders(tool, tool.llm.is_some(), item, "item ", issues, &item_path);
     }
 }
 
@@ -3691,6 +4653,20 @@ fn issue_at(message: String, path: &[String]) -> Issue {
 
 /// Roll fields are numeric, so every `$param` in one must name a numeric parameter.
 fn validate_roll_refs(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
+    // === P4.D329: a whole-roll `$inventory` ===
+    // The object's metadata names the dice, and the fallback must be dice
+    // notation this build can roll. The field walk below is the range form's.
+    if let Some(Roll::Inventory(r)) = &tool.roll {
+        let rollable =
+            matches!(&r.fallback, StateRefFallback::String(s) if parse_dice_notation(s).is_some());
+        if !rollable {
+            issues.push(issue_at(
+                "a roll drawn from $inventory needs a dice-notation fallback, like \"1d4\"".into(),
+                &["roll".to_string(), "fallback".to_string()],
+            ));
+        }
+        return;
+    }
     let Some(Roll::Range(range)) = &tool.roll else {
         return;
     };
@@ -3705,14 +4681,19 @@ fn validate_roll_refs(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
     ];
 
     for (field, value) in fields {
-        // A `$state` roll field must carry a numeric fallback — the only thing
-        // knowable about it at load time (v4 `f48f34dc`).
-        if let Some(NumberOrParamRef::StateRef(r)) = value {
-            if !matches!(r.fallback, StateRefFallback::Number(_)) {
+        // A `$state` (or, P4.D329, `$inventory`) roll field must carry a
+        // numeric fallback — the only thing knowable about it at load time.
+        let reference = match value {
+            Some(NumberOrParamRef::StateRef(r)) => Some(("$state", &r.fallback)),
+            Some(NumberOrParamRef::InventoryRef(r)) => Some(("$inventory", &r.fallback)),
+            _ => None,
+        };
+        if let Some((kind, fallback)) = reference {
+            if !matches!(fallback, StateRefFallback::Number(_)) {
                 issues.push(issue_at(
                     format!(
-                        "roll.{field} uses a $state reference whose fallback is {} rather than a number",
-                        r.fallback.type_name()
+                        "roll.{field} uses a {kind} reference whose fallback is {} rather than a number",
+                        fallback.type_name()
                     ),
                     &["roll".to_string(), field.to_string()],
                 ));
@@ -3757,7 +4738,8 @@ enum Operand<'a> {
     String,
     Bool,
     Ref(&'a str),
-    /// A `$state` reference, typed by its fallback (v4 `resolveOperandType`).
+    /// A `$state` (or `$inventory` — P4.D329) reference, typed by its fallback
+    /// (v4 `resolveOperandType`).
     StateFallback(ValueType),
 }
 
@@ -3774,6 +4756,10 @@ fn number_operand(v: &NumberOrParamRef) -> Operand<'_> {
         NumberOrParamRef::Number(_) => Operand::Number,
         NumberOrParamRef::ParamRef(r) => Operand::Ref(&r.param),
         NumberOrParamRef::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
+        // P4.D329: a `$inventory` operand is typed by its fallback, as `$state`.
+        NumberOrParamRef::InventoryRef(r) => {
+            Operand::StateFallback(fallback_value_type(&r.fallback))
+        }
     }
 }
 
@@ -3784,6 +4770,8 @@ fn any_operand(v: &AnyOperand) -> Operand<'_> {
         AnyOperand::Bool(_) => Operand::Bool,
         AnyOperand::ParamRef(r) => Operand::Ref(&r.param),
         AnyOperand::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
+        // P4.D329
+        AnyOperand::InventoryRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
     }
 }
 
@@ -3792,6 +4780,8 @@ fn string_operand(v: &StringOperand) -> Operand<'_> {
         StringOperand::String(_) => Operand::String,
         StringOperand::ParamRef(r) => Operand::Ref(&r.param),
         StringOperand::StateRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
+        // P4.D329
+        StringOperand::InventoryRef(r) => Operand::StateFallback(fallback_value_type(&r.fallback)),
     }
 }
 

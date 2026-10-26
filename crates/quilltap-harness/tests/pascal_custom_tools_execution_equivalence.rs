@@ -40,6 +40,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 
+// P4.D329: a row's bag — v4's real context, its answers recorded (R-3).
+mod recorded_inventory;
+use quilltap_core::pascal::custom_tool_types::{InventoryRef, StateRefFallback};
+use quilltap_core::pascal::inventory_subjects::{
+    inventory_count_holds, inventory_state_holds, parse_inventory_operand, resolve_inventory_value,
+    ResolvedInventoryCountTest, ResolvedInventoryStateTest,
+};
+use recorded_inventory::RowBag;
+
 /// P4.D169: Pascal's entrances now take their clock from the caller, so a
 /// differential can freeze it. Until this family's corpus carries a
 /// progression, no row reads the value; a fixed instant keeps the run
@@ -249,6 +258,18 @@ fn tool_of(row: &Value, id: &str) -> quilltap_core::pascal::custom_tool_types::Q
     })
 }
 
+/// P4.D329: the list-valued `inventoryAggregate` rows — they compare entry by
+/// entry through P4.D333's list rule (`metadata_match.rs`) and decline on a
+/// branch without it (the two `titles` rows decline where v4 holds; the miss
+/// row logs the old `the key holds an array` decline v4 no longer logs).
+/// MEASURED: exactly these three. A carved row that turns GREEN fails the run
+/// (lift it).
+const LIST_RULE_RESIDUE: &[&str] = &[
+    "inv-agg-titles-param",
+    "inv-agg-titles-param-miss",
+    "inv-agg-owned-titles",
+];
+
 #[test]
 fn pascal_custom_tools_execution_matches_oracle() {
     // The consult seam made `execute_custom_tool` async; everything else in this
@@ -272,201 +293,325 @@ fn pascal_custom_tools_execution_matches_oracle() {
     let mut counts = std::collections::BTreeMap::<String, usize>::new();
     let mut coverage = std::collections::BTreeMap::<String, usize>::new();
 
+    let mut failed: Vec<String> = Vec::new();
+    let mut residue_green: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let kind = row["kind"].as_str().unwrap().to_string();
         let id = row["id"].as_str().unwrap().to_string();
+        let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // P4.D329: every row runs under the capture rig; a row carrying v4's
+            // `inventoryLines` compares the inventory lines this lane owns.
+            let ((), lines) = quilltap_core::test_support::captured_with(|| match kind.as_str() {
+                "formatValue" => {
+                    let input = row["input"].as_f64().unwrap();
+                    let want = row["out"].as_str().unwrap();
+                    assert_eq!(format_value(input), want, "formatValue '{id}'");
+                }
 
-        match kind.as_str() {
-            "formatValue" => {
-                let input = row["input"].as_f64().unwrap();
-                let want = row["out"].as_str().unwrap();
-                assert_eq!(format_value(input), want, "formatValue '{id}'");
-            }
+                "renderTemplate" => {
+                    let tool = tool_of(&row, &id);
+                    let state = state_of(row.get("state"));
+                    // P4.D329: `inventory`, absent on every pre-existing row.
+                    let bag = RowBag::from_row(row.get("inventory"));
+                    let params = quilltap_core::pascal::custom_tools::resolve_params(
+                        &tool,
+                        None,
+                        state.as_ref(),
+                        bag.as_dyn(),
+                    )
+                    .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
+                    let message = row["message"].as_str().unwrap();
+                    let metadata = metadata_of(row.get("metadata"));
+                    let progress = metadata_of(row.get("progress"));
+                    let llm = llm_subject_of(row.get("llm"));
+                    let got = render_template(
+                        message,
+                        &TemplateVars {
+                            value: 12.3456,
+                            roll: 0.6789,
+                            dice: "3d6: [4, 2, 6] = 12",
+                            params: &params,
+                            metadata: metadata.as_ref(),
+                            // P4.D169: a row may pose a flattened progress sheet and
+                            // a run clock. Absent on every pre-existing row, which
+                            // is what keeps their bytes unmoved.
+                            progress: progress.as_ref(),
+                            now: row.get("now").and_then(Value::as_i64),
+                            llm: llm.as_ref(),
+                            state: state.as_ref(),
+                            // P4.D319: v4's `character` var, absent on every row
+                            // but the `{{character}}` block's.
+                            character: row.get("character").and_then(Value::as_str),
+                            inventory: bag.as_dyn(),
+                        },
+                    );
+                    assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
+                }
 
-            "renderTemplate" => {
-                let tool = tool_of(&row, &id);
-                let state = state_of(row.get("state"));
-                let params = quilltap_core::pascal::custom_tools::resolve_params(
-                    &tool,
-                    None,
-                    state.as_ref(),
-                )
-                .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
-                let message = row["message"].as_str().unwrap();
-                let metadata = metadata_of(row.get("metadata"));
-                let progress = metadata_of(row.get("progress"));
-                let llm = llm_subject_of(row.get("llm"));
-                let got = render_template(
-                    message,
-                    &TemplateVars {
-                        value: 12.3456,
-                        roll: 0.6789,
-                        dice: "3d6: [4, 2, 6] = 12",
+                "resolveParams" => {
+                    let tool = tool_of(&row, &id);
+                    let supplied = supplied_of(&row);
+                    let state = state_of(row.get("state"));
+                    let bag = RowBag::from_row(row.get("inventory"));
+                    match quilltap_core::pascal::custom_tools::resolve_params(
+                        &tool,
+                        supplied.as_ref(),
+                        state.as_ref(),
+                        bag.as_dyn(),
+                    ) {
+                        Ok(params) => {
+                            assert!(
+                                row["error"].is_null(),
+                                "case '{id}': v5 resolved, v4 threw: {}",
+                                row["error"]
+                            );
+                            assert_eq!(params_to_json(&params), row["out"], "resolveParams '{id}'");
+                        }
+                        Err(e) => {
+                            assert_eq!(
+                                Value::String(e.0.clone()),
+                                row["error"],
+                                "resolveParams '{id}': error differs"
+                            );
+                        }
+                    }
+                }
+
+                "matchesWhen" => {
+                    let tool = tool_of(&row, &id);
+                    let state = state_of(row.get("state"));
+                    let bag = RowBag::from_row(row.get("inventory"));
+                    let params = quilltap_core::pascal::custom_tools::resolve_params(
+                        &tool,
+                        // P4.D329: a row may supply params (a templated key reads one).
+                        supplied_of(&row).as_ref(),
+                        state.as_ref(),
+                        bag.as_dyn(),
+                    )
+                    .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
+                    let when = &tool.outcomes[0].when;
+                    let metadata = metadata_of(row.get("metadata"));
+                    let progress = metadata_of(row.get("progress"));
+                    let llm = llm_subject_of(row.get("llm"));
+                    let subjects = OutcomeSubjects {
+                        value: 12.0,
+                        roll: 0.6,
                         params: &params,
                         metadata: metadata.as_ref(),
-                        // P4.D169: a row may pose a flattened progress sheet and
-                        // a run clock. Absent on every pre-existing row, which
-                        // is what keeps their bytes unmoved.
                         progress: progress.as_ref(),
-                        now: row.get("now").and_then(Value::as_i64),
                         llm: llm.as_ref(),
                         state: state.as_ref(),
-                        // P4.D319: v4's `character` var, absent on every row
-                        // but the `{{character}}` block's.
-                        character: row.get("character").and_then(Value::as_str),
-                    },
-                );
-                assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");
-            }
-
-            "resolveParams" => {
-                let tool = tool_of(&row, &id);
-                let supplied = supplied_of(&row);
-                let state = state_of(row.get("state"));
-                match quilltap_core::pascal::custom_tools::resolve_params(
-                    &tool,
-                    supplied.as_ref(),
-                    state.as_ref(),
-                ) {
-                    Ok(params) => {
-                        assert!(
-                            row["error"].is_null(),
-                            "case '{id}': v5 resolved, v4 threw: {}",
-                            row["error"]
-                        );
-                        assert_eq!(params_to_json(&params), row["out"], "resolveParams '{id}'");
-                    }
-                    Err(e) => {
-                        assert_eq!(
-                            Value::String(e.0.clone()),
-                            row["error"],
-                            "resolveParams '{id}': error differs"
-                        );
+                        character: None,
+                        inventory: bag.as_dyn(),
+                    };
+                    match matches_when(when, &subjects, "probe") {
+                        Ok(held) => {
+                            assert!(row["error"].is_null(), "case '{id}': v5 matched, v4 threw");
+                            assert_eq!(Value::Bool(held), row["out"], "matchesWhen '{id}'");
+                        }
+                        Err(e) => {
+                            assert_eq!(
+                                Value::String(e.0.clone()),
+                                row["error"],
+                                "matchesWhen '{id}'"
+                            );
+                        }
                     }
                 }
-            }
 
-            "matchesWhen" => {
-                let tool = tool_of(&row, &id);
-                let state = state_of(row.get("state"));
-                let params = quilltap_core::pascal::custom_tools::resolve_params(
-                    &tool,
-                    None,
-                    state.as_ref(),
-                )
-                .unwrap_or_else(|e| panic!("case '{id}': params: {e}"));
-                let when = &tool.outcomes[0].when;
-                let metadata = metadata_of(row.get("metadata"));
-                let progress = metadata_of(row.get("progress"));
-                let llm = llm_subject_of(row.get("llm"));
-                let subjects = OutcomeSubjects {
-                    value: 12.0,
-                    roll: 0.6,
-                    params: &params,
-                    metadata: metadata.as_ref(),
-                    progress: progress.as_ref(),
-                    llm: llm.as_ref(),
-                    state: state.as_ref(),
-                    character: None,
-                };
-                match matches_when(when, &subjects, "probe") {
-                    Ok(held) => {
-                        assert!(row["error"].is_null(), "case '{id}': v5 matched, v4 threw");
-                        assert_eq!(Value::Bool(held), row["out"], "matchesWhen '{id}'");
-                    }
-                    Err(e) => {
-                        assert_eq!(
-                            Value::String(e.0.clone()),
-                            row["error"],
-                            "matchesWhen '{id}'"
-                        );
-                    }
-                }
-            }
+                "executeCustomTool" => {
+                    let tool = tool_of(&row, &id);
+                    let supplied = supplied_of(&row);
+                    let private = row["overrides"].get("private").and_then(Value::as_bool);
+                    let metadata = metadata_of(row["overrides"].get("metadata"));
+                    // P4.D169: v4's `overrides.progress` / `overrides.now`. Absent
+                    // on every pre-existing row.
+                    let progress = metadata_of(row["overrides"].get("progress"));
+                    let state = state_of(row["overrides"].get("state"));
 
-            "executeCustomTool" => {
-                let tool = tool_of(&row, &id);
-                let supplied = supplied_of(&row);
-                let private = row["overrides"].get("private").and_then(Value::as_bool);
-                let metadata = metadata_of(row["overrides"].get("metadata"));
-                // P4.D169: v4's `overrides.progress` / `overrides.now`. Absent
-                // on every pre-existing row.
-                let progress = metadata_of(row["overrides"].get("progress"));
-                let state = state_of(row["overrides"].get("state"));
+                    let pool = hex_bytes(row["poolHex"].as_str().unwrap());
+                    let mut rng = FixedBytes::new(pool);
+                    // P4.D329: v4's `overrides.inventory`.
+                    let bag = RowBag::from_row(row["overrides"].get("inventory"));
 
-                let pool = hex_bytes(row["poolHex"].as_str().unwrap());
-                let mut rng = FixedBytes::new(pool);
+                    let invoker = script_of(&row["llmScript"]).map(|script| CannedInvoker {
+                        script,
+                        seen: Mutex::new((None, None)),
+                    });
 
-                let invoker = script_of(&row["llmScript"]).map(|script| CannedInvoker {
-                    script,
-                    seen: Mutex::new((None, None)),
-                });
+                    let outcome = rt.block_on(execute_custom_tool(
+                        &tool,
+                        supplied.as_ref(),
+                        private,
+                        metadata.as_ref(),
+                        state.as_ref(),
+                        &mut rng,
+                        invoker.as_ref().map(|i| i as &dyn LlmInvoker),
+                        progress.as_ref(),
+                        row["overrides"]
+                            .get("now")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(PASCAL_NOW_MS),
+                        // P4.D319: v4's `overrides.character`, untrimmed — the core
+                        // applies `trim() || undefined` itself.
+                        row["overrides"].get("character").and_then(Value::as_str),
+                        bag.as_dyn(),
+                    ));
 
-                let outcome = rt.block_on(execute_custom_tool(
-                    &tool,
-                    supplied.as_ref(),
-                    private,
-                    metadata.as_ref(),
-                    state.as_ref(),
-                    &mut rng,
-                    invoker.as_ref().map(|i| i as &dyn LlmInvoker),
-                    progress.as_ref(),
-                    row["overrides"]
-                        .get("now")
-                        .and_then(Value::as_i64)
-                        .unwrap_or(PASCAL_NOW_MS),
-                    // P4.D319: v4's `overrides.character`, untrimmed — the core
-                    // applies `trim() || undefined` itself.
-                    row["overrides"].get("character").and_then(Value::as_str),
-                ));
+                    // The byte cursor is the assertion inspection cannot make.
+                    assert_eq!(
+                        rng.consumed(),
+                        row["bytesConsumed"].as_u64().unwrap() as usize,
+                        "executeCustomTool '{id}': bytes drawn differ"
+                    );
 
-                // The byte cursor is the assertion inspection cannot make.
-                assert_eq!(
-                    rng.consumed(),
-                    row["bytesConsumed"].as_u64().unwrap() as usize,
-                    "executeCustomTool '{id}': bytes drawn differ"
-                );
+                    // What the core ASKED, and with what advertised cap — the two
+                    // facts the result alone would not pin.
+                    let (prompt_seen, cap_seen) = match &invoker {
+                        Some(i) => i.seen.lock().unwrap().clone(),
+                        None => (None, None),
+                    };
+                    assert_eq!(
+                        prompt_seen.map(Value::String).unwrap_or(Value::Null),
+                        row["llmPromptSeen"],
+                        "executeCustomTool '{id}': the rendered consult prompt differs"
+                    );
+                    let want_cap = row["llmOptionsSeen"]
+                        .get("maxOutputChars")
+                        .and_then(Value::as_i64);
+                    assert_eq!(
+                        cap_seen, want_cap,
+                        "executeCustomTool '{id}': the advertised output cap differs"
+                    );
 
-                // What the core ASKED, and with what advertised cap — the two
-                // facts the result alone would not pin.
-                let (prompt_seen, cap_seen) = match &invoker {
-                    Some(i) => i.seen.lock().unwrap().clone(),
-                    None => (None, None),
-                };
-                assert_eq!(
-                    prompt_seen.map(Value::String).unwrap_or(Value::Null),
-                    row["llmPromptSeen"],
-                    "executeCustomTool '{id}': the rendered consult prompt differs"
-                );
-                let want_cap = row["llmOptionsSeen"]
-                    .get("maxOutputChars")
-                    .and_then(Value::as_i64);
-                assert_eq!(
-                    cap_seen, want_cap,
-                    "executeCustomTool '{id}': the advertised output cap differs"
-                );
-
-                match outcome {
-                    Ok(r) => {
-                        assert!(
-                            row["error"].is_null(),
-                            "case '{id}': v5 ran, v4 threw: {}",
-                            row["error"]
-                        );
-                        assert_eq!(result_to_json(&r), row["out"], "executeCustomTool '{id}'");
-                    }
-                    Err(e) => {
-                        assert_eq!(
-                            Value::String(e.0.clone()),
-                            row["error"],
-                            "executeCustomTool '{id}': error differs"
-                        );
+                    match outcome {
+                        Ok(r) => {
+                            assert!(
+                                row["error"].is_null(),
+                                "case '{id}': v5 ran, v4 threw: {}",
+                                row["error"]
+                            );
+                            assert_eq!(result_to_json(&r), row["out"], "executeCustomTool '{id}'");
+                        }
+                        Err(e) => {
+                            assert_eq!(
+                                Value::String(e.0.clone()),
+                                row["error"],
+                                "executeCustomTool '{id}': error differs"
+                            );
+                        }
                     }
                 }
-            }
 
-            other => panic!("unknown row kind '{other}'"),
+                // === P4.D329: v4 `inventory-subjects.ts` driven directly ===
+                "inventorySubject" => {
+                    let bag = RowBag::from_row(row.get("inventory"));
+                    let mut declines: Vec<String> = Vec::new();
+                    let got = match row["fn"].as_str().unwrap() {
+                        "parseInventoryOperand" => {
+                            match parse_inventory_operand(row["path"].as_str().unwrap()) {
+                                Some((r, key)) => json!({ "ref": r, "key": key }),
+                                None => Value::Null,
+                            }
+                        }
+                        "resolveInventoryValue" => {
+                            let operand = &row["operand"];
+                            let fallback = match &operand["fallback"] {
+                                Value::Number(n) => StateRefFallback::Number(n.as_f64().unwrap()),
+                                Value::String(s) => StateRefFallback::String(s.clone()),
+                                Value::Bool(b) => StateRefFallback::Bool(*b),
+                                other => panic!("case '{id}': fallback {other}"),
+                            };
+                            let r = InventoryRef {
+                                inventory: operand["$inventory"].as_str().unwrap().to_string(),
+                                fallback,
+                            };
+                            resolved_to_json(&resolve_inventory_value(&r, bag.as_dyn()))
+                        }
+                        "inventoryStateHolds" => {
+                            let test = ResolvedInventoryStateTest {
+                                eq: row["test"]["eq"].as_str().map(str::to_string),
+                                neq: row["test"]["neq"].as_str().map(str::to_string),
+                            };
+                            Value::Bool(inventory_state_holds(
+                                &test,
+                                row["ref"].as_str().unwrap(),
+                                bag.as_dyn(),
+                                Some(&mut |reason: &str| declines.push(reason.to_string())),
+                            ))
+                        }
+                        "inventoryCountHolds" => {
+                            let n = |k: &str| row["test"].get(k).and_then(Value::as_f64);
+                            let test = ResolvedInventoryCountTest {
+                                gt: n("gt"),
+                                gte: n("gte"),
+                                lt: n("lt"),
+                                lte: n("lte"),
+                                eq: n("eq"),
+                                neq: n("neq"),
+                            };
+                            Value::Bool(inventory_count_holds(
+                                &test,
+                                row["ref"].as_str().unwrap(),
+                                bag.as_dyn(),
+                                Some(&mut |reason: &str| declines.push(reason.to_string())),
+                            ))
+                        }
+                        other => panic!("case '{id}': unknown subject fn '{other}'"),
+                    };
+                    assert_eq!(
+                        serde_json::to_string(&got).unwrap(),
+                        serde_json::to_string(&row["out"]).unwrap(),
+                        "inventorySubject '{id}'"
+                    );
+                    assert_eq!(
+                        json!(declines),
+                        row["declines"],
+                        "inventorySubject '{id}': decline reasons differ"
+                    );
+                }
+
+                other => panic!("unknown row kind '{other}'"),
+            });
+            if let Some(want) = row.get("inventoryLines").and_then(Value::as_array) {
+                let want: Vec<String> = want
+                    .iter()
+                    .map(|l| {
+                        recorded_inventory::v4_line(
+                            l["level"].as_str().unwrap(),
+                            "",
+                            l["message"].as_str().unwrap(),
+                            &l["bag"],
+                        )
+                    })
+                    .collect();
+                let got: Vec<String> = lines
+                    .iter()
+                    .filter(|l| recorded_inventory::is_inventory_line(l))
+                    .map(|l| recorded_inventory::without_target(l))
+                    .collect();
+                assert_eq!(got, want, "'{id}': the inventory lines differ");
+                !want.is_empty()
+            } else {
+                false
+            }
+        }));
+        let residue = LIST_RULE_RESIDUE.contains(&id.as_str());
+        match (&walked, residue) {
+            (Err(_), false) => failed.push(id.clone()),
+            (Ok(_), true) => residue_green.push(id.clone()),
+            _ => {}
+        }
+        if walked.unwrap_or(false) {
+            *coverage.entry("inventoryLines".to_string()).or_default() += 1;
+        }
+        if row
+            .get("inventory")
+            .or(row["overrides"].get("inventory"))
+            .is_some_and(|b| b.get("recorded").is_some())
+        {
+            *coverage.entry("recordedBag".to_string()).or_default() += 1;
         }
 
         // P4.D169's floors. Every one of these was ZERO before this lane widened
@@ -490,6 +635,11 @@ fn pascal_custom_tools_execution_matches_oracle() {
         *counts.entry(kind).or_default() += 1;
     }
 
+    assert!(failed.is_empty(), "rows differ from v4: {failed:?}");
+    assert!(
+        residue_green.is_empty(),
+        "LIST_RULE_RESIDUE rows turned GREEN (P4.D333's list rule landed?) — lift them: {residue_green:?}"
+    );
     assert!(!counts.is_empty(), "oracle file looks empty");
     for key in [
         "renderTemplate:progress",
@@ -503,12 +653,23 @@ fn pascal_custom_tools_execution_matches_oracle() {
             "no row exercised '{key}' (coverage: {coverage:?})"
         );
     }
+    // P4.D329's floors: the recorded bag, and v4's lines compared.
+    assert!(
+        coverage.get("recordedBag").copied().unwrap_or(0) >= 60,
+        "too few rows read a recorded bag (coverage: {coverage:?})"
+    );
+    assert!(
+        coverage.get("inventoryLines").copied().unwrap_or(0) >= 30,
+        "too few rows compared v4's inventory lines (coverage: {coverage:?})"
+    );
     for kind in [
         "formatValue",
         "renderTemplate",
         "resolveParams",
         "matchesWhen",
         "executeCustomTool",
+        // P4.D329
+        "inventorySubject",
     ] {
         assert!(counts.contains_key(kind), "oracle carried no '{kind}' rows");
     }

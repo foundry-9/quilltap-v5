@@ -39,6 +39,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             private: None,
             metadata: None,
             state: None,
+            inventory: None,
             llm: None,
         }
     );
@@ -55,6 +56,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             private: None,
             metadata: None,
             state: Some(json!({ "player": { "hp": 3 } })),
+            inventory: None,
             llm: None,
         }
     );
@@ -68,6 +70,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: None,
             metadata: None,
             state: Some(json!({ "k": 1 })),
+            inventory: None,
             llm: None,
         }
     );
@@ -87,6 +90,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             private: Some(true),
             metadata: Some(json!({ "characterId": "c1" })),
             state: None,
+            inventory: None,
             llm: None,
         }
     );
@@ -103,6 +107,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: None,
             metadata: Some(json!({ "str": 3 })),
             state: None,
+            inventory: None,
             llm: None,
         }
     );
@@ -129,6 +134,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
                 private: None,
                 metadata: None,
                 state: None,
+                inventory: None,
                 llm: Some(want.clone()),
             }
         );
@@ -143,6 +149,7 @@ fn p4_6ay_workbench_contract_wire_shapes() {
             params: None,
             metadata: None,
             state: None,
+            inventory: None,
             llm: Some(json!({ "output": "YES" })),
         }
     );

@@ -75,6 +75,11 @@ import {
   MIN_TRIGGER_PHRASE_LENGTH,
 } from '@/lib/pascal/custom-tool.types';
 import { evaluateToolGate, hasToolGate } from '@/lib/pascal/tool-gate';
+// P4.D329: the gate rows' bags — the bench's mock, and v4's REAL context with its
+// answers recorded (`../lib/recorded-inventory.ts`).
+import { mockInventoryContext, type MockInventoryRow } from '@/lib/pascal/bench-inventory';
+import type { InventoryContext } from '@/lib/inventory/refs';
+import { contextOver, obj, recording, vivienneItems } from '../lib/recorded-inventory';
 // P4.D169: the writable-field rows are generated from v4's own exported list,
 // so a field added upstream arrives in the corpus rather than being forgotten.
 import { WRITABLE_PROGRESSION_FIELDS } from '@/lib/progressions/schema';
@@ -570,6 +575,153 @@ const corpus: Array<[string, unknown]> = [
   ['triggers-nine-bad-elements', { ...BASE, triggers: Array.from({ length: 9 }, () => 7) }],
   // ---- end P4.D307 rows ----
 
+  // === P4.D329 rows (merged BY ID — R-F) ===
+  // v4 `e1872c94f` (the Inventory subjects, the `$inventory` operand, the
+  // `inventory` effect) + `a53024d3c`'s `inventoryAggregate`. P4.D333 owns the
+  // ONE regen of the shared corpus; these ids are merged into it by id.
+  // -- the `inventory` subject in a `when`
+  ['inventory-when-state-eq', withWhen({ inventory: { sword: { eq: 'equipped' } } })],
+  ['inventory-when-state-neq', withWhen({ inventory: { lantern: { neq: 'absent' } } })],
+  ['inventory-when-state-both', withWhen({ inventory: { lantern: { neq: 'absent', eq: 'carried' } } })],
+  ['inventory-when-state-param-string', withWhen({ inventory: { sword: { eq: { $param: 'material' } } } }, STR_PARAM)],
+  ['inventory-when-state-param-number', withWhen({ inventory: { sword: { eq: { $param: 'scale' } } } }, NUM_PARAM)],
+  ['inventory-when-state-param-integer-neq', withWhen({ inventory: { sword: { neq: { $param: 'steps' } } } }, INT_PARAM)],
+  ['inventory-when-state-param-undeclared', withWhen({ inventory: { sword: { eq: { $param: 'ghost' } } } })],
+  ['inventory-when-state-ordering-key', withWhen({ inventory: { sword: { gt: 1 } } })],
+  ['inventory-when-state-worn', withWhen({ inventory: { sword: { eq: 'worn' } } })],
+  ['inventory-when-state-empty-comparator', withWhen({ inventory: { sword: {} } })],
+  ['inventory-when-state-null-comparator', withWhen({ inventory: { sword: null } })],
+  ['inventory-when-templated-key', withWhen({ inventory: { '{{params.scale}}': { eq: 'equipped' } } }, NUM_PARAM)],
+  ['inventory-when-templated-key-undeclared', withWhen({ inventory: { '{{params.ghost}}': { eq: 'equipped' } } })],
+  ['inventory-when-templated-key-llm-no-block', withWhen({ inventory: { '{{llm}}': { eq: 'equipped' } } })],
+  ['inventory-when-templated-key-llm-block', withWhen({ inventory: { '{{llm}}': { eq: 'equipped' } } }, LLM_BLOCK)],
+  ['inventory-when-key-201', withWhen({ inventory: { ['k'.repeat(201)]: { eq: 'equipped' } } })],
+  ['inventory-when-key-200', withWhen({ inventory: { ['k'.repeat(200)]: { eq: 'equipped' } } })],
+  ['inventory-when-key-empty', withWhen({ inventory: { '': { eq: 'equipped' } } })],
+  ['inventory-when-key-astral-201-units', withWhen({ inventory: { ['😀'.repeat(100) + 'a']: { eq: 'equipped' } } })],
+  ['inventory-when-record-not-object', withWhen({ inventory: 5 })],
+  ['inventory-when-empty-record-alone', withWhen({ inventory: {} })],
+  ['inventory-when-empty-record-beside-metadata', withWhen({ metadata: { a: { eq: 1 } }, inventory: {} })],
+  // -- `inventoryCount` in a `when` (a NUMERIC comparator — operands may refer)
+  ['inventory-count-when', withWhen({ inventoryCount: { ring: { gte: 2 } } })],
+  ['inventory-count-when-contains', withWhen({ inventoryCount: { ring: { contains: 'x' } } })],
+  ['inventory-count-when-param-number', withWhen({ inventoryCount: { ring: { gte: { $param: 'scale' } } } }, NUM_PARAM)],
+  ['inventory-count-when-param-string', withWhen({ inventoryCount: { ring: { gte: { $param: 'material' } } } }, STR_PARAM)],
+  ['inventory-count-when-eq-string-param', withWhen({ inventoryCount: { ring: { eq: { $param: 'material' } } } }, STR_PARAM)],
+  ['inventory-count-when-inventory-operand', withWhen({ inventoryCount: { ring: { gte: { $inventory: 'ring.metadata.level', fallback: 2 } } } })],
+  ['inventory-count-when-key-placeholder-undeclared', withWhen({ inventoryCount: { '{{params.ghost}}': { lt: 1 } } })],
+  ['inventory-count-when-empty-comparator', withWhen({ inventoryCount: { ring: {} } })],
+  // -- `inventoryAggregate` in a `when` (`a53024d3c`)
+  ['aggregate-when-equipped-count', withWhen({ inventoryAggregate: { 'equipped.count': { eq: 1 } } })],
+  ['aggregate-when-owned-names', withWhen({ inventoryAggregate: { 'owned.names': { eq: 1 } } })],
+  ['aggregate-when-reachable-titles', withWhen({ inventoryAggregate: { 'reachable.titles': { eq: 1 } } })],
+  ['aggregate-when-metadata-list', withWhen({ inventoryAggregate: { 'equipped.metadata.toolAbilities': { eq: 1 } } })],
+  ['aggregate-when-metadata-fold', withWhen({ inventoryAggregate: { 'equipped.metadata.toolVersion.max': { eq: 1 } } })],
+  ['aggregate-when-metadata-dotted', withWhen({ inventoryAggregate: { 'owned.metadata.a.b': { eq: 1 } } })],
+  ['aggregate-when-not-a-scope', withWhen({ inventoryAggregate: { 'carried.names': { eq: 'x' } } })],
+  ['aggregate-when-not-a-field', withWhen({ inventoryAggregate: { 'equipped.weight': { eq: 'x' } } })],
+  ['aggregate-when-leading-dot', withWhen({ inventoryAggregate: { '.count': { eq: 1 } } })],
+  ['aggregate-when-no-dot', withWhen({ inventoryAggregate: { equipped: { eq: 1 } } })],
+  ['aggregate-when-metadata-empty', withWhen({ inventoryAggregate: { 'equipped.metadata.': { eq: 1 } } })],
+  ['aggregate-when-two-bad-keys', withWhen({ inventoryAggregate: { 'nowhere.count': { eq: 1 }, 'owned.size': { eq: 1 } } })],
+  ['aggregate-when-param-undeclared', withWhen({ inventoryAggregate: { 'equipped.names': { eq: { $param: 'ghost' } } } })],
+  ['aggregate-when-param-declared', withWhen({ inventoryAggregate: { 'equipped.names': { contains: { $param: 'material' } } } }, STR_PARAM)],
+  ['aggregate-when-state-operand', withWhen({ inventoryAggregate: { 'equipped.count': { gte: { $state: 'floor', fallback: 1 } } } })],
+  ['aggregate-when-inventory-operand', withWhen({ inventoryAggregate: { 'equipped.count': { gte: { $inventory: 'ring.metadata.level', fallback: 1 } } } })],
+  ['aggregate-when-comparator-bad-key', withWhen({ inventoryAggregate: { 'equipped.count': { above: 1 } } })],
+  // -- the three records together, in SHAPE order (the issue order)
+  ['inventory-when-three-records-order', withWhen({ inventoryAggregate: { 'x.y': { eq: 1 } }, inventoryCount: { ring: { contains: 'x' } }, inventory: { sword: { gt: 1 } }, llm: { ok: true } })],
+  ['inventory-when-must-test-something', withWhen({})],
+  // -- effect conditions carry the same records
+  ['inventory-effect-when-records', withEffects([{ when: { inventory: { sword: { eq: 'carried' } }, inventoryCount: { ring: { lt: 3 } }, inventoryAggregate: { 'owned.count': { gte: 1 } } }, target: 'state.x', value: 1 }])],
+  ['inventory-effect-when-must-test-something', withEffects([{ when: {}, target: 'state.x', value: 1 }])],
+  ['inventory-effect-when-empty-inventory-record', withEffects([{ when: { inventory: {} }, target: 'state.x', value: 1 }])],
+  ['inventory-effect-when-key-placeholder-undeclared', withEffects([{ when: { inventory: { '{{params.ghost}}': { eq: 'carried' } } }, target: 'state.x', value: 1 }])],
+  // -- the gate's three records
+  ['inventory-gate-literal', { ...BASE, availableWhen: { inventory: { sword: { eq: 'equipped' } } } }],
+  ['inventory-gate-param-refused', { ...BASE, ...STR_PARAM, availableWhen: { inventory: { sword: { eq: { $param: 'material' } } } } }],
+  ['inventory-gate-placeholder-key', { ...BASE, ...NUM_PARAM, availableWhen: { inventory: { '{{params.scale}}': { eq: 'equipped' } } } }],
+  ['inventory-gate-placeholder-key-withheld', { ...BASE, withheldWhen: { inventory: { '{{character}}': { eq: 'absent' } } } }],
+  ['inventory-gate-count-literal', { ...BASE, withheldWhen: { inventoryCount: { ring: { gte: 2 } } } }],
+  ['inventory-gate-count-param-refused', { ...BASE, ...NUM_PARAM, withheldWhen: { inventoryCount: { ring: { gte: { $param: 'scale' } } } } }],
+  ['inventory-gate-count-contains', { ...BASE, withheldWhen: { inventoryCount: { ring: { contains: 'x' } } } }],
+  ['inventory-gate-count-placeholder-key', { ...BASE, withheldWhen: { inventoryCount: { '{{params.x}}': { gte: 1 } } } }],
+  ['aggregate-gate-literal', { ...BASE, availableWhen: { inventoryAggregate: { 'equipped.names': { eq: 'x' } } } }],
+  ['aggregate-gate-param-refused', { ...BASE, ...STR_PARAM, availableWhen: { inventoryAggregate: { 'equipped.names': { eq: { $param: 'material' } } } } }],
+  ['aggregate-gate-bad-key', { ...BASE, availableWhen: { inventoryAggregate: { 'carried.names': { eq: 'x' } } } }],
+  ['aggregate-gate-key-placeholder-not-checked', { ...BASE, availableWhen: { inventoryAggregate: { 'equipped.metadata.{{x}}': { eq: 'x' } } } }],
+  ['inventory-gate-empty-records', { ...BASE, availableWhen: { inventory: {}, inventoryCount: {}, inventoryAggregate: {} } }],
+  ['inventory-gate-empty-gate', { ...BASE, availableWhen: {} }],
+  ['inventory-gate-metadata-plus-empty-inventory', { ...BASE, availableWhen: { metadata: { a: { eq: 1 } }, inventory: {} } }],
+  ['inventory-gate-unknown-key', { ...BASE, availableWhen: { inventroy: { sword: { eq: 'equipped' } } } }],
+  ['inventory-gate-shape-order', { ...BASE, availableWhen: { inventoryAggregate: { 'x.y': { eq: 1 } }, inventoryCount: { r: {} }, inventory: { s: {} }, progress: { 'bad key': { eq: 1 } }, metadata: { '': { eq: 1 } } } }],
+  ['inventory-gate-record-not-object', { ...BASE, availableWhen: { inventoryCount: [1] } }],
+  // -- the `$inventory` operand
+  ['inventory-operand-whole-roll', { ...BASE, roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' } }],
+  ['inventory-operand-whole-roll-key-order', { ...BASE, roll: { fallback: '1d4', $inventory: 'sword.metadata.damage' } }],
+  ['inventory-operand-whole-roll-numeric-fallback', { ...BASE, roll: { $inventory: 'sword.metadata.damage', fallback: 4 } }],
+  ['inventory-operand-whole-roll-prose-fallback', { ...BASE, roll: { $inventory: 'sword.metadata.damage', fallback: 'far' } }],
+  ['inventory-operand-whole-roll-boolean-fallback', { ...BASE, roll: { $inventory: 'sword.metadata.damage', fallback: true } }],
+  ['inventory-operand-whole-roll-title-path', { ...BASE, roll: { $inventory: 'sword.title', fallback: '1d4' } }],
+  ['inventory-operand-roll-max-string-fallback', { ...BASE, roll: { max: { $inventory: 'sword.metadata.reach', fallback: 'far' } } }],
+  ['inventory-operand-roll-min-numeric', { ...BASE, roll: { min: { $inventory: 'sword.metadata.reach', fallback: 1 }, max: 10 } }],
+  ['inventory-operand-state-roll-min-string-fallback', { ...BASE, roll: { min: { $state: 'floor', fallback: 'low' } } }],
+  ['inventory-operand-roll-two-kinds', { ...BASE, roll: { min: { $state: 'floor', fallback: true }, max: { $inventory: 'a.metadata.b', fallback: 'x' } } }],
+  ['inventory-operand-ordering-string-fallback', withWhen({ gte: { $inventory: 'sword.metadata.bonus', fallback: 'x' } })],
+  ['inventory-operand-eq-numeric', withWhen({ eq: { $inventory: 'sword.metadata.bonus', fallback: 0 } })],
+  ['inventory-operand-param-eq-string', withWhen({ params: { material: { eq: { $inventory: 'sword.metadata.metal', fallback: 'iron' } } } }, STR_PARAM)],
+  ['inventory-operand-contains-string', withWhen({ params: { material: { contains: { $inventory: 'sword.metadata.metal', fallback: 'ir' } } } }, STR_PARAM)],
+  ['inventory-operand-contains-number-fallback', withWhen({ params: { material: { contains: { $inventory: 'sword.metadata.metal', fallback: 3 } } } }, STR_PARAM)],
+  ['inventory-operand-in-gate-refused', { ...BASE, availableWhen: { metadata: { level: { gte: { $inventory: 'sword.metadata.level', fallback: 1 } } } } }],
+  ['inventory-operand-default', { ...BASE, parameters: { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 0 } } } }],
+  ['inventory-operand-default-string-fallback-on-number', { ...BASE, parameters: { bonus: { type: 'number', default: { $inventory: 'sword.metadata.bonus', fallback: 'x' } } } }],
+  ['inventory-operand-default-integer-fractional', { ...BASE, parameters: { bonus: { type: 'integer', default: { $inventory: 'sword.metadata.bonus', fallback: 1.5 } } } }],
+  ['inventory-operand-default-bad-path', { ...BASE, parameters: { bonus: { type: 'number', default: { $inventory: 'sword', fallback: 0 } } } }],
+  ['inventory-operand-path-empty', withWhen({ eq: { $inventory: '', fallback: 0 } })],
+  ['inventory-operand-path-319', withWhen({ eq: { $inventory: 'a.metadata.' + 'k'.repeat(308), fallback: 0 } })],
+  ['inventory-operand-path-320', withWhen({ eq: { $inventory: 'a.metadata.' + 'k'.repeat(309), fallback: 0 } })],
+  ['inventory-operand-path-321', withWhen({ eq: { $inventory: 'a.metadata.' + 'k'.repeat(310), fallback: 0 } })],
+  ['inventory-operand-path-astral-321-units', withWhen({ eq: { $inventory: 'a.metadata.' + '😀'.repeat(155), fallback: 0 } })],
+  ['inventory-operand-extra-key', withWhen({ eq: { $inventory: 'a.metadata.b', fallback: 0, note: 'x' } })],
+  ['inventory-operand-no-fallback', withWhen({ eq: { $inventory: 'a.metadata.b' } })],
+  ['inventory-operand-null-fallback', withWhen({ eq: { $inventory: 'a.metadata.b', fallback: null } })],
+  ['inventory-operand-and-state-together', withWhen({ eq: { $inventory: 'a.metadata.b', $state: 'x', fallback: 0 } })],
+  ['inventory-operand-key-order', withWhen({ eq: { fallback: 2, $inventory: 'a.metadata.b' } })],
+  // -- the `inventory` effect gesture
+  ['inventory-effect-equip', withEffects([{ inventory: { action: 'equip', items: ['Excalibur', '{{params.material}}'] } }], STR_PARAM)],
+  ['inventory-effect-unequip', withEffects([{ inventory: { action: 'unequip', items: ['lantern'] } }])],
+  ['inventory-effect-pick-up', withEffects([{ inventory: { action: 'pick_up', items: ['magic bow'] } }])],
+  ['inventory-effect-pick-up-no-equip-key-order', withEffects([{ inventory: { equip: false, items: ['magic bow'], action: 'pick_up' } }])],
+  ['inventory-effect-when-and-gesture-key-order', withEffects([{ inventory: { action: 'equip', items: ['x'] }, when: { outcome: { eq: 'success' } } }])],
+  ['inventory-effect-equip-with-equip-key', withEffects([{ inventory: { action: 'equip', items: ['x'], equip: true } }])],
+  ['inventory-effect-unequip-with-equip-false', withEffects([{ inventory: { action: 'unequip', items: ['x'], equip: false } }])],
+  ['inventory-effect-items-empty', withEffects([{ inventory: { action: 'pick_up', items: [] } }])],
+  ['inventory-effect-items-empty-equip-on-equip', withEffects([{ inventory: { action: 'equip', items: [], equip: true } }])],
+  ['inventory-effect-items-nine', withEffects([{ inventory: { action: 'equip', items: Array.from({ length: 9 }, (_, i) => `o${i}`) } }])],
+  ['inventory-effect-items-eight', withEffects([{ inventory: { action: 'equip', items: Array.from({ length: 8 }, (_, i) => `o${i}`) } }])],
+  ['inventory-effect-items-missing', withEffects([{ inventory: { action: 'equip' } }])],
+  ['inventory-effect-items-string', withEffects([{ inventory: { action: 'equip', items: 'sword' } }])],
+  ['inventory-effect-item-empty-string', withEffects([{ inventory: { action: 'equip', items: [''] } }])],
+  ['inventory-effect-item-201', withEffects([{ inventory: { action: 'equip', items: ['i'.repeat(201)] } }])],
+  ['inventory-effect-action-drop', withEffects([{ inventory: { action: 'drop', items: ['x'] } }])],
+  ['inventory-effect-action-missing', withEffects([{ inventory: { items: ['x'] } }])],
+  ['inventory-effect-equip-not-boolean', withEffects([{ inventory: { action: 'pick_up', items: ['x'], equip: 'yes' } }])],
+  ['inventory-effect-gesture-unknown-key', withEffects([{ inventory: { action: 'equip', items: ['x'], slot: 'hair' } }])],
+  ['inventory-effect-gesture-not-object', withEffects([{ inventory: 'equip x' }])],
+  ['inventory-effect-item-placeholder-undeclared', withEffects([{ inventory: { action: 'equip', items: ['{{params.ghost}}', 'ok'] } }])],
+  ['inventory-effect-item-llm-no-block', withEffects([{ inventory: { action: 'pick_up', items: ['{{llm}}'] } }])],
+  ['inventory-effect-item-llm-block', withEffects([{ inventory: { action: 'pick_up', items: ['{{llm}}'] } }], LLM_BLOCK)],
+  // -- the FOUR-kind sentences (shared with the Log — R-G)
+  ['inventory-effect-with-wardrobe', withEffects([{ inventory: { action: 'equip', items: ['x'] }, wardrobe: { action: 'wear', items: ['Hat'] } }])],
+  ['inventory-effect-with-write', withEffects([{ inventory: { action: 'equip', items: ['x'] }, target: 'state.x', value: 1 }])],
+  ['inventory-effect-with-target-only', withEffects([{ inventory: { action: 'equip', items: ['x'] }, target: 'state.x' }])],
+  ['inventory-effect-write-and-wardrobe', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'] }, target: 'state.x', value: 1 }])],
+  ['inventory-effect-needs-something', withEffects([{}])],
+  ['inventory-effect-needs-something-with-when', withEffects([{ when: { outcome: { eq: 'success' } } }])],
+  ['inventory-effect-gesture-and-when-issues', withEffects([{ when: { params: { ghost: { gt: 1 } } }, inventory: { action: 'equip', items: ['{{params.ghost}}'], equip: false } }])],
+  ['inventory-effect-unknown-key-list', withEffects([{ inventory: { action: 'equip', items: ['x'] }, colour: 'red' }])],
+  // === end P4.D329 rows ===
+
   // ---- effects: accepted --------------------------------------------------
   ['effect-literal-number', withEffects([{ target: 'state.encounter.count', value: 3 }])],
   ['effect-literal-negative-number', withEffects([{ target: 'state.debt', value: -12.5 }])],
@@ -941,6 +1093,99 @@ const gateCases: Array<
   // cannot withhold, and the gate answers on the other sheet alone.
   ['progress-empty-record-beside-metadata', { ...BASE, availableWhen: { metadata: { rank: { gte: 1 } }, progress: {} } }, { rank: 2 }, CHARGING],
 ];
+
+// === P4.D329: gate rows posed against an Inventory bag (item 8) ===
+// v4 `custom-tools-inventory.test.ts`'s `the gate` (swing / flee over
+// `vivienne()`), the measure-twice tape and kind-name gates (`cad017599`'s
+// pure twins), and `inventory-aggregate.test.ts`'s null-context group — each
+// bag v4's REAL `inventoryContextFrom` context with its answers RECORDED, or
+// the bench's mock rows, or `null`.
+const SWING = { ...BASE, availableWhen: { inventory: { sword: { eq: 'equipped' } } } };
+const FLEE = { ...BASE, withheldWhen: { inventoryCount: { ring: { gte: 2 } } } };
+const TITLE = "Friday's Yellow Tape Measure";
+const tapeCtx = (holder: 'friday' | 'ottoline') =>
+  contextOver(holder === 'friday' ? 'c-friday' : 'c-ottoline', 'chat-1', {
+    items: [
+      obj('tape-arch', { name: 'tape measure', isArchetype: true, metadata: { length_feet: 16 } }),
+      holder === 'friday'
+        ? obj('tape-friday', { name: 'tape measure', title: TITLE, parentId: 'tape-arch', metadata: { length_feet: 25 } })
+        : obj('tape-ottoline', { name: 'tape measure', parentId: 'tape-arch', metadata: { length_feet: 16 } }),
+      obj('res-arch', { name: 'ansible resonator', isArchetype: true }),
+      obj('res-1', { name: 'ansible resonator', parentId: 'res-arch' }),
+      obj('res-2', { name: 'ansible resonator', title: "Charlie's Resonator", parentId: 'res-arch' }),
+      obj('walkie', { name: 'ansible walkie-talkie' }),
+      obj('spy-arch', { name: 'ansible spyglass', isArchetype: true }),
+    ],
+    own: ['tape-friday', 'tape-ottoline', 'res-1', 'res-2', 'walkie'],
+    equipped: holder === 'friday' ? ['tape-friday', 'res-1', 'res-2', 'walkie'] : ['tape-ottoline'],
+  });
+const MEASURE = { ...BASE, availableWhen: { inventory: { [TITLE]: { eq: 'equipped' } } } };
+const PROBE = (ref: string) => ({ ...BASE, availableWhen: { inventory: { [ref]: { eq: 'equipped' } } } });
+type GateBag = { recorded: () => InventoryContext } | { rows: MockInventoryRow[] } | null | undefined;
+const recordedOf = (make: () => InventoryContext): GateBag => ({ recorded: make });
+const inventoryGateCases: Array<[string, unknown, GateBag]> = [
+  ['inventory-gate-swing-vivienne', SWING, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['inventory-gate-swing-empty-mock', SWING, { rows: [] }],
+  ['inventory-gate-swing-null', SWING, null],
+  ['inventory-gate-swing-absent', SWING, undefined],
+  ['inventory-gate-swing-mock-rows', SWING, { rows: [{ ref: 'Sword', state: 'equipped' }] }],
+  ['inventory-gate-flee-vivienne', FLEE, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['inventory-gate-flee-null-offers', FLEE, null],
+  ['inventory-gate-flee-mock-count-2', FLEE, { rows: [{ ref: 'ring', state: 'equipped', count: 2 }] }],
+  ['inventory-gate-flee-mock-count-1', FLEE, { rows: [{ ref: 'ring', state: 'equipped', count: 1 }] }],
+  ['inventory-gate-count-lt1-null-closed', { ...BASE, availableWhen: { inventoryCount: { axe: { lt: 1 } } } }, null],
+  ['inventory-gate-count-lt1-vivienne', { ...BASE, availableWhen: { inventoryCount: { axe: { lt: 1 } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['inventory-gate-absent-eq-null-closed', { ...BASE, availableWhen: { inventory: { axe: { eq: 'absent' } } } }, null],
+  ['inventory-gate-neq-vivienne', { ...BASE, withheldWhen: { inventory: { lantern: { neq: 'carried' } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['measure-twice-gate-friday-opens', MEASURE, recordedOf(() => tapeCtx('friday'))],
+  ['measure-twice-gate-ottoline-closed', MEASURE, recordedOf(() => tapeCtx('ottoline'))],
+  ['measure-twice-gate-null-closed', MEASURE, null],
+  ['measure-twice-gate-kind-name-friday', PROBE('tape measure'), recordedOf(() => tapeCtx('friday'))],
+  ['measure-twice-gate-kind-name-ottoline', PROBE('tape measure'), recordedOf(() => tapeCtx('ottoline'))],
+  ['measure-twice-gate-resonator-kind', PROBE('ansible resonator'), recordedOf(() => tapeCtx('friday'))],
+  ['measure-twice-gate-resonator-title', PROBE("Charlie's Resonator"), recordedOf(() => tapeCtx('friday'))],
+  ['measure-twice-gate-walkie', PROBE('ansible walkie-talkie'), recordedOf(() => tapeCtx('friday'))],
+  ['measure-twice-gate-spyglass-closed', PROBE('ansible spyglass'), recordedOf(() => tapeCtx('friday'))],
+  ['aggregate-gate-null-closed', { ...BASE, availableWhen: { inventoryAggregate: { 'equipped.count': { gte: 0 } } } }, null],
+  ['aggregate-gate-null-withheld-offers', { ...BASE, withheldWhen: { inventoryAggregate: { 'equipped.count': { gte: 0 } } } }, null],
+  ['aggregate-gate-count-vivienne', { ...BASE, availableWhen: { inventoryAggregate: { 'equipped.count': { gte: 3 } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['aggregate-gate-fold-vivienne', { ...BASE, withheldWhen: { inventoryAggregate: { 'owned.metadata.toolVersion.max': { gte: 5 } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['aggregate-gate-mock-count', { ...BASE, availableWhen: { inventoryAggregate: { 'reachable.count': { eq: 2 } } } }, { rows: [{ ref: 'rope', state: 'reachable' }, { ref: 'cup', state: 'carried' }, { ref: 'ghost', state: 'absent' }] }],
+  ['inventory-gate-all-three-vivienne', { ...BASE, availableWhen: { inventory: { sword: { eq: 'equipped' } }, inventoryCount: { ring: { eq: 2 } }, inventoryAggregate: { 'equipped.metadata.bonus.sum': { eq: 3 } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+  ['inventory-gate-metadata-first-declines', { ...BASE, availableWhen: { metadata: { rank: { gte: 9 } }, inventory: { sword: { eq: 'equipped' } } } }, recordedOf(() => contextOver('c-viv', 'chat-1', vivienneItems()))],
+];
+for (const [id, definition, bag] of inventoryGateCases) {
+  const parsed = QtapCustomToolSchema.safeParse(definition);
+  if (!parsed.success) throw new Error(`gate case '${id}': definition does not load`);
+  let inventory: unknown;
+  let ctx: InventoryContext | null | undefined;
+  let recorded: (() => unknown) | null = null;
+  if (bag === undefined) {
+    ctx = undefined;
+  } else if (bag === null) {
+    ctx = null;
+    inventory = null;
+  } else if ('rows' in bag) {
+    ctx = mockInventoryContext(bag.rows);
+    inventory = { rows: bag.rows };
+  } else {
+    const r = recording(bag.recorded());
+    ctx = r.ctx;
+    recorded = () => ({ recorded: r.recorded });
+  }
+  const verdict = JSON.stringify(evaluateToolGate(parsed.data, {}, undefined, ctx));
+  if (recorded) inventory = recorded();
+  rows.push({
+    kind: 'gate',
+    id,
+    inputJson: JSON.stringify(definition),
+    metadata: {},
+    ...(inventory === undefined ? {} : { inventory }),
+    hasGate: hasToolGate(parsed.data),
+    verdict,
+  });
+}
+// === end P4.D329 gate rows ===
 
 for (const [id, definition, metadata, progress] of gateCases) {
   const parsed = QtapCustomToolSchema.safeParse(definition);

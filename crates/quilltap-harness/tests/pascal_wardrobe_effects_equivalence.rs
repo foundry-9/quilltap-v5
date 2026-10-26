@@ -473,6 +473,9 @@ fn pascal_wardrobe_effects_match_oracle() {
             0,
             set.as_ref(),
             containers.as_ref().map(|c| &c.1),
+            // P4.D329: no bag, no pending inventory map (no inventory gesture).
+            None,
+            None,
         ));
         let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());
 
@@ -837,6 +840,9 @@ fn pascal_wardrobe_effects_match_oracle() {
         0,
         None,
         None,
+        // P4.D329: no bag, no pending inventory map.
+        None,
+        None,
     ));
     let lines: Vec<String> = std::mem::take(&mut *logs.lock().unwrap());
     let targets: Vec<&str> = applied.iter().map(|a| a.target.as_str()).collect();
@@ -901,6 +907,9 @@ fn pascal_wardrobe_effects_match_oracle() {
         Some(spec.character_id.clone()),
         &Map::new(),
         0,
+        None,
+        None,
+        // P4.D329: no bag, no pending inventory map.
         None,
         None,
     ));
