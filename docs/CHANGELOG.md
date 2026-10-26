@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory item editor and its Pictures section (v4 `4fbdad186`, `102a23648`, `d88c1ce39`)
+
+_Versions: SPA 0.5.895._
+
+NEW `qt-inventory-item-editor`: every field of an object, kit or archetype (name, title, the two descriptions with `d88c1ce39`'s drawing hint, Equipped by default, Can be copied, Archetype, the per-chat cap, the emoji and SVG glyphs with a live preview and a `x.x / 16 KB` counter, the folder and JSON metadata), a kit's member picker (kits, archived objects and duplicates left out; a project or group kit also offered Quilltap General's), and an instance's Inherit toggles — save sends only the fields edited and not inherited, then clears the overrides re-ticked. It refuses a nameless object, an SVG over 16 KB and metadata that is not a JSON object. NEW `qt-inventory-pictures-section`: upload, generate, use, delete and view an object's pictures, an archetype's shown but not chosen. P4.D330, Tier 1 items 8 + 16.
+
 #### 2026-10-26 — feat(spa): the Inventory browser and item row (v4 `4fbdad186`, `102a23648`)
 
 _Versions: SPA 0.5.894._
