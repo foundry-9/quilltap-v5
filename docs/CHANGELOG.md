@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory data layer — calls, signal stores, row actions, dialog service
+
+_Versions: SPA 0.5.891._
+
+NEW under `apps/web/src/app/inventory/`: `inventory.api.ts` (one function per C7 verb, each building v4's request with optional keys present only when v4 would send them, plus the REST multipart picture upload), `inventory-list-data.ts` (a tier's objects, a character's whole reachable pool, and `canManage`), `inventory-folders-data.ts`, `chat-inventory-data.ts` (what a chat's cast carries; every equip / unequip / reset reloads the chat read and the list, refused or not), `inventory-item-actions.ts` (detach, delete with the in-use and archived-holder warnings and the forced retry, archive, duplicate, the overlay state, and R-4's `confirm()` collapse for labelled alerts) and `inventory-dialog.service.ts` (open / close and the four-part remount key). Specs pin every request and transcribe v4's five warning cases by name over v4's fixture. P4.D330, Tier 1 item 4.
+
 #### 2026-10-26 — feat(spa): the run dialog's inventory sentences, as a standalone piece (v4 `e1872c94f`)
 
 _Versions: SPA 0.5.890._
