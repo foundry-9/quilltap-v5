@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): drift check — 32 v4 commits past `322a5488e` (Storyteller, Pascal intervention, keystone memories, the spine and context-manager refactors, diagrams)
+
+_Docs-only change._
+
+v4 `main` moved to `a0905454b` (`4.11.0-dev.87`); `bugfix` and `release` unchanged, checkout clean on `main`. 32 new UNPROCESSED §3 rows, classified from the hunks: five new migrations (D23 moves 17–21: `memories.keystone`; Storyteller's `chats` / `chat_messages` columns and the new `storyteller_rounds` table; `llm_logs.storytellerRoundId`; `chat_settings.customToolIntervention`; two `roleplay_templates` columns plus a boot-seed rewrite of `narrationDelimiters`); declared tool effects replacing the destructive-tool list; v4 bugs 258–265 (none a convergence); three vault keys (`humanoid`, `canDrawDiagrams` / `diagramStyle`, `pronounGuidance`) that v5's writers would erase on a shared instance, recorded as live-data hazards; four client-only diagram dependencies; and two "Refactor" commits that are not behavior-neutral. §1 now reads 54 commits past the `e8e17b2d9` baseline (22 ordered, 32 unprocessed); pin still required.
+
 #### 2026-10-21 — docs(porting): record the human's approval of the `vt100` and `regress` crates for the `322a5488e` round
 
 _Docs-only change._
