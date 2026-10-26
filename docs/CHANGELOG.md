@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The pascal-run-custom pair carries the Inventory columns and the Inventory tools' objects (P4.D328)
+
+_No crate versions bumped._
+
+Test fixtures only: the committed `pascal-run-custom` pair is widened in place through v4's real writers with the two Inventory columns and a handful of carried objects, shared with the Pascal inventory lane by id.
+
 #### 2026-10-26 — The custom-tool library reports what it could not read and which stores it consulted (P4.D328)
 
 _Versions: core 0.0.1335._

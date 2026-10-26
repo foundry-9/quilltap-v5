@@ -831,6 +831,13 @@ async function main(): Promise<void> {
   // committed pair).
   const { addAnnouncedDresser } = await import('./pascal-run-custom-announcer');
   await addAnnouncedDresser(writeVaultFile);
+  // P4.D328: the Inventory columns, then the Inventory tools' objects (shared
+  // with the in-place widen `extend-pascal-run-custom-inventory.ts`, which put
+  // them into the committed pair).
+  const { plantInventoryColumns } = await import('../lib/v4-migrations');
+  await plantInventoryColumns();
+  const { addInventoryToolObjects } = await import('./pascal-run-custom-inventory');
+  await addInventoryToolObjects({ repos, userId: spec.userId, ts: TS });
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
