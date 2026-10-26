@@ -135,6 +135,36 @@ struct Case {
     plant: Option<&'static [&'static str]>,
 }
 
+/// P4.D329: the mirror rows that need a REAL bag (v4's `loadInventoryContext`;
+/// on this branch C2's stand-in refuses, so every gate on `inventory`
+/// declines and every read takes the refusal). MEASURED. A carved row that
+/// turns GREEN fails the run (lift it).
+const RED_UNTIL_UNION: &[&str] = &[
+    "measure-twice-carrier-runs",
+    "measure-twice-probe-kind-name",
+    "measure-twice-probe-title-twin",
+    "measure-twice-probe-walkie",
+    "measure-twice-probe-spyglass-withheld",
+    "inventory-read-message-door",
+    "inventory-read-default-door",
+    "inventory-read-prompt-door",
+    "inventory-read-none-named",
+];
+
+/// Regenerated at the pin `322a5488e`, the rows whose `Available:` list v4's
+/// vault-only custom tools moved (a vault's tools are its own character's
+/// only) — P4.D332's to port; green at the union. MEASURED: the five
+/// pre-existing rows plus the two mirror rows whose answer is a refusal.
+const P4D332_RESIDUE: &[&str] = &[
+    "unknown-tool",
+    "gate-available-missing-key-unrunnable",
+    "gate-available-empty-sheet-unrunnable",
+    "gate-withheld-when-holds-unrunnable",
+    "progress-gate-running-span-unrunnable",
+    "measure-twice-other-instance-withheld",
+    "measure-twice-nobody-withheld",
+];
+
 /// P4.D305: the log lines this family pins (the oracle's `PINNED_MESSAGES`).
 const PINNED_MESSAGES: [&str; 5] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
@@ -738,6 +768,64 @@ fn run_custom_handler_matches_oracle() {
             plant: None,
         },
     ];
+    // === P4.D329: v4 `cad017599`'s seven `it`s MIRRORED over the widened pair
+    // (`pascal-run-custom-inventory-pascal.ts`), plus the run service's bag
+    // read by door (R-15). The room comes from the oracle row's `room`. ===
+    let inventory_case = |name: &'static str, who: Option<&'static str>, tool: &str| Case {
+        name,
+        character_id: who,
+        vault: match who {
+            Some(CHAR_A) => Some(meta.vault_a.clone()),
+            Some(CHAR_B) => Some(meta.vault_b.clone()),
+            _ => None,
+        },
+        input: json!({ "tool": tool }),
+        profile: false,
+        plant: None,
+    };
+    let mut cases = cases;
+    cases.extend([
+        inventory_case("measure-twice-carrier-runs", Some(CHAR_A), "measure_twice"),
+        inventory_case(
+            "measure-twice-other-instance-withheld",
+            Some(CHAR_B),
+            "measure_twice",
+        ),
+        inventory_case("measure-twice-nobody-withheld", None, "measure_twice"),
+        inventory_case(
+            "measure-twice-probe-kind-name",
+            Some(CHAR_A),
+            "probe_resonator",
+        ),
+        inventory_case(
+            "measure-twice-probe-title-twin",
+            Some(CHAR_A),
+            "probe_resonator_title",
+        ),
+        inventory_case("measure-twice-probe-walkie", Some(CHAR_A), "probe_walkie"),
+        inventory_case(
+            "measure-twice-probe-spyglass-withheld",
+            Some(CHAR_A),
+            "probe_spyglass",
+        ),
+        inventory_case(
+            "inventory-read-message-door",
+            Some(CHAR_A),
+            "reads_in_message",
+        ),
+        inventory_case(
+            "inventory-read-default-door",
+            Some(CHAR_A),
+            "reads_in_default",
+        ),
+        inventory_case(
+            "inventory-read-prompt-door",
+            Some(CHAR_A),
+            "reads_in_prompt",
+        ),
+        inventory_case("inventory-read-none-named", Some(CHAR_A), "spell"),
+        inventory_case("inventory-read-nobody-rolled", None, "reads_in_message"),
+    ]);
 
     // The corpus is declared on BOTH sides, so a case added to the oracle and
     // forgotten here would pass silently on a smaller set. Pin the count.
@@ -757,194 +845,277 @@ fn run_custom_handler_matches_oracle() {
     let mut saw_progress_write = false;
     let mut saw_progress_create = false;
     let mut logged_rows = 0usize;
+    let (mut failed, mut red_green): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    // P4.D329: the oracle's inventory lines across the mirror rows (each is
+    // compared on its row; a carved row stops at its first difference).
+    let inventory_lines_in_oracle: usize = oracle
+        .iter()
+        .filter(|(n, _)| n.starts_with("measure-twice-") || n.starts_with("inventory-read-"))
+        .map(|(_, r)| {
+            r.get("inventoryLines")
+                .and_then(Value::as_array)
+                .map_or(0, Vec::len)
+        })
+        .sum();
     for case in &cases {
-        let want = oracle
-            .get(case.name)
-            .unwrap_or_else(|| panic!("oracle missing case '{}'", case.name));
-
-        let scratch =
-            std::env::temp_dir().join(format!("qt-pascal-h-{}-{}", std::process::id(), case.name));
-        let _ = std::fs::remove_dir_all(&scratch);
-        std::fs::create_dir_all(&scratch).unwrap();
-        let main = scratch.join("main.db");
-        let mount = scratch.join("mount.db");
-        let llm_logs = scratch.join("llm-logs.db");
-        std::fs::copy(fixtures_dir().join("pascal-run-custom-main.db"), &main).unwrap();
-        std::fs::copy(fixtures_dir().join("pascal-run-custom-mount.db"), &mount).unwrap();
-        // A fresh llm-logs partition per case (P4.6bd): the resolved consult's
-        // CUSTOM_TOOL_CONSULT row is part of the diff, and the empty dump pins
-        // that no other case logs.
-        common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
-        if case.profile {
-            insert_consult_profile(&main, &spec.test_pepper_base64, &spec.user_id);
-        }
-        if let Some(plant) = case.plant {
-            let writer = Writer::open_writable(&main, &spec.test_pepper_base64)
-                .expect("open main for the plant");
-            for sql in plant {
-                writer
-                    .connection()
-                    .execute_batch(sql)
-                    .unwrap_or_else(|e| panic!("case '{}' plant {sql}: {e}", case.name));
+        // The coverage floors read the ORACLE row only, so they are taken
+        // before the compare (a carved row still counts toward them).
+        {
+            let want = oracle
+                .get(case.name)
+                .unwrap_or_else(|| panic!("oracle missing case '{}'", case.name));
+            // `updatedAt` is stamped only by the applier, and `kettle` exists in no
+            // fixture — so each is the signature of a write that actually landed in
+            // a real vault rather than merely being reported in `applied`.
+            let vault_a = want["stores"]["metadata"]["A"]
+                .get("progressions")
+                .cloned()
+                .unwrap_or(Value::Null);
+            if vault_a
+                .get("cannon")
+                .and_then(|c| c.get("updatedAt"))
+                .is_some()
+            {
+                saw_progress_write = true;
+            }
+            if vault_a.get("kettle").is_some() {
+                saw_progress_create = true;
+            }
+            if want["output"]["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("gestating"))
+            {
+                saw_progress_gate_withheld = true;
             }
         }
-        let db = Db::open(
-            DbPaths {
-                main,
-                mount_index: Some(mount),
-                llm_logs: Some(llm_logs),
-            },
-            &spec.test_pepper_base64,
-        )
-        .expect("open db");
+        let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let want = oracle
+                .get(case.name)
+                .unwrap_or_else(|| panic!("oracle missing case '{}'", case.name));
 
-        // P4.D319: a case may run in another room (the oracle row's `room`).
-        let room = &want["room"];
-        let chat_id = room["chatId"].as_str().unwrap_or(CHAT).to_string();
-        let ctx = RunCustomToolContext {
-            user_id: spec.user_id.clone(),
-            chat_id: chat_id.clone(),
-            character_id: case.character_id.map(str::to_string),
-            character_mount_point_id: case.vault.clone(),
-            character_ids: Some(vec![
-                CHAR_A.to_string(),
-                CHAR_B.to_string(),
-                CHAR_C.to_string(),
-            ]),
-            project_id: if room.is_null() {
-                None
-            } else {
-                room["projectId"].as_str().map(str::to_string)
-            },
-            caller_participant_id: Some(
-                room["callerParticipantId"]
-                    .as_str()
-                    .unwrap_or(P_A)
-                    .to_string(),
-            ),
-            // P4.D169: a case may pin its own instant (`nowMs`), and the jest
-            // oracle freezes `Date.now()` to the same value for it. Every
-            // clock-independent case takes the shared default, which is what
-            // the pre-progression rows have always run against.
-            now_ms: case_now_ms(want),
-            // The oracle's handler context carries no announcement set (v4's
-            // `pendingWardrobeAnnouncements` is the executor's), so neither
-            // does this one.
-            pending_wardrobe_announcements: None,
-            pending_wardrobe_history: None,
-            pending_inventory_announcements: None,
-        };
-        let mut rng = FixedBytes::new(vec![]);
-        // The REAL consult invoker, exactly as v4's handler builds one. For the
-        // profile-free cases the resolution stops at v4's `no connection
-        // profiles are configured` (proving the invoker is wired past v5's
-        // would-be "no LLM invoker" arm); for `profile: true` cases the ladder
-        // resolves and the oracle-RECORDED canned rows answer — any prompt/
-        // selection/temperature divergence is a loud canned-miss.
-        let completion = canned_provider(want);
-        let invoker = CustomToolLlmInvoker::new(
-            &db,
-            &completion,
-            CustomToolConsultContext {
-                user_id: ctx.user_id.clone(),
-                chat_id: Some(ctx.chat_id.clone()),
-            },
-        );
-        let ((out, _posted), lines) =
-            rt.block_on(quilltap_core::test_support::global_capture::capture_async(
-                execute_run_custom_tool_with_consult(
-                    &db,
-                    &ctx,
-                    &case.input,
-                    &mut rng,
-                    Some(&invoker),
-                ),
+            let scratch = std::env::temp_dir().join(format!(
+                "qt-pascal-h-{}-{}",
+                std::process::id(),
+                case.name
             ));
+            let _ = std::fs::remove_dir_all(&scratch);
+            std::fs::create_dir_all(&scratch).unwrap();
+            let main = scratch.join("main.db");
+            let mount = scratch.join("mount.db");
+            let llm_logs = scratch.join("llm-logs.db");
+            std::fs::copy(fixtures_dir().join("pascal-run-custom-main.db"), &main).unwrap();
+            std::fs::copy(fixtures_dir().join("pascal-run-custom-mount.db"), &mount).unwrap();
+            // A fresh llm-logs partition per case (P4.6bd): the resolved consult's
+            // CUSTOM_TOOL_CONSULT row is part of the diff, and the empty dump pins
+            // that no other case logs.
+            common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
+            if case.profile {
+                insert_consult_profile(&main, &spec.test_pepper_base64, &spec.user_id);
+            }
+            if let Some(plant) = case.plant {
+                let writer = Writer::open_writable(&main, &spec.test_pepper_base64)
+                    .expect("open main for the plant");
+                for sql in plant {
+                    writer
+                        .connection()
+                        .execute_batch(sql)
+                        .unwrap_or_else(|e| panic!("case '{}' plant {sql}: {e}", case.name));
+                }
+            }
+            let db = Db::open(
+                DbPaths {
+                    main,
+                    mount_index: Some(mount),
+                    llm_logs: Some(llm_logs),
+                },
+                &spec.test_pepper_base64,
+            )
+            .expect("open db");
 
-        // min === max never draws.
-        assert_eq!(rng.consumed(), 0, "case '{}' consumed bytes", case.name);
+            // P4.D319: a case may run in another room (the oracle row's `room`).
+            let room = &want["room"];
+            let chat_id = room["chatId"].as_str().unwrap_or(CHAT).to_string();
+            let ctx = RunCustomToolContext {
+                user_id: spec.user_id.clone(),
+                chat_id: chat_id.clone(),
+                character_id: case.character_id.map(str::to_string),
+                character_mount_point_id: case.vault.clone(),
+                character_ids: Some(vec![
+                    CHAR_A.to_string(),
+                    CHAR_B.to_string(),
+                    CHAR_C.to_string(),
+                ]),
+                project_id: if room.is_null() {
+                    None
+                } else {
+                    room["projectId"].as_str().map(str::to_string)
+                },
+                caller_participant_id: Some(
+                    room["callerParticipantId"]
+                        .as_str()
+                        .unwrap_or(P_A)
+                        .to_string(),
+                ),
+                // P4.D169: a case may pin its own instant (`nowMs`), and the jest
+                // oracle freezes `Date.now()` to the same value for it. Every
+                // clock-independent case takes the shared default, which is what
+                // the pre-progression rows have always run against.
+                now_ms: case_now_ms(want),
+                // The oracle's handler context carries no announcement set (v4's
+                // `pendingWardrobeAnnouncements` is the executor's), so neither
+                // does this one.
+                pending_wardrobe_announcements: None,
+                pending_wardrobe_history: None,
+                pending_inventory_announcements: None,
+            };
+            let mut rng = FixedBytes::new(vec![]);
+            // The REAL consult invoker, exactly as v4's handler builds one. For the
+            // profile-free cases the resolution stops at v4's `no connection
+            // profiles are configured` (proving the invoker is wired past v5's
+            // would-be "no LLM invoker" arm); for `profile: true` cases the ladder
+            // resolves and the oracle-RECORDED canned rows answer — any prompt/
+            // selection/temperature divergence is a loud canned-miss.
+            let completion = canned_provider(want);
+            let invoker = CustomToolLlmInvoker::new(
+                &db,
+                &completion,
+                CustomToolConsultContext {
+                    user_id: ctx.user_id.clone(),
+                    chat_id: Some(ctx.chat_id.clone()),
+                },
+            );
+            let ((out, _posted), lines) =
+                rt.block_on(quilltap_core::test_support::global_capture::capture_async(
+                    execute_run_custom_tool_with_consult(
+                        &db,
+                        &ctx,
+                        &case.input,
+                        &mut rng,
+                        Some(&invoker),
+                    ),
+                ));
 
-        let msgs = db
-            .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
-            .unwrap();
-        // The persisted llm_logs rows (P4.6bd): the resolved consult writes ONE
-        // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
-        let got_logs = common::dump_llm_logs(&db);
-        let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
-        // P4.D35: WHERE the writes landed, not merely what `pascalMeta` claims.
-        let got_stores = if want["stores"].is_null() {
-            Value::Null
-        } else {
-            common::dump_pascal_stores(&db, &chat_id, GROUP, [CHAR_A, CHAR_B, CHAR_C])
-        };
-        drop(db);
-        let _ = std::fs::remove_dir_all(&scratch);
+            // min === max never draws.
+            assert_eq!(rng.consumed(), 0, "case '{}' consumed bytes", case.name);
 
-        assert_eq!(got_logs, want_logs, "case '{}' llm_logs rows", case.name);
+            let msgs = db
+                .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
+                .unwrap();
+            // The persisted llm_logs rows (P4.6bd): the resolved consult writes ONE
+            // CUSTOM_TOOL_CONSULT row; every other case pins an empty dump.
+            let got_logs = common::dump_llm_logs(&db);
+            let want_logs = common::oracle_llm_logs(&want["llmLogs"]);
+            // P4.D35: WHERE the writes landed, not merely what `pascalMeta` claims.
+            let got_stores = if want["stores"].is_null() {
+                Value::Null
+            } else {
+                common::dump_pascal_stores(&db, &chat_id, GROUP, [CHAR_A, CHAR_B, CHAR_C])
+            };
+            drop(db);
+            let _ = std::fs::remove_dir_all(&scratch);
 
-        assert_eq!(
-            canon(&v5_output(&out)),
-            canon(&oracle_output(want)),
-            "case '{}' output",
-            case.name
-        );
-        assert_eq!(
-            canon(&Value::Array(system_rows(&msgs))),
-            canon(&Value::Array(system_rows(want))),
-            "case '{}' posted messages",
-            case.name
-        );
-        assert_eq!(
-            canon(&got_stores),
-            canon(&want["stores"]),
-            "case '{}' state tiers + fact sheets after the run",
-            case.name
-        );
-        // P4.D305: the posted `pascalMeta` as BYTES (key order included).
-        assert_eq!(
-            pascal_meta_texts(&msgs),
-            pascal_meta_texts(want),
-            "case '{}' pascalMeta bytes",
-            case.name
-        );
-        // P4.D305: v4's pinned lines, line for line, against v5's capture.
-        let want_lines: Vec<String> = want["logs"]
-            .as_array()
-            .unwrap_or_else(|| panic!("case '{}' oracle row has no `logs`", case.name))
-            .iter()
-            .map(|l| common::v4_log_as_capture_line("quilltap::pascal", l))
-            .collect();
-        let got_lines = common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES);
-        assert_eq!(got_lines, want_lines, "case '{}' log lines", case.name);
-        if !want_lines.is_empty() {
-            logged_rows += 1;
-        }
-        // `updatedAt` is stamped only by the applier, and `kettle` exists in no
-        // fixture — so each is the signature of a write that actually landed in
-        // a real vault rather than merely being reported in `applied`.
-        let vault_a = want["stores"]["metadata"]["A"]
-            .get("progressions")
-            .cloned()
-            .unwrap_or(Value::Null);
-        if vault_a
-            .get("cannon")
-            .and_then(|c| c.get("updatedAt"))
-            .is_some()
-        {
-            saw_progress_write = true;
-        }
-        if vault_a.get("kettle").is_some() {
-            saw_progress_create = true;
-        }
-        if want["output"]["error"]
-            .as_str()
-            .is_some_and(|e| e.contains("gestating"))
-        {
-            saw_progress_gate_withheld = true;
-        }
+            assert_eq!(got_logs, want_logs, "case '{}' llm_logs rows", case.name);
+
+            assert_eq!(
+                canon(&v5_output(&out)),
+                canon(&oracle_output(want)),
+                "case '{}' output",
+                case.name
+            );
+            assert_eq!(
+                canon(&Value::Array(system_rows(&msgs))),
+                canon(&Value::Array(system_rows(want))),
+                "case '{}' posted messages",
+                case.name
+            );
+            assert_eq!(
+                canon(&got_stores),
+                canon(&want["stores"]),
+                "case '{}' state tiers + fact sheets after the run",
+                case.name
+            );
+            // P4.D305: the posted `pascalMeta` as BYTES (key order included).
+            assert_eq!(
+                pascal_meta_texts(&msgs),
+                pascal_meta_texts(want),
+                "case '{}' pascalMeta bytes",
+                case.name
+            );
+            // P4.D305: v4's pinned lines, line for line, against v5's capture.
+            let want_lines: Vec<String> = want["logs"]
+                .as_array()
+                .unwrap_or_else(|| panic!("case '{}' oracle row has no `logs`", case.name))
+                .iter()
+                .map(|l| common::v4_log_as_capture_line("quilltap::pascal", l))
+                .collect();
+            let got_lines =
+                common::pinned_capture_lines(&lines, "quilltap::pascal", &PINNED_MESSAGES);
+            assert_eq!(got_lines, want_lines, "case '{}' log lines", case.name);
+            if !want_lines.is_empty() {
+                logged_rows += 1;
+            }
+            // P4.D329: a mirror row's inventory lines — the roster's bag DEBUGs and
+            // the run service's WARN whole (null fields omitted: `tracing` records
+            // no `None`), P4.D328's `[InventoryContext] Loaded` by tag only.
+            if case.name.starts_with("measure-twice-") || case.name.starts_with("inventory-read-") {
+                let want_inv: Vec<String> = want
+                .get("inventoryLines")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|l| match l.get("fields") {
+                    None => format!("TAG {}", l["message"].as_str().unwrap_or("")),
+                    Some(fields) => {
+                        let fields: Map<String, Value> = fields
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .filter(|(_, v)| !v.is_null())
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        common::v4_log_as_capture_line(
+                            "quilltap::pascal",
+                            &json!({ "level": l["level"], "message": l["message"], "fields": fields }),
+                        )
+                    }
+                })
+                .collect();
+                let got_inv: Vec<String> = lines
+                .iter()
+                .filter_map(|l| {
+                    let rest = l.split_once(' ')?.1.split_once(' ')?.1;
+                    if rest.starts_with("[InventoryContext] Loaded") {
+                        Some("TAG [InventoryContext] Loaded".to_string())
+                    } else if (rest.starts_with("Custom-tool gates:") && rest.contains("inventory"))
+                        || rest.starts_with("Custom tool run: the rolling character's inventory could not be read")
+                    {
+                        Some(l.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+                assert_eq!(got_inv, want_inv, "case '{}' inventory lines", case.name);
+            }
+        }));
         checked += 1;
+        let red = RED_UNTIL_UNION.contains(&case.name) || P4D332_RESIDUE.contains(&case.name);
+        match (walked.is_ok(), red) {
+            (false, false) => failed.push(case.name),
+            (true, true) => red_green.push(case.name),
+            _ => {}
+        }
     }
 
+    assert!(failed.is_empty(), "cases differ from v4: {failed:?}");
+    assert!(
+        red_green.is_empty(),
+        "carved cases turned GREEN (P4.D328's loader / P4.D332's roster landed?) — lift them: {red_green:?}"
+    );
+    assert!(
+        inventory_lines_in_oracle >= 20,
+        "only {inventory_lines_in_oracle} inventory lines in the mirror rows"
+    );
     assert_eq!(checked, cases.len());
     assert!(
         saw_progress_gate_withheld,

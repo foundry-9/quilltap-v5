@@ -62,7 +62,7 @@ const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
 
 /// The oracle's `PINNED_MESSAGES`: the runner's lines and the run service's.
-const PINNED_MESSAGES: [&str; 10] = [
+const PINNED_MESSAGES: [&str; 11] = [
     "Trigger-phrase scan failed; no custom tools fired",
     "Trigger-phrase scan skipped — speaking character not found",
     "Trigger-phrase scan skipped — speaking character unreadable",
@@ -73,7 +73,15 @@ const PINNED_MESSAGES: [&str; 10] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
     "Custom tool run refused",
     "Custom tool dealt",
+    // P4.D329: the inventory applier's tail (no earlier case gestures).
+    "Custom tool inventory effects applied",
 ];
+
+/// P4.D329 (17 (j)): the row whose gesture needs a REAL bag (v4's
+/// `loadInventoryContext`; on this branch C2's stand-in refuses, so the
+/// `pick_up` lands nothing and no Inventory line posts). MEASURED. A carved row
+/// that turns GREEN fails the run (lift it).
+const RED_UNTIL_UNION: &[&str] = &["inventory-pick-up-posted-now"];
 
 #[derive(serde::Deserialize)]
 struct Spec {
@@ -266,6 +274,8 @@ fn trigger_runner_matches_oracle() {
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
 
+        let carved = RED_UNTIL_UNION.contains(&name);
+        let failures_before = failures.len();
         let mut check = |what: &str, got: Value, wanted: Value| {
             if got != wanted {
                 eprintln!("MISMATCH case '{name}' {what}\n  left: {got}\n right: {wanted}");
@@ -316,6 +326,13 @@ fn trigger_runner_matches_oracle() {
             .any(|l| l.contains("Triggered custom tool ran but its announcement did not land"))
         {
             unposted_rows += 1;
+        }
+        if carved {
+            assert!(
+                failures.len() > failures_before,
+                "RED_UNTIL_UNION case '{name}' turned GREEN (P4.D328's loader landed?) — lift it"
+            );
+            failures.truncate(failures_before);
         }
     }
 

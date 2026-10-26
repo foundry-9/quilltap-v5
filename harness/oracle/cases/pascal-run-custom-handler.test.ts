@@ -54,6 +54,10 @@ const P_A = 'e1000000-0000-4000-8000-00000000000a';
 const CHAT_TRIGGERS = 'c1000000-0000-4000-8000-000000000007';
 const PROJECT_TRIGGERS = 'a3000000-0000-4000-8000-0000000000bb';
 const P7_A = 'e7000000-0000-4000-8000-00000000000a';
+/** P4.D329: CHAR_B's (user-driven) seat in the trigger room. */
+const P7_B = 'e7000000-0000-4000-8000-00000000000b';
+const TRIGGER_ROOM_A = { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A };
+const TRIGGER_ROOM_B = { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_B };
 
 interface CaseSpec {
   name: string;
@@ -97,6 +101,20 @@ interface CaseSpec {
  * the run-custom path that v5 ports. Anything else v4 logs on the way (the
  * Pascal / Prospero writers' own lines, the roster's) is not compared here.
  */
+/**
+ * P4.D329: the inventory lines a mirror row pins, kept OUT of `logs` (so every
+ * earlier row keeps its bytes) and emitted as `inventoryLines` only when a case
+ * logged one: the roster's three bag DEBUGs, the run service's WARN — whole —
+ * and P4.D328's `[InventoryContext] Loaded` by TAG only (its fields are that
+ * lane's).
+ */
+function inventoryLine(message: string): 'whole' | 'tag' | null {
+  if (message.startsWith('Custom-tool gates:') && message.includes('inventory')) return 'whole';
+  if (message === "Custom tool run: the rolling character's inventory could not be read; inventory tests decline") return 'whole';
+  if (message === '[InventoryContext] Loaded') return 'tag';
+  return null;
+}
+
 const PINNED_MESSAGES = new Set([
   'Custom tool run: state cascade unavailable, defaulting to {}',
   'Custom tool run refused',
@@ -301,10 +319,22 @@ async function runCase(
   process.env.LOG_LEVEL = 'debug';
   const { logger } = await import('@/lib/logger');
   const logs: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const inventoryLines: Array<{ level: string; message: string; fields?: Record<string, unknown> }> = [];
   const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
   internal.transports.splice(0, internal.transports.length, {
     write: (d: unknown) => {
       const data = d as { level: string; message: string; context?: Record<string, unknown>; error?: { message: string } };
+      const inv = inventoryLine(data.message);
+      if (inv) {
+        if (inv === 'tag') {
+          inventoryLines.push({ level: data.level, message: data.message });
+        } else {
+          const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+          if (data.error) fields.error = data.error.message;
+          inventoryLines.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+        }
+        return;
+      }
       if (!PINNED_MESSAGES.has(data.message)) return;
       const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
       if (data.error) fields.error = data.error.message;
@@ -423,6 +453,7 @@ async function runCase(
       columns,
       rows,
       logs,
+      ...(inventoryLines.length > 0 ? { inventoryLines } : {}),
       stores: c.plant ? null : await dumpStores(c.room?.chatId ?? CHAT),
       canned: Array.from(cannedRecorded.values()),
       llmLogs,
@@ -592,6 +623,25 @@ async function main(): Promise<void> {
     { name: 'announced-dresser-padded-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A }, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
     // A tool WITHOUT the key, in the same room, by the same character: Pascal's.
     { name: 'announced-dresser-regression-spell', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
+    // === P4.D329: v4 `cad017599`'s seven `it`s, MIRRORED over the widened
+    // pair (`pascal-run-custom-inventory-pascal.ts`, R-9) — the trigger room
+    // carries CHAR_A's titled tape measure, both resonators and a walkie-talkie,
+    // and CHAR_B's untitled tape measure. ===
+    { name: 'measure-twice-carrier-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-other-instance-withheld', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_B },
+    { name: 'measure-twice-nobody-withheld', characterId: null, vaultKey: null, characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-kind-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_resonator' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-title-twin', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_resonator_title' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-walkie', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_walkie' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-spyglass-withheld', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_spyglass' }, room: TRIGGER_ROOM_A },
+    // The run service's bag read (R-15): one door each; a tool naming none
+    // reads nothing; nobody rolled reads nothing.
+    { name: 'inventory-read-message-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-default-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_default' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-prompt-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_prompt' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-none-named', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-nobody-rolled', characterId: null, vaultKey: null, characterIds: ALL, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
+    // === end P4.D329 ===
   ];
 
   const out = fs.createWriteStream(outPath);

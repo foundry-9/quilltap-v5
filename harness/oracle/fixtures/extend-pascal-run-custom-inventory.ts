@@ -32,6 +32,7 @@ import { tmpdir } from 'node:os';
 
 import { plantInventoryColumns } from '../lib/v4-migrations';
 import { addInventoryToolObjects } from './pascal-run-custom-inventory';
+import { addPascalInventoryShelf } from './pascal-run-custom-inventory-pascal';
 
 interface Spec {
   testPepperBase64: string;
@@ -66,15 +67,37 @@ async function main(): Promise<void> {
     '@/lib/database/backends/sqlite/mount-index-client'
   );
 
+  const { storeMountFile } = await import('@/lib/mount-index/store-file');
+
   await initializeDatabase();
   await plantInventoryColumns();
   const repos = getRepositories();
+  const writeVaultFile = async (mountPointId: string, relativePath: string, body: unknown): Promise<void> => {
+    await storeMountFile({
+      mountPointId,
+      relativePath,
+      data: Buffer.from(JSON.stringify(body, null, 2), 'utf8'),
+      originalMimeType: 'application/json',
+      transcodeImages: false,
+      extractText: false,
+      enqueueEmbedding: false,
+      force: true,
+    } as never);
+  };
 
   const added = await addInventoryToolObjects({ repos, userId: spec.userId, ts: spec.seedTimestamp });
   process.stderr.write(
     added
       ? `widened pascal-run-custom pair with the Inventory tools' objects: main=${mainPath}\n`
       : "pascal-run-custom pair already carries the Inventory tools' objects — unchanged\n",
+  );
+
+  // P4.D329's share (the Pascal inventory shelf), after P4.D328's in pick order.
+  const shelved = await addPascalInventoryShelf({ repos, writeVaultFile, userId: spec.userId, ts: spec.seedTimestamp });
+  process.stderr.write(
+    shelved
+      ? `widened pascal-run-custom pair with the Pascal inventory shelf: main=${mainPath}\n`
+      : 'pascal-run-custom pair already carries the Pascal inventory shelf — unchanged\n',
   );
 
   // v4's un-awaited post-write tails land before the connections close.

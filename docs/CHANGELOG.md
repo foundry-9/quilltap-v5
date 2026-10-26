@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(pascal): mirror v4's Measure Twice end to end over a widened run-custom pair (P4.D329)
+
+_No crate versions bumped._
+
+Widens the committed `pascal-run-custom-{main,mount}.db` pair in place through v4's real code: the two Inventory columns (`plantInventoryColumns`), then the Pascal share of the Inventory shelf (`harness/oracle/fixtures/pascal-run-custom-inventory-pascal.ts`) — the trigger room's `tape measure` / `ansible …` archetypes, CHAR_A's titled tape measure and resonators, CHAR_B's untitled tape measure, the room's carried sets, `measure_twice`, four `probe_*` gates, three run-service read probes and a trigger-fired `pick_up` tool. The extender (`extend-pascal-run-custom-inventory.ts`) carries only the columns and that share; P4.D328's extender takes the call on the union.
+
+`pascal_run_custom_handler_equivalence` gains twelve rows (v4 `cad017599`'s seven cases plus the run service's bag read by door) and compares their inventory lines; `pascal_trigger_runner_equivalence` gains the trigger-fired `pick_up` row (`announcement: 'posted now'`). Rows that need a real bag are red until P4.D328's loader lands; rows whose `Available:` list v4's vault-only roster moved are P4.D332's — both named. Every pre-existing row of the four pair readers is unchanged by the widen (ids and timestamps masked) except `list-trigger-room`, which now lists the shelf's tools.
+
 #### 2026-10-26 — feat(pascal): the Inventory grammar in custom tools — subjects, aggregates, the `$inventory` operand, placeholders, effects, the bench bag, the vocabulary and the describers (P4.D329)
 
 _Versions: core 0.0.1325, web 0.0.244._

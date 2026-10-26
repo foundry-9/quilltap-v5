@@ -76,6 +76,9 @@ const PINNED_MESSAGES = new Set([
   'Custom tool run: state cascade unavailable, defaulting to {}',
   'Custom tool run refused',
   'Custom tool dealt',
+  // P4.D329: the inventory applier's tail — `announcement` is the runner's
+  // no-pending-map shape (`posted now`). No earlier case gestures.
+  'Custom tool inventory effects applied',
 ]);
 
 const A = { participantId: P7_A, characterId: CHAR_A };
@@ -131,6 +134,9 @@ const CASES: CaseSpec[] = [
   { name: 'announced-dresser-overlaid-name', speaker: A, content: 'Time to dress the part.', chatSettings: ON },
   { name: 'announced-dresser-padded-name', speaker: A, content: 'Dress the part!', chatSettings: ON, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
   { name: 'announced-dresser-broken-vault', speaker: { participantId: P7_A, characterId: CHAR_D }, content: 'dress the part', chatSettings: ON },
+  // P4.D329 (17 (j)): a phrase firing a `pick_up` gesture — the runner passes
+  // no pending Inventory map, so the change posts its own line ('posted now').
+  { name: 'inventory-pick-up-posted-now', speaker: A, content: 'Now pocket the tape.', chatSettings: ON },
 ];
 
 async function dumpStores(chatId: string): Promise<Record<string, unknown>> {
