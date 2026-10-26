@@ -71,8 +71,26 @@ export function wardrobeVantageName(
   return origin.name || (origin.scope === 'character' ? 'this character' : null);
 }
 
+/** What the vantage is browsed for: garments, objects, or both (a tool with both kinds of effect). */
+export type VantageBrowsing = 'wardrobe' | 'inventory' | 'both';
+
+/** The nouns each kind of browsing is spoken of in (v4 `102a23648`). */
+export const BROWSING_WORDS: Record<
+  VantageBrowsing,
+  { store: string; stores: string; things: string; shared: string }
+> = {
+  wardrobe: { store: 'wardrobe', stores: 'wardrobes', things: 'garments', shared: 'Shared wardrobes' },
+  inventory: { store: 'inventory', stores: 'inventories', things: 'objects', shared: 'Shared inventories' },
+  both: {
+    store: 'wardrobe and inventory',
+    stores: 'wardrobes and inventories',
+    things: 'garments and objects',
+    shared: 'Shared stores',
+  },
+};
+
 /**
- * The Workbench's whose-wardrobe select — a port of v4
+ * The Workbench's whose-wardrobe (or inventory) select — a port of v4
  * `components/custom-tools/WardrobeVantageSelect.tsx` (NEW at `5cb0e0190`).
  * It names who can reach what from the vantage chosen: a character's own
  * wardrobe, their groups' and Quilltap General (the lens leaves the project
@@ -83,6 +101,11 @@ export function wardrobeVantageName(
  * and `&rsquo;`, and Angular drops whitespace-only template nodes, so a
  * template spelling would lose the spaces (the P4.D250 guidance-paragraph
  * defect). The bytes are U+2019 apostrophes throughout, as v4's entities render.
+ *
+ * `browsing` picks the words; the vantage is the same. One rendering divergence
+ * is recorded, not ported (`VANTAGE_HINT_JSX_SPACE`, P4.D334 R-7): v4's JSX
+ * breaks `…{home}’s` and `{words.store} will also…` across two lines, which
+ * drops the space, so v4 prints "Saga’swardrobe"; the space is kept here.
  */
 @Component({
   selector: 'qt-wardrobe-vantage-select',
@@ -91,14 +114,14 @@ export function wardrobeVantageName(
     <div class="space-y-1 text-sm">
       <label class="flex items-center gap-2 flex-wrap">
         <span
-          >{{ 'Browsing ' }}@if (label(); as l) {<strong>{{ l }}</strong>}{{ ' wardrobe' }}</span
+          >{{ 'Browsing ' }}@if (label(); as l) {<strong>{{ l }}</strong>}{{ ' ' + words().store }}</span
         >
         <select
           [value]="value()"
           (change)="onSelect($event)"
           [disabled]="disabled()"
           class="qt-select qt-select-sm"
-          aria-label="Whose wardrobe to browse"
+          [attr.aria-label]="'Whose ' + words().store + ' to browse'"
         >
           <option value="none" [selected]="value() === 'none'">— choose —</option>
           @if (characters().length > 0) {
@@ -111,7 +134,7 @@ export function wardrobeVantageName(
               }
             </optgroup>
           }
-          <optgroup label="Shared wardrobes">
+          <optgroup [label]="words().shared">
             <option [value]="generalValue" [selected]="value() === generalValue">{{ generalName }}</option>
             @for (s of sharedOptions(); track s.value) {
               <option [value]="s.value" [selected]="value() === s.value">{{ s.label }}</option>
@@ -136,12 +159,16 @@ export class WardrobeVantageSelect {
   readonly homeProjectName = input<string | null>(null);
   /** Show the explanatory line beneath the select. Default true. */
   readonly showHint = input(true);
+  /** What is being browsed, for the wording. Default `'wardrobe'`. */
+  readonly browsing = input<VantageBrowsing>('wardrobe');
   readonly disabled = input(false);
 
   readonly vantageChange = output<WardrobeVantage>();
 
   protected readonly generalValue = encodeWardrobeContainer(GENERAL_CONTAINER);
   protected readonly generalName = GENERAL_WARDROBE_NAME;
+
+  protected readonly words = computed(() => BROWSING_WORDS[this.browsing()]);
 
   protected readonly value = computed(() => encodeWardrobeVantage(this.vantage()));
   protected readonly characters = computed(() => this.destinations()?.characters ?? []);
@@ -175,21 +202,22 @@ export class WardrobeVantageSelect {
   protected readonly hint = computed(() => {
     const vantage = this.vantage();
     const name = this.name();
+    const words = this.words();
     if (vantage.kind === 'character') {
       const home = this.homeProjectName();
       return (
-        `What ${name} can reach: ${name}’s own wardrobe, the wardrobes of ${name}’s groups, and ` +
+        `What ${name} can reach: ${name}’s own ${words.store}, the ${words.stores} of ${name}’s groups, and ` +
         `${GENERAL_WARDROBE_NAME}. Another character rolling this tool sees their own.` +
         (home
-          ? ` This tool lives in ${home}’s store; garments from ${home}’s wardrobe will also be in reach when it runs there.`
+          ? ` This tool lives in ${home}’s store; ${words.things} from ${home}’s ${words.store} will also be in reach when it runs there.`
           : '')
       );
     }
     if (vantage.kind === 'container') {
       const origin = wardrobeVantageOrigin(vantage, this.destinations());
-      return `Every garment in this wardrobe, and who can reach it: ${wardrobeReachLabel(origin)}.`;
+      return `Every one of the ${words.things} here, and who can reach them: ${wardrobeReachLabel(origin)}.`;
     }
-    return 'Choose whose wardrobe to browse before picking garments.';
+    return `Choose whose ${words.store} to browse before picking ${words.things}.`;
   });
 
   protected onSelect(event: Event): void {

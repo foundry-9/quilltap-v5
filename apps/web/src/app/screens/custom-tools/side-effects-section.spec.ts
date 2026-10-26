@@ -21,6 +21,7 @@ import {
   type ToolDraft,
   type WardrobeVantage,
 } from '../../pascal/tool-draft';
+import { P4D330_SPA_LANDED, P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import { SideEffectsSection, whenChoiceOf } from './side-effects-section';
 
 /**
@@ -225,13 +226,15 @@ describe('SideEffectsSection — the Kind select and wardrobe rows (v4 f0db8cbb8
     select.dispatchEvent(new Event('change'));
   }
 
-  it('puts the Kind select FIRST in the row’s top line, with v4’s two options', async () => {
+  it('puts the Kind select FIRST in the row’s top line, with v4’s four options', async () => {
     const fixture = await render(draftWith([effect()]));
     const select = kindSelect(fixture);
     expect(select).not.toBeNull();
     expect(Array.from(select!.options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
       ['write', 'Write a value'],
       ['wardrobe', 'Change the outfit'],
+      ['inventory', 'Change the inventory'],
+      ['log', 'Enter a log line'],
     ]);
     const topLine = select!.closest('div');
     expect(topLine?.querySelector('select')).toBe(select);
@@ -298,14 +301,14 @@ describe('SideEffectsSection — the Kind select and wardrobe rows (v4 f0db8cbb8
     expect(added.id).toMatch(/^effect-\d+$/);
   });
 
-  it('says a roll may dress or undress the character, in the empty sentence and the hint', async () => {
+  it('says a roll may dress, undress or equip the character, in the empty sentence and the hint', async () => {
     const fixture = await render(draftWith([]));
     const rendered = text(fixture).replace(/\s+/g, ' ');
     expect(rendered).toContain(
-      'None declared. An effect lets a roll record its consequences — tick a counter in the story’s state, note a fact on the rolling character’s sheet, put a garment on them or take one off — applied server-side as part of the deal, beyond any model’s power to fudge.',
+      'None declared. An effect lets a roll record its consequences — tick a counter in the story’s state, note a fact on the rolling character’s sheet, put a garment on them or take one off, hand them an object or take one away — applied server-side as part of the deal, beyond any model’s power to fudge.',
     );
     expect(rendered).toContain(
-      'An outfit change dresses or undresses the rolling character and nobody else; an item it cannot find is skipped and the rest still go on.',
+      'An outfit change dresses or undresses the rolling character and nobody else; an item it cannot find is skipped and the rest still go on. An inventory change equips, sets down or picks up objects for the rolling character alone; an object it cannot find is skipped, and a gesture that would carry too many of a kind is skipped whole, before anything is made.',
     );
   });
 });
@@ -587,3 +590,162 @@ describe('SideEffectsSection — the wardrobe lens, v5 cases', () => {
   });
 });
 
+
+
+// ===========================================================================
+// P4.D334 — the Inventory and Log kinds (v4 e1872c94f, e4a60ad9e at the pin)
+// ===========================================================================
+
+describe('SideEffectsSection — Change the inventory', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const invEffect = (over: Partial<DraftEffect> = {}) =>
+    effect({
+      kind: 'inventory',
+      target: '',
+      value: '',
+      inventory: { action: 'equip', items: ['Excalibur'], equip: true },
+      ...over,
+    });
+  const inventoryLens = async (draft: ToolDraft, vantage: WardrobeVantage = CHARACTER) => {
+    lensState = { own: OWN_ITEMS, general: GENERAL_ITEMS, calls: [] };
+    return renderLens(draft, vantage);
+  };
+  const kindOf = (f: ComponentFixture<unknown>) => q(f, 'select[aria-label="Effect kind"]') as HTMLSelectElement;
+
+  it('offers the kind, and swaps in the inventory fields (hand-built twin)', async () => {
+    const { fixture } = await inventoryLens(draftWith([invEffect()]));
+    expect(Array.from(kindOf(fixture).options).map((o) => o.value)).toEqual(['write', 'wardrobe', 'inventory', 'log']);
+    expect(kindOf(fixture).value).toBe('inventory');
+    expect(q(fixture, 'qt-inventory-effect-fields')).not.toBeNull();
+    expect(q(fixture, 'input[aria-label="Effect target"]')).toBeNull();
+  });
+
+  it('reads Whose inventory to browse — and not Whose wardrobe — for an inventory-only draft', async () => {
+    const { fixture } = await inventoryLens(draftWith([invEffect()]));
+    expect(q(fixture, 'select[aria-label="Whose inventory to browse"]')).not.toBeNull();
+    expect(q(fixture, 'select[aria-label="Whose wardrobe to browse"]')).toBeNull();
+    expect(text(fixture)).toContain('Browsing Imogen’s inventory');
+  });
+
+  it('browses both for a tool with both kinds of effect', async () => {
+    const wardrobeRow = effect({ kind: 'wardrobe', target: '', value: '' });
+    const { fixture } = await inventoryLens(draftWith([wardrobeRow, invEffect({ id: 'e2' })]));
+    expect(q(fixture, 'select[aria-label="Whose wardrobe and inventory to browse"]')).not.toBeNull();
+  });
+
+  it('shows no vantage select until a wardrobe or inventory row exists', async () => {
+    const { fixture } = await inventoryLens(draftWith([effect()]));
+    expect(q(fixture, 'qt-wardrobe-vantage-select')).toBeNull();
+  });
+
+  it('shows the equip switch on a pick_up row, checked, and writes it through', async () => {
+    const { fixture, changes } = await inventoryLens(
+      draftWith([invEffect({ inventory: { action: 'pick_up', items: ['magic bow'], equip: true } })]),
+    );
+    const box = q(fixture, 'qt-inventory-effect-fields input[type="checkbox"]') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    expect(changes.at(-1)!.effects[0].inventory).toEqual({ action: 'pick_up', items: ['magic bow'], equip: false });
+  });
+
+  // Needs the real vantage loader (the `inventoryList` read), the pick rule and the picture —
+  // P4.D330's — and the parse, because v4's case loads its tool through `draftFromDefinition`.
+  it.skipIf(!P4D330_SPA_LANDED || !P4D333_SPA_LANDED)(
+    'warns when equip names an archetype, and shows the equip switch on pick up',
+    async () => {
+      const pool = [
+        { id: 'arch-1', kind: 'item', name: 'magic bow', title: null, isArchetype: true, parentId: null, itemIds: [], metadata: {}, folder: '', archivedAt: null, origin: { scope: 'project', id: 'p1', name: 'Thornfield' } },
+        { id: 'obj-1', kind: 'item', name: 'sword', title: 'Excalibur', isArchetype: false, parentId: null, itemIds: [], metadata: {}, folder: '', archivedAt: null, origin: { scope: 'character', id: IMOGEN, name: 'Imogen' } },
+      ];
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        imports: [SideEffectsSection],
+        providers: [
+          { provide: CoreClient, useValue: { dispatchData: async (req: { type: string }) => (req.type === 'inventoryList' ? { items: pool } : {}) } },
+        ],
+      });
+      const draft = draftWith([invEffect({ inventory: { action: 'equip', items: ['magic bow'], equip: true } })]);
+      const fixture = TestBed.createComponent(SideEffectsSection);
+      fixture.componentRef.setInput('draft', draft);
+      fixture.componentRef.setInput('issues', validateDraft(draft));
+      fixture.componentRef.setInput('vantage', CHARACTER);
+      fixture.componentRef.setInput('showVantage', true);
+      fixture.componentRef.setInput('destinations', lensDestinations);
+      fixture.detectChanges();
+      await settleLens(fixture);
+      expect(q(fixture, '[data-testid="inventory-reference-chip"]')!.textContent).toContain('magic bow');
+      expect(text(fixture)).toContain('⚠ An archetype is picked up, not equipped');
+    },
+  );
+
+  it('writes a picked object through the shared onPicked path (name or id)', async () => {
+    const { fixture, changes } = await inventoryLens(draftWith([invEffect({ inventory: { action: 'equip', items: ['x', 'y'], equip: true } })]));
+    const section = fixture.componentInstance as unknown as {
+      onChoose(id: string, t: { index: number; highlightId: string | null }): void;
+      onInventoryPicked(item: { id: string; name: string; title?: string | null }, reference: 'label' | 'id'): void;
+    };
+    section.onChoose('e1', { index: 1, highlightId: null });
+    section.onInventoryPicked({ id: 'obj-1', name: 'sword', title: 'Excalibur' }, 'label');
+    expect(changes.at(-1)!.effects[0].inventory.items).toEqual(['x', 'Excalibur']);
+    section.onInventoryPicked({ id: 'obj-1', name: 'sword', title: 'Excalibur' }, 'id');
+    expect(changes.at(-1)!.effects[0].inventory.items).toEqual(['x', 'obj-1']);
+  });
+
+  it('adds the closing note’s sentence to the hint', async () => {
+    const { fixture } = await inventoryLens(draftWith([invEffect()]));
+    expect(text(fixture).replace(/\s+/g, ' ')).toContain(
+      'An inventory change equips, sets down or picks up objects for the rolling character alone;',
+    );
+  });
+});
+
+describe('SideEffectsSection — Enter a log line', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  const logEffect = (log: string) => effect({ kind: 'log', target: '', value: '', log });
+
+  it('swaps in the textarea with v4’s label, rows, placeholder and hint', async () => {
+    const fixture = await render(draftWith([logEffect('')]));
+    const box = q(fixture, 'textarea[aria-label="Log line"]') as HTMLTextAreaElement;
+    expect(box).not.toBeNull();
+    expect(box.rows).toBe(2);
+    expect(box.maxLength).toBe(1000);
+    expect(box.getAttribute('placeholder')).toBe('{{character}} rolled {{roll}} against the lock.');
+    expect(box.getAttribute('class')).toContain('qt-textarea w-full');
+    expect(q(fixture, 'input[aria-label="Effect target"]')).toBeNull();
+    expect(text(fixture).replace(/\s+/g, ' ')).toContain(
+      'Plain prose, a template like an outcome message: {{value}}, {{roll}}, {{params.x}}, {{state.path}} and friends are filled in when the deal is done. The line is entered in the ledger against this chat and the rolling character, where the log_grep and log_read tools may find it again.',
+    );
+  });
+
+  it('writes the line to the draft, untrimmed (it is trimmed on save)', async () => {
+    const fixture = await render(draftWith([logEffect('')]));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+    const box = q(fixture, 'textarea[aria-label="Log line"]') as HTMLTextAreaElement;
+    box.value = '  It opened.  ';
+    box.dispatchEvent(new Event('input'));
+    expect(emitted[0].effects[0].log).toBe('  It opened.  ');
+  });
+
+  it('renders the blank-line error beside the row, with the error class', async () => {
+    const fixture = await render(draftWith([logEffect('  ')]));
+    expect(text(fixture)).toContain('a log line needs some prose to write down');
+    expect((q(fixture, 'textarea[aria-label="Log line"]') as HTMLTextAreaElement).classList.contains('qt-input-error')).toBe(true);
+  });
+
+  it('surfaces a warning for an undeclared parameter', async () => {
+    const fixture = await render(draftWith([logEffect('Opened by {{params.ghost}}.')]));
+    expect(text(fixture)).toContain('params.ghost');
+  });
+
+  it('switching to Enter a log line keeps the other halves', async () => {
+    const fixture = await render(draftWith([effect({ target: 'state.tally' })]));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => emitted.push(d));
+    const select = q(fixture, 'select[aria-label="Effect kind"]') as HTMLSelectElement;
+    select.value = 'log';
+    select.dispatchEvent(new Event('change'));
+    expect(emitted.at(-1)!.effects[0]).toMatchObject({ kind: 'log', target: 'state.tally' });
+  });
+});

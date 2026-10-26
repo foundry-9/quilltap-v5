@@ -151,8 +151,7 @@ describe('OutcomesSection — chips drawn as lines', () => {
     expect(chips[3]).toMatchObject({ subject: { kind: 'value' }, comparator: 'gt' });
   });
 
-  it('draws an any-of row as lines (gated twin loading through the parse)', async () => {
-    if (!P4D333_SPA_LANDED) return;
+  it.skipIf(!P4D333_SPA_LANDED)('draws an any-of row as lines (loading through the parse)', async () => {
     const { draftFromDefinition } = await import('../../pascal/tool-draft');
     const draft = draftFromDefinition({
       name: 'x',

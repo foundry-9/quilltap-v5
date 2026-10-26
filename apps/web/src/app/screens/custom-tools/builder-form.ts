@@ -430,13 +430,49 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
                     : 'qt-button qt-button-ghost'
                 "
               >
-                {{ form === 'range' ? 'Range' : 'Dice' }}
+                {{ form === 'range' ? 'Range' : form === 'dice' ? 'Dice' : 'From an object' }}
               </button>
             }
           </div>
         </div>
 
-        @if (draft().rollForm === 'dice') {
+        @if (draft().rollForm === 'inventory') {
+          <div class="space-y-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <input
+                type="text"
+                [value]="draft().rollInventory.path"
+                (input)="update({ rollInventory: { ...draft().rollInventory, path: inputValue($event) } })"
+                placeholder="sword.metadata.damage"
+                [disabled]="disabled()"
+                class="qt-input w-64 font-mono"
+                [class.qt-input-error]="inventoryRollError() !== null"
+                aria-label="Object and metadata key"
+              />
+              <span class="text-sm qt-text-secondary">else</span>
+              <input
+                type="text"
+                [value]="draft().rollInventory.fallback"
+                (input)="update({ rollInventory: { ...draft().rollInventory, fallback: inputValue($event) } })"
+                placeholder="1d4"
+                [disabled]="disabled()"
+                class="qt-input w-24 font-mono"
+                [class.qt-input-error]="inventoryRollError() !== null"
+                aria-label="Fallback dice"
+              />
+            </div>
+            @if (inventoryRollError(); as message) {
+              <p class="text-xs qt-text-destructive">{{ message }}</p>
+            } @else {
+              <p class="qt-hint">
+                Rolls the dice an object the rolling character carries names in its metadata — a
+                sword whose metadata.damage reads &ldquo;2d6&rdquo; rolls 2d6. The object is found by
+                id, title or name; when it is absent, or its value is not dice notation, the
+                fallback is rolled instead.
+              </p>
+            }
+          </div>
+        } @else if (draft().rollForm === 'dice') {
           <div class="space-y-1">
             <input
               type="text"
@@ -638,7 +674,7 @@ export class BuilderForm {
   protected readonly MAX_DICE_COUNT = MAX_DICE_COUNT;
   protected readonly IDENTIFIER_SOURCE = IDENTIFIER_PATTERN.source;
   protected readonly RANGE_FIELDS = RANGE_FIELDS;
-  protected readonly ROLL_FORMS = ['range', 'dice'] as const;
+  protected readonly ROLL_FORMS = ['range', 'dice', 'inventory'] as const;
   protected readonly String = String;
   protected readonly isStateRef = isStateRef;
 
@@ -683,6 +719,11 @@ export class BuilderForm {
     this.issues()
       .filter((i) => i.severity === 'warning' && i.where.section === 'llm')
       .map((i) => i.message),
+  );
+
+  /** The first error anchored to the object roll (v4's `fieldError` picks the FIRST of the two messages). */
+  readonly inventoryRollError = computed(() =>
+    this.fieldError((i) => i.where.section === 'roll' && i.where.field === 'inventory'),
   );
 
   readonly diceError = computed(() =>

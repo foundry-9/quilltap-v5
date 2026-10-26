@@ -10,6 +10,8 @@ import {
   encodeWardrobeVantage,
   wardrobeVantageName,
   wardrobeVantageOrigin,
+  BROWSING_WORDS,
+  type VantageBrowsing,
 } from './wardrobe-vantage-select';
 
 /**
@@ -87,12 +89,14 @@ describe('wardrobeVantageOrigin / wardrobeVantageName', () => {
     [vantage]="vantage()"
     [destinations]="destinations"
     [homeProjectName]="home()"
+    [browsing]="browsing()"
     (vantageChange)="changes.push($event)"
   />`,
 })
 class Host {
   readonly vantage = signal<WardrobeVantage>({ kind: 'none' });
   readonly home = signal<string | null>(null);
+  readonly browsing = signal<VantageBrowsing>('wardrobe');
   readonly destinations = DESTINATIONS;
   readonly changes: WardrobeVantage[] = [];
 }
@@ -133,7 +137,7 @@ describe('WardrobeVantageSelect', () => {
     const f = render({ kind: 'container', container: { scope: 'group', id: 'g-1' } });
     expect(label(f)).toBe('Browsing The Regulars wardrobe');
     expect(hint(f)).toBe(
-      'Every garment in this wardrobe, and who can reach it: members of The Regulars.',
+      'Every one of the garments here, and who can reach them: members of The Regulars.',
     );
   });
 
@@ -171,3 +175,61 @@ describe('WardrobeVantageSelect', () => {
     ]);
   });
 });
+
+describe('WardrobeVantageSelect — what is browsed (v4 102a23648)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const CASES: Array<[VantageBrowsing, string, string, string, string, string]> = [
+    ['wardrobe', 'wardrobe', 'wardrobes', 'garments', 'Shared wardrobes', 'Whose wardrobe to browse'],
+    ['inventory', 'inventory', 'inventories', 'objects', 'Shared inventories', 'Whose inventory to browse'],
+    ['both', 'wardrobe and inventory', 'wardrobes and inventories', 'garments and objects', 'Shared stores', 'Whose wardrobe and inventory to browse'],
+  ];
+
+  function render(browsing: VantageBrowsing, vantage: WardrobeVantage, home: string | null = null): ComponentFixture<Host> {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [Host] });
+    const fixture = TestBed.createComponent(Host);
+    fixture.componentInstance.browsing.set(browsing);
+    fixture.componentInstance.vantage.set(vantage);
+    fixture.componentInstance.home.set(home);
+    fixture.detectChanges();
+    return fixture;
+  }
+  const el = (f: ComponentFixture<Host>) => f.nativeElement as HTMLElement;
+  const label = (f: ComponentFixture<Host>) => el(f).querySelector('label > span')!.textContent;
+  const hint = (f: ComponentFixture<Host>) => el(f).querySelector('p')!.textContent;
+
+  it('carries v4’s nouns', () => {
+    expect(BROWSING_WORDS).toEqual({
+      wardrobe: { store: 'wardrobe', stores: 'wardrobes', things: 'garments', shared: 'Shared wardrobes' },
+      inventory: { store: 'inventory', stores: 'inventories', things: 'objects', shared: 'Shared inventories' },
+      both: { store: 'wardrobe and inventory', stores: 'wardrobes and inventories', things: 'garments and objects', shared: 'Shared stores' },
+    });
+  });
+
+  it.each(CASES)('%s: the Browsing … lead, the aria-label and the optgroup', (browsing, store, _stores, _things, shared, aria) => {
+    const f = render(browsing, { kind: 'character', characterId: 'char-imogen' });
+    expect(label(f)).toBe(`Browsing Imogen’s ${store}`);
+    const select = el(f).querySelector<HTMLSelectElement>('select')!;
+    expect(select.getAttribute('aria-label')).toBe(aria);
+    expect([...select.querySelectorAll('optgroup')].map((g) => g.label)).toEqual(['Characters', shared]);
+  });
+
+  it.each(CASES)('%s: the character hint, with and without a home project', (browsing, store, stores, things) => {
+    const f = render(browsing, { kind: 'character', characterId: 'char-imogen' });
+    expect(hint(f)).toBe(
+      `What Imogen can reach: Imogen’s own ${store}, the ${stores} of Imogen’s groups, and Quilltap General. Another character rolling this tool sees their own.`,
+    );
+    const g = render(browsing, { kind: 'character', characterId: 'char-imogen' }, 'Saga');
+    // R-7 (VANTAGE_HINT_JSX_SPACE): v4's JSX drops the space before the store noun; v5 keeps it.
+    expect(hint(g)).toContain(`This tool lives in Saga’s store; ${things} from Saga’s ${store} will also be in reach when it runs there.`);
+  });
+
+  it.each(CASES)('%s: the shared and the choose-first hints', (browsing, store, _stores, things) => {
+    const shared = render(browsing, { kind: 'container', container: { scope: 'group', id: 'g-1' } });
+    expect(hint(shared)).toBe(`Every one of the ${things} here, and who can reach them: members of The Regulars.`);
+    const none = render(browsing, { kind: 'none' });
+    expect(hint(none)).toBe(`Choose whose ${store} to browse before picking ${things}.`);
+  });
+});
+

@@ -8,6 +8,7 @@ import {
   validateDraft,
   type ToolDraft,
 } from '../../pascal/tool-draft';
+import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import { BuilderForm, coerceIdentifier } from './builder-form';
 import { OutcomesSection } from './outcomes-section';
 
@@ -674,5 +675,118 @@ describe('the Character name insert (v4 a05c6f755)', () => {
       .find((b) => b.textContent?.trim() === 'Character name')!
       .click();
     expect(next?.outcomes[0].message).toContain('{{character}}');
+  });
+});
+
+
+// ===========================================================================
+// P4.D334 — the third roll form and the carried $inventory references
+// (v4 e1872c94f at the pin; v4 has no jsdom test for the roll form).
+// ===========================================================================
+
+describe('BuilderForm — From an object (v4 e1872c94f)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const rollForms = (fixture: ComponentFixture<unknown>) =>
+    [...(fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('[aria-label="Roll form"] [role="radio"]')];
+  const objectInputs = (fixture: ComponentFixture<unknown>) => ({
+    path: (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input[aria-label="Object and metadata key"]'),
+    fallback: (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input[aria-label="Fallback dice"]'),
+  });
+
+  it('offers the three roll forms, the third reading From an object', async () => {
+    const fixture = await renderForm(draftWith());
+    expect(rollForms(fixture).map((b) => b.textContent?.trim())).toEqual(['Range', 'Dice', 'From an object']);
+  });
+
+  it('switching the form keeps the other forms’ fields intact', async () => {
+    const draft = draftWith({
+      rollDice: '2d6',
+      rollInventory: { path: 'sword.metadata.damage', fallback: '1d4' },
+    });
+    const fixture = await renderForm(draft);
+    let next: ToolDraft | undefined;
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => (next = d));
+    rollForms(fixture)[2].click();
+    expect(next).toMatchObject({
+      rollForm: 'inventory',
+      rollDice: '2d6',
+      rollInventory: { path: 'sword.metadata.damage', fallback: '1d4' },
+    });
+  });
+
+  it('renders the two inputs with v4’s placeholders and the else between them', async () => {
+    const fixture = await renderForm(draftWith({ rollForm: 'inventory' }));
+    const { path, fallback } = objectInputs(fixture);
+    expect(path!.getAttribute('placeholder')).toBe('sword.metadata.damage');
+    expect(path!.getAttribute('class')).toContain('qt-input w-64 font-mono');
+    expect(fallback!.getAttribute('placeholder')).toBe('1d4');
+    expect(fallback!.getAttribute('class')).toContain('qt-input w-24 font-mono');
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('else');
+  });
+
+  it('the two inputs write rollInventory.path and .fallback', async () => {
+    const fixture = await renderForm(draftWith({ rollForm: 'inventory' }));
+    const emitted: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => emitted.push(d));
+    const { path, fallback } = objectInputs(fixture);
+    path!.value = 'axe.metadata.damage';
+    path!.dispatchEvent(new Event('input'));
+    fallback!.value = '1d8';
+    fallback!.dispatchEvent(new Event('input'));
+    expect(emitted[0].rollInventory.path).toBe('axe.metadata.damage');
+    expect(emitted[1].rollInventory.fallback).toBe('1d8');
+  });
+
+  // A clean path is judged by P4.D333's `parseInventoryOperand`; until it lands the draft reports an error instead.
+  it.skipIf(!P4D333_SPA_LANDED)('shows the hint while the roll is clean', async () => {
+    const draft = draftWith({ rollForm: 'inventory', rollInventory: { path: 'sword.metadata.damage', fallback: '1d4' } });
+    const fixture = await renderForm(draft);
+    expect(text(fixture).replace(/\s+/g, ' ')).toContain(
+      'Rolls the dice an object the rolling character carries names in its metadata — a sword whose metadata.damage reads “2d6” rolls 2d6. The object is found by id, title or name; when it is absent, or its value is not dice notation, the fallback is rolled instead.',
+    );
+  });
+
+  it('an error replaces the hint (the FIRST of the roll’s messages) and marks both inputs', async () => {
+    const draft = draftWith({ rollForm: 'inventory', rollInventory: { path: '', fallback: 'four' } });
+    const fixture = await renderForm(draft);
+    // The grammar twin that judges the path is P4.D333's; the fallback rule is ours. Whichever
+    // message comes first is the one shown, and the hint is gone.
+    const first = validateDraft(draft).find((i) => i.where.section === 'roll' && i.where.field === 'inventory')!;
+    expect(text(fixture)).toContain(first.message);
+    expect(text(fixture)).not.toContain('Rolls the dice an object');
+    const { path, fallback } = objectInputs(fixture);
+    expect(path!.classList.contains('qt-input-error')).toBe(true);
+    expect(fallback!.classList.contains('qt-input-error')).toBe(true);
+  });
+
+  it('the range readout names a $inventory field as inventory:<path>', async () => {
+    const draft = draftWith();
+    draft.rollRange = {
+      ...draft.rollRange,
+      min: { kind: 'inventory', path: 'sword.metadata.reach', fallback: '1' },
+    };
+    const fixture = await renderForm(draft);
+    expect(text(fixture)).toContain('Draws uniformly in [inventory:sword.metadata.reach, 1)');
+  });
+
+  it('R-8 (c): a $inventory parameter default renders [object Object] in the default box, as v4 does (filing candidate)', async () => {
+    const draft = draftWith({
+      parameters: [
+        {
+          id: 'p1',
+          name: 'reach',
+          type: 'number',
+          defaultValue: { $inventory: 'sword.metadata.reach', fallback: 3 } as never,
+          description: '',
+          min: '',
+          max: '',
+        },
+      ],
+    });
+    const fixture = await renderForm(draft);
+    const box = (fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>('input[type="number"].w-28')!;
+    // jsdom's number input sanitises a non-numeric value to ''; the attribute shows v4's bytes.
+    expect(box.getAttribute('value') ?? box.value).toSatisfy((v: string) => v === '' || v === '[object Object]');
   });
 });

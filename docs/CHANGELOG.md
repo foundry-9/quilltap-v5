@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Workbench's side effects gain the Inventory and Log kinds, the roll gains From an object, the vantage select follows what is browsed (v4 e1872c94f, e4a60ad9e, 102a23648)
+
+_Versions: SPA 0.5.885._
+
+The side-effects card offers four kinds: **Change the inventory** swaps in the new `qt-inventory-effect-fields` (the action, up to eight object references each resolved through the editor's vantage into a chip or kept as text, the "equip it at once" switch, Add object) and **Enter a log line** swaps in a trimmed-on-save textarea with its hint. The inventory vantage is read only while an inventory row exists, the vantage select shows for a wardrobe or an inventory row, and the Inventory reference picker is mounted with the vantage select as its header (the focus returns to the chip or Choose… that opened it). The roll form gains **From an object** (an object path and a dice fallback, with the first of the roll's errors replacing the hint). The vantage select takes a `browsing` input (`wardrobe`, `inventory`, `both`) that changes its nouns at four sites; the shared-wardrobe hint now reads "Every one of the garments here, and who can reach them". The one v4 JSX artefact (the missing space in "Saga’swardrobe") is recorded, not ported. The Inventory pieces read P4.D330's picker, loader, picture and display rules through the stand-in module until that lane lands.
+
 #### 2026-10-26 — feat(spa): the gate and the outcome table draw chips as lines, with the Inventory subjects and the aggregate key box (v4 a53024d3c, e1872c94f)
 
 _Versions: SPA 0.5.884._

@@ -19,11 +19,13 @@ import type { CustomToolDestinations } from '../../core/core-contract';
 import {
   MAX_EFFECTS,
   MAX_EFFECT_TARGET_LENGTH,
+  MAX_MESSAGE_LENGTH,
   type OutcomeState,
 } from '../../pascal/custom-tool-types';
 import {
   newDraftEffect,
   type DraftEffect,
+  type DraftInventoryGesture,
   type DraftIssue,
   type DraftWardrobeGesture,
   type ToolDraft,
@@ -35,11 +37,19 @@ import {
   type WardrobeReferenceForm,
 } from '../../wardrobe/wardrobe-reference-picker';
 import { WardrobeVantageItemsLoader } from '../../wardrobe/wardrobe-vantage-items';
+import { InventoryEffectFields } from './inventory-effect-fields';
+import {
+  InventoryReferencePicker,
+  InventoryVantageItemsLoader,
+  inventoryLabel,
+  type InventoryReferenceForm,
+} from './p4d330-stand-ins';
 import { WardrobeFields, slotIsCoupled } from './wardrobe-fields';
 import {
   WardrobeVantageSelect,
   encodeWardrobeVantage,
   wardrobeVantageName,
+  type VantageBrowsing,
 } from './wardrobe-vantage-select';
 
 /** Which item row the picker is filling, and the item it currently names. */
@@ -56,13 +66,17 @@ const NO_VANTAGE: WardrobeVantage = { kind: 'none' };
  * builder form and the outcome table: what a run writes back once the deal is
  * done (v4 `components/custom-tools/SideEffectsSection.tsx`, 428 at `25b8fab6a`).
  *
- * Each row is one of two kinds (v4 `f0db8cbb8`). A WRITE has a target and a
- * value that is a literal number, a literal boolean, or an expression. A
- * WARDROBE row changes what the rolling character has on: an action (wear /
- * take off / clear a slot), a short list of item references (title or id,
- * templated), and the mode and slot where the action wants them
- * (`./wardrobe-fields`). Switching kind keeps the other half on the draft
- * until save, so nothing typed is lost.
+ * Each row is one of four kinds (v4 `f0db8cbb8`, `e1872c94f`, `e4a60ad9e`). A
+ * WRITE has a target and a value that is a literal number, a literal boolean,
+ * or an expression. A WARDROBE row changes what the rolling character has on:
+ * an action (wear / take off / clear a slot), a short list of item references
+ * (title or id, templated), and the mode and slot where the action wants them
+ * (`./wardrobe-fields`). An INVENTORY row changes what they carry: equip,
+ * unequip or pick up a short list of object references
+ * (`./inventory-effect-fields`). A LOG row writes one templated line (like an
+ * outcome message) to the instance's log, recorded against this chat and the
+ * rolling character, where log_grep and log_read find it. Switching kind keeps
+ * the other halves on the draft until save, so nothing typed is lost.
  *
  * The When is the common shapes only: "Always" or "on a given outcome
  * state". A hand-written richer condition (comparators,
@@ -94,7 +108,20 @@ const EFFECTS_HINT =
 const EFFECTS_HINT_TAIL =
   ', never bare words. Expressions take + − × ÷, parentheses, and the same {{…}} references as a ' +
   'message. An outfit change dresses or undresses the rolling character and nobody else; an item it ' +
-  'cannot find is skipped and the rest still go on.';
+  'cannot find is skipped and the rest still go on. An inventory change equips, sets down or picks up ' +
+  'objects for the rolling character alone; an object it cannot find is skipped, and a gesture that ' +
+  'would carry too many of a kind is skipped whole, before anything is made.';
+
+/**
+ * The log row's textarea placeholder and hint (v4 `e4a60ad9e`). Constants: both
+ * carry `{{…}}`, which would open an Angular interpolation. The hint's
+ * `{{state.path}}` keeps the leading space JSX gave it (`{' {{state.path}}'}`).
+ */
+const LOG_PLACEHOLDER = '{{character}} rolled {{roll}} against the lock.';
+const LOG_HINT =
+  'Plain prose, a template like an outcome message: {{value}}, {{roll}}, {{params.x}}, {{state.path}} and ' +
+  'friends are filled in when the deal is done. The line is entered in the ledger against this chat and ' +
+  'the rolling character, where the log_grep and log_read tools may find it again.';
 
 /**
  * v4's third prefix title (`SideEffectsSection.tsx` at `25f534c0b`). A constant
@@ -120,7 +147,14 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
 @Component({
   selector: 'qt-side-effects-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, WardrobeFields, WardrobeReferencePicker, WardrobeVantageSelect],
+  imports: [
+    Icon,
+    InventoryEffectFields,
+    InventoryReferencePicker,
+    WardrobeFields,
+    WardrobeReferencePicker,
+    WardrobeVantageSelect,
+  ],
   template: `
     <section class="qt-card p-4 space-y-3">
       <div class="flex items-center justify-between">
@@ -137,12 +171,13 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
         </button>
       </div>
 
-      @if (hasWardrobe() && showVantage()) {
+      @if ((hasWardrobe() || hasInventory()) && showVantage()) {
         <qt-wardrobe-vantage-select
           [vantage]="vantage()"
           (vantageChange)="vantageChange.emit($event)"
           [destinations]="destinations()"
           [homeProjectName]="homeProjectName()"
+          [browsing]="browsing()"
           [disabled]="disabled()"
         />
       }
@@ -151,8 +186,8 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
         <p class="text-xs qt-text-secondary">
           None declared. An effect lets a roll record its consequences &mdash; tick a counter in the
           story&rsquo;s state, note a fact on the rolling character&rsquo;s sheet, put a garment on
-          them or take one off &mdash; applied server-side as part of the deal, beyond any
-          model&rsquo;s power to fudge.
+          them or take one off, hand them an object or take one away &mdash; applied server-side as
+          part of the deal, beyond any model&rsquo;s power to fudge.
         </p>
       }
 
@@ -170,6 +205,10 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
               >
                 <option value="write" [selected]="effect.kind === 'write'">Write a value</option>
                 <option value="wardrobe" [selected]="effect.kind === 'wardrobe'">Change the outfit</option>
+                <option value="inventory" [selected]="effect.kind === 'inventory'">
+                  Change the inventory
+                </option>
+                <option value="log" [selected]="effect.kind === 'log'">Enter a log line</option>
               </select>
             </label>
             <label class="flex items-center gap-2">
@@ -206,7 +245,37 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
             </button>
           </div>
 
-          @if (effect.kind === 'wardrobe') {
+          @if (effect.kind === 'log') {
+          <div class="space-y-1 text-sm">
+            <label class="flex flex-col gap-1">
+              Log line
+              <textarea
+                [value]="effect.log"
+                [maxLength]="MAX_MESSAGE_LENGTH"
+                rows="2"
+                (input)="updateEffect(effect.id, { log: textValue($event) })"
+                [placeholder]="LOG_PLACEHOLDER"
+                [disabled]="disabled()"
+                class="qt-textarea w-full"
+                [class.qt-input-error]="effectErrors(effect.id).length > 0"
+                aria-label="Log line"
+              ></textarea>
+            </label>
+            <p class="qt-hint">{{ LOG_HINT }}</p>
+          </div>
+          } @else if (effect.kind === 'inventory') {
+          <qt-inventory-effect-fields
+            [gesture]="effect.inventory"
+            [hasErrors]="effectErrors(effect.id).length > 0"
+            [disabled]="disabled()"
+            (gestureChange)="onInventoryChange(effect.id, $event)"
+            [pool]="bag.pool()"
+            [poolFetched]="bag.fetched()"
+            [vantage]="vantage()"
+            [vantageName]="vantageName()"
+            (choose)="onChoose(effect.id, $event)"
+          />
+          } @else if (effect.kind === 'wardrobe') {
           <qt-wardrobe-fields
             [gesture]="effect.wardrobe"
             [hasErrors]="effectErrors(effect.id).length > 0"
@@ -325,6 +394,28 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
         {{ EFFECTS_HINT }} <code class="font-mono">'broken pick'</code>{{ EFFECTS_HINT_TAIL }}
       </p>
 
+      <qt-inventory-reference-picker
+        [open]="inventoryPickerOpen()"
+        (closed)="onPickerClosed()"
+        [vantage]="vantage()"
+        [action]="inventoryPickerAction()"
+        [highlightId]="picking()?.highlightId ?? null"
+        [reference]="inventoryReference()"
+        (referenceChange)="inventoryReference.set($event)"
+        (picked)="onInventoryPicked($event.item, $event.reference)"
+      >
+        @if (showVantage()) {
+          <qt-wardrobe-vantage-select
+            qtPickerHeader
+            [vantage]="vantage()"
+            (vantageChange)="vantageChange.emit($event)"
+            [destinations]="destinations()"
+            [homeProjectName]="homeProjectName()"
+            browsing="inventory"
+          />
+        }
+      </qt-inventory-reference-picker>
+
       <qt-wardrobe-reference-picker
         [open]="pickerOpen()"
         (closed)="onPickerClosed()"
@@ -369,9 +460,18 @@ export class SideEffectsSection {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   protected readonly loader = new WardrobeVantageItemsLoader(inject(CoreClient));
+  /** The Inventory a vantage looks at — read only once an inventory row exists (P4.D330's loader). */
+  protected readonly bag = new InventoryVantageItemsLoader(inject(CoreClient));
 
   protected readonly hasWardrobe = computed(() =>
     this.draft().effects.some((effect) => effect.kind === 'wardrobe'),
+  );
+  protected readonly hasInventory = computed(() =>
+    this.draft().effects.some((effect) => effect.kind === 'inventory'),
+  );
+  /** What the shared vantage select is browsing for (v4 `SideEffectsSection.tsx:179-188`). */
+  protected readonly browsing = computed<VantageBrowsing>(() =>
+    this.hasWardrobe() && this.hasInventory() ? 'both' : this.hasInventory() ? 'inventory' : 'wardrobe',
   );
   protected readonly vantageName = computed(() =>
     wardrobeVantageName(this.vantage(), this.destinations()),
@@ -381,6 +481,8 @@ export class SideEffectsSection {
   );
   /** The picker's title / id switch — lasts the editor session. */
   protected readonly referenceForm = signal<WardrobeReferenceForm>('title');
+  /** The Inventory picker's name-or-id switch — lasts the editor session (default: by label). */
+  protected readonly inventoryReference = signal<InventoryReferenceForm>('label');
   protected readonly picking = signal<PickTarget | null>(null);
   private readonly pickingEffect = computed(() => {
     const picking = this.picking();
@@ -388,6 +490,12 @@ export class SideEffectsSection {
   });
   protected readonly pickerOpen = computed(
     () => this.picking() !== null && this.pickingEffect()?.kind === 'wardrobe',
+  );
+  protected readonly inventoryPickerOpen = computed(
+    () => this.picking() !== null && this.pickingEffect()?.kind === 'inventory',
+  );
+  protected readonly inventoryPickerAction = computed(
+    () => this.pickingEffect()?.inventory.action ?? 'equip',
   );
   protected readonly pickerAction = computed(() => {
     const action = this.pickingEffect()?.wardrobe.action;
@@ -406,11 +514,21 @@ export class SideEffectsSection {
     this.hasWardrobe() ? encodeWardrobeVantage(this.vantage()) : null,
   );
 
+  /** Likewise the Inventory: nothing is read until an inventory row exists. */
+  private readonly bagKey = computed(() =>
+    this.hasInventory() ? encodeWardrobeVantage(this.vantage()) : null,
+  );
+
   constructor() {
     effect(() => {
       this.loadKey();
       const vantage = this.hasWardrobe() ? this.vantage() : null;
       untracked(() => void this.loader.load(vantage));
+    });
+    effect(() => {
+      this.bagKey();
+      const vantage = this.hasInventory() ? this.vantage() : null;
+      untracked(() => void this.bag.load(vantage));
     });
   }
 
@@ -434,6 +552,21 @@ export class SideEffectsSection {
     });
   }
 
+  protected onInventoryPicked(
+    item: Parameters<typeof inventoryLabel>[0] & { id: string },
+    reference: InventoryReferenceForm,
+  ): void {
+    const picking = this.picking();
+    const effect = this.pickingEffect();
+    if (!picking || !effect) return;
+    const gesture = effect.inventory;
+    const rows = gesture.items.length > 0 ? gesture.items : [''];
+    const value = reference === 'id' ? item.id : inventoryLabel(item);
+    this.updateEffect(effect.id, {
+      inventory: { ...gesture, items: rows.map((ref, i) => (i === picking.index ? value : ref)) },
+    });
+  }
+
   /**
    * Close the picker and send focus home — to the control that opened it or,
    * when a pick turned that row into a chip, to the row's chip.
@@ -450,8 +583,11 @@ export class SideEffectsSection {
           return;
         }
         if (!picking) return;
+        const kind = this.effects().find((e) => e.id === picking.effectId)?.kind;
         const chip = this.host.nativeElement.querySelector<HTMLElement>(
-          `[data-effect-id="${picking.effectId}"] [data-testid="wardrobe-reference-chip"][aria-label^="Item ${picking.index + 1}: "]`,
+          kind === 'inventory'
+            ? `[data-effect-id="${picking.effectId}"] [data-testid="inventory-reference-chip"][aria-label^="Object ${picking.index + 1}: "]`
+            : `[data-effect-id="${picking.effectId}"] [data-testid="wardrobe-reference-chip"][aria-label^="Item ${picking.index + 1}: "]`,
         );
         chip?.focus();
       },
@@ -461,6 +597,9 @@ export class SideEffectsSection {
 
   protected readonly MAX_EFFECTS = MAX_EFFECTS;
   protected readonly MAX_EFFECT_TARGET_LENGTH = MAX_EFFECT_TARGET_LENGTH;
+  protected readonly MAX_MESSAGE_LENGTH = MAX_MESSAGE_LENGTH;
+  protected readonly LOG_PLACEHOLDER = LOG_PLACEHOLDER;
+  protected readonly LOG_HINT = LOG_HINT;
   protected readonly PROGRESS_PREFIX_TITLE = PROGRESS_PREFIX_TITLE;
   protected readonly OUTCOME_STATES = OUTCOME_STATES;
   protected readonly EFFECT_VALUE_PLACEHOLDER = EFFECT_VALUE_PLACEHOLDER;
@@ -511,6 +650,10 @@ export class SideEffectsSection {
     this.updateEffect(id, { wardrobe });
   }
 
+  protected onInventoryChange(id: string, inventory: DraftInventoryGesture): void {
+    this.updateEffect(id, { inventory });
+  }
+
   protected onValueKindChange(effect: DraftEffect, raw: string): void {
     const valueKind = raw as DraftEffect['valueKind'];
     this.updateEffect(effect.id, {
@@ -556,5 +699,9 @@ export class SideEffectsSection {
 
   protected selectValue(event: Event): string {
     return (event.target as HTMLSelectElement).value;
+  }
+
+  protected textValue(event: Event): string {
+    return (event.target as HTMLTextAreaElement).value;
   }
 }
