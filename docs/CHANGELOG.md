@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): any-of lines, briefs, the Inventory and the Log in the Workbench draft model (v4 a53024d3c, 322a5488e, e1872c94f, e4a60ad9e)
+
+_Versions: SPA 0.5.883._
+
+`pascal/tool-draft.ts` learns the round's grammar. A chip carries a `joiner`, the chip list splits into lines at each `or` (`groupsOf`), one line emits as a bare object and several as an any-of array, and a duplicate slot is a per-line error with an `at most 8 lines joined by OR` cap on gates and outcomes. An outcome carries a `brief` (round-tripped, emitted last and untrimmed only when non-blank, audited before the consult, flagged when the prompt reads `{{outcome.brief}}` and a reachable row has none), and the consult prompt gains the `{{outcome.*}}` error and the compare-numbers advisory. The Inventory arrives as three chip subjects (state, equipped count, aggregate), three gate subjects, the `$inventory` operand, roll field and parameter default carried verbatim, the object roll form, and the inventory gesture; the Log as a fourth effect kind with a trimmed line. Three v4 Workbench omissions (a parameter rename and the deletion confirm miss an inventory effect, a chip key and the roll path) are ported as v4 has them.
+
+A 244-row tier-1 corpus recorded from v4's real `tool-draft.ts` at the pin (`tool-draft-grammar.oracle.ndjson`) pins the draft model: 182 rows run live, 62 wait on the grammar-twin lane. v4's own cases are transcribed name for name, each gated case with a hand-built twin.
+
 #### 2026-10-26 — feat(spa): the Workbench's client-safe Inventory evaluators (v4 inventory-aggregate / inventory-subjects / bench-inventory / refs at 322a5488e)
 
 _Versions: SPA 0.5.882._

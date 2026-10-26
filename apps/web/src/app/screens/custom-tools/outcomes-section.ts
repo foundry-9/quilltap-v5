@@ -81,6 +81,12 @@ export function subjectSelectValue(subject: ConditionSubject): string {
       return 'llm';
     case 'llm-ok':
       return 'llm-ok';
+    case 'inventory':
+      return 'inventory';
+    case 'inventoryCount':
+      return 'inventoryCount';
+    case 'inventoryAggregate':
+      return 'inventoryAggregate';
   }
 }
 
@@ -89,19 +95,25 @@ export function describeSlot(condition: Pick<DraftCondition, 'subject' | 'compar
   const label = COMPARATOR_LABELS[condition.comparator];
   switch (condition.subject.kind) {
     case 'value':
-      return `A row can test ${label} on the value only once.`;
+      return `A line can test ${label} on the value only once.`;
     case 'roll':
-      return `A row can test ${label} on the raw roll only once.`;
+      return `A line can test ${label} on the raw roll only once.`;
     case 'param':
-      return `A row can test ${label} on "${condition.subject.name}" only once.`;
+      return `A line can test ${label} on "${condition.subject.name}" only once.`;
     case 'metadata':
-      return `A row can test ${label} on metadata "${condition.subject.key}" only once.`;
+      return `A line can test ${label} on metadata "${condition.subject.key}" only once.`;
     case 'progress':
-      return `A row can test ${label} on progress "${condition.subject.key}" only once.`;
+      return `A line can test ${label} on progress "${condition.subject.key}" only once.`;
     case 'llm':
-      return `A row can test ${label} on the consult's answer only once.`;
+      return `A line can test ${label} on the consult's answer only once.`;
     case 'llm-ok':
-      return 'A row can test whether the consult succeeded only once.';
+      return 'A line can test whether the consult succeeded only once.';
+    case 'inventory':
+      return `A line can test ${label} on the state of "${condition.subject.key}" only once.`;
+    case 'inventoryCount':
+      return `A line can test ${label} on the equipped count of "${condition.subject.key}" only once.`;
+    case 'inventoryAggregate':
+      return `A line can test ${label} on the aggregate "${condition.subject.key}" only once.`;
   }
 }
 
@@ -1264,6 +1276,7 @@ export class OutcomesSection {
       conditions: [],
       state: 'success',
       message: '',
+      brief: '',
     };
     // Insert above the pinned catch-all.
     this.setOutcomes([...outcomes.slice(0, -1), fresh, outcomes[outcomes.length - 1]]);

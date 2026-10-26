@@ -868,9 +868,11 @@ export class BuilderForm {
         ? `“${value.name}”`
         : value.kind === 'state'
           ? `state:${value.path}`
-          : value.text.trim() === ''
-            ? fallback
-            : value.text.trim();
+          : value.kind === 'inventory'
+            ? `inventory:${value.path}`
+            : value.text.trim() === ''
+              ? fallback
+              : value.text.trim();
 
     const min = part(r.min, '0');
     const max = part(r.max, '1');

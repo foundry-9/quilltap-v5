@@ -11,6 +11,7 @@ import {
   type WardrobeStubState,
 } from '../../wardrobe/__fixtures__/wardrobe-reference-pool';
 import {
+  emptyDraftInventoryGesture,
   draftFromDefinition,
   emptyDraftWardrobeGesture,
   newDraft,
@@ -41,6 +42,8 @@ function effect(over: Partial<DraftEffect> = {}): DraftEffect {
     valueKind: 'literal-number',
     value: '1',
     wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
     ...over,
   };
 }
@@ -289,6 +292,8 @@ describe('SideEffectsSection — the Kind select and wardrobe rows (v4 f0db8cbb8
       valueKind: 'expression',
       value: '',
       wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
     });
     expect(added.id).toMatch(/^effect-\d+$/);
   });

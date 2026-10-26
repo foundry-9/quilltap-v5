@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import {
+  emptyDraftInventoryGesture,
   draftFromDefinition,
   emptyDraftWardrobeGesture,
   validateDraft,
@@ -352,6 +353,8 @@ describe('SideEffectsSection — the progress. prefix', () => {
         target: '',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'literal-number',
         value: '1',
       },

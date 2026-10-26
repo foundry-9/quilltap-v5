@@ -35,7 +35,7 @@ import {
   type WardrobeVantage,
 } from '../../pascal/tool-draft';
 import { flattenProgressions, type ProgressPrimitive } from '../../progressions/engine';
-import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
+import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/p4d333-stand-ins';
 import { Icon } from '../../ui/icon';
 import { formatSlotLabels } from '../../wardrobe/slot-meta';
 import { wardrobeOriginLabel } from '../../wardrobe/wardrobe-container';

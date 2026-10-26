@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { CoreDispatchError } from '../../core/core-contract';
+import { emptyDraftInventoryGesture } from '../../pascal/tool-draft';
 import { CustomToolsPage } from './custom-tools-page';
 import { DestinationPicker } from './destination-picker';
 import { WorkbenchEditor } from './workbench-editor';
@@ -714,6 +715,8 @@ describe('WorkbenchEditor — the wardrobe vantage (v4 5cb0e0190)', () => {
           valueKind: 'expression',
           value: '',
           wardrobe: { action: 'wear', items: [''], mode: 'wear', slot: '' },
+          inventory: emptyDraftInventoryGesture(),
+          log: '',
         },
       ],
     });

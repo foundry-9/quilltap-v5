@@ -15,20 +15,25 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { P4D333_SPA_LANDED } from '../../testing/p4d334-gates';
 import { safeParse, type WhenObject } from './custom-tool-types';
 import {
+  emptyDraftInventoryGesture,
+  conditionSlotKey,
   conditionsFromWhen,
   defaultWardrobeVantage,
   definitionFromDraft,
   draftFromDefinition,
   emptyDraftWardrobeGesture,
   findParameterReferences,
+  groupsOf,
   newDraft,
   newDraftEffect,
   renameParameterEverywhere,
   serializeDraft,
   gateConditionsFromGate,
   gateFromConditions,
+  reachableOutcomesMissingBrief,
   slugFromTitle,
   validateDraft,
   whenFromConditions,
@@ -1236,6 +1241,8 @@ describe('effects in the draft', () => {
         target: 'nowhere.x',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'literal-number',
         value: '1',
       },
@@ -1245,10 +1252,12 @@ describe('effects in the draft', () => {
         target: 'state._secret',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'literal-number',
         value: '1',
       },
-      { id: 'e3', when: { kind: 'always' }, kind: 'write', target: '', valueKind: 'literal-number', value: '1', wardrobe: emptyDraftWardrobeGesture() },
+      { id: 'e3', when: { kind: 'always' }, kind: 'write', target: '', valueKind: 'literal-number', value: '1', wardrobe: emptyDraftWardrobeGesture(), inventory: emptyDraftInventoryGesture(), log: '' },
     ];
     expect(effectIssues(draft).filter((i) => i.severity === 'error')).toHaveLength(3);
   });
@@ -1262,6 +1271,8 @@ describe('effects in the draft', () => {
         target: 'metadata.lockpick',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'expression',
         value: 'broken pick',
       },
@@ -1281,6 +1292,8 @@ describe('effects in the draft', () => {
         target: 'state.x',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'expression',
         value: '{{params.ghost}} + 1',
       },
@@ -1297,6 +1310,8 @@ describe('effects in the draft', () => {
         target: 'state.x',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'expression',
         value: '{{llm}}',
       },
@@ -1306,6 +1321,8 @@ describe('effects in the draft', () => {
         target: 'state.y',
         kind: 'write',
         wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
         valueKind: 'literal-number',
         value: '1',
       },
@@ -1326,6 +1343,8 @@ describe('effects in the draft', () => {
       target: `state.k${i}`,
       kind: 'write' as const,
       wardrobe: emptyDraftWardrobeGesture(),
+ inventory: emptyDraftInventoryGesture(),
+ log: '',
       valueKind: 'literal-number' as const,
       value: '1',
     }));
@@ -1711,5 +1730,711 @@ describe('defaultWardrobeVantage', () => {
       kind: 'character',
       characterId: 'char-bertie',
     });
+  });
+});
+
+
+// ===========================================================================
+// P4.D334 — the any-of groups, the brief, the Inventory and the Log
+// (v4 a53024d3c, 322a5488e, e1872c94f, e4a60ad9e at the pin).
+//
+// v4's own cases are transcribed NAME FOR NAME. Cases that load a document
+// through `draftFromDefinition` read P4.D333's twin of the schema, so they are
+// gated on `P4D333_SPA_LANDED`; each has an UNGATED twin that builds the same
+// draft by hand and asserts this lane's half.
+// ===========================================================================
+
+const gated = it.skipIf(!P4D333_SPA_LANDED);
+
+const messagesOf = (draft: ToolDraft) => validateDraft(draft).map((i) => i.message);
+const errorsOf = (draft: ToolDraft) =>
+  validateDraft(draft)
+    .filter((i) => i.severity === 'error')
+    .map((i) => i.message);
+const warningsOf = (draft: ToolDraft) =>
+  validateDraft(draft)
+    .filter((i) => i.severity === 'warning')
+    .map((i) => i.message);
+
+/** A valid draft with only the catch-all (v4's `{ name: 'x', description: 'x', outcomes: [catch-all] }`). */
+function bareDraft(): ToolDraft {
+  const draft = newDraft();
+  draft.name = 'x';
+  draft.description = 'x';
+  draft.outcomes = [{ ...draft.outcomes[1], message: '-' }];
+  return draft;
+}
+
+let handId = 0;
+const chip = (
+  subject: DraftCondition['subject'],
+  comparator: DraftCondition['comparator'],
+  operand: DraftCondition['operand'],
+  joiner?: 'and' | 'or',
+): DraftCondition => ({
+  id: `h-${++handId}`,
+  subject,
+  comparator,
+  operand,
+  ...(joiner ? { joiner } : {}),
+});
+const gateChip = (
+  subject: DraftGateCondition['subject'],
+  key: string,
+  comparator: DraftGateCondition['comparator'],
+  operand: DraftGateCondition['operand'],
+  joiner?: 'and' | 'or',
+): DraftGateCondition => ({ id: `g-${++handId}`, subject, key, comparator, operand, ...(joiner ? { joiner } : {}) });
+
+const sortKeys = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(sortKeys)
+    : value && typeof value === 'object'
+      ? Object.fromEntries(
+          Object.entries(value as Record<string, unknown>)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([k, v]) => [k, sortKeys(v)]),
+        )
+      : value;
+
+describe('groupsOf, joinGroups and collapseGroups (the one-level any-of)', () => {
+  it('splits at each or; the first chip always opens a group and its joiner is ignored', () => {
+    const chips = [{ n: 1, joiner: 'or' as const }, { n: 2 }, { n: 3, joiner: 'or' as const }, { n: 4, joiner: 'and' as const }];
+    expect(groupsOf(chips).map((g) => g.map((c) => c.n))).toEqual([[1, 2], [3, 4]]);
+    expect(groupsOf([])).toEqual([]);
+  });
+
+  it('round-trips a flat chip list through its groups: only the first chip of a later group is marked or', () => {
+    const when: WhenObject[] = [{ gte: 1 }, { lt: 3 }];
+    const chips = conditionsFromWhen(when);
+    expect(chips.map((c) => c.joiner)).toEqual([undefined, 'or']);
+    // A later chip that already carries `or` keeps it, so the round trip is stable.
+    expect(conditionsFromWhen(whenFromConditions(chips)!).map((c) => c.joiner)).toEqual([undefined, 'or']);
+  });
+
+  it('a single line is a bare object, several an array, none undefined; a line of incomplete chips drops', () => {
+    expect(whenFromConditions([])).toBeUndefined();
+    const one = [chip({ kind: 'value' }, 'gte', { kind: 'number', text: '1' })];
+    expect(whenFromConditions(one)).toEqual({ gte: 1 });
+    const two = [...one, chip({ kind: 'value' }, 'lt', { kind: 'number', text: '3' }, 'or')];
+    expect(whenFromConditions(two)).toEqual([{ gte: 1 }, { lt: 3 }]);
+    const dropped = [chip({ kind: 'value' }, 'gte', { kind: 'number', text: '' }), ...two.slice(1)];
+    expect(whenFromConditions(dropped)).toEqual({ lt: 3 });
+  });
+
+  it('an empty condition list is still a non-catch-all row with when {}', () => {
+    const draft = bareDraft();
+    draft.outcomes = [{ ...newDraft().outcomes[0], message: 'm' }, draft.outcomes[0]];
+    const out = definitionFromDraft(draft) as { outcomes: Array<{ when: unknown }> };
+    expect(out.outcomes[0].when).toEqual({});
+  });
+
+  it('carries an array effect when verbatim, never flattened', () => {
+    const draft = bareDraft();
+    draft.effects = [
+      {
+        ...newDraftEffect('write'),
+        target: 'state.tuned',
+        valueKind: 'literal-boolean',
+        value: 'true',
+        when: { kind: 'verbatim', when: [{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }] },
+      },
+    ];
+    const out = definitionFromDraft(draft) as { effects: Array<{ when: unknown }> };
+    expect(out.effects[0].when).toEqual([{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }]);
+  });
+});
+
+describe('the any-of groups in the draft (pascal-gate-broadening)', () => {
+  it('draws two lines, round-trips their joiners and emits an array (hand-built twin)', () => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [
+      gateChip('metadata', 'a', 'eq', { kind: 'boolean', value: true }),
+      gateChip('inventoryAggregate', 'equipped.metadata.toolVersion.max', 'gte', { kind: 'number', text: '4' }),
+      gateChip('metadata', 'a', 'eq', { kind: 'boolean', value: true }, 'or'),
+      gateChip('inventoryAggregate', 'equipped.names', 'eq', { kind: 'string', text: 'ansible resonator' }),
+    ];
+    const out = definitionFromDraft(draft);
+    expect(out['availableWhen']).toEqual([
+      { metadata: { a: { eq: true } }, inventoryAggregate: { 'equipped.metadata.toolVersion.max': { gte: 4 } } },
+      { metadata: { a: { eq: true } }, inventoryAggregate: { 'equipped.names': { eq: 'ansible resonator' } } },
+    ]);
+    expect(errorsOf(draft)).toEqual([]);
+    expect(gateConditionsFromGate(out['availableWhen'] as never).map((c) => c.joiner ?? 'and')).toEqual(['and', 'and', 'or', 'and']);
+  });
+
+  const ANY_OF = {
+    $schema: '/schemas/qtap-custom-tool.schema.json',
+    name: 'tune',
+    description: 'Tune.',
+    parameters: { band: { type: 'string', default: 'low' } },
+    availableWhen: [
+      { metadata: { a: { eq: true } }, inventoryAggregate: { 'equipped.metadata.toolVersion.max': { gte: 4 } } },
+      { metadata: { a: { eq: true } }, inventoryAggregate: { 'equipped.names': { eq: 'ansible resonator' } } },
+    ],
+    effects: [{ when: [{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }], target: 'state.tuned', value: true }],
+    outcomes: [
+      {
+        when: [{ gte: 0.9 }, { inventory: { 'lucky charm': { eq: 'equipped' } }, inventoryAggregate: { 'owned.titles': { contains: { $param: 'band' } } } }],
+        message: 'tuned',
+        state: 'success',
+      },
+      { when: true, message: 'static', state: 'info' },
+    ],
+  };
+
+  gated('round-trips an any-of gate, outcome and effect byte-equal after key sort', () => {
+    const draft = draftFromDefinition(ANY_OF)!;
+    expect(draft.gateConditions.map((c) => c.joiner ?? 'and')).toEqual(['and', 'and', 'or', 'and']);
+    expect(draft.outcomes[0].conditions.map((c) => c.joiner ?? 'and')).toEqual(['and', 'or', 'and']);
+    expect(draft.effects[0].when.kind).toBe('verbatim');
+    const out = definitionFromDraft(draft);
+    expect(JSON.stringify(sortKeys(out))).toBe(JSON.stringify(sortKeys(ANY_OF)));
+    expect(errorsOf(draft)).toEqual([]);
+  });
+
+  gated('collapses a single line to a bare object, and drops a line of incomplete chips', () => {
+    const draft = draftFromDefinition(ANY_OF)!;
+    draft.gateConditions = draft.gateConditions.map((c) => ({ ...c, joiner: 'and' as const }));
+    expect(Array.isArray(definitionFromDraft(draft)['availableWhen'])).toBe(false);
+    draft.outcomes[0].conditions = draft.outcomes[0].conditions.slice(0, 1);
+    expect((definitionFromDraft(draft)['outcomes'] as Array<{ when: unknown }>)[0].when).toEqual({ gte: 0.9 });
+  });
+
+  it('collapses a single line to a bare object, and drops a line of incomplete chips (hand-built twin)', () => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [
+      gateChip('metadata', 'a', 'eq', { kind: 'boolean', value: true }),
+      gateChip('metadata', 'b', 'eq', { kind: 'boolean', value: true }, 'and'),
+    ];
+    expect(Array.isArray(definitionFromDraft(draft)['availableWhen'])).toBe(false);
+    draft.outcomes = [
+      { ...newDraft().outcomes[0], message: 'm', conditions: [chip({ kind: 'value' }, 'gte', { kind: 'number', text: '0.9' }), chip({ kind: 'value' }, 'lt', { kind: 'number', text: '' }, 'or')] },
+      draft.outcomes[0],
+    ];
+    expect((definitionFromDraft(draft)['outcomes'] as Array<{ when: unknown }>)[0].when).toEqual({ gte: 0.9 });
+  });
+
+  gated('lets two lines repeat a slot, but not one line', () => {
+    const draft = draftFromDefinition({ ...ANY_OF, availableWhen: [{ metadata: { rank: { gt: 3 } } }, { metadata: { rank: { gt: 5 } } }] })!;
+    expect(errorsOf(draft)).toEqual([]);
+    draft.gateConditions = draft.gateConditions.map((c) => ({ ...c, joiner: 'and' as const }));
+    expect(messagesOf(draft)).toContain('a line of the gate can test this key with this comparator only once');
+  });
+
+  it('lets two lines repeat a slot, but not one line (hand-built twin)', () => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [
+      gateChip('metadata', 'rank', 'gt', { kind: 'number', text: '3' }),
+      gateChip('metadata', 'rank', 'gt', { kind: 'number', text: '5' }, 'or'),
+    ];
+    expect(errorsOf(draft)).toEqual([]);
+    draft.gateConditions = draft.gateConditions.map((c) => ({ ...c, joiner: 'and' as const }));
+    expect(messagesOf(draft)).toContain('a line of the gate can test this key with this comparator only once');
+  });
+
+  it('applies the same per-line rule to an outcome row, and counts the lines', () => {
+    const draft = bareDraft();
+    const row = { ...newDraft().outcomes[0], message: 'm' };
+    row.conditions = [
+      chip({ kind: 'value' }, 'gte', { kind: 'number', text: '1' }),
+      chip({ kind: 'value' }, 'gte', { kind: 'number', text: '2' }, 'or'),
+    ];
+    draft.outcomes = [row, draft.outcomes[0]];
+    expect(errorsOf(draft)).toEqual([]);
+    row.conditions[1] = { ...row.conditions[1], joiner: 'and' };
+    expect(messagesOf(draft)).toContain('a line can test this subject with this comparator only once');
+    row.conditions = Array.from({ length: 9 }, (_, i) => chip({ kind: 'value' }, 'gte', { kind: 'number', text: String(i) }, i === 0 ? undefined : 'or'));
+    expect(messagesOf(draft)).toContain('at most 8 lines joined by OR');
+    row.conditions = row.conditions.slice(0, 8);
+    expect(messagesOf(draft)).not.toContain('at most 8 lines joined by OR');
+  });
+
+  it('puts the gate line count after the both-clauses check and the outcome line count after its slot walk', () => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = Array.from({ length: 9 }, (_, i) => gateChip('metadata', `k${i}`, 'eq', { kind: 'number', text: '1' }, i === 0 ? undefined : 'or'));
+    const issues = validateDraft(draft).filter((i) => i.where.section === 'gate');
+    expect(issues.map((i) => i.message)).toEqual(['at most 8 lines joined by OR']);
+  });
+
+  it.each([
+    ['equipped.bag', { kind: 'number', text: '1' }, 'eq', /not a field/],
+    ['equipped.names', { kind: 'number', text: '1' }, 'gt', /cannot order a list; fold it/],
+    ['owned.metadata.tags', { kind: 'number', text: '1' }, 'lte', /cannot order a list; fold it/],
+    ['equipped.count', { kind: 'string', text: 'x' }, 'contains', /a number holds no text/],
+    ['equipped.metadata.v.max', { kind: 'string', text: 'x' }, 'ncontains', /a number holds no text/],
+  ] as const)('flags %s with %s', (key, operand, comparator, message) => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [{ id: 'g1', subject: 'inventoryAggregate', key, comparator, operand }];
+    expect(errorsOf(draft).join('\n')).toMatch(message);
+  });
+
+  it('warns that a metadata key ending in a fold word reads as the fold', () => {
+    const draft = bareDraft();
+    const row = { ...newDraft().outcomes[0], message: 'y' };
+    row.conditions = [chip({ kind: 'inventoryAggregate', key: 'owned.metadata.stats.max' }, 'gte', { kind: 'number', text: '1' })];
+    draft.outcomes = [row, draft.outcomes[0]];
+    expect(warningsOf(draft).join('\n')).toMatch(/reads as the \.max of metadata key "stats"/);
+  });
+
+  it('refuses a $param of the wrong type and a templated aggregate key', () => {
+    const draft = bareDraft();
+    draft.parameters = [{ id: 'p1', name: 'n', type: 'number', defaultValue: '1', description: '', min: '', max: '' }];
+    const row = { ...newDraft().outcomes[0], message: 'y' };
+    row.conditions = [chip({ kind: 'inventoryAggregate', key: 'equipped.names' }, 'contains', { kind: 'param', name: 'n' })];
+    draft.outcomes = [row, draft.outcomes[0]];
+    expect(messagesOf(draft).join('\n')).toMatch(/needs text to look for; "n" is number/);
+    row.conditions[0] = { ...row.conditions[0], subject: { kind: 'inventoryAggregate', key: 'equipped.metadata.{{params.n}}' } };
+    expect(messagesOf(draft).join('\n')).toMatch(/aggregate key is literal/);
+  });
+});
+
+describe('the gate round-trips through the draft at the pin (the law P4.D333 carves)', () => {
+  // `gateFromConditions(gateConditionsFromGate(gate))` is byte-equal over the
+  // NON-EMPTY records, group by group — the same normalisation the shared
+  // corpus spec applies, extended to arrays.
+  const normGroup = (group: Record<string, unknown>) =>
+    Object.fromEntries(Object.entries(group).filter(([, v]) => v && Object.keys(v as object).length > 0));
+  const norm = (gate: unknown): unknown => (Array.isArray(gate) ? gate.map((g) => normGroup(g)) : normGroup(gate as never));
+  const ROUNDTRIPS: Array<[string, unknown]> = [
+    ['one group, metadata', { metadata: { a: { eq: 1 } } }],
+    ['one group, progress', { progress: { 'cannon.percent': { gte: 50 } } }],
+    ['one group, inventory', { inventory: { lantern: { eq: 'equipped' } } }],
+    ['one group, inventoryCount', { inventoryCount: { ring: { gte: 1, lte: 3 } } }],
+    ['one group, inventoryAggregate', { inventoryAggregate: { 'equipped.count': { gte: 1 } } }],
+    [
+      'one group, every record in schema order',
+      {
+        metadata: { a: { eq: 1 } },
+        progress: { 'cannon.percent': { gte: 50 } },
+        inventory: { lantern: { eq: 'equipped' } },
+        inventoryCount: { ring: { gte: 1 } },
+        inventoryAggregate: { 'equipped.names': { contains: 'x' } },
+      },
+    ],
+    ['an array of one', [{ metadata: { a: { eq: 1 } } }]],
+    ['an array of two', [{ metadata: { a: { eq: 1 } } }, { inventory: { lantern: { neq: 'absent' } } }]],
+    [
+      'an array of eight',
+      Array.from({ length: 8 }, (_, i) => ({ metadata: { [`k${i}`]: { eq: i } } })),
+    ],
+    ['an empty record is dropped', { metadata: { a: { eq: 1 } }, inventory: {} }],
+  ];
+  it.each(ROUNDTRIPS)('%s', (_name, gate) => {
+    const back = gateFromConditions(gateConditionsFromGate(gate as never));
+    // An array of one collapses to the bare group, as the draft cannot tell them apart.
+    const expected = Array.isArray(gate) && gate.length === 1 ? norm(gate[0]) : norm(gate);
+    expect(JSON.stringify(back)).toBe(JSON.stringify(expected));
+  });
+
+  it('keeps an aggregate key as typed on the chip and trims it on the way out', () => {
+    const draft = bareDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [gateChip('inventoryAggregate', '  equipped.count  ', 'gte', { kind: 'number', text: '1' })];
+    expect(gateFromConditions(draft.gateConditions)).toEqual({ inventoryAggregate: { 'equipped.count': { gte: 1 } } });
+  });
+});
+
+describe('the outcome brief in the draft (bug 257)', () => {
+  const scanner = (overrides: Record<string, unknown> = {}) => ({
+    name: 'entanglement_scan',
+    description: 'Scan a shard for entanglement.',
+    parameters: { layers: { type: 'number', default: 95 } },
+    roll: { min: 1, max: 100 },
+    llm: {
+      prompt: 'Write a report. State: {{outcome.state}}, row {{outcome.index}}. Conclusion to reach: {{outcome.brief}}',
+      errorMessage: 'The link falters.',
+    },
+    outcomes: [
+      { when: { roll: { gte: { $param: 'layers' } } }, message: '{{llm}}', state: 'success', brief: 'Confirmed at {{params.layers}} layers.' },
+      { when: true, message: '{{llm}}', state: 'failure', brief: 'Not found.' },
+    ],
+    ...overrides,
+  });
+  const draftOf = (doc: unknown) => draftFromDefinition(doc)!;
+
+  /** The scanner, built by hand — the same draft `draftFromDefinition(scanner())` yields. */
+  function handScanner(prompt = scanner().llm.prompt): ToolDraft {
+    const draft = newDraft();
+    draft.name = 'entanglement_scan';
+    draft.description = 'Scan a shard for entanglement.';
+    draft.parameters = [{ id: 'p1', name: 'layers', type: 'number', defaultValue: '95', description: '', min: '', max: '' }];
+    draft.rollRange.min = { kind: 'literal', text: '1' };
+    draft.rollRange.max = { kind: 'literal', text: '100' };
+    draft.llmEnabled = true;
+    draft.llmPrompt = prompt;
+    draft.llmErrorMessage = 'The link falters.';
+    draft.outcomes[0] = {
+      ...draft.outcomes[0],
+      conditions: [chip({ kind: 'roll' }, 'gte', { kind: 'param', name: 'layers' })],
+      message: '{{llm}}',
+      state: 'success',
+      brief: 'Confirmed at {{params.layers}} layers.',
+    };
+    draft.outcomes[1] = { ...draft.outcomes[1], message: '{{llm}}', state: 'failure', brief: 'Not found.' };
+    return draft;
+  }
+
+  it('round-trips a brief, and omits a blank one (hand-built twin)', () => {
+    const emitted = definitionFromDraft(handScanner()) as { outcomes: Array<{ brief?: string }> };
+    expect(emitted.outcomes.map((o) => o.brief)).toEqual(['Confirmed at {{params.layers}} layers.', 'Not found.']);
+    const blank = handScanner();
+    blank.outcomes[0].brief = '  ';
+    const reEmitted = definitionFromDraft(blank) as { outcomes: Array<{ brief?: string }> };
+    expect(reEmitted.outcomes[0]).not.toHaveProperty('brief');
+  });
+
+  gated('round-trips a brief, and omits a blank one', () => {
+    const emitted = definitionFromDraft(draftOf(scanner())) as { outcomes: Array<{ brief?: string }> };
+    expect(emitted.outcomes.map((o) => o.brief)).toEqual(['Confirmed at {{params.layers}} layers.', 'Not found.']);
+    const blank = draftOf(scanner());
+    blank.outcomes[0].brief = '  ';
+    expect((definitionFromDraft(blank) as { outcomes: Array<{ brief?: string }> }).outcomes[0]).not.toHaveProperty('brief');
+  });
+
+  it('emits the brief LAST on the row and UNTRIMMED', () => {
+    const draft = handScanner();
+    draft.outcomes[0].brief = '  padded  ';
+    const row = (definitionFromDraft(draft) as { outcomes: Array<Record<string, unknown>> }).outcomes[0];
+    expect(Object.keys(row)).toEqual(['when', 'message', 'state', 'brief']);
+    expect(row['brief']).toBe('  padded  ');
+  });
+
+  gated('is valid as written', () => {
+    expect(errorsOf(draftOf(scanner()))).toEqual([]);
+  });
+
+  it('is valid as written (hand-built twin: the brief rules that read no outcome placeholder)', () => {
+    const draft = handScanner('Write a report.');
+    expect(errorsOf(draft)).toEqual([]);
+  });
+
+  gated('warns about a row that has no brief when the prompt reads one', () => {
+    const draft = draftOf(scanner());
+    draft.outcomes[1].brief = '';
+    const warnings = validateDraft(draft).filter((i) => i.severity === 'warning' && i.where.section === 'brief');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].where).toMatchObject({ id: draft.outcomes[1].id });
+  });
+
+  gated('errors on {{outcome.*}} in the prompt when a row tests the consult', () => {
+    const draft = draftOf(scanner());
+    draft.outcomes[0].conditions.push({ id: 'c-llm', subject: { kind: 'llm' }, comparator: 'eq', operand: { kind: 'string', text: 'YES' } });
+    const errors = validateDraft(draft).filter((i) => i.severity === 'error' && i.where.section === 'llm');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0].message).toMatch(/table cannot be dealt before the consult/);
+  });
+
+  it('warns when the prompt asks the model to compare numbers', () => {
+    for (const prompt of [
+      'If {{roll}} >= {{params.layers}}, report success.',
+      'Report entangled when {{value}} < 40.',
+      'You must actually do the math here.',
+    ]) {
+      const draft = handScanner(prompt);
+      draft.outcomes = [{ ...draft.outcomes[1], conditions: [], message: '{{llm}}', state: 'info', brief: '' }];
+      const messages = validateDraft(draft)
+        .filter((i) => i.severity === 'warning' && i.where.section === 'llm')
+        .map((i) => i.message);
+      expect(messages.join('\n')).toMatch(/compare numbers/);
+      expect(messages).toHaveLength(1);
+    }
+  });
+
+  it('does not warn for a prompt that merely quotes a figure', () => {
+    const draft = handScanner('Write a report on a scan of depth {{params.layers}}. Tone: clinical.');
+    draft.outcomes = [{ ...draft.outcomes[1], conditions: [], message: '{{llm}}', state: 'info', brief: '' }];
+    expect(validateDraft(draft).filter((i) => i.where.section === 'llm')).toEqual([]);
+  });
+
+  it('flags, from the audit, reachable rows without a brief', () => {
+    const draft = handScanner();
+    draft.outcomes[0].brief = '';
+    const hits = [
+      { index: 0, hits: 12 },
+      { index: 1, hits: 988 },
+    ];
+    expect(reachableOutcomesMissingBrief(draft, hits)).toEqual(P4D333_SPA_LANDED ? [0] : []);
+    draft.llmPrompt = 'Write a report.';
+    expect(reachableOutcomesMissingBrief(draft, hits)).toEqual([]);
+  });
+
+  it('puts a brief over 1000 characters (UNTRIMMED length) and a brief with the consult off in front of the author', () => {
+    const draft = handScanner('Write a report.');
+    draft.outcomes[0].brief = 'a'.repeat(1001);
+    expect(messagesOf(draft)).toContain('a brief is over 1000 characters');
+    draft.outcomes[0].brief = 'fine';
+    draft.llmEnabled = false;
+    expect(messagesOf(draft)).toContain('has a brief, but the LLM consult is not enabled to read it');
+  });
+});
+
+describe('the Inventory in the draft (e1872c94f)', () => {
+  const TOOL = {
+    name: 'strike',
+    description: 'Strike.',
+    parameters: { weapon: { type: 'string', default: 'Excalibur' } },
+    availableWhen: { inventory: { lantern: { eq: 'equipped' } }, inventoryCount: { ring: { gte: 1 } } },
+    roll: { $inventory: 'sword.metadata.damage', fallback: '1d4' },
+    effects: [
+      { inventory: { action: 'equip', items: ['{{params.weapon}}'] } },
+      { when: { outcome: { eq: 'failure' } }, inventory: { action: 'pick_up', items: ['magic bow'], equip: false } },
+    ],
+    outcomes: [
+      { when: { inventory: { '{{params.weapon}}': { eq: 'equipped' } }, inventoryCount: { ring: { gte: 2 } } }, message: 'hit', state: 'success' },
+      { when: true, message: 'miss', state: 'failure' },
+    ],
+  };
+  const load = (doc: unknown) => {
+    const draft = draftFromDefinition(doc);
+    if (!draft) throw new Error('fixture failed to load');
+    return draft;
+  };
+
+  /** The strike tool, built by hand — what `load(TOOL)` yields. */
+  function handTool(): ToolDraft {
+    const draft = newDraft();
+    draft.name = 'strike';
+    draft.description = 'Strike.';
+    draft.parameters = [{ id: 'p1', name: 'weapon', type: 'string', defaultValue: 'Excalibur', description: '', min: '', max: '' }];
+    draft.gateMode = 'available';
+    draft.gateConditions = [
+      gateChip('inventory', 'lantern', 'eq', { kind: 'string', text: 'equipped' }),
+      gateChip('inventoryCount', 'ring', 'gte', { kind: 'number', text: '1' }),
+    ];
+    draft.rollForm = 'inventory';
+    draft.rollInventory = { path: 'sword.metadata.damage', fallback: '1d4' };
+    draft.effects = [
+      { ...newDraftEffect('inventory'), inventory: { action: 'equip', items: ['{{params.weapon}}'], equip: true } },
+      {
+        ...newDraftEffect('inventory'),
+        when: { kind: 'outcome-state', state: 'failure' },
+        inventory: { action: 'pick_up', items: ['magic bow'], equip: false },
+      },
+    ];
+    draft.outcomes = [
+      {
+        ...draft.outcomes[0],
+        message: 'hit',
+        conditions: [
+          chip({ kind: 'inventory', key: '{{params.weapon}}' }, 'eq', { kind: 'string', text: 'equipped' }),
+          chip({ kind: 'inventoryCount', key: 'ring' }, 'gte', { kind: 'number', text: '2' }),
+        ],
+      },
+      { ...draft.outcomes[1], message: 'miss', state: 'failure' },
+    ];
+    return draft;
+  }
+
+  describe('round trip', () => {
+    gated('serialises back to the same definition', () => {
+      const draft = load(TOOL);
+      expect(draft.rollForm).toBe('inventory');
+      expect(draft.effects.map((e) => e.kind)).toEqual(['inventory', 'inventory']);
+      const out = definitionFromDraft(draft) as Record<string, unknown>;
+      expect(out['roll']).toEqual(TOOL.roll);
+      expect(out['availableWhen']).toEqual(TOOL.availableWhen);
+      expect(out['effects']).toEqual(TOOL.effects);
+      expect((out['outcomes'] as Array<{ when: unknown }>)[0].when).toEqual(TOOL.outcomes[0].when);
+      expect(safeParse(out).success).toBe(true);
+      expect(errorsOf(draft)).toEqual([]);
+    });
+
+    it('serialises back to the same definition (hand-built twin)', () => {
+      const draft = handTool();
+      const out = definitionFromDraft(draft) as Record<string, unknown>;
+      expect(out['roll']).toEqual(TOOL.roll);
+      expect(out['availableWhen']).toEqual(TOOL.availableWhen);
+      expect(out['effects']).toEqual(TOOL.effects);
+      expect((out['outcomes'] as Array<{ when: unknown }>)[0].when).toEqual(TOOL.outcomes[0].when);
+    });
+
+    it('a fresh inventory effect emits only the active half', () => {
+      const draft = bareDraft();
+      draft.effects = [{ ...newDraftEffect('inventory'), inventory: { action: 'pick_up', items: ['bow', ''], equip: true } }];
+      expect(definitionFromDraft(draft)['effects']).toEqual([{ inventory: { action: 'pick_up', items: ['bow'] } }]);
+    });
+
+    it('emits equip only on pick_up and only when false, in the order action, items, equip', () => {
+      const draft = bareDraft();
+      draft.effects = [
+        { ...newDraftEffect('inventory'), inventory: { action: 'pick_up', items: ['bow'], equip: false } },
+        { ...newDraftEffect('inventory'), inventory: { action: 'equip', items: ['bow'], equip: false } },
+      ];
+      const effects = definitionFromDraft(draft)['effects'] as Array<{ inventory: Record<string, unknown> }>;
+      expect(Object.keys(effects[0].inventory)).toEqual(['action', 'items', 'equip']);
+      expect(effects[1].inventory).toEqual({ action: 'equip', items: ['bow'] });
+    });
+
+    it('emits inventory and inventoryCount keys UNTRIMMED and aggregate keys TRIMMED', () => {
+      const row = { ...newDraft().outcomes[0], message: 'm' };
+      row.conditions = [
+        chip({ kind: 'inventory', key: ' sword ' }, 'eq', { kind: 'string', text: 'equipped' }),
+        chip({ kind: 'inventoryCount', key: ' sword ' }, 'gte', { kind: 'number', text: '1' }),
+        chip({ kind: 'inventoryAggregate', key: ' equipped.count ' }, 'gte', { kind: 'number', text: '1' }),
+      ];
+      expect(whenFromConditions(row.conditions)).toEqual({
+        inventory: { ' sword ': { eq: 'equipped' } },
+        inventoryCount: { ' sword ': { gte: 1 } },
+        inventoryAggregate: { 'equipped.count': { gte: 1 } },
+      });
+    });
+  });
+
+  describe('validation', () => {
+    gated('a state chip needs one of the four states, and only = or ≠', () => {
+      const draft = load(TOOL);
+      const chipOf = draft.outcomes[0].conditions.find((c) => c.subject.kind === 'inventory')!;
+      chipOf.operand = { kind: 'string', text: 'worn' };
+      expect(messagesOf(draft)).toContain('pick a state: equipped, carried, reachable or absent');
+      chipOf.comparator = 'gt';
+      expect(messagesOf(draft)).toContain('an inventory state can only be tested with = or ≠');
+    });
+
+    it('a state chip needs one of the four states, and only = or ≠ (hand-built twin)', () => {
+      const draft = handTool();
+      const chipOf = draft.outcomes[0].conditions.find((c) => c.subject.kind === 'inventory')!;
+      chipOf.operand = { kind: 'string', text: 'worn' };
+      expect(messagesOf(draft)).toContain('pick a state: equipped, carried, reachable or absent');
+      chipOf.comparator = 'gt';
+      expect(messagesOf(draft)).toContain('an inventory state can only be tested with = or ≠');
+    });
+
+    gated('a gate key may not carry a placeholder', () => {
+      const draft = load(TOOL);
+      draft.gateConditions[0].key = '{{params.weapon}}';
+      expect(messagesOf(draft)).toContain('a gate is answered before any parameter exists — name the object literally');
+    });
+
+    it('a gate key may not carry a placeholder (hand-built twin)', () => {
+      const draft = handTool();
+      draft.gateConditions[0].key = '{{params.weapon}}';
+      expect(messagesOf(draft)).toContain('a gate is answered before any parameter exists — name the object literally');
+    });
+
+    gated('an inventory effect states the per-action rule and names undeclared parameters', () => {
+      const draft = load(TOOL);
+      draft.effects[0].inventory = { action: 'equip', items: ['{{params.ghost}}'], equip: true };
+      expect(messagesOf(draft)).toContain('{{params.ghost}} names no declared parameter');
+      draft.effects[0].inventory = { action: 'equip', items: [''], equip: true };
+      expect(messagesOf(draft)).toContain('equip needs at least one object');
+    });
+
+    it('an inventory effect names undeclared parameters (hand-built twin: the half that reads no grammar twin)', () => {
+      const draft = handTool();
+      draft.effects[0].inventory = { action: 'equip', items: ['{{params.ghost}}'], equip: true };
+      expect(messagesOf(draft)).toContain('{{params.ghost}} names no declared parameter');
+    });
+
+    gated('a $inventory roll needs an object path and dice to fall back on', () => {
+      const draft = load(TOOL);
+      draft.rollInventory = { path: 'sword.title', fallback: 'four' };
+      const messages = messagesOf(draft);
+      expect(messages).toContain('name "<object>.metadata.<key>", e.g. "sword.metadata.damage"');
+      expect(messages).toContain('the fallback must be dice notation like "1d4"');
+    });
+
+    it('a $inventory roll needs dice to fall back on (hand-built twin: the half that reads no grammar twin)', () => {
+      const draft = handTool();
+      draft.rollInventory = { path: 'sword.metadata.damage', fallback: 'four' };
+      expect(messagesOf(draft)).toContain('the fallback must be dice notation like "1d4"');
+      expect(validateDraft(draft).find((i) => i.message.startsWith('the fallback'))!.where).toEqual({ section: 'roll', field: 'inventory' });
+    });
+
+    it('narrows the {{dice}} warning to the range form', () => {
+      const draft = bareDraft();
+      draft.outcomes[0].message = 'rolled {{dice}}';
+      draft.rollForm = 'range';
+      expect(warningsOf(draft)).toContain('{{dice}} renders as an empty string outside the dice form');
+      draft.rollForm = 'inventory';
+      expect(warningsOf(draft)).not.toContain('{{dice}} renders as an empty string outside the dice form');
+    });
+  });
+
+  describe('R-8: three measured v4 Workbench defects ported as v4 does them (filing candidates)', () => {
+    const draftWithParam = () => {
+      const draft = handTool();
+      draft.effects[0].inventory = { action: 'equip', items: ['{{params.weapon}} blade'], equip: true };
+      return draft;
+    };
+
+    it('renameParameterEverywhere does not rewrite an inventory effect, a chip key or the roll path', () => {
+      const renamed = renameParameterEverywhere(draftWithParam(), 'weapon', 'arm');
+      expect(renamed.effects[0].inventory.items).toEqual(['{{params.weapon}} blade']);
+      expect(renamed.outcomes[0].conditions[0].subject).toEqual({ kind: 'inventory', key: '{{params.weapon}}' });
+      expect(messagesOf(renamed)).toContain('{{params.weapon}} names no declared parameter');
+    });
+
+    it('findParameterReferences reports none of those three sites', () => {
+      expect(findParameterReferences(draftWithParam(), 'weapon')).toEqual([]);
+    });
+  });
+});
+
+describe('log effects (e4a60ad9e)', () => {
+  const logDraft = (log: string, extra?: Partial<ToolDraft>): ToolDraft => {
+    const draft = bareDraft();
+    draft.effects = [{ ...newDraftEffect('log'), log }];
+    return Object.assign(draft, extra);
+  };
+
+  gated('round-trips a log line with and without a when', () => {
+    const doc = {
+      name: 'x',
+      description: 'x',
+      effects: [{ log: 'Opened.' }, { when: { outcome: { eq: 'success' } }, log: 'It worked.' }],
+      outcomes: [{ when: true, message: '-', state: 'info' }],
+    };
+    const draft = draftFromDefinition(doc)!;
+    expect(draft.effects.map((e) => e.kind)).toEqual(['log', 'log']);
+    expect(definitionFromDraft(draft)['effects']).toEqual(doc.effects);
+  });
+
+  it('round-trips a log line with and without a when (hand-built twin)', () => {
+    const draft = bareDraft();
+    draft.effects = [
+      { ...newDraftEffect('log'), log: 'Opened.' },
+      { ...newDraftEffect('log'), log: 'It worked.', when: { kind: 'outcome-state', state: 'success' } },
+    ];
+    expect(definitionFromDraft(draft)['effects']).toEqual([{ log: 'Opened.' }, { when: { outcome: { eq: 'success' } }, log: 'It worked.' }]);
+  });
+
+  it('trims the line on save and flags an empty one', () => {
+    expect(definitionFromDraft(logDraft('  spaced  '))['effects']).toEqual([{ log: 'spaced' }]);
+    const blank = validateDraft(logDraft('   ')).filter((i) => i.severity === 'error');
+    expect(blank.map((i) => i.message)).toEqual(['a log line needs some prose to write down']);
+    expect(blank[0].where).toMatchObject({ section: 'effect', field: 'log' });
+  });
+
+  it('warns about an undeclared parameter in the line', () => {
+    const messages = validateDraft(logDraft('Opened by {{params.ghost}}.')).map((i) => i.message);
+    expect(messages.some((m) => m.includes('params.ghost'))).toBe(true);
+  });
+
+  it('measures the length on the TRIMMED line and still audits placeholders past the limit', () => {
+    expect(errorsOf(logDraft(' ' + 'x'.repeat(1000) + ' '))).toEqual([]);
+    const long = messagesOf(logDraft('x'.repeat(1001) + '{{params.ghost}}'));
+    expect(long[0]).toBe('a log line is at most 1000 characters');
+    expect(long.some((m) => m.includes('params.ghost'))).toBe(true);
+  });
+
+  it('renames a parameter in a log line, and its find arm returns before the wardrobe check', () => {
+    const draft = logDraft('Log {{params.a}} {{params.a}}.');
+    draft.parameters = [{ id: 'p1', name: 'a', type: 'string', defaultValue: 'x', description: '', min: '', max: '' }];
+    expect(renameParameterEverywhere(draft, 'a', 'b').effects[0].log).toBe('Log {{params.b}} {{params.b}}.');
+    expect(findParameterReferences(draft, 'a')).toEqual(['effect 1: the log line renders it']);
+  });
+});
+
+describe('conditionSlotKey and the three inventory subjects', () => {
+  it('keys the inventory subjects by subject, key and comparator', () => {
+    expect(conditionSlotKey({ subject: { kind: 'inventory', key: 'sword' }, comparator: 'eq' })).toBe('inventory:sword:eq');
+    expect(conditionSlotKey({ subject: { kind: 'inventoryCount', key: 'sword' }, comparator: 'gte' })).toBe('inventoryCount:sword:gte');
+    expect(conditionSlotKey({ subject: { kind: 'inventoryAggregate', key: 'equipped.count' }, comparator: 'gt' })).toBe('inventoryAggregate:equipped.count:gt');
   });
 });
