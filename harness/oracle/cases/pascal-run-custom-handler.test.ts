@@ -63,7 +63,6 @@ interface CaseSpec {
   name: string;
   characterId: string | null;
   vaultKey: 'vaultA' | 'vaultB' | 'vaultC' | 'vaultD' | null;
-  characterIds: string[];
   input: unknown;
   /**
    * P4.6bd: insert ONE cheap connection profile before the run, so the consult
@@ -421,7 +420,6 @@ async function runCase(
       chatId: c.room?.chatId ?? CHAT,
       characterId: c.characterId,
       characterMountPointId: c.vaultKey ? meta[c.vaultKey] : null,
-      characterIds: c.characterIds,
       projectId: c.room ? c.room.projectId : null,
       callerParticipantId: c.room?.callerParticipantId ?? P_A,
     };
@@ -535,37 +533,36 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const ALL = [CHAR_A, CHAR_B, CHAR_C];
   const cases: CaseSpec[] = [
-    { name: 'gated-hit', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'ansible' } },
-    { name: 'gated-miss', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'ansible' } },
-    { name: 'gated-empty', characterId: CHAR_C, vaultKey: 'vaultC', characterIds: ALL, input: { tool: 'ansible' } },
-    { name: 'public-coin', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' } },
-    { name: 'whispered-default', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'whispered' } },
-    { name: 'private-override', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin', private: true } },
-    { name: 'public-override', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'whispered', private: false } },
-    { name: 'unknown-tool', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'nonexistent' } },
-    { name: 'validation-fail', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { notTool: 1 } },
-    { name: 'run-error', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin', parameters: { bad: 1 } } },
+    { name: 'gated-hit', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'ansible' } },
+    { name: 'gated-miss', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'ansible' } },
+    { name: 'gated-empty', characterId: CHAR_C, vaultKey: 'vaultC', input: { tool: 'ansible' } },
+    { name: 'public-coin', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin' } },
+    { name: 'whispered-default', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'whispered' } },
+    { name: 'private-override', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin', private: true } },
+    { name: 'public-override', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'whispered', private: false } },
+    { name: 'unknown-tool', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'nonexistent' } },
+    { name: 'validation-fail', characterId: CHAR_A, vaultKey: 'vaultA', input: { notTool: 1 } },
+    { name: 'run-error', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin', parameters: { bad: 1 } } },
     // The 616930db consult, end to end. The fixture carries no connection
     // profiles, so BOTH sides take the invoker's `no connection profiles are
     // configured` arm: the run does NOT fail, `pascalMeta.llm` records the
     // rendered prompt + the technical reason + the author's errorMessage as the
     // output, and the table branches to the `ok: false` row. Deterministic
     // without mocking a provider.
-    { name: 'llm-consult-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' } },
-    { name: 'llm-consult-private', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle', private: true } },
+    { name: 'llm-consult-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'oracle' } },
+    { name: 'llm-consult-private', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'oracle', private: true } },
     // P4.6bd: the consult RESOLVES — a profile is inserted, the (recording)
     // provider answers 'YES', the `eq: 'YES'` outcome row fires, and the
     // CUSTOM_TOOL_CONSULT llm-log row lands. The tier-1 proof of the wire.
-    { name: 'llm-consult-resolved', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'oracle' }, profile: true },
+    { name: 'llm-consult-resolved', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'oracle' }, profile: true },
     // P4.d10 `$state`: the entrance resolves the merged cascade scoped to the
     // ROLLING character's own groups. CHAR_A (in Table Stakes): roll = chat
     // difficulty 6 (over general's 9), 6 >= gscore 4 → success, with
     // {{state.*}} rendered from all three tiers. CHAR_B (no group): gscore
     // falls back to 99 → failure — the scoping made visible in the outcome.
-    { name: 'state-cascade-hit', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'stateful' } },
-    { name: 'state-no-group-falls-back', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'stateful' } },
+    { name: 'state-cascade-hit', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'stateful' } },
+    { name: 'state-no-group-falls-back', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'stateful' } },
 
     // ---- P4.d19: the availability gate, end-to-end through the handler ----
     // The two gated definitions live in the GENERAL store, so the only thing
@@ -573,27 +570,27 @@ async function main(): Promise<void> {
     // withheld tool is not merely un-run: it is ABSENT from the roster, so the
     // handler answers with the same "No custom tool named …" it gives an
     // invented name — which is exactly what the gate is for.
-    { name: 'gate-available-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'secure_line' } },
-    { name: 'gate-available-missing-key-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'secure_line' } },
-    { name: 'gate-available-empty-sheet-unrunnable', characterId: CHAR_C, vaultKey: 'vaultC', characterIds: ALL, input: { tool: 'secure_line' } },
-    { name: 'gate-withheld-when-holds-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'novice_aid' } },
+    { name: 'gate-available-runs', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'secure_line' } },
+    { name: 'gate-available-missing-key-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'secure_line' } },
+    { name: 'gate-available-empty-sheet-unrunnable', characterId: CHAR_C, vaultKey: 'vaultC', input: { tool: 'secure_line' } },
+    { name: 'gate-withheld-when-holds-unrunnable', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'novice_aid' } },
     // The same empty sheet that fails `availableWhen` above satisfies no
     // `withheldWhen`, so CHAR_C IS dealt this one. The asymmetry, at the door.
-    { name: 'gate-withheld-when-empty-sheet-runs', characterId: CHAR_C, vaultKey: 'vaultC', characterIds: ALL, input: { tool: 'novice_aid' } },
+    { name: 'gate-withheld-when-empty-sheet-runs', characterId: CHAR_C, vaultKey: 'vaultC', input: { tool: 'novice_aid' } },
 
     // ---- P4.d19: the fact-sheet read MOVED ahead of the roster -----------
     // A broken vault now fails before a definition is in hand, so the whisper
     // decision can no longer consult `defaultVisibility`. `private: true` is the
     // only thing that whispers one of these.
-    { name: 'vault-broken-private-true', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'coin', private: true } },
-    { name: 'vault-broken-private-false', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'whispered', private: false } },
+    { name: 'vault-broken-private-true', characterId: CHAR_D, vaultKey: 'vaultD', input: { tool: 'coin', private: true } },
+    { name: 'vault-broken-private-false', characterId: CHAR_D, vaultKey: 'vaultD', input: { tool: 'whispered', private: false } },
     // THE arm whose behavior CHANGED: `whispered` declares
     // defaultVisibility:'whisper', and before 6864bf0e that made this failure a
     // whisper. It is public now.
-    { name: 'vault-broken-private-absent-whisper-default', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'whispered' } },
+    { name: 'vault-broken-private-absent-whisper-default', characterId: CHAR_D, vaultKey: 'vaultD', input: { tool: 'whispered' } },
     // A name no roster carries, through a broken vault: the vault failure wins,
     // because it is answered first.
-    { name: 'vault-broken-unknown-tool', characterId: CHAR_D, vaultKey: 'vaultD', characterIds: ALL, input: { tool: 'nonexistent' } },
+    { name: 'vault-broken-unknown-tool', characterId: CHAR_D, vaultKey: 'vaultD', input: { tool: 'nonexistent' } },
 
     // ---- P4.D35: side effects, end-to-end through the LLM entrance -------
     // CHAR_A touches all five stores in one run: chat (banner + the
@@ -601,16 +598,16 @@ async function main(): Promise<void> {
     // (proj_tier + the nested encounter.count), group (gscore), general
     // (gen_tier), and the fact sheet (lastEntry, folded into a whole-object
     // RMW that must keep hasAnsibleAccess and clearanceLevel).
-    { name: 'effects-all-tiers', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'ledger', parameters: { entry: 'brass' } } },
+    { name: 'effects-all-tiers', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'ledger', parameters: { entry: 'brass' } } },
     // CHAR_B is in no group, so `gscore` is not in their cascade at all: the
     // expression reading it fails to evaluate and that effect is SKIPPED —
     // NOT shadowed at the chat tier. The store dump is what proves the
     // difference.
-    { name: 'effects-no-group-skips-the-group-write', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'ledger' } },
+    { name: 'effects-no-group-skips-the-group-write', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'ledger' } },
     // `difficulty` lives at BOTH the chat and general tiers: chat is searched
     // first and wins, and the expression reads the merged view (6, not 9).
     // Also the `revealOdds: false` arm — the write happens, the odds do not.
-    { name: 'effects-precedence-under-sealed-odds', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'sealed_tally' } },
+    { name: 'effects-precedence-under-sealed-odds', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'sealed_tally' } },
 
     // ---- P4.D169: progressions, end-to-end through the LLM entrance ------
     //
@@ -623,8 +620,8 @@ async function main(): Promise<void> {
     // `gestating` is NOT in the roster at all, so the handler answers the same
     // "No custom tool named …" it gives an invented name — which is the whole
     // point of answering a gate before the deal.
-    { name: 'progress-gate-finished-span-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharged' }, nowMs: PASCAL_NOW_MS },
-    { name: 'progress-gate-running-span-unrunnable', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'gestating' }, nowMs: PASCAL_NOW_MS },
+    { name: 'progress-gate-finished-span-runs', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'recharged' }, nowMs: PASCAL_NOW_MS },
+    { name: 'progress-gate-running-span-unrunnable', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'gestating' }, nowMs: PASCAL_NOW_MS },
     // The READ and the WRITE in one run. `recharge` chooses its outcome on
     // `when.progress`, renders `{{progress.cannon.state}}`,
     // `{{progress.cannon.percent}}` and `{{now}}` into the message, and writes
@@ -634,17 +631,17 @@ async function main(): Promise<void> {
     // (`pascalMeta.effects` here is the `{target, previous, next}` projection;
     // the `applied` list's store label is the applier family's comparand, not
     // this one's.)
-    { name: 'progress-effect-writes-the-span', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS },
+    { name: 'progress-effect-writes-the-span', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS },
     // Create-on-write: `kettle` is a progression nobody authored, so the
     // applier mints it with the format's defaults (a one-hour span from the run
     // clock, `timeIncrement` inferred, `percentageReport`, `reportFrequency`,
     // `onComplete`) before the two authored fields land on top.
-    { name: 'progress-effect-creates-a-progression', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'kindle' }, nowMs: PASCAL_NOW_MS },
+    { name: 'progress-effect-creates-a-progression', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'kindle' }, nowMs: PASCAL_NOW_MS },
     // The same writer an hour later. Every stamped field moves with the clock,
     // and the cannon's `complete` is still true — so this row differs from the
     // one above in exactly the values the run clock touches, which is what says
     // the write takes the caller's instant rather than one of its own.
-    { name: 'progress-effect-writes-under-a-different-clock', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS + 3_600_000 },
+    { name: 'progress-effect-writes-under-a-different-clock', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'recharge' }, nowMs: PASCAL_NOW_MS + 3_600_000 },
 
     // ---- P4.D305 (v4 `362426c8f`): the run service's fail-soft arms --------
     // The chat cannot be read. v4's `chats.findById` is a `safeQuery` fallback
@@ -654,38 +651,38 @@ async function main(): Promise<void> {
     // inside `resolveStateCascade` itself). The deal lands against `{}`, the
     // Pascal post's own chat check answers null, and the model hears the
     // unposted failure.
-    { name: 'run-llm-chat-unreadable', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' }, plant: PLANT_CHAT_UNREADABLE },
+    { name: 'run-llm-chat-unreadable', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin' }, plant: PLANT_CHAT_UNREADABLE },
     // The chat reads fine but no message can be inserted: the cascade holds,
     // the deal lands, the post fails — the handler's unposted arm.
-    { name: 'run-llm-unposted', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'coin' }, plant: PLANT_POST_FAILS },
+    { name: 'run-llm-unposted', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin' }, plant: PLANT_POST_FAILS },
 
     // ---- P4.D319 (v4 `a05c6f755`): `{{character}}` + `announceAsCharacter` --
     // `announced_dresser` says `{{character}} rolls {{value}}` and announces as
     // the rolling character. The handler passes NO name, so the run service
     // reads the RAW row: Bertie, and the row carries `customAnnouncer` LAST.
     // The padded RAW name is a per-case plant (never baked): both trims.
-    { name: 'announced-dresser-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
-    { name: 'announced-dresser-padded-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A }, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
+    { name: 'announced-dresser-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
+    { name: 'announced-dresser-padded-raw-name', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'announced_dresser' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A }, plant: [`UPDATE "characters" SET "name" = '  Bertie  ' WHERE "id" = '${CHAR_A}'`] },
     // A tool WITHOUT the key, in the same room, by the same character: Pascal's.
-    { name: 'announced-dresser-regression-spell', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
+    { name: 'announced-dresser-regression-spell', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'spell' }, room: { chatId: CHAT_TRIGGERS, projectId: PROJECT_TRIGGERS, callerParticipantId: P7_A } },
     // === P4.D329: v4 `cad017599`'s seven `it`s, MIRRORED over the widened
     // pair (`pascal-run-custom-inventory-pascal.ts`, R-9) — the trigger room
     // carries CHAR_A's titled tape measure, both resonators and a walkie-talkie,
     // and CHAR_B's untitled tape measure. ===
-    { name: 'measure-twice-carrier-runs', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
-    { name: 'measure-twice-other-instance-withheld', characterId: CHAR_B, vaultKey: 'vaultB', characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_B },
-    { name: 'measure-twice-nobody-withheld', characterId: null, vaultKey: null, characterIds: ALL, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
-    { name: 'measure-twice-probe-kind-name', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_resonator' }, room: TRIGGER_ROOM_A },
-    { name: 'measure-twice-probe-title-twin', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_resonator_title' }, room: TRIGGER_ROOM_A },
-    { name: 'measure-twice-probe-walkie', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_walkie' }, room: TRIGGER_ROOM_A },
-    { name: 'measure-twice-probe-spyglass-withheld', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'probe_spyglass' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-carrier-runs', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-other-instance-withheld', characterId: CHAR_B, vaultKey: 'vaultB', input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_B },
+    { name: 'measure-twice-nobody-withheld', characterId: null, vaultKey: null, input: { tool: 'measure_twice' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-kind-name', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'probe_resonator' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-title-twin', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'probe_resonator_title' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-walkie', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'probe_walkie' }, room: TRIGGER_ROOM_A },
+    { name: 'measure-twice-probe-spyglass-withheld', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'probe_spyglass' }, room: TRIGGER_ROOM_A },
     // The run service's bag read (R-15): one door each; a tool naming none
     // reads nothing; nobody rolled reads nothing.
-    { name: 'inventory-read-message-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
-    { name: 'inventory-read-default-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_default' }, room: TRIGGER_ROOM_A },
-    { name: 'inventory-read-prompt-door', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'reads_in_prompt' }, room: TRIGGER_ROOM_A },
-    { name: 'inventory-read-none-named', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: TRIGGER_ROOM_A },
-    { name: 'inventory-read-nobody-rolled', characterId: null, vaultKey: null, characterIds: ALL, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-message-door', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-default-door', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'reads_in_default' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-prompt-door', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'reads_in_prompt' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-none-named', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'spell' }, room: TRIGGER_ROOM_A },
+    { name: 'inventory-read-nobody-rolled', characterId: null, vaultKey: null, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
     // === end P4.D329 ===
 
     // ---- P4.D333 (v4 `322a5488e`, bug 257): the table dealt FIRST ----------
@@ -694,10 +691,10 @@ async function main(): Promise<void> {
     // carry the TOLD verdict (`State: failure, row 1. … Not found.`), the
     // message quotes `{{outcome.state}}`, and the run logs `Custom tool table
     // dealt ahead of the consult` before the consult.
-    { name: 'llm-consult-table-first', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'narrator' }, profile: true, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
+    { name: 'llm-consult-table-first', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'narrator' }, profile: true, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
     // No profile: the table still dealt first (the line fires), the consult
     // fails soft, and the failure row's message renders the author's error.
-    { name: 'llm-consult-table-first-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'narrator' }, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
+    { name: 'llm-consult-table-first-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'narrator' }, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
   ];
 
   const out = fs.createWriteStream(outPath);

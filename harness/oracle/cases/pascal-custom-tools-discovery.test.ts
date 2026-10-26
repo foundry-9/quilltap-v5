@@ -152,6 +152,8 @@ interface SheetSpec {
 
 /** Counts `characters.findById` calls, so laziness is a claim and not a hope. */
 let sheetReads = 0;
+/** The mount ids `readMountFileBytes` was asked for — "never reads that store" is a claim. */
+const mountsRead = new Set<string>();
 
 function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
   mockResolvePool.mockResolvedValue({
@@ -162,6 +164,7 @@ function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
     globalMountPointId: pool.globalMountPointId ?? null,
   });
   sheetReads = 0;
+  mountsRead.clear();
   mockGetRepositories.mockReturnValue({
     docMountPoints: {
       findById: jest.fn(async (id: string) =>
@@ -186,6 +189,7 @@ function prime(pool: Pool, mounts: Mounts, sheet: SheetSpec = {}) {
     }))
   );
   mockReadMountFileBytes.mockImplementation(async (mountId: string, relativePath: string) => {
+    mountsRead.add(mountId);
     const f = (mounts[mountId]?.files ?? []).find((x) => x.relativePath === relativePath);
     if (!f) throw new Error(`no such file: ${mountId}/${relativePath}`);
     return { bytes: Buffer.from(f.content, 'utf-8'), mimeType: 'application/json', fileType: 'json' };
@@ -341,6 +345,25 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSp
       g: { enabled: true, files: [file('Tools/b.tool.json', tool('b')), file('Tools/c.tool.json', tool('c'))] },
       j: { enabled: true, files: [file('Tools/c.tool.json', tool('c')), file('Tools/d.tool.json', tool('d'))] },
       gl: { enabled: true, files: [file('Tools/d.tool.json', tool('d')), file('Tools/e.tool.json', tool('e'))] },
+    },
+  },
+  // v4 `cfa0cba29`: a tool that lives only in ANOTHER participant's vault is
+  // never dealt — the `participant` tier is gone, not merely unpopulated. The
+  // pool below DOES carry `theirs` (the resolver mock stands in for a v4 that
+  // still folded participants); the roster must neither deal `unlock` nor
+  // read a byte of that store (the row's `mountsRead` pins the second).
+  {
+    id: 'never-deals-a-tool-only-in-another-participants-vault',
+    pool: { characterMountPointId: 'mine', participantMountPointIds: ['theirs'] },
+    mounts: {
+      mine: { enabled: true, files: [file('Tools/own.tool.json', tool('own'))] },
+      theirs: {
+        enabled: true,
+        files: [
+          file('Tools/unlock.tool.json', tool('unlock')),
+          file('Tools/own.tool.json', { name: 'own', disabled: true }),
+        ],
+      },
     },
   },
   {
@@ -892,6 +915,7 @@ describe('discovery oracle', () => {
         inventoryLines,
         // P4.D333: every withheld DEBUG the run logged, in order.
         withheldLines,
+        mountsRead: [...mountsRead].sort(),
       });
     }
   });

@@ -713,7 +713,6 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             chat_id: ctx.chat_id.clone(),
             character_id: ctx.character_id.clone(),
             character_mount_point_id: ctx.character_mount_point_id.clone(),
-            character_ids: ctx.character_ids.clone(),
             project_id: ctx.project_id.clone(),
             caller_participant_id: ctx.calling_participant_id.clone(),
             // Production's one reading for this run (v4 `Date.now()` at the top

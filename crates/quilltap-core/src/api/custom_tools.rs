@@ -143,7 +143,6 @@ fn resolve_for_perspective(
     chat_id: &str,
     project_id: Option<&str>,
     perspective: &Perspective,
-    all_character_ids: &[String],
     // The listing's one clock reading, so every perspective in a chat is
     // resolved against the same instant rather than drifting across the loop.
     now_ms: i64,
@@ -154,7 +153,6 @@ fn resolve_for_perspective(
             chat_id: chat_id.to_string(),
             character_id: Some(perspective.character_id.clone()),
             character_mount_point_id: perspective.character_mount_point_id.clone(),
-            character_ids: Some(all_character_ids.to_vec()),
             project_id: project_id.map(str::to_string),
             // Availability gates are answered against this character's own sheet
             // — the same sheet the roster already resolves their vault tier
@@ -391,10 +389,6 @@ pub fn chat_custom_tools_list(
             if perspectives.is_empty() {
                 return Ok(Some(json!({ "tools": [], "errors": [] })));
             }
-            let all_character_ids: Vec<String> = perspectives
-                .iter()
-                .map(|p| p.character_id.clone())
-                .collect();
             let project_id = chat
                 .get("projectId")
                 .and_then(Value::as_str)
@@ -415,7 +409,6 @@ pub fn chat_custom_tools_list(
                     &chat_id_owned,
                     project_id,
                     perspective,
-                    &all_character_ids,
                     now_ms,
                 );
                 for (name, entry) in roster.tools {
@@ -705,10 +698,6 @@ pub async fn chat_custom_tool_run(
                     as_char.clone().unwrap_or_default(),
                 ));
             };
-            let all_ids: Vec<String> = perspectives
-                .iter()
-                .map(|p| p.character_id.clone())
-                .collect();
             let project_id = chat
                 .get("projectId")
                 .and_then(Value::as_str)
@@ -720,7 +709,6 @@ pub async fn chat_custom_tool_run(
                 &chat_id_owned,
                 project_id,
                 &perspective,
-                &all_ids,
                 now_ms,
             );
             match roster.get(&tool_owned) {

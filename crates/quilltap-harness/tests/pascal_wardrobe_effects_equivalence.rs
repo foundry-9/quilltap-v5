@@ -650,7 +650,7 @@ fn pascal_wardrobe_effects_match_oracle() {
                 registry_default_context: 8192,
             },
         );
-        let mut ctx = create_tool_context(
+        let ctx = create_tool_context(
             spec.chat_id.clone(),
             spec.user_id.clone(),
             spec.character_id.clone(),
@@ -661,7 +661,6 @@ fn pascal_wardrobe_effects_match_oracle() {
             None,
             None,
         );
-        ctx.character_ids = Some(vec![spec.character_id.clone()]);
         let history_before = dump_history(&db);
         let roll = rt.block_on(runner.run(
             &ToolCall {

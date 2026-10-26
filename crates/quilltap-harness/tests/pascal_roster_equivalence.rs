@@ -208,6 +208,9 @@ fn pascal_roster_matches_oracle() {
         let vault_throws = spec["vaultThrows"].as_bool().unwrap_or(false);
         let vault_metadata = spec.get("vaultMetadata").cloned();
         let mut sheet_reads = 0usize;
+        // v4 `cfa0cba29`: which stores the roster read a byte from. The
+        // oracle's `readMountFileBytes` mock records the same set.
+        let mut mounts_read: std::collections::BTreeSet<String> = Default::default();
 
         let load_sheet = || -> Map<String, Value> {
             // v4 `loadInvokerMetadata`, in the same order.
@@ -290,6 +293,9 @@ fn pascal_roster_matches_oracle() {
                             )
                         })
                         .collect();
+                    if !files.is_empty() {
+                        mounts_read.insert(mount_point_id.to_string());
+                    }
                     load_definitions(&files, mount_point_id, &mount_name, tier)
                 },
                 load_sheet,
@@ -380,6 +386,11 @@ fn pascal_roster_matches_oracle() {
         } else {
             assert_roster_eq(&got, &row["output"], &id);
         }
+        assert_eq!(
+            json!(mounts_read.iter().collect::<Vec<_>>()),
+            row["mountsRead"],
+            "case '{id}': the stores the roster read (a participant's vault is never one)"
+        );
         assert_eq!(
             sheet_reads as u64,
             row["sheetReads"].as_u64().unwrap(),

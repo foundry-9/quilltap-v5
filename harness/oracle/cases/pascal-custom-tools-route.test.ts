@@ -11,8 +11,9 @@
  *
  * The fixture's three characters each carry their OWN `ansible.tool.json`
  * (distinct files → distinct variants → the labelled branch), while `coin` and
- * `whispered` live only in char A's vault (seen by B/C via the participant tier
- * → one unlabelled row). All rolls are `min === max` (deterministic).
+ * `whispered` live only in char A's vault — since v4 `cfa0cba29` a vault's tools
+ * are that character's ALONE (there is no participant tier), so B / C are dealt
+ * neither and the rows carry A alone. All rolls are `min === max` (deterministic).
  *
  * P4.d24 (v4 `e8a49597`): the five perspective rooms the fixture gained drive
  * `operatorCharacterIds`/`preferOperator`. The original CHAT cannot see that

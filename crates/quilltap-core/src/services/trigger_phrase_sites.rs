@@ -20,27 +20,12 @@ use crate::pascal::trigger_runner::{
     run_triggered_custom_tools, RunTriggeredCustomToolsParams, TriggerSettings, TriggeredSpeaker,
 };
 
-/// Every character in the room — the roster's `participant` tier: the
-/// participants whose `type` is `CHARACTER` and that carry a (truthy)
-/// `characterId`, in stored order (v4 `roomCharacterIds`).
-pub fn room_character_ids(participants: &[Value]) -> Vec<String> {
-    participants
-        .iter()
-        .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
-        .filter_map(|p| p.get("characterId").and_then(Value::as_str))
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
 /// The operator's message (v4 `UserMessageTriggerParams`).
 pub struct UserMessageTriggerParams<'a> {
     pub user_id: &'a str,
     pub chat_id: &'a str,
     /// The room's `projectId` (`None` when the chat has none).
     pub project_id: Option<&'a str>,
-    /// The room's participants (for [`room_character_ids`]).
-    pub participants: &'a [Value],
     /// The message as persisted; `""` when nothing was said.
     pub content: &'a str,
     pub is_continue_mode: bool,
@@ -89,7 +74,6 @@ pub async fn run_user_message_triggers(
                 character_id: seat_character,
             },
             project_id: params.project_id.map(str::to_string),
-            character_ids: room_character_ids(params.participants),
             chat_settings: params.chat_settings,
         },
         consult,
@@ -109,7 +93,6 @@ pub struct ReplyTriggerParams<'a> {
     pub user_id: &'a str,
     pub chat_id: &'a str,
     pub project_id: Option<&'a str>,
-    pub participants: &'a [Value],
     /// The reply as persisted.
     pub content: &'a str,
     pub character_participant_id: &'a str,
@@ -141,7 +124,6 @@ pub async fn run_reply_triggers(
                 character_id: Some(params.character_id.to_string()),
             },
             project_id: params.project_id.map(str::to_string),
-            character_ids: room_character_ids(params.participants),
             chat_settings: params.chat_settings,
         },
         consult,
@@ -155,21 +137,6 @@ pub async fn run_reply_triggers(
 mod tests {
     use super::*;
     use serde_json::json;
-
-    /// v4 `trigger-phrase-sites.test.ts`: a three-participant room with a
-    /// PERSONA in the middle → `['char-1', 'char-2']`; a CHARACTER without a
-    /// `characterId` is skipped.
-    #[test]
-    fn room_character_ids_skip_personas_and_unlinked_seats() {
-        let participants = vec![
-            json!({ "type": "CHARACTER", "characterId": "char-1" }),
-            json!({ "type": "PERSONA", "characterId": "persona-1" }),
-            json!({ "type": "CHARACTER", "characterId": "char-2" }),
-            json!({ "type": "CHARACTER", "characterId": null }),
-            json!({ "type": "CHARACTER", "characterId": "" }),
-        ];
-        assert_eq!(room_character_ids(&participants), vec!["char-1", "char-2"]);
-    }
 
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
@@ -213,7 +180,6 @@ mod tests {
                         user_id: "u",
                         chat_id: "c",
                         project_id: None,
-                        participants: &[],
                         content,
                         is_continue_mode: continue_mode,
                         user_participant: None,
@@ -236,7 +202,6 @@ mod tests {
                     user_id: "u",
                     chat_id: "c",
                     project_id: None,
-                    participants: &[],
                     content: "",
                     character_participant_id: "p",
                     character_id: "char-1",
@@ -271,7 +236,6 @@ mod tests {
                     user_id: "u",
                     chat_id: "c",
                     project_id: None,
-                    participants: &[],
                     content: "abracadabra",
                     is_continue_mode: false,
                     user_participant: None,

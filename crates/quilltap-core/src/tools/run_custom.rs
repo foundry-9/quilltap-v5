@@ -667,8 +667,6 @@ pub struct RunCustomToolContext {
     pub character_id: Option<String>,
     /// Fast path for the character's vault; the group tier still needs `character_id`.
     pub character_mount_point_id: Option<String>,
-    /// Every character in the chat — their vaults form the `participant` tier.
-    pub character_ids: Option<Vec<String>>,
     pub project_id: Option<String>,
     /// The caller's participant id — the whisper target for a private roll.
     pub caller_participant_id: Option<String>,
@@ -890,7 +888,6 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         chat_id: ctx.chat_id.clone(),
         character_id: ctx.character_id.clone(),
         character_mount_point_id: ctx.character_mount_point_id.clone(),
-        character_ids: ctx.character_ids.clone(),
         project_id: ctx.project_id.clone(),
         // The sheet the gates are answered against, already in hand.
         metadata: Some(metadata.clone()),

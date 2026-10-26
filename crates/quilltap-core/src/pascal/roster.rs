@@ -34,6 +34,7 @@ use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::tiered_mount_pool::{
     resolve_tiered_mount_pool, MountTier, TierContext, TierResolveOptions, TieredMountPool,
 };
+use crate::jsstr::js_trim;
 use crate::services::mount_index::file_op_error::FileOpErrorCode;
 use crate::services::mount_index::path_utils::normalise_relative_path;
 use crate::services::mount_index::read_file::{read_mount_file_bytes_conn, MountFileError};
@@ -50,9 +51,12 @@ use super::p4d329_c2_standins::{load_inventory_context, InventoryContext, Loaded
 use crate::progressions::flatten_progressions;
 
 /// Tier precedence, nearest first. A nearer tier shadows a farther one.
-const TIER_ORDER: [MountTier; 5] = [
+///
+/// There is deliberately no `participant` tier: a tool in a character's vault
+/// is that character's alone, and sharing a room with them does not deal it to
+/// anybody else. Shared tools belong in a group, project, or General store.
+const TIER_ORDER: [MountTier; 4] = [
     MountTier::Character,
-    MountTier::Participant,
     MountTier::Group,
     MountTier::Project,
     MountTier::Global,
@@ -82,6 +86,8 @@ pub struct CustomToolLoadError {
     /// Where loading stopped (v4 `stage?`): the bytes, the JSON, the schema,
     /// or a same-store name clash.
     pub stage: Option<CustomToolLoadStage>,
+    /// The clashing tool name, on a `duplicate` error (v4 `name?`, LAST).
+    pub name: Option<String>,
     // === end P4.D328 ===
 }
 
@@ -95,6 +101,15 @@ pub enum CustomToolLoadStage {
     Json,
     Schema,
     Duplicate,
+}
+
+impl From<ToolDefinitionStage> for CustomToolLoadStage {
+    fn from(stage: ToolDefinitionStage) -> Self {
+        match stage {
+            ToolDefinitionStage::Json => CustomToolLoadStage::Json,
+            ToolDefinitionStage::Schema => CustomToolLoadStage::Schema,
+        }
+    }
 }
 
 impl CustomToolLoadStage {
@@ -155,8 +170,6 @@ pub struct RosterContext {
     /// The invoking character — their vault is the `character` tier.
     pub character_id: Option<String>,
     pub character_mount_point_id: Option<String>,
-    /// Every character in the chat — their vaults form the `participant` tier.
-    pub character_ids: Option<Vec<String>>,
     pub project_id: Option<String>,
     /// The invoking character's hydrated fact sheet, which availability gates
     /// are answered against (v4 `6864bf0e`). Optional: a caller that already
@@ -283,6 +296,153 @@ pub fn is_root_tool_file(relative_path: &str) -> bool {
     !rest.is_empty() && !rest.contains('/')
 }
 
+/// A definition file's text, judged exactly as load time judges it (v4
+/// `ToolDefinitionValidation`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ToolDefinitionValidation {
+    Ok {
+        definition: Box<QtapCustomTool>,
+    },
+    Invalid {
+        stage: ToolDefinitionStage,
+        reason: String,
+    },
+}
+
+/// Which gate refused a definition's text (v4's `'json' | 'schema'`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolDefinitionStage {
+    Json,
+    Schema,
+}
+
+impl ToolDefinitionStage {
+    /// v4's lowercase stage word.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ToolDefinitionStage::Json => "json",
+            ToolDefinitionStage::Schema => "schema",
+        }
+    }
+}
+
+/// v4's `where` bag: it only labels the debug logs, and an absent key is
+/// OMITTED from the line (the `...where` spread).
+#[derive(Debug, Clone, Default)]
+pub struct ValidationWhere {
+    pub mount_point_id: Option<String>,
+    pub definition_path: Option<String>,
+}
+
+/// Emit one debug line carrying v4's `...where` spread: each of the two keys
+/// only when present.
+macro_rules! debug_with_where {
+    ($where_:expr, $message:literal $(, $($field:tt)*)?) => {
+        match (&$where_.mount_point_id, &$where_.definition_path) {
+            (Some(m), Some(d)) => tracing::debug!(
+                target: "quilltap::pascal::custom_tools",
+                context = "pascal.custom-tools",
+                mountPointId = %m,
+                definitionPath = %d,
+                $($($field)*,)?
+                $message
+            ),
+            (Some(m), None) => tracing::debug!(
+                target: "quilltap::pascal::custom_tools",
+                context = "pascal.custom-tools",
+                mountPointId = %m,
+                $($($field)*,)?
+                $message
+            ),
+            (None, Some(d)) => tracing::debug!(
+                target: "quilltap::pascal::custom_tools",
+                context = "pascal.custom-tools",
+                definitionPath = %d,
+                $($($field)*,)?
+                $message
+            ),
+            (None, None) => tracing::debug!(
+                target: "quilltap::pascal::custom_tools",
+                context = "pascal.custom-tools",
+                $($($field)*,)?
+                $message
+            ),
+        }
+    };
+}
+
+/// Parse and schema-check one definition file's text (v4
+/// `validateToolDefinitionText`). The single judgement shared by discovery
+/// ([`load_definitions`]) and the `edit_custom_tool` save gate. Unknown keys
+/// are tolerated, never rejected — future keys ship under this tolerance and
+/// an older build must not choke on a newer file. Never fails.
+pub fn validate_tool_definition_text(
+    raw: &str,
+    where_: &ValidationWhere,
+) -> ToolDefinitionValidation {
+    let parsed_json: Value = match serde_json::from_str(raw) {
+        Ok(v) => v,
+        Err(e) => {
+            return ToolDefinitionValidation::Invalid {
+                stage: ToolDefinitionStage::Json,
+                reason: format!("is not valid JSON: {e}"),
+            }
+        }
+    };
+
+    let unknown_keys = collect_unknown_keys(&parsed_json);
+    if !unknown_keys.is_empty() {
+        let unknown_keys_json = serde_json::to_string(&unknown_keys).unwrap_or_default();
+        debug_with_where!(
+            where_,
+            "Custom tool carries keys this build does not know",
+            unknownKeysJson = %unknown_keys_json
+        );
+    }
+
+    match safe_parse(&parsed_json) {
+        Ok(definition) => ToolDefinitionValidation::Ok {
+            definition: Box::new(definition),
+        },
+        Err(issues) => {
+            let reason = format_definition_issues(&issues);
+            debug_with_where!(
+                where_,
+                "Custom tool definition failed schema validation",
+                reason = %reason
+            );
+            ToolDefinitionValidation::Invalid {
+                stage: ToolDefinitionStage::Schema,
+                reason,
+            }
+        }
+    }
+}
+
+/// Normalise a caller's name for a definition file to its store-relative path,
+/// `Tools/<stem>.tool.json` (v4 `toolDefinitionPathFor`). Accepts the bare stem
+/// (`unlock`), the file name (`unlock.tool.json`, suffix case-insensitive) or
+/// that file name under a leading `Tools/` (case-insensitive). Anything that
+/// would land outside the top level of `Tools/` — another folder, a nested
+/// path, an empty stem — is `None`: definitions are a flat root-level
+/// convention (see [`is_root_tool_file`]). The stem's own case is preserved.
+pub fn tool_definition_path_for(file: &str) -> Option<String> {
+    let name = js_trim(file).replace('\\', "/");
+    let mut name: &str = &name;
+    // Both affixes are ASCII, so lower-casing the input never moves a byte offset.
+    let folder_prefix = format!("{}/", TOOLS_FOLDER.to_lowercase());
+    if name.to_lowercase().starts_with(&folder_prefix) {
+        name = &name[folder_prefix.len()..];
+    }
+    if name.to_lowercase().ends_with(TOOL_FILE_SUFFIX) {
+        name = &name[..name.len() - TOOL_FILE_SUFFIX.len()];
+    }
+    if name.is_empty() || name.contains('/') || name == "." || name == ".." {
+        return None;
+    }
+    Some(format!("{TOOLS_FOLDER}/{name}{TOOL_FILE_SUFFIX}"))
+}
+
 /// The parse → validate → dedup core, over a mount's already-listed root tool
 /// files. Never fails: a broken file becomes an error entry, because one
 /// malformed `.tool.json` must not take the whole roster down with it.
@@ -324,6 +484,7 @@ pub fn load_definitions_with_unread(
             tier,
             reason,
             stage,
+            name: None,
         };
     // === end P4.D328 ===
 
@@ -356,46 +517,33 @@ pub fn load_definitions_with_unread(
             }
         };
 
-        let parsed_json: serde_json::Value = match serde_json::from_str(raw) {
-            Ok(v) => v,
-            Err(e) => {
-                errors.push(err(
-                    relative_path,
-                    format!("is not valid JSON: {e}"),
-                    Some(CustomToolLoadStage::Json),
-                ));
-                continue;
-            }
-        };
-
-        // Unknown TOP-LEVEL keys are tolerated, not rejected — `persist` is a
-        // planned v2 key and an older build must not choke on a newer file. v4
-        // logs them at debug; the roster is unaffected.
-        let _unknown_keys = collect_unknown_keys(&parsed_json);
-
-        let definition = match safe_parse(&parsed_json) {
-            Ok(d) => d,
-            Err(issues) => {
-                errors.push(err(
-                    relative_path,
-                    format_definition_issues(&issues),
-                    Some(CustomToolLoadStage::Schema),
-                ));
+        // The ONE judgement the `edit_custom_tool` save gate shares, so a file
+        // the editor accepts is a file the roster loads.
+        let definition = match validate_tool_definition_text(
+            raw,
+            &ValidationWhere {
+                mount_point_id: Some(mount_point_id.to_string()),
+                definition_path: Some(relative_path.clone()),
+            },
+        ) {
+            ToolDefinitionValidation::Ok { definition } => *definition,
+            ToolDefinitionValidation::Invalid { stage, reason } => {
+                errors.push(err(relative_path, reason, Some(stage.into())));
                 continue;
             }
         };
 
         if let Some((_, prior_path)) = name_to_path.iter().find(|(n, _)| *n == definition.name) {
-            errors.push(err(
+            let mut clash = err(
                 relative_path,
                 format!(
                     "defines \"{}\", which {prior_path} in this same store already defines",
                     definition.name
                 ),
-                // P4.D328: v4 stamps `stage: 'duplicate'` (+ `name`) here —
-                // P4.D332's producer (`cfa0cba29`); the arm exists, unset.
-                None,
-            ));
+                Some(CustomToolLoadStage::Duplicate),
+            );
+            clash.name = Some(definition.name.clone());
+            errors.push(clash);
             continue;
         }
         name_to_path.push((definition.name.clone(), relative_path.clone()));
@@ -417,7 +565,9 @@ fn ordered_mounts(pool: &TieredMountPool) -> Vec<(MountTier, String)> {
     let by_tier = |tier: MountTier| -> Vec<String> {
         let mut ids = match tier {
             MountTier::Character => pool.character_mount_point_id.iter().cloned().collect(),
-            MountTier::Participant => pool.participant_mount_point_ids.clone(),
+            // Never resolved for custom tools (see TIER_ORDER); present only
+            // because the match is keyed by every MountTier.
+            MountTier::Participant => Vec::new(),
             MountTier::Group => pool.group_mount_point_ids.clone(),
             MountTier::Project => pool.project_mount_point_ids.clone(),
             MountTier::Global => pool.global_mount_point_id.iter().cloned().collect(),
@@ -862,6 +1012,7 @@ pub fn resolve_custom_tool_roster(
     // and the run that follows can share ONE reading rather than taking two.
     roster_now_ms: i64,
 ) -> CustomToolRoster {
+    // No `includeParticipants`: other characters' vaults are not a tier here.
     let pool = resolve_tiered_mount_pool(
         main,
         mount,
@@ -869,13 +1020,10 @@ pub fn resolve_custom_tool_roster(
             user_id: Some(ctx.user_id.clone()),
             character_id: ctx.character_id.clone(),
             character_mount_point_id: ctx.character_mount_point_id.clone(),
-            character_ids: ctx.character_ids.clone(),
+            character_ids: None,
             project_id: ctx.project_id.clone(),
         },
-        &TierResolveOptions {
-            include_participants: true,
-            ..Default::default()
-        },
+        &TierResolveOptions::default(),
     );
 
     resolve_roster_from_pool(
@@ -1099,3 +1247,129 @@ mod library_reshape_tests {
     }
 }
 // === end P4.D328 ===
+
+#[cfg(test)]
+mod validator_tests {
+    //! `validate_tool_definition_text` and `tool_definition_path_for` (v4
+    //! `ea2cb60ab`): the judgement shared by discovery and the
+    //! `edit_custom_tool` save gate. Both DEBUG lines are NEW to v5 (nothing is
+    //! replaced), pinned with their silence legs and the `...where` spread rule
+    //! (an absent key is omitted, never rendered `null`).
+
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const VALID: &str = r#"{"name":"unlock","description":"d","outcomes":[{"when":true,"message":"m","state":"info"}]}"#;
+
+    fn where_both() -> ValidationWhere {
+        ValidationWhere {
+            mount_point_id: Some("mp-1".into()),
+            definition_path: Some("Tools/unlock.tool.json".into()),
+        }
+    }
+
+    #[test]
+    fn a_clean_file_logs_nothing() {
+        let (verdict, lines) =
+            captured_with(|| validate_tool_definition_text(VALID, &where_both()));
+        assert!(matches!(verdict, ToolDefinitionValidation::Ok { .. }));
+        assert!(lines.is_empty(), "silence leg: {lines:?}");
+    }
+
+    #[test]
+    fn an_unknown_key_that_parses_logs_only_the_first_line() {
+        let text = VALID.replacen('{', r#"{"persist":true,"future":1,"#, 1);
+        let (verdict, lines) =
+            captured_with(|| validate_tool_definition_text(&text, &where_both()));
+        assert!(matches!(verdict, ToolDefinitionValidation::Ok { .. }));
+        assert_eq!(
+            lines,
+            vec![
+                r#"DEBUG quilltap::pascal::custom_tools Custom tool carries keys this build does not know context=pascal.custom-tools mountPointId=mp-1 definitionPath=Tools/unlock.tool.json unknownKeysJson=["persist","future"]"#
+            ]
+        );
+    }
+
+    #[test]
+    fn a_schema_failure_with_no_unknown_key_logs_only_the_second_line() {
+        let (verdict, lines) = captured_with(|| {
+            validate_tool_definition_text(r#"{"name":"x","outcomes":[]}"#, &where_both())
+        });
+        let ToolDefinitionValidation::Invalid { stage, reason } = verdict else {
+            panic!("should be invalid");
+        };
+        assert_eq!(stage, ToolDefinitionStage::Schema);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].starts_with(
+            "DEBUG quilltap::pascal::custom_tools Custom tool definition failed schema validation context=pascal.custom-tools mountPointId=mp-1 definitionPath=Tools/unlock.tool.json reason="
+        ));
+        assert!(
+            lines[0].ends_with(&reason),
+            "the line carries the verdict's own reason"
+        );
+    }
+
+    #[test]
+    fn invalid_json_is_the_json_stage_and_logs_nothing() {
+        let (verdict, lines) = captured_with(|| validate_tool_definition_text("{", &where_both()));
+        let ToolDefinitionValidation::Invalid { stage, reason } = verdict else {
+            panic!("should be invalid");
+        };
+        assert_eq!(stage, ToolDefinitionStage::Json);
+        assert!(reason.starts_with("is not valid JSON: "));
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn an_absent_where_key_is_omitted_from_the_line() {
+        let text = VALID.replacen('{', r#"{"persist":true,"#, 1);
+        let only_path = ValidationWhere {
+            mount_point_id: None,
+            definition_path: Some("Tools/u.tool.json".into()),
+        };
+        let (_, lines) = captured_with(|| validate_tool_definition_text(&text, &only_path));
+        assert_eq!(
+            lines,
+            vec![
+                r#"DEBUG quilltap::pascal::custom_tools Custom tool carries keys this build does not know context=pascal.custom-tools definitionPath=Tools/u.tool.json unknownKeysJson=["persist"]"#
+            ]
+        );
+        let (_, lines) =
+            captured_with(|| validate_tool_definition_text(&text, &ValidationWhere::default()));
+        assert_eq!(
+            lines,
+            vec![
+                r#"DEBUG quilltap::pascal::custom_tools Custom tool carries keys this build does not know context=pascal.custom-tools unknownKeysJson=["persist"]"#
+            ]
+        );
+    }
+
+    #[test]
+    fn tool_definition_path_for_matches_v4s_table() {
+        let some = |s: &str| Some(s.to_string());
+        for (input, want) in [
+            ("unlock", some("Tools/unlock.tool.json")),
+            ("unlock.tool.json", some("Tools/unlock.tool.json")),
+            ("unlock.TOOL.JSON", some("Tools/unlock.tool.json")),
+            ("Tools/unlock.tool.json", some("Tools/unlock.tool.json")),
+            ("  unlock  ", some("Tools/unlock.tool.json")),
+            // The stem's own case is preserved (the strips are case-insensitive).
+            ("Unlock", some("Tools/Unlock.tool.json")),
+            ("TOOLS/x.Tool.Json", some("Tools/x.tool.json")),
+            ("tools/unlock", some("Tools/unlock.tool.json")),
+            // JS `\s` includes U+FEFF.
+            ("\u{feff}unlock\u{feff}", some("Tools/unlock.tool.json")),
+            ("dir\\unlock.tool.json", None),
+            ("Tools/nested/unlock", None),
+            ("Notes/unlock.tool.json", None),
+            ("../unlock", None),
+            (".tool.json", None),
+            ("Tools/", None),
+            ("..", None),
+            (".", None),
+            ("a\\b", None),
+        ] {
+            assert_eq!(tool_definition_path_for(input), want, "input {input:?}");
+        }
+    }
+}

@@ -409,14 +409,26 @@ fn oracle_system_rows(row: &Value) -> Vec<Value> {
 /// Each row is `(case, tool, expected asCharacterId, expected characterLabel)`.
 fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
     const WITNESSES: &[(&str, &str, &str, Option<&str>)] = &[
-        // The bug's shape: the shared row runs as the OPERATOR's character even
-        // though an LLM character leads the cast, and wears no label.
-        ("list-llm-led", "coin", CHAR_B, None),
+        // P4.D332 (v4 `cfa0cba29`): `coin` / `whispered` live in CHAR_A's vault
+        // ALONE and there is no participant tier, so they are dealt to A whatever
+        // the room's order — they no longer discriminate perspectives (the
+        // original witnesses here read B). The shared-row shape those witnesses
+        // guarded now rests on `novice_aid`, the one ungated-for-some tool the
+        // GENERAL store deals to more than one seat (CHAR_B's `Ferrum` withholds
+        // it; A and the sheet-less C both pass).
+        //
+        // The bug's shape, re-measured at the pin: the shared row runs as the
+        // OPERATOR's character even though an LLM character leads the cast —
+        // and, now that nobody else is dealt it, NAMES them (the original `coin`
+        // witness read `B`, no label: the participant tier is gone).
+        ("list-llm-led", "novice_aid", CHAR_A, Some("Bertie")),
         // …while the gate the operator's character fails falls back to whoever
         // does pass, and NAMES them.
         ("list-llm-led", "secure_line", CHAR_A, Some("Bertie")),
-        // `activeTypingParticipantId` beats stored order (CHAR_A is first).
-        ("list-two-own", "coin", CHAR_B, None),
+        // `activeTypingParticipantId` beats stored order (CHAR_A is first) — a
+        // claim `coin` used to carry (B); with `coin` A's alone, the typing rule
+        // is carried by the gated rows below, and this one pins the shared row.
+        ("list-two-own", "novice_aid", CHAR_A, None),
         // …and the operator's OTHER character is still preferred over the LLM
         // cast for a gate the active one fails — so no label.
         ("list-two-own", "secure_line", CHAR_A, None),
@@ -425,7 +437,7 @@ fn assert_perspective_witnesses(oracle: &HashMap<String, Value>) {
         // One character in the room: fall back, but nothing to disambiguate.
         ("list-solo", "coin", CHAR_A, None),
         // `removed` is not a candidate, `silent` is.
-        ("list-removed-operator", "coin", CHAR_C, None),
+        ("list-removed-operator", "novice_aid", CHAR_C, None),
         (
             "list-removed-operator",
             "secure_line",
@@ -515,7 +527,33 @@ async fn custom_tools_route_matches_oracle() {
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
-        let v: Value = serde_json::from_str(line).unwrap();
+        let mut v: Value = serde_json::from_str(line).unwrap();
+        // P4.D332 carve — lifted at §S.5 (the vocabulary union): at `322a5488e`
+        // every listed tool's `references` carries five Inventory keys
+        // (`inventoryReads`, `inventoryAggregates`, `equips`, `unequips`,
+        // `picksUp`) that P4.D329 / P4.D333 port. Removed from the ORACLE side BY
+        // NAME; every other byte of the listing is compared.
+        // `get_mut`, never `v["body"]["tools"]`: IndexMut would INSERT a `null`
+        // `tools` into the run rows' bodies and redden them.
+        if let Some(tools) = v
+            .get_mut("body")
+            .and_then(|b| b.get_mut("tools"))
+            .and_then(Value::as_array_mut)
+        {
+            for t in tools {
+                if let Some(refs) = t.get_mut("references").and_then(Value::as_object_mut) {
+                    for key in [
+                        "inventoryReads",
+                        "inventoryAggregates",
+                        "equips",
+                        "unequips",
+                        "picksUp",
+                    ] {
+                        refs.remove(key);
+                    }
+                }
+            }
+        }
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 

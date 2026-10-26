@@ -134,7 +134,6 @@ fn build_tools_resolves_and_offers_run_custom() {
         chat_id: CHAT.into(),
         character_id: Some(CHAR_A.into()),
         character_mount_point_id: Some(meta.vault_a.clone()),
-        character_ids: Some(vec![CHAR_A.into()]),
         project_id: None,
         // No sheet in hand — the roster reads the invoker's vault lazily, and
         // only if a gated definition turns up (P4.d19).
@@ -187,10 +186,10 @@ fn build_tools_resolves_and_offers_run_custom() {
     // then P4.D35's two effects tools (`ledger`, `sealed_tally`) — then the two
     // GENERAL-store gated definitions. (`oracle` is the 616930db consult tool;
     // `stateful` is the P4.d10 `$state` tool; `secure_line`/`novice_aid` are
-    // P4.d19's gated pair.) v4's "Available: …" list reads exactly this modulo
-    // the participant tier, which that case sees and this context does not:
-    // it resolves for CHAR_A ALONE, so CHAR_C's `beacon`/`mangled` are absent
-    // here and present there. CHAR_A's fact sheet qualifies for BOTH gates.
+    // P4.d19's gated pair.) v4's "Available: …" list reads EXACTLY this since
+    // `cfa0cba29` (a vault's tools are its character's alone — there is no
+    // participant tier): CHAR_C's `beacon`/`mangled` are absent on both sides.
+    // CHAR_A's fact sheet qualifies for BOTH gates.
     //
     // P4.D169 added four progression tools to that vault, and only THREE of
     // them are here: `gestating` gates on `gestation.complete`, whose span is
@@ -249,7 +248,6 @@ fn build_tools_resolves_and_offers_run_custom() {
         chat_id: CHAT.into(),
         character_id: Some(CHAR_B.into()),
         character_mount_point_id: Some(meta.vault_b.clone()),
-        character_ids: Some(vec![CHAR_B.into()]),
         project_id: None,
         metadata: None,
         inventory: None,

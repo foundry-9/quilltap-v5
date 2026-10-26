@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(pascal): a character's vault tools are that character's alone — the `participant` tier retires from the custom-tool roster (v4 `cfa0cba29`), plus the shared definition validator and the vendored definition format
+
+_Versions: core 0.0.1324._
+
+The roster's tier order is now character, group, project, global. `RosterContext.character_ids` is gone and the nine sites that fed it are deleted (the trigger runner and its two phrase sites, the orchestrator's roster, `run_custom`'s context, the executor, the tool context, and the route's list and run). The roster resolves over a default pool request, so sharing a room with a character no longer deals their vault's tools to anybody else. The model path already behaved this way; the route, the orchestrator and the trigger paths now agree with it. `validate_tool_definition_text` and `tool_definition_path_for` are split out of the loader so a file an editor accepts is a file the roster loads; the loader's two debug lines (unknown keys, schema failure) are new and capture-pinned with their silence legs, and a duplicate-name load error now carries the clashing name. The pin's custom-tool JSON Schema and the two worked specimens are vendored byte-for-byte under `pascal/specimens/` for `edit_custom_tool`'s schema action, guarded against the SPA copy, the `docs/v4/` mirrors and a v4 checkout (the SPA-copy and range-specimen legs stay red until the two sibling lanes that own those files land). The oracle cases for the discovery, handler, route and trigger-runner families were regenerated from the `322a5488e` pin and re-aimed on both sides together; the discovery case gains a "never deals a tool that lives only in another participant's vault" row that also pins which stores were read.
+
 #### 2026-10-26 — docs(porting): the P4.D331 lane record and LANE COMPLETE (P4.D331)
 
 _Docs-only change._

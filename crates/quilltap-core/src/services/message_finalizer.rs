@@ -1343,7 +1343,6 @@ where
                 user_id: &user_id,
                 chat_id: &chat_id,
                 project_id: chat.project_id.as_deref(),
-                participants: &chat.participants,
                 content: &cleaned_response,
                 character_participant_id: &character_participant.id,
                 character_id: &character.id,

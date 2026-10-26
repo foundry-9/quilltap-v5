@@ -262,9 +262,6 @@ pub struct ToolExecutionContext {
     /// The rolling character's vault mount — the `run_custom` roster's fast path
     /// for the `character` tier (v4 `ToolExecutionContext.characterMountPointId`).
     pub character_mount_point_id: Option<String>,
-    /// Every character in the chat — their vaults form the `run_custom` roster's
-    /// `participant` tier (v4 `ToolExecutionContext.characterIds`).
-    pub character_ids: Option<Vec<String>>,
     pub embedding_profile_id: Option<String>,
     /// Participant ID of who is calling the tool (for `{{me}}` resolution).
     pub calling_participant_id: Option<String>,
@@ -345,7 +342,6 @@ pub fn create_tool_context(
         // The orchestrator fills these for the `run_custom` roster (unit 9);
         // `createToolContext` leaves them unset, as v4 does.
         character_mount_point_id: None,
-        character_ids: None,
         embedding_profile_id,
         calling_participant_id: Some(character_participant_id.into()),
         // v4: `projectId || undefined`.

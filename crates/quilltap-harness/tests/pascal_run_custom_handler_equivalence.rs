@@ -1012,11 +1012,6 @@ fn run_custom_handler_matches_oracle() {
                 chat_id: chat_id.clone(),
                 character_id: case.character_id.map(str::to_string),
                 character_mount_point_id: case.vault.clone(),
-                character_ids: Some(vec![
-                    CHAR_A.to_string(),
-                    CHAR_B.to_string(),
-                    CHAR_C.to_string(),
-                ]),
                 project_id: if room.is_null() {
                     None
                 } else {

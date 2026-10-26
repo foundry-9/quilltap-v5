@@ -254,7 +254,6 @@ async function runCase(
       content: c.content,
       speaker: c.speaker,
       projectId: PROJECT,
-      characterIds: [CHAR_A, CHAR_B],
       chatSettings: c.chatSettings,
     };
     const plant = c.plant ?? null;

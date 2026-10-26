@@ -155,12 +155,6 @@ fn params_of(row: &Value) -> RunTriggeredCustomToolsParams {
             character_id: opt_str(&p["speaker"]["characterId"]),
         },
         project_id: opt_str(&p["projectId"]),
-        character_ids: p["characterIds"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|v| v.as_str().unwrap().to_string())
-            .collect(),
         chat_settings: settings,
     }
 }
@@ -375,7 +369,6 @@ fn consult_none_takes_the_no_invoker_arm() {
             character_id: Some(CHAR_A.into()),
         },
         project_id: Some("a3000000-0000-4000-8000-0000000000bb".into()),
-        character_ids: vec![CHAR_A.into(), CHAR_B.into()],
         chat_settings: Some(TriggerSettings {
             custom_tools: Some(true),
             custom_tool_triggers: Some(true),

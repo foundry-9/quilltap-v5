@@ -2020,11 +2020,6 @@ where
                     custom_tools: Some(s.custom_tools),
                     custom_tool_triggers: Some(s.custom_tool_triggers),
                 });
-        let participants: Vec<Value> = chat
-            .get("participants")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
         let mut on_posted = |message: &Value| sink.emit(ChatEvent::pascal_result(message.clone()));
         super::trigger_phrase_sites::run_user_message_triggers(
             db,
@@ -2033,7 +2028,6 @@ where
                 chat_id: &chat_id,
                 // `chat.projectId ?? null`.
                 project_id: chat.get("projectId").and_then(Value::as_str),
-                participants: &participants,
                 content: &content,
                 is_continue_mode,
                 user_participant: resolution.user_participant.as_ref(),
@@ -2229,17 +2223,6 @@ where
             .map(|s| s.custom_tools)
             .unwrap_or(true);
         let custom_tool_context = if custom_tools_enabled {
-            let participant_character_ids: Vec<String> = chat
-                .get("participants")
-                .and_then(Value::as_array)
-                .map(|ps| {
-                    ps.iter()
-                        .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
-                        .filter_map(|p| p.get("characterId").and_then(Value::as_str))
-                        .map(str::to_string)
-                        .collect()
-                })
-                .unwrap_or_default();
             Some(crate::pascal::roster::RosterContext {
                 user_id: user_id.clone(),
                 chat_id: chat_id.clone(),
@@ -2251,7 +2234,6 @@ where
                     .get("characterDocumentMountPointId")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                character_ids: Some(participant_character_ids),
                 project_id: chat
                     .get("projectId")
                     .and_then(Value::as_str)

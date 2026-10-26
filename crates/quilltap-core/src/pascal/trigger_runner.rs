@@ -81,8 +81,6 @@ pub struct RunTriggeredCustomToolsParams {
     pub content: String,
     pub speaker: TriggeredSpeaker,
     pub project_id: Option<String>,
-    /// Every character in the chat (the roster's `participant` tier).
-    pub character_ids: Vec<String>,
     /// The chat settings already in hand at the call site.
     pub chat_settings: Option<TriggerSettings>,
 }
@@ -195,7 +193,6 @@ async fn run_triggered(
         chat_id: chat_id.clone(),
         character_id: speaker.character_id.clone(),
         character_mount_point_id,
-        character_ids: Some(params.character_ids.clone()),
         project_id: params.project_id.clone(),
         metadata: Some(metadata.clone()),
         // P4.D329: the bag loads lazily, only when a gate names it.
