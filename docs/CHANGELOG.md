@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(backup): the new-account remap keeps Inventory object ids verbatim and plans their picture pointers (P4.D327)
+
+_Versions: core 0.0.1329._
+
+Ports v4 `4fbdad186`'s `uuid-remap.ts` hunks at the `322a5488e` pin. `inventory_documents` walks every object file under `Inventory/` (any depth, case-insensitive, not under `Inventory/images/`), and `inventory_item_ids` collects the ids. A `files` row's `linkedTo` / `tags` keep an object id verbatim before trying the wardrobe item map and then the remapper. `plan_inventory_image_pointer_fixes` lists each object whose `imageFileId` names a carried file, minting the object's mount and then its picture. The bug-252 comment now names the carried Inventory. The parse is the Inventory's one V8 `JSON.parse` twin (serde underneath, so the three V8-only classes still mint a stranger for such a file's picture link; recorded).
+
+`backup_uuid_remap_equivalence` regenerates its corpus through the committed hashed writer at the pin (new `corpusSha256` `21c46cf8…`): seven new cases (v4's `inventory-backup.test.ts` bundle, plain and on the restore path, an unknown pointer, nothing carried, link precedence, the document predicate's edges, the keyed re-key), and the restore path runs the Inventory plan between the wardrobe plan and the remap (`inventoryFixes` on every restore-path line). Red first, five cases minted strangers for object ids. Three unit tests sit beside the port.
+
 #### 2026-10-26 — fix(import): a `.qtap` import writes the re-keyed `equippedInventory` to its own column and carries `canManageInventory` (P4.D327)
 
 _Versions: core 0.0.1328._

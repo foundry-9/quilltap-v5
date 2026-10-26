@@ -42,6 +42,7 @@ use super::uuid_remapper::UuidRemapper;
 use crate::chat::character_keyed_fields::{
     remap_character_keyed_chat_fields, CharacterKeyedRemaps,
 };
+use crate::inventory::folders::is_inventory_item_document_path;
 use crate::vault_overlay::{is_wardrobe_item_document_path, wardrobe_item_id_for_document};
 use crate::wardrobe::WARDROBE_SLOT_TYPES;
 
@@ -142,6 +143,10 @@ pub fn remap_backup_data(
     // tags, BEFORE files — because it MINTS the Wardrobe-holding mount's id
     // (R-A: every later counter id lands in v4's order).
     let wardrobe_item_id_remap = build_wardrobe_item_id_remap(data, r);
+    // P4.D327 (v4 `4fbdad186`, `uuid-remap.ts:303-306`): "Inventory object
+    // ids travel verbatim, so a picture naming one keeps it." Built from the
+    // ORIGINAL data, no mint, right after the wardrobe map.
+    let inventory_ids = inventory_item_ids(data);
 
     // Remap files
     // IMPORTANT: Chain remapFields → array remaps so array spread doesn't
@@ -158,7 +163,14 @@ pub fn remap_backup_data(
                 if let Some(Value::Array(elements)) = obj.get(field).cloned() {
                     let mapped = elements
                         .iter()
-                        .map(|e| Value::String(remap_link_id(r, &wardrobe_item_id_remap, e)))
+                        .map(|e| {
+                            Value::String(remap_link_id(
+                                r,
+                                &inventory_ids,
+                                &wardrobe_item_id_remap,
+                                e,
+                            ))
+                        })
                         .collect();
                     obj.insert(field.to_string(), Value::Array(mapped));
                 }
@@ -634,10 +646,21 @@ fn js_string(v: &Value) -> String {
     }
 }
 
-/// v4 `remapLinkId` (`:192`) — `wardrobeItemIdRemap.get(id) ?? remapper.remap(id)`.
-/// The item map's keys are strings, so a non-string element (a `Map.get` miss)
-/// always goes through the remapper, as `remapArray` sent it before.
-fn remap_link_id(r: &mut UuidRemapper, items: &HashMap<String, String>, element: &Value) -> String {
+/// v4 `remapLinkId` (`:304-306` at `322a5488e`) — `inventoryIds.has(id) ? id
+/// : wardrobeItemIdRemap.get(id) ?? remapper.remap(id)`: an Inventory object
+/// id FIRST (kept verbatim, P4.D327), then the wardrobe item map, then the
+/// remapper. Both sets are keyed by strings, so a non-string element (a
+/// `Set.has` / `Map.get` miss) always goes through the remapper, as
+/// `remapArray` sent it before.
+fn remap_link_id(
+    r: &mut UuidRemapper,
+    inventory_ids: &HashSet<String>,
+    items: &HashMap<String, String>,
+    element: &Value,
+) -> String {
+    if let Some(id) = element.as_str().filter(|id| inventory_ids.contains(*id)) {
+        return id.to_string();
+    }
     if let Some(mapped) = element.as_str().and_then(|id| items.get(id)) {
         return mapped.clone();
     }
@@ -715,6 +738,117 @@ pub fn plan_wardrobe_image_pointer_fixes(
     }
     fixes
 }
+
+// === P4.D327: the Inventory's documents in a backup (v4 `4fbdad186`,
+// `uuid-remap.ts:182-257` at `322a5488e`) ===
+
+/// v4 `inventoryDocuments(data)` — "The Inventory's documents in a backup:
+/// each object file under `Inventory/` (any depth) with its parsed JSON,
+/// skipping pictures and anything that does not parse into an object
+/// carrying an id." In LINK order; `id` is any NON-EMPTY string (NOT
+/// UUID-checked — v4 does not call `parseInventoryItemFile` here).
+///
+/// The parse is the Inventory's one V8 `JSON.parse` twin
+/// ([`crate::inventory::types::js_json_parse`] — serde underneath): on a
+/// `1e400`, a lone-surrogate `\u` escape or nesting past 128 v4 reads the
+/// file and v5 skips it, so v5 mints a stranger for that object's picture
+/// link where v4 keeps its id (the P4.D317 R-2 class, recorded). A link whose
+/// `relativePath` is not a string THROWS in v4 (`.toLowerCase()` on
+/// `undefined`); v5 treats it as not an object (the P4.D264 class).
+fn inventory_documents(data: &BackupData) -> Vec<(&Value, Map<String, Value>, String)> {
+    let content_by_file_id = content_by_file_id(data);
+    let mut out = Vec::new();
+    for link in &data.doc_mount_file_links {
+        let Some(relative_path) = link.get("relativePath").and_then(Value::as_str) else {
+            continue;
+        };
+        if !is_inventory_item_document_path(relative_path) {
+            continue;
+        }
+        let file_id = js_string(link.get("fileId").unwrap_or(&Value::Null));
+        let Some(content) = content_by_file_id.get(&file_id).and_then(Value::as_str) else {
+            continue;
+        };
+        let Ok(Value::Object(json)) = crate::inventory::types::js_json_parse(content) else {
+            continue;
+        };
+        let Some(id) = json
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        out.push((link, json, id));
+    }
+    out
+}
+
+/// v4 `inventoryItemIds(data)` — "Inventory object ids in a backup. Like a
+/// wardrobe frontmatter id, an object's id lives in its file and travels
+/// verbatim (as do the `parentId` and kit `itemIds` that name other objects),
+/// so these ids are never remapper keys: a picture's `files.linkedTo` and a
+/// chat's `equippedInventory` keep naming them as they are."
+fn inventory_item_ids(data: &BackupData) -> HashSet<String> {
+    inventory_documents(data)
+        .into_iter()
+        .map(|(_, _, id)| id)
+        .collect()
+}
+
+/// v4 `InventoryImagePointerFix` — "One Inventory object whose current-picture
+/// pointer must follow its file's new id."
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventoryImagePointerFix {
+    /// The object's mount, already remapped.
+    pub mount_point_id: String,
+    /// The object's mount as the backup named it (before the remap).
+    pub source_mount_point_id: String,
+    /// The object's id (unchanged by the remap).
+    pub item_id: String,
+    /// The picture's remapped `files` id.
+    pub image_file_id: String,
+}
+
+/// v4 `planInventoryImagePointerFixes(original, remapper)` — "The Inventory
+/// analogue of `planWardrobeImagePointerFixes`: an object's `imageFileId`
+/// lives in its JSON file, which the remap never rewrites, so list the
+/// pointers the restore must repoint once the vaults have landed. Pass the
+/// ORIGINAL backup data and the same remapper." The restore runs it AFTER the
+/// wardrobe plan and BEFORE [`remap_backup_data`] (`restore.ts:119-121`), and
+/// per qualifying link it MINTS the object's mount, THEN the picture's file.
+pub fn plan_inventory_image_pointer_fixes(
+    original: &BackupData,
+    r: &mut UuidRemapper,
+) -> Vec<InventoryImagePointerFix> {
+    let file_ids: HashSet<String> = original
+        .files
+        .iter()
+        .map(|f| js_string(f.get("id").unwrap_or(&Value::Null)))
+        .collect();
+    let mut fixes = Vec::new();
+    for (link, json, id) in inventory_documents(original) {
+        let Some(pointer) = json.get("imageFileId").and_then(Value::as_str) else {
+            continue;
+        };
+        if !file_ids.contains(pointer) {
+            continue;
+        }
+        let mount = link.get("mountPointId").unwrap_or(&Value::Null);
+        let mount_point_id = r.remap(mount);
+        let image_file_id = r.remap_str(pointer);
+        fixes.push(InventoryImagePointerFix {
+            mount_point_id,
+            source_mount_point_id: js_string(mount),
+            item_id: id,
+            image_file_id,
+        });
+    }
+    fixes
+}
+// === end P4.D327 ===
 
 /// v4 `:92-145` — the character pass and its five legacy-shape extras, in v4's
 /// order.
@@ -1039,9 +1173,11 @@ fn remap_chat(
         }
     }
 
-    // === P4.D317 (v4 `e8e17b2d9`, `uuid-remap.ts:360-380`) — bug 252 ===
-    // "Outfits, outfit avatars, Courier checkpoints and queued outfit notices
-    // are keyed by character id (bug 252); one pass carries them all. An entry
+    // === P4.D317 (v4 `e8e17b2d9`, `uuid-remap.ts:360-380`; the carried
+    // Inventory joined at `322a5488e`, P4.D327) — bug 252 ===
+    // "Outfits, outfit avatars, Courier checkpoints, queued outfit notices and
+    // the carried Inventory are keyed by character id (bug 252); one pass
+    // carries them all. An entry
     // for a character the backup does not carry is dropped rather than given a
     // minted id that names nobody." Run on the ORIGINAL chat; each patched
     // column assigned onto its EXISTING key (`Object.assign` keeps the slot; a
@@ -1466,3 +1602,207 @@ mod seat_id_tests {
         }
     }
 }
+
+// === P4.D327: the Inventory arms, unit-tested beside the port ===
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    use serde_json::json;
+
+    fn counting() -> UuidRemapper {
+        let mut n = 0u32;
+        UuidRemapper::with_id_source(Box::new(move || {
+            n += 1;
+            format!("00000000-0000-4000-8000-{n:012}")
+        }))
+    }
+
+    /// A backup carrying only `files` and object documents (`(mount, path,
+    /// content)` per document).
+    fn backup(files: Vec<Value>, docs: &[(&str, &str, Value)]) -> BackupData {
+        BackupData {
+            files,
+            doc_mount_file_links: docs
+                .iter()
+                .enumerate()
+                .map(|(i, (mount, path, _))| {
+                    json!({ "id": format!("link-{i}"), "mountPointId": mount, "fileId": format!("df-{i}"), "relativePath": path })
+                })
+                .collect(),
+            doc_mount_documents: docs
+                .iter()
+                .enumerate()
+                .map(|(i, (_, _, content))| json!({ "id": format!("doc-{i}"), "fileId": format!("df-{i}"), "content": content }))
+                .collect(),
+            doc_mount_points: Vec::new(),
+            characters: Vec::new(),
+            chats: Vec::new(),
+            tags: Vec::new(),
+            connection_profiles: Vec::new(),
+            image_profiles: Vec::new(),
+            embedding_profiles: Vec::new(),
+            memories: Vec::new(),
+            prompt_templates: Vec::new(),
+            roleplay_templates: Vec::new(),
+            provider_models: Vec::new(),
+            projects: Vec::new(),
+            groups: Vec::new(),
+            llm_logs: Vec::new(),
+            plugin_configs: Vec::new(),
+            chat_settings: Vec::new(),
+            folders: Vec::new(),
+            wardrobe_items: Vec::new(),
+            character_plugin_data: Vec::new(),
+            conversation_annotations: Vec::new(),
+            chat_documents: Vec::new(),
+            chat_informs: Vec::new(),
+            instance_settings: Vec::new(),
+            embedding_status: Vec::new(),
+            conversation_chunks: Vec::new(),
+            tfidf_vocabularies: Vec::new(),
+            vector_entries: Vec::new(),
+            doc_mount_folders: Vec::new(),
+            doc_mount_files: Vec::new(),
+            doc_mount_chunks: Vec::new(),
+            doc_mount_blobs: Vec::new(),
+            project_doc_mount_links: Vec::new(),
+            group_doc_mount_links: Vec::new(),
+            group_character_members: Vec::new(),
+            text_replacement_rules: Vec::new(),
+            wardrobe_wear: Vec::new(),
+            wardrobe_history: Vec::new(),
+        }
+    }
+
+    fn object(id: &str, image: Option<&str>) -> Value {
+        let mut o = json!({ "id": id, "name": "thing" });
+        if let Some(image) = image {
+            o["imageFileId"] = json!(image);
+        }
+        Value::String(o.to_string())
+    }
+
+    #[test]
+    fn remap_link_id_keeps_an_inventory_id_first_then_the_item_map_then_mints() {
+        let mut r = counting();
+        let inventory: HashSet<String> = ["obj".to_string(), "both".to_string()]
+            .into_iter()
+            .collect();
+        let items: HashMap<String, String> = [
+            ("item".to_string(), "item-new".to_string()),
+            ("both".to_string(), "item-wins?".to_string()),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            remap_link_id(&mut r, &inventory, &items, &json!("obj")),
+            "obj"
+        );
+        assert_eq!(
+            remap_link_id(&mut r, &inventory, &items, &json!("both")),
+            "both"
+        );
+        assert_eq!(
+            remap_link_id(&mut r, &inventory, &items, &json!("item")),
+            "item-new"
+        );
+        assert_eq!(
+            remap_link_id(&mut r, &inventory, &items, &json!("chat")),
+            "00000000-0000-4000-8000-000000000001"
+        );
+        // A non-string element never matches the set — the remapper mints.
+        assert_eq!(
+            remap_link_id(&mut r, &inventory, &items, &json!(7.5)),
+            "00000000-0000-4000-8000-000000000002"
+        );
+    }
+
+    #[test]
+    fn inventory_documents_walks_the_predicate_edges() {
+        let data = backup(
+            Vec::new(),
+            &[
+                ("m", "Inventory/images/x/pic.json", object("a", None)),
+                ("m", "Inventory/notes.md", object("b", None)),
+                ("m", "inventory/lower.json", object("c", None)),
+                (
+                    "m",
+                    "Inventory/a/b/c/d/e/f/g/h/i/deep.json",
+                    object("d", None),
+                ),
+                ("m", "Inventory/array.json", json!("[{\"id\":\"e\"}]")),
+                ("m", "Inventory/null.json", json!("null")),
+                ("m", "Inventory/empty.json", object("", None)),
+                ("m", "Inventory/number.json", json!("{\"id\":5}")),
+                ("m", "Inventory/broken.json", json!("{\"id\":")),
+                ("m", "Inventory/scalar.json", json!(42)),
+                ("m", "Inventory/obj-1.json", object("obj-1", None)),
+            ],
+        );
+        let ids: Vec<String> = inventory_documents(&data)
+            .into_iter()
+            .map(|(_, _, id)| id)
+            .collect();
+        assert_eq!(ids, ["c", "d", "obj-1"]);
+    }
+
+    #[test]
+    fn the_plan_mints_each_mount_then_its_picture_in_link_order() {
+        let data = backup(
+            vec![json!({ "id": "pic-a" }), json!({ "id": "pic-b" })],
+            &[
+                (
+                    "mount-A",
+                    "Inventory/one.json",
+                    object("one", Some("pic-a")),
+                ),
+                ("mount-A", "Inventory/bad.json", object("bad", None)),
+                (
+                    "mount-A",
+                    "Inventory/missing.json",
+                    object("missing", Some("pic-zzz")),
+                ),
+                (
+                    "mount-B",
+                    "Inventory/two.json",
+                    object("two", Some("pic-b")),
+                ),
+            ],
+        );
+        let mut r = counting();
+        let fixes = plan_inventory_image_pointer_fixes(&data, &mut r);
+        let got: Vec<(&str, &str, &str, &str)> = fixes
+            .iter()
+            .map(|f| {
+                (
+                    f.mount_point_id.as_str(),
+                    f.source_mount_point_id.as_str(),
+                    f.item_id.as_str(),
+                    f.image_file_id.as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            got,
+            [
+                (
+                    "00000000-0000-4000-8000-000000000001",
+                    "mount-A",
+                    "one",
+                    "00000000-0000-4000-8000-000000000002"
+                ),
+                (
+                    "00000000-0000-4000-8000-000000000003",
+                    "mount-B",
+                    "two",
+                    "00000000-0000-4000-8000-000000000004"
+                ),
+            ]
+        );
+        assert_eq!(
+            serde_json::to_string(&fixes[0]).unwrap(),
+            r#"{"mountPointId":"00000000-0000-4000-8000-000000000001","sourceMountPointId":"mount-A","itemId":"one","imageFileId":"00000000-0000-4000-8000-000000000002"}"#
+        );
+    }
+}
+// === end P4.D327 ===

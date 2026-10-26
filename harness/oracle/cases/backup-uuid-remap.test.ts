@@ -285,6 +285,9 @@ interface Case {
    * `remapBackupData` with the SAME remapper — and emit the planned fixes. The
    * plan primes the remapper (mount, legacy-item and pointer ids), so every
    * later minted id lands where the restore path puts it.
+   * [P4.D327] Since `4fbdad186` (pin `322a5488e`) the restore runs
+   * `planInventoryImagePointerFixes` between the two (`restore.ts:119-121`);
+   * its fixes ride as `inventoryFixes`.
    */
   restorePath?: boolean;
 }
@@ -1606,6 +1609,182 @@ function outfitHistoryAndBug252Cases(): Case[] {
         ],
       }),
     },
+    // === P4.D327 — the Inventory through the remap (v4 `4fbdad186`, pin `322a5488e`) ===
+    // v4's `inventory-backup.test.ts` bundle (an archetype, an instance of it
+    // under `Inventory/Weapons/`, a kit naming the instance, a picture `files`
+    // row linked to the instance and the chat, the chat carrying the instance)
+    // and the predicate / precedence / re-key edges around it.
+    ...inventoryCases(t),
+  ];
+}
+
+/** P4.D327: one `.json` document link + its content, for an Inventory corpus. */
+function inventoryDocs(
+  mount: string,
+  docs: Array<{ path: string; content: string | number | null }>,
+  prefix = 'inv',
+): { docMountFileLinks: Array<Record<string, unknown>>; docMountDocuments: Array<Record<string, unknown>> } {
+  return {
+    docMountFileLinks: docs.map((d, i) => ({
+      id: `${prefix}-link-${i}`,
+      mountPointId: mount,
+      fileId: `${prefix}-file-${i}`,
+      relativePath: d.path,
+    })),
+    docMountDocuments: docs.map((d, i) => ({ id: `${prefix}-doc-${i}`, fileId: `${prefix}-file-${i}`, content: d.content })),
+  };
+}
+
+function inventoryCases(t: string): Case[] {
+  const ARCH = 'a1111111-1111-4111-8111-111111111111';
+  const INST = 'b2222222-2222-4222-8222-222222222222';
+  const KIT = 'c3333333-3333-4333-8333-333333333333';
+  const PIC = 'd4444444-4444-4444-8444-444444444444';
+  const CHAR = 'e5555555-5555-4555-8555-555555555555';
+  const CHAT = 'f6666666-6666-4666-8666-666666666666';
+  const STAMP = '2026-10-01T00:00:00.000Z';
+  const pretty = (o: unknown): string => `${JSON.stringify(o, null, 2)}\n`;
+  const v4Bundle = (equipped: unknown, withPicture = true): Bag =>
+    bag({
+      characters: [{ id: CHAR, name: 'Vivienne', characterDocumentMountPointId: 'vault-old' }],
+      chats: [
+        {
+          id: CHAT,
+          title: 'The tourney',
+          participants: [{ id: 'seat-old', type: 'CHARACTER', characterId: CHAR }],
+          messages: [],
+          equippedInventory: equipped,
+        },
+      ],
+      files: withPicture ? [{ id: PIC, linkedTo: [INST, CHAT], tags: [INST] }] : [],
+      ...inventoryDocs('vault-old', [
+        {
+          path: 'Inventory/Magic bow.json',
+          content: pretty({ id: ARCH, kind: 'item', isArchetype: true, name: 'Magic bow', description: 'A longbow of pale ash that hums when strung.', createdAt: STAMP, updatedAt: STAMP }),
+        },
+        {
+          path: 'Inventory/Weapons/Vivienne-s bow.json',
+          content: pretty({ id: INST, kind: 'item', parentId: ARCH, title: "Vivienne's bow", imageFileId: PIC, createdAt: STAMP, updatedAt: STAMP }),
+        },
+        {
+          path: 'Inventory/Archery kit.json',
+          content: pretty({ id: KIT, kind: 'kit', name: 'Archery kit', itemIds: [INST], createdAt: STAMP, updatedAt: STAMP }),
+        },
+      ]),
+    });
+  const coatId = '99999999-9999-4999-8999-999999999999';
+  return [
+    {
+      name: 'inventory_new_account',
+      note: "v4 `inventory-backup.test.ts`'s bundle through the bare remap: the object documents travel byte-for-byte (ids, parentId, itemIds inside them), the chat's equippedInventory re-keyed to the character's NEW id with its object id kept, the picture's linkedTo / tags keep the instance id VERBATIM while the chat link and the file's own id are minted",
+      targetUserId: t,
+      data: v4Bundle({ [CHAR]: [INST] }),
+    },
+    {
+      name: 'inventory_new_account_restore_path',
+      note: "the same bundle in the restore's ORDER (wardrobe plan, THEN the Inventory plan, THEN the remap, one remapper): exactly one Inventory fix — the instance's pointer onto the picture's new files id against the remapped vault (the plan mints the vault, THEN the picture, before every other id)",
+      targetUserId: t,
+      restorePath: true,
+      data: v4Bundle({ [CHAR]: [INST] }),
+    },
+    {
+      name: 'inventory_pointer_unknown_file',
+      note: "v4's `plans nothing for a pointer naming a file the backup does not carry`: files [] — no fix, and the plan mints nothing",
+      targetUserId: t,
+      restorePath: true,
+      data: v4Bundle({ [CHAR]: [INST] }, false),
+    },
+    {
+      name: 'inventory_nothing_carried',
+      note: "v4's `leaves a chat with nothing carried as it was`: equippedInventory null stays null (the keyed pass skips a null column)",
+      targetUserId: t,
+      data: v4Bundle(null),
+    },
+    {
+      name: 'inventory_link_edges',
+      note: "R-12's three-way precedence in remapLinkId: an Inventory object id is kept verbatim FIRST, a wardrobe item id follows the item map, anything else (a chat id, an unknown id) goes through the remapper, a non-string element always goes through the remapper (no Set.has match) — in linkedTo and tags alike, positions kept",
+      targetUserId: t,
+      data: bag({
+        files: [
+          { id: 'file-a', linkedTo: [INST, coatId, 'chat-old', 'unknown-id', 7.5, null], tags: [coatId, INST, 'tag-x'] },
+          { id: 'file-b', linkedTo: [], tags: [INST] },
+        ],
+        docMountPoints: [{ id: 'mount-old' }],
+        docMountFileLinks: [
+          { id: 'w-link', mountPointId: 'mount-old', fileId: 'w-file', relativePath: 'Wardrobe/Coat.md' },
+          { id: 'i-link', mountPointId: 'mount-old', fileId: 'i-file', relativePath: 'Inventory/Bow.json' },
+        ],
+        docMountDocuments: [
+          { id: 'w-doc', fileId: 'w-file', content: `---\nid: ${coatId}\ntitle: Coat\ntypes:\n  - top\n---\nA coat.` },
+          { id: 'i-doc', fileId: 'i-file', content: pretty({ id: INST, name: 'bow', createdAt: STAMP, updatedAt: STAMP }) },
+        ],
+      }),
+    },
+    {
+      name: 'inventory_document_edges',
+      note: "the inventoryDocuments predicate in the restore's order: under Inventory/images/ (excluded), a .md under Inventory/ (excluded), lower-case `inventory/` (case-insensitive — included), a depth-9 path (no depth cap — included), a JSON array, JSON null, `id: \"\"`, `id: 5`, unparsable text, a non-string content (each skipped), `id: \"obj-1\"` (NOT UUID-checked — included), a non-string imageFileId (no fix), a pointer naming a file carried for ANOTHER mount (planned: v4 checks only the files set), two objects in two mounts (the mint order: mount A, file A, mount B, file B); every candidate's id named in a picture's linkedTo shows which ids are kept verbatim",
+      targetUserId: t,
+      restorePath: true,
+      data: (() => {
+        const obj = (id: unknown, image?: unknown): string =>
+          pretty({ id, name: 'thing', ...(image !== undefined ? { imageFileId: image } : {}), createdAt: STAMP, updatedAt: STAMP });
+        const a = inventoryDocs('mount-A', [
+          { path: 'Inventory/images/11111111-0000-4000-8000-000000000001/pic.json', content: obj('11111111-0000-4000-8000-000000000001', 'pic-1') },
+          { path: 'Inventory/notes.md', content: obj('11111111-0000-4000-8000-000000000002', 'pic-1') },
+          { path: 'inventory/lower.json', content: obj('11111111-0000-4000-8000-000000000003', 'pic-1') },
+          { path: 'Inventory/a/b/c/d/e/f/g/h/i/deep.json', content: obj('11111111-0000-4000-8000-000000000004', 'pic-2') },
+          { path: 'Inventory/array.json', content: '[{"id":"11111111-0000-4000-8000-000000000005"}]' },
+          { path: 'Inventory/null.json', content: 'null' },
+          { path: 'Inventory/empty-id.json', content: obj('', 'pic-1') },
+          { path: 'Inventory/number-id.json', content: obj(5, 'pic-1') },
+          { path: 'Inventory/broken.json', content: '{"id": "11111111-0000-4000-8000-000000000006",' },
+          { path: 'Inventory/not-a-string.json', content: 42 },
+          { path: 'Inventory/obj-1.json', content: obj('obj-1', 'pic-1') },
+          { path: 'Inventory/bad-pointer.json', content: obj('11111111-0000-4000-8000-000000000007', 7) },
+          { path: 'Inventory/cross-mount.json', content: obj('11111111-0000-4000-8000-000000000008', 'pic-b') },
+        ], 'a');
+        const b = inventoryDocs('mount-B', [
+          { path: 'Inventory/second.json', content: obj('11111111-0000-4000-8000-000000000009', 'pic-b') },
+        ], 'b');
+        return bag({
+          files: [
+            {
+              id: 'pic-1',
+              linkedTo: [
+                '11111111-0000-4000-8000-000000000001', '11111111-0000-4000-8000-000000000002',
+                '11111111-0000-4000-8000-000000000003', '11111111-0000-4000-8000-000000000004',
+                // `5.5`, not `5`: an integer-like key enumerates FIRST in the JS
+                // object `getMapping()` folds into (the P4.D264 note above).
+                '11111111-0000-4000-8000-000000000005', '', 5.5, '11111111-0000-4000-8000-000000000006',
+                'obj-1', '11111111-0000-4000-8000-000000000007', '11111111-0000-4000-8000-000000000008',
+                '11111111-0000-4000-8000-000000000009',
+              ],
+              tags: [],
+            },
+            { id: 'pic-2', linkedTo: [], tags: [] },
+            { id: 'pic-b', linkedTo: [], tags: [] },
+          ],
+          docMountPoints: [{ id: 'mount-A' }, { id: 'mount-B' }],
+          docMountFileLinks: [...a.docMountFileLinks, ...b.docMountFileLinks],
+          docMountDocuments: [...a.docMountDocuments, ...b.docMountDocuments],
+        });
+      })(),
+    },
+    {
+      name: 'inventory_keyed_edges',
+      note: "the new-account re-key of equippedInventory: a carried character re-keyed (object ids verbatim, non-strings filtered, order and duplicates kept), a character the backup does NOT carry DROPPED (droppedEntries), a non-array entry kept as []; the `fields` of the keyed DEBUG end with equippedInventory",
+      targetUserId: t,
+      data: bag({
+        characters: [{ id: 'char-a' }, { id: 'char-b' }],
+        chats: [{
+          id: 'chat-old',
+          participants: [{ id: 'seat-a', characterId: 'char-a' }],
+          messages: [],
+          pendingOutfitNotifications: { 'char-a': { text: 'n' } },
+          equippedInventory: { 'char-a': [INST, 7, INST, ARCH], 'char-gone': [INST], 'char-b': 'not-a-list' },
+        }],
+      }),
+    },
   ];
 }
 
@@ -1705,7 +1884,7 @@ async function main(): Promise<void> {
     randomUUID: () => nextId(),
   }));
   const { UuidRemapper } = await import('@/lib/backup/uuid-remapper');
-  const { remapBackupData, planWardrobeImagePointerFixes } = await import(
+  const { remapBackupData, planWardrobeImagePointerFixes, planInventoryImagePointerFixes } = await import(
     '@/lib/backup/restore/uuid-remap'
   );
 
@@ -1738,6 +1917,10 @@ async function main(): Promise<void> {
     // P4.D264: the restore's order — plan on the ORIGINAL data first, same
     // remapper (`restore.ts:98-104`).
     const fixes = c.restorePath ? planWardrobeImagePointerFixes(input, remapper) : undefined;
+    // [P4.D327] v4 `restore.ts:119-120` (`4fbdad186`): the Inventory plan
+    // AFTER the wardrobe's, BEFORE the remap, same remapper — on EVERY
+    // restore-path line (`[]` when nothing qualifies).
+    const inventoryFixes = c.restorePath ? planInventoryImagePointerFixes(input, remapper) : undefined;
     // [P4.D317 R-9 (b)] the outfit-history arm can THROW: recorded as `error`
     // (no `output`), with the mapping minted before the throw.
     let output: unknown;
@@ -1752,6 +1935,7 @@ async function main(): Promise<void> {
         name: c.name,
         corpusSha256,
         ...(fixes !== undefined ? { fixes } : {}),
+        ...(inventoryFixes !== undefined ? { inventoryFixes } : {}),
         ...(error !== undefined ? { error } : { output }),
         mapping: remapper.getMapping(),
         size: remapper.getSize(),

@@ -32,7 +32,10 @@
 //!    Wardrobe-holding mount's id where it runs, so the plan step (and, in the
 //!    plain path, the item map built before `files`) moves every later counter
 //!    id — the `wide` case (the committed archive holds `Wardrobe/Travelling
-//!    Coat.md`) and every wardrobe case pin it.
+//!    Coat.md`) and every wardrobe case pin it. [P4.D327] Since v4 `4fbdad186`
+//!    (pin `322a5488e`) `planInventoryImagePointerFixes` runs BETWEEN the two
+//!    (`restore.ts:119-121`), minting each pictured object's mount and then
+//!    its picture; its fixes ride as `inventoryFixes`.
 //! 3. **`getMapping()` / `mapping_object()`, entry for entry and in order.**
 //!    That is the direct proof that cross-references stayed consistent: if any
 //!    pass minted a second id for an already-seen key, the map diverges here
@@ -54,7 +57,7 @@ use std::path::PathBuf;
 
 use quilltap_core::services::backup::collect::BackupData;
 use quilltap_core::services::backup::uuid_remap::{
-    plan_wardrobe_image_pointer_fixes, remap_backup_data,
+    plan_inventory_image_pointer_fixes, plan_wardrobe_image_pointer_fixes, remap_backup_data,
 };
 use quilltap_core::services::backup::uuid_remapper::UuidRemapper;
 use serde_json::{Map, Value};
@@ -395,6 +398,22 @@ fn backup_uuid_remap_equivalence() {
                     first_diff(&got, &want)
                 ));
             }
+            // [P4.D327] v4 `restore.ts:119-121` (`4fbdad186`): the Inventory
+            // plan AFTER the wardrobe's, BEFORE the remap, same remapper —
+            // present (`[]` when empty) on every restore-path line.
+            let inventory_fixes = plan_inventory_image_pointer_fixes(&input, &mut remapper);
+            let got = serde_json::to_string(&inventory_fixes).unwrap();
+            let want = serde_json::to_string(&expected["inventoryFixes"]).unwrap();
+            if got != want {
+                failures.push(format!(
+                    "[{name}] planInventoryImagePointerFixes differs\n  {}",
+                    first_diff(&got, &want)
+                ));
+            }
+        } else if expected.get("inventoryFixes").is_some() {
+            failures.push(format!(
+                "[{name}] an inventoryFixes field on a non-restore-path line"
+            ));
         }
         // [P4.D317] `backup:uuid-remap` lines, captured on this thread.
         let (result, lines) = quilltap_core::test_support::captured_with(|| {
