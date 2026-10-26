@@ -3757,6 +3757,57 @@
           }
         }
       ]
+    },
+    {
+      "name": "inventory_opener_greeting",
+      "progressId": "e0000000-0000-4000-8000-0000000000d5",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "_comment": "P4.D324 (v4 4fbdad186, route.ts:777-788): Bram has no scripted first message, so the greeting is generated; his vault's equippedByDefault object is carried on arrival (route.ts:1441 runs before the opening sequence), so the opener's Inventory section rides the greeting's USER turn after the instruction. The canned stream answers only the recorded prompt.",
+      "greetingContent": "Bram shifts the lantern to his other hand. You came.",
+      "greetingUsage": {
+        "promptTokens": 48,
+        "completionTokens": 11,
+        "totalTokens": 59
+      },
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d5",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a3000000-0000-4000-8000-0000000000a3",
+            "connectionProfileId": "b2000000-0000-4000-8000-000000000002"
+          }
+        ]
+      },
+      "inventoryPlant": [
+        {
+          "characterId": "a3000000-0000-4000-8000-0000000000a3",
+          "record": {
+            "id": "f5000003-0000-4000-8000-000000000000",
+            "name": "lantern",
+            "title": "Hooded lantern",
+            "description": "A hooded lantern, trimmed low.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": true,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        }
+      ]
     }
   ],
   "conciergeSettings": {

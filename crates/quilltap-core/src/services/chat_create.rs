@@ -2339,6 +2339,7 @@ async fn create_initial_messages_scenario_and_staff<EMB, CMP, STR>(
         let generated = auto_generate_first_message(
             db,
             main,
+            mount,
             deps,
             context,
             participants,
@@ -2567,6 +2568,7 @@ fn give_up_on_stall(
 async fn auto_generate_first_message<EMB, CMP, STR>(
     db: &Db,
     main: &Connection,
+    mount: &Connection,
     deps: &ChatCreateDeps<'_, EMB, CMP, STR>,
     context: &ChatContext,
     participants: &[Value],
@@ -2778,6 +2780,26 @@ where
     // gone, which reads as Monitored everywhere below.)
     let chat_row = chats_read::find_by_id(main, chat_id).ok().flatten();
 
+    // === P4.D324 (v4 `4fbdad186`, `route.ts:777-784`, `:787`, `:877`) ===
+    // What the opener carries on arrival (the Inventory). `build_chat_context`
+    // runs before the chat exists, so the section is built here, once arrival
+    // defaults have landed (on these same connections), and rides the greeting
+    // turn as a trailing section — never the system prompt — exactly as on
+    // every later turn. Absent when nothing carried has a description.
+    let opener_trailing: Vec<String> = chat_row
+        .as_ref()
+        .and_then(|chat| {
+            crate::inventory::prompt_section::build_inventory_section(
+                main,
+                mount,
+                chat,
+                &character_id,
+            )
+        })
+        .into_iter()
+        .collect();
+    // === end P4.D324 ===
+
     // The resolver is asked WITH the chat: an Unmoderated chat routes direct,
     // a Locked chat never fails over, and an off-duty Concierge does neither
     // (v4 `3b463d6b1`, #76 — ONE policy for the whole ladder).
@@ -2830,6 +2852,8 @@ where
         project_context: None,
         recent_conversations_block: None,
         character_id: Some(character_id.clone()),
+        chat_id: Some(chat_id.to_string()),
+        trailing_context_sections: opener_trailing.clone(),
     };
 
     let recent_block_opt = |block: &str| -> Option<String> {
@@ -2875,6 +2899,7 @@ where
             "chat-state",
             &concierge_policy,
             chat_id,
+            &opener_trailing,
         )
         .await
         {
@@ -2993,6 +3018,7 @@ where
             "content-filter",
             &concierge_policy,
             chat_id,
+            &opener_trailing,
         )
         .await
         {
@@ -3117,6 +3143,9 @@ async fn generate_via_uncensored_desk<EMB, CMP, STR>(
     // its not-permitted DEBUG names.
     concierge_policy: &ResolvedConciergePolicy,
     chat_id: &str,
+    // P4.D324: the opener's trailing sections (v4 spreads the same
+    // `trailingContextSections` onto this call, `route.ts:877`).
+    trailing_context_sections: &[String],
 ) -> Result<Option<GeneratedGreeting>, StreamError>
 where
     EMB: EmbeddingProvider + Send + Sync,
@@ -3207,6 +3236,8 @@ where
         project_context: project.cloned(),
         recent_conversations_block: recent_block.map(str::to_string),
         character_id: Some(character_id.to_string()),
+        chat_id: Some(chat_id.to_string()),
+        trailing_context_sections: trailing_context_sections.to_vec(),
     };
 
     let res = generate_greeting_message(deps.streaming, &request, log).await?;
@@ -4021,9 +4052,13 @@ mod tests {
         let subscriber =
             tracing_subscriber::registry().with(crate::test_support::CaptureLayer(logs));
         let _guard = tracing::subscriber::set_default(subscriber);
+        // A ladder chat carries nothing, so the opener section never reads
+        // the mount index.
+        let mount = Connection::open_in_memory().unwrap();
         auto_generate_first_message(
             db,
             main,
+            &mount,
             &deps,
             &context,
             &participants,

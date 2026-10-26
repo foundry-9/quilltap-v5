@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The generated greeting carries the opener's Inventory section (P4.D324)
+
+_Versions: core 0.0.1326._
+
+`GreetingRequest` gains `trailing_context_sections` (and `chat_id`, v4's request copy): non-blank sections ride after the greeting instruction in the user turn, each behind the `---` separator, with v4's `[Greeting Generation] Appending trailing context sections to the greeting turn` DEBUG (v4 `4fbdad186`, `initial-greeting.ts:160-176`). Chat creation builds the opener's section from the chat row once arrival defaults have landed and passes it to both the character's own desk and the uncensored desk (`route.ts:777-788`, `:877`). `initial_greeting` grew three cases (one section; two kept among blanks; all blank) with the DEBUG as a comparand; `chat_create_capstone` grew `inventory_opener_greeting`.
+
 #### 2026-10-26 — Carina's answer carries the answerer's Inventory section (P4.D324)
 
 _Versions: core 0.0.1325._

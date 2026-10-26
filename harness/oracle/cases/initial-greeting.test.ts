@@ -76,6 +76,13 @@ interface CaseSpec {
    * not over-classify.
    */
   error?: string;
+  /**
+   * P4.D324 (v4 `4fbdad186`): the sections that ride after the instruction
+   * in the user message (a whitespace-only one is dropped), and the request's
+   * `chatId` (absent → `undefined`, which v4's logger omits).
+   */
+  trailingContextSections?: string[];
+  chatId?: string;
 }
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -135,10 +142,22 @@ it('generates greetings (records prompt bytes + result)', async () => {
   });
 
   const { generateGreetingMessage } = await import('@/lib/chat/initial-greeting');
+  // P4.D324: the trailing-sections DEBUG, captured off the SAME registry
+  // generation's logger.
+  const { logger } = await import('@/lib/logger');
+  let greetingDebug: Array<{ message: string; context: unknown }> = [];
+  const realDebug = logger.debug.bind(logger);
+  jest.spyOn(logger, 'debug').mockImplementation(((message: string, context?: unknown) => {
+    if (message.startsWith('[Greeting Generation] Appending trailing context sections')) {
+      greetingDebug.push({ message, context: context ?? null });
+    }
+    return realDebug(message, context as never);
+  }) as never);
 
   const lines: string[] = [];
   for (const c of spec.cases) {
     currentCase = c;
+    greetingDebug = [];
     // P4.D190: v4 rethrows a stream failure out of `generateGreetingMessage`
     // (after logging it), so a case can REJECT. Record the rejection's `name`
     // — the byte v4's ladder reads with `instanceof` and v5 reads as
@@ -157,6 +176,8 @@ it('generates greetings (records prompt bytes + result)', async () => {
         projectContext: c.project,
         recentConversationsBlock: c.recentConversationsBlock ?? undefined,
         characterId: 'char-1',
+        ...(c.chatId ? { chatId: c.chatId } : {}),
+        ...(c.trailingContextSections ? { trailingContextSections: c.trailingContextSections } : {}),
       });
     } catch (err) {
       error = {
@@ -176,6 +197,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
             }
           : null,
         error,
+        greetingDebug,
       }),
     );
   }

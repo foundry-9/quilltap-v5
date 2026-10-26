@@ -81,6 +81,12 @@ struct CaseSpec {
     /// P4.D190 (§C.4): pose an ORDINARY provider failure.
     #[serde(default)]
     error: Option<String>,
+    /// P4.D324: the request's trailing sections (a blank one drops out) and
+    /// its `chatId` (absent → v4's logger omits the field).
+    #[serde(rename = "trailingContextSections", default)]
+    trailing_context_sections: Vec<String>,
+    #[serde(rename = "chatId", default)]
+    chat_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -124,7 +130,35 @@ struct OracleRow {
     /// [`StreamError::v4_name`].
     #[serde(default)]
     error: Option<OracleError>,
+    /// P4.D324: v4's `[Greeting Generation] Appending trailing context
+    /// sections …` DEBUGs for the case, `{message, context}` (none when no
+    /// section survives the blank filter).
+    #[serde(rename = "greetingDebug", default)]
+    greeting_debug: Vec<OracleDebug>,
 }
+
+#[derive(Deserialize)]
+struct OracleDebug {
+    message: String,
+    context: Value,
+}
+
+/// v4's `{message, context}` in the capture layer's `message k=v …` form
+/// (the context's own key order; `undefined` keys are already absent).
+fn v4_debug_text(d: &OracleDebug) -> String {
+    let mut out = d.message.clone();
+    if let Some(ctx) = d.context.as_object() {
+        for (k, v) in ctx {
+            match v {
+                Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                other => out.push_str(&format!(" {k}={other}")),
+            }
+        }
+    }
+    out
+}
+
+const GREETING_DEBUG: &str = "[Greeting Generation] Appending trailing context sections";
 
 #[derive(Deserialize, PartialEq, Debug)]
 struct OracleError {
@@ -180,6 +214,7 @@ async fn initial_greeting_matches_oracle() {
         oracle.insert(row.id.clone(), row);
     }
 
+    let mut trailing_cases = 0usize;
     for c in &cases {
         let row = oracle
             .get(&c.id)
@@ -262,9 +297,35 @@ async fn initial_greeting_matches_oracle() {
             }),
             recent_conversations_block: c.recent_conversations_block.clone(),
             character_id: Some("char-1".to_string()),
+            chat_id: c.chat_id.clone(),
+            trailing_context_sections: c.trailing_context_sections.clone(),
         };
 
-        match generate_greeting_message(&provider, &req, None).await {
+        // P4.D324: the DEBUG comparand (this runtime is current-thread, so a
+        // thread-default subscriber sees the whole call).
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let guard = {
+            use tracing_subscriber::layer::SubscriberExt;
+            tracing::subscriber::set_default(
+                tracing_subscriber::registry()
+                    .with(quilltap_core::test_support::CaptureLayer(logs.clone())),
+            )
+        };
+        let outcome = generate_greeting_message(&provider, &req, None).await;
+        drop(guard);
+        let got_debug: Vec<String> = logs
+            .lock()
+            .unwrap()
+            .iter()
+            .filter_map(|l| l.find(GREETING_DEBUG).map(|at| l[at..].to_string()))
+            .collect();
+        let want_debug: Vec<String> = row.greeting_debug.iter().map(v4_debug_text).collect();
+        assert_eq!(got_debug, want_debug, "case {}: the trailing-sections DEBUG", c.id);
+        if !c.trailing_context_sections.is_empty() {
+            trailing_cases += 1;
+        }
+
+        match outcome {
             Ok(result) => {
                 assert!(
                     row.error.is_none(),
@@ -306,6 +367,13 @@ async fn initial_greeting_matches_oracle() {
         }
     }
     assert_eq!(oracle.len(), cases.len(), "oracle case count drifted");
+    // P4.D324: a stale oracle (or a spec that lost the cases) would compare
+    // empty DEBUG lists and pass vacuously.
+    assert!(trailing_cases >= 3, "the trailing-sections cases are missing");
+    assert!(
+        oracle.values().filter(|r| !r.greeting_debug.is_empty()).count() >= 2,
+        "no case recorded the trailing-sections DEBUG — regenerate the oracle"
+    );
     // P4.D79: a stale oracle predating the reasoning capture would carry no
     // `reasoningContent` key at all and every case would compare empty-to-empty.
     // At least one case must actually have captured some.

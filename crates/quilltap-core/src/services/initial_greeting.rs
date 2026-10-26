@@ -74,6 +74,14 @@ pub struct GreetingRequest {
     pub project_context: Option<ProjectContext>,
     pub recent_conversations_block: Option<String>,
     pub character_id: Option<String>,
+    /// v4's `chatId` (the request's own copy — `GreetingLog` carries the
+    /// logging one, and is absent when greeting logging is off); P4.D324.
+    pub chat_id: Option<String>,
+    /// Per-turn sections that ride after the instruction in the user message,
+    /// as every later turn's trailing sections do (e.g. the Inventory's
+    /// "Carried and equipped"). Never folded into the system prompt (v4
+    /// `trailingContextSections`, `4fbdad186`; P4.D324).
+    pub trailing_context_sections: Vec<String>,
 }
 
 /// v4 `GreetingResult`.
@@ -174,11 +182,55 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
         req.character_name
     );
 
+    let greeting_instruction =
+        "The chat is beginning now. Greet the user immediately in-character and invite them to engage.";
+    // === P4.D324 (v4 `4fbdad186`, `initial-greeting.ts:160-176`) ===
+    let trailing: Vec<&str> = req
+        .trailing_context_sections
+        .iter()
+        .map(String::as_str)
+        .filter(|section| !js_trim(section).is_empty())
+        .collect();
+    if !trailing.is_empty() {
+        // v4 passes `chatId` / `characterId` straight through; an absent one
+        // is `undefined`, which its logger omits.
+        let chat_id = req.chat_id.as_deref();
+        let character_id = req.character_id.as_deref();
+        match (chat_id, character_id) {
+            (Some(chat_id), Some(character_id)) => tracing::debug!(
+                chatId = %chat_id,
+                characterId = %character_id,
+                sectionCount = trailing.len(),
+                "[Greeting Generation] Appending trailing context sections to the greeting turn"
+            ),
+            (Some(chat_id), None) => tracing::debug!(
+                chatId = %chat_id,
+                sectionCount = trailing.len(),
+                "[Greeting Generation] Appending trailing context sections to the greeting turn"
+            ),
+            (None, Some(character_id)) => tracing::debug!(
+                characterId = %character_id,
+                sectionCount = trailing.len(),
+                "[Greeting Generation] Appending trailing context sections to the greeting turn"
+            ),
+            (None, None) => tracing::debug!(
+                sectionCount = trailing.len(),
+                "[Greeting Generation] Appending trailing context sections to the greeting turn"
+            ),
+        }
+    }
+    let user_turn = if trailing.is_empty() {
+        greeting_instruction.to_string()
+    } else {
+        format!(
+            "{greeting_instruction}\n\n---\n\n{}",
+            trailing.join("\n\n---\n\n")
+        )
+    };
+    // === end P4.D324 ===
     let messages = vec![
         StreamMessage::system(augmented_system_prompt),
-        StreamMessage::user(
-            "The chat is beginning now. Greet the user immediately in-character and invite them to engage.",
-        ),
+        StreamMessage::user(user_turn),
     ];
 
     let params = StreamParams {

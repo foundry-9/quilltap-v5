@@ -157,6 +157,53 @@
       "cannedContent": "",
       "cannedUsage": null,
       "error": "502 Bad Gateway"
+    },
+    {
+      "id": "trailing_one_section",
+      "_comment": "P4.D324 (v4 4fbdad186): the opener's Inventory section rides after the instruction, behind one separator; the DEBUG names the chat.",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "Well met! My lamp is lit.",
+      "cannedUsage": { "promptTokens": 44, "completionTokens": 7, "totalTokens": 51 },
+      "chatId": "chat-1",
+      "trailingContextSections": ["## Carried and equipped\n- Archive lamp (lamp): A shuttered lamp for the stacks."]
+    },
+    {
+      "id": "trailing_two_sections_among_blanks",
+      "_comment": "P4.D324: a whitespace-only and an empty section drop out; the two kept join with the separator; no chatId, so the DEBUG omits it.",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "Greetings, with lamp and compass.",
+      "cannedUsage": { "promptTokens": 52, "completionTokens": 7, "totalTokens": 59 },
+      "trailingContextSections": ["## Carried and equipped\n- Archive lamp (lamp): A shuttered lamp for the stacks.", " \n\t ", "", "## Second section\nA second trailing note."]
+    },
+    {
+      "id": "trailing_all_blank",
+      "_comment": "P4.D324: every section blank \u2014 the user message is the bare instruction and no DEBUG fires.",
+      "systemPrompt": "You are Aria, a knight.",
+      "characterName": "Aria",
+      "provider": "ANTHROPIC",
+      "model": "claude-sonnet-5",
+      "temperature": 0.7,
+      "memories": [],
+      "project": null,
+      "recentConversationsBlock": null,
+      "cannedContent": "Hello there.",
+      "cannedUsage": { "promptTokens": 40, "completionTokens": 3, "totalTokens": 43 },
+      "chatId": "chat-1",
+      "trailingContextSections": ["   ", "\u00a0"]
     }
   ]
 }
