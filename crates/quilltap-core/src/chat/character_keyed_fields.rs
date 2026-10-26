@@ -1,6 +1,7 @@
 //! The chat-row JSON columns keyed by character id, and the one pass that
 //! carries them across an id change — v4 `lib/chat/character-keyed-fields.ts`
-//! (`e8e17b2d9`, bug 252), ported whole (P4.D317).
+//! (`e8e17b2d9`, bug 252), ported whole (P4.D317); the fifth column,
+//! `equippedInventory`, followed v4 `4fbdad186` at the `322a5488e` pin (P4.D327).
 //!
 //! A new-account restore (`services::backup::uuid_remap`) gives every character
 //! a fresh id, and a `.qtap` import (`services::quilltap_import::reconcile`) can
@@ -15,6 +16,8 @@
 //! - `courierCheckpoints` — `{ lastResolvedMessageId, resolvedAt }`; the
 //!   message id follows the message remap.
 //! - `pendingOutfitNotifications` — legacy, keyed only; values are kept.
+//! - `equippedInventory` — the carried Inventory, a list of object ids per
+//!   character; the ids live in the objects' own files and travel verbatim.
 //!
 //! Two keyed caches are deliberately left out: `compiledIdentityStacks` (keyed
 //! by participant, rebuilt on a miss) and `commonplaceSceneCache` (a miss only
@@ -44,13 +47,14 @@ use serde_json::{Map, Value};
 
 use crate::wardrobe::{normalize_equipped_slots, WARDROBE_SLOT_TYPES};
 
-/// v4 `CHARACTER_KEYED_CHAT_FIELDS` — the four columns, in v4's order (also
+/// v4 `CHARACTER_KEYED_CHAT_FIELDS` — the five columns, in v4's order (also
 /// the order the pass re-keys them and the order of [`CharacterKeyedChatRemap::patch`]).
-pub const CHARACTER_KEYED_CHAT_FIELDS: [&str; 4] = [
+pub const CHARACTER_KEYED_CHAT_FIELDS: [&str; 5] = [
     "equippedOutfit",
     "characterAvatars",
     "courierCheckpoints",
     "pendingOutfitNotifications",
+    "equippedInventory",
 ];
 
 /// v4 `CharacterKeyedRemaps` — the four id maps the caller supplies. Closures
@@ -158,7 +162,7 @@ pub fn remap_character_keyed_chat_fields(
     }
 }
 
-/// The per-column `mapValue` of v4's four `rekey` calls.
+/// The per-column `mapValue` of v4's five `rekey` calls.
 fn map_value(field: &str, entry: &Value, remaps: &CharacterKeyedRemaps<'_>) -> Value {
     match field {
         // "Same shape as the outfit history's remap: a full five-slot bag."
@@ -187,6 +191,23 @@ fn map_value(field: &str, entry: &Value, remaps: &CharacterKeyedRemaps<'_>) -> V
         "characterAvatars" => with_mapped_id(entry, "imageId", remaps.file_id),
         "courierCheckpoints" => with_mapped_id(entry, "lastResolvedMessageId", remaps.message_id),
         // `pendingOutfitNotifications`: the entry as given; only the KEY moves.
+        "pendingOutfitNotifications" => v8_ordered_deep(entry.clone()),
+        // v4 `(ids) => Array.isArray(ids) ? ids.filter(string) : []` — the
+        // object ids travel verbatim: non-strings are filtered out (order and
+        // duplicates kept, no sort), and a non-array entry is KEPT as `[]`.
+        // NOT `normalize_equipped_inventory`, which would DROP a non-array
+        // entry — the carriers never normalise. A JSON-string entry is not
+        // parsed (only the column is), so it too reads `[]`.
+        "equippedInventory" => match entry {
+            Value::Array(ids) => {
+                Value::Array(ids.iter().filter(|id| id.is_string()).cloned().collect())
+            }
+            _ => Value::Array(Vec::new()),
+        },
+        // Unreachable: the loop walks only `CHARACTER_KEYED_CHAT_FIELDS`, and
+        // every name has its own arm above. Kept as the entry-as-given arm (no
+        // `unreachable!`) so a sixth name added to the list without an arm
+        // degrades to v4's identity rekey rather than a panic.
         _ => v8_ordered_deep(entry.clone()),
     }
 }
@@ -259,7 +280,7 @@ mod tests {
     }
 
     #[test]
-    fn re_keys_all_four_columns_in_v4_order() {
+    fn re_keys_the_first_four_columns_in_v4_order() {
         let (out, minted) = run(
             json!({
                 "pendingOutfitNotifications": { "a": { "x": 1 } },
@@ -300,6 +321,63 @@ mod tests {
             out.unreadable,
             vec!["characterAvatars", "courierCheckpoints"]
         );
+    }
+
+    // === P4.D327: `equippedInventory` (v4 `4fbdad186`) ===
+
+    #[test]
+    fn inventory_non_array_entries_are_kept_as_empty_lists() {
+        let (out, _) = run(
+            json!({ "equippedInventory": { "a": "x", "b": 5, "c": {}, "d": null } }),
+            &[],
+        );
+        assert_eq!(
+            serde_json::to_string(&out.patch).unwrap(),
+            r#"{"equippedInventory":{"new-a":[],"new-b":[],"new-c":[],"new-d":[]}}"#
+        );
+    }
+
+    #[test]
+    fn inventory_lists_filter_non_strings_keeping_order_and_duplicates() {
+        let (out, _) = run(
+            json!({ "equippedInventory": { "a": ["a", 1, null, "b", "a"] } }),
+            &[],
+        );
+        assert_eq!(
+            serde_json::to_string(&out.patch).unwrap(),
+            r#"{"equippedInventory":{"new-a":["a","b","a"]}}"#
+        );
+    }
+
+    #[test]
+    fn inventory_json_string_entry_is_not_parsed() {
+        let (out, _) = run(json!({ "equippedInventory": { "a": "[\"a\"]" } }), &[]);
+        assert_eq!(
+            serde_json::to_string(&out.patch).unwrap(),
+            r#"{"equippedInventory":{"new-a":[]}}"#
+        );
+    }
+
+    #[test]
+    fn inventory_patch_is_last_in_list_order() {
+        let (out, _) = run(
+            json!({ "equippedInventory": { "a": ["o"] }, "pendingOutfitNotifications": { "a": 1 } }),
+            &[],
+        );
+        assert_eq!(
+            out.patch.keys().collect::<Vec<_>>(),
+            vec!["pendingOutfitNotifications", "equippedInventory"]
+        );
+    }
+
+    #[test]
+    fn inventory_column_of_only_dropped_characters_patches_empty() {
+        let (out, _) = run(json!({ "equippedInventory": { "gone": ["o"] } }), &["gone"]);
+        assert_eq!(
+            serde_json::to_string(&out.patch).unwrap(),
+            r#"{"equippedInventory":{}}"#
+        );
+        assert_eq!(out.dropped_entries, 1);
     }
 
     #[test]

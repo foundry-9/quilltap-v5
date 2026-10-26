@@ -3,7 +3,8 @@
  * `remapCharacterKeyedChatFields` (`lib/chat/character-keyed-fields.ts`,
  * `e8e17b2d9`), driven through v4's REAL export. The Rust twin is
  * `quilltap_core::chat::character_keyed_fields` and the family is
- * `chat_keyed_fields_equivalence`.
+ * `chat_keyed_fields_equivalence`. P4.D327 (pin `322a5488e`, v4 `4fbdad186`)
+ * appended the fenced `equippedInventory` rows — the fifth keyed column.
  *
  * Remaps are DATA, so every line carries its own input and the Rust side
  * replays exactly what v4 saw:
@@ -127,7 +128,7 @@ const CASES: Case[] = [
     chat: { equippedOutfit: null, courierCheckpoints: [], pendingOutfitNotifications: 'not json' },
     remaps: V4_REMAPS,
   },
-  // (v4's first `it`, "lists the four keyed columns", is the `fields` line below.)
+  // (v4's first `it`, "lists the five keyed columns" at the pin, is the `fields` line below.)
 
   // ── survey §4.2's `chat_keyed_edges`, one column per edge ──
   {
@@ -280,6 +281,89 @@ const CASES: Case[] = [
     chat: { pendingOutfitNotifications: `{"char-a":${deep(129)}}` },
     remaps: V4_REMAPS,
     expectedDifferent: "V8 JSON.parse nests past 128; serde_json's recursion limit refuses it",
+  },
+
+  // === P4.D327 — `equippedInventory`, the fifth keyed column (v4 `4fbdad186`, pin `322a5488e`) ===
+  // v4's `rekey('equippedInventory', (ids) => Array.isArray(ids) ? ids.filter(string) : [])`:
+  // a non-array entry is KEPT as `[]` (not dropped — that is `normalizeEquippedInventory`,
+  // which the carrier does NOT call), no sort, no dedupe, order kept.
+  {
+    // v4 `character-keyed-fields.test.ts:33` — "re-keys the carried Inventory,
+    // keeping the object ids as they are".
+    name: 'v4_re_keys_the_carried_inventory_keeping_object_ids',
+    chat: { equippedInventory: { 'char-a': ['obj-1', 'obj-2'] } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_non_array_entries_become_empty_arrays',
+    chat: { equippedInventory: { 'char-a': 'x', 'char-b': 5, 'char-c': {}, 'char-d': null } },
+    remaps: { ...V4_REMAPS, characters: [...V4_REMAPS.characters, ['char-c', 'char-C'], ['char-d', 'char-D']] },
+  },
+  {
+    name: 'inventory_mixed_array_keeps_strings_in_order',
+    chat: { equippedInventory: { 'char-a': ['a', 1, null, 'b', { id: 'c' }, ['d'], true, 'e'] } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_duplicates_kept_unsorted',
+    chat: { equippedInventory: { 'char-a': ['zeta', 'a', 'zeta', 'a', 'mid'] } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_empty_array_kept',
+    chat: { equippedInventory: { 'char-a': [], 'char-b': ['obj-1'] } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_dropped_character_null_and_empty_new_id',
+    chat: { equippedInventory: { 'char-a': ['obj-1'], 'char-null': ['obj-2'], 'char-empty': ['obj-3'], 'char-gone': ['obj-4'] } },
+    remaps: { ...V4_REMAPS, characters: [...V4_REMAPS.characters, ['char-null', null], ['char-empty', '']] },
+  },
+  {
+    name: 'inventory_only_dropped_characters_patches_an_empty_object',
+    chat: { equippedInventory: { 'char-gone': ['obj-1'] } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_column_as_json_string',
+    chat: { equippedInventory: JSON.stringify({ 'char-a': ['obj-1', 7, 'obj-2'], 'char-b': 'x' }) },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_entry_as_json_string_is_not_parsed',
+    chat: { equippedInventory: { 'char-a': '["obj-1"]' } },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_column_null_string_and_scalars_are_unreadable',
+    chat: { equippedInventory: 'null' },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_column_array_is_unreadable',
+    chat: { equippedInventory: [['obj-1']] },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_empty_object_is_readable',
+    chat: { equippedInventory: {} },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_all_five_columns_patch_in_list_order',
+    chat: {
+      equippedInventory: { 'char-a': ['obj-1'] },
+      pendingOutfitNotifications: { 'char-a': { text: 'n' } },
+      courierCheckpoints: { 'char-b': { lastResolvedMessageId: 'msg-1', resolvedAt: 't' } },
+      characterAvatars: { 'char-a': { imageId: 'file-1', generatedAt: 'g' } },
+      equippedOutfit: { 'char-a': { ...EMPTY, top: ['item-1'] } },
+    },
+    remaps: V4_REMAPS,
+  },
+  {
+    name: 'inventory_array_index_new_ids_sort_first_in_the_patch',
+    chat: { equippedInventory: { 'char-a': ['obj-a'], 'char-b': ['obj-b'], 'char-c': ['obj-c'] } },
+    remaps: { ...V4_REMAPS, characters: [['char-a', 'zed'], ['char-b', '7'], ['char-c', '3']] },
   },
 ];
 

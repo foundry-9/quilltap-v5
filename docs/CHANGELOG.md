@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(chat): the bug-252 keyed-field pass carries `equippedInventory`, the fifth column (P4.D327)
+
+_Versions: core 0.0.1325._
+
+Ports v4 `4fbdad186`'s `character-keyed-fields.ts` hunk at the `322a5488e` pin. `CHARACTER_KEYED_CHAT_FIELDS` lists five columns; `equippedInventory` is re-keyed by the character remap with its object ids kept verbatim: an array entry keeps its string elements (order and duplicates kept, no sort), any other entry becomes `[]`. The carrier does not call `normalize_equipped_inventory`, which would drop a non-array entry. `pendingOutfitNotifications` now has its own explicit arm.
+
+`chat_keyed_fields_equivalence` grows 14 rows (33 → 47) driven through v4's real `remapCharacterKeyedChatFields` at the pin, including v4's own "re-keys the carried Inventory" test. Mutation proofs: routing the column through the identity arm, dropping a non-array entry, and sorting/deduping each turn rows red.
+
 #### 2026-10-26 — port(image): what a character carries reaches the pictures (P4.D326, v4 `4fbdad186`)
 
 _Versions: core 0.0.1326._

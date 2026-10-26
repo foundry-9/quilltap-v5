@@ -116,7 +116,7 @@ fn chat_keyed_fields_match_oracle() {
     let (mut rows, mut expected_different, mut fields_lines) = (0usize, 0usize, 0usize);
     for line in &lines {
         match line["kind"].as_str().unwrap() {
-            // v4's first `it`: "lists the four keyed columns" — in v4's order.
+            // v4's first `it`: "lists the five keyed columns" (the pin) — in v4's order.
             "fields" => {
                 fields_lines += 1;
                 assert_eq!(line["fields"], json!(CHARACTER_KEYED_CHAT_FIELDS));
@@ -159,7 +159,8 @@ fn chat_keyed_fields_match_oracle() {
     }
     assert_eq!(
         (fields_lines, rows, expected_different),
-        (1, 33, 3),
+        // P4.D327: +14 `equippedInventory` rows (v4 `4fbdad186`, pin `322a5488e`).
+        (1, 47, 3),
         "the corpus's line counts"
     );
     assert!(failures.is_empty(), "{}", failures.join("\n"));
