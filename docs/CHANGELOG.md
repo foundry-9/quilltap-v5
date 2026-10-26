@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): Aurora's Inventory Management setting (v4 `e1872c94f`)
+
+_Versions: SPA 0.5.888._
+
+The character Defaults tab gains an Inventory Management select after Outfit Creation — inherit (enabled) / Enabled / Disabled — with v4's paragraph, disabled while it saves, and v4's three success toasts plus `Failed to update inventory setting`. It sends `characterUpdate { canManageInventory }` (`true` / `false` / `null`). P4.D330, Tier 1 item 20.
+
 #### 2026-10-26 — feat(spa): the `inventory-change` Staff label and the Inventory tool group
 
 _Versions: SPA 0.5.887._

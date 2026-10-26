@@ -405,4 +405,87 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     const req = seen.find((r) => r.type === 'characterUpdate');
     expect(req!['character']).toEqual({ defaultTimestampConfig: null });
   });
+
+  // === P4.D330: Inventory Management (v4 `e1872c94f` ProfilesTab.tsx:378-406,
+  // useCharacterView.ts:520-547) ===
+  describe('Inventory Management', () => {
+    function inventorySelect(fixture: ComponentFixture<CharacterDefaultsTab>): HTMLSelectElement {
+      const heading = (Array.from(fixture.nativeElement.querySelectorAll('h3')) as HTMLElement[]).find(
+        (h) => h.textContent?.trim() === 'Inventory Management',
+      );
+      if (!heading) throw new Error('No Inventory Management heading');
+      return heading.parentElement!.querySelector('select') as HTMLSelectElement;
+    }
+
+    it('renders the block after Outfit Creation with v4’s paragraph and three options', async () => {
+      const fixture = await render(stubClient(() => undefined), { character: character({}) });
+      const labels = (Array.from(fixture.nativeElement.querySelectorAll('h3')) as HTMLElement[]).map((h) =>
+        h.textContent?.trim(),
+      );
+      expect(labels.indexOf('Inventory Management')).toBe(labels.indexOf('Outfit Creation') + 1);
+      const block = inventorySelect(fixture).closest('div.mt-6')!;
+      expect(block.querySelector('p')!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+        'Control whether this character can see, pick up, equip, set down, make and give away the objects they carry, using the inventory tools. Requires tool use.',
+      );
+      expect(Array.from(inventorySelect(fixture).options).map((o) => [o.value, o.textContent?.trim()])).toEqual([
+        ['inherit', 'Inherit from global settings (enabled)'],
+        ['enabled', 'Enabled'],
+        ['disabled', 'Disabled'],
+      ]);
+    });
+
+    it('reads the stored tri-state (absent and null both inherit)', async () => {
+      for (const [stored, shown] of [
+        [undefined, 'inherit'],
+        [null, 'inherit'],
+        [true, 'enabled'],
+        [false, 'disabled'],
+      ] as const) {
+        TestBed.resetTestingModule();
+        const fixture = await render(stubClient(() => undefined), {
+          character: character(stored === undefined ? {} : { canManageInventory: stored }),
+        });
+        expect(inventorySelect(fixture).value).toBe(shown);
+      }
+    });
+
+    it('dispatches characterUpdate {canManageInventory} for each option with v4’s three toasts', async () => {
+      const seen: Array<{ type: string; [k: string]: unknown }> = [];
+      const fixture = await render(stubClient((r) => seen.push(r)), { character: character({}) });
+      for (const value of ['enabled', 'disabled', 'inherit']) {
+        change(inventorySelect(fixture), value);
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      expect(seen.filter((r) => r.type === 'characterUpdate').map((r) => r['character'])).toEqual([
+        { canManageInventory: true },
+        { canManageInventory: false },
+        { canManageInventory: null },
+      ]);
+      expect(toasts().map((t) => t.message)).toEqual([
+        'Inventory management enabled',
+        'Inventory management disabled',
+        'Inventory management set to inherit from global (enabled)',
+      ]);
+    });
+
+    it('disables the select while saving and falls back to v4’s sentence on a message-less failure', async () => {
+      let release!: () => void;
+      const client: Partial<CoreClient> = {
+        dispatchData: (async () => {
+          await new Promise<void>((r) => (release = r));
+          throw new Error('');
+        }) as CoreClient['dispatchData'],
+      };
+      const fixture = await render(client, { character: character({}) });
+      change(inventorySelect(fixture), 'disabled');
+      fixture.detectChanges();
+      expect(inventorySelect(fixture).disabled).toBe(true);
+      release();
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+      expect(inventorySelect(fixture).disabled).toBe(false);
+      expect(toasts().at(-1)).toEqual({ type: 'error', message: 'Failed to update inventory setting' });
+    });
+  });
+  // === end P4.D330 ===
 });

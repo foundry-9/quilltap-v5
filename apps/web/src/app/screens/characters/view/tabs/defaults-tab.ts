@@ -27,6 +27,7 @@ interface SavingState {
   helpTools: boolean;
   canDressThemselves: boolean;
   canCreateOutfits: boolean;
+  canManageInventory: boolean;
   timestampConfig: boolean;
   imageProfile: boolean;
 }
@@ -342,6 +343,30 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
             }
           </div>
         </div>
+
+        <!-- Inventory Management (v4 \`e1872c94f\` ProfilesTab.tsx:378-406, P4.D330) -->
+        <div class="mt-6">
+          <h3 class="qt-text-label mb-1">Inventory Management</h3>
+          <p class="qt-text-small mb-3">
+            Control whether this character can see, pick up, equip, set down, make and give away the
+            objects they carry, using the inventory tools. Requires tool use.
+          </p>
+          <div class="flex items-center gap-3">
+            <select
+              class="qt-select flex-1 max-w-xs"
+              [disabled]="saving().canManageInventory"
+              [value]="triValue(character().canManageInventory)"
+              (change)="onCanManageInventoryChange($any($event.target).value)"
+            >
+              <option value="inherit">Inherit from global settings (enabled)</option>
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+            @if (saving().canManageInventory) {
+              <span class="qt-text-small">Saving…</span>
+            }
+          </div>
+        </div>
       </div>
 
       <!-- Default Timestamp Settings (simplified) -->
@@ -429,6 +454,7 @@ export class CharacterDefaultsTab {
     helpTools: false,
     canDressThemselves: false,
     canCreateOutfits: false,
+    canManageInventory: false,
     timestampConfig: false,
     imageProfile: false,
   });
@@ -636,6 +662,20 @@ export class CharacterDefaultsTab {
         : value === 'enabled'
           ? 'Outfit creation enabled'
           : 'Outfit creation disabled',
+    );
+  }
+
+  /** v4 `useCharacterView.ts:520-547` `handleSaveCanManageInventory` (P4.D330). */
+  protected onCanManageInventoryChange(value: string): void {
+    void this.save(
+      'canManageInventory',
+      { canManageInventory: this.fromTri(value) },
+      'Failed to update inventory setting',
+      value === 'inherit'
+        ? 'Inventory management set to inherit from global (enabled)'
+        : value === 'enabled'
+          ? 'Inventory management enabled'
+          : 'Inventory management disabled',
     );
   }
 
