@@ -26,7 +26,7 @@
  *     npx tsx $V5W/harness/oracle/fixtures/build-log-entries-fixture.ts
  *   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
  *   QT_FIXTURE_CD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
- *   QT_FIXTURE_LOG_ENTRIES=/tmp/qt-log-tools-llmlogs.db \
+ *   QT_FIXTURE_LOG_TOOLS_LLMLOGS=/tmp/qt-log-tools-llmlogs.db \
  *   QT_ORACLE_OUT=/tmp/oracle-log-tools.ndjson TZ=UTC PATH=$N:$PATH \
  *     npx jest --silent --watchman=false --testTimeout=180000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- log-tools
@@ -155,8 +155,8 @@ describe('P4.D331 log tools oracle', () => {
     const out = process.env.QT_ORACLE_OUT;
     const main = process.env.QT_FIXTURE_CD_MAIN;
     const mount = process.env.QT_FIXTURE_CD_MOUNT;
-    const logs = process.env.QT_FIXTURE_LOG_ENTRIES;
-    if (!out || !main || !mount || !logs) throw new Error('QT_ORACLE_OUT / QT_FIXTURE_CD_MAIN / _MOUNT / QT_FIXTURE_LOG_ENTRIES');
+    const logs = process.env.QT_FIXTURE_LOG_TOOLS_LLMLOGS;
+    if (!out || !main || !mount || !logs) throw new Error('QT_ORACLE_OUT / QT_FIXTURE_CD_MAIN / _MOUNT / QT_FIXTURE_LOG_TOOLS_LLMLOGS');
     const scratch = mkdtempSync(join(tmpdir(), 'qt-log-tools-'));
     const lines: string[] = [];
     process.env.ENCRYPTION_MASTER_PEPPER = PEPPER;

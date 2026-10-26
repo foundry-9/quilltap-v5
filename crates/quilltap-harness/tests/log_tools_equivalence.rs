@@ -38,15 +38,15 @@
 //!     npx tsx $V5W/harness/oracle/fixtures/build-log-entries-fixture.ts
 //!   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
 //!   QT_FIXTURE_CD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
-//!   QT_FIXTURE_LOG_ENTRIES=/tmp/qt-log-tools-llmlogs.db \
+//!   QT_FIXTURE_LOG_TOOLS_LLMLOGS=/tmp/qt-log-tools-llmlogs.db \
 //!   QT_ORACLE_OUT=/tmp/oracle-log-tools.ndjson TZ=UTC PATH=$N:$PATH \
 //!     npx jest --silent --watchman=false --testTimeout=180000 \
 //!       --roots "$PWD" --roots "$TMPO/cases" -- log-tools
-//! Run:
+//! Run (ABSOLUTE fixture paths — cargo runs a test from its crate directory):
 //!   QT_ORACLE_LOG_TOOLS=/tmp/oracle-log-tools.ndjson \
-//!   QT_FIXTURE_CD_MAIN=crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
-//!   QT_FIXTURE_CD_MOUNT=crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
-//!   QT_FIXTURE_LOG_ENTRIES=/tmp/qt-log-tools-llmlogs.db \
+//!   QT_FIXTURE_CD_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-main.db \
+//!   QT_FIXTURE_CD_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/chat-dialogs-mount.db \
+//!   QT_FIXTURE_LOG_TOOLS_LLMLOGS=/tmp/qt-log-tools-llmlogs.db \
 //!     cargo test -p quilltap-harness --test log_tools_equivalence -- --nocapture
 //!
 //! Skips (does not fail) when an env var is unset — the standing gated
@@ -177,9 +177,9 @@ fn every_log_tool_call_answers_logs_and_writes_as_v4() {
         std::env::var("QT_ORACLE_LOG_TOOLS"),
         std::env::var("QT_FIXTURE_CD_MAIN"),
         std::env::var("QT_FIXTURE_CD_MOUNT"),
-        std::env::var("QT_FIXTURE_LOG_ENTRIES"),
+        std::env::var("QT_FIXTURE_LOG_TOOLS_LLMLOGS"),
     ) else {
-        eprintln!("SKIP: QT_ORACLE_LOG_TOOLS / QT_FIXTURE_CD_MAIN / _MOUNT / QT_FIXTURE_LOG_ENTRIES unset");
+        eprintln!("SKIP: QT_ORACLE_LOG_TOOLS / QT_FIXTURE_CD_MAIN / _MOUNT / QT_FIXTURE_LOG_TOOLS_LLMLOGS unset");
         return;
     };
     let rows: Vec<Value> = std::fs::read_to_string(&oracle)

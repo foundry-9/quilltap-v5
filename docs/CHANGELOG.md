@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(harness): log_tools reads its own llm-logs fixture variable (P4.D331)
+
+_No crate versions bumped._
+
+`log_tools_equivalence` and its jest case read `QT_FIXTURE_LOG_TOOLS_LLMLOGS` instead of `QT_FIXTURE_LOG_ENTRIES`, which `log_entries_tier2_equivalence` uses for a different file — one workspace env block can now arm both. The recipe's run step names the chat-dialogs pair by absolute path (cargo runs a test from its crate directory).
+
 #### 2026-10-26 — test(host): a pre-round instance gains log_entries at boot (P4.D331)
 
 _No crate versions bumped._
