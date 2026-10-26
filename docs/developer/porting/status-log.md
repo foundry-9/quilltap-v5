@@ -192171,3 +192171,208 @@ Branch `claude/p4.d338-smalls-scenario-sort-bug-256-photos-toast-c22ab5c8b`, sta
 **Gate:** fmt / clippy (both feature sets) clean; the 21 families through the sweep driver from the pin 21 ok, `--self-test` 0; `cargo test --workspace --no-fail-fast` 828 binaries / 5,470 passed / 5 failed — the two vendored-schema guards (expected, above) and three this lane's own union tests (the `find_enabled_for_docedit` census, `photos_web_edges`, the hand-built count), each re-aimed and green by name afterwards; zero `SKIP` in the families (oracles regenerated per family by the sweep, not env vars); SPA lint + 533 files / 11,282 tests + build green; Playwright not owed (no existing spec touched). Versions: core 0.0.1326, web 0.0.244, SPA 0.5.883; harness frozen 0.0.1110.
 
 **💸 for the dogfood pass:** the picker lists in title order (New Chat + Salon sidebar, project/General/group/character), Carina's scenario fallback and a SillyTavern export of a vaulted character now pick the title-first scenario, a published address naming the vault on a real turn, `/photos` omitting vault photos + `?album=` / `?action=albums` + a refused vault delete, a toast raised inside a modal visible above it.
+
+
+## P4.D339 — the `322a5488e` round's vendored trees + the NO-PORT record (lane complete, 2026-10-26)
+
+Branch `claude/youthful-jackson-1be8a7` (the session opened on the orders' tip `914096110`, a clean branch with no commits of its own — no move needed; the worktree path is the app's `…/worktrees/youthful-jackson-1be8a7`, reached through the spaceless `~/source/quilltap-v5` symlink). Pin worktree `/tmp/qt-v4-pin-p4d339-322a5488e` (`rev-parse` = `322a5488e7bd…`, `package.json` `4.11.0-dev.53`; `npm ci --offline` in the pin: openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0, js-tiktoken 1.0.21, plugin-utils 2.7.1). Commits: `78b84ebed` help/ (135) + literals; `c4ce9cd4a` docs/v4 (20 ops); `661f56d79` theme + SPA 0.5.882; `11c50ba93` `V4_APP_VERSION`; plus this record.
+
+### The §2 probe (observation, §R.2)
+
+v4 checkout on `main`, tree clean, `git log 322a5488e..main` = **32 commits** (HEAD `a0905454b`, 2026-10-25 21:43 −0500) — exactly the span the ledger's drift check `d1f7e0049` recorded and the human ruled to carry out as ordered; `489b228b6..bugfix` empty. "v4 moved: `a0905454b` observed 2026-10-26 09:06 CDT". The pin worktree is unaffected; every byte written came from `git show 322a5488e:<path>`.
+
+### U0 — oracles and the red-first set (unported tree, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin)
+
+Oracles (by hand into `/tmp/p4d339/`, each its own invocation): `oracle-help-tree.ndjson` 3,944,039 B, one line, `count 135`, `walkOrder 135`, `docs 135`, `chunks 818`, `jobs 0`; markers (tree/size): `Cutting In — Raising a Hand and Stopping` 8/4, `# The Inventory` 2/1, `# Project Inventory` 2/1, `# The Log` 2/1, `When the table, not the oracle, decides` 7/5, `Letting a character write one` 3/2 — all > 0. `oracle-help-section-size.ndjson` meta `{"maxTokens":1000,"files":135,"sections":818}` (the order expected > 790; 790 → 818). `oracle-ai-import.ndjson` 42 lines, `4.11.0-dev.53` ×54, `dev.26` ×0.
+
+RED on unported `main` (assertion text):
+- `help_tree_equivalence::shipped_help_tree_matches_oracle` — `help_tree_equivalence.rs:147`, `left: 131 right: 135` (embedded file count vs the oracle's synced count).
+- `help_section_size_equivalence` — `help_section_size_equivalence.rs:113`, `left: 131 right: 135` (the file-count assert fires before the `(file, section) set differs` one the order expected at `:142`; same cause).
+- `ai_import_tier3_equivalence::ai_import_matches_oracle` — `:721`, `left: "4.11.0-dev.53" right: "4.11.0-dev.26"` (the stamp; no other cell red).
+- `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` RED (`:153`) and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` RED (`:136`) — the owners' (P4.D333 / P4.D327).
+- GREEN: `help_tree_embed_guard` (131), `host_help_docs_boot` (2), `spelling_guard`, `provider_sdk_version_guard` (4), `zod_version_guard`, `builtin_prompt_templates_guard` (2), `help_web_routes` (1).
+
+### U1 — `help/` whole
+
+NUL-safe copy of 135 files; md5 census against `git show 322a5488e:` prints nothing; `git status --porcelain help/` = 4 `??` + 18 `M`; `git ls-files help/` = 135 and `comm -3` against the pin's list is empty; `the-log.md` md5 `9124c588090bebe0d8cf6c8137e9b317`. First post-copy build printed `Compiling quilltap-host`. With the literals still 131: `help_tree_embed_guard.rs:121` `left: 135 right: 131` ("the embedded help table must carry the vendored tree (131 files)…") and `host_help_docs_boot.rs:126` `left: 135 right: 131`, message "the vendored tree at v4 01a83539d". Literals moved (`:107` → 135; `:126` → `assert_eq!(expected, 135, "the vendored tree at v4 322a5488e")`; module-doc "131" → "135"); three history comments added (chunks 790 → 818). GREEN against the pin's oracles: `help_tree_equivalence` 1/1, `help_section_size_equivalence` 1/1 (818 sections), `help_tree_embed_guard` 1/1, `host_help_docs_boot` 2/2, `spelling_guard`, `help_web_routes`, `generators::qtap_schema` 7/7. **Mutation proof:** one `x` appended to `help/the-log.md` reddened `help_tree_equivalence` at `docs[124]` (+ `chunks[749]`); reverted, md5 back to `9124c588…`. R-11: the help SPA fixtures have no empty-diff re-capture owed (no importer moved).
+
+**Tier 2 controls not exercised:** `help_doc_sync_equivalence`, `help_doc_sync_guards_equivalence`, `help_doc_ensure_equivalence`, `help_docs_routes_equivalence`, `help_snippet_equivalence`, `embedding_remainder_equivalence` printed `SKIP:` (their oracles/fixtures were not regenerated in this lane). They read the tree through the same embedded table the passing families cover; the unifier's sweep (§S.2) runs them from the union pin. Also not run: the Playwright theme control `e2e/aa-foundation.spec.ts` (Tier 2 item 13).
+
+### U2 — `docs/v4/` (20 operations)
+
+12 overwrites + 8 adds, each from `git show 322a5488e:docs/<p>`. Census: every one of the 501 pin `docs/**` paths `cmp`-equal to its mirror (0 lines printed); `packages/quilltap/README.md` equals `docs/v4/packages-quilltap-README.md`; `git ls-files docs/v4 | wc -l` = **502**; the mirror's set minus the README, mapped back, EQUALS the pin's `docs` listing (`diff` empty, zero allowed differences — the P4.D323 R-Q deferrals are closed); 0 `.DS_Store`. md5s at the pin:
+
+| docs/v4 path | md5 at P |
+|---|---|
+| `CHANGELOG.md` | `1902cff575d0e7382667432653380941` |
+| `FEATURES.md` | `836ba79cc85bba885ccfd39f83118719` |
+| `developer/API.md` | `7963a53ee473a8deec8e3560ba0ad0dd` |
+| `developer/BACKGROUND_JOBS_CHILD.md` | `5691a86f24bd4df7abac4acd0cdb5094` |
+| `developer/CUSTOM_TOOL_SPEC.json` | `9e7954b83f3f6e3104b9d8ca814ede68` |
+| `developer/DDL.md` | `c300470ad3b46f0da38426583ba19c47` |
+| `developer/ICON_INVENTORY.md` | `4807c03e5b5139f8c17ffcbf756fdd83` |
+| `developer/PROMPT_ARCHITECTURE.md` | `8442b8b96e79ee9d9da0c512969ea1d9` |
+| `developer/bugs.md` | `e05595a4e5473a721c4d7e2694c685e9` |
+| `developer/bugs/fixed/bug-253-inventory-section-skipped-chained.md` | `bce4ce85f51350546277e55a303f7073` |
+| `developer/bugs/fixed/bug-254-progressions-skipped-chained.md` | `0779f2bea05384e27dcdac329c01a3aa` |
+| `developer/bugs/fixed/bug-255-terminal-read-tui-garbled.md` | `912214d2fa0d0d98b2e2d3ac71157692` |
+| `developer/bugs/fixed/bug-256-self-address-wrong-vault.md` | `609efa04e37c11a2df65192971fdc171` |
+| `developer/bugs/fixed/bug-257-llm-consult-blind-to-verdict.md` | `a21a43dda41136c3a9e29830644d1a76` |
+| `developer/features/ROADMAP.md` | `4ff680e6fc3fba2b13bb1d28401abaea` |
+| `developer/features/complete/character-progressions.md` | `ba5314221a0c66fd27575b13c9fb51fa` |
+| `developer/features/complete/inventory-tools-and-pascal.md` | `2b39e99b1dc5968b4e3a98c1151bdf00` |
+| `developer/features/complete/inventory.md` | `e1ec289207be4e12f7306b6783a5ec8a` |
+| `developer/features/complete/pascal-custom-tools.md` | `a191da4f642e81f4ef17ab22c2b78711` |
+| `developer/features/complete/pascal-gate-broadening.md` | `e70be0e70ba93c2815ee47e1da4c9f5f` |
+
+Help md5s (22 changed pages; pin = v5):
+
+| help page | md5 (pin = v5) |
+|---|---|
+| `help/ariel.md` | `8746c297a654d66206baefcac8a59cd1` |
+| `help/chat-participants.md` | `f49e14995d5ad1e951bfd0ab402b9243` |
+| `help/chat-turn-manager.md` | `f435898c5488994dd9b9127aa181663c` |
+| `help/chats.md` | `b60a24bb306e1fd29175ad72d120803c` |
+| `help/custom-tools.md` | `37c2cf06f383794e0a7b0e4a5cc1497a` |
+| `help/document-editing-tools.md` | `8c71ceec3a427693d3146a03e4a0a6ca` |
+| `help/general-scenarios.md` | `f2c1dcf3bbbc09142b293db2c1e3868d` |
+| `help/image-generation-profiles.md` | `d3044caba7cd3e43d575f5fbcc2d9edc` |
+| `help/interrupting.md` | `674192e95462c08d1abf049c4d225dde` |
+| `help/inventory.md` | `4163fed957387ccb6a54f17b2cfa81fa` |
+| `help/pascals-workbench.md` | `ef83de5936faa81d8584a71481114237` |
+| `help/photo-gallery.md` | `86f075db0cd23ee05ae4577d7bd3d0a2` |
+| `help/project-characters.md` | `938fff952173544480150d4e89af1259` |
+| `help/project-inventory.md` | `1e146edb342379c3add060077fe21f53` |
+| `help/project-wardrobe.md` | `a0a10c10090fd9bfa49a02e8dba352a0` |
+| `help/projects.md` | `abb31eaea8303fe5e2b5b6c71bf9db2e` |
+| `help/scenario-browser.md` | `1c1a945e968553c38dfd2c1eefbc154c` |
+| `help/system-llm-logs.md` | `7d2f68092dd853a9f8b4415b067e1438` |
+| `help/the-concierge.md` | `8fef1fa3026f5e95428397172ca42128` |
+| `help/the-log.md` | `9124c588090bebe0d8cf6c8137e9b317` |
+| `help/tools-settings.md` | `d2f1ef66c9612f853ef5654b382f2c80` |
+| `help/wardrobe.md` | `e54f9753a40e075b24d930e23a66b052` |
+
+R-12 inaccuracies vendored as v4 wrote them: `DDL.md`'s `### log_entries` `"id" TEXT PRIMARY KEY,` (P4.D331 records it), `terminal_sessions` `cols`/`rows` shapes (P4.D337), `help/the-log.md`'s "One quirk" sentence.
+
+### U3 — theme + SPA bump
+
+`theme.json` (+3 lines) and `icons/{inventory,hand-raised,stop-sign}.svg` byte copies; md5s `a38c7d37f93af7e10caff5d181a28f95`, `6224f0753609519a7670accb82b70f20`, `f58ba9bad98839dd400dbca794507c74`, `3db85141e43d8bc0c03470d6e4e1abcc`; `icons/` = 4 names. SPA 0.5.881 → 0.5.882 (`package.json:3`, `package-lock.json:3,9` only). Inert: a grep of `apps/web/src` + `public/themes` hits only `theme.json:234/235/256`; `git diff --stat -- apps/web/src` empty. SPA gate: `npm ci` fresh; lint 0; `npm run build` 0; `npm test` first run 530/531 files, 11,266/11,268 tests — the two failures were `new-chat-form.spec.ts` "scenario layering" timeouts (14 s / 6 s) while cargo and sibling lanes loaded the machine; re-run by file alone **35/35 green**. Nothing in `apps/web/src` moved.
+
+### U4 — `V4_APP_VERSION`
+
+`ai_import_tier3_equivalence.rs:126` → `"4.11.0-dev.53"`; `grep -rn '4\.11\.0-dev' crates harness/oracle` finds that one line (plus SPA fixture README provenance text). Family GREEN 1/1 against the pin oracle (no residual red cell — nothing for P4.D327 to inherit here).
+
+### NO-PORT ratifications (for §S.6)
+
+- **`cad017599`** (Test: inventory-gated custom tool end to end) — `--stat`: 2 files, +232 (`__tests__/unit/lib/pascal/custom-tools-measure-twice.test.ts` +228, `docs/CHANGELOG.md` +4); `git show --stat --format= cad017599 -- lib app packages plugins components help public migrations themes` prints NOTHING. Seven `it`s are MIRRORED by P4.D329 as `pascal_run_custom_handler_equivalence` rows. No v5 counterpart for the test file. Proposed: `NO-PORT-RATIFIED(P4.D339)`.
+- **`cc57e6cbc`** (Docs: spec for broader custom-tool gates) — 3 files, +214 (`CHANGELOG` +4, `ROADMAP` +1, `pascal-gate-broadening.md` +209); same code-path census prints NOTHING. The spec reaches v5 at its final path (docs row 20). Proposed: `NO-PORT-RATIFIED(P4.D339)`.
+- **Halves** (re-run: `git diff --stat e8e17b2d9 322a5488e -- packages/theme-storybook .claude CLAUDE.md README.md themes/tools lib/background-jobs/child/child-repositories-proxy.ts` = 11 files, +362 / −18): `packages/theme-storybook/**` (CHANGELOG +11, versions 1.0.74 → 1.0.77, `qt-components.css` +83, `Chat.tsx` +34, `Icons.tsx` ±2 — the CSS of record is P4.D336's `_chat.css`; v5 has no storybook); `.claude/commands/update-documentation.md` (+9/−4, v4's agent checklist); v4 `CLAUDE.md` (+4/−3); `README.md` (+2/−2, badge `dev.53` + the Pascal sentence); `themes/tools/madmans-box-icon-preview.html` (±4; v5 has no such tool); `child-repositories-proxy.ts` (+210; v5 has no forked child — the writer task is the parent); `docs/CHANGELOG.md` / `ROADMAP.md` / `FEATURES.md` / `ICON_INVENTORY.md` vendored as rows 1/15/2/7; every `__tests__/**` + snapshot in the span (80 paths via `git diff --name-only … '*__tests__*'`; 75 files in the `--stat` of `__tests__` + `lib/**/__tests__`, +7,904/−166) plus `jest.setup.ts` and `test:unit`'s `NODE_ENV=test` — v4-internal; each content lane mirrors the cases it needs. Not this lane's: `packages/quilltap/lib/db-commands.js` (P4.D331, R-Z) and `packages/quilltap/package.json` (a stamp). v5 mirrors neither v4's `README.md`, `CLAUDE.md` nor `.claude/`. Proposed: `NO-PORT-RATIFIED(P4.D339)` for each half.
+
+Per-commit help / docs / theme map (22 span commits; docs `CHANGELOG.md` rides every one; paths relative to `docs/developer/` for docs):
+
+- `4fbdad186` Feature: The Inventory — objects a character carries (#100): docs/FEATURES.md API.md DDL.md features/ROADMAP.md features/complete/inventory.md features/inventory-tools-and-pascal.md help/inventory.md help/pascals-workbench.md help/project-inventory.md help/project-wardrobe.md help/projects.md help/wardrobe.md 
+- `e1872c94f` Feature: Inventory tools and Pascal inventory support (#102): API.md BACKGROUND_JOBS_CHILD.md CUSTOM_TOOL_SPEC.json DDL.md features/ROADMAP.md features/complete/inventory-tools-and-pascal.md features/complete/inventory.md help/custom-tools.md help/inventory.md help/pascals-workbench.md 
+- `102a23648` Fix: Inventory dogfood fixes, bugs 253/254, and the project roster gat: PROMPT_ARCHITECTURE.md bugs.md bugs/fixed/bug-253-inventory-section-skipped-chained.md bugs/fixed/bug-254-progressions-skipped-chained.md features/complete/character-progressions.md features/complete/inventory-tools-and-pascal.md features/complete/inventory.md help/inventory.md help/project-characters.md help/project-inventory.md help/projects.md 
+- `1d0a31132` Fix: scenario lists sort by title: help/general-scenarios.md help/scenario-browser.md 
+- `cad017599` Test: inventory-gated custom tool end to end (Measure Twice): (none)
+- `a6292f169` Fix: Ariel reads full-screen programs (bug 255): DDL.md bugs.md bugs/fixed/bug-255-terminal-read-tui-garbled.md help/ariel.md 
+- `7263105c6` Feature: Inventory title lint; Fix: published vault addresses name the: bugs.md bugs/fixed/bug-256-self-address-wrong-vault.md features/complete/inventory-tools-and-pascal.md help/document-editing-tools.md help/inventory.md 
+- `406dbdd5a` Change: clean image prompts only for a Moderated chat bound for a mode: help/image-generation-profiles.md help/the-concierge.md 
+- `ea2cb60ab` Feature: edit_custom_tool saves or validates a custom tool definition: help/custom-tools.md 
+- `680b71044` Change: /photos leaves out character vaults and gains an album selecto: API.md help/photo-gallery.md 
+- `cfa0cba29` Change: custom tools in a character's vault are that character's only: features/complete/pascal-custom-tools.md help/custom-tools.md help/pascals-workbench.md 
+- `e4a60ad9e` Feature: the Log — log_entries table, log_* tools, and a custom-tool: API.md BACKGROUND_JOBS_CHILD.md CUSTOM_TOOL_SPEC.json DDL.md help/custom-tools.md help/pascals-workbench.md help/system-llm-logs.md help/the-log.md help/tools-settings.md 
+- `a495faa26` Fix: the Log's date bounds and regex errors: help/the-log.md 
+- `e27fb6b34` Change: the Inventory gets its own icon: ICON_INVENTORY.md help/inventory.md themes/bundled/madmans-box/icons/inventory.svg themes/bundled/madmans-box/theme.json 
+- `5a8338b30` Fix: toasts raised from inside a dialog were hidden behind it: (none)
+- `2b5e8ee24` Feature: raise a hand or stop from the composer: API.md ICON_INVENTORY.md help/chat-participants.md help/chat-turn-manager.md help/chats.md help/interrupting.md themes/bundled/madmans-box/icons/hand-raised.svg themes/bundled/madmans-box/icons/stop-sign.svg themes/bundled/madmans-box/theme.json 
+- `cc57e6cbc` Docs: spec for broader custom-tool gates (inventory aggregates, OR, nu: features/ROADMAP.md features/pascal-gate-broadening.md 
+- `c56fe278c` Add schema action to edit_custom_tool (#104): help/custom-tools.md 
+- `a53024d3c` Feature: OR and inventoryAggregate in custom-tool gates and when tests: CUSTOM_TOOL_SPEC.json features/ROADMAP.md features/complete/inventory-tools-and-pascal.md features/complete/pascal-custom-tools.md features/complete/pascal-gate-broadening.md help/custom-tools.md help/pascals-workbench.md 
+- `b8362beb5` Fix: stack the composer's Send / raise-hand / Stop buttons vertically: help/interrupting.md 
+- `d88c1ce39` Docs: say blank Inventory drawing descriptions are invisible: help/inventory.md 
+- `322a5488e` Fix: custom-tool LLM consult can narrate a verdict the table already r: bugs.md bugs/fixed/bug-257-llm-consult-blind-to-verdict.md help/custom-tools.md help/pascals-workbench.md 
+
+**Import-dead census:** `git diff e8e17b2d9 322a5488e -- lib app packages plugins migrations components | grep -c '^-\s*export'` → **37** (each re-declared/aliased in the same module, per the survey's §E.1); `git diff --name-status -M --diff-filter=DRC … ` → **0** lines. IMPORT-DEAD 0; no stage-0 `REAIM` lane.
+
+### Dependency facts at the pin
+
+`git diff --numstat e8e17b2d9 322a5488e -- package.json package-lock.json packages/quilltap/package.json 'plugins/*/package.json' packages/theme-storybook/package.json packages/theme-storybook/package-lock.json` = `package-lock.json` 12/2, `package.json` 3/2, `packages/quilltap/package.json` 1/1, storybook lock 2/2, storybook manifest 1/1. Pin lockfile: openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0, js-tiktoken 1.0.21, @quilltap/plugin-utils 2.7.1. `provider_sdk_version_guard` 4/4 and `zod_version_guard` 1/1 GREEN against the pin.
+
+### HANDOFF sections (for §S.5 wire 12)
+
+Ranges are the pin's lines (`git show 322a5488e:<p>`); the v5 column is the vendored file's same lines (`docs/` paths under `docs/v4/`). All 44 rows equal on this branch. Rows owed by P4.D327 / P4.D330 / P4.D336: none (no help/docs sentence). The planning table's "measure" cells are filled below; P4.D338's four pages (`general-scenarios`, `scenario-browser`, `document-editing-tools`, `photo-gallery`) + `API.md :3948-3968` + bug 256 are what the lane found, against the round block's "seven pages".
+
+| file | pin range | md5 pin | md5 v5 | equal |
+|---|---|---|---|---|
+| `help/inventory.md` | 1,195 | `4163fed957387ccb6a54f17b2cfa81fa` | `4163fed957387ccb6a54f17b2cfa81fa` | yes |
+| `help/inventory.md` | 153,178 | `46622c9ac95341e38003a22195e11fe8` | `46622c9ac95341e38003a22195e11fe8` | yes |
+| `help/inventory.md` | 129,134 | `b8ed75f68c0006ec7f63ab9ef8d3ed79` | `b8ed75f68c0006ec7f63ab9ef8d3ed79` | yes |
+| `help/inventory.md` | 54,72 | `a06cfcbd1cc191b770a4da9817500b5f` | `a06cfcbd1cc191b770a4da9817500b5f` | yes |
+| `help/project-inventory.md` | 1,39 | `1e146edb342379c3add060077fe21f53` | `1e146edb342379c3add060077fe21f53` | yes |
+| `help/projects.md` | 324,331 | `3edfa213f7d8b994fb44fd742316d1b1` | `3edfa213f7d8b994fb44fd742316d1b1` | yes |
+| `help/projects.md` | 159,172 | `dab61e6cc2f3592db99ab87505fe0a23` | `dab61e6cc2f3592db99ab87505fe0a23` | yes |
+| `help/project-characters.md` | 1,123 | `938fff952173544480150d4e89af1259` | `938fff952173544480150d4e89af1259` | yes |
+| `help/project-characters.md` | 95,100 | `971874d04fa6d564bc8784d8ef222d10` | `971874d04fa6d564bc8784d8ef222d10` | yes |
+| `docs/developer/API.md` | 2232,2270 | `af5b9f3f47c83142564f0c49d1ae2fc4` | `af5b9f3f47c83142564f0c49d1ae2fc4` | yes |
+| `docs/developer/API.md` | 3416,3422 | `053f13d877a389000e0e8aa475d312ab` | `053f13d877a389000e0e8aa475d312ab` | yes |
+| `docs/developer/API.md` | 2636,2669 | `dd0de32f1ef92778fc95f0a3b23be045` | `dd0de32f1ef92778fc95f0a3b23be045` | yes |
+| `docs/developer/API.md` | 6699,6700 | `b8b0b1a18ed8c0ab6d1f0aebb10ed1cb` | `b8b0b1a18ed8c0ab6d1f0aebb10ed1cb` | yes |
+| `docs/developer/API.md` | 3948,3968 | `3c29e5550d6fdf654d4563eda9fd1ad2` | `3c29e5550d6fdf654d4563eda9fd1ad2` | yes |
+| `docs/developer/DDL.md` | 324,324 | `8ef802e4f44ea1214979107356180c1d` | `8ef802e4f44ea1214979107356180c1d` | yes |
+| `docs/developer/DDL.md` | 679,679 | `b78c7126662ac589adaba1a6511960ac` | `b78c7126662ac589adaba1a6511960ac` | yes |
+| `docs/developer/DDL.md` | 1004,1004 | `8804c06f6fa3de494a70d96ef3a67391` | `8804c06f6fa3de494a70d96ef3a67391` | yes |
+| `docs/developer/DDL.md` | 1807,1831 | `cfb832bc27e6e0c0b119844ff50d55f6` | `cfb832bc27e6e0c0b119844ff50d55f6` | yes |
+| `docs/developer/DDL.md` | 867,888 | `efef8c703ec035fbf2b2c54554289878` | `efef8c703ec035fbf2b2c54554289878` | yes |
+| `help/the-concierge.md` | 63,63 | `6e64b494eaa3d88f104dfe2e73755fdf` | `6e64b494eaa3d88f104dfe2e73755fdf` | yes |
+| `help/the-concierge.md` | 189,196 | `8e5b0cf0c3689466be05ff5f9786bb13` | `8e5b0cf0c3689466be05ff5f9786bb13` | yes |
+| `help/image-generation-profiles.md` | 428,428 | `992b75d25b5e6bcb1ad607165f2c4932` | `992b75d25b5e6bcb1ad607165f2c4932` | yes |
+| `help/custom-tools.md` | 178,250 | `fb9323b3413c8683a07312aa5f1772e5` | `fb9323b3413c8683a07312aa5f1772e5` | yes |
+| `help/custom-tools.md` | 617,637 | `0fb91b1bd14fbdb11b4817dc3719f8d8` | `0fb91b1bd14fbdb11b4817dc3719f8d8` | yes |
+| `help/custom-tools.md` | 638,650 | `beb9240c1dc12c2d88f1053845140e2c` | `beb9240c1dc12c2d88f1053845140e2c` | yes |
+| `help/custom-tools.md` | 805,818 | `e1b7327aa4ed43677df609b6f4bcc3cb` | `e1b7327aa4ed43677df609b6f4bcc3cb` | yes |
+| `help/custom-tools.md` | 651,671 | `5b31a53b0b8e2fc83b704fe80f15a753` | `5b31a53b0b8e2fc83b704fe80f15a753` | yes |
+| `help/custom-tools.md` | 318,353 | `e489259b18e92c3419ea50e4130a0b4f` | `e489259b18e92c3419ea50e4130a0b4f` | yes |
+| `help/custom-tools.md` | 700,716 | `b41c961778953ea50f358edc03788a2c` | `b41c961778953ea50f358edc03788a2c` | yes |
+| `help/the-log.md` | 1,45 | `9124c588090bebe0d8cf6c8137e9b317` | `9124c588090bebe0d8cf6c8137e9b317` | yes |
+| `help/system-llm-logs.md` | 238,238 | `6c66ee695558a18f0657892f76d7e619` | `6c66ee695558a18f0657892f76d7e619` | yes |
+| `help/tools-settings.md` | 131,132 | `be23fa23ae9cc53615ba15d9a04c33d0` | `be23fa23ae9cc53615ba15d9a04c33d0` | yes |
+| `help/pascals-workbench.md` | 1,91 | `ef83de5936faa81d8584a71481114237` | `ef83de5936faa81d8584a71481114237` | yes |
+| `help/pascals-workbench.md` | 17,17 | `89b6d3640a223ca7c7bcc71e692dc8a9` | `89b6d3640a223ca7c7bcc71e692dc8a9` | yes |
+| `help/pascals-workbench.md` | 34,34 | `987c1c00c4944c076d6d3d7ea96457eb` | `987c1c00c4944c076d6d3d7ea96457eb` | yes |
+| `help/pascals-workbench.md` | 90,90 | `5eac9d66e9249a285720de195abb8cff` | `5eac9d66e9249a285720de195abb8cff` | yes |
+| `help/interrupting.md` | 1,55 | `674192e95462c08d1abf049c4d225dde` | `674192e95462c08d1abf049c4d225dde` | yes |
+| `help/chat-turn-manager.md` | 191,205 | `586d5dd0c6e667357ddfc27bd932c201` | `586d5dd0c6e667357ddfc27bd932c201` | yes |
+| `help/chats.md` | 214,219 | `eb59534bcfbe97d789b1828cf86dd0dc` | `eb59534bcfbe97d789b1828cf86dd0dc` | yes |
+| `help/chat-participants.md` | 189,192 | `7349dbfb1f33dc9baa7916e5a8d3ab3d` | `7349dbfb1f33dc9baa7916e5a8d3ab3d` | yes |
+| `help/ariel.md` | 27,30 | `f0742352eae435922e8c7bf8c85ee58d` | `f0742352eae435922e8c7bf8c85ee58d` | yes |
+| `help/general-scenarios.md` | 92,93 | `2908bebdc8e20bda6c67b19d3840a5b2` | `2908bebdc8e20bda6c67b19d3840a5b2` | yes |
+| `help/scenario-browser.md` | 18,18 | `ee3748ccbfe9caa0d0e723c9f11378e4` | `ee3748ccbfe9caa0d0e723c9f11378e4` | yes |
+| `help/document-editing-tools.md` | 62,64 | `c93a58208720ce2259b2825346620f8f` | `c93a58208720ce2259b2825346620f8f` | yes |
+| `help/photo-gallery.md` | 19,26 | `2a430c9e31f6fb84abb1f3ab3950c350` | `2a430c9e31f6fb84abb1f3ab3950c350` | yes |
+
+### Schema CHECK constants (for §S.5 wire 9) — not edited here
+
+| file (owner) | v5 on this branch | expected on the union | this branch's guard |
+|---|---|---|---|
+| `apps/web/public/schemas/qtap-custom-tool.schema.json` (P4.D333) | 44,021 B | 63,595 B `670ade1d0accb312d58f6c6c034285ae` | `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` RED at `:153` (by design) |
+| `crates/quilltap-core/src/generators/qtap-export.schema.json` (P4.D327) | 108,678 B | 109,559 B `10b72fd1160722b77a49fe6f7abb5b79` | `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` RED at `:136` (by design); self-consistency halves + `generators::qtap_schema` 7/7 GREEN |
+| `qtap-progression.schema.json` | 5,963 B | unmoved `796dbe5209caed76196d2f01169efa34` | green |
+| P4.D332's crate-local copies | absent | 63,595 / 12,660 / 1,951 B, equal to P4.D333's SPA copy and this lane's mirrors | n/a |
+
+P4.D332's three-way target from this lane's U2: `docs/v4/developer/CUSTOM_TOOL_SPEC.json` 12,660 B md5 `9e7954b83f3f6e3104b9d8ca814ede68`; `CUSTOM_TOOL_SPEC_DICE.json` unchanged 1,951 B `56a7f0d45ca8883418bd6e961bb29775`.
+
+### Asks, findings, 💸
+
+- **R-W ask (theme owner):** v5 adds exactly the three SVGs v4 added to the Madman's Box set; 84 of the manifest's 88 icon targets remain absent and nothing in the SPA reads the map. Should v5 grow an icons-map loader and the override set?
+- **Finding:** `help_section_size_equivalence` reds at its count assert (`:113`) before the `(file, section) set differs` one — documentation only.
+- **💸 for the dogfood pass:** first boot of a Friday copy on the union adds four `help_docs` rows and re-hashes eighteen (chunks re-embedded — free on a BUILTIN profile); the help viewer lists "Cutting In — Raising a Hand and Stopping", "The Inventory", "Project Inventory", "The Log"; the context resolver on `/salon/:id` still opens `agent-mode`; Madman's Box applied renders as before with no 404 for the three SVGs.
+- Not run (named): the six Tier 2 control families above, `e2e/aa-foundation.spec.ts`, Tier R (CLI unmoved).
+
+### Versions at close
+
+SPA **0.5.882**; no crate version moved (core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9); harness frozen 0.0.1110.
+
+### Gate
+
+`cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with `--features quilltap-core/native-transport`; `cargo test --workspace --no-fail-fast` (CARGO_INCREMENTAL=0, the three oracle env vars + `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin): **827 binaries / 5,461 passed / 2 failed / 3 ignored**, zero `SKIP:` — the two failures are exactly `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`, RED by design (P4.D333 / P4.D327 own the copies). R-7 emptiness: crates diff is exactly the four test files; apps/web diff is exactly the two package files, `theme.json` and the three SVGs.

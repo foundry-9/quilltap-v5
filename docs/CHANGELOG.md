@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D339 lane record — NO-PORT ratifications, HANDOFF md5s, schema CHECK table
+
+_Docs-only change._
+
+Lane record for the vendored-trees order: red-first counts, md5 tables, census output, the NO-PORT blocks, the per-commit map, and the sibling HANDOFF sections measured at the pin.
+
 #### 2026-10-26 — test(ai-import): V4_APP_VERSION → `4.11.0-dev.53`
 
 _No crate versions bumped._
