@@ -192376,3 +192376,97 @@ SPA **0.5.882**; no crate version moved (core 0.0.1323, host 0.0.211, web 0.0.24
 ### Gate
 
 `cargo fmt --all -- --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with `--features quilltap-core/native-transport`; `cargo test --workspace --no-fail-fast` (CARGO_INCREMENTAL=0, the three oracle env vars + `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin): **827 binaries / 5,461 passed / 2 failed / 3 ignored**, zero `SKIP:` — the two failures are exactly `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts`, RED by design (P4.D333 / P4.D327 own the copies). R-7 emptiness: crates diff is exactly the four test files; apps/web diff is exactly the two package files, `theme.json` and the three SVGs.
+
+
+## P4.D330 — the Inventory SPA, the `/photos` album selector and the `inventory` icon (lane `claude/p4.d330-inventory-spa-0d973c`, pin `322a5488e`, 2026-10-26) — LANE RECORD
+
+**Where it ran.** The session started in the app-made worktree `suspicious-allen-0d973c` on `claude/suspicious-allen-0d973c` at `main` `914096110` (contains the orders' commit `65fd55814`; the commits after it are docs-only) and was renamed in place to `claude/p4.d330-inventory-spa-0d973c`, worked through the spaceless `~/source/quilltap-v5/.claude/worktrees/…` path. Stage A, no stacking. SPA only — no crate touched, no crate version moved, `quilltap-harness` untouched.
+
+**§2 probe (an observation, §R.2).** Lane start 2026-10-26 11:18 CDT and close 12:58 CDT: branch `main`, tree clean, `bugfix` `489b228b6..bugfix` EMPTY. **v4 moved: `9faed0c7e` ("Feature: diagram lightbox and Copy PNG") observed at 11:18 CDT** — one commit past the ledger's recorded HEAD `a0905454b`; recorded for `/driftcheck`, the lane continued on the pin. Pin `/tmp/qt-v4-pin-p4d330-322a5488e`: HEAD `322a5488e7bd…`, `4.11.0-dev.53`, `npm ci --offline --ignore-scripts` clean, `openai` 7.34.0, `@xterm/headless` 6.0.0.
+
+### What landed (24 commits, SPA `0.5.881` → `0.5.904`)
+
+Every Tier 1 item, Tier 2 items 23–27, and item 38:
+
+- **Item 2 — the icon.** `ui/icon.ts` `| 'inventory'` LAST (86 names); `public/images/icons/inventory.svg` = the pin's file (`cmp` identical).
+- **Item 3 — the contract.** The `// === P4.D330 … ===` fence (the Inventory DTOs in v4's schema key order, every C7 request, `MockInventoryRow`) + the `CoreRequest` row in a second fence; in place: `CoreError.details` + `CoreDispatchError.details` (R-L), `CharacterDto.canManageInventory`, `customToolPreview` / `customToolAudit` `.inventory`, `CustomToolReferences` `inventoryReads` / `equips` / `unequips` / `picksUp` (in `chat/custom-tools.api.ts`).
+- **Item 4 — the data layer.** `inventory.api.ts` (one function per verb; optional keys ABSENT unless v4 sends them — `toStrictEqual`-pinned), `inventory-list-data.ts`, `inventory-folders-data.ts`, `chat-inventory-data.ts` (every gesture reloads the carried read AND the list, refused or not — trap 12), `inventory-item-actions.ts`, `inventory-dialog.service.ts` (the four-part remount key), `inventory-container.ts`, `inventory-display.ts`, `inventory-refusal.ts`.
+- **Item 5 — the five `item-browser/*` pieces** (+ 4 specs).
+- **Item 6 — glyph / picture / viewer** + the save dialog's `inventory` door.
+- **Items 7–10 — browser, row (fixed menu, `menuPlacement` pure), editor + Pictures, Carrying-now pane, the folder / instantiate / transfer dialogs.**
+- **Item 11 — the dialog triple** (`qt-inventory-control-dialog` host, `qt-inventory-tab-view`, `qt-inventory-panel`) + the shell's rail button (`shell/rail-target.ts`, a pure three-arm helper — no shell spec exists to extend) + the deferred mount.
+- **Item 12 — the `inventory` tab kind** (contract, persistence, tab-meta, registry, intent + two spec rows, the tab-activation roster) + the `workspace-core` regen.
+- **Items 13–14 — three tier-1 corpora** (below).
+- **Items 15–19 — the transcribed specs** (v4's nine `inventory-ui.test.tsx` `it`s name for name across `inventory-browser.spec.ts` (2), `inventory-item-editor.spec.ts` (1), `inventory-item-actions.spec.ts` (5), `carrying-now-pane.spec.ts` (1)) + the dialog spec.
+- **Item 20 — the consumers:** the nine `tool-message.ts` rows + `buildInventoryActionSummary`; Aurora's Inventory Management select; the participant card's `Open <name>'s inventory` (ASCII apostrophe, R-7) after the wardrobe button; the Prospero `Inventory (n)` card; the `inventory-change` Staff label (`medium` under `pascal`); the tool-settings `Inventory` group; `chat/custom-tool-inventory-lines.ts` (R-12, mount a HANDOFF).
+- **Item 21 — the realtime topic** (`REALTIME_TOPICS` 8; the row answers `[]`, the sweep list unchanged — R-2).
+- **Item 22 — the `/photos` album selector** (R-11 stand-ins).
+- **Tier 2 item 23 — the wardrobe refactor** onto the item-browser pieces: ZERO wardrobe spec edits (the shared row answers to both `qt-item-folder-row` and `qt-wardrobe-folder-row` — one wardrobe case walks the row's host element, and a wrapper broke it, measured).
+- **Tier 2 item 24 — the labelled-button alert** (`ui/alert-modal.service.ts`, mounted in the shell). **`ALERT_CONFIRM_COLLAPSE` CLOSED:** the Tier-1 collapse binding and its two spec cases are retired; the dialog's `requestAlert` is `AlertModalService.show`. The surface is v4's `AlertDialog` (no title, the LAST button primary, a `Close` default, `z-[100]`/`z-[101]`), not the order's sketch (first primary, `OK`).
+- **Tier 2 item 25 — the icon guard spec** (2 live; the `_icons.css` row and the theme manifest cases `it.skip` — P4.D336's / P4.D339's files, and a vitest spec here cannot read files).
+- **Tier 2 item 26 — the album-filter beat** (gated `P4D338_SERVER_LANDED`, a constant R-V does not list — the order's own question).
+- **Tier 2 item 27 — the reference picker + vantage loader** (C10, for P4.D334).
+- **Item 38 — `e2e/inventory-flow.spec.ts`** (4348 / 45346) + the `wardrobe-flow.spec.ts` regression beat.
+
+### The three corpora (Tier 1 exact, from v4's REAL code at the pin; README section appended)
+
+| Corpus | Rows | sha256 |
+|---|---|---|
+| `inventory-display.oracle.ndjson` | 67 | `22d38e39ebac3912fc852455d2bcec5d9eb2374d63746418d79f1e36e629c21a` |
+| `inventory-refusal.oracle.ndjson` | 24 | `167b9f356b10108e50df9aad8c9dd85bf5d0ae9edf654507954bc1d40cdcb971` |
+| `inventory-action-summary.oracle.ndjson` | 58 | `9cc04322501b21136ed5e785fa4d3b39985c6ef9331c6b429e7f157db455f618` |
+
+Each reproduces byte for byte on a second run. v4's `useInventoryItemActions.ts` imported cleanly under `tsx` (no scratch-copy fallback). The `ToolMessage` export patch is ONE appended line (`export { withArticle, inventoryRowLabel, buildInventoryActionSummary };`, `diff` `869a870,871`). Regen recipe per recorder: its header — `cp apps/web/oracle/<name>.recorder.ts "$PIN/zz-p4d330-<name>.recorder.ts"`, then `(cd "$PIN" && PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH TZ=UTC npx tsx zz-p4d330-<name>.recorder.ts > …/apps/web/src/testing/fixtures/<name>.oracle.ndjson)` with `rm -f` first; the action-summary recorder needs the two-line export copy beside `components/chat/ToolMessage.tsx` first (its header).
+
+**`workspace-core-fixtures.json` regenerated from the pin** (`cd "$PIN" && npx tsx <lane>/harness/oracle/cases/workspace-core.ts > …/workspace-core-fixtures.json`): only `tabMeta` moved (+4 lines, `inventory` after `wardrobe`); the other six sections JSON-equal per key; sha256 `4226a2a0828f73e4564057f462fbad506fba55cd00ac76b6adead78c63039cdc`; reproduces. **`_meta.baseline` reads `e646f58b`** — a LITERAL in the case file, which never reads git; left as-is (`harness/` is out of scope beyond the regen) — recorded for the unifier. Its only consumer is `workspace-core.spec.ts`; no other oracle depends on it.
+
+### Red-first, per file
+
+- display + refusal oracle specs: compile-RED (modules absent); green 93; mutation (no title trim / no line trim / cap default 0) → 7 red.
+- `tool-message.spec.ts`: 3 red / 34 (the three negative new cases — list, failed, the wardrobe chain — pass pre-port by nature); with the action-summary corpus 96 green; mutation `/^[aeio]/` → 4 red.
+- `realtime-topic-map.spec.ts`: 2 red / 23 → 40 green (with the service spec).
+- `system-message-labels` + `tool-settings`: 2 red / 39 → 72 green.
+- `defaults-tab.spec.ts`: 4 red / 17 → 17.
+- `photos.spec.ts`: 8 red / 26 (the 18 existing green with the stub arm + a TanStack provider) → 26.
+- `workspace-core.spec.ts` after the pin regen on main's table: 1 red / 166 (the tab-meta row) → green.
+- `save-image-dialog.spec.ts`: compile-red (the union) → 27.
+- `participant-card.spec.ts`: 2 red / 29 (the withheld case passes pre-port) → 29.
+- `inventory-browser.spec.ts`: the R-8 Show-shared case KILLED by moving the read after the set (1 red).
+- `inventory-item-editor.spec.ts`: v4's Inherit round trip alone did NOT kill a `buildBody` mutation dropping the inherit filter (v4's case never re-ticks a touched field) — a v5 case (edit the emoji, re-tick Inherit) added and kills it. The editor's R-8 read order cannot be red-proven in signals (`parent()` depends on the item and pool, not the draft); the read-first order is ported regardless.
+- `custom-tool-inventory-lines.spec.ts`: written with the module; a lead-text + empty-filter mutation → 4 red.
+- The data layer, item-browser, glyph / viewer, pane, small dialogs, dialog triple, picker and alert specs were written beside their modules (compile-red alone, not counted per arm); two measured first-run reds fixed in source: Angular's `[class]` sorts tokens (pinned class strings moved to `[attr.class]`), and a `<select [value]>` whose options arrive later loses its selection (`[selected]` per option).
+
+### Recorded divergences and measurements
+
+- **`withArticle` pair (R-6):** the client renders `an unicorn horn` (two corpus rows; live in e2e beat (i)); the server's Pascal line says `a`. Filing candidate (§S.7).
+- **Query-key / realtime mechanism class (R-1 / R-2):** only `['photos', 'albums']` is minted; the Inventory's lists, trees and carried read are signal stores with explicit reloads; the `inventory` topic row answers `[]` and the dialog subscribes directly.
+- **`InventoryTabPayload.projectId` dead at the pin (R-9):** type + binding, no caller.
+- **The spinner (Tier 3 item 29):** Aurora's third select renders `Saving…` text like its siblings.
+- **`CharacterDto.canManageInventory` is OPTIONAL** (`?: boolean | null`, the `canChooseOutfit` precedent) — required would force every CharacterDto fixture.
+- **`InventoryKind` is `'item' | 'kit'`** (v4's schema); the order's text listed `'archetype'`, which v4 carries as `isArchetype`.
+- **`createInventoryItemActions`** takes one `refresh()` (the host's `onSettled` set) rather than the data / folders / chat objects the order named; no `projectId` option (v4's hook has none).
+- **Survey trap 10 FALSIFIED:** the list read omits archived objects unless Show archived (v4 `location.ts:144-146`), so an archived-only folder never lists with them hidden; the pinned case is a folder whose objects are all filtered out → `Nothing matches this filter.`
+- **No picker-only case exists in v4's `workbench-inventory.test.tsx` at the pin** (its eight `it`s are the Workbench sections', P4.D334's); every picker case is v5-authored.
+- **The Prospero card's panel is instantiated while the card is closed** (Angular content projection — the wardrobe card's behaviour); `projects.spec.ts`'s nine `CoreClient` providers gained the realtime stream stub (`withStream`) the panel needs.
+- **No HTTP status in dispatch errors (Tier 3 item 35):** nothing branches on it.
+
+### HANDOFFs (exact lines in `side-session-notes/…/p4d330-handover.md`)
+
+- **P4.D336 / the unifier — `_icons.css`**, directly after the `dice` row: `[data-icon="inventory"] { --_qt-icon-mask: url("/images/icons/inventory.svg"); --_qt-icon-bg: none; }`. Union arithmetic: `ui/icon.ts` reads 86 here; P4.D336's two names make 88.
+- **P4.D334 — `chat/custom-tools-popup.ts`:** import `CustomToolInventoryLines` / `inventoryReferenceLines`; add `|| inventoryLines().length > 0` to the reference panel's `@if`; mount `<qt-custom-tool-inventory-lines [references]="tool.references" />` after the wardrobe lines; a presence case beside the wardrobe one. The `inventoryAggregates` key and sentence (`a53024d3c`) are not this lane's.
+- **P4.D338 / the unifier — R-11's two stand-in types** in `screens/photos/photos.api.ts`: `PhotoGalleryAlbumsRequestStandIn`, `PhotoGalleryListRequestStandIn` (delete, import the fence's).
+- **The unifier — e2e (g):** the shared `e2e/support/mock-llm.ts` answers text only; a live `inventory_pick_up` turn needs a tool-calling arm (beat (g) skips with that reason even once flipped; beat (i) proves the row's rendering meanwhile).
+- **C10 for P4.D334:** `inventory/inventory-reference-picker.ts` (`qt-inventory-reference-picker`, `inventoryPickRule`, `InventoryPickAction` — a local structural twin of C4's `InventoryEffectAction`) and `inventory/inventory-vantage-items.ts` (`InventoryVantageItemsLoader`, `vantageContainer`).
+
+### The gate (final tree)
+
+- `npm run lint` clean (960 `qt-*` classes, every guarded reference resolves); **SPA 556 files / 11,611 passed / 2 skipped** (the icon spec's two file-reading cases); `npm run build` complete.
+- `cargo build --workspace` (debug, `CARGO_INCREMENTAL=0`, after `dist`): **rc 0** (5m 35s).
+- **Playwright, by file, one run at a time:** `inventory-flow.spec.ts` constants `false` → **4 passed / 5 skipped** (58.9 s); constants locally `true` (never committed) → (d) and (e) fail at the first create (the toast never comes — the engine refuses the unknown verb), (f) at the Equip on a server-listed row, (h) at the absent album, (g) skips (the mock) — each at its gate premise. `wardrobe-flow.spec.ts` → **21 passed** (1.3 m) incl. the new beat. Premise fixes found on the way: `support/fixtures` opts every context out of workspace tabs (beat (a) opts its page back in); the CLI cannot write while the server holds the lock (beat (i) plants in `beforeAll`); the cast card needs the Participants drawer (`support/sidebar`).
+- **Binaries:** the debug `quilltap-web` missed `global-setup`'s 30 s health window on the shared fixture once (a fresh debug server starts in ~1 s — measured); main's release `quilltap` / `quilltap-web` (built 2026-10-20 00:43–00:45, after main's last crate commit `7af5f9ebe`, committed 00:41) were restored into the lane's clone by APFS clone — this branch changes no crate, so they are its Rust. A deviation from the order's delete-the-release-bins step, with that evidence.
+
+### 💸 Owed to the next `/dogfood`
+
+The order's list stands (a character given an object through the dialog and carried on a real turn; the in-chat Equip / Unequip / Take up… / Reset with Aurora's lines; a kit with a capped member and the `Done — 1 kit member …` toast; the `CAP_EXCEEDED` sentence in the alert; an archetype instantiated twice then deleted through `Detach all and delete` / `Cancel` — now the labelled alert; Move / Copy across tiers with a `NOT_COPYABLE` refusal; the `TITLE_SHADOW` join; an uploaded and a generated picture (💸 one image call) and Save to a document store; Aurora's Inventory Management → Disabled; `inventory_pick_up` / `inventory_give` on real turns (💸) with the `an` pair recorded live; the `inventory-change` Staff row; the `/photos` album select on a real vault; The Inventory tab and its icon, and the Madman's Box override once P4.D339 lands).
+
+**Versions at close:** SPA `0.5.904`; no crate moved (core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9 — unchanged); `quilltap-harness` frozen.

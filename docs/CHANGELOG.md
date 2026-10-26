@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): the P4.D330 lane record (the Inventory SPA)
+
+_Docs-only change._
+
+The lane record for P4.D330 in `status-log.md` (what landed, the three corpora and the regenerated workspace corpus with their hashes, red-first counts, recorded divergences, the hand-offs to P4.D334 / P4.D336 / P4.D338 and the unifier, the gate, and the dogfood items owed), and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-26 — test(e2e): the Inventory flow on its own instance, and the wardrobe's item-browser regression beat
 
 _Versions: SPA 0.5.904._
