@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The custom-tool library reports what it could not read and which stores it consulted (P4.D328)
+
+_Versions: core 0.0.1335._
+
+The custom-tool library now says where a broken definition stopped loading (the bytes, the JSON or the schema), lists what discovery could not look at — a `Tools/` folder whose listing failed, in v4's own words, or a file gone between the listing and the read — and names every store it consulted. Nothing on the Workbench wire changes; the inventory title lint will read the new lists.
+
 #### 2026-10-26 — Census guards for the Inventory tools' publish sites and handler lines (P4.D328)
 
 _Versions: core 0.0.1334._

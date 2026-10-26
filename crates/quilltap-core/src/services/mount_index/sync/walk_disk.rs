@@ -402,7 +402,7 @@ fn is_valid_utf8(bytes: &[u8]) -> bool {
 
 /// v4 reports `err.message` from a Node `fs` error, which is
 /// `"<code>: <syscall-message>, <syscall> '<path>'"`.
-fn node_error_message(e: &std::io::Error, syscall: &str, path: &Path) -> String {
+pub(crate) fn node_error_message(e: &std::io::Error, syscall: &str, path: &Path) -> String {
     let (code, text) = match e.kind() {
         std::io::ErrorKind::NotFound => ("ENOENT", "no such file or directory"),
         std::io::ErrorKind::PermissionDenied => ("EACCES", "permission denied"),

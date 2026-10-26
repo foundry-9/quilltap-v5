@@ -74,7 +74,51 @@ pub struct CustomToolLoadError {
     pub mount_name: String,
     pub tier: MountTier,
     pub reason: String,
+    // === P4.D328: library reshape ===
+    /// Where loading stopped (v4 `stage?`): the bytes, the JSON, the schema,
+    /// or a same-store name clash.
+    pub stage: Option<CustomToolLoadStage>,
+    // === end P4.D328 ===
 }
+
+// === P4.D328: library reshape ===
+/// v4 `CustomToolLoadError.stage` (`custom-tools.ts:159`, `7263105c6`) — FOUR
+/// arms at the pin. `Duplicate`'s producer (the same-store name clash) is
+/// P4.D332's region; the arm lands here so the type is whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CustomToolLoadStage {
+    Read,
+    Json,
+    Schema,
+    Duplicate,
+}
+
+impl CustomToolLoadStage {
+    /// v4's wire spelling.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CustomToolLoadStage::Read => "read",
+            CustomToolLoadStage::Json => "json",
+            CustomToolLoadStage::Schema => "schema",
+            CustomToolLoadStage::Duplicate => "duplicate",
+        }
+    }
+}
+
+/// Something a mount's discovery could not look at (v4 `CustomToolUnread`):
+/// the `Tools/` listing itself failed, or a file the listing named was gone on
+/// open. The roster skips these quietly (a race, not a defect); a caller that
+/// must know every definition — the inventory title lint (P4.D340) — refuses
+/// on them instead.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CustomToolUnread {
+    pub mount_point_id: String,
+    pub mount_name: String,
+    /// The file, or `Tools/` when the listing failed.
+    pub definition_path: String,
+    pub reason: String,
+}
+// === end P4.D328 ===
 
 /// The resolved roster for one invoker's perspective.
 #[derive(Debug, Clone, Default)]
@@ -159,15 +203,37 @@ pub fn load_definitions(
     mount_name: &str,
     tier: MountTier,
 ) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>) {
+    let (found, errors, _unread) =
+        load_definitions_with_unread(files, mount_point_id, mount_name, tier);
+    (found, errors)
+}
+
+// === P4.D328: library reshape ===
+/// [`load_definitions`] with v4's third list: a file the listing named that was
+/// gone on open (`ToolFileContent::Skip`) is `listed but not found on open`.
+pub fn load_definitions_with_unread(
+    files: &[(String, ToolFileContent)],
+    mount_point_id: &str,
+    mount_name: &str,
+    tier: MountTier,
+) -> (
+    Vec<DiscoveredCustomTool>,
+    Vec<CustomToolLoadError>,
+    Vec<CustomToolUnread>,
+) {
     let mut found = Vec::new();
     let mut errors = Vec::new();
-    let err = |path: &str, reason: String| CustomToolLoadError {
-        definition_path: path.to_string(),
-        mount_point_id: mount_point_id.to_string(),
-        mount_name: mount_name.to_string(),
-        tier,
-        reason,
-    };
+    let mut unread = Vec::new();
+    let err =
+        |path: &str, reason: String, stage: Option<CustomToolLoadStage>| CustomToolLoadError {
+            definition_path: path.to_string(),
+            mount_point_id: mount_point_id.to_string(),
+            mount_name: mount_name.to_string(),
+            tier,
+            reason,
+            stage,
+        };
+    // === end P4.D328 ===
 
     // Same-mount duplicate `name` is a rejection (the spec's rule 5): within one
     // store there is no tier to break the tie, so neither file can be trusted to
@@ -177,9 +243,23 @@ pub fn load_definitions(
     for (relative_path, content) in files {
         let raw = match content {
             ToolFileContent::Content(s) => s,
-            ToolFileContent::Skip => continue,
+            ToolFileContent::Skip => {
+                // === P4.D328: library reshape ===
+                unread.push(CustomToolUnread {
+                    mount_point_id: mount_point_id.to_string(),
+                    mount_name: mount_name.to_string(),
+                    definition_path: relative_path.clone(),
+                    reason: "listed but not found on open".to_string(),
+                });
+                // === end P4.D328 ===
+                continue;
+            }
             ToolFileContent::ReadError(msg) => {
-                errors.push(err(relative_path, format!("could not be read: {msg}")));
+                errors.push(err(
+                    relative_path,
+                    format!("could not be read: {msg}"),
+                    Some(CustomToolLoadStage::Read),
+                ));
                 continue;
             }
         };
@@ -187,7 +267,11 @@ pub fn load_definitions(
         let parsed_json: serde_json::Value = match serde_json::from_str(raw) {
             Ok(v) => v,
             Err(e) => {
-                errors.push(err(relative_path, format!("is not valid JSON: {e}")));
+                errors.push(err(
+                    relative_path,
+                    format!("is not valid JSON: {e}"),
+                    Some(CustomToolLoadStage::Json),
+                ));
                 continue;
             }
         };
@@ -200,7 +284,11 @@ pub fn load_definitions(
         let definition = match safe_parse(&parsed_json) {
             Ok(d) => d,
             Err(issues) => {
-                errors.push(err(relative_path, format_definition_issues(&issues)));
+                errors.push(err(
+                    relative_path,
+                    format_definition_issues(&issues),
+                    Some(CustomToolLoadStage::Schema),
+                ));
                 continue;
             }
         };
@@ -212,6 +300,9 @@ pub fn load_definitions(
                     "defines \"{}\", which {prior_path} in this same store already defines",
                     definition.name
                 ),
+                // P4.D328: v4 stamps `stage: 'duplicate'` (+ `name`) here —
+                // P4.D332's producer (`cfa0cba29`); the arm exists, unset.
+                None,
             ));
             continue;
         }
@@ -226,7 +317,7 @@ pub fn load_definitions(
         });
     }
 
-    (found, errors)
+    (found, errors, unread)
 }
 
 /// Bucket the pool into (tier, mount id) pairs in precedence order.
@@ -418,7 +509,26 @@ pub fn load_tools_from_mount(
     mount_point_id: &str,
     tier: MountTier,
 ) -> (Vec<DiscoveredCustomTool>, Vec<CustomToolLoadError>) {
-    let empty = (Vec::new(), Vec::new());
+    let (found, errors, _unread) = load_tools_from_mount_with_unread(mount, mount_point_id, tier);
+    (found, errors)
+}
+
+// === P4.D328: library reshape ===
+/// [`load_tools_from_mount`] with v4's third list (`loadToolsFromMount`'s
+/// `unread`): a failed `Tools/` listing is ONE entry at `Tools/` (`listing
+/// failed: <message>`), a listed file gone on open is `listed but not found
+/// on open`.
+pub fn load_tools_from_mount_with_unread(
+    mount: &Connection,
+    mount_point_id: &str,
+    tier: MountTier,
+) -> (
+    Vec<DiscoveredCustomTool>,
+    Vec<CustomToolLoadError>,
+    Vec<CustomToolUnread>,
+) {
+    let empty = (Vec::new(), Vec::new(), Vec::new());
+    // === end P4.D328 ===
 
     // The service-info row is the one the canonical reader wants, and it carries
     // everything the listing needs too (`name`/`enabled`/`mountType`/`basePath`),
@@ -435,6 +545,21 @@ pub fn load_tools_from_mount(
     // The listing side is deliberately NOT routed through the mount index for
     // on-disk stores: `Tools/` is enumerated live off the disk, because edits
     // inside a mount don't reliably touch the index.
+    // === P4.D328: library reshape ===
+    // A failed listing is v4's ONE `unread` entry at `Tools/`.
+    let listing_failed = |message: String| {
+        (
+            Vec::new(),
+            Vec::new(),
+            vec![CustomToolUnread {
+                mount_point_id: mount_point_id.to_string(),
+                mount_name: row.name.clone(),
+                definition_path: format!("{TOOLS_FOLDER}/"),
+                reason: format!("listing failed: {message}"),
+            }],
+        )
+    };
+    // === end P4.D328 ===
     let paths: Vec<String> = if row.mount_type == "database" {
         match list_database_files(mount, mount_point_id, Some(TOOLS_FOLDER)) {
             Ok(entries) => entries
@@ -442,7 +567,7 @@ pub fn load_tools_from_mount(
                 .filter(|e| e.kind != "folder" && is_root_tool_file(&e.relative_path))
                 .map(|e| e.relative_path)
                 .collect(),
-            Err(_) => return empty,
+            Err(e) => return listing_failed(crate::db::fallback::error_text(&e)),
         }
     } else {
         // v4 calls `listToolFilesFromDisk(mount.basePath)`; a null basePath makes
@@ -451,8 +576,22 @@ pub fn load_tools_from_mount(
         match row.base_path.as_deref() {
             Some(base) => match list_tool_files_from_disk(base) {
                 Ok(p) => p,
-                Err(_) => return empty,
+                // v4 reports Node's own `fs` message (`EACCES: permission
+                // denied, scandir '<base>/Tools'`).
+                Err(e) => {
+                    return listing_failed(
+                        crate::services::mount_index::sync::walk_disk::node_error_message(
+                            &e,
+                            "scandir",
+                            &std::path::Path::new(base).join(TOOLS_FOLDER),
+                        ),
+                    )
+                }
             },
+            // P4.D328: NOT an `unread` entry. The column is `TEXT`, read `''` →
+            // `None`; v4 joins `''` onto `Tools` (a relative path), whose
+            // `readdir` answers ENOENT → `[]` — an empty mount, no listing
+            // failure.
             None => return empty,
         }
     };
@@ -465,7 +604,7 @@ pub fn load_tools_from_mount(
         })
         .collect();
 
-    load_definitions(&files, mount_point_id, &row.name, tier)
+    load_definitions_with_unread(&files, mount_point_id, &row.name, tier)
 }
 
 /// Read one definition's bytes, whichever kind of store holds it (v4
@@ -549,6 +688,13 @@ fn list_tool_files_from_disk(base_path: &str) -> std::io::Result<Vec<String>> {
 pub struct CustomToolLibrary {
     pub entries: Vec<DiscoveredCustomTool>,
     pub errors: Vec<CustomToolLoadError>,
+    // === P4.D328: library reshape ===
+    /// What discovery could not look at (v4 `unread`, `custom-tools.ts:646`).
+    pub unread: Vec<CustomToolUnread>,
+    /// Every enabled store's NAME, in the mounts' id order (v4
+    /// `storesConsulted`).
+    pub stores_consulted: Vec<String>,
+    // === end P4.D328 ===
 }
 
 /// Enumerate every definition in every enabled store — the Workbench library
@@ -573,9 +719,14 @@ pub fn list_all_custom_tools(mount: &Connection) -> CustomToolLibrary {
 
     let mut library = CustomToolLibrary::default();
     for m in mounts {
-        let (found, errors) = load_tools_from_mount(mount, &m.id, MountTier::Global);
+        // === P4.D328: library reshape ===
+        let (found, errors, unread) =
+            load_tools_from_mount_with_unread(mount, &m.id, MountTier::Global);
         library.entries.extend(found);
         library.errors.extend(errors);
+        library.unread.extend(unread);
+        library.stores_consulted.push(m.name.clone());
+        // === end P4.D328 ===
     }
     library
 }
@@ -716,3 +867,116 @@ mod preset_isolation_tests {
         assert!(is_root_tool_file("Tools/coin_toss.tool.json"));
     }
 }
+
+// === P4.D328: library reshape ===
+#[cfg(test)]
+mod library_reshape_tests {
+    //! The S9 reshape's two new lists and the error stage (v4 `custom-tools.ts`
+    //! `7263105c6`). The Workbench wire does not carry `unread` /
+    //! `storesConsulted` at the pin (their consumer is the inventory title
+    //! lint, P4.D340), so they are pinned here over planted stores.
+
+    use super::*;
+
+    /// v4 `loadToolsFromMount`: a file gone on open is `unread` (never an
+    /// error); every error says where loading stopped.
+    #[test]
+    fn a_vanished_file_is_unread_and_each_error_carries_its_stage() {
+        let files = vec![
+            ("Tools/gone.tool.json".to_string(), ToolFileContent::Skip),
+            (
+                "Tools/locked.tool.json".to_string(),
+                ToolFileContent::ReadError("EACCES".into()),
+            ),
+            (
+                "Tools/torn.tool.json".to_string(),
+                ToolFileContent::Content("{".into()),
+            ),
+            (
+                "Tools/empty.tool.json".to_string(),
+                ToolFileContent::Content("{}".into()),
+            ),
+        ];
+        let (found, errors, unread) =
+            load_definitions_with_unread(&files, "mp-1", "Store", MountTier::Global);
+        assert!(found.is_empty());
+        assert_eq!(
+            unread,
+            vec![CustomToolUnread {
+                mount_point_id: "mp-1".into(),
+                mount_name: "Store".into(),
+                definition_path: "Tools/gone.tool.json".into(),
+                reason: "listed but not found on open".into(),
+            }]
+        );
+        let stages: Vec<(&str, Option<&str>)> = errors
+            .iter()
+            .map(|e| {
+                (
+                    e.definition_path.as_str(),
+                    e.stage.map(CustomToolLoadStage::as_str),
+                )
+            })
+            .collect();
+        assert_eq!(
+            stages,
+            vec![
+                ("Tools/locked.tool.json", Some("read")),
+                ("Tools/torn.tool.json", Some("json")),
+                ("Tools/empty.tool.json", Some("schema")),
+            ]
+        );
+        // The two-list entry point drops `unread` and nothing else.
+        let (found2, errors2) = load_definitions(&files, "mp-1", "Store", MountTier::Global);
+        assert_eq!((found2.len(), errors2), (0, errors));
+    }
+
+    /// v4 `listAllCustomTools`: every enabled store's NAME in the mounts' id
+    /// order, and a `Tools/` listing that fails is ONE `unread` entry at
+    /// `Tools/` with Node's own `fs` message — the store still consulted.
+    #[cfg(unix)]
+    #[test]
+    fn the_library_names_every_store_and_a_failed_listing() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let locked = dir.path().join("Tools");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let base = dir.path().to_string_lossy().into_owned();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE doc_mount_points (
+               id TEXT PRIMARY KEY, name TEXT, enabled INTEGER, mountType TEXT,
+               basePath TEXT, excludePatterns TEXT, includePatterns TEXT,
+               conversionStatus TEXT);",
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO doc_mount_points VALUES
+               ('mp-b', 'Beta', 1, 'filesystem', ?1, '[]', '[]', 'idle'),
+               ('mp-a', 'Alpha', 1, 'filesystem', '', '[]', '[]', 'idle'),
+               ('mp-c', 'Off', 0, 'filesystem', ?1, '[]', '[]', 'idle')",
+            [&base],
+        )
+        .unwrap();
+        let library = list_all_custom_tools(&conn);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(library.stores_consulted, vec!["Alpha", "Beta"]);
+        assert!(library.entries.is_empty() && library.errors.is_empty());
+        // Alpha's empty base path is an empty mount (v4's relative `Tools`
+        // answers ENOENT → `[]`), never an `unread` entry.
+        assert_eq!(
+            library.unread,
+            vec![CustomToolUnread {
+                mount_point_id: "mp-b".into(),
+                mount_name: "Beta".into(),
+                definition_path: "Tools/".into(),
+                reason: format!(
+                    "listing failed: EACCES: permission denied, scandir '{}'",
+                    locked.display()
+                ),
+            }]
+        );
+    }
+}
+// === end P4.D328 ===
