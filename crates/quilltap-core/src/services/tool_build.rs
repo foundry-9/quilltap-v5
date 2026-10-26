@@ -265,6 +265,10 @@ pub struct BuildToolsForProviderOptions {
     /// nothing to run, worse than not offering it. The description is composed
     /// per call from exactly this roster (v4 `plugin-tool-builder.ts:413`).
     pub custom_tools: Vec<DiscoveredCustomTool>,
+    /// v4 `editCustomTool` (`streaming.service.ts:319-321`): the editor rides on
+    /// the same switch as the roster, not on the roster's contents — an empty
+    /// table is exactly when a first tool needs writing.
+    pub edit_custom_tool: bool,
 }
 
 fn push_key(tools: &mut Vec<UniversalTool>, key: &str) {
@@ -468,6 +472,14 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         }
     }
 
+    // `edit_custom_tool` follows `run_custom` (v4 `plugin-tool-builder.ts:480-482`;
+    // the canonicalisation below sorts the slate by name, so push order is moot).
+    // It is offered on the roster SWITCH, so an EMPTY roster offers it where
+    // `run_custom` is withheld.
+    if options.edit_custom_tool {
+        push_key(&mut universal, "editCustomTool");
+    }
+
     // Plugin tools (deferred; a no-plugin instance appends nothing). v4 filters
     // `toolRegistry.getConfiguredToolDefinitions(toolConfigs)` by
     // `pluginToolAllowlist` right here (`allowlist ? filter(name ∈ set) : all`,
@@ -619,6 +631,7 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
     // the whole turn down) leaves `run_custom` unbuilt. Deliberately NOT cached:
     // a `.tool.json` edited mid-chat is live on the next call (v4
     // `streaming.service.ts:240`).
+    let edit_custom_tool = input.custom_tool_context.is_some();
     let custom_tools = match &input.custom_tool_context {
         Some(ctx) => db
             .read_main(|main| {
@@ -684,6 +697,7 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         exclude_memory_search: input.exclude_memory_search,
         sql_access: input.sql_access,
         custom_tools,
+        edit_custom_tool,
     };
     let mut tools = build_tools_for_provider(&options);
 

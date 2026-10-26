@@ -8,6 +8,7 @@ pub mod ask_carina;
 pub mod definitions;
 pub mod discard_mail;
 pub mod doc_edit;
+pub mod edit_custom_tool;
 pub mod executor;
 pub mod generate_image;
 pub mod help;

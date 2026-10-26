@@ -53,6 +53,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::pascal::roster::RosterContext;
 use quilltap_core::services::tool_build::{
     self, build_tools, BuildToolsExtras, BuildToolsInput, DocToolsMode, ImageProviderConstraints,
 };
@@ -133,6 +134,11 @@ struct CaseW {
     exclude_memory_search: bool,
     #[serde(default)]
     sql_access: bool,
+    /// P4.D332 (v4 `ea2cb60ab`): a non-null `customToolContext` — the roster
+    /// SWITCH. The fixture instance has no custom tools, so `run_custom` stays
+    /// withheld and `edit_custom_tool` rides the switch alone.
+    #[serde(default)]
+    custom_tool_context: bool,
     #[serde(default = "default_true")]
     model_supports_native_tools: bool,
     #[serde(default)]
@@ -202,7 +208,18 @@ fn tool_build_matches_oracle() {
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
-        let row: OracleRow = serde_json::from_str(line).expect("oracle row parses");
+        let mut row: OracleRow = serde_json::from_str(line).expect("oracle row parses");
+        // P4.D332 carve — lifted at §S.5 (3)/(15): at `322a5488e` the Log's three
+        // tools ride every workspace slate (P4.D331 ports them). Removed from the
+        // ORACLE side BY NAME; the order of everything else is compared RAW.
+        if let Some(tools) = row.tools.as_array_mut() {
+            tools.retain(|t| {
+                !matches!(
+                    t["function"]["name"].as_str().or(t["name"].as_str()),
+                    Some("log_create_entry" | "log_grep" | "log_read")
+                )
+            });
+        }
         want.insert(row.name.clone(), row);
     }
 
@@ -272,8 +289,13 @@ fn tool_build_matches_oracle() {
                 sql_access: c.sql_access,
                 model_supports_native_tools: c.model_supports_native_tools,
                 provider_supports_web_search: c.provider_supports_web_search,
-                // The tool-build corpus has no Pascal roster; no run_custom.
-                custom_tool_context: None,
+                // The tool-build corpus has no Pascal roster, so no run_custom;
+                // a case may still flip the SWITCH (`edit_custom_tool`, P4.D332).
+                custom_tool_context: c.custom_tool_context.then(|| RosterContext {
+                    user_id: spec.user_id.clone(),
+                    chat_id: "chat-tb".to_string(),
+                    ..Default::default()
+                }),
             },
         )
         .expect("build_tools");
@@ -331,15 +353,7 @@ fn tool_build_matches_oracle() {
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle row missing for {}", c.name));
 
-        let want_tools = without_sibling_tools(&want_row.tools);
-        let (got_tools, want_tools) = match carve_sibling_bytes(&got_tools, &want_tools) {
-            Ok(pair) => pair,
-            Err(stale) => {
-                failures.push(format!("case {}: {stale}", c.name));
-                (got_tools, want_tools)
-            }
-        };
-        if got_tools != want_tools {
+        if got_tools != want_row.tools {
             let g = tool_names(&got_tools);
             let w = tool_names(&want_tools);
             failures.push(format!(

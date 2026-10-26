@@ -150,6 +150,65 @@ pub fn json_stringify(v: &Value) -> String {
     }
 }
 
+/// JS `JSON.stringify(value, null, 2)` — the pretty twin of [`json_stringify`].
+///
+/// Two-space indent, `\n` between members, `"key": value`, and an EMPTY object
+/// or array rendered `{}` / `[]` with no inner newline (V8's `SerializeJSON*`
+/// bails out before indenting when there is nothing to list).
+/// `serde_json::to_string_pretty` is not a stand-in: it agrees on `[]` / `{}`
+/// by luck and formats floats its own way. Own-property order is JS's: integer
+/// keys (`"0"`, `"7"`, canonical array indices) ascend FIRST, every other key
+/// keeps insertion order — a JSON-parsed object that reached the model with
+/// `{"b":1,"2":2,"1":3}` serialises as `1, 2, b`.
+pub fn json_stringify_pretty(v: &Value) -> String {
+    pretty_at(v, 0)
+}
+
+fn pretty_at(v: &Value, depth: usize) -> String {
+    match v {
+        Value::Array(a) if a.is_empty() => "[]".into(),
+        Value::Array(a) => {
+            let inner = "  ".repeat(depth + 1);
+            let outer = "  ".repeat(depth);
+            let parts: Vec<String> = a
+                .iter()
+                .map(|x| format!("{inner}{}", pretty_at(x, depth + 1)))
+                .collect();
+            format!("[\n{}\n{outer}]", parts.join(",\n"))
+        }
+        Value::Object(o) if o.is_empty() => "{}".into(),
+        Value::Object(o) => {
+            let inner = "  ".repeat(depth + 1);
+            let outer = "  ".repeat(depth);
+            let mut entries: Vec<(&String, &Value)> = o.iter().collect();
+            // Stable: indices ascend, everything else keeps insertion order.
+            let index_of = |k: &str| -> Option<u32> {
+                let canonical = k == "0" || (!k.starts_with('0') && !k.is_empty());
+                if !canonical || !k.bytes().all(|b| b.is_ascii_digit()) {
+                    return None;
+                }
+                k.parse::<u32>().ok().filter(|n| *n != u32::MAX)
+            };
+            let (mut indexed, rest): (Vec<_>, Vec<_>) =
+                entries.drain(..).partition(|(k, _)| index_of(k).is_some());
+            indexed.sort_by_key(|(k, _)| index_of(k));
+            let parts: Vec<String> = indexed
+                .into_iter()
+                .chain(rest)
+                .map(|(k, val)| {
+                    format!(
+                        "{inner}{}: {}",
+                        Value::String(k.clone()),
+                        pretty_at(val, depth + 1)
+                    )
+                })
+                .collect();
+            format!("{{\n{}\n{outer}}}", parts.join(",\n"))
+        }
+        scalar => json_stringify(scalar),
+    }
+}
+
 /// JS `String(number)` — ECMA-262 `Number::toString`.
 ///
 /// Rust's `{:e}` already produces the same shortest round-tripping digits V8
@@ -316,6 +375,44 @@ fn round_scaled_signed(a: f64, f: i32) -> u128 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn json_stringify_pretty_matches_js_two_space_indent() {
+        let v: Value = serde_json::from_str(
+            r#"{"a":[],"b":{},"c":[1,2.5,1e21,-0.25],"d":{"e":[{"f":null}]},"s":"x\ny"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            json_stringify_pretty(&v),
+            "{\n  \"a\": [],\n  \"b\": {},\n  \"c\": [\n    1,\n    2.5,\n    1e+21,\n    -0.25\n  ],\n  \"d\": {\n    \"e\": [\n      {\n        \"f\": null\n      }\n    ]\n  },\n  \"s\": \"x\\ny\"\n}"
+        );
+        assert_eq!(json_stringify_pretty(&json!([])), "[]");
+        assert_eq!(json_stringify_pretty(&json!({})), "{}");
+        assert_eq!(json_stringify_pretty(&json!("t")), "\"t\"");
+    }
+
+    /// What `serde_json::to_string_pretty` would get wrong from text a MODEL
+    /// sent (v4 `JSON.parse`s the arguments first, so `1.0` is already `1`): the
+    /// oracle's NDJSON cannot carry these spellings (JS writes `1`, `1e+21`), so
+    /// the twin is pinned here against raw text instead.
+    #[test]
+    fn json_stringify_pretty_renders_numbers_as_js_does_from_raw_text() {
+        let v: Value = serde_json::from_str(r#"{"n":[1.0,1e21,2.50,1E2,-0,0.1,1e-7]}"#).unwrap();
+        assert_eq!(
+            json_stringify_pretty(&v),
+            "{\n  \"n\": [\n    1,\n    1e+21,\n    2.5,\n    100,\n    0,\n    0.1,\n    1e-7\n  ]\n}"
+        );
+    }
+
+    #[test]
+    fn json_stringify_pretty_orders_integer_keys_first_like_js() {
+        let v: Value = serde_json::from_str(r#"{"b":1,"2":2,"a":3,"1":4,"01":5}"#).unwrap();
+        assert_eq!(
+            json_stringify_pretty(&v),
+            "{\n  \"1\": 4,\n  \"2\": 2,\n  \"b\": 1,\n  \"a\": 3,\n  \"01\": 5\n}"
+        );
+    }
 
     #[test]
     fn number_to_string_matches_js_at_the_thresholds() {

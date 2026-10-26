@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(tools): `edit_custom_tool` — a character saves, checks or fetches the format of a custom-tool definition (v4 `ea2cb60ab` + `c56fe278c`)
+
+_Versions: core 0.0.1325._
+
+A new built-in tool through which a model writes Pascal's custom tools. With `content` it schema-validates the definition (the same judgement discovery applies at load time), refuses a name another file in the same store already defines, and writes through `doc_write_file`'s own handler — so store access, the per-document write policy, the Librarian's announcement and the reindex are exactly a document write's. Without `content` it validates the file as it stands and writes nothing. With `action: "schema"` it touches no store and returns the vendored JSON Schema and the two worked specimens. The tool is offered whenever custom tools are switched on for the chat, even when the roster is empty (an empty table is exactly when a first tool needs writing); it is a Pascal-category tool in the Tools listing (`run_custom` moves there too), has a catalog entry (the 64th), and a new pretty-printing JSON twin reproduces JavaScript's two-space `JSON.stringify` (empty containers, number spellings, integer keys first). A new differential family drives v4's real handler and doc layer over the committed Pascal fixture pair across 32 handler rows plus the pure path, input and format tables, with every log line pinned alongside its silence leg. Sibling-owned bytes in the regenerated oracles (the Inventory and Log tools, three descriptions, five vocabulary keys) are carved by name and lifted when the union lands.
+
 #### 2026-10-26 — feat(pascal): a character's vault tools are that character's alone — the `participant` tier retires from the custom-tool roster (v4 `cfa0cba29`), plus the shared definition validator and the vendored definition format
 
 _Versions: core 0.0.1324._

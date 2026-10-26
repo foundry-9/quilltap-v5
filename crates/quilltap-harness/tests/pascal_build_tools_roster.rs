@@ -70,6 +70,11 @@ impl std::ops::Deref for ScratchDb {
 }
 
 fn open() -> ScratchDb {
+    open_planted(&[])
+}
+
+/// [`open`] with SQL planted on the mount-index copy before it opens.
+fn open_planted(plant: &[&str]) -> ScratchDb {
     let scratch = tempfile::Builder::new()
         .prefix("qt-pascal-bt-")
         .tempdir()
@@ -78,6 +83,13 @@ fn open() -> ScratchDb {
     let mount = scratch.path().join("mount.db");
     std::fs::copy(fixtures_dir().join("pascal-run-custom-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("pascal-run-custom-mount.db"), &mount).unwrap();
+    if !plant.is_empty() {
+        let writer = quilltap_core::db::Writer::open_writable(&mount, PEPPER)
+            .expect("open the mount copy for the plant");
+        for sql in plant {
+            writer.connection().execute_batch(sql).expect("plant");
+        }
+    }
     let db = Db::open(
         DbPaths {
             main,
@@ -303,4 +315,57 @@ fn build_tools_resolves_and_offers_run_custom() {
         .all(|t| tool_name(t) != Some("run_custom")));
 
     eprintln!("OK: build_tools resolves the roster and offers run_custom.");
+}
+
+/// v4 `ea2cb60ab` (`streaming.service.ts:319-321`): `edit_custom_tool` rides the
+/// roster SWITCH, not its contents — "an empty table is exactly when a first
+/// tool needs writing". A context whose stores hold NO definition at all offers
+/// the editor and withholds `run_custom`; no context (the setting off) offers
+/// neither.
+#[test]
+fn an_empty_roster_still_offers_the_editor() {
+    let meta: Meta = serde_json::from_str(
+        &std::fs::read_to_string(fixtures_dir().join("pascal-run-custom-main.db.meta.json"))
+            .unwrap(),
+    )
+    .unwrap();
+    let db = open_planted(&[
+        r#"DELETE FROM "doc_mount_file_links" WHERE "relativePath" LIKE 'Tools/%'"#,
+    ]);
+    let ctx = RosterContext {
+        user_id: USER.into(),
+        chat_id: CHAT.into(),
+        character_id: Some(CHAR_A.into()),
+        character_mount_point_id: Some(meta.vault_a.clone()),
+        project_id: None,
+        metadata: None,
+    };
+    let built = build_tools(&db, USER, &base_input(Some(ctx))).unwrap();
+    let names: Vec<&str> = built.tools.iter().filter_map(|t| tool_name(t)).collect();
+    assert!(
+        names.contains(&"edit_custom_tool"),
+        "the editor is offered: {names:?}"
+    );
+    assert!(!names.contains(&"run_custom"), "nothing to run: {names:?}");
+
+    let off = build_tools(&db, USER, &base_input(None)).unwrap();
+    let off_names: Vec<&str> = off.tools.iter().filter_map(|t| tool_name(t)).collect();
+    assert!(
+        !off_names.contains(&"edit_custom_tool") && !off_names.contains(&"run_custom"),
+        "the setting off offers neither: {off_names:?}"
+    );
+
+    // A roster with tools offers both.
+    let db_full = open();
+    let ctx_a = RosterContext {
+        user_id: USER.into(),
+        chat_id: CHAT.into(),
+        character_id: Some(CHAR_A.into()),
+        character_mount_point_id: Some(meta.vault_a.clone()),
+        project_id: None,
+        metadata: None,
+    };
+    let full = build_tools(&db_full, USER, &base_input(Some(ctx_a))).unwrap();
+    let full_names: Vec<&str> = full.tools.iter().filter_map(|t| tool_name(t)).collect();
+    assert!(full_names.contains(&"edit_custom_tool") && full_names.contains(&"run_custom"));
 }

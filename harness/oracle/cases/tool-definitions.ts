@@ -75,6 +75,7 @@ import { logReadToolDefinition } from '@/lib/tools/log-read-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
+import { editCustomToolToolDefinition } from '@/lib/tools/edit-custom-tool-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
 import {
   searchScriptoriumToolDefinition,
@@ -160,6 +161,7 @@ const ALL_TOOLS: Record<string, { type: string; function: { name: string; descri
   requestFullContext: requestFullContextToolDefinition,
   rng: rngToolDefinition,
   runCustom: runCustomToolDefinition,
+  editCustomTool: editCustomToolToolDefinition,
   runSql: runSqlToolDefinition,
   searchScriptorium: searchScriptoriumToolDefinition,
   searchScriptoriumBrahma: searchScriptoriumBrahmaToolDefinition,

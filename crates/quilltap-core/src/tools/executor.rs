@@ -65,10 +65,10 @@ use super::wardrobe_tool_table::{
     WARDROBE_TOOL_NAMES,
 };
 use super::{
-    annotations, ask_carina, discard_mail, doc_edit, help, help_search, list_mail,
-    log_create_entry, log_grep, log_read, photo, project_info, read_conversation, read_mail,
-    request_full_context, rng, run_custom, run_sql, search, self_inventory, send_mail, state,
-    terminal, web_search, whisper,
+    annotations, ask_carina, discard_mail, doc_edit, edit_custom_tool, help, help_search,
+    list_mail, log_create_entry, log_grep, log_read, photo, project_info, read_conversation,
+    read_mail, request_full_context, rng, run_custom, run_sql, search, self_inventory, send_mail,
+    state, terminal, web_search, whisper,
 };
 use crate::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
 use crate::db::runtime::Db;
@@ -106,6 +106,8 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "help_navigate",
     "rng",
     "run_custom",
+    // v4 `ea2cb60ab`: saves or checks a custom-tool definition (P4.D332).
+    "edit_custom_tool",
     "state",
     "self_inventory",
     "submit_final_response",
@@ -188,6 +190,8 @@ pub const PORTED_TOOLS: &[&str] = &[
     // P4.6ay: Pascal's user-authored pseudo-tools. Dispatches to the run_custom
     // handler (resolves the roster, rolls server-side, posts Pascal's bubble).
     "run_custom",
+    // P4.D332: `edit_custom_tool`, after `run_custom` as v4's `BUILT_IN_TOOLS`.
+    "edit_custom_tool",
     "read_conversation",
     "upsert_annotation",
     "delete_annotation",
@@ -631,6 +635,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         Some(match tc.name.as_str() {
             "rng" => self.run_rng(tc, ctx).await,
             "run_custom" => self.run_run_custom(tc, ctx).await,
+            "edit_custom_tool" => self.run_edit_custom_tool(tc, ctx).await,
             "read_conversation" => self.run_read_conversation(tc, ctx).await,
             "upsert_annotation" => self.run_upsert_annotation(tc, ctx).await,
             "delete_annotation" => self.run_delete_annotation(tc, ctx).await,
@@ -2009,38 +2014,122 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             .unwrap_or_else(|e| (fail(&tc.name, e.to_string()), None));
 
         // Post the Librarian announcement after the closure (best-effort — a failed
-        // announcement never fails the tool; v4 catches + logs). Dispatch by kind to
-        // the matching async poster (the sync `_conn` siblings serve the differential).
+        // announcement never fails the tool; v4 catches + logs).
         if let Some(pending) = pending {
-            use crate::services::librarian_notifications as ln;
-            match pending {
-                PendingLibrarianAnnouncement::Write(a) => {
-                    ln::post_librarian_write_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::Move(a) => {
-                    ln::post_librarian_move_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::Copy(a) => {
-                    ln::post_librarian_copy_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::Delete(a) => {
-                    ln::post_librarian_delete_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::FolderCreated(a) => {
-                    ln::post_librarian_folder_created_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::FolderDeleted(a) => {
-                    ln::post_librarian_folder_deleted_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::Open(a) => {
-                    ln::post_librarian_open_announcement(&self.db, &a).await;
-                }
-                PendingLibrarianAnnouncement::BlobWrite(a) => {
-                    ln::post_librarian_blob_write_announcement(&self.db, &a).await;
-                }
-            }
+            self.post_librarian_announcement(pending).await;
         }
         tool_result
+    }
+
+    /// Post a doc-edit write's Librarian announcement after its writer closure
+    /// returned, dispatching by kind to the matching async poster (the sync
+    /// `_conn` siblings serve the differential). Best-effort.
+    async fn post_librarian_announcement(&self, pending: PendingLibrarianAnnouncement) {
+        use crate::services::librarian_notifications as ln;
+        match pending {
+            PendingLibrarianAnnouncement::Write(a) => {
+                ln::post_librarian_write_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::Move(a) => {
+                ln::post_librarian_move_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::Copy(a) => {
+                ln::post_librarian_copy_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::Delete(a) => {
+                ln::post_librarian_delete_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::FolderCreated(a) => {
+                ln::post_librarian_folder_created_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::FolderDeleted(a) => {
+                ln::post_librarian_folder_deleted_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::Open(a) => {
+                ln::post_librarian_open_announcement(&self.db, &a).await;
+            }
+            PendingLibrarianAnnouncement::BlobWrite(a) => {
+                ln::post_librarian_blob_write_announcement(&self.db, &a).await;
+            }
+        }
+    }
+
+    /// `edit_custom_tool`'s handler half (v4 `executeEditCustomTool`): saves or
+    /// checks one of Pascal's definitions through `doc_write_file`'s own handler
+    /// inside the writer closure, then posts the Librarian's announcement the
+    /// save asked for. Public so the differential can compare the handler's
+    /// output object itself (the tool result drops `path` on a failure).
+    pub async fn edit_custom_tool_output(
+        &self,
+        args: &Value,
+        doc_ctx: DocEditToolContext,
+    ) -> edit_custom_tool::EditCustomToolOutput {
+        let args = args.clone();
+        let db = self.db.clone();
+        let done = db
+            .write(move |writers| {
+                let Some(mount_w) = writers.mount_index() else {
+                    return Ok(None);
+                };
+                let mount = mount_w.connection();
+                let main = writers.main().connection();
+                Ok(Some(edit_custom_tool::execute_edit_custom_tool(
+                    main, mount, &args, &doc_ctx,
+                )))
+            })
+            .await;
+        let (out, pending) = match done {
+            Ok(Some(done)) => done,
+            Ok(None) => {
+                return edit_custom_tool::failure(
+                    "doc-edit tools require the mount-index database",
+                    None,
+                )
+            }
+            Err(e) => return edit_custom_tool::failure(e.to_string(), None),
+        };
+        if let Some(pending) = pending {
+            self.post_librarian_announcement(pending).await;
+        }
+        out
+    }
+
+    /// `edit_custom_tool` (v4 `tool-executor.ts:670-700`): the handler's output
+    /// shaped into the tool result.
+    async fn run_edit_custom_tool(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let out = self
+            .edit_custom_tool_output(&tc.arguments, self.doc_context(ctx))
+            .await;
+
+        if out.success {
+            // v4's `result` literal, in key order; `undefined` members vanish.
+            let mut result = Map::new();
+            result.insert(
+                "formattedText".into(),
+                json!(edit_custom_tool::format_edit_custom_tool_results(&out)),
+            );
+            if let Some(action) = out.action {
+                result.insert("action".into(), json!(action));
+            }
+            if let Some(path) = out.path {
+                result.insert("path".into(), json!(path));
+            }
+            if let Some(uri) = out.uri {
+                result.insert("uri".into(), json!(uri));
+            }
+            if let Some(name) = out.name {
+                result.insert("name".into(), json!(name));
+            }
+            if let Some(schema) = out.schema {
+                result.insert("schema".into(), schema);
+            }
+            if let Some(examples) = out.examples {
+                result.insert("examples".into(), json!(examples));
+            }
+            ok("edit_custom_tool", Value::Object(result))
+        } else {
+            fail("edit_custom_tool", out.error.unwrap_or_default())
+        }
     }
 
     /// Snapshot the ctx fields a wardrobe handler needs (owned, so they can move

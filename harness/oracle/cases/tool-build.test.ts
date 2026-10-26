@@ -109,6 +109,11 @@ interface RawCase {
   includeWorkspaceTools?: boolean;
   excludeMemorySearch?: boolean;
   sqlAccess?: boolean;
+  /** P4.D332 (v4 `ea2cb60ab`): a non-null `customToolContext` — the roster SWITCH.
+   * The jest env has no repositories, so the roster resolve fails soft to "no
+   * tools": `run_custom` stays withheld while `edit_custom_tool` (which rides
+   * the switch, not the roster's contents) is offered. */
+  customToolContext?: boolean;
   modelSupportsNativeTools?: boolean;
   providerSupportsWebSearch?: boolean;
   chatType?: string;
@@ -179,7 +184,8 @@ test('tool-build oracle', async () => {
       c.includeWorkspaceTools ?? true,
       c.excludeMemorySearch ?? false,
       c.sqlAccess ?? false,
-      null, // customToolContext — the corpus has no Pascal roster
+      // customToolContext — the corpus has no Pascal roster; a case may flip the switch.
+      c.customToolContext ? { userId: spec.userId, chatId: 'chat-tb' } : null,
       ...((c.extras ? [c.extras] : []) as never[])
     );
 

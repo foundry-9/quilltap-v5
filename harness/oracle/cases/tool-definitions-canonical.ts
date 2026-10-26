@@ -72,6 +72,7 @@ import { logReadToolDefinition } from '@/lib/tools/log-read-tool';
 import { requestFullContextToolDefinition } from '@/lib/tools/request-full-context-tool';
 import { rngToolDefinition } from '@/lib/tools/rng-tool';
 import { runCustomToolDefinition } from '@/lib/tools/run-custom-tool';
+import { editCustomToolToolDefinition } from '@/lib/tools/edit-custom-tool-tool';
 import { runSqlToolDefinition } from '@/lib/tools/run-sql-tool';
 import {
   searchScriptoriumToolDefinition,
@@ -157,6 +158,7 @@ const ALL: UniversalTool[] = [
   requestFullContextToolDefinition,
   rngToolDefinition,
   runCustomToolDefinition,
+  editCustomToolToolDefinition,
   runSqlToolDefinition,
   searchScriptoriumToolDefinition,
   searchScriptoriumBrahmaToolDefinition,

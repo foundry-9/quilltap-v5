@@ -59,7 +59,8 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "help_settings", name: "Help Settings", description: "Read instance settings to understand current configuration (API keys are never shown)", category: "help" },
     BuiltInTool { id: "help_navigate", name: "Help Navigate", description: "Navigate the user's browser to a specific Quilltap page or settings section", category: "help" },
     BuiltInTool { id: "rng", name: "Random Number Generator", description: "Roll dice, flip coins, or randomly select a chat participant (spin the bottle)", category: "utility" },
-    BuiltInTool { id: "run_custom", name: "Custom Tools", description: "Run one of this scene's user-authored custom tools (Tools/*.tool.json) — Pascal rolls it server-side and announces the outcome. Only offered when the chat can actually see at least one valid definition.", category: "utility" },
+    BuiltInTool { id: "run_custom", name: "Custom Tools", description: "Run one of this scene's user-authored custom tools (Tools/*.tool.json) — Pascal rolls it server-side and announces the outcome. Only offered when the chat can actually see at least one valid definition.", category: "pascal" },
+    BuiltInTool { id: "edit_custom_tool", name: "Edit Custom Tool", description: "Save or validate a custom tool definition (Tools/<name>.tool.json at the top level of a document store), or fetch the definition format (JSON Schema and worked examples) to write one from scratch. Every save is schema-validated first, and an invalid definition is not written.", category: "pascal" },
     BuiltInTool { id: "state", name: "State Manager", description: "Get, set, or delete persistent key-value state for the chat", category: "utility" },
     // P4.D331: the Log — between `state` and `self_inventory` (v4
     // `app/api/v1/tools/route.ts:244-264`).
@@ -126,6 +127,7 @@ const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("help_navigate", "helpNavigate"),
     ("rng", "rng"),
     ("run_custom", "runCustom"),
+    ("edit_custom_tool", "editCustomTool"),
     ("state", "state"),
     ("log_create_entry", "logCreateEntry"),
     ("log_grep", "logGrep"),
