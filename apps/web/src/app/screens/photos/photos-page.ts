@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
+import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
 import { copyImageToClipboard } from '../../core/clipboard-utils';
@@ -19,8 +20,13 @@ import { Icon } from '../../ui/icon';
 import { ToastService } from '../../ui/toast.service';
 import { onTabActivated } from '../../workspace/workspace-contract';
 import {
+  ALBUM_GROUP_LABELS,
   GalleryEntry,
+  MY_PHOTOS,
   PAGE_SIZE,
+  albumGroupsOf,
+  fetchAlbums,
+  photoAlbumsKey,
   cardCaption,
   cardLinkerLabel,
   detailCaption,
@@ -31,10 +37,13 @@ import {
 } from './photos.api';
 
 /**
- * The "My Photos" screen at `/photos` (v4 `app/photos/PhotosView.tsx`) — a
- * deduped roll-up of every `photos/` folder across the instance. The same image
- * hard-linked into several albums collapses to ONE card carrying a "linked in N
- * places" badge, which the detail modal expands into the full linker list.
+ * The "My Photos" screen at `/photos` (v4 `app/photos/PhotosView.tsx`) — by
+ * default a deduped roll-up of every `photos/` folder outside the character
+ * vaults; the album selector (v4 `680b71044`, P4.D330) narrows it to any one
+ * store's album instead — a character's vault, a project store, any document
+ * store. The same image hard-linked into several albums collapses to ONE card
+ * carrying a "linked in N places" badge, which the detail modal expands into
+ * the full linker list.
  *
  * ## The two staleness guards, both ported deliberately
  *
@@ -77,11 +86,27 @@ import {
         class="flex flex-wrap items-end justify-between gap-6 border-b qt-border-default/60 pb-6"
       >
         <div class="max-w-2xl space-y-2">
-          <h1 class="qt-page-title">My Photos</h1>
-          <p class="qt-text-small">
-            Every image you&rsquo;ve kept, gathered from each character&rsquo;s vault, each project
-            album, and your private uploads &mdash; listed once and linked to wherever it lives.
-          </p>
+          <h1 class="qt-page-title">{{ pageTitle() }}</h1>
+          <p class="qt-text-small">{{ pageBlurb() }}</p>
+          <!-- v4 \`680b71044\` (:276-299): the album selector. -->
+          <label class="flex flex-wrap items-center gap-2 pt-1 text-sm">
+            <span class="qt-text-muted">Album</span>
+            <select
+              class="qt-select w-auto min-w-[14rem]"
+              aria-label="Choose which album to show"
+              [value]="albumId()"
+              (change)="onAlbumChange($any($event.target).value)"
+            >
+              <option [value]="MY_PHOTOS">My Photos</option>
+              @for (group of albumGroups(); track group[0]) {
+                <optgroup [label]="groupLabels[group[0]]">
+                  @for (option of group[1]; track option.mountPointId) {
+                    <option [value]="option.mountPointId">{{ option.name }}</option>
+                  }
+                </optgroup>
+              }
+            </select>
+          </label>
           <p class="qt-text-muted text-xs uppercase tracking-wide">{{ counterLabel() }}</p>
         </div>
         <a routerLink="/salon" class="qt-link text-sm whitespace-nowrap">&larr; Back to the Salon</a>
@@ -353,6 +378,36 @@ export class PhotosPage implements OnDestroy {
   private readonly toasts = inject(ToastService);
 
   protected readonly PAGE_SIZE = PAGE_SIZE;
+  protected readonly MY_PHOTOS = MY_PHOTOS;
+  protected readonly groupLabels = ALBUM_GROUP_LABELS;
+  /** v4 `680b71044` `albumId` — `''` (= MY_PHOTOS) is the roll-up. */
+  protected readonly albumId = signal<string>(MY_PHOTOS);
+  /** v4's `useQuery({ queryKey: queryKeys.photos.albums() })` (`:114-117`). */
+  protected readonly albumsQuery = injectQuery(() => ({
+    queryKey: photoAlbumsKey(),
+    queryFn: () => fetchAlbums(this.core),
+  }));
+  protected readonly albums = computed(() => this.albumsQuery.data()?.albums ?? []);
+  /** v4 `:119-122` — the selected album, or null for My Photos. */
+  protected readonly album = computed(() => {
+    const id = this.albumId();
+    return id ? (this.albums().find((a) => a.mountPointId === id) ?? null) : null;
+  });
+  protected readonly albumGroups = computed(() => albumGroupsOf(this.albums()));
+  /** v4 `:267-269`. */
+  protected readonly pageTitle = computed(() => {
+    const album = this.album();
+    return album ? (album.kind === 'character' ? `${album.name}’s Photos` : album.name) : 'My Photos';
+  });
+  /** v4 `:270-275` — the three blurbs. */
+  protected readonly pageBlurb = computed(() => {
+    const album = this.album();
+    return album?.kind === 'character'
+      ? `The pictures ${album.name} keeps in their own vault — kept photographs and promoted portraits alike.`
+      : album
+        ? 'The pictures filed in this store’s album.'
+        : 'Every image you’ve kept, gathered from each project album, Quilltap General, and your private uploads — listed once and linked to wherever it lives. A character’s own album is a separate cabinet; choose it above to look inside.';
+  });
   protected readonly entries = signal<GalleryEntry[]>([]);
   protected readonly total = signal(0);
   protected readonly hasMore = signal(false);
@@ -465,6 +520,16 @@ export class PhotosPage implements OnDestroy {
     void this.loadInitial();
   }
 
+  /**
+   * v4 `:282-285`: choose an album — the open photo closes and the first page
+   * reloads; the applied search is KEPT (survey trap 16).
+   */
+  protected onAlbumChange(value: string): void {
+    this.albumId.set(value);
+    this.selected.set(null);
+    void this.loadInitial();
+  }
+
   protected clearSearch(): void {
     this.queryText = '';
     this.appliedQuery.set('');
@@ -486,6 +551,7 @@ export class PhotosPage implements OnDestroy {
       const result = await fetchGallery(this.core, {
         query: this.appliedQuery(),
         offset: 0,
+        album: this.albumId(),
       });
       if (generation !== this.generation) {
         return;
@@ -516,6 +582,7 @@ export class PhotosPage implements OnDestroy {
       const result = await fetchGallery(this.core, {
         query: this.appliedQuery(),
         offset: this.entries().length,
+        album: this.albumId(),
       });
       // A load-more that outlived its query must NOT append onto the new one.
       if (generation !== this.generation) {
@@ -550,7 +617,7 @@ export class PhotosPage implements OnDestroy {
     }
     this.deleting.set(entry.linkId);
     try {
-      await removeGalleryEntry(this.core, entry.linkId);
+      await removeGalleryEntry(this.core, entry.linkId, this.album());
       this.entries.update((prev) => prev.filter((e) => e.linkId !== entry.linkId));
       this.total.update((prev) => Math.max(0, prev - 1));
       if (this.selected()?.linkId === entry.linkId) {

@@ -1,9 +1,11 @@
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import type { PhotoAlbumOption } from '../../core/core-contract';
 import { WORKSPACE_TAB_VISIBLE } from '../../workspace/workspace-contract';
 import { ToastService } from '../../ui/toast.service';
 import { PhotosPage } from './photos-page';
@@ -122,18 +124,36 @@ interface Page {
   hasMore: boolean;
 }
 
-/** A CoreClient stub whose list responses are scripted per call. */
-function stubClient(pages: Page[]): { client: Partial<CoreClient>; calls: unknown[] } {
+/**
+ * A CoreClient stub whose list responses are scripted per call. The album
+ * selector's `photoGalleryAlbums` read (P4.D330, v4 `680b71044`) answers
+ * `albums` (none by default) and is NOT counted in `calls`, which records the
+ * gallery reads and the deletes; `albumCalls` counts it.
+ */
+function stubClient(
+  pages: Page[],
+  albums: PhotoAlbumOption[] = [],
+): { client: Partial<CoreClient>; calls: unknown[]; albumCalls: unknown[] } {
   const calls: unknown[] = [];
+  const albumCalls: unknown[] = [];
   let i = 0;
   const client = {
     dispatchData: (req: unknown) => {
+      if ((req as { type?: string }).type === 'photoGalleryAlbums') {
+        albumCalls.push(req);
+        return Promise.resolve({ albums } as unknown as Record<string, unknown>);
+      }
       calls.push(req);
       const page = pages[Math.min(i++, pages.length - 1)];
       return Promise.resolve(page as unknown as Record<string, unknown>);
     },
   } as Partial<CoreClient>;
-  return { client, calls };
+  return { client, calls, albumCalls };
+}
+
+/** The TanStack client the album selector's read needs (retry off). */
+function tanStack() {
+  return provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
 }
 
 async function settle(fixture: ComponentFixture<unknown>, ticks = 8): Promise<void> {
@@ -143,19 +163,23 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 8): Promise<vo
   }
 }
 
-async function render(pages: Page[]): Promise<{
+async function render(
+  pages: Page[],
+  albums: PhotoAlbumOption[] = [],
+): Promise<{
   fixture: ComponentFixture<PhotosPage>;
   calls: unknown[];
+  albumCalls: unknown[];
 }> {
-  const { client, calls } = stubClient(pages);
+  const { client, calls, albumCalls } = stubClient(pages, albums);
   TestBed.configureTestingModule({
     imports: [PhotosPage],
-    providers: [{ provide: CoreClient, useValue: client }, provideRouter([])],
+    providers: [{ provide: CoreClient, useValue: client }, provideRouter([]), tanStack()],
   });
   const fixture = TestBed.createComponent(PhotosPage);
   fixture.detectChanges();
   await settle(fixture);
-  return { fixture, calls };
+  return { fixture, calls, albumCalls };
 }
 
 describe('PhotosPage (v4 app/photos/PhotosView.tsx)', () => {
@@ -240,6 +264,9 @@ describe('PhotosPage (v4 app/photos/PhotosView.tsx)', () => {
     const calls: Array<Record<string, unknown>> = [];
     const client = {
       dispatchData: (req: Record<string, unknown>) => {
+        if (req['type'] === 'photoGalleryAlbums') {
+          return Promise.resolve({ albums: [] } as unknown as Record<string, unknown>);
+        }
         calls.push(req);
         if (req['offset'] === 0 && calls.length === 1) {
           // The initial page: one row, more available.
@@ -271,7 +298,7 @@ describe('PhotosPage (v4 app/photos/PhotosView.tsx)', () => {
 
     TestBed.configureTestingModule({
       imports: [PhotosPage],
-      providers: [{ provide: CoreClient, useValue: client }, provideRouter([])],
+      providers: [{ provide: CoreClient, useValue: client }, provideRouter([]), tanStack()],
     });
     const fixture = TestBed.createComponent(PhotosPage);
     fixture.detectChanges();
@@ -523,6 +550,7 @@ describe('PhotosPage tab re-activation (P4.D90, v4 PhotosView.tsx:113-116)', () 
         { provide: CoreClient, useValue: client },
         { provide: WORKSPACE_TAB_VISIBLE, useValue: visible },
         provideRouter([]),
+        tanStack(),
       ],
     });
     const fixture = TestBed.createComponent(PhotosPage);
@@ -548,3 +576,162 @@ describe('PhotosPage tab re-activation (P4.D90, v4 PhotosView.tsx:113-116)', () 
     expect(fixture.nativeElement.textContent).toContain('b.webp');
   });
 });
+
+// === P4.D330: the album selector (v4 `680b71044`, `PhotosView.tsx` +122 / −24) ===
+describe('PhotosPage — the album selector (v4 680b71044)', () => {
+  beforeEach(() => {
+    (globalThis as unknown as { IntersectionObserver: unknown }).IntersectionObserver = class {
+      observe(): void {}
+      disconnect(): void {}
+    };
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    TestBed.resetTestingModule();
+  });
+
+  /** The server's order: characters, projects, document stores, General. */
+  const ALBUMS: PhotoAlbumOption[] = [
+    { mountPointId: 'mp-aria', name: 'Aria', kind: 'character', characterId: 'char-aria' },
+    { mountPointId: 'mp-bertie', name: 'Bertie', kind: 'character', characterId: 'char-bertie' },
+    { mountPointId: 'mp-quest', name: 'The Quest', kind: 'project' },
+    { mountPointId: 'mp-notes', name: 'Field Notes', kind: 'document-store' },
+    { mountPointId: 'mp-general', name: 'Quilltap General', kind: 'general' },
+  ];
+  const EMPTY: Page = { entries: [], total: 0, hasMore: false };
+
+  function albumSelect(fixture: ComponentFixture<PhotosPage>): HTMLSelectElement {
+    return (fixture.nativeElement as HTMLElement).querySelector(
+      'select[aria-label="Choose which album to show"]',
+    ) as HTMLSelectElement;
+  }
+  function choose(fixture: ComponentFixture<PhotosPage>, value: string): void {
+    const select = albumSelect(fixture);
+    select.value = value;
+    select.dispatchEvent(new Event('change'));
+  }
+  const title = (fixture: ComponentFixture<PhotosPage>) =>
+    (fixture.nativeElement as HTMLElement).querySelector('h1')!.textContent!.trim();
+  const blurb = (fixture: ComponentFixture<PhotosPage>) =>
+    (fixture.nativeElement as HTMLElement).querySelector('header p.qt-text-small')!.textContent!.trim();
+
+  it('offers My Photos first, then one optgroup per kind in the server’s order', async () => {
+    const { fixture, albumCalls } = await render([EMPTY], ALBUMS);
+    expect(albumCalls).toEqual([{ type: 'photoGalleryAlbums' }]);
+    const select = albumSelect(fixture);
+    expect(select.className).toBe('qt-select w-auto min-w-[14rem]');
+    const label = select.closest('label')!;
+    expect(label.className).toBe('flex flex-wrap items-center gap-2 pt-1 text-sm');
+    expect(label.querySelector('span')!.className).toBe('qt-text-muted');
+    expect(label.querySelector('span')!.textContent).toBe('Album');
+    expect(select.options[0].value).toBe('');
+    expect(select.options[0].textContent!.trim()).toBe('My Photos');
+    const groups = Array.from(select.querySelectorAll('optgroup')).map((g) => [
+      g.label,
+      Array.from(g.querySelectorAll('option')).map((o) => [o.value, o.textContent!.trim()]),
+    ]);
+    expect(groups).toEqual([
+      ['Characters', [['mp-aria', 'Aria'], ['mp-bertie', 'Bertie']]],
+      ['Projects', [['mp-quest', 'The Quest']]],
+      ['Document stores', [['mp-notes', 'Field Notes']]],
+      ['Quilltap General', [['mp-general', 'Quilltap General']]],
+    ]);
+  });
+
+  it('My Photos with an empty albums answer: only the one option, the roll-up title and blurb', async () => {
+    const { fixture } = await render([EMPTY]);
+    expect(albumSelect(fixture).options).toHaveLength(1);
+    expect(albumSelect(fixture).querySelectorAll('optgroup')).toHaveLength(0);
+    expect(title(fixture)).toBe('My Photos');
+    expect(blurb(fixture)).toBe(
+      'Every image you’ve kept, gathered from each project album, Quilltap General, and your private uploads — listed once and linked to wherever it lives. A character’s own album is a separate cabinet; choose it above to look inside.',
+    );
+  });
+
+  it('a character album titles itself “<name>’s Photos” with the vault blurb; a store album its own name', async () => {
+    const { fixture } = await render([EMPTY], ALBUMS);
+    choose(fixture, 'mp-aria');
+    await settle(fixture);
+    expect(title(fixture)).toBe('Aria’s Photos');
+    expect(blurb(fixture)).toBe(
+      'The pictures Aria keeps in their own vault — kept photographs and promoted portraits alike.',
+    );
+    choose(fixture, 'mp-quest');
+    await settle(fixture);
+    expect(title(fixture)).toBe('The Quest');
+    expect(blurb(fixture)).toBe('The pictures filed in this store’s album.');
+  });
+
+  it('a list request carries `album` first, then `q`, `limit`, `offset` — and none for My Photos', async () => {
+    const { fixture, calls } = await render([EMPTY], ALBUMS);
+    expect(calls[0]).toEqual({ type: 'photoGalleryList', limit: 60, offset: 0 });
+    const page = fixture.componentInstance as unknown as { queryText: string; onSearch: (e: Event) => void };
+    page.queryText = ' dawn ';
+    page.onSearch(new Event('submit'));
+    await settle(fixture);
+    choose(fixture, 'mp-aria');
+    await settle(fixture);
+    expect(calls).toHaveLength(3);
+    expect(Object.keys(calls[2] as object)).toEqual(['type', 'album', 'q', 'limit', 'offset']);
+    expect(calls[2]).toEqual({ type: 'photoGalleryList', album: 'mp-aria', q: 'dawn', limit: 60, offset: 0 });
+  });
+
+  it('changing the album clears the open photo and keeps the applied search (v4 trap 16)', async () => {
+    const { fixture } = await render(
+      [{ entries: [entry({ linkId: 'L1' })], total: 1, hasMore: false }, EMPTY],
+      ALBUMS,
+    );
+    const page = fixture.componentInstance as unknown as {
+      selected: { set: (e: GalleryEntry | null) => void; (): GalleryEntry | null };
+      appliedQuery: { set: (s: string) => void; (): string };
+    };
+    page.appliedQuery.set('dawn');
+    page.selected.set(entry({ linkId: 'L1' }));
+    fixture.detectChanges();
+    choose(fixture, 'mp-notes');
+    await settle(fixture);
+    expect(page.selected()).toBeNull();
+    expect(page.appliedQuery()).toBe('dawn');
+  });
+
+  it('a load-more carries the album', async () => {
+    const { fixture, calls } = await render(
+      [EMPTY, { entries: [entry({ linkId: 'L1' })], total: 2, hasMore: true }, EMPTY],
+      ALBUMS,
+    );
+    choose(fixture, 'mp-quest');
+    await settle(fixture);
+    const page = fixture.componentInstance as unknown as { loadMore: () => Promise<void> };
+    await page.loadMore.call(page);
+    expect(calls[2]).toEqual({ type: 'photoGalleryList', album: 'mp-quest', limit: 60, offset: 1 });
+  });
+
+  it('delete goes through the character door when the SELECTED album is a character’s (v4 trap 17)', async () => {
+    const { fixture, calls } = await render(
+      [EMPTY, { entries: [entry({ linkId: 'L1' })], total: 1, hasMore: false }],
+      ALBUMS,
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    choose(fixture, 'mp-aria');
+    await settle(fixture);
+    const page = fixture.componentInstance as unknown as { onDelete: (e: GalleryEntry) => Promise<void> };
+    await page.onDelete.call(page, entry({ linkId: 'L1' }));
+    expect(calls.at(-1)).toEqual({ type: 'characterPhotoRemove', characterId: 'char-aria', linkId: 'L1' });
+  });
+
+  it('delete takes the generic door in My Photos and in a store album', async () => {
+    const { fixture, calls } = await render(
+      [{ entries: [entry({ linkId: 'L1' })], total: 1, hasMore: false }, EMPTY],
+      ALBUMS,
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const page = fixture.componentInstance as unknown as { onDelete: (e: GalleryEntry) => Promise<void> };
+    await page.onDelete.call(page, entry({ linkId: 'L1' }));
+    expect(calls.at(-1)).toEqual({ type: 'photoGalleryEntryRemove', id: 'L1' });
+    choose(fixture, 'mp-quest');
+    await settle(fixture);
+    await page.onDelete.call(page, entry({ linkId: 'L2' }));
+    expect(calls.at(-1)).toEqual({ type: 'photoGalleryEntryRemove', id: 'L2' });
+  });
+});
+// === end P4.D330 ===

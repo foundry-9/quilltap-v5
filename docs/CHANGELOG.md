@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the `/photos` album selector (v4 `680b71044`, client half)
+
+_Versions: SPA 0.5.889._
+
+My Photos gains an Album select (My Photos, then one group per kind: Characters, Projects, Document stores, Quilltap General). Choosing an album retitles the page (`<name>’s Photos` for a character, the store's name otherwise), swaps in v4's three blurbs, closes the open photo and reloads from the first page while keeping the search; list and load-more requests carry `album`. Deleting from a character's album goes through `characterPhotoRemove`, anything else through the gallery's own remove. The albums read (`photoGalleryAlbums`) and the list request's `album` key are stand-in types until P4.D338's contract lands. P4.D330, Tier 1 item 22.
+
 #### 2026-10-26 — feat(spa): Aurora's Inventory Management setting (v4 `e1872c94f`)
 
 _Versions: SPA 0.5.888._
