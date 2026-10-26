@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(scenarios): one title-order comparator for every scenario list (v4 1d0a31132)
+
+_Versions: core 0.0.1324._
+
+New `scenarios::sort` (`scenario_sort_key`, `compare_scenarios`, `sort_scenarios`) over the existing en-US collators: base-sensitivity compare of the title (leading "The" stripped, JS trim/whitespace), then filename, then raw title, then the path at default options. `build_scenario_list` keeps the default-conflict walk in path order and re-sorts the list after it, with v4's `Scenarios: built list` DEBUG; the character vault fold goes through `parse_scenario_files_sorted` (keyed on the file name, not the relative path). Differential: scenario_pure grows sort-key / sort-compare / sort-list rows over v4's real `lib/scenarios/sort.ts` (four mutations proven red), scenario_location captures the new line and its fixture gains a conflict whose path order and title order disagree, the vault-read-overlay spec grows a title-sorted vault. The routes and resolver families are unmoved by the sort.
+
 #### 2026-10-26 — docs(porting): P4.D335 lane record (interrupts, server)
 
 _Docs-only change._

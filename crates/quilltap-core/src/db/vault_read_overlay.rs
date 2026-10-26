@@ -27,7 +27,9 @@ use std::collections::{HashMap, HashSet};
 use serde_json::{Map, Value};
 
 use super::doc_mount_documents::{DocMountDocumentsRepository, VaultFolderDoc};
+use super::scenarios::strip_md_suffix;
 use super::DbError;
+use crate::scenarios::sort::{sort_scenarios, SortableScenario};
 use crate::vault_overlay::{
     is_wardrobe_item_document_path, markdown_to_nullable, parse_legacy_wardrobe_json,
     parse_prompt_file, parse_scenario_file, parse_vault_metadata, parse_vault_physical_prompts,
@@ -209,6 +211,25 @@ fn linked_mount_id(obj: &Map<String, Value>) -> Option<&str> {
 /// `Option<String>` → JSON value (`Some(s)` → string, `None` → `null`).
 fn opt_to_value(o: Option<String>) -> Value {
     o.map(Value::String).unwrap_or(Value::Null)
+}
+
+/// v4 `parseScenarioFilesSorted` (`vault-overlay/parsers.ts:675-697`): the one
+/// way a vault's scenario array is built — every doc parsed (unparseable ones
+/// dropped), then ordered by `sortScenarios` on the scenario's title, then the
+/// FILE name without `.md` (NOT the relative path), then the relative path.
+fn parse_scenario_files_sorted(docs: &[&VaultFolderDoc]) -> Vec<CharacterScenario> {
+    let parsed: Vec<(&VaultFolderDoc, CharacterScenario)> = docs
+        .iter()
+        .filter_map(|&d| parse_scenario_file(&vault_doc(d)).map(|s| (d, s)))
+        .collect();
+    sort_scenarios(parsed, |(d, s)| SortableScenario {
+        title: s.title.clone(),
+        filename: strip_md_suffix(&d.file_name),
+        path: Some(d.relative_path.clone()),
+    })
+    .into_iter()
+    .map(|(_, s)| s)
+    .collect()
 }
 
 /// A `VaultDoc` borrowing a folder-listed doc, for the per-file parsers.
@@ -395,15 +416,11 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
         serde_json::to_value(&prompts).expect("serialize systemPrompts"),
     );
 
-    // Scenarios/*.md → scenarios (sorted, parsed) — `localeCompare`, as the
-    // prompts above (`read-overlay.ts:305-308`).
-    let mut scenario_docs = maps.scenarios(&mount_id);
-    scenario_docs
-        .sort_by(|a, b| crate::collation::locale_compare(&a.relative_path, &b.relative_path));
-    let scenarios: Vec<CharacterScenario> = scenario_docs
-        .iter()
-        .filter_map(|d| parse_scenario_file(&vault_doc(d)))
-        .collect();
+    // Scenarios/*.md → scenarios, through the one sorted parse so
+    // `character.scenarios` and therefore its "first scenario" agree with every
+    // picker (`read-overlay.ts:300-305`).
+    let scenario_docs = maps.scenarios(&mount_id);
+    let scenarios = parse_scenario_files_sorted(&scenario_docs);
     out.insert(
         "scenarios".into(),
         serde_json::to_value(&scenarios).expect("serialize scenarios"),

@@ -10,12 +10,17 @@
 //! - `hashScenarioBody` / `sameResolvedScenario` ↔
 //!   `services::scenario_selection::{hash_scenario_body, same_resolved_scenario}`;
 //! - `combineScenarioText` / `recoverPresetBody` ↔ `scenario_text::*`;
-//! - `keepCurrentScene` ↔ `services::chat_scenario::keep_current_scene`.
+//! - `keepCurrentScene` ↔ `services::chat_scenario::keep_current_scene`;
+//! - `scenarioSortKey` / `compareScenarios` / `sortScenarios` (P4.D338,
+//!   `1d0a31132`) ↔ `scenarios::sort::{scenario_sort_key, compare_scenarios,
+//!   sort_scenarios}` — keys as strings, compares as the sign, lists as index
+//!   sequences. Run with `LANG=en_US.UTF-8`: v4's `localeCompare(…, undefined,
+//!   …)` is the HOST locale, v5's collation is pinned to en-US.
 //!
 //! Generate the oracle output (Node 24), from the v4 checkout (a pin worktree
 //! when v4 HEAD is past the round's baseline):
 //!   cd ~/source/quilltap-server
-//!   TZ=UTC npx tsx <V5>/harness/oracle/cases/scenario-pure.ts \
+//!   LANG=en_US.UTF-8 TZ=UTC npx tsx <V5>/harness/oracle/cases/scenario-pure.ts \
 //!     > /tmp/oracle-scenario-pure.ndjson
 //! Run:
 //!   QT_ORACLE_SCENARIO_PURE=/tmp/oracle-scenario-pure.ndjson \
@@ -29,6 +34,9 @@ use quilltap_core::scenario_text::{combine_scenario_text, recover_preset_body};
 use quilltap_core::scenarios::decode_uri::js_decode_uri_component;
 use quilltap_core::scenarios::everywhere::scenario_excerpt;
 use quilltap_core::scenarios::location::{character_scenario_id_for_path, normalize_scenario_path};
+use quilltap_core::scenarios::sort::{
+    compare_scenarios, scenario_sort_key, sort_scenarios, SortableScenario,
+};
 use quilltap_core::services::chat_scenario::keep_current_scene;
 use quilltap_core::services::scenario_selection::{
     hash_scenario_body, same_resolved_scenario, ResolvedScenario,
@@ -55,10 +63,21 @@ const KIND_FLOORS: &[(&str, usize)] = &[
     ("recover", 16),
     ("same", 10),
     ("keep", 13),
+    ("sort-key", 30),
+    ("sort-compare", 23),
+    ("sort-list", 7),
 ];
 
 fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(Value::as_str).map(str::to_string)
+}
+
+fn sortable(v: &Value) -> SortableScenario {
+    SortableScenario {
+        title: s(v, "title").unwrap(),
+        filename: s(v, "filename").unwrap(),
+        path: s(v, "path"),
+    }
 }
 
 fn source(v: &Value) -> Option<ScenarioSource> {
@@ -255,6 +274,54 @@ fn scenario_pure_matches_v4() {
                     failures.push(format!(
                         "keep {}: v4 {} vs v5 {got_json}",
                         row["name"], row["output"]
+                    ));
+                }
+            }
+            "sort-key" => {
+                let value = s(row, "value").unwrap();
+                let got = scenario_sort_key(&value);
+                if Some(got.to_string()) != s(row, "output") {
+                    failures.push(format!(
+                        "sort-key {value:?}: v4 {} vs v5 {got:?}",
+                        row["output"]
+                    ));
+                }
+            }
+            "sort-compare" => {
+                let got = match compare_scenarios(&sortable(&row["a"]), &sortable(&row["b"])) {
+                    std::cmp::Ordering::Less => -1,
+                    std::cmp::Ordering::Equal => 0,
+                    std::cmp::Ordering::Greater => 1,
+                };
+                if Some(got) != row["output"].as_i64() {
+                    failures.push(format!(
+                        "sort-compare {}: v4 {} vs v5 {got}",
+                        row["name"], row["output"]
+                    ));
+                }
+            }
+            "sort-list" => {
+                let items: Vec<(usize, SortableScenario)> = row["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (i, sortable(v)))
+                    .collect();
+                let got: Vec<usize> = sort_scenarios(items, |(_, sc)| sc.clone())
+                    .into_iter()
+                    .map(|(i, _)| i)
+                    .collect();
+                let want: Vec<usize> = row["output"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|n| n.as_u64().unwrap() as usize)
+                    .collect();
+                if got != want {
+                    failures.push(format!(
+                        "sort-list {}: v4 {want:?} vs v5 {got:?}",
+                        row["name"]
                     ));
                 }
             }

@@ -24,7 +24,7 @@
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-vault-read-overlay-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/fixtures/build-vault-read-overlay-fixture.ts
-//!   QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-fixture.db \
+//!   LANG=en_US.UTF-8 QT_FIXTURE_VAULT_READ_OVERLAY=/tmp/qt-vault-read-overlay-fixture.db \
 //!     $N/npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-read-overlay.ts \
 //!     > /tmp/oracle-vault-read-overlay.ndjson
 //! Run:
@@ -336,10 +336,11 @@ fn vault_read_overlay_matches_oracle() {
     );
     assert_eq!(
         want_lines.len(),
-        // P4.D295 added Vault G's character (the mixed-case Δ42 rows): seven
-        // vaulted characters drop on the plant, not six.
-        9 + 2 + 7 + 1,
-        "the oracle's plant must hold 9 path + 2 folder + 7 drops + 1 WARN: {want_lines:#?}"
+        // P4.D295 added Vault G's character (the mixed-case Δ42 rows) and
+        // P4.D338 Vault H's (the title-sorted scenarios): eight vaulted
+        // characters drop on the plant, not six.
+        9 + 2 + 8 + 1,
+        "the oracle's plant must hold 9 path + 2 folder + 8 drops + 1 WARN: {want_lines:#?}"
     );
 
     let ada: Value = spec

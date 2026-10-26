@@ -224,7 +224,11 @@ async function main(): Promise<void> {
   await heal('project', ID.alpha);
   const file = (name: string | undefined, body: string, extra: { isDefault?: boolean; archived?: boolean; description?: string } = {}) =>
     buildScenarioFileContent({ name, body, ...extra });
-  await writeDatabaseDocument(alphaMp, 'Scenarios/a.md', file('Ay', 'The first scene.', { isDefault: true }));
+  // P4.D338 (`1d0a31132`): `a.md`'s TITLE sorts AFTER `B.md`'s, while its PATH
+  // sorts before — so the default-conflict walk (path order: `a` wins) and the
+  // listed order (title order: `B` first) disagree, and a port that sorted
+  // BEFORE the walk would crown `B`.
+  await writeDatabaseDocument(alphaMp, 'Scenarios/a.md', file('Zed Ay', 'The first scene.', { isDefault: true }));
   await writeDatabaseDocument(alphaMp, 'Scenarios/B.md', file(undefined, 'The second scene, uppercase file.', { isDefault: true }));
   await writeDatabaseDocument(alphaMp, 'Scenarios/c.md', file('Sea', 'An archived claimant.', { isDefault: true, archived: true }));
   await writeDatabaseDocument(alphaMp, 'Scenarios/blank.md', '---\nname: Blank\n---\n\n   \n');

@@ -15,7 +15,11 @@
  *   - `hashScenarioBody`, `sameResolvedScenario`
  *     (`lib/chat/scenario-selection.ts`);
  *   - `combineScenarioText`, `recoverPresetBody` (`lib/chat/scenario-text.ts`);
- *   - `keepCurrentScene` (`app/api/v1/chats/[id]/actions/scenario.ts`).
+ *   - `keepCurrentScene` (`app/api/v1/chats/[id]/actions/scenario.ts`);
+ *   - `scenarioSortKey`, `compareScenarios`, `sortScenarios`
+ *     (`lib/scenarios/sort.ts`, `1d0a31132` — P4.D338). Run those rows with
+ *     `LANG=en_US.UTF-8` (v4's `localeCompare(…, undefined, …)` is the HOST
+ *     default locale; v5's collation is pinned to en-US).
  *
  * No clock, no randomness, no database. Both sides replay the recorded inputs.
  *
@@ -34,6 +38,7 @@ import { characterScenarioIdForPath, normalizeScenarioPath } from '@/lib/scenari
 import { hashScenarioBody, sameResolvedScenario } from '@/lib/chat/scenario-selection';
 import { combineScenarioText, recoverPresetBody } from '@/lib/chat/scenario-text';
 import { keepCurrentScene } from '@/app/api/v1/chats/[id]/actions/scenario';
+import { compareScenarios, scenarioSortKey, sortScenarios, type SortableScenario } from '@/lib/scenarios/sort';
 
 const out = (row: Record<string, unknown>) => process.stdout.write(`${JSON.stringify(row)}\n`);
 const units = (s: string) => Array.from({ length: s.length }, (_, i) => s.charCodeAt(i));
@@ -211,4 +216,65 @@ const KEEP: Array<[string, Recipe, Recipe]> = [
 for (const [name, next, current] of KEEP) {
   const chat = { id: 'chat-1', scenarioText: current.scenarioText, scenarioSource: current.scenarioSource, scenarioNotes: current.scenarioNotes };
   out({ kind: 'keep', name, next, current, output: keepCurrentScene(next, chat as never) });
+}
+
+// ---------------------------------------------------------------------------
+// scenarioSortKey / compareScenarios / sortScenarios (P4.D338, `1d0a31132`)
+// ---------------------------------------------------------------------------
+
+const SORT_KEYS: string[] = [
+  'The Gilded Cage', '  THE Gilded Cage ', 'Theatre Night', 'the-attic', 'the_attic', 'Into the Woods', 'The', 'the', 'THE',
+  '', '   ', 'The ', 'The-', 'The_', 'The\u00a0X', 'The\uFEFFX', 'The\u0085X', 'Thé X', '\uFEFFThe Ballroom', 'The  \t Spaced',
+  'The The Twice', 'the\u2003Em', 'The\u3000Ideo', 'The\u2028Sep', 'Thex', 'Th e', '😀 The Crown', 'The 😀 Crown', 'ÉCLAT', 'the\nNewline',
+];
+for (const value of SORT_KEYS) {
+  out({ kind: 'sort-key', value, output: scenarioSortKey(value) });
+}
+
+const sc = (title: string, filename: string, path?: string): SortableScenario =>
+  path === undefined ? { title, filename } : { title, filename, path };
+const sign = (n: number) => (n < 0 ? -1 : n > 0 ? 1 : 0);
+const SORT_PAIRS: Array<[string, SortableScenario, SortableScenario]> = [
+  ['title_article_ignored', sc('The Ballroom', 'b'), sc('Casino', 'c')],
+  ['title_article_ignored_rev', sc('Casino', 'c'), sc('The Ballroom', 'b')],
+  ['title_case_insensitive', sc('alpha', 'z'), sc('Beta', 'a')],
+  ['title_case_crossing', sc('apple', 'a'), sc('Banana', 'b')],
+  ['title_case_crossing_rev', sc('Banana', 'b'), sc('apple', 'a')],
+  ['title_tie_filename_decides', sc('same', 'the-zed'), sc('same', 'attic')],
+  ['title_tie_filename_article_ignored', sc('same', 'the-attic'), sc('same', 'bell')],
+  ['filename_tie_raw_title_equal_base', sc('é', 'x'), sc('e', 'x')],
+  ['accent_tie_path_decides', sc('é', 'x', 'Scenarios/a.md'), sc('e', 'x', 'Scenarios/b.md')],
+  ['case_tie_path_default_a_before_A', sc('gala', 'gala', 'Scenarios/a.md'), sc('Gala', 'Gala', 'Scenarios/A.md')],
+  ['case_tie_path_default_A_after_a', sc('Gala', 'Gala', 'Scenarios/A.md'), sc('gala', 'gala', 'Scenarios/a.md')],
+  ['identical_with_path', sc('x', 'x', 'Scenarios/x.md'), sc('x', 'x', 'Scenarios/x.md')],
+  ['pathless_vs_path', sc('x', 'x'), sc('x', 'x', 'a')],
+  ['pathless_pair', sc('x', 'x'), sc('x', 'x')],
+  ['empty_titles', sc('', ''), sc('', '')],
+  ['empty_vs_word', sc('', 'a'), sc('Zed', 'a')],
+  ['only_the_vs_word', sc('The', 'a'), sc('Thea', 'a')],
+  ['bom_led_title', sc('\uFEFFThe Ballroom', 'a'), sc('Ballroom', 'b')],
+  ['nel_not_stripped', sc('The\u0085X', 'a'), sc('X', 'a')],
+  ['nbsp_stripped', sc('The\u00a0X', 'a'), sc('X', 'a')],
+  ['surrogate_pair_titles', sc('😀 Crown', 'a'), sc('😁 Crown', 'a')],
+  ['digits_vs_letters', sc('10 Downing', 'a'), sc('2 Downing', 'a')],
+  ['punctuation_vs_letters', sc('...And so', 'a'), sc('And so', 'a')],
+  ['trailing_space_title', sc('Attic ', 'a', 'p1'), sc('Attic', 'a', 'p2')],
+];
+for (const [name, a, b] of SORT_PAIRS) {
+  out({ kind: 'sort-compare', name, a, b, output: sign(compareScenarios(a, b)) });
+}
+
+const SORT_LISTS: Array<[string, SortableScenario[]]> = [
+  ['v4_vector', [sc('The Ballroom', 'the-ballroom', 'Scenarios/the-ballroom.md'), sc('Casino', 'casino', 'Scenarios/casino.md'), sc('untitled-dock', 'untitled-dock', 'Scenarios/untitled-dock.md'), sc('The Zeppelin', 'zeppelin', 'Scenarios/zeppelin.md')]],
+  ['v4_vault_shape', [sc('The Cellar', '3-the-cellar', 'Scenarios/3-the-cellar.md'), sc('Attic', 'attic', 'Scenarios/attic.md'), sc('The Parlour', 'parlour', 'Scenarios/parlour.md')]],
+  ['mixed_case_and_articles', [sc('zebra', 'z', 'Scenarios/z.md'), sc('The apple', 'a', 'Scenarios/a.md'), sc('Banana', 'b', 'Scenarios/b.md'), sc('the Cherry', 'c', 'Scenarios/c.md'), sc('apple', 'a2', 'Scenarios/a2.md'), sc('Éclair', 'e', 'Scenarios/e.md')]],
+  ['ties_everywhere', [sc('Gala', 'Gala', 'Scenarios/b.md'), sc('gala', 'gala', 'Scenarios/B.md'), sc('gala', 'gala', 'Scenarios/a.md'), sc('Gala', 'Gala', 'Scenarios/A.md'), sc('é', 'x', 'p'), sc('e', 'x', 'q'), sc('E', 'x', 'o')]],
+  ['pathless_mix', [sc('b', 'b'), sc('a', 'a', 'z'), sc('a', 'a'), sc('The b', 'b')]],
+  ['single', [sc('Only', 'only', 'Scenarios/only.md')]],
+  ['empty', []],
+];
+for (const [name, items] of SORT_LISTS) {
+  const tagged = items.map((item, index) => ({ item, index }));
+  const sorted = sortScenarios(tagged, (t) => t.item).map((t) => t.index);
+  out({ kind: 'sort-list', name, items, output: sorted });
 }

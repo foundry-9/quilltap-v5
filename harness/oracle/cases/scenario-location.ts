@@ -58,6 +58,7 @@ const PINNED_MESSAGES = [
   '[ScenariosEverywhere] Listed scenario shelves',
   'Scenario file body is empty; skipping',
   'Scenarios: multiple isDefault: true entries',
+  'Scenarios: built list',
   'Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate',
 ];
 

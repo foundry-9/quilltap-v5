@@ -30,6 +30,7 @@ use crate::collation::locale_compare;
 use crate::doc_edit::markdown_parser::{serialize_frontmatter, update_frontmatter_in_content};
 use crate::jsstr::{js_trim, utf16_truncate};
 use crate::markdown::{body_after, parse_frontmatter};
+use crate::scenarios::sort::{sort_scenarios, SortableScenario};
 
 /// The folder every scope keeps its scenarios in (all three constants are
 /// `'Scenarios'` in v4).
@@ -214,7 +215,9 @@ pub struct ScenarioListLogContext {
 /// documents → a sorted scenario list with default-conflict resolution — what
 /// every scenario location's `list` runs, shared with the instance-wide lister
 /// (which fetches every owner's documents in ONE query and buckets them by
-/// mount). Sorted by `relativePath.localeCompare` (the ICU4X en-US port);
+/// mount). Default resolution walks the docs in `relativePath.localeCompare`
+/// order (the ICU4X en-US port) and the list is then returned sorted by title
+/// (then filename, leading "The" ignored — [`crate::scenarios::sort`]);
 /// archived files are dropped unless asked for and never win the default; the
 /// alphabetically-first `rawIsDefault` wins and later ones are demoted in the
 /// RESPONSE ONLY (on-disk frontmatter is NOT rewritten), with the warning
@@ -291,6 +294,21 @@ pub fn build_scenario_list(
             "Scenarios: multiple isDefault: true entries"
         );
     }
+
+    // Default resolution above walks path order; the list itself is shown in
+    // title order (`lib/scenarios/sort.ts`).
+    let scenarios = sort_scenarios(scenarios, |s| SortableScenario {
+        title: s.name.clone(),
+        filename: s.filename.clone(),
+        path: Some(s.path.clone()),
+    });
+    tracing::debug!(
+        scope = %log_context.scope,
+        id = log_context.id.as_deref().unwrap_or("null"),
+        mountPointId = %log_context.mount_point_id,
+        count = scenarios.len(),
+        "Scenarios: built list"
+    );
 
     ListScenariosResult {
         scenarios,
@@ -475,7 +493,7 @@ fn one_bool(key: &str, value: bool) -> Map<String, Value> {
 
 /// v4 `doc.fileName.replace(/\.md$/i, '')` — strip ONE trailing case-insensitive
 /// `.md` suffix.
-fn strip_md_suffix(name: &str) -> String {
+pub(crate) fn strip_md_suffix(name: &str) -> String {
     if ends_with_md_ci(name) {
         name[..name.len() - 3].to_string()
     } else {

@@ -15,7 +15,8 @@
     "promote-first (no default); prompt keep-non-first-default.",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every tier-2",
     "fixture uses; it decrypts nothing real.",
-    "P4.D295 (v4 read-overlay.ts:274-277 / :305-308, Δ42): Vault G holds a mixed-case Prompts/ (no default — the promoted prompt is the FIRST by v4's localeCompare) and a mixed-case Scenarios/, so a code-unit sort flips both orders."
+    "P4.D295 (v4 read-overlay.ts:274-277 / :305-308, Δ42): Vault G holds a mixed-case Prompts/ (no default — the promoted prompt is the FIRST by v4's localeCompare) and a mixed-case Scenarios/, so a code-unit sort flips both orders.",
+    "P4.D338 (v4 1d0a31132, parseScenarioFilesSorted): Vault H holds Scenarios/ whose PATH order differs from TITLE order (a `# The …` title, a title tie broken on the article-stripped FILE name) — the vault array is ordered by title, then filename, then path."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "mintCharacterIds": ["c0000001-0000-4000-8000-000000000004"],
@@ -26,7 +27,8 @@
     { "id": "5700000e-0000-4000-8000-0000000000b4", "name": "Vault D" },
     { "id": "5700000e-0000-4000-8000-0000000000b5", "name": "Vault E" },
     { "id": "5700000e-0000-4000-8000-0000000000b6", "name": "Vault F" },
-    { "id": "5700000e-0000-4000-8000-0000000000b7", "name": "Vault G" }
+    { "id": "5700000e-0000-4000-8000-0000000000b7", "name": "Vault G" },
+    { "id": "5700000e-0000-4000-8000-0000000000b8", "name": "Vault H" }
   ],
   "files": [
     { "mountPointId": "5700000e-0000-4000-8000-0000000000b1", "relativePath": "properties.json", "content": "{\"pronouns\":{\"subject\":\"she\",\"object\":\"her\",\"possessive\":\"hers\"},\"aliases\":[\"Al\",\"Ada\"],\"title\":\"The Hero\",\"firstMessage\":\"Hello there\",\"talkativeness\":0.7}" },
@@ -63,7 +65,13 @@
     {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Prompts/a-lower.md", "content": "---\nname: A Lower\n---\nLower-case first by locale"},
     {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Prompts/B-upper.md", "content": "---\nname: B Upper\n---\nUpper-case first by code unit"},
     {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Scenarios/a-quest.md", "content": "# A Quest\n\nThe lower-case quest."},
-    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Scenarios/B-voyage.md", "content": "# B Voyage\n\nThe upper-case voyage."}
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b7", "relativePath": "Scenarios/B-voyage.md", "content": "# B Voyage\n\nThe upper-case voyage."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "properties.json", "content": "{\"pronouns\":null,\"aliases\":[],\"title\":null,\"firstMessage\":null,\"talkativeness\":0.5}"},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "Scenarios/3-the-cellar.md", "content": "# The Cellar\n\nDown the stairs."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "Scenarios/attic.md", "content": "# Attic\n\nUnder the eaves."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "Scenarios/parlour.md", "content": "# The Parlour\n\nTea is served."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "Scenarios/banana.md", "content": "# Tie\n\nThe banana tie."},
+    {"mountPointId": "5700000e-0000-4000-8000-0000000000b8", "relativePath": "Scenarios/the-apple.md", "content": "# Tie\n\nThe apple tie."}
   ],
   "characters": [
     {
@@ -163,6 +171,13 @@
       "id": "c0000001-0000-4000-8000-000000000007",
       "name": "MixedCase",
       "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b7",
+      "systemPrompts": [],
+      "scenarios": []
+    },
+    {
+      "id": "c0000001-0000-4000-8000-000000000008",
+      "name": "Shelves",
+      "characterDocumentMountPointId": "5700000e-0000-4000-8000-0000000000b8",
       "systemPrompts": [],
       "scenarios": []
     }

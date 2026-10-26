@@ -22,10 +22,10 @@
 //! pin worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
+//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
 //!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-scenario-location-fixture.ts
-//!   TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
+//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
 //!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/scenario-location.ts \
 //!     > /tmp/oracle-scenario-location.ndjson
@@ -81,6 +81,7 @@ const PINNED_MESSAGES: &[&str] = &[
     "[ScenariosEverywhere] Listed scenario shelves",
     "Scenario file body is empty; skipping",
     "Scenarios: multiple isDefault: true entries",
+    "Scenarios: built list",
     "Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate",
 ];
 
