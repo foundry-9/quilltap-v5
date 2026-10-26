@@ -326,6 +326,29 @@ const classifyCases: Array<[string, string]> = [
   ['value', 'value'],
   ['params', 'params.bonus'],
   ['progress', 'progress.cannon.percent'],
+  // === P4.D329 (v4 `e1872c94f`): `{{inventory.<ref>.<field>}}` — the FIRST
+  // `.metadata.` splits (ref before, key after); otherwise a trailing
+  // title / name / description / state, the rest (dots and all) the ref. ===
+  ['inventory-title', 'inventory.sword.title'],
+  ['inventory-name', 'inventory.sword.name'],
+  ['inventory-description', 'inventory.sword.description'],
+  ['inventory-state', 'inventory.sword.state'],
+  ['inventory-metadata', 'inventory.sword.metadata.damage'],
+  ['inventory-metadata-dotted-key', 'inventory.sword.metadata.a.b'],
+  ['inventory-dotted-ref', 'inventory.old.sword.title'],
+  ['inventory-metadata-first-infix', 'inventory.x.metadata.y.metadata.z'],
+  ['inventory-metadata-then-state', 'inventory.x.metadata.y.state'],
+  ['inventory-spaced-apostrophe', "inventory.Friday's Yellow Tape Measure.title"],
+  ['inventory-empty-ref-metadata', 'inventory..metadata.k'],
+  ['inventory-empty-ref-title', 'inventory..title'],
+  ['inventory-empty-metadata-key', 'inventory.sword.metadata.'],
+  ['inventory-no-field', 'inventory.sword'],
+  ['inventory-bare-metadata', 'inventory.sword.metadata'],
+  ['inventory-unknown-field', 'inventory.sword.weight'],
+  ['inventory-prefix-only', 'inventory.'],
+  ['inventory-capitalised', 'Inventory.sword.title'],
+  ['inventory-field-only', 'inventory.title'],
+  // === end P4.D329 ===
 ];
 
 for (const [id, key] of classifyCases) {

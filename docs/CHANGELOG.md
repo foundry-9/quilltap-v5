@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(pascal): classify rows for the {{inventory.<ref>.<field>}} placeholder (P4.D329)
+
+_No crate versions bumped._
+
+`pascal_expressions_equivalence` gains nineteen `classifyPlaceholder` rows at the pin: the four trailing fields, `metadata.<key>` (dotted keys included), dotted refs, the first-`.metadata.`-wins split, an apostrophed title, and the shapes that stay `unknown` (empty ref, empty key, no field, bare `metadata`, an unknown field, the bare prefix, a capitalised prefix).
+
 #### 2026-10-26 — test(pascal): mirror v4's Measure Twice end to end over a widened run-custom pair (P4.D329)
 
 _No crate versions bumped._
