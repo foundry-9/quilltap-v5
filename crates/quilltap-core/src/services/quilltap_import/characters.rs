@@ -109,6 +109,10 @@ struct ImportedSlim {
     can_dress_themselves: Option<bool>,
     #[serde(default, rename = "canCreateOutfits")]
     can_create_outfits: Option<bool>,
+    /// P4.D327 (v4 `e1872c94f`): v4 spreads the bundled row into
+    /// `characters.create` (`import-characters.ts:144-149`), so the flag rides.
+    #[serde(default, rename = "canManageInventory")]
+    can_manage_inventory: Option<bool>,
     #[serde(default, rename = "systemTransparency")]
     system_transparency: Option<bool>,
     #[serde(default, rename = "coreWhisperEnabled")]
@@ -150,9 +154,7 @@ impl ImportedSlim {
             character_document_mount_point_id: None,
             can_dress_themselves: self.can_dress_themselves,
             can_create_outfits: self.can_create_outfits,
-            // P4.D324 compiles the new field in; the import's carried value is
-            // P4.D327's edit (HANDOFF).
-            can_manage_inventory: None,
+            can_manage_inventory: self.can_manage_inventory,
             system_transparency: self.system_transparency,
             core_whisper_enabled: self.core_whisper_enabled,
             can_be_carina: self.can_be_carina,

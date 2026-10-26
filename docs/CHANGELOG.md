@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — fix(import): a `.qtap` import writes the re-keyed `equippedInventory` to its own column and carries `canManageInventory` (P4.D327)
+
+_Versions: core 0.0.1328._
+
+The reconcile's bug-252 pass now writes each re-keyed column under its own name through `apply_keyed_field`, one arm per `CHARACTER_KEYED_CHAT_FIELDS` entry; a name with no column writes nothing. Before this, the catch-all arm sent the fifth column, `equippedInventory`, into `pendingOutfitNotifications` and left `equippedInventory` keyed by the bundle's character ids. v4 `reconcile.ts` (`Object.assign(updates, keyed.patch)` at `322a5488e`) writes by name, so this is a convergence, not a divergence. A unit test checks that every keyed column lands in a distinct field. Imported characters carry `canManageInventory` (v4 `e1872c94f` spreads the row into `characters.create`).
+
+`system_import_state` gains `execute_inventory_carriers` (skip) and `execute_inventory_carriers_duplicate` (duplicate), both run through v4's real `executeImport` at the pin. Red first: v5 had put the map into `pendingOutfitNotifications` and stored `canManageInventory` as NULL where v4 stores `0` / `1`. The comparator now labels minted UUID object keys the way it labels values, so character-keyed cells on freshly minted characters can be compared. Measured: v4 leaves an imported object's `imageFileId` naming the bundle's file id while the picture lands under a fresh id, so the pointer dangles; v5 does the same (a v4 filing candidate). v4 also refuses a chat whose `equippedInventory` is a JSON string, a `ChatMetadataSchema` check v5's chat create does not have for any JSON column (recorded).
+
 #### 2026-10-26 — test(harness): plant the Inventory columns on every carrier family's per-run copies (P4.D327)
 
 _Harness-only change (no crate version moves)._

@@ -481,13 +481,14 @@ pub(super) fn reconcile_relationships(
                 if !keyed.patch.is_empty() {
                     let fields: Vec<&String> = keyed.patch.keys().collect();
                     let fields = serde_json::to_string(&fields).unwrap_or_default();
+                    // [P4.D327] v4 `Object.assign(updates, keyed.patch)`
+                    // writes every column under its OWN name; one arm per
+                    // keyed column, so a new column can never land in
+                    // another's cell (the old `_` arm would have written a
+                    // re-keyed `equippedInventory` into
+                    // `pendingOutfitNotifications` — R-S / R-1).
                     for (field, value) in keyed.patch {
-                        match field.as_str() {
-                            "equippedOutfit" => patch.equipped_outfit = Some(Some(value)),
-                            "characterAvatars" => patch.character_avatars = Some(value),
-                            "courierCheckpoints" => patch.courier_checkpoints = Some(value),
-                            _ => patch.pending_outfit_notifications = Some(value),
-                        }
+                        apply_keyed_field(&mut patch, &field, value);
                     }
                     has_updates = true;
                     tracing::debug!(
@@ -786,8 +787,77 @@ pub(super) fn reconcile_relationships(
     }
 }
 
+// === P4.D327: the keyed-column patch, one arm per column (R-S / R-1) ===
+
+/// Write one re-keyed column of [`crate::chat::character_keyed_fields`]'s
+/// patch into the chat update under its OWN name — v4's `Object.assign(updates,
+/// keyed.patch)` (`reconcile.ts:436` at `322a5488e`), which `_update` then
+/// writes column by column (a patch-only column such as `equippedInventory`
+/// included, because the patch names it). `false` for a name this build has no
+/// column for: nothing is written (never another column's cell).
+fn apply_keyed_field(patch: &mut crate::db::chats::ChatUpdate, field: &str, value: Value) -> bool {
+    match field {
+        "equippedOutfit" => patch.equipped_outfit = Some(Some(value)),
+        "characterAvatars" => patch.character_avatars = Some(value),
+        "courierCheckpoints" => patch.courier_checkpoints = Some(value),
+        "pendingOutfitNotifications" => patch.pending_outfit_notifications = Some(value),
+        "equippedInventory" => patch.equipped_inventory = Some(Some(value)),
+        _ => return false,
+    }
+    true
+}
+// === end P4.D327 ===
+
 #[cfg(test)]
 mod tests {
+    // === P4.D327: `apply_keyed_field` is exhaustive over the keyed columns ===
+    #[test]
+    fn every_keyed_column_lands_in_its_own_field() {
+        use crate::chat::character_keyed_fields::CHARACTER_KEYED_CHAT_FIELDS;
+        use crate::db::chats::ChatUpdate;
+        let set_fields = |u: &ChatUpdate| -> Vec<&'static str> {
+            let mut out = Vec::new();
+            if u.equipped_outfit.is_some() {
+                out.push("equipped_outfit");
+            }
+            if u.character_avatars.is_some() {
+                out.push("character_avatars");
+            }
+            if u.courier_checkpoints.is_some() {
+                out.push("courier_checkpoints");
+            }
+            if u.pending_outfit_notifications.is_some() {
+                out.push("pending_outfit_notifications");
+            }
+            if u.equipped_inventory.is_some() {
+                out.push("equipped_inventory");
+            }
+            out
+        };
+        let mut seen = std::collections::HashSet::new();
+        for field in CHARACTER_KEYED_CHAT_FIELDS {
+            let mut u = ChatUpdate::default();
+            assert!(
+                super::apply_keyed_field(&mut u, field, serde_json::json!({})),
+                "{field} has no arm"
+            );
+            let set = set_fields(&u);
+            assert_eq!(set.len(), 1, "{field} set {set:?}");
+            assert!(
+                seen.insert(set[0]),
+                "{field} shares {} with another column",
+                set[0]
+            );
+        }
+        let mut u = ChatUpdate::default();
+        assert!(!super::apply_keyed_field(
+            &mut u,
+            "aSixthColumn",
+            serde_json::json!({})
+        ));
+        assert!(set_fields(&u).is_empty());
+    }
+
     use super::*;
     use crate::services::quilltap_import::IdMap;
 

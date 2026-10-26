@@ -594,13 +594,28 @@ impl Normalizer {
                 let mut out = Map::new();
                 let mut composite_normalized = false;
                 for (k, val) in m {
+                    // [P4.D327] A character-keyed column (`equippedInventory`,
+                    // `pendingOutfitNotifications`, …) is keyed by a character
+                    // id, which a `duplicate` import MINTS — so a UUID KEY is
+                    // labelled exactly as a UUID value is (literal ids stay).
+                    let key = if let Some(label) = self.id_labels.get(k) {
+                        label.clone()
+                    } else if is_uuid(k) && !self.literals.contains(k) {
+                        let next = self.minted.len();
+                        self.minted
+                            .entry(k.clone())
+                            .or_insert_with(|| format!("<minted-{next}>"))
+                            .clone()
+                    } else {
+                        k.clone()
+                    };
                     let nv = self.value(val);
                     if let (Value::String(before), Value::String(after)) = (val, &nv) {
                         if before != after && !is_uuid(before) && !is_iso(before) {
                             composite_normalized = true;
                         }
                     }
-                    out.insert(k.clone(), nv);
+                    out.insert(key, nv);
                 }
                 // A content hash over text that itself had to be normalized holds
                 // no comparable information — mask ONLY then (see the restore
@@ -1826,7 +1841,8 @@ fn system_import_execute_state_equivalence() {
     // five, bug 240's one, L-A's one, the scenario source's four) (65 + 18 =
     // 83).
     // …+ P4.D317's four outfit-history arms (83 + 4 = 87).
-    assert_eq!(ran, 87, "expected 87 cases, ran {ran}");
+    // …+ P4.D327's `execute_inventory_carriers{,_duplicate}` (87 + 2 = 89).
+    assert_eq!(ran, 89, "expected 89 cases, ran {ran}");
     // [P4.D294] Non-vacuity of the carrier-line compare: every execute case
     // compared it, and each message fired somewhere.
     assert!(
@@ -2560,9 +2576,10 @@ fn system_import_execute_state_equivalence() {
     // records only `carrierLogs`); none fires one of these WARNs (47).
     // [P4.D317] + the three single-run outfit-history arms (72); the no-table
     // arm's phase-7f WARN (48).
+    // [P4.D327] + the two Inventory-carrier arms (74); neither fires one (48).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        72,
+        74,
         "cases comparing the import WARNs"
     );
     assert_eq!(
@@ -2577,9 +2594,10 @@ fn system_import_execute_state_equivalence() {
     // [P4.D294] 52 → 69 (the carrier arms fire none).
     // [P4.D317] 69 → 72; 6 → 8 (7f's INFO on the cross-instance arm and the
     // never-merge hole; the no-table arm's 7f fails before it logs).
+    // [P4.D327] 72 → 74 (the Inventory-carrier arms fire none — a silence leg).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        72,
+        74,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2597,9 +2615,10 @@ fn system_import_execute_state_equivalence() {
     // lesson memory and the empty-map interlude memory — and four on
     // `execute_chats_only_memories`, bug 240's local characters).
     // [P4.D317] 69 → 72 cases (the outfit-history arms import no memory).
+    // [P4.D327] 72 → 74 cases (the Inventory-carrier arms import no memory).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        72,
+        74,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(

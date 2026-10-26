@@ -2599,6 +2599,138 @@ function outfitHistoryBundle(base: Bundle): Bundle {
   return p;
 }
 
+// === P4.D327 — the Inventory through a `.qtap` import (v4 `4fbdad186` /
+// `e1872c94f`, pin `322a5488e`) ===
+/**
+ * [P4.D327] The cross-instance merged bundle (fresh ids, mounts preserved)
+ * grown AFTER the rewrite, as `outfitHistoryBundle` is:
+ *   - R-1 / R-S: the lesson chat carries `equippedInventory` keyed by Lorian
+ *     (a non-string element and a duplicate kept as the twin keeps them) and
+ *     by a NOT-carried character (kept under its own id — the import never
+ *     drops), beside Riya's `pendingOutfitNotifications` — v4 writes each
+ *     column under its OWN name; the interlude chat's column holds a
+ *     non-array entry for Riya (→ `[]`, re-keyed);
+ *   - R-8: Lorian `canManageInventory: false`, Riya `true` (the other cases'
+ *     characters carry no key — NULL);
+ *   - item 17 / R-13: Lorian's vault carries three object files (an archetype,
+ *     an instance under `Inventory/Tools/` whose `imageFileId` names the
+ *     bundled picture blob filed under `Inventory/images/<instance>/`, and a
+ *     kit naming the instance) — the ids inside the JSON travel verbatim; the
+ *     picture's file is imported under a FRESH id, so the pointer is measured.
+ */
+const P4D327_ARCH = '1e327000-0000-4000-8000-000000000001';
+const P4D327_INST = '1e327000-0000-4000-8000-000000000002';
+const P4D327_KIT = '1e327000-0000-4000-8000-000000000003';
+const P4D327_PIC_FILE = '1e327000-0000-4000-8000-0000000000f1';
+function inventoryCarriersBundle(base: Bundle): Bundle {
+  const p = JSON.parse(JSON.stringify(base)) as Bundle;
+  const byName = (n: string) => {
+    const c = (p.data.characters as Row[]).find((x) => x.name === n);
+    if (!c) throw new Error(`inventory bundle: no character ${n}`);
+    return c;
+  };
+  const chatByTitle = (t: string) => {
+    const c = (p.data.chats as Row[]).find((x) => x.title === t);
+    if (!c) throw new Error(`inventory bundle: no chat ${t}`);
+    return c;
+  };
+  const lorianRow = byName('Lorian');
+  const riyaRow = byName('Riya');
+  const lorian = lorianRow.id as string;
+  const riya = riyaRow.id as string;
+  lorianRow.canManageInventory = false;
+  riyaRow.canManageInventory = true;
+  const lesson = chatByTitle('A Lesson in Lift');
+  const interlude = chatByTitle('Quiet Interlude');
+  lesson.equippedInventory = {
+    [lorian]: [P4D327_INST, 7, P4D327_INST],
+    [P4D317_NOT_CARRIED]: [P4D327_ARCH],
+  };
+  lesson.pendingOutfitNotifications = { [riya]: { text: 'Riya changed.' } };
+  // (An `equippedInventory` stored as a JSON STRING is REFUSED at v4's chat
+  // create — `ChatMetadataSchema`'s `JsonSchema` is `z.record`, measured:
+  // `Failed to import chat "Quiet Interlude": … expected record, received
+  // string` — so the column rides as an object here; v5's create lacks that
+  // twin for every JSON column, recorded in the P4.D327 lane record.)
+  interlude.equippedInventory = { [riya]: 'not-a-list' };
+
+  const coatDoc = (p.data.documents as Row[]).find((d) => d.relativePath === 'Wardrobe/Travelling Coat.md');
+  if (!coatDoc) throw new Error('inventory bundle: the coat document is gone');
+  const vault = coatDoc.mountPointId as string;
+  const stamp = '2026-03-01T00:00:00.000Z';
+  let n = 0;
+  const nextId = () => `1e327000-0000-4000-8000-0000000001${String(++n).padStart(2, '0')}`;
+  const folders = (p.data.folders ?? (p.data.folders = [])) as Row[];
+  const folderTemplate = folders.find((f) => f.mountPointId === vault);
+  if (!folderTemplate) throw new Error('inventory bundle: the vault carries no folder');
+  const folder = (path: string, parentId: string | null): string => {
+    const id = nextId();
+    folders.push({ ...folderTemplate, id, parentId, name: path.split('/').pop(), path, createdAt: stamp, updatedAt: stamp });
+    return id;
+  };
+  const inv = folder('Inventory', null);
+  const tools = folder('Inventory/Tools', inv);
+  const images = folder('Inventory/images', inv);
+  const pictureFolder = folder(`Inventory/images/${P4D327_INST}`, images);
+  const pretty = (o: unknown) => `${JSON.stringify(o, null, 2)}\n`;
+  const doc = (relativePath: string, folderId: string, json: unknown): Row => {
+    const content = pretty(json);
+    return {
+      ...coatDoc,
+      relativePath,
+      fileName: relativePath.split('/').pop(),
+      fileType: 'json',
+      content,
+      contentSha256: createHash('sha256').update(content, 'utf8').digest('hex'),
+      plainTextLength: content.length,
+      lastModified: stamp,
+      folderId,
+      fileId: nextId(),
+      linkId: nextId(),
+      linkGroupId: null,
+    };
+  };
+  (p.data.documents as Row[]).push(
+    doc('Inventory/Spyglass.json', inv, {
+      id: P4D327_ARCH, kind: 'item', name: 'spyglass', title: 'Spyglass', equippedByDefault: false,
+      maxEquipped: 1, canCopy: false, isArchetype: true, parentId: null, itemIds: [], metadata: {},
+      createdAt: stamp, updatedAt: stamp,
+    }),
+    doc('Inventory/Tools/Brass Spyglass.json', tools, {
+      id: P4D327_INST, title: 'Brass Spyglass', parentId: P4D327_ARCH, imageFileId: P4D327_PIC_FILE,
+      createdAt: stamp, updatedAt: stamp,
+    }),
+    doc('Inventory/Kit.json', inv, {
+      id: P4D327_KIT, kind: 'kit', name: 'kit', title: 'Kit', equippedByDefault: false, maxEquipped: 1,
+      canCopy: false, isArchetype: false, parentId: null, itemIds: [P4D327_INST], metadata: {},
+      createdAt: stamp, updatedAt: stamp,
+    }),
+  );
+  const bytes = Buffer.from('brass-spyglass-bytes');
+  (p.data.blobs ?? (p.data.blobs = [])).push({
+    mountPointId: vault,
+    relativePath: `Inventory/images/${P4D327_INST}/spyglass.webp`,
+    originalFileName: 'spyglass.webp',
+    originalMimeType: 'image/webp',
+    storedMimeType: 'image/webp',
+    sizeBytes: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    description: '',
+    descriptionUpdatedAt: null,
+    fileId: P4D327_PIC_FILE,
+    linkId: nextId(),
+    blobId: nextId(),
+    folderId: pictureFolder,
+    extractedText: null,
+    extractedTextSha256: null,
+    extractionStatus: 'none',
+    extractionError: null,
+    dataBase64: bytes.toString('base64'),
+  });
+  return p;
+}
+// === end P4.D327 ===
+
 /** The (rewritten) id of the bundle chat titled `title`. */
 function chatByTitle(p: Bundle, title: string): Row {
   const chat = (p.data.chats as Row[]).find((c) => c.title === title);
@@ -4312,6 +4444,35 @@ async function main(): Promise<void> {
           ) as Bundle,
         ),
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // ── P4.D327 (v4 `4fbdad186` / `e1872c94f`): the Inventory through the
+    // import — `equippedInventory` re-keyed under its OWN column (R-1),
+    // `canManageInventory` carried (R-8), the vault's object files verbatim,
+    // the picture pointer measured (R-13).
+    executeCase(
+      'execute_inventory_carriers',
+      () =>
+        inventoryCarriersBundle(
+          rewriteIds(
+            mergedPayload,
+            ((mergedPayload.data.mountPoints ?? []) as Array<{ id: string }>).map((m) => m.id),
+          ) as Bundle,
+        ),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+    ),
+    // The same bundle under `duplicate`: the two characters are CREATED (not
+    // skipped by name), so R-8's `canManageInventory` lands on new rows
+    // (`false` / `true`), and the carried sets re-key onto the new ids.
+    executeCase(
+      'execute_inventory_carriers_duplicate',
+      () =>
+        inventoryCarriersBundle(
+          rewriteIds(
+            mergedPayload,
+            ((mergedPayload.data.mountPoints ?? []) as Array<{ id: string }>).map((m) => m.id),
+          ) as Bundle,
+        ),
+      { conflictStrategy: 'duplicate', includeMemories: false, includeRelatedEntities: false },
     ),
     // The never-merge rule: the SAME unrewritten bundle twice under `skip`.
     // Run 1 is the hole below (the rows land in the local chats); run 2 finds
