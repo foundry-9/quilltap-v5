@@ -248,7 +248,7 @@ test.describe('P4.D307 — trigger phrases and wardrobe effects in the Workbench
     await newContrivance(page);
     await page.getByRole('button', { name: /Add effect/ }).click();
     const kind = page.getByLabel('Effect kind');
-    await expect(kind.locator('option')).toHaveText(['Write a value', 'Change the outfit']);
+    await expect(kind.locator('option')).toHaveText(['Write a value', 'Change the outfit', 'Change the inventory', 'Enter a log line']);
     await expect(page.getByLabel('Effect target')).toBeVisible();
 
     await kind.selectOption('wardrobe');

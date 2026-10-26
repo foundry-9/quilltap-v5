@@ -115,7 +115,7 @@ test.describe('P4.D170 — the Workbench’s progress affordances', () => {
     // ---- the gate's second subject ---------------------------------------
     const gate = page.locator('qt-gate-section');
     await expect(
-      gate.getByText('or their timed progressions — the only things known before a roll exists.', {
+      gate.getByText('their timed progressions, or what they carry in this chat — the only things known before a roll exists.', {
         exact: false,
       }),
     ).toBeVisible();

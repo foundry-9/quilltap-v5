@@ -192470,3 +192470,110 @@ Each reproduces byte for byte on a second run. v4's `useInventoryItemActions.ts`
 The order's list stands (a character given an object through the dialog and carried on a real turn; the in-chat Equip / Unequip / Take up… / Reset with Aurora's lines; a kit with a capped member and the `Done — 1 kit member …` toast; the `CAP_EXCEEDED` sentence in the alert; an archetype instantiated twice then deleted through `Detach all and delete` / `Cancel` — now the labelled alert; Move / Copy across tiers with a `NOT_COPYABLE` refusal; the `TITLE_SHADOW` join; an uploaded and a generated picture (💸 one image call) and Save to a document store; Aurora's Inventory Management → Disabled; `inventory_pick_up` / `inventory_give` on real turns (💸) with the `an` pair recorded live; the `inventory-change` Staff row; the `/photos` album select on a real vault; The Inventory tab and its icon, and the Madman's Box override once P4.D339 lands).
 
 **Versions at close:** SPA `0.5.904`; no crate moved (core 0.0.1323, host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9 — unchanged); `quilltap-harness` frozen.
+
+
+## P4.D334 — the Workbench SPA: condition groups, briefs, the inventory + log effect UI (lane `claude/p4.d334-workbench-spa-grammar-914096`, pin `322a5488e`, 2026-10-26) — LANE RECORD
+
+Order: `work-orders/p4.d334-workbench-spa-condition-groups-briefs-inventory-log-effect-ui.md`.
+Stage A, from `main` at the orders' commit (the session opened on `914096110`, the
+orders' commit's docs-only successor; branch renamed from the app's
+`claude/quirky-pasteur-2faa8c`). SPA only: no crate source moved, no crate bumped; SPA
+`0.5.881` → **0.5.887**.
+
+**§2 probe (an OBSERVATION under the pin rule, §R.2).** `git log 322a5488e..main` on the v4
+checkout showed 33 commits (the ledger's 32 plus `9faed0c7e` — diagram lightbox and Copy
+PNG, 2026-10-26 09:35); checkout clean on `main`. v4 moved; recorded, continued, nothing
+past the pin ported. **The pin:** `/tmp/qt-v4-pin-p4d334-322a5488e` = `322a5488e7bd…`,
+`package.json` `4.11.0-dev.53`, `npm ci --offline --ignore-scripts` → `openai` 7.34.0,
+`@xterm/headless` 6.0.0 (both checks pass).
+
+**What landed (five commits, each with its CHANGELOG entry and SPA bump).**
+1. The four client-safe evaluator twins (`pascal/{inventory-aggregate,inventory-subjects,
+   bench-inventory,inventory-refs}.ts`), the two stand-in modules
+   (`pascal/p4d333-stand-ins.ts`, `screens/custom-tools/p4d330-stand-ins.ts`) and the gate
+   constants (`src/testing/p4d334-gates.ts`); `pascal-inventory-twins.oracle.ndjson`
+   (**636** rows; 536 live / 80 `P4D333` / 20 `P4D330`) through its recorder.
+2. `tool-draft.ts` WHOLE: ONE-level any-of lines, the brief, the Inventory, the Log — ported
+   by a three-way merge (v4 `e8e17b2d9` → `322a5488e` onto v5's twin), 19 conflicts resolved
+   by hand — plus `tool-draft-grammar.oracle.ndjson` (**244** rows: 10 `groupsOf`, 159
+   `draft`, 4 `rename`, 4 `find`, 12 `definition`, 55 `direct`; 182 live / 62 `P4D333`),
+   v4's cases transcribed (inventory, any-of, brief, log) each gated one with a hand-built
+   twin, the gate round-trip law proved over hand-written gates.
+3. `condition-groups.ts` (`qt-joiner-toggle` + `qt-condition-groups`),
+   `literal-operand-field.ts` (extracted from v5's two inlined copies, plus `stateOptions`),
+   `aggregate-key-field.ts`, `gate-section.ts`, `outcomes-section.ts`,
+   `number-or-param-field.ts` + specs (new: condition-groups, literal-operand-field,
+   aggregate-key-field, outcomes-section, number-or-param-field).
+4. `builder-form.ts` (From an object), `side-effects-section.ts` + NEW
+   `inventory-effect-fields.ts` (Inventory + Log kinds, the Inventory picker mount, the
+   vantage loader), `wardrobe-vantage-select.ts` (`browsing`).
+5. `proving-bench.ts` (Mock inventory card, line-naming verdict, dry lines, missing-brief
+   flag), `workbench.api.ts`, `custom-tools-popup.ts` + NEW `custom-tool-aggregate-line.ts`,
+   `workbench-library.ts` (`object dice`); plus (6) the e2e spec and the README section.
+
+**Red-first.** `pascal-inventory-twins`: the four modules do not exist on `main` — every row
+unrunnable. `tool-draft-grammar` on UNPORTED `main` (a detached worktree at `914096110`,
+the spec rewritten to the structural-read idiom): **160 failed / 23 passed / 62 skipped**.
+R-15's moved strings: run against the new code, the old gate-section spec failed on exactly
+the predicted rows (lead line ×2 → `…passes the tests below:`, duplicate notice → `A line of
+the gate can test…`) plus **two the order did not list** (the subject select's
+options/title and the section hint, both `e1872c94f`'s) — recorded, updated. R-15's list
+also names `tool-draft.spec.ts:482-512` / `:1014-1022`; **those lines assert
+`includes('only once')`, which did not move — nothing to update.** The transcribed describes
+were written against the ported model and not separately red-counted on `main`.
+
+**R-1 measurement (the gated rows against REAL sibling code).** Throwaway worktree: this
+branch + P4.D333's four grammar modules/specs/corpus/schema + P4.D330's non-spec files, the
+stand-ins rewritten as re-exports of the real homes, all four flags `true`, plus two
+throwaway patches (D333's `metadata-match.ts` lacks `compareOrdered`; D333's `tool-gate.ts`
+lacks the inventory loops — the R-3 HANDOFF). On the ten touched spec files: **1369 passed /
+1 failed / 0 skipped** (flags off: 1186 passed / 184 skipped). The one red is the popup's
+DOM-order row, RED BY DESIGN until R-9's HANDOFF.
+
+**Mutation proofs (item 27) — all eight KILLED:** `joinGroups` marking every later chip;
+`collapseGroups` always an array; per-row outcome slots; the emitted brief trimmed;
+`auditAggregateKey` without the `{{` check; `mockInventoryContext` with earlier rows
+winning; `inventoryFromDraft` emitting `equip` on `equip`; the `{{dice}}` warning at `!==
+'dice'`.
+
+**R-7 MEASURED** (v4's real `WardrobeVantageSelect` under jest at the pin, `homeProjectName
+= 'Saga'`): `…garments from Saga’swardrobe will also be in reach…` — the space IS lost
+(`inventory`: `objects from Saga’sinventory…`). v5 keeps the space (`VANTAGE_HINT_JSX_SPACE`,
+recorded-only; a v4 filing candidate). **R-12 measured:** the HTTP transport serialises with
+`JSON.stringify` (`core-transport.ts:93`), so an `inventory: undefined` key is ABSENT on the
+wire; `isApplicableEffect` has no SPA caller (the bench discriminates by key) — widened to
+all four arms, no render changed.
+
+**Recorded, not ported (R-8):** `renameParameterEverywhere` and `findParameterReferences`
+miss an inventory effect's items, an inventory chip's key and `rollInventory.path`; the
+builder shows `[object Object]` for a `$inventory` parameter default — pinned as v4 does
+them; filing candidates.
+
+**Corpora.** `tool-draft-grammar.oracle.ndjson` sha256 `bd57b79b…` (re-recorded: second
+run `cmp` byte-identical); `pascal-inventory-twins.oracle.ndjson` sha256 `0407da9b…`
+(second run byte-identical). The shared definition corpus is untouched (md5
+`52ada6427d51518750bb2d5b749c4649`, `git diff main --` empty). Recipes in the recorders'
+headers (`cp` into the pin, `npx tsx`, redirect, `rm -f` first; Node 24.13.1).
+
+**Findings about siblings, for the unifier** (also in the shared-notes hand-over):
+P4.D333's tip does not export `compareOrdered`; P4.D333 left five compile-forced casts in
+`tool-draft.ts` that this lane's rewrite supersedes (take this lane's file whole).
+
+**HANDOFF list (item 25):** see the hand-over note; verbatim below.
+(1) R-2 re-point P4.D333's private aggregate-key validation at `parseAggregateKey`;
+(2) R-3 the three inventory loops + widened 4th parameter in `tool-gate.ts`; (3) delete
+`DRAFT_ROUNDTRIP_PENDING_P4D334` and widen its normalisation; (4) R-9 the aggregate
+paragraph's DOM position; (5) R-10 `inventoryAggregates?` on `CustomToolReferences`;
+(6) R-11 `CustomToolLibraryEntry.rollForm`; (7) R-12 the request types' `inventory?`;
+(8) delete the stand-ins, re-point imports, flip the four constants (SPA + e2e);
+(9) P4.D339 byte-compare of the help sentences (KNOWN: *Log line* vs `Enter a log line`).
+
+**Questions for the orchestrator:** R-2's ownership of the four twins (kept here; P4.D333's
+private key parser duplicates `parseAggregateKey` until HANDOFF 1); an extra e2e gate
+constant was not needed.
+
+**💸 for the dogfood pass:** the order's list stands (two-line gate saved and reopened; an
+outcome won by its second line; From an object over a real carried object; Change the
+inventory with Choose… over Friday's Inventory; the Mock inventory card proving an aggregate
+gate; the run dialog's inventory panel in v4's order; the narrator brief and a log effect
+live on a real turn).

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(spa): a Playwright walk of the Workbench's grammar, the tier-1 fixtures README, and the lane record (P4.D334)
+
+_Versions: SPA 0.5.887._
+
+`workbench-grammar-flow.spec.ts` (own instance, port 4349, mock LLM 45347) drives the any-of toggle on a gate and an outcome row, the brief textarea and its compare-numbers advisory, **Enter a log line**, **Change the inventory** (pick up without equipping), **From an object**, and the Inventory subjects on a gate chip and an aggregate chip, all against the "What Save would write" preview; seven beats run live, five wait on the sibling lanes behind named constants. The five existing gate, progress and triggers e2e files take the moved strings. The fixtures README gains the two new corpora, and `status-log.md` the lane record with the mutation proofs, the red-first counts, the pin-body measurement and the unifier's hand-off list.
+
 #### 2026-10-26 — feat(spa): the Proving Bench gains the Mock inventory card and the line-naming verdict, the run dialog gains the aggregate paragraph, the library badges an object roll (v4 e1872c94f, a53024d3c, e4a60ad9e, 322a5488e)
 
 _Versions: SPA 0.5.886._

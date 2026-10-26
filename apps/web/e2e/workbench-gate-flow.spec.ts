@@ -144,7 +144,7 @@ test.describe('P4.d20 — the Workbench availability gate', () => {
     // explicit radio role, and an explicit role WINS for getByRole.
     await gate.getByRole('radio', { name: 'Only show if…' }).click();
     await expect(
-      gate.getByText('Offered only to a character whose sheet passes every test:'),
+      gate.getByText('Offered only to a character whose sheet passes the tests below:'),
     ).toBeVisible();
     // A mode with no test yet is a blocking error, said beside the control.
     await expect(gate.getByText('the gate must test something')).toBeVisible();
@@ -162,7 +162,7 @@ test.describe('P4.d20 — the Workbench availability gate', () => {
     // The sheet starts as `{}`: no `rank` at all, and a key the character lacks
     // never matches — so an "only show if" withholds the tool.
     await expect(page.getByText('✕ This sheet would never be offered the tool')).toBeVisible();
-    await expect(page.getByText('it does not pass every “only show if” test.')).toBeVisible();
+    await expect(page.getByText('it passes no line of the “only show if” tests.')).toBeVisible();
     await expect(page.getByText('The roll below is the bench indulging you.')).toBeVisible();
 
     // Lend the bench a qualifying sheet — worked out RIGHT HERE, no round trip.

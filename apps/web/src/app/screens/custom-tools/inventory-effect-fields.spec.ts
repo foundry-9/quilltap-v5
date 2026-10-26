@@ -15,19 +15,21 @@ import type { ResolvedInventoryItem } from './p4d330-stand-ins';
  * Rows whose truth reads P4.D330's display / pick rule / picture are gated.
  */
 
-const item = (over: Partial<ResolvedInventoryItem>): ResolvedInventoryItem => ({
-  id: 'x',
-  kind: 'item',
-  name: 'x',
-  title: null,
-  isArchetype: false,
-  parentId: null,
-  itemIds: [],
-  metadata: {},
-  folder: '',
-  archivedAt: null,
-  ...over,
-});
+// The fields the field reads; the cast keeps the helper honest against P4.D330's fuller DTO.
+const item = (over: Partial<ResolvedInventoryItem>): ResolvedInventoryItem =>
+  ({
+    id: 'x',
+    kind: 'item',
+    name: 'x',
+    title: null,
+    isArchetype: false,
+    parentId: null,
+    itemIds: [],
+    metadata: {},
+    folder: '',
+    archivedAt: null,
+    ...over,
+  }) as ResolvedInventoryItem;
 const SWORD = item({ id: 'obj-sword', name: 'sword', title: 'Excalibur', origin: { scope: 'character', id: 'c1', name: 'Imogen' } });
 const BOW = item({ id: 'arch-bow', name: 'magic bow', isArchetype: true, origin: { scope: 'project', id: 'p1', name: 'Thornfield' } });
 const KIT = item({ id: 'kit-1', kind: 'kit', name: 'toolkit', itemIds: ['obj-sword'] });
