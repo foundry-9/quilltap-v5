@@ -2962,45 +2962,16 @@ where
     // character carries is no less true on those. (The first-shipped gate on
     // continue mode is bug 253's, fixed upstream and not ported.) The mount read
     // runs on the READ pools; a chat carrying nothing never opens them.
-    let inventory_llm_context = {
-        let chat = serde_json::json!({
+    let inventory_llm_context = crate::inventory::prompt_section::read_inventory_section(
+        db,
+        &serde_json::json!({
             "id": input.chat.id,
             "projectId": input.chat.project_id,
             "equippedInventory": input.chat.equipped_inventory,
-        });
-        if crate::inventory::equipped_set::equipped_ids_of(
-            chat.get("equippedInventory"),
-            &input.character.id,
-        )
-        .is_empty()
-        {
-            String::new()
-        } else {
-            let character_id = input.character.id.clone();
-            match db.read_main(|main| {
-                db.read_mount_index(|mount| {
-                    Ok(crate::inventory::prompt_section::build_inventory_section(
-                        main,
-                        mount,
-                        &chat,
-                        &character_id,
-                    ))
-                })
-            }) {
-                Ok(section) => section.unwrap_or_default(),
-                Err(error) => {
-                    tracing::warn!(
-                        chatId = %input.chat.id,
-                        characterId = %input.character.id,
-                        context = "inventory",
-                        error = %crate::db::fallback::error_text(&error),
-                        "[InventorySection] Failed to build the carried-objects section; turn continues"
-                    );
-                    String::new()
-                }
-            }
-        }
-    };
+        }),
+        &input.character.id,
+    )
+    .unwrap_or_default();
     // === end P4.D324 ===
 
     // "Nothing to add" turn-skipping: build the ephemeral Turn note when the

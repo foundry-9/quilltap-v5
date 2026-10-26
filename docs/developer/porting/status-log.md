@@ -190874,3 +190874,7 @@ The order's per-family split for readers / writes / location / pool / dependents
 ### P4.D324 — `INVENTORY` recorded
 
 `INVENTORY` = `c065d7e2f` (lane `claude/p4.d324-inventory-keystone-3c3c70`). The order's status header is rewritten with that sha and the landed C1 spellings (every "(to be confirmed at `INVENTORY`)" replaced; departures marked ⚑). P4.D325 / P4.D326 / P4.D327 / P4.D328 / P4.D329 / P4.D331 / P4.D337 / P4.D340 branch from `c065d7e2f`.
+
+### P4.D324 Tier 2 — item 25: Carina's three-part join (core 0.0.1325)
+
+`carina_query.rs` joins `[question, progressions, inventory]` with `filter(non-empty)` + `"\n\n---\n\n"` (v4 `carina.service.ts:592-598`); the section comes from the new `inventory::prompt_section::read_inventory_section(db, &chat, &answerer_id)` — the read-both-pools form with v4's catch WARN, which `build_context` now uses too (one copy). Family `carina_query_tier3_equivalence`: the two cases committed at `INVENTORY` (`inventory_carried`, `inventory_and_progressions`) now planted on the Rust side too (`InventoryPlantW` through the REAL location + the chat row's `equippedInventory` UPDATE); GREEN from the pin (pair + oracle rebuilt). Mutation: the inventory part dropped from the join → RED (`inventory_carried: result diverges`). `build_context_tier3` re-run GREEN over the helper.

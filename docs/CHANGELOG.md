@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — Carina's answer carries the answerer's Inventory section (P4.D324)
+
+_Versions: core 0.0.1325._
+
+Carina's one-shot question now joins the question, the forced progressions report and the answerer's `## Carried and equipped` section with v4's separator, dropping any empty part (v4 `4fbdad186`, `carina.service.ts:592-598`). A chat with nothing carried produces the same bytes as before. The read-both-pools form of the section is now one helper, `inventory::prompt_section::read_inventory_section`, shared by `build_context` and Carina. `carina_query_tier3` grew two cases (a carried object; progressions and inventory together).
+
 #### 2026-10-26 — docs(porting): record P4.D324's `INVENTORY` sha and the landed C1 spellings
 
 _Docs-only change._

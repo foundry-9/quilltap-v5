@@ -29,6 +29,7 @@ use super::equipped_set::{equipped_ids_of, read_equipped_set};
 use super::pool::{load_inventory_pool, LoadInventoryPoolOptions};
 use super::resolve::{inventory_display_name, inventory_label};
 use super::types::{InventoryFields, InventoryKind, ResolvedInventoryItem};
+use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 
 /// The section's heading.
@@ -109,6 +110,33 @@ pub fn build_inventory_section(
             section
         }
         Err(error) => {
+            tracing::warn!(
+                chatId = %chat_id,
+                characterId = %character_id,
+                context = "inventory",
+                error = %crate::db::fallback::error_text(&error),
+                "[InventorySection] Failed to build the carried-objects section; turn continues"
+            );
+            None
+        }
+    }
+}
+
+/// [`build_inventory_section`] over a [`Db`]'s READ pools — the form every
+/// caller outside a write closure uses (the turn's context, Carina's query,
+/// the greeting opener). A chat carrying nothing for the character never opens
+/// a pool; a pool that cannot be opened (no mount index) is v4's catch — the
+/// WARN, then `None`, and the caller carries on without the section.
+pub fn read_inventory_section(db: &Db, chat: &Value, character_id: &str) -> Option<String> {
+    if equipped_ids_of(chat.get("equippedInventory"), character_id).is_empty() {
+        return None;
+    }
+    match db.read_main(|main| {
+        db.read_mount_index(|mount| Ok(build_inventory_section(main, mount, chat, character_id)))
+    }) {
+        Ok(section) => section,
+        Err(error) => {
+            let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
             tracing::warn!(
                 chatId = %chat_id,
                 characterId = %character_id,

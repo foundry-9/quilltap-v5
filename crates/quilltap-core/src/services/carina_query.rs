@@ -481,11 +481,25 @@ where
             force: true,
         },
     );
-    let question_with_progressions = if progressions_section.is_empty() {
-        opts.question.clone()
-    } else {
-        format!("{}\n\n---\n\n{progressions_section}", opts.question)
-    };
+    // === P4.D324 (v4 `4fbdad186`, `carina.service.ts:592-598`) ===
+    // What the answerer carries in this chat (the Inventory), after the
+    // progressions and on the same uncached user message; absent when nothing
+    // carried has a description. v4 joins the three with `filter(Boolean)`, so
+    // an empty part (the question included) drops out — the same bytes as
+    // before when nothing is carried.
+    let inventory_section =
+        crate::inventory::prompt_section::read_inventory_section(db, &chat, &answerer_id)
+            .unwrap_or_default();
+    let question_with_progressions = [
+        opts.question.as_str(),
+        progressions_section.as_str(),
+        inventory_section.as_str(),
+    ]
+    .into_iter()
+    .filter(|part| !part.is_empty())
+    .collect::<Vec<_>>()
+    .join("\n\n---\n\n");
+    // === end P4.D324 ===
 
     let prior_exchanges = load_prior_carina_exchanges(db, &chat_id, &answerer_id);
     let mut current_messages: Vec<StreamMessage> = Vec::new();

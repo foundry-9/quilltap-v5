@@ -124,6 +124,21 @@ struct CaseW {
     asker_participant_id: Option<String>,
     operator_initiated: bool,
     expect_post: bool,
+    /// P4.D324: Inventory objects written into a vault before the case,
+    /// through the REAL location (they persist; the inventory cases run last).
+    #[serde(default)]
+    inventory_plant: Vec<InventoryPlantW>,
+    /// P4.D324: the chat ROW's `equippedInventory` for the case (Carina reads
+    /// the chat from the database).
+    #[serde(default)]
+    equipped_inventory: Option<Value>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct InventoryPlantW {
+    character_id: String,
+    record: Value,
 }
 
 #[derive(Deserialize)]
@@ -617,6 +632,47 @@ async fn carina_query_tier3_matches_oracle() {
     let mut access_lines_seen = 0usize;
 
     for case in &spec.cases {
+        // P4.D324: the case's Inventory objects + the chat row's carried map,
+        // as the oracle plants them (the REAL location, then a raw UPDATE).
+        for plant in case.inventory_plant.clone() {
+            let user = spec.user_id.clone();
+            db.write(move |ws| {
+                let main = ws.main().connection();
+                let mount = ws.mount_index().expect("mount writer").connection();
+                let vault = quilltap_core::inventory::location::resolve_inventory_location(
+                    main,
+                    mount,
+                    quilltap_core::inventory::types::InventoryScope::Character,
+                    Some(&plant.character_id),
+                    &user,
+                    quilltap_core::inventory::location::ResolveInventoryLocationOptions {
+                        ensure: true,
+                    },
+                )?
+                .expect("the character's vault");
+                let record = quilltap_core::inventory::types::InventoryRecord(
+                    plant.record.as_object().unwrap().clone(),
+                );
+                vault
+                    .create(main, mount, &record)
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: inventory plant failed: {e}", case.name));
+        }
+        if let Some(equipped) = &case.equipped_inventory {
+            let (cell, chat_id) = (equipped.to_string(), spec.chat.id.clone());
+            db.write(move |ws| {
+                ws.main().connection().execute(
+                    "UPDATE \"chats\" SET \"equippedInventory\" = ?1 WHERE \"id\" = ?2",
+                    rusqlite::params![cell, chat_id],
+                )?;
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: carried-map plant failed: {e}", case.name));
+        }
         let sink = RecordingSink::new();
         let calls_before = streaming.seen_len();
         let deps = CarinaQueryDeps {
