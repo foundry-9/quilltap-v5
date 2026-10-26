@@ -2131,6 +2131,38 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
     await dialog.getByRole('button', { name: 'Done' }).click();
   });
+
+  // P4.D330 (R-X, Tier 2 item 23) — the item-browser lift is behaviour-free:
+  // the wardrobe's own test ids and strings survive it.
+  test('the folder bar, rows and select bar keep their wardrobe test ids after the item-browser lift (P4.D330)', async ({
+    page,
+  }) => {
+    await page.goto(`${BASE_URL}/characters`);
+    await unlockIfLocked(page);
+    await openAriaDetail(page);
+    await openWardrobeDialog(page);
+    const dialog = page.getByRole('dialog');
+    const bar = dialog.getByTestId('wardrobe-folder-bar');
+    await expect(bar).toBeVisible({ timeout: 15_000 });
+    await expect(bar.getByRole('navigation', { name: 'Wardrobe folders' })).toContainText('Wardrobe');
+
+    await bar.getByRole('button', { name: 'New folder', exact: true }).click();
+    const input = dialog.getByLabel('New folder name');
+    await expect(input).toHaveAttribute('placeholder', 'Folder name — Enter to make it, Esc to think better of it');
+    await input.fill('Lift Check');
+    await input.press('Enter');
+    const row = dialog.getByTestId('wardrobe-folder-row').filter({ hasText: 'Lift Check' });
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row).toContainText('0 items');
+
+    await bar.getByRole('button', { name: 'Select', exact: true }).click();
+    const selectBar = dialog.getByTestId('wardrobe-select-bar');
+    await expect(selectBar).toContainText('0 selected');
+    await expect(selectBar.getByRole('button', { name: 'Move to folder…' })).toBeDisabled();
+    await selectBar.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(selectBar).toHaveCount(0);
+    await dialog.getByRole('button', { name: 'Done' }).click();
+  });
 });
 
 /**

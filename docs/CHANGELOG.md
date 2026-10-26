@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(e2e): the Inventory flow on its own instance, and the wardrobe's item-browser regression beat
+
+_Versions: SPA 0.5.904._
+
+NEW `e2e/inventory-flow.spec.ts` on port 4348 (mock LLM 45346) over the `characters-*` pair: LIVE — the rail's Inventory button opening The Inventory tab with its catalogue groups, the Prospero card's `Inventory (n)` header, the Photos page's album select and roll-up blurb, and a planted `inventory_pick_up` row rendering `Picked up an unicorn horn and equipped it.`; GATED behind P4D324 / P4D325 / P4D328 / P4D338 constants for the unifier — making, filing and archiving an object, instantiating an archetype, the in-chat Carrying-now gestures, a live Pick Up turn and the album filter. `e2e/wardrobe-flow.spec.ts` gains one beat proving the wardrobe keeps its folder-bar, folder-row and select-bar test ids after the item-browser lift. P4.D330, item 38 + Tier 2 items 23 / 26.
+
 #### 2026-10-26 — refactor(spa): the wardrobe browser and folder picker on the shared item-browser pieces (v4 `4fbdad186`)
 
 _Versions: SPA 0.5.903._
