@@ -16,7 +16,13 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { classifyPlaceholder, scanPlaceholders, PLACEHOLDER_PATTERN } from './placeholders';
+import {
+  classifyPlaceholder,
+  OUTCOME_PLACEHOLDER_FIELDS,
+  scanPlaceholders,
+  splitInventoryReference,
+  PLACEHOLDER_PATTERN,
+} from './placeholders';
 
 describe('classifyPlaceholder', () => {
   it('names the four bare families exactly, not by prefix', () => {
@@ -85,6 +91,60 @@ describe('classifyPlaceholder', () => {
       kind: 'metadata',
       key: 'hasOwnProperty',
     });
+  });
+});
+
+describe('classifyPlaceholder — the outcome and inventory families', () => {
+  it('names {{outcome.<field>}} for the three fields, after character and before params (bug 257)', () => {
+    expect(classifyPlaceholder('outcome.brief')).toEqual({ kind: 'outcome', field: 'brief' });
+    expect(classifyPlaceholder('outcome.state')).toEqual({ kind: 'outcome', field: 'state' });
+    expect(classifyPlaceholder('outcome.index')).toEqual({ kind: 'outcome', field: 'index' });
+    expect(OUTCOME_PLACEHOLDER_FIELDS).toEqual(['state', 'index', 'brief']);
+  });
+
+  it('falls through to unknown for any other outcome key', () => {
+    expect(classifyPlaceholder('outcome.verdict')).toEqual({ kind: 'unknown', key: 'outcome.verdict' });
+    expect(classifyPlaceholder('outcome')).toEqual({ kind: 'unknown', key: 'outcome' });
+    expect(classifyPlaceholder('outcome.')).toEqual({ kind: 'unknown', key: 'outcome.' });
+  });
+
+  it('splits {{inventory.<ref>.<field>}} at the FIRST .metadata., else at a trailing field', () => {
+    expect(classifyPlaceholder('inventory.sword.title')).toEqual({
+      kind: 'inventory',
+      ref: 'sword',
+      field: 'title',
+    });
+    // A ref may carry dots; only the trailing field is split off.
+    expect(classifyPlaceholder('inventory.old.sword.state')).toEqual({
+      kind: 'inventory',
+      ref: 'old.sword',
+      field: 'state',
+    });
+    expect(classifyPlaceholder('inventory.sword.metadata.damage.dice')).toEqual({
+      kind: 'inventory',
+      ref: 'sword',
+      field: 'metadata',
+      key: 'damage.dice',
+    });
+    expect(classifyPlaceholder('inventory.sword')).toEqual({ kind: 'unknown', key: 'inventory.sword' });
+    expect(classifyPlaceholder('inventory.sword.metadata.')).toEqual({
+      kind: 'unknown',
+      key: 'inventory.sword.metadata.',
+    });
+    // An empty ref names nothing.
+    expect(classifyPlaceholder('inventory..title')).toEqual({ kind: 'unknown', key: 'inventory..title' });
+  });
+
+  it('splitInventoryReference is the one rule the $inventory operand shares', () => {
+    expect(splitInventoryReference('sword.metadata.damage')).toEqual({
+      ref: 'sword',
+      field: 'metadata',
+      key: 'damage',
+    });
+    expect(splitInventoryReference('.metadata.damage')).toBeNull();
+    expect(splitInventoryReference('sword.title')).toEqual({ ref: 'sword', field: 'title' });
+    expect(splitInventoryReference('.title')).toBeNull();
+    expect(splitInventoryReference('sword')).toBeNull();
   });
 });
 

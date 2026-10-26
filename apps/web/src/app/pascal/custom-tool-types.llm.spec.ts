@@ -2,6 +2,15 @@
  * The consulted-oracle + containment arms of the browser schema twin, pinned
  * against v4's REAL Zod at `616930db` (P4.6bc unit 1).
  *
+ * ⚠ **Re-measured at the `322a5488e` pin (P4.D333).** Four rows moved — every replacement
+ * re-captured by driving v4's real `QtapCustomToolSchema` at that pin over the
+ * row's own bytes (a scratch probe; the rows are the artifact). The causes are
+ * v4 `a53024d3c`'s any-of unions (a group that fails HARD now reports under a
+ * union whose not-an-array branch is dropped, so its path splits at the
+ * clause: `availableWhen: metadata.…`), the two "must test something" refines
+ * naming the Inventory subjects, a record key rendered by its key schema's own
+ * reason, and `e1872c94f`'s `$inventory` arm joining every operand union.
+ *
  * ⚠ **Refreshed at v4 `25f534c0b` (P4.D170).** `0587d1e96` gave Pascal's format
  * a `progress` family, and the sentences these rows carry MOVED with it: the
  * effect target's terminal reason gained `"progress."`, both "must test
@@ -49,7 +58,12 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { collectUnknownKeys, formatDefinitionIssues, safeParse } from './custom-tool-types';
+import {
+  collectUnknownKeys,
+  formatDefinitionIssues,
+  outcomeTableTestsLlm,
+  safeParse,
+} from './custom-tool-types';
 
 interface Row {
   id: string;
@@ -236,7 +250,7 @@ const ROWS: Row[] = [
     id: "when-empty-object",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`",
+    reason: "outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`",
     data: null,
   },
   {
@@ -285,7 +299,7 @@ const ROWS: Row[] = [
     id: "contains-bare-value",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"contains\":\"x\"},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "outcomes.0.when: Unrecognized key: \"contains\"; outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`",
+    reason: "outcomes.0.when: Unrecognized key: \"contains\"; outcomes.0.when: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`",
     data: null,
   },
   {
@@ -306,7 +320,7 @@ const ROWS: Row[] = [
     id: "contains-number-literal",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"params\":{\"material\":{\"contains\":42}}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}],\"parameters\":{\"material\":{\"type\":\"string\",\"default\":\"brass\"}}}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received number \u2014 or \u2014 Invalid input: expected object, received number \u2014 or \u2014 Invalid input: expected object, received number",
+    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received number \u2014 or \u2014 Invalid input: expected object, received number \u2014 or \u2014 Invalid input: expected object, received number \u2014 or \u2014 Invalid input: expected object, received number",
     data: null,
   },
   {
@@ -327,7 +341,7 @@ const ROWS: Row[] = [
     id: "contains-boolean-literal",
     inputJson: "{\"name\":\"test_tool\",\"description\":\"A tool.\",\"outcomes\":[{\"when\":{\"params\":{\"material\":{\"contains\":true}}},\"message\":\"hit\",\"state\":\"success\"},{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}],\"parameters\":{\"material\":{\"type\":\"string\",\"default\":\"brass\"}}}",
     success: false,
-    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean",
+    reason: "outcomes.0.when: Invalid input: expected true \u2014 or \u2014 params.material.contains: Invalid input: expected string, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean \u2014 or \u2014 Invalid input: expected object, received boolean",
     data: null,
   },
   {
@@ -461,5 +475,101 @@ describe('custom-tool schema — the 616930db consult + containment arms', () =>
     // v4 `KNOWN_TOP_LEVEL_KEYS` :832 — the discovery log must not call the
     // consult block a forward-compatibility surprise.
     expect(collectUnknownKeys({ name: 'probe', llm: {}, outcomes: [] })).toEqual([]);
+  });
+});
+
+/**
+ * Bug 257 (v4 `322a5488e`): an outcome's `brief` and the consult prompt's
+ * `{{outcome.*}}` — one `it` per new sentence. Every expected string is v4's
+ * REAL output for the same bytes: the `reason` of the committed corpus row
+ * named in the test title (`pascal-custom-tool-definition.oracle.ndjson`).
+ */
+describe('custom-tool schema — outcome briefs (bug 257), against v4 322a5488e', () => {
+  const llm = { prompt: 'Report {{outcome.state}} then {{ outcome.brief }}.', errorMessage: 'The link falters.' };
+  const probe = (tool: Record<string, unknown>): { ok: boolean; text: string } => {
+    const result = safeParse({ name: 'probe', description: 'A probe.', ...tool });
+    return result.success
+      ? { ok: true, text: JSON.stringify(result.data) }
+      : { ok: false, text: formatDefinitionIssues(result.issues) };
+  };
+
+  it('accepts a brief, serialized LAST in the outcome (brief-key-order-in-data)', () => {
+    const r = probe({
+      llm,
+      outcomes: [{ brief: 'First written.', state: 'info', message: '{{llm}}', when: true }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.text).toContain('"outcomes":[{"when":true,"message":"{{llm}}","state":"info","brief":"First written."}]');
+  });
+
+  it('refuses {{outcome.*}} in a prompt whose table tests the consult (brief-whitespace-key)', () => {
+    expect(
+      probe({
+        llm: { prompt: 'Tell it: {{ outcome.brief }}', errorMessage: 'x' },
+        outcomes: [
+          { when: { llm: { ok: true } }, message: '{{llm}}', state: 'success' },
+          { when: true, message: '{{llm}}', state: 'failure' },
+        ],
+      }).text,
+    ).toBe(
+      "llm.prompt: the consult prompt references {{outcome.brief}}, but an outcome tests the consult's answer, so the table cannot be dealt before the consult. Drop the `llm` test, or take the verdict out of the prompt",
+    );
+  });
+
+  it('accepts an unknown outcome field in such a prompt — it is not an outcome placeholder (brief-prompt-reads-unknown-outcome-field)', () => {
+    expect(
+      probe({
+        llm: { prompt: 'Verdict: {{outcome.verdict}}', errorMessage: 'x' },
+        outcomes: [
+          { when: { llm: { eq: 'YES' } }, message: '{{llm}}', state: 'success' },
+          { when: true, message: '{{llm}}', state: 'failure' },
+        ],
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('refuses a brief on a tool with no `llm` block (brief-without-llm-block)', () => {
+    expect(probe({ outcomes: [{ when: true, message: 'ok', state: 'info', brief: 'Say ok.' }] }).text).toBe(
+      'outcomes.0.brief: has a `brief`, but the tool declares no `llm` block to read it',
+    );
+  });
+
+  it('refuses a brief that quotes {{llm}} or {{outcome.*}} (brief-quotes-llm, brief-quotes-outcome-index)', () => {
+    expect(probe({ llm, outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 'See {{llm}}' }] }).text).toBe(
+      'outcomes.0.brief: a brief is written before the consult runs and cannot quote {{llm}}',
+    );
+    expect(
+      probe({ llm, outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 'Row {{outcome.index}}' }] }).text,
+    ).toBe('outcomes.0.brief: a brief is written before the consult runs and cannot quote {{outcome.index}}');
+  });
+
+  it('reports the prompt issues, then each brief in row order (brief-issue-order)', () => {
+    expect(
+      probe({
+        llm,
+        outcomes: [
+          { when: { llm: { eq: 'YES' } }, message: '{{llm}}', state: 'success', brief: 'See {{llm}} and {{outcome.state}}' },
+          { when: true, message: '{{llm}}', state: 'failure' },
+        ],
+      }).text,
+    ).toBe(
+      "llm.prompt: the consult prompt references {{outcome.state}}, but an outcome tests the consult's answer, so the table cannot be dealt before the consult. Drop the `llm` test, or take the verdict out of the prompt; " +
+        "llm.prompt: the consult prompt references {{outcome.brief}}, but an outcome tests the consult's answer, so the table cannot be dealt before the consult. Drop the `llm` test, or take the verdict out of the prompt; " +
+        'outcomes.0.brief: a brief is written before the consult runs and cannot quote {{llm}}; ' +
+        'outcomes.0.brief: a brief is written before the consult runs and cannot quote {{outcome.state}}',
+    );
+  });
+
+  it('measures a brief with Zod\'s own length sentences (brief-empty-no-llm-block)', () => {
+    expect(probe({ outcomes: [{ when: true, message: '-', state: 'info', brief: '' }] }).text).toBe(
+      'outcomes.0.brief: Too small: expected string to have >=1 characters; outcomes.0.brief: has a `brief`, but the tool declares no `llm` block to read it',
+    );
+  });
+
+  it('outcomeTableTestsLlm reads every group, and `ok` alone counts', () => {
+    expect(outcomeTableTestsLlm([{ when: true }])).toBe(false);
+    expect(outcomeTableTestsLlm([{ when: { llm: { ok: false } } }, { when: true }])).toBe(true);
+    expect(outcomeTableTestsLlm([{ when: [{ gte: 0.9 }, { llm: { eq: 'YES' } }] }, { when: true }])).toBe(true);
+    expect(outcomeTableTestsLlm([{ when: [{ gte: 0.9 }] }, { when: true }])).toBe(false);
   });
 });

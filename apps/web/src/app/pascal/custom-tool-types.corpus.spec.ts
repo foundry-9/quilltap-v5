@@ -7,8 +7,13 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 458 rows (10 title + 396
- * definition + 52 gate; 425 at P4.D307's lane close, 449 once the generator's
+ * This replays the COMMITTED oracle corpus — 537 rows (10 title + 457
+ * definition + 70 gate), regenerated ONCE by P4.D333 from v4's REAL
+ * `QtapCustomToolSchema` at the `322a5488e` pin (R-F — the round's one regen;
+ * siblings merge rows by id and the unifier re-runs it): the any-of gate /
+ * `when` / effect-`when` rows (v4 `a53024d3c`), bug 257's `brief` rows, the
+ * `invalid_key` inner-reason rows, and the gate rows for `heldGroup`. Before
+ * that, 458 rows (10 title + 396 definition + 52 gate; 425 at P4.D307's lane close, 449 once the generator's
  * blocks were merged BY ID at the `25b8fab6a` round's unification, 458 at the
  * `e8e17b2d9` round's unification with P4.D319's nine `announceAsCharacter` /
  * `{{character}}` rows, regenerated ONCE from that pin — R-F) RE-RECORDED from v4's REAL `QtapCustomToolSchema` at the
@@ -123,6 +128,24 @@ const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 const P4D307_ROW_FLOORS = { 'triggers-': 20, 'effects-wardrobe-': 18 } as const;
 
 /**
+ * Gate rows whose clause is an any-of ARRAY (or carries an Inventory record):
+ * the draft layer's `gateConditionsFromGate` / `gateFromConditions` pair
+ * (`./tool-draft`, P4.D334's to widen) reads one bare group only, so the
+ * round-trip leg below is skipped for these — and ONLY that leg: the verdict
+ * leg still runs. The unifier deletes this set when P4.D334 lands.
+ */
+const DRAFT_ROUNDTRIP_PENDING_P4D334: ReadonlySet<string> = new Set([
+  'anyof-gate-two-groups',
+  'anyof-gate-one-element',
+  'anyof-gate-empty',
+  'anyof-gate-empty-group',
+  'anyof-gate-past-the-cap',
+  'anyof-gate-both-clauses-arrays',
+  'anyof-gate-progress-bad-key-in-group-1',
+  'anyof-gate-array-element-fails-hard',
+]);
+
+/**
  * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family; 425 since the `25b8fab6a` pin, P4.D307; 449 at the round's unification; 458 at the `e8e17b2d9` round's unification —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
@@ -185,6 +208,13 @@ describe('custom-tool schema — the committed v4 corpus', () => {
       // rejected one must carry the sentence. A row missing its own half would
       // otherwise compare against `null` and pass.
       expect(typeof (row.success ? row.data : row.reason), row.id).toBe('string');
+    }
+  });
+
+  it('the P4.D334 round-trip carve names only rows the fixture actually carries', () => {
+    const ids = new Set(definitionRows.map((r) => r.id));
+    for (const id of DRAFT_ROUNDTRIP_PENDING_P4D334) {
+      expect(ids.has(id), `the carve names "${id}", which the corpus does not`).toBe(true);
     }
   });
 
@@ -256,6 +286,10 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         const gate = result.data.availableWhen ?? result.data.withheldWhen;
         expect(hasToolGate(result.data)).toBe(gate !== undefined);
         if (!gate) return;
+        // An any-of clause is not yet the draft layer's to read (P4.D334).
+        if (DRAFT_ROUNDTRIP_PENDING_P4D334.has(row.id)) return;
+        // A new any-of row the carve does not name must fail loudly, not skip.
+        if (Array.isArray(gate)) throw new Error(`${row.id}: an any-of gate outside the P4.D334 carve`);
 
         // Flatten to chips and reassemble: byte-identical, key order included —
         // over the gate's NON-EMPTY records. v4's `gateFromConditions` emits a

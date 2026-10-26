@@ -52,6 +52,8 @@ import {
   type QtapCustomTool,
   type StateRef,
   type ToolGate,
+  type ToolGateGroup,
+  type RollRange,
   type Visibility,
   type WhenObject,
 } from './custom-tool-types';
@@ -437,7 +439,7 @@ function rollFieldToValue(field: NumberOrParamRef | undefined): NumberOrParamVal
   if (isParamRef(field)) return { kind: 'param', name: field.$param };
   if (isStateRef(field))
     return { kind: 'state', path: field.$state, fallback: String(field.fallback) };
-  return { kind: 'literal', text: numberText(field) };
+  return { kind: 'literal', text: numberText(field as number) };
 }
 
 function operandToDraft(
@@ -517,7 +519,13 @@ export function conditionsFromWhen(when: WhenObject): DraftCondition[] {
  * follows {@link COMPARATOR_KEYS}; keys follow the object's own order, and
  * `metadata` tests precede `progress` ones so a round trip is stable.
  */
-export function gateConditionsFromGate(gate: ToolGate): DraftGateCondition[] {
+export function gateConditionsFromGate(gateIn: ToolGate): DraftGateCondition[] {
+  // P4.D333 COMPILE-FORCED (P4.D334 owns this file): `ToolGate` is now a
+  // group or an any-of array. Until P4.D334's group-aware draft lands, the
+  // draft reads ONE group, as it always has — an any-of gate collapses on a
+  // Workbench save (recorded; the corpus spec's DRAFT_ROUNDTRIP_PENDING_P4D334
+  // is the tripwire). The same note covers this file's other P4.D333 casts.
+  const gate = gateIn as ToolGateGroup;
   const conditions: DraftGateCondition[] = [];
 
   const subjects: Array<['metadata' | 'progress', Record<string, unknown> | undefined]> = [
@@ -612,11 +620,11 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
   let when: DraftEffect['when'];
   if (effect.when === undefined) {
     when = { kind: 'always' };
-  } else if (isPlainOutcomeEq(effect.when)) {
-    when = { kind: 'outcome-state', state: effect.when.outcome.eq };
+  } else if (isPlainOutcomeEq(effect.when as EffectWhen)) {
+    when = { kind: 'outcome-state', state: (effect.when as EffectWhen).outcome!.eq! };
   } else {
     // Carried verbatim with a read-only badge — the $state-default precedent.
-    when = { kind: 'verbatim', when: effect.when };
+    when = { kind: 'verbatim', when: effect.when as EffectWhen };
   }
 
   if (effect.wardrobe) {
@@ -713,7 +721,7 @@ function outcomeToDraft(outcome: CustomToolOutcome): DraftOutcome {
   return {
     id: nextDraftId('outcome'),
     catchAll: outcome.when === true,
-    conditions: outcome.when === true ? [] : conditionsFromWhen(outcome.when),
+    conditions: outcome.when === true ? [] : conditionsFromWhen(outcome.when as WhenObject),
     state: outcome.state,
     message: outcome.message,
   };
@@ -753,7 +761,7 @@ export function draftFromDefinition(raw: unknown): ToolDraft | null {
 
   const isDice = typeof definition.roll === 'string';
   const range =
-    typeof definition.roll === 'object' && definition.roll !== null ? definition.roll : undefined;
+    typeof definition.roll === 'object' && definition.roll !== null ? (definition.roll as RollRange) : undefined;
 
   // At most one clause can be present — the schema rejects a file carrying both
   // — so the mode is simply whichever one is.

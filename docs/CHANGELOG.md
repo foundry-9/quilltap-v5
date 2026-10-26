@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(pascal-spa): the SPA grammar twin at v4 `322a5488e` — any-of, briefs, the list rule, and the Inventory / aggregate / Log grammars as data (P4.D333)
+
+_Versions: SPA 0.5.883._
+
+`apps/web/src/app/pascal/custom-tool-types.ts` mirrors v4's custom-tool schema at the pin whole: the any-of unions for gates, outcome `when`s and effect conditions (`MAX_WHEN_GROUPS`, `gateGroups` / `whenGroups` / `effectWhenGroups`, the `isNotAnArray` filter, the indexed issue paths), record keys reporting their key schema's own reason, bug 257's `brief` + `outcomeTableTestsLlm` + `validateOutcomeBriefs`, and — parsed as data, with no evaluator — the `$inventory` reference, the `inventory` / `inventoryCount` / `inventoryAggregate` subjects, the inventory gesture and the `log` effect with their sentences. `tool-gate.ts` gains `heldGroup` and `gateNamesProgress` (every Inventory record declines with no bag); `metadata-match.ts` the entry-by-entry list rule; `placeholders.ts` the `outcome` and `inventory` families. The committed definition corpus (537 rows, the round's one regen) replays green whole with no parse carve; the draft round-trip leg skips the two accepted any-of gate rows by name (`DRAFT_ROUNDTRIP_PENDING_P4D334`), and `tool-draft.ts` carries five compile-forced casts that keep its one-group reading until P4.D334's group-aware draft lands. NEW `raw-gate-reads.census.spec.ts` (v4's regex verbatim; zero offenders). `pascal-progress.oracle.ndjson` re-recorded at the pin (12 rows moved).
+
 #### 2026-10-26 — test(pascal): bug 257's table-first order through the `run_custom` handler (P4.D333)
 
 _Versions: core 0.0.1325._

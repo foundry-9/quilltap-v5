@@ -17,6 +17,12 @@
  * `apps/web/oracle/pascal-progress.recorder.ts` so the hunks are pinned without
  * editing another lane's generator.
  *
+ * ⚠ **Re-recorded at the `322a5488e` pin (P4.D333)** with the recorder
+ * unchanged: twelve `definition` rows moved — the gate refine names the
+ * Inventory subjects, a refused progress key reads `parseProgressKey`'s own
+ * reason (v4 `a53024d3c`'s `invalid_key` arm), and a hard-failing gate group
+ * reports under the any-of union (`availableWhen: progress.…`). Still 71 rows.
+ *
  * Four row kinds, all byte-compared:
  *
  *   1. `definition` — the whole `formatDefinitionIssues` sentence, or the

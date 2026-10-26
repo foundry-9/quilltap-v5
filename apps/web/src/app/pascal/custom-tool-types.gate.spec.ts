@@ -38,6 +38,15 @@
  * v4 anchors: `lib/pascal/custom-tool.types.ts` — `GateComparatorSchema`,
  * `ToolGateSchema`, the two optional top-level keys, and `validateGates`.
  *
+ * ⚠ **Re-measured at the `322a5488e` pin (P4.D333).** Twelve rows moved — every replacement
+ * re-captured by driving v4's real `QtapCustomToolSchema` at that pin over the
+ * row's own bytes (a scratch probe; the rows are the artifact). The causes are
+ * v4 `a53024d3c`'s any-of unions (a group that fails HARD now reports under a
+ * union whose not-an-array branch is dropped, so its path splits at the
+ * clause: `availableWhen: metadata.…`), the two "must test something" refines
+ * naming the Inventory subjects, a record key rendered by its key schema's own
+ * reason, and `e1872c94f`'s `$inventory` arm joining every operand union.
+ *
  * One finding the capture surfaced, recorded rather than fixed: v4 phrases a
  * non-object `z.record` as `expected record`, and the THREE pre-existing
  * `z.record` sites in this module (`when.params`, `when.metadata`, top-level
@@ -135,21 +144,21 @@ const ROWS: Row[] = [
     id: "gate-param-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"parameters\":{\"level\":{\"type\":\"number\",\"default\":1}},\"availableWhen\":{\"metadata\":{\"rank\":{\"gte\":{\"$param\":\"level\"}}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.gte: Invalid input: expected number, received object",
+    reason: "availableWhen: metadata.rank.gte: Invalid input: expected number, received object",
     data: null,
   },
   {
     id: "gate-state-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":{\"gte\":{\"$state\":\"player.rank\",\"fallback\":2}}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.gte: Invalid input: expected number, received object",
+    reason: "availableWhen: metadata.rank.gte: Invalid input: expected number, received object",
     data: null,
   },
   {
     id: "gate-empty-metadata",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{}}}",
     success: false,
-    reason: "availableWhen: must test at least one metadata key or progress field",
+    reason: "availableWhen: must test at least one metadata key, progress field, inventory object, or inventory aggregate",
     data: null,
   },
   {
@@ -163,7 +172,7 @@ const ROWS: Row[] = [
     id: "gate-unknown-subject-params",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"params\":{\"a\":{\"eq\":1}}}}",
     success: false,
-    reason: "availableWhen: Unrecognized key: \"params\"; availableWhen: must test at least one metadata key or progress field",
+    reason: "availableWhen: Unrecognized key: \"params\"; availableWhen: must test at least one metadata key, progress field, inventory object, or inventory aggregate",
     data: null,
   },
   {
@@ -198,42 +207,42 @@ const ROWS: Row[] = [
     id: "gate-empty-metadata-key",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"\":{\"eq\":1}}}}",
     success: false,
-    reason: "availableWhen.metadata.: Invalid key in record",
+    reason: "availableWhen: metadata.: Too small: expected string to have >=1 characters",
     data: null,
   },
   {
     id: "gate-ordering-string-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":{\"gte\":\"3\"}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.gte: Invalid input: expected number, received string",
+    reason: "availableWhen: metadata.rank.gte: Invalid input: expected number, received string",
     data: null,
   },
   {
     id: "gate-ordering-boolean-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":{\"gt\":true}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.gt: Invalid input: expected number, received boolean",
+    reason: "availableWhen: metadata.rank.gt: Invalid input: expected number, received boolean",
     data: null,
   },
   {
     id: "gate-eq-array-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":{\"eq\":[1,2]}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.eq: Invalid input: expected number, received array — or — Invalid input: expected string, received array — or — Invalid input: expected boolean, received array",
+    reason: "availableWhen: metadata.rank.eq: Invalid input: expected number, received array — or — Invalid input: expected string, received array — or — Invalid input: expected boolean, received array",
     data: null,
   },
   {
     id: "gate-eq-null-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":{\"eq\":null}}}}",
     success: false,
-    reason: "availableWhen.metadata.rank.eq: Invalid input: expected number, received null — or — Invalid input: expected string, received null — or — Invalid input: expected boolean, received null",
+    reason: "availableWhen: metadata.rank.eq: Invalid input: expected number, received null — or — Invalid input: expected string, received null — or — Invalid input: expected boolean, received null",
     data: null,
   },
   {
     id: "gate-contains-number-operand",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"notes\":{\"contains\":7}}}}",
     success: false,
-    reason: "availableWhen.metadata.notes.contains: Invalid input: expected string, received number",
+    reason: "availableWhen: metadata.notes.contains: Invalid input: expected string, received number",
     data: null,
   },
   {
@@ -247,14 +256,14 @@ const ROWS: Row[] = [
     id: "gate-metadata-not-an-object",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":\"rank\"}}",
     success: false,
-    reason: "availableWhen.metadata: Invalid input: expected record, received string",
+    reason: "availableWhen: metadata: Invalid input: expected record, received string",
     data: null,
   },
   {
     id: "gate-comparator-not-an-object",
     inputJson: "{\"name\":\"reprogram\",\"description\":\"Rewrite the thing’s instructions.\",\"outcomes\":[{\"when\":true,\"message\":\"done\",\"state\":\"info\"}],\"availableWhen\":{\"metadata\":{\"rank\":3}}}",
     success: false,
-    reason: "availableWhen.metadata.rank: Invalid input: expected object, received number",
+    reason: "availableWhen: metadata.rank: Invalid input: expected object, received number",
     data: null,
   },
 ];
@@ -280,4 +289,117 @@ describe('custom-tool schema — the availability gate, against v4 231be14c', ()
       }
     });
   }
+});
+
+/**
+ * The any-of grammar (v4 `a53024d3c`, at the `322a5488e` pin) — one `it` per
+ * new sentence or rendering rule. Every expected string is v4's REAL output for
+ * the same bytes: each is the `reason` of the committed corpus row named in the
+ * test title (`pascal-custom-tool-definition.oracle.ndjson`), which the corpus
+ * spec also replays whole.
+ */
+describe('custom-tool schema — any-of gates and conditions, against v4 322a5488e', () => {
+  const probe = (extra: Record<string, unknown>, outcomes?: unknown[]): string | null => {
+    const result = safeParse({
+      name: 'probe',
+      description: 'A probe.',
+      outcomes: outcomes ?? [{ when: true, message: '-', state: 'info' }],
+      ...extra,
+    });
+    return result.success ? null : formatDefinitionIssues(result.issues);
+  };
+  const row = (when: unknown) => [
+    { when, message: '-', state: 'info' },
+    { when: true, message: '-', state: 'info' },
+  ];
+
+  it('accepts an array gate, an array outcome `when`, and an array effect `when` (anyof-*-two-groups)', () => {
+    expect(probe({ availableWhen: [{ metadata: { a: { eq: true } } }, { metadata: { b: { eq: true } } }] })).toBeNull();
+    expect(probe({}, row([{ gte: 0.9 }, { metadata: { lucky: { eq: true } } }]))).toBeNull();
+    expect(
+      probe({
+        effects: [
+          { when: [{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }], target: 'state.hits', value: 1 },
+        ],
+      }),
+    ).toBeNull();
+  });
+
+  it('names every Inventory subject in the gate group refine (anyof-gate-bare-empty-object-unburied)', () => {
+    expect(probe({ availableWhen: {} })).toBe(
+      'availableWhen: must test at least one metadata key, progress field, inventory object, or inventory aggregate',
+    );
+  });
+
+  it('names every Inventory subject in the `when` refine, at the group index (anyof-outcome-empty-group)', () => {
+    expect(probe({}, row([{ gte: 0.9 }, {}]))).toBe(
+      'outcomes.0.when.1: must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`',
+    );
+  });
+
+  it('names `outcome` and every Inventory subject in the effect `when` refine', () => {
+    expect(probe({ effects: [{ when: {}, target: 'state.hits', value: 1 }] })).toBe(
+      'effects.0.when: must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`',
+    );
+  });
+
+  it('refuses an empty any-of array with Zod\'s own continuable min (anyof-gate-empty, anyof-outcome-empty)', () => {
+    expect(probe({ withheldWhen: [] })).toBe('withheldWhen: Too small: expected array to have >=1 items');
+    expect(probe({}, row([]))).toBe('outcomes.0.when: Too small: expected array to have >=1 items');
+  });
+
+  it('refuses a ninth group with ONLY the author\'s cap, hard, before any element parses (anyof-*-past-the-cap*)', () => {
+    const nine = Array.from({ length: 9 }, (_, k) => ({ metadata: { [`k${k}`]: { eq: 1 } } }));
+    expect(probe({ availableWhen: nine })).toBe(
+      'availableWhen: Invalid input: expected object, received array — or — at most 8 groups',
+    );
+    // The ninth group is malformed too, and is never read.
+    const eightAndBad = [...Array.from({ length: 8 }, (_, k) => ({ gte: k })), {}];
+    expect(probe({}, row(eightAndBad))).toBe(
+      'outcomes.0.when: Invalid input: expected true — or — Invalid input: expected object, received array — or — at most 8 groups',
+    );
+  });
+
+  it('drops the not-an-array branch from a union rendering (anyof-gate-scalar, anyof-outcome-scalar-when)', () => {
+    expect(probe({ availableWhen: 5 })).toBe('availableWhen: Invalid input: expected object, received number');
+    expect(probe({}, row(5))).toBe(
+      'outcomes.0.when: Invalid input: expected true — or — Invalid input: expected object, received number',
+    );
+  });
+
+  it('keeps the array branch when a string also fails its length checks (anyof-*-long-string*, anyof-outcome-empty-string-when)', () => {
+    expect(probe({ availableWhen: 'abcdefghij' })).toBe(
+      'availableWhen: Invalid input: expected object, received string — or — Invalid input: expected array, received string; at most 8 groups',
+    );
+    expect(probe({}, row(''))).toBe(
+      'outcomes.0.when: Invalid input: expected true — or — Invalid input: expected object, received string — or — Invalid input: expected array, received string; Too small: expected string to have >=1 characters',
+    );
+  });
+
+  it('indexes a cross-field path by group ONLY when the clause is an array (anyof-*-ghost-param-*)', () => {
+    expect(probe({}, row([{ gte: 0.9 }, { params: { ghost: { eq: 1 } } }]))).toBe(
+      'outcomes.0.when.1.params.ghost: tests undeclared parameter "ghost"',
+    );
+    expect(probe({}, row({ params: { ghost: { eq: 1 } } }))).toBe(
+      'outcomes.0.when.params.ghost: tests undeclared parameter "ghost"',
+    );
+    expect(
+      probe({ effects: [{ when: [{ outcome: { eq: 'success' } }, { params: { ghost: { eq: 1 } } }], target: 'state.hits', value: 1 }] }),
+    ).toBe('effects.0.when.1.params.ghost: tests undeclared parameter "ghost"');
+  });
+
+  it('renders a refused record key by the key schema\'s own reason (anyof-gate-progress-bad-key-in-group-1)', () => {
+    expect(probe({ withheldWhen: [{ metadata: { a: { eq: 1 } } }, { progress: { cannon: { eq: true } } }] })).toBe(
+      'withheldWhen: Invalid input: expected object, received array — or — 1.progress.cannon: "cannon" names no field — write "<progression id>.<field>", e.g. "cannon.complete"',
+    );
+    expect(probe({ availableWhen: { metadata: { '': { eq: 1 } } } })).toBe(
+      'availableWhen: metadata.: Too small: expected string to have >=1 characters',
+    );
+  });
+
+  it('never reads an array `when` as a catch-all (anyof-outcome-is-never-a-catch-all)', () => {
+    expect(probe({}, [{ when: [{ gte: 0.5 }], message: '-', state: 'info' }])).toBe(
+      'outcomes.0.when: the final outcome must be a catch-all (when: true) so every roll lands somewhere',
+    );
+  });
 });

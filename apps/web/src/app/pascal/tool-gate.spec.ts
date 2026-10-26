@@ -13,10 +13,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { ToolGate } from './custom-tool-types';
-import { evaluateToolGate, hasToolGate } from './tool-gate';
+import type { ToolGate, ToolGateGroup } from './custom-tool-types';
+import { evaluateToolGate, gateNamesProgress, hasToolGate } from './tool-gate';
 
-const gate = (metadata: ToolGate['metadata']): ToolGate => ({ metadata });
+const gate = (metadata: ToolGateGroup['metadata']): ToolGate => ({ metadata });
 
 describe('evaluateToolGate', () => {
   it('reports an ungated definition as available', () => {
@@ -118,5 +118,95 @@ describe('evaluateToolGate', () => {
       available: false,
       withheldBy: 'withheldWhen',
     });
+  });
+});
+
+/**
+ * Any-of gates (v4 `a53024d3c`) — v4's `any-of gates` describe
+ * (`__tests__/unit/lib/pascal/inventory-aggregate.test.ts`), case for case.
+ */
+describe('evaluateToolGate — any-of clauses', () => {
+  const AB: ToolGateGroup = { metadata: { a: { eq: true }, b: { eq: true } } };
+  const AC: ToolGateGroup = { metadata: { a: { eq: true }, c: { eq: true } } };
+  const available = { availableWhen: [AB, AC] };
+  const withheld = { withheldWhen: [AB, AC] };
+
+  const cases: Array<[Record<string, unknown>, boolean, number | undefined]> = [
+    [{ a: true, b: true }, true, 0],
+    [{ a: true, c: true }, true, 1],
+    [{ a: true, b: true, c: true }, true, 0],
+    [{ a: true }, false, undefined],
+    [{ b: true, c: true }, false, undefined],
+  ];
+  for (const [sheet, holdsGate, line] of cases) {
+    it(`a∧b ∨ a∧c on ${JSON.stringify(sheet)}`, () => {
+      expect(evaluateToolGate(available, sheet)).toEqual(
+        holdsGate ? { available: true, heldGroup: line } : { available: false, withheldBy: 'availableWhen' },
+      );
+      expect(evaluateToolGate(withheld, sheet)).toEqual(
+        holdsGate ? { available: false, withheldBy: 'withheldWhen', heldGroup: line } : { available: true },
+      );
+    });
+  }
+
+  it('reports heldGroup only when a group held — opening availableWhen, or closing withheldWhen', () => {
+    // availableWhen held → available, WITH the group that opened it; failed →
+    // withheld, WITHOUT a group (none held). withheldWhen held → withheld,
+    // WITH the closing group; unsatisfied → available, WITHOUT.
+    expect(JSON.stringify(evaluateToolGate(available, { a: true, c: true }))).toBe(
+      '{"available":true,"heldGroup":1}',
+    );
+    expect(JSON.stringify(evaluateToolGate(available, {}))).toBe(
+      '{"available":false,"withheldBy":"availableWhen"}',
+    );
+    expect(JSON.stringify(evaluateToolGate(withheld, { a: true, b: true }))).toBe(
+      '{"available":false,"withheldBy":"withheldWhen","heldGroup":0}',
+    );
+    expect(JSON.stringify(evaluateToolGate(withheld, {}))).toBe('{"available":true}');
+  });
+
+  it('never reports heldGroup for a bare-object clause', () => {
+    expect(evaluateToolGate({ availableWhen: AB }, { a: true, b: true })).toEqual({ available: true });
+    expect(evaluateToolGate({ withheldWhen: AB }, { a: true, b: true })).toEqual({
+      available: false,
+      withheldBy: 'withheldWhen',
+    });
+  });
+
+  it('a null inventory declines every Inventory group: availableWhen closed, withheldWhen unsatisfied', () => {
+    const groups: ToolGateGroup[] = [
+      { inventoryAggregate: { 'equipped.count': { gte: 0 } } },
+      { inventory: { sword: { eq: 'absent' } } },
+      { inventoryCount: { sword: { eq: 0 } } },
+    ];
+    expect(evaluateToolGate({ availableWhen: groups }, {})).toEqual({
+      available: false,
+      withheldBy: 'availableWhen',
+    });
+    expect(evaluateToolGate({ withheldWhen: groups }, {})).toEqual({ available: true });
+    // A metadata group beside them still opens the clause, and names itself.
+    expect(evaluateToolGate({ availableWhen: [...groups, { metadata: { a: { eq: 1 } } }] }, { a: 1 })).toEqual({
+      available: true,
+      heldGroup: 3,
+    });
+  });
+});
+
+describe('gateNamesProgress', () => {
+  it('is false for no gate, and for a gate naming no progress key', () => {
+    expect(gateNamesProgress(undefined)).toBe(false);
+    expect(gateNamesProgress(gate({ rank: { gte: 1 } }))).toBe(false);
+  });
+
+  it('counts progress KEYS, so an empty progress record names nothing', () => {
+    expect(gateNamesProgress({ metadata: { a: { eq: 1 } }, progress: {} })).toBe(false);
+    expect(gateNamesProgress({ progress: { 'cannon.complete': { eq: true } } })).toBe(true);
+  });
+
+  it('reads every group of an any-of clause', () => {
+    expect(gateNamesProgress([{ metadata: { a: { eq: 1 } } }, { progress: { 'cannon.percent': { gte: 50 } } }])).toBe(
+      true,
+    );
+    expect(gateNamesProgress([{ metadata: { a: { eq: 1 } } }, { progress: {} }])).toBe(false);
   });
 });

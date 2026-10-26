@@ -2,6 +2,15 @@
  * The `$state` reference arms of the browser schema twin (v4 `f48f34dc`,
  * "cascading state"), pinned against v4's REAL Zod at `c53510c7`.
  *
+ * ⚠ **Re-measured at the `322a5488e` pin (P4.D333).** Three rows moved (the `$inventory` branch now renders in every bare-object roll union) — every replacement
+ * re-captured by driving v4's real `QtapCustomToolSchema` at that pin over the
+ * row's own bytes (a scratch probe; the rows are the artifact). The causes are
+ * v4 `a53024d3c`'s any-of unions (a group that fails HARD now reports under a
+ * union whose not-an-array branch is dropped, so its path splits at the
+ * clause: `availableWhen: metadata.…`), the two "must test something" refines
+ * naming the Inventory subjects, a record key rendered by its key schema's own
+ * reason, and `e1872c94f`'s `$inventory` arm joining every operand union.
+ *
  * The committed corpus NDJSON is lane D10's to regenerate (§C of the P4.6be
  * work order), so this file is the same-teeth stand-in: every row below was
  * CAPTURED by driving v4's own `QtapCustomToolSchema.safeParse` +
@@ -60,7 +69,7 @@ const ROWS: Row[] = [
     id: "state-missing-fallback",
     inputJson: "{\"name\":\"draw\",\"description\":\"x\",\"roll\":{\"min\":{\"$state\":\"game.low\"}},\"outcomes\":[{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized key: \"$state\" — or — fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined",
+    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized key: \"$state\" — or — fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined; Unrecognized key: \"$state\" — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined; Unrecognized key: \"min\"",
     data: null,
   },
   {
@@ -123,14 +132,14 @@ const ROWS: Row[] = [
     id: "state-fallback-object",
     inputJson: "{\"name\":\"draw\",\"description\":\"x\",\"roll\":{\"min\":{\"$state\":\"game.low\",\"fallback\":{}}},\"outcomes\":[{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized keys: \"$state\", \"fallback\" — or — fallback: Invalid input: expected number, received object — or — Invalid input: expected string, received object — or — Invalid input: expected boolean, received object",
+    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized keys: \"$state\", \"fallback\" — or — fallback: Invalid input: expected number, received object — or — Invalid input: expected string, received object — or — Invalid input: expected boolean, received object — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received object — or — Invalid input: expected string, received object — or — Invalid input: expected boolean, received object; Unrecognized key: \"$state\" — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined; Unrecognized key: \"min\"",
     data: null,
   },
   {
     id: "state-fallback-null",
     inputJson: "{\"name\":\"draw\",\"description\":\"x\",\"roll\":{\"min\":{\"$state\":\"game.low\",\"fallback\":null}},\"outcomes\":[{\"when\":true,\"message\":\"fall\",\"state\":\"info\"}]}",
     success: false,
-    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized keys: \"$state\", \"fallback\" — or — fallback: Invalid input: expected number, received null — or — Invalid input: expected string, received null — or — Invalid input: expected boolean, received null",
+    reason: "roll: Invalid input: expected string, received object — or — min: Invalid input: expected number, received object — or — $param: Invalid input: expected string, received undefined; Unrecognized keys: \"$state\", \"fallback\" — or — fallback: Invalid input: expected number, received null — or — Invalid input: expected string, received null — or — Invalid input: expected boolean, received null — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received null — or — Invalid input: expected string, received null — or — Invalid input: expected boolean, received null; Unrecognized key: \"$state\" — or — $inventory: Invalid input: expected string, received undefined; fallback: Invalid input: expected number, received undefined — or — Invalid input: expected string, received undefined — or — Invalid input: expected boolean, received undefined; Unrecognized key: \"min\"",
     data: null,
   },
   {

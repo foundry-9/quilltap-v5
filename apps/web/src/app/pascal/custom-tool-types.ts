@@ -9,10 +9,12 @@
  * truth: Pascal's Workbench validates a draft with the same rules the roster
  * loader runs on the server, which is the whole design.
  *
- * Design constraint that shapes everything below: outcome tests are AND-composed
- * comparator objects, and indirection is limited to two closed forms — a
- * `{ "$param": "name" }` reference and a `{ "$state": "path", "fallback":
- * <literal> }` reference. The **one** place a string grammar exists is an
+ * Design constraint that shapes everything below: tests are AND-composed
+ * comparator objects; a one-level any-of array of them is OR; there is no
+ * nesting and no expression grammar. Indirection is limited to closed forms —
+ * a `{ "$param": "name" }` reference, a `{ "$state": "path", "fallback":
+ * <literal> }` reference and its Inventory twin `{ "$inventory":
+ * "<ref>.metadata.<key>", "fallback": <literal> }`. The **one** place a string grammar exists is an
  * effect's `value`, evaluated by the closed, eval-free parser in
  * `./expressions`: arithmetic, string concatenation, parentheses, literals, and
  * `{{ref}}` substitution. There are no identifiers, no function calls, and no
@@ -51,9 +53,19 @@
  *    rather than being buried under an `Invalid input` at the union.
  *
  * The port is pinned byte-for-byte against v4's REAL Zod by
- * `custom-tool-types.corpus.spec.ts`, which replays the committed 115-row
- * oracle corpus (105 definitions + 10 titles) and compares the verdict, the
- * parsed data, the unknown-key report, and the full rejection sentence.
+ * `custom-tool-types.corpus.spec.ts`, which replays the committed 537-row
+ * oracle corpus (457 definitions + 70 gate verdicts + 10 titles, regenerated at
+ * v4 `322a5488e`) and compares the verdict, the parsed data, the unknown-key
+ * report, and the full rejection sentence.
+ *
+ * # The grammars carried as data only
+ *
+ * v4 `e1872c94f` / `a53024d3c` / `e4a60ad9e` (the Inventory subjects and
+ * gestures, the `inventoryAggregate` sheet, the `log` effect, `$inventory`
+ * operands) are parsed and validated here WHOLE — the Workbench must phrase a
+ * draft's rejection exactly as the server would — but nothing in the browser
+ * evaluates them yet: `evaluateToolGate` reads every Inventory test as v4 reads
+ * it with no bag (declined).
  *
  * # The one arm the corpus cannot cover: overflow literals
  *
@@ -97,7 +109,7 @@ import {
   type Res,
 } from './zod-shim';
 import { MAX_EFFECT_EXPRESSION_LENGTH, parseExpression } from './expressions';
-import { scanPlaceholders as scanPlaceholdersInText } from './placeholders';
+import { scanPlaceholders as scanPlaceholdersInText, splitInventoryReference } from './placeholders';
 import { zodLenMaxOk, zodLenMinOk } from './zod-length';
 // The slot enum is IMPORTED from the wardrobe registry, never minted here: it
 // holds v4's `WARDROBE_SLOT_TYPES` (`wardrobe.types.ts:33-37`) in v4's order,
@@ -118,6 +130,12 @@ export const MAX_PARAMETERS = 8;
 
 /** Cap on outcomes per tool. */
 export const MAX_OUTCOMES = 32;
+
+/**
+ * Cap on groups in one any-of array — a gate, an outcome `when`, or an effect
+ * `when` written as an array of AND-groups.
+ */
+export const MAX_WHEN_GROUPS = 8;
 
 /** Cap on tools in a single resolved roster. */
 export const MAX_ROSTER_SIZE = 64;
@@ -254,15 +272,37 @@ export interface StateRef {
   fallback: number | string | boolean;
 }
 
-/** A roll field: a literal number, a `$param`, or a `$state` reference. */
-export type NumberOrParamRef = number | ParamRef | StateRef;
+/** The longest Inventory reference (an object id, title or name, or a `when` key). */
+export const MAX_INVENTORY_REF_LENGTH = 200;
+
+/**
+ * A reference into one `metadata` key of one Inventory object the rolling
+ * character carries or can reach — `"<ref>.metadata.<key>"`, split at the
+ * FIRST `.metadata.` (the `{{inventory.*}}` placeholder's rule). Accepted
+ * wherever a `$state` reference is, and typed the same way: by its required
+ * fallback, which run-time resolution falls back to whenever the object, the
+ * key, or a value of the fallback's type is missing. Only `metadata` is
+ * addressable here — a title is never a number to roll against. A top-level
+ * `roll` may be one with a dice-notation fallback ("1d4"), so a sword's
+ * `metadata.damage` of "2d6" can be the roll itself (v4 `e1872c94f`).
+ */
+export interface InventoryRef {
+  $inventory: string;
+  fallback: number | string | boolean;
+}
+
+/** v4 `InventoryRefSchema`'s refine message. */
+const INVENTORY_REF_MESSAGE = 'must be "<object>.metadata.<key>", e.g. "sword.metadata.damage"';
+
+/** A roll field: a literal number, a `$param`, a `$state` or a `$inventory` reference. */
+export type NumberOrParamRef = number | ParamRef | StateRef | InventoryRef;
 
 /**
  * A comparator operand for eq/neq, which may address a parameter of any
  * declared type — `{ "eq": "brass" }` is a legitimate test of a string — or a
  * `$state` reference typed by its fallback.
  */
-export type AnyOperand = number | string | boolean | ParamRef | StateRef;
+export type AnyOperand = number | string | boolean | ParamRef | StateRef | InventoryRef;
 
 /**
  * A comparator operand for contains/ncontains: the substring to look for — a
@@ -271,7 +311,7 @@ export type AnyOperand = number | string | boolean | ParamRef | StateRef;
  * because every string contains "", which makes an empty needle a typo wearing
  * a comparator's clothes.
  */
-export type StringOperand = string | ParamRef | StateRef;
+export type StringOperand = string | ParamRef | StateRef | InventoryRef;
 
 /** True when a roll field is a `$param` reference rather than a literal. */
 export function isParamRef(value: unknown): value is ParamRef {
@@ -283,6 +323,11 @@ export function isStateRef(value: unknown): value is StateRef {
   return typeof value === 'object' && value !== null && '$state' in value;
 }
 
+/** True when a value is a `$inventory` reference. */
+export function isInventoryRef(value: unknown): value is InventoryRef {
+  return typeof value === 'object' && value !== null && '$inventory' in value;
+}
+
 /**
  * A declared parameter. Every parameter requires a `default` so that a
  * zero-argument run is always possible — the model may reach for a tool without
@@ -290,7 +335,7 @@ export function isStateRef(value: unknown): value is StateRef {
  */
 export interface CustomToolParameter {
   type: ParameterType;
-  default: number | string | boolean | StateRef;
+  default: number | string | boolean | StateRef | InventoryRef;
   description?: string;
   min?: number;
   max?: number;
@@ -308,8 +353,12 @@ export interface RollRange {
   round?: boolean;
 }
 
-/** Either form of roll: dice notation, or a range object. */
-export type Roll = string | RollRange;
+/**
+ * Either form of roll — dice notation, or a range object — or a `$inventory`
+ * reference whose (dice-notation) fallback stands in when the object's
+ * metadata holds no rollable notation.
+ */
+export type Roll = string | RollRange | InventoryRef;
 
 /**
  * A comparator against a number — the rolled value, or the raw draw. Keys AND
@@ -378,11 +427,49 @@ export interface GateComparator {
   ncontains?: string;
 }
 
+/** The four states an `inventory` test compares against (v4 `InventoryStateValueSchema`). */
+export type InventoryStateValue = 'equipped' | 'carried' | 'reachable' | 'absent';
+
+/** v4 `InventoryStateValueSchema`'s options, in its order. */
+export const INVENTORY_STATE_VALUES: readonly InventoryStateValue[] = [
+  'equipped',
+  'carried',
+  'reachable',
+  'absent',
+];
+
 /**
- * An availability gate: whether this invoker is offered the tool at all.
+ * A test of one object's state: `eq` / `neq` only (an ordering key is a
+ * rejection — a state has no order). The operand is one of the four states
+ * or a `$param` naming a string parameter.
+ */
+export interface InventoryStateComparator {
+  eq?: InventoryStateValue | ParamRef;
+  neq?: InventoryStateValue | ParamRef;
+}
+
+/** The state test a gate may pose: literal states only. */
+export interface GateInventoryStateComparator {
+  eq?: InventoryStateValue;
+  neq?: InventoryStateValue;
+}
+
+/** The count test a gate may pose: literal numbers only, no containment. */
+export interface GateInventoryCountComparator {
+  gt?: number;
+  gte?: number;
+  lt?: number;
+  lte?: number;
+  eq?: number;
+  neq?: number;
+}
+
+/**
+ * One group of an availability gate: tests that must ALL hold (v4
+ * `ToolGateGroupSchema`, `a53024d3c` — the old one-object `ToolGateSchema`).
  *
- * Keyed by metadata key or by `"<id>.<field>"`, AND-composed across BOTH
- * subjects, and fail-soft in exactly the way an outcome's `metadata` test is —
+ * Keyed by metadata key or by `"<id>.<field>"`, AND-composed across every
+ * subject, and fail-soft in exactly the way an outcome's `metadata` test is —
  * a key the character lacks does not match. The subjects are `metadata` and
  * `progress` and nothing else because a gate is answered BEFORE the deal: there
  * is no roll to test, no parameters (nobody has called anything), and no
@@ -396,7 +483,7 @@ export interface GateComparator {
  * metadata key or progress field" refine moved from the metadata RECORD to the
  * gate OBJECT — so its issue path is the gate, not `gate.metadata`.
  */
-export interface ToolGate {
+export interface ToolGateGroup {
   metadata?: Record<string, GateComparator>;
   /**
    * Test the invoking character's timed progressions, keyed `"<id>.<field>"`.
@@ -404,6 +491,29 @@ export interface ToolGate {
    * character does not carry does not match (v4 `0587d1e96`).
    */
   progress?: Record<string, GateComparator>;
+  /**
+   * Test an object's state for the invoking character in this chat, keyed by a
+   * LITERAL object reference (id, title or name). With no character or chat,
+   * every test declines (v4 `e1872c94f`).
+   */
+  inventory?: Record<string, GateInventoryStateComparator>;
+  /** Test how many kin (same name) of an object the invoking character has equipped in this chat. */
+  inventoryCount?: Record<string, GateInventoryCountComparator>;
+  /** Test one attribute across every object in a scope of the invoker's bag, keyed `"<scope>.<field>"`. */
+  inventoryAggregate?: Record<string, GateComparator>;
+}
+
+/**
+ * An availability gate: whether this invoker is offered the tool at all.
+ *
+ * One group (every test must hold), or an any-of array of groups — the gate
+ * holds when ANY group holds. AND binds tighter than OR; there is no nesting.
+ */
+export type ToolGate = ToolGateGroup | ToolGateGroup[];
+
+/** A gate's groups, in order — one for a bare object. Every reader of a gate goes through here. */
+export function gateGroups(gate: ToolGate): ToolGateGroup[] {
+  return Array.isArray(gate) ? gate : [gate];
 }
 
 /**
@@ -463,8 +573,9 @@ export interface CustomToolLlm {
  * the whole point: a lockpicking table branches on the key its author invented,
  * and must still deal sensibly to the character who's never heard of it.
  *
- * There is still no OR and no nesting: ordered, first-match-wins outcomes make
- * OR unnecessary, and a flat AND of comparators keeps the evaluator eval-free.
+ * Tests are AND-composed comparator objects; a one-level any-of array of them
+ * is OR (see {@link When}); there is no nesting and no expression grammar,
+ * which keeps the evaluator eval-free.
  */
 export interface WhenObject {
   gt?: NumberOrParamRef;
@@ -484,10 +595,29 @@ export interface WhenObject {
    */
   progress?: Record<string, MetadataComparator>;
   llm?: LlmComparator;
+  /**
+   * Test an object's state for the rolling character in this chat — equipped,
+   * carried (own vault), reachable (a shared store) or absent — keyed by object
+   * reference (a template). A run nobody made declines every test.
+   */
+  inventory?: Record<string, InventoryStateComparator>;
+  /** Test how many kin (same name) of an object the rolling character has equipped in this chat. */
+  inventoryCount?: Record<string, NumericComparator>;
+  /** Test one attribute across every object in a scope of the rolling character's bag. */
+  inventoryAggregate?: Record<string, MetadataComparator>;
 }
 
-/** An outcome test: either the literal `true` (catch-all) or a {@link WhenObject}. */
-export type When = true | WhenObject;
+/**
+ * An outcome test: `true` (catch-all), one AND-group, or an any-of array of
+ * AND-groups — the row wins when ANY group holds. AND binds tighter than OR.
+ */
+export type When = true | WhenObject | WhenObject[];
+
+/** An outcome test's groups, in order — `[]` for the catch-all. Every reader of a `when` goes through here. */
+export function whenGroups(when: When): WhenObject[] {
+  if (when === true) return [];
+  return Array.isArray(when) ? when : [when];
+}
 
 /**
  * An effect's condition. The outcome-row `when` comparator language plus ONE
@@ -518,8 +648,26 @@ export interface EffectWhen {
    */
   progress?: Record<string, MetadataComparator>;
   llm?: LlmComparator;
+  /**
+   * Test an object's state for the rolling character in this chat — equipped,
+   * carried (own vault), reachable (a shared store) or absent — keyed by object
+   * reference (a template). A run nobody made declines every test.
+   */
+  inventory?: Record<string, InventoryStateComparator>;
+  /** Test how many kin (same name) of an object the rolling character has equipped in this chat. */
+  inventoryCount?: Record<string, NumericComparator>;
+  /** Test one attribute across every object in a scope of the rolling character's bag. */
+  inventoryAggregate?: Record<string, MetadataComparator>;
   /** Test the WINNING outcome's semantic state. */
   outcome?: { eq?: OutcomeState; neq?: OutcomeState };
+}
+
+/** An effect condition: one group, or an any-of array of groups. */
+export type EffectCondition = EffectWhen | EffectWhen[];
+
+/** An effect condition's groups, in order. Every reader of an effect `when` goes through here. */
+export function effectWhenGroups(when: EffectCondition): EffectWhen[] {
+  return Array.isArray(when) ? when : [when];
 }
 
 /** What a wardrobe effect does to the rolling character's outfit. */
@@ -559,10 +707,34 @@ export interface CustomToolWardrobeGesture {
   slot?: WardrobeItemType;
 }
 
+/** The most object references one `inventory` gesture may name. */
+export const MAX_INVENTORY_EFFECT_ITEMS = 8;
+
+/** What an `inventory` effect does for the rolling character. */
+export type InventoryEffectAction = 'equip' | 'unequip' | 'pick_up';
+
+/** v4 `InventoryEffectActionSchema`'s options, in its order. */
+export const INVENTORY_EFFECT_ACTIONS: readonly InventoryEffectAction[] = ['equip', 'unequip', 'pick_up'];
+
 /**
- * One side effect, recorded after the table has dealt. Either a WRITE
- * (`target` + `value`) or a WARDROBE GESTURE (`wardrobe`) — never both, never
- * neither (v4 `f0db8cbb8`). One strict object with a refine rather than a
+ * An Inventory gesture: equip, unequip or pick up objects for the ROLLING
+ * character in this chat, through the chokepoints the operator's dialog uses.
+ * Item references are TEMPLATES, rendered and then resolved through the one
+ * reference rule (id → title → name). Kits are allowed for equip and unequip;
+ * `pick_up` names archetypes and instantiates into the character's vault
+ * root, equipping unless `equip` is false (v4 `e1872c94f`).
+ */
+export interface CustomToolInventoryGesture {
+  action: InventoryEffectAction;
+  items: string[];
+  equip?: boolean;
+}
+
+/**
+ * One side effect, recorded after the table has dealt. A WRITE (`target` +
+ * `value`), a WARDROBE GESTURE (`wardrobe`), an INVENTORY GESTURE
+ * (`inventory`) or a LOG LINE (`log`) — exactly one (v4 `f0db8cbb8`, widened
+ * by `e1872c94f` / `e4a60ad9e`). One strict object with a refine rather than a
  * union, so a mistake produces one readable issue rather than a union's tree of
  * them.
  *
@@ -573,10 +745,16 @@ export interface CustomToolWardrobeGesture {
  * load-time parse error, and a loud one).
  */
 export interface CustomToolEffect {
-  when?: EffectWhen;
+  when?: EffectCondition;
   target?: string;
   value?: number | boolean | string;
   wardrobe?: CustomToolWardrobeGesture;
+  inventory?: CustomToolInventoryGesture;
+  /**
+   * A line for the log (the one `log_read` and `log_grep` search) instead of a
+   * write. A template, like an outcome message.
+   */
+  log?: string;
 }
 
 /** An effect that writes one value. */
@@ -585,14 +763,71 @@ export type CustomToolWriteEffect = CustomToolEffect & { target: string; value: 
 /** An effect that changes the rolling character's outfit. */
 export type CustomToolWardrobeEffect = CustomToolEffect & { wardrobe: CustomToolWardrobeGesture };
 
+/** An effect that changes what the rolling character carries. */
+export type CustomToolInventoryEffect = CustomToolEffect & { inventory: CustomToolInventoryGesture };
+
+/** An effect that writes a line to the log. */
+export type CustomToolLogEffect = CustomToolEffect & { log: string };
+
 /** True for a write effect. Use this rather than re-testing keys. */
 export function isWriteEffect(effect: CustomToolEffect): effect is CustomToolWriteEffect {
-  return effect.wardrobe === undefined && effect.target !== undefined && effect.value !== undefined;
+  return (
+    effect.wardrobe === undefined &&
+    effect.inventory === undefined &&
+    effect.log === undefined &&
+    effect.target !== undefined &&
+    effect.value !== undefined
+  );
 }
 
 /** True for a wardrobe gesture. Use this rather than re-testing keys. */
 export function isWardrobeEffect(effect: CustomToolEffect): effect is CustomToolWardrobeEffect {
-  return effect.wardrobe !== undefined && effect.target === undefined && effect.value === undefined;
+  return (
+    effect.wardrobe !== undefined &&
+    effect.inventory === undefined &&
+    effect.log === undefined &&
+    effect.target === undefined &&
+    effect.value === undefined
+  );
+}
+
+/** True for an Inventory gesture. Use this rather than re-testing keys. */
+export function isInventoryEffect(effect: CustomToolEffect): effect is CustomToolInventoryEffect {
+  return (
+    effect.inventory !== undefined &&
+    effect.wardrobe === undefined &&
+    effect.log === undefined &&
+    effect.target === undefined &&
+    effect.value === undefined
+  );
+}
+
+/** True for a log line. Use this rather than re-testing keys. */
+export function isLogEffect(effect: CustomToolEffect): effect is CustomToolLogEffect {
+  return (
+    effect.log !== undefined &&
+    effect.wardrobe === undefined &&
+    effect.inventory === undefined &&
+    effect.target === undefined &&
+    effect.value === undefined
+  );
+}
+
+/**
+ * The per-action rules of an Inventory gesture — the one statement of them,
+ * read by load-time validation and the Workbench's draft check.
+ */
+export function inventoryGestureProblems(
+  gesture: Pick<CustomToolInventoryGesture, 'action' | 'equip'> & { items?: readonly string[] },
+): Array<{ field: 'items' | 'equip'; message: string }> {
+  const problems: Array<{ field: 'items' | 'equip'; message: string }> = [];
+  if ((gesture.items?.length ?? 0) === 0) {
+    problems.push({ field: 'items', message: `${gesture.action} needs at least one object` });
+  }
+  if (gesture.equip !== undefined && gesture.action !== 'pick_up') {
+    problems.push({ field: 'equip', message: 'equip is only used with pick_up' });
+  }
+  return problems;
 }
 
 /**
@@ -763,6 +998,20 @@ export interface CustomToolOutcome {
   when: When;
   message: string;
   state: OutcomeState;
+  /**
+   * An instruction for the LLM consult's narrator: the conclusion this outcome
+   * means, in the author's words. When this row wins, the consult prompt may
+   * quote it as `{{outcome.brief}}`, so the model is TOLD the verdict the table
+   * reached instead of asked to work it out. Only meaningful on a tool with an
+   * `llm` block, and only readable by the prompt while no row tests `llm` (v4
+   * `322a5488e`, bug 257).
+   */
+  brief?: string;
+}
+
+/** True when any outcome row's `when` tests the consult (`llm`, or its `ok`). */
+export function outcomeTableTestsLlm(outcomes: ReadonlyArray<Pick<CustomToolOutcome, 'when'>>): boolean {
+  return outcomes.some((outcome) => whenGroups(outcome.when).some((group) => group.llm !== undefined));
 }
 
 /**
@@ -802,9 +1051,15 @@ export interface QtapCustomTool {
   triggers?: string[];
   description: string;
   disabled?: boolean;
-  /** Offer this tool ONLY to an invoker whose metadata satisfies every test. */
+  /**
+   * Offer this tool ONLY to an invoker who satisfies every test here (or, for
+   * an array, every test of any one element).
+   */
   availableWhen?: ToolGate;
-  /** Withhold this tool from an invoker whose metadata satisfies every test. */
+  /**
+   * Withhold this tool from an invoker who satisfies every test here (or, for
+   * an array, every test of any one element).
+   */
   withheldWhen?: ToolGate;
   revealOdds?: boolean;
   defaultVisibility?: Visibility;
@@ -819,8 +1074,9 @@ export interface QtapCustomTool {
   roll?: Roll;
   llm?: CustomToolLlm;
   /** Side effects applied after the run: writes into tiered persistent state or
-   *  the rolling character's metadata, or wardrobe gestures that change what the
-   *  rolling character is wearing. */
+   *  the rolling character's metadata, wardrobe gestures that change what the
+   *  rolling character is wearing, inventory gestures that change what they
+   *  carry, or log lines. */
   effects?: CustomToolEffect[];
   outcomes: CustomToolOutcome[];
 }
@@ -833,6 +1089,16 @@ export interface QtapCustomTool {
  * their second consumer (P4.D170) — importers of this module are unchanged.
  */
 export type { Issue };
+
+/**
+ * The two pieces of a Zod issue this module's renderer reads that the shared
+ * shim's model does not carry: `notArray` marks an any-of array branch's root
+ * `expected array` refusal (what v4's `isNotAnArray` recognises by `code ===
+ * 'invalid_type' && path.length === 0 && expected === 'array'`), and `inner` is
+ * a record key's refusal reasons (Zod's `invalid_key.issues`). Both survive
+ * `prefix`, which spreads.
+ */
+type TaggedIssue = Issue & { notArray?: true; inner?: string[] };
 
 // ------------------------------------------------------------ leaf validators
 
@@ -974,6 +1240,36 @@ function parseStateRef(input: unknown): Res<StateRef> {
 }
 
 /**
+ * v4 `InventoryRefSchema` (`e1872c94f`) — `z.strictObject({ $inventory:
+ * z.string().min(1).max(MAX_INVENTORY_REF_LENGTH + 120).refine(…), fallback:
+ * <the $state fallback union> })`. The length checks and the refine are all
+ * CHECKS, so an empty reference reports Zod's `Too small` AND the refine's
+ * sentence (the refine runs past a continuable length issue).
+ */
+function parseInventoryRef(input: unknown): Res<InventoryRef> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const ref = parseString(input['$inventory'], 1, MAX_INVENTORY_REF_LENGTH + 120, false);
+  const refIssues = [...ref.issues];
+  if (ref.value !== undefined && splitInventoryReference(ref.value)?.field !== 'metadata') {
+    refIssues.push(checkIssue(INVENTORY_REF_MESSAGE));
+  }
+  issues.push(...prefix('$inventory', refIssues));
+
+  const fallback = parseStateFallback(input['fallback']);
+  issues.push(...prefix('fallback', fallback.issues));
+
+  issues.push(...unrecognizedKeys(input, ['$inventory', 'fallback']));
+
+  const value =
+    ref.value !== undefined && fallback.value !== undefined && !aborted(issues)
+      ? { $inventory: ref.value, fallback: fallback.value }
+      : undefined;
+  return { value, issues };
+}
+
+/**
  * v4 `NumberOrParamRefSchema` / `NumberOperandSchema` — the two are the same
  * union, and both roll fields and ordering operands take it.
  */
@@ -981,12 +1277,13 @@ function parseNumberOrParamRef(input: unknown): Res<NumberOrParamRef> {
   const n = parseFiniteNumber(input);
   const p = parseParamRef(input);
   const st = parseStateRef(input);
-  return union<NumberOrParamRef>([n, p, st]);
+  const inv = parseInventoryRef(input);
+  return union<NumberOrParamRef>([n, p, st, inv]);
 }
 
 /**
- * v4 `AnyOperandSchema` — number | string | boolean | ParamRef | StateRef, in
- * that order.
+ * v4 `AnyOperandSchema` — number | string | boolean | ParamRef | StateRef |
+ * InventoryRef, in that order.
  */
 function parseAnyOperand(input: unknown): Res<AnyOperand> {
   const n = parseFiniteNumber(input);
@@ -994,7 +1291,8 @@ function parseAnyOperand(input: unknown): Res<AnyOperand> {
   const b = parseBool(input);
   const p = parseParamRef(input);
   const st = parseStateRef(input);
-  return union<AnyOperand>([n, s, b, p, st]);
+  const inv = parseInventoryRef(input);
+  return union<AnyOperand>([n, s, b, p, st, inv]);
 }
 
 /**
@@ -1011,7 +1309,8 @@ function parseStringOperand(input: unknown): Res<StringOperand> {
       : resHard(invalidType('string', input));
   const p = parseParamRef(input);
   const st = parseStateRef(input);
-  return union<StringOperand>([s, p, st]);
+  const inv = parseInventoryRef(input);
+  return union<StringOperand>([s, p, st, inv]);
 }
 
 function parseNumericComparator(input: unknown): Res<NumericComparator> {
@@ -1162,82 +1461,93 @@ function parseGateComparator(input: unknown): Res<GateComparator> {
 }
 
 /**
- * v4 `ToolGateSchema` — `z.strictObject({ metadata: …optional(), progress:
- * …optional() }).refine(…)`.
- *
- * `0587d1e96` moved the "must test at least one …" refine from the metadata
- * RECORD to the gate OBJECT and made both subjects optional, which changes two
- * observable things and both are corpus-pinned: the issue PATH is the gate
- * rather than `gate.metadata`, and a gate with NO `metadata` key at all now
- * reads as "tests nothing" rather than `expected record, received undefined`.
- * Being an object-level refine it is skipped once the object has aborted.
+ * The key schemas of the format's `z.record`s, as REASONS: `null` when the key
+ * passes, else the key schema's own issue messages — what v4 `a53024d3c`'s
+ * `invalid_key` arm of {@link flattenIssues} surfaces in place of Zod's bare
+ * "Invalid key in record".
  */
-function parseToolGate(input: unknown): Res<ToolGate> {
-  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+type KeyReason = (key: string) => string[] | null;
 
-  const issues: Issue[] = [];
-  const out: ToolGate = {};
-
-  // Gate metadata keys take `z.string().min(1)`, the same non-empty grammar a
-  // `when`'s `metadata` keys take — the user hand-authors `metadata.json`.
-  // Progress keys are the FORMAT's vocabulary, so `parseProgressKey` checks
-  // their shape; a key that fails is a record-key failure, and Zod reports its
-  // own `Invalid key in record` and discards the refinement's reason (v4 asserts
-  // that in both directions, so nobody tries to surface a message the schema
-  // cannot surface).
-  const subjects: Array<['metadata' | 'progress', (key: string) => boolean]> = [
-    ['metadata', (k) => k.length > 0],
-    ['progress', (k) => parseProgressKey(k).ok],
-  ];
-
-  for (const [subject, keyValid] of subjects) {
-    if (!hasKey(input, subject)) continue;
-    const raw = input[subject];
-    if (isPlainObject(raw)) {
-      const r = parseRecord(raw, keyValid, parseGateComparator);
-      issues.push(...prefix(subject, r.issues));
-      if (r.value !== undefined) out[subject] = r.value;
-    } else {
-      // "record", not "object": Zod names a `z.record` by its own type, and the
-      // captured rows pin it. The three PRE-EXISTING `z.record` sites in this
-      // file — `when.params`, `when.metadata`, top-level `parameters` — said
-      // "object" until the `231be14c` unification: P4.d19 fixed the Rust half
-      // and added the three corpus rows that had never covered them, so
-      // P4.d20's deliberate hold-off ended and all four sites now say "record"
-      // on both v5 halves.
-      issues.push(...prefix(subject, [hardIssue(invalidType('record', raw))]));
-    }
-  }
-
-  issues.push(...unrecognizedKeys(input, ['metadata', 'progress']));
-
-  if (aborted(issues)) return { value: undefined, issues };
-
-  if (Object.keys(out.metadata ?? {}).length + Object.keys(out.progress ?? {}).length === 0) {
-    issues.push(checkIssue('must test at least one metadata key or progress field'));
-  }
-
-  return { value: out, issues };
-}
+/** v4 `IdentifierSchema` as a record KEY — `params` and `parameters`. */
+const identifierKey: KeyReason = (key) => (IDENTIFIER_PATTERN.test(key) ? null : [IDENTIFIER_MESSAGE]);
 
 /**
- * v4 `z.record(keySchema, …)`: a key failing `keyValid` is an `invalid_key`
- * issue — aborting, unlike the same regex used as a field check. `params` keys
- * take the identifier grammar; `metadata` keys take `z.string().min(1)`
- * (non-empty), since the user hand-authors `metadata.json` and `HOUSE` or
- * `Clearance Level` are perfectly ordinary keys. Zod's message is the same
- * "Invalid key in record" either way.
+ * v4 `MetadataKeySchema` — `z.string().min(1)`, Zod's own sentence. Metadata
+ * keys are the USER's vocabulary (`HOUSE` and `Clearance Level` are ordinary
+ * keys), so only emptiness is refused.
+ */
+const metadataKey: KeyReason = (key) =>
+  zodLenMinOk(key, 1) ? null : ['Too small: expected string to have >=1 characters'];
+
+/**
+ * v4 `ProgressKeySchema` — delegated to `parseProgressKey`, the one parser
+ * that owns the `"<id>.<field>"` shape, so this schema and the Workbench's
+ * condition validator cannot drift apart; its per-mistake sentence is the
+ * reason.
+ */
+const progressKey: KeyReason = (key) => {
+  const parsed = parseProgressKey(key);
+  return parsed.ok ? null : [parsed.reason];
+};
+
+/** v4 `InventoryKeySchema` — `z.string().min(1).max(MAX_INVENTORY_REF_LENGTH)`. */
+const inventoryKey: KeyReason = (key) => {
+  const messages = stringLengthIssues(key, 1, MAX_INVENTORY_REF_LENGTH).map((i) => i.message);
+  return messages.length > 0 ? messages : null;
+};
+
+/** The scopes an aggregate key may name (v4 `AGGREGATE_SCOPES`, `inventory-aggregate.ts`). */
+const AGGREGATE_SCOPES = ['equipped', 'owned', 'reachable'] as const;
+
+/**
+ * The VALIDATION half of v4 `parseAggregateKey` (`a53024d3c`,
+ * `lib/pascal/inventory-aggregate.ts`) — `<scope>.<field>`, its three refusal
+ * sentences byte for byte. Private on purpose: the SPA has no aggregate
+ * evaluator yet, and the module that owns the grammar (with the parsed half)
+ * is a sibling lane's to land; this re-points there when it does.
+ */
+function aggregateKeyReason(key: string): string | null {
+  const dot = key.indexOf('.');
+  if (dot <= 0) {
+    return `"${key}" must be <scope>.<field>, where the scope is ${AGGREGATE_SCOPES.join(', ')}`;
+  }
+  const scope = key.slice(0, dot);
+  if (!(AGGREGATE_SCOPES as readonly string[]).includes(scope)) {
+    return `"${scope}" is not a scope; use ${AGGREGATE_SCOPES.join(', ')}`;
+  }
+  const rest = key.slice(dot + 1);
+  if (rest === 'count' || rest === 'names' || rest === 'titles') return null;
+  // A `metadata.` field is valid whenever it names something (a trailing fold
+  // word, when present, only changes WHAT it reads — never whether it parses).
+  if (rest.startsWith('metadata.') && rest.length > 'metadata.'.length) return null;
+  return `"${rest}" is not a field; use count, names, titles, or metadata.<key> (optionally ending .min, .max, .sum or .count)`;
+}
+
+/** v4 `AggregateKeySchema` — `z.string().superRefine(…parseAggregateKey…)`. */
+const aggregateKey: KeyReason = (key) => {
+  const reason = aggregateKeyReason(key);
+  return reason === null ? null : [reason];
+};
+
+/**
+ * v4 `z.record(keySchema, …)` over a value already known to be a plain object:
+ * a key the key schema refuses is an `invalid_key` issue — aborting, unlike the
+ * same rule used as a field check. Zod's outer message is always "Invalid key
+ * in record"; the key schema's own messages ride as the issue's `inner`, which
+ * {@link flattenIssues} surfaces instead (v4 `a53024d3c`).
  */
 function parseRecord<T>(
   obj: Record<string, unknown>,
-  keyValid: (key: string) => boolean,
+  keyReason: KeyReason,
   parseValue: (v: unknown) => Res<T>,
 ): Res<Record<string, T>> {
   const issues: Issue[] = [];
   const out: Record<string, T> = {};
   for (const key of Object.keys(obj)) {
-    if (!keyValid(key)) {
-      issues.push(at(hardIssue('Invalid key in record'), key));
+    const reason = keyReason(key);
+    if (reason !== null) {
+      const issue: TaggedIssue = { ...at(hardIssue('Invalid key in record'), key), inner: reason };
+      issues.push(issue);
       continue;
     }
     const r = parseValue(obj[key]);
@@ -1245,6 +1555,193 @@ function parseRecord<T>(
     if (r.value !== undefined) out[key] = r.value;
   }
   return { value: aborted(issues) ? undefined : out, issues };
+}
+
+/**
+ * One optional `z.record(…)` subject of a strict object: parse it into `out`
+ * when present, reporting a non-object as Zod names a `z.record` — "record",
+ * not "object" (the captured rows pin it at every site).
+ */
+function parseRecordSubject<T>(
+  input: Record<string, unknown>,
+  subject: string,
+  keyReason: KeyReason,
+  parseValue: (v: unknown) => Res<T>,
+  out: Record<string, unknown>,
+  issues: Issue[],
+): void {
+  if (!hasKey(input, subject)) return;
+  const raw = input[subject];
+  if (isPlainObject(raw)) {
+    const r = parseRecord(raw, keyReason, parseValue);
+    issues.push(...prefix(subject, r.issues));
+    if (r.value !== undefined) out[subject] = r.value;
+  } else {
+    issues.push(...prefix(subject, [hardIssue(invalidType('record', raw))]));
+  }
+}
+
+/** True when a record subject was parsed and holds at least one key. */
+function nonEmpty(record: Record<string, unknown> | undefined): boolean {
+  return record !== undefined && Object.keys(record).length > 0;
+}
+
+/** v4's inventory-state refine message, shared by the `when` and gate forms. */
+const INVENTORY_STATE_AT_LEAST_ONE =
+  'must test something: `eq` or `neq` against equipped, carried, reachable or absent';
+
+/**
+ * v4 `InventoryStateComparatorSchema` (`gate: false` — each operand a state or
+ * a `$param`) and `GateInventoryStateComparatorSchema` (`gate: true` — literal
+ * states only). A strict object with an object-level refine.
+ */
+function parseInventoryStateComparator(
+  input: unknown,
+  gate: boolean,
+): Res<InventoryStateComparator> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: InventoryStateComparator = {};
+  for (const key of ['eq', 'neq'] as const) {
+    if (!hasKey(input, key)) continue;
+    const raw = input[key];
+    const state = parseEnum<InventoryStateValue>(raw, INVENTORY_STATE_VALUES);
+    const r: Res<InventoryStateValue | ParamRef> = gate
+      ? state
+      : union<InventoryStateValue | ParamRef>([state, parseParamRef(raw)]);
+    issues.push(...prefix(key, r.issues));
+    if (r.value !== undefined) out[key] = r.value;
+  }
+  issues.push(...unrecognizedKeys(input, ['eq', 'neq']));
+
+  if (aborted(issues)) return { value: undefined, issues };
+  if (out.eq === undefined && out.neq === undefined) issues.push(checkIssue(INVENTORY_STATE_AT_LEAST_ONE));
+  return { value: out, issues };
+}
+
+/**
+ * v4 `GateInventoryCountComparatorSchema` — the six numeric keys, each a bare
+ * finite number (a gate has no parameters), with `AT_LEAST_ONE`.
+ */
+function parseGateInventoryCountComparator(input: unknown): Res<GateInventoryCountComparator> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: GateInventoryCountComparator = {};
+  for (const key of NUMERIC_COMPARATOR_KEYS) {
+    if (!hasKey(input, key)) continue;
+    const r = parseFiniteNumber(input[key]);
+    issues.push(...prefix(key, r.issues));
+    if (r.value !== undefined) out[key] = r.value;
+  }
+  issues.push(...unrecognizedKeys(input, NUMERIC_COMPARATOR_KEYS));
+
+  if (aborted(issues)) return { value: undefined, issues };
+  if (!NUMERIC_COMPARATOR_KEYS.some((k) => out[k] !== undefined)) issues.push(checkIssue(AT_LEAST_ONE));
+  return { value: out, issues };
+}
+
+/**
+ * v4 `ToolGateGroupSchema` (`a53024d3c` — the old one-object `ToolGateSchema`
+ * renamed) — `z.strictObject({ metadata, progress, inventory, inventoryCount,
+ * inventoryAggregate }).refine(…)`, every subject optional.
+ *
+ * `0587d1e96` moved the "must test at least one …" refine from the metadata
+ * RECORD to the gate OBJECT, so the issue PATH is the gate rather than
+ * `gate.metadata`, and a gate with NO subject at all reads as "tests nothing".
+ * Being an object-level refine it is skipped once the object has aborted.
+ */
+function parseToolGateGroup(input: unknown): Res<ToolGateGroup> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: ToolGateGroup = {};
+  const bag = out as Record<string, unknown>;
+
+  parseRecordSubject(input, 'metadata', metadataKey, parseGateComparator, bag, issues);
+  parseRecordSubject(input, 'progress', progressKey, parseGateComparator, bag, issues);
+  parseRecordSubject(
+    input,
+    'inventory',
+    inventoryKey,
+    (v) => parseInventoryStateComparator(v, true),
+    bag,
+    issues,
+  );
+  parseRecordSubject(input, 'inventoryCount', inventoryKey, parseGateInventoryCountComparator, bag, issues);
+  parseRecordSubject(input, 'inventoryAggregate', aggregateKey, parseGateComparator, bag, issues);
+
+  issues.push(...unrecognizedKeys(input, GATE_GROUP_SUBJECTS));
+
+  if (aborted(issues)) return { value: undefined, issues };
+
+  const tested = GATE_GROUP_SUBJECTS.reduce((n, subject) => n + Object.keys(bag[subject] ?? {}).length, 0);
+  if (tested === 0) {
+    issues.push(
+      checkIssue('must test at least one metadata key, progress field, inventory object, or inventory aggregate'),
+    );
+  }
+
+  return { value: out, issues };
+}
+
+/** A gate group's subjects, in v4's shape order. */
+const GATE_GROUP_SUBJECTS = [
+  'metadata',
+  'progress',
+  'inventory',
+  'inventoryCount',
+  'inventoryAggregate',
+] as const;
+
+/** v4 `ToolGateSchema` — `z.union([ToolGateGroupSchema, <the any-of array>])`. */
+function parseToolGate(input: unknown): Res<ToolGate> {
+  return union<ToolGate>([parseToolGateGroup(input), parseGroupArray(input, parseToolGateGroup)]);
+}
+
+/**
+ * v4's any-of array branch — `z.array(group).min(1).max(MAX_WHEN_GROUPS,
+ * \`at most ${MAX_WHEN_GROUPS} groups\`)` — shared by the gate, the outcome
+ * `when` and the effect `when` (v4 `a53024d3c`).
+ *
+ * Zod 4.6.7's array semantics, measured at the pin: an oversized array fails
+ * with ONLY its `too_big` — the AUTHOR's message, `at most 8 groups` — before
+ * an element is parsed, and that issue ABORTS; `.min(1)` is a continuable
+ * check with Zod's own sentence; elements are prefixed by index. A non-array
+ * refusal is tagged for v4's `isNotAnArray` filter, and an input with a
+ * `.length` also gets the two length checks past it (Zod's own `.min`
+ * sentence first, then the authored `.max`). The server twin is
+ * `custom_tool_types.rs::parse_group_array`.
+ */
+function parseGroupArray<T>(input: unknown, parseGroup: (v: unknown) => Res<T>): Res<T[]> {
+  const maxMessage = `at most ${MAX_WHEN_GROUPS} groups`;
+  if (Array.isArray(input)) {
+    if (input.length > MAX_WHEN_GROUPS) return resHard(maxMessage);
+    const groups: T[] = [];
+    const issues: Issue[] = [];
+    input.forEach((item, g) => {
+      const r = parseGroup(item);
+      issues.push(...prefix(String(g), r.issues));
+      if (r.value !== undefined) groups.push(r.value);
+    });
+    if (input.length === 0) issues.push(checkIssue('Too small: expected array to have >=1 items'));
+    return { value: aborted(issues) ? undefined : groups, issues };
+  }
+
+  const notArray: TaggedIssue = { ...hardIssue(invalidType('array', input)), notArray: true };
+  const issues: Issue[] = [notArray];
+  if (typeof input === 'string') {
+    if (!zodLenMinOk(input, 1)) issues.push(checkIssue('Too small: expected string to have >=1 characters'));
+    if (!zodLenMaxOk(input, MAX_WHEN_GROUPS)) issues.push(checkIssue(maxMessage));
+  } else if (isPlainObject(input) && typeof input['length'] === 'number') {
+    // Zod's length checks read ANY `.length` (origin `unknown`); only the
+    // `.min` keeps Zod's sentence, the `.max` is the author's.
+    const n = input['length'];
+    if (n < 1) issues.push(checkIssue('Too small: expected unknown to be >=1'));
+    if (n > MAX_WHEN_GROUPS) issues.push(checkIssue(maxMessage));
+  }
+  return { value: undefined, issues };
 }
 
 function parseParameter(input: unknown): Res<CustomToolParameter> {
@@ -1255,9 +1752,10 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   const ty = parseEnum<ParameterType>(input['type'], ['number', 'integer', 'string', 'boolean']);
   issues.push(...prefix('type', ty.issues));
 
-  // `default: z.union([number, string, boolean, StateRefSchema])` — no
-  // `.finite()` on the number arm here (unlike a `$state` fallback).
-  let defaultValue: number | string | boolean | StateRef | undefined;
+  // `default: z.union([number, string, boolean, StateRefSchema,
+  // InventoryRefSchema])` — no `.finite()` on the number arm here (unlike a
+  // `$state` fallback).
+  let defaultValue: number | string | boolean | StateRef | InventoryRef | undefined;
   const rawDefault = input['default'];
   if (
     typeof rawDefault === 'number' ||
@@ -1266,13 +1764,14 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   ) {
     defaultValue = rawDefault;
   } else {
-    const branches: Res<number | string | boolean | StateRef>[] = [
+    const branches: Res<number | string | boolean | StateRef | InventoryRef>[] = [
       resHard(invalidType('number', rawDefault)),
       resHard(invalidType('string', rawDefault)),
       resHard(invalidType('boolean', rawDefault)),
       parseStateRef(rawDefault),
+      parseInventoryRef(rawDefault),
     ];
-    const r = union<number | string | boolean | StateRef>(branches);
+    const r = union<number | string | boolean | StateRef | InventoryRef>(branches);
     issues.push(...prefix('default', r.issues));
     defaultValue = r.value;
   }
@@ -1316,7 +1815,8 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   // The declared default must satisfy the parameter's own declared type. A
   // `$state` default is typed by its fallback (which run-time resolution is
   // guaranteed to fall back to), so the fallback is what must match the type.
-  const effectiveDefault = isStateRef(defaultValue) ? defaultValue.fallback : defaultValue;
+  const effectiveDefault =
+    isStateRef(defaultValue) || isInventoryRef(defaultValue) ? defaultValue.fallback : defaultValue;
   const defaultType = typeof effectiveDefault;
   if (numeric && defaultType !== 'number') {
     issues.push(checkIssue(`default must be a number for type ${paramType}`, ['default']));
@@ -1383,7 +1883,8 @@ function parseRollRange(input: unknown): Res<RollRange> {
 function parseRoll(input: unknown): Res<Roll> {
   const d = parseRollDice(input);
   const r = parseRollRange(input);
-  return union<Roll>([d, r]);
+  const inv = parseInventoryRef(input);
+  return union<Roll>([d, r, inv]);
 }
 
 /**
@@ -1436,11 +1937,15 @@ function parseCustomToolLlm(input: unknown): Res<CustomToolLlm> {
   return { value, issues };
 }
 
-function parseWhenObject(input: unknown): Res<WhenObject> {
-  if (!isPlainObject(input)) return resHard(invalidType('object', input));
-
-  const issues: Issue[] = [];
-  const out: WhenObject = {};
+/**
+ * v4 `WHEN_SUBJECTS_SHAPE`, parsed in its declaration order — the bare six
+ * comparators on the value, then `roll`, `params`, `metadata`, `progress`,
+ * `llm`, `inventory`, `inventoryCount`, `inventoryAggregate` — which is the
+ * order the parsed object serializes in. One shape, read by the outcome row's
+ * `when` and the effect's, so the two can never disagree about a subject.
+ */
+function parseWhenSubjects(input: Record<string, unknown>, out: WhenObject, issues: Issue[]): void {
+  const bag = out as Record<string, unknown>;
   // Bare keys address the final value — always a number, so the six.
   for (const key of NUMERIC_COMPARATOR_KEYS) {
     if (!hasKey(input, key)) continue;
@@ -1453,87 +1958,76 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
     issues.push(...prefix('roll', r.issues));
     if (r.value !== undefined) out.roll = r.value;
   }
-  let paramsPresent = false;
-  if (hasKey(input, 'params')) {
-    paramsPresent = true;
-    const raw = input['params'];
-    if (isPlainObject(raw)) {
-      const r = parseRecord(raw, (k) => IDENTIFIER_PATTERN.test(k), parseParamComparator);
-      issues.push(...prefix('params', r.issues));
-      if (r.value !== undefined) out.params = r.value;
-    } else {
-      issues.push(...prefix('params', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-  let metadataPresent = false;
-  if (hasKey(input, 'metadata')) {
-    metadataPresent = true;
-    const raw = input['metadata'];
-    if (isPlainObject(raw)) {
-      // Metadata keys are `z.string().min(1)` — any non-empty string, unlike
-      // `params`' identifier grammar.
-      const r = parseRecord(raw, (k) => k.length > 0, parseParamComparator);
-      issues.push(...prefix('metadata', r.issues));
-      if (r.value !== undefined) out.metadata = r.value;
-    } else {
-      issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-  let progressPresent = false;
-  if (hasKey(input, 'progress')) {
-    progressPresent = true;
-    const raw = input['progress'];
-    if (isPlainObject(raw)) {
-      // Progress keys are the FORMAT's vocabulary, so their shape IS checkable
-      // at load time — unlike a metadata key, which is the user's own.
-      const r = parseRecord(raw, (k) => parseProgressKey(k).ok, parseParamComparator);
-      issues.push(...prefix('progress', r.issues));
-      if (r.value !== undefined) out.progress = r.value;
-    } else {
-      issues.push(...prefix('progress', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-
+  parseRecordSubject(input, 'params', identifierKey, parseParamComparator, bag, issues);
+  // Metadata keys are `z.string().min(1)` — any non-empty string, unlike
+  // `params`' identifier grammar. Progress keys are the FORMAT's vocabulary,
+  // so their shape IS checkable at load time.
+  parseRecordSubject(input, 'metadata', metadataKey, parseParamComparator, bag, issues);
+  parseRecordSubject(input, 'progress', progressKey, parseParamComparator, bag, issues);
   if (hasKey(input, 'llm')) {
     const r = parseLlmComparator(input['llm']);
     issues.push(...prefix('llm', r.issues));
     if (r.value !== undefined) out.llm = r.value;
   }
-
-  issues.push(
-    ...unrecognizedKeys(input, [
-      ...NUMERIC_COMPARATOR_KEYS,
-      'roll',
-      'params',
-      'metadata',
-      'progress',
-      'llm',
-    ]),
+  parseRecordSubject(
+    input,
+    'inventory',
+    inventoryKey,
+    (v) => parseInventoryStateComparator(v, false),
+    bag,
+    issues,
   );
+  parseRecordSubject(input, 'inventoryCount', inventoryKey, parseNumericComparator, bag, issues);
+  parseRecordSubject(input, 'inventoryAggregate', aggregateKey, parseParamComparator, bag, issues);
+}
+
+/** The keys {@link parseWhenSubjects} reads, in v4's shape order. */
+const WHEN_SUBJECT_KEYS: readonly string[] = [
+  ...NUMERIC_COMPARATOR_KEYS,
+  'roll',
+  'params',
+  'metadata',
+  'progress',
+  'llm',
+  'inventory',
+  'inventoryCount',
+  'inventoryAggregate',
+];
+
+/**
+ * v4 `testsSomething` — true when a `when` object tests at least one of the
+ * shared subjects. `hasComparator` reads the PARSED value, where a strict
+ * object has stripped every unrecognized key — only the six comparators this
+ * level declares can satisfy it (a stray `contains` is an unrecognized key).
+ */
+function testsSomething(when: WhenObject): boolean {
+  return (
+    nonEmpty(when.inventory) ||
+    nonEmpty(when.inventoryAggregate) ||
+    nonEmpty(when.inventoryCount) ||
+    NUMERIC_COMPARATOR_KEYS.some((k) => when[k] !== undefined) ||
+    when.roll !== undefined ||
+    when.llm !== undefined ||
+    nonEmpty(when.params) ||
+    nonEmpty(when.metadata) ||
+    nonEmpty(when.progress)
+  );
+}
+
+/** v4 `WhenObjectSchema` — `z.strictObject(WHEN_SUBJECTS_SHAPE).refine(testsSomething, …)`. */
+function parseWhenObject(input: unknown): Res<WhenObject> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const out: WhenObject = {};
+  parseWhenSubjects(input, out, issues);
+  issues.push(...unrecognizedKeys(input, WHEN_SUBJECT_KEYS));
 
   if (aborted(issues)) return { value: undefined, issues };
-
-  // `.refine(…)` — must test something.
-  // `hasComparator` reads the PARSED value, where a strict object has stripped
-  // every unrecognized key — only the six comparators this level declares can
-  // satisfy it (a stray `contains` here is an unrecognized key, not a comparator).
-  const hasComparator = NUMERIC_COMPARATOR_KEYS.some((k) => hasKey(input, k));
-  const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
-  const hasMetadata =
-    metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
-  const hasProgress =
-    progressPresent && out.progress !== undefined && Object.keys(out.progress).length > 0;
-  if (
-    !hasComparator &&
-    out.roll === undefined &&
-    out.llm === undefined &&
-    !hasParams &&
-    !hasMetadata &&
-    !hasProgress
-  ) {
+  if (!testsSomething(out)) {
     issues.push(
       checkIssue(
-        'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, or `progress`',
+        'must test something: a comparator on the value, `roll`, `llm`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`',
       ),
     );
   }
@@ -1542,7 +2036,7 @@ function parseWhenObject(input: unknown): Res<WhenObject> {
 
 /**
  * v4 `EffectWhenSchema` — the outcome-row comparator language plus the
- * `outcome` subject. A separate strict object, not a widened
+ * `outcome` subject, appended LAST. A separate strict object, not a widened
  * {@link parseWhenObject}, exactly as v4 keeps them apart.
  *
  * The nested `outcome` object carries its own refine ("must test something:
@@ -1554,107 +2048,28 @@ function parseEffectWhen(input: unknown): Res<EffectWhen> {
 
   const issues: Issue[] = [];
   const out: EffectWhen = {};
-  // Declaration order: the spread numeric shape, then roll/params/metadata/llm,
-  // then `outcome` last — which is the order the parsed object serializes in.
-  for (const key of NUMERIC_COMPARATOR_KEYS) {
-    if (!hasKey(input, key)) continue;
-    const r = parseNumberOrParamRef(input[key]);
-    issues.push(...prefix(key, r.issues));
-    if (r.value !== undefined) out[key] = r.value;
-  }
-  if (hasKey(input, 'roll')) {
-    const r = parseNumericComparator(input['roll']);
-    issues.push(...prefix('roll', r.issues));
-    if (r.value !== undefined) out.roll = r.value;
-  }
-  let paramsPresent = false;
-  if (hasKey(input, 'params')) {
-    paramsPresent = true;
-    const raw = input['params'];
-    if (isPlainObject(raw)) {
-      const r = parseRecord(raw, (k) => IDENTIFIER_PATTERN.test(k), parseParamComparator);
-      issues.push(...prefix('params', r.issues));
-      if (r.value !== undefined) out.params = r.value;
-    } else {
-      issues.push(...prefix('params', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-  let metadataPresent = false;
-  if (hasKey(input, 'metadata')) {
-    metadataPresent = true;
-    const raw = input['metadata'];
-    if (isPlainObject(raw)) {
-      const r = parseRecord(raw, (k) => k.length > 0, parseParamComparator);
-      issues.push(...prefix('metadata', r.issues));
-      if (r.value !== undefined) out.metadata = r.value;
-    } else {
-      issues.push(...prefix('metadata', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-  // `progress` rides in from `WHEN_SUBJECTS_SHAPE`, so it sits between
-  // `metadata` and `llm` here exactly as it does on an outcome row's `when`.
-  let progressPresent = false;
-  if (hasKey(input, 'progress')) {
-    progressPresent = true;
-    const raw = input['progress'];
-    if (isPlainObject(raw)) {
-      const r = parseRecord(raw, (k) => parseProgressKey(k).ok, parseParamComparator);
-      issues.push(...prefix('progress', r.issues));
-      if (r.value !== undefined) out.progress = r.value;
-    } else {
-      issues.push(...prefix('progress', [hardIssue(invalidType('record', raw))]));
-    }
-  }
-  if (hasKey(input, 'llm')) {
-    const r = parseLlmComparator(input['llm']);
-    issues.push(...prefix('llm', r.issues));
-    if (r.value !== undefined) out.llm = r.value;
-  }
+  parseWhenSubjects(input, out, issues);
   if (hasKey(input, 'outcome')) {
     const r = parseOutcomeSubject(input['outcome']);
     issues.push(...prefix('outcome', r.issues));
     if (r.value !== undefined) out.outcome = r.value;
   }
-
-  issues.push(
-    ...unrecognizedKeys(input, [
-      ...NUMERIC_COMPARATOR_KEYS,
-      'roll',
-      'params',
-      'metadata',
-      'progress',
-      'llm',
-      'outcome',
-    ]),
-  );
+  issues.push(...unrecognizedKeys(input, [...WHEN_SUBJECT_KEYS, 'outcome']));
 
   if (aborted(issues)) return { value: undefined, issues };
-
-  // `hasComparator` reads the PARSED value, where a strict object has stripped
-  // every unrecognized key — only the six comparators this level declares can
-  // satisfy it (a stray `contains` here is an unrecognized key, not a comparator).
-  const hasComparator = NUMERIC_COMPARATOR_KEYS.some((k) => hasKey(input, k));
-  const hasParams = paramsPresent && out.params !== undefined && Object.keys(out.params).length > 0;
-  const hasMetadata =
-    metadataPresent && out.metadata !== undefined && Object.keys(out.metadata).length > 0;
-  const hasProgress =
-    progressPresent && out.progress !== undefined && Object.keys(out.progress).length > 0;
-  if (
-    !hasComparator &&
-    out.roll === undefined &&
-    out.llm === undefined &&
-    out.outcome === undefined &&
-    !hasParams &&
-    !hasMetadata &&
-    !hasProgress
-  ) {
+  if (!testsSomething(out) && out.outcome === undefined) {
     issues.push(
       checkIssue(
-        'must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, or `progress`',
+        'must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`',
       ),
     );
   }
   return { value: out, issues };
+}
+
+/** v4 `EffectConditionSchema` — one group, or an any-of array of groups. */
+function parseEffectCondition(input: unknown): Res<EffectCondition> {
+  return union<EffectCondition>([parseEffectWhen(input), parseGroupArray(input, parseEffectWhen)]);
 }
 
 /** The `outcome` subject: `{ eq?, neq? }` over outcome states, one required. */
@@ -1732,9 +2147,50 @@ function parseWardrobeGesture(input: unknown): Res<CustomToolWardrobeGesture> {
 }
 
 /**
- * v4 `CustomToolEffectSchema` (`f0db8cbb8`): a strict object whose `target`,
- * `value` and `wardrobe` are all OPTIONAL, then a refine that says which of the
- * two shapes it is. The `value` union is number → boolean → string, and the
+ * v4 `CustomToolInventoryGestureSchema` (`e1872c94f`) — a strict object;
+ * `items` is a REQUIRED sized array of object-reference TEMPLATES, `equip` an
+ * optional boolean. The per-action rules are the tool-level refine's
+ * ({@link inventoryGestureProblems}), not this parse's.
+ */
+function parseInventoryGesture(input: unknown): Res<CustomToolInventoryGesture> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+
+  const action = parseEnum<InventoryEffectAction>(input['action'], INVENTORY_EFFECT_ACTIONS);
+  issues.push(...prefix('action', action.issues));
+
+  const items = parseSizedArray<string>(
+    input['items'],
+    (item) => parseString(item, 1, MAX_INVENTORY_REF_LENGTH, false),
+    { n: 1 },
+    { n: MAX_INVENTORY_EFFECT_ITEMS },
+  );
+  issues.push(...prefix('items', items.issues));
+
+  let equip: boolean | undefined;
+  if (hasKey(input, 'equip')) {
+    const r = parseBool(input['equip']);
+    issues.push(...prefix('equip', r.issues));
+    equip = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['action', 'items', 'equip']));
+
+  if (action.value === undefined || items.value === undefined || aborted(issues)) {
+    return { value: undefined, issues };
+  }
+
+  const gesture: CustomToolInventoryGesture = { action: action.value, items: items.value };
+  if (equip !== undefined) gesture.equip = equip;
+  return { value: gesture, issues };
+}
+
+/**
+ * v4 `CustomToolEffectSchema` (`f0db8cbb8`, widened by `e1872c94f` /
+ * `e4a60ad9e`): a strict object whose `target`, `value`, `wardrobe`,
+ * `inventory` and `log` are all OPTIONAL, then a refine that says which of the
+ * four kinds it is. The `value` union is number → boolean → string, and the
  * string arm's length rules are CHECKS: an empty string leaves the string
  * branch as the only non-aborted one, so its own "Too small" sentence hoists
  * out of the union rather than a bare "Invalid input".
@@ -1749,9 +2205,9 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
 
   const issues: Issue[] = [];
 
-  let when: EffectWhen | undefined;
+  let when: EffectCondition | undefined;
   if (hasKey(input, 'when')) {
-    const r = parseEffectWhen(input['when']);
+    const r = parseEffectCondition(input['when']);
     issues.push(...prefix('when', r.issues));
     when = r.value;
   }
@@ -1782,19 +2238,37 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
     wardrobe = r.value;
   }
 
-  issues.push(...unrecognizedKeys(input, ['when', 'target', 'value', 'wardrobe']));
+  let inventory: CustomToolInventoryGesture | undefined;
+  if (hasKey(input, 'inventory')) {
+    const r = parseInventoryGesture(input['inventory']);
+    issues.push(...prefix('inventory', r.issues));
+    inventory = r.value;
+  }
+
+  let log: string | undefined;
+  if (hasKey(input, 'log')) {
+    const r = parseString(input['log'], 1, MAX_MESSAGE_LENGTH, false);
+    issues.push(...prefix('log', r.issues));
+    log = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['when', 'target', 'value', 'wardrobe', 'inventory', 'log']));
 
   if (aborted(issues)) return { value: undefined, issues };
 
-  // ---- the effect's superRefine (v4 `custom-tool.types.ts:715-738`) -------
+  // ---- the effect's superRefine (v4 `custom-tool.types.ts:984-1010`) ------
   const isWrite = target !== undefined || value !== undefined;
-  const isWardrobe = wardrobe !== undefined;
-  if (isWrite && isWardrobe) {
+  const kinds = [isWrite, wardrobe !== undefined, inventory !== undefined, log !== undefined].filter(
+    Boolean,
+  ).length;
+  if (kinds > 1) {
     issues.push(
-      checkIssue('an effect is either a write (target + value) or a wardrobe gesture, not both'),
+      checkIssue(
+        'an effect is exactly one of a write (target + value), a wardrobe gesture, an inventory gesture, or a log line',
+      ),
     );
-  } else if (!isWrite && !isWardrobe) {
-    issues.push(checkIssue('an effect needs target + value, or wardrobe'));
+  } else if (kinds === 0) {
+    issues.push(checkIssue('an effect needs target + value, wardrobe, inventory, or log'));
   } else if (isWrite && (target === undefined || value === undefined)) {
     issues.push(
       checkIssue('a write needs both target and value', [target === undefined ? 'target' : 'value']),
@@ -1808,9 +2282,12 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
   if (target !== undefined) effect.target = target;
   if (value !== undefined) effect.value = value;
   if (wardrobe !== undefined) effect.wardrobe = wardrobe;
+  if (inventory !== undefined) effect.inventory = inventory;
+  if (log !== undefined) effect.log = log;
   return { value: effect, issues };
 }
 
+/** v4 `WhenSchema` — `z.union([z.literal(true), WhenObjectSchema, <the any-of array>])`. */
 function parseWhen(input: unknown): Res<When> {
   // `z.literal(true)`.
   const lit: Res<When> =
@@ -1818,7 +2295,8 @@ function parseWhen(input: unknown): Res<When> {
       ? resOk<When>(true)
       : { value: undefined, issues: [hardIssue('Invalid input: expected true')] };
   const o = parseWhenObject(input);
-  return union<When>([lit, o]);
+  const anyOf = parseGroupArray(input, parseWhenObject);
+  return union<When>([lit, o, anyOf]);
 }
 
 function parseOutcome(input: unknown): Res<CustomToolOutcome> {
@@ -1834,7 +2312,17 @@ function parseOutcome(input: unknown): Res<CustomToolOutcome> {
   const state = parseEnum<OutcomeState>(input['state'], ['success', 'partial', 'failure', 'info']);
   issues.push(...prefix('state', state.issues));
 
-  issues.push(...unrecognizedKeys(input, ['when', 'message', 'state']));
+  // Bug 257 (`322a5488e`): `z.string().min(1).max(MAX_MESSAGE_LENGTH)
+  // .optional()`, LAST in the shape — so its issues follow `state`'s, and the
+  // key serializes after it.
+  let brief: string | undefined;
+  if (hasKey(input, 'brief')) {
+    const r = parseString(input['brief'], 1, MAX_MESSAGE_LENGTH, false);
+    issues.push(...prefix('brief', r.issues));
+    brief = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['when', 'message', 'state', 'brief']));
 
   if (
     when.value !== undefined &&
@@ -1842,7 +2330,9 @@ function parseOutcome(input: unknown): Res<CustomToolOutcome> {
     state.value !== undefined &&
     !aborted(issues)
   ) {
-    return { value: { when: when.value, message: message.value, state: state.value }, issues };
+    const outcome: CustomToolOutcome = { when: when.value, message: message.value, state: state.value };
+    if (brief !== undefined) outcome.brief = brief;
+    return { value: outcome, issues };
   }
   return { value: undefined, issues };
 }
@@ -1940,7 +2430,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   if (hasKey(obj, 'parameters')) {
     const raw2 = obj['parameters'];
     if (isPlainObject(raw2)) {
-      const r = parseRecord(raw2, (k) => IDENTIFIER_PATTERN.test(k), parseParameter);
+      const r = parseRecord(raw2, identifierKey, parseParameter);
       const paramIssues = [...r.issues];
       // `.refine(… <= MAX_PARAMETERS)` — a check on the record itself, so it is
       // skipped when an entry already aborted.
@@ -2022,6 +2512,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   // ---- superRefine (v4 `:374-377`), in source order -----------------------
   validateOutcomeOrdering(tool.outcomes, issues);
   validateReferences(tool, issues);
+  validateOutcomeBriefs(tool, issues);
   validateGates(tool, issues);
   validateEffects(tool, issues);
   validateTriggers(tool, issues);
@@ -2110,6 +2601,29 @@ function validateGates(
       ),
     );
   }
+
+  // A gate is answered at roster time, before any parameter exists, so a
+  // templated key would be its literal text for ever — and resolve to
+  // `absent` for ever. Outcome and effect `when` keys stay templates.
+  for (const clause of ['availableWhen', 'withheldWhen'] as const) {
+    const gate = tool[clause];
+    if (!gate) continue;
+    gateGroups(gate).forEach((group, g) => {
+      const base: string[] = Array.isArray(gate) ? [clause, String(g)] : [clause];
+      for (const subject of ['inventory', 'inventoryCount'] as const) {
+        for (const key of Object.keys(group[subject] ?? {})) {
+          if (key.includes('{{')) {
+            issues.push(
+              checkIssue(
+                `a gate's ${subject} key must be a literal object reference; "${key}" carries a placeholder, and a gate has no parameters to fill it`,
+                [...base, subject, key],
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
 }
 
 /** The value types a subject or an operand can carry, with `integer` folded in. */
@@ -2136,12 +2650,54 @@ function validateReferences(tool: QtapCustomTool, issues: Issue[]): void {
   validateRollRefs(declared, tool.roll, issues);
 
   tool.outcomes.forEach((outcome, i) => {
-    if (outcome.when === true) return;
-    validateWhenSubjects(declared, outcome.when, Boolean(tool.llm), issues, [
-      'outcomes',
-      String(i),
-      'when',
-    ]);
+    const when = outcome.when;
+    whenGroups(when).forEach((group, g) => {
+      // The group index rides ONLY when the clause IS an array.
+      const path = Array.isArray(when) ? ['outcomes', String(i), 'when', String(g)] : ['outcomes', String(i), 'when'];
+      validateWhenSubjects(declared, group, Boolean(tool.llm), issues, path);
+    });
+  });
+}
+
+/**
+ * Rule: `{{outcome.*}}` and `brief` keep to the run order (v4
+ * `validateOutcomeBriefs`, `322a5488e` — bug 257).
+ *
+ * When no row tests the consult, the table is dealt first and the prompt may
+ * quote the winning row. When some row does, the table needs the answer, so the
+ * prompt cannot read the verdict — a reference there would be a hole for ever,
+ * and it is rejected at load. A `brief` is rendered before the consult too, so
+ * it may quote neither `{{llm}}` nor `{{outcome.*}}`.
+ */
+function validateOutcomeBriefs(
+  tool: { llm?: CustomToolLlm; outcomes: CustomToolOutcome[] },
+  issues: Issue[],
+): void {
+  if (tool.llm && outcomeTableTestsLlm(tool.outcomes)) {
+    for (const { key, ref } of scanPlaceholdersInText(tool.llm.prompt)) {
+      if (ref.kind === 'outcome') {
+        issues.push(
+          checkIssue(
+            `the consult prompt references {{${key}}}, but an outcome tests the consult's answer, so the table ` +
+              'cannot be dealt before the consult. Drop the `llm` test, or take the verdict out of the prompt',
+            ['llm', 'prompt'],
+          ),
+        );
+      }
+    }
+  }
+
+  tool.outcomes.forEach((outcome, i) => {
+    if (outcome.brief === undefined) return;
+    const path = ['outcomes', String(i), 'brief'];
+    if (!tool.llm) {
+      issues.push(checkIssue('has a `brief`, but the tool declares no `llm` block to read it', path));
+    }
+    for (const { key, ref } of scanPlaceholdersInText(outcome.brief)) {
+      if (ref.kind === 'llm' || ref.kind === 'outcome') {
+        issues.push(checkIssue(`a brief is written before the consult runs and cannot quote {{${key}}}`, path));
+      }
+    }
   });
 }
 
@@ -2204,6 +2760,67 @@ function validateWhenSubjects(
   for (const [key, comparator] of Object.entries(when.metadata ?? {})) {
     validateMetadataOperands(declared, comparator, issues, [...path, 'metadata', key]);
   }
+
+  // An aggregate's key is the format's own (checked by its schema); whether a
+  // scope holds anything, and what types its values carry, are facts about a
+  // character — so, as with `metadata`, only the operands are checkable here.
+  for (const [key, comparator] of Object.entries(when.inventoryAggregate ?? {})) {
+    validateMetadataOperands(declared, comparator, issues, [...path, 'inventoryAggregate', key]);
+  }
+
+  // `inventory` and `inventoryCount` keys are TEMPLATES: their placeholders
+  // must resolve the way an item reference's do. The state operand is a
+  // literal state or a `$param` to a string parameter; the count's operands
+  // are numbers.
+  for (const [key, comparator] of Object.entries(when.inventory ?? {})) {
+    validateTemplatePlaceholders(declared, hasLlmBlock, key, issues, [...path, 'inventory', key]);
+    for (const op of ['eq', 'neq'] as const) {
+      const operand = comparator[op];
+      if (operand === undefined || !isParamRef(operand)) continue;
+      const target = declared[operand.$param];
+      if (!target) {
+        issues.push(
+          checkIssue(`references undeclared parameter "${operand.$param}"`, [...path, 'inventory', key, op]),
+        );
+      } else if (valueTypeOf(target.type) !== 'string') {
+        issues.push(
+          checkIssue(
+            `${op} compares an inventory state with parameter "${operand.$param}", which is ${target.type} rather than a string`,
+            [...path, 'inventory', key, op],
+          ),
+        );
+      }
+    }
+  }
+  for (const [key, comparator] of Object.entries(when.inventoryCount ?? {})) {
+    validateTemplatePlaceholders(declared, hasLlmBlock, key, issues, [...path, 'inventoryCount', key]);
+    validateComparator(declared, comparator, 'number', `the equipped count of "${key}"`, issues, [
+      ...path,
+      'inventoryCount',
+      key,
+    ]);
+  }
+}
+
+/**
+ * A template's placeholders resolve as an outcome message's must: a
+ * `{{params.x}}` names a declared parameter, a `{{llm}}` needs an `llm` block.
+ * Used for inventory keys and references and for log lines.
+ */
+function validateTemplatePlaceholders(
+  declared: Record<string, CustomToolParameter>,
+  hasLlmBlock: boolean,
+  key: string,
+  issues: Issue[],
+  path: string[],
+): void {
+  for (const { ref } of scanPlaceholdersInText(key)) {
+    if (ref.kind === 'params' && !declared[ref.name]) {
+      issues.push(checkIssue(`references undeclared parameter "${ref.name}"`, path));
+    } else if (ref.kind === 'llm' && !hasLlmBlock) {
+      issues.push(checkIssue('references {{llm}}, but the tool declares no `llm` block', path));
+    }
+  }
 }
 
 /**
@@ -2229,7 +2846,11 @@ function validateEffects(
     // write with a bad subject and a bad target reports the subject first —
     // the `effects-write-when-order` row.
     if (effect.when !== undefined) {
-      validateWhenSubjects(declared, effect.when, Boolean(tool.llm), issues, [...base, 'when']);
+      const when = effect.when;
+      effectWhenGroups(when).forEach((group, g) => {
+        const path = Array.isArray(when) ? [...base, 'when', String(g)] : [...base, 'when'];
+        validateWhenSubjects(declared, group, Boolean(tool.llm), issues, path);
+      });
     }
 
     if (effect.wardrobe !== undefined) {
@@ -2237,6 +2858,26 @@ function validateEffects(
         ...base,
         'wardrobe',
       ]);
+      return;
+    }
+
+    if (effect.log !== undefined) {
+      validateTemplatePlaceholders(declared, Boolean(tool.llm), effect.log, issues, [...base, 'log']);
+      return;
+    }
+
+    if (effect.inventory !== undefined) {
+      for (const problem of inventoryGestureProblems(effect.inventory)) {
+        issues.push(checkIssue(problem.message, [...base, 'inventory', problem.field]));
+      }
+      effect.inventory.items.forEach((item, m) => {
+        validateTemplatePlaceholders(declared, Boolean(tool.llm), item, issues, [
+          ...base,
+          'inventory',
+          'items',
+          String(m),
+        ]);
+      });
       return;
     }
 
@@ -2379,12 +3020,24 @@ function validateRollRefs(
 ): void {
   if (!roll || typeof roll === 'string') return;
 
+  // A whole-roll `$inventory`: the object's metadata names the dice, and the
+  // fallback must be dice notation this build can roll.
+  if (isInventoryRef(roll)) {
+    if (typeof roll.fallback !== 'string' || parseDiceNotation(roll.fallback) === null) {
+      issues.push(
+        checkIssue('a roll drawn from $inventory needs a dice-notation fallback, like "1d4"', ['roll', 'fallback']),
+      );
+    }
+    return;
+  }
+
   for (const [field, value] of Object.entries(roll)) {
-    if (isStateRef(value)) {
+    if (isStateRef(value) || isInventoryRef(value)) {
+      const kind = isStateRef(value) ? '$state' : '$inventory';
       if (typeof value.fallback !== 'number') {
         issues.push(
           checkIssue(
-            `roll.${field} uses a $state reference whose fallback is ${typeof value.fallback} rather than a number`,
+            `roll.${field} uses a ${kind} reference whose fallback is ${typeof value.fallback} rather than a number`,
             ['roll', field],
           ),
         );
@@ -2498,7 +3151,7 @@ function resolveOperandType(
 
   // A `$state` operand carries the type of its (required) fallback — that is
   // what run-time resolution is guaranteed to produce when the path misses.
-  if (isStateRef(operand)) {
+  if (isStateRef(operand) || isInventoryRef(operand)) {
     const fallbackType = typeof operand.fallback;
     if (fallbackType === 'number' || fallbackType === 'string' || fallbackType === 'boolean') {
       return fallbackType;
@@ -2536,18 +3189,33 @@ export function definitionIssueLines(issues: readonly Issue[]): string[] {
   return flattenIssues(issues);
 }
 
+/** v4 `isNotAnArray`: a union branch whose only complaint is "this is not an array". */
+function isNotAnArray(branch: readonly Issue[]): boolean {
+  return branch.length === 1 && (branch[0] as TaggedIssue).notArray === true && branch[0].path.length === 0;
+}
+
 function flattenIssues(issues: readonly Issue[]): string[] {
-  return issues.map((issue) => {
+  return issues.map((issue: TaggedIssue) => {
     const located = (message: string) =>
       issue.path.length ? `${issue.path.join('.')}: ${message}` : message;
 
     if (issue.unionErrors) {
+      // An any-of array is an alternative SPELLING, not an alternative
+      // meaning: when the value simply was not an array, that branch has
+      // nothing to say and only buries the real complaint.
+      const relevant = issue.unionErrors.filter((branch) => !isNotAnArray(branch));
       // Sub-issue paths are relative to the union, so they are flattened without
       // the prefix — v4 does the same.
-      const branches = issue.unionErrors
+      const branches = (relevant.length > 0 ? relevant : issue.unionErrors)
         .map((branch) => flattenIssues(branch).join('; '))
         .filter((branch) => branch.length > 0);
       if (branches.length > 0) return located(branches.join(' — or — '));
+    }
+
+    if (issue.inner !== undefined && issue.inner.length > 0) {
+      // A record key's own refinement (an aggregate or progress key) says WHY;
+      // "Invalid key in record" alone does not.
+      return located(issue.inner.join('; '));
     }
 
     return located(issue.message);

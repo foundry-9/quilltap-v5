@@ -320,3 +320,46 @@ a second run reproduces each file byte for byte (`cmp`, measured).
   DIFFERENT input than this lane first did, so this lane's rows ride suffixed
   ids (`unknown-keys-announce-as-character-known-persist`,
   `announce-as-character-issue-order-reversed`) and both inputs stay pinned.
+
+## The `322a5488e` refresh — `pascal-custom-tool-definition.oracle.ndjson` (P4.D333)
+
+_Recorded 2026-10-26 at v4 `322a5488e` ("Fix: custom-tool LLM consult can
+narrate a verdict the table already reached (bug 257)") by P4.D333 (the
+custom-tool grammar twins lane), from a v4 worktree pinned at that sha, Node
+24.13.1, the pin's resolved `zod` **4.6.7**._
+
+**`pascal-custom-tool-definition.oracle.ndjson` — 458 → 537 rows** (10 `title`
++ 457 `definition` + 70 `gate`), md5 `e15a19fd1f20e33aba1a089f4795bcb7`,
+sha-256 `73b2075ef4bfd80414addad1eb3af94e39d0e74c288d40ac011312d3c74b8803`.
+v4 `a53024d3c` (any-of gates, outcome `when`s and effect `when`s; record keys
+rendered by the key schema's own reason) and `322a5488e` (bug 257 — an
+outcome's `brief`, `{{outcome.*}}` in the consult prompt) moved the format;
+the shared generator `harness/oracle/cases/pascal-custom-tool-definition.ts`
+grew the `anyof-*`, `brief-*` and `heldGroup` gate rows, and the older
+`Invalid key in record` rows moved to their key schemas' sentences by design.
+
+This is the ONE regen of the round (R-F): sibling lanes that grow the same
+generator merge their rows BY ID, and the unifier re-runs the recipe once over
+the merged generator (a same-id row whose bytes differ is a finding). The SPA
+copy is byte-equal to the server family's.
+
+Recipe (canonical; from a v4 worktree pinned at `322a5488e`, `rm -f` the
+target first):
+
+```bash
+cd ~/source/quilltap-server && TZ=UTC npx tsx "$V5W/harness/oracle/cases/pascal-custom-tool-definition.ts" > /tmp/oracle-pascal-definition.ndjson
+cp /tmp/oracle-pascal-definition.ndjson "$V5W/apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson"
+```
+
+(`~/source/quilltap-server` stands for the PINNED worktree — `git worktree add
+--detach <dir> 322a5488e` — never the live checkout.) Expect exactly 537
+lines; `grep -c '"kind":"gate"'` = 70. The consumer is
+`app/pascal/custom-tool-types.corpus.spec.ts`, green whole with no parse-row
+carve; its draft round-trip leg skips the any-of gate rows by name
+(`DRAFT_ROUNDTRIP_PENDING_P4D334`) until P4.D334 widens the draft layer.
+
+**`pascal-progress.oracle.ndjson` — re-recorded alongside (71 rows, 12 moved).**
+Same recorder (`apps/web/oracle/pascal-progress.recorder.ts`, unchanged), run
+at the same `322a5488e` pin: twelve gate / `when` rows move to the pin's
+sentences (the any-of union's `availableWhen: …` hoisting, the four-subject
+"must test …" texts). Its only consumer is `progress-arms.oracle.spec.ts`.
