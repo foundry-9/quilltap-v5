@@ -38,7 +38,11 @@ function stubClient(
         log.requests.push(req);
         return { albums: albumList };
       }
-      if (req.type === 'wardrobeItemImageSaveToStore') {
+      if (req.type === 'inventoryItemImageSaveTargets') {
+        log.requests.push(req);
+        return { albums: albumList };
+      }
+      if (req.type === 'wardrobeItemImageSaveToStore' || req.type === 'inventoryItemImageSaveToStore') {
         log.requests.push(req);
         const resp = saveResponse ?? {
           type: 'ack',
@@ -470,4 +474,49 @@ describe('SaveImageDialog', () => {
       'That picture does not belong to this wardrobe item',
     );
   });
+
+  // === P4.D330: the Inventory door (v4 `4fbdad186` SaveImageDialog.tsx:30-74, :304) ===
+  const INVENTORY: SaveImageTarget = {
+    kind: 'inventory',
+    itemId: 'sword',
+    container: { scope: 'character', id: 'c-viv' },
+    fileId: 'file-1',
+  };
+
+  it('the inventory door reads inventoryItemImageSaveTargets and saves through inventoryItemImageSaveToStore', async () => {
+    const log: DispatchLog = { requests: [] };
+    const fixture = await render(stubClient(log, albums()), INVENTORY);
+    const caption = fixture.nativeElement.querySelector('#save-image-caption') as HTMLInputElement;
+    caption.value = ' the blade ';
+    caption.dispatchEvent(new Event('input'));
+    fixture.detectChanges();
+    clickSave(fixture);
+    await settle(fixture);
+    expect(log.requests).toEqual([
+      { type: 'inventoryItemImageSaveTargets', container: { scope: 'character', id: 'c-viv' }, itemId: 'sword' },
+      {
+        type: 'inventoryItemImageSaveToStore',
+        container: { scope: 'character', id: 'c-viv' },
+        itemId: 'sword',
+        fileId: 'file-1',
+        mountPointId: 'mp-gen',
+        caption: 'the blade',
+      },
+    ]);
+  });
+
+  it("the inventory door's albums are cached under their own key", async () => {
+    const log: DispatchLog = { requests: [] };
+    const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
+    queryClient.setQueryData(['inventoryItemImageSaveTargets', 'sword', 'character', 'c-viv'], albums());
+    const fixture = await render(stubClient(log, albums()), INVENTORY, [IMG], undefined, queryClient);
+    expect((fixture.nativeElement.querySelector('#save-image-album') as HTMLSelectElement).value).toBe('mp-gen');
+    expect(log.requests).toEqual([]);
+  });
+
+  it("the inventory door's empty sentence is the document-store one", async () => {
+    const fixture = await render(stubClient({ requests: [] }, []), INVENTORY);
+    expect(fixture.nativeElement.textContent).toContain('No document stores are available.');
+  });
+  // === end P4.D330 ===
 });

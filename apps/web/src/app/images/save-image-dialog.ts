@@ -19,6 +19,7 @@ import type { AlbumKind, AlbumOption, MessageAttachment } from '../core/core-con
 import { Modal } from '../ui/modal';
 import { listWardrobeSaveTargets, saveWardrobeImageToStore } from '../wardrobe/item-images.api';
 import type { WardrobeContainer } from '../wardrobe/wardrobe-container';
+import { listInventorySaveTargets, saveInventoryImageToStore } from '../inventory/inventory.api';
 import { fileUrl } from './image-urls';
 
 const ALBUM_KIND_LABEL: Record<AlbumKind, string> = {
@@ -47,7 +48,9 @@ interface AlbumGroup {
 export type SaveImageTarget =
   | { kind: 'message'; chatId: string; messageId: string; fileId: string }
   | { kind: 'chat'; chatId: string; fileId: string }
-  | { kind: 'wardrobe'; itemId: string; container: WardrobeContainer; fileId: string };
+  | { kind: 'wardrobe'; itemId: string; container: WardrobeContainer; fileId: string }
+  // P4.D330 — v4 `4fbdad186` (`:55`): the Inventory picture viewer's door.
+  | { kind: 'inventory'; itemId: string; container: WardrobeContainer; fileId: string };
 
 /**
  * SaveImageDialog — the operator "save this attached image" picker (a port of
@@ -146,7 +149,7 @@ export type SaveImageTarget =
           } @else if (groupedAlbums().length === 0) {
             <div class="text-sm opacity-70">
               {{
-                target().kind === 'wardrobe'
+                target().kind === 'wardrobe' || target().kind === 'inventory'
                   ? 'No document stores are available.'
                   : 'No photo albums are available for this chat.'
               }}
@@ -270,14 +273,18 @@ export class SaveImageDialog {
       queryKey:
         target.kind === 'wardrobe'
           ? ['wardrobeItemImageSaveTargets', target.itemId, target.container.scope, target.container.id]
-          : ['chatPhotoAlbums', target.chatId],
+          : target.kind === 'inventory'
+            ? ['inventoryItemImageSaveTargets', target.itemId, target.container.scope, target.container.id]
+            : ['chatPhotoAlbums', target.chatId],
       queryFn: async (): Promise<AlbumOption[]> => {
         const albums =
           target.kind === 'wardrobe'
             ? await listWardrobeSaveTargets(this.core, target.itemId, target.container)
-            : (((await this.core.dispatchData({ type: 'chatPhotoAlbums', chatId: target.chatId }))[
-                'albums'
-              ] as AlbumOption[]) ?? []);
+            : target.kind === 'inventory'
+              ? await listInventorySaveTargets(this.core, target.container, target.itemId)
+              : (((await this.core.dispatchData({ type: 'chatPhotoAlbums', chatId: target.chatId }))[
+                  'albums'
+                ] as AlbumOption[]) ?? []);
         return albums;
       },
     };
@@ -350,6 +357,12 @@ export class SaveImageDialog {
       };
       if (target.kind === 'wardrobe') {
         body = await saveWardrobeImageToStore(this.core, target.itemId, target.container, {
+          fileId: att.id,
+          mountPointId,
+          caption,
+        });
+      } else if (target.kind === 'inventory') {
+        body = await saveInventoryImageToStore(this.core, target.container, target.itemId, {
           fileId: att.id,
           mountPointId,
           caption,

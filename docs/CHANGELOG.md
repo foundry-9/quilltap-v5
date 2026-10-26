@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory glyph, picture and picture viewer, and the save dialog's `inventory` door
+
+_Versions: SPA 0.5.893._
+
+NEW `qt-inventory-glyph` (the object's SVG through a data-URI `<img>`, else its emoji, else a tag or layers icon — never the picture), `qt-inventory-picture` (the thumbnail for choosing, or the glyph in a box) and `qt-inventory-image-viewer` (full screen at `z-[90]` with Save to a document store, Download and Copy; v4's `Failed to <action> image` toasts). The save dialog gains the `inventory` door: its albums come from `inventoryItemImageSaveTargets` under their own cache key, the save goes through `inventoryItemImageSaveToStore`, and an empty list reads `No document stores are available.` P4.D330, Tier 1 item 6.
+
 #### 2026-10-26 — feat(spa): the five item-browser pieces (v4 `4fbdad186`)
 
 _Versions: SPA 0.5.892._
