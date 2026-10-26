@@ -72,6 +72,15 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "wardrobe_take_off", name: "Take Off Wardrobe Items", description: "Take off worn wardrobe items or empty slots", category: "wardrobe" },
     BuiltInTool { id: "wardrobe_rollback", name: "Return to an Earlier Outfit", description: "Return to an outfit worn earlier in this chat, by its number", category: "wardrobe" },
     BuiltInTool { id: "wardrobe_history", name: "Outfit History", description: "List the numbered outfits worn in this chat", category: "wardrobe" },
+    BuiltInTool { id: "inventory_list", name: "List Inventory", description: "List the objects the character carries and can reach, with their states", category: "inventory" },
+    BuiltInTool { id: "inventory_read", name: "Read Inventory Object", description: "Read one object in full: descriptions, metadata, archetype, kit members", category: "inventory" },
+    BuiltInTool { id: "inventory_equip", name: "Equip Objects", description: "Take up objects or kits in this chat", category: "inventory" },
+    BuiltInTool { id: "inventory_unequip", name: "Unequip Objects", description: "Set down carried objects in this chat", category: "inventory" },
+    BuiltInTool { id: "inventory_pick_up", name: "Pick Up Object", description: "Make an instance of a reachable archetype in the character's vault, optionally equipped", category: "inventory" },
+    BuiltInTool { id: "inventory_create", name: "Create Object", description: "Make a new object of the character's own", category: "inventory" },
+    BuiltInTool { id: "inventory_update", name: "Update Object", description: "Change one of the character's own objects", category: "inventory" },
+    BuiltInTool { id: "inventory_archive", name: "Archive Object", description: "Put away (or restore) one of the character's own objects", category: "inventory" },
+    BuiltInTool { id: "inventory_give", name: "Give Object", description: "Hand one of the character's own objects to another participant", category: "inventory" },
     BuiltInTool { id: "doc_read_file", name: "Read Document", description: "Read file contents from document stores or project files", category: "documents" },
     BuiltInTool { id: "doc_write_file", name: "Write Document", description: "Write or create a file in document stores or project files", category: "documents" },
     BuiltInTool { id: "doc_str_replace", name: "Find & Replace in Document", description: "Find and replace exact text in a file (unique match required)", category: "documents" },
@@ -124,6 +133,16 @@ const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("wardrobe_take_off", "wardrobeTakeOff"),
     ("wardrobe_rollback", "wardrobeRollback"),
     ("wardrobe_history", "wardrobeHistory"),
+    // P4.D328 (v4 `e1872c94f`): the nine spread from `INVENTORY_TOOL_DEFINITIONS`.
+    ("inventory_list", "inventoryList"),
+    ("inventory_read", "inventoryRead"),
+    ("inventory_equip", "inventoryEquip"),
+    ("inventory_unequip", "inventoryUnequip"),
+    ("inventory_pick_up", "inventoryPickUp"),
+    ("inventory_create", "inventoryCreate"),
+    ("inventory_update", "inventoryUpdate"),
+    ("inventory_archive", "inventoryArchive"),
+    ("inventory_give", "inventoryGive"),
     ("doc_read_file", "docReadFile"),
     ("doc_write_file", "docWriteFile"),
     ("doc_str_replace", "docStrReplace"),
@@ -163,6 +182,7 @@ struct ChatContext {
     is_multi_character: bool,
     can_dress_themselves: bool,
     can_create_outfits: bool,
+    can_manage_inventory: bool,
 }
 
 fn truthy_str(v: Option<&Value>) -> bool {
@@ -170,7 +190,8 @@ fn truthy_str(v: Option<&Value>) -> bool {
 }
 
 /// Build the chat context (v4 route.ts:452–517). Any failure is caught → the
-/// context stays `None` (chat arm) or the two wardrobe flags stay true.
+/// context stays `None` (chat arm) or the two wardrobe flags and the
+/// inventory flag stay true.
 fn build_chat_context(db: &Db, user_id: &str, chat_id: &str) -> Option<ChatContext> {
     let cid = chat_id.to_string();
     let chat = db
@@ -217,10 +238,11 @@ fn build_chat_context(db: &Db, user_id: &str, chat_id: &str) -> Option<ChatConte
         .count();
     let is_multi_character = active_character_count > 1;
 
-    // Wardrobe capability flags (default: enabled when null; a failed load
-    // warns and leaves them true).
+    // Wardrobe + inventory capability flags (default: enabled when null; a
+    // failed load warns and leaves them true).
     let mut can_dress_themselves = true;
     let mut can_create_outfits = true;
+    let mut can_manage_inventory = true;
     if let Some(character_id) = character_participant
         .and_then(|p| p.get("characterId"))
         .and_then(Value::as_str)
@@ -235,6 +257,8 @@ fn build_chat_context(db: &Db, user_id: &str, chat_id: &str) -> Option<ChatConte
                 character.get("canDressThemselves").and_then(Value::as_bool) != Some(false);
             can_create_outfits =
                 character.get("canCreateOutfits").and_then(Value::as_bool) != Some(false);
+            can_manage_inventory =
+                character.get("canManageInventory").and_then(Value::as_bool) != Some(false);
         }
     }
 
@@ -258,6 +282,7 @@ fn build_chat_context(db: &Db, user_id: &str, chat_id: &str) -> Option<ChatConte
         is_multi_character,
         can_dress_themselves,
         can_create_outfits,
+        can_manage_inventory,
     })
 }
 
@@ -361,6 +386,13 @@ pub fn tools_list(
                         unavailable("Character does not have wardrobe item creation enabled");
                     }
                 }
+                _ if crate::tools::inventory_tool_table::INVENTORY_TOOL_NAMES
+                    .contains(&id.as_str()) =>
+                {
+                    if !ctx.can_manage_inventory {
+                        unavailable("Character does not have inventory management enabled");
+                    }
+                }
                 _ if DOC_AVAILABILITY_IDS.contains(&id.as_str()) => {
                     if !ctx.has_project {
                         unavailable("Chat must be associated with a project");
@@ -398,15 +430,17 @@ mod tests {
                 "schema-map id {id} did not resolve in the definitions catalog"
             );
         }
+        // 50 / 54 since P4.D328 (v4 `e1872c94f`): the nine `inventory_*`
+        // rows, each with a schema-map entry (41 + 9, 45 + 9).
         // 41 / 45 since P4.D316 (v4 `ebb480edd`): + `wardrobe_rollback` +
         // `wardrobe_history`, both with schema-map entries (39 + 2, 43 + 2).
         // 39 / 43 since P4.D234 (v4 `39bc98ffc` + `12c336fad`): `list_email`
         // renamed `list_mail`, `read_mail` + `discard_mail` added (37 + 2,
         // 41 + 2).
-        assert_eq!(SCHEMA_KEYS.len(), 41);
+        assert_eq!(SCHEMA_KEYS.len(), 50);
         // 41 since P4.D108 added the describe_image row (v4 a14a1811, bug 92);
         // like the other photo tools it has NO schema-map entry, so
         // SCHEMA_KEYS stays at 37.
-        assert_eq!(BUILT_IN_TOOLS.len(), 45);
+        assert_eq!(BUILT_IN_TOOLS.len(), 54);
     }
 }

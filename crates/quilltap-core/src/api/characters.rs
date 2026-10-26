@@ -2226,6 +2226,9 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
     // `update()`, so the editor toggles would silently never persist (v4 `put.ts:74`).
     "canDressThemselves",
     "canCreateOutfits",
+    // P4.D328 (v4 `e1872c94f`, `put.ts:77`): the Inventory tri-state, the same
+    // real DB column shape.
+    "canManageInventory",
     // The freeform fact sheet (vault `metadata.json`). Zod `.parse` strips unknown
     // keys, so it MUST be named here or a PUT carrying it would be silently dropped
     // before the write overlay ever saw it (v4 `put.ts:73`). Sending `metadata`

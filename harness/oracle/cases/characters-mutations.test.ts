@@ -102,6 +102,10 @@ interface CaseSpec {
    *  FINAL PUT response (an overlay re-read) is the echo. Used to prove the
    *  explicit-null tri-state clear (set non-null, then null). */
   bodies?: unknown[];
+  /** P4.D328: plant `characters.canManageInventory` (the column the
+   *  committed fixture predates — the keystone's `plantInventoryColumns`
+   *  declaration, inlined: this recipe copies no `lib/`) before the PUT. */
+  plantInventoryColumn?: boolean;
   /** [P4.D201] `default-prompt`: resolve this prompt NAME to its id on the
    *  character and send it as `defaultSystemPromptId`. The baked prompt ids are
    *  path-derived, so both sides resolve the same one. */
@@ -750,6 +754,14 @@ async function runCase(
       };
       // `update` = one PUT; `update-seq` = each body in order over the same DB
       // (the last PUT's overlay-reload response is the echo).
+      if (c.plantInventoryColumn) {
+        const { getRepositories } = await import('@/lib/repositories/factory');
+        await getRepositories().characters.findByIdRaw(ARIA);
+        const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+        const raw = getRawDatabase() as { exec: (sql: string) => void } | null;
+        if (!raw) throw new Error('main DB handle unavailable for the inventory column plant');
+        raw.exec('ALTER TABLE "characters" ADD COLUMN "canManageInventory" INTEGER DEFAULT NULL');
+      }
       const putBodies = c.kind === 'update-seq' ? (c.bodies ?? []) : [c.body];
       let response: { status: number; json: () => Promise<unknown> } | undefined;
       for (const b of putBodies) {
@@ -1028,6 +1040,16 @@ async function main(): Promise<void> {
       kind: 'update',
       id: ARIA,
       body: { canDressThemselves: false, canCreateOutfits: true },
+    },
+    // P4.D328 (v4 `e1872c94f`): `canManageInventory` is an `updateCharacterSchema`
+    // key — the Zod strip would otherwise drop it before `update()` wrote the
+    // column (`put.ts:77`). Echo + GET readback carry `false`.
+    {
+      name: 'update_inventory_permission',
+      kind: 'update-seq',
+      id: ARIA,
+      bodies: [{ canManageInventory: false }],
+      plantInventoryColumn: true,
     },
     // P4.6bh: the explicit-`null` (inherit-global) tri-state is PRESERVED, not
     // stripped. First set both non-null, then PUT `{canDressThemselves: null}`:

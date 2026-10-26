@@ -773,6 +773,41 @@ fn characters_mutations_match_oracle() {
         }
     }
     {
+        // P4.D328 (v4 `e1872c94f`, `put.ts:77`): `canManageInventory` is an
+        // `updateCharacterSchema` key, so a PUT carrying it reaches the column.
+        // The committed fixture predates the column — planted on this copy
+        // (the oracle plants the same declaration after init). The GET
+        // readback is diffed, as for the wardrobe clear above.
+        let (db, _scratch) = fresh_db(&spec, "upd_inventory");
+        db.write_blocking(|ws| {
+            quilltap_core::test_support::ensure_inventory_columns_on(ws.main().connection());
+            Ok(())
+        })
+        .expect("plant the inventory column");
+        rt.block_on(characters::character_update(
+            &db,
+            &uid,
+            ARIA,
+            json!({ "canManageInventory": false }),
+        ));
+        let readback = response_data(&characters::character_get(&db, &uid, ARIA));
+        let want = &oracle["update_inventory_permission"]["readback"];
+        assert_eq!(
+            want.pointer("/character/canManageInventory").or_else(|| want.get("canManageInventory")),
+            Some(&json!(false)),
+            "update_inventory_permission: v4 must read the key back false (the arm measures nothing otherwise)"
+        );
+        if norm(&readback) != norm(want) {
+            eprintln!(
+                "[update_inventory_permission readback] MISMATCH:\n{}",
+                first_diff(&norm(&readback), &norm(want))
+            );
+            extra.push("update_inventory_permission".to_string());
+        } else {
+            eprintln!("[update_inventory_permission readback] OK.");
+        }
+    }
+    {
         let (db, _scratch) = fresh_db(&spec, "wc");
         let r = rt.block_on(characters::character_wardrobe_create(
             &db,

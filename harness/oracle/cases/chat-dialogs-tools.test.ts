@@ -109,6 +109,10 @@ interface CaseSpec {
   name: string;
   query: string;
   serperKey?: boolean;
+  /** P4.D328: plant `characters.canManageInventory = 0` on this character
+   *  AFTER init (R-19 — the committed fixture predates the column, so the
+   *  column is added first, the keystone's declaration). */
+  inventoryOffCharacter?: string;
 }
 
 async function runCase(
@@ -135,6 +139,16 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  if (c.inventoryOffCharacter) {
+    const { rawQuery } = await import('@/lib/database/manager');
+    const columns = (await rawQuery('PRAGMA table_info("characters")')) as Array<{ name: string }>;
+    if (!columns.some((col) => col.name === 'canManageInventory')) {
+      await rawQuery('ALTER TABLE "characters" ADD COLUMN "canManageInventory" INTEGER DEFAULT NULL');
+    }
+    await rawQuery('UPDATE "characters" SET "canManageInventory" = 0 WHERE "id" = ?', [
+      c.inventoryOffCharacter,
+    ]);
+  }
 
   let tick = 0;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -219,6 +233,14 @@ async function main(): Promise<void> {
     // Project without stores + a no-web-search profile + single character:
     // the doc_* store arm, the connection-profile arm, the whisper arm.
     { name: 'chat_nostores', query: `?chatId=${TOOLS_CHAT_NOSTORES}` },
+    // P4.D328 (v4 `e1872c94f`): Nora (the room's first character) with
+    // `canManageInventory = 0` — the nine `inventory_*` rows answer
+    // `available: false` with the reason; every other row as `chat_proj`.
+    {
+      name: 'chat_proj_inventory_off',
+      query: `?chatId=${TOOLS_CHAT_PROJ}`,
+      inventoryOffCharacter: 'a2000000-0000-4000-8000-000000000001',
+    },
     // Bare room with Wren (both wardrobe flags OFF), no profile, no project:
     // the wardrobe arms + project arms — and doc_copy_file STILL available
     // (missing from v4's switch).

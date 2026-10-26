@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — GET /api/v1/tools lists the nine Inventory tools; the character PUT keeps canManageInventory (P4.D328)
+
+_Versions: core 0.0.1332._
+
+The tools listing gains v4's nine `inventory_*` rows after the wardrobe rows, each with its schema, and marks all nine unavailable — `Character does not have inventory management enabled` — when the room's character has `canManageInventory` off (null reads on). A character PUT carrying `canManageInventory` now reaches the column instead of being stripped. New rows in the tools-listing and character-mutation differentials.
+
 #### 2026-10-26 — A turn's Inventory line lands after the saved turn (P4.D328)
 
 _Versions: core 0.0.1331._
