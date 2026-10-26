@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory browser and item row (v4 `4fbdad186`, `102a23648`)
+
+_Versions: SPA 0.5.894._
+
+NEW `qt-inventory-browser`: search, the Items / Kits / Archetypes tabs, Equipped only (in a chat), Show archived, Show shared, the folder bar, folder and tier rows, select mode with Move to folder…, the four empty-state sentences, the folder create / rename / delete toasts, and the four create buttons. Its view state is kept per container, and Show shared reads where it is before it flips. NEW `qt-inventory-item-row`: glyph, title and name, chips in v4's order, Equip / Unequip in a chat, and a ⋮ menu fixed to the viewport (closed by any scroll or resize outside it, a press outside, or Escape) whose entries follow v4's rules for owned, borrowed, archetype, instance and archived objects. P4.D330, Tier 1 items 7 + 15.
+
 #### 2026-10-26 — feat(spa): the Inventory glyph, picture and picture viewer, and the save dialog's `inventory` door
 
 _Versions: SPA 0.5.893._
