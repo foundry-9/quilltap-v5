@@ -30,6 +30,11 @@ pub struct RouteProfile {
     pub provider: String,
     pub model_name: String,
     pub base_url: Option<String>,
+    /// v4 `isDangerousCompatible === true` — the operator ticked the profile
+    /// "Uncensored-compatible" (`406dbdd5a`). Only the IMAGE wrapper reads it
+    /// (through [`super::understudy::is_uncensored_image_profile`]); the text
+    /// router never consults it, so a projection without the row says `false`.
+    pub is_dangerous_compatible: bool,
 }
 
 /// v4 `DangerousProviderRouteResult` (text).
@@ -149,6 +154,8 @@ pub(crate) fn route_profile_from_value(v: &Value) -> RouteProfile {
         provider: str_field(v, "provider"),
         model_name: str_field(v, "modelName"),
         base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
+        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
+            == Some(true),
     }
 }
 
@@ -296,6 +303,28 @@ pub fn resolve_image_provider_for_dangerous_content<A: ApiKeyResolver>(
             ),
         };
     }
+    // Already on an uncensored painter → stay put. Trading one uncensored
+    // profile for another buys nothing and overrides the operator's pick
+    // (v4 `406dbdd5a`). AFTER the policy gate: a Locked / off-duty chat still
+    // answers the gate's reason.
+    if super::understudy::is_uncensored_image_profile(Some(original_profile), concierge_policy) {
+        tracing::debug!(
+            target: "quilltap::dangerous_content_routing",
+            profile_id = %original_profile.id,
+            profile_name = %original_profile.name,
+            "[DangerousContent] Image profile is already uncensored; not rerouting"
+        );
+        return DangerousImageProviderRouteResult {
+            rerouted: false,
+            image_profile: original_profile.clone(),
+            api_key: original_api_key.to_string(),
+            reason: format!(
+                "Image profile is already uncensored: {}",
+                original_profile.name
+            ),
+        };
+    }
+
     let uncensored_image_profile_id = concierge_policy.desk.image_profile_id.as_deref();
 
     let exclude = [original_profile.id.clone()];
@@ -402,6 +431,10 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             provider: original_profile.provider.clone(),
             model_name: original_profile.model_name.clone(),
             base_url: original_profile.base_url.clone(),
+            // The text router never asks `isUncensoredImageProfile` (v4 calls
+            // it only inside the IMAGE wrapper), and `EffectiveProfile`
+            // carries no compatibility flag.
+            is_dangerous_compatible: false,
         };
         let result = self
             .db
@@ -487,5 +520,29 @@ impl<A: ApiKeyResolver + Send + Sync> DangerousContentRouter for DangerContentRo
             &self.db, chat_id, kind, &details,
         )
         .await;
+    }
+}
+
+#[cfg(test)]
+mod route_profile_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// [406dbdd5a] the projection reads `isDangerousCompatible` as v4's
+    /// `=== true`: only a JSON `true` is compatible.
+    #[test]
+    fn route_profile_from_value_reads_the_compatible_flag_strictly() {
+        let read = |flag: Value| {
+            let mut v = json!({"id": "p", "name": "P", "provider": "OPENAI", "modelName": "m"});
+            if !flag.is_null() {
+                v["isDangerousCompatible"] = flag;
+            }
+            route_profile_from_value(&v).is_dangerous_compatible
+        };
+        assert!(read(json!(true)));
+        assert!(!read(json!(false)));
+        assert!(!read(json!("true")));
+        assert!(!read(json!(1)));
+        assert!(!read(Value::Null));
     }
 }

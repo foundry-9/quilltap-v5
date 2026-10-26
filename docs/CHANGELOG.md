@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — port(image): the bug-133 re-ruling and the appearance carry seams (P4.D326, v4 `406dbdd5a` + `4fbdad186`)
+
+_Versions: core 0.0.1325._
+
+Ports v4's re-ruling of bug 133 (`406dbdd5a`): an image is cleaned only when a Moderated chat with the pre-screen on is bound for a moderated painter.
+
+- `understudy::is_uncensored_image_profile(profile, policy)` — ticked Uncensored-compatible, or the Concierge desk itself (`Boolean(deskId)`); `RouteProfile` gains `is_dangerous_compatible` at every literal (the text router's projection says `false`).
+- The pre-flight image reroute stays put on an already-uncensored profile (`Image profile is already uncensored: <name>`), after the policy gate.
+- `sanitize_appearances_if_needed` takes ONE `image_target_uncensored` in place of `is_dangerous_chat` + `routes_dangerous_to_uncensored`: rule 1 answers with a new DEBUG and no classifier call, rule 2 no longer exempts an Unmoderated chat, the old "dangerous but routed" step is gone, and the dangerous INFO drops its `routes_dangerous_to_uncensored` field.
+- The image tool asks about the profile it actually paints on (`LoadedProfile` now carries the row's flag; `tool_routes_dangerous_to_uncensored` and its unit test deleted, as v4 deleted the predicate). The story background's candid flag is true for any Unmoderated chat, the sanitizer gets a different expression, the up-front reroute runs only for `routes_direct_to_desk`, and the policy DEBUG carries the two new flags.
+
+The appearance carry seams (`4fbdad186`): `ResolvedCharacterAppearance.carrying_description`, the classify text `[physical, clothing, carrying]` joined without empties (an empty clothing no longer leaves a trailing space — a byte change for the moderation request), `sanitizable_appearance_text` (`phys. cloth. carrying`), and `scene_description_parts` for the Lantern's character description.
+
+Differentials: `appearance_sanitize_gate_tier3` re-shaped to the seven-argument pin (40 rows: the collapsed twins dropped, three target-uncensored pass-throughs, nine carried / empty-clothing rows, ten `isUncensoredImageProfile` predicate rows); new rows in `image_generation_tier3` (+4, a third image profile), `story_background_job_tier3` (+3, the policy DEBUG now compared on every chat), `wardrobe_item_image_generation_tier3` (+2), `avatar_job_tier3` (+2, a third user with Unmoderated chats). The story fixture is now built at the pin (the `acadcc7cd` vintage rule retired: v5 reads `chats.scenarioSource`).
+
 #### 2026-10-26 — feat(inventory): the Inventory routes — one verb family for four tiers, transfers, object pictures, the chat actions, REST edges (P4.D325)
 
 _Versions: core 0.0.1325, web 0.0.245._

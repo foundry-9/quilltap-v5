@@ -72,6 +72,8 @@ interface ChatSpec {
   equippedSlotsOverride?: Record<string, string[]>;
   /** Keep the pre-hair FOUR-key stored shape (the v4-crash divergence pin). */
   legacySlots?: boolean;
+  /** [406dbdd5a] P4.D326: the chat's Concierge state (absent = Moderated). */
+  conciergeMode?: string;
   expectWrite: boolean;
 }
 interface Spec {
@@ -301,6 +303,9 @@ async function main(): Promise<void> {
         chatType: 'salon',
         alertCharactersOfLanternImages: true,
         ...(chat.projectId ? { projectId: chat.projectId } : {}),
+        // [406dbdd5a] P4.D326: a chat may carry its Concierge state (the
+        // Unmoderated `route_direct` rows).
+        ...(chat.conciergeMode ? { conciergeMode: chat.conciergeMode } : {}),
         participants: [mkParticipant(chat.characterId, charName(chat.characterId))],
         equippedOutfit: {
           [chat.characterId]: fullSlots(chat.equipped, chat.legacySlots === true),

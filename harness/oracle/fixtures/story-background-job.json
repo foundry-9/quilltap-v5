@@ -1042,6 +1042,118 @@
         "undressed": true
       },
       "resolvedClothing": "a single string of pearls"
+    },
+    "moderated_own_compatible_candid": {
+      "$comment": "[406dbdd5a] P4.D326 item 6: a MODERATED chat with the pre-screen on whose OWN image profile is ticked Uncensored-compatible (e5\u20260004) and no desk. `paintsOnUncensoredProfile` is true, so the crafter works candidly (`uncensoredImageTarget`), nothing reroutes (`routesDirectToDesk` false), and the sanitizer is told 'bound uncensored' (rule 1 \u2014 no appearance classify). Before the re-ruling this chat was sanitized and concealed.",
+      "id": "5c000029-0000-4000-8000-000000000029",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000004",
+      "recentMessages": [
+        "P4.D326: she rode in at dusk, coat thrown open."
+      ],
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": null,
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "resolvedClothing": "a velvet riding habit"
+    },
+    "moderated_on_the_desk_candid": {
+      "$comment": "[406dbdd5a] P4.D326 item 6: a MODERATED chat whose own image profile (e5\u20260001, NOT ticked) IS the Concierge desk. `isUncensoredImageProfile` answers by the desk match, so the scene is crafted candidly, stays on its own profile and is not sanitized.",
+      "id": "5c00002a-0000-4000-8000-00000000002a",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "P4.D326: the lamp threw her shadow long across the boards."
+      ],
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e5000000-0000-4000-8000-000000000001",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "resolvedClothing": "a lace collar and nothing more"
+    },
+    "unmoderated_no_desk_candid_unsanitized": {
+      "$comment": "[406dbdd5a] P4.D326 item 6 (bug-255 survey \u00a76 item 14): an UNMODERATED chat with NO desk, on a moderated painter. The crafter's candid flag is now true for ANY Unmoderated chat (`uncensoredImageTarget = \u2026 || isDangerousChat`), while the sanitizer is passed a DIFFERENT expression (`forcedUnderstudy || paintsOnUncensoredProfile || routesDirectToDesk` \u2014 all false) and still leaves the appearance as written, by rule 2 (Unmoderated never pre-screens). Nothing reroutes (no desk).",
+      "id": "5c00002b-0000-4000-8000-00000000002b",
+      "conciergeMode": "unmoderated",
+      "conciergeModeSetBy": "concierge",
+      "conciergeModeReason": "classifier",
+      "characterIds": [
+        "c5000000-0000-4000-8000-000000000001"
+      ],
+      "imageProfileId": "e5000000-0000-4000-8000-000000000001",
+      "recentMessages": [
+        "P4.D326: rain ran from her hair onto the flagstones."
+      ],
+      "isDangerousChat": true,
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": null,
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": "cc000000-0000-4000-8000-000000000002",
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "expectWrite": true,
+      "expectDerive": true,
+      "resolvedClothing": "a damp linen shift"
     }
   }
 }

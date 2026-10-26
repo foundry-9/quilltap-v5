@@ -26,12 +26,20 @@
  * `danger_gatekeeper_tier3` and `story_background_job_tier3`, and un-mocking the
  * logger here would mean provisioning a whole instance for it).
  *
- * Emits one NDJSON line per RECORDED canned completion (`kind:"canned"`) and one
+ * Emits one NDJSON line per RECORDED canned completion (`kind:"canned"`), one
  * per case (`kind:"result"`, `{ label, appearances, completionCalls,
- * concealPromptCalls, logLines }`).
+ * concealPromptCalls, logLines }`), and one per `predicates` row
+ * (`kind:"predicate"`, `{ label, result }`).
+ *
+ * [406dbdd5a] P4.D326 — the re-ruling of bug 133. v4's function now takes
+ * SEVEN parameters: `imageTargetUncensored` (the profile that will actually
+ * paint the image is uncensored) replaced `isDangerousChat` +
+ * `routesDangerousToUncensored`. Each case carries the one boolean; the
+ * `predicates` rows drive the REAL `isUncensoredImageProfile(profile,
+ * resolveConciergeSettings(...))` that production callers derive it from.
  *
  * [97b25fc53] P4.D239 — the drape. Each case may pass `mode` ('redress' |
- * 'conceal') as the 8th argument (absent = v4's default, `redress`). ⚠ BOTH
+ * 'conceal') as the 7th argument (the 8th before `406dbdd5a`) (absent = v4's default, `redress`). ⚠ BOTH
  * sanitizer prompts open with the same sentence, so the sanitize branch below
  * still matches on `startsWith`; the SECOND probe (`includes('Do NOT invent
  * clothing')`, the conceal prompt only) counts `concealPromptCalls` — the
@@ -66,12 +74,12 @@ interface CaseSpec {
   /** v4 `3b463d6b1` (#76): the stored `conciergeSettings` + the chat the policy resolves WITH. */
   concierge: Record<string, unknown>;
   chat: Record<string, unknown>;
-  isDangerousChat: boolean;
-  routesDangerousToUncensored: boolean;
+  /** [406dbdd5a] the profile that will actually paint this is uncensored. */
+  imageTargetUncensored: boolean;
   classification: 'safe' | 'dangerous';
   sanitizeEchoes?: boolean;
   sanitizeJunk?: boolean;
-  /** [97b25fc53] the 8th argument; absent = v4's default (`redress`). */
+  /** [97b25fc53] the 7th argument; absent = v4's default (`redress`). */
   mode?: 'redress' | 'conceal';
   /** [97b25fc53] per-character `undressed` value spliced into the sanitize answer. */
   undressed?: Record<string, unknown>;
@@ -79,6 +87,10 @@ interface CaseSpec {
   sanitizedTextOverride?: Record<string, string>;
   /** the sanitize call throws (v4's `Sanitization failed` WARN arm). */
   sanitizeThrows?: boolean;
+  /** [4fbdad186] per-character clothing override ('' = an empty clothing). */
+  clothing?: Record<string, string>;
+  /** [4fbdad186] per-character `carryingDescription` (the Inventory's phrase). */
+  carrying?: Record<string, string>;
 }
 
 interface Spec {
@@ -88,6 +100,13 @@ interface Spec {
   classifications: Record<string, string>;
   sanitizedText: Record<string, string>;
   cases: CaseSpec[];
+  /** [406dbdd5a] `isUncensoredImageProfile` rows (DB-free). */
+  predicates: Array<{
+    label: string;
+    profile: Record<string, unknown> | null;
+    concierge: Record<string, unknown>;
+    chat: Record<string, unknown>;
+  }>;
 }
 
 /**
@@ -101,8 +120,13 @@ function appearancesFor(spec: Spec, c: CaseSpec) {
     characterName: ch.name,
     physicalDescription: `${ch.name} (${c.token}), ${i === 0 ? 'a woman with copper hair' : 'a tall woman with dark braided hair'}`,
     physicalDescriptionName: 'Portrait',
-    clothingDescription: i === 0 ? 'wearing nothing at all' : 'in a sheer slip',
+    clothingDescription:
+      c.clothing?.[ch.characterId] ?? (i === 0 ? 'wearing nothing at all' : 'in a sheer slip'),
     clothingSource: 'stored' as const,
+    // [4fbdad186] v4 writes the key only when something carried is described.
+    ...(c.carrying?.[ch.characterId] !== undefined
+      ? { carryingDescription: c.carrying[ch.characterId] }
+      : {}),
     wasSanitized: false,
   }));
 }
@@ -261,6 +285,7 @@ async function main(): Promise<void> {
     }) as never);
   }
   const { resolveConciergeSettings } = await import('@/lib/services/dangerous-content/resolver.service');
+  const { isUncensoredImageProfile } = await import('@/lib/services/dangerous-content/understudy');
 
   const selection = {
     provider: spec.cheapLLMSelection.provider,
@@ -281,8 +306,7 @@ async function main(): Promise<void> {
     const out = await sanitizeAppearancesIfNeeded(
       appearancesFor(spec, c) as never,
       conciergePolicy,
-      c.isDangerousChat,
-      c.routesDangerousToUncensored,
+      c.imageTargetUncensored,
       selection as never,
       spec.userId,
       `chat-${c.token}`,
@@ -303,6 +327,9 @@ async function main(): Promise<void> {
           physicalDescriptionName: a.physicalDescriptionName,
           clothingDescription: a.clothingDescription,
           clothingSource: a.clothingSource,
+          // [4fbdad186] absent unless something carried survives (a sanitized
+          // text clears it) — `JSON.stringify` drops `undefined`.
+          carryingDescription: (a as { carryingDescription?: string }).carryingDescription,
           wasSanitized: a.wasSanitized,
           needsConcealment: (a as { needsConcealment?: boolean }).needsConcealment,
         })),
@@ -310,6 +337,17 @@ async function main(): Promise<void> {
     );
   }
   current = null;
+
+  for (const p of spec.predicates) {
+    const policy = resolveConciergeSettings({ conciergeSettings: p.concierge as never }, p.chat as never);
+    lines.push(
+      JSON.stringify({
+        kind: 'predicate',
+        label: p.label,
+        result: isUncensoredImageProfile(p.profile as never, policy),
+      })
+    );
+  }
 
   for (const r of recorded.values()) lines.push(JSON.stringify({ kind: 'canned', ...r }));
 

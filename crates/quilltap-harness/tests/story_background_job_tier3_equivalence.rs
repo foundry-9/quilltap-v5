@@ -40,9 +40,12 @@
 //! (`concealmentLogs`, recorded by a logger spy) — fields in v4's order, `jobId`
 //! remapped to this side's `job-1`; every other chat is the silence leg.
 //!
-//! ⚠ FIXTURE VINTAGE: build the fixture from a worktree pinned at `acadcc7cd`
-//! and run the oracle from the round-target pin (a two-step recipe — see the
-//! oracle header; the sweep driver's `--run` cannot do it in one invocation).
+//! FIXTURE VINTAGE — RETIRED (P4.D326, measured at `322a5488e`): the old rule
+//! built the fixture at `acadcc7cd` and ran the oracle from the pin, but v5 now
+//! reads `chats.scenarioSource` (the `83334b9a5` round), which an `acadcc7cd`
+//! fixture lacks (every chat threw `no such column: scenarioSource`), while
+//! v5 tolerates the absent `chats.renderedMarkdown` the rule existed for. Build
+//! the fixture and run the oracle from the SAME pin (one step).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout). See the oracle
 //! header. Run:
@@ -189,6 +192,42 @@ struct ResultRow {
     /// cinematic concealment` DEBUG contexts, in call order.
     #[serde(default, rename = "concealmentLogs")]
     concealment_logs: Option<Vec<Value>>,
+    /// [406dbdd5a] P4.D326: v4's `[StoryBackground] Concierge policy resolved`
+    /// DEBUG contexts — the re-ruling's three flags.
+    #[serde(default, rename = "policyLogs")]
+    policy_logs: Option<Vec<Value>>,
+}
+
+const POLICY_DEBUG: &str = "[StoryBackground] Concierge policy resolved";
+
+/// v4's policy DEBUG context rendered as the capture renders v5's event, keys
+/// in v4's order (`context, jobId, conciergeSource, conciergeState,
+/// uncensoredImageTarget, paintsOnUncensoredProfile, routesDirectToDesk`),
+/// `jobId` remapped to `job-1`.
+fn render_v4_policy(ctx: &Value) -> String {
+    let Value::Object(m) = ctx else {
+        panic!("v4 policy context is not an object: {ctx:?}");
+    };
+    let mut out = format!("DEBUG quilltap::story_background {POLICY_DEBUG}");
+    for (k, v) in m {
+        let field = match k.as_str() {
+            "context" => "context",
+            "jobId" => "job_id",
+            "conciergeSource" => "concierge_source",
+            "conciergeState" => "concierge_state",
+            "uncensoredImageTarget" => "uncensored_image_target",
+            "paintsOnUncensoredProfile" => "paints_on_uncensored_profile",
+            "routesDirectToDesk" => "routes_direct_to_desk",
+            other => panic!("unmapped v4 policy key {other:?}"),
+        };
+        let val = match (k.as_str(), v) {
+            ("jobId", _) => "job-1".to_string(),
+            (_, Value::String(s)) => s.clone(),
+            (_, other) => other.to_string(),
+        };
+        out.push_str(&format!(" {field}={val}"));
+    }
+    out
 }
 
 const CONCEALMENT_DEBUG: &str = "[StoryBackground] Character flagged for cinematic concealment";
@@ -753,6 +792,8 @@ fn story_background_job_matches_oracle() {
     let mut chat_keys: Vec<&String> = spec.chats.keys().collect();
     chat_keys.sort();
     let mut flagged_chats = 0usize;
+    let mut policy_lines = 0usize;
+    let mut paints_on_uncensored = 0usize;
 
     for label in chat_keys {
         let case = &spec.chats[label];
@@ -852,6 +893,31 @@ fn story_background_job_matches_oracle() {
             "{label}: the concealment DEBUG diverged"
         );
         flagged_chats += usize::from(!want_conceal.is_empty());
+        // [406dbdd5a] P4.D326: the policy DEBUG, all seven keys in v4's order;
+        // a chat that returns before the policy resolves is the silence leg.
+        let got_policy: Vec<&String> = captured
+            .iter()
+            .filter(|l| l.contains(POLICY_DEBUG))
+            .collect();
+        let want_policy: Vec<String> = want
+            .policy_logs
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle case {label} has no policyLogs"))
+            .iter()
+            .map(render_v4_policy)
+            .collect();
+        assert_eq!(
+            got_policy,
+            want_policy.iter().collect::<Vec<_>>(),
+            "{label}: the Concierge policy DEBUG diverged"
+        );
+        policy_lines += want_policy.len();
+        if want_policy
+            .iter()
+            .any(|l| l.contains("paints_on_uncensored_profile=true"))
+        {
+            paints_on_uncensored += 1;
+        }
         assert_eq!(
             got_threw, want.threw,
             "{}: threw diverged\n  rust:   {:?}\n  oracle: {:?}",
@@ -1018,6 +1084,16 @@ fn story_background_job_matches_oracle() {
     assert!(
         flagged_chats >= 3,
         "only {flagged_chats} chats flagged a character for concealment"
+    );
+    // [406dbdd5a] the policy DEBUG must be measured, and both re-ruled flags
+    // must answer true somewhere.
+    assert!(
+        policy_lines >= 20,
+        "only {policy_lines} policy DEBUG lines compared"
+    );
+    assert!(
+        paints_on_uncensored >= 2,
+        "only {paints_on_uncensored} chats painted on an uncensored profile"
     );
 
     eprintln!("OK: story-background-job differential matched the oracle across all cases.");

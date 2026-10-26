@@ -31,7 +31,8 @@
     "(which compose the identical generate_with_reroute + classify machinery).",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one every other fixture",
-    "uses). NOT the real Friday pepper; safe to commit."
+    "uses). NOT the real Friday pepper; safe to commit.",
+    "[406dbdd5a] P4.D326: user C (`conciergeSettings` on duty, desk = Desk Images) with two UNMODERATED chats — the builder passes a chat's `conciergeMode` through — pins the pre-flight reroute's new early return on the `route_direct` arm. The post-classification arm (`failoverAllowed` after a dangerous verdict) is NOT posed: this oracle mocks no classifier (the early return it reaches is the same function, pinned here and by the wiig / story rows)."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seedTimestamp": "2020-01-01T00:00:00.000Z",
@@ -54,6 +55,12 @@
       "username": "avatar-userB",
       "name": "User B",
       "email": "b@example.com"
+    },
+    {
+      "id": "cc000000-0000-4000-8000-0000000000cc",
+      "username": "avatar-userC",
+      "name": "User C",
+      "email": "c@example.com"
     }
   ],
   "characters": [
@@ -111,6 +118,21 @@
       },
       "physicalDescription": {
         "id": "d0bb0000-0000-4000-8000-000000000001",
+        "name": "Portrait",
+        "mediumPrompt": "a woman with auburn hair and green eyes"
+      }
+    },
+    {
+      "id": "c0cc0000-0000-4000-8000-000000000001",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "name": "Odile",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "physicalDescription": {
+        "id": "d0cc0000-0000-4000-8000-000000000001",
         "name": "Portrait",
         "mediumPrompt": "a woman with auburn hair and green eyes"
       }
@@ -288,6 +310,76 @@
       "isDefault": false,
       "isDangerousCompatible": true,
       "tags": []
+    },
+    {
+      "id": "e0cc0000-0000-4000-8000-000000000001",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "name": "Ticked Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-3",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {
+        "quality": "hd",
+        "negativePrompt": "blurry, extra fingers",
+        "seed": 4242,
+        "guidanceScale": 3.5,
+        "steps": 28,
+        "responseFormat": "b64_json",
+        "num_inference_steps": 20,
+        "loras": [
+          {
+            "source": "owner/portrait-lora",
+            "scale": 0.8,
+            "triggerPhrase": "shou_xin"
+          },
+          {
+            "source": "https://example.test/second.safetensors"
+          },
+          {
+            "source": "owner/third-lora",
+            "triggerPhrase": "dropped_phrase"
+          }
+        ]
+      },
+      "isDefault": false,
+      "isDangerousCompatible": true,
+      "tags": []
+    },
+    {
+      "id": "e0cc0000-0000-4000-8000-000000000002",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "name": "Desk Images",
+      "provider": "OPENAI",
+      "modelName": "dall-e-2",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {
+        "quality": "hd",
+        "negativePrompt": "blurry, extra fingers",
+        "seed": 4242,
+        "guidanceScale": 3.5,
+        "steps": 28,
+        "responseFormat": "b64_json",
+        "num_inference_steps": 20,
+        "loras": [
+          {
+            "source": "owner/portrait-lora",
+            "scale": 0.8,
+            "triggerPhrase": "shou_xin"
+          },
+          {
+            "source": "https://example.test/second.safetensors"
+          },
+          {
+            "source": "owner/third-lora",
+            "triggerPhrase": "dropped_phrase"
+          }
+        ]
+      },
+      "isDefault": false,
+      "isDangerousCompatible": false,
+      "tags": []
     }
   ],
   "chatSettings": [
@@ -320,6 +412,18 @@
         "uncensoredImageProfileId": "e0bb0000-0000-4000-8000-000000000002",
         "displayMode": "SHOW",
         "showWarningBadges": true
+      },
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": false
+      }
+    },
+    {
+      "id": "5e000000-0000-4000-8000-0000000000f2",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredImageProfileId": "e0cc0000-0000-4000-8000-000000000002"
       },
       "cheapLLMSettings": {
         "strategy": "PROVIDER_CHEAPEST",
@@ -598,7 +702,14 @@
       "userId": "aa000000-0000-4000-8000-0000000000aa",
       "characterId": "c0aa0000-0000-4000-8000-000000000001",
       "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
-      "equipped": { "accessories": ["a1000000-0000-4000-8000-000000000004"], "hair": ["a1000000-0000-4000-8000-000000000006"] },
+      "equipped": {
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ],
+        "hair": [
+          "a1000000-0000-4000-8000-000000000006"
+        ]
+      },
       "imageSeed": "photo-lossless.webp",
       "expectWrite": true
     },
@@ -614,6 +725,26 @@
       },
       "runTwice": true,
       "mutateBetweenRuns": "legacy-key",
+      "expectWrite": true
+    },
+    "route_direct_own_compatible_stays_put": {
+      "$comment": "[406dbdd5a] P4.D326 item 3: an UNMODERATED chat (`route_direct`) whose own image profile is ticked Uncensored-compatible (Ticked Images), the desk naming Desk Images. Before the re-ruling the pre-flight reroute swapped it for the desk; now `isUncensoredImageProfile` answers after the policy gate and the portrait stays on its own profile (`Image profile is already uncensored: Ticked Images`).",
+      "id": "cc000015-0000-4000-8000-000000000015",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "characterId": "c0cc0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0cc0000-0000-4000-8000-000000000001",
+      "conciergeMode": "unmoderated",
+      "equipped": {},
+      "expectWrite": true
+    },
+    "route_direct_on_the_desk_stays_put": {
+      "$comment": "[406dbdd5a] P4.D326 item 3: an UNMODERATED chat whose own image profile IS the desk (Desk Images, not ticked). Before the re-ruling the desk was excluded as the original and the scan rerouted to the ticked profile; now the desk match keeps it.",
+      "id": "cc000016-0000-4000-8000-000000000016",
+      "userId": "cc000000-0000-4000-8000-0000000000cc",
+      "characterId": "c0cc0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0cc0000-0000-4000-8000-000000000002",
+      "conciergeMode": "unmoderated",
+      "equipped": {},
       "expectWrite": true
     }
   }

@@ -340,17 +340,16 @@ where
         .as_deref()
         .map(|s| !s.is_empty())
         .unwrap_or(false);
-    // [decd8ef9] A dangerous-marked chat with an uncensored image profile
-    // configured is already headed for a provider that accepts adult content —
-    // appearance sanitization steps aside for exactly this case (see
-    // `sanitize_appearances_if_needed` rule 2), so the prompt crafter should too
-    // rather than draping a sheet over a scene nobody asked to have covered.
+    // The scene is cleaned — concealment in the crafter, sanitization of the
+    // appearances — only for a Moderated chat bound for a moderated painter.
+    // Everything else is crafted candidly (v4 `406dbdd5a`, re-ruling bug 133):
     //
-    // Only when the policy routes direct (on duty and Unmoderated — v4
-    // `3b463d6b1`; it was Auto-Route since `8bd080267`): a candid prompt is
-    // never crafted for a chat the Concierge will not send to the uncensored
-    // desk, or its franker prompt would go straight to the moderated provider.
-    // A PROMPT-CRAFTING change, not only a reroute one.
+    // - the chat's own image profile is uncensored (`is_uncensored_image_profile`)
+    //   → it accepts the scene, whatever the chat's state;
+    // - the chat is Unmoderated → the operator asked for the scene as written.
+    //   With an uncensored desk (and the Concierge on duty) it is routed there
+    //   below; without one the ordinary painter gets it as written and a
+    //   refusal is answered by the post-hoc failover, not by a draped sheet.
     //
     // "Try uncensored" (`payload.force_uncensored`, v4 `ce2f1dabf` #77) puts the
     // Concierge's uncensored understudy in the painter's chair for this one
@@ -390,8 +389,27 @@ where
             }
         }
     }
-    let uncensored_image_target = forced_understudy.is_some()
-        || (is_dangerous_chat && has_uncensored_image_provider && concierge_policy.route_direct);
+    // The chat's own image profile, read from its ROW (v4 hands the whole
+    // `imageProfile` to the predicate).
+    let paints_on_uncensored_profile =
+        crate::services::dangerous_content::understudy::is_uncensored_image_profile(
+            Some(
+                &crate::services::dangerous_content::provider_routing::route_profile_from_value(
+                    &image_profile,
+                ),
+            ),
+            &concierge_policy,
+        );
+    // Unmoderated and on duty with a desk configured → reroute up front.
+    let routes_direct_to_desk = forced_understudy.is_none()
+        && !paints_on_uncensored_profile
+        && is_dangerous_chat
+        && has_uncensored_image_provider
+        && concierge_policy.route_direct;
+    // The crafter's candid flag — now true for ANY Unmoderated chat, desk or
+    // not (v4 `uncensoredImageTarget`).
+    let uncensored_image_target =
+        forced_understudy.is_some() || paints_on_uncensored_profile || is_dangerous_chat;
     tracing::debug!(
         target: "quilltap::story_background",
         context = "background-jobs.story-background",
@@ -399,6 +417,8 @@ where
         concierge_source = concierge_policy.source.as_str(),
         concierge_state = concierge_policy.state.as_str(),
         uncensored_image_target,
+        paints_on_uncensored_profile,
+        routes_direct_to_desk,
         "[StoryBackground] Concierge policy resolved"
     );
 
@@ -578,12 +598,15 @@ where
                 deps.completion,
                 appearances.clone(),
                 &concierge_policy,
-                is_dangerous_chat,
-                // [cc65d6bfc] Story backgrounds never route up front — only an
-                // `uncensored_image_target` scene actually reaches the
-                // uncensored provider, so mere existence of such a profile is
-                // the wrong question here (bug 133).
-                uncensored_image_target,
+                // Whether this scene's painter is uncensored — the chat's own
+                // profile, the desk it is routed to, or the forced understudy —
+                // never whether one exists somewhere (bug 133). An Unmoderated
+                // chat bound for a moderated painter is not cleaned either: the
+                // sanitizer only acts under a Moderated chat's pre-screen. NOT
+                // `uncensored_image_target` — v4 passes a DIFFERENT expression.
+                forced_understudy.is_some()
+                    || paints_on_uncensored_profile
+                    || routes_direct_to_desk,
                 &cheap_selection,
                 user_id,
                 Some(&payload.chat_id),
@@ -612,10 +635,13 @@ where
                 .and_then(|list| list.iter().find(|a| a.character_id == char_id));
             let description = match resolved {
                 Some(r) => {
-                    let mut parts = vec![format!("{gender_prefix}{}", r.physical_description)];
-                    if !r.clothing_description.is_empty() {
-                        parts.push(format!("Wearing: {}", r.clothing_description));
-                    }
+                    // v4 `sceneDescriptionParts` (`4fbdad186`): physical, what
+                    // they wear, what they carry — identical bytes when nothing
+                    // is carried.
+                    let mut parts = crate::services::appearance_resolution::scene_description_parts(
+                        r,
+                        &gender_prefix,
+                    );
                     // [97b25fc53] The marker goes LAST so the crafter prompt's
                     // "description ends with" claim is true. Joined by ". " with
                     // NO trailing-period de-dup: a sanitized text ending in "."
@@ -686,9 +712,10 @@ where
             })
             .collect();
 
-    // An Unmoderated chat with an uncensored image profile goes straight to the
-    // uncensored desk (`route_direct`): the candid prompt crafted below must
-    // never be sent to the ordinary painter first (v4 `3b463d6b1`, #76).
+    // An Unmoderated chat with an uncensored desk goes straight to it
+    // (`route_direct`): its candid prompt is never offered to the ordinary
+    // painter first when an uncensored one is to hand. A chat whose own image
+    // profile is already uncensored stays on it (v4 `406dbdd5a`).
     let image_profile_id = common::str_field(&image_profile, "id")
         .unwrap_or("")
         .to_string();
@@ -713,13 +740,17 @@ where
             profile_name = %primary_image_profile.name,
             "[StoryBackground] \"Try uncensored\": painting on the uncensored understudy"
         );
-    } else if uncensored_image_target {
+    } else if routes_direct_to_desk {
         let original = RouteProfile {
             id: primary_image_profile.id.clone(),
             name: primary_image_profile.name.clone(),
             provider: primary_image_profile.provider.clone(),
             model_name: primary_image_profile.model_name.clone(),
             base_url: common::owned_field(&image_profile, "baseUrl"),
+            is_dangerous_compatible: image_profile
+                .get("isDangerousCompatible")
+                .and_then(Value::as_bool)
+                == Some(true),
         };
         let orig_key = api_key.clone();
         let policy = concierge_policy.clone();

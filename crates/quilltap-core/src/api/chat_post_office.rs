@@ -784,6 +784,10 @@ pub async fn chat_impersonation_voice_preview(
                     .get("baseUrl")
                     .and_then(Value::as_str)
                     .map(str::to_string),
+                is_dangerous_compatible: profile
+                    .get("isDangerousCompatible")
+                    .and_then(Value::as_bool)
+                    == Some(true),
             };
             let route = match db.read_main(|c| {
                 Ok(

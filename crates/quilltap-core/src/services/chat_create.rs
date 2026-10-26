@@ -3408,6 +3408,8 @@ fn route_profile_from_value(v: &Value) -> RouteProfile {
         provider: s("provider"),
         model_name: s("modelName"),
         base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
+        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
+            == Some(true),
     }
 }
 

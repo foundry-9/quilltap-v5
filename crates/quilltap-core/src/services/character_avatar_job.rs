@@ -461,6 +461,10 @@ where
             provider: eff_provider.clone(),
             model_name: eff_model.clone(),
             base_url: common::owned_field(&image_profile, "baseUrl"),
+            is_dangerous_compatible: image_profile
+                .get("isDangerousCompatible")
+                .and_then(Value::as_bool)
+                == Some(true),
         };
         let orig_key = api_key.clone();
         let policy = concierge_policy.clone();
@@ -562,6 +566,10 @@ where
                     provider: eff_provider.clone(),
                     model_name: eff_model.clone(),
                     base_url: common::owned_field(&image_profile, "baseUrl"),
+                    is_dangerous_compatible: image_profile
+                        .get("isDangerousCompatible")
+                        .and_then(Value::as_bool)
+                        == Some(true),
                 };
                 let orig_key = api_key.clone();
                 let policy = concierge_policy.clone();

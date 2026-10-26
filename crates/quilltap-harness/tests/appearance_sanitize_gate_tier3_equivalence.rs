@@ -1,6 +1,6 @@
 //! Tier-3 differential: v4 `lib/image-gen/appearance-resolution.ts`
-//! `sanitizeAppearancesIfNeeded` — the five-rule appearance sanitize gate,
-//! ported as
+//! `sanitizeAppearancesIfNeeded` — the appearance sanitize gate (four rules
+//! since `406dbdd5a`), ported as
 //! `quilltap_core::services::appearance_resolution::sanitize_appearances_if_needed`.
 //!
 //! [cc65d6bfc / bug 133] The family the P4.D178 survey found MISSING. Before it,
@@ -11,18 +11,28 @@
 //! throughout — which is precisely why its fourth parameter could mean the wrong
 //! thing for a whole phase without a single red row.
 //!
-//! Both sides run the same 30-case grid (`appearance-sanitize-gate.json`): the
+//! [406dbdd5a] P4.D326 RE-SHAPED the grid. v4 re-ruled bug 133: the function
+//! takes `imageTargetUncensored` ("the profile that will actually paint this is
+//! uncensored" — `isUncensoredImageProfile`) in place of `isDangerousChat` +
+//! `routesDangerousToUncensored`; rule 1 answers that boolean with its own
+//! DEBUG and NO classifier call, rule 2 lost its `&& !routeDirect` arm, the old
+//! step 4 is gone. Red-first at the pin with the OLD eight-arg oracle: v4 bound
+//! the extra boolean to `cheapLLMSelection`, every canned row lost its
+//! `provider`, and this family died at parse (1/1 FAILED).
+//!
+//! Both sides run the same grid (`appearance-sanitize-gate.json`): the
 //! Concierge policy (v4 `3b463d6b1`, #76 — resolved per row from its stored
 //! `concierge` settings WITH its `chat`) {off duty, Moderated + pre-screen,
-//! Unmoderated} x `isDangerousChat` {t,f} x `routesDangerousToUncensored`
-//! {t,f} x classification {safe, dangerous}, plus a
-//! `customClassificationPrompt` row, two sanitizer-answer edges, and #76's
-//! three pass-throughs (Moderated without the pre-screen, Locked, exempt). Compared per
-//! case: the returned appearances field-for-field, AND the NUMBER of completion
-//! calls — which is what says WHICH rule fired (rules 1 and 2 make none, rule
-//! 3-safe one, rule 4 one, rule 5 two). A gate that returned the right
-//! appearances by a different route is a different bug, and the call count is
-//! what catches it.
+//! Unmoderated} x `imageTargetUncensored` {t,f} x classification {safe,
+//! dangerous}, plus a `customClassificationPrompt` row, two sanitizer-answer
+//! edges, and #76's three pass-throughs (Moderated without the pre-screen,
+//! Locked, exempt) with the target false AND true. Compared per case: the
+//! returned appearances field-for-field, AND the NUMBER of completion calls —
+//! which is what says WHICH rule fired (rules 1 and 2 make none, rule 3-safe
+//! one, rule 4 two). A gate that returned the right appearances by a different
+//! route is a different bug, and the call count is what catches it. The
+//! corpus's `predicates` rows pin `is_uncensored_image_profile` against v4's
+//! REAL `isUncensoredImageProfile` (DB-free, same policy resolution).
 //!
 //! MODEL SEAMS (pinned identically both sides): the completion boundary
 //! ([`CannedCompletionProvider`], keyed on the exact recorded
@@ -43,7 +53,7 @@
 //! total try/catch) — there is no row to write.
 //!
 //! [97b25fc53] P4.D239 — the drape. Rows AGCASE31..40 pass the sanitize MODE as
-//! the 8th argument (absent = `Redress`, v4's default) and pose the conceal
+//! the last argument (absent = `Redress`, v4's default) and pose the conceal
 //! reply's `undressed`. Three comparands joined the per-row diff:
 //!   - `needsConcealment` per appearance (the oracle key is present only when
 //!     `true` — asserted never `false`, the v4 invariant);
@@ -94,7 +104,9 @@ use quilltap_core::services::appearance_resolution::{
 };
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::dangerous_content::gatekeeper::NoModerationProvider;
+use quilltap_core::services::dangerous_content::provider_routing::RouteProfile;
 use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
+use quilltap_core::services::dangerous_content::understudy::is_uncensored_image_profile;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -109,11 +121,17 @@ struct CaseSpec {
     /// policy resolves WITH.
     concierge: serde_json::Value,
     chat: serde_json::Value,
-    is_dangerous_chat: bool,
-    routes_dangerous_to_uncensored: bool,
+    /// [406dbdd5a] the profile that will actually paint this is uncensored.
+    image_target_uncensored: bool,
     /// [97b25fc53] `"redress"` / `"conceal"`; absent = v4's default (`Redress`).
     #[serde(default)]
     mode: Option<String>,
+    /// [4fbdad186] per-character clothing override (`""` = an empty clothing).
+    #[serde(default)]
+    clothing: std::collections::HashMap<String, String>,
+    /// [4fbdad186] per-character `carryingDescription`.
+    #[serde(default)]
+    carrying: std::collections::HashMap<String, String>,
 }
 
 #[derive(Deserialize)]
@@ -139,6 +157,16 @@ struct Spec {
     cheap_llm_selection: CheapSelectionSpec,
     characters: Vec<CharacterSpec>,
     cases: Vec<CaseSpec>,
+    predicates: Vec<PredicateSpec>,
+}
+
+/// [406dbdd5a] one `isUncensoredImageProfile` row.
+#[derive(Deserialize)]
+struct PredicateSpec {
+    label: String,
+    profile: Option<Value>,
+    concierge: Value,
+    chat: Value,
 }
 
 #[derive(Deserialize)]
@@ -150,6 +178,9 @@ struct OracleAppearance {
     physical_description_name: String,
     clothing_description: String,
     clothing_source: String,
+    /// [4fbdad186] absent unless something carried survives (R-5).
+    #[serde(default)]
+    carrying_description: Option<String>,
     was_sanitized: bool,
     /// [97b25fc53] present only when `true` (v4 never writes `false`).
     #[serde(default)]
@@ -248,7 +279,8 @@ fn open_scratch_db(dir: &std::path::Path) -> Db {
 /// The appearance pair a case starts from — the oracle's `appearancesFor`, in
 /// Rust. The token rides in the physical description so every case's combined
 /// text (and therefore its classification-cache key) is distinct.
-fn appearances_for(spec: &Spec, token: &str) -> Vec<ResolvedCharacterAppearance> {
+fn appearances_for(spec: &Spec, case: &CaseSpec) -> Vec<ResolvedCharacterAppearance> {
+    let token = case.token.as_str();
     spec.characters
         .iter()
         .enumerate()
@@ -265,12 +297,17 @@ fn appearances_for(spec: &Spec, token: &str) -> Vec<ResolvedCharacterAppearance>
                 }
             ),
             physical_description_name: "Portrait".to_string(),
-            clothing_description: if i == 0 {
-                "wearing nothing at all".to_string()
-            } else {
-                "in a sheer slip".to_string()
-            },
+            clothing_description: case.clothing.get(&ch.character_id).cloned().unwrap_or_else(
+                || {
+                    if i == 0 {
+                        "wearing nothing at all".to_string()
+                    } else {
+                        "in a sheer slip".to_string()
+                    }
+                },
+            ),
             clothing_source: "stored".to_string(),
+            carrying_description: case.carrying.get(&ch.character_id).cloned(),
             was_sanitized: false,
             needs_concealment: false,
         })
@@ -283,12 +320,9 @@ const FIELD_MAP: &[(&str, &str)] = &[
     ("context", "context"),
     ("chatId", "chat_id"),
     ("conciergeSource", "concierge_source"),
+    ("conciergeState", "concierge_state"),
     ("score", "score"),
     ("categories", "categoriesJson"),
-    (
-        "routesDangerousToUncensored",
-        "routes_dangerous_to_uncensored",
-    ),
     ("characterCount", "character_count"),
     ("mode", "mode"),
     ("count", "count"),
@@ -366,6 +400,7 @@ fn appearance_sanitize_gate_matches_oracle() {
     let mut canned = CannedCompletionProvider::new();
     let mut results: std::collections::HashMap<String, ResultRow> =
         std::collections::HashMap::new();
+    let mut predicates: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
     for line in std::fs::read_to_string(&oracle_path)
         .unwrap_or_else(|e| panic!("read oracle {oracle_path}: {e}"))
         .lines()
@@ -397,6 +432,11 @@ fn appearance_sanitize_gate_matches_oracle() {
                 let row: ResultRow = serde_json::from_value(v).expect("parse result row");
                 results.insert(row.label.clone(), row);
             }
+            Some("predicate") => {
+                let label = v["label"].as_str().expect("predicate label").to_string();
+                let result = v["result"].as_bool().expect("predicate result");
+                predicates.insert(label, result);
+            }
             other => panic!("unexpected oracle row kind {other:?}"),
         }
     }
@@ -404,6 +444,41 @@ fn appearance_sanitize_gate_matches_oracle() {
         results.len(),
         spec.cases.len(),
         "the oracle must carry a result row for every corpus case"
+    );
+    assert_eq!(
+        predicates.len(),
+        spec.predicates.len(),
+        "the oracle must carry a predicate row for every corpus predicate"
+    );
+
+    // [406dbdd5a] `is_uncensored_image_profile` vs v4's REAL
+    // `isUncensoredImageProfile`. The profile is the routing projection a
+    // production caller builds from the row: `isDangerousCompatible === true`.
+    for p in &spec.predicates {
+        let profile = p.profile.as_ref().map(|v| RouteProfile {
+            id: v
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string(),
+            name: String::new(),
+            provider: String::new(),
+            model_name: String::new(),
+            base_url: None,
+            is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
+                == Some(true),
+        });
+        let policy = resolve_stored_concierge_settings(Some(&p.concierge), Some(&p.chat));
+        assert_eq!(
+            is_uncensored_image_profile(profile.as_ref(), &policy),
+            predicates[&p.label],
+            "predicate {}: is_uncensored_image_profile diverged",
+            p.label
+        );
+    }
+    assert!(
+        predicates.values().any(|&b| b) && predicates.values().any(|&b| !b),
+        "the predicate rows must answer both ways"
     );
 
     let dir = tempfile::tempdir().expect("scratch dir");
@@ -450,10 +525,9 @@ fn appearance_sanitize_gate_matches_oracle() {
                 &executor,
                 &moderation,
                 &completion,
-                appearances_for(&spec, &case.token),
+                appearances_for(&spec, case),
                 &resolve_stored_concierge_settings(Some(&case.concierge), Some(&case.chat)),
-                case.is_dangerous_chat,
-                case.routes_dangerous_to_uncensored,
+                case.image_target_uncensored,
                 &selection,
                 &spec.user_id,
                 Some(&chat_id),
@@ -519,6 +593,11 @@ fn appearance_sanitize_gate_matches_oracle() {
                 case.label
             );
             assert_eq!(
+                g.carrying_description, e.carrying_description,
+                "{}: carryingDescription",
+                case.label
+            );
+            assert_eq!(
                 g.was_sanitized, e.was_sanitized,
                 "{}: wasSanitized",
                 case.label
@@ -538,7 +617,7 @@ fn appearance_sanitize_gate_matches_oracle() {
         }
     }
 
-    // A coverage floor: the grid must actually exercise all five rules. Without
+    // A coverage floor: the grid must actually exercise all four rules. Without
     // it a corpus edit could quietly leave every row at "zero calls, unchanged"
     // and the family would stay green having measured nothing.
     let counts: Vec<usize> = spec
@@ -551,12 +630,27 @@ fn appearance_sanitize_gate_matches_oracle() {
         "rules 1 and 2 (no completion call) must be represented"
     );
     assert!(
-        counts.iter().filter(|&&n| n == 1).count() >= 6,
-        "rules 3-safe and 4 (one completion call) must be represented"
+        counts.contains(&1),
+        "rule 3-safe (one completion call) must be represented"
     );
     assert!(
         counts.iter().filter(|&&n| n == 2).count() >= 4,
-        "rule 5 (classify + sanitize) must be represented"
+        "rule 4 (classify + sanitize) must be represented"
+    );
+    // [406dbdd5a] Rule 1 must fire under every policy family, the pre-screen
+    // included (its zero-call rows are the re-ruling).
+    let rule_one_rows = results
+        .values()
+        .filter(|r| {
+            r.log_lines.iter().any(|l| {
+                l.message
+                    == "[AppearanceResolution] Image bound for an uncensored profile; appearances left as written"
+            })
+        })
+        .count();
+    assert!(
+        rule_one_rows >= 6,
+        "rule 1 (image bound uncensored) must be represented: {rule_one_rows}"
     );
     assert!(
         results
@@ -593,8 +687,33 @@ fn appearance_sanitize_gate_matches_oracle() {
                 == "[AppearanceResolution] Sanitization failed, passing through original")),
         "the sanitize-failure WARN arm must be represented"
     );
+    // [4fbdad186] the carried rows must be non-vacuous: a phrase surviving, a
+    // phrase CLEARED by a changed text.
+    let carried_rows = spec.cases.iter().filter(|c| !c.carrying.is_empty()).count();
     assert!(
-        log_lines_compared >= 60,
+        carried_rows >= 6,
+        "the carried rows must be present: {carried_rows}"
+    );
+    assert!(
+        all_appearances().any(|a| a.carrying_description.is_some()),
+        "a carried phrase must survive somewhere"
+    );
+    assert!(
+        spec.cases.iter().any(|c| !c.carrying.is_empty()
+            && results[&c.label]
+                .appearances
+                .iter()
+                .all(|a| a.carrying_description.is_none())
+            && results[&c.label]
+                .appearances
+                .iter()
+                .any(|a| a.was_sanitized)),
+        "a changed text must clear the carried phrase somewhere"
+    );
+    assert!(
+        // 58 at the `406dbdd5a` re-shape (the eight collapsed twins took
+        // their lines with them).
+        log_lines_compared >= 50,
         "only {log_lines_compared} log lines compared"
     );
 

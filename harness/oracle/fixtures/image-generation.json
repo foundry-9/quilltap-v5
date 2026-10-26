@@ -116,6 +116,18 @@
       "isDefault": false,
       "isDangerousCompatible": false,
       "tags": []
+    },
+    {
+      "id": "e0000000-0000-4000-8000-0000000000a3",
+      "name": "Uncensored Images",
+      "provider": "OPENAI",
+      "modelName": "gpt-image-1",
+      "apiKeyId": "a0000000-0000-4000-8000-0000000000c1",
+      "baseUrl": null,
+      "parameters": {},
+      "isDefault": false,
+      "isDangerousCompatible": true,
+      "tags": []
     }
   ],
   "connectionProfiles": [
@@ -434,10 +446,39 @@
       "avatarGenerationEnabled": false
     },
     "detect_only_sanitizes_appearance": {
-      "$comment": "[cc65d6bfc / bug 133] The image tool's half. Under DETECT_ONLY nothing reroutes on the spot, so a dangerous appearance stays on the moderated provider and must be sanitized — even with an uncensored image profile configured. This case exists because the family's own header said the corpus keeps the Concierge OFF throughout, which made the tool's `routesDangerousToUncensored` derivation structurally invisible while a live divergence sat behind it. The prompt carries a `{{Aurora}}` placeholder, which is what makes `resolveAppearances` run (v4 gates it on `parsePlaceholders(prompt).length > 0`, not on messages), so the classify + sanitize pair fires and the sanitized text reaches the craft prompt, the image key and every llm_logs projection. Pre-fix v5 read mere existence and returned unchanged at rule 4. The uncensored id points at the fixture's one image profile deliberately: nothing on this path dereferences it (the post-hoc reroute is never reached — the generation succeeds), and what the pre-fix trap needed was only that it be NON-EMPTY. P4.D227 (v4 `3b463d6b1`, #76): the settings are v4's migration of that DETECT_ONLY bag — on duty with the pre-screen on — so the label is historical; the oracle decides what the policy does.",
+      "$comment": "[cc65d6bfc / bug 133] The image tool's half. Under DETECT_ONLY nothing reroutes on the spot, so a dangerous appearance stays on the moderated provider and must be sanitized — even with an uncensored image profile configured. This case exists because the family's own header said the corpus keeps the Concierge OFF throughout, which made the tool's `routesDangerousToUncensored` derivation structurally invisible while a live divergence sat behind it. The prompt carries a `{{Aurora}}` placeholder, which is what makes `resolveAppearances` run (v4 gates it on `parsePlaceholders(prompt).length > 0`, not on messages), so the classify + sanitize pair fires and the sanitized text reaches the craft prompt, the image key and every llm_logs projection. Pre-fix v5 read mere existence and returned unchanged at rule 4. The uncensored id points at the fixture's one image profile deliberately: nothing on this path dereferences it (the post-hoc reroute is never reached — the generation succeeds), and what the pre-fix trap needed was only that it be NON-EMPTY. P4.D227 (v4 `3b463d6b1`, #76): the settings are v4's migration of that DETECT_ONLY bag — on duty with the pre-screen on — so the label is historical; the oracle decides what the policy does. [406dbdd5a] P4.D326 re-pointed it: the desk is now the WebP profile (e0…a2) and `scanImagePrompts` is off, so the chat's own profile (a1) is neither ticked nor the desk and no pre-flight reroute moves it — the image is bound for a MODERATED painter under a Moderated chat's pre-screen, the one case v4 still cleans (rule 2 passes, the appearance is classified and sanitized). Its old shape (desk = own profile) is `own_profile_is_the_desk_left_as_written`.",
       "id": "aaaa001e-0000-4000-8000-00000000001e",
       "op": "generate",
       "prompt": "{{Aurora}} on a moonlit terrace",
+      "orientation": "portrait",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      }
+    },
+    "own_profile_is_the_desk_left_as_written": {
+      "$comment": "[406dbdd5a] P4.D326 — the OLD `detect_only_sanitizes_appearance` shape, kept under its true name: the Concierge desk IS the chat's own image profile (`uncensoredImageProfileId` = e0…a1) with the image-prompt pre-screen on. v4's re-ruling makes `isUncensoredImageProfile(a1)` TRUE (the desk match), so the pre-flight reroute stays put (`Image profile is already uncensored`) and the appearance sanitizer's rule 1 leaves the appearance as written — no appearance classify, no sanitize. Before the re-ruling the row sanitized; the unported v5 stayed GREEN on it only because its appearance classify hit a canned MISS and read 'safe' (a vacuous-equal row, measured at the red-first).",
+      "id": "aaaa0050-0000-4000-8000-000000000050",
+      "op": "generate",
+      "prompt": "{{Aurora}} beneath a paper lantern",
       "orientation": "portrait",
       "conciergeSettings": {
         "enabled": true,
@@ -453,6 +494,94 @@
         },
         "preScreen": {
           "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": true,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      }
+    },
+    "own_compatible_profile_left_as_written": {
+      "$comment": "[406dbdd5a] P4.D326 item 5 (a): a Moderated chat with the pre-screen on whose OWN image profile is ticked Uncensored-compatible (e0…a3) and no desk. `isUncensoredImageProfile` answers true for the profile the image is painted on, so the sanitizer's rule 1 leaves the appearance as written: zero appearance classify calls, the raw appearance in the craft prompt.",
+      "id": "aaaa0051-0000-4000-8000-000000000051",
+      "op": "generate",
+      "prompt": "{{Aurora}} by a frozen waterfall",
+      "orientation": "portrait",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": null,
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "profileId": "e0000000-0000-4000-8000-0000000000a3"
+    },
+    "rerouted_to_the_desk_left_as_written": {
+      "$comment": "[406dbdd5a] P4.D326 item 5 (b): a Moderated chat on a MODERATED profile (e0…a1) with the image-prompt pre-screen on and the desk at e0…a3 (the WebP profile would need an `imageSeed`: v4's image mock answers PNG where v5's real OPENAI decoder reports WebP for `output_format: webp`). The prompt classifies dangerous and failover is allowed, so steps 5a/5b reroute to the desk; the tool then asks about the profile it ENDED UP on (`profileAfterClassification`) — the desk — and the sanitizer is told 'bound uncensored' (rule 1).",
+      "id": "aaaa0052-0000-4000-8000-000000000052",
+      "op": "generate",
+      "prompt": "{{Aurora}} in a candlelit library",
+      "orientation": "portrait",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a3",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": true,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      }
+    },
+    "no_pre_screen_left_as_written": {
+      "$comment": "[406dbdd5a] P4.D326 item 5 (c): the Concierge on duty WITHOUT the pre-screen, on a moderated painter — the sanitizer's rule 2 answers (`not applicable under this Concierge policy`), zero calls. (The order's Locked row collapses here: this corpus has no per-case chat state, and a Locked chat's policy also leaves the pre-screen off — rule 2 either way; recorded.)",
+      "id": "aaaa0053-0000-4000-8000-000000000053",
+      "op": "generate",
+      "prompt": "{{Aurora}} on a windswept moor",
+      "orientation": "portrait",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": false,
           "threshold": 0.7,
           "scanTextChat": true,
           "scanImagePrompts": true,

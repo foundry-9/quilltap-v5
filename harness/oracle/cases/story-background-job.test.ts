@@ -44,20 +44,15 @@
  * calls (a delegating logger spy), `jobId` included — the Rust side runs the
  * job as `job-1` and remaps.
  *
- * ⚠ FIXTURE VINTAGE (the `97b25fc53` round's §R.3 rule): at a pin ≥ `f7f3d7bf0`
- * the builder's `generateDDL` no longer carries `chats.renderedMarkdown`, which
- * v5 binds until P4.D235's tolerant read lands. So BUILD the fixture from a
- * worktree pinned at `acadcc7cd` and RUN this oracle from the round-target pin
- * against it — a TWO-STEP recipe the sweep driver's `--run` cannot do in one
- * invocation:
- *   FIX=<a detached acadcc7cd worktree> ; PIN=<a detached 97b25fc53 worktree>
- *   (cd "$FIX" && QT_FIXTURE_STORY_MAIN=… QT_FIXTURE_STORY_MOUNT=… \
- *     $N/node --import tsx $WT/harness/oracle/fixtures/build-story-background-job-fixture.ts)
- *   (cd "$PIN" && <the jest line below>)
- * v4's jest oracles run NO migrations, so the target-pin oracle opens the
- * older-vintage copy and keeps the column; each run prints ONE stderr line
- * `vintage: chats.renderedMarkdown present=<bool>` read from the first case's
- * copy AFTER the handler ran — the cross-vintage confirmation.
+ * FIXTURE VINTAGE — RETIRED (P4.D326, measured at `322a5488e`). The
+ * `97b25fc53` round built the fixture at `acadcc7cd` (a pin ≥ `f7f3d7bf0` no
+ * longer carries `chats.renderedMarkdown`, which v5 then bound) and ran this
+ * oracle from the round-target pin. v5 now tolerates the absent column and
+ * READS `chats.scenarioSource` (the `83334b9a5` round), which an `acadcc7cd`
+ * fixture lacks — every chat threw `no such column: scenarioSource`. So the
+ * fixture and the oracle both run from the SAME pin, in one step. The run
+ * still prints ONE stderr line `vintage: chats.renderedMarkdown present=<bool>`
+ * read from the first case's copy after the handler ran.
  *
  * Run (Node 24, from the v4 checkout; stage OUTSIDE any .claude path):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; WT=<this worktree>
@@ -463,6 +458,10 @@ async function main(): Promise<void> {
       // delegating spy on THIS registry generation's logger (the handler below
       // imports the same instance).
       const concealmentLogs: unknown[] = [];
+      // [406dbdd5a] P4.D326: the `Concierge policy resolved` DEBUG — its two new
+      // keys (`paintsOnUncensoredProfile`, `routesDirectToDesk`) are the
+      // re-ruling's flags, captured for every chat that reaches them.
+      const policyLogs: unknown[] = [];
       const loggerModule = (await import('@/lib/logger')) as {
         logger: Record<string, (...a: unknown[]) => unknown>;
       };
@@ -473,6 +472,9 @@ async function main(): Promise<void> {
       ) => {
         if (message === '[StoryBackground] Character flagged for cinematic concealment') {
           concealmentLogs.push(JSON.parse(JSON.stringify(context ?? null)));
+        }
+        if (message === '[StoryBackground] Concierge policy resolved') {
+          policyLogs.push(JSON.parse(JSON.stringify(context ?? null)));
         }
         return originalDebug.call(loggerModule.logger, message, context);
       }) as never);
@@ -612,6 +614,7 @@ async function main(): Promise<void> {
       })();
 
       record.concealmentLogs = concealmentLogs;
+      record.policyLogs = policyLogs;
 
       // The cross-vintage confirmation (§R.3): read ONCE, after the handler ran
       // on this copy. stderr only — never part of the NDJSON comparand.

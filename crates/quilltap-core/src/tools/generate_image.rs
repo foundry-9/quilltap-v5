@@ -94,6 +94,7 @@ use crate::services::dangerous_content::provider_routing::{
 use crate::services::dangerous_content::resolver::{
     resolve_concierge_settings, ResolvedConciergePolicy,
 };
+use crate::services::dangerous_content::understudy::is_uncensored_image_profile;
 use crate::services::image_scene_tasks::ChatMessage;
 use crate::services::image_scene_tasks::{
     craft_image_prompt, DepictionGuideline, ExpansionClothing, ExpansionPlaceholder,
@@ -740,6 +741,25 @@ struct LoadedProfile {
     model_name: String,
     parameters: Value,
     api_key: String,
+    /// v4 `imageProfile.isDangerousCompatible === true`, read from the row so a
+    /// profile REROUTED to (reloaded through [`load_and_validate_profile`])
+    /// carries its own flag (`406dbdd5a`).
+    is_dangerous_compatible: bool,
+}
+
+impl LoadedProfile {
+    /// The routing projection of this profile — the ONE conversion the
+    /// pre-flight reroute and the bug-133 question both read.
+    fn as_route_profile(&self) -> RouteProfile {
+        RouteProfile {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            provider: self.provider.clone(),
+            model_name: self.model_name.clone(),
+            base_url: None,
+            is_dangerous_compatible: self.is_dangerous_compatible,
+        }
+    }
 }
 
 /// v4 `loadAndValidateProfile`: read the profile, verify ownership + API key.
@@ -819,6 +839,10 @@ fn load_and_validate_profile<A: ApiKeyResolver>(
             .to_string(),
         parameters: profile.get("parameters").cloned().unwrap_or(Value::Null),
         api_key,
+        is_dangerous_compatible: profile
+            .get("isDangerousCompatible")
+            .and_then(Value::as_bool)
+            == Some(true),
     }))
 }
 
@@ -2006,8 +2030,18 @@ where
             )
             .await;
 
-            let routes_dangerous_to_uncensored =
-                tool_routes_dangerous_to_uncensored(&concierge_policy);
+            // Ask about the profile this image will actually be painted on —
+            // the chat's own, or the one steps 5a/5b rerouted to — never about
+            // whether an uncensored profile exists somewhere (bug 133). v4
+            // `406dbdd5a` DELETED the old `routesDangerousToUncensored`
+            // derivation (`routeDirect && Boolean(desk.imageProfileId)`), and
+            // the port's `tool_routes_dangerous_to_uncensored` + its unit test
+            // went with it: the one question is now
+            // `is_uncensored_image_profile`.
+            let image_target_uncensored = is_uncensored_image_profile(
+                Some(&effective_profile.as_route_profile()),
+                &concierge_policy,
+            );
 
             let sanitized = sanitize_appearances_if_needed(
                 db,
@@ -2016,8 +2050,7 @@ where
                 deps.completion,
                 resolution.appearances,
                 &concierge_policy,
-                db_ctx.is_dangerous_chat,
-                routes_dangerous_to_uncensored,
+                image_target_uncensored,
                 selection,
                 &ctx.user_id,
                 ctx.chat_id.as_deref(),
@@ -2144,13 +2177,7 @@ fn route_image_profile<A: ApiKeyResolver>(
     crate::services::dangerous_content::provider_routing::DangerousImageProviderRouteResult,
     crate::db::DbError,
 > {
-    let original = RouteProfile {
-        id: image_profile.id.clone(),
-        name: image_profile.name.clone(),
-        provider: image_profile.provider.clone(),
-        model_name: image_profile.model_name.clone(),
-        base_url: None,
-    };
+    let original = image_profile.as_route_profile();
     let uid = user_id.to_string();
     let policy = concierge_policy.clone();
     let api_key = image_profile.api_key.clone();
@@ -2785,97 +2812,6 @@ where
     })
 }
 
-/// v4 `image-generation-handler.ts:978-983` — the fourth argument this handler
-/// hands [`sanitize_appearances_if_needed`].
-///
-/// [cc65d6bfc] The tool classifies each prompt and reroutes on the spot, but
-/// only an Unmoderated chat with an uncensored image profile goes straight to
-/// the uncensored desk (step 5a — v4 `3b463d6b1`: `routeDirect &&
-/// Boolean(desk.imageProfileId)`; it was `AUTO_ROUTE && …` before #76);
-/// anywhere else a dangerous appearance may stay on the moderated provider and
-/// must be sanitized (bug 133). `Boolean('')` is false, so an empty id does
-/// not route.
-///
-/// Extracted so it has a home a test can reach. It was corpus-blind when the
-/// P4.D178 lane opened — the tier-3 image-generation corpus kept the Concierge
-/// OFF throughout — so the unit test below was its only proof. The corpus now
-/// carries `detect_only_sanitizes_appearance`, which measures this line through
-/// the production call site; both proofs stand.
-fn tool_routes_dangerous_to_uncensored(concierge_policy: &ResolvedConciergePolicy) -> bool {
-    concierge_policy.route_direct
-        && concierge_policy
-            .desk
-            .image_profile_id
-            .as_deref()
-            .map(|s| !s.is_empty())
-            .unwrap_or(false)
-}
-
-#[cfg(test)]
-mod bug_133_tests {
-    use super::*;
-
-    /// [cc65d6bfc] bug 133's tool half: "an uncensored profile is configured"
-    /// is not "this scene routes there". Only an Unmoderated chat routes direct
-    /// (v4 `3b463d6b1`), so a Moderated chat's dangerous appearance must be
-    /// sanitized. This pinned the derivation while it was corpus-blind;
-    /// `detect_only_sanitizes_appearance` now measures it end-to-end too, and
-    /// these arms still cover the shapes a corpus case cannot cheaply carry
-    /// (the empty-string profile id).
-    #[test]
-    fn tool_routes_dangerous_to_uncensored_needs_route_direct_and_a_profile() {
-        use crate::services::dangerous_content::resolver::resolve_stored_concierge_settings;
-        fn policy(enabled: bool, state: &str, image: Option<&str>) -> ResolvedConciergePolicy {
-            let mut stored = serde_json::json!({ "enabled": enabled });
-            if let Some(id) = image {
-                stored["uncensoredImageProfileId"] = serde_json::json!(id);
-            }
-            resolve_stored_concierge_settings(
-                Some(&stored),
-                Some(&serde_json::json!({ "conciergeMode": state })),
-            )
-        }
-        const DESK: &str = "e5000000-0000-4000-8000-000000000004";
-
-        // A Moderated chat with a desk profile → does NOT route (the bug).
-        assert!(!tool_routes_dangerous_to_uncensored(&policy(
-            true,
-            "moderated",
-            Some(DESK)
-        )));
-        // An Unmoderated chat with a desk profile → routes.
-        assert!(tool_routes_dangerous_to_uncensored(&policy(
-            true,
-            "unmoderated",
-            Some(DESK)
-        )));
-        // An EMPTY-string profile id → v4's `Boolean('')` is false.
-        assert!(!tool_routes_dangerous_to_uncensored(&policy(
-            true,
-            "unmoderated",
-            Some("")
-        )));
-        // No profile at all → does not route.
-        assert!(!tool_routes_dangerous_to_uncensored(&policy(
-            true,
-            "unmoderated",
-            None
-        )));
-        // Off duty, even Unmoderated → the policy routes nothing.
-        assert!(!tool_routes_dangerous_to_uncensored(&policy(
-            false,
-            "unmoderated",
-            Some(DESK)
-        )));
-        // Locked → the desk is empty.
-        assert!(!tool_routes_dangerous_to_uncensored(&policy(
-            true,
-            "locked",
-            Some(DESK)
-        )));
-    }
-}
-
 #[cfg(test)]
 mod duration_tests {
     use super::*;
@@ -2980,6 +2916,7 @@ mod duration_tests {
             model_name: "gpt-image-1".to_string(),
             parameters: serde_json::json!({}),
             api_key: "sk-test".to_string(),
+            is_dangerous_compatible: false,
         };
         let danger_settings =
             crate::services::dangerous_content::resolver::test_policy("OFF", None);
@@ -3326,5 +3263,38 @@ mod schema_tests {
             ..built.clone()
         };
         assert!(validate_image_generation_input(&bad).is_none());
+    }
+}
+
+#[cfg(test)]
+mod route_profile_tests {
+    use super::*;
+
+    /// [406dbdd5a] the ONE projection the reroute and the bug-133 question read
+    /// carries the profile's own compatibility flag.
+    #[test]
+    fn as_route_profile_carries_the_compatible_flag() {
+        let profile = |compatible| LoadedProfile {
+            id: "e0".to_string(),
+            name: "Images".to_string(),
+            provider: "OPENAI".to_string(),
+            model_name: "dall-e-3".to_string(),
+            parameters: Value::Null,
+            api_key: "k".to_string(),
+            is_dangerous_compatible: compatible,
+        };
+        let r = profile(true).as_route_profile();
+        assert!(r.is_dangerous_compatible);
+        assert_eq!(
+            (
+                r.id.as_str(),
+                r.name.as_str(),
+                r.provider.as_str(),
+                r.model_name.as_str()
+            ),
+            ("e0", "Images", "OPENAI", "dall-e-3")
+        );
+        assert_eq!(r.base_url, None);
+        assert!(!profile(false).as_route_profile().is_dangerous_compatible);
     }
 }

@@ -104,6 +104,34 @@ fn is_dangerous_compatible(v: &Value) -> bool {
     v.get("isDangerousCompatible").and_then(Value::as_bool) == Some(true)
 }
 
+/// Whether an image profile is itself uncensored: the Concierge desk's
+/// configured image profile, or one the operator ticked
+/// "Uncensored-compatible". The same two marks the image resolver below
+/// accepts an understudy by (v4 `isUncensoredImageProfile`, `406dbdd5a`).
+///
+/// A profile that answers yes needs nothing cleaned and nobody to stand in for
+/// it: appearance sanitization, the story-background crafter's concealment and
+/// the pre-flight reroute all step aside for it, whatever the chat's state. A
+/// profile wrongly marked so still has the post-hoc failover behind it.
+///
+/// `None` is v4's `!profile → false` arm. The desk id answers by
+/// `Boolean(deskId)`: an empty string is no desk.
+pub fn is_uncensored_image_profile(
+    profile: Option<&RouteProfile>,
+    concierge_policy: &super::resolver::ResolvedConciergePolicy,
+) -> bool {
+    let Some(profile) = profile else {
+        return false;
+    };
+    if profile.is_dangerous_compatible {
+        return true;
+    }
+    match concierge_policy.desk.image_profile_id.as_deref() {
+        Some(desk_id) if !desk_id.is_empty() => profile.id == desk_id,
+        _ => false,
+    }
+}
+
 fn is_courier(v: &Value) -> bool {
     v.get("transport").and_then(Value::as_str) == Some("courier")
 }

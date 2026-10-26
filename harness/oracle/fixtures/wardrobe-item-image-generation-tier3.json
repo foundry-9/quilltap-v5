@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.D263 tier-3 spec for v4 lib/wardrobe/item-image-generation.ts generateWardrobeItemImage (and, from item 9, handleWardrobeItemImageGeneration) at f5e953a3f; grown by P4.D283 (bug 189, v4 7a8d6dacc at the 4a38222e6 pin) with three planted chats — Moderated / Locked / Unmoderated by `chats.conciergeMode` — so a tool-queued picture's Concierge wiring runs for real: the `job_*` ops name a planted chat through `jobChat` (else `jobChatId`, a chat that does NOT exist: `chatFound: false` reads as Moderated), and the `chats` + `chat_messages` tables are dumped for the ledger and the announcements. The image provider is mocked BELOW v4's real code (createImageProvider); logLLMCall runs REAL into a scratch llm-logs DB. Per scenario both sides apply the same `sql` patches to a fresh copy, then run the op.",
+  "_comment": "P4.D263 tier-3 spec for v4 lib/wardrobe/item-image-generation.ts generateWardrobeItemImage (and, from item 9, handleWardrobeItemImageGeneration) at f5e953a3f; grown by P4.D283 (bug 189, v4 7a8d6dacc at the 4a38222e6 pin) with three planted chats — Moderated / Locked / Unmoderated by `chats.conciergeMode` — so a tool-queued picture's Concierge wiring runs for real: the `job_*` ops name a planted chat through `jobChat` (else `jobChatId`, a chat that does NOT exist: `chatFound: false` reads as Moderated), and the `chats` + `chat_messages` tables are dumped for the ledger and the announcements. The image provider is mocked BELOW v4's real code (createImageProvider); logLLMCall runs REAL into a scratch llm-logs DB. Per scenario both sides apply the same `sql` patches to a fresh copy, then run the op. [406dbdd5a] P4.D326 item 3: two Unmoderated job scenarios pin the pre-flight reroute's NEW early return (`isUncensoredImageProfile`, after the policy gate): `job_unmoderated_own_compatible_stays_put` paints on the ticked Uncensored profile (b2…05) though the desk names Designated (before: rerouted TO Designated), and `job_unmoderated_on_the_desk_stays_put` paints on Designated, which IS the desk though not ticked (before: the desk was excluded as the original and the scan rerouted to Uncensored). Both now stay put with reason `Image profile is already uncensored: <name>`.",
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
   "user": {
@@ -555,6 +555,29 @@
       "provider": "ok",
       "sql": [
         "UPDATE chats SET participants = 'not json' WHERE id = 'c0c0c0c0-0002-4000-8000-000000000002'"
+      ]
+    },
+    {
+      "name": "job_unmoderated_own_compatible_stays_put",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "unmoderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = '{\"imageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'",
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0001-4000-8000-000000000001\"}'"
+      ]
+    },
+    {
+      "name": "job_unmoderated_on_the_desk_stays_put",
+      "op": "job",
+      "item": "coat",
+      "jobCharacter": "character",
+      "jobChat": "unmoderated",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0001-4000-8000-000000000001\"}'"
       ]
     }
   ],
