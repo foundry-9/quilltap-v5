@@ -191341,3 +191341,188 @@ The lane's own workspace gate ran at `3be7bd1a9` (2026-10-26 19:50 → 21:50, qu
 - `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` (`qtap-custom-tool.schema.json`, v4 63,595 bytes vs vendored 44,021) and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` (`qtap-export.schema.json`, v4 109,559 vs 108,678): expected by design. Both are re-vendors owned by P4.D333 / P4.D339, not this lane (the order's NOT list), and they turn green at the union.
 
 `characters_arrays_tier2` was ok in this gate. The SPA gate and Playwright did not run, because the lane touches no `apps/web` file.
+
+
+
+## P4.D332 — vault-only custom-tool rosters + `edit_custom_tool` (+ the `schema` action) — LANE COMPLETE (2026-10-26)
+
+Branch `claude/p4.d332-custom-tools-vault-only-edit-tool-c22ab5c`; commits `0591302c6` (1/3 the roster, the
+validator, the vendored format), `bd73f5557` (2/3 `edit_custom_tool`), `e183d4019` (3/3 the SPA rows), and the
+gate-fix + record commit that carries this entry. Pin `322a5488e`
+(`322a5488e7bd93f0234a25b42f87d5418dbf4c2c`, `4.11.0-dev.53`); work order
+`p4.d332-custom-tools-vault-only-rosters-edit-custom-tool-schema-action.md`.
+
+### Where the session started and moved
+
+The app opened the session in its own worktree `keen-pike-422c27` on a fresh branch at `914096110` (`main`'s tip:
+docs-only past the orders' commit `65fd55814`; `git diff --stat 65fd55814 HEAD -- crates apps harness` EMPTY).
+`git switch -c claude/p4.d332-custom-tools-vault-only-edit-tool-c22ab5c 914096110` — no worktree move needed; no
+other session's branch was touched. Main's `target/` was APFS-cloned (`cp -cR`) into the worktree before the first
+build; the pin worktree is `/tmp/qt-v4-pin-p4d332-322a5488e` (`npm ci --offline`, `openai` 7.34.0, `@xterm/headless`
+6.0.0 verified).
+
+### The §2 freshness probe (an OBSERVATION — §R.2)
+
+`git -C ~/source/quilltap-server branch --show-current` → `main`; `status --short` → empty; `log a0905454b..main` →
+empty and `log 489b228b6..bugfix` → empty against the ledger's CURRENT §1 (`a0905454b`, the 2026-10-26 `/driftcheck`
+that recorded the 32 commits past the pin). The pin worktree is unaffected by those 32 rows; the lane continued on
+`322a5488e` as ordered (docs `914096110`'s ruling).
+
+### Red-first (§R.7 / item 1) — measured on UNPORTED code with the regenerated oracles
+
+A scratch worktree at `914096110` (old harness tests + old core) ran against the NDJSON regenerated from the pin
+(`/tmp/p4d332/`): `pascal_roster_equivalence` RED at `full-precedence-chain` (v5 deals `b` at `participant`, v4 at
+`group`); `pascal_run_custom_handler_equivalence` RED at `unknown-tool` (v5's `Available:` list carries CHAR_C's
+`beacon` / `mangled`); `pascal_custom_tools_route_equivalence` RED at the first perspective witness
+(`list-llm-led` / `coin` — v4 now answers CHAR_A); `pascal_trigger_runner_equivalence` PANICS at `:152` (the
+`.unwrap()` on a `characterIds` key the regenerated NDJSON no longer carries — the §R.4 (a)(9) one-sided-re-aim
+panic, measured); `tool_definitions_equivalence` RED (`catalog size 63 != oracle size 64`); `tools_inventory_
+equivalence` RED on all 8 cases (`run_custom`'s category + the missing `edit_custom_tool` row, the siblings'
+twelve rows carved later); `tool_build_equivalence` RED; `pascal_definition_reader_equivalence` GREEN and
+byte-UNMOVED (R-10: the `participant` labels are the CASE's own argument — the family is expected unmoved and is).
+Each assertion stops at its first failure, so the counts are by FAMILY, not by row.
+
+### Mutation proofs of the NEW family (item 1)
+
+Each run against `pascal_edit_custom_tool_equivalence` (edit family only), sources restored after every run:
+`tool_definition_path_for` with a case-SENSITIVE suffix strip → FLIPS (`toolDefinitionPathFor("unlock.TOOL.JSON")`);
+`find_same_store_clash` comparing paths case-sensitively → FLIPS (`saving-lets-a-file-keep-its-own-name-under-
+another-case`); the `schema` action falling through to the store arms when store fields ride along → FLIPS
+(`schema-ignores-any-store-fields-passed-alongside-it`). **Two mutations stayed GREEN — corpus limits, named:**
+(a) `content_to_text` through `serde_json::to_string_pretty` — the oracle's NDJSON is written by JS, so a wire
+`1e+21` / `1` can never spell `1.0e21`; v5's preserve-order serde keeps the text and prints identically. The twin is
+pinned by raw-text unit tests (`js_value::tests::json_stringify_pretty_*`: `1.0 → 1`, `1e21 → 1e+21`,
+`1E2 → 100`, integer keys first) instead; (b) the check-only arm resolving through the WRITE context — no store in
+the committed pair is readable but not writable (a peer vault is unreachable in every fixture room; the group and
+General stores are both), so nothing distinguishes the two contexts. Closing it needs a chat with cross-character
+reads in the committed pair, which this lane may not widen.
+
+### Measurements the order asked for
+
+- `TierResolveOptions` derives `Default` (`db/tiered_mount_pool.rs:87`, both fields `false`) — `TierResolveOptions::
+  default()` IS v4's absent options bag (`requireOwnership = false, includeParticipants = false`).
+- `participant_character_ids` (orchestrator) and `UserMessageTriggerParams.participants` / `ReplyTriggerParams.
+  participants` were read by nothing but the deleted field and the deleted `room_character_ids` helper; all removed.
+- The compiler census of `character_ids` sites matched the order's nine plus the harness sites (`pascal_trigger_
+  runner`, `pascal_run_custom_handler`, `pascal_build_tools_roster` ×2, `pascal_wardrobe_effects`); no other.
+  `services/build_context.rs:1093` (the TIER context's `character_ids: None`) untouched.
+- The executor's result: v4's `result` literal has `undefined` members that `JSON.stringify` drops; the arm inserts
+  each member only when present, in v4's key order (`formattedText, action, path, uri, name, schema, examples`),
+  pinned by the `the_executor_arm_shapes_the_tool_result_like_v4` test over four rows through `ToolRunner::run`.
+- `R-7` precedent for matching a string-typed ENOENT by prefix: `documents/mod.rs:755`
+  (`Err(e) if e.starts_with("ENOENT")`).
+- Capture rig: in production `execute_edit_custom_tool` runs INSIDE the executor's `Db::write` closure (writer
+  thread), so every line it emits is invisible to the thread-scoped rig. The family therefore drives the SYNC handler
+  on the test's own thread over test-owned writers and posts the Librarian announcement exactly as the executor does;
+  the executor's own closure path is covered by the tool-result test (no log compare).
+- `web_edge_body_parse_guard`, `dispatch_wrong_type_census`, `web_edge_action_sites_census`, `fallback_home_guard`:
+  see the gate section; no route, no `Request` variant and no `db::fallback` line was added.
+- `quilltap-web` NOT bumped (no web edge moved; `tools_list` is core and dispatch-served).
+
+### R-13 — the pre-existing silent divergence, and the `unknown-tool` row
+
+`ToolExecutionContext.character_ids` was `None` at both production constructors, so the MODEL path's `run_custom`
+never dealt co-participants' vaults while the route, the orchestrator's roster and the trigger paths did. After this
+lane all four agree with v4 (a vault's `Tools/` belong to that character alone). The measurement is the handler
+family's `unknown-tool` row: its `Available:` list loses CHAR_C's `beacon` / `mangled`.
+
+### Carves (R-H), each by name, each lifted at the unifier
+
+- `tool_definitions_equivalence`: the stored-bytes check skips `runCustom` (P4.D329 / P4.D333 — the preamble
+  sentence), `runSql` (P4.D331) and `terminalRead` (P4.D337); the canonical spot-check filters the same three wire
+  names on both sides. The catalog holds 64 entries (63 + `editCustomTool`); the unifier regenerates ONCE and sets 76.
+- `tools_inventory_equivalence`: the nine `inventory_*` rows and the three `log_*` rows removed from the ORACLE side by
+  id, and the envelope's `count` with them; `run_custom` → `pascal` and the new `edit_custom_tool` row compared RAW.
+- `tool_build_equivalence`: `log_create_entry` / `log_grep` / `log_read` removed from the oracle slate by name;
+  `terminal_read` and `run_sql` bytes not compared (names and positions still are). The oracle gained a minimal
+  `canManageInventory` arity shim (`PIN_HAS_INVENTORY_FLAG`, passing `false` so the nine inventory tools stay off) —
+  **P4.D328 owns this column; the unifier unions the two shims into its probe** — plus two rows
+  (`p4d332_edit_custom_tool_empty_roster`, `p4d332_edit_custom_tool_disabled`) through a new `customToolContext`
+  column.
+- `pascal_custom_tools_route_equivalence`: the five Inventory vocabulary keys (`inventoryReads`, `inventoryAggregates`,
+  `equips`, `unequips`, `picksUp`) removed from every listed tool's `references` on the ORACLE side; the perspective
+  witnesses re-aimed from `coin` (now A's alone) to `novice_aid` (measured: `list-llm-led` A labelled "Bertie",
+  `list-two-own` A, `list-removed-operator` C) — the discriminating power of the room-shape witnesses for the
+  "shared row" claim rests on that one General-store tool now, because the committed pair holds no other tool dealt to
+  more than one seat.
+- `pascal_edit_custom_tool_equivalence`: the path resolver's unknown-store sentence (`No document store "X" is
+  reachable in this context — nothing was read`, bug 256) is folded onto v5's `Mount point not found or not
+  accessible in this context` in ONE named helper — `doc_edit/path_resolver.rs`'s two texts are P4.D338's.
+
+### RED BY DESIGN on this branch (named, never carved — items 20–21, 23)
+
+- `pascal_edit_custom_tool_equivalence::schema_examples_validate` — the pin's range specimen
+  (`CUSTOM_TOOL_SPEC.json`, 12,660 B) does not validate against v5's grammar twin (the any-of / inventory / log
+  vocabulary is P4.D329 / P4.D331 / P4.D333's); the dice specimen is GREEN. Flips on the union (§S.5 wire 9).
+- `custom_tool_schema_embed_guard::the_embedded_schema_equals_the_spa_copy` (the SPA's copy is the 44,021 B baseline
+  until P4.D333) and `…::the_embedded_specimens_equal_the_docs_mirror` (the range mirror is the baseline's 10,446 B
+  until P4.D339; the dice leg is GREEN). The three-way equality is §S.5 wire (9)'s check.
+- No vault-store `handler` row survived (the own vault and a peer vault are unreachable in every fixture room), so the
+  `uri` cell's bug-256 residue never needed a mask beyond the sentence fold above.
+
+### HANDOFF: (item 14) — P4.D339's
+
+`help/custom-tools.md`: the `## Letting a character write one — \`edit_custom_tool\`` section (+14 from `ea2cb60ab`,
++2 from `c56fe278c`) and the precedence line `**their own vault → a group store → a project store → Quilltap
+General**` with the "private pocket, not a communal sideboard" paragraph (`cfa0cba29`); `help/pascals-workbench.md`'s
+`cfa0cba29` hunk; `docs/v4/developer/CUSTOM_TOOL_SPEC.json` (12,660 B — the bytes the embed guard compares) and
+`docs/v4/developer/features/complete/pascal-custom-tools.md`'s "Changed in 4.11" callout.
+
+### Oracles this lane authored or changed (regen recipes)
+
+All from the pin: `V5W=<worktree>`, `PIN=/tmp/qt-v4-pin-<id>-322a5488e`, Node 24 `PATH`, output staged under
+`/tmp/p4d332/`; the committed recipe headers stay canonical (`cd ~/source/quilltap-server`). **Authored:**
+`harness/oracle/cases/pascal-edit-custom-tool.test.ts` (header recipe; `QT_ORACLE_PASCAL_EDIT_CUSTOM_TOOL`; 32
+handler rows + 19 `path` + 15 `input` + 7 `format`). **Changed (regenerate each in its OWN invocation):**
+`pascal-custom-tools-discovery.test.ts` (+ the `never-deals-a-tool-only-in-another-participants-vault` row and a
+`mountsRead` field on every row), `pascal-run-custom-handler.test.ts` (`characterIds` removed), `pascal-custom-tools-
+route.test.ts` (premise comment), `pascal-trigger-runner.test.ts` (`characterIds` removed), `tool-definitions.ts` /
+`tool-definitions-canonical.ts` (+`editCustomToolToolDefinition`), `tool-build.test.ts` + `fixtures/tool-build.json`
+(+`customToolContext` column, two rows, the arity shim). No committed `.db` moved. The `pascal-run-custom` pair was
+not touched by the Inventory arrival write (no chat-create / seat-add / merge ran in any case).
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean AND with
+`--features quilltap-core/native-transport` (the only first-run finding was a clippy `doc_overindented_list_items`
+in the new family's header, fixed); `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, the harvested env
+block under `/tmp/p4d332/`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, ONE background command, full log read — no
+`tail`, no `pgrep`): **829 binaries, 5,479 passed / 6 failed / 3 ignored, zero `SKIP:` lines.** The six reds, each
+named: ONE mine and fixed after the run — `services::tools_inventory::tests::every_schema_key_resolves` (the
+schema-map and built-in counts, 41/45 → 42/46; re-run green); FIVE expected on this branch (§R.13 / items 20-21):
+`pascal_edit_custom_tool_equivalence::schema_examples_validate` (the range specimen), `custom_tool_schema_embed_guard::
+{the_embedded_schema_equals_the_spa_copy, the_embedded_specimens_equal_the_docs_mirror}` (P4.D333 / P4.D339 own the
+files), and the two live-checkout guards at the pin that §R.3 lists as red until their owners land —
+`public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` (P4.D333) and `qtap_schema_embed_guard::
+the_embedded_schema_equals_the_v4_checkouts` (P4.D327). Green by name: `pascal_roster_equivalence`,
+`pascal_run_custom_handler_equivalence`, `pascal_custom_tools_route_equivalence`, `pascal_trigger_runner_equivalence`
+(2), `pascal_definition_reader_equivalence` (byte-unmoved), `pascal_wardrobe_effects_equivalence`,
+`pascal_build_tools_roster` (2, incl. the empty-roster-offers-the-editor test), `tool_build_equivalence`,
+`tool_definitions_equivalence` (64, carve named), `tools_inventory_equivalence` (carve named),
+`pascal_edit_custom_tool_equivalence` (the handler + the executor tests; every row), `dispatch_wrong_type_census`,
+`web_edge_body_parse_guard`, `web_edge_action_sites_census`, `fallback_home_guard`, `spelling_guard` (the new
+`pascal/specimens/` JSON needed no `ALLOWED_PREFIXES` entry), `provider_sdk_version_guard`, `zod_version_guard`,
+`builtin_prompt_templates_guard`, and Tier R `cli_differential` (once, ok). The sweep driver: `--self-test` 0
+failures; `--run pascal_edit_custom_tool_equivalence --v4 <pin> --v5w <worktree> --force` ran the recipe end to end
+(announced here, one family, no concurrent sweep) and ended at the family's one expected RED. The other families'
+oracles were regenerated by hand from the same recipes into `/tmp/p4d332/` (never the shared `/tmp` paths another
+lane's sweep may own). SPA: `npm run lint` clean, `npm test` **531 files / 11,270 tests**, `npm run build` clean;
+Playwright by FILE is NOT owed (no spec file touched beyond the three unit specs). The `C1` commit alone was built
+(`cargo build --workspace --all-targets`) in a scratch worktree to prove every commit builds — it did; the full
+workspace gate ran once, on the final tree.
+
+### Versions at close
+
+core **0.0.1326** (three commits touch it), SPA **0.5.882**; host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9
+unchanged; harness frozen 0.0.1110.
+
+### 💸 Owed to the next `/dogfood`
+
+A real model turn on the Friday copy calling `edit_custom_tool` with `action: "schema"`, then saving a definition it
+wrote into the character's vault, then `run_custom` on it the next turn (the Librarian's announcement, the reindex,
+the roster badge); the same definition saved to a GROUP store by a character who may read but not write it →
+`Not saved. …`; a vault tool visible ONLY to its owner on a two-character chat (the popup lists it under A and not B;
+a trigger phrase in B's message does not fire A's tool; an unknown-tool refusal names only A's own + the shared
+stores'); `GET /api/v1/tools` in the chat tool-settings modal (`run_custom` and `Edit Custom Tool` under "Pascal's
+Custom Tools"); the Run Tool dialog's category label + 🎲; the `Edit Custom Tool` ToolMessage card on an
+operator-initiated run.

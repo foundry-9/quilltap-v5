@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D332 lane record, the tools-inventory count pins, and the clippy header fix
+
+_Versions: core 0.0.1326._
+
+Closes the vault-only roster and `edit_custom_tool` lane: the lane record (probe observation, red-first and mutation proofs including the two corpus limits, carves by name, the legs that stay red by design, the gate numbers) is appended to the status log and the order's header reads LANE COMPLETE. The tools-listing unit test's two count pins move with the new built-in and its schema-map entry (42 and 46), the now-unneeded `too_many_arguments` allowance on the route's roster helper is dropped, and the new family's doc header no longer trips clippy.
+
 #### 2026-10-26 — feat(spa): Pascal's category rows — the Run Tool picker, the tool-settings groups and the `edit_custom_tool` card (v4 `ea2cb60ab`)
 
 _Versions: SPA 0.5.882._

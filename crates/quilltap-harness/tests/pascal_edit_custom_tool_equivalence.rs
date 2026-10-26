@@ -4,13 +4,13 @@
 //! copy of the committed `pascal-run-custom-{main,mount}.db` pair per row.
 //!
 //! Four row kinds from ONE NDJSON (`QT_ORACLE_PASCAL_EDIT_CUSTOM_TOOL`):
-//!   - `path`    `tool_definition_path_for` vs `toolDefinitionPathFor` — exact;
-//!   - `input`   `validate_edit_custom_tool_input` vs `validateEditCustomToolInput`;
-//!   - `format`  `format_edit_custom_tool_results` vs `formatEditCustomToolResults`;
-//!   - `handler` the output object's BYTES, the `Tools/` rows of the mount-index
-//!               partition after the call, the Librarian's system `chat_messages`,
-//!               and the nine pinned log lines (capture AND silence: a row that
-//!               v4 stays quiet on must stay quiet here).
+//! - `path`: `tool_definition_path_for` vs `toolDefinitionPathFor`, exact.
+//! - `input`: `validate_edit_custom_tool_input` vs `validateEditCustomToolInput`.
+//! - `format`: `format_edit_custom_tool_results` vs `formatEditCustomToolResults`.
+//! - `handler`: the output object's BYTES, the `Tools/` rows of the mount-index
+//!   partition after the call, the Librarian's system `chat_messages`, and the
+//!   nine pinned log lines (capture AND silence: a row that v4 stays quiet on
+//!   must stay quiet here).
 //!
 //! Planted `Tools/` files are the oracle row's recorded SQL, run on this side's
 //! mount copy before it opens; the row's `sees` (what v4's discovery read in
