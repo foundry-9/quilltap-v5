@@ -126,6 +126,27 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          `chat_wardrobe_history_tier2_equivalence`'s per-op publish comparand.",
     ),
     (
+        "crates/quilltap-core/src/inventory/equip.rs",
+        "publish_realtime(RealtimeTopic::Chats, Some(",
+        3,
+        "P4.D324 (v4 `lib/inventory/equip.ts:369`, `:421`, `:514`, R-12): \
+         `equipItems`, `unequipItems` and `pickUpItems` each announce `chats` / the \
+         chat id once, after the carried-set write. v4 publishes after the write \
+         returns; v5's call sits inside the caller's writer closure, which is safe \
+         because the bus's trailing-edge flush runs on a spawned task (the \
+         `settle` precedent above). The behavioural half is \
+         `inventory_keystone_tier2_equivalence`'s per-op publish comparand.",
+    ),
+    (
+        "crates/quilltap-core/src/inventory/equip.rs",
+        "publish_realtime(RealtimeTopic::Inventory, None);",
+        1,
+        "P4.D324 (v4 `lib/inventory/equip.ts:507`, R-12): `pickUpItems` announces \
+         `inventory` collection-wide once, after the picked-up instances land at \
+         the vault root and before the set write's `chats` publish. Same closure \
+         placement and behavioural half as the row above.",
+    ),
+    (
         "crates/quilltap-core/src/api/memories.rs",
         "publish_realtime",
         0,

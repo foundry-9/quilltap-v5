@@ -876,6 +876,28 @@ mod tests {
         );
     }
 
+    /// P4.D324: `canManageInventory` is one of `CharacterSchema`'s booleans, so
+    /// a BLOB there hydrates as `Boolean(buffer)` = `true` and the row STAYS
+    /// (v4's Zod boolean accepts it); without the name the cell would be a
+    /// stray Buffer and the row would be dropped as a refused one.
+    #[test]
+    fn a_blob_in_can_manage_inventory_hydrates_as_a_boolean_and_keeps_the_row() {
+        let (main, _) = pair();
+        main.execute_batch("ALTER TABLE characters ADD COLUMN canManageInventory INTEGER")
+            .unwrap();
+        main.execute(
+            "INSERT INTO characters (id, userId, name, characterDocumentMountPointId, createdAt, \
+             updatedAt, canManageInventory) VALUES (?1, ?2, 'Abigail', ?3, ?4, ?4, X'00')",
+            rusqlite::params![CHAR, USER, LIVE, T],
+        )
+        .unwrap();
+        let (rows, lines) =
+            crate::test_support::captured_with(|| read_vault_owner_rows(&main).unwrap());
+        assert_eq!(rows.len(), 1, "{lines:#?}");
+        assert_eq!(rows[0].id, CHAR);
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
     /// No mount index: v4's skip WARN, nothing read.
     #[test]
     fn an_unavailable_mount_index_skips_with_v4s_warn() {

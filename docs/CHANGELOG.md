@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — Inventory keystone smalls: publish-site census rows, a reconcile boolean pin, the roster header (P4.D324)
+
+_Versions: core 0.0.1327._
+
+`realtime_publish_sites_guard` counts `inventory/equip.rs`'s three `chats` publishes and its one `inventory` publish. `store_name_reconcile` pins that a BLOB in `canManageInventory` hydrates as a boolean and keeps the row. The project roster module's header names the inventory shelf, as v4's does. Comment and test changes only in core.
+
 #### 2026-10-26 — The generated greeting carries the opener's Inventory section (P4.D324)
 
 _Versions: core 0.0.1326._
