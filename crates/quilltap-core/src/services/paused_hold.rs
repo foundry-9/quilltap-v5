@@ -111,15 +111,17 @@ mod tests {
             "the orchestrator must call the predicate exactly once (v4 computes \
              `holdForPausedChat` once and reads the local thereafter)"
         );
-        // …and the local is what the four guards + the seam read: the binding, the
-        // log branch, the three `!hold` conjuncts, and the seam's own `if`.
+        // …and the local is what the guards + the seam read: the binding, the
+        // log branch, the four `!hold` conjuncts (P4.D335 added v4 `2b5e8ee24`'s
+        // `offerYield` one — a held turn builds no reply to ask in), and the
+        // seam's own `if`.
         let reads = zone
             .lines()
             .filter(|l| l.contains("hold_for_paused_chat") && !l.trim_start().starts_with("//"))
             .count();
         assert_eq!(
-            reads, 6,
-            "expected the binding plus five reads of the local (log branch, three \
+            reads, 7,
+            "expected the binding plus six reads of the local (log branch, four \
              `!hold` conjuncts, the seam); found {reads}"
         );
     }

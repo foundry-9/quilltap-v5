@@ -645,6 +645,9 @@ pub fn plant_carried_inventory(
         &vault,
         &format!("Inventory/{}", field("fileName")),
         &field("content"),
+        // A fixture plant, not a writer: the title lint (P4.D340) is not its
+        // concern, as every plant in this harness passes it.
+        quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
     )
     .unwrap_or_else(|e| panic!("plant the carried object's file: {e}"));
 }

@@ -2913,7 +2913,16 @@ fn is_route_identifier(field: &str) -> bool {
 // drops as it drops the wardrobe twin's. Every body rides as a flattened /
 // named `serde_json::Value` parsed by the keystone's Zod twins, so no body key
 // entered the typed set. Measured (red at 512 against 487 first).
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 512;
+// **P4.D335 (+2): 487 → 489** — the two interrupt verbs' `ChatStopTurn.chat_id`
+// and `ChatRaiseHand.chat_id`, both v4's `[id]` segment on `POST
+// /api/v1/chats/[id]?action=stop-turn|raise-hand`. `raised` (the one BODY key)
+// is the `Option<Option<Value>>` tri-state — refused in the handler with v4's
+// `validationError` (`salon_skip_equivalence`'s `raise_null` / `_string` /
+// `_number` / `_object` rows) — so `typed_request_fields` never sees it and the
+// census gains NO row (the order's "+2 rows" premise, measured). Red at 489
+// against 487 first.
+// **Union (P4.D325 + P4.D335): 487 + 25 + 2 = 514.**
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 514;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

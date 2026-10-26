@@ -718,6 +718,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             // P4.D172: `[0]` reproduces the frozen 0.0 this family always pinned.
             draws: DrawSource::sequence(vec![0.0]),
             consult: None,
+            turn_stopped: false,
         };
 
         let sink = RecordingSink::new();

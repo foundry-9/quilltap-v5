@@ -54,7 +54,7 @@ use crate::model::stream::{
     StreamCacheUsage, StreamChunk, StreamError, StreamMessage, StreamParams, StreamUsage,
     StreamingCompletionProvider,
 };
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::llm_logging::{
@@ -328,6 +328,13 @@ pub struct StreamingState {
     /// `Concierge` when the Concierge's pre-call reroute installed the profile
     /// before anything was tried (v4 `StreamingState.routeVia`).
     pub route_via: crate::services::route_trail::RouteAttemptVia,
+    /// The operator's turn-control handle for the Salon send this turn belongs
+    /// to (P4.D335 — v4's ambient `currentTurnStopSignal()` / `isCurrentTurn
+    /// Stopped()`, threaded). The orchestrator copies it off
+    /// `OrchestratorDeps.turn_control`; the state already reaches every
+    /// Salon-side stream consumer (primary, retry, failover / understudy legs,
+    /// both tool loops), so each reads it here. `None` = never stopped.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 impl StreamingState {
@@ -1296,7 +1303,10 @@ where
     // `:288`) — the profile-bound key the orchestrator's gate left in state, or
     // the rerouted profile's (P4.133).
     let api_key = state.effective_api_key.clone();
-    let mut rx = watch_stream(
+    // P4.D335: v4's funnel hands every Salon call `abortSignal:
+    // currentTurnStopSignal()` — the primary attempt and its retry included.
+    let stop = state.turn_control.as_ref().map(|h| h.stop_signal());
+    let mut rx = watch_stream_with_stop(
         provider
             .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, params)
             .await,
@@ -1307,6 +1317,7 @@ where
             log.and_then(|l| l.character_id),
             log.map(|l| l.message_id),
         ),
+        stop.as_ref(),
     );
     while let Some(item) = rx.recv().await {
         let chunk = match item {
@@ -1658,6 +1669,7 @@ where
                 original_message,
                 error_message: err.message.clone(),
                 character_participant_id: participant_id.clone(),
+                turn_control: state.turn_control.clone(),
             },
         )
         .await;

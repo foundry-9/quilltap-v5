@@ -80,6 +80,14 @@ fn rust_value(kind: &str, id: &str) -> Value {
         "turn_pass_content" => hn::build_turn_pass_content(turn_pass_case(id)),
         "user_turn_pass_content" => hn::build_user_turn_pass_content(turn_pass_case(id)),
         "turn_pass_opaque" => hn::build_turn_pass_opaque_content(turn_pass_case(id)),
+        "turn_yield_content" => {
+            let (name, operator) = turn_yield_case(id);
+            hn::build_turn_yield_content(name, operator)
+        }
+        "turn_yield_opaque" => {
+            let (name, operator) = turn_yield_case(id);
+            hn::build_turn_yield_opaque_content(name, operator)
+        }
         "nudge_content" => hn::build_nudge_content(turn_pass_case(id)),
         "nudge_opaque" => hn::build_nudge_opaque_content(turn_pass_case(id)),
         "timestamp_content" => hn::build_timestamp_content(timestamp_case(id)),
@@ -167,6 +175,16 @@ fn turn_pass_case(id: &str) -> &'static str {
         "plain" => "Ada",
         "unicode" => "Zoë",
         other => panic!("unknown turn-pass case {other}"),
+    }
+}
+
+/// P4.D335: the turn-yield (characterName, operatorName) pairs.
+fn turn_yield_case(id: &str) -> (&'static str, &'static str) {
+    match id {
+        "plain" => ("Ada", "Charlie"),
+        "possessive" => ("James", "The User"),
+        "unicode" => ("Zoë", "Ōkami"),
+        other => panic!("unknown turn-yield case {other}"),
     }
 }
 

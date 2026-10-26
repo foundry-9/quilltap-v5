@@ -2490,6 +2490,7 @@ mod tests {
                 reserved_outgoing_tokens: None,
                 regeneration_of_message_ids: None,
                 turn_skip: None,
+                offer_yield: false,
                 pre_recall: None,
                 human_turn_message_ids: None,
             }

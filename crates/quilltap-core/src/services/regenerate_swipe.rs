@@ -685,6 +685,7 @@ where
         // Regenerate-as-swipe never offers the "nothing to add" pass (v4 passes
         // no `turnSkip`).
         turn_skip: None,
+        offer_yield: false,
         // Regenerate-swipe does not run the proactive pre-compute pass (P4.19);
         // its rebuild assembles recall with the turn's own query, as before.
         pre_recall: None,

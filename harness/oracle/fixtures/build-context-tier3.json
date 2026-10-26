@@ -5039,6 +5039,146 @@
           ]
         }
       }
+    },
+    {
+      "name": "yield_note_last_of_all_sections",
+      "_comment": "P4.D335 (v4 2b5e8ee24): the raised-hand Turn note trails EVERY section, the skip note included (context-manager.ts:2259-2270); the DEBUG names the responding participant.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "((The engine stalls.))"
+        },
+        {
+          "role": "assistant",
+          "content": "The engine is running fine."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000004b4",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000004a5",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004b4",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000004a5",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e4300000-0000-4000-8000-000000000001",
+          "role": "USER",
+          "content": "((The engine stalls.))",
+          "participantId": "ba000000-0000-4000-8000-0000000004a5",
+          "createdAt": "2024-06-15T11:00:00.000Z"
+        },
+        {
+          "id": "e4300000-0000-4000-8000-000000000002",
+          "role": "ASSISTANT",
+          "content": "The engine is running fine.",
+          "participantId": "ba000000-0000-4000-8000-0000000004a1",
+          "createdAt": "2024-06-15T11:01:00.000Z"
+        }
+      ],
+      "humanTurnMessageIds": [
+        "e4300000-0000-4000-8000-000000000001"
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Charlie"
+      },
+      "offerYield": true
+    },
+    {
+      "name": "yield_note_chained_with_turn_skip",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Well met."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "turnSkip": {
+        "offerSkip": true,
+        "recentlyAddressed": false,
+        "characterName": "Charlie"
+      },
+      "offerYield": true,
+      "_comment": "P4.D335: a chained turn (no new user message) carries skip note THEN yield note in the trailing-only message; no responding participant, so the DEBUG omits participantId."
+    },
+    {
+      "name": "yield_note_the_user_fallback",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "newUserMessage": "What is your condition?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Well met."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "offerYield": true,
+      "userCharacterName": "",
+      "_comment": "P4.D335: an EMPTY persona name falls to 'The User' (v4 `userCharacter?.name || 'The User'` \u2014 JS ||)."
+    },
+    {
+      "name": "yield_note_persona_name",
+      "characterId": "ca000000-0000-4000-8000-0000000000a3",
+      "newUserMessage": "What is your condition?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello."
+        },
+        {
+          "role": "assistant",
+          "content": "Well met."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "offerYield": true,
+      "userCharacterName": "Zo\u00eb \u014ckami",
+      "_comment": "P4.D335: the note names the persona."
     }
   ],
   "vaultConversationSummaries": [

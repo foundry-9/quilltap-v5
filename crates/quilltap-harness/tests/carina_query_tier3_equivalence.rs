@@ -685,6 +685,7 @@ async fn carina_query_tier3_matches_oracle() {
             brahma: &brahma,
             model_supports_native_tools: false,
             now_ms: spec.now_ms,
+            turn_control: None,
         };
         let opts = RunCarinaQueryOptions {
             user_id: spec.user_id.clone(),

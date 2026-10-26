@@ -296,6 +296,7 @@ pub async fn dispatch_courier_transport<S: EventSink>(
         scene_tracking_character_ids: None,
         skipped: false,
         skipped_participant_id: None,
+        yielded: false,
     })
 }
 

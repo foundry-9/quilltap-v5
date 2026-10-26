@@ -631,6 +631,13 @@ pub struct OrchestratorDeps<
     /// `llm` tool never consulted in a chat. ⚠ LIVE when wired: one consult
     /// completion per run of a tool that declares `llm`.
     pub consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    /// The operator's turn-control handle for this Salon send (P4.D335 — v4's
+    /// `runWithTurnControl` ambient store, threaded explicitly; see
+    /// [`crate::services::turn_control`]). The spine registers the send and
+    /// passes `Some`; `None` (the enclave's autonomous turn — never registered,
+    /// as v4's job child — and the canned differentials) reads as "not stopped,
+    /// no hand raised" everywhere.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// Build the [`PricingContext`] `checkModelSupportsTools` consults on the
@@ -835,6 +842,7 @@ where
         scene_tracking_character_ids: None,
         skipped: false,
         skipped_participant_id: None,
+        yielded: false,
     })
 }
 
@@ -1023,6 +1031,7 @@ where
         scene_tracking_character_ids: None,
         skipped: false,
         skipped_participant_id: None,
+        yielded: false,
     }))
 }
 
@@ -1668,6 +1677,9 @@ where
         } else {
             crate::services::route_trail::RouteAttemptVia::Primary
         },
+        // P4.D335: the send's turn-control handle rides the state to every
+        // Salon-side stream consumer and guard.
+        turn_control: deps.turn_control.clone(),
         ..Default::default()
     };
 
@@ -1734,6 +1746,30 @@ where
         } else {
             None
         };
+
+    // === P4.D335: raised hand — the operator wants to cut in ===
+    // (v4 `orchestrator.service.ts:659-674`, `2b5e8ee24`.) The first LLM-voiced
+    // turn built after the operator raised a hand is the one asked whether to
+    // yield. Taking the hand consumes it, so a decline lowers it and nobody after
+    // is asked. A held (paused) turn builds no reply to ask in. The order is
+    // binding: a user-controlled seat or a held turn short-circuits BEFORE the
+    // take, so the hand stays up for the next LLM turn.
+    let offer_yield = json_str(&character_participant, "controlledBy").as_deref() != Some("user")
+        && !hold_for_paused_chat
+        && deps
+            .turn_control
+            .as_ref()
+            .is_some_and(|h| h.take_raised_hand());
+    if offer_yield {
+        tracing::info!(
+            target: "quilltap::turn_yield",
+            chat_id = %chat_id,
+            character_id = %character_id,
+            participant_id = %character_participant_id,
+            "[TurnYield] Asking the next speaker whether to yield to the raised hand"
+        );
+    }
+    // === end P4.D335 ===
 
     // --- Prospero cadence gate (orchestrator.service.ts:494–534) ---
     let reinject_interval = chat_settings
@@ -2673,6 +2709,8 @@ where
         // (v4 orchestrator.service.ts:1030 threads `turnSkip` through
         // `buildMessageContext` into buildContext).
         turn_skip: turn_skip.clone(),
+        // P4.D335: raised hand — the yield Turn note (same ephemeral footing).
+        offer_yield,
         // The proactive pass's recall (v4 `preRecall`, `584d28164`): its query,
         // distilled and embedded once, and what that query found — reused, never
         // re-distilled or re-embedded.
@@ -3317,6 +3355,7 @@ where
             scene_tracking_character_ids: None,
             skipped: false,
             skipped_participant_id: None,
+            yielded: false,
         });
     }
 
@@ -3668,13 +3707,105 @@ where
     let turn_outcome: Result<ProcessMessageResult, DbError> = async {
     // === end P4.D328 ===
 
+    // === P4.D335: hard stop — keep exactly what streamed ===
+    // (v4 `orchestrator.service.ts:1759-1776`.) The operator stopped the turn.
+    // What reached the screen is the reply; the thinking never was, so it goes.
+    // No sentinel is read from a cut-off line — a half-written "[NOTHING TO" is
+    // just words — and tools already run are saved below as on any other turn.
+    // Read ONCE: the finalizer's four gates reuse it.
+    let turn_stopped = deps.turn_control.as_ref().is_some_and(|h| h.is_stopped());
+    if turn_stopped {
+        streaming_state.reasoning_content = None;
+        streaming_state.reasoning_segments = vec![];
+        tracing::info!(
+            target: "quilltap::turn_stop",
+            chat_id = %chat_id,
+            character_id = %character_id,
+            participant_id = %character_participant_id,
+            // JS `.length` — UTF-16 units.
+            partial_length = crate::jsstr::utf16_len(&streaming_state.full_response),
+            tool_count = tool_messages.len(),
+            "[TurnStop] Turn stopped by the operator; keeping what streamed"
+        );
+    }
+
+    // Raised hand — did the asked character yield? (v4 `:1778-1830`.) Any prose
+    // around the sentinel is kept as the character's reply; a bare yield with no
+    // tools run persists nothing but the Host's note. Either way the chain stops
+    // after this turn and the floor is the operator's.
+    let mut yielded_floor = false;
+    if offer_yield && !turn_stopped {
+        let detection = crate::yield_signal::detect_yield_sentinel(
+            &streaming_state.full_response,
+            Some(&character_name),
+            Some(character_aliases.as_slice()),
+        );
+        // ALWAYS, before any save: the hand is down either way.
+        sink.emit(ChatEvent::hand_answered(
+            &character_participant_id,
+            &character_name,
+            detection.is_yielded(),
+        ));
+        if let Some(cleaned) = detection.cleaned() {
+            yielded_floor = true;
+            streaming_state.full_response = cleaned.to_string();
+            tracing::info!(
+                target: "quilltap::turn_yield",
+                chat_id = %chat_id,
+                character_id = %character_id,
+                participant_id = %character_participant_id,
+                // v4 `cleaned.length > 0` — whitespace logs `true` …
+                with_reply = !cleaned.is_empty(),
+                tool_count = tool_messages.len(),
+                "[TurnYield] Character yielded the floor to the raised hand"
+            );
+            // … while the gate is `.trim().length === 0` (T5).
+            if crate::jsstr::js_trim(cleaned).is_empty() && tool_messages.is_empty() {
+                return handle_turn_yield(
+                    db,
+                    sink,
+                    HandleTurnYieldParams {
+                        chat_id: &chat_id,
+                        character_id: &character_id,
+                        character_name: &character_name,
+                        character_participant_id: &character_participant_id,
+                        operator_name: &identity.name,
+                        is_multi_character,
+                        user_participant_id: user_participant_id.clone(),
+                        is_paused,
+                        usage: streaming_state.usage,
+                        cache_usage: streaming_state.cache_usage,
+                        attachment_results: streaming_state.attachment_results.clone(),
+                        provider: effective_profile.provider.clone(),
+                        model_name: effective_profile.model_name.clone(),
+                        mail_alerts_owed: built_context.mail_alerts_owed.clone(),
+                    },
+                )
+                .await;
+            }
+        } else {
+            tracing::info!(
+                target: "quilltap::turn_yield",
+                chat_id = %chat_id,
+                character_id = %character_id,
+                participant_id = %character_participant_id,
+                "[TurnYield] Character carried on past the raised hand"
+            );
+        }
+    }
+    // === end P4.D335 ===
+
     // ========================================================================
     // "Nothing to add" turn-skipping — sentinel handling
     //     (orchestrator.service.ts:1454–1498)
     // ========================================================================
     // Detect the pass sentinel on the raw response before the finalizer. Only
     // when eligibility was computed for this turn (multi-character, LLM responder).
-    if let Some(ts) = &turn_skip {
+    // P4.D335: never on a stopped turn or a yield (v4 `:1851`).
+    if let Some(ts) = turn_skip
+        .as_ref()
+        .filter(|_| !turn_stopped && !yielded_floor)
+    {
         match resolve_sentinel_action(
             crate::skip_signal::detect_skip_sentinel(
                 &streaming_state.full_response,
@@ -3833,6 +3964,7 @@ where
                 confirmation: message_finalizer::FinalizerConfirmationInputs::default(),
                 draws: input.clock.random01.clone(),
                 consult: deps.consult.clone(),
+                turn_stopped,
             },
             deps.confirmation,
             deps.compression,
@@ -3883,7 +4015,20 @@ where
         // Keep `existing_messages` referenced (it fed buildContext + the previous
         // response id scan; nothing after this reads it).
         existing_messages.clear();
-        Ok(result)
+        // P4.D335: a yield that came with words — the reply is saved as usual,
+        // then the Host notes the yield (AFTER the finalizer's `done`) and the
+        // chain is told to stop.
+        Ok(finish_yielded_turn(
+            db,
+            sink,
+            yielded_floor,
+            &chat_id,
+            &character_name,
+            &character_participant_id,
+            &identity.name,
+            result,
+        )
+        .await)
     } else if !tool_messages.is_empty() {
         // Tool-only terminal (orchestrator.service.ts:1443–1479): no assistant
         // prose, but tools executed → persist the TOOL rows, bump the chat's
@@ -3931,7 +4076,7 @@ where
             ..Default::default()
         }));
 
-        Ok(ProcessMessageResult {
+        let result = ProcessMessageResult {
             is_multi_character,
             has_content: true,
             message_id: save_result.first_tool_message_id.unwrap_or_default(),
@@ -3940,7 +4085,53 @@ where
             scene_tracking_character_ids: None,
             skipped: false,
             skipped_participant_id: None,
+            yielded: false,
+        };
+        Ok(finish_yielded_turn(
+            db,
+            sink,
+            yielded_floor,
+            &chat_id,
+            &character_name,
+            &character_participant_id,
+            &identity.name,
+            result,
+        )
+        .await)
+    } else if turn_stopped {
+        // === P4.D335 (v4 `:1969-1990`) ===
+        // Stopped before a word streamed and before any tool ran: nothing to
+        // keep, and nothing to apologise for — it is what the operator asked.
+        // No `Empty response` WARN, no recovery, no retry.
+        sink.emit(ChatEvent::done(DonePayload {
+            message_id: None,
+            participant_id: Some(character_participant_id.clone()),
+            usage: streaming_state.usage.map(to_done_usage),
+            cache_usage: streaming_state.cache_usage.map(to_done_cache_usage),
+            attachment_results: Some(
+                streaming_state
+                    .attachment_results
+                    .clone()
+                    .unwrap_or(Value::Null),
+            ),
+            tools_executed: false,
+            stopped: Some(true),
+            provider: Some(effective_profile.provider.clone()),
+            model_name: Some(effective_profile.model_name.clone()),
+            ..Default::default()
+        }));
+        Ok(ProcessMessageResult {
+            is_multi_character,
+            has_content: false,
+            message_id: String::new(),
+            user_participant_id,
+            is_paused,
+            scene_tracking_character_ids: None,
+            skipped: false,
+            skipped_participant_id: None,
+            yielded: false,
         })
+        // === end P4.D335 ===
     } else {
         // Empty response (no tool messages in the corpus). Emit the done frame.
         // The provider may have said why it returned nothing. Z.AI reports
@@ -4016,6 +4207,7 @@ where
             scene_tracking_character_ids: None,
             skipped: false,
             skipped_participant_id: None,
+            yielded: false,
         })
     }
     // === P4.D328: the Inventory drain AFTER the saved turn (v4 finally, 102a23648) ===
@@ -4202,8 +4394,212 @@ async fn handle_turn_skip(
         scene_tracking_character_ids: None,
         skipped: true,
         skipped_participant_id: Some(params.character_participant_id.to_string()),
+        yielded: false,
     })
 }
+
+// === P4.D335: the raised hand's yield (v4 `2b5e8ee24`) ===
+
+/// Everything [`handle_turn_yield`] needs — [`HandleTurnSkipParams`] plus the
+/// character id (the DEBUG line), the operator's name (the Host texts — v4
+/// `resolvedIdentity.name`) and the chat's `isPaused` AS LOADED (v4 passes
+/// `chat.isPaused`; unlike the skip, the yield re-reads nothing).
+struct HandleTurnYieldParams<'a> {
+    chat_id: &'a str,
+    character_id: &'a str,
+    character_name: &'a str,
+    character_participant_id: &'a str,
+    operator_name: &'a str,
+    is_multi_character: bool,
+    user_participant_id: Option<String>,
+    is_paused: bool,
+    usage: Option<crate::model::stream::StreamUsage>,
+    cache_usage: Option<crate::model::stream::StreamCacheUsage>,
+    attachment_results: Option<Value>,
+    provider: String,
+    model_name: String,
+    /// This turn's announced letters: a yield still read them.
+    mail_alerts_owed: Option<crate::post_office::mailbox::MailAlertsOwed>,
+}
+
+/// Post the Host's turn-yield note and surface it live (v4
+/// `announceTurnYield`). Shared by the bare yield and the yield that came with
+/// a reply.
+async fn announce_turn_yield(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    chat_id: &str,
+    character_name: &str,
+    character_participant_id: &str,
+    operator_name: &str,
+) {
+    let host_message = crate::services::host_notifications::post_host_turn_yield_announcement(
+        db,
+        crate::services::host_notifications::HostTurnYieldAnnouncement {
+            chat_id: chat_id.to_string(),
+            character_name: character_name.to_string(),
+            participant_id: character_participant_id.to_string(),
+            operator_name: operator_name.to_string(),
+        },
+    )
+    .await;
+    if let Some(posted) = host_message {
+        sink.emit(ChatEvent::host_announcement(posted.message));
+    }
+}
+
+/// v4's `finishYieldedTurn`: a yield that came with words (or tools) — the
+/// reply is saved as usual, THEN the Host notes the yield and the chain is told
+/// to stop. A pass-through when the character did not yield.
+#[allow(clippy::too_many_arguments)]
+async fn finish_yielded_turn(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    yielded_floor: bool,
+    chat_id: &str,
+    character_name: &str,
+    character_participant_id: &str,
+    operator_name: &str,
+    result: ProcessMessageResult,
+) -> ProcessMessageResult {
+    if !yielded_floor {
+        return result;
+    }
+    announce_turn_yield(
+        db,
+        sink,
+        chat_id,
+        character_name,
+        character_participant_id,
+        operator_name,
+    )
+    .await;
+    ProcessMessageResult {
+        yielded: true,
+        ..result
+    }
+}
+
+/// Raised hand: the asked character yielded and said nothing else (v4
+/// `handleTurnYield`).
+///
+/// Like a turn-pass, no reply is persisted and the done event is flagged
+/// `skipped` so the client drops its streaming buffer without a phantom bubble
+/// (the Host's yield note is the visible record). Unlike a pass, the rotation is
+/// not advanced — the character gave the floor away rather than spending its
+/// turn — and the result is `yielded`, which stops the chain so the operator
+/// speaks next. Informs stay pending for the character's next real turn.
+///
+/// ⚠ v4's RESULT carries no `skipped` (only its done FRAME does): the chain reads
+/// `yielded`, and `skipped: false` here keeps the `!has_content && !skipped &&
+/// !yielded` guard honest.
+async fn handle_turn_yield(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    params: HandleTurnYieldParams<'_>,
+) -> Result<ProcessMessageResult, DbError> {
+    crate::post_office::mailbox::mark_mail_alerts_delivered(
+        db,
+        params.mail_alerts_owed.as_ref(),
+        params.chat_id,
+        crate::post_office::mailbox::MailAlertsVia::TurnYield,
+    )
+    .await;
+    announce_turn_yield(
+        db,
+        sink,
+        params.chat_id,
+        params.character_name,
+        params.character_participant_id,
+        params.operator_name,
+    )
+    .await;
+
+    sink.emit(ChatEvent::done(DonePayload {
+        message_id: None,
+        participant_id: Some(params.character_participant_id.to_string()),
+        usage: params.usage.map(to_done_usage),
+        cache_usage: params.cache_usage.map(to_done_cache_usage),
+        attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
+        tools_executed: false,
+        skipped: Some(true),
+        skipped_participant_id: Some(params.character_participant_id.to_string()),
+        yielded: Some(true),
+        provider: Some(params.provider),
+        model_name: Some(params.model_name),
+        ..Default::default()
+    }));
+
+    tracing::debug!(
+        target: "quilltap::turn_yield",
+        chat_id = %params.chat_id,
+        character_id = %params.character_id,
+        participant_id = %params.character_participant_id,
+        "[TurnYield] Bare yield closed without a reply"
+    );
+
+    Ok(ProcessMessageResult {
+        is_multi_character: params.is_multi_character,
+        has_content: false,
+        message_id: String::new(),
+        user_participant_id: params.user_participant_id,
+        is_paused: params.is_paused,
+        scene_tracking_character_ids: None,
+        skipped: false,
+        skipped_participant_id: None,
+        yielded: true,
+    })
+}
+
+/// Close a chain because a character yielded to the operator's raised hand
+/// (v4 `endChainOnYield`). Not a pause: the operator's next message chains as
+/// usual.
+async fn end_chain_on_yield(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    chat_id: &str,
+    chain_depth: i64,
+) {
+    tracing::info!(
+        chat_id = %chat_id,
+        chain_depth = chain_depth,
+        "[TurnOrchestrator] Chain stopped: the floor was yielded to the operator",
+    );
+    turn_orchestrator::persist_turn_participant_id(db, chat_id, None).await;
+    sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
+        reason: "yielded".to_string(),
+        next_speaker_id: None,
+        chain_depth,
+        paused: Some(false),
+        held_user_turn: None,
+    }));
+}
+
+/// Close a chain the operator hard-stopped (v4 `endChainOnStop`). The stop
+/// action paused the room before it aborted the stream, so this is announced as
+/// a pause — ASSERTED, not read (T6: a multi-character AUTONOMOUS room sent to
+/// from the composer is announced paused without a pause write; v4 too).
+async fn end_chain_on_stop(
+    db: &Db,
+    sink: &(impl EventSink + Sync),
+    chat_id: &str,
+    chain_depth: i64,
+) {
+    tracing::info!(
+        chat_id = %chat_id,
+        chain_depth = chain_depth,
+        "[TurnOrchestrator] Chain stopped: the operator stopped the turn",
+    );
+    turn_orchestrator::persist_turn_participant_id(db, chat_id, None).await;
+    sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
+        reason: "stopped".to_string(),
+        next_speaker_id: None,
+        chain_depth,
+        paused: Some(true),
+        held_user_turn: None,
+    }));
+}
+// === end P4.D335 ===
 
 /// The tool-only terminal's DB effect (orchestrator.service.ts:1449–1460):
 /// `saveToolMessages` (the TOOL rows + their image link/tag) then an explicit
@@ -4495,7 +4891,25 @@ where
     // speaker. Only a genuinely empty (no content, no skip) initial turn stops
     // here. (`isPaused` used to ride this guard; bug 123 moved it below, so a
     // paused chat stops LOUDLY instead of returning in silence.)
-    if !initial.is_multi_character || (!initial.has_content && !initial.skipped) {
+    //
+    // P4.D335 (v4 `2b5e8ee24`): the operator's hard stop ends the chain where it
+    // stands. The stop action has already paused the room, so the close says so.
+    // A stopped SINGLE-character turn returns silently, as any single-character
+    // turn does. The `stopped` read is the SAME handle the first turn used.
+    let turn_control = deps.turn_control.clone();
+    let stopped = || turn_control.as_ref().is_some_and(|h| h.is_stopped());
+    if initial.is_multi_character && stopped() {
+        end_chain_on_stop(db, deps.sink, &opts.chat_id, 0).await;
+        return Ok(());
+    }
+    if !initial.is_multi_character || (!initial.has_content && !initial.skipped && !initial.yielded)
+    {
+        return Ok(());
+    }
+    // A yield to the operator's raised hand ends the chain on the spot — the
+    // floor is theirs — without pausing the room.
+    if initial.yielded {
+        end_chain_on_yield(db, deps.sink, &opts.chat_id, 0).await;
         return Ok(());
     }
     // Single-turn callers enqueue the next turn themselves.
@@ -4613,6 +5027,16 @@ where
                         // on chained turns).
                         skipped: Some(chain_result.skipped),
                     }));
+                // P4.D335: the stop and the yield close the chain here, before
+                // the empty check (v4 `turn-orchestrator.service.ts:442-450`).
+                if stopped() {
+                    end_chain_on_stop(db, deps.sink, &opts.chat_id, chain_depth).await;
+                    break;
+                }
+                if chain_result.yielded {
+                    end_chain_on_yield(db, deps.sink, &opts.chat_id, chain_depth).await;
+                    break;
+                }
                 // A skipped turn advanced the rotation (Host turn-pass record) —
                 // fall through to the next decideNextTurn iteration. Only a
                 // genuinely empty response (no content, no skip) stops the chain.
@@ -4751,6 +5175,9 @@ pub(crate) struct BuildContextArgs<'a> {
     /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
     /// (regenerate-swipe) that never offer the pass.
     pub turn_skip: Option<build_context::TurnSkip>,
+    /// P4.D335: the operator's raised hand landed on this turn — the `[YIELD]`
+    /// Turn note (v4 `offerYield`). `false` for the sibling entry points.
+    pub offer_yield: bool,
     /// The proactive pass's recall (v4 `preRecall`, `584d28164`): its query and
     /// what that query found. `None` for the sibling entry points
     /// (regenerate-swipe) that don't run the proactive task.
@@ -4898,6 +5325,7 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
         turn_skip: args.turn_skip,
+        offer_yield: args.offer_yield,
         pre_recall: args.pre_recall,
         provider: args.provider,
     }
@@ -5470,6 +5898,7 @@ mod tests {
                 image_describe: None,
                 photo_bytes: None,
                 consult: None,
+                turn_control: None,
             };
             let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
             {
@@ -5492,6 +5921,7 @@ mod tests {
                             scene_tracking_character_ids: None,
                             skipped: false,
                             skipped_participant_id: None,
+                            yielded: false,
                         },
                         initial_continue_mode: false,
                         never_pause_for_user: false,

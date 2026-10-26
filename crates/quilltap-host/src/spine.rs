@@ -136,6 +136,7 @@ use quilltap_core::services::dangerous_content::moderation_wire::RealModerationP
 use quilltap_core::services::dangerous_content::provider_routing::{
     DangerContentRouter, DbApiKeys,
 };
+use quilltap_core::services::turn_control;
 // === P4.6BL ===
 use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
@@ -1459,6 +1460,13 @@ where
     async fn run_send(self, req: ChatSendRequest) -> Result<ChatSendResultDto, CoreError> {
         let db = self.db.clone();
         let chat_id = req.chat_id.clone();
+        // P4.D335: the whole send — first turn, chain, post-chain render — runs
+        // under one turn-control registration (v4 `runWithTurnControl` around
+        // `handleSendMessage`'s stream body), so the operator's Stop and raised
+        // hand reach every turn it carries. Dropped at the end of this fn —
+        // however it ends — which unregisters and settles it.
+        let turn_registration = turn_control::register_active_turn(&chat_id);
+        let turn_handle = turn_registration.handle();
         let sink = BroadcastSink {
             chat_id: chat_id.clone(),
             tx: self.events.clone(),
@@ -1541,6 +1549,7 @@ where
             prospero: ThreadedProspero { db: db.clone() },
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
+            turn_control: Some(turn_handle.clone()),
         });
         let carina_tool_runner = self.tool_runner();
         let carina_detector = RegistryToolCallDetector::built_in();
@@ -1554,6 +1563,7 @@ where
             brahma: &brahma,
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
+            turn_control: Some(&turn_handle),
         });
         let mut rng_bytes = OsRandomBytes;
 
@@ -1585,6 +1595,7 @@ where
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
+            turn_control: Some(turn_handle.clone()),
         };
 
         let input = ProcessMessageInput {
@@ -2099,6 +2110,7 @@ where
             prospero: ThreadedProspero { db: db.clone() },
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
+            turn_control: None,
         });
         let carina_tool_runner = self.tool_runner();
         let carina_detector = RegistryToolCallDetector::built_in();
@@ -2112,6 +2124,7 @@ where
             brahma: &brahma,
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
+            turn_control: None,
         });
         let mut rng_bytes = OsRandomBytes;
 
@@ -2143,6 +2156,9 @@ where
             image_describe: self.image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
+            // P4.D335: the enclave's autonomous turn is never registered (v4: the
+            // job child) — a composer stop never reaches it.
+            turn_control: None,
         };
 
         let now_fn = quilltap_core::enclave::announce::system_now_ms;

@@ -1788,6 +1788,7 @@ fn orchestrator_tier3_matches_oracle() {
         prospero: HarnessProspero,
         model_supports_native_tools: true,
         now_ms: spec.frozen_now_ms as f64,
+        turn_control: None,
     });
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
@@ -1976,6 +1977,7 @@ fn orchestrator_tier3_matches_oracle() {
             // Diff-irrelevant: carina's system prompt is fixed before its tool build.
             model_supports_native_tools: true,
             now_ms: spec.frozen_now_ms as f64,
+            turn_control: None,
         });
         let mut prospero = ClosureProspero(|_a| Ok(()));
         let mut rng_bytes = quilltap_core::tools::rng::FixedBytes::new(call.rng_bytes.clone());
@@ -2013,6 +2015,7 @@ fn orchestrator_tier3_matches_oracle() {
             image_describe: None,
             photo_bytes: None,
             consult: None,
+            turn_control: None,
         };
         // The spine now constructs the real registry-backed tool detector +
         // provider-text strategy internally (W4.7c). Exactly ONE corpus case

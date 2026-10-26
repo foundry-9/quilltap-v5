@@ -607,6 +607,7 @@ fn enclave_step_tier3_matches_oracle() {
             image_describe: None,
             photo_bytes: None,
             consult: None,
+            turn_control: None,
         };
         let sdeps = StepDeps {
             now_ms: &now_ms,

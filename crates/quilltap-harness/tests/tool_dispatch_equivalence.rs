@@ -276,6 +276,7 @@ async fn tool_dispatch_matches_oracle() {
             prospero: NoProspero,
             model_supports_native_tools: false,
             now_ms: 0.0,
+            turn_control: None,
         }),
     );
 

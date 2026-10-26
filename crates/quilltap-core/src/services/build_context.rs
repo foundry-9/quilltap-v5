@@ -622,6 +622,11 @@ pub struct BuildContextInput {
     /// `recently_addressed` adds a caution to answer rather than pass. Never
     /// persisted. `None` / `offer_skip: false` → no note.
     pub turn_skip: Option<TurnSkip>,
+    /// P4.D335 (v4 `options.offerYield`, `2b5e8ee24`): the operator has raised a
+    /// hand and this is the character asked — a Turn note invites it to `[YIELD]`
+    /// the floor or carry on. Trails every other section, the skip note
+    /// included. Never persisted. `false` → no note.
+    pub offer_yield: bool,
     /// v4 `options.preRecall` — the proactive pass's recall: its query
     /// (distilled and embedded once) and what that query found. When present
     /// (and it found something), this turn's recall reuses both — no second
@@ -2986,6 +2991,31 @@ where
         _ => String::new(),
     };
 
+    // P4.D335 — raised hand: the operator wants to cut in, and this character is
+    // the one asked. Same ephemeral footing as the skip note, and read last of
+    // all. v4 `userCharacter?.name || 'The User'` — JS `||`, so an EMPTY name
+    // falls to `The User` too.
+    let turn_yield_instruction = if input.offer_yield {
+        crate::yield_signal::build_turn_yield_instruction(
+            input
+                .user_character
+                .as_ref()
+                .map(|uc| uc.name.as_str())
+                .filter(|n| !n.is_empty())
+                .unwrap_or("The User"),
+        )
+    } else {
+        String::new()
+    };
+    if !turn_yield_instruction.is_empty() {
+        tracing::debug!(
+            target: "quilltap::turn_yield",
+            chat_id = %input.chat.id,
+            participant_id = input.responding_participant.as_ref().map(|p| p.id.as_str()),
+            "[TurnYield] Offering the yield note to the next speaker"
+        );
+    }
+
     // Chained multi-character turns: the human's narration sits mid-history and
     // the newest line is another character's, possibly one that contradicts it
     // (a stopped turn that finished server-side, or a second tab). The scene note
@@ -3081,7 +3111,7 @@ where
     // The trailing sections, in their one order: who the character is (Core
     // whisper), what it remembers (recall), what arrived for it (mail), what it
     // is carrying (progressions, then the Inventory), what the operator says is
-    // so (inform), and the turn note last. Built ONCE and used by both branches below — two
+    // so (inform), the turn note, and the yield note after it (P4.D335). Built ONCE and used by both branches below — two
     // hand-kept copies of this list is how recall, mail and the Core whisper
     // went missing from turns with no new user message while their side effects
     // (whisper posted, rows stamped, cadence advanced) still ran (bug 199).
@@ -3093,6 +3123,7 @@ where
         inventory_llm_context.clone(),
         inform_block.clone().unwrap_or_default(),
         turn_skip_instruction.clone(),
+        turn_yield_instruction.clone(),
     ]
     .into_iter()
     .filter(|s| !s.is_empty())
@@ -3698,6 +3729,7 @@ mod distill_latency_tests {
             reserved_outgoing_tokens: None,
             regeneration_of_message_ids: None,
             turn_skip: None,
+            offer_yield: false,
             // The whole point of the branch: no proactive pass, so the
             // turn's own distill runs.
             pre_recall: None,
@@ -4027,6 +4059,7 @@ mod inter_character_log_tests {
             reserved_outgoing_tokens: None,
             regeneration_of_message_ids: None,
             turn_skip: None,
+            offer_yield: false,
             pre_recall: None,
             human_turn_message_ids: None,
         }

@@ -679,6 +679,8 @@ const CHAT_POST_ACTIONS: &[&str] = &[
     "impersonate",
     "set-active-speaker",
     "turn",
+    "stop-turn",
+    "raise-hand",
     "add-participant",
     "update-participant",
     "remove-participant",
@@ -1024,5 +1026,20 @@ mod p4d316_tests {
             post("toggle-avatar-generation"),
             post("inventory-reset-defaults") + 1
         );
+    }
+
+    /// P4.D335 (v4 `2b5e8ee24`, `handlers/post.ts:91-92`): the two interrupt
+    /// actions sit between `turn` and `add-participant` in v4's thunk map.
+    #[test]
+    fn the_interrupt_actions_sit_after_turn_in_v4s_order() {
+        let at = |a: &str| {
+            super::CHAT_POST_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap_or_else(|| panic!("{a} missing"))
+        };
+        assert_eq!(at("stop-turn"), at("turn") + 1);
+        assert_eq!(at("raise-hand"), at("stop-turn") + 1);
+        assert_eq!(at("add-participant"), at("raise-hand") + 1);
     }
 }

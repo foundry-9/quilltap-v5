@@ -22,6 +22,14 @@
  * Same seams as `salon-mutations` (auth, startup gate, Math.random, the real cipher
  * binding + vector store past jest.setup).
  *
+ * P4.D335 (v4 `2b5e8ee24`): the two interrupt actions ride the same REAL route
+ * `POST` (so v4's chat-404-first order and the ZodError → `validationError` arm
+ * are the real ones) — `?action=stop-turn` (no stream open in the process, so
+ * `{stopped: 0, settled: true, paused}` and the pause write) and
+ * `?action=raise-hand` (the `raised` matrix). Per-case `plantSql` sets the chat
+ * state first; the `[Interrupt]` / `[TurnControl]` lines are captured by
+ * splicing the logger's transports.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   TMPO=/tmp/qt-salon-skip-oracle
@@ -58,9 +66,15 @@ interface SeedTurnPass {
 interface CaseSpec {
   name: string;
   paramId: string;
-  body: Record<string, unknown>;
+  body: Record<string, unknown> | unknown;
   random01: number;
   seed?: SeedTurnPass[];
+  /** P4.D335: the `?action=` (default `turn`). */
+  action?: string;
+  /** P4.D335: raw SQL run on the fixture copy before the call. */
+  plantSql?: string[];
+  /** P4.D335: `req.json()` rejects (an unparsable body). */
+  jsonThrows?: boolean;
 }
 
 const TABLES = [
@@ -75,13 +89,15 @@ function canonValue(v: unknown): unknown {
   return v;
 }
 
-function mockRequest(url: string, body?: unknown): unknown {
+function mockRequest(url: string, body?: unknown, jsonThrows = false): unknown {
   return {
     method: 'POST',
     url,
     nextUrl: new URL(url),
     headers: new Headers({ 'Content-Type': 'application/json' }),
-    json: jest.fn().mockResolvedValue(body ?? {}),
+    json: jsonThrows
+      ? jest.fn().mockRejectedValue(new SyntaxError('Unexpected token'))
+      : jest.fn().mockResolvedValue(body ?? {}),
   };
 }
 
@@ -179,10 +195,34 @@ async function runCase(
       );
     }
 
-    const url = `http://localhost/api/v1/chats/${c.paramId}?action=turn`;
+    for (const sql of c.plantSql ?? []) {
+      (getRawDatabase() as unknown as { exec: (s: string) => void }).exec(sql);
+    }
+
+    // P4.D335: capture the interrupt lines (the transports are spliced so
+    // nothing reaches stdout).
+    const logs: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+    const { logger } = await import('@/lib/logger');
+    const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+    internal.transports.splice(0, internal.transports.length, {
+      write: (d: unknown) => {
+        const data = d as { level: string; message: string; context?: Record<string, unknown> };
+        if (!data.message.startsWith('[Interrupt]') && !data.message.startsWith('[TurnControl]')) return;
+        const { service: _s, module: _m, environment: _e, ...fields } = (data.context ?? {}) as Record<
+          string,
+          unknown
+        >;
+        logs.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      },
+    });
+
+    const url = `http://localhost/api/v1/chats/${c.paramId}?action=${c.action ?? 'turn'}`;
     const params = { params: Promise.resolve({ id: c.paramId }) };
     const { POST } = await import('@/app/api/v1/chats/[id]/route');
-    const response = (await POST(mockRequest(url, c.body) as never, params as never)) as {
+    const response = (await POST(
+      mockRequest(url, c.body, c.jsonThrows === true) as never,
+      params as never,
+    )) as {
       status: number;
       json: () => Promise<unknown>;
     };
@@ -206,7 +246,7 @@ async function runCase(
       });
       tables[t.key] = { table: t.table, columns, rows };
     }
-    return { name: c.name, status, body, tables };
+    return { name: c.name, status, body, tables, logs };
   } finally {
     Math.random = origRandom;
     await closeDatabase();
@@ -237,12 +277,32 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D335: DEBUG so the `[TurnControl]` lines reach the spliced transport.
+  process.env.LOG_LEVEL = 'debug';
 
   const GROUP = 'c1000000-0000-4000-8000-000000000002';
   const USER_P = 'b2000000-0000-4000-8000-000000000003'; // Cleo (controlledBy user)
   const ARIA_P = 'b2000000-0000-4000-8000-000000000001'; // Aria (llm)
   const BRAM_P = 'b2000000-0000-4000-8000-000000000002'; // Bram (llm)
+  // P4.D335: the interrupt actions' chats.
+  const SOLO = 'c1000000-0000-4000-8000-000000000001';
+  const UNKNOWN = 'c1000000-0000-4000-8000-0000000000ff';
+  const stop = (name: string, paramId: string, plantSql?: string[]): CaseSpec => ({
+    name,
+    paramId,
+    body: {},
+    random01: 0.42,
+    action: 'stop-turn',
+    plantSql,
+  });
+  const raise = (name: string, body: unknown, extra: Partial<CaseSpec> = {}): CaseSpec => ({
+    name,
+    paramId: GROUP,
+    body,
+    random01: 0.42,
+    action: 'raise-hand',
+    ...extra,
+  });
 
   const cases: CaseSpec[] = [
     {
@@ -261,6 +321,31 @@ async function main(): Promise<void> {
         { id: 'aa000000-0000-4000-8000-000000000002', participantId: BRAM_P, createdAt: '2026-02-03T00:00:00.000Z' },
       ],
     },
+    // --- P4.D335: the interrupt actions (no stream open in this process) ---
+    stop('stop_no_stream_group', GROUP),
+    stop('stop_no_stream_already_paused', GROUP, [
+      `UPDATE chats SET "isPaused" = 1 WHERE id = '${GROUP}'`,
+    ]),
+    // A room with no active LLM seat and one user seat is NOT multi-character.
+    stop('stop_no_stream_single', SOLO, [
+      `UPDATE chats SET participants = json_set(participants, '$[0].status', 'removed') WHERE id = '${SOLO}'`,
+    ]),
+    // The plain two-seat Solo room (one LLM, one user) IS multi-character to v4.
+    stop('stop_no_stream_solo_pair', SOLO),
+    stop('stop_no_stream_autonomous', GROUP, [
+      `UPDATE chats SET "chatType" = 'autonomous' WHERE id = '${GROUP}'`,
+    ]),
+    stop('stop_unknown_chat', UNKNOWN),
+    raise('raise_absent_body', {}),
+    raise('raise_true', { raised: true }),
+    raise('raise_false', { raised: false }),
+    raise('raise_null', { raised: null }),
+    raise('raise_string', { raised: 'true' }),
+    raise('raise_number', { raised: 1 }),
+    raise('raise_object', { raised: {} }),
+    raise('raise_extra_keys', { raised: true, extra: 1 }),
+    raise('raise_unparsable_body', null, { jsonThrows: true }),
+    raise('raise_unknown_chat', { raised: null }, { paramId: UNKNOWN }),
   ];
 
   const outLines: string[] = [];

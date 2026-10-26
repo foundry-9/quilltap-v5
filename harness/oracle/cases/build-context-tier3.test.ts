@@ -166,6 +166,11 @@ interface Op {
   /** [P4.D168] `options.turnSkip` — the "nothing to add" note, whose trailing
    *  slot the progressions section now shares. */
   turnSkip?: { offerSkip: boolean; recentlyAddressed: boolean; characterName: string };
+  /** P4.D335 (v4 `2b5e8ee24`): `options.offerYield` — the raised-hand note. */
+  offerYield?: boolean;
+  /** P4.D335: overrides the operator persona's name (`''` → the `The User`
+   *  fallback). Absent = the corpus's `Charlie`. */
+  userCharacterName?: string;
   timestampMode: string | null;
   cachedCompression?: {
     compressedHistory: string;
@@ -380,6 +385,8 @@ async function main(): Promise<void> {
   // P4.D268: the delivery lines — v4 `3f7320138`'s frozen-archive lines, the
   // F7 pools line and the F6 delivery stamp, in emission order.
   let deliveryLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  // P4.D335: the `[TurnYield] Offering the yield note…` DEBUG, per op.
+  let yieldLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
   // P4.D291 (v4 `584d28164`): the pools line and the old stamp are RETIRED;
   // Phase E's `[ContextManager] Recall assembled` (its `durationMs` masked on
   // both sides), the ONE writer's stamp and `[Recall] Delivered` replace them.
@@ -394,6 +401,9 @@ async function main(): Promise<void> {
     if (typeof message === 'string' && message.startsWith('[Inform] Delivering')) {
       // Through JSON, so an `undefined` field drops out as winston drops it.
       informLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
+    }
+    if (typeof message === 'string' && message.startsWith('[TurnYield]')) {
+      yieldLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
     }
     if (typeof message === 'string' && DELIVERY_PREFIXES.some((p) => message.startsWith(p))) {
       deliveryLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
@@ -500,6 +510,10 @@ async function main(): Promise<void> {
     // [P4.D168] Absent = v4's own defaults (`isContinueMode = false`, no note).
     if (op.isContinueMode) options.isContinueMode = true;
     if (op.turnSkip) options.turnSkip = op.turnSkip;
+    if (op.offerYield) options.offerYield = true;
+    if (op.userCharacterName !== undefined) {
+      options.userCharacter = { name: op.userCharacterName, description: 'The operator.' };
+    }
     if (op.participants && op.respondingParticipantId && op.messagesWithParticipants) {
       const respondingParticipant = op.participants.find(
         (p) => p.id === op.respondingParticipantId
@@ -649,6 +663,7 @@ async function main(): Promise<void> {
     resetFrozenArchiveCacheForTests();
     informLog = [];
     deliveryLog = [];
+    yieldLog = [];
     const result = await buildContext(options as never);
     // v4's `markMemoriesAccessed` does not await its bulk UPDATE; let it land
     // before the dumps and the next op (memory note `oracle-async-tails`).
@@ -656,6 +671,7 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'result', op: op.name, result }));
     lines.push(JSON.stringify({ kind: 'informLog', op: op.name, lines: informLog }));
     lines.push(JSON.stringify({ kind: 'deliveryLog', op: op.name, lines: deliveryLog }));
+    lines.push(JSON.stringify({ kind: 'yieldLog', op: op.name, lines: yieldLog }));
 
     // P4.d15: the Commonplace-Book whisper ROWS this op left behind + the
     // recall-history column it persisted. Minted ids and `createdAt` are dropped

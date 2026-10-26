@@ -284,6 +284,100 @@ mod tests {
         );
     }
 
+    /// R-18 — the `systemKind` reader census (P4.D335). v4 `2b5e8ee24` adds NO
+    /// handling of `turn-yield` anywhere: every reader equality-tests a SPECIFIC
+    /// kind, and the only structural consumers of a Host kind are the turn-pass
+    /// converters — so a `turn-yield` row is a generic Host message everywhere.
+    #[test]
+    fn a_turn_yield_row_is_a_generic_host_message_to_every_reader() {
+        let row = serde_json::json!({
+            "type": "message",
+            "id": "y1",
+            "role": "ASSISTANT",
+            "content": "The Host, spying a hand raised …",
+            "participantId": null,
+            "systemSender": "host",
+            "systemKind": TURN_YIELD_SYSTEM_KIND,
+            "hostEvent": { "participantId": "p-ada" },
+        });
+        assert!(!crate::skip_signal::is_turn_pass_message(&row));
+        let views = crate::services::turn_orchestrator::to_message_views(&[row]);
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].msg_type.as_deref(), Some("message"));
+        assert_ne!(
+            views[0].msg_type.as_deref(),
+            Some(crate::turn_state::TURN_PASS_VIEW_TYPE)
+        );
+    }
+
+    /// The file with every `#[cfg(test)]` item removed by brace balance (a test
+    /// module may sit mid-file, as `post_office/mailbox.rs`'s does).
+    fn production_zone(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        let mut rest = src;
+        while let Some(at) = rest.find("#[cfg(test)]") {
+            out.push_str(&rest[..at]);
+            let after = &rest[at..];
+            let Some(b) = after.find('{') else {
+                return out;
+            };
+            let mut depth = 0usize;
+            let mut end = after.len();
+            for (offset, ch) in after[b..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = b + offset + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            rest = &after[end..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// R-18's forward-only guard: the `"turn-yield"` literal lives in this
+    /// module's const and in `MailAlertsVia::TurnYield`'s `via` string (a
+    /// DIFFERENT field — the mail ledger, not `systemKind`) and nowhere else in
+    /// core production code. A later reader that branches on the kind must add
+    /// itself here, deliberately.
+    #[test]
+    fn the_turn_yield_kind_literal_has_no_unlisted_reader() {
+        const ALLOWED: &[&str] = &["post_office/mailbox.rs", "yield_signal.rs"];
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![root.clone()];
+        let mut hits = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let text = std::fs::read_to_string(&path).unwrap();
+                    if production_zone(&text).contains("\"turn-yield\"") {
+                        let rel = path
+                            .strip_prefix(&root)
+                            .unwrap()
+                            .to_string_lossy()
+                            .replace('\\', "/");
+                        hits.push(rel);
+                    }
+                }
+            }
+        }
+        hits.sort();
+        assert_eq!(
+            hits, ALLOWED,
+            "an unlisted `\"turn-yield\"` reader appeared"
+        );
+    }
+
     #[test]
     fn the_note_names_the_operator_and_carries_the_sentinel_alone() {
         let n = build_turn_yield_instruction("Charlie");

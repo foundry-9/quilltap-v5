@@ -585,6 +585,12 @@ pub struct ProcessMessageResult {
     pub skipped: bool,
     /// Participant ID of the character who passed (set when `skipped` is true).
     pub skipped_participant_id: Option<String>,
+    /// Raised hand (P4.D335, v4 `2b5e8ee24`): the character yielded the floor to
+    /// the operator (a Host turn-yield record was posted, with or without a
+    /// reply of its own). The chain stops here so the operator speaks next; the
+    /// chat is not paused. Stream-internal — `ChatSendResultDto` projects
+    /// nothing new (R-17).
+    pub yielded: bool,
 }
 
 /// Everything [`finalize_message_response`] needs (v4's `FinalizeMessageResponseOptions`
@@ -657,6 +663,12 @@ pub struct FinalizeOptions {
     /// the reply trigger site — v4 builds the invoker for every entrance whose
     /// definition declares `llm`. `None` keeps the no-invoker fail-soft.
     pub consult: Option<std::sync::Arc<dyn crate::pascal::llm_consult::ConsultRunner>>,
+    /// The operator hard-stopped this turn (P4.D335 — v4's `isCurrentTurn
+    /// Stopped()`, read ONCE by the caller). A reply the operator stopped is
+    /// kept as it streamed: nothing here may rewrite it (answer confirmation)
+    /// or act on its half-finished words (dice, trigger phrases, Carina
+    /// markup).
+    pub turn_stopped: bool,
 }
 
 /// The answer-confirmation inputs the finalizer forwards to the runner (v4's
@@ -731,6 +743,7 @@ where
         confirmation: confirmation_inputs,
         draws,
         consult,
+        turn_stopped,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -835,10 +848,12 @@ where
         // A user-controlled/impersonated turn → explicit `confirmed: null`.
         confirmation_fields.confirmed = ConfirmationField::Null;
     } else if !is_silent_turn {
+        // P4.D335 (G1a): a stopped turn is never re-affirmed.
         let global_enabled = chat_settings
             .as_ref()
             .map(|s| s.answer_confirmation_global_enabled)
-            .unwrap_or(false);
+            .unwrap_or(false)
+            && !turn_stopped;
         let chat_override = chat.answer_confirmation_override.as_deref();
         // The project override is a host-side `repos.projects.findById` lookup (read
         // only when there is no chat override AND the chat has a project). It is
@@ -1243,7 +1258,8 @@ where
         .as_ref()
         .and_then(|s| s.auto_detect_rng)
         .unwrap_or(true);
-    if auto_detect_rng && !cleaned_response.is_empty() {
+    // P4.D335 (G1b): no dice from a stopped turn's half-finished words.
+    if auto_detect_rng && !cleaned_response.is_empty() && !turn_stopped {
         let rng_calls = crate::rng_patterns::detect_and_convert_rng_patterns(&cleaned_response);
         // Walk the response left-to-right so repeated notations anchor to successive
         // occurrences (v4 `rngAnchorSearchFrom`, a UTF-16 cursor).
@@ -1328,7 +1344,8 @@ where
     // set either — the turn's tool-execution context is already drained here.
     // A swipe never reaches this path (`regenerate_swipe` has its own spine).
     // `None` settings (no row) stay disabled, the `Pick`'s three-state.
-    {
+    // P4.D335 (G1c): no trigger phrases fire off a stopped turn.
+    if !turn_stopped {
         let trigger_settings =
             chat_settings
                 .as_ref()
@@ -1360,7 +1377,8 @@ where
     // Runs AFTER the assistant message is saved (answer ordered after it) and
     // BEFORE the done event. A PUBLIC answer's posted message surfaces live as a
     // `carinaAnswer` event (the seam posts + emits, mirroring v4's `onPosted`).
-    if !cleaned_response.is_empty() {
+    // P4.D335 (G1d): no Carina markup is acted on in a stopped turn.
+    if !cleaned_response.is_empty() && !turn_stopped {
         run_assistant_carina(
             &user_id,
             &chat_id,
@@ -1429,10 +1447,15 @@ where
         attachment_results: Some(streaming.attachment_results.clone().unwrap_or(Value::Null)),
         // v4 `toolsExecuted: toolMessages.length > 0` (message-finalizer.service.ts:464).
         tools_executed: !tool_messages.is_empty(),
+        // P4.D335: the stopped-empty frame is the orchestrator's, never this one.
+        stopped: None,
         // Never set on the finalizer path — the skip frame is emitted by the
         // orchestrator's `handle_turn_skip` before the finalizer ever runs.
         skipped: None,
         skipped_participant_id: None,
+        // P4.D335: a yield's Host note follows this frame; the frame itself
+        // carries no `yielded` (v4's finalizer never sets it).
+        yielded: None,
         turn: Some(DoneTurn {
             next_speaker_id: turn_info.next_speaker_id.clone(),
             reason: turn_info.reason.clone(),
@@ -1540,6 +1563,7 @@ where
         scene_tracking_character_ids,
         skipped: false,
         skipped_participant_id: None,
+        yielded: false,
     })
 }
 

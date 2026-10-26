@@ -122,6 +122,14 @@ impl StopSignal {
     }
 }
 
+/// Two handles are equal when they name the SAME open stream (the
+/// `StreamingState` derive compares by identity, never by state).
+impl PartialEq for TurnControlHandle {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
 impl TurnControlHandle {
     /// The stop signal the stream watchdog races its next chunk against (v4
     /// `currentTurnStopSignal()`).

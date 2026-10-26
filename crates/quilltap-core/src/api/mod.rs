@@ -118,9 +118,10 @@ pub mod help_docs;
 pub mod chat_delete;
 // === P4.D205 ===
 pub mod chat_informs;
-// === end P4.D205 ===
-// === end P4.80 ===
-// === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) ===
+pub mod chat_interrupt; // P4.D335
+                        // === end P4.D205 ===
+                        // === end P4.80 ===
+                        // === P4.D163: the character-subprompts verbs (v4 `2f4254b42`) ===
 pub mod subprompts;
 // === end P4.D163 ===
 // === P4.9K1: the per-character generator verbs (§B.2) ===

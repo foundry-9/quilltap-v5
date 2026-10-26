@@ -51,7 +51,7 @@ use crate::db::{api_keys, chats_read, connection_profiles};
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamMessage, ToolCallFunction, ToolCallPayload};
 use crate::model::stream::{StreamParams, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 use crate::provider_manifest::{Capability, Registry};
 use crate::services::carina_runner::writer::{
     post_carina_response, PostCarinaResponseParams, PostedCarinaMessage,
@@ -69,6 +69,7 @@ use crate::services::tool_build::{build_tools, BuildToolsInput};
 use crate::services::tool_execution::{
     create_tool_context, process_tool_calls, StatusContext, ToolRunner,
 };
+use crate::services::turn_control::TurnControlHandle;
 
 pub use crate::services::carina_runner::writer::build_carina_message;
 
@@ -181,6 +182,11 @@ where
     pub model_supports_native_tools: bool,
     /// The `Date.now()` (ms) seam for the memory-recall blend.
     pub now_ms: f64,
+    /// The operator's turn-control handle when this consultation runs inside a
+    /// registered Salon send (the `ask_carina` TOOL — P4.D335; v4's Carina
+    /// call inherits `currentTurnStopSignal()` from the funnel). `None` off the
+    /// Salon spine.
+    pub turn_control: Option<&'a TurnControlHandle>,
 }
 
 // ===========================================================================
@@ -652,6 +658,7 @@ where
         user_id: &user_id,
         chat_id: &chat_id,
         answerer_id: &answerer_id,
+        turn_control: deps.turn_control,
     };
 
     let (mut answer, mut raw_response) = run_stream(
@@ -1225,6 +1232,8 @@ struct StreamCtx<'a> {
     user_id: &'a str,
     chat_id: &'a str,
     answerer_id: &'a str,
+    /// The operator's stop (P4.D335), off [`CarinaQueryDeps::turn_control`].
+    turn_control: Option<&'a TurnControlHandle>,
 }
 
 /// Accumulate one streamed LLM call into `(answer, rawResponse)` — v4's
@@ -1281,7 +1290,10 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     // consumers).
     // This call's own start (v4's per-call `startTime` in the funnel).
     let started_at_ms = crate::clock::now_unix_ms();
-    let mut rx = watch_stream(
+    // P4.D335: the operator's stop for the Salon send this consultation runs
+    // inside (v4's funnel: `abortSignal: currentTurnStopSignal()`).
+    let stop = ctx.turn_control.map(|h| h.stop_signal());
+    let mut rx = watch_stream_with_stop(
         streaming
             .stream_message_keyed(ctx.provider, ctx.base_url, ctx.api_key, &params)
             .await,
@@ -1292,6 +1304,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
             Some(ctx.answerer_id),
             None,
         ),
+        stop.as_ref(),
     );
     let mut answer = String::new();
     let mut raw: Option<Value> = None;
@@ -1527,6 +1540,7 @@ mod tests {
             user_id,
             chat_id: "chat-c",
             answerer_id: "char-answerer",
+            turn_control: None,
         };
         let messages = vec![StreamMessage::user("What time is it?")];
         let tools = vec![json!({ "type": "function", "function": { "name": "search" } })];

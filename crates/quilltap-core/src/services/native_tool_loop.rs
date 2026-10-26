@@ -42,7 +42,7 @@ use crate::db::runtime::Db;
 use crate::db::{chats, DbError};
 use crate::finish_reason::extract_finish_reason;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 
 use super::agent_mode::{build_force_final_message, generate_iteration_summary, ResolvedAgentMode};
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
@@ -260,6 +260,18 @@ where
     let mut agent_mode_completed = false;
 
     while current_raw_response.is_some() && tool_iterations < effective_max_turns {
+        // The operator's hard stop (P4.D335, v4 `2b5e8ee24`): tools already run
+        // stay run, but no further call starts — not even one the model
+        // finished asking for.
+        if state.turn_control.as_ref().is_some_and(|h| h.is_stopped()) {
+            tracing::info!(
+                target: "quilltap::native_tool_loop",
+                chat_id = %chat_id,
+                tool_iterations = tool_iterations,
+                "Native tool loop halted: the operator stopped the turn"
+            );
+            break;
+        }
         let raw = current_raw_response.as_ref().unwrap();
         let tool_calls = detector.detect(raw, &provider_name);
         if tool_calls.is_empty() {
@@ -488,7 +500,9 @@ where
         // ids, `characterId: character.id` included.
         // v4 `apiKey: streaming.effectiveApiKey` (`:340`) — P4.133.
         let api_key = state.effective_api_key.clone();
-        let mut rx = watch_stream(
+        // P4.D335: the operator's stop (v4's funnel hands it to this call too).
+        let stop = state.turn_control.as_ref().map(|h| h.stop_signal());
+        let mut rx = watch_stream_with_stop(
             provider
                 .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, &params)
                 .await,
@@ -499,6 +513,7 @@ where
                 Some(&character_id),
                 Some(&watchdog_message_id),
             ),
+            stop.as_ref(),
         );
         loop {
             let Some(item) = rx.recv().await else { break };
@@ -630,7 +645,9 @@ where
             // `userId`, `messageId` and `chatId`.
             // v4 `apiKey: streaming.effectiveApiKey` (`:421`) — P4.133.
             let api_key = state.effective_api_key.clone();
-            let mut rx = watch_stream(
+            // P4.D335: the operator's stop, as above.
+            let stop = state.turn_control.as_ref().map(|h| h.stop_signal());
+            let mut rx = watch_stream_with_stop(
                 provider
                     .stream_message_keyed(&provider_name, base_url.as_deref(), &api_key, &params)
                     .await,
@@ -641,6 +658,7 @@ where
                     None,
                     Some(&watchdog_message_id),
                 ),
+                stop.as_ref(),
             );
             loop {
                 let Some(item) = rx.recv().await else { break };

@@ -22,9 +22,10 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::api::salon;
-use quilltap_core::api::types::Response;
+use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::test_support::global_capture;
 use quilltap_core::weighted_random::DrawSource;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -219,8 +220,78 @@ fn seed_turn_passes(db: &Db, rows: &[(&str, &str, &str)]) {
         .expect("seed write");
 }
 
+/// P4.D335: the interrupt cases — `(name, chat id, plant SQL)` for the stops,
+/// `(name, raised tri-state)` for the raises. The plants are the oracle's SQL
+/// verbatim.
+const SOLO: &str = "c1000000-0000-4000-8000-000000000001";
+const UNKNOWN: &str = "c1000000-0000-4000-8000-0000000000ff";
+
+/// A dispatch `Response` as v4's HTTP pair: success → `(200, data)`; an error
+/// → its status with v4's `{error}` body (+ `details` when set — v4's
+/// `validationError`).
+fn as_http(r: &Response) -> (u16, Value) {
+    match r {
+        Response::Error(e) => {
+            let status = match e.kind {
+                ErrorKind::NotFound => 404,
+                ErrorKind::BadRequest => 400,
+                _ => 500,
+            };
+            let mut body = json!({ "error": e.message });
+            if let Some(d) = &e.details {
+                body["details"] = (**d).clone();
+            }
+            (status, body)
+        }
+        other => (200, response_data(other)),
+    }
+}
+
+/// v4's `{level, message, fields}` in the capture rig's line shape (target
+/// dropped), keys snake_cased in v4's order.
+fn v4_log_line(l: &Value) -> String {
+    let mut s = format!(
+        "{} {}",
+        l["level"].as_str().unwrap().to_ascii_uppercase(),
+        l["message"].as_str().unwrap()
+    );
+    for (k, v) in l["fields"].as_object().unwrap() {
+        let key: String = k
+            .chars()
+            .flat_map(|c| {
+                if c.is_ascii_uppercase() {
+                    vec!['_', c.to_ascii_lowercase()]
+                } else {
+                    vec![c]
+                }
+            })
+            .collect();
+        let v = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        s.push_str(&format!(" {key}={v}"));
+    }
+    s
+}
+
+fn v5_log_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.contains("[Interrupt]") || l.contains("[TurnControl]"))
+        .map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap_or_default();
+            let _target = parts.next();
+            format!("{level} {}", parts.next().unwrap_or_default())
+        })
+        .collect()
+}
+
 #[test]
 fn salon_skip_matches_oracle() {
+    // P4.D335: the interrupt cases capture through the process-global rig.
+    global_capture::install();
     let Some(oracle_path) = env_or_skip("QT_ORACLE_SALON_SKIP") else {
         return;
     };
@@ -375,6 +446,162 @@ fn salon_skip_matches_oracle() {
         }
         eprintln!("[skip_refusal] done.");
     }
+
+    // --- P4.D335: the interrupt actions (no stream open in this process) ---
+    let open_copy = |case: &str| -> (tempfile::TempDir, Db) {
+        let scratch = tempfile::Builder::new()
+            .prefix(&format!("qt-salon-interrupt-{case}-"))
+            .tempdir()
+            .expect("tempdir");
+        let main = scratch.path().join("main.db");
+        let mount = scratch.path().join("mount.db");
+        std::fs::copy(fixtures_dir().join("salon-main.db"), &main).unwrap();
+        std::fs::copy(fixtures_dir().join("salon-mount.db"), &mount).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .expect("open db");
+        db.write_blocking(|w| {
+            quilltap_core::test_support::ensure_p4d171_columns(w.main().connection());
+            Ok(())
+        })
+        .expect("heal the fixture copy");
+        (scratch, db)
+    };
+    let stops: &[(&str, &str, Option<String>)] = &[
+        ("stop_no_stream_group", GROUP, None),
+        (
+            "stop_no_stream_already_paused",
+            GROUP,
+            Some(format!(r#"UPDATE chats SET "isPaused" = 1 WHERE id = '{GROUP}'"#)),
+        ),
+        (
+            "stop_no_stream_single",
+            SOLO,
+            Some(format!(
+                "UPDATE chats SET participants = json_set(participants, '$[0].status', 'removed') WHERE id = '{SOLO}'"
+            )),
+        ),
+        ("stop_no_stream_solo_pair", SOLO, None),
+        (
+            "stop_no_stream_autonomous",
+            GROUP,
+            Some(format!(r#"UPDATE chats SET "chatType" = 'autonomous' WHERE id = '{GROUP}'"#)),
+        ),
+        ("stop_unknown_chat", UNKNOWN, None),
+    ];
+    // `None` = the key absent; `Some(None)` = an explicit `null`.
+    let raises: Vec<(&str, &str, Option<Option<Value>>)> = vec![
+        ("raise_absent_body", GROUP, None),
+        ("raise_true", GROUP, Some(Some(json!(true)))),
+        ("raise_false", GROUP, Some(Some(json!(false)))),
+        ("raise_null", GROUP, Some(None)),
+        ("raise_string", GROUP, Some(Some(json!("true")))),
+        ("raise_number", GROUP, Some(Some(json!(1)))),
+        ("raise_object", GROUP, Some(Some(json!({})))),
+        // Extra keys are stripped (no `.strict()`): the dispatch variant has
+        // no slot for them, so `raised: true` is the whole request.
+        ("raise_extra_keys", GROUP, Some(Some(json!(true)))),
+        ("raise_unknown_chat", UNKNOWN, Some(None)),
+    ];
+    let mut interrupt_rows = 0usize;
+    let mut compare =
+        |case: &str, got: (u16, Value), lines: Vec<String>, chats: Value, msgs: Value| {
+            let want = oracle
+                .get(case)
+                .unwrap_or_else(|| panic!("{case}: no oracle row — regenerate"));
+            interrupt_rows += 1;
+            if u64::from(got.0) != want["status"].as_u64().unwrap() {
+                eprintln!("[{case}] status v5 {} != v4 {}", got.0, want["status"]);
+                failed.push(format!("{case}/status"));
+            }
+            if serde_json::to_string(&got.1).unwrap()
+                != serde_json::to_string(&want["body"]).unwrap()
+            {
+                eprintln!("[{case}] body v5 {} != v4 {}", got.1, want["body"]);
+                failed.push(format!("{case}/body"));
+            }
+            let want_logs: Vec<String> = want["logs"]
+                .as_array()
+                .expect("logs")
+                .iter()
+                .map(v4_log_line)
+                .collect();
+            let got_logs = v5_log_lines(&lines);
+            if got_logs != want_logs {
+                eprintln!("[{case}] logs\n  v5 {got_logs:#?}\n  v4 {want_logs:#?}");
+                failed.push(format!("{case}/logs"));
+            }
+            for (section, g, w) in [
+                (
+                    "chats",
+                    norm_chats(&chats),
+                    norm_chats(&want["tables"]["chats"]),
+                ),
+                (
+                    "chat_messages",
+                    norm_msgs(&msgs),
+                    norm_msgs(&want["tables"]["chatMessages"]),
+                ),
+            ] {
+                let (g, w) = (norm(&g), norm(&w));
+                if g != w {
+                    eprintln!(
+                        "[{case}] section `{section}` MISMATCH:\n{}",
+                        first_diff(&g, &w)
+                    );
+                    failed.push(format!("{case}/{section}"));
+                }
+            }
+        };
+    let dump = |db: &Db| {
+        (
+            db.read_main(|conn| dump_table_json_conn(conn, "chats", "id"))
+                .unwrap(),
+            db.read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
+                .unwrap(),
+        )
+    };
+    for (case, chat_id, plant) in stops {
+        let (_scratch, db) = open_copy(case);
+        if let Some(sql) = plant {
+            let sql = sql.clone();
+            db.write_blocking(move |w| {
+                w.main().connection().execute_batch(&sql)?;
+                Ok(())
+            })
+            .expect("plant");
+        }
+        let (resp, lines) = rt.block_on(global_capture::capture_async(
+            quilltap_core::api::chat_interrupt::chat_stop_turn(&db, chat_id),
+        ));
+        let (chats, msgs) = dump(&db);
+        compare(case, as_http(&resp), lines, chats, msgs);
+    }
+    for (case, chat_id, raised) in &raises {
+        let (_scratch, db) = open_copy(case);
+        let (resp, lines) = rt.block_on(global_capture::capture_async(
+            quilltap_core::api::chat_interrupt::chat_raise_hand(&db, chat_id, raised),
+        ));
+        let (chats, msgs) = dump(&db);
+        compare(case, as_http(&resp), lines, chats, msgs);
+    }
+    // `raise_unparsable_body` is the REST edge's (a non-JSON body never reaches
+    // a dispatch `Request`): `quilltap-web`'s `chat_interrupt_rest_routes`.
+    assert!(
+        oracle.contains_key("raise_unparsable_body"),
+        "the REST-only row must still be in the oracle"
+    );
+    assert_eq!(
+        interrupt_rows, 15,
+        "every dispatchable interrupt row compared"
+    );
+    eprintln!("[interrupts] {interrupt_rows} rows done.");
 
     assert!(failed.is_empty(), "salon-skip FAILED: {failed:?}");
 }

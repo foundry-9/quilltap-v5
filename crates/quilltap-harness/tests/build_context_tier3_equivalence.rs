@@ -137,6 +137,12 @@ struct SpecOp {
     /// progressions section shares.
     #[serde(rename = "turnSkip", default)]
     turn_skip: Option<SpecTurnSkip>,
+    /// P4.D335 (v4 `2b5e8ee24`): the raised-hand Turn note.
+    #[serde(rename = "offerYield", default)]
+    offer_yield: bool,
+    /// P4.D335: overrides the operator persona's name (`""` → `The User`).
+    #[serde(rename = "userCharacterName", default)]
+    user_character_name: Option<String>,
     #[serde(default)]
     existing_messages: Vec<SpecMsg>,
     #[serde(default)]
@@ -589,6 +595,9 @@ async fn build_context_tier3_matches_oracle() {
     // the F6 `Marking memories accessed` stamp), per op.
     let mut oracle_delivery_logs: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
+    // P4.D335: v4's `[TurnYield]` note DEBUG, per op.
+    let mut oracle_yield_logs: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -618,6 +627,9 @@ async fn build_context_tier3_matches_oracle() {
             Some("deliveryLog") => {
                 oracle_delivery_logs
                     .insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
+            }
+            Some("yieldLog") => {
+                oracle_yield_logs.insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             Some("canned") => oracle_canned.push(serde_json::from_value(v).expect("parse canned")),
             other => panic!("unknown oracle row kind {other:?}"),
@@ -699,6 +711,7 @@ async fn build_context_tier3_matches_oracle() {
     };
 
     let mut inform_lines_seen = 0usize;
+    let mut yield_lines_seen = 0usize;
     let mut delivery_lines_seen: std::collections::HashMap<&'static str, usize> =
         std::collections::HashMap::new();
     for (op, (oracle_op, oracle_result)) in spec.ops.iter().zip(&oracle_results) {
@@ -1011,9 +1024,13 @@ async fn build_context_tier3_matches_oracle() {
             user_id: spec.user_id.clone(),
             character,
             user_character: Some(UserCharacter {
-                name: "Charlie".to_string(),
+                name: op
+                    .user_character_name
+                    .clone()
+                    .unwrap_or_else(|| "Charlie".to_string()),
                 description: "The operator.".to_string(),
             }),
+            offer_yield: op.offer_yield,
             chat: ContextChat {
                 id: spec.chat.id.clone(),
                 compaction_generation: spec.chat.compaction_generation,
@@ -1273,6 +1290,10 @@ async fn build_context_tier3_matches_oracle() {
         for (msg, n) in assert_delivery_lines(&op.name, &lines, want_delivery_log) {
             *delivery_lines_seen.entry(msg).or_default() += n;
         }
+        let want_yield_log = oracle_yield_logs
+            .get(&op.name)
+            .unwrap_or_else(|| panic!("{}: no 'yieldLog' oracle row — regenerate", op.name));
+        yield_lines_seen += assert_yield_note_lines(&op.name, &lines, want_yield_log);
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
         }
@@ -1439,6 +1460,11 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|e| panic!("{}: unplant failed: {e}", op.name));
         }
     }
+    // P4.D335: the yield-note comparand is non-vacuous (four `offerYield` ops).
+    assert_eq!(
+        yield_lines_seen, 4,
+        "the four `offerYield` ops must each log v4's `[TurnYield]` DEBUG"
+    );
     // P4.D268: each delivery comparand is non-vacuous.
     for msg in DELIVERY_MESSAGES {
         let n = delivery_lines_seen.get(msg).copied().unwrap_or(0);
@@ -1464,6 +1490,36 @@ async fn build_context_tier3_matches_oracle() {
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+}
+
+/// P4.D335 (v4 `2b5e8ee24`, `context-manager.ts:2206-2214`): the `[TurnYield]
+/// Offering the yield note to the next speaker` DEBUG — level, target, message
+/// and v4's bag (`chatId`, `participantId` — the latter dropped when there is no
+/// responding participant). An op where v4 logged nothing is the silence leg.
+/// Returns how many lines matched.
+fn assert_yield_note_lines(op: &str, lines: &[String], want: &Value) -> usize {
+    const MSG: &str = "[TurnYield] Offering the yield note to the next speaker";
+    let got: Vec<&String> = lines.iter().filter(|l| l.contains("[TurnYield]")).collect();
+    let want = want.as_array().expect("yieldLog lines array");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "{op}: `[TurnYield]` lines (v5 {got:#?}, v4 {want:#?})"
+    );
+    for (g, w) in got.iter().zip(want) {
+        assert_eq!(w["message"], MSG, "{op}");
+        let mut expect = format!("DEBUG quilltap::turn_yield {MSG}");
+        for (k, v) in w["fields"].as_object().expect("fields object") {
+            let key = match k.as_str() {
+                "chatId" => "chat_id",
+                "participantId" => "participant_id",
+                other => panic!("{op}: unexpected v4 field {other}"),
+            };
+            expect.push_str(&format!(" {key}={}", v.as_str().expect("string field")));
+        }
+        assert_eq!(g.as_str(), expect, "{op}");
+    }
+    want.len()
 }
 
 /// P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:2711-2718`): the `[Inform]

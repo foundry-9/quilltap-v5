@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(interrupts): stop and raise-a-hand on the Salon spine, the two actions, the frames (P4.D335 unit 2)
+
+_Versions: core 0.0.1325, host 0.0.212, web 0.0.244._
+
+The server half of v4's raise-a-hand / Stop (`2b5e8ee24`, pinned at `322a5488e`). `run_send` now registers the whole send with the turn-control registry and threads the handle through `OrchestratorDeps.turn_control` (last field; `None` for the enclave and the canned differentials), onto `StreamingState`, `RecoveryContext`, `CarinaQueryDeps` and `TypedAskCarina`. The seven Salon-side stream wraps (primary, failover, recovery, both tool loops, Carina) use `watch_stream_with_stop`; the five others stay plain, and `stream_watchdog_wrap_census` gains a column for it. Stop guards: the finalizer skips answer confirmation, dice auto-detect, reply triggers and Carina markup on a stopped turn; both tool loops halt at their heads; empty-response recovery is skipped before the route-trail record; the orchestrator drops the turn's reasoning, keeps the streamed prose, emits `done {stopped: true}` with no recovery when nothing streamed, and the chain closes with `chainComplete {reason: "stopped", paused: true}`. Raised hand: the first LLM-voiced, non-held turn after a raise consumes the hand, gets v4's yield note appended last in the trailing sections, emits `handAnswered`, and on `[YIELD]` posts the Host `turn-yield` message, marks owed mail `turn-yield`, keeps any words as the reply, leaves the rotation alone and closes the chain with `reason: "yielded"`. New `Request::ChatStopTurn` / `ChatRaiseHand` (`raised` is a tri-state: `null` is v4's Zod 400) with `Response::StopTurn` / `RaiseHand` in `api/chat_interrupt.rs`, and `stop-turn` / `raise-hand` in the chat action list after `turn`. Differentials: `salon_skip_equivalence` drives v4's real route for 15 interrupt rows (bodies, statuses, the `isPaused` write, the `[Interrupt]` / `[TurnControl]` lines); `build_context_tier3` gains four yield-note ops; `post_office_host` gains six Host-text rows. The `dispatch_wrong_type_census` route-identifier count moves 487 → 489; a `systemKind` reader census pins `turn-yield` as a generic Host message.
+
 #### 2026-10-26 — feat(interrupts): the turn-control registry, the `[YIELD]` detector and the watchdog's stop race (P4.D335 unit 1)
 
 _Versions: core 0.0.1324._

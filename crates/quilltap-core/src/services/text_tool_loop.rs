@@ -62,7 +62,7 @@ use serde_json::{Map, Value};
 
 use crate::db::runtime::Db;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::llm_logging::LogContext;
@@ -402,6 +402,18 @@ where
     let mut iterations: i64 = 0;
 
     while iterations < MAX_TEXT_TOOL_ITERATIONS {
+        // The operator's hard stop (P4.D335, v4 `2b5e8ee24`): a tool block that
+        // streamed before the stop is left unexecuted, and no continuation is
+        // asked for.
+        if state.turn_control.as_ref().is_some_and(|h| h.is_stopped()) {
+            tracing::info!(
+                target: "quilltap::text_tool_loop",
+                chat_id = %chat_id,
+                iterations = iterations,
+                "Text tool loop halted: the operator stopped the turn"
+            );
+            break;
+        }
         let latest = raw_responses
             .last()
             .expect("raw_responses non-empty")
@@ -713,7 +725,9 @@ where
     // v4 `apiKey: streaming.effectiveApiKey` (`text-tool-loop.service.ts:390`)
     // — P4.133.
     let api_key = state.effective_api_key.clone();
-    let mut rx = watch_stream(
+    // P4.D335: the operator's stop (v4's funnel hands it to this call too).
+    let stop = state.turn_control.as_ref().map(|h| h.stop_signal());
+    let mut rx = watch_stream_with_stop(
         provider
             .stream_message_keyed(provider_name, base_url, &api_key, &params)
             .await,
@@ -724,6 +738,7 @@ where
             None,
             Some(watchdog.message_id),
         ),
+        stop.as_ref(),
     );
     while let Some(item) = rx.recv().await {
         let chunk = match item {

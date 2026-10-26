@@ -857,6 +857,65 @@ pub async fn post_host_turn_pass_announcement(
 }
 
 // ---------------------------------------------------------------------------
+// Turn-yield announcements (the operator's raised hand — P4.D335, v4
+// `2b5e8ee24`).
+//
+// When the operator raises a hand and the next character yields the floor
+// rather than carrying on, the Host says so, and the operator speaks next. As
+// with the turn-pass, the persona content never contains the `[YIELD]`
+// sentinel, so the record cannot teach it. `systemKind` is `turn-yield`
+// (`yield_signal::TURN_YIELD_SYSTEM_KIND` — v4's writer-local
+// `HOST_KIND_TURN_YIELD` is the same bytes); `hostEvent.participantId` records
+// who yielded.
+// ---------------------------------------------------------------------------
+
+/// v4 `buildTurnYieldContent`.
+pub fn build_turn_yield_content(character_name: &str, operator_name: &str) -> String {
+    format!(
+        "The Host, spying a hand raised at the back of the room, catches {character_name}'s eye \u{2014} and {character_name} yields the floor to {operator_name} with a gracious little bow. Pray, go on."
+    )
+}
+
+/// v4 `buildTurnYieldOpaqueContent`.
+pub fn build_turn_yield_opaque_content(character_name: &str, operator_name: &str) -> String {
+    format!(
+        "{operator_name} raised a hand to interject, and {character_name} yielded the floor to them. {operator_name} speaks next."
+    )
+}
+
+/// v4 `HostTurnYieldAnnouncement`.
+#[derive(Clone, Debug)]
+pub struct HostTurnYieldAnnouncement {
+    pub chat_id: String,
+    pub character_name: String,
+    /// Participant ID of the character who yielded.
+    pub participant_id: String,
+    /// The name the room knows the operator by.
+    pub operator_name: String,
+}
+
+/// v4 `postHostTurnYieldAnnouncement`. Errors are swallowed (the existing
+/// Host-notification contract): a yield must never fail the turn. Returns the
+/// persisted `MessageEvent` so the caller can surface it live over SSE.
+pub async fn post_host_turn_yield_announcement(
+    db: &Db,
+    params: HostTurnYieldAnnouncement,
+) -> Option<PostedHostMessage> {
+    let content = build_turn_yield_content(&params.character_name, &params.operator_name);
+    let opaque_content =
+        build_turn_yield_opaque_content(&params.character_name, &params.operator_name);
+    post_host_message(
+        db,
+        &params.chat_id,
+        content,
+        Some(opaque_content),
+        crate::yield_signal::TURN_YIELD_SYSTEM_KIND,
+        Some(json!({ "participantId": params.participant_id })),
+    )
+    .await
+}
+
+// ---------------------------------------------------------------------------
 // Nudge announcements ("invited to speak", v4 6a8a77aa).
 //
 // When the human summons a specific character to take the floor (the Nudge

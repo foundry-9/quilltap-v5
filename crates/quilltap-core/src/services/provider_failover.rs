@@ -44,7 +44,7 @@ use crate::db::runtime::Db;
 use crate::model::stream::{
     StreamCacheUsage, StreamError, StreamParams, StreamUsage, StreamingCompletionProvider,
 };
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::fallback_repos::FallbackChainRepos;
@@ -328,6 +328,19 @@ where
     });
 
     let mut flags = EmptyResponseRecoveryFlags::default();
+
+    // The operator stopped the turn (P4.D335, v4 `2b5e8ee24`): an empty reply is
+    // what they asked for, not a failure to recover from. Never re-ask the model
+    // behind their back. BEFORE the non-empty return, so the route-trail record
+    // below never runs on a stop.
+    if state.turn_control.as_ref().is_some_and(|h| h.is_stopped()) {
+        tracing::info!(
+            target: "quilltap::failover",
+            chat_id = %chat_id,
+            "Skipping empty-response recovery: the operator stopped the turn"
+        );
+        return flags;
+    }
 
     // Not empty (or a tool loop ran) → nothing to recover.
     if !crate::jsstr::js_trim(&state.full_response).is_empty() || tool_messages_length > 0 {
@@ -1140,7 +1153,10 @@ where
     // v4's `restreamInto` DOES pass `characterId: opts.character.id` to the
     // wrapper (`provider-failover.service.ts:492`) — it is only the CHAT_MESSAGE
     // log row that carries none — so the warn names the character here.
-    let mut rx = watch_stream(
+    // P4.D335: every failover / understudy leg inherits the operator's stop
+    // (v4's funnel).
+    let stop = state.turn_control.as_ref().map(|h| h.stop_signal());
+    let mut rx = watch_stream_with_stop(
         provider
             .stream_message_keyed(
                 &profile.provider,
@@ -1161,6 +1177,7 @@ where
             Some(character_id),
             log.map(|l| l.message_id),
         ),
+        stop.as_ref(),
     );
     while let Some(item) = rx.recv().await {
         let chunk = item?;

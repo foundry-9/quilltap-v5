@@ -52,6 +52,9 @@ import {
   buildTurnPassOpaqueContent,
   buildNudgeContent,
   buildNudgeOpaqueContent,
+  // P4.D335 (v4 `2b5e8ee24`): the raised hand's turn-yield pair.
+  buildTurnYieldContent,
+  buildTurnYieldOpaqueContent,
 } from '@/lib/services/host-notifications/writer';
 
 // ---- add (description / empty branches; no vault mount → no DB) ----
@@ -122,6 +125,14 @@ const turnPassCases: Array<{ id: string; name: string }> = [
   { id: 'unicode', name: 'Zoë' },
 ];
 
+// P4.D335: turn-yield (characterName, operatorName) pairs — incl. a
+// possessive-sensitive name (`James's`) and Unicode on both sides.
+const turnYieldCases: Array<{ id: string; name: string; operator: string }> = [
+  { id: 'plain', name: 'Ada', operator: 'Charlie' },
+  { id: 'possessive', name: 'James', operator: 'The User' },
+  { id: 'unicode', name: 'Zoë', operator: 'Ōkami' },
+];
+
 // Nudge ("invited to speak", 6a8a77aa) builder cases.
 const nudgeCases: Array<{ id: string; name: string }> = [
   { id: 'plain', name: 'Ada' },
@@ -176,6 +187,10 @@ async function main(): Promise<void> {
     emit('turn_pass_content', c.id, buildTurnPassContent(c.name));
     emit('user_turn_pass_content', c.id, buildUserTurnPassContent(c.name));
     emit('turn_pass_opaque', c.id, buildTurnPassOpaqueContent(c.name));
+  }
+  for (const c of turnYieldCases) {
+    emit('turn_yield_content', c.id, buildTurnYieldContent(c.name, c.operator));
+    emit('turn_yield_opaque', c.id, buildTurnYieldOpaqueContent(c.name, c.operator));
   }
   for (const c of nudgeCases) {
     emit('nudge_content', c.id, buildNudgeContent(c.name));

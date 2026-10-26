@@ -339,6 +339,9 @@ fn an_empty_roster_still_offers_the_editor() {
         character_mount_point_id: Some(meta.vault_a.clone()),
         project_id: None,
         metadata: None,
+        // P4.D329: not given — the roster reads the bag lazily (v4 `ctx.inventory`
+        // absent).
+        inventory: None,
     };
     let built = build_tools(&db, USER, &base_input(Some(ctx))).unwrap();
     let names: Vec<&str> = built.tools.iter().filter_map(|t| tool_name(t)).collect();
@@ -364,6 +367,9 @@ fn an_empty_roster_still_offers_the_editor() {
         character_mount_point_id: Some(meta.vault_a.clone()),
         project_id: None,
         metadata: None,
+        // P4.D329: not given — the roster reads the bag lazily (v4 `ctx.inventory`
+        // absent).
+        inventory: None,
     };
     let full = build_tools(&db_full, USER, &base_input(Some(ctx_a))).unwrap();
     let full_names: Vec<&str> = full.tools.iter().filter_map(|t| tool_name(t)).collect();

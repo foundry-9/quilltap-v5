@@ -35,6 +35,15 @@
 //!
 //! The count census treats both like any other consumer.
 //!
+//! **The operator's stop (P4.D335, v4 `2b5e8ee24`).** v4 hands the stop to its
+//! ONE funnel (`streamMessage`'s `abortSignal: currentTurnStopSignal()`), so
+//! every Salon-side call inherits it and the greeting / help chat / Brahma /
+//! swipe calls get `undefined`. v5's twin is a column: the SEVEN Salon-side
+//! wrap sites (`STOP_SITES`) call `watch_stream_with_stop(…)`, the five others
+//! keep `watch_stream(…)`. As with the wrap itself, a canned differential
+//! pre-pushes and closes its channel, so only this census sees which sites
+//! carry the stop.
+//!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test stream_watchdog_wrap_census
 
@@ -43,11 +52,14 @@ mod source_census;
 use source_census::{core_src_root, rust_sources};
 
 /// `(path under `crates/quilltap-core/src`, production `.stream_message(`
-/// calls, production `watch_stream(` calls, why)`.
-const CENSUS: &[(&str, usize, usize, &str)] = &[
+/// calls, production `watch_stream(` calls, production
+/// `watch_stream_with_stop(` calls — the "carries the stop" column, P4.D335 —
+/// why)`.
+const CENSUS: &[(&str, usize, usize, usize, &str)] = &[
     (
         "model/stream.rs",
         3,
+        0,
         0,
         "the seam itself, not a consumer: the blanket `impl \
          StreamingCompletionProvider for Arc<T>`'s two forwards (the unkeyed \
@@ -57,6 +69,7 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
     (
         "services/primary_stream.rs",
         1,
+        0,
         1,
         "`consume_stream`, v4's primary-stream.service.ts:197 AND its \
          tool-unsupported retry at :261 (one v5 function, called twice)",
@@ -64,30 +77,35 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
     (
         "services/provider_failover.rs",
         1,
+        0,
         1,
         "`restream_into` — v4 provider-failover.service.ts:482",
     ),
     (
         "services/recovery.rs",
         1,
+        0,
         1,
         "`drain_recovery_stream` — v4 recovery.service.ts:303",
     ),
     (
         "services/native_tool_loop.rs",
         2,
+        0,
         2,
         "the tool re-stream (v4 :340) and the force-final re-stream (v4 :421)",
     ),
     (
         "services/text_tool_loop.rs",
         1,
+        0,
         1,
         "`stream_continuation` — v4 text-tool-loop.service.ts:390",
     ),
     (
         "services/carina_query.rs",
         1,
+        0,
         1,
         "`run_stream` — v4 carina.service.ts:676",
     ),
@@ -95,6 +113,7 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "services/help_chat/orchestrator.rs",
         1,
         1,
+        0,
         "`stream_turn` — v4 help-chat/orchestrator.service.ts:361",
     ),
     (
@@ -105,6 +124,7 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "services/agent_loop/one_shot_loop.rs",
         1,
         1,
+        0,
         "the one-shot loop's `run_stream` — v4 agent-loop/one-shot-loop.ts:219 \
          (the Brahma one-shot's stream until `d1c06cd9d`; the Scenario Builder's too)",
     ),
@@ -112,12 +132,14 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "services/brahma_console/orchestrator.rs",
         1,
         1,
+        0,
         "`stream_turn` — v4 brahma-console/orchestrator.service.ts:343",
     ),
     (
         "services/initial_greeting.rs",
         1,
         1,
+        0,
         "`generate_greeting_message` — v4 lib/chat/initial-greeting.ts:174, the \
          one consumer OUTSIDE v4's funnel, on the greeting's own 90 s/60 s \
          budgets (P4.D190; the count moved from zero at the round's unification)",
@@ -126,6 +148,7 @@ const CENSUS: &[(&str, usize, usize, &str)] = &[
         "services/regenerate_swipe.rs",
         1,
         1,
+        0,
         "`regenerate_message_as_swipe` — v4 regenerate-swipe.service.ts:213, the \
          TWELFTH site and the SECOND consumer outside v4's funnel (P4.D207, v4 \
          `f564b0de3`): the swipe's one generation stopped being a blocking \
@@ -140,6 +163,23 @@ const CALL: &str = ".stream_message(";
 /// [`CALL`] as one population (`.stream_message(` never matches inside it).
 const KEYED_CALL: &str = ".stream_message_keyed(";
 const WRAP: &str = "watch_stream(";
+/// P4.D335: the wrap that also races the operator's stop (`watch_stream(` never
+/// matches inside it — the `_with_stop` suffix sits before the paren).
+const STOP_WRAP: &str = "watch_stream_with_stop(";
+
+/// P4.D335 (v4 `2b5e8ee24`): the files whose wraps carry the operator's stop —
+/// the SEVEN Salon-side wrap sites (v4's ONE `abortSignal:
+/// currentTurnStopSignal()` in the `streamMessage` funnel). The five other
+/// consumers (greeting, help chat, the one-shot loop, Brahma, the swipe) must
+/// NOT: v4's `currentTurnStopSignal()` is `undefined` there.
+const STOP_SITES: &[&str] = &[
+    "services/primary_stream.rs",
+    "services/provider_failover.rs",
+    "services/recovery.rs",
+    "services/native_tool_loop.rs",
+    "services/text_tool_loop.rs",
+    "services/carina_query.rs",
+];
 
 /// The file with every `#[cfg(test)]` item removed by brace balance.
 ///
@@ -217,6 +257,7 @@ fn every_production_stream_message_call_wears_the_watchdog() {
             continue; // test-module-only, e.g. model/streaming_provider.rs
         }
         let wraps = zone.matches(WRAP).count();
+        let stop_wraps = zone.matches(STOP_WRAP).count();
         let rel = path
             .strip_prefix(&root)
             .expect("under quilltap-core/src")
@@ -232,7 +273,7 @@ fn every_production_stream_message_call_wears_the_watchdog() {
                  then goes quiet holds that loop open forever (bug 141) — or be \
                  justified here."
             )),
-            Some((_, want_calls, want_wraps, why)) => {
+            Some((_, want_calls, want_wraps, want_stop_wraps, why)) => {
                 if calls != *want_calls {
                     failures.push(format!(
                         "{rel}: {calls} production `{CALL}` call(s), census says \
@@ -247,11 +288,25 @@ fn every_production_stream_message_call_wears_the_watchdog() {
                          file opens must be watched."
                     ));
                 }
+                if stop_wraps != *want_stop_wraps {
+                    failures.push(format!(
+                        "{rel}: {stop_wraps} production `{STOP_WRAP}` call(s), census \
+                         says {want_stop_wraps} ({why}). P4.D335: the seven Salon-side \
+                         wraps carry the operator's stop; the five others must not."
+                    ));
+                }
+                if STOP_SITES.contains(&rel.as_str()) != (*want_stop_wraps > 0) {
+                    failures.push(format!(
+                        "{rel}: in STOP_SITES = {}, census stop wraps = {want_stop_wraps} \
+                         — the two lists disagree",
+                        STOP_SITES.contains(&rel.as_str())
+                    ));
+                }
             }
         }
     }
 
-    for (rel, want_calls, _, why) in CENSUS {
+    for (rel, want_calls, _, _, why) in CENSUS {
         if !seen.iter().any(|p| p == rel) {
             failures.push(format!(
                 "{rel}: census expects {want_calls} production `{CALL}` call(s), \
@@ -265,6 +320,11 @@ fn every_production_stream_message_call_wears_the_watchdog() {
         failures.is_empty(),
         "the stall-watchdog wrap census does not hold:\n  {}",
         failures.join("\n  ")
+    );
+    let stop_total: usize = CENSUS.iter().map(|row| row.3).sum();
+    assert_eq!(
+        stop_total, 7,
+        "P4.D335: exactly the SEVEN Salon-side wrap sites carry the operator's stop"
     );
     eprintln!(
         "OK stream-watchdog wrap census: {} production consumer file(s)",
@@ -305,7 +365,9 @@ const OWN_CONTEXT_SITES: &[(&str, &str, bool)] = &[
 fn every_salon_side_wrap_uses_the_default_budgets() {
     let root = core_src_root();
     let mut failures: Vec<String> = Vec::new();
-    for (rel, _, want_wraps, _) in CENSUS {
+    for (rel, _, plain_wraps, stop_wraps, _) in CENSUS {
+        // Both wrap spellings take the same budgets and context.
+        let want_wraps = &(plain_wraps + stop_wraps);
         if *want_wraps == 0 {
             continue;
         }

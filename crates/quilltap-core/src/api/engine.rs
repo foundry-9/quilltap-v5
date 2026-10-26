@@ -1097,6 +1097,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D335 (v4 `2b5e8ee24`) ===
+            Request::ChatStopTurn { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_interrupt::chat_stop_turn(&db, &chat_id).await,
+                Err(r) => r,
+            },
+            Request::ChatRaiseHand { chat_id, raised } => match self.ready_db() {
+                Ok(db) => super::chat_interrupt::chat_raise_hand(&db, &chat_id, &raised).await,
+                Err(r) => r,
+            },
+            // === end P4.D335 ===
             // P4.D267 (C1 §12): the arm honours the four R7 growth fields —
             // P4.D265's present-field refusal gate is REPLACED, not just its
             // refusal (the route validates the raw values, v4's bytes).

@@ -177,6 +177,13 @@ pub struct DonePayload {
     /// `false` on the recovery paths (no tool loop ran); on the finalizer path,
     /// `toolMessages.length > 0`.
     pub tools_executed: bool,
+    /// `true` on the stopped-empty done frame (P4.D335 — v4 `2b5e8ee24`'s
+    /// `stopped: true`: the operator hard-stopped the turn before any prose
+    /// streamed; like `skipped`, the client resets its buffer without a bubble
+    /// or a toast), else ABSENT. Declared right after `tools_executed` so the
+    /// frame reads `{ …, toolsExecuted, stopped, provider, modelName }`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<bool>,
     /// `true` on the "nothing to add" skip done frame (v4 `handleTurnSkip`'s
     /// `skipped: true`), else ABSENT. Declared right after `tools_executed` so the
     /// skip frame matches v4's `{ …, toolsExecuted, skipped, skippedParticipantId,
@@ -187,6 +194,13 @@ pub struct DonePayload {
     /// `skipped`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped_participant_id: Option<String>,
+    /// Raised hand (P4.D335 — v4 `2b5e8ee24`): this character yielded the floor.
+    /// Rides with `skipped` on a bare yield (no bubble to append — the Host
+    /// announcement is the note), else ABSENT. Declared after
+    /// `skipped_participant_id` so the frame reads `{ …, skipped,
+    /// skippedParticipantId, yielded, provider, modelName }`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yielded: Option<bool>,
     /// The next-speaker info (finalizer only). Absent on recovery.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub turn: Option<DoneTurn>,
@@ -302,6 +316,17 @@ pub enum ChatEvent {
         turn_complete: TrueBool,
         #[serde(flatten)]
         payload: TurnCompletePayload,
+    },
+    /// `{handAnswered: true, participantId, characterName, yielded}` (P4.D335 —
+    /// v4 `encodeHandAnsweredEvent`): the answer to the operator's raised hand —
+    /// the asked character either yielded the floor or carried on. Either way
+    /// the hand is down; the Salon lowers its button and, on a decline, says
+    /// who carried on. Emitted before any save.
+    HandAnswered {
+        #[serde(rename = "handAnswered")]
+        hand_answered: TrueBool,
+        #[serde(flatten)]
+        payload: HandAnsweredPayload,
     },
     /// `{chainComplete: true, reason, nextSpeakerId, chainDepth}` (v4
     /// `encodeChainCompleteEvent`). Emitted by the chain driver when the chain ends.
@@ -453,6 +478,15 @@ pub struct TurnStartPayload {
     pub chain_depth: i64,
 }
 
+/// The `handAnswered` frame payload (v4 `encodeHandAnsweredEvent`'s `data`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HandAnsweredPayload {
+    pub participant_id: String,
+    pub character_name: String,
+    pub yielded: bool,
+}
+
 /// The `turnComplete` frame payload (v4 `encodeTurnCompleteEvent`'s `data`).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -476,7 +510,9 @@ pub struct TurnCompletePayload {
 #[serde(rename_all = "camelCase")]
 pub struct ChainCompletePayload {
     /// The v4 chain-stop reason string (`user_turn` / `paused` / `max_depth` /
-    /// `max_time` / `error` / `no_next_speaker` / `cycle_complete`).
+    /// `max_time` / `error` / `no_next_speaker` / `cycle_complete`, and — P4.D335,
+    /// v4 `2b5e8ee24` — `yielded` (a character gave the floor to the raised hand;
+    /// `paused: false`) / `stopped` (the operator hard-stopped; `paused: true`)).
     pub reason: String,
     pub next_speaker_id: Option<String>,
     pub chain_depth: i64,
@@ -627,6 +663,18 @@ impl ChatEvent {
         ChatEvent::TurnComplete {
             turn_complete: TrueBool,
             payload,
+        }
+    }
+
+    /// A `handAnswered` event (P4.D335 — v4 `encodeHandAnsweredEvent`).
+    pub fn hand_answered(participant_id: &str, character_name: &str, yielded: bool) -> Self {
+        ChatEvent::HandAnswered {
+            hand_answered: TrueBool,
+            payload: HandAnsweredPayload {
+                participant_id: participant_id.to_string(),
+                character_name: character_name.to_string(),
+                yielded,
+            },
         }
     }
 
@@ -889,8 +937,10 @@ mod tests {
             cache_usage: None,
             attachment_results: None,
             tools_executed: false,
+            stopped: None,
             skipped: None,
             skipped_participant_id: None,
+            yielded: None,
             turn: Some(DoneTurn {
                 next_speaker_id: None,
                 reason: "user_turn".into(),
@@ -957,6 +1007,84 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&ev).unwrap(),
             "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+        );
+    }
+
+    // --- P4.D335 (v4 `2b5e8ee24`): the interrupt frames, by bytes ---
+
+    #[test]
+    fn bare_yield_done_frame_matches_v4_handle_turn_yield_key_order() {
+        let ev = ChatEvent::done(DonePayload {
+            message_id: None,
+            participant_id: Some("p9".into()),
+            usage: None,
+            cache_usage: None,
+            attachment_results: Some(serde_json::Value::Null),
+            tools_executed: false,
+            skipped: Some(true),
+            skipped_participant_id: Some("p9".into()),
+            yielded: Some(true),
+            provider: Some("ANTHROPIC".into()),
+            model_name: Some("claude".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            serde_json::to_string(&ev).unwrap(),
+            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"yielded\":true,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+        );
+    }
+
+    #[test]
+    fn stopped_empty_done_frame_matches_v4_key_order() {
+        let ev = ChatEvent::done(DonePayload {
+            message_id: None,
+            participant_id: Some("p9".into()),
+            usage: None,
+            cache_usage: None,
+            attachment_results: Some(serde_json::Value::Null),
+            tools_executed: false,
+            stopped: Some(true),
+            provider: Some("ANTHROPIC".into()),
+            model_name: Some("claude".into()),
+            ..Default::default()
+        });
+        assert_eq!(
+            serde_json::to_string(&ev).unwrap(),
+            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"stopped\":true,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+        );
+    }
+
+    #[test]
+    fn hand_answered_frame_matches_v4_bytes() {
+        assert_eq!(
+            serde_json::to_string(&ChatEvent::hand_answered("p9", "Ada", true)).unwrap(),
+            "{\"handAnswered\":true,\"participantId\":\"p9\",\"characterName\":\"Ada\",\"yielded\":true}"
+        );
+        assert_eq!(
+            serde_json::to_string(&ChatEvent::hand_answered("p9", "Ada", false)).unwrap(),
+            "{\"handAnswered\":true,\"participantId\":\"p9\",\"characterName\":\"Ada\",\"yielded\":false}"
+        );
+    }
+
+    #[test]
+    fn yielded_and_stopped_chain_complete_frames_match_v4_bytes() {
+        let close = |reason: &str, paused: bool| {
+            serde_json::to_string(&ChatEvent::chain_complete(ChainCompletePayload {
+                reason: reason.into(),
+                next_speaker_id: None,
+                chain_depth: 1,
+                paused: Some(paused),
+                held_user_turn: None,
+            }))
+            .unwrap()
+        };
+        assert_eq!(
+            close("yielded", false),
+            "{\"chainComplete\":true,\"reason\":\"yielded\",\"nextSpeakerId\":null,\"chainDepth\":1,\"paused\":false}"
+        );
+        assert_eq!(
+            close("stopped", true),
+            "{\"chainComplete\":true,\"reason\":\"stopped\",\"nextSpeakerId\":null,\"chainDepth\":1,\"paused\":true}"
         );
     }
 

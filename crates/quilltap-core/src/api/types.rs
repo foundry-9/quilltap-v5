@@ -297,6 +297,28 @@ pub enum Request {
         #[serde(default)]
         participant_id: Option<String>,
     },
+    // === P4.D335 (v4 `2b5e8ee24` — C6) ===
+    /// The operator's hard stop (v4 `POST /api/v1/chats/{id}?action=stop-turn`
+    /// → `handleStopTurn`): pause a rotation room, abort every open Salon
+    /// stream for the chat, wait (bounded) for them to settle.
+    #[serde(rename_all = "camelCase")]
+    ChatStopTurn {
+        chat_id: String,
+    },
+    /// The operator's raised hand (v4 `POST /api/v1/chats/{id}?action=raise-hand`
+    /// → `handleRaiseHand`). C6's wire shape is `raised?: boolean`; the Rust
+    /// field is the `double_option` TRI-STATE (the `ChatInform.permanent`
+    /// precedent): absent → `true` (v4 `.prefault(true)`), a boolean as given,
+    /// an explicit `null` or any non-boolean → v4's ZodError 400. A plain
+    /// `Option<bool>` would read `null` as absent and RAISE the hand where v4
+    /// refuses.
+    #[serde(rename_all = "camelCase")]
+    ChatRaiseHand {
+        chat_id: String,
+        #[serde(default, deserialize_with = "double_option")]
+        raised: Option<Option<serde_json::Value>>,
+    },
+    // === end P4.D335 ===
     /// Edit a message's content (v4 `PUT /api/v1/messages/{id}`).
     #[serde(rename_all = "camelCase")]
     MessageEdit {
@@ -4767,6 +4789,10 @@ pub enum Response {
     ChatSettings(serde_json::Value),
     /// v4 `handleTurnAction` body.
     TurnAction(serde_json::Value),
+    /// P4.D335: `chatStopTurn`'s bare `{stopped, settled, paused}` body.
+    StopTurn(StopTurnResultDto),
+    /// P4.D335: `chatRaiseHand`'s bare `{raised, active}` body.
+    RaiseHand(RaiseHandResultDto),
     /// v4 `GET .../custom-tools` body (`{tools, errors, droppedForCap?}`).
     CustomToolsList(serde_json::Value),
     /// v4 `POST .../custom-tools?action=run` body (`{messages, result}`).
@@ -5435,6 +5461,33 @@ pub struct ChatSummaryDto {
     pub created_at: String,
     pub updated_at: String,
 }
+
+// === P4.D335 (C6) ===
+/// The result of a `ChatStopTurn` dispatch — v4 `handleStopTurn`'s
+/// `successResponse({ stopped, settled, paused })`, in v4's key order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StopTurnResultDto {
+    /// How many open streams were told to stop.
+    pub stopped: u64,
+    /// Whether every stopped stream finished its cleanup inside the timeout.
+    pub settled: bool,
+    /// Whether the room is one the stop pauses (the PREDICATE — a
+    /// non-autonomous multi-character room — not whether a write happened).
+    pub paused: bool,
+}
+
+/// The result of a `ChatRaiseHand` dispatch — v4 `handleRaiseHand`'s
+/// `successResponse({ raised: raised && streams > 0, active: streams > 0 })`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RaiseHandResultDto {
+    pub raised: bool,
+    /// Whether any stream heard it — `false` means the floor is already the
+    /// operator's.
+    pub active: bool,
+}
+// === end P4.D335 ===
 
 /// The typed result of a `ChatSend` dispatch — a projection of the spine's
 /// [`ProcessMessageResult`](crate::services::message_finalizer::ProcessMessageResult)

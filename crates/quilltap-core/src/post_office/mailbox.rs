@@ -619,6 +619,9 @@ pub enum MailAlertsVia {
     ToolOnly,
     /// The character deliberately passed the turn.
     TurnSkip,
+    /// The character yielded the floor; a yield still read them (v4
+    /// `handleTurnYield`, `2b5e8ee24`).
+    TurnYield,
 }
 
 impl MailAlertsVia {
@@ -629,6 +632,7 @@ impl MailAlertsVia {
             MailAlertsVia::PreservedPartial => "preserved-partial",
             MailAlertsVia::ToolOnly => "tool-only",
             MailAlertsVia::TurnSkip => "turn-skip",
+            MailAlertsVia::TurnYield => "turn-yield",
         }
     }
 }

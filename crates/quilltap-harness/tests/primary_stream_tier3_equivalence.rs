@@ -1279,6 +1279,7 @@ async fn primary_stream_tier3_matches_oracle() {
                     original_message: call.original_message.clone(),
                     error_message: call.error_message.clone().unwrap_or_default(),
                     character_participant_id: call.participant_id.clone().unwrap(),
+                    turn_control: None,
                 };
                 let rr = recovery::attempt_request_limit_recovery(&db, &provider, &sink, ctx).await;
                 json!({

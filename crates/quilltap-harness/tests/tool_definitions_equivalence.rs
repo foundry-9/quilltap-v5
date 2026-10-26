@@ -100,7 +100,7 @@ fn tool_definitions_match_oracle() {
     let got = canonicalize_universal_tools(&all_universal_tools());
     let got_value = serde_json::to_value(&got).unwrap();
     assert_eq!(
-        got_value, want,
+        &got_value, want,
         "canonicalize_universal_tools diverges from v4"
     );
 

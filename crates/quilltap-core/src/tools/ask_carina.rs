@@ -308,6 +308,9 @@ where
     pub prospero: P,
     pub model_supports_native_tools: bool,
     pub now_ms: f64,
+    /// The Salon send's turn-control handle (P4.D335): the consultation's
+    /// stream ends quietly at the operator's stop. `None` off the spine.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 impl<EMB, STR, TR, TD, BRA, P> AskCarinaRunner for TypedAskCarina<EMB, STR, TR, TD, BRA, P>
@@ -342,6 +345,7 @@ where
                 brahma: &self.brahma,
                 model_supports_native_tools: self.model_supports_native_tools,
                 now_ms: self.now_ms,
+                turn_control: self.turn_control.as_ref(),
             };
             let mut query = RealCarinaQuery::new(deps);
             let mut prospero = self.prospero.clone();

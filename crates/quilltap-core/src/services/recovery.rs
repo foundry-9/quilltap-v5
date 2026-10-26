@@ -31,7 +31,7 @@ use crate::db::runtime::Db;
 use crate::format_bytes::format_bytes;
 use crate::model::stream::StreamMessage;
 use crate::model::stream::{StreamError, StreamParams, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 
 use super::chat_events::{ChatEvent, DonePayload, EventSink};
 use super::primary_stream::{
@@ -63,6 +63,9 @@ pub struct RecoveryContext {
     /// object; we carry its message — the classifiers key on it).
     pub error_message: String,
     pub character_participant_id: String,
+    /// The Salon send's turn-control handle (P4.D335): the recovery stream ends
+    /// quietly at the operator's stop, as v4's funnel call does. `None` = never.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// The result of a recovery attempt (v4 `RecoveryResult`).
@@ -316,6 +319,7 @@ where
         &params,
         sink,
         &mut full_response,
+        ctx.turn_control.as_ref(),
     )
     .await;
 
@@ -366,6 +370,7 @@ where
 
 /// Drain the recovery stream: content deltas → [`ChatEvent::Content`] + the
 /// accumulator. A mid-stream (or pre-first-chunk) error surfaces as `Err`.
+#[allow(clippy::too_many_arguments)]
 async fn drain_recovery_stream<P, S>(
     provider: &P,
     provider_name: &str,
@@ -374,6 +379,7 @@ async fn drain_recovery_stream<P, S>(
     params: &StreamParams,
     sink: &S,
     full_response: &mut String,
+    turn_control: Option<&crate::services::turn_control::TurnControlHandle>,
 ) -> Result<(), StreamError>
 where
     P: StreamingCompletionProvider,
@@ -389,12 +395,15 @@ where
     // v4's recovery call (`recovery.service.ts:303`) passes NONE of the four ids
     // — no `userId`, no `chatId`, no `characterId`, no `messageId` — which is
     // also why it writes no `llm_logs` row. The warn carries `context` alone.
-    let mut rx = watch_stream(
+    // P4.D335: the operator's stop (v4's funnel — this call inherits it too).
+    let stop = turn_control.map(|h| h.stop_signal());
+    let mut rx = watch_stream_with_stop(
         provider
             .stream_message_keyed(provider_name, base_url, api_key, params)
             .await,
         StallBudgets::default(),
         StallWatchdogContext::streaming_service(provider_name, &params.model),
+        stop.as_ref(),
     );
     while let Some(item) = rx.recv().await {
         let chunk = item?;
