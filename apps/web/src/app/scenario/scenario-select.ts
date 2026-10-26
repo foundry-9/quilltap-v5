@@ -25,6 +25,7 @@ import {
   type ProjectScenarioOption,
   type ScenarioSelection,
 } from './scenario.types';
+import { characterSortFields, sortScenarios, storeSortFields } from './scenario-sort';
 
 /** One rendered group optgroup (v4's `groupScenariosByGroup` Map entry). */
 interface GroupOptgroup {
@@ -98,18 +99,18 @@ interface GroupOptgroup {
           <option [value]="currentValue()">{{ store.label }}</option>
         </optgroup>
       }
-      @if (projectScenarios().length > 0) {
+      @if (sortedProjectScenarios().length > 0) {
         <optgroup label="Project Scenarios">
-          @for (s of projectScenarios(); track s.path) {
+          @for (s of sortedProjectScenarios(); track s.path) {
             <option [value]="PROJECT_SCENARIO_PREFIX + s.path">
               {{ fileOptionLabel(s, ' (project default)') }}
             </option>
           }
         </optgroup>
       }
-      @if (generalScenarios().length > 0) {
+      @if (sortedGeneralScenarios().length > 0) {
         <optgroup label="General Scenarios">
-          @for (s of generalScenarios(); track s.path) {
+          @for (s of sortedGeneralScenarios(); track s.path) {
             <option [value]="GENERAL_SCENARIO_PREFIX + s.path">
               {{ fileOptionLabel(s, ' (general default)') }}
             </option>
@@ -177,7 +178,18 @@ export class ScenarioSelect {
   private readonly selectRef = viewChild<ElementRef<HTMLSelectElement>>('scenarioSelect');
 
   protected readonly currentValue = computed(() => scenarioSelectionToValue(this.selection()));
-  protected readonly characterScenarioList = computed(() => this.characterScenarios() ?? []);
+  // Every optgroup lists its entries in title order (leading "The" ignored), the
+  // same order the server's list already comes in — so a freshly saved scenario
+  // lands in its place rather than at the end.
+  protected readonly sortedProjectScenarios = computed(() =>
+    sortScenarios(this.projectScenarios(), storeSortFields),
+  );
+  protected readonly sortedGeneralScenarios = computed(() =>
+    sortScenarios(this.generalScenarios(), storeSortFields),
+  );
+  protected readonly characterScenarioList = computed(() =>
+    sortScenarios(this.characterScenarios() ?? [], characterSortFields),
+  );
   /** The one pick the "Elsewhere" optgroup holds, when the selection is from elsewhere. */
   protected readonly storeSelection = computed(() => {
     const selection = this.selection();
@@ -197,6 +209,10 @@ export class ScenarioSelect {
       }
       groups.get(scenario.groupId)!.scenarios.push(scenario);
     }
+    // The GROUP order stays first-sighting; only the entries inside each sort.
+    for (const group of groups.values()) {
+      group.scenarios = sortScenarios(group.scenarios, storeSortFields);
+    }
     return [...groups.values()];
   });
 
@@ -205,8 +221,8 @@ export class ScenarioSelect {
       // Read every source the option list depends on, so the assignment re-runs
       // whenever the rows move under a selection that was already set.
       this.currentValue();
-      this.projectScenarios();
-      this.generalScenarios();
+      this.sortedProjectScenarios();
+      this.sortedGeneralScenarios();
       this.groupOptgroups();
       this.characterScenarioList();
       const select = this.selectRef()?.nativeElement;

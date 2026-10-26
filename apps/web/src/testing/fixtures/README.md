@@ -363,3 +363,20 @@ Same recorder (`apps/web/oracle/pascal-progress.recorder.ts`, unchanged), run
 at the same `322a5488e` pin: twelve gate / `when` rows move to the pin's
 sentences (the any-of union's `availableWhen: …` hoisting, the four-subject
 "must test …" texts). Its only consumer is `progress-arms.oracle.spec.ts`.
+
+## P4.D338 — `scenario-sort.oracle.ndjson`
+
+The scenario picker's one comparator (`1d0a31132`, pinned at `322a5488e`). Recorded
+by `apps/web/oracle/scenario-sort.recorder.ts` against v4's REAL
+`lib/scenarios/sort.ts`, over the same grid the Rust family
+(`harness/oracle/cases/scenario-pure.ts`) replays.
+
+| Fixture | Rows | sha256 | v4 source | Spec |
+|---|---|---|---|---|
+| `scenario-sort.oracle.ndjson` | 61 — 30 `scenarioSortKey`, 24 `compareScenarios` (sign), 7 `sortScenarios` (index order) | `e511d04d67172ecaac2e1ec0fbc2cf5ae4ca54adcaa0c085a01b2680c9aa3ae6` | `lib/scenarios/sort.ts` (`1d0a31132`) | `app/scenario/scenario-sort.oracle.spec.ts` |
+
+Regenerate (the recorder header has the full recipe): copy the recorder into a pin
+worktree at `322a5488e`, run it with `LANG=en_US.UTF-8` under Node 24 (v4's
+`localeCompare(…, undefined, …)` is the HOST default locale), `rm` the copy. The
+spec compares the host's `localeCompare` to the recording, so run `npm test` under
+an en-US host as well.

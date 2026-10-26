@@ -1,0 +1,61 @@
+{"kind":"key","value":"The Gilded Cage","output":"Gilded Cage"}
+{"kind":"key","value":"  THE Gilded Cage ","output":"Gilded Cage"}
+{"kind":"key","value":"Theatre Night","output":"Theatre Night"}
+{"kind":"key","value":"the-attic","output":"attic"}
+{"kind":"key","value":"the_attic","output":"attic"}
+{"kind":"key","value":"Into the Woods","output":"Into the Woods"}
+{"kind":"key","value":"The","output":"The"}
+{"kind":"key","value":"the","output":"the"}
+{"kind":"key","value":"THE","output":"THE"}
+{"kind":"key","value":"","output":""}
+{"kind":"key","value":"   ","output":""}
+{"kind":"key","value":"The ","output":"The"}
+{"kind":"key","value":"The-","output":"The-"}
+{"kind":"key","value":"The_","output":"The_"}
+{"kind":"key","value":"The X","output":"X"}
+{"kind":"key","value":"The﻿X","output":"X"}
+{"kind":"key","value":"TheX","output":"TheX"}
+{"kind":"key","value":"Thé X","output":"Thé X"}
+{"kind":"key","value":"﻿The Ballroom","output":"Ballroom"}
+{"kind":"key","value":"The  \t Spaced","output":"Spaced"}
+{"kind":"key","value":"The The Twice","output":"The Twice"}
+{"kind":"key","value":"the Em","output":"Em"}
+{"kind":"key","value":"The　Ideo","output":"Ideo"}
+{"kind":"key","value":"The Sep","output":"Sep"}
+{"kind":"key","value":"Thex","output":"Thex"}
+{"kind":"key","value":"Th e","output":"Th e"}
+{"kind":"key","value":"😀 The Crown","output":"😀 The Crown"}
+{"kind":"key","value":"The 😀 Crown","output":"😀 Crown"}
+{"kind":"key","value":"ÉCLAT","output":"ÉCLAT"}
+{"kind":"key","value":"the\nNewline","output":"Newline"}
+{"kind":"compare","name":"title_article_ignored","a":{"title":"The Ballroom","filename":"b"},"b":{"title":"Casino","filename":"c"},"output":-1}
+{"kind":"compare","name":"title_article_ignored_rev","a":{"title":"Casino","filename":"c"},"b":{"title":"The Ballroom","filename":"b"},"output":1}
+{"kind":"compare","name":"title_case_insensitive","a":{"title":"alpha","filename":"z"},"b":{"title":"Beta","filename":"a"},"output":-1}
+{"kind":"compare","name":"title_case_crossing","a":{"title":"apple","filename":"a"},"b":{"title":"Banana","filename":"b"},"output":-1}
+{"kind":"compare","name":"title_case_crossing_rev","a":{"title":"Banana","filename":"b"},"b":{"title":"apple","filename":"a"},"output":1}
+{"kind":"compare","name":"title_tie_filename_decides","a":{"title":"same","filename":"the-zed"},"b":{"title":"same","filename":"attic"},"output":1}
+{"kind":"compare","name":"title_tie_filename_article_ignored","a":{"title":"same","filename":"the-attic"},"b":{"title":"same","filename":"bell"},"output":-1}
+{"kind":"compare","name":"filename_tie_raw_title_equal_base","a":{"title":"é","filename":"x"},"b":{"title":"e","filename":"x"},"output":0}
+{"kind":"compare","name":"accent_tie_path_decides","a":{"title":"é","filename":"x","path":"Scenarios/a.md"},"b":{"title":"e","filename":"x","path":"Scenarios/b.md"},"output":-1}
+{"kind":"compare","name":"case_tie_path_default_a_before_A","a":{"title":"gala","filename":"gala","path":"Scenarios/a.md"},"b":{"title":"Gala","filename":"Gala","path":"Scenarios/A.md"},"output":-1}
+{"kind":"compare","name":"case_tie_path_default_A_after_a","a":{"title":"Gala","filename":"Gala","path":"Scenarios/A.md"},"b":{"title":"gala","filename":"gala","path":"Scenarios/a.md"},"output":1}
+{"kind":"compare","name":"identical_with_path","a":{"title":"x","filename":"x","path":"Scenarios/x.md"},"b":{"title":"x","filename":"x","path":"Scenarios/x.md"},"output":0}
+{"kind":"compare","name":"pathless_vs_path","a":{"title":"x","filename":"x"},"b":{"title":"x","filename":"x","path":"a"},"output":-1}
+{"kind":"compare","name":"pathless_pair","a":{"title":"x","filename":"x"},"b":{"title":"x","filename":"x"},"output":0}
+{"kind":"compare","name":"empty_titles","a":{"title":"","filename":""},"b":{"title":"","filename":""},"output":0}
+{"kind":"compare","name":"empty_vs_word","a":{"title":"","filename":"a"},"b":{"title":"Zed","filename":"a"},"output":-1}
+{"kind":"compare","name":"only_the_vs_word","a":{"title":"The","filename":"a"},"b":{"title":"Thea","filename":"a"},"output":-1}
+{"kind":"compare","name":"bom_led_title","a":{"title":"﻿The Ballroom","filename":"a"},"b":{"title":"Ballroom","filename":"b"},"output":-1}
+{"kind":"compare","name":"nel_not_stripped","a":{"title":"TheX","filename":"a"},"b":{"title":"X","filename":"a"},"output":-1}
+{"kind":"compare","name":"nbsp_stripped","a":{"title":"The X","filename":"a"},"b":{"title":"X","filename":"a"},"output":-1}
+{"kind":"compare","name":"surrogate_pair_titles","a":{"title":"😀 Crown","filename":"a"},"b":{"title":"😁 Crown","filename":"a"},"output":-1}
+{"kind":"compare","name":"digits_vs_letters","a":{"title":"10 Downing","filename":"a"},"b":{"title":"2 Downing","filename":"a"},"output":-1}
+{"kind":"compare","name":"punctuation_vs_letters","a":{"title":"...And so","filename":"a"},"b":{"title":"And so","filename":"a"},"output":-1}
+{"kind":"compare","name":"trailing_space_title","a":{"title":"Attic ","filename":"a","path":"p1"},"b":{"title":"Attic","filename":"a","path":"p2"},"output":1}
+{"kind":"sort","name":"v4_vector","items":[{"title":"The Ballroom","filename":"the-ballroom","path":"Scenarios/the-ballroom.md"},{"title":"Casino","filename":"casino","path":"Scenarios/casino.md"},{"title":"untitled-dock","filename":"untitled-dock","path":"Scenarios/untitled-dock.md"},{"title":"The Zeppelin","filename":"zeppelin","path":"Scenarios/zeppelin.md"}],"output":[0,1,2,3]}
+{"kind":"sort","name":"v4_vault_shape","items":[{"title":"The Cellar","filename":"3-the-cellar","path":"Scenarios/3-the-cellar.md"},{"title":"Attic","filename":"attic","path":"Scenarios/attic.md"},{"title":"The Parlour","filename":"parlour","path":"Scenarios/parlour.md"}],"output":[1,0,2]}
+{"kind":"sort","name":"mixed_case_and_articles","items":[{"title":"zebra","filename":"z","path":"Scenarios/z.md"},{"title":"The apple","filename":"a","path":"Scenarios/a.md"},{"title":"Banana","filename":"b","path":"Scenarios/b.md"},{"title":"the Cherry","filename":"c","path":"Scenarios/c.md"},{"title":"apple","filename":"a2","path":"Scenarios/a2.md"},{"title":"Éclair","filename":"e","path":"Scenarios/e.md"}],"output":[1,4,2,3,5,0]}
+{"kind":"sort","name":"ties_everywhere","items":[{"title":"Gala","filename":"Gala","path":"Scenarios/b.md"},{"title":"gala","filename":"gala","path":"Scenarios/B.md"},{"title":"gala","filename":"gala","path":"Scenarios/a.md"},{"title":"Gala","filename":"Gala","path":"Scenarios/A.md"},{"title":"é","filename":"x","path":"p"},{"title":"e","filename":"x","path":"q"},{"title":"E","filename":"x","path":"o"}],"output":[6,4,5,2,3,0,1]}
+{"kind":"sort","name":"pathless_mix","items":[{"title":"b","filename":"b"},{"title":"a","filename":"a","path":"z"},{"title":"a","filename":"a"},{"title":"The b","filename":"b"}],"output":[2,1,0,3]}
+{"kind":"sort","name":"single","items":[{"title":"Only","filename":"only","path":"Scenarios/only.md"}],"output":[0]}
+{"kind":"sort","name":"empty","items":[],"output":[]}

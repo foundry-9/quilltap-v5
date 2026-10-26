@@ -193,8 +193,9 @@ describe('ScenarioSelect (v4 components/scenario/ScenarioSelect.tsx @ 44a8137e)'
     expect(optionTexts(fixture)).toEqual([
       'Custom...',
       'The Inn (project default) (archived) — a cozy inn',
-      'The Ship (archived)',
+      // Title order, leading "The" ignored (v4 1d0a31132): Inn, Keep, Ship.
       'The Keep',
+      'The Ship (archived)',
       'The Road (archived)',
       'The Den (archived)',
     ]);
@@ -455,5 +456,68 @@ describe('ScenarioSelect — the browse action and the Elsewhere optgroup (v4 54
       '__custom__',
       '__browse__',
     ]);
+  });
+});
+
+describe('ScenarioSelect — every optgroup in title order (v4 1d0a31132)', () => {
+  /** An out-of-order list: path order differs from title order, with articles. */
+  const ordered = ['Atrium', 'The Ballroom', 'casino', 'The Zeppelin'];
+  const shuffled = ['The Zeppelin', 'casino', 'Atrium', 'The Ballroom'];
+  const file = (name: string) => ({
+    path: `Scenarios/${name.toLowerCase().replace(/\s+/g, '-')}.md`,
+    filename: name.toLowerCase().replace(/\s+/g, '-'),
+    name,
+  });
+
+  function groupTexts(fixture: ComponentFixture<Host>, label: string): string[] {
+    const group = [...select(fixture).querySelectorAll('optgroup')].find((g) => g.label === label);
+    return [...group!.querySelectorAll('option')].map((o) => o.textContent!.trim());
+  }
+
+  it('sorts the project, general, group and character optgroups', () => {
+    const fixture = mount();
+    const host = fixture.componentInstance;
+    host.projectScenarios.set(shuffled.map((n) => projectScenario(file(n))));
+    host.generalScenarios.set(shuffled.map((n) => generalScenario(file(n))));
+    host.groupScenarios.set(
+      ['Zed', 'The Apple'].map((n) => groupScenario({ ...file(n), groupId: 'g-1', groupName: 'Guild' })),
+    );
+    host.characterScenarios.set(
+      shuffled.map((title, i) => ({ id: `c${i}`, title, content: 'x' })),
+    );
+    fixture.detectChanges();
+
+    expect(groupTexts(fixture, 'Project Scenarios')).toEqual(ordered);
+    expect(groupTexts(fixture, 'General Scenarios')).toEqual(ordered);
+    expect(groupTexts(fixture, 'Group Scenarios: Guild')).toEqual(['The Apple', 'Zed']);
+    expect(groupTexts(fixture, 'Character Scenarios')).toEqual(ordered);
+  });
+
+  it('keeps the GROUP order at first sighting while sorting inside each group', () => {
+    const fixture = mount();
+    fixture.componentInstance.groupScenarios.set([
+      groupScenario({ ...file('Zed'), groupId: 'g-z', groupName: 'Zebras' }),
+      groupScenario({ ...file('Beta'), groupId: 'g-a', groupName: 'Ants' }),
+      groupScenario({ ...file('Alpha'), groupId: 'g-z', groupName: 'Zebras' }),
+    ]);
+    fixture.detectChanges();
+
+    const groups = [...select(fixture).querySelectorAll('optgroup')];
+    expect(groups.map((g) => g.label)).toEqual(['Group Scenarios: Zebras', 'Group Scenarios: Ants']);
+    expect([...groups[0].querySelectorAll('option')].map((o) => o.textContent!.trim())).toEqual([
+      'Alpha',
+      'Zed',
+    ]);
+  });
+
+  it('lands an appended "fresh save" in its place, not at the end', () => {
+    const fixture = mount();
+    const host = fixture.componentInstance;
+    host.projectScenarios.set(['Atrium', 'casino'].map((n) => projectScenario(file(n))));
+    fixture.detectChanges();
+    host.projectScenarios.update((list) => [...list, projectScenario(file('The Ballroom'))]);
+    fixture.detectChanges();
+
+    expect(groupTexts(fixture, 'Project Scenarios')).toEqual(['Atrium', 'The Ballroom', 'casino']);
   });
 });

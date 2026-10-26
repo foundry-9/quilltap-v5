@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): scenario picker lists in title order (v4 1d0a31132)
+
+_Versions: SPA 0.5.882._
+
+`scenario-sort.ts` twins v4's `lib/scenarios/sort.ts` (host-default `localeCompare`, verbatim). `ScenarioSelect` sorts the project, general and character optgroups and each group's entries (group order stays first-sighting), so a fresh save lands in place. Pinned by a recorded corpus over v4's real module (`scenario-sort.recorder.ts` → `scenario-sort.oracle.ndjson`, 61 rows), the six transcribed unit cases, and new select rows; one existing row re-expected to title order.
+
 #### 2026-10-26 — feat(scenarios): one title-order comparator for every scenario list (v4 1d0a31132)
 
 _Versions: core 0.0.1324._
