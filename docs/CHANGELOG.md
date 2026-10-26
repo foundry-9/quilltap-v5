@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — A document-store write under Inventory/ announces the inventory topic (P4.D328)
+
+_Versions: core 0.0.1328._
+
+`topics_for_write_batch` adds v4's bare `inventory` hint, once per batch and before the write's own topic, when a `docMount*` write's arguments name a path under an `Inventory/` folder (case-sensitive, at the start or after `\`, `/` or a quote). The realtime-topics oracle gains ten rows.
+
 #### 2026-10-26 — The text-block and simple-JSON prompts and parsers learn the nine Inventory tools (P4.D328)
 
 _Versions: core 0.0.1327._

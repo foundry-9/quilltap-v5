@@ -307,3 +307,69 @@ for (const c of batchCases()) {
 // P4.D324 (the keystone's topic): the server-side `REALTIME_TOPICS` list
 // itself, in v4's declaration order — `inventory` is the eighth (`e1872c94f`).
 emit({ name: 'realtime_topics_list', kind: 'topics', input: {}, output: [...REALTIME_TOPICS] });
+
+// === P4.D328: the inventory write hint ===
+// v4 `e1872c94f` (`job-topics.ts:149-158,201-204`): a `docMount*` write whose
+// JSON-stringified args name an `Inventory/` path (at the start, or after `\`,
+// `/` or `"`) adds ONE bare `inventory` hint, BEFORE the write's own namespace
+// topic. Case-sensitive; non-`docMount` methods never hint.
+const INVENTORY_HINT_CASES: { name: string; writes: { method: string; args?: unknown[] }[] }[] = [
+  {
+    name: 'batch_inventory_link_hint_first',
+    writes: [
+      {
+        method: 'docMountFileLinks.linkDocumentContent',
+        args: [MOUNT, 'Inventory/foo.json', { content: '{}' }],
+      },
+    ],
+  },
+  {
+    name: 'batch_inventory_inside_json_string_value',
+    writes: [{ method: 'docMountFiles.create', args: [{ relativePath: 'Inventory/lantern.json', mountPointId: MOUNT }] }],
+  },
+  {
+    name: 'batch_inventory_nested_path_slash',
+    writes: [{ method: 'docMountDocuments.upsert', args: [MOUNT, 'characters/abc/Inventory/Weapons/bow.json'] }],
+  },
+  {
+    name: 'batch_inventory_non_docmount_method',
+    writes: [{ method: 'chats.update', args: [CHAT, { note: 'Inventory/foo.json' }] }],
+  },
+  {
+    name: 'batch_inventory_lowercase_no_hint',
+    writes: [{ method: 'docMountFiles.create', args: [{ relativePath: 'inventory/foo.json' }] }],
+  },
+  {
+    name: 'batch_inventory_escaped_backslash',
+    writes: [{ method: 'docMountFiles.create', args: ['C:\\Inventory/foo.json'] }],
+  },
+  {
+    name: 'batch_inventory_mid_word_no_hint',
+    writes: [{ method: 'docMountFiles.create', args: ['MyInventory/foo.json'] }],
+  },
+  {
+    name: 'batch_inventory_two_writes_one_hint',
+    writes: [
+      { method: 'docMountFiles.create', args: [{ relativePath: 'Inventory/a.json' }] },
+      { method: 'docMountFileLinks.linkDocumentContent', args: [MOUNT, 'Inventory/b.json'] },
+      { method: 'chats.update', args: [CHAT] },
+    ],
+  },
+  {
+    name: 'batch_inventory_args_absent',
+    writes: [{ method: 'docMountFiles.create' }],
+  },
+  {
+    name: 'batch_inventory_bare_prefix_string',
+    writes: [{ method: 'docMountFolders.create', args: ['Inventory/'] }],
+  },
+];
+for (const c of INVENTORY_HINT_CASES) {
+  emit({
+    name: c.name,
+    kind: 'batch',
+    input: { writes: c.writes },
+    output: topicsForWriteBatch(c.writes),
+  });
+}
+// === end P4.D328 ===

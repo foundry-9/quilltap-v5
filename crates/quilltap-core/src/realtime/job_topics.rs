@@ -10,6 +10,9 @@
 //! the `jobs` topic (the queue itself changed); it just has no *entity* worth
 //! announcing, or its entity is covered by the write-batch mapping.
 
+use std::sync::LazyLock;
+
+use regex::Regex;
 use serde_json::Value;
 
 use crate::realtime::types::RealtimeTopic;
@@ -161,11 +164,30 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         // memory id. Every chat-scoped subscriber would then filter that hint
         // out — coverage that reaches nobody, which is worse than none.
         RealtimeTopic::Memories => &[],
-        // P4.D324 (the keystone's topic, compile-forced here): collection-wide
-        // — v4 `TOPIC_ID_FIELDS.inventory = []`. The job-topic rows that
-        // announce it (`INVENTORY_PATH_PATTERN`) are P4.D328's.
+        // Collection-wide — v4 `TOPIC_ID_FIELDS.inventory = []`; a write batch
+        // announces it through `INVENTORY_PATH_PATTERN` instead (P4.D328).
         RealtimeTopic::Inventory => &[],
     }
+}
+
+/// A document-store write naming a path under a tier's `Inventory/` folder —
+/// an object file a job's `inventory_*` call or Pascal pick-up wrote (v4
+/// `INVENTORY_PATH_PATTERN = /(^|[\\/"])Inventory\//`, `e1872c94f`). Such a write
+/// implies the `inventory` topic beside `mountPoints`. Case-sensitive.
+static INVENTORY_PATH_PATTERN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"(^|[\\/"])Inventory/"#).expect("static pattern"));
+
+/// v4 `writesInventoryFile`: a `docMount*` method whose JSON-stringified args
+/// (`JSON.stringify(write.args ?? [])` — v5's args are the verbatim array)
+/// match the pattern. v4's `try` guards only a throwing `stringify`, which a
+/// `Value` cannot do.
+fn writes_inventory_file(write: &ChildWritePayload) -> bool {
+    if !write.method.starts_with("docMount") {
+        return false;
+    }
+    serde_json::to_string(&write.args)
+        .map(|text| INVENTORY_PATH_PATTERN.is_match(&text))
+        .unwrap_or(false)
 }
 
 fn extract_topic_id(topic: RealtimeTopic, args: &[Value]) -> Option<String> {
@@ -208,6 +230,13 @@ pub fn topics_for_write_batch(writes: &[ChildWritePayload]) -> Vec<TopicHint> {
     let mut hints: Vec<TopicHint> = Vec::new();
 
     for write in writes {
+        // The bare `inventory` hint, ONCE per batch and BEFORE the write's own
+        // namespace topic (v4 `job-topics.ts:201-204`).
+        let inventory_key = RealtimeTopic::Inventory.as_str();
+        if !seen.iter().any(|k| k == inventory_key) && writes_inventory_file(write) {
+            seen.push(inventory_key.to_string());
+            hints.push(TopicHint::collection(RealtimeTopic::Inventory));
+        }
         let namespace = write.method.split('.').next().unwrap_or(&write.method);
         let Some((_, topic)) = REPOSITORY_TOPICS.iter().find(|(ns, _)| *ns == namespace) else {
             continue;
