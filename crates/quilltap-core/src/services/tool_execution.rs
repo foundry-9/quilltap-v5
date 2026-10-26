@@ -298,6 +298,14 @@ pub struct ToolExecutionContext {
     /// [`crate::services::outfit_change_effects::new_wardrobe_turn_containers`]).
     pub pending_wardrobe_history:
         Option<crate::services::outfit_change_effects::PendingWardrobeHistory>,
+    /// The turn's pending Inventory changes, keyed `chatId:characterId` (v4's
+    /// OPTIONAL `pendingInventoryAnnouncements?`, `e1872c94f`) — the THIRD
+    /// container of the same factory, so every `inventory_*` gesture of one
+    /// turn nets into one Pascal line per character, posted AFTER the saved
+    /// turn (the orchestrator's drain, `102a23648`). `None` is v4's absent
+    /// map: each gesture posts its own line at once.
+    pub pending_inventory_announcements:
+        Option<crate::services::inventory_change_effects::PendingInventoryAnnouncements>,
     /// The Brahma Console operator surface (v4 `operatorSurface`). Character tool
     /// handlers never set this.
     pub operator_surface: bool,
@@ -311,7 +319,7 @@ pub struct ToolExecutionContext {
 }
 
 /// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints
-/// both per-turn wardrobe containers through the factory (v4 `:321`
+/// all three per-turn containers through the factory (v4 `:321`
 /// `...newWardrobeTurnContainers()`); leaves the carina callback and
 /// `operator_surface` absent (v4's `createToolContext` sets neither).
 #[allow(clippy::too_many_arguments)]
@@ -326,7 +334,7 @@ pub fn create_tool_context(
     browser_user_agent: Option<String>,
     loaded_memories: Option<LoadedMemoriesContext>,
 ) -> ToolExecutionContext {
-    let (announcements, history) =
+    let (announcements, history, inventory) =
         crate::services::outfit_change_effects::new_wardrobe_turn_containers();
     ToolExecutionContext {
         chat_id: chat_id.into(),
@@ -346,6 +354,7 @@ pub fn create_tool_context(
         loaded_memories,
         pending_wardrobe_announcements: Some(announcements),
         pending_wardrobe_history: Some(history),
+        pending_inventory_announcements: Some(inventory),
         operator_surface: false,
         // v4's `createToolContext` never sets `mountPool` either (`d1c06cd9d`).
         mount_pool: None,
@@ -883,6 +892,32 @@ mod tests {
 
     /// v4 `tool-execution.service.test.ts` (+2, `05005c562`): `createToolContext`
     /// mints BOTH per-turn wardrobe containers, empty.
+    /// v4 `tool-execution.service.test.ts` (+2, `e1872c94f`): `createToolContext`
+    /// mints the Inventory's pending map beside the two wardrobe containers —
+    /// empty, and shared by reference across clones (one turn, one map).
+    #[test]
+    fn create_tool_context_mints_all_three() {
+        let c = ctx();
+        assert!(c
+            .pending_inventory_announcements
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .is_empty());
+        let d = c.clone();
+        assert!(Arc::ptr_eq(
+            c.pending_inventory_announcements.as_ref().unwrap(),
+            d.pending_inventory_announcements.as_ref().unwrap()
+        ));
+        // A fresh context mints a fresh map (no turn shares another's).
+        let e = ctx();
+        assert!(!Arc::ptr_eq(
+            c.pending_inventory_announcements.as_ref().unwrap(),
+            e.pending_inventory_announcements.as_ref().unwrap()
+        ));
+    }
+
     #[test]
     fn create_tool_context_mints_both_wardrobe_turn_containers() {
         let c = ctx();

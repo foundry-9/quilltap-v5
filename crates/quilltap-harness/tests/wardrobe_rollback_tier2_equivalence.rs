@@ -511,7 +511,7 @@ fn wardrobe_rollback_matches_oracle() {
             "set": Value::Null,
             "map": Value::Null,
         });
-        if let Some((set, map)) = &turn {
+        if let Some((set, map, _)) = &turn {
             let mut s: Vec<String> = set.lock().unwrap().iter().cloned().collect();
             s.sort();
             let mut m: Vec<(String, Value)> = map

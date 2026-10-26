@@ -14,6 +14,7 @@
 //! lanes' (they add their own `pub mod` lines).
 
 pub mod apply_defaults;
+pub mod context;
 pub mod dependents;
 pub mod equip;
 pub mod equipped_set;
@@ -26,6 +27,7 @@ pub mod item_mutations;
 pub mod location;
 pub mod pool;
 pub mod prompt_section;
+pub mod refs;
 pub mod resolve;
 pub mod roster_gate;
 pub mod svg;

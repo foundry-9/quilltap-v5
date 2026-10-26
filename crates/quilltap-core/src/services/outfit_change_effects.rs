@@ -44,6 +44,7 @@ use crate::db::runtime::Db;
 use crate::services::avatar_generation::{
     trigger_avatar_generation_if_enabled, AvatarGenerationParams,
 };
+use crate::services::inventory_change_effects::PendingInventoryAnnouncements;
 use crate::services::queue_service::enqueue_wardrobe_outfit_announcement;
 
 /// Per-turn announcement queue the orchestrator threads through the tools
@@ -55,13 +56,21 @@ pub type PendingWardrobeAnnouncements = Arc<Mutex<HashSet<String>>>;
 /// WardrobeHistoryIntent>`).
 pub type PendingWardrobeHistory = Arc<Mutex<HashMap<String, WardrobeHistoryIntent>>>;
 
-/// Both per-turn containers, created together (v4 `newWardrobeTurnContainers`).
-/// Every surface that runs a model turn's tools mints them HERE — never a set
-/// by hand (v4's outfit-history fence 4: a set without its map would settle
-/// each change at once instead of at turn end).
-pub fn new_wardrobe_turn_containers() -> (PendingWardrobeAnnouncements, PendingWardrobeHistory) {
+/// The three per-turn containers, created together (v4
+/// `newWardrobeTurnContainers`): the announcement set, the history intents,
+/// and beside them the Inventory's pending changes (P4.D328, v4 `e1872c94f`
+/// — drained by `inventory_change_effects::flush_pending_inventory_announcements`
+/// AFTER the saved turn). Every surface that runs a model turn's tools mints
+/// them HERE — never a set by hand (v4's outfit-history fence 4: a set
+/// without its map would settle each change at once instead of at turn end).
+pub fn new_wardrobe_turn_containers() -> (
+    PendingWardrobeAnnouncements,
+    PendingWardrobeHistory,
+    PendingInventoryAnnouncements,
+) {
     (
         Arc::new(Mutex::new(HashSet::new())),
+        Arc::new(Mutex::new(HashMap::new())),
         Arc::new(Mutex::new(HashMap::new())),
     )
 }
@@ -415,10 +424,10 @@ mod tests {
 
     #[test]
     fn the_factory_makes_both_containers_empty_and_separate() {
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         assert!(set.lock().unwrap().is_empty());
         assert!(map.lock().unwrap().is_empty());
-        let (set2, _) = new_wardrobe_turn_containers();
+        let (set2, _, _) = new_wardrobe_turn_containers();
         assert!(
             !Arc::ptr_eq(&set, &set2),
             "each call mints fresh containers"
@@ -428,7 +437,7 @@ mod tests {
     #[tokio::test]
     async fn record_defers_both_in_a_turn() {
         let (db, _dir) = open().await;
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         let p = character(A);
         record_pending_wardrobe_announcement(&db, &ctx(A, &p, Some(&set), Some(&map)), "t").await;
         assert_eq!(
@@ -483,7 +492,7 @@ mod tests {
             "the cursor moved back to 0"
         );
         // Inside a turn the cursor intent is what waits in the map.
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         let mut c = ctx(A, &p, Some(&set), Some(&map));
         c.history_intent = Some(&cursor);
         record_pending_wardrobe_announcement(&db, &c, "t").await;
@@ -523,7 +532,7 @@ mod tests {
     #[tokio::test]
     async fn a_set_without_its_map_settles_at_once() {
         let (db, _dir) = open().await;
-        let (set, _) = new_wardrobe_turn_containers();
+        let (set, _, _) = new_wardrobe_turn_containers();
         let p = character(A);
         record_pending_wardrobe_announcement(&db, &ctx(A, &p, Some(&set), None), "t").await;
         assert_eq!(
@@ -537,7 +546,7 @@ mod tests {
     #[tokio::test]
     async fn the_last_intent_wins_and_characters_stay_separate() {
         let (db, _dir) = open().await;
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         let (pa, pb) = (character(A), character(B));
         let cursor = WardrobeHistoryIntent::Cursor { index: 2 };
         record_pending_wardrobe_announcement(&db, &ctx(A, &pa, Some(&set), Some(&map)), "t").await;
@@ -561,7 +570,7 @@ mod tests {
     #[tokio::test]
     async fn flush_settles_each_intent_announces_each_and_clears_both() {
         let (db, _dir) = open().await;
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         let operator = WardrobeHistoryProvenance::new(WardrobeHistorySource::Operator);
         record_pending_wardrobe_announcement(&db, &ctx(A, &operator, Some(&set), Some(&map)), "t")
             .await;
@@ -606,7 +615,7 @@ mod tests {
     #[tokio::test]
     async fn flush_settles_before_it_announces() {
         let (db, _dir) = open().await;
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         let p = character(A);
         record_pending_wardrobe_announcement(&db, &ctx(A, &p, Some(&set), Some(&map)), "t").await;
         kill_writer(&db).await;
@@ -636,7 +645,7 @@ mod tests {
         .await;
         assert!(lines.is_empty());
         // An empty set with a non-empty map: v4 returns before its clears.
-        let (set, map) = new_wardrobe_turn_containers();
+        let (set, map, _) = new_wardrobe_turn_containers();
         map.lock()
             .unwrap()
             .insert(A.to_string(), WardrobeHistoryIntent::Cursor { index: 0 });

@@ -573,7 +573,7 @@ mod tests {
         )
         .with_actor("ch");
         for name in WARDROBE_TOOL_NAMES {
-            let (pending, history) =
+            let (pending, history, _) =
                 crate::services::outfit_change_effects::new_wardrobe_turn_containers();
             // A refused input — no write, no picture; the stage then reports
             // an outfit change for `char-x`, as a landed call would.

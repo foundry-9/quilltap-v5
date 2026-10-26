@@ -122,6 +122,7 @@ pub mod image_scene_tasks;
 pub mod impersonation_voice_legacy;
 pub mod inform_block;
 pub mod initial_greeting;
+pub mod inventory_change_effects;
 pub mod job_runner;
 pub mod job_scheduler;
 pub mod knowledge_injector;

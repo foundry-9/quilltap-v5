@@ -725,7 +725,7 @@ where
             // `process_tool_calls` emits toolsDetected/status/toolResult on `sink`.
             // v4 `orchestrator.service.ts:492` `...newWardrobeTurnContainers()`
             // (cosmetic: every wardrobe tool is off and the console never flushes).
-            let (announcements, history) =
+            let (announcements, history, inventory) =
                 crate::services::outfit_change_effects::new_wardrobe_turn_containers();
             let tool_context = ToolExecutionContext {
                 chat_id: chat_id.to_string(),
@@ -733,6 +733,7 @@ where
                 operator_surface: true,
                 pending_wardrobe_announcements: Some(announcements),
                 pending_wardrobe_history: Some(history),
+                pending_inventory_announcements: Some(inventory),
                 ..Default::default()
             };
             let tool_result =

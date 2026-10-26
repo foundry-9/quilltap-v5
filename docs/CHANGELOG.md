@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The Inventory reference rule, the turn's pending Inventory changes and Pascal's carried-object line (P4.D328)
+
+_Versions: core 0.0.1329._
+
+New `inventory::refs` holds v4's one reference rule (id, then title, then name, case-insensitive, each round across the whole pool, own objects first), the state / kin / gesture helpers, the aggregate scopes and the `InventoryContext` trait; `inventory::context` loads a character's bag once per call, hiding a project shelf the roster closes. New `services::inventory_change_effects` writes Pascal's line (*takes up a lantern*, *sets down the compass*, *hands Excalibur to Marcus*), nets a turn's changes per character, and drains them. The per-turn container factory now mints the Inventory's pending map beside the two wardrobe containers, and every tool context carries it. New pure differential: 86 rows against v4's real code.
+
 #### 2026-10-26 — A document-store write under Inventory/ announces the inventory topic (P4.D328)
 
 _Versions: core 0.0.1328._

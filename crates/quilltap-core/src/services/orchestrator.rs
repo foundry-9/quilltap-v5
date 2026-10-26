@@ -3383,7 +3383,10 @@ where
     // and the end-of-turn drain (below) settles each intent and enqueues one
     // Aurora announcement per character. Minted ONCE here and cloned into both
     // tool contexts — a second mint would strand one pass's intents.
-    let (pending_wardrobe, pending_wardrobe_history) =
+    // The third container (P4.D328, v4 `e1872c94f`): the Inventory's pending
+    // changes, netted per character across both passes and drained AFTER the
+    // saved turn — on every exit (the `finally` twin below).
+    let (pending_wardrobe, pending_wardrobe_history, pending_inventory) =
         crate::services::outfit_change_effects::new_wardrobe_turn_containers();
 
     let loop_messages: Vec<ThreadedMessage> = formatted_messages
@@ -3422,6 +3425,7 @@ where
     });
     loop_tool_context.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
     loop_tool_context.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
+    loop_tool_context.pending_inventory_announcements = Some(pending_inventory.clone());
     native_tool_loop::run_native_tool_loop(
         db,
         deps.streaming,
@@ -3489,6 +3493,7 @@ where
         });
         c.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
         c.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
+        c.pending_inventory_announcements = Some(pending_inventory.clone());
         c
     };
 

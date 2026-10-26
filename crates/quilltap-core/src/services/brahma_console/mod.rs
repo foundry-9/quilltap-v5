@@ -304,7 +304,7 @@ where
     // v4 `one-shot.service.ts:153` `...newWardrobeTurnContainers()` — cosmetic
     // here (every wardrobe tool is off, and the console never flushes), but
     // minted through the factory as v4's fence requires.
-    let (announcements, history) =
+    let (announcements, history, inventory) =
         crate::services::outfit_change_effects::new_wardrobe_turn_containers();
     let tool_context = ToolExecutionContext {
         chat_id: chat_id.to_string(),
@@ -312,6 +312,7 @@ where
         operator_surface: true,
         pending_wardrobe_announcements: Some(announcements),
         pending_wardrobe_history: Some(history),
+        pending_inventory_announcements: Some(inventory),
         ..Default::default()
     };
 

@@ -390,7 +390,7 @@ fn outfit_change_effects_match_oracle() {
     };
 
     // The one shared pair of turn containers (v4's `newWardrobeTurnContainers()`).
-    let (turn_set, turn_map) = new_wardrobe_turn_containers();
+    let (turn_set, turn_map, _) = new_wardrobe_turn_containers();
     let mut jobs_gone = false;
     let mut failures = Vec::new();
     let mut compared_lines = 0usize;

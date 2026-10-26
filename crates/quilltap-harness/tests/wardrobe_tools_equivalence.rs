@@ -954,7 +954,11 @@ fn run_tool(
     chat_id: &str,
     character_id: &str,
     args: &Value,
-    turn: Option<&(PendingWardrobeAnnouncements, PendingWardrobeHistory)>,
+    turn: Option<&(
+        PendingWardrobeAnnouncements,
+        PendingWardrobeHistory,
+        quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements,
+    )>,
 ) -> WardrobeToolOutput {
     let stage = run_wardrobe_tool_handler(
         tool,
