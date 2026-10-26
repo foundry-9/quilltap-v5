@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Carrying-now pane and the Inventory's folder, instantiate and transfer dialogs
+
+_Versions: SPA 0.5.896._
+
+NEW `qt-carrying-now-pane`: what one character carries in a chat (a `silent` note for an object with no description), the kits within reach with their state and Equip / Unequip, Take up… (a picker of reachable objects that are not archetypes, kits, archived or already carried — its open state bound two-way so the dialog stands down while it is up) and Reset to defaults. NEW `qt-inventory-folder-picker-dialog` (Move to folder… over the shared picker), `qt-inventory-instantiate-dialog` (from an archetype into a chosen inventory, or from a tier choosing among the archetypes it reaches) and `qt-inventory-transfer-dialog` (move or copy to another inventory, the source left out), each with v4's titles, notes and toasts. P4.D330, Tier 1 items 9, 10 + 18.
+
 #### 2026-10-26 — feat(spa): the Inventory item editor and its Pictures section (v4 `4fbdad186`, `102a23648`, `d88c1ce39`)
 
 _Versions: SPA 0.5.895._
