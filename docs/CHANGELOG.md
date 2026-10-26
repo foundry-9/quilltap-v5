@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Workbench's client-safe Inventory evaluators (v4 inventory-aggregate / inventory-subjects / bench-inventory / refs at 322a5488e)
+
+_Versions: SPA 0.5.882._
+
+P4.D334 begins. The Proving Bench evaluates a mock bag in the browser, so four v4 modules marked client-safe get TypeScript twins under `pascal/`: `inventory-aggregate.ts` (the aggregate key grammar and its sheet), `inventory-subjects.ts` (the state and count readers, the `$inventory` operand), `bench-inventory.ts` (the mock bag as an `InventoryContext`, `item()` always null) and `inventory-refs.ts` (the id → title → name reference rule). A 636-row tier-1 corpus recorded from v4's real modules at the pin (`pascal-inventory-twins.oracle.ndjson`) pins them byte for byte: 537 rows run live, 100 are gated on the sibling lanes whose code their truth reads. Two stand-in modules (`p4d333-stand-ins.ts`, `p4d330-stand-ins.ts`) and one gate-constant file carry the names the grammar-twin and Inventory lanes land; the unifier deletes them. No behavior changes yet.
+
 #### 2026-10-26 — docs(porting): the P4.D330 lane record (the Inventory SPA)
 
 _Docs-only change._
