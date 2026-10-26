@@ -3,14 +3,21 @@ import { ChangeDetectionStrategy, Component, computed, input, output, signal } f
 import {
   CONTAINMENT_COMPARATORS,
   ORDERING_COMPARATORS,
+  gateConditionSlotKey,
+  groupsOf,
+  reseatOperandForComparator,
   type ComparatorKey,
   type DraftGateCondition,
   type DraftIssue,
   type GateMode,
   type ToolDraft,
 } from '../../pascal/tool-draft';
+import { INVENTORY_STATE_VALUES } from '../../pascal/inventory-subjects';
 import { Icon } from '../../ui/icon';
+import { AggregateKeyField } from './aggregate-key-field';
 import { COMPARATOR_LABELS } from './comparator-labels';
+import { ConditionGroups } from './condition-groups';
+import { LiteralOperandField } from './literal-operand-field';
 
 /**
  * GateSection — who may reach for this tool at all (v4
@@ -24,8 +31,12 @@ import { COMPARATOR_LABELS } from './comparator-labels';
  *
  * The chips are deliberately thinner than the outcome table's. A gate is
  * answered before the deal, so there are no parameters to compare against and
- * no roll to test — every subject is a metadata key and every operand is a
- * literal, and the widget offers exactly that and nothing more.
+ * no roll to test — every subject is a metadata key, a progress field, an
+ * Inventory object named literally, or an aggregate over the bag, and every
+ * operand is a literal, and the widget offers exactly that and nothing more.
+ *
+ * Chips on one line AND together; an OR toggle starts a new line, and any line
+ * that holds decides the gate.
  */
 
 const MODE_OPTIONS: Array<{ mode: GateMode; label: string; title: string }> = [
@@ -54,6 +65,43 @@ const COMPARATORS: ComparatorKey[] = [
   'ncontains',
 ];
 
+/**
+ * What each subject may be asked: a state is = / ≠, a count is a number. An
+ * aggregate offers everything; whether its key is a list or a number is the
+ * validator's to flag, beside the chip.
+ */
+export function comparatorsFor(subject: DraftGateCondition['subject']): ComparatorKey[] {
+  if (subject === 'inventory') return ['eq', 'neq'];
+  if (subject === 'inventoryCount') return ['gt', 'gte', 'lt', 'lte', 'eq', 'neq'];
+  return COMPARATORS;
+}
+
+/** The same chip on a new subject, its comparator and operand made legal there. */
+export function withSubject(
+  condition: DraftGateCondition,
+  subject: DraftGateCondition['subject'],
+): DraftGateCondition {
+  if (subject === 'inventory') {
+    const comparator = condition.comparator === 'neq' ? 'neq' : 'eq';
+    const keep =
+      condition.operand.kind === 'string' &&
+      (INVENTORY_STATE_VALUES as readonly string[]).includes(condition.operand.text);
+    return {
+      ...condition,
+      subject,
+      comparator,
+      operand: keep ? condition.operand : { kind: 'string', text: 'equipped' },
+    };
+  }
+  if (subject === 'inventoryCount') {
+    const comparator = CONTAINMENT_COMPARATORS.has(condition.comparator) ? 'gte' : condition.comparator;
+    const operand =
+      condition.operand.kind === 'number' ? condition.operand : { kind: 'number' as const, text: '1' };
+    return { ...condition, subject, comparator, operand };
+  }
+  return { ...condition, subject };
+}
+
 let gateIdCounter = 0;
 
 // ---------------------------------------------------------------------------
@@ -63,7 +111,7 @@ let gateIdCounter = 0;
 @Component({
   selector: 'qt-gate-chip',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, AggregateKeyField, LiteralOperandField],
   template: `
     <div
       class="flex items-center gap-1 flex-wrap rounded border px-2 py-1"
@@ -79,23 +127,38 @@ let gateIdCounter = 0;
         [disabled]="disabled()"
         class="qt-select qt-select-sm w-28 shrink-0"
         aria-label="Gate subject"
-        title="Which sheet this test reads: the character's own metadata.json, or their derived progressions."
+        title="Which sheet this test reads: the character's own metadata.json, their derived progressions, or what they carry."
       >
         <option value="metadata" [selected]="condition().subject === 'metadata'">metadata</option>
         <option value="progress" [selected]="condition().subject === 'progress'">progress</option>
+        <option value="inventory" [selected]="condition().subject === 'inventory'">inventory state</option>
+        <option value="inventoryCount" [selected]="condition().subject === 'inventoryCount'">
+          inventory count
+        </option>
+        <option value="inventoryAggregate" [selected]="condition().subject === 'inventoryAggregate'">
+          inventory aggregate
+        </option>
       </select>
 
-      <input
-        type="text"
-        [value]="condition().key"
-        (input)="onKey(inputValue($event))"
-        [placeholder]="keyPlaceholder()"
-        [disabled]="disabled()"
-        class="qt-input w-44 text-sm"
-        [class.qt-input-error]="condition().key.trim() === ''"
-        [attr.aria-label]="keyLabel()"
-        [attr.title]="keyTitle()"
-      />
+      @if (aggregate()) {
+        <qt-aggregate-key-field
+          [value]="condition().key"
+          [disabled]="disabled()"
+          (valueChange)="onKey($event)"
+        />
+      } @else {
+        <input
+          type="text"
+          [value]="condition().key"
+          (input)="onKey(inputValue($event))"
+          [placeholder]="keyPlaceholder()"
+          [disabled]="disabled()"
+          class="qt-input w-44 text-sm"
+          [class.qt-input-error]="condition().key.trim() === ''"
+          [attr.aria-label]="keyLabel()"
+          [attr.title]="keyTitle()"
+        />
+      }
 
       <!--
         selected-per-option, never a value binding on the select (the standing
@@ -112,7 +175,7 @@ let gateIdCounter = 0;
         class="qt-select qt-select-sm w-32 shrink-0"
         aria-label="Comparator"
       >
-        @for (key of COMPARATORS; track key) {
+        @for (key of comparators(); track key) {
           <option [value]="key" [selected]="condition().comparator === key">
             {{ COMPARATOR_LABELS[key] }}
           </option>
@@ -121,55 +184,17 @@ let gateIdCounter = 0;
 
       <!-- eq/neq alone need a type picker: with the stored type unknowable, only
            the author can say whether they mean 3, "3", or true. -->
-      @if (!ordering() && !containment()) {
-        <select
-          (change)="onTypePick(selectValue($event))"
-          [disabled]="disabled()"
-          class="qt-select qt-select-sm w-24 shrink-0"
-          aria-label="Literal type"
-        >
-          <option value="number" [selected]="operand().kind === 'number'">number</option>
-          <option value="string" [selected]="operand().kind === 'string'">text</option>
-          <option value="boolean" [selected]="operand().kind === 'boolean'">true/false</option>
-        </select>
-      }
+      <qt-literal-operand-field
+        [operand]="operand()"
+        [disabled]="disabled()"
+        [showTypePicker]="!ordering() && !containment() && !inventorySubject()"
+        pickerClassName="w-24 shrink-0"
+        textClassName="w-32"
+        [stateOptions]="condition().subject === 'inventory' ? INVENTORY_STATES : undefined"
+        (operandChange)="setOperand($event)"
+      />
 
-      @switch (operand().kind) {
-        @case ('boolean') {
-          <select
-            (change)="setOperand({ kind: 'boolean', value: selectValue($event) === 'true' })"
-            [disabled]="disabled()"
-            class="qt-select qt-select-sm w-20"
-            aria-label="Operand value"
-          >
-            <option value="true" [selected]="booleanValue()">true</option>
-            <option value="false" [selected]="!booleanValue()">false</option>
-          </select>
-        }
-        @case ('string') {
-          <input
-            type="text"
-            [value]="operandText()"
-            (input)="setOperand({ kind: 'string', text: inputValue($event) })"
-            [disabled]="disabled()"
-            class="qt-input w-32 text-sm"
-            aria-label="Operand text"
-          />
-        }
-        @default {
-          <input
-            type="number"
-            step="any"
-            [value]="operandText()"
-            (input)="setOperand({ kind: 'number', text: inputValue($event) })"
-            [disabled]="disabled()"
-            class="qt-input w-24 text-sm"
-            aria-label="Operand number"
-          />
-        }
-      }
-
-      @if (ordering() || containment()) {
+      @if ((ordering() || containment()) && !inventorySubject() && !aggregate()) {
         <span class="text-xs qt-text-secondary" [title]="hintTitle()">ⓘ</span>
       }
 
@@ -194,22 +219,17 @@ export class GateChip {
   readonly conditionChange = output<DraftGateCondition>();
   readonly remove = output<void>();
 
-  protected readonly COMPARATORS = COMPARATORS;
+  protected readonly INVENTORY_STATES = INVENTORY_STATE_VALUES;
   protected readonly COMPARATOR_LABELS = COMPARATOR_LABELS;
 
   readonly operand = computed(() => this.condition().operand);
+  protected readonly comparators = computed(() => comparatorsFor(this.condition().subject));
+  protected readonly inventorySubject = computed(
+    () => this.condition().subject === 'inventory' || this.condition().subject === 'inventoryCount',
+  );
+  protected readonly aggregate = computed(() => this.condition().subject === 'inventoryAggregate');
   readonly ordering = computed(() => ORDERING_COMPARATORS.has(this.condition().comparator));
   readonly containment = computed(() => CONTAINMENT_COMPARATORS.has(this.condition().comparator));
-
-  protected operandText(): string {
-    const o = this.operand();
-    return o.kind === 'boolean' ? '' : o.text;
-  }
-
-  protected booleanValue(): boolean {
-    const o = this.operand();
-    return o.kind === 'boolean' ? o.value : false;
-  }
 
   protected hintTitle(): string {
     return this.ordering()
@@ -229,24 +249,31 @@ export class GateChip {
   protected readonly isProgress = computed(() => this.condition().subject === 'progress');
 
   protected readonly keyPlaceholder = computed(() =>
-    this.isProgress() ? 'cannon.complete' : "key on the character's fact sheet",
+    this.isProgress()
+      ? 'cannon.complete'
+      : this.inventorySubject()
+        ? 'Excalibur'
+        : "key on the character's fact sheet",
   );
 
   protected readonly keyLabel = computed(() =>
-    this.isProgress() ? 'Progress key' : 'Metadata key',
+    this.isProgress()
+      ? 'Progress key'
+      : this.inventorySubject()
+        ? 'Inventory object reference'
+        : 'Metadata key',
   );
 
   protected readonly keyTitle = computed(() =>
     this.isProgress()
       ? 'A progression of the invoking character, keyed "<id>.<field>" — percent, complete, remainingMs, state, started, elapsedMs, startTime, endTime, name, elapsed, remaining, quantity. A progression they do not carry never matches.'
-      : "The invoking character's fact sheet — a key the character lacks never matches.",
+      : this.inventorySubject()
+        ? 'An object by id, title or name, written literally — a gate has no parameters to fill a placeholder. With no character or chat, the test never matches.'
+        : "The invoking character's fact sheet — a key the character lacks never matches.",
   );
 
   protected onSubject(raw: string): void {
-    this.conditionChange.emit({
-      ...this.condition(),
-      subject: raw as DraftGateCondition['subject'],
-    });
+    this.conditionChange.emit(withSubject(this.condition(), raw as DraftGateCondition['subject']));
   }
 
   protected onKey(key: string): void {
@@ -260,26 +287,11 @@ export class GateChip {
   protected onComparator(raw: string): void {
     const comparator = raw as ComparatorKey;
     // Re-seat the operand in the widget the new comparator can actually use.
-    const operand = this.operand();
-    let next = operand;
-    if (ORDERING_COMPARATORS.has(comparator) && operand.kind !== 'number') {
-      next = { kind: 'number', text: operand.kind === 'string' ? operand.text : '' };
-    } else if (CONTAINMENT_COMPARATORS.has(comparator) && operand.kind !== 'string') {
-      next = { kind: 'string', text: operand.kind === 'number' ? operand.text : '' };
-    }
-    this.conditionChange.emit({ ...this.condition(), comparator, operand: next });
-  }
-
-  protected onTypePick(raw: string): void {
-    const kind = raw as 'number' | 'string' | 'boolean';
-    const operand = this.operand();
-    if (kind === 'number') {
-      this.setOperand({ kind: 'number', text: operand.kind === 'string' ? operand.text : '' });
-    } else if (kind === 'string') {
-      this.setOperand({ kind: 'string', text: operand.kind === 'number' ? operand.text : '' });
-    } else {
-      this.setOperand({ kind: 'boolean', value: true });
-    }
+    this.conditionChange.emit({
+      ...this.condition(),
+      comparator,
+      operand: reseatOperandForComparator(this.operand(), comparator),
+    });
   }
 }
 
@@ -290,7 +302,7 @@ export class GateChip {
 @Component({
   selector: 'qt-gate-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, GateChip],
+  imports: [Icon, GateChip, ConditionGroups],
   template: `
     <section class="qt-card p-4 space-y-3">
       <div class="flex items-center justify-between flex-wrap gap-2">
@@ -298,8 +310,8 @@ export class GateChip {
           <h2 class="qt-card-title text-sm">Who may reach for it</h2>
           <p class="qt-hint">
             Tested before the deal, against the invoking character&rsquo;s
-            <code>metadata.json</code> or their timed progressions — the only things known before a
-            roll exists.
+            <code>metadata.json</code>, their timed progressions, or what they carry in this chat —
+            the only things known before a roll exists.
           </p>
         </div>
         <div class="flex rounded overflow-hidden border" role="radiogroup" aria-label="Availability">
@@ -334,25 +346,26 @@ export class GateChip {
           <p class="text-xs qt-text-secondary">
             {{
               draft().gateMode === 'available'
-                ? 'Offered only to a character whose sheet passes every test:'
-                : 'Withheld from a character whose sheet passes every test:'
+                ? 'Offered only to a character whose sheet passes the tests below:'
+                : 'Withheld from a character whose sheet passes the tests below:'
             }}
           </p>
 
-          @for (condition of draft().gateConditions; track condition.id; let i = $index) {
-            <div class="flex items-center gap-2 flex-wrap">
-              @if (i > 0) {
-                <span class="text-xs qt-text-secondary font-mono">AND</span>
-              }
-              <qt-gate-chip
-                [condition]="condition"
-                [hasError]="conditionErrorIds().has(condition.id)"
-                [disabled]="disabled()"
-                (conditionChange)="updateCondition(condition.id, $event)"
-                (remove)="deleteCondition(condition.id)"
-              />
-            </div>
-          }
+          <qt-condition-groups
+            [conditions]="draft().gateConditions"
+            [disabled]="disabled()"
+            [chip]="chipTemplate"
+            (joinerChange)="onJoinerChange($event.id, $event.joiner)"
+          />
+          <ng-template #chipTemplate let-condition>
+            <qt-gate-chip
+              [condition]="condition"
+              [hasError]="conditionErrorIds().has(condition.id)"
+              [disabled]="disabled()"
+              (conditionChange)="updateCondition(condition.id, $event)"
+              (remove)="deleteCondition(condition.id)"
+            />
+          </ng-template>
 
           @if (duplicateNotice(); as notice) {
             <p class="text-xs qt-text-destructive">{{ notice }}</p>
@@ -371,6 +384,9 @@ export class GateChip {
             add condition
           </button>
 
+          <p class="qt-hint">
+            Tests on one line must all hold; any line that holds opens the door.
+          </p>
           <p class="qt-hint">
             A key the character lacks never matches. So an &ldquo;only show if&rdquo; withholds the
             tool from a character with no sheet at all, while a &ldquo;do not show if&rdquo; still
@@ -441,19 +457,27 @@ export class GateSection {
 
   protected updateCondition(id: string, next: DraftGateCondition): void {
     // One comparator object carries each key once, so a duplicate key+comparator
-    // pair is blocked at the door rather than silently overwriting its twin.
-    const slot = `${next.key}:${next.comparator}`;
-    const collision = this.draft().gateConditions.some(
-      (c) => c.id !== id && `${c.key}:${c.comparator}` === slot,
+    // pair on one line is blocked at the door rather than silently overwriting
+    // its twin. Another line is another object, and may repeat it.
+    const slot = gateConditionSlotKey(next);
+    const line = groupsOf(this.draft().gateConditions).find((group) => group.some((c) => c.id === id)) ?? [];
+    const collision = line.some(
+      (c) => c.id !== id && c.subject === next.subject && gateConditionSlotKey(c) === slot,
     );
     if (collision) {
       this.duplicateNotice.set(
-        `The gate can test “${next.key}” with ${COMPARATOR_LABELS[next.comparator]} only once.`,
+        `A line of the gate can test “${next.key}” with ${COMPARATOR_LABELS[next.comparator]} only once.`,
       );
       return;
     }
     this.duplicateNotice.set(null);
     this.setConditions(this.draft().gateConditions.map((c) => (c.id === id ? next : c)));
+  }
+
+  /** The joiner toggle: clears the notice and sets the chip's `joiner`. */
+  protected onJoinerChange(id: string, joiner: 'and' | 'or'): void {
+    this.duplicateNotice.set(null);
+    this.setConditions(this.draft().gateConditions.map((c) => (c.id === id ? { ...c, joiner } : c)));
   }
 
   protected deleteCondition(id: string): void {

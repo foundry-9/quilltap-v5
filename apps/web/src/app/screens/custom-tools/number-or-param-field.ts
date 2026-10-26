@@ -39,6 +39,14 @@ import { Icon } from '../../ui/icon';
         >
           {{ statePillText() }}
         </span>
+      } @else if (value().kind === 'inventory') {
+        <span
+          class="qt-text-xs qt-text-secondary font-mono rounded qt-bg-muted px-2 py-1"
+          [class.qt-input-error]="hasError()"
+          title="This field draws from an object the rolling character carries. Edit $inventory references in the raw JSON, or swap to a literal."
+        >
+          {{ inventoryPillText() }}
+        </span>
       } @else {
         <select
           [value]="paramName()"
@@ -104,6 +112,12 @@ export class NumberOrParamField {
     return v.kind === 'state' ? `$state: ${v.path} → ${v.fallback}` : '';
   }
 
+  /** The read-only pill for a carried `$inventory` roll field (v4's markup). */
+  protected inventoryPillText(): string {
+    const v = this.value();
+    return v.kind === 'inventory' ? `$inventory: ${v.path} → ${v.fallback}` : '';
+  }
+
   protected toggleTitle(): string {
     const v = this.value();
     if (v.kind === 'literal') {
@@ -111,8 +125,8 @@ export class NumberOrParamField {
         ? 'Declare a numeric parameter first'
         : 'Use a parameter instead of a number';
     }
-    return v.kind === 'state'
-      ? 'Replace this $state reference with a literal number'
+    return v.kind === 'state' || v.kind === 'inventory'
+      ? `Replace this $${v.kind} reference with a literal number`
       : 'Use a literal number instead';
   }
 

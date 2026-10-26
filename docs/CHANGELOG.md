@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the gate and the outcome table draw chips as lines, with the Inventory subjects and the aggregate key box (v4 a53024d3c, e1872c94f)
+
+_Versions: SPA 0.5.884._
+
+New `qt-joiner-toggle` and `qt-condition-groups` draw a chip list as lines with an AND / OR toggle between chips and a hairline between lines; `qt-literal-operand-field` is the literal right-hand side both chips used to inline (now shared, with the Inventory state select); `qt-aggregate-key-field` is the aggregate key box with its 24-skeleton Insert-key helper. The availability gate gains the `inventory state` / `inventory count` / `inventory aggregate` subjects, per-line duplicate checks (another line may repeat a slot; another subject may too), the line hint and the new lead sentence. The outcome table gains the same three subjects, the `$inventory` operand pill, the narrator's brief textarea (shown while the consult is on or a brief exists), per-line duplicate checks, the free-slot search on the last line, and the brief's errors and warnings under its row. The carried-reference field gains the `$inventory` pill. Specs: new rows for every new component, the gate's `comparatorsFor` / `withSubject` tables, v4's section-level cases (each gated case with a hand-built twin), and the six existing strings that moved with the grammar (the gate's lead, hint, subject title and duplicate notice).
+
 #### 2026-10-26 — feat(spa): any-of lines, briefs, the Inventory and the Log in the Workbench draft model (v4 a53024d3c, 322a5488e, e1872c94f, e4a60ad9e)
 
 _Versions: SPA 0.5.883._
