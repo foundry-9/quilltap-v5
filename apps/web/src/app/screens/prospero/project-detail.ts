@@ -33,6 +33,7 @@ import { ProjectModelBehaviorCard } from './cards/project-model-behavior-card';
 import { ProjectScenariosCard } from './cards/project-scenarios-card';
 import { ProjectSettingsCard } from './cards/project-settings-card';
 import { ProjectWardrobeCard } from './cards/project-wardrobe-card';
+import { ProjectInventoryCard } from './cards/project-inventory-card';
 import { resolveFirstVisit } from './project-card-state';
 import { PASSIVE_POLL_INTERVAL_MS } from '../salon/story-background.api';
 import {
@@ -101,6 +102,7 @@ import {
     ProjectChatsSection,
     ProjectScenariosCard,
     ProjectWardrobeCard,
+    ProjectInventoryCard,
   ],
   template: `
     @if (projectQuery.isPending()) {
@@ -145,6 +147,12 @@ import {
             [defaultOpen]="firstVisit()"
           />
           <qt-project-wardrobe-card
+            [projectId]="id()"
+            [projectName]="project()!.name"
+            [defaultOpen]="firstVisit()"
+          />
+          <!-- P4.D330 — v4 ProjectDetailView.tsx:198-202 (after the Wardrobe card). -->
+          <qt-project-inventory-card
             [projectId]="id()"
             [projectName]="project()!.name"
             [defaultOpen]="firstVisit()"

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Prospero project page's Inventory card (v4 `4fbdad186`)
+
+_Versions: SPA 0.5.900._
+
+NEW `qt-project-inventory-card`, after the Wardrobe card: `Inventory (n)` counted from the project tier's own list (re-counted on the `inventory` realtime topic and on returning to the tab), v4's description, the `inventory` icon, and the Inventory panel pinned to the project. The project page specs give their stub clients the realtime stream the panel subscribes to. P4.D330, Tier 1 item 20.
+
 #### 2026-10-26 — feat(spa): the participant card's inventory button (v4 `4fbdad186`)
 
 _Versions: SPA 0.5.899._

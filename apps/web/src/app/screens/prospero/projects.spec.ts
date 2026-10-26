@@ -10,6 +10,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
+import { coreStreamStub } from '../../core/core-client.testing';
 import { RichEditor } from '../../editor/rich-editor';
 import { CoreDispatchError } from '../../core/core-contract';
 import type {
@@ -35,6 +36,14 @@ import { ToastService } from '../../ui/toast.service';
 interface DispatchReq {
   type: string;
   [k: string]: unknown;
+}
+
+/**
+ * The live-stream half every client needs since the project page mounts the
+ * Inventory panel (P4.D330), whose dialog body subscribes to the realtime hub.
+ */
+function withStream(client: Partial<CoreClient>): Partial<CoreClient> {
+  return { ...coreStreamStub(), ...client } as unknown as Partial<CoreClient>;
 }
 
 function stubClient(handler: (req: DispatchReq) => unknown): Partial<CoreClient> {
@@ -112,7 +121,7 @@ describe('ProsperoList', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
       ],
     });
     const fixture = TestBed.createComponent(ProsperoList);
@@ -231,7 +240,7 @@ describe('ProsperoList (in-tab drill)', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: stubClient(handler) },
+        { provide: CoreClient, useValue: withStream(stubClient(handler)) },
         { provide: WORKSPACE_TAB_ID, useValue: 'tab-p' },
       ],
     });
@@ -274,7 +283,7 @@ describe('ProsperoList (in-tab drill)', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: stubClient(handler) },
+        { provide: CoreClient, useValue: withStream(stubClient(handler)) },
         { provide: WORKSPACE_TAB_ID, useValue: 'tab-p' },
       ],
     });
@@ -306,7 +315,7 @@ describe('ProjectModelBehaviorCard', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
       ],
     });
     const fixture = TestBed.createComponent(ProjectModelBehaviorCard);
@@ -496,7 +505,7 @@ describe('ProjectCharactersCard', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(opts.queryClient ?? new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
         // The real service needs `tagList` + localStorage; the card only asks
         // the one question (v4 `shouldHideByIds`).
         {
@@ -1020,7 +1029,7 @@ describe('ProjectDetailScreen', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -1216,7 +1225,7 @@ describe('ProjectImageGenerationCard', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
       ],
     });
     const fixture = TestBed.createComponent(ProjectImageGenerationCard);
@@ -1620,7 +1629,7 @@ describe('ProjectFilesCard', () => {
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
       ],
     });
     const fixture = TestBed.createComponent(ProjectFilesCard);
@@ -1772,7 +1781,7 @@ describe('ProjectDetailScreen — the workspace backdrop reporter (bug 80)', () 
       providers: [
         provideRouter([]),
         provideTanStackQuery(new QueryClient()),
-        { provide: CoreClient, useValue: client },
+        { provide: CoreClient, useValue: withStream(client) },
         {
           provide: ActivatedRoute,
           useValue: {
