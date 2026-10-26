@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory dialog, its tab view and its project panel (v4 `4fbdad186`)
+
+_Versions: SPA 0.5.897._
+
+NEW `inventory-control-dialog.ts`: the inner body (the four-group `Inventory:` select over the character, project and group lists, falling back to the first character — or Quilltap General — once the characters are read; the shared-inventory note; the browser; in a chat the Carrying-now pane, the kit-member `Done — n kit members could not be carried…` toast, the cap alert and Reset to defaults; the editor, folder, transfer and instantiate overlays), `qt-inventory-control-dialog` (the shell host, remounted per context and never starting a chat-opened dialog on its project), `qt-inventory-tab-view` and `qt-inventory-panel` (one tier, no select). Every write reloads the list, the folder tree and the carried read; the `inventory` and `chats` realtime topics and returning to the tab reload them too. Escape and the backdrop stand down while an overlay, the Take-up picker or a confirmation is up. P4.D330, Tier 1 items 11 + 19.
+
 #### 2026-10-26 — feat(spa): the Carrying-now pane and the Inventory's folder, instantiate and transfer dialogs
 
 _Versions: SPA 0.5.896._
