@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory reference picker and vantage loader for the Workbench (v4 `e1872c94f`)
+
+_Versions: SPA 0.5.901._
+
+NEW `qt-inventory-reference-picker` (choose an object to name, not to carry: each with its picture, tier and archetype / kit / archived chips; `pick_up` may name only archetypes and the other gestures grey them out with v4's reason; the eligible sort first; Find an object, Show archived, and Write it down by title or name / id) and `InventoryVantageItemsLoader` (a character's pool with no project tier, or one shared tier, archived included, with `owns` for the vantage's own tier). Pascal's Workbench mounts them through P4.D334. P4.D330, Tier 2 item 27 (C10).
+
 #### 2026-10-26 — feat(spa): the Prospero project page's Inventory card (v4 `4fbdad186`)
 
 _Versions: SPA 0.5.900._
