@@ -158,15 +158,17 @@ fn assert_roster_eq(got: &Value, want: &Value, id: &str) {
     }
 }
 
-/// P4.D329: regenerated at the pin `322a5488e`, the scenario whose roster v4's
-/// vault-only change moved (a participant's vault tool now loses to the group
-/// tier — v4's vault-only custom tools, P4.D332's to port). Its roster differs by
-/// design on this branch; the reads and the inventory lines still compare.
-/// MEASURED: exactly this one. A carved row that turns GREEN fails the run.
-const P4D332_RESIDUE: &[&str] = &["full-precedence-chain"];
+/// P4.D333: the cases a regen at v4 `322a5488e` moves for a SIBLING lane's
+/// reason, carved by id until the union. `full-precedence-chain` is
+/// P4.D332's (`cfa0cba29` retires the `participant` tier, so v4 deals `b`
+/// from `group`); a carved case that turns green fails the run.
+const RESIDUE_UNTIL_UNION: &[&str] = &["full-precedence-chain"];
 
 #[test]
 fn pascal_roster_matches_oracle() {
+    let mut residue_seen = 0usize;
+    let mut withheld_lines_compared = 0usize;
+    let mut anyof_withheld_lines = 0usize;
     let path = match std::env::var("QT_ORACLE_PASCAL_DISCOVERY") {
         Ok(p) => p,
         Err(_) => {
@@ -307,13 +309,74 @@ fn pascal_roster_matches_oracle() {
             )
         });
 
-        let got = serialize(&roster);
-        if P4D332_RESIDUE.contains(&id.as_str()) {
-            let same = std::panic::catch_unwind(|| assert_roster_eq(&got, &row["output"], &id));
-            assert!(
-                same.is_err(),
-                "case '{id}' is P4.D332's residue but turned GREEN — lift it"
+        // P4.D333: the withheld DEBUG, line for line. v5's line names the
+        // fields its own way (`withheld_by`, `mount_point_id`, a `Debug` tier),
+        // so each is compared by meaning; v4's `characterId` is not carried —
+        // this pure resolver is not handed the invoker's id (recorded).
+        let withheld: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Custom tool withheld by its availability gate"))
+            .collect();
+        let want_lines = row["withheldLines"].as_array().cloned().unwrap_or_default();
+        assert_eq!(
+            withheld.len(),
+            want_lines.len(),
+            "case '{id}': withheld lines {withheld:?}"
+        );
+        for (got_line, want) in withheld.iter().zip(&want_lines) {
+            let field = |key: &str| -> String {
+                got_line
+                    .split(' ')
+                    .find_map(|kv| kv.strip_prefix(&format!("{key}=")))
+                    .unwrap_or_else(|| panic!("case '{id}': no {key}= in {got_line}"))
+                    .to_string()
+            };
+            let as_text = |v: &Value| match v {
+                Value::Null => "null".to_string(),
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            assert_eq!(field("name"), as_text(&want["name"]), "case '{id}': name");
+            assert_eq!(
+                field("tier").to_lowercase(),
+                as_text(&want["tier"]),
+                "case '{id}': tier"
             );
+            assert_eq!(
+                field("mount_point_id"),
+                as_text(&want["mountPointId"]),
+                "case '{id}': mountPointId"
+            );
+            assert_eq!(
+                field("withheld_by"),
+                as_text(&want["withheldBy"]),
+                "case '{id}': withheldBy"
+            );
+            assert_eq!(
+                field("groups"),
+                as_text(&want["groups"]),
+                "case '{id}': groups"
+            );
+            assert_eq!(
+                field("heldGroup"),
+                as_text(&want["heldGroup"]),
+                "case '{id}': heldGroup"
+            );
+            withheld_lines_compared += 1;
+            if want["groups"].as_u64() == Some(2) {
+                anyof_withheld_lines += 1;
+            }
+        }
+
+        let got = serialize(&roster);
+        if RESIDUE_UNTIL_UNION.contains(&id.as_str()) {
+            let walked = std::panic::catch_unwind(|| assert_roster_eq(&got, &row["output"], &id));
+            assert!(
+                walked.is_err(),
+                "case '{id}' now MATCHES the oracle — lift it from RESIDUE_UNTIL_UNION"
+            );
+            eprintln!("RESIDUE (P4.D332, until union): roster case '{id}' differs — carved");
+            residue_seen += 1;
         } else {
             assert_roster_eq(&got, &row["output"], &id);
         }
@@ -387,6 +450,15 @@ fn pascal_roster_matches_oracle() {
     assert!(
         saw_bag_lines >= 3,
         "only {saw_bag_lines} scenarios logged a bag line"
+    );
+    assert_eq!(
+        residue_seen,
+        RESIDUE_UNTIL_UNION.len(),
+        "a carved case went missing"
+    );
+    assert!(
+        withheld_lines_compared >= 10 && anyof_withheld_lines >= 2,
+        "the withheld DEBUG went uncompared ({withheld_lines_compared} lines, {anyof_withheld_lines} any-of)"
     );
     assert!(
         saw_is_root_reject,

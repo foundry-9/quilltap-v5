@@ -87,6 +87,28 @@ const mockLoadInventoryContext = loadInventoryContext as jest.Mock;
 const OUT = process.env.QT_ORACLE_OUT;
 const rows: unknown[] = [];
 
+/**
+ * P4.D333: the roster's `Custom tool withheld by its availability gate` DEBUG,
+ * captured through the singleton logger's shared transports (memory note
+ * `v4-oracle-job-host-and-log-capture` §2). The logger module is loaded by the
+ * static import above, so its level is lifted on the instance rather than via
+ * `LOG_LEVEL`; only the one line is kept, its `context` binding dropped.
+ */
+const WITHHELD = 'Custom tool withheld by its availability gate';
+let withheldLines: Array<Record<string, unknown>> = [];
+function captureWithheld(): void {
+  const internal = logger as unknown as { minLevel: number; transports: Array<{ write: (d: unknown) => void }> };
+  internal.minLevel = Number.MAX_SAFE_INTEGER;
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { message: string; context?: Record<string, unknown> };
+      if (data.message !== WITHHELD) return;
+      const { context: _c, service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+      withheldLines.push(JSON.parse(JSON.stringify(fields)));
+    },
+  });
+}
+
 /** A mount is a store id → { enabled, files: [{ relativePath, kind, content }] }. */
 interface MountSpec {
   enabled: boolean;
@@ -632,6 +654,67 @@ const scenarios: Array<{ id: string; pool: Pool; mounts: Mounts; sheet?: SheetSp
   // The context sheet wins over the vault for progressions too — and a context
   // sheet carrying no `progressions` key fails an availableWhen CLOSED even
   // though the vault would have satisfied it.
+  // === P4.D333 (v4 `a53024d3c`): the withheld DEBUG names the clause's
+  // group count and the group that closed it (`null` for a miss) ===
+  {
+    id: 'anyof-withheld-closes-on-group-1',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/scrying.tool.json', tool('scrying', { withheldWhen: [{ metadata: { novice: { eq: true } } }, { metadata: { clearance: { lt: 3 } } }] }))],
+      },
+    },
+    sheet: { ctxMetadata: { novice: false, clearance: 1 } },
+  },
+  {
+    id: 'anyof-available-misses-every-group',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/vault.tool.json', tool('vault', { availableWhen: [{ metadata: { clearance: { gte: 9 } } }, { metadata: { house: { eq: 'Aurum' } } }] }))],
+      },
+    },
+    sheet: { ctxMetadata: { clearance: 1, house: 'Ferro' } },
+  },
+  {
+    id: 'anyof-available-opens-on-group-1-no-line',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/vault.tool.json', tool('vault', { availableWhen: [{ metadata: { clearance: { gte: 9 } } }, { metadata: { house: { eq: 'Aurum' } } }] }))],
+      },
+    },
+    sheet: { ctxMetadata: { clearance: 1, house: 'Aurum' } },
+  },
+  {
+    id: 'bare-withheld-line-carries-one-group-and-null',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/hack.tool.json', gated('hack', 'withheldWhen', { novice: { eq: true } }))],
+      },
+    },
+    sheet: { ctxMetadata: { novice: true } },
+  },
+  // An authored-but-EMPTY `progress: {}` beside a metadata test: since
+  // `a53024d3c` it names no progression, so the sheet is not derived — and the
+  // verdict is the metadata test's alone either way.
+  {
+    id: 'gate-progress-empty-record-derives-nothing',
+    pool: { projectMountPointIds: ['m1'] },
+    mounts: {
+      m1: {
+        enabled: true,
+        files: [file('Tools/hack.tool.json', tool('hack', { availableWhen: { metadata: { clearance: { gte: 9 } }, progress: {} } }))],
+      },
+    },
+    sheet: { ctxMetadata: { clearance: 1 } },
+  },
+  // === end P4.D333 ===
   {
     id: 'progress-gate-reads-the-context-sheet-not-the-vault',
     pool: { projectMountPointIds: ['m1'] },
@@ -769,8 +852,10 @@ describe('discovery oracle', () => {
   });
 
   it('emits', async () => {
+    captureWithheld();
     for (const scenario of scenarios) {
       jest.clearAllMocks();
+      withheldLines = [];
       const sheet = scenario.sheet ?? {};
       prime(scenario.pool, scenario.mounts, sheet);
       // P4.D329: the lazy loader throws the scenario's message; the lines the
@@ -805,6 +890,8 @@ describe('discovery oracle', () => {
         // names an Inventory subject — and the lines it logged.
         inventoryReads: mockLoadInventoryContext.mock.calls.length,
         inventoryLines,
+        // P4.D333: every withheld DEBUG the run logged, in order.
+        withheldLines,
       });
     }
   });

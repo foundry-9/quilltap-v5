@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(pascal): the roster's withheld DEBUG pinned field by field, any-of groups included (P4.D333)
+
+_Harness-only change (`quilltap-harness` frozen); no crate version moves._
+
+`pascal-custom-tools-discovery.test.ts` now captures v4's `Custom tool withheld by its availability gate` line per scenario (the singleton logger's transports, level lifted on the instance) and gains five scenarios: an any-of `withheldWhen` closing on group 1 (`groups: 2`, `heldGroup: 1`), an any-of `availableWhen` missing every group (`heldGroup: null`), one opening on group 1 (no line), a bare withheld clause, and an authored-empty `progress: {}`. `pascal_roster_equivalence` captures v5's line and compares name, tier, mount, clause, `groups` and `heldGroup` on every withheld row (v4's `characterId` is not carried by v5's pure resolver — recorded). `full-precedence-chain` is carved by id as P4.D332's residue (the retired `participant` tier); a carved case that turns green fails the run.
+
 #### 2026-10-26 — chore(schemas): re-vendor the custom-tool JSON Schema at v4 `322a5488e` (P4.D333)
 
 _Versions: SPA 0.5.882._
