@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the `inventory` icon (v4 `e27fb6b34`)
+
+_Versions: SPA 0.5.882._
+
+`ui/icon.ts` gains the `inventory` name (86 names) and `public/images/icons/inventory.svg` is v4's file byte for byte (an open box with flaps). The `_icons.css` mask row belongs to P4.D336's file and is handed off; the Madman's Box override is P4.D339's. P4.D330, Tier 1 item 2.
+
 #### 2026-10-26 — docs(porting): P4.D339 lane record — NO-PORT ratifications, HANDOFF md5s, schema CHECK table
 
 _Docs-only change._
