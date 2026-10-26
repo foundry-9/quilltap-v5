@@ -190870,3 +190870,7 @@ The order's per-family split for readers / writes / location / pool / dependents
 - **P4.D327**: `can_manage_inventory: None` compile-forced lines in `restore/orchestrator.rs` and `quilltap_import/characters.rs` — the carriers replace them with the carried value.
 - **P4.D328**: the four change types are homed in `inventory::equip` (data only); `notify_inventory_changed` re-points the arrival's R-3 refresh (`apply_defaults::refresh_avatars_after_arrival`), adding the `[InventoryEffects]` line.
 - **P4.D340**: the eight lint seams are `// P4.D340 lint seam:` comments at v4's positions in `item_mutations.rs`.
+
+### P4.D324 — `INVENTORY` recorded
+
+`INVENTORY` = `c065d7e2f` (lane `claude/p4.d324-inventory-keystone-3c3c70`). The order's status header is rewritten with that sha and the landed C1 spellings (every "(to be confirmed at `INVENTORY`)" replaced; departures marked ⚑). P4.D325 / P4.D326 / P4.D327 / P4.D328 / P4.D329 / P4.D331 / P4.D337 / P4.D340 branch from `c065d7e2f`.
