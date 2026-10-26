@@ -44,7 +44,7 @@ import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:f
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 import { processSingleton } from '@/lib/utils/process-singleton';
 
 interface Spec {
@@ -1563,6 +1563,10 @@ async function runCase(
   // pair does not. v4's REAL DDL through the round's shared plant (never the
   // seed migration); the Rust side runs `ensure_chat_wardrobe_history_on`.
   await plantChatWardrobeHistoryTable(getRawDatabase()!);
+  // [P4.D327] The two Inventory columns on every copy (build copies and
+  // import targets alike) — the round's shared plant; the Rust side runs
+  // `ensure_inventory_columns_on`.
+  await plantInventoryColumns(getRawDatabase()!);
   const { getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );

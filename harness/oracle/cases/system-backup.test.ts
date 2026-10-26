@@ -80,7 +80,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, relative, sep } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -595,6 +595,9 @@ async function runCase(
   // round's shared plant (v4's REAL DDL; never `ensureCollection`, never the
   // seed migration). The Rust side runs `ensure_chat_wardrobe_history_on`.
   if (!c.withoutHistoryTable) await plantChatWardrobeHistoryTable();
+  // [P4.D327] The two Inventory columns on EVERY copy (the history table's
+  // opt-out does not apply) — the round's shared plant.
+  await plantInventoryColumns();
   if (c.plantWardrobeHistory) await plantWardrobeHistory();
   if (c.plantInforms) await plantInforms(spec.userId);
   if (c.plantBlobProfile) await plantBlobProfile(spec.userId);

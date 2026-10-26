@@ -54,7 +54,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -430,6 +430,9 @@ async function runCase(
   // table v4 logs ERROR + DEBUG and moves on. The Rust side runs
   // `ensure_chat_wardrobe_history_on`.
   await plantChatWardrobeHistoryTable();
+  // [P4.D327] The two Inventory columns on every per-run copy (the round's
+  // shared plant; the committed pair predates both).
+  await plantInventoryColumns();
 
   try {
     publishedTopics = [];

@@ -76,6 +76,9 @@ fn fresh_db(tag: &str) -> ScratchDb {
         if !tag.ends_with("_no_history_table") {
             quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
         }
+        // [P4.D327] the two Inventory columns on EVERY copy (the oracle's
+        // `plantInventoryColumns` — the history opt-out does not apply).
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
         if tag.ends_with("_outfit_history") {
             plant_outfit_history(w.connection());
         }

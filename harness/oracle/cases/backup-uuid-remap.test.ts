@@ -58,7 +58,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -214,6 +214,10 @@ async function collectWide(
   // shared plant — v4's REAL DDL; never the seed migration). Empty: `wide`
   // carries `wardrobeHistory: []`.
   await plantChatWardrobeHistoryTable();
+  // [P4.D327] The Inventory columns (`chats.equippedInventory`,
+  // `characters.canManageInventory`) on the `wide` copy too — the round's
+  // shared plant; the committed pair predates both.
+  await plantInventoryColumns();
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {

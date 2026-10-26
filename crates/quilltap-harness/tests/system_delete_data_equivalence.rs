@@ -78,6 +78,8 @@ fn fresh_db(tag: &str) -> ScratchDb {
     {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        // [P4.D327] the two Inventory columns (the oracle's `plantInventoryColumns`).
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
     }
     let db = Db::open(
         DbPaths {

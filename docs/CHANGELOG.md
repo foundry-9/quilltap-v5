@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(harness): plant the Inventory columns on every carrier family's per-run copies (P4.D327)
+
+_Harness-only change (no crate version moves)._
+
+The carrier oracles (`system-backup`, `system-delete-data`, `system-export`, `system-import-execute`, `system-restore`, `backup-uuid-remap`) call the round's shared `plantInventoryColumns` beside every outfit-history plant, and the Rust families call `ensure_inventory_columns_on` at the same points, on every case (the history table's opt-outs do not apply). Measured first at the `INVENTORY` tip with no plant: all seven carrier families are green (the keystone's reads tolerate the absent columns and v4 reads `SELECT *`), so there was no dead set. After the plant they are still green with identical bytes. The restore target is provisioned fresh on both sides and already carries both columns, so the plant is a self-checked no-op there.
+
 #### 2026-10-26 — feat(export): regenerate the `.qtap` key-order table at the `322a5488e` pin (P4.D327)
 
 _Versions: core 0.0.1327._

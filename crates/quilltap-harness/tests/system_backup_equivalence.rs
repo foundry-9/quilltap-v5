@@ -209,9 +209,14 @@ fn open_fixture(scratch: &Path, plant_history: bool) -> Db {
     // [P4.D317] the outfit-history table on every copy — the oracle's
     // `plantChatWardrobeHistoryTable` (v4's REAL DDL), table only — except the
     // R-J row (`BACKUP_ABSENT_HISTORY_TABLE`), which measures its absence.
-    if plant_history {
+    {
         let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
-        quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        if plant_history {
+            quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        }
+        // [P4.D327] the two Inventory columns on EVERY copy (the oracle's
+        // `plantInventoryColumns` — the history opt-out does not apply).
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
     }
     Db::open(
         DbPaths {

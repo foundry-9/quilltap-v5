@@ -239,6 +239,8 @@ fn fresh_fixture(tag: &str) -> Scratch {
         // `plantChatWardrobeHistoryTable` on its copy (v4's REAL DDL). Table
         // only; never the seed ensure.
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        // [P4.D327] the two Inventory columns (the oracle's `plantInventoryColumns`).
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
         let touched = w
             .connection()
             .execute(

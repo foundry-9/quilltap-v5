@@ -36,7 +36,7 @@ import * as fs from 'fs';
 import { join, dirname } from 'node:path';
 import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 
 interface PreviewCase {
   name: string;
@@ -1315,6 +1315,11 @@ async function runRestoreCase(
     // plants the same table on every target in `fresh_instance`). v4's REAL
     // DDL through the round's shared plant — never the seed migration.
     await plantChatWardrobeHistoryTable();
+    // [P4.D327] The two Inventory columns on EVERY target. v4's fresh
+    // generateDDL target already renders both at the pin, so the plant is a
+    // self-checking no-op here (measured) — kept so a target that lacked
+    // them would fail loudly rather than drop the cells.
+    await plantInventoryColumns();
     if (c.alignUploadsPointer) {
       const { parseBackupZip } = await import('@/lib/backup/restore/archive');
       const parsed = await parseBackupZip(join(archives, c.archive));

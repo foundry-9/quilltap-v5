@@ -1875,6 +1875,8 @@ fn fresh_instance(dir: &Path) -> Db {
         let w = quilltap_core::db::Writer::open_writable(&dir.join("quilltap.db"), TEST_PEPPER)
             .expect("open target for the outfit-history table");
         quilltap_core::test_support::ensure_chat_wardrobe_history_on(w.connection());
+        // [P4.D327] the two Inventory columns (the oracle's `plantInventoryColumns`).
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
     }
     // === end P4.D317 ===
     Db::open(

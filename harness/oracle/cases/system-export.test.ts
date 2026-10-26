@@ -42,7 +42,7 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 import { tmpdir } from 'node:os';
-import { plantChatWardrobeHistoryTable } from '../lib/v4-migrations';
+import { plantChatWardrobeHistoryTable, plantInventoryColumns } from '../lib/v4-migrations';
 
 interface Spec {
   testPepperBase64: string;
@@ -771,6 +771,9 @@ async function runCase(
     // backend's `Raw query failed` ERROR). The Rust side runs
     // `ensure_chat_wardrobe_history_on` on its copy.
     if (!c.noHistoryTable) await plantChatWardrobeHistoryTable(getRawDatabase()!);
+    // [P4.D327] The two Inventory columns on EVERY copy (the history table's
+    // opt-out does not apply) — the round's shared plant.
+    await plantInventoryColumns(getRawDatabase()!);
   }
   if (c.outfitHistory) await plantOutfitHistory();
   if (c.wardrobe) await plantWardrobe();
