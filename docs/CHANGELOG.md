@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D335 lane record (interrupts, server)
+
+_Docs-only change._
+
+The P4.D335 lane record in `status-log.md` (venue, the drift probe, red-first counts, the measurements the order asked for, the order's premises measured false, uncovered rows, Tier 3 records, the hand-offs to P4.D339 and the unifier, the gate: 829 binaries, 5,495 passed, three sibling-owned reds) and the order's status header set to LANE COMPLETE.
+
 #### 2026-10-26 — feat(interrupts): `?action=stop-turn` and `?action=raise-hand` on the chat REST edge (P4.D335 Tier 2)
 
 _Versions: web 0.0.245._
