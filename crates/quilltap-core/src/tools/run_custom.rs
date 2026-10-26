@@ -507,6 +507,12 @@ pub struct RunCustomToolContext {
     /// `05005c562`). The effects applier supplies the `'pascal'` provenance.
     pub pending_wardrobe_history:
         Option<crate::services::outfit_change_effects::PendingWardrobeHistory>,
+    /// The turn's pending Inventory changes (v4 `run-custom-handler.ts:58`
+    /// `pendingInventoryAnnouncements?`, `e1872c94f`) — the SAME map the
+    /// inventory tools get, so a tool's `inventory` gesture and the model's own
+    /// `inventory_*` calls read as one Pascal line. The LAST field (R-G).
+    pub pending_inventory_announcements:
+        Option<crate::services::inventory_change_effects::PendingInventoryAnnouncements>,
 }
 
 /// The compact result handed back to the model (v4 `RunCustomToolOutput`).
@@ -766,6 +772,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
             now_ms: ctx.now_ms,
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
             pending_wardrobe_history: ctx.pending_wardrobe_history.as_ref(),
+            pending_inventory_announcements: ctx.pending_inventory_announcements.as_ref(),
         },
         rng,
         llm_invoke,

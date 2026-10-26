@@ -838,6 +838,7 @@ pub async fn chat_custom_tool_run(
             // gesture enqueues its announcement at once.
             pending_wardrobe_announcements: None,
             pending_wardrobe_history: None,
+            pending_inventory_announcements: None,
         },
         &mut rng,
         // The chat run attributes the consult to THIS chat, so a dangerous room

@@ -279,6 +279,7 @@ async fn tool_dispatch_matches_oracle() {
         }),
     );
 
+    let mut diverged: Vec<String> = Vec::new();
     for (i, op) in spec.ops.iter().enumerate() {
         let tc = ToolCall {
             name: op.tool.clone(),
@@ -304,15 +305,23 @@ async fn tool_dispatch_matches_oracle() {
         let oo = &oracle.ops[i];
         assert_eq!(oo.tool, op.tool, "op {i}: tool mismatch");
         let want = normalize_current_time(oo.result.clone());
-        assert_eq!(
-            got,
-            want,
-            "op {i} ({}): ToolResult diverged\n  rust:   {}\n  oracle: {}",
-            op.tool,
-            serde_json::to_string(&got).unwrap(),
-            serde_json::to_string(&want).unwrap()
-        );
+        // Every diverged op is reported before the test fails (P4.D328 — a
+        // sibling lane's red at the pin must not hide a later row's).
+        if got != want {
+            eprintln!(
+                "op {i} ({}): ToolResult diverged\n  rust:   {}\n  oracle: {}",
+                op.tool,
+                serde_json::to_string(&got).unwrap(),
+                serde_json::to_string(&want).unwrap()
+            );
+            diverged.push(format!("op {i} ({})", op.tool));
+        }
     }
+    assert!(
+        diverged.is_empty(),
+        "{} op(s) diverged: {diverged:?}",
+        diverged.len()
+    );
     assert!(
         oracle
             .ops

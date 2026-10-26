@@ -213,6 +213,29 @@
       "characterId": "22222222-2222-4222-8222-222222222222",
       "callingParticipantId": "55555555-5555-4555-8555-555555555555",
       "args": {}
+    },
+    {
+      "$comment": "P4.D328 (v4 `e1872c94f`, `tool-executor.ts:795-807`) \u2014 an inventory tool with no character to act for: the dispatcher refuses BEFORE building the tool context (`!context.characterId`).",
+      "tool": "inventory_list",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "args": {}
+    },
+    {
+      "$comment": "P4.D328 \u2014 the same refusal for an EMPTY character id (v4's falsy test; v5 must not flatten it to a lookup).",
+      "tool": "inventory_read",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "",
+      "args": {
+        "ref": "lantern"
+      }
+    },
+    {
+      "$comment": "P4.D328 \u2014 the inventory dispatch row end-to-end: Friday's empty vault answers the empty listing (real handler both sides, no minted values).",
+      "tool": "inventory_list",
+      "chatId": "33333333-3333-4333-8333-333333333333",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "callingParticipantId": "55555555-5555-4555-8555-555555555555",
+      "args": {}
     }
   ]
 }

@@ -56,6 +56,10 @@ use super::doc_edit::{
     execute_doc_edit_tool, format_doc_edit_results, DocEditToolContext,
     PendingLibrarianAnnouncement,
 };
+use super::inventory_tool_table::{
+    finish_inventory_tool, run_inventory_tool_handler, InventoryHandlerCx, InventoryToolContext,
+    InventoryToolStage, INVENTORY_TOOL_NAMES,
+};
 use super::wardrobe_tool_table::{
     finish_wardrobe_tool, run_wardrobe_tool_handler, WardrobeToolContext, WardrobeToolStage,
     WARDROBE_TOOL_NAMES,
@@ -119,6 +123,16 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "wardrobe_take_off",
     "wardrobe_rollback",
     "wardrobe_history",
+    // P4.D328 (v4 `e1872c94f`): `...INVENTORY_TOOL_NAMES` after the wardrobe's.
+    "inventory_list",
+    "inventory_read",
+    "inventory_equip",
+    "inventory_unequip",
+    "inventory_pick_up",
+    "inventory_create",
+    "inventory_update",
+    "inventory_archive",
+    "inventory_give",
     // DOC_EDIT_TOOL_NAMES (doc-edit-handler.ts:96)
     "doc_read_file",
     "doc_write_file",
@@ -188,6 +202,16 @@ pub const PORTED_TOOLS: &[&str] = &[
     "wardrobe_take_off",
     "wardrobe_rollback",
     "wardrobe_history",
+    // P4.D328 (v4 `e1872c94f`): `...INVENTORY_TOOL_NAMES` after the wardrobe's.
+    "inventory_list",
+    "inventory_read",
+    "inventory_equip",
+    "inventory_unequip",
+    "inventory_pick_up",
+    "inventory_create",
+    "inventory_update",
+    "inventory_archive",
+    "inventory_give",
     // W4.1d3b: doc-edit tools (the 23 non-photo `doc_*` tools, dispatched through
     // `execute_doc_edit_tool`). The photo trio (`keep_image`/`list_images`/
     // `attach_image`) is a tracked scoped deferral → the loud fallback.
@@ -610,6 +634,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "self_inventory" => self.run_self_inventory(tc, ctx).await,
             // v4 `9ecebf986`: the seven wardrobe tools are ONE table entry.
             name if WARDROBE_TOOL_NAMES.contains(&name) => self.run_wardrobe_tool(tc, ctx).await,
+            // v4 `e1872c94f`: the nine inventory tools are ONE table entry, after
+            // the wardrobe arm.
+            name if INVENTORY_TOOL_NAMES.contains(&name) => self.run_inventory_tool(tc, ctx).await,
             // W4.1d4: search tools
             "search" => self.run_search(tc, ctx).await,
             "project_info" => self.run_project_info(tc, ctx),
@@ -689,6 +716,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             // only as present.
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.clone(),
             pending_wardrobe_history: ctx.pending_wardrobe_history.clone(),
+            pending_inventory_announcements: ctx.pending_inventory_announcements.clone(),
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's
@@ -1712,6 +1740,82 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         }
     }
 
+    // ── the inventory tools (v4 `tool-executor.ts:795-807`, `e1872c94f`) ───
+    /// The nine `inventory_*` tools through ONE table (R-3): the handler inside
+    /// one write holding both writer connections, then the after-commit half
+    /// over the context's pending map. v4 refuses BEFORE building the tool
+    /// context when there is no character to act for (`!context.characterId`
+    /// — an empty id included); `wardrobe_snapshot`'s `""` flattening is NOT
+    /// this path's.
+    async fn run_inventory_tool(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let name = tc.name.clone();
+        let Some(character_id) = ctx.character_id.clone().filter(|id| !id.is_empty()) else {
+            return fail(&name, "The inventory tools need a character to act for.");
+        };
+        let (db, args, user_id, chat_id) = (
+            self.db.clone(),
+            tc.arguments.clone(),
+            ctx.user_id.clone(),
+            ctx.chat_id.clone(),
+        );
+        let blob_webp = crate::services::mount_index::normalize_blob_image::SharedBlobWebp(
+            self.file_bytes.blob_webp(),
+        );
+        let stash: Arc<Mutex<Option<InventoryToolStage>>> = Arc::default();
+        let stash_in = stash.clone();
+        let (handler_name, handler_user, handler_chat, handler_character) = (
+            name.clone(),
+            user_id.clone(),
+            chat_id.clone(),
+            character_id.clone(),
+        );
+        let written = self
+            .wardrobe_write(db.clone(), move |main, mount| {
+                let stage = run_inventory_tool_handler(
+                    &handler_name,
+                    &InventoryHandlerCx {
+                        main,
+                        mount,
+                        user_id: &handler_user,
+                        chat_id: &handler_chat,
+                        character_id: &handler_character,
+                        blob_webp: blob_webp.get(),
+                    },
+                    &args,
+                );
+                if let Ok(mut g) = stash_in.lock() {
+                    *g = stage;
+                }
+                // Replaced below once the effects have run.
+                ok(&handler_name, Value::Null)
+            })
+            .await;
+        let Some(stage) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
+            // The write itself failed (no mount-index, a writer error).
+            return written;
+        };
+        let output = finish_inventory_tool(
+            &db,
+            &InventoryToolContext {
+                user_id: &user_id,
+                chat_id: &chat_id,
+                character_id: &character_id,
+                pending_inventory_announcements: ctx.pending_inventory_announcements.as_ref(),
+            },
+            stage,
+        )
+        .await;
+        let run = output.run();
+        ToolResult {
+            tool_name: name,
+            success: run.success,
+            result: run.result,
+            error: run.error,
+            message: None,
+            metadata: None,
+        }
+    }
+
     // ── generate_image (W4.9a; lib/chat/tool-executor.ts:368) ─────────────
     /// Dispatch `generate_image` through the injected [`ErasedImageGeneration`]
     /// seam. Reproduces v4's dispatcher (`lib/chat/tool-executor.ts:368–402`): the
@@ -2228,6 +2332,15 @@ mod tests {
             "wardrobe_rollback",
             "wardrobe_history",
         ] {
+            assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
+            assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));
+        }
+    }
+
+    #[test]
+    fn inventory_tools_are_ported() {
+        for name in crate::tools::inventory_tool_table::INVENTORY_TOOL_NAMES {
+            assert!(BUILT_IN_TOOLS.contains(&name), "{name} must be a built-in");
             assert!(PORTED_TOOLS.contains(&name), "{name} must be dispatched");
             assert!(BuiltInToolRunner::<LoudFallbackRunner>::handles(name));
         }

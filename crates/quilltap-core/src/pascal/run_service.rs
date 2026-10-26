@@ -124,6 +124,12 @@ pub struct RunCustomToolParams<'a> {
     /// `05005c562`). The effects applier supplies the `'pascal'` provenance.
     pub pending_wardrobe_history:
         Option<&'a crate::services::outfit_change_effects::PendingWardrobeHistory>,
+    /// The turn's pending Inventory changes (v4 `RunCustomToolParams.
+    /// pendingInventoryAnnouncements?`, `e1872c94f`), beside the wardrobe's
+    /// two. `None` → an `inventory` gesture posts its line at once. The LAST
+    /// field (R-G); the run's pass-through to the applier is P4.D329's.
+    pub pending_inventory_announcements:
+        Option<&'a crate::services::inventory_change_effects::PendingInventoryAnnouncements>,
 }
 
 /// What one run came to (v4 `RunCustomToolOutcome`).
@@ -583,6 +589,7 @@ mod tests {
                 now_ms: 0,
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
+                pending_inventory_announcements: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![]),
             None,
@@ -863,6 +870,7 @@ mod rolling_character_tests {
                 now_ms: 0,
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
+                pending_inventory_announcements: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![]),
             None,

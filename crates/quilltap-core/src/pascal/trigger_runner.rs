@@ -280,6 +280,7 @@ async fn run_triggered(
                 // triggered gesture enqueues its announcement at once.
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
+                pending_inventory_announcements: None,
             },
             &mut rng,
             invoker.as_ref().map(|i| i as &dyn LlmInvoker),

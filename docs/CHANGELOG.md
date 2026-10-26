@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — Characters get v4's nine Inventory tools (P4.D328)
+
+_Versions: core 0.0.1330._
+
+The nine `inventory_*` tools — list, read, equip, unequip, pick up, create, update, archive, give — run through one table, one shared module and one context load per call, as two halves on the single writer: the handler inside the write (over the keystone's equip, pick-up, drop and transfer chokepoints), then the realtime publishes, the change effects (joining the turn's pending map, or Pascal's line at once) and the handler's log line after the commit. Shared objects are read-only; a project shelf the roster closes answers in words for read, equip and pick-up. The executor dispatches the nine and refuses a call with no character to act for. `RunCustomToolContext` and `RunCustomToolParams` carry the turn's pending Inventory map. New differential: 98 cases and two transfer rows against v4's real handlers, all green.
+
 #### 2026-10-26 — The Inventory reference rule, the turn's pending Inventory changes and Pascal's carried-object line (P4.D328)
 
 _Versions: core 0.0.1329._
