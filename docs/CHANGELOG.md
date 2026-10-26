@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(db): the Log's repository and write door (P4.D331)
+
+_Versions: core 0.0.1327._
+
+New `db::log_entries`, ported from v4's `LogEntriesRepository` and `writeLogEntry` at `322a5488e`: `create` (JS-truthy `CreateOptions`, the `LogEntrySchema` Zod twin with v4's `Data validation failed` / `Error creating entity` pair, INFO `Entity created`), `find_entries` (JS-truthy clause guards in v4's order, v4's statement text including its double space, the fallback arm `Error reading log entries`), `search_messages` (v4's three-line statement over `regexp()`, the rethrow arm `Error searching log entries`), `cleanup_old_entries` (`<= 0` answers 0 with no query; the host-local cutoff shared with the LLM-log prune; a failed DELETE is the fallback arm), and `write_log_entry` (JS trim, `A log entry needs a message`, the UTF-16 clip at 4,000 units with its DEBUG). Three fallback homes join `db::fallback`.
+
+Measured at the pin and ported as measured: a `NaN` retention window throws `Invalid time value` out of `cleanupOldEntries` (v4 renders the cutoff before `withRawDb`), with no ERROR line and no fallback; a clip that splits a surrogate pair stores `EF BF BD` on both sides, while v4's returned entry keeps the lone surrogate — the one-row `LONE_SURROGATE_CLIP` table.
+
+New tier-2 family `log_entries_tier2_equivalence`: 50 ops over a llm-logs fixture seeded through v4's real repository (finds, regex searches, creates, writes, prunes under an injected clock and zone), comparing answers, log lines and the table. Mutation-proven: JS-truthy guards, newest-first search, the `<= 0` guard.
+
 #### 2026-10-26 — feat(db): the regexp() SQL scalar on LLM-logs connections only, over regress (P4.D331)
 
 _Versions: core 0.0.1326._

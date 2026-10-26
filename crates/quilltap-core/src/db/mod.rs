@@ -117,6 +117,7 @@ pub mod image_profiles;
 pub mod instance_settings;
 pub mod like_escape;
 pub mod llm_logs;
+pub mod log_entries; // P4.D331
 pub mod memories;
 pub mod memories_read;
 pub mod memory_extraction_cursors; // P4.D288 (C1-1)

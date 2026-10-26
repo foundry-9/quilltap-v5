@@ -2158,6 +2158,35 @@ pub fn zod_scenario_ref_issues(value: &Value, prefix: &[Value]) -> Vec<ZodIssue>
 
 // === end P4.D295 ===
 
+// === P4.D331: the Log's entry schema (append-only) ===
+
+/// v4 `LogEntrySchema` (`lib/schemas/log-entry.types.ts:18-28`) over the WHOLE
+/// entity `logEntries.create` hands `_create`, in schema key order: `id`
+/// uuid; `message` `.min(1).max(4000)` (CODE POINTS — zod ≥ 4.5); `chatId`
+/// uuid; `characterId` uuid `.nullable()` (required — `null`, not absent);
+/// the two stamps.
+pub fn zod_log_entry_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    zod_uuid_issues(row, "id", false, &mut issues);
+    required_bounded_string_issues(
+        row,
+        "message",
+        Some(1),
+        Some(crate::db::log_entries::MAX_LOG_ENTRY_MESSAGE_LENGTH),
+        &mut issues,
+    );
+    zod_uuid_issues(row, "chatId", false, &mut issues);
+    match row.get("characterId") {
+        Some(Value::Null) => {}
+        _ => zod_uuid_issues(row, "characterId", false, &mut issues),
+    }
+    zod_timestamp_issues(row, "createdAt", &mut issues);
+    zod_timestamp_issues(row, "updatedAt", &mut issues);
+    issues
+}
+
+// === end P4.D331 ===
+
 #[cfg(test)]
 mod tests {
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the

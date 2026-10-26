@@ -3525,3 +3525,79 @@ pub fn documents_in_folder_containing_or_empty<T>(
 }
 
 // === end P4.D324 ===
+
+// === P4.D331 — the Log's repository fallbacks (append-only) ===
+
+/// v4 `LogEntriesRepository.findEntries`' FALLBACK arm (`log-entries.
+/// repository.ts:72-105`, `withRawDb([], …, 'Error reading log entries',
+/// { filter })`): a thrown query logs ERROR `Error reading log entries
+/// {collection, filter, error}` and answers `[]`. `filter` is an OBJECT, so it
+/// rides the file layer's `…Json` convention (`filterJson` — the compact JSON
+/// of the PRESENT keys in v4's `chatId, characterId, from, to, limit` order).
+/// The degraded / absent partition never reaches here: v4's guard runs BEFORE
+/// the mode (the caller logs [`log_partition_unavailable`] instead).
+pub fn log_entries_read_or_empty<T>(
+    filter_json: &str,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "log_entries",
+            filterJson = filter_json,
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error reading log entries"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `LogEntriesRepository.searchMessages`' RETHROW arm (`:112-130`,
+/// `'rethrow'` mode): ERROR `Error searching log entries {collection,
+/// patternLength, flags, error}`, then the error goes back to the caller —
+/// whose own catch words it (`The log could not be searched: …`). The
+/// `regexp()` scalar's `Invalid regular expression: …` surfaces here BARE.
+pub fn log_entries_search_or_rethrow<T>(
+    pattern_length: usize,
+    flags: &str,
+    search: impl FnOnce() -> Result<T, DbError>,
+) -> Result<T, DbError> {
+    search().inspect_err(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "log_entries",
+            patternLength = pattern_length,
+            flags = flags,
+            error = %error_text(error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error searching log entries"
+        );
+    })
+}
+
+/// v4 `LogEntriesRepository.cleanupOldEntries`' FALLBACK arm (`:137-153`,
+/// `withRawDb(0, …, 'Error cleaning up old log entries', { retentionDays })`):
+/// ERROR `Error cleaning up old log entries {collection, retentionDays, error}`
+/// and `0` — so a failed DELETE never reaches the cleanup job's catch. (A
+/// `NaN` window never gets here: v4 renders the cutoff before `withRawDb`, so
+/// its `Invalid time value` throws out of the repository call — measured.)
+/// `retentionDays` renders as v4's JSON does.
+pub fn log_entries_cleanup_or_zero(
+    retention_days: f64,
+    cleanup: impl FnOnce() -> Result<usize, DbError>,
+) -> usize {
+    cleanup().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "log_entries",
+            retentionDays = %crate::db::log_entries::js_number_json(retention_days),
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error cleaning up old log entries"
+        );
+        0
+    })
+}
+
+// === end P4.D331 ===

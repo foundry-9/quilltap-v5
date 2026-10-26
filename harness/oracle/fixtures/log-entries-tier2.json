@@ -1,0 +1,568 @@
+{
+  "_comment": [
+    "P4.D331 tier-2 spec for the Log's repository + write door (log_entries_tier2_equivalence).",
+    "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key, the same one every other tier-2 spec uses.",
+    "The seed is v4's own log-entries-repository.test.ts four rows (fixed createdAt) plus the planted edge rows.",
+    "The cleanup ops run under an injected clock (nowIso) and zone (tz) on both sides.",
+    "Ids minted by a create without options (or a write) are masked to <minted>, their stamps to <now>."
+  ],
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "tz": "America/Chicago",
+  "nowIso": "2026-10-20T15:30:00.000Z",
+  "seed": [
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000001",
+      "message": "Picked the lock on the north door",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-10-01T10:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000002",
+      "message": "The vault is empty",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "44444444-4444-4444-8444-444444444444",
+      "createdAt": "2026-10-02T10:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000003",
+      "message": "Lockpick broke",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-10-03T10:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000004",
+      "message": "The operator noted the hour",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": null,
+      "createdAt": "2026-10-04T10:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000005",
+      "message": "Line one\nline two",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-09-20T08:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000006",
+      "message": "Day 12\rcarriage return",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "44444444-4444-4444-8444-444444444444",
+      "createdAt": "2026-09-15T08:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000007",
+      "message": "separator line and paragraph",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": null,
+      "createdAt": "2026-08-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000008",
+      "message": "Arabic ٣ digit, café, ſ long s, K Kelvin",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-07-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000009",
+      "message": {
+        "repeat": "x",
+        "count": 4000
+      },
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-06-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000010",
+      "message": "Old entry from last year",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "44444444-4444-4444-8444-444444444444",
+      "createdAt": "2025-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000011",
+      "message": "Late last night",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-10-13T04:59:59.999Z"
+    },
+    {
+      "id": "aaaaaaaa-0000-4000-8000-000000000012",
+      "message": "Just after the local cutoff",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "33333333-3333-4333-8333-333333333333",
+      "createdAt": "2026-10-13T05:30:00.000Z"
+    }
+  ],
+  "ops": [
+    {
+      "id": "find-limit-3",
+      "kind": "find",
+      "filter": {
+        "limit": 3
+      }
+    },
+    {
+      "id": "find-all-200",
+      "kind": "find",
+      "filter": {
+        "limit": 200
+      }
+    },
+    {
+      "id": "find-limit-1",
+      "kind": "find",
+      "filter": {
+        "limit": 1
+      }
+    },
+    {
+      "id": "find-chat-a",
+      "kind": "find",
+      "filter": {
+        "chatId": "11111111-1111-4111-8111-111111111111",
+        "limit": 50
+      }
+    },
+    {
+      "id": "find-alice-in-b",
+      "kind": "find",
+      "filter": {
+        "characterId": "33333333-3333-4333-8333-333333333333",
+        "chatId": "22222222-2222-4222-8222-222222222222",
+        "limit": 50
+      }
+    },
+    {
+      "id": "find-span",
+      "kind": "find",
+      "filter": {
+        "from": "2026-10-02T00:00:00.000Z",
+        "to": "2026-10-03T10:00:00.000Z",
+        "limit": 50
+      }
+    },
+    {
+      "id": "find-to-exact-inclusive",
+      "kind": "find",
+      "filter": {
+        "to": "2026-10-02T10:00:00.000Z",
+        "limit": 50
+      }
+    },
+    {
+      "id": "find-empty-chat-is-no-clause",
+      "kind": "find",
+      "filter": {
+        "chatId": "",
+        "limit": 50
+      }
+    },
+    {
+      "id": "find-empty-strings",
+      "kind": "find",
+      "filter": {
+        "characterId": "",
+        "from": "",
+        "to": "",
+        "limit": 5
+      }
+    },
+    {
+      "id": "find-all-four",
+      "kind": "find",
+      "filter": {
+        "chatId": "11111111-1111-4111-8111-111111111111",
+        "characterId": "33333333-3333-4333-8333-333333333333",
+        "from": "2026-06-01T00:00:00.000Z",
+        "to": "2026-10-01T10:00:00.000Z",
+        "limit": 50
+      }
+    },
+    {
+      "id": "search-lock",
+      "kind": "search",
+      "pattern": "lock",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-lock-i",
+      "kind": "search",
+      "pattern": "lock",
+      "flags": "i",
+      "limit": 50
+    },
+    {
+      "id": "search-the-limit-1",
+      "kind": "search",
+      "pattern": "^The (vault|operator)",
+      "flags": "",
+      "limit": 1
+    },
+    {
+      "id": "search-lookbehind",
+      "kind": "search",
+      "pattern": "(?<=Lock)pick",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-backreference",
+      "kind": "search",
+      "pattern": "(o)\\1",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-digit-ascii-only",
+      "kind": "search",
+      "pattern": "\\d",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-boundary-e-acute",
+      "kind": "search",
+      "pattern": "\\bé",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-icase-kelvin",
+      "kind": "search",
+      "pattern": "k kelvin",
+      "flags": "i",
+      "limit": 50
+    },
+    {
+      "id": "search-icase-u-kelvin",
+      "kind": "search",
+      "pattern": "k kelvin",
+      "flags": "iu",
+      "limit": 50
+    },
+    {
+      "id": "search-dot-lf",
+      "kind": "search",
+      "pattern": "one.line",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-dot-lf-s",
+      "kind": "search",
+      "pattern": "one.line",
+      "flags": "s",
+      "limit": 50
+    },
+    {
+      "id": "search-dot-ls",
+      "kind": "search",
+      "pattern": "separator.line",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-dot-ps-s",
+      "kind": "search",
+      "pattern": "and.paragraph",
+      "flags": "s",
+      "limit": 50
+    },
+    {
+      "id": "search-caret-m",
+      "kind": "search",
+      "pattern": "^line two",
+      "flags": "m",
+      "limit": 50
+    },
+    {
+      "id": "search-caret-m-ps",
+      "kind": "search",
+      "pattern": "^paragraph",
+      "flags": "m",
+      "limit": 50
+    },
+    {
+      "id": "search-dollar-m-cr",
+      "kind": "search",
+      "pattern": "12$",
+      "flags": "m",
+      "limit": 50
+    },
+    {
+      "id": "search-imsu",
+      "kind": "search",
+      "pattern": "^the",
+      "flags": "imsu",
+      "limit": 50
+    },
+    {
+      "id": "search-bad-pattern",
+      "kind": "search",
+      "pattern": "(unclosed",
+      "flags": "",
+      "limit": 50
+    },
+    {
+      "id": "search-limit-200",
+      "kind": "search",
+      "pattern": "e",
+      "flags": "",
+      "limit": 200
+    },
+    {
+      "id": "create-with-options",
+      "kind": "create",
+      "message": "Pinned by options",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "44444444-4444-4444-8444-444444444444",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000020",
+        "createdAt": "2026-10-05T12:00:00.000Z",
+        "updatedAt": "2026-10-05T12:30:00.000Z"
+      }
+    },
+    {
+      "id": "create-empty-option-id-mints",
+      "kind": "create",
+      "message": "Empty option id mints",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": null,
+      "options": {
+        "id": "",
+        "createdAt": "2026-10-06T00:00:00.000Z",
+        "updatedAt": "2026-10-06T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "create-minted",
+      "kind": "create",
+      "message": "Minted in the moment",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "id": "create-bad-character",
+      "kind": "create",
+      "message": "Bad author",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "not-a-uuid",
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000021",
+        "createdAt": "2026-10-06T00:00:00.000Z",
+        "updatedAt": "2026-10-06T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "create-empty-message",
+      "kind": "create",
+      "message": "",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": null,
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000022",
+        "createdAt": "2026-10-06T00:00:00.000Z",
+        "updatedAt": "2026-10-06T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "create-4001-code-points",
+      "kind": "create",
+      "message": {
+        "repeat": "q",
+        "count": 4001
+      },
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": null,
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000023",
+        "createdAt": "2026-10-06T00:00:00.000Z",
+        "updatedAt": "2026-10-06T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "create-2001-astral-code-points",
+      "kind": "create",
+      "message": {
+        "repeat": "😀",
+        "count": 2001
+      },
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": null,
+      "options": {
+        "id": "aaaaaaaa-0000-4000-8000-000000000024",
+        "createdAt": "2026-10-06T00:00:00.000Z",
+        "updatedAt": "2026-10-06T00:00:00.000Z"
+      }
+    },
+    {
+      "id": "write-trim",
+      "kind": "write",
+      "message": "  \t spaced line \n ",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "id": "write-bom-trim",
+      "kind": "write",
+      "message": "﻿ bom and nbsp ",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": null
+    },
+    {
+      "id": "write-blank",
+      "kind": "write",
+      "message": " \n\t﻿ ",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "characterId": "33333333-3333-4333-8333-333333333333"
+    },
+    {
+      "id": "write-null-author",
+      "kind": "write",
+      "message": "Nobody in particular",
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": null
+    },
+    {
+      "id": "write-clip-bmp",
+      "kind": "write",
+      "message": {
+        "repeat": "y",
+        "count": 4001
+      },
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "id": "write-exactly-4000",
+      "kind": "write",
+      "message": {
+        "repeat": "w",
+        "count": 4000
+      },
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "id": "write-clip-astral-split",
+      "kind": "write",
+      "message": {
+        "repeat": "z",
+        "count": 3999,
+        "then": "😀"
+      },
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": null
+    },
+    {
+      "id": "write-astral-under-limit",
+      "kind": "write",
+      "message": {
+        "repeat": "😀",
+        "count": 2000
+      },
+      "chatId": "22222222-2222-4222-8222-222222222222",
+      "characterId": null
+    },
+    {
+      "id": "cleanup-zero",
+      "kind": "cleanup",
+      "retentionDays": 0
+    },
+    {
+      "id": "cleanup-negative",
+      "kind": "cleanup",
+      "retentionDays": -1
+    },
+    {
+      "id": "cleanup-nan",
+      "kind": "cleanup",
+      "retentionDays": "NaN"
+    },
+    {
+      "id": "cleanup-36500",
+      "kind": "cleanup",
+      "retentionDays": 36500
+    },
+    {
+      "id": "cleanup-7",
+      "kind": "cleanup",
+      "retentionDays": 7
+    },
+    {
+      "id": "find-after-prune",
+      "kind": "find",
+      "filter": {
+        "limit": 200
+      }
+    }
+  ],
+  "tools": {
+    "_comment": "log_tools_equivalence's llm-logs seed: authored by the chat-dialogs pair's characters (Nora, Pip), a character that does not exist, and nobody; keyed with that pair's pepper.",
+    "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+    "seed": [
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000001",
+        "message": "Picked the lock on the north door",
+        "chatId": "c2000000-0000-4000-8000-000000000004",
+        "characterId": "a2000000-0000-4000-8000-000000000001",
+        "createdAt": "2026-10-01T10:00:00.000Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000002",
+        "message": "Lockpick broke on the second try",
+        "chatId": "c2000000-0000-4000-8000-000000000004",
+        "characterId": "a2000000-0000-4000-8000-000000000002",
+        "createdAt": "2026-10-02T09:59:59.999Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000003",
+        "message": "Day 12: the tide turned",
+        "chatId": "c2000000-0000-4000-8000-000000000006",
+        "characterId": "a2000000-0000-4000-8000-000000000002",
+        "createdAt": "2026-10-02T10:00:00.000Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000004",
+        "message": "The operator noted the hour",
+        "chatId": "c2000000-0000-4000-8000-000000000006",
+        "characterId": null,
+        "createdAt": "2026-10-19T00:00:00.000Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000005",
+        "message": "Late on the nineteenth",
+        "chatId": "c2000000-0000-4000-8000-000000000004",
+        "characterId": "a2000000-0000-4000-8000-000000000001",
+        "createdAt": "2026-10-19T23:59:59.999Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000006",
+        "message": "Early on the twentieth",
+        "chatId": "c2000000-0000-4000-8000-000000000004",
+        "characterId": "a2000000-0000-4000-8000-000000000001",
+        "createdAt": "2026-10-20T00:00:00.000Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000007",
+        "message": "A line from a stranger",
+        "chatId": "c2000000-0000-4000-8000-000000000006",
+        "characterId": "a2000000-0000-4000-8000-000000000099",
+        "createdAt": "2026-03-03T00:00:00.000Z"
+      },
+      {
+        "id": "bbbbbbbb-0000-4000-8000-000000000008",
+        "message": "Locksmith arrives Day 3",
+        "chatId": "c2000000-0000-4000-8000-000000000006",
+        "characterId": "a2000000-0000-4000-8000-000000000001",
+        "createdAt": "2026-02-28T12:00:00.000Z"
+      }
+    ]
+  }
+}
