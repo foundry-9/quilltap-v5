@@ -28,10 +28,10 @@
 //!   QT_ORACLE_PASCAL_DEFINITION=/tmp/oracle-pascal-definition.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_custom_tool_definition_equivalence
 
+use quilltap_core::pascal::custom_tool_types::CustomToolEffectBody;
 use quilltap_core::pascal::custom_tool_types::{
     collect_unknown_keys, display_title, format_definition_issues, safe_parse,
 };
-use quilltap_core::pascal::custom_tool_types::{CustomToolEffectBody, When};
 use quilltap_core::pascal::tool_gate::{evaluate_tool_gate, has_tool_gate};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -128,6 +128,36 @@ enum Row {
     },
 }
 
+/// P4.D333 (R-F): the rows of the ONE shared corpus regeneration that this
+/// branch cannot answer because a SIBLING lane owns the grammar they exercise —
+/// the Inventory grammar (P4.D329: the `$inventory` operand / roll arms, the
+/// `inventory` / `inventoryCount` / `inventoryAggregate` subjects) and the Log
+/// (P4.D331: the `log` effect, the four-kind effect sentences). Each id is
+/// carved LOUDLY: the row still runs, a red one is reported by name and
+/// skipped, and a carved row that comes back GREEN fails the run so the carve
+/// cannot outlive its reason. The unifier lifts this list once P4.D329 and
+/// P4.D331 have merged (§S.5 (4)).
+///
+/// Measured at the pin on this branch (P4.D333): eight PRE-EXISTING rows whose
+/// sentence grows by the `$inventory` operand / roll branch (P4.D329), and four
+/// whose effect-kind sentence now names four kinds (P4.D329 + P4.D331).
+const RESIDUE_UNTIL_UNION: &[&str] = &[
+    // P4.D329 — `InventoryRefSchema` joins every operand and roll union.
+    "string-compared-with-value",
+    "roll-wrong-type",
+    "roll-null",
+    "roll-range-and-dice-both-broken",
+    "contains-number-substring",
+    "state-missing-fallback",
+    "state-array-fallback",
+    "state-not-quite-a-ref",
+    // P4.D329 + P4.D331 — the four-kind effect sentences.
+    "effects-both-halves",
+    "effects-target-and-wardrobe",
+    "effects-empty-object",
+    "effects-when-only",
+];
+
 #[derive(Deserialize)]
 struct TitleInput {
     name: String,
@@ -165,6 +195,13 @@ fn pascal_custom_tool_definition_matches_oracle() {
     let mut defs_with_triggers = 0usize;
     let mut gates_with_bag = 0usize;
     let mut defs_with_wardrobe_effects = 0usize;
+    // P4.D333's three floors (any-of, `heldGroup`, `brief`): a regen that
+    // quietly lost its rows would still pass every assertion above.
+    let mut anyof_rows = 0usize;
+    let mut gates_with_held_group = 0usize;
+    let mut defs_with_brief = 0usize;
+    let mut residue_seen: Vec<String> = Vec::new();
+    let mut residue_green: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Title { id, input, out } => {
@@ -217,12 +254,16 @@ fn pascal_custom_tool_definition_matches_oracle() {
                                 .available_when
                                 .iter()
                                 .chain(tool.withheld_when.iter())
+                                .flat_map(|g| g.gate_groups())
                                 .any(|g| g.progress.is_some())
-                                || tool.outcomes.iter().any(
-                                    |o| matches!(&o.when, When::Object(w) if w.progress.is_some()),
-                                )
+                                || tool.outcomes.iter().any(|o| {
+                                    o.when.when_groups().iter().any(|w| w.progress.is_some())
+                                })
                             {
                                 defs_testing_progress += 1;
+                            }
+                            if tool.outcomes.iter().any(|o| o.brief.is_some()) {
+                                defs_with_brief += 1;
                             }
                             if tool.triggers.is_some() {
                                 defs_with_triggers += 1;
@@ -248,8 +289,18 @@ fn pascal_custom_tool_definition_matches_oracle() {
                         }
                     }
                 }));
-                if walked.is_err() {
-                    failed_rows.push(row_id);
+                if RESIDUE_UNTIL_UNION.contains(&row_id.as_str()) {
+                    residue_seen.push(row_id.clone());
+                    if walked.is_err() {
+                        eprintln!("RESIDUE (sibling-owned, until union): definition row '{row_id}' differs — carved");
+                    } else {
+                        residue_green.push(row_id.clone());
+                    }
+                } else if walked.is_err() {
+                    failed_rows.push(row_id.clone());
+                }
+                if row_id.starts_with("anyof-") {
+                    anyof_rows += 1;
                 }
                 defs += 1;
             }
@@ -264,9 +315,23 @@ fn pascal_custom_tool_definition_matches_oracle() {
             } => {
                 let raw: Value = serde_json::from_str(&input_json)
                     .unwrap_or_else(|e| panic!("gate case '{id}': oracle input is not JSON: {e}"));
-                let tool = safe_parse(&raw).unwrap_or_else(|e| {
-                    panic!("gate case '{id}': definition does not load: {e:?}")
-                });
+                let tool = match safe_parse(&raw) {
+                    Ok(tool) => tool,
+                    Err(e) if RESIDUE_UNTIL_UNION.contains(&id.as_str()) => {
+                        eprintln!("RESIDUE (sibling-owned, until union): gate row '{id}' does not load ({}) — carved", format_definition_issues(&e));
+                        residue_seen.push(id.clone());
+                        gates += 1;
+                        continue;
+                    }
+                    Err(e) => panic!("gate case '{id}': definition does not load: {e:?}"),
+                };
+                if RESIDUE_UNTIL_UNION.contains(&id.as_str()) {
+                    residue_seen.push(id.clone());
+                    residue_green.push(id.clone());
+                }
+                if id.starts_with("anyof-") {
+                    anyof_rows += 1;
+                }
 
                 assert_eq!(has_tool_gate(&tool), has_gate, "hasToolGate '{id}'");
 
@@ -295,6 +360,9 @@ fn pascal_custom_tool_definition_matches_oracle() {
                 }
 
                 let seen: Value = serde_json::from_str(&verdict).expect("a verdict is JSON");
+                if seen.get("heldGroup").is_some() {
+                    gates_with_held_group += 1;
+                }
                 if let Some(clause) = seen.get("withheldBy").and_then(Value::as_str) {
                     if !seen_clauses.iter().any(|c| c == clause) {
                         seen_clauses.push(clause.to_string());
@@ -321,6 +389,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
                     .available_when
                     .iter()
                     .chain(tool.withheld_when.iter())
+                    .flat_map(|g| g.gate_groups())
                     .any(|g| g.progress.as_ref().is_some_and(|p| !p.is_empty()))
                 {
                     gates_testing_progress += 1;
@@ -342,6 +411,29 @@ fn pascal_custom_tool_definition_matches_oracle() {
         failed_rows.is_empty(),
         "{} definition row(s) differ from the oracle: {failed_rows:?}",
         failed_rows.len()
+    );
+    // The carve cannot grow silently or outlive its reason: every carved id
+    // must be present in the corpus, and none may have turned green.
+    assert_eq!(
+        residue_seen.len(),
+        RESIDUE_UNTIL_UNION.len(),
+        "RESIDUE_UNTIL_UNION names ids the corpus lacks (saw {residue_seen:?})"
+    );
+    assert!(
+        residue_green.is_empty(),
+        "carved rows now MATCH the oracle — lift them from RESIDUE_UNTIL_UNION: {residue_green:?}"
+    );
+    assert!(
+        anyof_rows >= 30,
+        "only {anyof_rows} any-of rows (`anyof-*`) — P4.D333's floor is 30"
+    );
+    assert!(
+        gates_with_held_group >= 4,
+        "only {gates_with_held_group} gate verdicts carry `heldGroup` — the floor is 4"
+    );
+    assert!(
+        defs_with_brief >= 6,
+        "only {defs_with_brief} accepted definitions carry an outcome `brief` — the floor is 6"
     );
     assert!(
         residue_green.is_empty(),

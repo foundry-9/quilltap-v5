@@ -190,20 +190,20 @@ fn compare_ordered(key: &str, a: f64, b: f64) -> bool {
 ///
 /// Truthiness on KEY COUNT (`Object.keys(group.inventory ?? {}).length > 0`):
 /// an authored-but-empty record does NOT name it — unlike
-/// `gate_names_progress`, which reads record presence. v4 walks every group of
-/// an any-of gate; on this branch a gate is ONE group (P4.D333's
-/// `gate_groups()` wraps this read at the union).
+/// the pre-any-of `gate_names_progress`, which read record presence. v4 walks
+/// every group of an any-of gate (`gateGroups(gate).some(…)`).
 pub fn gate_names_inventory(gate: Option<&ToolGate>) -> bool {
-    let Some(group) = gate else {
-        return false;
-    };
-    group.inventory.as_ref().is_some_and(|r| !r.is_empty())
-        || group
-            .inventory_count
-            .as_ref()
-            .is_some_and(|r| !r.is_empty())
-        || group
-            .inventory_aggregate
-            .as_ref()
-            .is_some_and(|r| !r.is_empty())
+    gate.is_some_and(|gate| {
+        gate.gate_groups().iter().any(|group| {
+            group.inventory.as_ref().is_some_and(|r| !r.is_empty())
+                || group
+                    .inventory_count
+                    .as_ref()
+                    .is_some_and(|r| !r.is_empty())
+                || group
+                    .inventory_aggregate
+                    .as_ref()
+                    .is_some_and(|r| !r.is_empty())
+        })
+    })
 }

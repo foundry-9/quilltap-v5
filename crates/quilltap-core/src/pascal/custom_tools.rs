@@ -16,12 +16,12 @@ use serde::{Serialize, Serializer};
 use serde_json::{Map, Value};
 
 use super::custom_tool_types::{
-    is_state_ref_value, parse_effect_target, AnyOperand, CustomToolEffectBody, CustomToolLlm,
-    CustomToolParameter, CustomToolWardrobeGesture, EffectTarget, EffectValue, EffectWhen,
-    LlmComparator, MetadataComparator, NumberOrParamRef, NumericComparator, OutcomeState,
-    ParamComparator, ParameterType, PutOnMode, QtapCustomTool, Roll, RollRange, StateRef,
-    StateRefFallback, StringOperand, Visibility, WardrobeEffectAction, When, WhenObject,
-    MAX_LLM_OUTPUT_LENGTH,
+    is_state_ref_value, outcome_table_tests_llm, parse_effect_target, AnyOperand,
+    CustomToolEffectBody, CustomToolLlm, CustomToolParameter, CustomToolWardrobeGesture,
+    EffectCondition, EffectTarget, EffectValue, EffectWhen, LlmComparator, MetadataComparator,
+    NumberOrParamRef, NumericComparator, OutcomeState, ParamComparator, ParameterType, PutOnMode,
+    QtapCustomTool, Roll, RollRange, StateRef, StateRefFallback, StringOperand, Visibility,
+    WardrobeEffectAction, When, WhenObject, MAX_LLM_OUTPUT_LENGTH,
 };
 // === P4.D329: the inventory deal ===
 use super::custom_tool_types::{
@@ -40,7 +40,9 @@ use super::js_value::{json_stringify, number_to_string, to_js_string, to_number}
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
 use super::p4d329_c2_standins::InventoryContext;
 use super::placeholders::InventoryPlaceholderField;
-use super::placeholders::{classify_placeholder, PlaceholderRef, PLACEHOLDER_PATTERN};
+use super::placeholders::{
+    classify_placeholder, OutcomeField, PlaceholderRef, PLACEHOLDER_PATTERN,
+};
 use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
@@ -1086,21 +1088,25 @@ fn resolved_to_js_string(v: &ResolvedValue) -> String {
 /// A row whose metadata comparator declined (absent key, non-primitive value,
 /// wrong type) is precisely a row that did not win, so recording every primitive
 /// key it tested records exactly what the table saw, not the whole sheet.
+///
+/// Across every group of an any-of: a key some group consulted was consulted
+/// (v4 `a53024d3c`) — so a key from a group that did NOT hold is recorded too.
+/// A repeated key keeps its first position, as a JS object assignment does.
 pub fn collect_metadata_tested(
     when: &When,
     metadata: Option<&Map<String, Value>>,
 ) -> Option<MetadataTested> {
-    let When::Object(w) = when else {
-        return None;
-    };
-    let tested_keys = w.metadata.as_ref()?;
     let metadata = metadata?;
 
-    let mut tested = Vec::new();
-    for (key, _comparator) in tested_keys {
-        if let Some(v) = metadata.get(key) {
-            if let Some(prim) = js_primitive(v) {
-                tested.push((key.clone(), prim));
+    let mut tested: Vec<(String, ResolvedValue)> = Vec::new();
+    for group in when.when_groups() {
+        for (key, _comparator) in group.metadata.iter().flatten() {
+            let Some(prim) = metadata.get(key).and_then(js_primitive) else {
+                continue;
+            };
+            match tested.iter_mut().find(|(k, _)| k == key) {
+                Some(slot) => slot.1 = prim,
+                None => tested.push((key.clone(), prim)),
             }
         }
     }
@@ -1119,11 +1125,43 @@ pub fn matches_when(
     subjects: &OutcomeSubjects,
     tool_name: &str,
 ) -> Result<bool, CustomToolRunError> {
-    let when = match when {
-        When::CatchAll(_) => return Ok(true),
-        When::Object(w) => w,
-    };
-    matches_when_object(when, subjects, tool_name)
+    match when {
+        When::CatchAll(_) => Ok(true),
+        When::Object(w) => matches_when_object(w, subjects, tool_name),
+        When::AnyOf(groups) => any_group_holds(
+            groups,
+            |group| matches_when_object(group, subjects, tool_name),
+            tool_name,
+        ),
+    }
+}
+
+/// An any-of: the first group that holds wins, left to right (v4
+/// `anyGroupHolds`, `a53024d3c`). A group's own subject tests short-circuit
+/// inside as before, and their DEBUG lines fire inside the walk — BEFORE this
+/// one line, which is logged for EVERY array evaluation, a miss (`heldGroup:
+/// null`) included. A failing group (a `$param` regression) fails the run, as
+/// v4's `findIndex` lets a throw through.
+fn any_group_holds<G>(
+    groups: &[G],
+    mut holds: impl FnMut(&G) -> Result<bool, CustomToolRunError>,
+    tool_name: &str,
+) -> Result<bool, CustomToolRunError> {
+    let mut held_group = None;
+    for (g, group) in groups.iter().enumerate() {
+        if holds(group)? {
+            held_group = Some(g);
+            break;
+        }
+    }
+    tracing::debug!(
+        target: "quilltap::pascal",
+        tool = tool_name,
+        groups = groups.len(),
+        heldGroup = %held_group.map_or_else(|| "null".to_string(), |g| g.to_string()),
+        "Custom tool any-of test",
+    );
+    Ok(held_group.is_some())
 }
 
 /// The object form's body. Split out so an effect condition can delegate to it
@@ -1144,7 +1182,7 @@ fn matches_when_object_with(
     when: &WhenObject,
     subjects: &OutcomeSubjects,
     tool_name: &str,
-    effect: Option<(&str, i64)>,
+    effect: Option<(&str, i64, &WinningOutcome)>,
 ) -> Result<bool, CustomToolRunError> {
     let params = subjects.params;
     // v4 `subjects.state ?? {}` — `None` behaves as the empty object, so every
@@ -1279,7 +1317,7 @@ fn matches_inventory_subjects_with(
     when: &WhenObject,
     subjects: &OutcomeSubjects,
     tool_name: &str,
-    effect: Option<(&str, i64)>,
+    effect: Option<(&str, i64, &WinningOutcome)>,
 ) -> Result<bool, CustomToolRunError> {
     let params = subjects.params;
     let state = subjects.state;
@@ -1291,15 +1329,18 @@ fn matches_inventory_subjects_with(
         let render_vars = TemplateVars {
             value: subjects.value,
             roll: subjects.roll,
-            dice: effect.map_or("", |(dice, _)| dice),
+            dice: effect.map_or("", |(dice, _, _)| dice),
             params,
             metadata: subjects.metadata,
             progress: subjects.progress,
-            now: effect.map(|(_, now)| now),
+            now: effect.map(|(_, now, _)| now),
             llm: subjects.llm,
             state,
             character: subjects.character,
             inventory,
+            // An effect condition's `{{outcome.*}}` (v4 spreads the whole
+            // EffectSubjects); an outcome row has no winner yet.
+            outcome: effect.map(|(_, _, outcome)| outcome),
         };
         let decline = |key: &str, reason: &str| {
             tracing::debug!(
@@ -1462,12 +1503,19 @@ fn matches_inventory_subjects_with(
     Ok(true)
 }
 
-/// The winning outcome, as an effect condition sees it — the one subject that
-/// exists only after the deal.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The winning outcome, as an effect condition and a template see it — the one
+/// subject that exists only after the deal.
+///
+/// Serialized in v4's key order (`state`, `index`, then `brief` only when the
+/// row carries one) — the shape v4's spread builds. It is an INTERNAL subject:
+/// nothing puts it on the run result (bug 257 moved no wire key).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WinningOutcome {
     pub state: OutcomeState,
     pub index: usize,
+    /// The winner's `brief`, rendered ONCE for the run (v4 `322a5488e`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brief: Option<String>,
 }
 
 /// What an effect condition may be posed about: the run's subjects, plus the
@@ -1487,12 +1535,31 @@ pub struct EffectSubjects<'a> {
 /// comparator chain outcome rows use, and adds the one subject only an effect
 /// can test — the winning outcome's semantic state.
 pub fn matches_effect_when(
-    when: Option<&EffectWhen>,
+    when: Option<&EffectCondition>,
     subjects: &EffectSubjects,
     tool_name: &str,
 ) -> Result<bool, CustomToolRunError> {
-    let Some(when) = when else { return Ok(true) };
+    match when {
+        None => Ok(true),
+        Some(EffectCondition::Group(group)) => {
+            matches_effect_when_group(group, subjects, tool_name)
+        }
+        Some(EffectCondition::AnyOf(groups)) => any_group_holds(
+            groups,
+            |group| matches_effect_when_group(group, subjects, tool_name),
+            tool_name,
+        ),
+    }
+}
 
+/// One group of an effect condition: the `outcome` test, then the shared
+/// subjects. An outcome-only group has no shared subjects left — it holds on
+/// the outcome alone, which `matches_when_object` answers for an empty group.
+fn matches_effect_when_group(
+    when: &EffectWhen,
+    subjects: &EffectSubjects,
+    tool_name: &str,
+) -> Result<bool, CustomToolRunError> {
     if let Some(outcome) = &when.outcome {
         if let Some(eq) = outcome.eq {
             if subjects.outcome.state != eq {
@@ -1512,7 +1579,7 @@ pub fn matches_effect_when(
         &when.base,
         &subjects.base,
         tool_name,
-        Some((subjects.dice, subjects.now)),
+        Some((subjects.dice, subjects.now, &subjects.outcome)),
     )
 }
 
@@ -1730,6 +1797,9 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
         character: subjects.base.character,
         // P4.D329: and the bag, for `{{inventory.*}}`.
         inventory: subjects.base.inventory,
+        // The winning row, brief included — `{{outcome.*}}` in an expression
+        // or a gesture's reference (v4 `322a5488e`).
+        outcome: Some(&subjects.outcome),
     };
     let mut resolve_ref = |refname: &str| -> Option<ResolvedValue> {
         resolve_placeholder_value(&classify_placeholder(refname), &template_vars)
@@ -1926,6 +1996,7 @@ fn resolve_inventory_gesture(
 pub use super::expressions::format_value;
 
 /// The substitutions [`render_template`] draws on.
+#[derive(Clone)]
 pub struct TemplateVars<'a> {
     pub value: f64,
     pub roll: f64,
@@ -1949,6 +2020,11 @@ pub struct TemplateVars<'a> {
     /// For `{{inventory.<ref>.<field>}}`. `None` for a run nobody made (the
     /// placeholder stands).
     pub inventory: Option<&'a dyn InventoryContext>,
+    /// The winning outcome, for `{{outcome.state}}` / `{{outcome.index}}` /
+    /// `{{outcome.brief}}` (v4 `322a5488e`). Present once the table has dealt:
+    /// before the consult when no row tests it, after otherwise (so absent
+    /// from the prompt then).
+    pub outcome: Option<&'a WinningOutcome>,
 }
 
 /// Substitute the four placeholder families. Plain string replacement — user
@@ -1991,6 +2067,20 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                             tracing::debug!(
                                 target: "quilltap::pascal",
                                 "Custom tool message references {{{{llm}}}} with no consult to render",
+                            );
+                        }
+                        // v4 `322a5488e`: between the `llm` and `metadata` arms.
+                        PlaceholderRef::Outcome { .. } => {
+                            let reason = if vars.outcome.is_none() {
+                                "the table has not dealt yet (or the consult is read by an outcome row)"
+                            } else {
+                                "the winning outcome has no brief"
+                            };
+                            tracing::debug!(
+                                target: "quilltap::pascal",
+                                placeholder = whole,
+                                reason,
+                                "Custom tool template references {{{{outcome.*}}}} it cannot render",
                             );
                         }
                         PlaceholderRef::Metadata { key: meta_key } => {
@@ -2126,6 +2216,14 @@ pub fn resolve_placeholder_value(
         PlaceholderRef::Roll => Some(ResolvedValue::Number(vars.roll)),
         PlaceholderRef::Dice => Some(ResolvedValue::String(vars.dice.to_string())),
         PlaceholderRef::Llm => vars.llm.map(|l| ResolvedValue::String(l.output.clone())),
+        // v4 `vars.outcome?.[ref.field]` — the state as its string, the index
+        // as a NUMBER (so it renders through `format_value`: `0`, `1`), the
+        // brief as rendered, or nothing.
+        PlaceholderRef::Outcome { field } => vars.outcome.and_then(|o| match field {
+            OutcomeField::State => Some(ResolvedValue::String(o.state.as_str().to_string())),
+            OutcomeField::Index => Some(ResolvedValue::Number(o.index as f64)),
+            OutcomeField::Brief => o.brief.clone().map(ResolvedValue::String),
+        }),
         PlaceholderRef::Params { name } => lookup(vars.params, name).cloned(),
         PlaceholderRef::Metadata { key } => vars
             .metadata
@@ -2342,6 +2440,7 @@ mod render_template_debug_tests {
             state,
             character: None,
             inventory: None,
+            outcome: None,
         }
     }
 
@@ -2815,100 +2914,130 @@ pub async fn execute_custom_tool(
         }
     }
 
-    // The consult runs AFTER the roll — its prompt may quote the draw — and
-    // BEFORE the table, which may test its answer. The prompt is rendered
-    // WITHOUT an `llm` var: there is no answer yet to quote.
-    let llm = match &definition.llm {
-        Some(spec) => {
-            let prompt = render_template(
-                &spec.prompt,
-                &TemplateVars {
-                    value,
-                    roll: raw,
-                    dice: &dice_breakdown,
-                    params: &params,
-                    metadata,
-                    progress,
-                    now: Some(now_ms),
-                    llm: None,
-                    state,
-                    character,
-                    inventory,
-                },
-            );
-            Some(resolve_llm_consult(spec, prompt, llm_invoke).await)
-        }
-        None => None,
+    // Two run orders, and the table decides which (v4 `322a5488e`, bug 257). A
+    // table that TESTS the consult's answer needs the consult first (the
+    // oracle: the model's answer is the verdict). Any other table is dealt
+    // BEFORE the consult, so the prompt is told the verdict
+    // (`{{outcome.brief}}`) rather than asked to recompute it — a cheap model
+    // asked to redo arithmetic the engine has already done will sometimes
+    // report the other branch.
+    let consult_first = definition.llm.is_some() && outcome_table_tests_llm(&definition.outcomes);
+    // ONE set of template vars for the run: no `llm` (there is no answer yet
+    // to quote) and no `outcome` (no verdict yet).
+    let template_vars = TemplateVars {
+        value,
+        roll: raw,
+        dice: &dice_breakdown,
+        params: &params,
+        metadata,
+        progress,
+        now: Some(now_ms),
+        llm: None,
+        state,
+        character,
+        inventory,
+        outcome: None,
     };
-    let llm_subject = llm.as_ref().map(|c| c.subject());
-
-    let subjects = OutcomeSubjects {
+    let base_subjects = OutcomeSubjects {
         value,
         roll: raw,
         params: &params,
         metadata,
         progress,
-        llm: llm_subject.as_ref(),
+        llm: None,
         state,
         character,
         inventory,
     };
-    let mut outcome_index = None;
-    for (i, o) in definition.outcomes.iter().enumerate() {
-        if matches_when(&o.when, &subjects, &definition.name)? {
-            outcome_index = Some(i);
-            break;
+
+    let llm: Option<LlmConsultResult>;
+    let outcome_index: usize;
+    // The brief the prompt was told, when the table dealt first (v4 `briefs`).
+    let mut dealt_brief: Option<String> = None;
+    match &definition.llm {
+        Some(spec) if consult_first => {
+            let prompt = render_template(&spec.prompt, &template_vars);
+            let consult = resolve_llm_consult(spec, prompt, llm_invoke).await;
+            let subject = consult.subject();
+            let subjects = OutcomeSubjects {
+                llm: Some(&subject),
+                ..base_subjects
+            };
+            outcome_index = pick_outcome(definition, &subjects, value)?;
+            llm = Some(consult);
+        }
+        spec => {
+            outcome_index = pick_outcome(definition, &base_subjects, value)?;
+            match spec {
+                Some(spec) => {
+                    let winner = &definition.outcomes[outcome_index];
+                    // The brief is written before the consult, so it quotes
+                    // only what the prompt may: no `{{llm}}`, no `{{outcome.*}}`
+                    // (load rejects both).
+                    let brief = winner
+                        .brief
+                        .as_ref()
+                        .map(|b| render_template(b, &template_vars));
+                    tracing::debug!(
+                        target: "quilltap::pascal",
+                        tool = definition.name,
+                        outcomeIndex = outcome_index,
+                        state = winner.state.as_str(),
+                        hasBrief = brief.is_some(),
+                        "Custom tool table dealt ahead of the consult",
+                    );
+                    let told = WinningOutcome {
+                        state: winner.state,
+                        index: outcome_index,
+                        brief: brief.clone(),
+                    };
+                    let prompt = render_template(
+                        &spec.prompt,
+                        &TemplateVars {
+                            outcome: Some(&told),
+                            ..template_vars.clone()
+                        },
+                    );
+                    dealt_brief = brief;
+                    llm = Some(resolve_llm_consult(spec, prompt, llm_invoke).await);
+                }
+                None => llm = None,
+            }
         }
     }
-    let Some(outcome_index) = outcome_index else {
-        // The schema's mandatory trailing catch-all makes this unreachable.
-        return Err(err(format!(
-            "{}: no outcome matched {}",
-            definition.name,
-            format_value(value)
-        )));
-    };
+    let llm_subject = llm.as_ref().map(|c| c.subject());
     let outcome = &definition.outcomes[outcome_index];
 
-    let message = render_template(
-        &outcome.message,
-        &TemplateVars {
-            value,
-            roll: raw,
-            dice: &dice_breakdown,
-            params: &params,
-            metadata,
-            progress,
-            now: Some(now_ms),
-            llm: llm_subject.as_ref(),
-            state,
-            character,
-            inventory,
-        },
-    );
+    // Rendered once for the winner, whichever run order dealt it: a brief after
+    // an oracle-first run is never read by the prompt, but `{{outcome.brief}}`
+    // in a message or effect still resolves.
+    let winning_brief = dealt_brief.or_else(|| {
+        outcome
+            .brief
+            .as_ref()
+            .map(|b| render_template(b, &template_vars))
+    });
+    let winning = WinningOutcome {
+        state: outcome.state,
+        index: outcome_index,
+        brief: winning_brief,
+    };
+    let after_vars = TemplateVars {
+        llm: llm_subject.as_ref(),
+        outcome: Some(&winning),
+        ..template_vars.clone()
+    };
+
+    let message = render_template(&outcome.message, &after_vars);
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
 
     // F1 — the chip label, rendered AFTER the outcome is chosen so it may quote
     // everything the message may. This is the one render site; both entrances
     // copy the result, so the chip and the bubble header can never drift.
-    let chip_label = definition.chip_label.as_ref().map(|template| {
-        render_template(
-            template,
-            &TemplateVars {
-                value,
-                roll: raw,
-                dice: &dice_breakdown,
-                params: &params,
-                metadata,
-                progress,
-                now: Some(now_ms),
-                llm: llm_subject.as_ref(),
-                state,
-                character,
-                inventory,
-            },
-        )
-    });
+    let chip_label = definition
+        .chip_label
+        .as_ref()
+        .map(|template| render_template(template, &after_vars));
 
     // F3 — effects, resolved pure against the finished run. Nothing is written
     // here; the entrances decide whether (and where) the writes land.
@@ -2916,20 +3045,10 @@ pub async fn execute_custom_tool(
         Some(declared) if !declared.is_empty() => {
             let effect_subjects = EffectSubjects {
                 base: OutcomeSubjects {
-                    value,
-                    roll: raw,
-                    params: &params,
-                    metadata,
-                    progress,
                     llm: llm_subject.as_ref(),
-                    state,
-                    character,
-                    inventory,
+                    ..base_subjects
                 },
-                outcome: WinningOutcome {
-                    state: outcome.state,
-                    index: outcome_index,
-                },
+                outcome: winning.clone(),
                 dice: &dice_breakdown,
                 now: now_ms,
             };
@@ -2962,6 +3081,26 @@ pub async fn execute_custom_tool(
         chip_label,
         effects,
     })
+}
+
+/// The first outcome whose `when` holds (v4 `pickOutcome`). The schema's
+/// mandatory trailing catch-all makes a miss unreachable; a regression still
+/// fails loudly rather than invent a verdict.
+fn pick_outcome(
+    definition: &QtapCustomTool,
+    subjects: &OutcomeSubjects,
+    value: f64,
+) -> Result<usize, CustomToolRunError> {
+    for (i, o) in definition.outcomes.iter().enumerate() {
+        if matches_when(&o.when, subjects, &definition.name)? {
+            return Ok(i);
+        }
+    }
+    Err(err(format!(
+        "{}: no outcome matched {}",
+        definition.name,
+        format_value(value)
+    )))
 }
 
 // ===========================================================================
@@ -3231,6 +3370,7 @@ mod wardrobe_gesture_tests {
             state: None,
             character: None,
             inventory: None,
+            outcome: None,
         }
     }
 
@@ -3328,5 +3468,313 @@ mod wardrobe_gesture_tests {
             r#"{"index":0,"wardrobe":{"action":"wear","items":["Boots","Hat"],"mode":"replace"}}"#
         );
         assert!(out.is_applicable() && out.is_applicable_wardrobe() && !out.is_applicable_write());
+    }
+}
+
+#[cfg(test)]
+mod any_of_and_outcome_debug_tests {
+    //! P4.D333: the three DEBUG lines v4 `a53024d3c` / `322a5488e` added to the
+    //! run core, pinned on the caller thread with their silence legs — the
+    //! any-of line AFTER its groups' own lines, the table-first line, and the
+    //! two `{{outcome.*}}` render reasons. The behaviour around them is the
+    //! execution family's (`pascal_custom_tools_execution_equivalence`); this
+    //! module pins the bytes.
+    use super::*;
+    use crate::pascal::custom_tool_types::safe_parse;
+    use crate::test_support::{captured, captured_with};
+    use serde_json::json;
+    use std::sync::Mutex;
+
+    fn tool(doc: Value) -> QtapCustomTool {
+        safe_parse(&doc).expect("the fixture loads")
+    }
+
+    fn subjects<'a>(
+        params: &'a ResolvedParams,
+        metadata: &'a Map<String, Value>,
+    ) -> OutcomeSubjects<'a> {
+        OutcomeSubjects {
+            value: 1.0,
+            roll: 1.0,
+            params,
+            metadata: Some(metadata),
+            progress: None,
+            llm: None,
+            state: None,
+            character: None,
+            inventory: None,
+        }
+    }
+
+    fn any_of_when() -> When {
+        tool(json!({
+            "name": "t", "description": "d",
+            "outcomes": [
+                { "when": [{ "metadata": { "a": { "eq": 1 } } }, { "metadata": { "b": { "eq": 1 } } }], "message": "-", "state": "info" },
+                { "when": true, "message": "-", "state": "info" },
+            ],
+        }))
+        .outcomes
+        .remove(0)
+        .when
+    }
+
+    #[test]
+    fn an_any_of_miss_logs_once_after_every_groups_own_lines() {
+        let params: ResolvedParams = Vec::new();
+        let sheet = Map::new();
+        let when = any_of_when();
+        let lines = captured(|| {
+            assert_eq!(
+                matches_when(&when, &subjects(&params, &sheet), "t"),
+                Ok(false)
+            );
+        });
+        assert_eq!(
+            lines,
+            vec![
+                "DEBUG quilltap::pascal Custom tool metadata test did not match tool=t key=a reason=the character has no such metadata key".to_string(),
+                "DEBUG quilltap::pascal Custom tool metadata test did not match tool=t key=b reason=the character has no such metadata key".to_string(),
+                "DEBUG quilltap::pascal Custom tool any-of test tool=t groups=2 heldGroup=null".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_any_of_hit_names_its_group_and_stops_there() {
+        let params: ResolvedParams = Vec::new();
+        let sheet: Map<String, Value> = json!({ "b": 1 }).as_object().unwrap().clone();
+        let when = any_of_when();
+        let lines = captured(|| {
+            assert_eq!(
+                matches_when(&when, &subjects(&params, &sheet), "t"),
+                Ok(true)
+            );
+        });
+        assert_eq!(lines.len(), 2, "{lines:?}");
+        assert_eq!(
+            lines[1],
+            "DEBUG quilltap::pascal Custom tool any-of test tool=t groups=2 heldGroup=1"
+        );
+    }
+
+    #[test]
+    fn a_bare_object_logs_no_any_of_line() {
+        let params: ResolvedParams = Vec::new();
+        let sheet: Map<String, Value> = json!({ "a": 1 }).as_object().unwrap().clone();
+        let when = tool(json!({
+            "name": "t", "description": "d",
+            "outcomes": [
+                { "when": { "metadata": { "a": { "eq": 1 } } }, "message": "-", "state": "info" },
+                { "when": true, "message": "-", "state": "info" },
+            ],
+        }))
+        .outcomes
+        .remove(0)
+        .when;
+        let lines = captured(|| {
+            assert_eq!(
+                matches_when(&when, &subjects(&params, &sheet), "t"),
+                Ok(true)
+            );
+        });
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// A canned consult that records the prompt it was posed.
+    struct Recording(Mutex<Option<String>>);
+
+    impl LlmInvoker for Recording {
+        fn invoke<'a>(
+            &'a self,
+            prompt: &'a str,
+            _options: LlmInvokeOptions,
+        ) -> Pin<Box<dyn Future<Output = LlmInvokeResult> + Send + 'a>> {
+            *self.0.lock().unwrap() = Some(prompt.to_string());
+            Box::pin(async {
+                LlmInvokeResult::Answered {
+                    output: "A report.".into(),
+                    provider: None,
+                    model: None,
+                }
+            })
+        }
+    }
+
+    fn scanner(outcomes: Value) -> QtapCustomTool {
+        tool(json!({
+            "name": "entanglement_scan",
+            "description": "Scan a shard for entanglement.",
+            "parameters": { "layers": { "type": "number", "default": 95 } },
+            "roll": { "min": 1, "max": 1 },
+            "llm": {
+                "prompt": "State: {{outcome.state}}, row {{outcome.index}}. Reach: {{outcome.brief}}",
+                "errorMessage": "The link falters.",
+            },
+            "outcomes": outcomes,
+        }))
+    }
+
+    fn run(definition: &QtapCustomTool, invoker: &Recording) -> (CustomToolRunResult, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (result, lines) = captured_with(|| {
+            rt.block_on(execute_custom_tool(
+                definition,
+                None,
+                None,
+                None,
+                None,
+                &mut crate::tools::rng::FixedBytes::new(vec![]),
+                Some(invoker),
+                None,
+                0,
+                None,
+                None,
+            ))
+        });
+        (result.expect("dealt"), lines)
+    }
+
+    #[test]
+    fn a_table_that_does_not_test_the_consult_is_dealt_first_and_says_so() {
+        let definition = scanner(json!([
+            { "when": { "roll": { "gte": { "$param": "layers" } } }, "message": "{{llm}}", "state": "success", "brief": "Confirmed." },
+            { "when": true, "message": "{{llm}}", "state": "failure", "brief": "Not found at {{params.layers}}." },
+        ]));
+        let invoker = Recording(Mutex::new(None));
+        let (result, lines) = run(&definition, &invoker);
+        assert_eq!(result.outcome_index, 1);
+        assert_eq!(
+            invoker.0.lock().unwrap().as_deref(),
+            Some("State: failure, row 1. Reach: Not found at 95.")
+        );
+        let dealt: Vec<&String> = lines.iter().filter(|l| l.contains("dealt ahead")).collect();
+        assert_eq!(
+            dealt,
+            vec!["DEBUG quilltap::pascal Custom tool table dealt ahead of the consult tool=entanglement_scan outcomeIndex=1 state=failure hasBrief=true"]
+        );
+    }
+
+    #[test]
+    fn a_winner_without_a_brief_says_so_and_leaves_the_placeholder() {
+        let definition =
+            scanner(json!([{ "when": true, "message": "{{llm}}", "state": "failure" }]));
+        let invoker = Recording(Mutex::new(None));
+        let (_, lines) = run(&definition, &invoker);
+        assert_eq!(
+            invoker.0.lock().unwrap().as_deref(),
+            Some("State: failure, row 0. Reach: {{outcome.brief}}")
+        );
+        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool table dealt ahead of the consult tool=entanglement_scan outcomeIndex=0 state=failure hasBrief=false".to_string()), "{lines:?}");
+        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render placeholder={{outcome.brief}} reason=the winning outcome has no brief".to_string()), "{lines:?}");
+    }
+
+    #[test]
+    fn a_table_that_tests_the_consult_keeps_the_old_order_silently() {
+        let definition = tool(json!({
+            "name": "forged_invitation",
+            "description": "Present a forged invitation.",
+            "llm": { "prompt": "YES or NO?", "errorMessage": "Silence." },
+            "outcomes": [
+                { "when": { "llm": { "eq": "A report." } }, "message": "In ({{outcome.state}})", "state": "success" },
+                { "when": true, "message": "Out", "state": "failure" },
+            ],
+        }));
+        let invoker = Recording(Mutex::new(None));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let (result, lines) = captured_with(|| {
+            rt.block_on(execute_custom_tool(
+                &definition,
+                None,
+                None,
+                None,
+                None,
+                &mut crate::tools::rng::FixedBytes::new(vec![0; 16]),
+                Some(&invoker),
+                None,
+                0,
+                None,
+                None,
+            ))
+        });
+        let result = result.expect("dealt");
+        assert_eq!(result.message, "In (success)");
+        assert!(
+            !lines.iter().any(|l| l.contains("dealt ahead")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn an_outcome_placeholder_before_the_deal_names_that_reason() {
+        let params: ResolvedParams = Vec::new();
+        let vars = TemplateVars {
+            value: 0.0,
+            roll: 0.0,
+            dice: "",
+            params: &params,
+            metadata: None,
+            progress: None,
+            now: None,
+            llm: None,
+            state: None,
+            character: None,
+            inventory: None,
+            outcome: None,
+        };
+        let lines = captured(|| {
+            assert_eq!(
+                render_template("x {{outcome.state}} y", &vars),
+                "x {{outcome.state}} y"
+            );
+        });
+        assert_eq!(
+            lines,
+            vec!["DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render placeholder={{outcome.state}} reason=the table has not dealt yet (or the consult is read by an outcome row)".to_string()]
+        );
+        // And once dealt, the state and index render silently.
+        let winning = WinningOutcome {
+            state: OutcomeState::Partial,
+            index: 3,
+            brief: None,
+        };
+        let dealt = TemplateVars {
+            outcome: Some(&winning),
+            ..vars
+        };
+        let lines = captured(|| {
+            assert_eq!(
+                render_template("{{outcome.state}} #{{outcome.index}}", &dealt),
+                "partial #3"
+            );
+        });
+        assert!(lines.is_empty(), "{lines:?}");
+    }
+
+    /// The winning row serializes in v4's spread order — `state`, `index`,
+    /// then `brief` only when the row has one (Tier 2 item 24).
+    #[test]
+    fn the_winning_outcome_serializes_in_v4_key_order() {
+        let without = WinningOutcome {
+            state: OutcomeState::Success,
+            index: 0,
+            brief: None,
+        };
+        assert_eq!(
+            serde_json::to_string(&without).unwrap(),
+            r#"{"state":"success","index":0}"#
+        );
+        let with = WinningOutcome {
+            brief: Some("Confirmed.".into()),
+            ..without
+        };
+        assert_eq!(
+            serde_json::to_string(&with).unwrap(),
+            r#"{"state":"success","index":0,"brief":"Confirmed."}"#
+        );
     }
 }

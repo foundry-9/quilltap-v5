@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(pascal): any-of gates and `when`s, the metadata list rule, and bug 257's two run orders (P4.D333)
+
+_Versions: core 0.0.1324._
+
+Ports v4 `a53024d3c`'s OR / any-of half and `322a5488e`'s server side (bug 257) into the Rust custom-tool twin. A gate, an outcome `when` and an effect condition may each be a one-level array of AND-groups (at most 8): `ToolGate` / `When` / `EffectCondition` gain an any-of arm read only through `gate_groups()` / `when_groups()` / `effect_when_groups()`; the loader's three-branch unions, the `isNotAnArray` filter, the `invalid_key` arm (a bad record key now reports the key schema's own reason, e.g. `progress.cannon: "cannon" names no field …`), the group index in issue paths, and the pin's three "must test …" sentences. Outcomes gain `brief`; `validate_outcome_briefs` and `outcome_table_tests_llm`. `execute_custom_tool` deals the table BEFORE the consult unless an outcome tests the consult, renders the winner's brief once, and the prompt, message, chip label and effects read `{{outcome.state|index|brief}}`. A `metadata` key holding a list of primitives compares entry by entry (ordering declines). The gate verdict carries `heldGroup`; the vocabulary walks every group, scans briefs and always carries `inventoryAggregates`; `describe_when` renders `(a and b) or c`; the roster's withheld DEBUG gains `groups` / `heldGroup`. New DEBUG lines: `Custom tool any-of test`, `Custom tool table dealt ahead of the consult`, `Custom tool template references {{outcome.*}} it cannot render`. Differentials: the definition corpus regenerated once at the pin (537 rows; 12 sibling-owned rows carved by id), the execution / vocabulary / run-custom / expressions families grown, NEW `pascal_metadata_match_equivalence` and `pascal_tool_gate_equivalence`, and a NEW variant census `pascal_gate_when_raw_reads_census`.
+
 #### 2026-10-26 — docs(porting): record the P4.D329 lane and mark the order LANE COMPLETE
 
 _Docs-only change._

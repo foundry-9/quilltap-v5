@@ -35,6 +35,14 @@
 //! not establish that this character qualifies". That asymmetry is the whole
 //! reason both keys exist; neither is a negation of the other.
 //!
+//! # Any-of
+//!
+//! A clause is one group (every test must hold) or an array of groups (any
+//! group may hold — v4 `a53024d3c`). AND binds tighter than OR; groups are
+//! tried left to right and the first to hold decides, and the verdict names it
+//! as `heldGroup`. An empty context declines every group, so the fail-closed /
+//! fail-open reading above holds for an array unchanged.
+//!
 //! CLIENT-SAFE in v4's sense: pure and total.
 
 use std::convert::Infallible;
@@ -42,7 +50,7 @@ use std::convert::Infallible;
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use super::custom_tool_types::{QtapCustomTool, ToolGate};
+use super::custom_tool_types::{QtapCustomTool, ToolGate, ToolGateGroup};
 use super::metadata_match::{metadata_comparator_holds, ResolvedValue};
 // === P4.D329: the gate's inventory subjects ===
 use super::custom_tool_types::{InventoryStateOperand, NumberOrParamRef, NumericComparator};
@@ -63,6 +71,13 @@ pub struct ToolGateVerdict {
     /// available, because v4's is an optional key.
     #[serde(rename = "withheldBy", skip_serializing_if = "Option::is_none")]
     pub withheld_by: Option<WithheldBy>,
+    /// For an any-of clause (an array), the index of the group that held — the
+    /// one that opened an `availableWhen` or closed a `withheldWhen` (v4
+    /// `a53024d3c`). Absent when no group held, and for a bare-object clause,
+    /// where there is only the one. Declared LAST: the key order `available,
+    /// withheldBy, heldGroup` is the gate rows' byte contract.
+    #[serde(rename = "heldGroup", skip_serializing_if = "Option::is_none")]
+    pub held_group: Option<usize>,
 }
 
 /// Which clause withheld a tool.
@@ -111,20 +126,26 @@ pub fn evaluate_tool_gate(
     let sheet = metadata.unwrap_or(&empty);
     let progress_sheet = progress.unwrap_or(&empty);
 
-    if let Some(gate) = definition.available_when.as_ref() {
-        if !gate_holds(gate, sheet, progress_sheet, inventory) {
+    let mut opened = None;
+    if let Some(clause) = definition.available_when.as_ref() {
+        let Some(held) = held_group_of(clause, sheet, progress_sheet, inventory) else {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::AvailableWhen),
+                held_group: None,
             };
+        };
+        if clause.is_any_of() {
+            opened = Some(held);
         }
     }
 
-    if let Some(gate) = definition.withheld_when.as_ref() {
-        if gate_holds(gate, sheet, progress_sheet, inventory) {
+    if let Some(clause) = definition.withheld_when.as_ref() {
+        if let Some(held) = held_group_of(clause, sheet, progress_sheet, inventory) {
             return ToolGateVerdict {
                 available: false,
                 withheld_by: Some(WithheldBy::WithheldWhen),
+                held_group: clause.is_any_of().then_some(held),
             };
         }
     }
@@ -132,15 +153,46 @@ pub fn evaluate_tool_gate(
     ToolGateVerdict {
         available: true,
         withheld_by: None,
+        held_group: opened,
     }
 }
 
-/// Every test in a gate must hold. Keys AND together, as they do in a `when`.
+/// The first group of a clause that holds, left to right; `None` when none
+/// does (v4 `heldGroupOf`).
+fn held_group_of(
+    clause: &ToolGate,
+    metadata: &Map<String, Value>,
+    progress: &Map<String, Value>,
+    inventory: Option<&dyn InventoryContext>,
+) -> Option<usize> {
+    clause
+        .gate_groups()
+        .iter()
+        .position(|group| gate_holds(group, metadata, progress, inventory))
+}
+
+/// True when a gate clause tests the progress sheet in any group — the roster
+/// derives the sheet only then (v4 `gateNamesProgress`, `a53024d3c`).
+///
+/// A record that is present but EMPTY names nothing: v4 counts its keys
+/// (`Object.keys(group.progress ?? {}).length > 0`), where the pre-any-of
+/// roster tested the record's truthiness and so derived the sheet for an
+/// authored `progress: {}` too.
+pub fn gate_names_progress(gate: Option<&ToolGate>) -> bool {
+    gate.is_some_and(|gate| {
+        gate.gate_groups()
+            .iter()
+            .any(|group| group.progress.as_ref().is_some_and(|p| !p.is_empty()))
+    })
+}
+
+/// Every test in a gate group must hold. Keys AND together, as they do in a
+/// `when`.
 ///
 /// Both subjects go through the SAME comparison table — one semantics, no second
 /// implementation to drift — differing only in which sheet they read.
 pub fn gate_holds(
-    gate: &ToolGate,
+    gate: &ToolGateGroup,
     metadata: &Map<String, Value>,
     progress: &Map<String, Value>,
     inventory: Option<&dyn InventoryContext>,

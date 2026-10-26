@@ -349,6 +349,16 @@ const classifyCases: Array<[string, string]> = [
   ['inventory-capitalised', 'Inventory.sword.title'],
   ['inventory-field-only', 'inventory.title'],
   // === end P4.D329 ===
+  // P4.D333 (v4 `322a5488e`, bug 257): the `outcome` family — AFTER the exact
+  // names, BEFORE the prefixes, and a field outside state / index / brief
+  // falls through to `unknown`.
+  ['outcome-brief', 'outcome.brief'],
+  ['outcome-state', 'outcome.state'],
+  ['outcome-index', 'outcome.index'],
+  ['outcome-verdict', 'outcome.verdict'],
+  ['outcome-bare', 'outcome'],
+  ['outcome-trailing-dot', 'outcome.'],
+  ['outcome-capitalised', 'Outcome.brief'],
 ];
 
 for (const [id, key] of classifyCases) {

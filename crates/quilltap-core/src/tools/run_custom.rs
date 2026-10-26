@@ -404,13 +404,30 @@ fn describe_value_comparator(when: &WhenObject) -> Vec<String> {
 
 /// Render an outcome test (v4 `describeWhen`). Every subject is named — the bare
 /// comparators are about `value`, so saying so keeps them legible beside a
-/// `roll` or a parameter test.
+/// `roll` or a parameter test. An any-of reads as each group in parentheses
+/// joined by "or" (a one-test group goes bare — v4 `a53024d3c`).
 fn describe_when(when: &When) -> String {
-    let when = match when {
-        When::CatchAll(_) => return "otherwise".to_string(),
-        When::Object(w) => w,
-    };
+    match when {
+        When::CatchAll(_) => "otherwise".to_string(),
+        When::Object(w) => describe_when_group(w).join(" and "),
+        When::AnyOf(_) => when
+            .when_groups()
+            .iter()
+            .map(|group| {
+                let parts = describe_when_group(group);
+                if parts.len() == 1 {
+                    parts[0].clone()
+                } else {
+                    format!("({})", parts.join(" and "))
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" or "),
+    }
+}
 
+/// Render one AND-group's tests (v4 `describeWhenGroup`).
+fn describe_when_group(when: &WhenObject) -> Vec<String> {
     let mut parts: Vec<String> = Vec::new();
     parts.extend(describe_value_comparator(when));
     if let Some(roll) = &when.roll {
@@ -456,8 +473,7 @@ fn describe_when(when: &When) -> String {
     for (key, cmp) in when.inventory_aggregate.iter().flatten() {
         parts.extend(describe_aggregate(key, cmp));
     }
-
-    parts.join(" and ")
+    parts
 }
 
 // === P4.D329: the aggregate describers ===

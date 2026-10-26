@@ -3,12 +3,22 @@
 //!
 //! A `metadata` comparator names a key on a character the definition has never
 //! met, so nothing about the subject is knowable at load time: the key may be
-//! absent, may hold a list, may hold a string where the table wanted a number.
-//! Each of those simply fails to match. That rule is load-bearing in two
-//! places — the outcome table ([`super::custom_tools`], at roll time) and the
-//! availability gate ([`super::tool_gate`], before a tool is ever offered) — and
-//! a second implementation of it would drift the moment one side gained a
-//! comparator.
+//! absent, may hold an object, may hold a string where the table wanted a
+//! number. Each of those simply fails to match. That rule is load-bearing in
+//! two places — the outcome table ([`super::custom_tools`], at roll time) and
+//! the availability gate ([`super::tool_gate`], before a tool is ever offered)
+//! — and a second implementation of it would drift the moment one side gained
+//! a comparator.
+//!
+//! # Lists compare entry by entry
+//!
+//! A key holding an array of primitives (`knownLanguages: ["Trade Cant",
+//! "Latin"]`, or an `inventoryAggregate` list such as `equipped.names`) is
+//! compared per entry (v4 `a53024d3c`): `eq` holds when ANY entry equals the
+//! operand, `neq` when NO entry does, `contains` when any string entry contains
+//! the substring, `ncontains` when none does. The four ordering keys decline on
+//! a list (fold it first). An array holding anything but primitives still
+//! declines whole.
 //!
 //! CLIENT-SAFE in v4's sense: no logging, no repositories, no IO. What the
 //! caller cannot know is injected — how to resolve an operand, and where to log
@@ -122,10 +132,17 @@ pub fn metadata_comparator_holds<E>(
         return decline("the character has no such metadata key".into());
     };
 
+    if let Value::Array(items) = raw {
+        let entries: Option<Vec<ResolvedValue>> = items.iter().map(js_primitive).collect();
+        if let Some(entries) = entries {
+            return list_comparator_holds(comparator, key, &entries, resolve_operand, &mut decline);
+        }
+    }
+
     let Some(subject) = js_primitive(raw) else {
         let held = match raw {
             Value::Null => "null",
-            Value::Array(_) => "an array",
+            Value::Array(_) => "an array that is not all numbers, strings and booleans",
             _ => "an object",
         };
         return decline(format!("the key holds {held}, which cannot be compared"));
@@ -183,6 +200,66 @@ pub fn metadata_comparator_holds<E>(
             !subject.strict_eq(&operand)
         };
         if !held {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
+/// The per-entry rule for a list of primitives (v4 `listComparatorHolds`; see
+/// the module header). Each comparator key is its own test and the keys AND
+/// together, as they do on a single value.
+///
+/// The ORDER differs from the scalar walk, observably only through a resolver
+/// that can fail: every ordering key declines BEFORE any operand resolves (so
+/// a `$param` on `gt` over a list never fails — it declines), then `eq`, `neq`,
+/// `contains`, `ncontains` each resolve their own operand in that order.
+fn list_comparator_holds<E>(
+    comparator: &MetadataComparator,
+    key: &str,
+    entries: &[ResolvedValue],
+    resolve_operand: &mut dyn FnMut(&str) -> Result<ResolvedValue, E>,
+    decline: &mut dyn FnMut(String) -> Result<bool, E>,
+) -> Result<bool, E> {
+    for ck in ["gt", "gte", "lt", "lte"] {
+        if comparator.has(ck) {
+            return decline(format!(
+                "{ck} orders {key}, which is a list; fold it with .min/.max/.sum/.count first"
+            ));
+        }
+    }
+
+    if comparator.has("eq") {
+        let operand = resolve_operand("eq")?;
+        if !entries.iter().any(|entry| entry.strict_eq(&operand)) {
+            return Ok(false);
+        }
+    }
+    if comparator.has("neq") {
+        let operand = resolve_operand("neq")?;
+        if entries.iter().any(|entry| entry.strict_eq(&operand)) {
+            return Ok(false);
+        }
+    }
+
+    for ck in ["contains", "ncontains"] {
+        if !comparator.has(ck) {
+            continue;
+        }
+        let operand = resolve_operand(ck)?;
+        let ResolvedValue::String(needle) = &operand else {
+            return decline(format!(
+                "{ck} looks for {}, and only a string can be a substring",
+                operand.stringify()
+            ));
+        };
+        // Non-string entries cannot contain anything, so they are skipped — as
+        // a single non-string value declines on its own.
+        let held = entries.iter().any(
+            |entry| matches!(entry, ResolvedValue::String(hay) if hay.contains(needle.as_str())),
+        );
+        if if ck == "contains" { !held } else { held } {
             return Ok(false);
         }
     }

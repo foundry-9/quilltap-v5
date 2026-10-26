@@ -42,7 +42,7 @@ use super::custom_tool_types::{
     collect_unknown_keys, format_definition_issues, safe_parse, QtapCustomTool, MAX_ROSTER_SIZE,
     TOOLS_FOLDER, TOOL_FILE_SUFFIX,
 };
-use super::tool_gate::{evaluate_tool_gate, has_tool_gate};
+use super::tool_gate::{evaluate_tool_gate, gate_names_progress, has_tool_gate};
 // === P4.D329: the invoker's bag ===
 use super::inventory_subjects::gate_names_inventory;
 // === LANE-REMOVE (P4.D329): C2 import ===
@@ -531,22 +531,14 @@ pub fn resolve_roster_from_pool(
             // gated tombstone ("suppress this name for novices") is simply both
             // keys at once, and reads exactly as it says.
             if has_tool_gate(&entry.definition) {
-                // v4: `entry.definition.availableWhen?.progress ||
-                // entry.definition.withheldWhen?.progress ? await
-                // invokerProgress() : undefined` — the sheet is derived only for
-                // a definition whose gate names it.
-                let names_progress = [
-                    entry.definition.available_when.as_ref(),
-                    entry.definition.withheld_when.as_ref(),
-                ]
-                .into_iter()
-                .flatten()
-                // v4: `availableWhen?.progress || withheldWhen?.progress` — a
-                // truthiness test on the RECORD, and `{}` is truthy in JS. So
-                // an authored-but-empty `progress` derives the sheet too; the
-                // parsed shape keeps presence, which is the only reason this
-                // can be faithful.
-                .any(|g| g.progress.is_some());
+                // v4: `gateNamesProgress(availableWhen) ||
+                // gateNamesProgress(withheldWhen) ? await invokerProgress() :
+                // undefined` — the sheet is derived only for a definition some
+                // group of whose gate names it. Since `a53024d3c` that counts
+                // the record's KEYS, so an authored-but-empty `progress: {}`
+                // no longer derives it (it declines nothing either way).
+                let names_progress = gate_names_progress(entry.definition.available_when.as_ref())
+                    || gate_names_progress(entry.definition.withheld_when.as_ref());
                 let metadata = sheet.get_or_insert_with(&mut invoker_metadata).clone();
                 let progress = if names_progress {
                     Some(progress_sheet.get_or_insert_with(|| {
@@ -580,13 +572,27 @@ pub fn resolve_roster_from_pool(
                 );
                 if !verdict.available {
                     // v4's `logger.debug('Custom tool withheld by its
-                    // availability gate', {…})`, same point, same fields.
+                    // availability gate', {…})`, same point. `groups` and
+                    // `heldGroup` (v4 `a53024d3c`) name the clause that decided
+                    // — `availableWhen ?? withheldWhen` — and the group that
+                    // closed it (`null` for a bare clause or an availableWhen
+                    // miss). v4's `characterId` is not carried: this pure
+                    // resolver is not handed the invoker's id.
+                    let clause = entry
+                        .definition
+                        .available_when
+                        .as_ref()
+                        .or(entry.definition.withheld_when.as_ref());
                     tracing::debug!(
                         target: "quilltap::pascal",
                         name = %name,
                         tier = ?tier,
                         mount_point_id = %mount_point_id,
                         withheld_by = verdict.withheld_by.map(|c| c.as_str()).unwrap_or("null"),
+                        groups = clause.map_or(0, |c| c.gate_groups().len()),
+                        heldGroup = %verdict
+                            .held_group
+                            .map_or_else(|| "null".to_string(), |h| h.to_string()),
                         "Custom tool withheld by its availability gate",
                     );
                     continue;

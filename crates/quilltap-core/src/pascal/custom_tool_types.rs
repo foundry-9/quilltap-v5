@@ -109,6 +109,10 @@ pub const MAX_EFFECTS: usize = 16;
 /// Cap on trigger phrases per tool (v4 `362426c8f`).
 pub const MAX_TRIGGERS: usize = 8;
 
+/// Cap on groups in one any-of array — a gate, an outcome `when`, or an effect
+/// `when` written as an array of AND-groups (v4 `a53024d3c`).
+pub const MAX_WHEN_GROUPS: usize = 8;
+
 /// Shortest trigger phrase — keeps "a" and "ok" out. A length, not a word count.
 pub const MIN_TRIGGER_PHRASE_LENGTH: usize = 3;
 
@@ -206,6 +210,15 @@ pub struct Issue {
     /// RELATIVE to the union (v4's `flattenIssues` re-walks them without the
     /// prefix, so they must not be prefixed here).
     pub union_errors: Option<Vec<Vec<Issue>>>,
+    /// Set ONLY by an any-of array branch's root refusal (`Invalid input:
+    /// expected array, received …`) — what v4's `isNotAnArray` recognises by
+    /// `code === 'invalid_type' && path.length === 0 && expected === 'array'`.
+    /// Its path is relative to the branch, so it is always empty when read.
+    pub expected_array_at_root: bool,
+    /// Present only for a record key's refusal (Zod's `invalid_key`): the key
+    /// schema's own issues. The outer message stays `Invalid key in record`,
+    /// but `flatten_issues` surfaces these instead (v4 `a53024d3c`).
+    pub inner: Option<Vec<Issue>>,
 }
 
 impl Issue {
@@ -216,6 +229,8 @@ impl Issue {
             message: message.into(),
             cont: false,
             union_errors: None,
+            expected_array_at_root: false,
+            inner: None,
         }
     }
 
@@ -226,6 +241,8 @@ impl Issue {
             message: message.into(),
             cont: true,
             union_errors: None,
+            expected_array_at_root: false,
+            inner: None,
         }
     }
 
@@ -233,6 +250,24 @@ impl Issue {
         self.path.insert(0, seg.into());
         self
     }
+
+    /// Mark an any-of array branch's root `expected array` refusal.
+    fn expected_array(mut self) -> Self {
+        self.expected_array_at_root = true;
+        self
+    }
+
+    /// Attach a record key schema's own issues (Zod's `invalid_key.issues`).
+    fn with_inner(mut self, inner: Vec<Issue>) -> Self {
+        self.inner = Some(inner);
+        self
+    }
+}
+
+/// v4 `isNotAnArray`: a union branch whose only complaint is "this is not an
+/// array" — the any-of branch of a value that simply was not one.
+fn is_not_an_array(branch: &[Issue]) -> bool {
+    branch.len() == 1 && branch[0].expected_array_at_root && branch[0].path.is_empty()
 }
 
 /// v4 `util.aborted`: a payload is aborted once any issue is not continuable.
@@ -295,6 +330,8 @@ fn union<T>(branches: Vec<Res<T>>) -> Res<T> {
             message: "Invalid input".into(),
             cont: false,
             union_errors: Some(errors),
+            expected_array_at_root: false,
+            inner: None,
         }],
     }
 }
@@ -787,21 +824,17 @@ titles, metadata.<key> (a list of the objects' values) or metadata.<key>.min/.ma
 A list compares entry by entry: eq holds when any entry equals the operand, neq when none does, contains / \
 ncontains likewise; ordering needs a fold. With no character or chat, every test declines.";
 
-/// An availability gate: whether this invoker is offered the tool at all (v4
-/// `ToolGateSchema`, `6864bf0e`).
+/// One group of an availability gate: tests that must ALL hold (v4
+/// `ToolGateGroupSchema`, `a53024d3c` — the former `ToolGateSchema`).
 ///
-/// Keyed by metadata key, AND-composed, and fail-soft in exactly the way an
-/// outcome's `metadata` test is — a key the character lacks does not match. The
-/// subject is `metadata` and only `metadata` because a gate is answered BEFORE
-/// the deal: there is no roll to test, no parameters (nobody has called
-/// anything), and no consult. `metadata` is what a character carries into the
-/// room, so it is the one thing that can be asked about before they sit down.
-///
-/// The subject lives under its own key rather than at the top of the object so a
-/// later build can add a second one without re-shaping every file already
-/// written.
+/// Keyed by subject, AND-composed, and fail-soft in exactly the way an
+/// outcome's `metadata` test is — a key the character lacks does not match.
+/// The subjects are the ones a pre-roll test can honestly have: the character's
+/// `metadata.json` and the progress sheet derived from it. A gate is answered
+/// BEFORE the deal: there is no roll to test, no parameters (nobody has called
+/// anything), and no consult, so every operand is a literal.
 #[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ToolGate {
+pub struct ToolGateGroup {
     /// Ordered, mirroring the authored key order `Object.keys` walks.
     ///
     /// v4 made this OPTIONAL at `0587d1e96`: a gate may now test progressions
@@ -852,6 +885,40 @@ pub struct ToolGate {
     pub inventory_aggregate: Option<Vec<(String, GateComparator)>>,
 }
 
+/// An availability gate: whether this invoker is offered the tool at all (v4
+/// `ToolGateSchema`).
+///
+/// One group (every test must hold), or an any-of array of groups — the gate
+/// holds when ANY group holds. AND binds tighter than OR; there is no nesting.
+///
+/// An enum rather than a `Vec` with a flag because the parsed `data` is
+/// compared as bytes: an authored bare object serializes as an object and an
+/// authored one-element array as a one-element array. Every reader goes
+/// through [`ToolGate::gate_groups`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum ToolGate {
+    Group(ToolGateGroup),
+    AnyOf(Vec<ToolGateGroup>),
+}
+
+impl ToolGate {
+    /// A gate's groups, in order — one for a bare object (v4 `gateGroups`).
+    /// Every reader of a gate goes through here.
+    pub fn gate_groups(&self) -> &[ToolGateGroup] {
+        match self {
+            ToolGate::Group(g) => std::slice::from_ref(g),
+            ToolGate::AnyOf(groups) => groups.as_slice(),
+        }
+    }
+
+    /// True for the any-of (array) spelling — the one whose issue paths and
+    /// verdicts carry a group index.
+    pub fn is_any_of(&self) -> bool {
+        matches!(self, ToolGate::AnyOf(_))
+    }
+}
+
 /// An outcome test's object form: one or more subjects, ALL of which must hold.
 ///
 /// Bare comparator keys test the final value, so the common case stays as short
@@ -862,8 +929,9 @@ pub struct ToolGate {
 /// user called it. A `metadata` key the character lacks is not an error — the
 /// comparator is false and the table falls through to its catch-all.
 ///
-/// There is still no OR and no nesting: ordered, first-match-wins outcomes make
-/// OR unnecessary, and a flat AND of comparators keeps the evaluator eval-free.
+/// Tests are AND-composed comparator objects; a one-level any-of array of them
+/// is OR (see [`When`]); there is no nesting and no expression grammar, which
+/// keeps the evaluator eval-free.
 #[derive(Debug, Clone, PartialEq, Serialize, Default)]
 pub struct WhenObject {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -939,20 +1007,51 @@ pub struct WhenObject {
     pub inventory_aggregate: Option<Vec<(String, MetadataComparator)>>,
 }
 
-/// An outcome test: either the literal `true` (catch-all) or a [`WhenObject`].
+/// An outcome test: `true` (catch-all), one AND-group, or an any-of array of
+/// AND-groups — the row wins when ANY group holds. AND binds tighter than OR.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum When {
     /// The literal `true`.
     CatchAll(bool),
     Object(Box<WhenObject>),
+    /// `[{…}, {…}]` — one level only, 1..=[`MAX_WHEN_GROUPS`] groups.
+    AnyOf(Vec<WhenObject>),
+}
+
+impl When {
+    /// An outcome test's groups, in order — `[]` for the catch-all (v4
+    /// `whenGroups`). Every reader of a `when` goes through here.
+    pub fn when_groups(&self) -> &[WhenObject] {
+        match self {
+            When::CatchAll(_) => &[],
+            When::Object(w) => std::slice::from_ref(&**w),
+            When::AnyOf(groups) => groups.as_slice(),
+        }
+    }
+
+    /// True for the any-of (array) spelling.
+    pub fn is_any_of(&self) -> bool {
+        matches!(self, When::AnyOf(_))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CustomToolOutcome {
+    /// `true` for a catch-all; or comparators on the value, `roll`, `params`,
+    /// `metadata` and the other subjects that AND together; or an array of
+    /// such objects, any one of which may hold (OR).
     pub when: When,
     pub message: String,
     pub state: OutcomeState,
+    /// An instruction for the LLM consult's narrator: the conclusion this
+    /// outcome means, in the author's words (v4 `322a5488e`, bug 257). When
+    /// this row wins on a tool whose table is dealt BEFORE the consult, the
+    /// prompt may quote it as `{{outcome.brief}}`, so the model is TOLD the
+    /// verdict the table reached instead of asked to work it out. LAST, because
+    /// Zod's shape order is the serialized key order and the issue order.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub brief: Option<String>,
 }
 
 /// An effect condition's one new subject: the WINNING outcome's semantic state.
@@ -985,6 +1084,31 @@ pub struct EffectWhen {
     pub base: WhenObject,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub outcome: Option<OutcomeTest>,
+}
+
+/// An effect condition: one group, or an any-of array of groups (v4
+/// `EffectConditionSchema`, `a53024d3c`).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum EffectCondition {
+    Group(Box<EffectWhen>),
+    AnyOf(Vec<EffectWhen>),
+}
+
+impl EffectCondition {
+    /// An effect condition's groups, in order (v4 `effectWhenGroups`). Every
+    /// reader of an effect `when` goes through here.
+    pub fn effect_when_groups(&self) -> &[EffectWhen] {
+        match self {
+            EffectCondition::Group(g) => std::slice::from_ref(&**g),
+            EffectCondition::AnyOf(groups) => groups.as_slice(),
+        }
+    }
+
+    /// True for the any-of (array) spelling.
+    pub fn is_any_of(&self) -> bool {
+        matches!(self, EffectCondition::AnyOf(_))
+    }
 }
 
 /// What an effect writes: a literal number or boolean, or a string that is
@@ -1193,8 +1317,10 @@ pub fn inventory_gesture_problems(
 /// load-time parse error, and a loud one).
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomToolEffect {
-    /// Condition for this effect. Omitted = fires on every run.
-    pub when: Option<EffectWhen>,
+    /// Condition for this effect: one object whose tests AND together, or an
+    /// array of them, any one of which may hold (OR). Omitted = fires on every
+    /// run.
+    pub when: Option<EffectCondition>,
     pub body: CustomToolEffectBody,
 }
 
@@ -1332,7 +1458,7 @@ pub fn wardrobe_gesture_problems(
 /// rejected.
 #[derive(Debug, Clone)]
 struct EffectParts {
-    when: Option<EffectWhen>,
+    when: Option<EffectCondition>,
     target: Option<String>,
     value: Option<EffectValue>,
     wardrobe: Option<CustomToolWardrobeGesture>,
@@ -2252,9 +2378,86 @@ fn parse_gate_comparator(input: Option<&Value>) -> Res<GateComparator> {
     }
 }
 
-/// v4 `ToolGateSchema` (`6864bf0e`) — `strictObject({ metadata: record(…) })`
-/// with a refine demanding at least one key.
+/// v4 `ToolGateSchema` (`a53024d3c`) — `z.union([ToolGateGroupSchema,
+/// z.array(ToolGateGroupSchema).min(1).max(MAX_WHEN_GROUPS, …)])`.
 fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
+    let group = parse_tool_gate_group(input);
+    let group = Res {
+        value: group.value.map(ToolGate::Group),
+        issues: group.issues,
+    };
+    let any_of = parse_group_array(input, parse_tool_gate_group);
+    let any_of = Res {
+        value: any_of.value.map(ToolGate::AnyOf),
+        issues: any_of.issues,
+    };
+    union(vec![group, any_of])
+}
+
+/// v4's any-of array branch — `z.array(group).min(1).max(MAX_WHEN_GROUPS,
+/// \`at most ${MAX_WHEN_GROUPS} groups\`)` — shared by the gate, the outcome
+/// `when` and the effect `when`.
+///
+/// Zod 4.6.7's array semantics, measured at the pin (the `triggers` arm's
+/// shape): an oversized array fails with ONLY its `too_big` — the AUTHOR's
+/// message, `at most 8 groups` — before an element is parsed, and that issue
+/// ABORTS; `.min(1)` is a continuable check; a non-array refusal is tagged
+/// for v4's `isNotAnArray` filter, and an input with a `.length` also gets the
+/// two length checks past it (Zod's own `.min` sentence, the authored `.max`).
+fn parse_group_array<T>(
+    input: Option<&Value>,
+    parse_group: impl Fn(Option<&Value>) -> Res<T>,
+) -> Res<Vec<T>> {
+    match input {
+        Some(Value::Array(items)) if items.len() > MAX_WHEN_GROUPS => {
+            Res::hard(format!("at most {MAX_WHEN_GROUPS} groups"))
+        }
+        Some(Value::Array(items)) => {
+            let mut groups = Vec::new();
+            let mut issues = Vec::new();
+            for (g, item) in items.iter().enumerate() {
+                let r = parse_group(Some(item));
+                issues.extend(prefix(&g.to_string(), r.issues));
+                if let Some(group) = r.value {
+                    groups.push(group);
+                }
+            }
+            if items.is_empty() {
+                issues.push(Issue::check("Too small: expected array to have >=1 items"));
+            }
+            let value = (!aborted(&issues)).then_some(groups);
+            Res { value, issues }
+        }
+        other => {
+            let mut issues = vec![Issue::hard(invalid_type("array", other)).expected_array()];
+            if let Some(v) = other {
+                issues.extend(authored_length_checks_past_invalid_type(
+                    v,
+                    None,
+                    (
+                        MAX_WHEN_GROUPS,
+                        &format!("at most {MAX_WHEN_GROUPS} groups"),
+                    ),
+                ));
+                // `.min(1)` keeps Zod's own sentence, which names the origin —
+                // and is declared BEFORE `.max`, so it goes first.
+                let min = length_checks_past_invalid_type(v, 1, usize::MAX);
+                for (at, issue) in min.into_iter().enumerate() {
+                    issues.insert(1 + at, issue);
+                }
+            }
+            Res {
+                value: None,
+                issues,
+            }
+        }
+    }
+}
+
+/// v4 `ToolGateGroupSchema` (`a53024d3c`; the `6864bf0e` `ToolGateSchema`
+/// renamed) — `strictObject({ metadata?, progress? })` with a refine demanding
+/// at least one key.
+fn parse_tool_gate_group(input: Option<&Value>) -> Res<ToolGateGroup> {
     let obj = match as_object(input) {
         Ok(o) => o,
         Err(e) => {
@@ -2278,7 +2481,7 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
         None => {}
         Some(Value::Object(m)) => {
             // Metadata keys are `z.string().min(1)`, as they are in a `when`.
-            let r = parse_record(m, |k| !k.is_empty(), |v| parse_gate_comparator(Some(v)));
+            let r = parse_record(m, metadata_key, |v| parse_gate_comparator(Some(v)));
             issues.extend(prefix("metadata", r.issues));
             metadata = r.value.map(Some);
         }
@@ -2300,18 +2503,12 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
             // The key vocabulary here is the FORMAT's, not the user's, so it is
             // checked at load time — through the one parser that owns the
             // "<id>.<field>" shape, so this and the Workbench's condition
-            // validator cannot drift apart. MEASURED on Zod 4.5.4: a refused
-            // record key is `invalid_key` with the OUTER message
-            // `Invalid key in record`; `parse_progress_key`'s per-mistake
-            // sentence is nested one level down and `formatDefinitionIssues`
-            // never walks it, so the load-time string a person sees is
-            // `progress.<key>: Invalid key in record`. The sentences reach an
-            // author only through the Workbench.
-            let r = parse_record(
-                m,
-                |k| parse_progress_key(k).is_ok(),
-                |v| parse_gate_comparator(Some(v)),
-            );
+            // validator cannot drift apart. A refused record key is Zod's
+            // `invalid_key` with the OUTER message `Invalid key in record`;
+            // since v4 `a53024d3c` `formatDefinitionIssues` walks the nested
+            // issues instead, so the load-time string a person sees is
+            // `progress.<key>: <parse_progress_key's sentence>`.
+            let r = parse_record(m, progress_key, |v| parse_gate_comparator(Some(v)));
             issues.extend(prefix("progress", r.issues));
             progress = r.value.map(Some);
         }
@@ -2363,7 +2560,7 @@ fn parse_tool_gate(input: Option<&Value>) -> Res<ToolGate> {
                 ));
                 None
             } else {
-                Some(ToolGate {
+                Some(ToolGateGroup {
                     metadata,
                     progress,
                     inventory,
@@ -2509,22 +2706,31 @@ fn parse_custom_tool_llm(input: Option<&Value>) -> Res<CustomToolLlm> {
     }
 }
 
-/// v4 `z.record(keySchema, …)`: a key failing `key_valid` is an `invalid_key`
-/// issue — aborting, unlike the same regex used as a field check. `params` keys
-/// take the identifier grammar; `metadata` keys take `z.string().min(1)`
-/// (non-empty), since the user hand-authors `metadata.json` and `HOUSE` or
-/// `Clearance Level` are perfectly ordinary keys. Zod's message is the same
-/// "Invalid key in record" either way.
+/// v4 `z.record(keySchema, …)`: a key the key schema refuses is an
+/// `invalid_key` issue — aborting, unlike the same regex used as a field check.
+/// `params` keys take the identifier grammar; `metadata` keys take
+/// `z.string().min(1)` (non-empty), since the user hand-authors
+/// `metadata.json` and `HOUSE` or `Clearance Level` are perfectly ordinary
+/// keys; `progress` keys take the format's `"<id>.<field>"` grammar.
+///
+/// `key_reason` answers the key schema's own complaint. Zod's outer message is
+/// always "Invalid key in record", but since v4 `a53024d3c` `flattenIssues`
+/// surfaces the key schema's issues instead (the `invalid_key` arm) — so the
+/// reason rides as the issue's [`Issue::inner`].
 fn parse_record<T>(
     obj: &serde_json::Map<String, Value>,
-    key_valid: impl Fn(&str) -> bool,
+    key_reason: impl Fn(&str) -> Result<(), String>,
     mut parse_value: impl FnMut(&Value) -> Res<T>,
 ) -> Res<Vec<(String, T)>> {
     let mut issues = Vec::new();
     let mut out = Vec::new();
     for (key, v) in obj {
-        if !key_valid(key) {
-            issues.push(Issue::hard("Invalid key in record").at(key));
+        if let Err(reason) = key_reason(key) {
+            issues.push(
+                Issue::hard("Invalid key in record")
+                    .with_inner(vec![Issue::check(reason)])
+                    .at(key),
+            );
             continue;
         }
         let r = parse_value(v);
@@ -2538,41 +2744,6 @@ fn parse_record<T>(
 }
 
 // === P4.D329: the inventory records ===
-/// A record whose KEY schema states its own reason: `inventory` /
-/// `inventoryCount` keys (`z.string().min(1).max(200)`) and `inventoryAggregate`
-/// keys (`AggregateKeySchema`, a `superRefine` over [`parse_aggregate_key`]).
-///
-/// At the pin a refused key is Zod's `invalid_key` carrying the key schema's
-/// own issues, and `flattenIssues`' `invalid_key` arm renders THOSE
-/// (`<path>.<key>: <reason>`), not "Invalid key in record". Pushing the reason
-/// itself at the key renders the same bytes through this file's plain arm
-/// (R-11), so this lane needs nothing of the `invalid_key` issue model; the
-/// unifier may fold this under that arm with the bytes unchanged. Aborting,
-/// like every `invalid_key`.
-///
-/// [`parse_aggregate_key`]: super::inventory_aggregate::parse_aggregate_key
-fn parse_reasoned_record<T>(
-    obj: &serde_json::Map<String, Value>,
-    key_reason: impl Fn(&str) -> Result<(), String>,
-    mut parse_value: impl FnMut(&Value) -> Res<T>,
-) -> Res<Vec<(String, T)>> {
-    let mut issues = Vec::new();
-    let mut out = Vec::new();
-    for (key, v) in obj {
-        if let Err(reason) = key_reason(key) {
-            issues.push(Issue::hard(reason).at(key));
-            continue;
-        }
-        let r = parse_value(v);
-        issues.extend(prefix(key, r.issues));
-        if let Some(val) = r.value {
-            out.push((key.clone(), val));
-        }
-    }
-    let value = if aborted(&issues) { None } else { Some(out) };
-    Res { value, issues }
-}
-
 /// v4 `InventoryKeySchema` — `z.string().min(1).max(MAX_INVENTORY_REF_LENGTH)`
 /// as a record key: Zod's own sentences, joined as `flattenIssues` joins a
 /// key's issues.
@@ -2736,7 +2907,7 @@ fn parse_inventory_records(
         match obj.get(key) {
             None => Some(None),
             Some(Value::Object(m)) => {
-                let r = parse_reasoned_record(m, key_reason, parse_value);
+                let r = parse_record(m, key_reason, parse_value);
                 issues.extend(prefix(key, r.issues));
                 r.value.map(Some)
             }
@@ -2779,6 +2950,31 @@ fn parse_inventory_records(
         inventory_count,
         inventory_aggregate,
     }
+}
+
+/// v4 `IdentifierSchema` as a record KEY schema — `params` and `parameters`.
+fn identifier_key(key: &str) -> Result<(), String> {
+    if IDENTIFIER_PATTERN.is_match(key) {
+        Ok(())
+    } else {
+        Err(IDENTIFIER_MESSAGE.to_string())
+    }
+}
+
+/// v4 `MetadataKeySchema` — `z.string().min(1)`, Zod's own sentence.
+fn metadata_key(key: &str) -> Result<(), String> {
+    if crate::jsstr::zod_len_min_ok(key, 1) {
+        Ok(())
+    } else {
+        Err("Too small: expected string to have >=1 characters".to_string())
+    }
+}
+
+/// v4 `ProgressKeySchema` — delegated to the one parser that owns the
+/// `"<id>.<field>"` shape, so this schema and the Workbench's condition
+/// validator cannot drift apart; its per-mistake sentence is the reason.
+fn progress_key(key: &str) -> Result<(), String> {
+    parse_progress_key(key).map(|_| ())
 }
 
 fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
@@ -3090,11 +3286,7 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     let mut params_present = false;
     if let Some(Value::Object(p)) = obj.get("params") {
         params_present = true;
-        let r = parse_record(
-            p,
-            |k| IDENTIFIER_PATTERN.is_match(k),
-            |v| parse_param_comparator(Some(v)),
-        );
+        let r = parse_record(p, identifier_key, |v| parse_param_comparator(Some(v)));
         issues.extend(prefix("params", r.issues));
         out.params = r.value;
     } else if let Some(v) = obj.get("params") {
@@ -3109,7 +3301,7 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
         metadata_present = true;
         // Metadata keys are `z.string().min(1)` — any non-empty string, unlike
         // `params`' identifier grammar.
-        let r = parse_record(m, |k| !k.is_empty(), |v| parse_param_comparator(Some(v)));
+        let r = parse_record(m, metadata_key, |v| parse_param_comparator(Some(v)));
         issues.extend(prefix("metadata", r.issues));
         out.metadata = r.value;
     } else if let Some(v) = obj.get("metadata") {
@@ -3125,11 +3317,7 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
     let mut progress_present = false;
     if let Some(Value::Object(m)) = obj.get("progress") {
         progress_present = true;
-        let r = parse_record(
-            m,
-            |k| parse_progress_key(k).is_ok(),
-            |v| parse_param_comparator(Some(v)),
-        );
+        let r = parse_record(m, progress_key, |v| parse_param_comparator(Some(v)));
         issues.extend(prefix("progress", r.issues));
         out.progress = r.value;
     } else if let Some(v) = obj.get("progress") {
@@ -3217,6 +3405,7 @@ fn parse_when_like(input: Option<&Value>, effect: bool) -> Res<(WhenObject, Opti
         && !has_metadata
         && !has_progress
     {
+        // The PIN's whole sentences (see the gate group's refine).
         issues.push(Issue::check(if effect {
             "must test something: a comparator on the value, `roll`, `llm`, `outcome`, a non-empty `params`, `metadata`, `progress`, `inventory`, `inventoryCount`, or `inventoryAggregate`"
         } else {
@@ -3475,7 +3664,7 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
 
     let when = match obj.get("when") {
         Some(v) => {
-            let r = parse_effect_when(Some(v));
+            let r = parse_effect_condition(Some(v));
             issues.extend(prefix("when", r.issues));
             r.value
         }
@@ -3587,6 +3776,27 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
     }
 }
 
+/// v4 `EffectConditionSchema` (`a53024d3c`) — `z.union([EffectWhenSchema,
+/// z.array(EffectWhenSchema).min(1).max(MAX_WHEN_GROUPS, …)])`.
+fn parse_effect_condition(input: Option<&Value>) -> Res<EffectCondition> {
+    let group = parse_effect_when(input);
+    let group = Res {
+        value: group.value.map(|g| EffectCondition::Group(Box::new(g))),
+        issues: group.issues,
+    };
+    let any_of = parse_group_array(input, parse_effect_when);
+    let any_of = Res {
+        value: any_of.value.map(EffectCondition::AnyOf),
+        issues: any_of.issues,
+    };
+    union(vec![group, any_of])
+}
+
+/// v4 `WhenSchema` (`a53024d3c`) — `z.union([z.literal(true), WhenObjectSchema,
+/// z.array(WhenObjectSchema).min(1).max(MAX_WHEN_GROUPS, …)])`. With three
+/// branches an object failing only a continuable refine is still the ONE
+/// non-aborted branch (the array branch aborts on `expected array`), so its
+/// sentence stays hoisted.
 fn parse_when(input: Option<&Value>) -> Res<When> {
     // `z.literal(true)`.
     let lit = match input {
@@ -3601,7 +3811,12 @@ fn parse_when(input: Option<&Value>) -> Res<When> {
         value: o.value.map(|w| When::Object(Box::new(w))),
         issues: o.issues,
     };
-    union(vec![lit, o])
+    let any_of = parse_group_array(input, parse_when_object);
+    let any_of = Res {
+        value: any_of.value.map(When::AnyOf),
+        issues: any_of.issues,
+    };
+    union(vec![lit, o, any_of])
 }
 
 fn parse_outcome(input: Option<&Value>) -> Res<CustomToolOutcome> {
@@ -3633,7 +3848,21 @@ fn parse_outcome(input: Option<&Value>) -> Res<CustomToolOutcome> {
     );
     issues.extend(prefix("state", state.issues));
 
-    issues.extend(unrecognized_keys(obj, &["when", "message", "state"]));
+    // `brief: z.string().min(1).max(MAX_MESSAGE_LENGTH).optional()` (v4
+    // `322a5488e`) — after `state`, which is where the shape declares it.
+    let brief = match obj.get("brief") {
+        Some(v) => {
+            let r = parse_string(Some(v), Some(1), Some(MAX_MESSAGE_LENGTH), false);
+            issues.extend(prefix("brief", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(
+        obj,
+        &["when", "message", "state", "brief"],
+    ));
 
     match (when.value, message.value, state.value) {
         (Some(when), Some(message), Some(state)) if !aborted(&issues) => Res {
@@ -3641,6 +3870,7 @@ fn parse_outcome(input: Option<&Value>) -> Res<CustomToolOutcome> {
                 when,
                 message,
                 state,
+                brief,
             }),
             issues,
         },
@@ -3806,11 +4036,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
 
     let parameters = match obj.get("parameters") {
         Some(Value::Object(p)) => {
-            let r = parse_record(
-                p,
-                |k| IDENTIFIER_PATTERN.is_match(k),
-                |v| parse_parameter(Some(v)),
-            );
+            let r = parse_record(p, identifier_key, |v| parse_parameter(Some(v)));
             let mut param_issues = r.issues;
             // `.refine(… <= MAX_PARAMETERS)` — a check on the record itself, so
             // it is skipped when an entry already aborted.
@@ -3986,6 +4212,7 @@ pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     // ---- superRefine (v4 `:335-338`), in source order -----------------------
     validate_outcome_ordering(&tool.outcomes, &mut issues);
     validate_references(&tool, &mut issues);
+    validate_outcome_briefs(&tool, &mut issues);
     validate_gates(&tool, &mut issues);
     validate_effects(&tool, &effect_parts, &mut issues);
     validate_triggers(&tool, &mut issues);
@@ -4054,43 +4281,36 @@ fn validate_gates(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
     // === P4.D329: a gate's inventory keys are literal ===
     // A gate is answered at roster time, before any parameter exists, so a
     // templated key would be its literal text for ever — and resolve to
-    // `absent` for ever. Outcome and effect `when` keys stay templates. (One
-    // group on this branch: path `[clause, subject, key]`; P4.D333's group
-    // walk adds the index for an any-of array.)
+    // `absent` for ever. Outcome and effect `when` keys stay templates. An
+    // any-of clause adds the group index to the path (v4 `gateGroups(gate)
+    // .forEach((group, g) => …)`).
     for (clause, gate) in [
         ("availableWhen", &tool.available_when),
         ("withheldWhen", &tool.withheld_when),
     ] {
-        let Some(group) = gate else { continue };
-        let keys = [
-            (
-                "inventory",
-                group
-                    .inventory
-                    .iter()
-                    .flatten()
-                    .map(|(k, _)| k)
-                    .collect::<Vec<_>>(),
-            ),
-            (
-                "inventoryCount",
-                group
-                    .inventory_count
-                    .iter()
-                    .flatten()
-                    .map(|(k, _)| k)
-                    .collect::<Vec<_>>(),
-            ),
-        ];
-        for (subject, keys) in keys {
-            for key in keys {
-                if key.contains("{{") {
-                    issues.push(issue_at(
-                        format!(
-                            "a gate's {subject} key must be a literal object reference; \"{key}\" carries a placeholder, and a gate has no parameters to fill it"
-                        ),
-                        &[clause.to_string(), subject.to_string(), key.clone()],
-                    ));
+        let Some(gate) = gate else { continue };
+        for (g, group) in gate.gate_groups().iter().enumerate() {
+            let base = group_path(&[clause.to_string()], gate.is_any_of(), g);
+            let keys = [
+                ("inventory", group.inventory.iter().flatten().map(|(k, _)| k).collect::<Vec<_>>()),
+                (
+                    "inventoryCount",
+                    group.inventory_count.iter().flatten().map(|(k, _)| k).collect::<Vec<_>>(),
+                ),
+            ];
+            for (subject, keys) in keys {
+                for key in keys {
+                    if key.contains("{{") {
+                        let mut path = base.clone();
+                        path.push(subject.to_string());
+                        path.push(key.clone());
+                        issues.push(issue_at(
+                            format!(
+                                "a gate's {subject} key must be a literal object reference; \"{key}\" carries a placeholder, and a gate has no parameters to fill it"
+                            ),
+                            &path,
+                        ));
+                    }
                 }
             }
         }
@@ -4142,15 +4362,95 @@ fn validate_references(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
     validate_roll_refs(tool, issues);
 
     for (i, outcome) in tool.outcomes.iter().enumerate() {
-        let When::Object(when) = &outcome.when else {
+        let base = ["outcomes".to_string(), i.to_string(), "when".to_string()];
+        for (g, group) in outcome.when.when_groups().iter().enumerate() {
+            validate_when_subjects(
+                tool,
+                group,
+                issues,
+                &group_path(&base, outcome.when.is_any_of(), g),
+            );
+        }
+    }
+}
+
+/// The issue path for group `g` of a clause at `base`: the group index rides
+/// ONLY when the clause IS an array — a bare object keeps the un-indexed path
+/// (v4 `Array.isArray(when) ? [...base, g] : base`, at every group walk).
+fn group_path(base: &[String], any_of: bool, g: usize) -> Vec<String> {
+    let mut path = base.to_vec();
+    if any_of {
+        path.push(g.to_string());
+    }
+    path
+}
+
+/// True when any outcome row's `when` tests the consult — `llm`, or its `ok`
+/// alone (v4 `outcomeTableTestsLlm`, `322a5488e`). The run path reads it to
+/// pick the run order; the loader reads it to keep `{{outcome.*}}` out of a
+/// prompt whose table needs the answer.
+pub fn outcome_table_tests_llm(outcomes: &[CustomToolOutcome]) -> bool {
+    outcomes.iter().any(|outcome| {
+        outcome
+            .when
+            .when_groups()
+            .iter()
+            .any(|group| group.llm.is_some())
+    })
+}
+
+/// Rule: `{{outcome.*}}` and `brief` keep to the run order (v4
+/// `validateOutcomeBriefs`, `322a5488e` — bug 257).
+///
+/// When no row tests the consult, the table is dealt first and the prompt may
+/// quote the winning row. When some row does, the table needs the answer, so
+/// the prompt cannot read the verdict — a reference there would be a hole for
+/// ever, and it is rejected at load. A `brief` is rendered before the consult
+/// too, so it may quote neither `{{llm}}` nor `{{outcome.*}}`.
+fn validate_outcome_briefs(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
+    if let Some(llm) = &tool.llm {
+        if outcome_table_tests_llm(&tool.outcomes) {
+            for scanned in scan_placeholders(&llm.prompt) {
+                if matches!(scanned.place_ref, PlaceholderRef::Outcome { .. }) {
+                    issues.push(issue_at(
+                        format!(
+                            "the consult prompt references {{{{{}}}}}, but an outcome tests the consult's \
+                             answer, so the table cannot be dealt before the consult. Drop the `llm` test, \
+                             or take the verdict out of the prompt",
+                            scanned.key
+                        ),
+                        &["llm".to_string(), "prompt".to_string()],
+                    ));
+                }
+            }
+        }
+    }
+
+    for (i, outcome) in tool.outcomes.iter().enumerate() {
+        let Some(brief) = &outcome.brief else {
             continue;
         };
-        validate_when_subjects(
-            tool,
-            when,
-            issues,
-            &["outcomes".to_string(), i.to_string(), "when".to_string()],
-        );
+        let path = ["outcomes".to_string(), i.to_string(), "brief".to_string()];
+        if tool.llm.is_none() {
+            issues.push(issue_at(
+                "has a `brief`, but the tool declares no `llm` block to read it".into(),
+                &path,
+            ));
+        }
+        for scanned in scan_placeholders(brief) {
+            if matches!(
+                scanned.place_ref,
+                PlaceholderRef::Llm | PlaceholderRef::Outcome { .. }
+            ) {
+                issues.push(issue_at(
+                    format!(
+                        "a brief is written before the consult runs and cannot quote {{{{{}}}}}",
+                        scanned.key
+                    ),
+                    &path,
+                ));
+            }
+        }
     }
 }
 
@@ -4387,7 +4687,14 @@ fn validate_effects(tool: &QtapCustomTool, effects: &[EffectParts], issues: &mut
         };
 
         if let Some(when) = &effect.when {
-            validate_when_subjects(tool, &when.base, issues, &at("when"));
+            for (g, group) in when.effect_when_groups().iter().enumerate() {
+                validate_when_subjects(
+                    tool,
+                    &group.base,
+                    issues,
+                    &group_path(&at("when"), when.is_any_of(), g),
+                );
+            }
         }
 
         if let Some(gesture) = &effect.wardrobe {
@@ -4643,12 +4950,9 @@ fn validate_triggers(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
 }
 
 fn issue_at(message: String, path: &[String]) -> Issue {
-    Issue {
-        path: path.to_vec(),
-        message,
-        cont: true,
-        union_errors: None,
-    }
+    let mut issue = Issue::check(message);
+    issue.path = path.to_vec();
+    issue
 }
 
 /// Roll fields are numeric, so every `$param` in one must name a numeric parameter.
@@ -4978,16 +5282,34 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
             };
 
             if let Some(errors) = &issue.union_errors {
+                // An any-of array is an alternative SPELLING, not an
+                // alternative meaning: when the value simply was not an array,
+                // that branch has nothing to say and only buries the real
+                // complaint (v4 `a53024d3c`).
+                let relevant: Vec<&Vec<Issue>> =
+                    errors.iter().filter(|b| !is_not_an_array(b)).collect();
+                let considered: Vec<&Vec<Issue>> = if relevant.is_empty() {
+                    errors.iter().collect()
+                } else {
+                    relevant
+                };
                 // Sub-issue paths are relative to the union, so they are
                 // flattened without the prefix — v4 does the same.
-                let branches: Vec<String> = errors
-                    .iter()
+                let branches: Vec<String> = considered
+                    .into_iter()
                     .map(|branch| flatten_issues(branch).join("; "))
                     .filter(|b| !b.is_empty())
                     .collect();
                 if !branches.is_empty() {
                     return located(branches.join(" — or — "));
                 }
+            }
+
+            // A record key's own refinement (a progress key, a metadata key's
+            // `min(1)`) says WHY; "Invalid key in record" alone does not.
+            if let Some(inner) = issue.inner.as_ref().filter(|i| !i.is_empty()) {
+                let messages: Vec<&str> = inner.iter().map(|i| i.message.as_str()).collect();
+                return located(messages.join("; "));
             }
 
             located(issue.message.clone())

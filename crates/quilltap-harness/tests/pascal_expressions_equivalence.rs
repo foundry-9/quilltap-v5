@@ -28,7 +28,7 @@ use quilltap_core::pascal::expressions::{
     evaluate_expression, format_value, parse_expression, ExprValue,
 };
 use quilltap_core::pascal::js_value::json_stringify;
-use quilltap_core::pascal::placeholders::{classify_placeholder, PlaceholderRef};
+use quilltap_core::pascal::placeholders::{classify_placeholder, OutcomeField, PlaceholderRef};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -74,6 +74,14 @@ fn placeholder_ref_json(r: &PlaceholderRef) -> String {
         PlaceholderRef::Roll => serde_json::json!({ "kind": "roll" }),
         PlaceholderRef::Dice => serde_json::json!({ "kind": "dice" }),
         PlaceholderRef::Llm => serde_json::json!({ "kind": "llm" }),
+        PlaceholderRef::Outcome { field } => serde_json::json!({
+            "kind": "outcome",
+            "field": match field {
+                OutcomeField::State => "state",
+                OutcomeField::Index => "index",
+                OutcomeField::Brief => "brief",
+            },
+        }),
         PlaceholderRef::Now => serde_json::json!({ "kind": "now" }),
         PlaceholderRef::Character => serde_json::json!({ "kind": "character" }),
         PlaceholderRef::Params { name } => serde_json::json!({ "kind": "params", "name": name }),

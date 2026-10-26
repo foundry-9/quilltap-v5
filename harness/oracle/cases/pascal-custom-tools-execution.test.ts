@@ -352,6 +352,42 @@ describe('renderTemplate', () => {
         }),
       });
     }
+
+    // ---- P4.D333 (v4 `322a5488e`, bug 257): {{outcome.*}} ----------------
+    //
+    // Its own block: only these rows pose the `outcome` var. Absent is "the
+    // table has not dealt yet"; a winner without a brief leaves
+    // `{{outcome.brief}}` as written; the index renders through
+    // `formatValue`.
+    const outcomeMessages: Array<[string, string, { state: string; index: number; brief?: string } | null]> = [
+      ['outcome-brief-no-outcome-var', 'Told: {{outcome.brief}}', null],
+      ['outcome-state-no-outcome-var', 'State {{outcome.state}}', null],
+      ['outcome-brief-winner-has-no-brief', 'Told: {{outcome.brief}}', { state: 'failure', index: 1 }],
+      ['outcome-brief-renders', 'Told: {{ outcome.brief }}', { state: 'success', index: 0, brief: 'Confirmed.' }],
+      ['outcome-index-renders-0', 'row {{outcome.index}}', { state: 'success', index: 0 }],
+      ['outcome-index-renders-12', 'row {{outcome.index}} / {{outcome.state}}', { state: 'partial', index: 12 }],
+      ['outcome-unknown-field-as-written', 'x {{outcome.verdict}} {{outcome}} y', { state: 'info', index: 2, brief: 'b' }],
+    ];
+    for (const [id, message, outcome] of outcomeMessages) {
+      emit({
+        kind: 'renderTemplate',
+        id,
+        tool,
+        message,
+        metadata: META,
+        llm: LLM,
+        ...(outcome === null ? {} : { outcome }),
+        out: renderTemplate(message, {
+          value: 12.3456,
+          roll: 0.6789,
+          dice: '3d6: [4, 2, 6] = 12',
+          params,
+          metadata: META,
+          llm: LLM,
+          ...(outcome === null ? {} : { outcome: outcome as { state: 'info'; index: number; brief?: string } }),
+        }),
+      });
+    }
   });
 });
 
@@ -691,12 +727,95 @@ describe('matchesWhen', () => {
         error,
       });
     }
+
+    // ---- P4.D333 (v4 `a53024d3c`): the list rule + any-of ----------------
+    //
+    // Its own block. A `metadata` key holding a list of primitives compares
+    // entry by entry; an array `when` holds when ANY group does, tried left to
+    // right. `knownLanguages` carries a non-string entry so `contains` must
+    // skip it.
+    const LIST_SHEET: Record<string, unknown> = {
+      ...SHEET,
+      knownLanguages: ['Trade Cant', 7],
+      sealedOrders: [{ seal: 'red' }],
+      emptyList: [],
+      mixed: [1, 'x', true],
+      withNull: [1, null],
+    };
+    const listWhens: Array<[string, unknown]> = [
+      ['list-eq-holds', { metadata: { knownLanguages: { eq: 'Trade Cant' } } }],
+      ['list-eq-misses', { metadata: { knownLanguages: { eq: 'Trade' } } }],
+      ['list-contains-holds', { metadata: { knownLanguages: { contains: 'Cant' } } }],
+      ['list-contains-misses', { metadata: { knownLanguages: { contains: 'Latin' } } }],
+      ['list-neq-holds', { metadata: { knownLanguages: { neq: 'Latin' } } }],
+      ['list-neq-misses', { metadata: { knownLanguages: { neq: 'Trade Cant' } } }],
+      ['list-ncontains-misses', { metadata: { knownLanguages: { ncontains: 'Trade' } } }],
+      ['list-ncontains-holds', { metadata: { knownLanguages: { ncontains: 'Latin' } } }],
+      ['list-ordering-declines', { metadata: { knownLanguages: { gt: 1 } } }],
+      ['list-ordering-param-declines', { metadata: { knownLanguages: { gte: { $param: 'difficulty' } } } }],
+      ['list-of-objects-declines', { metadata: { sealedOrders: { eq: 'red' } } }],
+      ['list-contains-number-operand-declines', { metadata: { knownLanguages: { contains: { $param: 'difficulty' } } } }],
+      ['list-eq-param-operand-misses', { metadata: { knownLanguages: { eq: { $param: 'material' } } } }],
+      ['list-empty-eq-misses', { metadata: { emptyList: { eq: 1 } } }],
+      ['list-empty-neq-holds', { metadata: { emptyList: { neq: 1 } } }],
+      ['list-mixed-primitives-eq-number', { metadata: { mixed: { eq: 1 } } }],
+      ['list-mixed-primitives-eq-boolean', { metadata: { mixed: { eq: true } } }],
+      ['list-with-null-entry-declines', { metadata: { withNull: { eq: 1 } } }],
+      ['list-eq-and-contains-anded', { metadata: { knownLanguages: { eq: 'Trade Cant', contains: 'Trade' } } }],
+      ['anyof-hit-on-0', [{ gte: 10 }, { metadata: { house: { eq: 'Ferro' } } }]],
+      ['anyof-hit-on-1', [{ gte: 50 }, { metadata: { house: { eq: 'Aurum' } } }]],
+      ['anyof-miss', [{ gte: 50 }, { metadata: { house: { eq: 'Ferro' } } }]],
+      ['anyof-one-element', [{ gte: 10 }]],
+      ['anyof-list-in-second-group', [{ gte: 50 }, { metadata: { knownLanguages: { contains: 'Cant' } } }]],
+    ];
+    for (const [id, when] of listWhens) {
+      const def = define({ ...tool, outcomes: [{ when, message: '-', state: 'info' }, CATCH_ALL] });
+      const parsedWhen = def.outcomes[0].when as When;
+      let out: unknown = null;
+      let error: string | null = null;
+      try {
+        out = matchesWhen(parsedWhen, { value: 12, roll: 0.6, params, metadata: LIST_SHEET }, 'probe');
+      } catch (e) {
+        error = (e as Error).message;
+      }
+      emit({
+        kind: 'matchesWhen',
+        id,
+        tool: def,
+        when: parsedWhen,
+        metadata: LIST_SHEET,
+        llm: null,
+        out,
+        error,
+      });
+    }
   });
 });
 
 // ------------------------------------------------------------ executeCustomTool
 describe('executeCustomTool', () => {
   it('emits', async () => {
+    /** P4.D333: v4's bug-257 narrator, as `outcome-brief.test.ts` spells it. */
+    const scanner = (extra: Record<string, unknown> = {}) => ({
+      name: 'entanglement_scan',
+      description: 'Scan a shard for entanglement.',
+      parameters: { layers: { type: 'number', default: 95 } },
+      roll: { min: 1, max: 100 },
+      llm: {
+        prompt: 'Write a report. State: {{outcome.state}}, row {{outcome.index}}. Conclusion to reach: {{outcome.brief}}',
+        errorMessage: 'The link falters.',
+      },
+      outcomes: [
+        {
+          when: { roll: { gte: { $param: 'layers' } } },
+          message: '{{llm}}',
+          state: 'success',
+          brief: 'Confirmed at {{params.layers}} layers.',
+        },
+        { when: true, message: '{{llm}}', state: 'failure', brief: 'Not found.' },
+      ],
+      ...extra,
+    });
     const OUTCOMES = [
       { when: { gte: 0.9 }, message: 'triumph at {{value}}', state: 'success' },
       { when: { gte: 0.5 }, message: 'partial at {{value}}', state: 'partial' },
@@ -1771,6 +1890,139 @@ describe('executeCustomTool', () => {
         },
         {},
         { character: '  Charlie  ' },
+      ],
+
+      // ---- P4.D333 (v4 `a53024d3c`): any-of on the real entrance -----------
+      // Appended LAST, so every row above keeps its byte pool.
+      [
+        'anyof-effect-outcome-only-group-fires',
+        {
+          name: 'stamp',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [{ when: [{ outcome: { neq: 'failure' } }], target: 'state.stamped', value: 1 }],
+          outcomes: [{ when: true, message: 'm', state: 'info' }],
+        },
+        {},
+        {},
+      ],
+      [
+        'anyof-effect-second-group-fires',
+        {
+          name: 'stamp',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          effects: [
+            { when: [{ outcome: { eq: 'failure' } }, { metadata: { lucky: { eq: true } } }], target: 'state.lucky', value: true },
+            { when: [{ outcome: { eq: 'failure' } }, { metadata: { lucky: { eq: false } } }], target: 'state.unlucky', value: true },
+          ],
+          outcomes: [{ when: true, message: 'm', state: 'info' }],
+        },
+        {},
+        { metadata: { lucky: true } },
+      ],
+      [
+        'anyof-metadata-tested-unions-losing-group',
+        {
+          name: 'sift',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: [{ metadata: { a: { eq: 1 } } }, { metadata: { b: { eq: 2 } } }], message: 'won on {{metadata.b}}', state: 'success' },
+            { when: true, message: 'lost', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { a: 0, b: 2, c: 3 } },
+      ],
+
+      // ---- P4.D333 (v4 `322a5488e`, bug 257): the two run orders ------------
+      // v4's own `scanner()`: no row tests the consult, so the table is dealt
+      // FIRST and the prompt is told the verdict.
+      ['b257-table-first-low', scanner({ roll: { min: 1, max: 1 } }), {}, {}, { answer: 'A report.' }],
+      ['b257-table-first-high', scanner({ roll: { min: 100, max: 100 } }), {}, {}, { answer: 'A report.' }],
+      ['b257-brief-renders-params-override', scanner({ roll: { min: 50, max: 50 } }), { layers: 10 }, {}, { answer: 'A report.' }],
+      [
+        'b257-missing-brief-left-as-written',
+        scanner({ roll: { min: 1, max: 1 }, outcomes: [{ when: true, message: '{{llm}}', state: 'failure' }] }),
+        {},
+        {},
+        { answer: 'A report.' },
+      ],
+      [
+        'b257-message-and-effect-quote-outcome',
+        scanner({
+          roll: { min: 1, max: 1 },
+          effects: [
+            { target: 'state.verdict', value: '{{outcome.state}}' },
+            { target: 'state.row', value: '{{outcome.index}} + 1' },
+            { target: 'state.brief', value: '{{outcome.brief}}' },
+          ],
+          outcomes: [{ when: true, message: '{{llm}} [{{outcome.state}}]', state: 'failure', brief: 'Not found.' }],
+        }),
+        {},
+        {},
+        { answer: 'Report.' },
+      ],
+      ['b257-silent-provider-table-keeps-verdict', scanner({ roll: { min: 1, max: 1 } }), {}, {}, { fail: 'down' }],
+      ['b257-unwired-consult-table-keeps-verdict', scanner({ roll: { min: 100, max: 100 } }), {}, {}],
+      [
+        'b257-consult-first-llm-row',
+        {
+          name: 'forged_invitation',
+          description: 'Present a forged invitation.',
+          llm: { prompt: 'Does the doorman wave it through? YES or NO.', errorMessage: 'Silence.' },
+          outcomes: [
+            { when: { llm: { eq: 'YES' } }, message: 'In: {{llm}} ({{outcome.state}})', state: 'success', brief: 'Waved in.' },
+            { when: true, message: 'Out: {{llm}} {{outcome.brief}}', state: 'failure' },
+          ],
+        },
+        {},
+        {},
+        { answer: 'YES' },
+      ],
+      [
+        'b257-consult-first-brief-reaches-message',
+        {
+          name: 'forged_invitation',
+          description: 'Present a forged invitation.',
+          llm: { prompt: 'Does the doorman wave it through? YES or NO.', errorMessage: 'Silence.' },
+          outcomes: [
+            { when: { llm: { eq: 'YES' } }, message: 'In: {{outcome.brief}}', state: 'success', brief: 'Waved in at {{value}}.' },
+            { when: true, message: 'Out: {{llm}}', state: 'failure' },
+          ],
+        },
+        {},
+        {},
+        { answer: 'YES' },
+      ],
+      [
+        'b257-no-llm-block-outcome-state-in-message',
+        {
+          name: 'plain',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [{ when: true, message: 'It is {{outcome.state}} (row {{outcome.index}}) {{outcome.brief}}', state: 'info' }],
+        },
+        {},
+        {},
+      ],
+      [
+        'b257-chip-label-quotes-brief',
+        scanner({ roll: { min: 1, max: 1 }, chipLabel: 'Verdict: {{outcome.brief}} ({{outcome.state}})' }),
+        {},
+        {},
+        { answer: 'A report.' },
+      ],
+      [
+        'b257-brief-not-rendered-with-llm',
+        scanner({
+          roll: { min: 1, max: 1 },
+          outcomes: [{ when: true, message: '{{llm}}', state: 'failure', brief: 'At {{now}}: {{value}} of {{params.layers}}.' }],
+        }),
+        {},
+        { now: 1788004800000 },
+        { answer: 'A report.' },
       ],
     ];
 

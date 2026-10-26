@@ -28,11 +28,11 @@
 //!   QT_ORACLE_PASCAL_EXECUTION=/tmp/oracle-pascal-execution.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_custom_tools_execution_equivalence
 
-use quilltap_core::pascal::custom_tool_types::safe_parse;
+use quilltap_core::pascal::custom_tool_types::{safe_parse, OutcomeState};
 use quilltap_core::pascal::custom_tools::{
     execute_custom_tool, format_value, matches_when, render_template, CustomToolRunResult,
     LlmInvokeOptions, LlmInvokeResult, LlmInvoker, LlmSubject, OutcomeSubjects, ResolvedParams,
-    ResolvedValue, RollForm, TemplateVars,
+    ResolvedValue, RollForm, TemplateVars, WinningOutcome,
 };
 use quilltap_core::pascal::dice::FixedBytes;
 use serde_json::{json, Map, Value};
@@ -123,6 +123,24 @@ impl LlmInvoker for CannedInvoker {
             }
         })
     }
+}
+
+/// P4.D333 (v4 `322a5488e`): the `outcome` var a `renderTemplate` row may
+/// pose — `{ state, index, brief? }`, the winning row as a template sees it.
+fn outcome_of(v: Option<&Value>) -> Option<WinningOutcome> {
+    let o = v?.as_object()?;
+    let state = match o.get("state")?.as_str()? {
+        "success" => OutcomeState::Success,
+        "partial" => OutcomeState::Partial,
+        "failure" => OutcomeState::Failure,
+        "info" => OutcomeState::Info,
+        other => panic!("not an outcome state: {other}"),
+    };
+    Some(WinningOutcome {
+        state,
+        index: o.get("index")?.as_u64()? as usize,
+        brief: o.get("brief").and_then(Value::as_str).map(str::to_string),
+    })
 }
 
 /// The oracle's `{ok, output}` subject rows.
@@ -325,6 +343,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                     let metadata = metadata_of(row.get("metadata"));
                     let progress = metadata_of(row.get("progress"));
                     let llm = llm_subject_of(row.get("llm"));
+                    let outcome = outcome_of(row.get("outcome"));
                     let got = render_template(
                         message,
                         &TemplateVars {
@@ -344,6 +363,7 @@ fn pascal_custom_tools_execution_matches_oracle() {
                             // but the `{{character}}` block's.
                             character: row.get("character").and_then(Value::as_str),
                             inventory: bag.as_dyn(),
+                            outcome: outcome.as_ref(),
                         },
                     );
                     assert_eq!(got, row["out"].as_str().unwrap(), "renderTemplate '{id}'");

@@ -384,6 +384,44 @@ const inventorySecret = {
 };
 // === end P4.D329 ===
 
+// === P4.D333 (v4 `a53024d3c`): an any-of `when` reads as each group in
+// parentheses joined by "or", a one-test group bare ===
+const anyOfMixed = {
+  name: 'scry',
+  description: 'peer into the glass',
+  parameters: { bonus: { type: 'integer', default: 0 } },
+  roll: { min: 0, max: 1 },
+  outcomes: [
+    {
+      when: [{ gte: 0.9 }, { metadata: { a: { eq: 1 } }, progress: { 'cannon.complete': { eq: true } } }],
+      message: 'seen',
+      state: 'success',
+    },
+    { when: [{ gte: 0.5, lt: 0.9 }, { metadata: { house: { eq: 'Aurum' } }, params: { bonus: { gte: 2 } } }], message: 'glimpsed', state: 'partial' },
+    { when: true, message: 'fog', state: 'failure' },
+  ],
+};
+const anyOfOneElement = {
+  name: 'glance',
+  description: 'a quick look',
+  roll: { min: 0, max: 1 },
+  outcomes: [
+    { when: [{ gte: 0.9 }], message: 'seen', state: 'success' },
+    { when: true, message: 'missed', state: 'failure' },
+  ],
+};
+const anyOfAllSingle = {
+  name: 'omen',
+  description: 'read an omen',
+  roll: { min: 0, max: 1 },
+  outcomes: [
+    { when: [{ gte: 0.9 }, { metadata: { lucky: { eq: true } } }, { lt: 0.1 }], message: 'a sign', state: 'success' },
+    { when: true, message: 'nothing', state: 'info' },
+  ],
+};
+const anyOfSecret = { ...anyOfAllSingle, name: 'hidden_omen', revealOdds: false };
+// === end P4.D333 ===
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -426,6 +464,12 @@ const cases: Array<[string, unknown[]]> = [
   ['inventory-reveal-odds-false', [inventorySecret]],
   ['inventory-multi-tool', [minimal, inventoryGestures, aggregateWhens]],
   // === end P4.D329 ===
+  // === P4.D333 rows ===
+  ['anyof-mixed-groups', [anyOfMixed]],
+  ['anyof-one-element', [anyOfOneElement]],
+  ['anyof-every-group-single', [anyOfAllSingle]],
+  ['anyof-reveal-odds-false', [anyOfSecret]],
+  // === end P4.D333 rows ===
 ];
 
 const rows: unknown[] = [];

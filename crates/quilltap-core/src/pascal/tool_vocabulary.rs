@@ -30,13 +30,10 @@ use serde_json::Value;
 
 use super::custom_tool_types::{
     is_state_ref_value, parse_effect_target, CustomToolEffectBody, EffectTarget, EffectValue,
-    QtapCustomTool, WardrobeEffectAction, When,
+    EffectWhen, ParamComparator, QtapCustomTool, ToolGateGroup, WardrobeEffectAction, WhenObject,
 };
 // === P4.D329: the inventory vocabulary ===
-use super::custom_tool_types::{
-    is_inventory_ref_value, EffectWhen, InventoryEffectAction, ParamComparator, ToolGate,
-    WhenObject,
-};
+use super::custom_tool_types::{is_inventory_ref_value, InventoryEffectAction};
 use super::inventory_subjects::parse_inventory_operand;
 use super::placeholders::{scan_placeholders, PlaceholderRef};
 use crate::collation::locale_compare;
@@ -126,8 +123,7 @@ pub struct ToolVocabulary {
     /// `owned.metadata.toolVersion.max`) — outcomes, effect conditions, the
     /// gate. A metadata key read through an aggregate is the OBJECTS'
     /// vocabulary, not the character's, so it is not added to `metadata`.
-    /// Sorted. (The key's presence is P4.D333's too — S3; the field line is
-    /// byte-identical in both lanes.)
+    /// Sorted.
     #[serde(rename = "inventoryAggregates")]
     pub inventory_aggregates: Vec<String>,
     /// References this tool's inventory effects may EQUIP, verbatim. Sorted.
@@ -197,8 +193,8 @@ struct Found {
 
 // === P4.D329: one group's reads ===
 /// One group's reads — the same for an outcome row, an effect condition and a
-/// gate group (v4's `collectGroup`). On this branch a gate and a `when` are ONE
-/// group each; P4.D333's group loops wrap the calls at the union.
+/// gate group (v4's `collectGroup`, `a53024d3c`), walked over every group of
+/// an any-of.
 trait GroupReads {
     fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>>;
     fn progress_tests(&self) -> Option<&Vec<(String, ParamComparator)>>;
@@ -243,7 +239,7 @@ impl GroupReads for EffectWhen {
     }
 }
 
-impl GroupReads for ToolGate {
+impl GroupReads for ToolGateGroup {
     fn metadata_tests(&self) -> Option<&Vec<(String, ParamComparator)>> {
         self.metadata.as_ref()
     }
@@ -309,10 +305,14 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     for outcome in &definition.outcomes {
         // A catch-all tests nothing, so it names nothing — but it still carries
         // a message, and that message may well quote a fact sheet.
-        if let When::Object(when) = &outcome.when {
-            collect_group(when.as_ref(), &mut found);
+        for group in outcome.when.when_groups() {
+            collect_group(group, &mut found);
         }
         collect_placeholders(&outcome.message, &declared, &mut found);
+        // A brief is rendered like a prompt (v4 `322a5488e`).
+        if let Some(brief) = &outcome.brief {
+            collect_placeholders(brief, &declared, &mut found);
+        }
     }
 
     // The availability gate reads the same fact sheet, and naming its keys stays
@@ -321,7 +321,7 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
     // "programmable" is not, and is not said here. A gated-out tool never reaches
     // a roster listing at all, so this only ever describes one the reader has.
     for gate in [&definition.available_when, &definition.withheld_when] {
-        for group in gate.iter() {
+        for group in gate.iter().flat_map(|g| g.gate_groups()) {
             collect_group(group, &mut found);
         }
     }
@@ -349,8 +349,8 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         {
             collect_placeholders(source, &declared, &mut found);
         }
-        for when in effect.when.iter() {
-            collect_group(when, &mut found);
+        for group in effect.when.iter().flat_map(|w| w.effect_when_groups()) {
+            collect_group(group, &mut found);
         }
 
         let target = match &effect.body {
@@ -463,6 +463,8 @@ fn collect_placeholders(text: &str, declared: &[&str], found: &mut Found) {
             PlaceholderRef::Roll => found.roll = true,
             PlaceholderRef::Dice => found.dice = true,
             PlaceholderRef::Llm => found.llm = true,
+            // The winning row has no vocabulary of its own (v4 `322a5488e`).
+            PlaceholderRef::Outcome { .. } => {}
             PlaceholderRef::Params { ref name } => {
                 if declared.contains(&name.as_str()) {
                     add(&mut found.params, name);

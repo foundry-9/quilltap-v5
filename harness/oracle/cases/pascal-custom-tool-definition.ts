@@ -136,6 +136,43 @@ function withEffects(effects: unknown, extra: Record<string, unknown> = {}) {
   return { ...BASE, ...extra, effects };
 }
 
+/** P4.D333: a definition gated by `clause` (the any-of rows pose arrays). */
+function withGate(clause: 'availableWhen' | 'withheldWhen', gate: unknown, extra: Record<string, unknown> = {}) {
+  return { ...BASE, ...extra, [clause]: gate };
+}
+
+/** P4.D333: one write effect under the condition `when`. */
+function withEffectWhen(when: unknown, extra: Record<string, unknown> = {}) {
+  return withEffects([{ when, target: 'state.hits', value: 1 }], extra);
+}
+
+/**
+ * P4.D333: v4's bug-257 narrator (`outcome-brief.test.ts`'s `scanner()`) —
+ * a consult told the verdict the table reached.
+ */
+function scanner(overrides: Record<string, unknown> = {}) {
+  return {
+    name: 'entanglement_scan',
+    description: 'Scan a shard for entanglement.',
+    parameters: { layers: { type: 'number', default: 95 } },
+    roll: { min: 1, max: 100 },
+    llm: {
+      prompt: 'Write a report. State: {{outcome.state}}, row {{outcome.index}}. Conclusion to reach: {{outcome.brief}}',
+      errorMessage: 'The link falters.',
+    },
+    outcomes: [
+      {
+        when: { roll: { gte: { $param: 'layers' } } },
+        message: '{{llm}}',
+        state: 'success',
+        brief: 'Confirmed at {{params.layers}} layers.',
+      },
+      { when: true, message: '{{llm}}', state: 'failure', brief: 'Not found.' },
+    ],
+    ...overrides,
+  };
+}
+
 const NUM_PARAM = { parameters: { scale: { type: 'number', default: 1 } } };
 const INT_PARAM = { parameters: { steps: { type: 'integer', default: 2 } } };
 const STR_PARAM = { parameters: { material: { type: 'string', default: 'brass' } } };
@@ -455,6 +492,127 @@ const corpus: Array<[string, unknown]> = [
   ['effect-value-character-dotted', withEffects([{ target: 'metadata.lastWinner', value: "{{character.name}} + ' wins'" }])],
   ['wardrobe-item-character', withEffects([{ wardrobe: { action: 'wear', items: ["{{character}}'s armour"] } }])],
   // === end P4.D319 ===
+
+  // === P4.D333 rows (append-only; P4.D329 / P4.D331 merge BY ID) ===
+  // v4 `a53024d3c` (the OR / any-of half) and `322a5488e` (bug 257's `brief`),
+  // seeded by CONTENT from v4's own `custom-tool-definition.test.ts` any-of
+  // corpus and `outcome-brief.test.ts`. No row here carries an Inventory or a
+  // Log key — those grammars are sibling lanes', and a row of theirs here would
+  // be residue on this lane's own branch. Every sentence is RECORDED by the
+  // regen, never hand-derived (Zod's union hoisting across three branches).
+  // -- any-of outcomes
+  ['anyof-outcome-two-groups', withWhen([{ gte: 0.9 }, { metadata: { lucky: { eq: true } } }])],
+  ['anyof-outcome-one-element', withWhen([{ gte: 0.9 }])],
+  ['anyof-outcome-empty', withWhen([])],
+  ['anyof-outcome-nested', withWhen([[{ gte: 0.9 }]])],
+  ['anyof-outcome-empty-group', withWhen([{ gte: 0.9 }, {}])],
+  ['anyof-outcome-past-the-cap', withWhen(Array.from({ length: 9 }, (_, i) => ({ gte: i })))],
+  ['anyof-outcome-past-the-cap-with-bad-group', withWhen([...Array.from({ length: 8 }, (_, i) => ({ gte: i })), {}])],
+  ['anyof-outcome-at-the-cap', withWhen(Array.from({ length: 8 }, (_, i) => ({ gte: i })))],
+  ['anyof-outcome-scalar-when', withWhen(5)],
+  ['anyof-outcome-string-when', withWhen('x')],
+  ['anyof-outcome-long-string-when', withWhen('abcdefghij')],
+  ['anyof-outcome-empty-string-when', withWhen('')],
+  ['anyof-outcome-null-when', withWhen(null)],
+  ['anyof-outcome-is-never-a-catch-all', { ...BASE, outcomes: [{ when: [{ gte: 0.5 }], message: '-', state: 'info' }] }],
+  ['anyof-outcome-ghost-param-indexed-path', withWhen([{ gte: 0.9 }, { params: { ghost: { eq: 1 } } }])],
+  ['anyof-outcome-ghost-param-bare-path', withWhen({ params: { ghost: { eq: 1 } } })],
+  ['anyof-outcome-llm-in-group-no-block', withWhen([{ gte: 0.9 }, { llm: { eq: 'YES' } }])],
+  // `roll: 5` rather than a bad operand: an operand's own union grows with the
+  // Inventory lane's `$inventory` arm, which would make the row sibling residue.
+  ['anyof-outcome-array-element-fails-hard', withWhen([{ gte: 0.9 }, { roll: 5 }])],
+  ['anyof-outcome-array-element-unrecognized-key', withWhen([{ gte: 0.9, bogus: 1 }])],
+  ['anyof-outcome-progress-bad-key-in-group', withWhen([{ gte: 0.9 }, { progress: { cannon: { eq: true } } }])],
+  // -- any-of gates
+  ['anyof-gate-two-groups', withGate('availableWhen', [{ metadata: { a: { eq: true } } }, { metadata: { b: { eq: true } } }])],
+  ['anyof-gate-one-element', withGate('availableWhen', [{ metadata: { a: { eq: true } } }])],
+  ['anyof-gate-empty', withGate('withheldWhen', [])],
+  ['anyof-gate-empty-group', withGate('availableWhen', [{ metadata: { a: { eq: 1 } } }, {}])],
+  ['anyof-gate-bare-empty-object-unburied', withGate('availableWhen', {})],
+  ['anyof-gate-past-the-cap', withGate('availableWhen', Array.from({ length: 9 }, (_, i) => ({ metadata: { [`k${i}`]: { eq: 1 } } })))],
+  ['anyof-gate-both-clauses-arrays', withGate('availableWhen', [{ metadata: { a: { eq: 1 } } }], { withheldWhen: [{ metadata: { b: { eq: 1 } } }] })],
+  ['anyof-gate-progress-bad-key-in-group-1', withGate('withheldWhen', [{ metadata: { a: { eq: 1 } } }, { progress: { cannon: { eq: true } } }])],
+  ['anyof-gate-scalar', withGate('availableWhen', 5)],
+  ['anyof-gate-long-string', withGate('availableWhen', 'abcdefghij')],
+  ['anyof-gate-array-element-fails-hard', withGate('availableWhen', [{ metadata: { a: { eq: 1 } } }, { metadata: { b: { gte: 'x' } } }])],
+  // -- any-of effect conditions
+  ['anyof-effect-two-groups', withEffectWhen([{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }])],
+  ['anyof-effect-empty', withEffectWhen([])],
+  ['anyof-effect-ghost-param-indexed-path', withEffectWhen([{ outcome: { eq: 'success' } }, { params: { ghost: { eq: 1 } } }])],
+  ['anyof-effect-ghost-param-bare-path', withEffectWhen({ params: { ghost: { eq: 1 } } })],
+  ['anyof-effect-outcome-only-group', withEffectWhen([{ outcome: { neq: 'failure' } }])],
+  ['anyof-effect-past-the-cap', withEffectWhen(Array.from({ length: 9 }, (_, i) => ({ gte: i })))],
+  ['anyof-effect-array-element-fails-hard', withEffectWhen([{ outcome: { eq: 'success' } }, { roll: 5 }])],
+  ['anyof-effect-long-string', withEffectWhen('abcdefghij')],
+  // -- briefs (bug 257)
+  ['brief-narrator-pattern', scanner()],
+  ['brief-prompt-reads-outcome-table-tests-llm', scanner({ outcomes: [
+    { when: { llm: { contains: 'confirmed' } }, message: '{{llm}}', state: 'success', brief: 'x' },
+    { when: true, message: '{{llm}}', state: 'failure' },
+  ] })],
+  ['brief-prompt-reads-outcome-ok-test', scanner({ outcomes: [
+    { when: { llm: { ok: false } }, message: '{{llm}}', state: 'failure' },
+    { when: true, message: '{{llm}}', state: 'success' },
+  ] })],
+  ['brief-prompt-reads-outcome-in-anyof-group', scanner({ outcomes: [
+    { when: [{ gte: 0.9 }, { llm: { eq: 'YES' } }], message: '{{llm}}', state: 'success' },
+    { when: true, message: '{{llm}}', state: 'failure' },
+  ] })],
+  ['brief-without-llm-block', { name: 'plain', description: 'No consult here.', outcomes: [{ when: true, message: 'ok', state: 'info', brief: 'Say ok.' }] }],
+  ['brief-quotes-llm', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 'See {{llm}}' }] })],
+  ['brief-quotes-outcome-index', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 'Row {{outcome.index}}' }] })],
+  ['brief-empty', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: '' }] })],
+  ['brief-empty-no-llm-block', { ...BASE, outcomes: [{ when: true, message: '-', state: 'info', brief: '' }] }],
+  ['brief-too-long', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: '\u{1F3B2}'.repeat(1001) }] })],
+  ['brief-at-the-limit-astral', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: '\u{1F3B2}'.repeat(1000) }] })],
+  ['brief-not-a-string', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 7 }] })],
+  ['brief-issue-order', scanner({
+    llm: { prompt: 'Report {{outcome.state}} then {{ outcome.brief }}.', errorMessage: 'The link falters.' },
+    outcomes: [
+      { when: { llm: { eq: 'YES' } }, message: '{{llm}}', state: 'success', brief: 'See {{llm}} and {{outcome.state}}' },
+      { when: true, message: '{{llm}}', state: 'failure', brief: 'Not found.' },
+    ],
+  })],
+  ['brief-issue-order-no-llm-block', { ...BASE, outcomes: [
+    { when: { gte: 0.5 }, message: '-', state: 'success', brief: 'See {{llm}}' },
+    { when: true, message: '-', state: 'info', brief: 'Plain.' },
+  ] }],
+  ['brief-unknown-key-allowed-list', scanner({ outcomes: [{ when: true, message: '{{llm}}', state: 'info', brief: 'x', bogus: 1 }] })],
+  ['brief-whitespace-key', scanner({
+    llm: { prompt: 'Tell it: {{ outcome.brief }}', errorMessage: 'The link falters.' },
+    outcomes: [
+      { when: { llm: { ok: true } }, message: '{{llm}}', state: 'success' },
+      { when: true, message: '{{llm}}', state: 'failure' },
+    ],
+  })],
+  ['brief-key-order-in-data', scanner({ outcomes: [{ brief: 'First written.', state: 'info', message: '{{llm}}', when: true }] })],
+  ['brief-prompt-reads-unknown-outcome-field', scanner({
+    llm: { prompt: 'Verdict: {{outcome.verdict}}', errorMessage: 'The link falters.' },
+    outcomes: [
+      { when: { llm: { eq: 'YES' } }, message: '{{llm}}', state: 'success' },
+      { when: true, message: '{{llm}}', state: 'failure' },
+    ],
+  })],
+  // accepted shapes the `brief` floor counts
+  ['brief-on-consult-first-table', scanner({
+    llm: { prompt: 'Does it hold? YES or NO.', errorMessage: 'The link falters.' },
+    outcomes: [
+      { when: { llm: { eq: 'YES' } }, message: '{{llm}}', state: 'success', brief: 'Never read by the prompt.' },
+      { when: true, message: '{{llm}}', state: 'failure' },
+    ],
+  })],
+  ['brief-on-anyof-row', scanner({ outcomes: [
+    { when: [{ gte: 90 }, { metadata: { lucky: { eq: true } } }], message: '{{llm}}', state: 'success', brief: 'A lucky find.' },
+    { when: true, message: '{{llm}}', state: 'failure', brief: 'Nothing.' },
+  ] })],
+  ['brief-quotes-state-metadata-now', scanner({ outcomes: [
+    { when: true, message: '{{llm}}', state: 'info', brief: 'At {{now}}, {{metadata.rank}} saw {{state.depth}} via {{dice}}.' },
+  ] })],
+  ['brief-on-one-row-only', scanner({ outcomes: [
+    { when: { gte: 50 }, message: '{{llm}}', state: 'success' },
+    { when: true, message: '{{llm}}', state: 'failure', brief: 'Not found.' },
+  ] })],
+  // === end P4.D333 rows ===
 
   // ---- the 6864bf0e AVAILABILITY GATES ------------------------------------
   // accepted: one clause, literal operands, every comparator family.
@@ -1092,6 +1250,33 @@ const gateCases: Array<
   // An authored-but-EMPTY record beside a real one: it tests nothing, so it
   // cannot withhold, and the gate answers on the other sheet alone.
   ['progress-empty-record-beside-metadata', { ...BASE, availableWhen: { metadata: { rank: { gte: 1 } }, progress: {} } }, { rank: 2 }, CHARGING],
+
+  // === P4.D333 rows (append-only; P4.D329 / P4.D331 merge BY ID) ===
+  // v4 `a53024d3c`: an any-of clause names the group that held — `heldGroup`
+  // on an opening `availableWhen` and a closing `withheldWhen`, ABSENT on an
+  // availableWhen miss and for any bare-object clause. Key order: `available,
+  // withheldBy, heldGroup`.
+  ['anyof-available-opens-on-0', { ...BASE, availableWhen: [{ metadata: { clearance: { gte: 3 } } }, { metadata: { house: { eq: 'Aurum' } } }] }, { clearance: 4, house: 'Aurum' }],
+  ['anyof-available-opens-on-1', { ...BASE, availableWhen: [{ metadata: { clearance: { gte: 3 } } }, { metadata: { house: { eq: 'Aurum' } } }] }, { clearance: 1, house: 'Aurum' }],
+  ['anyof-available-opens-on-none', { ...BASE, availableWhen: [{ metadata: { clearance: { gte: 3 } } }, { metadata: { house: { eq: 'Aurum' } } }] }, { clearance: 1, house: 'Ferro' }],
+  ['anyof-available-one-element-array-opens-on-0', { ...BASE, availableWhen: [{ metadata: { clearance: { gte: 3 } } }] }, { clearance: 4 }],
+  ['anyof-available-bare-object-no-held-group', { ...BASE, availableWhen: { metadata: { clearance: { gte: 3 } } } }, { clearance: 4 }],
+  ['anyof-withheld-closes-on-1', { ...BASE, withheldWhen: [{ metadata: { novice: { eq: true } } }, { metadata: { probation: { eq: true } } }] }, { novice: false, probation: true }],
+  ['anyof-withheld-closes-on-0', { ...BASE, withheldWhen: [{ metadata: { novice: { eq: true } } }, { metadata: { probation: { eq: true } } }] }, { novice: true, probation: true }],
+  ['anyof-withheld-closes-on-none-offers', { ...BASE, withheldWhen: [{ metadata: { novice: { eq: true } } }, { metadata: { probation: { eq: true } } }] }, { novice: false, probation: false }],
+  ['anyof-withheld-bare-object-no-held-group', { ...BASE, withheldWhen: { metadata: { novice: { eq: true } } } }, { novice: true }],
+  ['anyof-available-empty-sheet-fails-closed', { ...BASE, availableWhen: [{ metadata: { a: { eq: 1 } } }, { metadata: { b: { eq: 1 } } }] }, {}],
+  ['anyof-available-null-sheet-fails-closed', { ...BASE, availableWhen: [{ metadata: { a: { eq: 1 } } }, { metadata: { b: { eq: 1 } } }] }, null],
+  ['anyof-withheld-empty-sheet-offers', { ...BASE, withheldWhen: [{ metadata: { a: { eq: 1 } } }, { metadata: { b: { eq: 1 } } }] }, {}],
+  ['anyof-progress-group-opens-on-1', { ...BASE, availableWhen: [{ metadata: { hasAnsibleAccess: { eq: true } } }, { progress: { 'cannon.complete': { eq: true } } }] }, { hasAnsibleAccess: false }, CHARGED],
+  ['anyof-both-sheets-in-one-group-and-other-group-bare', { ...BASE, availableWhen: [{ metadata: { rank: { gte: 5 } } }, { metadata: { hasAnsibleAccess: { eq: true } }, progress: { 'cannon.complete': { eq: true } } }] }, { rank: 1, hasAnsibleAccess: true }, CHARGED],
+  // The list rule (`metadata-match.ts`, `a53024d3c`) read through the gate: a
+  // key holding a list of primitives compares entry by entry.
+  ['anyof-available-list-eq-holds', { ...BASE, availableWhen: { metadata: { knownLanguages: { eq: 'Trade Cant' } } } }, { knownLanguages: ['Trade Cant', 'Latin'] }],
+  ['anyof-available-list-contains-holds', { ...BASE, availableWhen: { metadata: { knownLanguages: { contains: 'Cant' } } } }, { knownLanguages: ['Trade Cant', 7] }],
+  ['anyof-available-list-ordering-declines', { ...BASE, availableWhen: { metadata: { knownLanguages: { gte: 1 } } } }, { knownLanguages: [1, 2] }],
+  ['anyof-available-list-of-objects-declines', { ...BASE, availableWhen: { metadata: { sealedOrders: { eq: 'red' } } } }, { sealedOrders: [{ seal: 'red' }] }],
+  // === end P4.D333 rows ===
 ];
 
 // === P4.D329: gate rows posed against an Inventory bag (item 8) ===

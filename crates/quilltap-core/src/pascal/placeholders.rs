@@ -48,6 +48,26 @@ const PARAMS_PREFIX: &str = "params.";
 const METADATA_PREFIX: &str = "metadata.";
 const STATE_PREFIX: &str = "state.";
 const PROGRESS_PREFIX: &str = "progress.";
+const OUTCOME_PREFIX: &str = "outcome.";
+
+/// The fields an `{{outcome.<field>}}` placeholder may name (v4
+/// `OutcomePlaceholderField`, `322a5488e`): the winning row's semantic state,
+/// its 0-based index (as `pascalMeta.outcomeIndex` records it) and its
+/// `brief`. Known only once the table has dealt — before the consult when no
+/// row tests it, after the consult otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutcomeField {
+    State,
+    Index,
+    Brief,
+}
+
+/// v4 `OUTCOME_PLACEHOLDER_FIELDS` — `['state', 'index', 'brief']`.
+pub const OUTCOME_PLACEHOLDER_FIELDS: [(&str, OutcomeField); 3] = [
+    ("state", OutcomeField::State),
+    ("index", OutcomeField::Index),
+    ("brief", OutcomeField::Brief),
+];
 
 /// v4 `PlaceholderRef` — a classified placeholder key. `Unknown` keeps the key
 /// for diagnostics.
@@ -57,6 +77,11 @@ pub enum PlaceholderRef {
     Roll,
     Dice,
     Llm,
+    /// The winning outcome row — `{{outcome.state}}`, `{{outcome.index}}`,
+    /// `{{outcome.brief}}` (v4 `322a5488e`, bug 257).
+    Outcome {
+        field: OutcomeField,
+    },
     /// Epoch milliseconds at run start — ONE value for the whole run, which is
     /// what lets an effect express "ten minutes from now" as
     /// `{{now}} + 600000` without the format growing a date grammar.
@@ -111,6 +136,14 @@ pub fn classify_placeholder(key: &str) -> PlaceholderRef {
         // The EXACT key: `character.x` stays `Unknown`.
         "character" => return PlaceholderRef::Character,
         _ => {}
+    }
+    // `outcome.<field>` — AFTER the exact names and BEFORE the families, and a
+    // field outside the three falls THROUGH (to `Unknown`, since no later
+    // prefix claims `outcome.`), so `outcome.verdict` names nothing.
+    if let Some(field) = key.strip_prefix(OUTCOME_PREFIX) {
+        if let Some((_, field)) = OUTCOME_PLACEHOLDER_FIELDS.iter().find(|(f, _)| *f == field) {
+            return PlaceholderRef::Outcome { field: *field };
+        }
     }
     if let Some(name) = key.strip_prefix(PARAMS_PREFIX) {
         if !name.is_empty() {

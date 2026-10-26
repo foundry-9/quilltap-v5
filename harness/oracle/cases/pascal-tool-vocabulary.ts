@@ -343,6 +343,31 @@ const corpus: Array<[string, Record<string, unknown>]> = [
     outcomes: [{ when: { gte: { $inventory: 'pin.metadata.sharpness', fallback: 1 } }, message: '{{state.mood}}', state: 'info' }, CATCH_ALL],
   })],
   // === end P4.D329 ===
+
+  // === P4.D333 rows (v4 `a53024d3c` any-of + `322a5488e` brief) ===
+  // `collectGroup` walks every group of an any-of — outcome, gate, effect
+  // condition — and a `brief` is a rendered string like a message. Every row
+  // carries `"inventoryAggregates":[]` (the key is always present; the
+  // Inventory lane fills it).
+  ['anyof-outcome-two-groups-metadata', def({
+    outcomes: [
+      { when: [{ metadata: { house: { eq: 'Aurum' } } }, { metadata: { rank: { gte: 3 } }, progress: { 'kettle.complete': { eq: true } } }], message: '-', state: 'info' },
+      CATCH_ALL,
+    ],
+  })],
+  ['anyof-gate-two-groups-progress', def({
+    availableWhen: [{ progress: { 'cannon.complete': { eq: true } } }, { progress: { 'zeppelin.percent': { gte: 50 } }, metadata: { pilot: { eq: true } } }],
+  })],
+  ['anyof-effect-when-two-groups', withEffects([
+    { when: [{ outcome: { eq: 'success' } }, { metadata: { lucky: { eq: true } } }, { progress: { 'kettle.complete': { eq: true } } }], target: 'state.poured', value: true },
+  ])],
+  ['brief-quotes-params-and-metadata', def({
+    parameters: { layers: { type: 'number', default: 95 } },
+    llm: { prompt: 'Report {{outcome.brief}}', errorMessage: 'Silence.' },
+    outcomes: [{ when: true, message: '-', state: 'info', brief: 'At {{params.layers}} layers for {{metadata.house}}, {{state.depth}} {{now}}.' }],
+  })],
+  ['brief-quotes-outcome-is-no-vocabulary', withMessage('The verdict: {{outcome.state}} at {{outcome.index}}.')],
+  // === end P4.D333 rows ===
 ];
 
 for (const [id, doc] of corpus) {
