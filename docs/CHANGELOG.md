@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — chore(schemas): re-vendor the custom-tool JSON Schema at v4 `322a5488e` (P4.D333)
+
+_Versions: SPA 0.5.882._
+
+`apps/web/public/schemas/qtap-custom-tool.schema.json` is the pin's file byte-for-byte (63,595 bytes, md5 `670ade1d0accb312d58f6c6c034285ae`): the Inventory subjects (`e1872c94f`), the `log` effect (`e4a60ad9e`), the any-of unions (`a53024d3c`) and the outcome `brief` (`322a5488e`). `public_schemas_vendor_guard`'s size constant moves 44,021 → 63,595 in the same commit; the guard is green against the pin and was red against it before the copy.
+
 #### 2026-10-26 — feat(pascal): any-of gates and `when`s, the metadata list rule, and bug 257's two run orders (P4.D333)
 
 _Versions: core 0.0.1324._
