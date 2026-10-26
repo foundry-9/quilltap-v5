@@ -124,6 +124,8 @@ describe('cleanArguments', () => {
 describe('categoryInfo', () => {
   it('title-cases an unknown category and gives it the fallback icon', () => {
     expect(categoryInfo('memory')).toEqual({ label: 'Memory', icon: '🧠' });
+    // v4 `ea2cb60ab`: `run_custom` and `edit_custom_tool` ride the `pascal` category.
+    expect(categoryInfo('pascal')).toEqual({ label: "Pascal's Custom Tools", icon: '🎲' });
     expect(categoryInfo('sundry')).toEqual({ label: 'Sundry', icon: '⚙️' });
   });
 });

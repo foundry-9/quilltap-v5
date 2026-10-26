@@ -422,6 +422,14 @@ describe('ToolMessage (v4 components/chat/ToolMessage.tsx)', () => {
       expect(el(fixture).querySelector('.qt-chat-wardrobe-notice')).toBeNull();
     });
 
+    it('edit_custom_tool is the Edit Custom Tool card, with 🎲', () => {
+      const content = JSON.stringify({ toolName: 'edit_custom_tool', success: true, result: { formattedText: 'x' } });
+      const fixture = render({ message: msg({ content }), embedded: true });
+      const names = [...el(fixture).querySelectorAll('span.font-semibold')].map((s) => s.textContent);
+      expect(names).toContain('Edit Custom Tool');
+      expect(el(fixture).querySelector('span.text-base.leading-none')!.textContent!.trim()).toBe('🎲');
+    });
+
     it("the card's display names are Earlier Outfit / Outfit History, each with 👗", () => {
       for (const [toolName, displayName] of [
         ['wardrobe_rollback', 'Earlier Outfit'],

@@ -50,6 +50,19 @@ describe('buildToolHierarchy', () => {
     expect(groups[0].tools.map((t) => t.id)).toEqual(['a', 'd']);
   });
 
+  it("gives Pascal's tools and the Log a group each", () => {
+    const groups = buildToolHierarchy([
+      tool('log_read', { category: 'log' }),
+      tool('run_custom', { category: 'pascal' }),
+      tool('edit_custom_tool', { category: 'pascal' }),
+    ]);
+    expect(groups.map((g) => [g.id, g.displayName])).toEqual([
+      ['built-in:log', 'The Log'],
+      ['built-in:pascal', "Pascal's Custom Tools"],
+    ]);
+    expect(groups[1].tools.map((t) => t.id)).toEqual(['run_custom', 'edit_custom_tool']);
+  });
+
   it('nests plugin subgroups and renames the MCP connector', () => {
     const groups = buildToolHierarchy([
       tool('m1', { source: 'plugin', pluginName: 'mcp', subgroupId: 'files', subgroupDisplayName: 'Files' }),

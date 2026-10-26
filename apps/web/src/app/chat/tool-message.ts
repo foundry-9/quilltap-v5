@@ -71,6 +71,7 @@ const TOOL_INFO: Record<string, ToolDisplay> = {
   search_web: { displayName: 'Web Search', icon: '🔍' },
   project_info: { displayName: 'Project Info', icon: '📋' },
   rng: { displayName: 'Random Number Generator', icon: '🎲' },
+  edit_custom_tool: { displayName: 'Edit Custom Tool', icon: '🎲' },
   state: { displayName: 'State Manager', icon: '🗃️' },
   help_search: { displayName: 'Help Search', icon: '📖' },
   help_settings: { displayName: 'Settings Reader', icon: '⚙️' },

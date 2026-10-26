@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): Pascal's category rows — the Run Tool picker, the tool-settings groups and the `edit_custom_tool` card (v4 `ea2cb60ab`)
+
+_Versions: SPA 0.5.882._
+
+Three small category tables follow the server. The Run Tool dialog labels the `pascal` category "Pascal's Custom Tools" with 🎲; the chat tool-settings groups gain "Pascal's Custom Tools" and "The Log" (the Log's three tools group under it once that lane lands), in v4's order after wardrobe and before the workspace group; and a tool message for `edit_custom_tool` renders as an "Edit Custom Tool" card with 🎲. One assertion in each existing spec; the three spec files pass (58 tests).
+
 #### 2026-10-26 — feat(tools): `edit_custom_tool` — a character saves, checks or fetches the format of a custom-tool definition (v4 `ea2cb60ab` + `c56fe278c`)
 
 _Versions: core 0.0.1325._

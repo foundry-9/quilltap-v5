@@ -76,6 +76,8 @@ const BUILT_IN_CATEGORY_GROUPS: Record<string, string> = {
   documents: 'Document Editing',
   photos: 'Photo Albums',
   wardrobe: 'Wardrobe',
+  pascal: "Pascal's Custom Tools",
+  log: 'The Log',
   shell: 'Workspace',
   help: 'Quilltap Help',
 };
