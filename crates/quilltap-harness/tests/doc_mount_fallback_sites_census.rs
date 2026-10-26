@@ -1076,6 +1076,8 @@ mod tests { fn t() { links.find_by_mount_point_id(x)?; } }
 // `delete_messages_callers_census` does.
 
 /// Every file with a production `find_enabled_for_docedit(` call, and how many.
+/// (P4.D338: `photos/user_gallery_service.rs` left — `/photos` now reads the
+/// enabled stores through `find_enabled_for_search`, which carries `storeType`.)
 const DOCEDIT_SITES: &[(&str, usize)] = &[
     ("doc_edit/path_resolver.rs", 1),
     ("doc_edit/uri_producers.rs", 1),
@@ -1085,7 +1087,6 @@ const DOCEDIT_SITES: &[(&str, usize)] = &[
     // v4's `listAllCustomTools` read, through the same fallback).
     ("pascal/tool_gate_keys.rs", 1),
     ("pascal/workbench.rs", 1),
-    ("photos/user_gallery_service.rs", 1),
     ("services/embedding_reindex_job.rs", 1),
     ("tools/search.rs", 1),
 ];

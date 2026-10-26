@@ -47,6 +47,16 @@
  *     LAST-link removal (fileGC true), the non-gallery link (400) and an unknown
  *     id (404).
  *
+ * ── P4.D338: THE ALBUM FILTER + THE VAULT EXCLUSION (v4 `680b71044`) ─────────
+ * `/photos` now rolls up every enabled NON-character store, refuses to show or
+ * delete a vault's photo (`get` → 404, `delete` → 400 `Link is not a gallery
+ * entry`), lists ONE album by `?album=<mountPointId>` (404 `Album not found`
+ * for an absent or disabled store — resolved BEFORE the query is embedded, so
+ * `list_album_missing_with_query` also records the canned embedder's CALL
+ * COUNT), and lists every album by `?action=albums`. Every case also records
+ * the v4 log lines it wrote (`lines`): `Listing user gallery`, the two
+ * albums DEBUGs, `[Photos v1] Error listing user gallery`.
+ *
  * ── P4.104: THE DECODABLE SAVE (`save_real_png`) ─────────────────────────────
  * v4's `linkBlobContent` normalizes image bytes to WebP with REAL sharp (bug
  * 159, `186eb09cb`), so a gallery save of a DECODABLE PNG stores `photos/*.webp`
@@ -75,7 +85,7 @@
  *   QT_FIXTURE_PHOTOS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/photos-main.db \
  *   QT_FIXTURE_PHOTOS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/photos-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-photos.ndjson \
- *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
+ *     $N/npx jest --silent --watchman=false --testTimeout=180000 \
  *       --roots "$PWD" --roots "$TMPO/cases" -- photos-routes
  */
 
@@ -163,6 +173,7 @@ function applyMocks(spec: Spec): void {
       __esModule: true,
       ...actual,
       generateEmbeddingForUser: async (text: string) => {
+        embedCalls += 1;
         const vec = spec.cannedEmbeddings[text];
         if (!vec) {
           throw new EmbeddingError(`no canned embedding registered for input: ${text}`);
@@ -236,9 +247,48 @@ async function imageRoute(id: string): Promise<{ status: number; body: unknown }
   );
 }
 
+/** P4.D338: how many times the canned embedder ran in THIS case (R-6). */
+let embedCalls = 0;
+
+/** The v4 lines a case logs that the Rust family compares (rendered `LEVEL message k=v`). */
+const LINE_PREFIXES = [
+  'Listing user gallery',
+  '[Photos v1] ',
+  '[photo-album-options] ',
+];
+let capturedLines: string[] = [];
+
+function renderField(k: string, v: unknown): string {
+  if (v === null || v === undefined) return ` ${k}=null`;
+  if (Array.isArray(v) || typeof v === 'object') return ` ${k}Json=${JSON.stringify(v)}`;
+  return ` ${k}=${String(v)}`;
+}
+
+async function installCapture(): Promise<void> {
+  capturedLines = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!LINE_PREFIXES.some((p) => data.message.startsWith(p))) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      let line = `${data.level.toUpperCase()} ${data.message}`;
+      for (const [k, v] of Object.entries(fields)) line += renderField(k, v);
+      if (data.error) line += ` error=${data.error.message}`;
+      capturedLines.push(line);
+    },
+  });
+}
+
 interface CaseSpec {
   name: string;
-  run: (s: Spec, m: Meta) => Promise<{ status: number; body: unknown; imageFacts?: unknown }>;
+  run: (s: Spec, m: Meta) => Promise<{ status: number; body: unknown; imageFacts?: unknown; embedCalls?: number }>;
 }
 
 /** The seed PNG (staged beside the corpus in the mirror's fixtures dir). */
@@ -346,6 +396,33 @@ function buildCases(): CaseSpec[] {
     // Whitespace-only q must take the NON-semantic branch (no embedding call —
     // and there is no canned vector for it, so a semantic branch would throw).
     { name: 'list_query_blank', run: () => listRoute('?q=%20%20') },
+    // A query v4's canned embedder has no vector for: the embedding throws, the
+    // route logs the ERROR and answers the generic 500.
+    { name: 'list_query_unregistered', run: () => listRoute('?q=nonesuchquery') },
+
+    // ── LIST: the album filter + the albums verb (P4.D338, v4 680b71044) ──
+    { name: 'list_album_vault', run: (_s, m) => listRoute(`?album=${m.ariaVault}`) },
+    { name: 'list_album_uploads', run: (_s, m) => listRoute(`?album=${m.uploadsMp}`) },
+    { name: 'list_album_project', run: (_s, m) => listRoute(`?album=${m.projectMp}`) },
+    { name: 'list_album_disabled', run: (_s, m) => listRoute(`?album=${m.disabledMp}`) },
+    { name: 'list_album_unknown', run: () => listRoute('?album=00000000-0000-4000-8000-000000000bad') },
+    { name: 'list_album_empty', run: () => listRoute('?album=') },
+    { name: 'list_album_empty_and_limit_nan', run: () => listRoute('?album=&limit=abc') },
+    { name: 'list_limit_nan_and_offset_negative', run: () => listRoute('?limit=abc&offset=-1') },
+    // The album resolves BEFORE the query is embedded: a missing album answers
+    // 404 and spends NO embedding (embedCalls 0), where the order reversed
+    // would embed first.
+    {
+      name: 'list_album_missing_with_query',
+      run: async () => ({
+        ...(await listRoute('?album=00000000-0000-4000-8000-000000000bad&q=dawn%20flight')),
+        embedCalls,
+      }),
+    },
+    { name: 'list_album_vault_query', run: (_s, m) => listRoute(`?album=${m.ariaVault}&q=dawn%20flight`) },
+    { name: 'list_album_tag', run: (_s, m) => listRoute(`?album=${m.ariaVault}&tag=lantern`) },
+    { name: 'albums', run: () => listRoute('?action=albums') },
+    { name: 'albums_ignores_album', run: () => listRoute('?action=albums&album=x&limit=abc') },
 
     // ── ENTRY GET ──
     { name: 'entry_primary', run: (_s, m) => entryRoute(m.linkIds.A[1]) },
@@ -353,6 +430,8 @@ function buildCases(): CaseSpec[] {
     // The link in the DISABLED mount: invisible to list, but the entry read
     // resolves it — v4 does not re-check the mount here.
     { name: 'entry_disabled_mount', run: (_s, m) => entryRoute(m.linkIds.E[0]) },
+    // The vault-excluded flip's NON-vault twins (P4.D338): the Uploads link of sha A.
+    { name: 'entry_primary_nonvault', run: (_s, m) => entryRoute(m.linkIds.A[0]) },
     { name: 'entry_not_a_photo', run: (_s, m) => entryRoute(m.notesLinkId) },
     { name: 'entry_unknown', run: () => entryRoute('00000000-0000-4000-8000-000000000bad') },
 
@@ -401,6 +480,12 @@ function buildCases(): CaseSpec[] {
     { name: 'delete_link_only', run: (_s, m) => deleteRoute(m.linkIds.A[0]) },
     // D's only link — the file row and blob go with it.
     { name: 'delete_last_link', run: (_s, m) => deleteRoute(m.linkIds.D[0]) },
+    // The NON-vault twin of the last-link GC arm: C's only link, in the project store.
+    { name: 'delete_last_link_nonvault', run: (_s, m) => deleteRoute(m.linkIds.C[0]) },
+    // The vault links v4 now REFUSES (400 `Link is not a gallery entry`): Bramwell's
+    // copy of sha A, and Aria's PRIMARY copy.
+    { name: 'delete_vault_link', run: (_s, m) => deleteRoute(m.linkIds.A[2]) },
+    { name: 'delete_vault_link_primary', run: (_s, m) => deleteRoute(m.linkIds.A[1]) },
     { name: 'delete_not_a_photo', run: (_s, m) => deleteRoute(m.notesLinkId) },
     { name: 'delete_unknown', run: () => deleteRoute('00000000-0000-4000-8000-000000000bad') },
   ];
@@ -429,6 +514,8 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  embedCalls = 0;
+  await installCapture();
 
   try {
     const out = await c.run(spec, meta);
@@ -444,6 +531,8 @@ async function runCase(
       name: c.name,
       status: out.status,
       body: out.body,
+      lines: capturedLines.slice(),
+      ...(out.embedCalls !== undefined ? { embedCalls: out.embedCalls } : {}),
       ...(out.imageFacts !== undefined ? { imageFacts: out.imageFacts } : {}),
     };
   } finally {
@@ -476,7 +565,7 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  process.env.LOG_LEVEL = 'debug';
 
   const outLines: string[] = [];
   for (const c of buildCases()) {

@@ -70,12 +70,16 @@ async fn photos_web_edges() {
     assert_eq!(resp.status(), 200, "photos list");
     let body: Value = resp.json().await.unwrap();
     assert!(body.get("type").is_none(), "envelope must be unwrapped");
-    assert_eq!(body["total"], 4, "four deduped photos/ images: {body}");
+    // P4.D338 (v4 `680b71044`): `/photos` leaves out the character vaults, so
+    // sha D (its only link is in Aria's vault) is gone — three deduped images.
+    assert_eq!(body["total"], 3, "three deduped photos/ images: {body}");
     assert_eq!(body["hasMore"], false);
     let entries = body["entries"].as_array().unwrap();
-    assert_eq!(entries.len(), 4);
-    // Newest primary first; the dedup collapse put sha A's vault link on top.
-    assert_eq!(entries[0]["fileName"], "dawn-flight.webp");
+    assert_eq!(entries.len(), 3);
+    // Newest primary first. sha A's newest link was in a vault, so its primary
+    // is now the Uploads copy and it sorts LAST.
+    assert_eq!(entries[0]["fileName"], "covenant-vigil.webp");
+    assert_eq!(entries[2]["fileName"], "dawn-flight-copy.webp");
     // The blobUrl is server-RELATIVE and points at the route that already
     // serves those bytes (no new byte route in this lane).
     assert!(
@@ -86,18 +90,22 @@ async fn photos_web_edges() {
         "blobUrl stays relative: {}",
         entries[0]["blobUrl"]
     );
-    // The multi-link entry carries every hard link, photos/ and not.
-    assert_eq!(entries[0]["linkSummary"]["count"], 5);
+    // The multi-link entry carries every hard link, photos/ and not — vaults
+    // included (the summary is not the roll-up).
+    assert_eq!(entries[2]["linkSummary"]["count"], 5);
 
     // --- The `tag` repeat survives the extractor (v4 `getAll`) ---
     let body: Value = client
-        .get(url("/api/v1/photos?tag=sky&tag=lantern"))
+        .get(url("/api/v1/photos?tag=sky&tag=covenant"))
         .send()
         .await
         .unwrap()
         .json()
         .await
         .unwrap();
+    // (`sky` is sha A, `covenant` is sha B. This arm used `lantern` — sha D,
+    // whose only link sits in Aria's vault — until P4.D338 took vault photos out
+    // of `/photos`; `covenant` keeps it a two-image answer.)
     assert_eq!(
         body["total"], 2,
         "both repeated tags must reach the filter: {body}"
@@ -226,6 +234,8 @@ async fn photos_web_edges() {
         .await
         .unwrap();
     let link_id = list["entries"][0]["linkId"].as_str().unwrap().to_string();
+    // sha A's primary (the Uploads copy) — the one with surviving links.
+    let shared_link_id = list["entries"][2]["linkId"].as_str().unwrap().to_string();
 
     let resp = client
         .get(url(&format!("/api/v1/photos/{link_id}")))
@@ -235,7 +245,7 @@ async fn photos_web_edges() {
     assert_eq!(resp.status(), 200, "entry get");
     let entry: Value = resp.json().await.unwrap();
     assert_eq!(entry["linkId"], link_id.as_str());
-    assert_eq!(entry["caption"], "Dawn flight over the Lantern District");
+    assert_eq!(entry["caption"], "The covenant vigil"); // entries[0] is sha B since P4.D338
 
     let resp = client
         .get(url("/api/v1/photos/00000000-0000-4000-8000-000000000bad"))
@@ -245,7 +255,7 @@ async fn photos_web_edges() {
     assert_eq!(resp.status(), 404, "unknown entry is a 404");
 
     let resp = client
-        .delete(url(&format!("/api/v1/photos/{link_id}")))
+        .delete(url(&format!("/api/v1/photos/{shared_link_id}")))
         .send()
         .await
         .unwrap();
@@ -255,8 +265,8 @@ async fn photos_web_edges() {
     // Four hard links survive the removal, so the bytes are NOT collected.
     assert_eq!(body["fileGC"], false);
 
-    // The entry is gone but its sha still has other links, so the roll-up keeps
-    // showing it — via a DIFFERENT primary link.
+    // The surviving links of that sha all sit in character vaults (or outside
+    // `photos/`), so since P4.D338 the roll-up no longer shows it at all.
     let after: Value = client
         .get(url("/api/v1/photos"))
         .send()
@@ -265,12 +275,71 @@ async fn photos_web_edges() {
         .json()
         .await
         .unwrap();
-    assert_eq!(after["total"], 4, "the sha survives on its other links");
-    assert_ne!(
-        after["entries"][0]["linkId"].as_str().unwrap(),
-        link_id,
-        "the primary moved to a surviving link"
+    assert_eq!(after["total"], 2, "only the vault-free shas remain");
+
+    // A vault link is refused at the delete edge (v4 `Link is not a gallery
+    // entry`, 400) and 404s at the entry edge.
+    let vault_link_id = "83027325-2800-4075-b8f1-4acc4ea35243"; // Aria's copy of sha A
+    let resp = client
+        .delete(url(&format!("/api/v1/photos/{vault_link_id}")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400, "a vault link is not a gallery entry");
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Link is not a gallery entry");
+    let resp = client
+        .get(url(&format!("/api/v1/photos/{vault_link_id}")))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404, "a vault link has no gallery entry");
+
+    // ?album= lists one album (a vault's included) and ?action=albums lists them.
+    let vault_album: Value = client
+        .get(url(
+            "/api/v1/photos?album=deec9b8e-e4c7-4a44-bc0a-004acc05a189",
+        ))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(vault_album["total"].as_u64().unwrap() >= 1, "{vault_album}");
+    let resp = client
+        .get(url(
+            "/api/v1/photos?album=00000000-0000-4000-8000-000000000bad",
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 404);
+    let body: Value = resp.json().await.unwrap();
+    assert_eq!(body["error"], "Album not found");
+    let albums: Value = client
+        .get(url("/api/v1/photos?action=albums"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(
+        albums["albums"].as_array().is_some_and(|a| !a.is_empty()),
+        "{albums}"
     );
+    // The `Unknown action` envelope: a bare `?action=` and a stranger alike.
+    for q in ["?action=", "?action=bogus"] {
+        let resp = client
+            .get(url(&format!("/api/v1/photos{q}")))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "{q}");
+        let body: Value = resp.json().await.unwrap();
+        assert_eq!(body["availableActions"], json!(["albums"]), "{q}: {body}");
+    }
 
     // --- POST answers 201 (v4 `created`), and rejects a bad body at 400 ---
     let resp = client

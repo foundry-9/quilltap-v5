@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(photos): /photos leaves out character vaults and gains an album filter (v4 680b71044)
+
+_Versions: core 0.0.1326, web 0.0.244._
+
+`/photos` rolls up every enabled non-character store, `get`/`remove` refuse a vault link (`Link is not a gallery entry`), `?album=<mountPointId>` lists one store's album (a vault's included; absent or disabled → 404 `Album not found`, resolved BEFORE the query is embedded so no embedding is spent), and `?action=albums` answers `{albums}` through the new `Request::PhotoAlbumsList` (wire tag `photoGalleryAlbums`) with v4's DEBUG lines; an empty `?album=` and a bad limit/offset now join their Zod messages as v4 does, and the 500 logs v4's `[Photos v1] Error listing user gallery`. The web edge reads the action through the shared helper (bare or unknown action → the `Unknown action` envelope). Differential: the photos family grows 17 album/albums/vault rows with captured lines and the embed call count; pre-existing rows are re-aimed, non-vault twins added; the committed web edge test, the wrong-type census (+album), the hand-built-construction count and the `find_enabled_for_docedit` caller census follow.
+
 #### 2026-10-26 — fix(doc-edit): published vault addresses name the vault, never self (v4 7263105c6, bug 256)
 
 _Versions: core 0.0.1325._

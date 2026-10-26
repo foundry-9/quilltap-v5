@@ -55,8 +55,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use quilltap_core::api::photos::{
-    image_info_get, photo_gallery_entry_get, photo_gallery_entry_remove, photo_gallery_list,
-    photo_gallery_save,
+    image_info_get, photo_albums_list, photo_gallery_entry_get, photo_gallery_entry_remove,
+    photo_gallery_list, photo_gallery_save,
 };
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::files::FileEntry;
@@ -87,7 +87,10 @@ struct Spec {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Meta {
+    aria_vault: String,
     uploads_mp: String,
+    project_mp: String,
+    disabled_mp: String,
     link_ids: HashMap<String, Vec<String>>,
     notes_link_id: String,
     save_ok_file_id: String,
@@ -148,6 +151,9 @@ fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
 /// forgot its vector pass by ranking everything at 0.
 struct CannedEmbedding {
     table: HashMap<String, Vec<f32>>,
+    /// How many times the model boundary ran (P4.D338 R-6: a missing album must
+    /// answer 404 with ZERO embeddings spent).
+    calls: std::sync::atomic::AtomicUsize,
 }
 impl EmbeddingProvider for CannedEmbedding {
     async fn generate_embedding_for_user(
@@ -157,6 +163,7 @@ impl EmbeddingProvider for CannedEmbedding {
         _profile_id: Option<&str>,
         _opts: EmbeddingCallOptions,
     ) -> Result<EmbeddingResult, EmbeddingError> {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         match self.table.get(text) {
             Some(v) => Ok(EmbeddingResult {
                 embedding: v.clone(),
@@ -346,6 +353,56 @@ fn check(oracle: &HashMap<String, Value>, name: &str, resp: &Response, failed: &
     }
 }
 
+/// P4.D338: the v4 lines the case logged (`LEVEL message k=v`) vs the lines the
+/// Rust call logged on its thread (`LEVEL target message k=v` — the target is
+/// dropped). A trailing `error=…` is skipped (the two sides' provider error
+/// texts are not the subject; the line's other fields are).
+fn check_lines(
+    oracle: &HashMap<String, Value>,
+    name: &str,
+    got: &[String],
+    failed: &mut Vec<String>,
+) {
+    let want: Vec<String> = oracle[name]["lines"]
+        .as_array()
+        .unwrap_or_else(|| panic!("oracle case '{name}' carries no `lines` — regenerate"))
+        .iter()
+        .map(|l| strip_error_tail(l.as_str().unwrap()))
+        .collect();
+    let got: Vec<String> = got
+        .iter()
+        // Only the lines this family owns: the option builder's own reads
+        // (its archived-vault DEBUG, `_findAll`'s fixture-vintage ERROR) are
+        // `photo_album_options_equivalence`'s subject.
+        .filter(|l| {
+            [
+                "Listing user gallery",
+                "[Photos v1] ",
+                "[photo-album-options] ",
+            ]
+            .iter()
+            .any(|p| l.splitn(3, ' ').nth(2).is_some_and(|m| m.starts_with(p)))
+        })
+        .map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap_or("");
+            let _target = parts.next();
+            strip_error_tail(&format!("{level} {}", parts.next().unwrap_or("")))
+        })
+        .collect();
+    if got != want {
+        eprintln!("[{name}] LINES MISMATCH:\n got  {got:#?}\n want {want:#?}");
+        failed.push(format!("{name}_lines"));
+    }
+}
+
+fn strip_error_tail(line: &str) -> String {
+    match line.find(" error=") {
+        Some(i) => line[..i].to_string(),
+        None => line.to_string(),
+    }
+}
+
 /// Pin the RAW key sequence of the richest read payload against v4's
 /// `JSON.stringify` order — the sorted-key `check` above deliberately cannot see
 /// ordering, and the entry DTO's field order is part of the wire contract.
@@ -473,6 +530,7 @@ async fn photos_routes_equivalence() {
 
     let provider = CannedEmbedding {
         table: spec.canned_embeddings.clone(),
+        calls: std::sync::atomic::AtomicUsize::new(0),
     };
     let bytes: Arc<dyn FileBytesStore> = Arc::new(CannedBytes {
         table: HashMap::from([
@@ -494,30 +552,49 @@ async fn photos_routes_equivalence() {
     let mut failed: Vec<String> = Vec::new();
 
     // ── LIST ──────────────────────────────────────────────────────────────
-    async fn list(
+    /// The list call on its OWN current-thread runtime so the thread-local
+    /// capture sees every line `photo_gallery_list` logs (the album read, the
+    /// embedding, the service all resume on the caller's thread).
+    #[allow(clippy::too_many_arguments)]
+    fn list(
         db: &Db,
         provider: &CannedEmbedding,
         user: &str,
+        album: Option<&str>,
         q: Option<&str>,
         tag: Option<Vec<String>>,
         limit: Option<f64>,
         offset: Option<f64>,
-    ) -> Response {
-        photo_gallery_list(
-            db,
-            Some(provider),
-            user,
-            q.map(|s| s.to_string()),
-            tag,
-            limit,
-            offset,
-        )
-        .await
+    ) -> (Response, Vec<String>) {
+        quilltap_core::test_support::global_capture::install();
+        std::thread::scope(|s| {
+            s.spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .unwrap()
+                    .block_on(quilltap_core::test_support::global_capture::capture_async(
+                        photo_gallery_list(
+                            db,
+                            Some(provider),
+                            user,
+                            album.map(|s| s.to_string()),
+                            q.map(|s| s.to_string()),
+                            tag,
+                            limit,
+                            offset,
+                        ),
+                    ))
+            })
+            .join()
+            .unwrap()
+        })
     }
 
     let (db, _scratch) = fresh_db("list");
-    let default = list(&db, &provider, user, None, None, None, None).await;
+    let (default, default_lines) = list(&db, &provider, user, None, None, None, None, None);
     check(&oracle, "list_default", &default, &mut failed);
+    check_lines(&oracle, "list_default", &default_lines, &mut failed);
     check_key_order(&oracle, &default, &mut failed);
 
     for (name, q, tag, limit, offset) in [
@@ -560,15 +637,129 @@ async fn photos_routes_equivalence() {
         ("list_query_covenant", Some("covenant"), None, None, None),
         ("list_query_noise", Some("asdfasdf"), None, None, None),
         ("list_query_blank", Some("  "), None, None, None),
+        (
+            "list_query_unregistered",
+            Some("nonesuchquery"),
+            None,
+            None,
+            None,
+        ),
+        (
+            "list_limit_nan_and_offset_negative",
+            None,
+            None,
+            Some(f64::NAN),
+            Some(-1.0),
+        ),
     ] {
-        let resp = list(&db, &provider, user, q, tag, limit, offset).await;
+        let (resp, lines) = list(&db, &provider, user, None, q, tag, limit, offset);
         check(&oracle, name, &resp, &mut failed);
+        check_lines(&oracle, name, &lines, &mut failed);
+    }
+
+    // ── LIST: the album filter (P4.D338) ─────────────────────────────────
+    let unknown_album = "00000000-0000-4000-8000-000000000bad";
+    for (name, album, q, tag, limit) in [
+        (
+            "list_album_vault",
+            Some(meta.aria_vault.as_str()),
+            None,
+            None,
+            None,
+        ),
+        (
+            "list_album_uploads",
+            Some(meta.uploads_mp.as_str()),
+            None,
+            None,
+            None,
+        ),
+        (
+            "list_album_project",
+            Some(meta.project_mp.as_str()),
+            None,
+            None,
+            None,
+        ),
+        (
+            "list_album_disabled",
+            Some(meta.disabled_mp.as_str()),
+            None,
+            None,
+            None,
+        ),
+        ("list_album_unknown", Some(unknown_album), None, None, None),
+        ("list_album_empty", Some(""), None, None, None),
+        (
+            "list_album_empty_and_limit_nan",
+            Some(""),
+            None,
+            None,
+            Some(f64::NAN),
+        ),
+        (
+            "list_album_missing_with_query",
+            Some(unknown_album),
+            Some("dawn flight"),
+            None,
+            None,
+        ),
+        (
+            "list_album_vault_query",
+            Some(meta.aria_vault.as_str()),
+            Some("dawn flight"),
+            None,
+            None,
+        ),
+        (
+            "list_album_tag",
+            Some(meta.aria_vault.as_str()),
+            None,
+            Some(vec!["lantern".to_string()]),
+            None,
+        ),
+    ] {
+        let before = provider.calls.load(std::sync::atomic::Ordering::SeqCst);
+        let (resp, lines) = list(&db, &provider, user, album, q, tag, limit, None);
+        check(&oracle, name, &resp, &mut failed);
+        check_lines(&oracle, name, &lines, &mut failed);
+        if let Some(want) = oracle[name].get("embedCalls").and_then(Value::as_u64) {
+            let got = provider.calls.load(std::sync::atomic::Ordering::SeqCst) - before;
+            if got as u64 != want {
+                eprintln!("[{name}] EMBED CALLS: got {got} want {want}");
+                failed.push(format!("{name}_embed_calls"));
+            }
+        }
+    }
+
+    // ── ALBUMS (`?action=albums`; the edge ignores every other parameter) ──
+    for name in ["albums", "albums_ignores_album"] {
+        quilltap_core::test_support::global_capture::install();
+        let (resp, lines) =
+            quilltap_core::test_support::global_capture::capture(|| photo_albums_list(&db));
+        // v4's body is `{ albums }` as `successResponse` — the RAW payload; the
+        // bytes (key order) compare through serde_json's string form.
+        match &resp {
+            Response::PhotoGallery(v) => {
+                let want = &oracle[name]["body"];
+                if serde_json::to_string(v).unwrap() != serde_json::to_string(want).unwrap() {
+                    eprintln!("[{name}] BODY MISMATCH:\n got {v}\n want {want}");
+                    failed.push(name.to_string());
+                }
+            }
+            other => {
+                eprintln!("[{name}] expected the albums payload, got {other:?}");
+                failed.push(name.to_string());
+            }
+        }
+        check_lines(&oracle, name, &lines, &mut failed);
     }
 
     // ── ENTRY GET ─────────────────────────────────────────────────────────
     for (name, id) in [
         ("entry_primary", meta.link_ids["A"][1].clone()),
         ("entry_non_primary", meta.link_ids["A"][2].clone()),
+        ("entry_primary_nonvault", meta.link_ids["A"][0].clone()),
         ("entry_disabled_mount", meta.link_ids["E"][0].clone()),
         ("entry_not_a_photo", meta.notes_link_id.clone()),
         (
@@ -705,6 +896,9 @@ async fn photos_routes_equivalence() {
     for (name, id) in [
         ("delete_link_only", meta.link_ids["A"][0].clone()),
         ("delete_last_link", meta.link_ids["D"][0].clone()),
+        ("delete_last_link_nonvault", meta.link_ids["C"][0].clone()),
+        ("delete_vault_link", meta.link_ids["A"][2].clone()),
+        ("delete_vault_link_primary", meta.link_ids["A"][1].clone()),
         ("delete_not_a_photo", meta.notes_link_id.clone()),
         (
             "delete_unknown",
@@ -720,5 +914,5 @@ async fn photos_routes_equivalence() {
         failed.is_empty(),
         "photos routes differential failures: {failed:?}"
     );
-    eprintln!("photos_routes_equivalence: 41 checks green (+ the two key-order claims + the save_real_png imageFacts)");
+    eprintln!("photos_routes_equivalence: every case green (+ the two key-order claims + the save_real_png imageFacts)");
 }

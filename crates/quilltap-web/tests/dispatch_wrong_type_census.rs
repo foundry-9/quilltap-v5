@@ -1770,6 +1770,16 @@ const CENSUS: &[Row] = &[
     },
     Row {
         variant: "PhotoGalleryList",
+        field: "album",
+        rust_type: "Option<String>",
+        v4: V4::Query,
+        note: concat!(
+            "`photos/route.ts:32-45` `searchParams.get('album')` — ",
+            "`z.string().min(1)` (an empty `?album=` is Zod's `Too small`)"
+        ),
+    },
+    Row {
+        variant: "PhotoGalleryList",
         field: "q",
         rust_type: "Option<String>",
         v4: V4::Query,

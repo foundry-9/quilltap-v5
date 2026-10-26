@@ -2678,6 +2678,11 @@ pub enum Request {
     /// would silently repair inputs v4 refuses.
     #[serde(rename_all = "camelCase")]
     PhotoGalleryList {
+        /// P4.D338 (v4 `680b71044`): `?album=<mountPointId>` — list one store's
+        /// album instead of the roll-up (`z.string().min(1).optional()`; the raw
+        /// string, `''` is Zod's `Too small`). Declared FIRST, v4's schema order.
+        #[serde(default)]
+        album: Option<String>,
         #[serde(default)]
         q: Option<String>,
         #[serde(default)]
@@ -2687,6 +2692,14 @@ pub enum Request {
         #[serde(default)]
         offset: Option<f64>,
     },
+    // === P4.D338: the /photos album wire (C9) ===
+    /// v4 `GET /api/v1/photos?action=albums` — every album `/photos` can show
+    /// (characters, projects, stores). Answers `{ "albums": [PhotoAlbumOption] }`.
+    /// The wire tag is `photoGalleryAlbums` (R-5): `Request`'s `camelCase` rule
+    /// would otherwise spell the variant `photoAlbumsList`.
+    #[serde(rename = "photoGalleryAlbums")]
+    PhotoAlbumsList {},
+    // === end P4.D338 ===
     /// v4 `POST /api/v1/photos` — hard-link an image-v2 `FileEntry` into the
     /// Quilltap Uploads mount's `photos/` folder. A second save of the same
     /// bytes is v4's 400 (`already saved`).
@@ -6240,6 +6253,25 @@ impl Event {
 
 #[cfg(test)]
 mod tests {
+    /// P4.D338 (R-5): the albums verb's wire tag is `photoGalleryAlbums` — the
+    /// first VARIANT-level rename in `Request` (`rename_all = "camelCase"` would
+    /// spell `PhotoAlbumsList` as `photoAlbumsList`) — and the list verb carries
+    /// `album`.
+    #[test]
+    fn the_photo_album_wire_tags_decode() {
+        use super::Request;
+        assert!(matches!(
+            serde_json::from_str::<Request>(r#"{"type":"photoGalleryAlbums"}"#).unwrap(),
+            Request::PhotoAlbumsList {}
+        ));
+        assert!(serde_json::from_str::<Request>(r#"{"type":"photoAlbumsList"}"#).is_err());
+        match serde_json::from_str::<Request>(r#"{"type":"photoGalleryList","album":"x"}"#).unwrap()
+        {
+            Request::PhotoGalleryList { album, .. } => assert_eq!(album.as_deref(), Some("x")),
+            other => panic!("decoded as {other:?}"),
+        }
+    }
+
     use super::{
         brahma_console_update_request, data_retention_update_request, taboo_update_request, Request,
     };

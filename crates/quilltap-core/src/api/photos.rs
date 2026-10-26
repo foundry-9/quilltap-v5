@@ -30,10 +30,11 @@ use serde_json::{json, Value};
 
 use crate::db::runtime::Db;
 use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
+use crate::photos::photo_album_options::list_all_photo_album_options;
 use crate::photos::save_image_to_album::FileBytesStore;
 use crate::photos::user_gallery_service::{
     get_user_gallery_entry, list_user_gallery, needs_query_embedding, remove_from_user_gallery,
-    save_to_user_gallery, UserGalleryError,
+    resolve_album_mount_points, save_to_user_gallery, UserGalleryError,
 };
 
 use super::mount_files::mount_conn;
@@ -112,28 +113,72 @@ fn zod_int_in_range(raw: f64, lo: i64, hi: Option<i64>) -> Result<i64, String> {
 /// branch: a plain listing must still work on an assembly with no embedding
 /// seam (a spine-less host), while a SEARCH without one is the loud
 /// not-assembled refusal.
+#[allow(clippy::too_many_arguments)]
 pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
     db: &Db,
     provider: Option<&P>,
     user_id: &str,
+    album: Option<String>,
     q: Option<String>,
     tag: Option<Vec<String>>,
     limit: Option<f64>,
     offset: Option<f64>,
 ) -> Response {
+    // v4's `listQuerySchema.safeParse` reports EVERY failing field and the route
+    // joins the messages (`route.ts:55-57`) in schema order: album, q, tags,
+    // limit, offset. An empty `?album=` is `z.string().min(1)`'s `Too small`.
+    let mut issues: Vec<String> = Vec::new();
+    if album.as_deref() == Some("") {
+        issues.push("Too small: expected string to have >=1 characters".to_string());
+    }
     let limit = match limit.map(|r| zod_int_in_range(r, 1, Some(200))) {
-        Some(Err(msg)) => return Response::error(ErrorKind::BadRequest, msg),
+        Some(Err(msg)) => {
+            issues.push(msg);
+            None
+        }
         Some(Ok(v)) => Some(v),
         None => None,
     };
     let offset = match offset.map(|r| zod_int_in_range(r, 0, None)) {
-        Some(Err(msg)) => return Response::error(ErrorKind::BadRequest, msg),
+        Some(Err(msg)) => {
+            issues.push(msg);
+            None
+        }
         Some(Ok(v)) => Some(v),
         None => None,
     };
+    if !issues.is_empty() {
+        return Response::error(ErrorKind::BadRequest, issues.join("; "));
+    }
     // v4: `rawTags.length > 0 ? rawTags : undefined` — an absent `tag` and an
     // empty repeat-list are the same thing.
     let tags: Option<Vec<String>> = tag.filter(|t| !t.is_empty());
+
+    // v4 resolves the album BEFORE it embeds the query (`resolveAlbumMountPoints`
+    // → `generateEmbeddingForUser`, `user-gallery-service.ts:306`, `:346`), so an
+    // album that does not exist answers 404 with no embedding spent and no ERROR
+    // line (the route's `startsWith('Album not found')` returns first).
+    let mounts =
+        match db.read_mount_index(|conn| Ok(resolve_album_mount_points(conn, album.as_deref()))) {
+            Ok(Ok(m)) => m,
+            Ok(Err(UserGalleryError::Message(m))) if m.starts_with("Album not found") => {
+                // v4 `notFound('Album')` → `Album not found`.
+                return Response::error(ErrorKind::NotFound, "Album not found");
+            }
+            Ok(Err(e)) => return list_failure(user_id, &format!("{e:?}")),
+            Err(e) => return list_failure(user_id, &e.to_string()),
+        };
+
+    // v4's DEBUG (`user-gallery-service.ts:307-311`) lands right after the album
+    // resolves and BEFORE the fan-out and the embedding — so a query whose
+    // embedding then fails still logged it.
+    tracing::debug!(
+        target: "quilltap::photos",
+        mountPointId = album.as_deref().unwrap_or("null"),
+        galleryMounts = mounts.len(),
+        hasQuery = q.as_deref().is_some_and(|q| !q.is_empty()),
+        "Listing user gallery"
+    );
 
     let embedding = if needs_query_embedding(q.as_deref()) {
         let query = q.clone().expect("needs_query_embedding implies Some");
@@ -151,7 +196,7 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
             Ok(e) => Some(e.embedding),
             // v4's service lets the embedding error propagate to the route's
             // outer catch, which logs and answers the generic 500 text.
-            Err(_) => return Response::error(ErrorKind::Internal, "Failed to list gallery"),
+            Err(e) => return list_failure(user_id, &e.to_string()),
         }
     } else {
         None
@@ -160,6 +205,7 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
     let read = db.read_mount_index(|conn| {
         Ok(list_user_gallery(
             conn,
+            &mounts,
             q.as_deref(),
             embedding.as_deref(),
             tags.as_deref(),
@@ -169,10 +215,37 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
     });
     match read {
         Ok(Ok(v)) => Response::PhotoGallery(v),
-        // v4's outer catch: `serverError('Failed to list gallery')` — a FIXED
-        // string, deliberately not the thrown message.
-        Ok(Err(_)) | Err(_) => Response::error(ErrorKind::Internal, "Failed to list gallery"),
+        Ok(Err(e)) => list_failure(user_id, &format!("{e:?}")),
+        Err(e) => list_failure(user_id, &e.to_string()),
     }
+}
+
+/// v4's outer catch (`route.ts:74-77`): ERROR `[Photos v1] Error listing user
+/// gallery` `{ userId }` with the error, then `serverError('Failed to list
+/// gallery')` — a FIXED string, deliberately not the thrown message.
+fn list_failure(user_id: &str, error: &str) -> Response {
+    tracing::error!(
+        target: "quilltap::photos",
+        userId = %user_id,
+        error = %error,
+        "[Photos v1] Error listing user gallery"
+    );
+    Response::error(ErrorKind::Internal, "Failed to list gallery")
+}
+
+/// v4 `GET /api/v1/photos?action=albums` (`route.ts:79-84`) — every album
+/// `/photos` can show (characters, projects, stores) as `{ albums }`, through
+/// the same option builder the save-target pickers use. Never fails. Logs v4's
+/// DEBUG `[Photos v1] Listed albums for the gallery selector` `{ count }`
+/// AFTER the option builder's own line.
+pub fn photo_albums_list(db: &Db) -> Response {
+    let albums = list_all_photo_album_options(db);
+    tracing::debug!(
+        target: "quilltap::photos",
+        count = albums.len(),
+        "[Photos v1] Listed albums for the gallery selector"
+    );
+    Response::PhotoGallery(json!({ "albums": albums }))
 }
 
 /// v4 `POST /api/v1/photos` — `created(result)`; the payload RAW at 201.

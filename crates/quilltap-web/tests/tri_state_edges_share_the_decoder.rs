@@ -543,7 +543,7 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // body counterpart at all. Both are adjudicated in
     // `dispatch_wrong_type_census`.
     ("messages_swipe_routes.rs", 3),
-    ("photos_routes.rs", 4),
+    ("photos_routes.rs", 5),
     ("prompt_templates_routes.rs", 2),
     // P4.D217 (v4 `d1c06cd9d`): the NEW Scenario Builder REST edge, 2
     // typed-only constructions — `ScenarioBuilderBuild { run_id, body }` (the
@@ -631,8 +631,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 149,
-        "149 = 148 + P4.D335's one (`wardrobe_routes.rs`'s `ChatStopTurn`, the chat POST's \
+        total, 150,
+        "150 = 149 + P4.D338's one (`photos_routes.rs`'s `PhotoAlbumsList`, the \
+         `?action=albums` GET, v4 `680b71044`). \
+         149 = 148 + P4.D335's one (`wardrobe_routes.rs`'s `ChatStopTurn`, the chat POST's \
          `?action=stop-turn`, v4 `2b5e8ee24`). \
          148 = 125 + P4.D325's twenty-three (`inventory_routes.rs`'s nineteen — the eighteen \
          Inventory verbs plus the item PUT's bad-JSON `InventoryItemGet` probe — and \

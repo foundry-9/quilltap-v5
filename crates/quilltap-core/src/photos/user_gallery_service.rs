@@ -2,13 +2,16 @@
 //! screen (`GET|POST /api/v1/photos`, `GET|DELETE /api/v1/photos/[id]`).
 //!
 //! Carrying v4's own framing: the human user's gallery is a deduped roll-up of
-//! every `photos/` folder across the instance — character vaults, project
-//! stores, Quilltap General, Quilltap Uploads. Whenever an image is saved (via
-//! `keep_image`, the Salon Save-Image dialog, or the legacy "save to my gallery"
-//! button) it lands in some mount point's `photos/` folder; this service
-//! surfaces them all under one roof on `/photos`, deduped by sha256 so the same
-//! bytes appearing in multiple albums show as a single card with a "linked in N
-//! places" badge.
+//! the `photos/` folder of every enabled store EXCEPT a character vault —
+//! project stores, Quilltap General, Quilltap Uploads, any other document
+//! store. A character vault's `photos/` folder is that character's album (it has
+//! its own door, Aurora's Photo Gallery), so `/photos` neither lists it nor
+//! prunes it; `?album=<mountPointId>` shows one store's album instead, a vault's
+//! included. Whenever an image is saved (via `keep_image`, the Salon Save-Image
+//! dialog, or the legacy "save to my gallery" button) it lands in some mount
+//! point's `photos/` folder; this service surfaces them under one roof,
+//! deduped by sha256 so the same bytes appearing in multiple albums show as a
+//! single card with a "linked in N places" badge.
 //!
 //! The save path still piggy-backs on `link_blob_content` — the same
 //! content-addressed hard-link plumbing the rest of the photo system uses — and
@@ -88,6 +91,84 @@ impl UserGalleryError {
     }
 }
 
+/// v4 `isUserGalleryMount` (`user-gallery-service.ts:50-56`): the one rule for
+/// which stores belong to `/photos` — every enabled store except a character
+/// vault, whose `photos/` folder is the character's album. v4's strict
+/// `storeType !== 'character'` keeps a NULL / absent `storeType`.
+pub fn is_user_gallery_mount(store_type: Option<&str>) -> bool {
+    store_type != Some("character")
+}
+
+/// The `storeType` cell of one store: `None` for no such row (or a degraded
+/// mount index — v4's `findById` is a fallback read), `Some(None)` for a NULL
+/// cell. Deliberately NOT `DocMountPointsRepository::find_store_type_by_id`,
+/// which ERRORS on a NULL cell where v4 reads a row.
+fn gallery_mount_store_type(mount: &Connection, id: &str) -> Option<Option<String>> {
+    crate::db::fallback::find_by_id_or_none("doc_mount_points", id, || {
+        match mount.query_row(
+            "SELECT storeType FROM doc_mount_points WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get::<_, Option<String>>(0),
+        ) {
+            Ok(v) => Ok(Some(v)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(DbError::from(e)),
+        }
+    })
+}
+
+/// v4 `isUserGalleryLink` (`:58-65`): a link is a gallery entry when it sits
+/// under `photos/` (checked FIRST, with no read) and its store passes
+/// [`is_user_gallery_mount`]. A store that cannot be read is not a gallery
+/// entry (v4's `!!mountPoint && …`).
+fn is_user_gallery_link(mount: &Connection, mount_point_id: &str, relative_path: &str) -> bool {
+    if !is_photos_relative_path(Some(relative_path)) {
+        return false;
+    }
+    match gallery_mount_store_type(mount, mount_point_id) {
+        Some(store_type) => is_user_gallery_mount(store_type.as_deref()),
+        None => false,
+    }
+}
+
+/// One store an album reads (v4 `Array<{ id: string }>`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GalleryMount {
+    pub id: String,
+}
+
+/// v4 `resolveAlbumMountPoints` (`:447-464`): the named store alone — a vault
+/// allowed, only the roll-up excludes vaults — or, with no album, every enabled
+/// non-character store in rowid order. An absent or disabled store throws
+/// `Album not found: <id>`. Resolved BEFORE any embedding call (v4's order —
+/// the album is checked before the query is embedded), so the caller runs it in
+/// its own read first.
+pub fn resolve_album_mount_points(
+    mount: &Connection,
+    album: Option<&str>,
+) -> Result<Vec<GalleryMount>, UserGalleryError> {
+    // v4 `!id`: the empty string is "no album" too.
+    let Some(id) = album.filter(|a| !a.is_empty()) else {
+        // v4 `findEnabled()` is a fallback — the filter line and `[]`.
+        return Ok(
+            crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
+                DocMountPointsRepository::new(mount).find_enabled_for_search()
+            })
+            .into_iter()
+            .filter(|r| is_user_gallery_mount(r.store_type.as_deref()))
+            .map(|r| GalleryMount { id: r.id })
+            .collect(),
+        );
+    };
+    let found = crate::db::fallback::find_by_id_or_none("doc_mount_points", id, || {
+        DocMountPointsRepository::new(mount).find_by_id_for_docedit(id)
+    });
+    match found {
+        Some(row) if row.enabled => Ok(vec![GalleryMount { id: row.id }]),
+        _ => Err(UserGalleryError::msg(format!("Album not found: {id}"))),
+    }
+}
+
 /// v4's `if (query && query.trim().length > 0)` guard
 /// (`user-gallery-service.ts:311`) — the ONE predicate that decides whether the
 /// semantic branch runs, shared by `api::photos` (which must generate the
@@ -109,6 +190,7 @@ pub fn needs_query_embedding(query: Option<&str>) -> bool {
 /// rather than a silently different ranking.
 pub fn list_user_gallery(
     mount: &Connection,
+    mounts: &[GalleryMount],
     query: Option<&str>,
     query_embedding: Option<&[f32]>,
     tags: Option<&[String]>,
@@ -119,21 +201,17 @@ pub fn list_user_gallery(
     let effective_limit = limit.unwrap_or(DEFAULT_LIMIT).clamp(1, 200);
     let effective_offset = offset.unwrap_or(0).max(0);
 
-    // 1. Fan out across every enabled mount point and collect links whose
-    //    relativePath lives under `photos/`. Quilltap is single-user, so we
-    //    don't filter by userId at the link layer.
+    // 1. Fan out across the album's stores and collect links whose relativePath
+    //    lives under `photos/`: one named store, or every enabled non-character
+    //    store (`mounts`, already resolved by [`resolve_album_mount_points`]).
+    //    Quilltap is single-user, so we don't filter by userId at the link layer.
     //
     //    v4's `findEnabled()` is `findByFilter({enabled: true})` — no ORDER BY,
     //    so both sides walk rowid order; the same holds for `findByMountPointId`.
     //    That shared order is what makes the dedup tie-break below deterministic.
-    let points = DocMountPointsRepository::new(mount);
     let links_repo = DocMountFileLinksRepository::new(mount);
     let mut all_photo_links: Vec<(crate::db::doc_mount_file_links::LinkRow, String)> = Vec::new();
-    // P4.163: v4 `findEnabled()` (`user-gallery-service.ts:276`) is a fallback —
-    // the filter line and `[]`, so the gallery answers empty (v5 had failed it).
-    for mp in crate::db::fallback::find_by_filter_or_empty("doc_mount_points", || {
-        points.find_enabled_for_docedit()
-    }) {
+    for mp in mounts {
         // v4 `user-gallery-service.ts:282`: the fallback joined read (P4.142,
         // G1).
         for link in links_repo.find_by_mount_point_id_or_empty(&mp.id) {
@@ -355,7 +433,7 @@ pub fn get_user_gallery_entry(
     else {
         return Ok(None);
     };
-    if !is_photos_relative_path(Some(&link.relative_path)) {
+    if !is_user_gallery_link(mount, &link.mount_point_id, &link.relative_path) {
         return Ok(None);
     }
     let meta = parse_kept_image_frontmatter(link.extracted_text.as_deref());
@@ -381,10 +459,10 @@ pub fn get_user_gallery_entry(
 /// v4 `removeFromUserGallery` — remove a gallery entry (cascades to its chunks
 /// and, if it was the last hard link to the bytes, drops the file row and blob).
 ///
-/// `/photos` surfaces every `photos/` link across every enabled mount, so the
-/// removal target may live in a character vault, a project store, Quilltap
-/// General, or Quilltap Uploads — we accept any of them, as long as the link's
-/// relativePath is under `photos/`.
+/// `/photos` surfaces every `photos/` link outside the character vaults, so the
+/// removal target may live in a project store, Quilltap General, or Quilltap
+/// Uploads. A character's album is not ours to prune from here — that is
+/// Aurora's Photo Gallery's job — so a vault link is refused.
 ///
 /// Returns `(deleted, file_gc)`. `(false, false)` for an unknown link (v4's
 /// early `return { deleted: false, fileGC: false }` → the route's 404). v4's
@@ -400,7 +478,7 @@ pub fn remove_from_user_gallery(
     let Some(link) = links.find_by_id_with_content(link_id)? else {
         return Ok((false, false));
     };
-    if !is_photos_relative_path(Some(&link.relative_path)) {
+    if !is_user_gallery_link(mount, &link.mount_point_id, &link.relative_path) {
         return Err(UserGalleryError::msg("Link is not a gallery entry"));
     }
     let file_gc = links.delete_with_gc(link_id)?;
@@ -861,14 +939,16 @@ mod fallback_read_tests {
             crate::db::Writer::open_writable(&dir.path().join("quilltap-mount-index.db"), PEPPER)
                 .unwrap();
         let conn = w.connection();
+        let mounts = resolve_album_mount_points(conn, None).unwrap();
         let (got, lines) = crate::test_support::captured_with(|| {
-            list_user_gallery(conn, None, None, None, None, None)
+            list_user_gallery(conn, &mounts, None, None, None, None, None)
         });
         assert_eq!(
             got.unwrap(),
             json!({ "entries": [], "total": 0, "hasMore": false })
         );
-        assert!(lines.is_empty(), "{lines:?}");
+        // Silence leg: only the DEBUG census line, no ERROR / WARN.
+        assert!(lines.iter().all(|l| l.starts_with("DEBUG ")), "{lines:?}");
 
         let enabled: usize = conn
             .query_row(
@@ -883,12 +963,16 @@ mod fallback_read_tests {
         )
         .unwrap();
         let (got, lines) = crate::test_support::captured_with(|| {
-            list_user_gallery(conn, None, None, None, None, None)
+            list_user_gallery(conn, &mounts, None, None, None, None, None)
         });
         assert_eq!(
             got.unwrap(),
             json!({ "entries": [], "total": 0, "hasMore": false })
         );
+        let lines: Vec<String> = lines
+            .into_iter()
+            .filter(|l| !l.starts_with("DEBUG "))
+            .collect();
         assert_eq!(
             lines,
             vec![

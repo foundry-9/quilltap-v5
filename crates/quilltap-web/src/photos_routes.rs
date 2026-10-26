@@ -3,7 +3,10 @@
 //! body (the P4.6ah lesson — v4-shaped clients read the raw body, not the
 //! tagged `Response`).
 //!
-//! - `GET    /api/v1/photos`       → `{entries, total, hasMore}`
+//! - `GET    /api/v1/photos`       → `{entries, total, hasMore}`;
+//!   `?album=<mountPointId>` lists one store's album instead
+//! - `GET    /api/v1/photos?action=albums` → `{albums}` — every album `/photos`
+//!   can show (characters, projects, stores)
 //! - `POST   /api/v1/photos`       → the save receipt, at **201** (v4 `created`)
 //! - `GET    /api/v1/photos/{id}`  → one entry
 //! - `DELETE /api/v1/photos/{id}`  → `{deleted, fileGC}`
@@ -71,11 +74,28 @@ pub async fn photos_list(
     State(state): State<SharedState>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
+    // v4 `withCollectionActionDispatch({ albums: handleListAlbums },
+    // handleListGallery)`: an ABSENT action is the list; `albums` ignores every
+    // other parameter; a bare `?action=` or any other value is the `Unknown
+    // action` envelope (the helper's WARN + 400).
+    match crate::query::dispatch_action(&pairs, &["albums"], "GET", "/api/v1/photos") {
+        Ok(Some(_albums)) => {
+            return match dispatch_core(&state, CoreRequest::PhotoAlbumsList {}).await {
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            };
+        }
+        Ok(None) => {}
+        Err(r) => return *r,
+    }
     let tag: Vec<String> = crate::query::all(&pairs, "tag")
         .into_iter()
         .map(str::to_string)
         .collect();
     let req = CoreRequest::PhotoGalleryList {
+        // v4 `url.searchParams.get('album') ?? undefined` — the FIRST occurrence,
+        // `''` preserved (Zod's `Too small` is the core's).
+        album: crate::query::first(&pairs, "album").map(str::to_string),
         q: crate::query::first(&pairs, "q").map(str::to_string),
         // v4: `rawTags.length > 0 ? rawTags : undefined`.
         tag: if tag.is_empty() { None } else { Some(tag) },

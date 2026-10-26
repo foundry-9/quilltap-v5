@@ -5324,6 +5324,7 @@ impl CoreEngine {
             // stricter than v4, and it would dark-screen the whole feature. A
             // SEARCH without the seam is the loud refusal; a listing is not.
             Request::PhotoGalleryList {
+                album,
                 q,
                 tag,
                 limit,
@@ -5334,6 +5335,7 @@ impl CoreEngine {
                         &db,
                         provider.as_ref(),
                         SINGLE_USER_ID,
+                        album,
                         q,
                         tag,
                         limit,
@@ -5343,6 +5345,12 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D338: the /photos album wire (C9) ===
+            Request::PhotoAlbumsList {} => match self.ready_db() {
+                Ok(db) => super::photos::photo_albums_list(&db),
+                Err(r) => r,
+            },
+            // === end P4.D338 ===
             Request::PhotoGallerySave {
                 file_id,
                 caption,
