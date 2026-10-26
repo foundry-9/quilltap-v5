@@ -4,7 +4,6 @@ import type { CoreClient } from '../core/core-client';
 import { CoreDispatchError, type CoreRequest } from '../core/core-contract';
 import type { InventoryContainer } from './inventory-container';
 import {
-  confirmCollapseAlert,
   createInventoryItemActions,
   describeInventoryRefusal,
   type InventoryItemActionsOptions,
@@ -15,8 +14,9 @@ import { BOW, KIT, LAMP, PROJECT, obj } from './__fixtures__/inventory-ui.fixtur
  * v4 `__tests__/unit/components/inventory/inventory-ui.test.tsx` "the
  * warnings" (cases 4–8) NAME FOR NAME, each refusal driven through the
  * `CoreDispatchError` the transports throw (`code` + `details`, R-L); plus the
- * overlay truth table the dialog's Escape gate reads, `addressOf`, the row
- * writes' toasts, and R-4's `confirm()` collapse binding.
+ * overlay truth table the dialog's Escape gate reads, `addressOf` and the row
+ * writes' toasts. (R-4's Tier-1 `confirm()` collapse and its cases retired with
+ * the labelled-button alert — `ui/alert-modal.service.spec.ts`.)
  */
 afterEach(() => vi.restoreAllMocks());
 
@@ -203,21 +203,5 @@ describe('the overlays and addressOf', () => {
     expect(actions.addressOf(obj('loose', { origin: undefined }))).toEqual(QUEST);
     const none = harness(() => ({}), { container: () => null });
     expect(none.actions.addressOf(obj('loose', { origin: undefined }))).toEqual({ scope: 'general', id: null });
-  });
-});
-
-describe('confirmCollapseAlert (R-4, ALERT_CONFIRM_COLLAPSE)', () => {
-  it('two buttons: confirm true → the first label, false → null', async () => {
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(true).mockReturnValueOnce(false);
-    expect(await confirmCollapseAlert('m', ['Detach all and delete', 'Cancel'])).toBe('Detach all and delete');
-    expect(await confirmCollapseAlert('m', ['Detach all and delete', 'Cancel'])).toBeNull();
-    expect(confirm).toHaveBeenCalledWith('m');
-  });
-
-  it('one button (or none): alert, then that button (or null)', async () => {
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
-    expect(await confirmCollapseAlert('sealed', ['Understood'])).toBe('Understood');
-    expect(await confirmCollapseAlert('plain')).toBeNull();
-    expect(alert.mock.calls.map((c) => c[0])).toEqual(['sealed', 'plain']);
   });
 });

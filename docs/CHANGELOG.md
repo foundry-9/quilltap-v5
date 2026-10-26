@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the labelled-button alert, and the Inventory's two warnings through it
+
+_Versions: SPA 0.5.902._
+
+NEW `ui/alert-modal.service.ts`: `AlertModalService.show(message, buttons)` resolves to the chosen label (null when dismissed) over v4's alert surface — the message, one button per label with the last primary, a single `Close` when none are named — mounted once in the shell. The Inventory dialog's archetype-in-use (`Detach all and delete` / `Cancel`), archived-holders and cap warnings now use it, replacing the interim `window.confirm` / `window.alert` stand-in. P4.D330, Tier 2 item 24.
+
 #### 2026-10-26 — feat(spa): the Inventory reference picker and vantage loader for the Workbench (v4 `e1872c94f`)
 
 _Versions: SPA 0.5.901._

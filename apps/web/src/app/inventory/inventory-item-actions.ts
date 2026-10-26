@@ -20,7 +20,8 @@
  *    which reloads the host's list, folder tree and (in chat) the carried
  *    read — success or failure, as `onSettled` runs.
  *  - (R-4) `requestAlert` returns the CHOSEN LABEL (or null); the callers
- *    test it by label exactly as v4's do.
+ *    test it by label exactly as v4's do. The dialog binds it to the
+ *    labelled-button alert (`ui/alert-modal.service.ts`, R-W).
  *  - (R-L) A refusal is a `CoreDispatchError` whose `code` / `details` stand
  *    for v4's `InventoryRequestError`'s.
  *
@@ -241,19 +242,4 @@ export function createInventoryItemActions(opts: InventoryItemActionsOptions): I
     toggleArchived,
     duplicate,
   };
-}
-
-/**
- * R-4's Tier-1 binding of `requestAlert` — the `confirm()` COLLAPSE
- * (`ALERT_CONFIRM_COLLAPSE`, a recorded class): one button (or none) →
- * `window.alert(message)` then that button; two → `window.confirm(message)`,
- * `true` choosing the first. v4's labelled-button alert has no v5 twin until
- * the Tier-2 alert modal replaces this binding (the callers do not change).
- */
-export function confirmCollapseAlert(message: string, buttons?: string[]): Promise<string | null> {
-  if (!buttons || buttons.length < 2) {
-    window.alert(message);
-    return Promise.resolve(buttons?.[0] ?? null);
-  }
-  return Promise.resolve(window.confirm(message) ? buttons[0] : null);
 }

@@ -18,6 +18,7 @@ import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
 import { InventoryControlDialog } from '../inventory/inventory-control-dialog';
 import { InventoryDialogService } from '../inventory/inventory-dialog.service';
 import { railTarget } from './rail-target';
+import { AlertModalHost } from '../ui/alert-modal.service';
 import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { PageToolbar } from '../layout/page-toolbar';
@@ -102,6 +103,7 @@ const NAV_ITEMS: NavItem[] = [
     UserMenu,
     WardrobeControlDialog,
     InventoryControlDialog,
+    AlertModalHost,
     BrahmaEntry,
     DocumentsRailEntry,
     HelpEntry,
@@ -223,6 +225,9 @@ const NAV_ITEMS: NavItem[] = [
       @defer (when inventoryDialogOpen()) {
         <qt-inventory-control-dialog />
       }
+      <!-- The labelled-button alert (v4 lib/alert.tsx showAlert), mounted once
+           (P4.D330 R-W). Renders nothing until something asks. -->
+      <qt-alert-modal-host />
 
       <!-- The app-wide auto-lock idle provider (v4 app/layout.tsx mounts
            AutoLockProvider). Headless — renders only its warning banner. It

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { coreStreamStub, type CoreStreamStub } from '../core/core-client.testing';
 import { CoreDispatchError, type ScopedEvent } from '../core/core-contract';
+import { AlertModalService } from '../ui/alert-modal.service';
 import { ToastService } from '../ui/toast.service';
 import { WORKSPACE_TAB_VISIBLE } from '../workspace/workspace-contract';
 import { BOW, KIT, LAMP, RING, SWORD } from './__fixtures__/inventory-ui.fixture';
@@ -185,7 +186,7 @@ describe('InventoryControlDialogInner', () => {
     expect(el.querySelector('[data-testid="inventory-carrying-now"]')).toBeNull();
   });
 
-  it('a kit equip with skipped members says so in a SUCCESS toast; a cap breach alerts v4’s sentence', async () => {
+  it('a kit equip with skipped members says so in a SUCCESS toast; a cap breach alerts v4’s sentence (the labelled-button alert)', async () => {
     let refuse = false;
     const route: Route = (req) => {
       if (req['type'] === 'chatInventoryEquip') {
@@ -210,12 +211,20 @@ describe('InventoryControlDialogInner', () => {
       message: 'Done — 2 kit members could not be carried and stayed behind',
     });
     refuse = true;
-    const alert = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     ([...pane.querySelectorAll('button')].find((b) => b.textContent!.trim() === 'Equip') as HTMLButtonElement).click();
     await settle(fixture);
-    expect(alert).toHaveBeenCalledWith(
-      '"Excalibur" can be carried at most 1 at a time — set one down before taking up another.',
-    );
+    const alerts = TestBed.inject(AlertModalService);
+    expect(alerts.current()).toMatchObject({
+      message: '"Excalibur" can be carried at most 1 at a time — set one down before taking up another.',
+      buttons: ['Understood'],
+    });
+    // While the alert is up the dialog's own Escape stands down.
+    let closes = 0;
+    fixture.componentInstance.closed.subscribe(() => closes++);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(closes).toBe(0);
+    alerts.answer('Understood');
+    await settle(fixture);
   });
 
   it('Reset to defaults asks first, then toasts; a refusal is worded', async () => {

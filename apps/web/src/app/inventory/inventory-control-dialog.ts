@@ -14,6 +14,7 @@ import {
 import { CoreClient } from '../core/core-client';
 import { CoreDispatchError, type ResolvedInventoryItem } from '../core/core-contract';
 import { RealtimeService } from '../core/realtime.service';
+import { AlertModalService } from '../ui/alert-modal.service';
 import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
@@ -32,11 +33,7 @@ import { InventoryDialogService } from './inventory-dialog.service';
 import { InventoryFolderPickerDialog } from './inventory-folder-picker-dialog';
 import { createInventoryFoldersStore } from './inventory-folders-data';
 import { InventoryInstantiateDialog } from './inventory-instantiate-dialog';
-import {
-  confirmCollapseAlert,
-  createInventoryItemActions,
-  type InventoryInstantiateRequest,
-} from './inventory-item-actions';
+import { createInventoryItemActions, type InventoryInstantiateRequest } from './inventory-item-actions';
 import { InventoryItemEditor } from './inventory-item-editor';
 import { createInventoryListData } from './inventory-list-data';
 import { describeInventoryRefusal } from './inventory-refusal';
@@ -44,13 +41,6 @@ import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } fro
 
 /** v4 `:49` — the catalogue's sort (default `localeCompare`, no options). */
 const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name);
-
-/**
- * R-4's binding of the dialog's `requestAlert`. Tier 1 binds the `confirm()`
- * collapse (`ALERT_CONFIRM_COLLAPSE`); swapping the binding is the only edit
- * a labelled-button alert modal needs.
- */
-export type InventoryAlert = (message: string, buttons?: string[]) => Promise<string | null>;
 
 /**
  * The Inventory dialog's inner body — a port of v4
@@ -78,8 +68,9 @@ export type InventoryAlert = (message: string, buttons?: string[]) => Promise<st
  * down while an overlay, the Take-up picker or a confirmation is up.
  *
  * **Recorded divergences.** `requestConfirmation` binds `window.confirm` (the
- * P4.D318 R-2 precedent); `requestAlert` binds R-4's collapse unless the host
- * passes another. v4's three TanStack LIST reads are one-shot dispatches.
+ * P4.D318 R-2 precedent); `requestAlert` is the labelled-button alert
+ * (`AlertModalService`, R-W — the Tier-1 `confirm()` collapse is retired).
+ * v4's three TanStack LIST reads are one-shot dispatches.
  */
 @Component({
   selector: 'qt-inventory-control-dialog-inner',
@@ -228,6 +219,7 @@ export type InventoryAlert = (message: string, buttons?: string[]) => Promise<st
 export class InventoryControlDialogInner {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
+  private readonly alerts = inject(AlertModalService);
 
   readonly initialContainer = input<InventoryContainer | null>(null);
   readonly chatId = input<string | null>(null);
@@ -236,8 +228,6 @@ export class InventoryControlDialogInner {
   readonly asTab = input(false);
   /** Hide the container select (a card shows one tier). */
   readonly fixedContainer = input(false);
-  /** R-4: the labelled-button alert; the `confirm()` collapse by default. */
-  readonly alert = input<InventoryAlert>(confirmCollapseAlert);
   readonly closed = output<void>();
 
   // ---- the catalogue (v4 `useInventoryCatalogue`, `:52-77`) ----
@@ -394,7 +384,7 @@ export class InventoryControlDialogInner {
   private async requestAlert(message: string, buttons?: string[]): Promise<string | null> {
     this.confirming.set(true);
     try {
-      return await this.alert()(message, buttons);
+      return await this.alerts.show(message, buttons);
     } finally {
       this.confirming.set(false);
     }
