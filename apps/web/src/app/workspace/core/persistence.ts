@@ -59,6 +59,7 @@ const TAB_KINDS = [
   'scenarios',
   'brahma',
   'wardrobe',
+  'inventory',
   'profile',
   'about',
   'generate-image',

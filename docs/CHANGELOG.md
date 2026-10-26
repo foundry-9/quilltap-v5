@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the `inventory` workspace tab and the rail's Inventory button
+
+_Versions: SPA 0.5.898._
+
+The workspace gains the `inventory` tab kind — `The Inventory` with the `inventory` icon, after the Wardrobe in the kind lists, persisted, registered to `qt-inventory-tab-view` and openable by `?open=inventory[&characterId=…]`; its payload's `projectId` is typed and bound but, as at v4's pin, nothing sets it. `workspace-core-fixtures.json` is regenerated from v4 at `322a5488e` (only the tab-meta row moves). The shell's rail gains an Inventory button after the Wardrobe's — the tab in the workspace, the chat-scoped dialog on a Salon chat (with the chat's default character), the plain dialog elsewhere — and mounts the deferred Inventory dialog. An icon guard spec pins the name and the tab icon. P4.D330, Tier 1 items 11 + 12, Tier 2 item 25.
+
 #### 2026-10-26 — feat(spa): the Inventory dialog, its tab view and its project panel (v4 `4fbdad186`)
 
 _Versions: SPA 0.5.897._

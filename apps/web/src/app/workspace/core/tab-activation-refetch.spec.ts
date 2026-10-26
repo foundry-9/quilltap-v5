@@ -186,6 +186,9 @@ describe('tabActivationQueryKeys', () => {
         'character-new',
         'document',
         'document-standalone',
+        // P4.D330 — v4 has no `inventory` row (`tab-refetch.ts` default `[]`):
+        // the dialog's lists are signal-held and reload via onTabActivated.
+        'inventory',
         'photos',
         'salon',
         'salon-new',

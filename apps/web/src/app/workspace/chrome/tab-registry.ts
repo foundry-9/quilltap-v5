@@ -65,10 +65,12 @@ import type {
   ScriptoriumTabPayload,
   SettingsTabPayload,
   WardrobeTabPayload,
+  InventoryTabPayload,
 } from '../workspace-contract';
 
 // The workspace-tabs remainder round's screens (bound at its unification).
 import { WardrobeTabView } from '../../wardrobe/wardrobe-control-dialog';
+import { InventoryTabView } from '../../inventory/inventory-control-dialog';
 import { StandaloneDocumentView } from '../../documents/standalone-document-view';
 import { BrahmaConsoleView } from '../../brahma/brahma-console-view';
 
@@ -176,6 +178,14 @@ export const DEFAULT_TAB_REGISTRY: TabRegistry = {
     component: WardrobeTabView,
     inputs: (tab) => ({
       characterId: (tab.payload as WardrobeTabPayload | undefined)?.characterId,
+    }),
+  },
+  // P4.D330 — v4 `TabView.tsx:117-120` (`4fbdad186`). `projectId` is dead at the pin (R-9).
+  inventory: {
+    component: InventoryTabView,
+    inputs: (tab) => ({
+      characterId: (tab.payload as InventoryTabPayload | undefined)?.characterId,
+      projectId: (tab.payload as InventoryTabPayload | undefined)?.projectId,
     }),
   },
   'document-standalone': {

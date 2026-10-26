@@ -15,6 +15,9 @@ import {
 } from '../wardrobe/default-character';
 import { WardrobeControlDialog } from '../wardrobe/wardrobe-control-dialog';
 import { WardrobeDialogService } from '../wardrobe/wardrobe-dialog.service';
+import { InventoryControlDialog } from '../inventory/inventory-control-dialog';
+import { InventoryDialogService } from '../inventory/inventory-dialog.service';
+import { railTarget } from './rail-target';
 import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { PageToolbar } from '../layout/page-toolbar';
@@ -98,6 +101,7 @@ const NAV_ITEMS: NavItem[] = [
     PageToolbar,
     UserMenu,
     WardrobeControlDialog,
+    InventoryControlDialog,
     BrahmaEntry,
     DocumentsRailEntry,
     HelpEntry,
@@ -158,6 +162,18 @@ const NAV_ITEMS: NavItem[] = [
             >
               <qt-icon name="wardrobe" class="w-7 h-7" />
             </button>
+            <!-- v4 sidebar-footer.tsx:255-279 — the Inventory entry (P4.D330),
+                 the Wardrobe's twin: a tab in the workspace, the chat-scoped
+                 dialog from a Salon chat, the plain dialog anywhere else. -->
+            <button
+              type="button"
+              class="qt-collapsed-nav-button"
+              title="Inventory"
+              aria-label="Inventory"
+              (click)="openInventory()"
+            >
+              <qt-icon name="inventory" class="w-7 h-7" />
+            </button>
             <!-- v4 sidebar-footer.tsx:255-262 — the Document Mode entry
                  (opens the standalone document picker). -->
             <qt-documents-rail-entry />
@@ -202,6 +218,11 @@ const NAV_ITEMS: NavItem[] = [
       @defer (when wardrobeDialogOpen()) {
         <qt-wardrobe-control-dialog />
       }
+      <!-- The global Inventory dialog (P4.D330), deferred for the same reason:
+           its item editor's tree is heavy, and nothing renders while closed. -->
+      @defer (when inventoryDialogOpen()) {
+        <qt-inventory-control-dialog />
+      }
 
       <!-- The app-wide auto-lock idle provider (v4 app/layout.tsx mounts
            AutoLockProvider). Headless — renders only its warning banner. It
@@ -216,12 +237,15 @@ export class Shell implements OnInit {
   private readonly router = inject(Router);
   private readonly core = inject(CoreClient);
   private readonly wardrobeDialog = inject(WardrobeDialogService);
+  private readonly inventoryDialog = inject(InventoryDialogService);
   private readonly workspace = inject(WorkspaceService);
 
   protected readonly navItems = NAV_ITEMS;
   protected readonly showNavThemeSelector = this.theme.showNavThemeSelector;
   /** The `@defer` trigger for the global wardrobe dialog (see the template). */
   protected readonly wardrobeDialogOpen = this.wardrobeDialog.isOpen;
+  /** The `@defer` trigger for the global Inventory dialog. */
+  protected readonly inventoryDialogOpen = this.inventoryDialog.isOpen;
 
   /**
    * v4 `sidebar-footer.tsx:239-244`: a plain `open()` off a salon chat; on a
@@ -243,6 +267,21 @@ export class Shell implements OnInit {
     const chatId = chatMatch[1];
     const characterId = await resolveDefaultCharacterForChat(this.core, chatId);
     this.wardrobeDialog.open(characterId ? { chatId, characterId } : { chatId });
+  }
+
+  /** v4 `sidebar-footer.tsx:255-279` — the rail's Inventory entry (P4.D330). */
+  protected async openInventory(): Promise<void> {
+    const target = railTarget(this.router.url, isWorkspaceTabsEnabled());
+    if (target.kind === 'tab') {
+      this.workspace.openTab('inventory');
+      return;
+    }
+    if (target.kind === 'dialog') {
+      this.inventoryDialog.open();
+      return;
+    }
+    const characterId = await resolveDefaultCharacterForChat(this.core, target.chatId);
+    this.inventoryDialog.open(characterId ? { chatId: target.chatId, characterId } : { chatId: target.chatId });
   }
 
   ngOnInit(): void {

@@ -40,6 +40,7 @@ export type TabKind =
   | 'scenarios'
   | 'brahma'
   | 'wardrobe' // payload: WardrobeTabPayload — RAIL-opened only; NO chatId
+  | 'inventory' // payload: InventoryTabPayload — RAIL-opened; `projectId` is DEAD at the pin (R-9)
   | 'profile'
   | 'about'
   | 'generate-image'
@@ -123,6 +124,15 @@ export interface SettingsTabPayload {
 }
 export interface WardrobeTabPayload {
   characterId?: string;
+}
+/**
+ * v4 `lib/workspace/types.ts:169-172` (`4fbdad186`). `projectId` is DEAD at
+ * the pin: the intent reads only `characterId` and the rail opens the tab with
+ * no payload — no caller sets it (P4.D330 R-9). Ported as type + binding only.
+ */
+export interface InventoryTabPayload {
+  characterId?: string;
+  projectId?: string;
 }
 export interface CharacterEditTabPayload {
   characterId: string;

@@ -32,6 +32,7 @@ const OPENABLE_KINDS: ReadonlySet<TabKind> = new Set<TabKind>([
   'scenarios',
   'brahma',
   'wardrobe',
+  'inventory',
   'profile',
   'about',
   'generate-image',
@@ -94,6 +95,8 @@ export function parseOpenIntent(params: ParamReader): OpenIntent | null {
     const create = params.get('new') === '1' || undefined;
     payload = mountPointId || path || create ? { mountPointId, path, create } : undefined;
   } else if (kind === 'wardrobe') payload = characterId ? { characterId } : undefined;
+  // v4 `WorkspaceIntent.tsx:73` (P4.D330) — the character only; `projectId` is dead (R-9).
+  else if (kind === 'inventory') payload = characterId ? { characterId } : undefined;
   else if (kind === 'character-edit' || kind === 'character-view')
     payload = characterId ? { characterId, tab } : undefined;
   else if (kind === 'prospero') {

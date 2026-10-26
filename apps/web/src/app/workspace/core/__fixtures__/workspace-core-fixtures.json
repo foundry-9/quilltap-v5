@@ -6790,6 +6790,10 @@
       "title": "The Wardrobe",
       "icon": "wardrobe"
     },
+    "inventory": {
+      "title": "The Inventory",
+      "icon": "inventory"
+    },
     "profile": {
       "title": "Profile",
       "icon": "profile"

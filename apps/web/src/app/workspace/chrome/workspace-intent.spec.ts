@@ -74,6 +74,18 @@ describe('parseOpenIntent', () => {
     });
   });
 
+  // P4.D330 — v4 `WorkspaceIntent.tsx:73`: the character only (R-9).
+  it('carries inventory characterId (optional)', () => {
+    expect(parseOpenIntent(reader({ open: 'inventory', characterId: 'x' }))).toEqual({
+      kind: 'inventory',
+      payload: { characterId: 'x' },
+    });
+    expect(parseOpenIntent(reader({ open: 'inventory' }))).toEqual({
+      kind: 'inventory',
+      payload: undefined,
+    });
+  });
+
   it('opens character-edit with its id, and skips when it is missing', () => {
     expect(parseOpenIntent(reader({ open: 'character-edit', characterId: 'x', tab: 't' }))).toEqual({
       kind: 'character-edit',
