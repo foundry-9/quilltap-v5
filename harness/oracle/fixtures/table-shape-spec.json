@@ -119,6 +119,25 @@
         "CREATE VIEW doc_mount_chunks AS SELECT * FROM doc_mount_chunks_x"
       ],
       "llm": []
+    },
+    {
+      "name": "log-entries-renamed",
+      "why": "P4.D331: the Log's table with a schema column renamed — the SHAPE form on the new LlmLogs row (v4's onTableEnsured indexes name chatId / characterId / createdAt, not message, so the ensure itself succeeds)",
+      "mount": [],
+      "llm": ["ALTER TABLE log_entries RENAME COLUMN message TO message_x"]
+    },
+    {
+      "name": "log-entries-dropped",
+      "why": "P4.D331: an absent log_entries — v4's ensure creates it and reports it sound; v5's structural pass creates it from the re-dump (R-B)",
+      "mount": [],
+      "llm": ["DROP TABLE log_entries"]
+    },
+    {
+      "name": "log-entries-view",
+      "divergence": true,
+      "why": "P4.D331: a VIEW standing in for log_entries — measured: v4's ensure fails 'views may not be indexed' (its generateDDL CREATE INDEX runs before onTableEnsured)",
+      "mount": [],
+      "llm": ["DROP TABLE log_entries", "CREATE VIEW log_entries AS SELECT 1 AS id"]
     }
   ],
   "_degradedDoc": "P4.159 (dogfood #150): each set of dedicated partitions is left DEGRADED the way v4's client leaves it (the module's degraded flag set, no connection); the others are fresh in-memory databases v4's own ensures fill. A fresh container verified over the dedicated repositories in container order — v4's REAL guards answer the problem strings.",

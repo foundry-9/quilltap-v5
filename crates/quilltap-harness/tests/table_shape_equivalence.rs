@@ -296,6 +296,16 @@ const EXPECTED_DIVERGENCES: &[(&str, Problems, Problems)] = &[
         )],
         &[("docMountChunks", "doc_mount_chunks is a view, not a table")],
     ),
+    // P4.D331: the same class on the Log's table — v4's ensure meets the view
+    // at its generateDDL `CREATE INDEX` (measured at `322a5488e`).
+    (
+        "log-entries-view",
+        &[(
+            "logEntries",
+            "log_entries in LLM logs database: views may not be indexed",
+        )],
+        &[("logEntries", "log_entries is a view, not a table")],
+    ),
     // (`points-pre-alter` was pinned here until P4.150 ported v4's four
     // `doc_mount_points` ALTER self-heals — now a parity row, with the
     // `Migrated …` INFO lines compared beside the problems.)
@@ -317,7 +327,8 @@ fn every_plant_reports_what_v4s_pass_reports() {
     let Some(rows) = rows() else { return };
     let substrate = of_kind(&rows, "substrate");
     let plants = of_kind(&rows, "plant");
-    assert_eq!(plants.len(), 17, "plant rows");
+    // 20 since P4.D331: + the three `log-entries-*` plants on the LlmLogs row.
+    assert_eq!(plants.len(), 20, "plant rows");
     let mut failures = Vec::new();
     let mut divergences_seen = 0;
     for r in &plants {

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(harness): log_entries damage plants and the regexp() registration census (P4.D331)
+
+_No crate versions bumped._
+
+`table_shape_equivalence` gains three plants on the new LlmLogs row, measured through v4's real structural pass at `322a5488e`: a renamed `message` column (`table log_entries is missing column message` on both sides), a dropped table (both create it and report it sound), and a view standing in for the table — v4's ensure fails `views may not be indexed` while v5 reads the view, recorded both ways beside the `chunk-view` rows in `EXPECTED_DIVERGENCES`. New `regexp_registration_sites` source census: `register_regexp(` appears in core's production zone only in the LLM-logs arms of `db/mod.rs`, `db/runtime.rs` and `test_support.rs`, and the every-connection `register_qt_text(` sites are pinned unmoved.
+
 #### 2026-10-26 — feat(jobs): the nightly cleanup prunes the Log on the LLM-log window (P4.D331)
 
 _Versions: core 0.0.1331._
