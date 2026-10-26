@@ -191144,3 +191144,87 @@ The LANE-REMOVE census (the `no_*_lane_remove_markers_left` guards) is green; my
 Tier R (`cli_differential`, `QT_V4_CHECKOUT` = the pin): **422 cases, 0 failures** (438 s).
 
 Versions at close: core 0.0.1325, web 0.0.244; harness frozen 0.0.1110.
+
+
+## P4.D333 — the custom-tool definition-grammar twins: any-of, the metadata list rule, bug 257, the one corpus regen, the vendored schema (lane `claude/p4.d333-custom-tool-grammar-twins-a5a2de`, pin `322a5488e`, 2026-10-26) — LANE RECORD
+
+**LANE COMPLETE** (Tier 1 bar the two named entrance deferrals below). The session started in the app-made worktree `angry-williamson-a5a2de` on `main` at `914096110` (the orders' commit `65fd55814` plus two docs commits recording the human's carry-out ruling); the branch was cut there, no commits of its own before. Stage A, no stacking.
+
+### Probe (§R.2 — an observation)
+2026-10-26 09:05 CDT: v4 checkout on `main`, tree clean, `log a0905454b..main` EMPTY, `log 489b228b6..bugfix` EMPTY — matching the ledger's §1 (`a0905454b`, 32 rows past the pin, the human's 2026-10-26 ruling to carry the round out at its pin). Pin `/tmp/qt-v4-pin-p4d333-322a5488e` = `322a5488e7bd…`, `package.json` `4.11.0-dev.53`, `npm ci --offline` → `openai` 7.34.0, `@xterm/headless` 6.0.0. No v4 movement observed during the lane.
+
+### Commits
+| sha | unit |
+|---|---|
+| `284e7f425` | the Rust twin (types, parse, validators, evaluators, bug 257's two orders, `{{outcome.*}}`, the list rule, `heldGroup`, vocabulary, `describe_when`, roster DEBUG) + the definition / execution / vocabulary / run-custom / expressions rows + NEW `pascal_metadata_match_equivalence`, `pascal_tool_gate_equivalence`, `pascal_gate_when_raw_reads_census` — core 0.0.1324 |
+| `d810224f9` | the vendored schema (63,595 B) + `public_schemas_vendor_guard`'s constant — SPA 0.5.882 |
+| `b6399d479` | the roster's withheld DEBUG captured and compared (item 13) — harness only |
+| `3f7c1bce7` | bug 257 through the `run_custom` handler (item 20, handler part) + `context` on the three new DEBUG lines — core 0.0.1325 |
+| `2cf4315cf` | the SPA twin WHOLE + the committed corpus + README section + the census spec — SPA 0.5.883 |
+| (this record) | the lane record + the order's status header |
+
+Commits were grouped where a smaller one could not compile alone (every reader of `ToolGate` / `When` breaks with the type change); every commit ran fmt, both clippy sets and its touched families; the full workspace gate ran once, at the end.
+
+### Red-first (item 1)
+- **Definition family from the pin, generator UNCHANGED** (`/tmp/p4d333/definition-pre.ndjson`): **43 rows RED** — more than predicted. Mine: the five `when-progress-bad-key-*` + `gate-progress-bad-key` (the `invalid_key` sentence), every "must test …" row, `param-name-not-identifier` / `params-key-not-identifier` / `metadata-empty-string-key` / `gate-empty-string-key` (the `invalid_key` arm applies to EVERY record key schema, not only `progress`), the eight `gate-*` operand rows whose path became `availableWhen: metadata.…` (the gate is now a union), the three `effect-when-*` path rows, and `withheld-key-holds-array-offers` (the list rule). Siblings': eight rows grown by the `$inventory` operand / roll union arm (P4.D329) and four effect-kind sentences (P4.D329 + P4.D331).
+- **Vocabulary / run-custom**: not run against `main` (source already moved); the masks fire on EVERY row at the pin (81/81, 29/29), which is the union red §R.7 predicts.
+- **Guard**: `public_schemas_vendor_guard` red against the pin with `main`'s schema + `44_021` (restored-and-run), green after.
+- **Mutations** (red where it must be): the list rule's `eq` over `all` → `list-eq-holds` red; `held_group_of` as `rposition` → `anyof-available-opens-on-0` red (both the definition and the gate families); a one-arm `let When::Object(..) else` planted in `tool_vocabulary.rs` → the census red.
+
+### The ONE corpus regen (R-11)
+`cd "$PIN" && TZ=UTC npx tsx "$V5W/harness/oracle/cases/pascal-custom-tool-definition.ts"` → `apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`, byte-equal (`cmp`) to `/tmp/p4d333/pascal-definition.ndjson`: **537 rows** (10 title / 457 definition / 70 gate), md5 `e15a19fd1f20e33aba1a089f4795bcb7`, sha256 `73b2075ef4bfd80414addad1eb3af94e39d0e74c288d40ac011312d3c74b8803`. Markers: `"id":"anyof-` 57, `"id":"brief-` 22, `at most 8 groups` 7, `cannot be dealt before the consult` 5; `heldGroup` floors checked in-family (≥ 4). `RESIDUE_UNTIL_UNION` = 12 ids (below) — NOT empty at this commit, contrary to the order (measured; each is a PRE-EXISTING row a sibling's grammar moves).
+
+### Families (all from the pin)
+definition (green, 12 carved), execution (green; `list-` 19, `anyof-` 8, `b257-` 12 rows, `Conclusion to reach: Not found.` 4), vocabulary (green, 4 keys masked; `inventoryAggregates` on every row), run-custom (green, preamble masked; ` or (` present), expressions (green; 7 `outcome` classify rows, `"kind":"outcome"` = 3), NEW metadata-match (40 rows, 24 over lists; `which is a list`, `"asked":[]`, `looks for` all present), NEW tool-gate (21 verdicts + 6 `gateNamesProgress`; `"heldGroup":1` ×3, `false` ×4), roster (green; withheld lines compared on every row, `groups:2` ×2, one `heldGroup:null` any-of), handler (green; 2 new cases; 5 carved). The sweep driver from the pin over 18 Pascal families: **17 ok, 1 run_failed** — `pascal_custom_tools_route_equivalence`, red at its perspective witnesses (`list-llm-led … the oracle's perspective moved`) — P4.D332's `participant`-tier re-aim, red identically before this lane touched anything. `recipe_sweep.py --self-test` 0.
+
+### Workspace gate
+fmt clean; clippy clean both feature sets; `cargo test --workspace --no-fail-fast` with the lane's env block (`/tmp/p4d333/env.sh`): **830 binaries / 5,474 passed / 1 failed / 3 ignored** — the one red `qtap_schema_embed_guard` (108,678 vs 109,559 against the pin), a §R.3 expected red owned by P4.D327. Core lib alone: 3,802 passed. SPA: `npm run lint` clean, `npm test` **532 files / 11,405 tests** green, `npm run build` clean. Playwright (by file): see the end of this record.
+
+### Carves and masks (the unifier lifts each)
+- `RESIDUE_UNTIL_UNION` (definition): `string-compared-with-value`, `roll-wrong-type`, `roll-null`, `roll-range-and-dice-both-broken`, `contains-number-substring`, `state-missing-fallback`, `state-array-fallback`, `state-not-quite-a-ref` (P4.D329 — the `$inventory` arm), `effects-both-halves`, `effects-target-and-wardrobe`, `effects-empty-object`, `effects-when-only` (P4.D329 + P4.D331). A carved row that turns green FAILS the run.
+- `RESIDUE_KEYS_UNTIL_UNION` (vocabulary): `inventoryReads`, `equips`, `unequips`, `picksUp`.
+- `RESIDUE_PREAMBLE_UNTIL_UNION` (run-custom): the preamble sentence.
+- roster `RESIDUE_UNTIL_UNION`: `full-precedence-chain` (P4.D332).
+- handler `RESIDUE_UNTIL_UNION`: `unknown-tool`, `gate-available-missing-key-unrunnable`, `gate-available-empty-sheet-unrunnable`, `gate-withheld-when-holds-unrunnable`, `progress-gate-running-span-unrunnable` (P4.D332 — each differs in its `Available:` list alone). The family now collects every red case by name.
+- SPA `DRAFT_ROUNDTRIP_PENDING_P4D334` (8 array-gate ids; 2 accepted rows actually skip). **Compile-forced edits in P4.D334's `tool-draft.ts`**: five type casts (`rollFieldToValue`, `gateConditionsFromGate`, `effectToDraft` ×2, `outcomeToDraft`, `draftFromDefinition`'s range) keeping its one-group reading — without them `ng test` / `ng build` cannot type-check the app. P4.D334's group-aware draft replaces them.
+- Compile-forced edit in P4.D332's `roster.rs` region: the `use super::tool_gate::{…, gate_names_progress, …}` line (`:45`).
+
+### Measurements the order asked for
+- **R-1 / trap 24 — the array `.max`**: HARD (aborts before any element), measured at the pin with a probe (`nineWithBad` reports only `at most 8 groups`); the order's "continuable" is wrong, the SPA's `resHard` was right. Non-array inputs with a `.length` get length checks past `invalid_type` (`"abcdefghij"` → `…expected array, received string; at most 8 groups`), so they are NOT filtered by `isNotAnArray` — rows pinned.
+- **R-12 SPA anchors**: `KNOWN_TOP_LEVEL_KEYS` still 17; the SPA twin carries no `.describe()` texts, so none were added; the Inventory / aggregate / Log grammars proven against a SCRATCH 85-row corpus generated from v4 at the pin (never committed) — 85/85 byte-equal.
+- **R-15 `characterId`**: v4 carries it (also at `e8e17b2d9`); v5's line never did, and the pure `resolve_roster_from_pool` is not handed the invoker's id (its signature is in P4.D332's region) — NOT added; the roster family compares name / tier / mount / clause / `groups` / `heldGroup`. The pre-existing snake-case field names on that line are unchanged.
+- **Item 6 capture home**: the execution family captures no log lines; the three new DEBUG lines are pinned in-crate (`custom_tools.rs` `any_of_and_outcome_debug_tests`, v5 bytes against v4's literal sentences), and the table-first line is ALSO compared against v4's capture in the handler family. All three carry v4's `context=pascal.custom-tools` and camelCase keys (§R.5).
+- **Item 7 `simulate_outcomes`**: builds no `WinningOutcome`; v4's `simulateOutcomes` reads no brief — nothing to change.
+- **Item 11 `contains` operand**: `{ metadata: { knownLanguages: { contains: { $param: 'difficulty' } } } }` loads, and the LIST path's `looks for 10, and only a string can be a substring` decline fires.
+- **Item 17 `null` entry**: `isPrimitive(null)` is false — `[1, null]` declines whole with the reworded sentence.
+- **Item 19 census**: v4's regex is VACUOUS on v5 Rust (0 offenders on `main`, measured), so the Rust census counts one-group variant patterns vs their `AnyOf` arms per file; on `main` it named `collect_metadata_tested`, `tool_vocabulary.rs:187` and `describe_when`. SPA census: v4's regex verbatim, 0 offenders; with the exemptions lifted it finds exactly `tool-draft.ts:616`, `:1486` (P4.D334's, exempt by v4's own rule); `PENDING_P4D334` empty.
+- **Item 21 schema readers**: no v5 code reads the file; `tool-draft.ts:67` stores `/schemas/qtap-custom-tool.schema.json` as the default `$schema` value only.
+- **Item 26**: `qtap_schema_validate_equivalence` covers `.qtap` exports only — "no v5 mirror-agreement family; the SPA's `safeParse` is the mirror".
+- **R-9 ported-behaviour change**: `gate_names_progress` counts progress KEYS; an authored-empty `progress: {}` no longer derives the sheet (scenario `gate-progress-empty-record-derives-nothing`, verdict unchanged).
+- No `validate_gates` empty group walk was written (a loop with nothing in it would be dead code); the path rule ships as `group_path(base, any_of, g)`, used by the outcome and effect walks, for P4.D329's gate inventory-key check.
+
+### Deferred, loudly
+- **Item 20, route + trigger entrances' bug-257 rows — NOT landed.** The route family is red at the pin for P4.D332's reason before any row of mine (its perspective witnesses assert the participant tier), and both families need P4.D332's both-sides re-aim first; bug 257's logic is entrance-independent (`execute_custom_tool`) and is proven tier-1 (12 execution rows, prompt bytes) and tier-2 through the handler (prompt in `pascalMeta`, the canned key and the `CUSTOM_TOOL_CONSULT` row, the captured line). The unifier (or P4.D332) adds `run-oracle-table-first` / the trigger row over the same per-case `narrator` plant once the re-aim lands.
+- Tier 3 items 27–34 as the order records them (sibling grammars in Rust, the 13th positional, the `log` effect's `{{outcome.*}}`, the Workbench draft, `tool-gate-keys`, describes, `cc57e6cbc`).
+
+### HANDOFF: P4.D339 (item 22)
+The help sentences this lane's strings must agree with, at the pin: `help/custom-tools.md` `:110`, `:117` (one level, at most eight objects, AND binds tighter), `:153`, `:171–172` (the list rule, incl. "an empty list is a fact rather than an absence"), `:322–351` (briefs, the table dealt first, the two load rules), `:389` (the `{{outcome.*}}` placeholder row), `:706` (gates say "or"); `help/pascals-workbench.md` `:32` (briefs, the refused prompt), `:44` (`passed on line 2`).
+
+### v4 filing candidates (for the unifier's findings file)
+- `collectMetadataTested` records keys from LOSING groups (trap 13) — ported faithfully.
+- v4's `metadataComparatorHolds` tests presence with `key in metadata`, so a key named `toString` / `constructor` declines as "holds an object" where v5 says "has no such metadata key" (both false; the DEBUG reason differs) — pre-existing, not ported.
+
+### Fixtures changed
+`apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson` (above — the shared corpus; every consumer is this lane's); `apps/web/src/testing/fixtures/pascal-progress.oracle.ndjson` re-recorded at the pin with its unchanged recorder (71 rows, 12 moved; consumer `progress-arms.oracle.spec.ts` only). No committed DB fixture changed (the handler's `narrator` tool is planted per case on the per-run copy).
+
+### Regen recipes (lane-private staging; committed headers stay canonical)
+Env block: `/tmp/p4d333/env.sh`. tsx: `cd "$PIN" && TZ=UTC npx tsx "$V5W/harness/oracle/cases/<case>.ts" > /tmp/p4d333/<case>.ndjson` for `pascal-custom-tool-definition`, `pascal-tool-vocabulary`, `pascal-run-custom`, `pascal-expressions`, `pascal-metadata-match`, `pascal-tool-gate`. jest (mirror under `/tmp/p4d333/<x>-mirror/cases`, `--watchman=false --testTimeout=180000 --roots "$PWD" --roots "$M/cases"`): `pascal-custom-tools-execution` (`QT_ORACLE_OUT=/tmp/p4d333/pascal-execution.ndjson`), `pascal-custom-tools-discovery` (`…/pascal-discovery.ndjson`), `pascal-run-custom-handler` (fixtures copied to `$M/db/` with the `.meta.json` sidecar; `QT_FIXTURE_PASCAL_MAIN/MOUNT`; `…/pascal-handler.ndjson`).
+
+### Versions at close
+core 0.0.1325, SPA 0.5.883; host 0.0.211, web 0.0.243, cli 0.0.34, tauri 0.0.9 unchanged; harness frozen 0.0.1110. `cli_differential` not re-run (no CLI or web edge moved).
+
+### 💸 for the dogfood pass
+As the order lists: a v4-written any-of tool loads and is withheld with `groups: 2` / `heldGroup: null`; the `run_custom` description `value ≥ 0.9 or your lucky = true`; a `metadata` list test on a real sheet; bug 257 on a real turn (one consult — the `CUSTOM_TOOL_CONSULT` prompt reads `State: …, row N. Conclusion to reach: …`); the old order for a table testing `llm` (one consult); the refusal badges (`brief` without `llm`, a 9-group gate, a bad progress key's own sentence).
+
+### Playwright (by file, one invocation at a time; debug binaries from the gate's build — the cloned stale `target/release` bins removed first)
+`workbench-gate-flow` 1 passed / 1 skipped; `workbench-progress-flow` 2 passed; `workbench-triggers-effects-flow` 6 passed; `workbench-wardrobe-picker-flow` 8 passed. `workbench-flow` red on its first run (2 failed, 7 not reached: `maybeUnlock` — the passphrase entered, `qt-shell` not visible within 15 s on the cold server's first spec, with two sibling workspace gates loading the machine — the unlock / boot path, before any grammar code ran); re-run ALONE: **7 passed / 2 skipped**. No e2e file added (§R.9).

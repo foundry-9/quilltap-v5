@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D333 lane record — the grammar twins, the one corpus regen, the vendored schema
+
+_Docs-only change._
+
+The lane record for P4.D333 (`status-log.md`) and the order's status header (`LANE COMPLETE`). It records the red-first measurements (43 rows red at the pin, more than the order predicted), the 537-row corpus hashes, every carve and mask for the unifier to lift, the order's corrections measured on the way (the array `.max` aborts; v4's census regex finds nothing in v5 Rust; the `invalid_key` arm covers every record key), the loud deferral of the route / trigger entrances' bug-257 rows behind P4.D332's re-aim, the help-sentence `HANDOFF:` to P4.D339, and the gate results.
+
 #### 2026-10-26 — feat(pascal-spa): the SPA grammar twin at v4 `322a5488e` — any-of, briefs, the list rule, and the Inventory / aggregate / Log grammars as data (P4.D333)
 
 _Versions: SPA 0.5.883._
