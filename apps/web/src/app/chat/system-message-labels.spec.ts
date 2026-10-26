@@ -90,6 +90,12 @@ describe('system-message-labels — Pascal (P4.6ba)', () => {
     expect(getAnnouncementImportance(staff({ systemKind: 'custom-tool-error' }))).toBe('high');
     expect(getAnnouncementImportance(staff({ systemKind: 'anything-else' }))).toBe('high');
   });
+
+  // P4.D330 — v4 `4fbdad186` (`system-message-labels.ts:52,348`).
+  it('labels an inventory-change "inventory" and rates it medium, not a roll', () => {
+    expect(getSystemKindDisplayLabel(staff({ systemKind: 'inventory-change', pascalMeta: null }))).toBe('inventory');
+    expect(getAnnouncementImportance(staff({ systemKind: 'inventory-change' }))).toBe('medium');
+  });
 });
 
 /** v4 `system-message-labels.test.ts` (231be14c), case for case. */

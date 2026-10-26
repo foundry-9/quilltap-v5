@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the `inventory-change` Staff label and the Inventory tool group
+
+_Versions: SPA 0.5.887._
+
+Pascal's `inventory-change` rows read `inventory` at `medium` importance (a plain line, not a roll — v4 `4fbdad186`), and the tool settings list the Inventory's tools under their own `Inventory` group after Wardrobe (v4 `e1872c94f`). P4.D330, Tier 1 item 20.
+
 #### 2026-10-26 — feat(spa): the `inventory` realtime topic (v4 `e1872c94f`)
 
 _Versions: SPA 0.5.886._

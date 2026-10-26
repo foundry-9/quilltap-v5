@@ -41,11 +41,14 @@ describe('buildToolHierarchy', () => {
       tool('c', { category: 'wardrobe' }),
       // A category NOT in the map stays in Built-in Tools.
       tool('d', { category: 'memory' }),
+      // P4.D330 — v4 `e1872c94f` (`tool-settings/utils.ts:45`).
+      tool('e', { category: 'inventory' }),
     ]);
     expect(groups.map((g) => [g.id, g.displayName])).toEqual([
       ['built-in', 'Built-in Tools'],
       ['built-in:documents', 'Document Editing'],
       ['built-in:wardrobe', 'Wardrobe'],
+      ['built-in:inventory', 'Inventory'],
     ]);
     expect(groups[0].tools.map((t) => t.id)).toEqual(['a', 'd']);
   });
