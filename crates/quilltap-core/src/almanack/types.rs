@@ -376,6 +376,8 @@ pub struct CharacterBreakdownInfo {
     pub system_transparent: f64,
     pub can_dress_themselves: f64,
     pub can_create_outfits: f64,
+    /// P4.D328 (v4 `e1872c94f`): the effective `canManageInventory !== false`.
+    pub can_manage_inventory: f64,
     pub core_whisper_overrides: f64,
 }
 

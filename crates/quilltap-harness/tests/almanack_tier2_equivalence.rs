@@ -143,6 +143,19 @@ fn scratch(tag: &str, legacy_llm: bool, sp: &Value) -> Scratch {
             w.connection().execute_batch(sql.as_str().unwrap()).unwrap();
         }
     }
+    // P4.D328 (v4 `e1872c94f`): the two Inventory columns the committed pair
+    // predates, then Riya's `canManageInventory` planted `0` (the oracle plants
+    // the same on its copy).
+    {
+        let w = quilltap_core::db::Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
+        w.connection()
+            .execute(
+                r#"UPDATE "characters" SET "canManageInventory" = 0 WHERE "id" = ?1"#,
+                ["a1000000-0000-4000-8000-000000000002"],
+            )
+            .unwrap();
+    }
     let db = Db::open(
         DbPaths {
             main: main.clone(),

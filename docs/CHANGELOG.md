@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The Almanack counts characters who may manage their inventory (P4.D328)
+
+_Versions: core 0.0.1333._
+
+The Almanack's character census gains `May manage their inventory`, between the outfit line and the Core-whisper line, counting every character whose `canManageInventory` is not explicitly off. New rows in the Almanack differentials.
+
 #### 2026-10-26 — GET /api/v1/tools lists the nine Inventory tools; the character PUT keeps canManageInventory (P4.D328)
 
 _Versions: core 0.0.1332._

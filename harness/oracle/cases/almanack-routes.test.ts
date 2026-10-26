@@ -169,6 +169,9 @@ function layFixtures(ctx: Ctx, llmVariant: 'migrated' | 'legacy'): void {
   process.env.SQLITE_LLM_LOGS_PATH = join(dataDir, 'quilltap-llm-logs.db');
 }
 
+/** P4.D328: the fixture's Riya (`build-almanack-fixture.ts` `RIYA`). */
+const ALMANACK_RIYA = 'a1000000-0000-4000-8000-000000000002';
+
 /** Open the fixture DBs and run `fn`, then close every partition client. */
 async function withDatabases<T>(
   ctx: Ctx,
@@ -196,6 +199,29 @@ async function withDatabases<T>(
     const lldb = getRawLLMLogsDatabase();
     if (!lldb) throw new Error('llm-logs DB handle unavailable for the plants');
     for (const sql of ctx.spec.llmLogPlants[llmVariant]) lldb.exec(sql);
+  }
+  // P4.D328 (v4 `e1872c94f`): the two Inventory columns the committed pair
+  // predates (the keystone's declarations), then Riya's `canManageInventory`
+  // planted `0` — the census counts `IS NOT 0`, so the NULL rest still count.
+  // The Rust side plants the same on its copy.
+  {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    await getRepositories().characters.findByIdRaw(ALMANACK_RIYA);
+    const mdb = getRawDatabase() as {
+      exec: (sql: string) => void;
+      prepare: (sql: string) => { all: () => Array<{ name: string }>; run: (...a: unknown[]) => unknown };
+    } | null;
+    if (!mdb) throw new Error('main DB handle unavailable for the inventory plants');
+    for (const [table, column, decl] of [
+      ['chats', 'equippedInventory', 'TEXT DEFAULT NULL'],
+      ['characters', 'canManageInventory', 'INTEGER DEFAULT NULL'],
+    ] as const) {
+      if (!mdb.prepare(`PRAGMA table_info("${table}")`).all().some((c) => c.name === column)) {
+        mdb.exec(`ALTER TABLE "${table}" ADD COLUMN "${column}" ${decl}`);
+      }
+    }
+    mdb.prepare('UPDATE "characters" SET "canManageInventory" = 0 WHERE "id" = ?').run(ALMANACK_RIYA);
   }
   // The real bundled-plugin inventory, exactly as production sees it.
   const { initializePlugins } = await import('@/lib/startup/plugin-initialization');

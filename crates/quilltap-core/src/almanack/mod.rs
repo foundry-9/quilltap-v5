@@ -325,6 +325,7 @@ pub fn generate_almanack_data(
             system_transparent: 0.0,
             can_dress_themselves: 0.0,
             can_create_outfits: 0.0,
+            can_manage_inventory: 0.0,
             core_whisper_overrides: 0.0,
         },
         || phase3_ledgers::collect_character_breakdown(d, user),

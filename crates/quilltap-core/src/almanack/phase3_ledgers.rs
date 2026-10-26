@@ -542,6 +542,7 @@ pub fn collect_character_breakdown(
             -- which 0 correctly reports as none).
             SUM(CASE WHEN "canDressThemselves" IS NOT 0 THEN 1 ELSE 0 END)               AS dress,
             SUM(CASE WHEN "canCreateOutfits" IS NOT 0 THEN 1 ELSE 0 END)                 AS outfits,
+            SUM(CASE WHEN "canManageInventory" IS NOT 0 THEN 1 ELSE 0 END)               AS inventory,
             SUM(CASE WHEN "coreWhisperEnabled" IS NOT NULL THEN 1 ELSE 0 END)            AS coreWhisper
      FROM "characters" WHERE "userId" = ?"#,
         &[&user_id],
@@ -557,11 +558,22 @@ pub fn collect_character_breakdown(
                 num_col(r, 6)?,
                 num_col(r, 7)?,
                 num_col(r, 8)?,
+                num_col(r, 9)?,
             ))
         },
     );
-    let (total, vault_linked, npcs, user_controlled, carina, transparent, dress, outfits, whisper) =
-        row.unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+    let (
+        total,
+        vault_linked,
+        npcs,
+        user_controlled,
+        carina,
+        transparent,
+        dress,
+        outfits,
+        inventory,
+        whisper,
+    ) = row.unwrap_or((0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
 
     Ok(CharacterBreakdownInfo {
         total,
@@ -573,6 +585,7 @@ pub fn collect_character_breakdown(
         system_transparent: transparent,
         can_dress_themselves: dress,
         can_create_outfits: outfits,
+        can_manage_inventory: inventory,
         core_whisper_overrides: whisper,
     })
 }
@@ -1191,7 +1204,7 @@ mod dogfood_divergence_tests {
                     characterDocumentMountPointId TEXT, npc INTEGER,
                     controlledBy TEXT, canBeCarina INTEGER, systemTransparency INTEGER,
                     canDressThemselves INTEGER, canCreateOutfits INTEGER,
-                    coreWhisperEnabled INTEGER);",
+                    canManageInventory INTEGER, coreWhisperEnabled INTEGER);",
             )?;
             Ok(())
         })
@@ -1246,11 +1259,11 @@ mod dogfood_divergence_tests {
         let (db, _scratch) = test_db();
         exec(
             &db,
-            r#"INSERT INTO characters (id, userId, canDressThemselves, canCreateOutfits, coreWhisperEnabled) VALUES
-                 ('k1','u',1,1,1),          -- explicit true
-                 ('k2','u',NULL,NULL,NULL), -- default → allowed, no whisper override
-                 ('k3','u',0,0,NULL),       -- explicit false → NOT allowed
-                 ('k4','u',NULL,1,0);       -- dress NULL (allowed), outfit true, explicit whisper override"#,
+            r#"INSERT INTO characters (id, userId, canDressThemselves, canCreateOutfits, canManageInventory, coreWhisperEnabled) VALUES
+                 ('k1','u',1,1,1,1),             -- explicit true
+                 ('k2','u',NULL,NULL,NULL,NULL), -- default → allowed, no whisper override
+                 ('k3','u',0,0,0,NULL),          -- explicit false → NOT allowed
+                 ('k4','u',NULL,1,NULL,0);       -- dress NULL (allowed), outfit true, inventory NULL, explicit whisper override"#,
         );
         let out = collect_character_breakdown(&db, "u").unwrap();
         // dress: k1(true) + k2(null) + k4(null) = 3; k3(false) excluded.
@@ -1262,6 +1275,11 @@ mod dogfood_divergence_tests {
         assert_eq!(
             out.can_create_outfits as i64, 3,
             "outfits counts true + NULL, excludes an explicit false"
+        );
+        // inventory (P4.D328): k1(true) + k2(null) + k4(null) = 3; k3(false) excluded.
+        assert_eq!(
+            out.can_manage_inventory as i64, 3,
+            "inventory counts true + NULL, excludes an explicit false"
         );
         // coreWhisper: k1(1) + k4(0) are explicit overrides = 2; k2/k3 NULL excluded.
         assert_eq!(

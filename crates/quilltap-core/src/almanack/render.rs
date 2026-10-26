@@ -950,6 +950,10 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         "- **May create outfits**: {}",
         js_num(chb.can_create_outfits)
     ));
+    push!(format!(
+        "- **May manage their inventory**: {}",
+        js_num(chb.can_manage_inventory)
+    ));
     push!(
         format!(
             "- **With a Core-whisper override**: {}",
