@@ -26,6 +26,9 @@ pub mod inventory_unequip;
 pub mod inventory_update;
 pub mod list_mail;
 pub mod llm_number;
+pub mod log_create_entry; // P4.D331
+pub mod log_grep; // P4.D331
+pub mod log_read; // P4.D331
 pub mod native_tool_prompt;
 pub mod photo;
 pub mod project_info;

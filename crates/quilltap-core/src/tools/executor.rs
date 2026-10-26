@@ -65,9 +65,10 @@ use super::wardrobe_tool_table::{
     WARDROBE_TOOL_NAMES,
 };
 use super::{
-    annotations, ask_carina, discard_mail, doc_edit, help, help_search, list_mail, photo,
-    project_info, read_conversation, read_mail, request_full_context, rng, run_custom, run_sql,
-    search, self_inventory, send_mail, state, terminal, web_search, whisper,
+    annotations, ask_carina, discard_mail, doc_edit, help, help_search, list_mail,
+    log_create_entry, log_grep, log_read, photo, project_info, read_conversation, read_mail,
+    request_full_context, rng, run_custom, run_sql, search, self_inventory, send_mail, state,
+    terminal, web_search, whisper,
 };
 use crate::db::chat_wardrobe_history::{WardrobeHistoryProvenance, WardrobeHistorySource};
 use crate::db::runtime::Db;
@@ -109,6 +110,10 @@ pub const BUILT_IN_TOOLS: &[&str] = &[
     "self_inventory",
     "submit_final_response",
     "whisper",
+    // The log (P4.D331 — v4 `tool-executor.ts:267-269`, after `whisper`).
+    "log_create_entry",
+    "log_grep",
+    "log_read",
     "read_conversation",
     "upsert_annotation",
     "delete_annotation",
@@ -189,6 +194,10 @@ pub const PORTED_TOOLS: &[&str] = &[
     "terminal_read",
     "terminal_list",
     "whisper",
+    // P4.D331: the log.
+    "log_create_entry",
+    "log_grep",
+    "log_read",
     "help_settings",
     "help_navigate",
     "submit_final_response",
@@ -628,6 +637,8 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             "terminal_read" => self.run_terminal_read(tc, ctx).await,
             "terminal_list" => self.run_terminal_list(tc, ctx).await,
             "whisper" => self.run_whisper(tc, ctx).await,
+            // v4's dispatch order: the log tools after `whisper` (`:811`).
+            name if log_read::LOG_TOOL_NAMES.contains(&name) => self.run_log_tool(tc, ctx).await,
             "help_settings" => self.run_help_settings(tc, ctx).await,
             "help_navigate" => self.run_help_navigate(tc, ctx).await,
             "submit_final_response" => self.run_submit_final_response(tc, ctx).await,
@@ -938,6 +949,54 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             )
         } else {
             fail("whisper", out.error.unwrap_or_default())
+        }
+    }
+
+    // -- the log tools (tool-executor.ts:811-825) ---------------------------
+    /// v4's arm: `logContext = { userId, chatId, ...(characterId ? {
+    /// characterId } : {}) }`, the handler's output minus `success` / `error`
+    /// as the result (`{entry}` / `{entries, count, limit}`), or the error.
+    /// One write closure hands the handler main, the mount index (the
+    /// character resolver's overlay) and the llm-logs connection — or v4's
+    /// guard sentence when that partition is degraded / absent.
+    async fn run_log_tool(&self, tc: &ToolCall, ctx: &ToolExecutionContext) -> ToolResult {
+        let name = tc.name.clone();
+        let args = tc.arguments.clone();
+        let log_ctx = log_read::LogToolContext {
+            user_id: ctx.user_id.clone(),
+            chat_id: ctx.chat_id.clone(),
+            character_id: ctx.character_id.clone().filter(|id| !id.is_empty()),
+        };
+        let guard = log_read::llm_logs_guard_sentence(
+            self.db
+                .partition_state(crate::db::table_shape::Partition::LlmLogs),
+        );
+        let tool = name.clone();
+        let answered = self
+            .db
+            .write(move |writers| {
+                let main = writers.main().connection();
+                let mount = writers.mount_index().map(|w| w.connection());
+                let llm = match (guard, writers.llm_logs()) {
+                    (None, Some(w)) => log_read::LogDb::Open(w.connection()),
+                    (Some(sentence), _) => log_read::LogDb::Unavailable(sentence),
+                    (None, None) => {
+                        log_read::LogDb::Unavailable("LLM logs database is in degraded mode")
+                    }
+                };
+                Ok(match tool.as_str() {
+                    "log_create_entry" => {
+                        log_create_entry::execute_log_create_entry(&llm, &args, &log_ctx)
+                    }
+                    "log_grep" => log_grep::execute_log_grep(main, &llm, &args, &log_ctx),
+                    _ => log_read::execute_log_read(main, mount, &llm, &args, &log_ctx),
+                })
+            })
+            .await;
+        match answered {
+            Ok(Ok(result)) => ok(&name, result),
+            Ok(Err(error)) => fail(&name, error),
+            Err(e) => fail(&name, crate::db::fallback::error_text(&e)),
         }
     }
 

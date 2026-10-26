@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(tools): log_create_entry, log_grep and log_read (P4.D331)
+
+_Versions: core 0.0.1329._
+
+The three log tools, ported from v4's `log-handler.ts` and the three tool files at `322a5488e`, with the executor arm after `whisper` (`{entry}` / `{entries, count, limit}` as the result, or the error), the workspace-block pushes after `deleteAnnotation`, and the tools-route rows (category `log`) between `state` and `self_inventory`. `log_read` keeps v4's order (validate, resolve the character — the raw token in `No character named "…" was found.` — then read, then one batched name lookup), its bounds (a bare-date `to` is the end of that UTC day by concatenation; everything else is V8's `Date.parse` re-rendered, expanded years included; the span check compares the rendered strings), and Zod 4's refine semantics: the span refine runs even after a bound failed its own check, so `from: "garbage"` with a `to` throws `Invalid time value` out of the parse, as in v4. `log_grep` compiles first (one `Invalid regular expression:` prefix, no query). A degraded LLM-logs partition answers `[]` quietly for the readers and `The log entry could not be written: LLM logs database is in degraded mode` for the writer; an absent file uses v4's `not initialized` sentence.
+
+New tier-2 family `log_tools_equivalence`: 49 calls through v4's real `executeToolCallWithContext` over the chat-dialogs pair and a seeded llm-logs file (and a garbage one for the degraded rows), comparing the envelope, the handler's lines and the written table; it also pins the ruled `CHILD_BUFFER_VISIBILITY` divergence from v5's side (a same-turn read sees the line). `tools_inventory_equivalence` regenerated from the pin, carving the round's sibling rows by id; `tool_build`'s shape tests cover the three tools on the workspace surface and their absence from Brahma's.
+
 #### 2026-10-26 — feat(tools): the Log in the tool catalog, the write partition and the Brahma SQL prompt (P4.D331)
 
 _Versions: core 0.0.1328._

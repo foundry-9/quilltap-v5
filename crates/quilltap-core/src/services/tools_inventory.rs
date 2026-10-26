@@ -61,6 +61,11 @@ const BUILT_IN_TOOLS: &[BuiltInTool] = &[
     BuiltInTool { id: "rng", name: "Random Number Generator", description: "Roll dice, flip coins, or randomly select a chat participant (spin the bottle)", category: "utility" },
     BuiltInTool { id: "run_custom", name: "Custom Tools", description: "Run one of this scene's user-authored custom tools (Tools/*.tool.json) — Pascal rolls it server-side and announces the outcome. Only offered when the chat can actually see at least one valid definition.", category: "utility" },
     BuiltInTool { id: "state", name: "State Manager", description: "Get, set, or delete persistent key-value state for the chat", category: "utility" },
+    // P4.D331: the Log — between `state` and `self_inventory` (v4
+    // `app/api/v1/tools/route.ts:244-264`).
+    BuiltInTool { id: "log_create_entry", name: "Write Log Entry", description: "Write a timestamped line to the log, recorded against this chat and the writing character", category: "log" },
+    BuiltInTool { id: "log_grep", name: "Search Log", description: "Search every log entry in the instance by regular expression", category: "log" },
+    BuiltInTool { id: "log_read", name: "Read Log", description: "Read log entries by chat, by character, and/or by a span of time", category: "log" },
     BuiltInTool { id: "self_inventory", name: "Self-Inventory", description: "Return an introspection report for the calling character: vault files, memory and chat stats, assembled system prompt, and last-turn LLM token usage", category: "utility" },
     BuiltInTool { id: "whisper", name: "Whisper", description: "Send a private message to a specific character in a multi-character chat", category: "utility" },
     BuiltInTool { id: "wardrobe_list", name: "List Wardrobe", description: "Browse wardrobe items (own plus shared project / Quilltap General items) for the current character", category: "wardrobe" },
@@ -122,6 +127,9 @@ const SCHEMA_KEYS: &[(&str, &str)] = &[
     ("rng", "rng"),
     ("run_custom", "runCustom"),
     ("state", "state"),
+    ("log_create_entry", "logCreateEntry"),
+    ("log_grep", "logGrep"),
+    ("log_read", "logRead"),
     ("self_inventory", "selfInventory"),
     ("whisper", "whisper"),
     ("wardrobe_list", "wardrobeList"),

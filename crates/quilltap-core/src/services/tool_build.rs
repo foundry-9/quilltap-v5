@@ -326,6 +326,11 @@ pub fn build_tools_for_provider(options: &BuildToolsForProviderOptions) -> Vec<V
         push_key(&mut universal, "readConversation");
         push_key(&mut universal, "upsertAnnotation");
         push_key(&mut universal, "deleteAnnotation");
+        // The log — always offered to characters; the per-chat tool settings can
+        // switch each one off. (P4.D331 — v4 `plugin-tool-builder.ts:507-511`.)
+        push_key(&mut universal, "logCreateEntry");
+        push_key(&mut universal, "logGrep");
+        push_key(&mut universal, "logRead");
     }
 
     // Unified search — every surface. The Brahma variant drops `memories`; the
@@ -872,6 +877,10 @@ mod tests {
         assert!(n.contains(&"terminal_list".to_string()));
         assert!(n.contains(&"send_mail".to_string()));
         assert!(n.contains(&"search".to_string()));
+        // P4.D331: the log — always offered on the workspace surfaces.
+        for log in ["log_create_entry", "log_grep", "log_read"] {
+            assert!(n.contains(&log.to_string()), "{log} missing");
+        }
         // Sorted alphabetically by name (canonicalized).
         let mut sorted = n.clone();
         sorted.sort();
@@ -1073,6 +1082,10 @@ mod tests {
         };
         let got = names(&build_tools_for_provider(&opts));
         for n in ["send_mail", "list_mail", "read_mail", "discard_mail"] {
+            assert!(!got.contains(&n.to_string()), "{n} on the Brahma slate");
+        }
+        // P4.D331: nor the log ("The Brahma Console does not offer the Log").
+        for n in ["log_create_entry", "log_grep", "log_read"] {
             assert!(!got.contains(&n.to_string()), "{n} on the Brahma slate");
         }
     }

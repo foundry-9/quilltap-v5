@@ -95,6 +95,44 @@ struct Spec {
     user_id: String,
 }
 
+/// P4.D331 (R-13): the `322a5488e` round's sibling rows, carved BY ID from
+/// both sides until the union — P4.D328's nine `inventory_*` tools, P4.D332's
+/// `edit_custom_tool`, and `run_custom` (P4.D332 moves its category to
+/// `pascal`). Every carved id must still be present on v4's side (a stale
+/// carve is red); the unifier lifts the list (§S.5).
+const SIBLING_ROWS_UNTIL_UNION: &[&str] = &[
+    "run_custom",
+    "edit_custom_tool",
+    "inventory_list",
+    "inventory_read",
+    "inventory_equip",
+    "inventory_unequip",
+    "inventory_pick_up",
+    "inventory_create",
+    "inventory_update",
+    "inventory_archive",
+    "inventory_give",
+];
+
+/// A body with the sibling rows removed (its `tools` array filtered by id,
+/// `count` recounted).
+fn without_sibling_rows(body: &Value) -> Value {
+    let mut body = body.clone();
+    let mut kept = None;
+    if let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) {
+        tools.retain(|t| {
+            !t.get("id")
+                .and_then(Value::as_str)
+                .is_some_and(|id| SIBLING_ROWS_UNTIL_UNION.contains(&id))
+        });
+        kept = Some(tools.len());
+    }
+    if let (Some(n), Some(count)) = (kept, body.get_mut("count")) {
+        *count = Value::from(n);
+    }
+    body
+}
+
 fn spec_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/chat-dialogs-web.json")
@@ -249,7 +287,7 @@ fn tools_inventory_matches_oracle() {
         }
         // RAW serialization compare — order and key order included.
         let got_raw = body.to_string();
-        let want_raw = carve_sibling_rows(name, body, &want["body"]).to_string();
+        let want_raw = want["body"].to_string();
         if got_raw != want_raw {
             eprintln!(
                 "[{name}] RAW MISMATCH:\n{}",
