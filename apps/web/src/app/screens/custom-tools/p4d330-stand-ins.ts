@@ -184,8 +184,20 @@ export class CustomToolInventoryLines {
   readonly references = input<CustomToolReferences | undefined>();
 }
 
-/** `CustomToolReferences` with the key R-10 hands to the unifier. */
-export type ReferencesAtPin = CustomToolReferences & { inventoryAggregates?: string[] };
+/**
+ * `CustomToolReferences` with the five inventory keys v4's `CustomToolRunDialog`
+ * carries at the pin. P4.D330 edits the interface IN PLACE with four of them
+ * (`inventoryReads`, `equips`, `unequips`, `picksUp`); the fifth,
+ * `inventoryAggregates`, is the unifier's addition (R-10). Until then this alias
+ * reads all five, and it is deleted with the stand-in.
+ */
+export type ReferencesAtPin = CustomToolReferences & {
+  inventoryReads?: string[];
+  inventoryAggregates?: string[];
+  equips?: string[];
+  unequips?: string[];
+  picksUp?: string[];
+};
 
 /** The preview request with the `inventory` key P4.D330 adds in place (R-12). */
 export function asPreviewRequest(

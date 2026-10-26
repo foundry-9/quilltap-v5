@@ -6,7 +6,7 @@ import type {
   WardrobeEffectMode,
   WardrobeItemType,
 } from '../../pascal/custom-tool-types';
-import type { ToolGateVerdict } from '../../pascal/tool-gate';
+import type { InventoryEffectAction, ToolGateVerdict } from '../../pascal/p4d333-stand-ins';
 import type {
   CoreRequest,
   CustomToolAuditResult,
@@ -19,6 +19,7 @@ import type {
   MountFileWriteResult,
   PreviewWardrobeResolution,
 } from '../../core/core-contract';
+import { asAuditRequest, asPreviewRequest, type MockInventoryRow } from './p4d330-stand-ins';
 
 /**
  * Pascal's Workbench read/write surface (§W of the unit-12 ∥ P4.6bb round).
@@ -74,7 +75,21 @@ export interface GatedLibraryResponse extends CustomToolLibraryResponse {
 export type DryEffect =
   | { index: number; target: EffectTarget; value: number | string | boolean }
   | { index: number; wardrobe: ResolvedWardrobeGesture }
+  | { index: number; inventory: ResolvedInventoryGesture }
+  | { index: number; log: string }
   | { index: number; skipped: string };
+
+/**
+ * An Inventory gesture with its object references rendered — ready for the
+ * applier (v4 `ResolvedInventoryGesture`, `e1872c94f`; P4.D329's body).
+ */
+export interface ResolvedInventoryGesture {
+  action: InventoryEffectAction;
+  /** Rendered, trimmed references in file order; empty ones dropped server-side. */
+  items: string[];
+  /** pick_up only: equip the new instances (default true). */
+  equip?: boolean;
+}
 
 /** A wardrobe gesture with its item references rendered — ready for the applier. */
 export interface ResolvedWardrobeGesture {
@@ -99,14 +114,35 @@ export function isApplicableWardrobeEffect(
   return 'wardrobe' in effect;
 }
 
+/** True for a dry effect that would change what the rolling character carries (v4 `e1872c94f`). */
+export function isApplicableInventoryEffect(
+  effect: DryEffect,
+): effect is Extract<DryEffect, { inventory: ResolvedInventoryGesture }> {
+  return 'inventory' in effect;
+}
+
+/** True for a dry effect that would write a line to the log (v4 `e4a60ad9e`). */
+export function isApplicableLogEffect(
+  effect: DryEffect,
+): effect is Extract<DryEffect, { log: string }> {
+  return 'log' in effect;
+}
+
 /**
- * True for a dry effect of EITHER kind that would apply (v4 `f0db8cbb8` — it
- * meant "would write" before the wardrobe arm existed).
+ * True for a dry effect of ANY kind that would apply (v4 `f0db8cbb8` — it meant
+ * "would write" before the wardrobe arm existed; the Proving Bench's count).
+ * Measured at the pin: the SPA has no caller of this — the bench discriminates
+ * by key, as v4's `MiniPascalBubble` does — so the widening changes no render.
  */
 export function isApplicableEffect(
   effect: DryEffect,
 ): effect is Exclude<DryEffect, { skipped: string }> {
-  return isApplicableWriteEffect(effect) || isApplicableWardrobeEffect(effect);
+  return (
+    isApplicableWriteEffect(effect) ||
+    isApplicableWardrobeEffect(effect) ||
+    isApplicableInventoryEffect(effect) ||
+    isApplicableLogEffect(effect)
+  );
 }
 
 /**
@@ -187,17 +223,27 @@ export async function previewCustomTool(
      * against. Absent/null → `{}`.
      */
     state?: Record<string, unknown> | undefined;
+    /**
+     * The mock bag (P4.D329's body key, C3). Absent without a row — the key is
+     * then ABSENT on the wire (`JSON.stringify` drops `undefined`; the HTTP
+     * transport serialises with it, `core-transport.ts:93`), as v4's
+     * `inventory: benchInventory` is.
+     */
+    inventory?: MockInventoryRow[] | undefined;
   },
 ): Promise<BenchRoll> {
-  const data = await core.dispatchData({
-    type: 'customToolPreview',
-    definition: args.definition,
-    params: args.params,
-    private: args.private,
-    metadata: args.metadata,
-    state: args.state,
-    llm: args.llm,
-  });
+  const data = await core.dispatchData(
+    asPreviewRequest({
+      type: 'customToolPreview',
+      definition: args.definition,
+      params: args.params,
+      private: args.private,
+      metadata: args.metadata,
+      state: args.state,
+      inventory: args.inventory,
+      llm: args.llm,
+    }),
+  );
   return data as unknown as BenchRoll;
 }
 
@@ -211,16 +257,21 @@ export async function auditCustomTool(
     llm?: AuditOracle | undefined;
     /** §B — the mock merged state, held FIXED across every one of the draws. */
     state?: Record<string, unknown> | undefined;
+    /** The mock bag, as on the preview. */
+    inventory?: MockInventoryRow[] | undefined;
   },
 ): Promise<CustomToolAuditResult> {
-  const data = await core.dispatchData({
-    type: 'customToolAudit',
-    definition: args.definition,
-    params: args.params,
-    metadata: args.metadata,
-    state: args.state,
-    llm: args.llm,
-  });
+  const data = await core.dispatchData(
+    asAuditRequest({
+      type: 'customToolAudit',
+      definition: args.definition,
+      params: args.params,
+      metadata: args.metadata,
+      state: args.state,
+      inventory: args.inventory,
+      llm: args.llm,
+    }),
+  );
   return data as unknown as CustomToolAuditResult;
 }
 

@@ -3,8 +3,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { draftFromDefinition, newDraft, type ToolDraft } from '../../pascal/tool-draft';
+import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import * as bench from './proving-bench';
-import { ProvingBench, formatShort, stateToken } from './proving-bench';
+import {
+  ProvingBench,
+  describeBenchInventoryGesture,
+  formatShort,
+  mockRowsOf,
+  parseMockMetadata,
+  stateToken,
+  type MockInventoryDraftRow,
+} from './proving-bench';
 
 /**
  * ProvingBench — asserted against v4 `ProvingBench.tsx`. The load-bearing claims:
@@ -520,7 +529,7 @@ describe('ProvingBench (v4 ProvingBench.tsx)', () => {
     fixture.detectChanges();
     expect(bench.gateVerdict()).toEqual({ available: false, withheldBy: 'availableWhen' });
     expect(text(fixture)).toContain(
-      '✕ This sheet would never be offered the tool — it does not pass every “only show if” test.',
+      '✕ This sheet would never be offered the tool — it passes no line of the “only show if” tests.',
     );
     expect(text(fixture)).toContain('The roll below is the bench indulging you.');
   });
@@ -994,3 +1003,372 @@ function auditResult() {
     valueMean: 0.5,
   };
 }
+
+
+// ===========================================================================
+// P4.D334 — the Mock inventory card, the line-naming verdict, the inventory /
+// log dry lines and the missing-brief audit flag (v4 e1872c94f, a53024d3c,
+// e4a60ad9e, 322a5488e at the pin).
+// ===========================================================================
+
+const q = (f: ComponentFixture<unknown>, sel: string) => (f.nativeElement as HTMLElement).querySelector<HTMLElement>(sel);
+const qa = (f: ComponentFixture<unknown>, sel: string) => [...(f.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(sel)];
+const click = (el: HTMLElement | null) => (el as HTMLButtonElement).click();
+const setValue = (el: HTMLElement | null, value: string) => {
+  (el as HTMLInputElement).value = value;
+  el!.dispatchEvent(new Event('input'));
+};
+const norm = (f: ComponentFixture<unknown>) => text(f).replace(/\s+/g, ' ');
+
+/** A valid draft whose outcome tests an inventory subject (built by hand — the parse is P4.D333's). */
+function inventoryDraft(): ToolDraft {
+  const draft = validDraft();
+  draft.outcomes[0] = {
+    ...draft.outcomes[0],
+    conditions: [{ id: 'c1', subject: { kind: 'inventory', key: 'sword' }, comparator: 'eq', operand: { kind: 'string', text: 'equipped' } }],
+  };
+  return draft;
+}
+
+describe('parseMockMetadata / mockRowsOf (v4 ProvingBench.tsx)', () => {
+  it('a blank text is no metadata; the reasons are v4’s words', () => {
+    expect(parseMockMetadata('  ')).toEqual({ ok: true });
+    expect(parseMockMetadata('{"a": ')).toEqual({ ok: false, reason: 'is not valid JSON' });
+    expect(parseMockMetadata('[1]')).toEqual({ ok: false, reason: 'must be a JSON object' });
+    expect(parseMockMetadata('null')).toEqual({ ok: false, reason: 'must be a JSON object' });
+    expect(parseMockMetadata('{"a": {"b": 1}}')).toEqual({
+      ok: false,
+      reason: '"a" must be a number, text, true/false, or a list of them',
+    });
+    expect(parseMockMetadata('{"a": [1, {}]}')).toMatchObject({ ok: false });
+    expect(parseMockMetadata('{"n": 3, "s": "x", "b": true, "l": [1, "y", false]}')).toEqual({
+      ok: true,
+      metadata: { n: 3, s: 'x', b: true, l: [1, 'y', false] },
+    });
+  });
+
+  const row = (over: Partial<MockInventoryDraftRow>): MockInventoryDraftRow => ({
+    id: 1,
+    ref: 'sword',
+    state: 'equipped',
+    count: '',
+    metadata: '',
+    ...over,
+  });
+
+  it('drops a blank ref, trims the ref, and omits count and metadata unless they parse', () => {
+    expect(mockRowsOf([row({}), row({ id: 2, ref: '   ' })])).toEqual([{ ref: 'sword', state: 'equipped' }]);
+    expect(mockRowsOf([row({ ref: ' bow ', count: '3', metadata: '{"v":1}' })])).toEqual([
+      { ref: 'bow', state: 'equipped', count: 3, metadata: { v: 1 } },
+    ]);
+  });
+
+  it('sends a count only when it is a non-negative integer; a bad metadata is left out', () => {
+    expect(mockRowsOf([row({ count: '0' })])[0]).toMatchObject({ count: 0 });
+    expect(mockRowsOf([row({ count: '1.5' })])[0]).not.toHaveProperty('count');
+    expect(mockRowsOf([row({ count: '-1' })])[0]).not.toHaveProperty('count');
+    expect(mockRowsOf([row({ count: 'x' })])[0]).not.toHaveProperty('count');
+    expect(mockRowsOf([row({ metadata: '{oops' })])[0]).not.toHaveProperty('metadata');
+    expect(mockRowsOf([row({ metadata: '{}' })])[0]).toMatchObject({ metadata: {} });
+  });
+});
+
+describe('describeBenchInventoryGesture (v4 e1872c94f)', () => {
+  it.each([
+    [{ action: 'equip', items: ['Excalibur'] }, 'equip “Excalibur”'],
+    [{ action: 'unequip', items: ['a', 'b'] }, 'unequip “a”, “b”'],
+    [{ action: 'pick_up', items: ['magic bow'], equip: false }, 'pick up “magic bow” (unequipped)'],
+    [{ action: 'pick_up', items: ['magic bow'], equip: true }, 'pick up “magic bow”'],
+    [{ action: 'pick_up', items: ['magic bow'] }, 'pick up “magic bow”'],
+    [{ action: 'equip', items: ['x'], equip: false }, 'equip “x”'],
+  ] as const)('%j', (gesture, expected) => {
+    expect(describeBenchInventoryGesture(gesture as never)).toBe(expected);
+  });
+});
+
+describe('ProvingBench — Mock inventory', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('is a card after Mock state, before the oracle, with v4’s heading and hint', async () => {
+    const draft = validDraft();
+    draft.llmEnabled = true;
+    const fixture = await render(draft, stubClient());
+    const headings = qa(fixture, 'h3').map((h) => h.textContent?.trim());
+    expect(headings.indexOf('Mock inventory')).toBe(headings.indexOf('Mock state') + 1);
+    expect(headings.indexOf('The oracle')).toBe(headings.indexOf('Mock inventory') + 1);
+    expect(norm(fixture)).toContain(
+      'What the rolling character carries, as the bench pretends it: a reference, its state, and — optionally — how many of its kind are equipped and a metadata object for aggregate tests. A reference no row names reads as absent. The bench cannot tell whether an object exists, so its fields render as written and $inventory falls back.',
+    );
+  });
+
+  it('says there is no mock inventory only while the draft tests inventory and no row names a ref', async () => {
+    expect(norm(await render(validDraft(), stubClient()))).not.toContain('No mock inventory');
+    const fixture = await render(inventoryDraft(), stubClient());
+    expect(norm(fixture)).toContain('No mock inventory — every inventory test declines, exactly as for a run nobody made.');
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    // A row with a blank ref still reads as no bag at all.
+    expect(norm(fixture)).toContain('No mock inventory');
+    setValue(q(fixture, 'input[aria-label="Mock object reference"]'), 'sword');
+    fixture.detectChanges();
+    expect(norm(fixture)).not.toContain('No mock inventory');
+  });
+
+  it('add object starts a row on equipped, ids run on from the last, and a remove button drops it', async () => {
+    const fixture = await render(inventoryDraft(), stubClient());
+    const add = () => click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    add();
+    add();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.mockInventory().map((r) => [r.id, r.state])).toEqual([
+      [1, 'equipped'],
+      [2, 'equipped'],
+    ]);
+    click(qa(fixture, 'button[aria-label="Remove this mock object"]')[0]);
+    add();
+    expect(fixture.componentInstance.mockInventory().map((r) => r.id)).toEqual([2, 3]);
+  });
+
+  it('a row’s controls: the four states, the count placeholder follows the state, the metadata box', async () => {
+    const fixture = await render(inventoryDraft(), stubClient());
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    const state = q(fixture, 'select[aria-label="Mock object state"]') as HTMLSelectElement;
+    expect([...state.options].map((o) => o.value)).toEqual(['equipped', 'carried', 'reachable', 'absent']);
+    const count = q(fixture, 'input[aria-label="Mock equipped count"]') as HTMLInputElement;
+    expect(count.getAttribute('placeholder')).toBe('1');
+    expect(count.getAttribute('title')).toBe('How many of its kind are equipped (default: 1 when equipped, else 0)');
+    state.value = 'carried';
+    state.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(count.getAttribute('placeholder')).toBe('0');
+    const metadata = q(fixture, 'input[aria-label="Mock object metadata (JSON object)"]') as HTMLInputElement;
+    expect(metadata.getAttribute('placeholder')).toBe('metadata, e.g. {"toolVersion": 3, "toolAbilities": ["suppress"]}');
+    expect(metadata.getAttribute('title')).toBe(
+      'What inventoryAggregate reads off this object. Blank is {}. An equipped row with a count stands for that many copies.',
+    );
+    expect(metadata.getAttribute('spellcheck')).toBe('false');
+    expect(metadata.classList.contains('qt-input-error')).toBe(false);
+    setValue(metadata, '{oops');
+    fixture.detectChanges();
+    expect(metadata.classList.contains('qt-input-error')).toBe(true);
+  });
+
+  it('sends the mock rows with a preview roll (hand-built twin)', async () => {
+    const requests: Req[] = [];
+    const fixture = await render(
+      inventoryDraft(),
+      stubClient({ onDispatch: (r) => requests.push(r), preview: previewResult() }),
+    );
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    setValue(q(fixture, 'input[aria-label="Mock object reference"]'), 'sword');
+    fixture.detectChanges();
+    await fixture.componentInstance.roll();
+    const preview = requests.find((r) => r.type === 'customToolPreview')!;
+    expect(preview['inventory']).toEqual([{ ref: 'sword', state: 'equipped' }]);
+    // The count and metadata keys are ABSENT on the row, not undefined.
+    expect(Object.keys((preview['inventory'] as Array<object>)[0])).toEqual(['ref', 'state']);
+    // The audit carries the same bag.
+    await fixture.componentInstance.runAudit();
+    expect(requests.find((r) => r.type === 'customToolAudit')!['inventory']).toEqual([{ ref: 'sword', state: 'equipped' }]);
+  });
+
+  it('leaves the inventory key absent on the wire when no row names a ref', async () => {
+    const requests: Req[] = [];
+    const fixture = await render(inventoryDraft(), stubClient({ onDispatch: (r) => requests.push(r), preview: previewResult() }));
+    await fixture.componentInstance.roll();
+    const body = requests.find((r) => r.type === 'customToolPreview')!;
+    // JSON.stringify (the HTTP transport) drops an undefined key: the bytes carry none.
+    expect(JSON.parse(JSON.stringify(body))).not.toHaveProperty('inventory');
+  });
+
+  it('refuses bad metadata JSON, names the row, and disables Roll and the audit', async () => {
+    const fixture = await render(inventoryDraft(), stubClient());
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    setValue(q(fixture, 'input[aria-label="Mock object reference"]'), 'resonator');
+    setValue(q(fixture, 'input[aria-label="Mock object metadata (JSON object)"]'), '{"toolVersion": ');
+    fixture.detectChanges();
+    expect(norm(fixture)).toContain('resonator: metadata is not valid JSON');
+    const rollButton = qa(fixture, 'button').find((b) => b.textContent?.trim() === 'Roll') as HTMLButtonElement;
+    expect(rollButton.disabled).toBe(true);
+    expect(fixture.componentInstance.benchDisabled()).toBe(true);
+    setValue(q(fixture, 'input[aria-label="Mock object metadata (JSON object)"]'), '{"toolVersion": 4}');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.benchDisabled()).toBe(false);
+  });
+
+  it('names a nameless row "A mock object"', async () => {
+    const fixture = await render(inventoryDraft(), stubClient());
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    setValue(q(fixture, 'input[aria-label="Mock object metadata (JSON object)"]'), '[1]');
+    fixture.detectChanges();
+    expect(norm(fixture)).toContain('A mock object: metadata must be a JSON object');
+  });
+
+  it('names the first bad row, not the last', async () => {
+    const fixture = await render(inventoryDraft(), stubClient());
+    fixture.componentInstance.mockInventory.set([
+      { id: 1, ref: 'a', state: 'equipped', count: '', metadata: '{' },
+      { id: 2, ref: 'b', state: 'equipped', count: '', metadata: '[' },
+    ]);
+    expect(fixture.componentInstance.mockInventoryError()).toBe('a: metadata is not valid JSON');
+  });
+
+  it('skips a $inventory parameter default like a $state one', async () => {
+    const draft = validDraft();
+    draft.parameters = [
+      { id: 'p1', name: 'reach', type: 'number', defaultValue: { $inventory: 'sword.metadata.reach', fallback: 3 } as never, description: '', min: '', max: '' },
+      { id: 'p2', name: 'n', type: 'number', defaultValue: '2', description: '', min: '', max: '' },
+    ];
+    const fixture = await render(draft, stubClient());
+    // Until P4.D333's `isInventoryRef` lands the stand-in cannot recognise the object, so `reach`
+    // is still listed; with it, only `n` is.
+    const names = Object.keys(fixture.componentInstance.paramSpecs());
+    expect(names).toContain('n');
+    if (P4D333_SPA_LANDED) expect(names).toEqual(['n']);
+  });
+
+  // The verdict over an inventory gate reads P4.D333's three loops in `tool-gate.ts` (R-3).
+  it.skipIf(!P4D333_SPA_LANDED)('sends a row’s metadata, refuses bad JSON, and names the line', async () => {
+    const draft = validDraft();
+    draft.gateMode = 'available';
+    draft.gateConditions = [
+      { id: 'g1', subject: 'metadata', key: 'never', comparator: 'eq', operand: { kind: 'boolean', value: true } },
+      { id: 'g2', subject: 'inventoryAggregate', key: 'equipped.metadata.toolVersion.max', comparator: 'gte', operand: { kind: 'number', text: '4' }, joiner: 'or' },
+    ];
+    const fixture = await render(draft, stubClient());
+    click(qa(fixture, 'button').find((b) => b.textContent?.includes('add object')) ?? null);
+    fixture.detectChanges();
+    setValue(q(fixture, 'input[aria-label="Mock object reference"]'), 'resonator');
+    setValue(q(fixture, 'input[aria-label="Mock object metadata (JSON object)"]'), '{"toolVersion": 4}');
+    fixture.detectChanges();
+    expect(norm(fixture)).toContain('passed on line 2');
+  });
+});
+
+describe('ProvingBench — the verdict’s words (v4 a53024d3c)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function withServerVerdict(gate: Record<string, unknown>, mode: 'available' | 'withheld') {
+    const draft = gatedDraft();
+    draft.gateMode = mode;
+    const fixture = await render(draft, stubClient({ preview: previewResult({ gate }) }));
+    fixture.componentRef.setInput('vantage', { kind: 'character', characterId: 'char1' });
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('names the line an any-of decided on: passed on line 2', async () => {
+    const fixture = await withServerVerdict({ available: true, heldGroup: 1 }, 'available');
+    expect(norm(fixture)).toContain('✓ This sheet would be offered the tool — passed on line 2.');
+  });
+
+  it('says nothing of a line for a single group', async () => {
+    const fixture = await withServerVerdict({ available: true }, 'available');
+    expect(norm(fixture)).toContain('✓ This sheet would be offered the tool.');
+    expect(norm(fixture)).not.toContain('passed on line');
+  });
+
+  it('withheld by availableWhen: it passes no line of the “only show if” tests', async () => {
+    const fixture = await withServerVerdict({ available: false, withheldBy: 'availableWhen' }, 'available');
+    expect(norm(fixture)).toContain('✕ This sheet would never be offered the tool — it passes no line of the “only show if” tests.');
+  });
+
+  it('withheld by withheldWhen names the line, or reads the bare sentence for a single group', async () => {
+    const named = await withServerVerdict({ available: false, withheldBy: 'withheldWhen', heldGroup: 0 }, 'withheld');
+    expect(norm(named)).toContain('it passes line 1 of the “do not show if” tests.');
+    const bare = await withServerVerdict({ available: false, withheldBy: 'withheldWhen' }, 'withheld');
+    expect(norm(bare)).toContain('it passes the “do not show if” test.');
+  });
+});
+
+describe('ProvingBench — the dry inventory and log lines (v4 e1872c94f, e4a60ad9e)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('prints each new arm in v4’s place, beside the others', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({
+        preview: previewResult({
+          effects: [
+            { index: 0, target: { kind: 'state', path: ['n'], raw: 'state.n' }, value: 1 },
+            { index: 1, inventory: { action: 'equip', items: ['Excalibur'] } },
+            { index: 2, wardrobe: { action: 'wear', items: ['Hat'] } },
+            { index: 3, log: 'The lock gave.' },
+            { index: 4, skipped: 'condition did not hold' },
+            { index: 5, inventory: { action: 'pick_up', items: ['magic bow'], equip: false } },
+          ],
+        }),
+      }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+    const lines = qa(fixture, '.qt-pascal-result .font-mono p').map((p) => p.textContent?.replace(/\s+/g, ' ').trim());
+    expect(lines).toEqual([
+      '→ state.n = 1 (would write)',
+      '→ inventory: equip “Excalibur” (would attempt)',
+      '→ wardrobe: wear “Hat” (would attempt)',
+      '→ log: "The lock gave." (would write)',
+      '· effect 5 skipped: condition did not hold',
+      '→ inventory: pick up “magic bow” (unequipped) (would attempt)',
+      'The bench computes effects; it never applies them.',
+    ]);
+  });
+
+  it('quotes a log line the way JSON.stringify does', async () => {
+    const fixture = await render(
+      validDraft(),
+      stubClient({ preview: previewResult({ effects: [{ index: 0, log: 'She said "go".' }] }) }),
+    );
+    await fixture.componentInstance.roll();
+    fixture.detectChanges();
+    expect(norm(fixture)).toContain('→ log: "She said \\"go\\"." (would write)');
+  });
+});
+
+describe('ProvingBench — the audit’s missing-brief flag (v4 322a5488e)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function briefDraft(): ToolDraft {
+    const draft = validDraft();
+    draft.llmEnabled = true;
+    draft.llmPrompt = 'Say {{outcome.brief}}.';
+    draft.outcomes[0].brief = '';
+    draft.outcomes[1].brief = 'Stuck.';
+    return draft;
+  }
+  const auditWith = (hits: Array<{ index: number; hits: number }>) => ({
+    runs: 10000,
+    outcomes: hits.map((h) => ({ ...h, share: h.hits / 10000 })),
+    valueMin: 0,
+    valueMax: 1,
+    valueMean: 0.5,
+  });
+
+  // `promptReadsBrief` reads P4.D333's `outcome` classify arm; until it lands the flag cannot fire.
+  it.skipIf(!P4D333_SPA_LANDED)('flags a reachable row with no brief, before the never-fired line, and not an unreachable one', async () => {
+    const fixture = await render(briefDraft(), stubClient({ audit: auditWith([{ index: 0, hits: 12 }, { index: 1, hits: 9988 }]) }));
+    await fixture.componentInstance.runAudit();
+    fixture.detectChanges();
+    expect(norm(fixture)).toContain(
+      'This outcome can win, and the consult prompt reads {{outcome.brief}}, but the row has no brief — the model would be shown the placeholder as written. Give it a brief.',
+    );
+    const quiet = await render(briefDraft(), stubClient({ audit: auditWith([{ index: 0, hits: 0 }, { index: 1, hits: 10000 }]) }));
+    await quiet.componentInstance.runAudit();
+    quiet.detectChanges();
+    expect(norm(quiet)).not.toContain('the row has no brief');
+  });
+
+  it('flags nothing when the prompt reads no brief', async () => {
+    const draft = briefDraft();
+    draft.llmPrompt = 'Write a report.';
+    const fixture = await render(draft, stubClient({ audit: auditWith([{ index: 0, hits: 12 }, { index: 1, hits: 9988 }]) }));
+    await fixture.componentInstance.runAudit();
+    fixture.detectChanges();
+    expect(norm(fixture)).not.toContain('the row has no brief');
+  });
+});

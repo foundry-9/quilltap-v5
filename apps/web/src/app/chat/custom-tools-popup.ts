@@ -24,7 +24,13 @@ import {
   type ParameterFormValues,
 } from './custom-tool-params-form';
 import { CustomToolPresets } from './custom-tool-presets';
+import { CustomToolAggregateLine, inventoryAggregateKeys } from './custom-tool-aggregate-line';
 import { CustomToolWardrobeLines, wardrobeReferenceLines } from './custom-tool-wardrobe-lines';
+import {
+  CustomToolInventoryLines,
+  inventoryReferenceLines,
+  type ReferencesAtPin,
+} from '../screens/custom-tools/p4d330-stand-ins';
 import {
   customToolsKeys,
   fetchCustomToolsRoster,
@@ -87,7 +93,15 @@ interface ReferenceRow {
 @Component({
   selector: 'qt-custom-tools-popup',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal, CustomToolParamsForm, CustomToolPresets, CustomToolWardrobeLines],
+  imports: [
+    Icon,
+    Modal,
+    CustomToolParamsForm,
+    CustomToolPresets,
+    CustomToolWardrobeLines,
+    CustomToolInventoryLines,
+    CustomToolAggregateLine,
+  ],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (available()) {
@@ -214,7 +228,10 @@ interface ReferenceRow {
                 referenceRows().length > 0 ||
                 writeTargets().length > 0 ||
                 readsProgress().length > 0 ||
-                wardrobeLines().length > 0
+                wardrobeLines().length > 0 ||
+                readsInventory().length > 0 ||
+                readsAggregates().length > 0 ||
+                inventoryLines().length > 0
               ) {
                 <details class="rounded-lg qt-border p-5" open>
                   <summary
@@ -269,6 +286,14 @@ interface ReferenceRow {
                   }
 
                   <qt-custom-tool-wardrobe-lines [references]="tool.references" />
+                  <!--
+                    The Inventory (v4 e1872c94f, a53024d3c). Rendered here as the
+                    sibling's reads + gesture lines, then the aggregate paragraph; v4
+                    puts the aggregate paragraph BETWEEN the reads and the gesture
+                    lines (HANDOFF: the unifier, P4.D334 R-9).
+                  -->
+                  <qt-custom-tool-inventory-lines [references]="tool.references" />
+                  <qt-custom-tool-aggregate-line [references]="tool.references" />
                 </details>
               }
             </div>
@@ -857,6 +882,28 @@ export class CustomToolsPopup {
    */
   protected readonly wardrobeLines = computed(() =>
     wardrobeReferenceLines(this.selectedTool()?.references),
+  );
+
+  /**
+   * The Inventory sentences' presence terms (v4 `CustomToolRunDialog.tsx:948-966`):
+   * what the tool reads of the bag, which aggregate keys it tests, and what its
+   * inventory effects may hand over or take away. The paragraphs themselves
+   * render through `qt-custom-tool-inventory-lines` (P4.D330's) and
+   * `qt-custom-tool-aggregate-line`.
+   */
+  protected readonly readsInventory = computed<string[]>(
+    () => (this.selectedTool()?.references as ReferencesAtPin | undefined)?.inventoryReads ?? [],
+  );
+  protected readonly readsAggregates = computed(() =>
+    inventoryAggregateKeys(this.selectedTool()?.references),
+  );
+  /**
+   * P4.D330's pure function over the roster entry: its reads sentence and the
+   * three gesture lines (equips / unequips / picks up). Non-empty when any
+   * applies.
+   */
+  protected readonly inventoryLines = computed(() =>
+    inventoryReferenceLines(this.selectedTool()?.references),
   );
 
   /**

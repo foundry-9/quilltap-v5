@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import { CoreDispatchError } from '../core/core-contract';
+import { P4D330_SPA_LANDED } from '../../testing/p4d334-gates';
 import { CustomToolsPopup } from './custom-tools-popup';
 import type { CustomToolRosterEntry, CustomToolsRoster } from './custom-tools.api';
 import { ToastService } from '../ui/toast.service';
@@ -656,6 +657,74 @@ describe('CustomToolRunDialog — the reference panel', () => {
     expect(body).toContain('It may clear their');
     expect(body).toContain('hair slot. Only when you run it as a character — a run made as nobody dresses nobody.');
     expect(body).not.toContain('It may undress them of');
+  });
+
+  it('opens the panel for a tool that only takes stock of the bag, and says which keys (v4 a53024d3c)', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...WHEEL,
+            references: {
+              value: false,
+              roll: false,
+              dice: false,
+              llm: false,
+              params: [],
+              metadata: [],
+              state: [],
+              inventoryAggregates: ['equipped.names', 'owned.metadata.toolVersion.max'],
+            } as never,
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Spin the Wheel')[0]);
+
+    const body = text(fixture).replace(/\s+/g, ' ');
+    expect(body).toContain('What this tool can quote');
+    expect(body).toContain(
+      'It takes stock of everything they carry, reading equipped.names, owned.metadata.toolVersion.max. Run as nobody, it finds no inventory at all.',
+    );
+  });
+
+  // The reads paragraph and the three gesture lines are P4.D330's component; the order
+  // (reads → aggregate → gestures, as v4) is the unifier's R-9 handoff, so this row is
+  // red until that lands and gated on the sibling.
+  it.skipIf(!P4D330_SPA_LANDED)('opens the panel for a tool that only reads the inventory, and keeps v4’s order', async () => {
+    const fixture = await mount(
+      stub({
+        tools: [
+          {
+            ...WHEEL,
+            references: {
+              value: false,
+              roll: false,
+              dice: false,
+              llm: false,
+              params: [],
+              metadata: [],
+              state: [],
+              inventoryReads: ['Excalibur'],
+              inventoryAggregates: ['equipped.names'],
+              equips: ['magic bow'],
+            } as never,
+          },
+        ],
+        errors: [],
+      }),
+    );
+    await open(fixture);
+    await click(fixture, buttons(fixture, 'Spin the Wheel')[0]);
+    const body = text(fixture).replace(/\s+/g, ' ');
+    const reads = body.indexOf('It reads the inventory for');
+    const aggregate = body.indexOf('It takes stock of everything they carry');
+    const equips = body.indexOf('It may equip the running character with');
+    expect(reads).toBeGreaterThan(-1);
+    expect(reads).toBeLessThan(aggregate);
+    expect(aggregate).toBeLessThan(equips);
   });
 
   it('reads a roster without the write vocabulary as "writes nothing"', async () => {

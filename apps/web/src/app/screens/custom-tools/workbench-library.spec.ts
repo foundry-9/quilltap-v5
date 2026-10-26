@@ -193,6 +193,19 @@ describe('WorkbenchLibrary (v4 WorkbenchLibrary.tsx)', () => {
     expect(body).toContain('dice');
   });
 
+  it.each([
+    ['range', 'range'],
+    ['dice', 'dice'],
+    // The wire type widens at the unifier (HANDOFF: R-11); the entry is cast until then.
+    ['inventory', 'object dice'],
+  ])('badges a %s roll as “%s”', async (rollForm, label) => {
+    const fixture = await render(stubClient([tool({ rollForm: rollForm as never })]));
+    const badges = [
+      ...(fixture.nativeElement as HTMLElement).querySelectorAll('.qt-badge-outline'),
+    ].map((b) => b.textContent?.trim());
+    expect(badges).toContain(label);
+  });
+
   it('badges a gated definition, between disabled and whisper, with the clause’s own title', async () => {
     const fixture = await render(
       stubClient([tool({ disabled: true, defaultVisibility: 'whisper', gate: 'available' })]),

@@ -288,7 +288,7 @@ interface OverCapStore {
             >
           }
           <span class="qt-badge qt-badge-outline">{{
-            tool.rollForm === 'dice' ? 'dice' : 'range'
+            tool.rollForm === 'range' ? 'range' : tool.rollForm === 'dice' ? 'dice' : 'object dice'
           }}</span>
           @if (tool.llm) {
             <span

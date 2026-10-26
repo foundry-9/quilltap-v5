@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Proving Bench gains the Mock inventory card and the line-naming verdict, the run dialog gains the aggregate paragraph, the library badges an object roll (v4 e1872c94f, a53024d3c, e4a60ad9e, 322a5488e)
+
+_Versions: SPA 0.5.886._
+
+The bench sends a **Mock inventory** card's rows (`{ ref, state, count?, metadata? }`) as the preview and audit `inventory` body — the key absent when no row names a ref — refuses bad metadata JSON by name and disables Roll, says when a draft tests inventory with no bag, and evaluates a hand-typed sheet's gate against the mock bag. The gate verdict names the line an any-of decided (`passed on line 2`, `it passes no line of the “only show if” tests.`). A dry roll prints the two new effect arms (`→ inventory: equip “Excalibur” (would attempt)`, `→ log: "…" (would write)`), and an audit flags a reachable row that has no brief when the consult prompt reads `{{outcome.brief}}`. The run dialog's reference panel opens for the inventory keys and gains the aggregate paragraph (`It takes stock of everything they carry, reading …`); the library badges an inventory roll `object dice`. The wire widens in `workbench.api.ts` (the two dry-effect arms, `inventory?` on both request args). Until P4.D330 and P4.D333 land, the Inventory pieces read their names through two stand-in modules and the rows that need their code are gated.
+
 #### 2026-10-26 — feat(spa): the Workbench's side effects gain the Inventory and Log kinds, the roll gains From an object, the vantage select follows what is browsed (v4 e1872c94f, e4a60ad9e, 102a23648)
 
 _Versions: SPA 0.5.885._
