@@ -63,6 +63,9 @@ use quilltap_core::model::completion::{
     CannedCompletionProvider, CompletionMessage, CompletionRole, CompletionUsage,
 };
 use quilltap_core::pascal::llm_consult::{CustomToolConsultContext, CustomToolLlmInvoker};
+use quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+use quilltap_core::services::mount_index::converters::RefusingTextExtractor;
+use quilltap_core::services::mount_index::store_file::{store_mount_file, StoreFileInput};
 use quilltap_core::tools::rng::FixedBytes;
 use quilltap_core::tools::run_custom::{
     execute_run_custom_tool_with_consult, RunCustomToolContext,
@@ -166,12 +169,34 @@ const P4D332_RESIDUE: &[&str] = &[
 ];
 
 /// P4.D305: the log lines this family pins (the oracle's `PINNED_MESSAGES`).
-const PINNED_MESSAGES: [&str; 5] = [
+const PINNED_MESSAGES: [&str; 6] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
     "Custom tool run refused",
     "Custom tool dealt",
     "Custom tool run failed",
     "Custom tool run completed",
+    // P4.D333 (v4 `322a5488e`): the table-first order announces itself.
+    "Custom tool table dealt ahead of the consult",
+];
+
+/// P4.D333: the oracle's `NARRATOR_TOOL_TEXT`, byte for byte — a consult-
+/// bearing tool whose table does not test the consult (bug 257's table-first
+/// order). Written into the case's vault on the per-run copy through v5's
+/// real `store_mount_file`, as v4's case writes it through `storeMountFile`.
+const NARRATOR_TOOL_TEXT: &str = r#"{"name":"narrator","description":"Narrate a scan.","parameters":{"layers":{"type":"number","default":95}},"roll":{"min":1,"max":1},"llm":{"prompt":"Write a report. State: {{outcome.state}}, row {{outcome.index}}. Conclusion to reach: {{outcome.brief}}","errorMessage":"The link falters."},"outcomes":[{"when":{"roll":{"gte":{"$param":"layers"}}},"message":"{{llm}}","state":"success","brief":"Confirmed at {{params.layers}} layers."},{"when":true,"message":"{{llm}} [{{outcome.state}}]","state":"failure","brief":"Not found."}]}"#;
+
+/// P4.D333: `(case, relative path, text)` — the per-case tool plants.
+const TOOL_PLANTS: &[(&str, &str, &str)] = &[
+    (
+        "llm-consult-table-first",
+        "Tools/narrator.tool.json",
+        NARRATOR_TOOL_TEXT,
+    ),
+    (
+        "llm-consult-table-first-no-profiles",
+        "Tools/narrator.tool.json",
+        NARRATOR_TOOL_TEXT,
+    ),
 ];
 
 /// The oracle's `PLANT_CHAT_UNREADABLE` — `chats.title` rebuilt as a generated
@@ -767,6 +792,27 @@ fn run_custom_handler_matches_oracle() {
             profile: false,
             plant: None,
         },
+        // ---- P4.D333 (v4 `322a5488e`, bug 257): the table dealt FIRST ------
+        // The narrator tool is planted per case (`TOOL_PLANTS`). Resolving:
+        // `pascalMeta.llm.prompt` and the CUSTOM_TOOL_CONSULT row carry the
+        // TOLD verdict, and the run logs the table-first line.
+        Case {
+            name: "llm-consult-table-first",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "narrator" }),
+            profile: true,
+            plant: None,
+        },
+        // No profile: dealt first all the same, the consult fails soft.
+        Case {
+            name: "llm-consult-table-first-no-profiles",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": "narrator" }),
+            profile: false,
+            plant: None,
+        },
     ];
     // === P4.D329: v4 `cad017599`'s seven `it`s MIRRORED over the widened pair
     // (`pascal-run-custom-inventory-pascal.ts`), plus the run service's bag
@@ -846,6 +892,9 @@ fn run_custom_handler_matches_oracle() {
     let mut saw_progress_create = false;
     let mut logged_rows = 0usize;
     let (mut failed, mut red_green): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    // P4.D333: the bug-257 tool plants applied, and the table-first lines pinned.
+    let mut plants_applied = 0usize;
+    let mut table_first_lines = 0usize;
     // P4.D329: the oracle's inventory lines across the mirror rows (each is
     // compared on its row; a carved row stops at its first difference).
     let inventory_lines_in_oracle: usize = oracle
@@ -911,6 +960,29 @@ fn run_custom_handler_matches_oracle() {
             common::materialize_llm_logs(&llm_logs, &spec.test_pepper_base64);
             if case.profile {
                 insert_consult_profile(&main, &spec.test_pepper_base64, &spec.user_id);
+            }
+            if let Some((_, path, text)) =
+                TOOL_PLANTS.iter().find(|(name, _, _)| *name == case.name)
+            {
+                let vault = case.vault.as_deref().expect("a tool plant needs a vault");
+                let main_w = Writer::open_writable(&main, &spec.test_pepper_base64)
+                    .expect("open main for the tool plant");
+                let mount_w = Writer::open_writable(&mount, &spec.test_pepper_base64)
+                    .expect("open mount for the tool plant");
+                let mut input = StoreFileInput::new(vault, path, text.as_bytes().to_vec());
+                input.original_mime_type = Some("application/json".into());
+                input.transcode_images = false;
+                input.extract_text = false;
+                input.enqueue_embedding = false;
+                store_mount_file(
+                    main_w.connection(),
+                    mount_w.connection(),
+                    &input,
+                    &RefusingTextExtractor,
+                    &RefusingWebpTranscoder,
+                )
+                .unwrap_or_else(|e| panic!("case '{}' tool plant: {e:?}", case.name));
+                plants_applied += 1;
             }
             if let Some(plant) = case.plant {
                 let writer = Writer::open_writable(&main, &spec.test_pepper_base64)
@@ -1098,6 +1170,13 @@ fn run_custom_handler_matches_oracle() {
                 assert_eq!(got_inv, want_inv, "case '{}' inventory lines", case.name);
             }
         }));
+        if let Some(want) = oracle.get(case.name) {
+            table_first_lines += want["logs"].as_array().map_or(0, |l| {
+                l.iter()
+                    .filter(|x| x["message"] == "Custom tool table dealt ahead of the consult")
+                    .count()
+            });
+        }
         checked += 1;
         let red = RED_UNTIL_UNION.contains(&case.name) || P4D332_RESIDUE.contains(&case.name);
         match (walked.is_ok(), red) {
@@ -1130,5 +1209,14 @@ fn run_custom_handler_matches_oracle() {
         "no case CREATED a progression nobody had authored"
     );
     assert!(logged_rows > 0, "no case carried a pinned log line");
+    assert_eq!(
+        plants_applied,
+        TOOL_PLANTS.len(),
+        "a tool plant went unapplied"
+    );
+    assert!(
+        table_first_lines >= 2,
+        "the table-first line went missing ({table_first_lines} pinned)"
+    );
     eprintln!("OK: run_custom handler matched oracle ({checked} cases).");
 }

@@ -1156,6 +1156,7 @@ fn any_group_holds<G>(
     }
     tracing::debug!(
         target: "quilltap::pascal",
+        context = "pascal.custom-tools",
         tool = tool_name,
         groups = groups.len(),
         heldGroup = %held_group.map_or_else(|| "null".to_string(), |g| g.to_string()),
@@ -2078,6 +2079,7 @@ pub fn render_template(message: &str, vars: &TemplateVars) -> String {
                             };
                             tracing::debug!(
                                 target: "quilltap::pascal",
+                                context = "pascal.custom-tools",
                                 placeholder = whole,
                                 reason,
                                 "Custom tool template references {{{{outcome.*}}}} it cannot render",
@@ -2980,6 +2982,7 @@ pub async fn execute_custom_tool(
                         .map(|b| render_template(b, &template_vars));
                     tracing::debug!(
                         target: "quilltap::pascal",
+                        context = "pascal.custom-tools",
                         tool = definition.name,
                         outcomeIndex = outcome_index,
                         state = winner.state.as_str(),
@@ -3535,7 +3538,7 @@ mod any_of_and_outcome_debug_tests {
             vec![
                 "DEBUG quilltap::pascal Custom tool metadata test did not match tool=t key=a reason=the character has no such metadata key".to_string(),
                 "DEBUG quilltap::pascal Custom tool metadata test did not match tool=t key=b reason=the character has no such metadata key".to_string(),
-                "DEBUG quilltap::pascal Custom tool any-of test tool=t groups=2 heldGroup=null".to_string(),
+                "DEBUG quilltap::pascal Custom tool any-of test context=pascal.custom-tools tool=t groups=2 heldGroup=null".to_string(),
             ]
         );
     }
@@ -3554,7 +3557,7 @@ mod any_of_and_outcome_debug_tests {
         assert_eq!(lines.len(), 2, "{lines:?}");
         assert_eq!(
             lines[1],
-            "DEBUG quilltap::pascal Custom tool any-of test tool=t groups=2 heldGroup=1"
+            "DEBUG quilltap::pascal Custom tool any-of test context=pascal.custom-tools tool=t groups=2 heldGroup=1"
         );
     }
 
@@ -3653,7 +3656,7 @@ mod any_of_and_outcome_debug_tests {
         let dealt: Vec<&String> = lines.iter().filter(|l| l.contains("dealt ahead")).collect();
         assert_eq!(
             dealt,
-            vec!["DEBUG quilltap::pascal Custom tool table dealt ahead of the consult tool=entanglement_scan outcomeIndex=1 state=failure hasBrief=true"]
+            vec!["DEBUG quilltap::pascal Custom tool table dealt ahead of the consult context=pascal.custom-tools tool=entanglement_scan outcomeIndex=1 state=failure hasBrief=true"]
         );
     }
 
@@ -3667,8 +3670,8 @@ mod any_of_and_outcome_debug_tests {
             invoker.0.lock().unwrap().as_deref(),
             Some("State: failure, row 0. Reach: {{outcome.brief}}")
         );
-        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool table dealt ahead of the consult tool=entanglement_scan outcomeIndex=0 state=failure hasBrief=false".to_string()), "{lines:?}");
-        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render placeholder={{outcome.brief}} reason=the winning outcome has no brief".to_string()), "{lines:?}");
+        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool table dealt ahead of the consult context=pascal.custom-tools tool=entanglement_scan outcomeIndex=0 state=failure hasBrief=false".to_string()), "{lines:?}");
+        assert!(lines.contains(&"DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render context=pascal.custom-tools placeholder={{outcome.brief}} reason=the winning outcome has no brief".to_string()), "{lines:?}");
     }
 
     #[test]
@@ -3734,7 +3737,7 @@ mod any_of_and_outcome_debug_tests {
         });
         assert_eq!(
             lines,
-            vec!["DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render placeholder={{outcome.state}} reason=the table has not dealt yet (or the consult is read by an outcome row)".to_string()]
+            vec!["DEBUG quilltap::pascal Custom tool template references {{outcome.*}} it cannot render context=pascal.custom-tools placeholder={{outcome.state}} reason=the table has not dealt yet (or the consult is read by an outcome row)".to_string()]
         );
         // And once dealt, the state and index render silently.
         let winning = WinningOutcome {

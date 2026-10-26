@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(pascal): bug 257's table-first order through the `run_custom` handler (P4.D333)
+
+_Versions: core 0.0.1325._
+
+`pascal-run-custom-handler.test.ts` gains two cases over a `narrator` tool planted per case into the vault of the per-run copy (v4's real `storeMountFile`; v5's `store_mount_file` writes the same bytes): with a resolving consult, the posted row's `pascalMeta.llm.prompt`, the canned-completion key and the `CUSTOM_TOOL_CONSULT` llm-log row carry the told verdict (`State: failure, row 1. Conclusion to reach: Not found.`); without a profile the table still deals first and the consult fails soft. `Custom tool table dealt ahead of the consult` joins the pinned lines on both sides, so the three new run-core DEBUG lines now carry v4's `context=pascal.custom-tools`. The family now records every red case by name instead of stopping at the first, and carves five cases by name as P4.D332's residue (each differs only in the `Available:` list once vault tools are their character's only).
+
 #### 2026-10-26 — test(pascal): the roster's withheld DEBUG pinned field by field, any-of groups included (P4.D333)
 
 _Harness-only change (`quilltap-harness` frozen); no crate version moves._

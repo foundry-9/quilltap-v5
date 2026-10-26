@@ -94,7 +94,36 @@ interface CaseSpec {
    * bytes; the Rust side builds its context from the recorded values.
    */
   room?: { chatId: string; projectId: string | null; callerParticipantId: string };
+  /**
+   * P4.D333: a `.tool.json` written into the case's vault ON THE PER-RUN COPY
+   * (never baked into the committed pair), through v4's REAL `storeMountFile`
+   * after the database opens — the Rust side writes the same bytes through
+   * its own `store_mount_file`. The text travels verbatim, so both sides store
+   * identical bytes.
+   */
+  plantTool?: { relativePath: string; text: string };
 }
+
+/**
+ * P4.D333 (v4 `322a5488e`, bug 257): a consult-bearing tool whose table does
+ * NOT test the consult — so the table is dealt FIRST, the winner's brief is
+ * rendered, and the prompt is told the verdict. `roll` is degenerate, so the
+ * failure row wins without a draw.
+ */
+const NARRATOR_TOOL_TEXT = JSON.stringify({
+  name: 'narrator',
+  description: 'Narrate a scan.',
+  parameters: { layers: { type: 'number', default: 95 } },
+  roll: { min: 1, max: 1 },
+  llm: {
+    prompt: 'Write a report. State: {{outcome.state}}, row {{outcome.index}}. Conclusion to reach: {{outcome.brief}}',
+    errorMessage: 'The link falters.',
+  },
+  outcomes: [
+    { when: { roll: { gte: { $param: 'layers' } } }, message: '{{llm}}', state: 'success', brief: 'Confirmed at {{params.layers}} layers.' },
+    { when: true, message: '{{llm}} [{{outcome.state}}]', state: 'failure', brief: 'Not found.' },
+  ],
+});
 
 /**
  * P4.D305: the log lines this family pins — every line v4 emits at the pin on
@@ -121,6 +150,8 @@ const PINNED_MESSAGES = new Set([
   'Custom tool dealt',
   'Custom tool run failed',
   'Custom tool run completed',
+  // P4.D333 (v4 `322a5488e`): the table-first order announces itself.
+  'Custom tool table dealt ahead of the consult',
 ]);
 
 /** chats.title rebuilt as a generated column that THROWS on read — v4's
@@ -368,6 +399,20 @@ async function runCase(
       createdAt: CONSULT_PROFILE_TS,
       updatedAt: CONSULT_PROFILE_TS,
     });
+  }
+
+  if (c.plantTool) {
+    const { storeMountFile } = await import('@/lib/mount-index/store-file');
+    if (!c.vaultKey) throw new Error(`case '${c.name}': a tool plant needs a vault`);
+    await storeMountFile({
+      mountPointId: meta[c.vaultKey],
+      relativePath: c.plantTool.relativePath,
+      data: Buffer.from(c.plantTool.text, 'utf8'),
+      originalMimeType: 'application/json',
+      transcodeImages: false,
+      extractText: false,
+      enqueueEmbedding: false,
+    } as never);
   }
 
   try {
@@ -642,6 +687,17 @@ async function main(): Promise<void> {
     { name: 'inventory-read-none-named', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'spell' }, room: TRIGGER_ROOM_A },
     { name: 'inventory-read-nobody-rolled', characterId: null, vaultKey: null, characterIds: ALL, input: { tool: 'reads_in_message' }, room: TRIGGER_ROOM_A },
     // === end P4.D329 ===
+
+    // ---- P4.D333 (v4 `322a5488e`, bug 257): the table dealt FIRST ----------
+    // The consult resolves (a profile, the recording provider): the posted
+    // row's `pascalMeta.llm.prompt` and the CUSTOM_TOOL_CONSULT llm-log row
+    // carry the TOLD verdict (`State: failure, row 1. … Not found.`), the
+    // message quotes `{{outcome.state}}`, and the run logs `Custom tool table
+    // dealt ahead of the consult` before the consult.
+    { name: 'llm-consult-table-first', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'narrator' }, profile: true, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
+    // No profile: the table still dealt first (the line fires), the consult
+    // fails soft, and the failure row's message renders the author's error.
+    { name: 'llm-consult-table-first-no-profiles', characterId: CHAR_A, vaultKey: 'vaultA', characterIds: ALL, input: { tool: 'narrator' }, plantTool: { relativePath: 'Tools/narrator.tool.json', text: NARRATOR_TOOL_TEXT } },
   ];
 
   const out = fs.createWriteStream(outPath);
