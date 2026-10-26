@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(interrupts): `?action=stop-turn` and `?action=raise-hand` on the chat REST edge (P4.D335 Tier 2)
+
+_Versions: web 0.0.245._
+
+`POST /api/v1/chats/{id}?action=stop-turn` and `?action=raise-hand` now answer v4's bodies over REST instead of the "rides POST /api/dispatch" pointer. `stop-turn` reads no body. `raise-hand` reads `{ raised }` through the shared tri-state envelope, so `null` or a non-boolean is v4's 400 with the Zod `details`; as in v4 (`req.json().catch(() => ({}))`), an unparsable or empty body counts as `{}` and raises the hand, while a body that parses to a non-object is refused with v4's `expected object` issue. `unwrap_to_http` renders the two new bodies. New `chat_interrupt_rest_routes` compares 14 rows (status and body bytes) against the salon-skip oracle regenerated at the pin, which gains two REST-only rows (an array and a string body). `tri_state_edges_share_the_decoder`'s hand-built count moves 125 → 126.
+
 #### 2026-10-26 — test(interrupts): tier-3 stop and raise-a-hand corpora over v4's real spine (P4.D335 unit 3)
 
 _No crate versions bumped._

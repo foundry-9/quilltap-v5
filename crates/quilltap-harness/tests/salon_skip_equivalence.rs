@@ -591,12 +591,19 @@ fn salon_skip_matches_oracle() {
         let (chats, msgs) = dump(&db);
         compare(case, as_http(&resp), lines, chats, msgs);
     }
-    // `raise_unparsable_body` is the REST edge's (a non-JSON body never reaches
-    // a dispatch `Request`): `quilltap-web`'s `chat_interrupt_rest_routes`.
-    assert!(
-        oracle.contains_key("raise_unparsable_body"),
-        "the REST-only row must still be in the oracle"
-    );
+    // `raise_unparsable_body` / `raise_array_body` / `raise_string_body` are the
+    // REST edge's (a dispatch `Request` is always an object): `quilltap-web`'s
+    // `chat_interrupt_rest_routes` compares them against this same oracle.
+    for rest_only in [
+        "raise_unparsable_body",
+        "raise_array_body",
+        "raise_string_body",
+    ] {
+        assert!(
+            oracle.contains_key(rest_only),
+            "the REST-only row `{rest_only}` must still be in the oracle"
+        );
+    }
     assert_eq!(
         interrupt_rows, 15,
         "every dispatchable interrupt row compared"

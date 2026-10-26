@@ -77,6 +77,20 @@ pub(crate) fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> 
             v.to_string(),
         )
             .into_response(),
+        // P4.D335 (v4 `2b5e8ee24`): the two interrupt bodies — v4's bare
+        // `successResponse({...})`.
+        CoreResponse::StopTurn(dto) => (
+            success_status,
+            [("content-type", "application/json")],
+            serde_json::to_string(&dto).unwrap_or_default(),
+        )
+            .into_response(),
+        CoreResponse::RaiseHand(dto) => (
+            success_status,
+            [("content-type", "application/json")],
+            serde_json::to_string(&dto).unwrap_or_default(),
+        )
+            .into_response(),
         // v4's `validationError(zodError)` puts BOTH keys on the wire —
         // `{error: 'Validation error', details: [issues]}` at 400
         // (`lib/api/responses.ts:108-118`, reached from the route middleware's
@@ -848,6 +862,45 @@ pub async fn chat_action_post(
             }
         }
         // === end P4.D205 ===
+        // === P4.D335 (v4 `2b5e8ee24`): the operator's two interrupts ===
+        // `stop-turn` reads no body. `raise-hand` reads `{ raised }` through
+        // the shared envelope (the tri-state: `null` / a non-boolean is v4's
+        // `validationError`, answered by the handler with `details`). v4 reads
+        // the body as `req.json().catch(() => ({}))`: an unparsable or EMPTY
+        // body is `{}` (→ `raised: true`), but a body that PARSES to a
+        // non-object reaches `raiseHandSchema.parse` and is refused there.
+        "stop-turn" => CoreRequest::ChatStopTurn { chat_id },
+        "raise-hand" => {
+            let parsed: serde_json::Value = serde_json::from_str(&body)
+                .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+            if !parsed.is_object() {
+                let issue = quilltap_core::api::zod_issues::ZodIssue::invalid_type(
+                    "object",
+                    vec![],
+                    Some(&parsed),
+                )
+                .to_value();
+                return (
+                    StatusCode::BAD_REQUEST,
+                    [("content-type", "application/json")],
+                    serde_json::json!({ "error": "Validation error", "details": [issue] })
+                        .to_string(),
+                )
+                    .into_response();
+            }
+            match crate::request_envelope::request_envelope(
+                "chatRaiseHand",
+                &parsed,
+                &["raised"],
+                &[("chatId", serde_json::Value::String(chat_id))],
+            ) {
+                Some(r) => r,
+                None => {
+                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                }
+            }
+        }
+        // === end P4.D335 ===
         // Only these POST actions are served on this REST edge; the other
         // v4-known chat actions ride POST /api/dispatch (a loud pointer, not a
         // silent 404 — the mount-point-action precedent — and never the
@@ -855,9 +908,9 @@ pub async fn chat_action_post(
         _ => {
             return error_json(
                 StatusCode::BAD_REQUEST,
-                "Only the equip, wardrobe-rollback, regenerate-avatar, inform and \
-                 cancel-inform actions are served on this route; the other chat actions \
-                 ride POST /api/dispatch",
+                "Only the equip, wardrobe-rollback, regenerate-avatar, inform, \
+                 cancel-inform, stop-turn and raise-hand actions are served on this \
+                 route; the other chat actions ride POST /api/dispatch",
             )
         }
     };

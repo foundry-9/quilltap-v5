@@ -589,7 +589,12 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // inventory` and the chat POST's three Inventory keys hand-build
     // `ChatInventoryGet` / `Equip` / `Unequip` / `ResetDefaults` (the
     // body RAW; typed-only).
-    ("wardrobe_routes.rs", 29),
+    // P4.D335 (v4 `2b5e8ee24`): 25 → 26 — the chat POST's `?action=stop-turn`
+    // arm hand-builds `ChatStopTurn { chat_id }` (the path segment alone; no
+    // body, no tri-state). Its sibling `raise-hand` carries the `raised`
+    // tri-state and goes through `request_envelope`, as this census requires.
+    // Union (P4.D325 + P4.D335): 25 + 4 + 1 = 30.
+    ("wardrobe_routes.rs", 30),
 ];
 
 #[test]
@@ -626,8 +631,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 148,
-        "148 = 125 + P4.D325's twenty-three (`inventory_routes.rs`'s nineteen — the eighteen \
+        total, 149,
+        "149 = 148 + P4.D335's one (`wardrobe_routes.rs`'s `ChatStopTurn`, the chat POST's \
+         `?action=stop-turn`, v4 `2b5e8ee24`). \
+         148 = 125 + P4.D325's twenty-three (`inventory_routes.rs`'s nineteen — the eighteen \
          Inventory verbs plus the item PUT's bad-JSON `InventoryItemGet` probe — and \
          `wardrobe_routes.rs`'s four chat Inventory keys, v4 `4fbdad186`). \
          125 = 124 + P4.D321's one (`characters_routes.rs`'s `CharacterWardrobeImages`, the \

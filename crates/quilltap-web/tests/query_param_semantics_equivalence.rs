@@ -525,7 +525,7 @@ const UNSERVED_KNOWN_ACTIONS: &[(&str, &str, &str, u16, &str)] = &[
         "/api/v1/chats/bb000000-0000-4000-8000-0000000000bb",
         "save-image",
         400,
-        "Only the equip, wardrobe-rollback, regenerate-avatar, inform and cancel-inform actions are served on this route; the other chat actions ride POST /api/dispatch",
+        "Only the equip, wardrobe-rollback, regenerate-avatar, inform, cancel-inform, stop-turn and raise-hand actions are served on this route; the other chat actions ride POST /api/dispatch",
     ),
     (
         "GET",

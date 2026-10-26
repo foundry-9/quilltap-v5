@@ -345,6 +345,9 @@ async function main(): Promise<void> {
     raise('raise_object', { raised: {} }),
     raise('raise_extra_keys', { raised: true, extra: 1 }),
     raise('raise_unparsable_body', null, { jsonThrows: true }),
+    // REST-only: a body that PARSES to a non-object reaches the Zod parse.
+    raise('raise_array_body', []),
+    raise('raise_string_body', 'yes'),
     raise('raise_unknown_chat', { raised: null }, { paramId: UNKNOWN }),
   ];
 
