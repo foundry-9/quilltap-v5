@@ -1107,6 +1107,207 @@
           ]
         }
       ]
+    },
+    {
+      "name": "character_can_manage_inventory_true_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D327] `e1872c94f`: `ExportedCharacter.canManageInventory` is `[boolean, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/canManageInventory",
+          "value": true
+        }
+      ]
+    },
+    {
+      "name": "character_can_manage_inventory_false_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D327] `e1872c94f`: `ExportedCharacter.canManageInventory` is `[boolean, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/canManageInventory",
+          "value": false
+        }
+      ]
+    },
+    {
+      "name": "character_can_manage_inventory_null_valid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D327] `e1872c94f`: `ExportedCharacter.canManageInventory` is `[boolean, null]`.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/canManageInventory",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "character_can_manage_inventory_string_invalid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D327] `e1872c94f`: `ExportedCharacter.canManageInventory` is `[boolean, null]` \u2014 a non-boolean is now REFUSED (the def stays open, so only a PRESENT key tightens).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/canManageInventory",
+          "value": "yes"
+        }
+      ]
+    },
+    {
+      "name": "character_can_manage_inventory_number_invalid",
+      "from": "characters_valid_rich",
+      "$comment": "[P4.D327] `e1872c94f`: `ExportedCharacter.canManageInventory` is `[boolean, null]` \u2014 a non-boolean is now REFUSED (the def stays open, so only a PRESENT key tightens).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/characters/0/canManageInventory",
+          "value": 1
+        }
+      ]
+    },
+    {
+      "name": "chats_inventory_base_valid",
+      "from": "chats_all_memories",
+      "$comment": "[P4.D327] the chats seed is INVALID only for its participants' missing `participantId` (a recorded v4 observation); this base fills it from each participant's own id so the `equippedInventory` rows below are judged on that key alone.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/participants/0/participantId",
+          "value": "e1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "op": "set",
+          "path": "/data/chats/1/participants/0/participantId",
+          "value": "e1000000-0000-4000-8000-000000000002"
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_null_valid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 null is allowed.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": null
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_empty_object_valid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 an empty map.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {}
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_empty_list_valid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 a character carrying nothing.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {
+            "a1000000-0000-4000-8000-000000000001": []
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_uuid_list_valid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 an array of object UUIDs.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {
+            "a1000000-0000-4000-8000-000000000001": [
+              "0b000001-0000-4000-8000-000000000001"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_array_invalid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 not an object.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": []
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_string_invalid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 not an object.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": "x"
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_entry_string_invalid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 an entry must be an array.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {
+            "a1000000-0000-4000-8000-000000000001": "x"
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_element_not_uuid_invalid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 an element must match `$defs.UUID` (format uuid).",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {
+            "a1000000-0000-4000-8000-000000000001": [
+              "not-a-uuid"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "chat_equipped_inventory_element_number_invalid",
+      "from": "chats_inventory_base_valid",
+      "$comment": "[P4.D327] `4fbdad186`: `ExportedChat.equippedInventory` is `[object, null]` of `characterId` \u2192 array of `$defs.UUID` \u2014 an element must be a string.",
+      "ops": [
+        {
+          "op": "set",
+          "path": "/data/chats/0/equippedInventory",
+          "value": {
+            "a1000000-0000-4000-8000-000000000001": [
+              5
+            ]
+          }
+        }
+      ]
     }
   ],
   "literals": [

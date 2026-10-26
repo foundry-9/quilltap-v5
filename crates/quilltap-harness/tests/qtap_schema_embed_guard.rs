@@ -81,7 +81,16 @@ mod common;
 /// bundle carrying history was REFUSED before (the one acceptance change) —
 /// and `counts.wardrobeHistory`; `4ae20977f` added `actorToolName` (string or
 /// null, NOT required) and re-described `actorCharacterId`.
-const VENDORED_BYTES: usize = 108_678;
+/// P4.D327: 109,559 at v4 `322a5488e` — `4fbdad186` added
+/// `ExportedChat.equippedInventory` (an object-or-null of `characterId` →
+/// array of `$defs.UUID`, listed BEFORE `equippedOutfit` in the schema's own
+/// ordering) and `e1872c94f` added `ExportedCharacter.canManageInventory`
+/// (boolean-or-null, after `canCreateOutfits`) plus the `pascalMeta.effects`
+/// sentence on Inventory gestures. Both `$defs` stay `additionalProperties:
+/// true`, so a bundle carrying either key was ACCEPTED before and stays
+/// accepted; the move tightens the PRESENT keys only (a non-boolean flag, a
+/// non-object map, a non-array entry, a non-UUID element are now refused).
+const VENDORED_BYTES: usize = 109_559;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

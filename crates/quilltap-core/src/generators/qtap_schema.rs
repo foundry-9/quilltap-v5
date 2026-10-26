@@ -197,7 +197,11 @@ mod tests {
         // P4.D317: 108,678 at v4 `e8e17b2d9` (`$defs.WardrobeHistory`,
         // `chats.wardrobeHistory`, `counts.wardrobeHistory`; `4ae20977f`'s
         // `actorToolName`).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 108_678);
+        // P4.D327: 109,559 at v4 `322a5488e` (`4fbdad186`:
+        // `ExportedChat.equippedInventory`; `e1872c94f`:
+        // `ExportedCharacter.canManageInventory` + the `pascalMeta.effects`
+        // Inventory sentence).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 109_559);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

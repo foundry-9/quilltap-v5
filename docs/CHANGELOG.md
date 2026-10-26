@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(export): re-vendor `qtap-export.schema.json` at the `322a5488e` pin — `canManageInventory` and `equippedInventory` (P4.D327)
+
+_Versions: core 0.0.1326._
+
+Copies v4's `public/schemas/qtap-export.schema.json` byte-exact at `322a5488e` (108,678 → 109,559 bytes, md5 `10b72fd1160722b77a49fe6f7abb5b79`): `4fbdad186` adds `ExportedChat.equippedInventory` (object-or-null of character id → array of object UUIDs) and `e1872c94f` adds `ExportedCharacter.canManageInventory` (boolean-or-null) plus the `pascalMeta.effects` sentence on Inventory gestures. Both definitions stay open (`additionalProperties: true`), so a v4 bundle carrying the keys was accepted before and still is; only a malformed value for a present key is now refused. The size pins in `qtap_schema.rs` and `qtap_schema_embed_guard` move together.
+
+`qtap_schema_validate_equivalence` gains 15 corpus rows driven through v4's real ajv validator at the pin: five `canManageInventory` values, a chats base that fills the seed's missing `participantId`, and nine `equippedInventory` shapes including a non-UUID element (format asserted on both sides). On the old schema all seven invalid rows were accepted.
+
 #### 2026-10-26 — feat(chat): the bug-252 keyed-field pass carries `equippedInventory`, the fifth column (P4.D327)
 
 _Versions: core 0.0.1325._
