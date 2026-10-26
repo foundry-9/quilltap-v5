@@ -144,26 +144,38 @@ pub async fn restore(
     // receive" — and the plan's mints (the Wardrobe-holding mounts, legacy
     // items, pointed files) land in the remapper before any other id, which is
     // v4's order (R-A). `replace` plans nothing.
-    let (remapped, wardrobe_image_pointer_fixes) = if mode == RestoreMode::NewAccount {
-        let mut remapper = crate::services::backup::uuid_remapper::UuidRemapper::new();
-        let fixes = crate::services::backup::uuid_remap::plan_wardrobe_image_pointer_fixes(
-            &extracted.data,
-            &mut remapper,
-        );
-        // P4.D317: the remap can THROW (v4's outfit-history arm `.map`s a
-        // non-array slot value) — v4's `restore` has no catch around it, so
-        // the restore REJECTS before a single write; so does v5's.
-        (
-            Some(crate::services::backup::uuid_remap::remap_backup_data(
+    //
+    // P4.D327 (v4 `4fbdad186`, `restore.ts:119-121`): the Inventory picture
+    // pointers are planned SECOND — after the wardrobe's, before the remap,
+    // with the same remapper — so their mints (each pictured object's mount,
+    // then its picture) land where v4's do.
+    let (remapped, wardrobe_image_pointer_fixes, inventory_image_pointer_fixes) =
+        if mode == RestoreMode::NewAccount {
+            let mut remapper = crate::services::backup::uuid_remapper::UuidRemapper::new();
+            let fixes = crate::services::backup::uuid_remap::plan_wardrobe_image_pointer_fixes(
                 &extracted.data,
-                target_user_id,
                 &mut remapper,
-            )?),
-            fixes,
-        )
-    } else {
-        (None, Vec::new())
-    };
+            );
+            let inventory_fixes =
+                crate::services::backup::uuid_remap::plan_inventory_image_pointer_fixes(
+                    &extracted.data,
+                    &mut remapper,
+                );
+            // P4.D317: the remap can THROW (v4's outfit-history arm `.map`s a
+            // non-array slot value) — v4's `restore` has no catch around it, so
+            // the restore REJECTS before a single write; so does v5's.
+            (
+                Some(crate::services::backup::uuid_remap::remap_backup_data(
+                    &extracted.data,
+                    target_user_id,
+                    &mut remapper,
+                )?),
+                fixes,
+                inventory_fixes,
+            )
+        } else {
+            (None, Vec::new(), Vec::new())
+        };
 
     let codec = host.pixel_codec();
     let dirs = host.host_dirs();
@@ -182,6 +194,7 @@ pub async fn restore(
             &mut extracted,
             remapped,
             wardrobe_image_pointer_fixes,
+            inventory_image_pointer_fixes,
             &user_id,
             codec,
             dirs,
@@ -323,6 +336,9 @@ fn restore_on_writer(
     extracted: &mut ExtractedBackup,
     remapped: Option<crate::services::backup::BackupData>,
     wardrobe_image_pointer_fixes: Vec<crate::services::backup::uuid_remap::WardrobeImagePointerFix>,
+    inventory_image_pointer_fixes: Vec<
+        crate::services::backup::uuid_remap::InventoryImagePointerFix,
+    >,
     target_user_id: &str,
     codec: Arc<dyn PixelCodec>,
     dirs: HostDirs,
@@ -1601,6 +1617,7 @@ fn restore_on_writer(
             replace_mode.then_some(&carried_store_ids),
             &bound,
             &wardrobe_image_pointer_fixes,
+            &inventory_image_pointer_fixes,
             &mut c,
             &mut w,
         );
@@ -2376,6 +2393,7 @@ fn restore_mount_family(
     preapply_carried: Option<&HashSet<String>>,
     bound: &BoundEntities,
     wardrobe_image_pointer_fixes: &[crate::services::backup::uuid_remap::WardrobeImagePointerFix],
+    inventory_image_pointer_fixes: &[crate::services::backup::uuid_remap::InventoryImagePointerFix],
     c: &mut Counters,
     w: &mut Vec<String>,
 ) -> HashSet<String> {
@@ -2824,20 +2842,23 @@ fn restore_mount_family(
     // read off the REMAPPED characters; a fix is skipped on EITHER mount id.
     // `Ok(None)` (the item is not in that folder) counts nothing and warns
     // nothing, as v4's falsy `updateProjectWardrobeItem` result.
+    //
+    // [P4.D327] The tombstone set is declared ONCE here, as v4 does
+    // (`restore.ts:955-959`), and read again by 22f-quater (`:985`).
+    let tombstoned_vaults: std::collections::HashSet<String> = data
+        .characters
+        .iter()
+        .filter(|ch| {
+            is_truthy_value(ch.get("archivedAt"))
+                && is_truthy_value(ch.get("characterDocumentMountPointId"))
+        })
+        .filter_map(|ch| {
+            ch.get("characterDocumentMountPointId")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .collect();
     {
-        let tombstoned_vaults: std::collections::HashSet<String> = data
-            .characters
-            .iter()
-            .filter(|ch| {
-                is_truthy_value(ch.get("archivedAt"))
-                    && is_truthy_value(ch.get("characterDocumentMountPointId"))
-            })
-            .filter_map(|ch| {
-                ch.get("characterDocumentMountPointId")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            })
-            .collect();
         let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         let mut fixed = 0usize;
         for fix in wardrobe_image_pointer_fixes {
@@ -2892,6 +2913,78 @@ fn restore_mount_family(
             );
         }
     }
+
+    // === P4.D327: 22f-quater ===
+    // 22f-quater. Inventory picture pointers (new-account mode) — v4
+    // `4fbdad186` `restore.ts:979-1007`: "the same repair for the objects'
+    // `imageFileId`, through the mount-scoped Inventory writer, one batch per
+    // mount. Tombstoned vaults are skipped." Fixes are grouped per mount in
+    // FIRST-SEEN order (v4's `Map`), fix order kept within a group; a fix is
+    // skipped on EITHER mount id. `require_all` is off, so an object absent
+    // from its folder is skipped silently by the writer (not counted, not
+    // warned). The writer re-projects the whole `Inventory/` folder of the
+    // mount and stamps the patched record's `updatedAt` with the wall clock —
+    // v4's side effects, carried. `planned` counts the plan BEFORE the
+    // tombstone filter, so a tombstoned-only plan still logs `fixed=0`.
+    {
+        let by_mount = group_inventory_fixes(inventory_image_pointer_fixes, &tombstoned_vaults);
+        let mut fixed = 0usize;
+        for (mount_point_id, fixes) in &by_mount {
+            let patches: Vec<crate::db::inventory_writes::InventoryRecordPatch> = fixes
+                .iter()
+                .map(|fix| {
+                    let mut patch = serde_json::Map::new();
+                    patch.insert(
+                        "imageFileId".to_string(),
+                        Value::String(fix.image_file_id.clone()),
+                    );
+                    crate::db::inventory_writes::InventoryRecordPatch {
+                        id: fix.item_id.clone(),
+                        patch,
+                        remove: Vec::new(),
+                    }
+                })
+                .collect();
+            match crate::db::inventory_writes::update_inventory_many_in_mount(
+                mount,
+                &crate::db::item_folder_ops::VaultFolderMount {
+                    mount_point_id: mount_point_id.to_string(),
+                    scope: crate::db::item_folder_ops::VaultFolderMountScope::Project,
+                    character_id: None,
+                },
+                &patches,
+                false,
+            ) {
+                Ok(updated) => fixed += updated.len(),
+                // v4's catch — unreachable from an archive (R-7): with
+                // `require_all` off the writer refuses only on a storage
+                // failure (`InventoryWriteError::Db`). The text is the bare
+                // message (`InventoryWriteError`'s `Display`).
+                Err(e) => {
+                    let error = e.to_string();
+                    w.push(format!(
+                        "Failed to repoint Inventory pictures in a restored store ({mount_point_id}): {error}"
+                    ));
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        mountPointId = %mount_point_id,
+                        count = fixes.len(),
+                        error = %error,
+                        "Failed to repoint Inventory pictures after restore"
+                    );
+                }
+            }
+        }
+        if !inventory_image_pointer_fixes.is_empty() {
+            tracing::info!(
+                target: "quilltap::restore",
+                planned = inventory_image_pointer_fixes.len(),
+                fixed = fixed,
+                "Repointed Inventory pictures after new-account restore"
+            );
+        }
+    }
+    // === end P4.D327 ===
 
     // 22g. Embedded chunks.
     {
@@ -3359,9 +3452,10 @@ fn restore_one_character(
         character_document_mount_point_id: None,
         can_dress_themselves: ob(ch, "canDressThemselves"),
         can_create_outfits: ob(ch, "canCreateOutfits"),
-        // P4.D324 compiles the new field in; the restore's carried value is
-        // P4.D327's edit (HANDOFF).
-        can_manage_inventory: None,
+        // P4.D327 (v4 `e1872c94f`): the flag travels with the row v4 spreads
+        // into `characters.create` (`restore.ts:250`); a non-boolean reads
+        // `None` (the recorded no-Zod-twin class, `:3330-3333`).
+        can_manage_inventory: ob(ch, "canManageInventory"),
         system_transparency: ob(ch, "systemTransparency"),
         core_whisper_enabled: ob(ch, "coreWhisperEnabled"),
         can_be_carina: ob(ch, "canBeCarina"),
@@ -4528,6 +4622,34 @@ struct Counters {
     // === end P4.D317 ===
 }
 
+/// P4.D327: 22f-quater's grouping (v4 `restore.ts:983-989`) — the fixes NOT
+/// on a tombstoned vault (either mount id), grouped by their remapped mount in
+/// FIRST-SEEN order (v4's `Map`), fix order kept within a group.
+fn group_inventory_fixes<'a>(
+    fixes: &'a [crate::services::backup::uuid_remap::InventoryImagePointerFix],
+    tombstoned_vaults: &HashSet<String>,
+) -> Vec<(
+    &'a str,
+    Vec<&'a crate::services::backup::uuid_remap::InventoryImagePointerFix>,
+)> {
+    let mut by_mount: Vec<(
+        &str,
+        Vec<&crate::services::backup::uuid_remap::InventoryImagePointerFix>,
+    )> = Vec::new();
+    for fix in fixes {
+        if tombstoned_vaults.contains(&fix.mount_point_id)
+            || tombstoned_vaults.contains(&fix.source_mount_point_id)
+        {
+            continue;
+        }
+        match by_mount.iter_mut().find(|(m, _)| *m == fix.mount_point_id) {
+            Some((_, list)) => list.push(fix),
+            None => by_mount.push((fix.mount_point_id.as_str(), vec![fix])),
+        }
+    }
+    by_mount
+}
+
 /// P4.D264: JS truthiness for 22f-ter's tombstone filter (`c.archivedAt &&
 /// c.characterDocumentMountPointId`).
 fn is_truthy_value(v: Option<&Value>) -> bool {
@@ -4904,6 +5026,7 @@ mod free_store_name_tests {
                 None,
                 &BoundEntities::default(),
                 &[],
+                &[],
                 &mut c,
                 &mut w,
             )
@@ -5003,6 +5126,7 @@ mod free_store_name_tests {
                 None,
                 &BoundEntities::default(),
                 &[],
+                &[],
                 &mut c,
                 &mut w,
             )
@@ -5023,3 +5147,40 @@ mod free_store_name_tests {
         );
     }
 }
+
+// === P4.D327: 22f-quater's grouping ===
+#[cfg(test)]
+mod inventory_fix_grouping_tests {
+    use super::*;
+    use crate::services::backup::uuid_remap::InventoryImagePointerFix;
+
+    fn fix(mount: &str, source: &str, item: &str) -> InventoryImagePointerFix {
+        InventoryImagePointerFix {
+            mount_point_id: mount.to_string(),
+            source_mount_point_id: source.to_string(),
+            item_id: item.to_string(),
+            image_file_id: format!("pic-{item}"),
+        }
+    }
+
+    #[test]
+    fn groups_by_mount_in_first_seen_order_skipping_tombstones_on_either_id() {
+        let fixes = vec![
+            fix("B", "b", "1"),
+            fix("A", "a", "2"),
+            fix("B", "b", "3"),
+            fix("T", "t", "4"),
+            fix("C", "dead-source", "5"),
+            fix("A", "a", "6"),
+        ];
+        let tombstoned: HashSet<String> = ["T".to_string(), "dead-source".to_string()]
+            .into_iter()
+            .collect();
+        let got: Vec<(&str, Vec<&str>)> = group_inventory_fixes(&fixes, &tombstoned)
+            .into_iter()
+            .map(|(m, list)| (m, list.iter().map(|f| f.item_id.as_str()).collect()))
+            .collect();
+        assert_eq!(got, [("B", vec!["1", "3"]), ("A", vec!["2", "6"])]);
+    }
+}
+// === end P4.D327 ===

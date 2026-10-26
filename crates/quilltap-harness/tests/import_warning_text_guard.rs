@@ -341,3 +341,27 @@ fn the_outfit_history_warnings_are_v4s_text() {
     }
 }
 // === end P4.D317 ===
+
+// === P4.D327 (the Inventory carriers) ===
+/// P4.D327 R-4 — 22f-quater's `summary.warnings` literal, VERBATIM in the
+/// production source: v4 `restore.ts:999` (`4fbdad186`, pin `322a5488e`),
+/// `Failed to repoint Inventory pictures in a restored store
+/// (${mountPointId}): ${message}`. The tail is the bare message —
+/// `InventoryWriteError`'s `Display` renders a `DbError` through
+/// `db::fallback::error_text`, never `sqlite error: …`. (Unreachable from an
+/// archive — R-7; its text is pinned anyway.)
+#[test]
+fn the_inventory_repoint_warning_is_v4s_text() {
+    let core = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src/services");
+    let read = |rel: &str| std::fs::read_to_string(core.join(rel)).expect("read source");
+    let literal =
+        "\"Failed to repoint Inventory pictures in a restored store ({mount_point_id}): {error}\"";
+    assert_eq!(
+        read("backup/restore/orchestrator.rs")
+            .matches(literal)
+            .count(),
+        1,
+        "backup/restore/orchestrator.rs must carry v4's warning text exactly once: {literal}"
+    );
+}
+// === end P4.D327 ===

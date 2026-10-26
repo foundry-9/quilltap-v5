@@ -59,6 +59,9 @@ const PREVIEW_CASES: PreviewCase[] = [
   // P4.D317 (v4 `7953da3a0`, `preview.ts:74`): the 43rd key counts
   // `data/wardrobe-history.json` (every other archive predates it → 0).
   { name: 'preview_outfit_history', archive: 'restore-archive-outfit-history.zip' },
+  // [P4.D327] (v4 `4fbdad186`): NO preview key moves — the Inventory rides
+  // existing files (doc-mount rows, chat / character cells). A regression row.
+  { name: 'preview_inventory', archive: 'restore-archive-inventory.zip' },
 ];
 
 /**
@@ -719,6 +722,34 @@ const RESTORE_CASES: Array<{
     mode: 'new-account',
   },
 
+  // ── [P4.D327] (v4 `4fbdad186` / `e1872c94f`): the Inventory, both modes ─
+  //
+  // `restore-archive-inventory.zip` (built by `fixtures/derive-restore-archive-
+  // inventory.py`): five object files in Riya's vault (an archetype, a sparse
+  // instance under `Inventory/Weapons/` whose `imageFileId` names the
+  // archive's `portrait.png` row — linked to the instance and chat c…02 — a
+  // kit, a SPARSE standalone, an object pointing at a file the archive does
+  // not carry), `equippedInventory` on both chats (a stranger's entry on
+  // c…02, a non-array entry on c…01), `canManageInventory` on both
+  // characters. `replace` lands it all verbatim and plans nothing (22f-quater
+  // silent); `new-account` re-keys the carried sets (the stranger DROPPED),
+  // keeps the instance id in the picture's `linkedTo` / `tags`, and 22f-quater
+  // repoints the instance's `imageFileId` onto the picture's new file id
+  // through the mount writer (the whole `Inventory/` re-projected — the sparse
+  // standalone re-written with its defaults). The tombstone twin archives
+  // Riya: her vault is skipped on either mount id (`planned=1 fixed=0`).
+  { name: 'restore_inventory_replace', archive: 'restore-archive-inventory.zip' },
+  {
+    name: 'restore_inventory_new_account',
+    archive: 'restore-archive-inventory.zip',
+    mode: 'new-account',
+  },
+  {
+    name: 'restore_inventory_tombstone_new_account',
+    archive: 'restore-archive-inventory-tombstone.zip',
+    mode: 'new-account',
+  },
+
   // ── P4.158 item 3 (ruling R-C): a shared legacy item vs the General pointer ─
   //
   // `restore-archive-general-pointer.zip` is `restore-archive-gen2.zip` plus
@@ -928,7 +959,10 @@ const REPO_LOG_MESSAGES = new Set([
  * warn, 7 info, 20 debug, 2 error) — `af48f6cc2` deletes 22j's two WARNs
  * and adds phase 9's `Restored memories` DEBUG. [P4.D317] 81 at `e8e17b2d9`
  * (51 warn, 7 info, 21 debug, 2 error) — `7953da3a0`'s 22n-ter adds
- * `Failed to restore outfit history` and `Restored outfit history`. EVERY
+ * `Failed to restore outfit history` and `Restored outfit history`.
+ * [P4.D327] 83 at `322a5488e` (52 warn, 8 info, 21 debug, 2 error) —
+ * `4fbdad186`'s 22f-quater adds `Failed to repoint Inventory pictures after
+ * restore` and `Repointed Inventory pictures after new-account restore`. EVERY
  * restore case records them, at every level, so the census is compared across
  * the whole corpus.
  */
@@ -979,6 +1013,8 @@ const RESTORE_TS_MESSAGES = [
   // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter (63 → 67).
   "Failed to restore wardrobe wear ledger",
   "Failed to repoint wardrobe item picture after restore",
+  // [P4.D327] v4 `4fbdad186` — 22f-quater (81 → 83): the per-mount catch's WARN …
+  "Failed to repoint Inventory pictures after restore",
   // [P4.D317] v4 `7953da3a0` — 22n-ter (79 → 81): the outer catch's WARN …
   "Failed to restore outfit history",
   "No npm plugins directory in backup",
@@ -1000,6 +1036,8 @@ const RESTORE_TS_MESSAGES = [
   // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
   "Restored outfit history",
   "Repointed wardrobe item pictures after new-account restore",
+  // [P4.D327] … and the INFO when anything was planned (`planned`, `fixed`).
+  "Repointed Inventory pictures after new-account restore",
   "Seeded connection-profile columns the archive predates",
   "Skipped duplicate folder row during restore",
   "Skipping LLM logs restore — logs database is in degraded mode",

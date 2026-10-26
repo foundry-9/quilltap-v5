@@ -388,6 +388,39 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D327] The Inventory archives are `restore-archive.zip` plus row
+    // edits: their `new-account` cases replay the same seeded legacy-disk-key
+    // `portrait.png` — the ruled placement again, two more cases of the shape.
+    (
+        "restore_inventory_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_inventory_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_inventory_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
+    (
+        "restore_inventory_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_inventory_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_inventory_tombstone_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     // [P4.D273] the three new archives' `new-account` cases replay the same
     // seeded legacy-disk-key `portrait.png` — the ruled placement again.
     (
@@ -574,6 +607,13 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // [P4.D273] the tombstone twin, in the bulk diff now.
     (
         "restore_wardrobe_picture_tombstone_new_account",
+        "Quilltap Uploads",
+    ),
+    // [P4.D327] the Inventory archives' `new-account` replays of the same
+    // seeded `files/portrait.png`.
+    ("restore_inventory_new_account", "Quilltap Uploads"),
+    (
+        "restore_inventory_tombstone_new_account",
         "Quilltap Uploads",
     ),
     // [P4.D273] the new archives' `new-account` replays of the same seeded
@@ -1366,6 +1406,11 @@ fn archive_for(name: &str) -> &'static str {
         "restore_wardrobe_picture_tombstone_new_account" => {
             "restore-archive-wardrobe-picture-tombstone.zip"
         }
+        // [P4.D327] `derive-restore-archive-inventory.py`.
+        "restore_inventory_replace" | "restore_inventory_new_account" => {
+            "restore-archive-inventory.zip"
+        }
+        "restore_inventory_tombstone_new_account" => "restore-archive-inventory-tombstone.zip",
         // [P4.D258 Tier 2 item 11] an `embedding: {}` memory beside two sound
         // ones — `derive-restore-archive-empty-embedding.py`.
         EMPTY_EMBEDDING_CASE => "restore-archive-empty-embedding.zip",
@@ -2348,14 +2393,16 @@ fn system_restore_state_equivalence() {
     // plus the legacy-settings `-own` and `-null` replace arms. 61 + 5 = 66:
     // P4.D317's outfit-history arms (replace twice, new-account, the per-row
     // skips, the bad slot in both modes — the new-account one a refusal).
+    // 66 + 3 = 69: P4.D327's Inventory carriers (replace, new-account, the
+    // tombstone twin).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        66,
-        "expected all sixty-six restore cases in the oracle (ten + the #58 orphan-links arm \
+        69,
+        "expected all sixty-nine restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2368,7 +2415,7 @@ fn system_restore_state_equivalence() {
          empty-embedding arm + P4.D273's store-binding, store-row-fails and memory-tiers \
          arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
          legacy-settings arms in both modes and the legacy-settings own / null arms \
-         + P4.D317's five outfit-history arms)"
+         + P4.D317's five outfit-history arms + P4.D327's three Inventory arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -6168,7 +6215,10 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// warn, 7 info, 20 debug, 2 error: `af48f6cc2` −22j's two WARNs, +phase
 /// 9's `Restored memories`, P4.D293; at `e8e17b2d9` 81 — 51 warn, 7 info, 21
 /// debug, 2 error: `7953da3a0`'s 22n-ter `Failed to restore outfit history` +
-/// `Restored outfit history`, P4.D317), recorded
+/// `Restored outfit history`, P4.D317; at `322a5488e` 83 — 52 warn, 8 info,
+/// 21 debug, 2 error: `4fbdad186`'s 22f-quater `Failed to repoint Inventory
+/// pictures after restore` + `Repointed Inventory pictures after new-account
+/// restore`, P4.D327), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -6221,6 +6271,9 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     // [P4.D264] v4 `3ee3b1342` / `7c8572869` — 22n-bis + 22f-ter.
     "Failed to restore wardrobe wear ledger",
     "Failed to repoint wardrobe item picture after restore",
+    // [P4.D327] v4 `4fbdad186` — 22f-quater (81 → 83): the per-mount catch's
+    // WARN (unreachable from an archive — R-7; pinned NEGATIVE) …
+    "Failed to repoint Inventory pictures after restore",
     // [P4.D317] v4 `7953da3a0` — 22n-ter (79 → 81): the outer catch's WARN …
     "Failed to restore outfit history",
     "No npm plugins directory in backup",
@@ -6241,6 +6294,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
     "Restored outfit history",
     "Repointed wardrobe item pictures after new-account restore",
+    // [P4.D327] … and the INFO when anything was planned (`planned`, `fixed`).
+    "Repointed Inventory pictures after new-account restore",
     "Seeded connection-profile columns the archive predates",
     "Skipped duplicate folder row during restore",
     "Skipping LLM logs restore — logs database is in degraded mode",
@@ -7643,3 +7698,191 @@ fn wardrobe_picture_tombstone_is_skipped() {
     );
 }
 // === end P4.D264 ===
+
+// === P4.D327 (append-only test region) ===
+
+/// ## [P4.D327] 22f-quater's lines and its repoint, on their OWN facts
+///
+/// For the two `new-account` Inventory cases, v5 restores the archive with the
+/// GLOBAL capture (the keystone writer's `Inventory objects updated in folder`
+/// DEBUG runs inside the restore's `Db::write` closure — invisible to the
+/// thread-scoped rig) and checks, against the oracle:
+/// 1. `Repointed Inventory pictures after new-account restore`, field for
+///    field (`planned` 1; `fixed` 1, or 0 for the tombstone);
+/// 2. the per-mount WARN `Failed to repoint Inventory pictures after restore`
+///    NEVER fires on either side (R-7: unreachable from an archive — the
+///    writer refuses only on a storage failure with `require_all` off; its v5
+///    home is `InventoryWriteError::Db`), nor its `summary.warnings` text;
+/// 3. the keystone's DEBUG PRESENT exactly once on the repointing case and
+///    ABSENT on the tombstone (presence by tag — its bytes are P4.D324's);
+/// 4. the instance's `imageFileId`: on the repointing case a non-source id on
+///    both sides (the picture's new file id), on the tombstone the SOURCE id
+///    `f0000001-…0001` on both sides.
+#[test]
+fn inventory_repoint_lines_and_pointer() {
+    let _serial = serial();
+    let Some(cases) = read_cases() else {
+        eprintln!("SKIP: QT_ORACLE_SYSTEM_RESTORE unset");
+        return;
+    };
+    const REPOINTED: &str = "Repointed Inventory pictures after new-account restore";
+    const FAILED: &str = "Failed to repoint Inventory pictures after restore";
+    const DEBUG_TAG: &str = "Inventory objects updated in folder";
+    const SOURCE: &str = "f0000001-0000-4000-8000-000000000001";
+    let mut failures = Vec::new();
+    for (name, zip, fixed) in [
+        (
+            "restore_inventory_new_account",
+            "restore-archive-inventory.zip",
+            1,
+        ),
+        (
+            "restore_inventory_tombstone_new_account",
+            "restore-archive-inventory-tombstone.zip",
+            0,
+        ),
+    ] {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap_or_else(|| panic!("the oracle carries {name}"));
+        let scratch = fresh_scratch(name);
+        let instance = scratch.root.join("instance");
+        let db = fresh_instance(&instance);
+        let host = TestHost {
+            root: scratch.root.clone(),
+        };
+        std::fs::create_dir_all(host.temp_dir()).unwrap();
+        let log_buf = {
+            let buf = global_capture();
+            buf.lock().unwrap().clear();
+            buf
+        };
+        let summary = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(restore(
+                &db,
+                &host,
+                &archives_dir().join(zip),
+                RestoreMode::NewAccount,
+                SINGLE_USER_ID,
+                Default::default(),
+            ))
+            .expect("restore succeeded");
+        drop(db);
+        let lines = log_buf.lock().unwrap().clone();
+        let state = read_state(&instance);
+
+        // 1. The INFO.
+        let flat = |r: &Value| -> Vec<(String, String)> {
+            r.as_object()
+                .unwrap()
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        v.as_str()
+                            .map(str::to_string)
+                            .unwrap_or_else(|| v.to_string()),
+                    )
+                })
+                .collect()
+        };
+        let got: Vec<_> = v5_log_records(&lines, &[REPOINTED])
+            .iter()
+            .map(flat)
+            .collect();
+        let want: Vec<_> = case["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["message"] == REPOINTED)
+            .map(flat)
+            .collect();
+        let expected = vec![vec![
+            ("level".to_string(), "info".to_string()),
+            ("message".to_string(), REPOINTED.to_string()),
+            ("planned".to_string(), "1".to_string()),
+            ("fixed".to_string(), fixed.to_string()),
+        ]];
+        if got != want || want != expected {
+            failures.push(format!(
+                "[{name}] the 22f-quater INFO: rust {got:?} vs oracle {want:?}"
+            ));
+        }
+
+        // 2. The catch never fires (R-7), on either side.
+        let v5_failed = v5_log_records(&lines, &[FAILED]).len();
+        let v4_failed = case["logs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|l| l["message"] == FAILED)
+            .count();
+        let warned = |w: &[String]| {
+            w.iter()
+                .any(|w| w.starts_with("Failed to repoint Inventory pictures"))
+        };
+        let v4_warnings: Vec<String> = case["summary"]["warnings"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|w| w.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if v5_failed != 0 || v4_failed != 0 || warned(&summary.warnings) || warned(&v4_warnings) {
+            failures.push(format!(
+                "[{name}] R-7: the 22f-quater catch fired (v5 {v5_failed}, v4 {v4_failed})"
+            ));
+        }
+
+        // 3. The keystone writer's DEBUG — presence by tag, once per batch.
+        let debugs = lines.iter().filter(|l| l.contains(DEBUG_TAG)).count();
+        if debugs != fixed {
+            failures.push(format!(
+                "[{name}] `{DEBUG_TAG}` fired {debugs} time(s), expected {fixed}"
+            ));
+        }
+
+        // 4. The instance's pointer.
+        let pointer = |docs: &[Value]| -> Vec<String> {
+            docs.iter()
+                .filter_map(|d| d["content"].as_str())
+                .filter(|c| c.contains("\"title\": \"Old Cutlass\""))
+                .map(|c| {
+                    serde_json::from_str::<Value>(c).unwrap()["imageFileId"]
+                        .as_str()
+                        .unwrap_or_default()
+                        .to_string()
+                })
+                .collect()
+        };
+        let got_ptr = pointer(&state["mountIndex"]["doc_mount_documents"]);
+        let want_ptr = pointer(
+            case["state"]["mountIndex"]["doc_mount_documents"]
+                .as_array()
+                .unwrap(),
+        );
+        let ok = |p: &[String]| {
+            p.len() == 1
+                && if fixed == 1 {
+                    p[0] != SOURCE && !p[0].is_empty()
+                } else {
+                    p[0] == SOURCE
+                }
+        };
+        if !ok(&got_ptr) || !ok(&want_ptr) {
+            failures.push(format!(
+                "[{name}] the instance's imageFileId: rust {got_ptr:?} vs oracle {want_ptr:?}"
+            ));
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+    println!(
+        "OK 22f-quater: the INFO, the silent catch, the writer DEBUG and the pointer on both sides"
+    );
+}
+// === end P4.D327 ===

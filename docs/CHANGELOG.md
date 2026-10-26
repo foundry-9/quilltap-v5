@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(restore): step 22f-quater repoints Inventory pictures on a new-account restore, and the restore carries `canManageInventory` (P4.D327)
+
+_Versions: core 0.0.1330._
+
+Ports v4 `4fbdad186`'s `restore.ts` hunks at the `322a5488e` pin. On a new-account restore, the Inventory picture pointers are planned after the wardrobe's and before the remap, with the same remapper, and threaded to the mount family. Step 22f-quater runs after 22f-ter. It groups the fixes by remapped mount in first-seen order and skips a tombstoned vault on either mount id; the tombstone set is now declared once and shared with 22f-ter, as v4 declares it. Each mount's batch goes through the keystone's `update_inventory_many_in_mount` (without `require_all`), which re-projects that mount's `Inventory/` folder. A failure adds v4's `summary.warnings` text and a WARN; when anything was planned, an INFO logs `planned` and `fixed`. `replace` plans nothing, so the step is silent. Restored characters carry `canManageInventory` (v4 `e1872c94f`).
+
+Two restore archives are DERIVED from `restore-archive.zip` (never rebuilt) by the new `derive-restore-archive-inventory.py`: five object files in Riya's vault (an archetype, a sparse instance pointing at the archive's portrait, a kit, a sparse standalone, an object pointing at a file the archive lacks), `equippedInventory` on both chats and the flag on both characters, plus an archived-Riya twin. `system_restore_state` gains three cases, and `system_restore_equivalence` gains `preview_inventory`, which shows no new preview key. The restore census grows by two in both lists (81 → 83). `import_warning_text_guard` pins the warning literal. A dedicated test checks the INFO field by field, the catch never firing on either side, the keystone writer's DEBUG present only when a pointer moves, and the instance's pointer. The sparse standalone is re-written with its defaults when the mount re-projects, the same on both sides.
+
 #### 2026-10-26 — feat(backup): the new-account remap keeps Inventory object ids verbatim and plans their picture pointers (P4.D327)
 
 _Versions: core 0.0.1329._
