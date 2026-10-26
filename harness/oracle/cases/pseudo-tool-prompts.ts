@@ -78,6 +78,26 @@ const combos: Array<[string, Record<string, boolean>]> = [
     'wardrobe-history-rollback',
     { wardrobeTakeOff: true, wardrobeRollback: true, wardrobeHistory: true, wardrobeCreate: true },
   ],
+  // P4.D328 (v4 `e1872c94f`): the nine Inventory blocks, after the wardrobe's,
+  // in flag order — all nine, and a subset with the wardrobe around it.
+  [
+    'inventory-all',
+    {
+      inventoryList: true,
+      inventoryRead: true,
+      inventoryEquip: true,
+      inventoryUnequip: true,
+      inventoryPickUp: true,
+      inventoryCreate: true,
+      inventoryUpdate: true,
+      inventoryArchive: true,
+      inventoryGive: true,
+    },
+  ],
+  [
+    'inventory-subset-with-wardrobe',
+    { wardrobeArchive: true, inventoryEquip: true, inventoryGive: true, inventoryList: true },
+  ],
 ];
 
 for (const [id, options] of combos) {
@@ -109,6 +129,10 @@ type DetInput = {
   helpToolsEnabled?: boolean;
   canDressThemselves?: boolean;
   canCreateOutfits?: boolean;
+  /** P4.D328 (v4 `e1872c94f`): the 8th positional. Absent (`undefined`) and
+   * `null` both read ON (`inventoryToolFlags`' `!== false`) — the five rows
+   * above never name it, which pins that default. */
+  canManageInventory?: boolean | null;
 };
 const detCases: Array<[string, DetInput]> = [
   ['det-tb-defaults', { imageProfileId: null, allowWebSearch: false, isMultiCharacter: false, hasProject: false }],
@@ -116,6 +140,8 @@ const detCases: Array<[string, DetInput]> = [
   ['det-tb-dress-off', { imageProfileId: null, allowWebSearch: false, isMultiCharacter: true, hasProject: false, canDressThemselves: false }],
   ['det-tb-create-off', { imageProfileId: null, allowWebSearch: false, isMultiCharacter: false, hasProject: true, canCreateOutfits: false }],
   ['det-tb-help-undefined', { imageProfileId: null, allowWebSearch: true, isMultiCharacter: false, hasProject: false }],
+  ['det-tb-inventory-off', { imageProfileId: null, allowWebSearch: false, isMultiCharacter: true, hasProject: false, canManageInventory: false }],
+  ['det-tb-inventory-null', { imageProfileId: null, allowWebSearch: false, isMultiCharacter: false, hasProject: true, canManageInventory: null }],
 ];
 for (const [id, c] of detCases) {
   const opts = determineTextBlockToolOptions(
@@ -126,6 +152,7 @@ for (const [id, c] of detCases) {
     c.helpToolsEnabled,
     c.canDressThemselves,
     c.canCreateOutfits,
+    c.canManageInventory as boolean | undefined,
   );
   emit({ fn: 'determine_text_block', id, input: c, out: opts });
   // And feed the materialized options into both system-instruction wrappers.

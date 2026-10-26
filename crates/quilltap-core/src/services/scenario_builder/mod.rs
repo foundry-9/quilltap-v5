@@ -408,6 +408,16 @@ where
                 wardrobe_create: false,
                 wardrobe_update: false,
                 wardrobe_archive: false,
+                // v4 `...inventoryToolFlags(false)` (`e1872c94f`).
+                inventory_list: false,
+                inventory_read: false,
+                inventory_equip: false,
+                inventory_unequip: false,
+                inventory_pick_up: false,
+                inventory_create: false,
+                inventory_update: false,
+                inventory_archive: false,
+                inventory_give: false,
             },
             SCENARIO_BUILDER_MAX_AGENT_TURNS,
         );

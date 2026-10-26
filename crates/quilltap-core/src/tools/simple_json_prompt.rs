@@ -10,6 +10,7 @@ use serde_json::Value;
 
 use crate::jsstr::js_trim;
 use crate::tools::definitions::definition_by_key;
+use crate::tools::inventory_tool_flags::{enabled_inventory_tool_keys, InventoryToolFlags};
 
 /// Which tools to document. v4 `SimpleJsonPromptOptions`. `create_note` is part
 /// of the interface but has NO rendered entry in the builder (faithful to v4).
@@ -36,6 +37,16 @@ pub struct SimpleJsonPromptOptions {
     pub wardrobe_create: Option<bool>,
     pub wardrobe_update: Option<bool>,
     pub wardrobe_archive: Option<bool>,
+    // v4 `SimpleJsonPromptOptions extends InventoryToolFlags` (`e1872c94f`).
+    pub inventory_list: Option<bool>,
+    pub inventory_read: Option<bool>,
+    pub inventory_equip: Option<bool>,
+    pub inventory_unequip: Option<bool>,
+    pub inventory_pick_up: Option<bool>,
+    pub inventory_create: Option<bool>,
+    pub inventory_update: Option<bool>,
+    pub inventory_archive: Option<bool>,
+    pub inventory_give: Option<bool>,
 }
 
 fn on(v: Option<bool>) -> bool {
@@ -237,6 +248,22 @@ pub fn build_simple_json_tool_instructions(options: &SimpleJsonPromptOptions) ->
     }
     if on(options.wardrobe_archive) {
         entries.push(entry_for("wardrobeArchive"));
+    }
+    // v4 `enabledInventoryToolDefinitions(options)` — one entry per enabled
+    // flag, in offer order (`simple-json-prompt.ts:237-239`).
+    let inventory = InventoryToolFlags {
+        list: on(options.inventory_list),
+        read: on(options.inventory_read),
+        equip: on(options.inventory_equip),
+        unequip: on(options.inventory_unequip),
+        pick_up: on(options.inventory_pick_up),
+        create: on(options.inventory_create),
+        update: on(options.inventory_update),
+        archive: on(options.inventory_archive),
+        give: on(options.inventory_give),
+    };
+    for key in enabled_inventory_tool_keys(&inventory) {
+        entries.push(entry_for(key));
     }
 
     if entries.is_empty() {

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The text-block and simple-JSON prompts and parsers learn the nine Inventory tools (P4.D328)
+
+_Versions: core 0.0.1327._
+
+The text-block prompt documents the nine Inventory tools after the wardrobe's, in v4's exact wording, and the simple-JSON prompt lists their signatures. `determine_text_block_tool_options` takes v4's eighth argument, `canManageInventory` (null reads on). The text-block parser maps the 19 Inventory tag names, the per-tool parameter aliases and `inventory_create`'s content, converts only `archived`, `equip` and `max_equipped` for those tools (so a title of "42" stays text), and folds `ref` / `refs` into one `refs` list for equip and unequip. The simple-JSON parser takes v4's seven aliases.
+
 #### 2026-10-26 — The native tool slate offers the nine Inventory tools behind canManageInventory (P4.D328)
 
 _Versions: core 0.0.1326._

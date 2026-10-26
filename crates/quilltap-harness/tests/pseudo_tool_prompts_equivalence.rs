@@ -33,6 +33,9 @@ fn pseudo_tool_prompts_match_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut count = 0usize;
+    // Every red row is collected before failing, so a red-first run reports
+    // the whole red set by id (P4.D328), not just the first row.
+    let mut red: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let f = row["fn"].as_str().unwrap();
@@ -72,6 +75,8 @@ fn pseudo_tool_prompts_match_oracle() {
                     c.get("helpToolsEnabled").and_then(Value::as_bool),
                     c.get("canDressThemselves").and_then(Value::as_bool),
                     c.get("canCreateOutfits").and_then(Value::as_bool),
+                    // P4.D328 (R-12): the 8th — absent and `null` both `None` (ON).
+                    c.get("canManageInventory").and_then(Value::as_bool),
                 );
                 serde_json::to_value(opts).unwrap()
             }
@@ -88,9 +93,12 @@ fn pseudo_tool_prompts_match_oracle() {
             other => panic!("unknown fn '{other}' in case '{id}'"),
         };
 
-        assert_eq!(&got, want, "fn '{f}' case '{id}'");
+        if &got != want {
+            red.push(format!("{f}/{id}"));
+        }
         count += 1;
     }
+    assert!(red.is_empty(), "{} of {count} rows red: {red:?}", red.len());
 
     assert!(count > 0, "oracle file looks empty: {count}");
     eprintln!("OK: pseudo-tool-prompts matched oracle ({count} rows).");

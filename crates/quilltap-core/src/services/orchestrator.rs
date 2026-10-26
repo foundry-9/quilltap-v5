@@ -2381,6 +2381,7 @@ where
             Some(help_tools_enabled),
             Some(can_dress_themselves),
             Some(can_create_outfits),
+            Some(can_manage_inventory),
         );
         Some(build_simple_json_system_instructions(&opts))
     } else if resolved_tool_mode == ResolvedToolMode::TextBlock {
@@ -2394,6 +2395,7 @@ where
             Some(help_tools_enabled),
             Some(can_dress_themselves),
             Some(can_create_outfits),
+            Some(can_manage_inventory),
         );
         Some(build_text_block_system_instructions(&opts))
     } else if !actual_tools.is_empty() {

@@ -32,6 +32,16 @@ pub struct TextBlockPromptOptions {
     pub wardrobe_create: Option<bool>,
     pub wardrobe_update: Option<bool>,
     pub wardrobe_archive: Option<bool>,
+    // v4 `TextBlockPromptOptions extends InventoryToolFlags` (`e1872c94f`).
+    pub inventory_list: Option<bool>,
+    pub inventory_read: Option<bool>,
+    pub inventory_equip: Option<bool>,
+    pub inventory_unequip: Option<bool>,
+    pub inventory_pick_up: Option<bool>,
+    pub inventory_create: Option<bool>,
+    pub inventory_update: Option<bool>,
+    pub inventory_archive: Option<bool>,
+    pub inventory_give: Option<bool>,
 }
 
 fn on(v: Option<bool>) -> bool {
@@ -161,6 +171,55 @@ Retire an item you own — hidden from listings and no longer wearable, but a hu
 By id: [[ARCHIVE_WARDROBE_ITEM id="item-uuid" /]]
 By name: [[ARCHIVE_WARDROBE_ITEM title="Red Scarf" /]]"#;
 
+// The nine Inventory blocks (v4 `text-block-prompt.ts:232-295`, `e1872c94f`),
+// pushed after the wardrobe's in flag order.
+
+const INVENTORY_LIST: &str = r#"
+### List Inventory
+See the objects you carry and can reach (not clothing). Each shows whether it is equipped, carried in your vault, or reachable in a shared store; archetypes can be picked up.
+[[LIST_INVENTORY /]]
+Only what you have equipped: [[LIST_INVENTORY equipped="true" /]]"#;
+
+const INVENTORY_READ: &str = r#"
+### Read an Object
+[[READ_INVENTORY ref="Excalibur" /]]"#;
+
+const INVENTORY_EQUIP: &str = r#"
+### Equip an Object
+Take up an object (or kit) by id, title or name; several separated by commas.
+[[EQUIP_ITEM ref="Excalibur" /]]
+[[EQUIP_ITEM refs="lantern,signet ring" /]]"#;
+
+const INVENTORY_UNEQUIP: &str = r#"
+### Unequip an Object
+Set down an object you carry.
+[[UNEQUIP_ITEM ref="lantern" /]]"#;
+
+const INVENTORY_PICK_UP: &str = r#"
+### Pick Up an Object
+Make an instance of an archetype in your own vault, equipped unless equip="false".
+[[PICK_UP ref="magic bow" /]]
+With a title of its own: [[PICK_UP ref="magic bow" title="Whisperwind" /]]"#;
+
+const INVENTORY_CREATE: &str = r#"
+### Create an Object
+[[CREATE_INVENTORY_ITEM name="compass" title="The Navigator" equip="true"]]A brass compass that points toward home[[/CREATE_INVENTORY_ITEM]]"#;
+
+const INVENTORY_UPDATE: &str = r#"
+### Update an Object
+Change one of your own objects. Only your own can be changed.
+[[UPDATE_INVENTORY_ITEM ref="compass" description="A dented brass compass" /]]"#;
+
+const INVENTORY_ARCHIVE: &str = r#"
+### Archive an Object
+Put away one of your own objects (archived="false" restores it).
+[[ARCHIVE_INVENTORY_ITEM ref="compass" archived="true" /]]"#;
+
+const INVENTORY_GIVE: &str = r#"
+### Give an Object
+Hand one of your own objects to another character in this chat.
+[[GIVE_ITEM ref="lantern" to="Marcus" /]]"#;
+
 /// v4 `buildTextBlockInstructions`.
 pub fn build_text_block_instructions(options: &TextBlockPromptOptions) -> String {
     let mut tool_docs: Vec<&str> = Vec::new();
@@ -227,6 +286,33 @@ pub fn build_text_block_instructions(options: &TextBlockPromptOptions) -> String
     }
     if on(options.wardrobe_archive) {
         tool_docs.push(WARDROBE_ARCHIVE);
+    }
+    if on(options.inventory_list) {
+        tool_docs.push(INVENTORY_LIST);
+    }
+    if on(options.inventory_read) {
+        tool_docs.push(INVENTORY_READ);
+    }
+    if on(options.inventory_equip) {
+        tool_docs.push(INVENTORY_EQUIP);
+    }
+    if on(options.inventory_unequip) {
+        tool_docs.push(INVENTORY_UNEQUIP);
+    }
+    if on(options.inventory_pick_up) {
+        tool_docs.push(INVENTORY_PICK_UP);
+    }
+    if on(options.inventory_create) {
+        tool_docs.push(INVENTORY_CREATE);
+    }
+    if on(options.inventory_update) {
+        tool_docs.push(INVENTORY_UPDATE);
+    }
+    if on(options.inventory_archive) {
+        tool_docs.push(INVENTORY_ARCHIVE);
+    }
+    if on(options.inventory_give) {
+        tool_docs.push(INVENTORY_GIVE);
     }
 
     if tool_docs.is_empty() {

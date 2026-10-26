@@ -227,6 +227,66 @@ tbParse('tb-astral-content', '[[GENERATE_IMAGE]]emoji 😀 scene[[/GENERATE_IMAG
 tbParse('tb-query-not-numeric', '[[SEARCH]]12345[[/SEARCH]]');
 tbParse('tb-decimal-number', '[[RNG type="number" min="1.5" max="9" /]]');
 
+// === P4.D328: the Inventory tools' tags, aliases and coercion (v4 `e1872c94f`) ===
+for (const n of [
+  'inventory_list', 'LIST_INVENTORY', 'INVENTORY', 'inventory_read', 'READ_INVENTORY',
+  'inventory_equip', 'EQUIP_ITEM', 'inventory_unequip', 'UNEQUIP_ITEM',
+  'inventory_pick_up', 'PICK_UP', 'inventory_create', 'CREATE_INVENTORY_ITEM',
+  'inventory_update', 'UPDATE_INVENTORY_ITEM', 'inventory_archive', 'ARCHIVE_INVENTORY_ITEM',
+  'inventory_give', 'GIVE_ITEM',
+  // the wardrobe's own `equip` / `unequip` stay wardrobe
+  'EQUIP', 'UNEQUIP',
+]) {
+  emit({ fn: 'map_text_block_name', id: `mtb-inv-${n}`, name: n, out: mapTextBlockToolName(n) });
+}
+for (const n of [
+  'list_inventory', 'inventory', 'read_inventory', 'equip_item', 'unequip_item', 'pick_up', 'give_item',
+  'inventory_list', 'create_inventory_item', 'update_inventory_item', 'archive_inventory_item',
+]) {
+  emit({ fn: 'map_simple_json_name', id: `msj-inv-${n}`, name: n, out: mapSimpleJsonToolName(n) });
+}
+tbParse('tb-inv-list', '[[LIST_INVENTORY /]]');
+tbParse('tb-inv-list-equipped', '[[LIST_INVENTORY equipped="true" /]]');
+tbParse('tb-inv-list-equipped-yes', '[[INVENTORY equipped="yes" /]]');
+tbParse('tb-inv-list-filters', '[[LIST_INVENTORY include_archived="false" kind="kit" folder="Weapons/Bows" tier="own" /]]');
+tbParse('tb-inv-read-id', '[[READ_INVENTORY id="abc-123" /]]');
+tbParse('tb-inv-read-title', '[[READ_INVENTORY title="Excalibur" /]]');
+tbParse('tb-inv-read-name', '[[READ_INVENTORY name="42" /]]');
+tbParse('tb-inv-read-item', '[[READ_INVENTORY item="true" /]]');
+tbParse('tb-inv-equip-ref', '[[EQUIP_ITEM ref="Excalibur" /]]');
+tbParse('tb-inv-equip-refs', '[[EQUIP_ITEM refs="lantern,signet ring" /]]');
+tbParse('tb-inv-equip-ref-and-refs', '[[EQUIP_ITEM ref="a" refs="b, c,,d" /]]');
+tbParse('tb-inv-equip-items-alias', '[[EQUIP_ITEM items=" x , y " /]]');
+tbParse('tb-inv-equip-name-alias', '[[EQUIP_ITEM name="Excalibur" /]]');
+tbParse('tb-inv-equip-empty', '[[EQUIP_ITEM refs=" , " /]]');
+tbParse('tb-inv-equip-none', '[[EQUIP_ITEM /]]');
+tbParse('tb-inv-unequip-extra', '[[UNEQUIP_ITEM extra="1" ref="lantern" more="true" /]]');
+tbParse('tb-inv-unequip-content', '[[UNEQUIP_ITEM ref="lantern"]]some words[[/UNEQUIP_ITEM]]');
+tbParse('tb-inv-pick-up', '[[PICK_UP ref="magic bow" title="Whisperwind" equip="false" /]]');
+tbParse('tb-inv-pick-up-aliases', '[[PICK_UP archetype="bow" title="7" equip="TRUE" /]]');
+tbParse('tb-inv-pick-up-name', '[[PICK_UP name="bow" item="arrow" /]]');
+tbParse('tb-inv-create', '[[CREATE_INVENTORY_ITEM name="compass" title="42" equip="true" max_equipped="3" image="brass"]]A brass compass[[/CREATE_INVENTORY_ITEM]]');
+tbParse('tb-inv-create-max-abc', '[[CREATE_INVENTORY_ITEM name="true" looks="shiny" max="abc" /]]');
+tbParse('tb-inv-create-max-blank', '[[CREATE_INVENTORY_ITEM name="x" max_equipped=" " /]]');
+tbParse('tb-inv-create-max-padded', '[[CREATE_INVENTORY_ITEM name="x" max=" 7 " emoji="1" /]]');
+tbParse('tb-inv-create-description-param', '[[CREATE_INVENTORY_ITEM name="x" description="named"]]content[[/CREATE_INVENTORY_ITEM]]');
+tbParse('tb-inv-update', '[[UPDATE_INVENTORY_ITEM id="x" title="The Navigator" name="compass" description="d" /]]');
+tbParse('tb-inv-update-aliases', '[[UPDATE_INVENTORY_ITEM item="y" max="2" looks="dented" /]]');
+tbParse('tb-inv-archive', '[[ARCHIVE_INVENTORY_ITEM ref="compass" archived="false" /]]');
+tbParse('tb-inv-archive-title', '[[ARCHIVE_INVENTORY_ITEM title="compass" archived="true" /]]');
+tbParse('tb-inv-archive-yes', '[[ARCHIVE_INVENTORY_ITEM name="compass" archived="yes" /]]');
+tbParse('tb-inv-give', '[[GIVE_ITEM ref="lantern" to="Marcus" /]]');
+tbParse('tb-inv-give-aliases', '[[GIVE_ITEM item="lantern" recipient="Marcus" /]]');
+tbParse('tb-inv-give-target', '[[GIVE_ITEM id="abc" target="42" /]]');
+tbParse('tb-inv-give-canonical', '[[inventory_give ref="a" to="b" /]]');
+sjParse('sj-inv-equip-item', '<tool_call>{"name":"equip_item","arguments":{"refs":["a"]}}</tool_call>');
+sjParse('sj-inv-pick-up', '<tool_call>{"name":"pick_up","arguments":{"ref":"bow"}}</tool_call>');
+sjParse('sj-inv-give-item', '<tool_call>{"name":"give_item","arguments":{"ref":"a","to":"b"}}</tool_call>');
+sjParse('sj-inv-list', '<tool_call>{"name":"list_inventory","arguments":{}}</tool_call>');
+sjParse('sj-inv-inventory', '<tool_call>{"name":"inventory","arguments":{"equipped":true}}</tool_call>');
+sjParse('sj-inv-create-unaliased', '<tool_call>{"name":"create_inventory_item","arguments":{"name":"x"}}</tool_call>');
+// === end P4.D328 ===
+
 // ---- text-block strip ----
 function tbStrip(id: string, response: string): void {
   emit({ fn: 'strip_text_block', id, response, out: stripTextBlockMarkers(response) });

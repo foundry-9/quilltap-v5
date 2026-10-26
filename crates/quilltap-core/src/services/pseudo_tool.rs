@@ -8,6 +8,7 @@
 
 use serde_json::Value;
 
+use crate::tools::inventory_tool_flags::inventory_tool_flags;
 use crate::tools::native_tool_prompt::build_native_tool_instructions;
 use crate::tools::pseudo_tool_support::{
     resolve_tool_mode, should_use_text_block_tools, ResolvedToolMode, ToolMode,
@@ -52,6 +53,17 @@ pub struct TextBlockEnabledToolOptions {
     pub wardrobe_create: bool,
     pub wardrobe_update: bool,
     pub wardrobe_archive: bool,
+    // v4 `TextBlockEnabledToolOptions extends …, InventoryToolFlags`
+    // (`e1872c94f`) — the nine `inventory_*` flags, LAST.
+    pub inventory_list: bool,
+    pub inventory_read: bool,
+    pub inventory_equip: bool,
+    pub inventory_unequip: bool,
+    pub inventory_pick_up: bool,
+    pub inventory_create: bool,
+    pub inventory_update: bool,
+    pub inventory_archive: bool,
+    pub inventory_give: bool,
 }
 
 /// A converted tool-call request as the loops consume it.
@@ -87,7 +99,8 @@ pub fn check_should_use_text_block_tools(
 }
 
 /// v4 `determineTextBlockToolOptions`. `canDressThemselves`/`canCreateOutfits`
-/// default ON (`!== false`).
+/// default ON (`!== false`), and so does the 8th, `canManageInventory`
+/// (`e1872c94f` — `null` and `undefined` both read ON).
 #[allow(clippy::too_many_arguments)]
 pub fn determine_text_block_tool_options(
     image_profile_id: Option<&str>,
@@ -97,9 +110,12 @@ pub fn determine_text_block_tool_options(
     help_tools_enabled: Option<bool>,
     can_dress_themselves: Option<bool>,
     can_create_outfits: Option<bool>,
+    can_manage_inventory: Option<bool>,
 ) -> TextBlockEnabledToolOptions {
     let can_dress = can_dress_themselves != Some(false);
     let can_create = can_create_outfits != Some(false);
+    // `...inventoryToolFlags(canManageInventory)` LAST in v4's object.
+    let inventory = inventory_tool_flags(can_manage_inventory);
     TextBlockEnabledToolOptions {
         image_generation: image_profile_id.is_some(),
         search: true,
@@ -121,6 +137,15 @@ pub fn determine_text_block_tool_options(
         wardrobe_create: can_create,
         wardrobe_update: can_create,
         wardrobe_archive: can_create,
+        inventory_list: inventory.list,
+        inventory_read: inventory.read,
+        inventory_equip: inventory.equip,
+        inventory_unequip: inventory.unequip,
+        inventory_pick_up: inventory.pick_up,
+        inventory_create: inventory.create,
+        inventory_update: inventory.update,
+        inventory_archive: inventory.archive,
+        inventory_give: inventory.give,
     }
 }
 
@@ -147,6 +172,15 @@ pub fn build_text_block_system_instructions(o: &TextBlockEnabledToolOptions) -> 
         wardrobe_create: Some(o.wardrobe_create),
         wardrobe_update: Some(o.wardrobe_update),
         wardrobe_archive: Some(o.wardrobe_archive),
+        inventory_list: Some(o.inventory_list),
+        inventory_read: Some(o.inventory_read),
+        inventory_equip: Some(o.inventory_equip),
+        inventory_unequip: Some(o.inventory_unequip),
+        inventory_pick_up: Some(o.inventory_pick_up),
+        inventory_create: Some(o.inventory_create),
+        inventory_update: Some(o.inventory_update),
+        inventory_archive: Some(o.inventory_archive),
+        inventory_give: Some(o.inventory_give),
     })
 }
 
@@ -200,6 +234,15 @@ pub fn build_simple_json_system_instructions(o: &TextBlockEnabledToolOptions) ->
         wardrobe_create: Some(o.wardrobe_create),
         wardrobe_update: Some(o.wardrobe_update),
         wardrobe_archive: Some(o.wardrobe_archive),
+        inventory_list: Some(o.inventory_list),
+        inventory_read: Some(o.inventory_read),
+        inventory_equip: Some(o.inventory_equip),
+        inventory_unequip: Some(o.inventory_unequip),
+        inventory_pick_up: Some(o.inventory_pick_up),
+        inventory_create: Some(o.inventory_create),
+        inventory_update: Some(o.inventory_update),
+        inventory_archive: Some(o.inventory_archive),
+        inventory_give: Some(o.inventory_give),
     })
 }
 

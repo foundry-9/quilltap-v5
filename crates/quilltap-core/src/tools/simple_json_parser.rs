@@ -112,6 +112,14 @@ fn tool_name_alias(normalized: &str) -> Option<&'static str> {
         "create_wardrobe_item" => "wardrobe_create",
         "update_wardrobe_item" | "edit_wardrobe" => "wardrobe_update",
         "archive_wardrobe_item" | "discard" => "wardrobe_archive",
+        // v4 `simple-json-parser.ts:113-120` (`e1872c94f`): seven — the
+        // create / update / archive tag names are NOT aliased here.
+        "list_inventory" | "inventory" => "inventory_list",
+        "read_inventory" => "inventory_read",
+        "equip_item" => "inventory_equip",
+        "unequip_item" => "inventory_unequip",
+        "pick_up" => "inventory_pick_up",
+        "give_item" => "inventory_give",
         "scriptorium" | "memory" | "memories" | "search_memory" | "search_memories"
         | "search_scriptorium" => "search",
         _ => return None,

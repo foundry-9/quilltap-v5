@@ -159,6 +159,18 @@ fn text_block_name_alias(n: &str) -> Option<&'static str> {
         "wardrobe_create" | "create_wardrobe_item" => "wardrobe_create",
         "wardrobe_update" | "update_wardrobe_item" | "edit_wardrobe" => "wardrobe_update",
         "wardrobe_archive" | "archive_wardrobe_item" | "discard" => "wardrobe_archive",
+        // Inventory tools (objects carried — not clothing; v4 `e1872c94f`). The
+        // wardrobe's own `equip` / `unequip` above STAY wardrobe — only the
+        // `_item` forms are inventory.
+        "inventory_list" | "list_inventory" | "inventory" => "inventory_list",
+        "inventory_read" | "read_inventory" => "inventory_read",
+        "inventory_equip" | "equip_item" => "inventory_equip",
+        "inventory_unequip" | "unequip_item" => "inventory_unequip",
+        "inventory_pick_up" | "pick_up" => "inventory_pick_up",
+        "inventory_create" | "create_inventory_item" => "inventory_create",
+        "inventory_update" | "update_inventory_item" => "inventory_update",
+        "inventory_archive" | "archive_inventory_item" => "inventory_archive",
+        "inventory_give" | "give_item" => "inventory_give",
         "search" | "scriptorium" | "memory" | "memories" | "search_memory" | "search_memories"
         | "search_scriptorium" => "search",
         _ => return None,
@@ -199,6 +211,20 @@ fn param_alias(tool: &str, key_lower: &str) -> Option<&'static str> {
             "component_item_ids"
         }
         ("wardrobe_create", "component_names") => "component_titles",
+        // v4 `PARAM_ALIAS_MAP` (`e1872c94f`): `title` is a real parameter of
+        // `inventory_pick_up` and `title` / `name` of `inventory_update`, so
+        // neither is aliased there.
+        (
+            "inventory_read" | "inventory_archive" | "inventory_give",
+            "id" | "title" | "name" | "item",
+        ) => "ref",
+        ("inventory_equip" | "inventory_unequip", "id" | "title" | "name" | "item") => "ref",
+        ("inventory_equip" | "inventory_unequip", "items") => "refs",
+        ("inventory_pick_up", "id" | "name" | "item" | "archetype") => "ref",
+        ("inventory_update", "id" | "item") => "ref",
+        ("inventory_update" | "inventory_create", "image" | "looks") => "image_description",
+        ("inventory_update" | "inventory_create", "max") => "max_equipped",
+        ("inventory_give", "recipient" | "target") => "to",
         ("search", "search") | ("search", "q") => "query",
         ("search", "count") | ("search", "max") => "limit",
         _ => return None,
@@ -221,6 +247,14 @@ fn has_param_alias_map(tool: &str) -> bool {
             | "wardrobe_archive"
             | "wardrobe_update"
             | "wardrobe_create"
+            | "inventory_read"
+            | "inventory_equip"
+            | "inventory_unequip"
+            | "inventory_pick_up"
+            | "inventory_update"
+            | "inventory_archive"
+            | "inventory_give"
+            | "inventory_create"
             | "search"
     )
 }
@@ -228,6 +262,7 @@ fn has_param_alias_map(tool: &str) -> bool {
 /// v4 `CONTENT_PARAM_MAP`: which param receives the content block.
 fn content_param(tool: &str) -> &'static str {
     match tool {
+        "inventory_create" => "description",
         "whisper" => "message",
         "generate_image" => "prompt",
         "search_web" => "query",
@@ -424,8 +459,29 @@ pub fn convert_text_block_to_tool_call_request(parsed: &ParsedTextBlock) -> Tool
         }
     }
 
-    // Numeric / boolean coercion.
+    // Numeric / boolean coercion. The inventory tools name their few non-text
+    // parameters (`archived` / `equip` booleans, `max_equipped` a number), so
+    // their names, titles and descriptions stay text even when they look like
+    // "42" or "true" — and the generic branch is skipped for them (v4
+    // `text-block-parser.ts:371-404`).
+    let inventory_tool = internal_name.starts_with("inventory_");
     for (key, val) in args.iter_mut() {
+        if inventory_tool {
+            if let Value::String(s) = val {
+                match key.as_str() {
+                    "archived" | "equip" if s == "true" || s == "false" => {
+                        *val = Value::Bool(s == "true");
+                    }
+                    "max_equipped" if !js_trim(s).is_empty() => {
+                        if let Some(n) = js_number(s) {
+                            *val = js_number_to_json(n);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            continue;
+        }
         if let Value::String(s) = val {
             if s == "true" {
                 *val = Value::Bool(true);
@@ -466,9 +522,61 @@ pub fn convert_text_block_to_tool_call_request(parsed: &ParsedTextBlock) -> Tool
         };
     }
 
+    // inventory_equip / inventory_unequip take a `refs` array; the flat syntax
+    // names one `ref`, or several comma-separated in `refs`. `ref` and `refs`
+    // leave the rest, and `refs` lands LAST (v4 `{ ...rest, refs: list }`).
+    if internal_name == "inventory_equip" || internal_name == "inventory_unequip" {
+        let take = |args: &[(String, Value)], key: &str| -> Option<Value> {
+            args.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone())
+        };
+        let one = take(&args, "ref");
+        let many = take(&args, "refs");
+        let mut list: Vec<String> = Vec::new();
+        if let Some(v) = one {
+            list.push(js_string(&v));
+        }
+        match many {
+            Some(Value::String(s)) => list.extend(s.split(',').map(str::to_string)),
+            Some(Value::Array(items)) => list.extend(items.iter().map(js_string)),
+            _ => {}
+        }
+        let refs: Vec<Value> = list
+            .iter()
+            .map(|r| js_trim(r))
+            .filter(|r| !r.is_empty())
+            .map(|r| Value::String(r.to_string()))
+            .collect();
+        let rest: Vec<(String, Value)> = args
+            .into_iter()
+            .filter(|(k, _)| k != "ref" && k != "refs")
+            .collect();
+        let mut obj = to_map(rest);
+        obj.insert("refs".to_string(), Value::Array(refs));
+        return ToolCallRequest {
+            name: internal_name,
+            arguments: Value::Object(obj),
+        };
+    }
+
     ToolCallRequest {
         name: internal_name,
         arguments: Value::Object(to_map(args)),
+    }
+}
+
+/// JS `String(v)` for an argument value (the `refs` collapse's `String(ref)`;
+/// a text-block value is a string, so the other arms are the converter's
+/// contract only).
+fn js_string(v: &Value) -> String {
+    match v {
+        Value::String(s) => s.clone(),
+        Value::Bool(b) => b.to_string(),
+        Value::Null => "null".to_string(),
+        Value::Number(n) => match n.as_f64() {
+            Some(f) => crate::pascal::js_value::number_to_string(f),
+            None => n.to_string(),
+        },
+        other => other.to_string(),
     }
 }
 

@@ -810,6 +810,7 @@ where
             Some(true),  // helpToolsEnabled
             Some(false), // canDressThemselves — not applicable for help chats
             Some(false), // canCreateOutfits — not applicable for help chats
+            Some(false), // canManageInventory — no inventory_* tools here
         );
         tool_instructions = build_text_block_system_instructions(&opts);
     } else if !tools.is_empty() {
