@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — port(docs): bring docs/v4 to `322a5488e` (494 → 502)
+
+_Docs-only change._
+
+Twelve overwrites and eight adds, each cmp-identical to the pin; the two deferred Inventory specs arrive at their final paths. The mirror's file set now equals the pin's `docs/` plus the CLI README, with no allowed differences.
+
 #### 2026-10-26 — port(help): re-vendor help/ whole at v4 `322a5488e` (131 → 135)
 
 _No crate versions bumped._
