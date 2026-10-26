@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the run dialog's inventory sentences, as a standalone piece (v4 `e1872c94f`)
+
+_Versions: SPA 0.5.890._
+
+NEW `chat/custom-tool-inventory-lines.ts`: `inventoryReferenceLines` and `qt-custom-tool-inventory-lines` render what a custom tool reads of the running character's inventory (`It reads the inventory for …`) and what its effects may equip, unequip or pick up, in v4's words with their two closing tails. Mounting it in the custom-tool popup is handed to P4.D334, which owns that file this round. P4.D330, R-12.
+
 #### 2026-10-26 — feat(spa): the `/photos` album selector (v4 `680b71044`, client half)
 
 _Versions: SPA 0.5.889._
