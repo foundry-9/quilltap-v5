@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the five item-browser pieces (v4 `4fbdad186`)
+
+_Versions: SPA 0.5.892._
+
+NEW `apps/web/src/app/item-browser/`: `qt-item-folder-bar` (breadcrumb, New folder, Select) with `qt-new-folder-input`, `qt-item-folder-row` (open, rename, delete), `qt-item-select-bar`, `qt-item-tier-row` and `qt-item-folder-picker-dialog` — v4's pure lift of the wardrobe browser's folder pieces, every string and class kept, the caller naming its labels, test ids and counted noun. The Inventory uses them now; the wardrobe moves onto them in a later commit. P4.D330, Tier 1 item 5.
+
 #### 2026-10-26 — feat(spa): the Inventory data layer — calls, signal stores, row actions, dialog service
 
 _Versions: SPA 0.5.891._
