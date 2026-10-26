@@ -191690,3 +191690,75 @@ Named carves (both-ways): **`EFFECTS_UNWIRED_UNTIL_UNION`** — `chat_equip__dum
   - `appearance-sanitize-gate.json`, `image-generation.json`, `story-background-job.json`, `wardrobe-item-image-generation-tier3.json`, `avatar-job.json` (+ `build-avatar-job-fixture.ts`);
   - NEW `inventory-image-description.json`;
   - NEW `lib/carried-inventory.ts`.
+
+
+## P4.D327 — the Inventory CARRIERS: the five-field keyed twin, the remap's verbatim object ids + picture plan, step 22f-quater, the `.qtap` import's keyed arm (R-S) + `canManageInventory`, the export schema re-vendor + key-order regen, two DERIVED restore archives (lane `claude/p4.d327-inventory-carriers-c065d7`, pin `322a5488e`, 2026-10-26)
+
+Session started in the app's worktree `kind-gates-c649d0` (branch `claude/kind-gates-c649d0` at `main` `914096110`, no commits) and switched `-c` onto `claude/p4.d327-inventory-carriers-c065d7` at the `INVENTORY` stacking commit `c065d7e2f` (confirmed against P4.D324's lane-branch status header, `19f67712b`). No pre-start on `main`, so there was no mid-lane rebase. Pin worktree `/tmp/qt-v4-pin-p4d327-322a5488e`: HEAD `322a5488e7bd…`, `package.json` `4.11.0-dev.53`. The three symlink classes plus `npm ci --offline` gave openai 7.34.0 and `@xterm/headless` 6.0.0. `git diff e8e17b2d9 322a5488e -- package-lock.json | grep -c '"node_modules/ajv'` = **0** (ajv unmoved). Target cloned from main's (`cp -cR`, 4 m 44 s).
+
+**§2 probe (an OBSERVATION, §R.2):** checkout on `main`, tree clean. **v4 moved: `3c9ae1fc3` "Docs: 4.11.0 release notes corrections, part 2" and `9faed0c7e` "Feature: diagram lightbox and Copy PNG", observed 2026-10-26 15:05 CDT**, both past the ledger's recorded HEAD `a0905454b`. `bugfix` is unmoved (`489b228b6..bugfix` empty). The lane continued at the pin; the pin is usable.
+
+### R-1 re-confirmed at the pin (quote)
+
+`reconcile.ts:434-441`: `if (Object.keys(keyed.patch).length > 0) { Object.assign(updates, keyed.patch); hasUpdates = true; … }`. `base.repository.ts:410`: `const skipped = this.patchOnlyFields().filter((field) => !(field in data));`. `chats.repository.ts:566-568`: `patchOnlyFields() { return [...CONCIERGE_MODE_FIELDS, EQUIPPED_INVENTORY_FIELD]; }`. v4 writes the re-keyed column under its own name; the hazard was v5's own catch-all. This is a convergence: no table, no filing.
+
+### Commits
+
+- `876e1930c`: the five-field keyed twin (core 0.0.1325)
+- `f2360f79a`: the `qtap-export.schema.json` re-vendor, 109,559 B (core 0.0.1326)
+- `8269bbc7a`: the key-order regen (core 0.0.1327)
+- `d1053e41e`: the Inventory-column plants on every carrier family (harness only)
+- `77f2a4e00`: the `.qtap` import's keyed arm (R-S) + `canManageInventory` (core 0.0.1328)
+- `a4091f654`: the remap's verbatim object ids + the picture plan, and the corpus regen (core 0.0.1329)
+- `d56801fe9`: step 22f-quater, the restore's `canManageInventory`, the census, the two derived archives (core 0.0.1330)
+- `6708cc355`: the backup + export harness cases (harness only)
+- (the docs commit: this record + the order's status header)
+
+### Red-first, per unit
+
+- **Item 1 (the twin):** `chat_keyed_fields_equivalence` at `:122` reds 5 vs 4 against the pin oracle (the `fields` line) before the edit. Unit tests: five new tests beside the port.
+- **Item 2 (the tier-1 family):** 14 new rows (33 → 47). Mutation proofs: (a) routing the arm through `_` flips 4 rows (`non_array`, `mixed`, `column_as_json_string`, `entry_as_json_string`); (b) DROPPING a non-array entry flips 3 (`non_array`, `column_as_json_string`, `entry_as_json_string`); (c) sort + dedupe flips 1 (`duplicates_kept_unsorted`). The `mixed` row's strings are already in sorted order, so (c) cannot flip it; the duplicates row covers that class.
+- **Item 3 (the schema):** `qtap_schema_validate_equivalence` on the OLD schema reds on exactly the 7 new invalid rows (both definitions are open). 15 corpus rows: five `canManageInventory` values, the base `chats_inventory_base_valid` (the chats seed is INVALID on its own — the participants lack `participantId`, a recorded v4 observation — so the base fills it), and nine `equippedInventory` shapes. `format: "uuid"` is asserted on BOTH sides (the `not-a-uuid` element is refused by ajv and by v5's `jsonschema`). Schema 108,678 → **109,559 B, md5 `10b72fd1160722b77a49fe6f7abb5b79`**. The seeds were NOT re-planted (they carry neither key).
+- **Item 4 (the key order):** the dumper at the pin moves **exactly two lines**: `character` 46 → 47 (`canManageInventory` after `canCreateOutfits`, `e1872c94f`) and `chat` 103 → 104 (`equippedInventory` after `equippedOutfit`, `4fbdad186`). There is NO extra line from `83334b9a5..322a5488e`. Both new slot pins red on the old table (`position` → `None`).
+- **Item 5 (the dead set):** **EMPTY.** At the `INVENTORY` tip with no plant, all seven carrier families (`system_backup`, `system_restore_equivalence`, `system_restore_state`, `system_export`, `system_import_equivalence`, `system_import_state`, `system_delete_data`) are green, with 0 SKIP. The keystone's reads probe the columns and its inserts never name them unless set, and v4 reads `SELECT *`. No `Failed to write equipped inventory` appears in any of these oracles (no case creates a chat through the route). The post-plant set is green with identical bytes. **Restore-target provisioning:** both sides provision the target FRESH (v5 `provision_fresh_instance` from the re-dumped `fresh_schema.json`; v4 generateDDL), so the target already carries both columns and the plant there is a self-checked no-op. The six `build-restore-archive*.test.ts` builders were measured as not needing it (no committed archive is rebuilt).
+- **Item 6 (R-S, the import):** red on the rebased tip, exactly as predicted. v5 wrote the re-keyed map into `pendingOutfitNotifications` and left `equippedInventory` keyed by the bundle's characters, and `canManageInventory` was NULL where v4 stores `0` / `1`. Green after `apply_keyed_field` and the character field, on BOTH sides by name.
+- **Item 10 (the remap):** red on unported v5 in 5 cases (`inventory_new_account`, `…_restore_path`, `…_nothing_carried`, `…_link_edges`, `…_document_edges`): object ids MINTED as strangers. Green after the port. The corpus regenerated through its hashed writer: **new `corpusSha256` `21c46cf8e096280b3ada8ad255d442288f29fd6a87512e7c988f38fda9fcbc98`**, 65 cases, and `wide` unchanged (insertions only).
+- **Items 11–14 (the restore):** red on unported v5: 13 failure lines across the three new cases (characters' flag NULL; the instance's pointer not repointed; the sparse sibling not re-written). After the port the only residue was the ruled `portrait.png` legacy-replay placement + the Uploads rollup deferral — the SAME two tables the P4.D264 wardrobe-picture cases are in; the two new-account cases were added by name. Census 81 → 83 in BOTH lists (52 warn, 8 info, 21 debug, 2 error).
+- **Item 16 (the export):** with the pre-regen table v5 appended both keys after `updatedAt` (2 red lines); with the regen both match v4. ⚠ v4's lines place each key after the nearest PRESENT preceding key in Zod order (a null `equippedOutfit` is omitted, so `equippedInventory` follows `conciergeMode`; `canManageInventory` follows `characterDocumentMountPointId`) — the order's "immediately after `equippedOutfit`" holds only when that key is present.
+
+### Findings and measurements
+
+- **R-13 measured: the pointer DANGLES on v4.** On `execute_inventory_carriers_duplicate`, the imported instance's JSON still names the bundle's file id `…f1` while the picture lands under a fresh `doc_mount_files` id. v5 is identical (state-equal). Ported faithfully, with no repoint. **v4 filing candidate (R-W):** v4's `.qtap` import leaves an imported Inventory object's `imageFileId` naming the bundle's file id.
+- **NEW (recorded, not fixed — C1 territory): v5's chat create has no `ChatMetadataSchema` `JsonSchema` twin.** v4 refuses a chat whose `equippedInventory` (and, per P4.D317 R-10, any `JsonSchema` column — `equippedOutfit`, `characterAvatars`, …) is not a record: `Failed to import chat "…": [ { "expected": "record", … "path": ["equippedInventory"] … } ]`. v5's `ChatsRepository::create` takes it. Measured on the first draft of `execute_inventory_carriers` (an `equippedInventory` stored as a JSON STRING); the row was then made an object. **`HANDOFF:` P4.D324** (the `ChatCreate` / `db/chats.rs` create path is C1's), and a follow-up for the whole class.
+- **The `skip` import arm creates no character** (both characters match by name), so R-8's flag is proven on the `duplicate` arm (`Lorian (imported)` 0, `Riya (imported)` 1).
+- **The import comparator labels minted UUID object KEYS** (`system_import_state`'s `Normalizer::value`) as it labels values. Without it, a character-keyed cell on a freshly minted character could not be compared. The change is symmetric, and every family was green before and after it.
+- **R-3:** the keystone exposes `inventory::types::js_json_parse` (serde underneath), and `inventory_documents` uses it. The three V8-only classes (`1e400`, a lone-surrogate `\u`, nesting past 128) stay the P4.D317 R-2 class: v4 keeps such a file's id verbatim, while v5 skips the file and mints for its picture link. Recorded only (Tier 3 item 26).
+- **R-6 masks:** NONE added. The restore comparator's existing generic normaliser already maps every ISO timestamp inside document text to `<ts>` and masks a `*sha256` field whose object was normalised. The patched instance's wall-clock `updatedAt` and its content hashes are covered that way. The sparse standalone's re-serialisation (defaults filled) is compared byte for byte, and v4 and v5 agree. There was no projection defect, so no `HANDOFF:` to P4.D324.
+- **R-7:** unreachable from an archive (both sides `fixed` = planned − tombstoned; no catch). The v5 home is the `Err` of `update_inventory_many_in_mount` (`InventoryWriteError::Db`; `Display` = `db::fallback::error_text`, the bare message). Pinned NEGATIVE on both sides in `inventory_repoint_lines_and_pointer`, and the census list holds the WARN. **No v5 unit row:** the writer error is not constructible without a throwing plant on the mount between 22f-ter and 22f-quater (deferred, P4.158 unreachable-catch table).
+- **Item 18 capture pins:** the INFO is compared field by field on both new-account cases (`planned=1 fixed=1`; tombstone `planned=1 fixed=0`). It is ABSENT on `replace` (the census compare over every case). The keystone's `Inventory objects updated in folder` DEBUG is PRESENT once through `global_capture` on the repointing case and ABSENT on the tombstone. The keyed DEBUG's `fields` ends `"equippedInventory"` in both the import (`["pendingOutfitNotifications","equippedInventory"]`) and the remap's `logs` (P4.D317's convention).
+- **Derived archives (the P4.D264 rule, never a rebuild):** base `restore-archive.zip` md5 `6b076003bacf8db22c1bf8440fac09d6` (unchanged before and after). `restore-archive-inventory.zip` **`0db1c24f0593b440c9a0cfd7d43ab912`**, `restore-archive-inventory-tombstone.zip` **`033e16aba754954d67a6fa6522ebee25`**. The output is deterministic (re-run, same md5). Riya's vault was chosen because it holds no garment and no `Inventory/` (asserted by the script). No off-name sibling was planted (every file sits at its projected name), and v4's projection renamed nothing. `manifest.counts` moves only for the four grown doc-mount files.
+- **R-8 / Tier 3 item 27:** a non-boolean `canManageInventory` is refused by v5's import serde with serde's text and read as `None` by v5's restore `ob(…)`, where v4's `CharacterSchema` refuses the row. This is the pre-existing "no v4 Zod twin for the character row" class; one row here, no table.
+- **Tier 3 item 29:** a non-string `relativePath` link throws in v4 and is treated as not-an-object by v5's `inventory_documents` (the P4.D264 class, extended by name).
+- **Tier 2 item 21 (delete-data):** not landed. `system_delete_data_equivalence` already wipes every doc-store row of the vaults, and the Inventory objects are ordinary doc-store rows. Re-run green as a regression.
+- **The corpus note:** a non-string link element `5` minted under JS key `"5"`, which enumerates first in `getMapping()`'s object. v5's `mapping_object` does not model that (P4.D264's recorded note), so the corpus uses `5.5`, as P4.D264's `7.5`.
+
+### HANDOFFs
+
+- **P4.D339:** `help/inventory.md` at the pin has NO "Export and restore" section (the v4 test's header cites one), so there is nothing to compare. `git diff e8e17b2d9 322a5488e -- docs/developer/API.md | grep -ci 'restore\|qtap'` = **0**.
+- **P4.D324:** the chat create's missing `JsonSchema` record check (above), with the measured refusal.
+- **Unifier (§S.5):** re-run `system_restore_state` after P4.D340's `linted` wrap lands. 22f-quater writes through `update_inventory_many_in_mount` and must stay lint-free (consumer note).
+
+### Gate
+
+- fmt clean; clippy `-D warnings` clean on both feature sets.
+- Owned sweep from the pin: 9 / 9 families ok, 0 SKIP.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, the pin as `QT_V4_CHECKOUT`, every owned `QT_ORACLE_*` set): **831 binaries / 5,510 passed / 1 failed / 3 ignored**.
+  - The ONE red is `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts`: `qtap-custom-tool.schema.json` is 44,021 B where the pin's is 63,595 B. That file is **P4.D333's** (not this lane's), and it is red on any branch until that lane re-vendors it.
+  - `qtap_schema_embed_guard` is GREEN (the red this lane owned is cleared).
+- Tier R `cli_differential`: **422 cases / 0 failures** (by name, `QT_NODE` = Node 24.13.1, the pin as `QT_V4_CHECKOUT`).
+- Versions: core 0.0.1330; harness frozen 0.0.1110; host / web / cli / tauri / SPA untouched.
+
+### 💸 for the dogfood pass
+
+As the order's three rows: a full backup → `replace` restore keeping the Inventory whole (22f-quater silent); a `new-account` restore of a backup with pictured objects (`Repointed Inventory pictures … planned=N fixed=N`, the dialog shows the picture, 💸 one turn for the Inspector's carried section); a `.qtap` round trip (the imported chat's `equippedInventory` keyed by the imported character, `pendingOutfitNotifications` untouched, the flag kept). R-13 is predicted live: an imported object does NOT show its picture (the pointer names the bundle's file id).
+

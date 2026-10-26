@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D327 lane record and status header (LANE COMPLETE)
+
+_Docs-only change (no crate version moves)._
+
+Appends the P4.D327 lane record to `status-log.md` and marks the order LANE COMPLETE. The record covers the commits, the red-first proofs, R-13 (an imported Inventory picture's pointer dangles on both sides), the HANDOFFs to P4.D324 and P4.D339, and the gate: 831 binaries / 5,510 / 1 (P4.D333's custom-tool schema guard) / 3 ignored; Tier R 422/0.
+
 #### 2026-10-26 — test(harness): the Inventory through a backup and a `.qtap` export, proven against v4 at the pin (P4.D327)
 
 _Harness-only change (no crate version moves)._
