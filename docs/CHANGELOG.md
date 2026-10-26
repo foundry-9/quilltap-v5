@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(db): the regexp() SQL scalar on LLM-logs connections only, over regress (P4.D331)
+
+_Versions: core 0.0.1326._
+
+Ports v4's `regexp-function.ts` (at `322a5488e`, with `a495faa26`'s reason strip) as `db::regexp_function`: `compile_sql_regexp` (v4's flags check first — `unsupported flags "…" — use any of i, m, s, u` — then V8's repeated-flag constructor message, then the 64-entry whole-clear cache, then the engine) and `register_regexp` (deterministic, variadic; NULL pattern or value answers NULL; a bad pattern fails the statement with `Invalid regular expression: /<pattern>/<flags>: <V8 message>` surfaced bare). The engine is the new `regress` dependency (pinned `=0.12.0`, `utf16` feature; approved 2026-10-21): the subject is matched as UCS-2 without `u` and UTF-16 with it, and a non-`u` pattern is compiled from its UTF-16 units, so astral text behaves as in V8. The engine's error texts map onto V8's catalogue by the compile corpus.
+
+The registration is partition-aware (R-1): `Writer::open_writable_in(partition, …)` (with `open_writable` as its main form), the read pool's `open_readonly(…, partition)`, and `test_support::open_readonly_in` register `regexp` on LLM-logs connections only, after `qt_text`, so `REGEXP` on main or the mount index still fails `no such function: REGEXP` as in v4. The CLI's opener never calls the core openers and registers no `regexp`, matching v4's CLI — no change there.
+
+New tier-1 family `regexp_function_equivalence` against v4's real function on in-memory better-sqlite3: 57 compile rows (V8's exact messages) and 59 match rows. Two measured engine gaps are recorded both ways in `REGEXP_ENGINE_GAP` — V8's non-`u` case folding keeps `ſ` apart from `s`, and Annex B reads `\u{2}` without `u` as `uu`; neither is lookbehind or backreferences, which agree.
+
 #### 2026-10-26 — feat(db): log_entries joins the structural census — created at boot from the re-dump (P4.D331)
 
 _Versions: core 0.0.1325._

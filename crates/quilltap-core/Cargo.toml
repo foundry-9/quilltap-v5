@@ -44,6 +44,12 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # (ASCII `\b`/`\d`/`\s` via `(?-u:...)`, Unicode `\p{L}\p{N}` boundaries checked
 # explicitly, no backtracking/lookaround needed). Already in the lock tree.
 regex = "1"
+# P4.D331 (R-I, approved by the human 2026-10-21): the Log's `regexp()` SQL
+# scalar needs ECMAScript semantics — lookaround, backreferences, named groups,
+# ASCII `\d` / `\w` / `\b`, V8's `.` and the `i` / `m` / `s` / `u` quirks — none
+# of which `regex` has (`fancy-regex`, already transitive, is not ECMAScript).
+# `utf16` matches the subject as a JS string's code units. Pinned exactly.
+regress = { version = "=0.12.0", features = ["utf16"] }
 
 # Unicode NFD decomposition for the doc-edit diacritics matcher (v4's
 # `String.prototype.normalize('NFD')`). Verified byte-exact against JS on the

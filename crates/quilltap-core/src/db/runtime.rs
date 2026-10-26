@@ -341,7 +341,7 @@ fn open_llm_logs(path: &Path, pepper_b64: &str) -> Option<Writer> {
                 module = LLM_LOGS_CLIENT,
                 "SQLCipher key set on LLM logs database"
             );
-            Writer::open_writable(path, pepper_b64)
+            Writer::open_writable_in(Partition::LlmLogs, path, pepper_b64)
         });
     match outcome {
         Ok(writer) => {
@@ -462,16 +462,17 @@ impl Db {
 
         // The read pool — direct, pooled read-only connections per OPEN
         // partition (a degraded one has none, like an absent one).
-        let pool_for = |path: &Option<PathBuf>, sibling: &SiblingOpen| match path {
-            Some(p) if sibling.state == PartitionState::Open => {
-                Some(PartitionPool::new(p.clone(), key_hex.clone()))
-            }
-            _ => None,
-        };
+        let pool_for =
+            |path: &Option<PathBuf>, sibling: &SiblingOpen, partition: Partition| match path {
+                Some(p) if sibling.state == PartitionState::Open => {
+                    Some(PartitionPool::new(p.clone(), key_hex.clone(), partition))
+                }
+                _ => None,
+            };
         let reads = ReadPool {
-            main: PartitionPool::new(paths.main.clone(), key_hex.clone()),
-            mount_index: pool_for(&paths.mount_index, &mount_index),
-            llm_logs: pool_for(&paths.llm_logs, &llm_logs),
+            main: PartitionPool::new(paths.main.clone(), key_hex.clone(), Partition::Main),
+            mount_index: pool_for(&paths.mount_index, &mount_index, Partition::MountIndex),
+            llm_logs: pool_for(&paths.llm_logs, &llm_logs, Partition::LlmLogs),
         };
         let (mount_index_state, llm_logs_state) = (mount_index.state, llm_logs.state);
 
@@ -619,15 +620,19 @@ struct PartitionPool {
 struct PartitionPoolInner {
     path: PathBuf,
     key_hex: String,
+    /// Which partition this pool reads — `LlmLogs` connections carry the
+    /// `regexp()` scalar (P4.D331, R-1).
+    partition: Partition,
     idle: Mutex<Vec<Connection>>,
 }
 
 impl PartitionPool {
-    fn new(path: PathBuf, key_hex: String) -> Self {
+    fn new(path: PathBuf, key_hex: String, partition: Partition) -> Self {
         Self {
             inner: Arc::new(PartitionPoolInner {
                 path,
                 key_hex,
+                partition,
                 idle: Mutex::new(Vec::new()),
             }),
         }
@@ -638,7 +643,7 @@ impl PartitionPool {
         if let Some(conn) = self.inner.idle.lock().unwrap().pop() {
             return Ok(conn);
         }
-        open_readonly(&self.inner.path, &self.inner.key_hex)
+        open_readonly(&self.inner.path, &self.inner.key_hex, self.inner.partition)
     }
 
     /// Return a connection to the pool (dropped if the pool is already full).
@@ -666,7 +671,7 @@ impl PartitionPool {
 /// only pragma (CLAUDE.md's read-path rule: no `journal_mode`/`foreign_keys`,
 /// which would force header writes that race the cipher context). The raw-hex key
 /// skips the KDF (the pepper was already derived when `dbkey` unwrapped `.dbkey`).
-fn open_readonly(path: &Path, key_hex: &str) -> Result<Connection, DbError> {
+fn open_readonly(path: &Path, key_hex: &str, partition: Partition) -> Result<Connection, DbError> {
     let flags = OpenFlags::SQLITE_OPEN_READ_ONLY
         | OpenFlags::SQLITE_OPEN_NO_MUTEX
         | OpenFlags::SQLITE_OPEN_URI;
@@ -679,6 +684,12 @@ fn open_readonly(path: &Path, key_hex: &str) -> Result<Connection, DbError> {
     // not a warn, because a missing UDF fails loudly ("no such function:
     // qt_text") where a silent absence would let the index drift.
     text_compression::register_qt_text(&conn)?;
+    // `regexp()` on an LLM-LOGS connection only, after `qt_text` (P4.D331,
+    // R-1 — v4's `llm-logs-client.ts:55-56`); a `log_grep` search is a pooled
+    // READ, so the pool's connections must carry it.
+    if partition == Partition::LlmLogs {
+        super::regexp_function::register_regexp(&conn)?;
+    }
     // v4's page cache (`cache_size = -64000`, 64 MB) and in-memory temp store,
     // set on every connection v4 opens (`backends/sqlite/client.ts`
     // `applyPragmas`). Without them SQLite's ~2 MB default cache re-reads — and
@@ -729,6 +740,43 @@ mod tests {
         }
         let db = Db::open_main(&path, PEPPER).unwrap();
         (dir, db)
+    }
+
+    /// P4.D331 item 5b (R-1): `regexp()` exists on LLM-LOGS connections only —
+    /// the writer AND the read pool (a `log_grep` search is a pooled read) —
+    /// so `REGEXP` on main fails `no such function: REGEXP` as it does in v4.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn regexp_is_registered_on_llm_logs_connections_only() {
+        let dir = tempdir().unwrap();
+        let main = dir.path().join("main.db");
+        let logs = dir.path().join("logs.db");
+        drop(Writer::open_writable(&main, PEPPER).unwrap());
+        drop(Writer::open_writable_in(Partition::LlmLogs, &logs, PEPPER).unwrap());
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: Some(logs),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let probe = |c: &Connection| -> Result<i64, DbError> {
+            Ok(c.query_row("SELECT 'a' REGEXP 'a'", [], |r| r.get(0))?)
+        };
+        let main_err = db.read_main(probe).unwrap_err();
+        assert_eq!(error_text(&main_err), "no such function: REGEXP");
+        let main_write_err = db
+            .write(move |ws| probe(ws.main().connection()))
+            .await
+            .unwrap_err();
+        assert_eq!(error_text(&main_write_err), "no such function: REGEXP");
+        assert_eq!(db.read_llm_logs(probe).unwrap(), 1);
+        let logged = db
+            .write(move |ws| probe(ws.llm_logs().expect("open").connection()))
+            .await
+            .unwrap();
+        assert_eq!(logged, 1);
     }
 
     /// Concurrent writers funnel through the one writer thread, so a

@@ -433,6 +433,17 @@ pub mod global_capture {
 /// no `journal_mode`, no `foreign_keys`. Any write through the returned
 /// connection fails with SQLite's read-only error.
 pub fn open_readonly(path: &std::path::Path, pepper_b64: &str) -> rusqlite::Connection {
+    open_readonly_in(crate::db::table_shape::Partition::Main, path, pepper_b64)
+}
+
+/// [`open_readonly`] for a named partition (P4.D331, R-1): an LLM-LOGS read
+/// also carries the `regexp()` scalar, after `qt_text`, as the engine's pool
+/// connections do.
+pub fn open_readonly_in(
+    partition: crate::db::table_shape::Partition,
+    path: &std::path::Path,
+    pepper_b64: &str,
+) -> rusqlite::Connection {
     use rusqlite::OpenFlags;
     let key_hex = crate::dbkey::pepper_b64_to_key_hex(pepper_b64).expect("a valid test pepper");
     let conn = rusqlite::Connection::open_with_flags(
@@ -445,6 +456,9 @@ pub fn open_readonly(path: &std::path::Path, pepper_b64: &str) -> rusqlite::Conn
     conn.pragma_update(None, "key", format!("x'{key_hex}'"))
         .expect("the cipher key, first and only pragma");
     crate::db::text_compression::register_qt_text(&conn).expect("register qt_text");
+    if partition == crate::db::table_shape::Partition::LlmLogs {
+        crate::db::regexp_function::register_regexp(&conn).expect("register regexp");
+    }
     conn
 }
 // === end P4.115 ===

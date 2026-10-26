@@ -148,6 +148,7 @@ pub mod project_store_naming;
 pub mod projects;
 pub mod prompt_templates;
 pub mod provider_models;
+pub mod regexp_function; // P4.D331
 pub mod roleplay_templates;
 pub mod runtime;
 pub mod scenario_seeded_summary_heal;
@@ -317,6 +318,19 @@ impl Writer {
     ///
     /// `pepper_b64` is the base64 pepper (as `dbkey::load_pepper` yields it).
     pub fn open_writable(path: &Path, pepper_b64: &str) -> Result<Self, DbError> {
+        Self::open_writable_in(table_shape::Partition::Main, path, pepper_b64)
+    }
+
+    /// [`Writer::open_writable`] for a named partition (P4.D331, R-1): the same
+    /// open sequence, plus the `regexp()` scalar on an LLM-LOGS connection
+    /// ONLY — v4 registers it on its llm-logs client alone
+    /// (`llm-logs-client.ts:56`), so `x REGEXP 'y'` on main or the mount index
+    /// fails `no such function: REGEXP` here as it does there.
+    pub fn open_writable_in(
+        partition: table_shape::Partition,
+        path: &Path,
+        pepper_b64: &str,
+    ) -> Result<Self, DbError> {
         let key_hex =
             dbkey::pepper_b64_to_key_hex(pepper_b64).map_err(|e| DbError::Key(e.to_string()))?;
 
@@ -334,6 +348,10 @@ impl Writer {
         // registration EVERY `chat_messages` INSERT fails, including the rows
         // the `_au` WHEN clause would have excluded. An open ERROR, not a warn.
         text_compression::register_qt_text(&conn)?;
+        // `regexp()` AFTER `qt_text` — v4's order (`llm-logs-client.ts:55-56`).
+        if partition == table_shape::Partition::LlmLogs {
+            regexp_function::register_regexp(&conn)?;
+        }
         // v4 sets its page cache after `journal_mode` on the writable open too
         // (dogfood #123; see `runtime::apply_cache_pragmas`). `journal_mode`
         // above has already read the header, so no extra read is needed.
