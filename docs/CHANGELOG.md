@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — Census guards for the Inventory tools' publish sites and handler lines (P4.D328)
+
+_Versions: core 0.0.1334._
+
+Two source-text guards: the realtime publish census gains the Inventory tools' sites and the keystone chokepoints they reach, and an in-crate test pins each Inventory handler's silent exits to v4's so a later edit cannot drop a handler's log line. No behaviour change.
+
 #### 2026-10-26 — The Almanack counts characters who may manage their inventory (P4.D328)
 
 _Versions: core 0.0.1333._

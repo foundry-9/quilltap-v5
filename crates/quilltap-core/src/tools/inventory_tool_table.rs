@@ -333,3 +333,51 @@ impl InventoryToolOutput {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    /// P4.D328 Tier 2 item 1 — the `[InventoryTools]` line census as a
+    /// source-text guard. A handler's one line is DATA on `InventoryHandled`,
+    /// written once by `finish_inventory_tool`, so the way to drop a line is
+    /// an exit arm answering `InventoryHandled::quiet` where v4 logs. Each
+    /// handler's silent exits are pinned to v4's (`e1872c94f` — the returns
+    /// with no `logInventoryTool` call: a missing chat, a missing vault, an
+    /// update / archive whose ref resolves to nothing, an update that wrote
+    /// nothing); an added or a lost one reds here. The behavioural half is
+    /// `inventory_tools_equivalence`, which compares every line whole.
+    const SILENT_EXITS: [(&str, &str, usize); 9] = [
+        ("inventory_list", include_str!("inventory_list.rs"), 0),
+        ("inventory_read", include_str!("inventory_read.rs"), 0),
+        ("inventory_equip", include_str!("inventory_equip.rs"), 1),
+        ("inventory_unequip", include_str!("inventory_unequip.rs"), 1),
+        ("inventory_pick_up", include_str!("inventory_pick_up.rs"), 1),
+        ("inventory_create", include_str!("inventory_create.rs"), 1),
+        ("inventory_update", include_str!("inventory_update.rs"), 3),
+        ("inventory_archive", include_str!("inventory_archive.rs"), 2),
+        ("inventory_give", include_str!("inventory_give.rs"), 0),
+    ];
+
+    #[test]
+    fn every_handler_keeps_v4s_silent_exits_and_no_more() {
+        for (tool, src, want) in SILENT_EXITS {
+            assert_eq!(
+                src.matches("InventoryHandled::quiet(").count(),
+                want,
+                "{tool}: the silent exits (v4 logs on every other arm)"
+            );
+            assert!(
+                !src.contains("log_inventory_tool("),
+                "{tool}: a handler never writes its own line — it answers it as data"
+            );
+        }
+        // The one writer of the line, in the table's after-commit half.
+        let table = include_str!("inventory_tool_table.rs");
+        assert_eq!(
+            table
+                .matches(concat!("log_inventory_tool", "(tool,"))
+                .count(),
+            1,
+            "the table writes every handler's line from ONE call"
+        );
+    }
+}

@@ -161,6 +161,62 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          in this file. The behavioural half is \
          `realtime::publish_sites::memory_gate_tests`.",
     ),
+    // === P4.D328: the Inventory tools' publish sites (R-17) ===
+    (
+        "crates/quilltap-core/src/tools/inventory_tool_table.rs",
+        "publish_realtime(*topic, id.as_deref());",
+        1,
+        "P4.D328 (R-17): every publish an Inventory HANDLER owes runs through \
+         `finish_inventory_tool`'s ONE loop, after the write commits — never inside \
+         the handler half. The handlers name their publishes as data (the rows \
+         below); `inventory_tools_equivalence` compares them per case.",
+    ),
+    (
+        "crates/quilltap-core/src/tools/inventory_create.rs",
+        "(RealtimeTopic::Inventory, None)",
+        2,
+        "v4 `inventory-create-handler.ts`: `inventory` once on a created object — \
+         the plain create and the create-then-equip arm (whose carried set the \
+         keystone's equip chokepoint announces itself).",
+    ),
+    (
+        "crates/quilltap-core/src/tools/inventory_update.rs",
+        "(RealtimeTopic::Inventory, None)",
+        1,
+        "v4 `inventory-update-handler.ts`: `inventory` once, after the write.",
+    ),
+    (
+        "crates/quilltap-core/src/tools/inventory_archive.rs",
+        "RealtimeTopic::",
+        2,
+        "v4 `inventory-archive-handler.ts`: `inventory` on an archive or restore, \
+         then `chats` / the chat id when archiving struck a carried object from \
+         this chat.",
+    ),
+    (
+        "crates/quilltap-core/src/tools/inventory_give.rs",
+        "RealtimeTopic::",
+        2,
+        "v4 `inventory-give-handler.ts`: `inventory` + `chats` / the chat id after \
+         the transfer and the drop.",
+    ),
+    (
+        "crates/quilltap-core/src/inventory/equip.rs",
+        "publish_realtime(RealtimeTopic::Chats, Some(",
+        3,
+        "P4.D328 Tier 2 item 2 (the keystone's chokepoints the Inventory handlers \
+         reach, censused by site here because C1 did not): `equip_items` announces \
+         the chat once; `unequip_items` once; `pick_up_items` once for the chat \
+         (its `inventory` publish is the row below).",
+    ),
+    (
+        "crates/quilltap-core/src/inventory/equip.rs",
+        "publish_realtime(RealtimeTopic::Inventory, None);",
+        1,
+        "P4.D328 Tier 2 item 2: `pick_up_items` announces `inventory` for the new \
+         instance (v4 `pickUpItems`).",
+    ),
+    // === end P4.D328 ===
 ];
 
 fn repo_root() -> PathBuf {
