@@ -106,6 +106,8 @@ interface CorpusEffect {
   wardrobe?: Record<string, unknown>;
   /** P4.D329: a resolved inventory gesture (`ResolvedInventoryGesture`). */
   inventory?: Record<string, unknown>;
+  /** P4.D331: a resolved log line (`{ index, log }`). */
+  log?: string;
 }
 
 interface CorpusCase {
@@ -129,14 +131,31 @@ interface CorpusCase {
   inventory?: boolean;
   /** P4.D329: the turn's pending Inventory map, when inside a model turn. */
   pendingInventoryAnnouncements?: boolean;
+  /**
+   * P4.D331: the log pass's repository. `logEntries.create` is a RECORDER that
+   * answers `{ id: "log-<n>", …data, createdAt, updatedAt }` for its n-th call
+   * — or throws `logCreateError` (every call; v4's degraded / absent guard
+   * sentence, or a refused create) when set.
+   */
+  logCreateError?: string;
 }
 
-function repos() {
+function repos(logCreateError?: string) {
+  let n = 0;
   return {
     chats: { update: jest.fn() },
     projects: { update: jest.fn() },
     groups: { update: jest.fn() },
     characters: { update: jest.fn() },
+    // P4.D331: the log pass's write door reaches this through the REAL
+    // `writeLogEntry` (its trim / clip run; only the repository is mocked).
+    logEntries: {
+      create: jest.fn(async (data: Record<string, unknown>) => {
+        if (logCreateError !== undefined) throw new Error(logCreateError);
+        n += 1;
+        return { id: `log-${n}`, ...data, createdAt: '2026-10-20T00:00:00.000Z', updatedAt: '2026-10-20T00:00:00.000Z' };
+      }),
+    },
   };
 }
 
@@ -150,7 +169,7 @@ describe('applyCustomToolEffects', () => {
 
     for (const c of corpus.cases) {
       jest.clearAllMocks();
-      const db = repos();
+      const db = repos(c.logCreateError);
       mockGetRepositories.mockReturnValue(db);
 
       mockApplyWardrobeEffects.mockResolvedValue(c.wardrobeReturns ?? []);
@@ -163,7 +182,9 @@ describe('applyCustomToolEffects', () => {
             ? ({ index: e.index, wardrobe: e.wardrobe } as unknown as ResolvedEffect)
             : e.inventory !== undefined
               ? ({ index: e.index, inventory: e.inventory } as unknown as ResolvedEffect)
-              : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
+              : e.log !== undefined
+                ? ({ index: e.index, log: e.log } as unknown as ResolvedEffect)
+                : ({ index: e.index, target: e.target, value: value(e.value!) } as ResolvedEffect),
       );
 
       // The snapshot the applier is handed, and an untouched twin to compare it
@@ -228,6 +249,8 @@ describe('applyCustomToolEffects', () => {
         stateWrites,
         warns,
         snapshotMutated: JSON.stringify(snapshot) !== snapshotBefore,
+        // P4.D331: the log pass's create calls, in order (the data object).
+        logCreates: db.logEntries.create.mock.calls.map(([data]) => data),
         // P4.D306: the wardrobe pass's EXACT argument objects (the set as its
         // sorted members, key kept only when v4 passed one).
         wardrobeCalls: mockApplyWardrobeEffects.mock.calls.map(([arg]) => {

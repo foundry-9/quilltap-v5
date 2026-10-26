@@ -422,6 +422,33 @@ const anyOfAllSingle = {
 const anyOfSecret = { ...anyOfAllSingle, name: 'hidden_omen', revealOdds: false };
 // === end P4.D333 ===
 
+// === P4.D331: `writes to the log` — LAST, once (v4 `run-custom-tool.ts:356`).
+const logOnly = {
+  name: 'ledger',
+  description: 'keep a ledger',
+  effects: [{ log: '{{character}} rolled {{value}}.' }],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const writeWardrobeLog = {
+  name: 'ceremony',
+  description: 'a ceremony',
+  effects: [
+    { log: 'Before anything' },
+    { target: 'state.rites', value: 1 },
+    { wardrobe: { action: 'wear', items: ['Mitre'] } },
+  ],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+
+const twoLogLines = {
+  name: 'diarist',
+  description: 'two lines',
+  effects: [{ log: 'One' }, { when: { outcome: { eq: 'info' } }, log: 'Two' }],
+  outcomes: [{ when: true, message: 'x', state: 'info' }],
+};
+// === end P4.D331 ===
+
 const cases: Array<[string, unknown[]]> = [
   ['minimal', [minimal]],
   ['params-bounds', [paramsBounds]],
@@ -470,6 +497,10 @@ const cases: Array<[string, unknown[]]> = [
   ['anyof-every-group-single', [anyOfAllSingle]],
   ['anyof-reveal-odds-false', [anyOfSecret]],
   // === end P4.D333 rows ===
+  // === P4.D331 ===
+  ['effects-log-only', [logOnly]],
+  ['effects-write-wardrobe-log-order', [writeWardrobeLog]],
+  ['effects-two-log-lines-one-clause', [twoLogLines]],
 ];
 
 const rows: unknown[] = [];

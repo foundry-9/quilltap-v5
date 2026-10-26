@@ -20,17 +20,6 @@ use quilltap_core::pascal::roster::DiscoveredCustomTool;
 use quilltap_core::tools::run_custom::build_run_custom_description;
 use serde_json::Value;
 
-/// P4.D333: the preamble sentence the Inventory grammar lane (P4.D329) owns —
-/// v4 at the pin says `what they are wearing, or what they carry,` where this
-/// branch still says `or what they are wearing,`. The one sentence is put back
-/// to this branch's words in v4's description, BY TEXT, before the compare —
-/// loudly, and only while it is present. Lifted by the unifier once P4.D329
-/// lands (§S.5 (1)).
-const RESIDUE_PREAMBLE_UNTIL_UNION: (&str, &str) = (
-    "the rolling character's own records, what they are wearing, or what they carry, server-side",
-    "the rolling character's own records, or what they are wearing, server-side",
-);
-
 #[test]
 fn run_custom_description_matches_oracle() {
     let path = match std::env::var("QT_ORACLE_PASCAL_RUN_CUSTOM") {
@@ -65,14 +54,7 @@ fn run_custom_description_matches_oracle() {
             })
             .collect();
 
-        let v4 = row["description"].as_str().unwrap();
-        let (pin, branch) = RESIDUE_PREAMBLE_UNTIL_UNION;
-        let want = if v4.contains(pin) {
-            masked += 1;
-            v4.replace(pin, branch)
-        } else {
-            v4.to_string()
-        };
+        let want = row["description"].as_str().unwrap();
         assert_eq!(
             build_run_custom_description(&roster),
             want,

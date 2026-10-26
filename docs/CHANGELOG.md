@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(pascal): the custom-tool log effect (P4.D331)
+
+_Versions: core 0.0.1330._
+
+Pascal custom tools gain v4's fourth effect kind, `log` (`e4a60ad9e` at `322a5488e`): a template `z.string().min(1).max(1000)`, parsed after `inventory` in v4's shape order, with the pin's six recognized keys and the four-kind sentences (`an effect is exactly one of a write (target + value), a wardrobe gesture, an inventory gesture, or a log line` / `an effect needs target + value, wardrobe, inventory, or log`). Its placeholders are audited at `effects.N.log` through `validate_template_placeholders`, carried here as a fenced stand-in with P4.D329's landed name and signature (removed at the union). The resolver renders the line with the outcome-message renderer, JS-trims it, and skips an empty one (`log line rendered empty`); `ResolvedEffect::Log` serializes `{index, log}`. The applier writes the lines LAST, each through the one write door on the LLM-logs writer inside the run's single write, fail-soft: a failed line WARNs `Custom tool log effect failed; skipped` (with v4's guard sentence when the partition is degraded or absent — `WriterSet` now carries the LLM-logs state) and drops, and a landed one records `{"target":"log","next":{"id","message"}}`. The vocabulary reads a log line's placeholders; `run_custom`'s description adds `writes to the log` last, once.
+
+Families, regenerated from the pin: `pascal_custom_tool_definition_equivalence` (12 new rows, all agreeing; 39 rows the pin moves through the inventory and any-of grammar are carved by id until the union), `pascal_custom_tools_execution_equivalence` (8 new resolver rows), `pascal_side_effects_equivalence` (10 new corpus rows, the log pass's create calls compared; the write door's trim and clip run real), `pascal_tool_vocabulary_equivalence` (2 rows; the pin's five inventory keys carved), `pascal_run_custom_equivalence` (3 rows; the pin's Inventory preamble sentence carved).
+
 #### 2026-10-26 — feat(tools): log_create_entry, log_grep and log_read (P4.D331)
 
 _Versions: core 0.0.1329._

@@ -146,6 +146,9 @@ pub struct WriterSet {
     main: Writer,
     mount_index: Option<Writer>,
     llm_logs: Option<Writer>,
+    /// How the llm-logs sibling came out of [`Db::open`] (P4.D331): a closure
+    /// with no llm-logs writer tells v4's two guard sentences apart by it.
+    llm_logs_state: PartitionState,
 }
 
 impl WriterSet {
@@ -163,6 +166,11 @@ impl WriterSet {
     /// The llm-logs sibling-database writer, if this instance was opened with one.
     pub fn llm_logs(&self) -> Option<&Writer> {
         self.llm_logs.as_ref()
+    }
+
+    /// The llm-logs partition's state ([`Db::partition_state`]'s answer).
+    pub fn llm_logs_state(&self) -> PartitionState {
+        self.llm_logs_state
     }
 }
 
@@ -481,6 +489,7 @@ impl Db {
             main,
             mount_index: mount_index.writer,
             llm_logs: llm_logs.writer,
+            llm_logs_state,
         };
 
         let (tx, mut rx) = mpsc::channel::<WriteJob>(WRITE_CHANNEL_CAPACITY);

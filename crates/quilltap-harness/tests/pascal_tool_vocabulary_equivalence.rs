@@ -63,6 +63,28 @@ struct Row {
     empty: bool,
 }
 
+/// P4.D331 (R-H / §R.7): the `322a5488e` pin's vocabulary carries five keys
+/// the round's SIBLING lanes add (P4.D329's inventory reads / equips /
+/// unequips / picks-up, P4.D333's always-present `inventoryAggregates`). On
+/// this branch they are carved from v4's object by name — each must still be
+/// PRESENT there (a stale carve is red) — and the unifier lifts the list.
+const SIBLING_KEYS_UNTIL_UNION: &[&str] = &[
+    "inventoryReads",
+    "inventoryAggregates",
+    "equips",
+    "unequips",
+    "picksUp",
+];
+
+fn without_sibling_keys(vocabulary: &str) -> String {
+    let mut v: Value = serde_json::from_str(vocabulary).expect("an oracle vocabulary");
+    let obj = v.as_object_mut().expect("a vocabulary object");
+    for key in SIBLING_KEYS_UNTIL_UNION {
+        assert!(obj.remove(*key).is_some(), "stale sibling carve: {key}");
+    }
+    serde_json::to_string(&v).unwrap()
+}
+
 #[test]
 fn pascal_tool_vocabulary_matches_oracle() {
     let path = match std::env::var("QT_ORACLE_PASCAL_VOCABULARY") {

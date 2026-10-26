@@ -2024,6 +2024,105 @@ describe('executeCustomTool', () => {
         { now: 1788004800000 },
         { answer: 'A report.' },
       ],
+
+      // === P4.D331: the log line (v4 `e4a60ad9e`) — a TEMPLATE rendered like an
+      // outcome message, JS-trimmed, skipped when empty (append-only) ===
+      [
+        'log-renders-with-subjects',
+        {
+          name: 'try_door',
+          description: 'd',
+          parameters: { door: { type: 'string', default: 'north door' } },
+          roll: { min: 5, max: 5 },
+          effects: [{ log: "Tried the {{params.door}}: rolled {{value}} \u2014 it's {{state.weather}}" }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { state: { weather: 'raining' } },
+      ],
+      [
+        'log-condition-did-not-hold',
+        {
+          name: 'try_door',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          effects: [{ when: { outcome: { eq: 'failure' } }, log: 'It failed' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+      ],
+      [
+        'log-rendered-empty',
+        {
+          name: 'try_door',
+          description: 'd',
+          parameters: { note: { type: 'string', default: ' ' } },
+          roll: { min: 5, max: 5 },
+          effects: [{ log: '{{params.note}}' }, { log: 'A line after' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+      ],
+      [
+        'log-only-bom-trims-empty',
+        {
+          name: 'try_door',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          effects: [{ log: '\ufeff' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+      ],
+      [
+        'log-character-and-now',
+        {
+          name: 'try_door',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          effects: [{ log: '  {{character}} rolled {{value}} at {{now}}  ' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+        { character: 'Charlie', now: PROGRESS_START },
+      ],
+      [
+        'log-unknown-and-absent-placeholders-stand',
+        {
+          name: 'try_door',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          effects: [{ log: '{{bogus}} and {{metadata.absent}} and {{character}}' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+      ],
+      [
+        'log-llm-with-the-canned-consult',
+        {
+          name: 'oracle',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          llm: { prompt: 'Answer YES or NO: is {{value}} auspicious?', errorMessage: 'The wire went dead.' },
+          effects: [{ log: 'The oracle said {{llm}} to {{value}}' }],
+          outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+        },
+        {},
+        {},
+        { answer: 'YES' },
+      ],
+      [
+        'log-beside-a-write-in-order',
+        {
+          name: 'try_door',
+          description: 'd',
+          roll: { min: 5, max: 5 },
+          effects: [{ log: 'First' }, { target: 'state.tries', value: 1 }, { log: 'Third' }],
+          outcomes: [CATCH_ALL],
+        },
+        {},
+      ],
+      // === end P4.D331 ===
     ];
 
     let index = 0;

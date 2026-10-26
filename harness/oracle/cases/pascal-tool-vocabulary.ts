@@ -368,6 +368,14 @@ const corpus: Array<[string, Record<string, unknown>]> = [
   })],
   ['brief-quotes-outcome-is-no-vocabulary', withMessage('The verdict: {{outcome.state}} at {{outcome.index}}.')],
   // === end P4.D333 rows ===
+
+  // === P4.D331: a log line's placeholders are READS and nothing more ===
+  ['log-line-reads', withEffects(
+    [{ log: '{{params.material}} {{metadata.house}} {{state.weather}} {{progress.cannon.fill}} {{llm}}' }],
+    { ...STR_PARAM, ...LLM },
+  )],
+  ['log-line-plain', withEffects([{ log: 'Nothing quoted here.' }])],
+  // === end P4.D331 ===
 ];
 
 for (const [id, doc] of corpus) {

@@ -1087,6 +1087,25 @@ const corpus: Array<[string, unknown]> = [
   ['null-doc', null],
   ['array-doc', []],
   ['empty-object', {}],
+
+  // === P4.D331: the log effect (append-only) ===
+  // v4 `e4a60ad9e` at the `322a5488e` pin: a FOURTH effect kind, `log` — a
+  // template `z.string().min(1).max(1000)` (code points), its placeholders
+  // audited as an outcome message's (`effects.N.log`). The ids are fixed by the
+  // P4.D331 order so the one regen (P4.D333, R-F) merges them by id.
+  ['log-accepts-plain', withEffects([{ log: 'Tried the {{params.door}}: rolled {{value}}' }], { parameters: { door: { type: 'string', default: 'north door' } } })],
+  ['log-accepts-with-when', withEffects([{ when: { outcome: { eq: 'failure' } }, log: '{{character}} failed (rolled {{value}}).' }], { outcomes: [{ when: true, message: '-', state: 'failure' }] })],
+  ['log-beside-write', withEffects([{ target: 'metadata.x', value: 1, log: 'and a line' }])],
+  ['log-beside-wardrobe', withEffects([{ wardrobe: { action: 'wear', items: ['hat'] }, log: 'and a line' }])],
+  ['log-empty', withEffects([{ log: '' }])],
+  ['log-1001', withEffects([{ log: 'x'.repeat(1001) }])],
+  ['log-1000-astral', withEffects([{ log: '\u{1f600}'.repeat(1000) }])],
+  ['log-undeclared-param', withEffects([{ log: 'Rolled {{params.ghost}}' }])],
+  ['log-llm-without-block', withEffects([{ log: 'The oracle says {{llm}}' }])],
+  ['log-llm-with-block', withEffects([{ log: 'The oracle says {{llm}}' }], LLM_BLOCK)],
+  ['log-not-a-string', withEffects([{ log: 5 }])],
+  ['effect-empty-four-kinds', withEffects([{}])],
+  // === end P4.D331 ===
 ];
 
 /**

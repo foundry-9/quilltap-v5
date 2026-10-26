@@ -35,102 +35,11 @@ const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
 /// P4.D328: Nora, `TOOLS_CHAT_PROJ`'s first character.
 const NORA: &str = "a2000000-0000-4000-8000-000000000001";
 
-/// P4.D328 (R-10): the rows v4's table carries at the pin that SIBLING lanes
-/// land — the Log tools (P4.D331) and `edit_custom_tool` — dropped from the
-/// oracle side by id until the union, and `run_custom`'s category (v4 moved
-/// it to `pascal`), read from v5's row. Both ways: every carve must bite (a
-/// carve v4 no longer needs, or one v5 already carries, fails here).
-/// HANDOFF unifier: delete both consts and `carve_sibling_rows` at the union.
-const SIBLING_ROWS_UNTIL_UNION: [&str; 4] = [
-    "log_create_entry",
-    "log_grep",
-    "log_read",
-    "edit_custom_tool",
-];
-const SIBLING_CATEGORY_UNTIL_UNION: &str = "run_custom";
-
-fn carve_sibling_rows(name: &str, got: &Value, want: &Value) -> Value {
-    let id_of = |t: &Value| {
-        t.get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    let got_tools = got["tools"].as_array().expect("v5 answers a tools array");
-    let mut want = want.clone();
-    let tools = want["tools"]
-        .as_array_mut()
-        .expect("v4 answers a tools array");
-    for id in SIBLING_ROWS_UNTIL_UNION {
-        assert!(
-            tools.iter().any(|t| id_of(t) == id) && !got_tools.iter().any(|t| id_of(t) == id),
-            "{name}: the sibling carve of `{id}` no longer bites — lift it"
-        );
-    }
-    tools.retain(|t| !SIBLING_ROWS_UNTIL_UNION.contains(&id_of(t).as_str()));
-    let got_category = got_tools
-        .iter()
-        .find(|t| id_of(t) == SIBLING_CATEGORY_UNTIL_UNION)
-        .and_then(|t| t.get("category"))
-        .cloned()
-        .expect("v5 carries run_custom");
-    let row = tools
-        .iter_mut()
-        .find(|t| id_of(t) == SIBLING_CATEGORY_UNTIL_UNION)
-        .expect("v4 carries run_custom");
-    assert_ne!(
-        row["category"], got_category,
-        "{name}: the run_custom category carve no longer bites — lift it"
-    );
-    row["category"] = got_category;
-    let count = tools.len();
-    want["count"] = Value::from(count);
-    want
-}
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
-}
-
-/// P4.D331 (R-13): the `322a5488e` round's sibling rows, carved BY ID from
-/// both sides until the union — P4.D328's nine `inventory_*` tools, P4.D332's
-/// `edit_custom_tool`, and `run_custom` (P4.D332 moves its category to
-/// `pascal`). Every carved id must still be present on v4's side (a stale
-/// carve is red); the unifier lifts the list (§S.5).
-const SIBLING_ROWS_UNTIL_UNION: &[&str] = &[
-    "run_custom",
-    "edit_custom_tool",
-    "inventory_list",
-    "inventory_read",
-    "inventory_equip",
-    "inventory_unequip",
-    "inventory_pick_up",
-    "inventory_create",
-    "inventory_update",
-    "inventory_archive",
-    "inventory_give",
-];
-
-/// A body with the sibling rows removed (its `tools` array filtered by id,
-/// `count` recounted).
-fn without_sibling_rows(body: &Value) -> Value {
-    let mut body = body.clone();
-    let mut kept = None;
-    if let Some(tools) = body.get_mut("tools").and_then(Value::as_array_mut) {
-        tools.retain(|t| {
-            !t.get("id")
-                .and_then(Value::as_str)
-                .is_some_and(|id| SIBLING_ROWS_UNTIL_UNION.contains(&id))
-        });
-        kept = Some(tools.len());
-    }
-    if let (Some(n), Some(count)) = (kept, body.get_mut("count")) {
-        *count = Value::from(n);
-    }
-    body
 }
 
 fn spec_path() -> PathBuf {

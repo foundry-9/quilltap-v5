@@ -174,6 +174,10 @@ pub fn describe_effects(effects: &[CustomToolEffect]) -> String {
             clauses.push(clause);
         }
     }
+    // === P4.D331: `writes to the log` — LAST, once (v4 `run-custom-tool.ts:356`).
+    if effects.iter().any(CustomToolEffect::is_log_effect) {
+        clauses.push("writes to the log".to_string());
+    }
     clauses.join("; ")
 }
 

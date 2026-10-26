@@ -349,6 +349,11 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
         {
             collect_placeholders(source, &declared, &mut found);
         }
+        // === P4.D331: a log line is a template whose placeholders are reads
+        // and nothing more (v4 `tool-vocabulary.ts:237`).
+        if let CustomToolEffectBody::Log(line) = &effect.body {
+            collect_placeholders(line, &declared, &mut found);
+        }
         for group in effect.when.iter().flat_map(|w| w.effect_when_groups()) {
             collect_group(group, &mut found);
         }
@@ -393,6 +398,9 @@ pub fn collect_tool_vocabulary(definition: &QtapCustomTool) -> ToolVocabulary {
                 }
                 continue;
             }
+            // A log line: no write to report (v4's `target === undefined`
+            // continue, `:256`).
+            CustomToolEffectBody::Log(_) => continue,
             CustomToolEffectBody::Write { target, .. } => target,
         };
         let Ok(target) = parse_effect_target(target) else {

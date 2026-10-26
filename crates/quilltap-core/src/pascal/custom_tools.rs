@@ -1609,6 +1609,12 @@ pub enum ResolvedEffect {
         index: usize,
         inventory: ResolvedInventoryGesture,
     },
+    // === P4.D331: the log line ===
+    /// v4's `{ index, log }` arm (`e4a60ad9e`) — the rendered, trimmed line.
+    Log {
+        index: usize,
+        log: String,
+    },
     Skipped {
         index: usize,
         reason: String,
@@ -1678,12 +1684,20 @@ impl ResolvedEffect {
         self.is_applicable_write()
             || self.is_applicable_wardrobe()
             || self.is_applicable_inventory()
+            || self.is_applicable_log()
     }
 
     /// True for a resolved effect that would change what the rolling
     /// character carries (v4 `isApplicableInventoryEffect`, P4.D329).
     pub fn is_applicable_inventory(&self) -> bool {
         matches!(self, ResolvedEffect::Inventory { .. })
+    }
+
+
+    /// True for a resolved effect that would write a line to the log (v4
+    /// `isApplicableLogEffect`, P4.D331).
+    pub fn is_applicable_log(&self) -> bool {
+        matches!(self, ResolvedEffect::Log { .. })
     }
 
     /// True for a resolved effect that would actually write a value (v4
@@ -1720,6 +1734,11 @@ impl Serialize for ResolvedEffect {
             ResolvedEffect::Inventory { index, inventory } => {
                 m.serialize_entry("index", index)?;
                 m.serialize_entry("inventory", inventory)?;
+            }
+            // === P4.D331: the log line ===
+            ResolvedEffect::Log { index, log } => {
+                m.serialize_entry("index", index)?;
+                m.serialize_entry("log", log)?;
             }
             ResolvedEffect::Skipped { index, reason } => {
                 m.serialize_entry("index", index)?;
@@ -1837,9 +1856,10 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
                 return skipped(index, "condition did not hold".to_string());
             }
 
-            // v4 then guards `effect is neither a complete write nor a
-            // wardrobe gesture` (`custom-tools.ts:1219-1222`); here that state
-            // is unrepresentable (`CustomToolEffectBody`), so there is no arm.
+            // v4 then guards `effect is neither a complete write, a wardrobe
+            // or inventory gesture, nor a log line` (`custom-tools.ts:1560-1562`
+            // at the pin — the union string, R-G); here that state is
+            // unrepresentable (`CustomToolEffectBody`), so there is no arm.
             let (target, value) = match &effect.body {
                 CustomToolEffectBody::Wardrobe(gesture) => {
                     return resolve_wardrobe_gesture(
@@ -1859,6 +1879,18 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
                         &template_vars,
                         &skipped,
                     )
+                }
+                // === P4.D331: the log line ===
+                // A template, like an outcome message — not an expression. The
+                // SAME renderer and vars (an unknown placeholder stays as
+                // written), then JS-trimmed; an empty line is skipped.
+                CustomToolEffectBody::Log(template) => {
+                    let line = js_trim(&render_template(template, &template_vars)).to_string();
+                    return if line.is_empty() {
+                        skipped(index, "log line rendered empty".to_string())
+                    } else {
+                        ResolvedEffect::Log { index, log: line }
+                    };
                 }
                 CustomToolEffectBody::Write { target, value } => (target, value),
             };

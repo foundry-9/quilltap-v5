@@ -3039,6 +3039,321 @@
           }
         }
       ]
+    },
+    {
+      "name": "log/order — a log line at index 0 lands BEFORE a state write at index 1",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "Tried the north door"
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "encounter",
+              "count"
+            ],
+            "raw": "state.encounter.count"
+          },
+          "value": {
+            "n": 2
+          }
+        }
+      ]
+    },
+    {
+      "name": "log/null author — a run nobody made writes an author-less line",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": null,
+      "metadataSnapshot": {},
+      "cascade": null,
+      "effects": [
+        {
+          "index": 0,
+          "log": "The lock clicked"
+        }
+      ]
+    },
+    {
+      "name": "log/rejected create — the line drops, the sibling write keeps",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "target": {
+            "kind": "state",
+            "path": [
+              "encounter",
+              "count"
+            ],
+            "raw": "state.encounter.count"
+          },
+          "value": {
+            "n": 2
+          }
+        },
+        {
+          "index": 1,
+          "log": "Never written"
+        }
+      ],
+      "logCreateError": "posed"
+    },
+    {
+      "name": "log/degraded — the guard sentence, the line skipped",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "Into the void"
+        }
+      ],
+      "logCreateError": "LLM logs database is in degraded mode"
+    },
+    {
+      "name": "log/absent — the uninitialized sentence, the line skipped",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "Into the void"
+        }
+      ],
+      "logCreateError": "LLM logs database not initialized"
+    },
+    {
+      "name": "log/two lines around a write — each its own entry, in effect order",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "First"
+        },
+        {
+          "index": 1,
+          "target": {
+            "kind": "state",
+            "path": [
+              "encounter",
+              "count"
+            ],
+            "raw": "state.encounter.count"
+          },
+          "value": {
+            "n": 4
+          }
+        },
+        {
+          "index": 2,
+          "log": "Second"
+        }
+      ]
+    },
+    {
+      "name": "log/1000-char line — written whole",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        }
+      ]
+    },
+    {
+      "name": "log/padded line — the write door trims",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "  padded line  "
+        }
+      ]
+    },
+    {
+      "name": "log/over 4000 units — the write door clips",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "log": "yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy"
+        }
+      ]
+    },
+    {
+      "name": "log/only skipped — no log pass call",
+      "chatId": "chat-1",
+      "toolName": "unlock",
+      "characterId": "char-1",
+      "metadataSnapshot": {},
+      "cascade": {
+        "chatState": {
+          "encounter": {
+            "count": 1
+          }
+        },
+        "projectState": {},
+        "groupState": {},
+        "generalState": {},
+        "merged": {},
+        "groupTier": {
+          "status": "none",
+          "candidates": []
+        }
+      },
+      "effects": [
+        {
+          "index": 0,
+          "skipped": "log line rendered empty"
+        }
+      ]
     }
   ]
 }

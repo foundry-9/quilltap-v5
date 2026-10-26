@@ -115,6 +115,17 @@ pub struct WriteLogEntryParams<'a> {
     pub character_id: Option<&'a str>,
 }
 
+/// v4's two guard sentences (`llm-logs-guard.ts:20-27`) by the partition's
+/// state: v5's ABSENT file is v4's uninitialized client.
+pub fn llm_logs_guard_sentence(state: crate::db::runtime::PartitionState) -> Option<&'static str> {
+    use crate::db::runtime::PartitionState;
+    match state {
+        PartitionState::Open => None,
+        PartitionState::Degraded => Some("LLM logs database is in degraded mode"),
+        PartitionState::Absent => Some("LLM logs database not initialized"),
+    }
+}
+
 /// A JS number as v4's logger renders it in JSON: a finite value as its
 /// number text, a non-finite one as `null` (`JSON.stringify(NaN)`).
 pub fn js_number_json(n: f64) -> String {
@@ -364,6 +375,19 @@ pub fn write_log_entry(
     conn: &Connection,
     params: WriteLogEntryParams<'_>,
 ) -> Result<LogEntryRow, DbError> {
+    write_log_entry_via(params, |message, chat_id, character_id| {
+        LogEntriesRepository::new(conn).create(message, chat_id, character_id, None)
+    })
+}
+
+/// [`write_log_entry`] over an injected repository `create(message, chatId,
+/// characterId)` — the seam v4's applier suite mocks (`getRepositories()
+/// .logEntries.create`) while the door's trim and clip stay real; and the
+/// applier's own unavailable-partition arm.
+pub fn write_log_entry_via(
+    params: WriteLogEntryParams<'_>,
+    create: impl FnOnce(&str, &str, Option<&str>) -> Result<LogEntryRow, DbError>,
+) -> Result<LogEntryRow, DbError> {
     let trimmed = crate::jsstr::js_trim(params.message);
     if trimmed.is_empty() {
         return Err(DbError::Internal("A log entry needs a message".to_string()));
@@ -381,12 +405,7 @@ pub fn write_log_entry(
     } else {
         trimmed.to_string()
     };
-    let entry = LogEntriesRepository::new(conn).create(
-        &message,
-        params.chat_id,
-        params.character_id,
-        None,
-    )?;
+    let entry = create(&message, params.chat_id, params.character_id)?;
     tracing::debug!(
         target: "quilltap::log_entries",
         id = %entry.id,

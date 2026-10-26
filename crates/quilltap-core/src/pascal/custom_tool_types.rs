@@ -1335,6 +1335,11 @@ pub enum CustomToolEffectBody {
     /// An Inventory gesture on the rolling character instead of a write:
     /// equip, unequip or pick up objects.
     Inventory(CustomToolInventoryGesture),
+    // === P4.D331: the log line ===
+    /// A line for the log (the one `log_read` and `log_grep` search) instead
+    /// of a write — a TEMPLATE, like an outcome message, recorded against
+    /// this chat and the rolling character (v4 `e4a60ad9e`).
+    Log(String),
 }
 
 impl CustomToolEffect {
@@ -1352,6 +1357,12 @@ impl CustomToolEffect {
     /// v4 `isInventoryEffect`.
     pub fn is_inventory_effect(&self) -> bool {
         matches!(self.body, CustomToolEffectBody::Inventory(_))
+    }
+
+    /// v4 `isLogEffect` (P4.D331) — v4 tests every OTHER key undefined; here
+    /// that is the variant itself.
+    pub fn is_log_effect(&self) -> bool {
+        matches!(self.body, CustomToolEffectBody::Log(_))
     }
 }
 
@@ -1374,6 +1385,10 @@ impl Serialize for CustomToolEffect {
             // === P4.D329: the inventory gesture ===
             CustomToolEffectBody::Inventory(gesture) => {
                 m.serialize_entry("inventory", gesture)?;
+            }
+            // === P4.D331: the log line ===
+            CustomToolEffectBody::Log(line) => {
+                m.serialize_entry("log", line)?;
             }
         }
         m.end()
@@ -1464,19 +1479,23 @@ struct EffectParts {
     wardrobe: Option<CustomToolWardrobeGesture>,
     // === P4.D329: the inventory gesture ===
     inventory: Option<CustomToolInventoryGesture>,
+    // === P4.D331: the log line ===
+    log: Option<String>,
 }
 
 impl EffectParts {
     /// The parsed type, when the effect is exactly one of its kinds.
     fn complete(&self) -> Option<CustomToolEffect> {
-        let body = match (&self.target, &self.value, &self.wardrobe, &self.inventory) {
-            (Some(target), Some(value), None, None) => CustomToolEffectBody::Write {
+        let body = match (&self.target, &self.value, &self.wardrobe, &self.inventory, &self.log) {
+            (Some(target), Some(value), None, None, None) => CustomToolEffectBody::Write {
                 target: target.clone(),
                 value: value.clone(),
             },
-            (None, None, Some(gesture), None) => CustomToolEffectBody::Wardrobe(gesture.clone()),
+            (None, None, Some(gesture), None, None) => CustomToolEffectBody::Wardrobe(gesture.clone()),
             // === P4.D329: the inventory gesture ===
-            (None, None, None, Some(gesture)) => CustomToolEffectBody::Inventory(gesture.clone()),
+            (None, None, None, Some(gesture), None) => CustomToolEffectBody::Inventory(gesture.clone()),
+            // === P4.D331: the log line ===
+            (None, None, None, None, Some(line)) => CustomToolEffectBody::Log(line.clone()),
             _ => return None,
         };
         Some(CustomToolEffect {
@@ -3728,8 +3747,19 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
         None => None,
     };
 
-    // The PIN's strict-key list (R-G): `log` is P4.D331's key, written here
-    // with the pin's whole list so the union is textual.
+    // === P4.D331: the log line ===
+    // `z.string().min(1).max(MAX_MESSAGE_LENGTH).optional()` — the key after
+    // `inventory` in v4's shape (Zod's issue order is the shape's key order).
+    let log = match obj.get("log") {
+        Some(v) => {
+            let r = parse_string(Some(v), Some(1), Some(MAX_MESSAGE_LENGTH), false);
+            issues.extend(prefix("log", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    // The pin's six keys (R-G).
     issues.extend(unrecognized_keys(
         obj,
         &["when", "target", "value", "wardrobe", "inventory", "log"],
@@ -3743,11 +3773,12 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
     }
 
     // ---- the superRefine (v4 `:991-1010` at the pin) — the FOUR-kind
-    // sentences are the pin's whole bytes (R-G); P4.D331 adds `is_log`.
+    // sentences are the pin's whole bytes (R-G).
     let is_write = target.is_some() || value.is_some();
     let is_wardrobe = wardrobe.is_some();
     let is_inventory = inventory.is_some();
-    let kinds = [is_write, is_wardrobe, is_inventory]
+    let is_log = log.is_some();
+    let kinds = [is_write, is_wardrobe, is_inventory, is_log]
         .into_iter()
         .filter(|k| *k)
         .count();
@@ -3771,6 +3802,7 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
             value,
             wardrobe,
             inventory,
+            log,
         }),
         issues,
     }
@@ -4702,9 +4734,13 @@ fn validate_effects(tool: &QtapCustomTool, effects: &[EffectParts], issues: &mut
             continue;
         }
 
-        // (P4.D331's `log` arm lands HERE at the union — v4 `:1766-1769`
-        // checks the log line between the wardrobe and inventory arms.)
-
+        // === P4.D331: the log line — after the wardrobe arm, before the
+        // inventory arm (v4 `:1772-1775`; P4.D329's inventory arm follows on
+        // the union).
+        if let Some(line) = &effect.log {
+            validate_template_placeholders(tool, tool.llm.is_some(), line, issues, &at("log"));
+            continue;
+        }
         // === P4.D329: the inventory gesture ===
         if let Some(gesture) = &effect.inventory {
             for (field, message) in

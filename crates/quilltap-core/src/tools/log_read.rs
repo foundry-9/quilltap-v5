@@ -28,7 +28,6 @@ use crate::db::character_resolver::resolve_character_by_name_or_id;
 use crate::db::characters_read::find_names_by_ids;
 use crate::db::fallback::{error_text, log_partition_unavailable};
 use crate::db::log_entries::{LogEntriesRepository, LogEntryFilter, LogEntryRow};
-use crate::db::runtime::PartitionState;
 use crate::db::table_shape::Partition;
 use crate::db::DbError;
 
@@ -58,15 +57,7 @@ pub(crate) enum LogDb<'a> {
     Unavailable(&'static str),
 }
 
-/// v4's two guard sentences, by the partition's state: v5's ABSENT file is
-/// v4's uninitialized client.
-pub(crate) fn llm_logs_guard_sentence(state: PartitionState) -> Option<&'static str> {
-    match state {
-        PartitionState::Open => None,
-        PartitionState::Degraded => Some("LLM logs database is in degraded mode"),
-        PartitionState::Absent => Some("LLM logs database not initialized"),
-    }
-}
+pub(crate) use crate::db::log_entries::llm_logs_guard_sentence;
 
 /// v4 `LogEntryView` — one entry as the model sees it, in v4's key order.
 #[derive(Debug, Clone, Serialize)]
@@ -381,6 +372,7 @@ mod tests {
     /// boot never leaves — no oracle row); DEGRADED is v4's degraded mode.
     #[test]
     fn the_guard_sentences_follow_the_partition_state() {
+        use crate::db::runtime::PartitionState;
         assert_eq!(llm_logs_guard_sentence(PartitionState::Open), None);
         assert_eq!(
             llm_logs_guard_sentence(PartitionState::Degraded),

@@ -164,6 +164,51 @@ struct TitleInput {
     title: Option<String>,
 }
 
+/// P4.D331: the sibling-owned rows the pin's grammar moves (see the carve
+/// at the foot of the test). Measured on this branch at `322a5488e`.
+const SIBLING_RESIDUE_UNTIL_UNION: &[&str] = &[
+    // A gate row (P4.D333's metadata list rule, `a53024d3c`).
+    "withheld-key-holds-array-offers",
+    "contains-bare-value",
+    "contains-number-substring",
+    "effect-when-empty",
+    "effect-when-outcome-not-an-object",
+    "effect-when-progress-empty-record",
+    "effect-when-unknown-outcome-state",
+    "gate-contains-number-operand",
+    "gate-contains-param-operand",
+    "gate-empty-metadata",
+    "gate-empty-string-key",
+    "gate-eq-object-operand",
+    "gate-missing-metadata",
+    "gate-ordering-boolean-operand",
+    "gate-ordering-string-operand",
+    "gate-param-operand",
+    "gate-progress-bad-key",
+    "gate-progress-empty-record",
+    "gate-state-operand",
+    "metadata-empty-object",
+    "metadata-empty-string-key",
+    "param-name-not-identifier",
+    "params-key-not-identifier",
+    "roll-null",
+    "roll-range-and-dice-both-broken",
+    "roll-wrong-type",
+    "state-array-fallback",
+    "state-missing-fallback",
+    "state-not-quite-a-ref",
+    "string-compared-with-value",
+    "unknown-key-inside-when",
+    "when-empty-params",
+    "when-progress-bad-key-0",
+    "when-progress-bad-key-1",
+    "when-progress-bad-key-2",
+    "when-progress-bad-key-3",
+    "when-progress-bad-key-4",
+    "when-progress-empty-record",
+    "when-tests-nothing",
+];
+
 #[test]
 fn pascal_custom_tool_definition_matches_oracle() {
     let path = match std::env::var("QT_ORACLE_PASCAL_DEFINITION") {
@@ -192,6 +237,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
     // so one red row (a sibling lane's residue at a shared pin) cannot hide
     // every row after it; the family still fails, naming each row.
     let mut failed_rows: Vec<String> = Vec::new();
+    let mut gate_residue_seen: Vec<String> = Vec::new();
     let mut defs_with_triggers = 0usize;
     let mut gates_with_bag = 0usize;
     let mut defs_with_wardrobe_effects = 0usize;

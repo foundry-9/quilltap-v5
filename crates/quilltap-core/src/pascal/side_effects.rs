@@ -303,8 +303,42 @@ pub fn apply_custom_tool_effects(
         )
     };
 
-    (merge_applied(writes, changes, carried), changed, tail)
+    // === P4.D331: log lines last of all (v4 `side-effects.ts:210-212`) — on
+    // the llm-logs writer inside this same closure (§R.10 (d)), each line its
+    // own fail-soft write, so a failed line never sinks a sibling write.
+    let lines = log_effects(params.effects);
+    let logged = if lines.is_empty() {
+        Vec::new()
+    } else {
+        match (
+            writers.llm_logs(),
+            crate::db::log_entries::llm_logs_guard_sentence(writers.llm_logs_state()),
+        ) {
+            (Some(w), None) => {
+                apply_log_effects(chat_id, tool_name, character_id, &lines, |m, c, ch| {
+                    crate::db::log_entries::LogEntriesRepository::new(w.connection())
+                        .create(m, c, ch, None)
+                })
+            }
+            // v4's base `_create` meets the guard: `Error creating entity`
+            // with the sentence, then the rethrow the pass catches.
+            (_, guard) => {
+                let sentence = guard.unwrap_or("LLM logs database is in degraded mode");
+                apply_log_effects(chat_id, tool_name, character_id, &lines, |_, _, _| {
+                    let error = crate::db::DbError::Internal(sentence.to_string());
+                    crate::db::fallback::log_create_failure(
+                        crate::db::log_entries::LOG_ENTRIES_TABLE,
+                        &error,
+                    );
+                    Err(error)
+                })
+            }
+        }
+    };
+
+    (merge_applied(writes, changes, carried, logged), changed, tail)
 }
+
 
 // === P4.D329 ===
 /// v4 `effects.filter(isApplicableInventoryEffect)`, each with its index.
@@ -318,6 +352,73 @@ fn inventory_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedInvent
         .collect()
 }
 
+// === P4.D331: the log pass ===
+
+/// v4 `effects.filter(isApplicableLogEffect)`, each with its index.
+fn log_effects(effects: &[ResolvedEffect]) -> Vec<(usize, &str)> {
+    effects
+        .iter()
+        .filter_map(|e| match e {
+            ResolvedEffect::Log { index, log } => Some((*index, log.as_str())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// v4 `applyLogEffects` — "one entry each, against this chat and the rolling
+/// character (null when nobody rolled — the line is still the operator's to
+/// keep). Each write is its own try/catch; a failed one logs a warning and
+/// drops from the applied list." Each line goes through the ONE write door
+/// ([`crate::db::log_entries::write_log_entry_via`]) over `create`. A landed
+/// line records `{target: "log", next: {id, message}}` — no `previous`, no
+/// `tier`.
+fn apply_log_effects(
+    chat_id: &str,
+    tool_name: &str,
+    character_id: Option<&str>,
+    lines: &[(usize, &str)],
+    mut create: impl FnMut(
+        &str,
+        &str,
+        Option<&str>,
+    ) -> Result<crate::db::log_entries::LogEntryRow, crate::db::DbError>,
+) -> Vec<IndexedAppliedEffect> {
+    let mut applied = Vec::new();
+    for &(index, line) in lines {
+        let written = crate::db::log_entries::write_log_entry_via(
+            crate::db::log_entries::WriteLogEntryParams {
+                message: line,
+                chat_id,
+                character_id,
+            },
+            &mut create,
+        );
+        match written {
+            Ok(entry) => applied.push(IndexedAppliedEffect {
+                index,
+                applied: AppliedEffect {
+                    target: "log".to_string(),
+                    previous: None,
+                    next: serde_json::json!({ "id": entry.id, "message": entry.message }),
+                    tier: None,
+                },
+            }),
+            Err(error) => {
+                tracing::warn!(
+                    target: "quilltap::pascal",
+                    context = CONTEXT,
+                    chat_id,
+                    tool = tool_name,
+                    effect_index = index,
+                    error = %crate::db::fallback::error_text(&error),
+                    "Custom tool log effect failed; skipped",
+                );
+            }
+        }
+    }
+    applied
+}
+
 /// v4 `effects.filter(isApplicableWardrobeEffect)`, each with its index.
 fn wardrobe_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedWardrobeGesture)> {
     effects
@@ -329,22 +430,27 @@ fn wardrobe_gestures(effects: &[ResolvedEffect]) -> Vec<(usize, &ResolvedWardrob
         .collect()
 }
 
-/// v4's merge: no wardrobe change and nothing carried → the writes as they
-/// are; otherwise every list by effect index with a STABLE sort, so entries of
-/// one effect keep their own order (a write at index 1 sits between two wear
-/// records at 0 and a clear at 2). `slice::sort_by_key` is stable, as V8's
-/// `sort` is. (P4.D329: `[writes, changes, carried]`; the Log appends
-/// `logged`.)
+/// v4's merge: no wardrobe change, nothing carried and no log line → the
+/// writes as they are; otherwise every list by effect index with a STABLE
+/// sort, so entries of one effect keep their own order (a write at index 1
+/// sits between two wear records at 0 and a clear at 2). `slice::sort_by_key`
+/// is stable, as V8's `sort` is. The lists are v4's `[writes, changes,
+/// carried, logged]`.
 fn merge_applied(
     writes: Vec<IndexedAppliedEffect>,
     changes: Vec<IndexedAppliedEffect>,
     carried: Vec<IndexedAppliedEffect>,
+    logged: Vec<IndexedAppliedEffect>,
 ) -> Vec<AppliedEffect> {
-    if changes.is_empty() && carried.is_empty() {
+    if changes.is_empty() && carried.is_empty() && logged.is_empty() {
         return writes.into_iter().map(|w| w.applied).collect();
     }
-    let mut all: Vec<IndexedAppliedEffect> =
-        writes.into_iter().chain(changes).chain(carried).collect();
+    let mut all: Vec<IndexedAppliedEffect> = writes
+        .into_iter()
+        .chain(changes)
+        .chain(carried)
+        .chain(logged)
+        .collect();
     all.sort_by_key(|w| w.index);
     all.into_iter().map(|w| w.applied).collect()
 }
@@ -378,6 +484,7 @@ fn plan_applications(params: &ApplyCustomToolEffectsParams<'_>) -> Plan {
             // the gestures are `wardrobe_effects`' business, after the writes.
             ResolvedEffect::Wardrobe { .. }
             | ResolvedEffect::Inventory { .. }
+            | ResolvedEffect::Log { .. }
             | ResolvedEffect::Skipped { .. } => None,
         })
         .collect();
@@ -1211,13 +1318,35 @@ pub mod differential {
 
     /// Plan a run without committing it. `wardrobe_plan` is what the wardrobe
     /// pass would return (the harness scripts it, as v4's suite mocks it); the
-    /// merge is the production [`merge_applied`].
+    /// merge is the production [`merge_applied`]. A run with a log line needs
+    /// [`plan_run_logged`].
     pub fn plan_run(
         params: ApplyCustomToolEffectsParams<'_>,
         wardrobe_plan: Option<Vec<IndexedAppliedEffect>>,
         // P4.D329: what the inventory pass would return (scripted, as v4's
         // suite mocks it).
         inventory_plan: Option<Vec<IndexedAppliedEffect>>,
+    ) -> PlannedRun {
+        plan_run_logged(params, wardrobe_plan, inventory_plan, |_, _, _| {
+            Err(crate::db::DbError::Internal(
+                "no log repository scripted for this run".to_string(),
+            ))
+        })
+    }
+
+    /// [`plan_run`] with the log pass's repository `create(message, chatId,
+    /// characterId)` scripted (P4.D331 — v4's suite mocks
+    /// `getRepositories().logEntries.create`; the write door's trim and clip
+    /// and the pass's WARN stay real).
+    pub fn plan_run_logged(
+        params: ApplyCustomToolEffectsParams<'_>,
+        wardrobe_plan: Option<Vec<IndexedAppliedEffect>>,
+        inventory_plan: Option<Vec<IndexedAppliedEffect>>,
+        create: impl FnMut(
+            &str,
+            &str,
+            Option<&str>,
+        ) -> Result<crate::db::log_entries::LogEntryRow, crate::db::DbError>,
     ) -> PlannedRun {
         let chat_id = params.chat_id;
         let cascade = params.cascade;
@@ -1268,11 +1397,20 @@ pub mod differential {
             pending,
         } = plan_applications(&params);
 
+        // The log pass, last (its WARN after any the writes raised).
+        let logged = apply_log_effects(
+            chat_id,
+            params.tool_name,
+            character_id,
+            &log_effects(params.effects),
+            create,
+        );
+
         // v4 returns before `getRepositories()` is even called when nothing
         // applies, so no store is observed at all.
         if pending.is_empty() {
             return PlannedRun {
-                applied: merge_applied(Vec::new(), changes, carried),
+                applied: merge_applied(Vec::new(), changes, carried, logged),
                 wardrobe_call,
                 inventory_call,
                 character_write: None,
@@ -1324,7 +1462,7 @@ pub mod differential {
             })
             .collect();
         PlannedRun {
-            applied: merge_applied(writes, changes, carried),
+            applied: merge_applied(writes, changes, carried, logged),
             wardrobe_call,
             inventory_call,
             character_write,

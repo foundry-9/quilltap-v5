@@ -56,7 +56,7 @@ use quilltap_core::pascal::custom_tool_types::InventoryEffectAction;
 use quilltap_core::pascal::custom_tools::ResolvedInventoryGesture;
 use quilltap_core::pascal::p4d329_c2_standins::{InventoryContext, PendingInventoryAnnouncements};
 use quilltap_core::pascal::side_effects::{
-    differential::plan_run, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
+    differential::plan_run_logged, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
 };
 use quilltap_core::pascal::wardrobe_effects::IndexedAppliedEffect;
 use quilltap_core::state::cascade::{GroupCandidate, GroupTier, StateCascadeResult};
@@ -182,6 +182,14 @@ fn expected_warn_line(warn: &Value) -> String {
         bag["chatId"].as_str().expect("chatId"),
         bag["tool"].as_str().expect("tool"),
     );
+    // P4.D331: the log pass's warn — `effectIndex`, `error` (this module's
+    // snake_case field convention: `effect_index`).
+    if let Some(index) = bag.get("effectIndex") {
+        return format!(
+            "{head} effect_index={index} error={}",
+            bag["error"].as_str().expect("error"),
+        );
+    }
     match bag.get("progressionId").and_then(Value::as_str) {
         Some(id) => format!(
             "{head} progression_id={id} issue={}",
@@ -315,6 +323,13 @@ fn pascal_side_effects_planning_matches_v4() {
             .iter()
             .map(|e| {
                 let index = e["index"].as_u64().expect("effect index") as usize;
+                // P4.D331: a resolved log line.
+                if let Some(log) = e.get("log").and_then(Value::as_str) {
+                    return ResolvedEffect::Log {
+                        index,
+                        log: log.to_string(),
+                    };
+                }
                 if let Some(g) = e.get("wardrobe") {
                     return ResolvedEffect::Wardrobe {
                         index,
@@ -382,8 +397,11 @@ fn pascal_side_effects_planning_matches_v4() {
             .get("pendingInventoryAnnouncements")
             .and_then(Value::as_bool)
             == Some(true);
+        // P4.D331: the log pass's repository, as v4's recorder answers it.
+        let log_error = case.get("logCreateError").and_then(Value::as_str);
+        let mut log_creates: Vec<Value> = Vec::new();
         let (run, lines) = quilltap_core::test_support::captured_with(|| {
-            plan_run(
+            plan_run_logged(
                 ApplyCustomToolEffectsParams {
                     user_id,
                     chat_id: case["chatId"].as_str().expect("chatId"),
@@ -398,8 +416,31 @@ fn pascal_side_effects_planning_matches_v4() {
                 },
                 scripted,
                 carried,
+                |message, chat_id, character_id| {
+                    log_creates.push(json!({
+                        "message": message,
+                        "chatId": chat_id,
+                        "characterId": character_id,
+                    }));
+                    if let Some(e) = log_error {
+                        return Err(quilltap_core::db::DbError::Internal(e.to_string()));
+                    }
+                    Ok(quilltap_core::db::log_entries::LogEntryRow {
+                        id: format!("log-{}", log_creates.len()),
+                        message: message.to_string(),
+                        chat_id: chat_id.to_string(),
+                        character_id: character_id.map(str::to_string),
+                        created_at: "2026-10-20T00:00:00.000Z".to_string(),
+                        updated_at: "2026-10-20T00:00:00.000Z".to_string(),
+                    })
+                },
             )
         });
+        assert_eq!(
+            Value::Array(log_creates),
+            want["logCreates"],
+            "the log pass's create calls differ: {name}"
+        );
 
         // --- applied (bytes: the merge's ORDER and each record's key order) --
         assert_eq!(
