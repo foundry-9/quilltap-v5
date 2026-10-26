@@ -1,0 +1,1126 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "_comment": "P4.D325 \u2014 the Inventory object-images route corpus both sides read; runs over the committed inventory-routes pair.",
+  "png": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAADCAIAAADZSiLoAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEElEQVQImWNgZGKGIAYsLAADNgA3hQ4ykAAAAABJRU5ErkJggg==",
+  "cases": [
+    {
+      "name": "list_sword",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_general",
+      "method": "GET",
+      "item": "a0000001-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "general"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_instance_inherits",
+      "method": "GET",
+      "item": "a0000012-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_no_pictures",
+      "method": "GET",
+      "item": "a0000030-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c2000000-0000-4000-8000-000000000002"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_missing_item",
+      "method": "GET",
+      "item": "a0000099-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_wrong_tier",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "general"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_bad_scope",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "planet"
+        ]
+      ]
+    },
+    {
+      "name": "list_no_scope",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": []
+    },
+    {
+      "name": "list_no_id",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "project"
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_empty_id",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          ""
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "list_bad_scope_empty_id",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "planet"
+        ],
+        [
+          "id",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "list_general_empty_id",
+      "method": "GET",
+      "item": "a0000001-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "general"
+        ],
+        [
+          "id",
+          ""
+        ]
+      ],
+      "direct": true
+    },
+    {
+      "name": "save_targets",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-targets"
+        ]
+      ],
+      "direct": true,
+      "directOnly": true
+    },
+    {
+      "name": "get_unknown_action",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "action",
+          "zzz"
+        ],
+        [
+          "scope",
+          "planet"
+        ]
+      ]
+    },
+    {
+      "name": "get_bare_action",
+      "method": "GET",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "action",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "post_bare",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "post_unknown",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "link-image"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "post_unknown_before_query",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "action",
+          "zzz"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "generate_blank",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": ""
+      },
+      "direct": true
+    },
+    {
+      "name": "generate_whitespace",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "  \n "
+      }
+    },
+    {
+      "name": "generate_not_json",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "{oops"
+      }
+    },
+    {
+      "name": "generate_wrong_type",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "imageProfileId": 5
+        }
+      }
+    },
+    {
+      "name": "generate_empty_id",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "imageProfileId": ""
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "generate_array",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "generate_archived",
+      "method": "POST",
+      "item": "a0000020-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c3000000-0000-4000-8000-000000000003"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": ""
+      },
+      "direct": true
+    },
+    {
+      "name": "generate_missing_item",
+      "method": "POST",
+      "item": "a0000099-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "{oops"
+      }
+    },
+    {
+      "name": "generate_bad_query_first",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "planet"
+        ],
+        [
+          "action",
+          "generate"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "{oops"
+      }
+    },
+    {
+      "name": "upload_not_multipart",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "upload_no_file",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "kind",
+            "value": "uploaded"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_bad_type",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "filename": "x.txt",
+            "contentType": "text/plain",
+            "size": 10
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_bad_kind",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "filename": "x.png",
+            "contentType": "image/png",
+            "png": true
+          },
+          {
+            "name": "kind",
+            "value": "stolen"
+          }
+        ]
+      }
+    },
+    {
+      "name": "upload_png",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "filename": "x.png",
+            "contentType": "image/png",
+            "png": true
+          }
+        ]
+      },
+      "followGet": true
+    },
+    {
+      "name": "upload_archived",
+      "method": "POST",
+      "item": "a0000020-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c3000000-0000-4000-8000-000000000003"
+        ],
+        [
+          "action",
+          "upload"
+        ]
+      ],
+      "body": {
+        "type": "multipart",
+        "parts": [
+          {
+            "name": "file",
+            "file": true,
+            "filename": "x.png",
+            "contentType": "image/png",
+            "png": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "set_current",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000010-0000-4000-8000-000000000000",
+              "nth": 1
+            }
+          }
+        }
+      },
+      "direct": true,
+      "followGet": true
+    },
+    {
+      "name": "set_current_empty_body",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      },
+      "direct": true
+    },
+    {
+      "name": "set_current_empty_id",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": ""
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "set_current_numeric",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": 7
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "set_current_foreign",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000001-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "set_current_bad_json",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "{"
+      }
+    },
+    {
+      "name": "set_current_archived",
+      "method": "POST",
+      "item": "a0000020-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c3000000-0000-4000-8000-000000000003"
+        ],
+        [
+          "action",
+          "set-current"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000001-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "delete_image",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "delete-image"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000010-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "direct": true,
+      "followGet": true
+    },
+    {
+      "name": "delete_image_older",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "delete-image"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000010-0000-4000-8000-000000000000",
+              "nth": 1
+            }
+          }
+        }
+      },
+      "direct": true,
+      "followGet": true
+    },
+    {
+      "name": "delete_image_foreign",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "delete-image"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000001-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          }
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "delete_image_empty_body",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "delete-image"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      }
+    },
+    {
+      "name": "save_empty",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-to-store"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {}
+      },
+      "direct": true
+    },
+    {
+      "name": "save_unparseable",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-to-store"
+        ]
+      ],
+      "body": {
+        "type": "text",
+        "value": "{"
+      }
+    },
+    {
+      "name": "save_foreign",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-to-store"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000001-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          },
+          "mountPointId": "f1000000-0000-4000-8000-000000000001"
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "save_archived_vault",
+      "method": "POST",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-to-store"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000010-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "vault": "c3000000-0000-4000-8000-000000000003"
+          }
+        }
+      },
+      "direct": true
+    },
+    {
+      "name": "save_inherited_archived_vault",
+      "method": "POST",
+      "item": "a0000012-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "scope",
+          "character"
+        ],
+        [
+          "id",
+          "c1000000-0000-4000-8000-000000000001"
+        ],
+        [
+          "action",
+          "save-to-store"
+        ]
+      ],
+      "body": {
+        "type": "json",
+        "value": {
+          "fileId": {
+            "ref": {
+              "item": "a0000001-0000-4000-8000-000000000000",
+              "nth": 0
+            }
+          },
+          "mountPointId": {
+            "vault": "c3000000-0000-4000-8000-000000000003"
+          }
+        }
+      },
+      "direct": true
+    }
+  ]
+}

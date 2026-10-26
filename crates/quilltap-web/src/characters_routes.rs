@@ -907,6 +907,89 @@ pub async fn characters_wardrobe_post(
     .await
 }
 
+// === P4.D325: the character tier's Inventory edges (v4 `characters/[id]/inventory/**`) ===
+// One-line delegates over `inventory_routes` with `{ scope: character, id }`.
+const CHARACTER_INVENTORY_ROUTE: &str = "/api/v1/characters/[id]/inventory";
+const CHARACTER_INVENTORY_ITEM_ROUTE: &str = "/api/v1/characters/[id]/inventory/[itemId]";
+
+fn character_inventory(id: String) -> quilltap_core::api::types::InventoryContainer {
+    quilltap_core::api::types::InventoryContainer {
+        scope: quilltap_core::api::types::InventoryScope::Character,
+        id: Some(id),
+    }
+}
+
+pub async fn characters_inventory_get(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    crate::inventory_routes::collection_get(
+        &state,
+        &pairs,
+        CHARACTER_INVENTORY_ROUTE,
+        character_inventory(id),
+    )
+    .await
+}
+
+pub async fn characters_inventory_post(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+    body: String,
+) -> AxumResponse {
+    crate::inventory_routes::collection_post(
+        &state,
+        &pairs,
+        CHARACTER_INVENTORY_ROUTE,
+        character_inventory(id),
+        &body,
+    )
+    .await
+}
+
+pub async fn characters_inventory_item_get(
+    State(state): State<SharedState>,
+    Path((id, item_id)): Path<(String, String)>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    crate::inventory_routes::item_get(
+        &state,
+        &pairs,
+        CHARACTER_INVENTORY_ITEM_ROUTE,
+        character_inventory(id),
+        item_id,
+    )
+    .await
+}
+
+pub async fn characters_inventory_item_put(
+    State(state): State<SharedState>,
+    Path((id, item_id)): Path<(String, String)>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+    body: String,
+) -> AxumResponse {
+    crate::inventory_routes::item_put(
+        &state,
+        &pairs,
+        CHARACTER_INVENTORY_ITEM_ROUTE,
+        character_inventory(id),
+        item_id,
+        &body,
+    )
+    .await
+}
+
+pub async fn characters_inventory_item_delete(
+    State(state): State<SharedState>,
+    Path((id, item_id)): Path<(String, String)>,
+    Query(pairs): Query<crate::query::QueryPairs>,
+) -> AxumResponse {
+    crate::inventory_routes::item_delete(&state, &pairs, character_inventory(id), item_id).await
+}
+// === end P4.D325 ===
+
 // ===========================================================================
 // GET /api/v1/characters/{id}?action=export  (the PNG binary leg + JSON leg)
 // ===========================================================================

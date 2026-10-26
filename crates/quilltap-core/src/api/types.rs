@@ -65,6 +65,44 @@ pub enum WardrobeContainerScope {
     Group,
 }
 
+// === P4.D325: the Inventory verb family's container (C7, R-M) ===
+/// The Inventory tier a verb names — v4's `InventoryScopeSchema`
+/// (`lib/schemas/inventory.types.ts:281`) IN ITS ORDER (`character, group,
+/// project, general`), which Zod's enum sentence makes observable; NOT
+/// [`WardrobeContainerScope`]'s order, so the two enums stay distinct.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum InventoryScope {
+    Character,
+    Group,
+    Project,
+    General,
+}
+
+impl InventoryScope {
+    /// The keystone's tier (`crate::inventory::types::InventoryScope`).
+    pub fn tier(self) -> crate::inventory::types::InventoryScope {
+        use crate::inventory::types::InventoryScope as T;
+        match self {
+            InventoryScope::Character => T::Character,
+            InventoryScope::Group => T::Group,
+            InventoryScope::Project => T::Project,
+            InventoryScope::General => T::General,
+        }
+    }
+}
+
+/// `container: { scope, id }` — the tier and its owner id (the route's `[id]`;
+/// `None` for General, where v4's `paramsToId` answers `null`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InventoryContainer {
+    pub scope: InventoryScope,
+    #[serde(default)]
+    pub id: Option<String>,
+}
+// === end P4.D325 ===
+
 /// One variant per user-meaningful operation (api-boundary.md Part 1). The
 /// always-available family (health, unlock, instances) works while the vault
 /// is locked; everything else is readiness-gated in dispatch (D2).
@@ -3017,6 +3055,204 @@ pub enum Request {
     },
     // === end P4.D279 ===
 
+    // === P4.D325: the Inventory verb family (C7) ===
+    // ONE family for four tiers + General (R-M): every collection / item /
+    // item-image verb carries `container` FIRST. Path- and query-sourced
+    // fields are typed; every body rides RAW (a named `body`, or flattened)
+    // and is parsed in the handler by the keystone's Zod twins, so v4's
+    // `Validation error` 400 (with its issue array) is reachable over dispatch.
+    /// `GET <tier>/inventory[?includeArchived][&shared=true][&projectId][&chatId]`
+    /// → `{ mountPointId, items }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryList {
+        container: InventoryContainer,
+        #[serde(default)]
+        include_archived: bool,
+        #[serde(default)]
+        shared: bool,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        chat_id: Option<String>,
+    },
+    /// `GET <tier>/inventory?action=folders` → `{ folders }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryFolders {
+        container: InventoryContainer,
+    },
+    /// `GET <tier>/inventory?action=archetypes[&projectId][&chatId]` → `{ items }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryArchetypes {
+        container: InventoryContainer,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        chat_id: Option<String>,
+    },
+    /// `GET <tier>/inventory/[itemId]` → `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemGet {
+        container: InventoryContainer,
+        item_id: String,
+    },
+    /// `GET <tier>/inventory/[itemId]?action=dependents` → `{ dependents }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryDependents {
+        container: InventoryContainer,
+        item_id: String,
+    },
+    /// `POST <tier>/inventory` (the item fields under `body`) → 201 `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryCreate {
+        container: InventoryContainer,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        chat_id: Option<String>,
+        #[serde(default)]
+        body: serde_json::Value,
+    },
+    /// `PUT <tier>/inventory/[itemId]` (the edit under `body`) → `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryUpdate {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(default)]
+        project_id: Option<String>,
+        #[serde(default)]
+        chat_id: Option<String>,
+        #[serde(default)]
+        body: serde_json::Value,
+    },
+    /// `PUT <tier>/inventory/[itemId]?action=clear-override` `{ fields }` → `{ item }`.
+    /// The body rides flattened (the wire is C7's `{container, itemId,
+    /// fields}`) so an ABSENT `fields` stays v4's `received undefined`.
+    #[serde(rename_all = "camelCase")]
+    InventoryClearOverride {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `PUT <tier>/inventory/[itemId]?action=detach` → `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryDetach {
+        container: InventoryContainer,
+        item_id: String,
+    },
+    /// `DELETE <tier>/inventory/[itemId][?force=true]` → `{ success: true, detached }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryDelete {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(default)]
+        force: bool,
+    },
+    /// `POST <tier>/inventory?action=instantiate` `{ archetypeId, folder?,
+    /// projectId?, chatId?, overrides? }` → 201 `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryInstantiate {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=duplicate` `{ itemId }` → 201 `{ item }`
+    /// (v4 reads `itemId` by hand: a non-string / empty one is the 404).
+    #[serde(rename_all = "camelCase")]
+    InventoryDuplicate {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=create-folder` `{ path }` → `{ folder }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryFolderCreate {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=rename-folder` `{ path, name }` → `{ folder }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryFolderRename {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=delete-folder` `{ path }` → `{ movedItems, movedFolders }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryFolderDelete {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=move-items` `{ itemIds, folder }` → `{ items }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemsMove {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST <tier>/inventory?action=copy-items` `{ itemIds, folder }` → `{ items }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemsCopy {
+        container: InventoryContainer,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST /api/v1/inventory/transfers` `{ action, itemId, from, to }` → `{ item }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryTransfer {
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `GET /api/v1/inventory/[itemId]/images?scope=&id=` → `{ current, images }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImagesList {
+        container: InventoryContainer,
+        item_id: String,
+    },
+    /// `POST …/images?action=generate` `{ imageProfileId? }` → 201 `{ image,
+    /// current, prompt, profile, rerouted, trail }` (💸 one provider call).
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImageGenerate {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(default)]
+        image_profile_id: Option<String>,
+    },
+    /// `POST …/images?action=set-current` `{ fileId }` → `{ current }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImageSetCurrent {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST …/images?action=delete-image` `{ fileId }` → `{ current }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImageDelete {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `GET …/images?action=save-targets` → `{ albums }`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImageSaveTargets {
+        container: InventoryContainer,
+        item_id: String,
+    },
+    /// `POST …/images?action=save-to-store` `{ fileId, mountPointId, caption?,
+    /// tags? }` → v4's `savedImageResponse`.
+    #[serde(rename_all = "camelCase")]
+    InventoryItemImageSaveToStore {
+        container: InventoryContainer,
+        item_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === end P4.D325 ===
+
     // === P4.9I1A: the Brahma Console dedicated dispatch family ===
     /// v4 `GET /api/v1/brahma-console` — the user's brahma chats.
     BrahmaConsoleList,
@@ -3595,6 +3831,34 @@ pub enum Request {
         character_id: Option<String>,
     },
     // === end P4.D315 ===
+    // === P4.D325: the chat Inventory actions (C7) ===
+    /// `GET /api/v1/chats/[id]?action=inventory` → `{ inventory, projectId }`.
+    #[serde(rename_all = "camelCase")]
+    ChatInventoryGet {
+        chat_id: String,
+    },
+    /// `POST …?action=inventory-equip` `{ characterId, ids }` → v4's `EquipResult`.
+    #[serde(rename_all = "camelCase")]
+    ChatInventoryEquip {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST …?action=inventory-unequip` `{ characterId, ids }` → v4's `UnequipResult`.
+    #[serde(rename_all = "camelCase")]
+    ChatInventoryUnequip {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    /// `POST …?action=inventory-reset-defaults` `{ characterId }` → `{ equipped }`.
+    #[serde(rename_all = "camelCase")]
+    ChatInventoryResetDefaults {
+        chat_id: String,
+        #[serde(flatten)]
+        body: serde_json::Value,
+    },
+    // === end P4.D325 ===
     /// Search & replace dry-run (v4 `POST /api/v1/search-replace?action=preview`).
     /// `scope` is v4's discriminated union: {"type":"chat","chatId":…} |
     /// {"type":"character","characterId":…}. The two include flags default TRUE
@@ -4752,6 +5016,10 @@ pub enum Response {
     /// `wardrobe_routes_equivalence`.
     ChatOutfit(serde_json::Value),
     // === end P4.9f1 ===
+    // === P4.D325: the Inventory family's ONE body (v4's `successResponse(data)`) ===
+    /// Every Inventory route / chat-action success body, key order preserved.
+    Inventory(serde_json::Value),
+    // === end P4.D325 ===
     // === P4.9E2A: the in-chat Post Office / Announcer surface (§1, frozen) ===
     /// A Post Office / Announcer body — `{success, message}` (announcement
     /// post), `{success, proposedMarkdown}` (preview), `{success, path}`

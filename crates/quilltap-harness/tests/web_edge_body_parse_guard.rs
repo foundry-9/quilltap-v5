@@ -207,6 +207,21 @@ const COLLAPSE_CENSUS: &[(&str, usize, &str)] = &[
          `parse_file_id_body`) that match on the `Value` and keep absent, null \
          and wrong-typed apart. Arm: `wardrobe_item_images_routes_equivalence`.",
     ),
+    (
+        "crates/quilltap-web/src/inventory_images_routes.rs",
+        1,
+        "NOT a body read — FAITHFUL (P4.D325, the wardrobe row's twin). The one \
+         site is `render`'s `details.refused` pick off the server's OWN dispatch \
+         error (`api/inventory_item_images.rs`'s generate builds the bag as \
+         `{trail, refused}`), restoring v4's 502 for a provider failure the \
+         boundary carries as `Internal`. The request bodies never use the idiom: \
+         `generate`'s `{imageProfileId}` goes through core's ported \
+         `parse_generate_body` and set-current / delete-image's `{fileId}` \
+         through core's `parse_file_id_body` (the `Validation error` issue \
+         array), each matching on the `Value`. `inventory_routes.rs` has ZERO \
+         sites (every body rides raw into the keystone's Zod twins). Arm: \
+         `inventory_item_images_routes_equivalence`.",
+    ),
 ];
 
 const NEEDLE: &str = "and_then(Value::as_";

@@ -3189,6 +3189,18 @@ pub async fn character_wardrobe_instructions_set_as(
 }
 
 // === P4.D321: wardrobe pictures — the API fn's tests ===
+// === P4.D325: inventory (the tier's route-factory config) ===
+/// `characters/[id]/inventory` (+ `/[itemId]`) — v4's thin route files' config:
+/// `{ scope: 'character', logTag: '[Characters v1]', logIdKey: 'characterId' }`. The handlers are
+/// the factory's (`super::inventory_route_factory`).
+pub const CHARACTER_INVENTORY: super::inventory_route_factory::InventoryRouteConfig =
+    super::inventory_route_factory::InventoryRouteConfig {
+        scope: crate::inventory::types::InventoryScope::Character,
+        log_tag: "[Characters v1]",
+        log_id_key: "characterId",
+    };
+// === end P4.D325 ===
+
 #[cfg(test)]
 mod p4d321_wardrobe_images_tests {
     use super::*;

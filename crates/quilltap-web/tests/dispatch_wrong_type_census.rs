@@ -2313,6 +2313,190 @@ const CENSUS: &[Row] = &[
         note: "`wardrobe/[itemId]/images/route.ts:77-82` `sp.get('scope')` (a Zod enum over the query) — `01a83539d`",
     },
     // === end P4.D265 ===
+    // === P4.D325 (C7): the Inventory verb family's typed fields ===
+    Row {
+        variant: "InventoryList",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryFolders",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryArchetypes",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryItemGet",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryDependents",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryCreate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryUpdate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryClearOverride",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryDetach",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryDelete",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryInstantiate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryDuplicate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryFolderCreate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryFolderRename",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryFolderDelete",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryItemsMove",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryItemsCopy",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Path,
+        note: "the tier is WHICH route file the request rides (`inventory/**`, `characters/[id]/inventory/**`, `groups/[id]/inventory/**`, `projects/[id]/inventory/**` — the factory config's `scope`) and its owner the `[id]` segment (`paramsToId`) — never a body key",
+    },
+    Row {
+        variant: "InventoryItemImagesList",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryItemImageGenerate",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryItemImageSetCurrent",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryItemImageDelete",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryItemImageSaveTargets",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryItemImageSaveToStore",
+        field: "container",
+        rust_type: "InventoryContainer",
+        v4: V4::Query,
+        note: "`inventory/[itemId]/images/route.ts:65` `sp.get('scope')` / `sp.get('id')` through `containerQuerySchema.safeParse` (a Zod enum + `min(1)` over the query)",
+    },
+    Row {
+        variant: "InventoryList",
+        field: "include_archived",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: "`inventory-route-factory.ts:139` `readIncludeArchived(req)` (`lib/api/query-params.ts:18-30`) — `searchParams`",
+    },
+    Row {
+        variant: "InventoryList",
+        field: "shared",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: "`inventory-route-factory.ts:140` `searchParams.get('shared') === 'true'` (character tier only)",
+    },
+    Row {
+        variant: "InventoryDelete",
+        field: "force",
+        rust_type: "bool",
+        v4: V4::Query,
+        note: "`inventory-route-factory.ts:422` `searchParams.get('force') === 'true'`",
+    },
+    // === end P4.D325 ===
     // === P4.D279 (contract C2): the `4a38222e6` round's new typed fields ===
     Row {
         variant: "WardrobeFoldersList",
@@ -2718,7 +2902,18 @@ fn is_route_identifier(field: &str) -> bool {
 // never a body key; the variant has no other field, so the census gains no
 // ROW. (The lane measured 483 → 484 alone; the `e8e17b2d9` unification sums
 // the three lanes' +4.)
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 487;
+// **P4.D325 (+25): 487 → 512** — the Inventory verb family (C7): twelve
+// `item_id` (the `[itemId]` segment of every item / item-image verb), four
+// `project_id` + four `chat_id` (`inventoryList` / `inventoryArchetypes` /
+// `inventoryCreate` / `inventoryUpdate` — v4 `searchParams.get`,
+// `inventory-route-factory.ts:84-87`), the four `chatInventory*` `chat_id`
+// (the chat route's `[id]`), and `InventoryItemImageGenerate.image_profile_id`
+// — the generate body's one key, `generateBodySchema.safeParse` →
+// `badRequest(issues joined)` (`images/route.ts:110-111`), which the rule
+// drops as it drops the wardrobe twin's. Every body rides as a flattened /
+// named `serde_json::Value` parsed by the keystone's Zod twins, so no body key
+// entered the typed set. Measured (red at 512 against 487 first).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 512;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

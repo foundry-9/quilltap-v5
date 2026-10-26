@@ -1,0 +1,1829 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  "_comment": "P4.D325 \u2014 the Inventory routes corpus both sides read (the shared-corpus rule). `fixture` feeds build-inventory-routes-fixture.ts beside inventory-keystone.json.",
+  "fixture": {
+    "userId": "ffffffff-ffff-ffff-ffff-ffffffffffff",
+    "stranger": {
+      "userId": "22222222-2222-4222-8222-222222222222",
+      "user": {
+        "username": "stranger",
+        "email": null,
+        "name": "Stranger",
+        "image": null
+      },
+      "characterId": "c4000000-0000-4000-8000-000000000004",
+      "name": "Sable"
+    },
+    "storelessProject": {
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "name": "Empty Quarter"
+    },
+    "storelessGroup": {
+      "id": "e3000000-0000-4000-8000-000000000003",
+      "name": "The Unhoused"
+    },
+    "objects": [
+      {
+        "scope": "character",
+        "owner": "c2000000-0000-4000-8000-000000000002",
+        "record": {
+          "id": "a0000030-0000-4000-8000-000000000000",
+          "name": "pin",
+          "title": "Brass pin",
+          "description": null,
+          "imageDescription": null,
+          "kind": "item",
+          "isArchetype": false,
+          "equippedByDefault": false,
+          "maxEquipped": 1,
+          "canCopy": true,
+          "emoji": null,
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>",
+          "imageFileId": null,
+          "metadata": {},
+          "parentId": null,
+          "itemIds": [],
+          "folder": "",
+          "archivedAt": null,
+          "createdAt": "2026-02-01T00:00:00.000Z",
+          "updatedAt": "2026-02-01T00:00:00.000Z"
+        }
+      }
+    ],
+    "chats": [
+      {
+        "id": "b6000000-0000-4000-8000-000000000001",
+        "title": "The Stage",
+        "projectId": null,
+        "participants": [
+          {
+            "id": "b6100000-0000-4000-8000-000000000001",
+            "type": "CHARACTER",
+            "characterId": "c1000000-0000-4000-8000-000000000001"
+          },
+          {
+            "id": "b6200000-0000-4000-8000-000000000001",
+            "type": "CHARACTER",
+            "characterId": "c2000000-0000-4000-8000-000000000002",
+            "controlledBy": "user"
+          },
+          {
+            "id": "b6300000-0000-4000-8000-000000000001",
+            "type": "CHARACTER",
+            "characterId": "c3000000-0000-4000-8000-000000000003",
+            "status": "removed"
+          }
+        ],
+        "equipped": {
+          "c1000000-0000-4000-8000-000000000001": [
+            "a0000010-0000-4000-8000-000000000000"
+          ]
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "gen_list",
+      "kind": "collectionGet",
+      "scope": "general"
+    },
+    {
+      "name": "gen_list_archived",
+      "kind": "collectionGet",
+      "scope": "general",
+      "query": [
+        [
+          "includeArchived",
+          "true"
+        ]
+      ]
+    },
+    {
+      "name": "char_list",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "char_list_archived_bare",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "includeArchived",
+          ""
+        ]
+      ]
+    },
+    {
+      "name": "char_list_archived_one",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "includeArchived",
+          "1"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_shared",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "true"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_shared_archived",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "true"
+        ],
+        [
+          "includeArchived",
+          "true"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_shared_project",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "true"
+        ],
+        [
+          "projectId",
+          "d1000000-0000-4000-8000-000000000001"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_shared_chat",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "true"
+        ],
+        [
+          "chatId",
+          "b1000000-0000-4000-8000-000000000001"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_shared_TRUE",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "TRUE"
+        ]
+      ]
+    },
+    {
+      "name": "char_list_wren",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "char_list_archived_character",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003"
+    },
+    {
+      "name": "char_list_stranger",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c4000000-0000-4000-8000-000000000004"
+    },
+    {
+      "name": "char_list_missing",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "d9000000-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "proj_list",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "proj_list_shared_ignored",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "query": [
+        [
+          "shared",
+          "true"
+        ]
+      ]
+    },
+    {
+      "name": "proj_list_storeless",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "proj_list_missing",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d9000000-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "grp_list",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "grp_list_storeless",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "e3000000-0000-4000-8000-000000000003"
+    },
+    {
+      "name": "grp_list_missing",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "d9000000-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "char_folders",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "folders"
+    },
+    {
+      "name": "gen_folders",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "folders"
+    },
+    {
+      "name": "proj_folders_storeless",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "action": "folders"
+    },
+    {
+      "name": "grp_folders_missing",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "d9000000-0000-4000-8000-000000000009",
+      "action": "folders"
+    },
+    {
+      "name": "char_archetypes",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "archetypes"
+    },
+    {
+      "name": "char_archetypes_project",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "archetypes",
+      "query": [
+        [
+          "projectId",
+          "d1000000-0000-4000-8000-000000000001"
+        ]
+      ]
+    },
+    {
+      "name": "char_archetypes_chat",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "archetypes",
+      "query": [
+        [
+          "chatId",
+          "b1000000-0000-4000-8000-000000000001"
+        ]
+      ]
+    },
+    {
+      "name": "grp_archetypes",
+      "kind": "collectionGet",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "action": "archetypes"
+    },
+    {
+      "name": "proj_archetypes_storeless",
+      "kind": "collectionGet",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "action": "archetypes"
+    },
+    {
+      "name": "gen_list_unprovisioned",
+      "kind": "collectionGet",
+      "scope": "general",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_folders_unprovisioned",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "folders",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_archetypes_unprovisioned",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "archetypes",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_create_unprovisioned",
+      "kind": "collectionPost",
+      "scope": "general",
+      "body": {
+        "name": "x"
+      },
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_instantiate_unprovisioned",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000"
+      },
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_create_folder_unprovisioned",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "create-folder",
+      "body": {
+        "path": "x"
+      },
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_rename_folder_unprovisioned",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "rename-folder",
+      "body": {
+        "path": "x",
+        "name": "y"
+      },
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_item_get_unprovisioned",
+      "kind": "itemGet",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_create_zod_unprovisioned",
+      "kind": "collectionPost",
+      "scope": "general",
+      "body": {},
+      "mainSql": [
+        "DELETE FROM instance_settings WHERE key = 'generalMountPointId'"
+      ],
+      "directOnly": true
+    },
+    {
+      "name": "gen_get_unknown_action",
+      "kind": "collectionGet",
+      "scope": "general",
+      "action": "zzz",
+      "httpOnly": true
+    },
+    {
+      "name": "char_get_bare_action",
+      "kind": "collectionGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "",
+      "httpOnly": true
+    },
+    {
+      "name": "gen_create",
+      "kind": "collectionPost",
+      "scope": "general",
+      "body": {
+        "name": "lamp",
+        "title": "Brass lamp",
+        "description": "Smells of oil."
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_kit",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "pack",
+        "kind": "kit",
+        "itemIds": [
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000001-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_kit_project",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "survey pack",
+        "kind": "kit",
+        "itemIds": [
+          "a0000003-0000-4000-8000-000000000000"
+        ]
+      },
+      "query": [
+        [
+          "projectId",
+          "d1000000-0000-4000-8000-000000000001"
+        ]
+      ],
+      "dump": true
+    },
+    {
+      "name": "char_create_kit_nesting",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "nest",
+        "kind": "kit",
+        "itemIds": [
+          "a0000013-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "char_create_kit_missing",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "ghost kit",
+        "kind": "kit",
+        "itemIds": [
+          "a0000099-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "char_create_parent_zod",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "x",
+        "parentId": "a0000010-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_create_empty_zod",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {}
+    },
+    {
+      "name": "proj_create_zod_storeless",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "body": {
+        "name": ""
+      },
+      "dump": true
+    },
+    {
+      "name": "proj_create_storeless",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "body": {
+        "name": "crate"
+      },
+      "dump": true
+    },
+    {
+      "name": "grp_create",
+      "kind": "collectionPost",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "lantern oil"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_svg_invalid",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "blot",
+        "svg": "<div>not an svg</div>"
+      }
+    },
+    {
+      "name": "char_create_svg",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "body": {
+        "name": "star",
+        "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 2 2\"><rect width=\"2\" height=\"2\" onclick=\"x()\"/></svg>"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_archived",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "body": {
+        "name": "ghost"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_stranger",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c4000000-0000-4000-8000-000000000004",
+      "body": {
+        "name": "x"
+      }
+    },
+    {
+      "name": "char_create_bad_json",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "rawBody": "{not json",
+      "httpOnly": true
+    },
+    {
+      "name": "char_instantiate",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000",
+        "folder": "Lights"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_instantiate_project",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000004-0000-4000-8000-000000000000",
+        "projectId": "d1000000-0000-4000-8000-000000000001"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_instantiate_unreachable",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000004-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_instantiate_not_archetype",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000002-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_instantiate_overrides",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000",
+        "overrides": {
+          "title": "Night lamp",
+          "maxEquipped": 3
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "char_instantiate_zod",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "instantiate",
+      "body": {}
+    },
+    {
+      "name": "gen_instantiate",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "instantiate",
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_folder",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "create-folder",
+      "body": {
+        "path": "Tools/Small"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_create_folder_conflict",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "create-folder",
+      "body": {
+        "path": "Weapons"
+      }
+    },
+    {
+      "name": "char_create_folder_reserved",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "create-folder",
+      "body": {
+        "path": "images"
+      }
+    },
+    {
+      "name": "char_create_folder_zod",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "create-folder",
+      "body": {
+        "path": ""
+      }
+    },
+    {
+      "name": "proj_create_folder_storeless",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "action": "create-folder",
+      "body": {
+        "path": "Shelves"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_rename_folder",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "rename-folder",
+      "body": {
+        "path": "Weapons",
+        "name": "Arms"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_rename_folder_missing",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "rename-folder",
+      "body": {
+        "path": "Nowhere",
+        "name": "Somewhere"
+      }
+    },
+    {
+      "name": "char_rename_folder_slash",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "rename-folder",
+      "body": {
+        "path": "Weapons",
+        "name": "a/b"
+      }
+    },
+    {
+      "name": "proj_rename_folder_storeless",
+      "kind": "collectionPost",
+      "scope": "project",
+      "id": "d2000000-0000-4000-8000-000000000002",
+      "action": "rename-folder",
+      "body": {
+        "path": "x",
+        "name": "y"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_delete_folder",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "delete-folder",
+      "body": {
+        "path": "Satchel"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_delete_folder_missing",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "delete-folder",
+      "body": {
+        "path": "Nowhere"
+      }
+    },
+    {
+      "name": "char_move_items",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "move-items",
+      "body": {
+        "itemIds": [
+          "a0000011-0000-4000-8000-000000000000"
+        ],
+        "folder": "Weapons"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_move_items_elsewhere",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "move-items",
+      "body": {
+        "itemIds": [
+          "a0000001-0000-4000-8000-000000000000"
+        ],
+        "folder": ""
+      }
+    },
+    {
+      "name": "char_move_items_zod",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "move-items",
+      "body": {
+        "itemIds": [],
+        "folder": ""
+      }
+    },
+    {
+      "name": "char_copy_items",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "copy-items",
+      "body": {
+        "itemIds": [
+          "a0000017-0000-4000-8000-000000000000"
+        ],
+        "folder": "Weapons"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_copy_items_nocopy",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "copy-items",
+      "body": {
+        "itemIds": [
+          "a0000018-0000-4000-8000-000000000000"
+        ],
+        "folder": ""
+      }
+    },
+    {
+      "name": "char_duplicate",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": "a0000017-0000-4000-8000-000000000000"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_duplicate_nocopy",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": "a0000018-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_duplicate_numeric",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": 5
+      }
+    },
+    {
+      "name": "char_duplicate_empty",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": ""
+      }
+    },
+    {
+      "name": "char_duplicate_no_key",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {}
+    },
+    {
+      "name": "char_duplicate_absent",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "body": {
+        "itemId": "a0000099-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_duplicate_numeric_missing_owner",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "d9000000-0000-4000-8000-000000000009",
+      "action": "duplicate",
+      "body": {
+        "itemId": 5
+      }
+    },
+    {
+      "name": "char_duplicate_bad_json",
+      "kind": "collectionPost",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "action": "duplicate",
+      "rawBody": "nope",
+      "httpOnly": true
+    },
+    {
+      "name": "gen_post_unknown_action",
+      "kind": "collectionPost",
+      "scope": "general",
+      "action": "zzz",
+      "body": {},
+      "httpOnly": true
+    },
+    {
+      "name": "char_item_get",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_instance",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_kit",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000013-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_archived",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000014-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_missing",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_other_tier",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000001-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_item_get_missing_owner",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "d9000000-0000-4000-8000-000000000009",
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "gen_item_get",
+      "kind": "itemGet",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "grp_item_get_instance",
+      "kind": "itemGet",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000006-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "wren_item_get_svg",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c2000000-0000-4000-8000-000000000002",
+      "itemId": "a0000030-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "gen_dependents",
+      "kind": "itemGet",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "action": "dependents"
+    },
+    {
+      "name": "proj_dependents",
+      "kind": "itemGet",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000004-0000-4000-8000-000000000000",
+      "action": "dependents"
+    },
+    {
+      "name": "char_dependents_plain",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "action": "dependents"
+    },
+    {
+      "name": "char_item_get_unknown_action",
+      "kind": "itemGet",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "action": "zzz",
+      "httpOnly": true
+    },
+    {
+      "name": "char_update",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "title": "Caliburn",
+        "description": "Pulled from a stone."
+      },
+      "dump": true
+    },
+    {
+      "name": "char_update_missing_before_body",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000",
+      "body": {
+        "title": 5
+      }
+    },
+    {
+      "name": "char_update_zod",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "title": 5
+      }
+    },
+    {
+      "name": "char_update_parent_zod",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "parentId": "a0000001-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_update_foreign_image",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "imageFileId": "00000000-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "char_update_archived_char",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "itemId": "a0000020-0000-4000-8000-000000000000",
+      "body": {
+        "title": "Ghost lantern"
+      },
+      "dump": true
+    },
+    {
+      "name": "char_update_archive",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000017-0000-4000-8000-000000000000",
+      "body": {
+        "archived": true
+      },
+      "dump": true
+    },
+    {
+      "name": "char_update_instance",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "description": "Dented."
+      },
+      "dump": true
+    },
+    {
+      "name": "char_update_kit_nesting",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000019-0000-4000-8000-000000000000",
+      "body": {
+        "itemIds": [
+          "a0000013-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "char_update_bad_json_missing",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000",
+      "rawBody": "{",
+      "httpOnly": true
+    },
+    {
+      "name": "char_update_bad_json",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "rawBody": "{",
+      "httpOnly": true
+    },
+    {
+      "name": "char_clear_override",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "action": "clear-override",
+      "body": {
+        "fields": [
+          "title"
+        ]
+      },
+      "dump": true
+    },
+    {
+      "name": "char_clear_override_empty",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "action": "clear-override",
+      "body": {
+        "fields": []
+      }
+    },
+    {
+      "name": "char_clear_override_absent",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "action": "clear-override",
+      "body": {}
+    },
+    {
+      "name": "char_clear_override_missing",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000",
+      "action": "clear-override",
+      "body": {}
+    },
+    {
+      "name": "char_detach",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "action": "detach",
+      "dump": true
+    },
+    {
+      "name": "char_detach_plain",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "action": "detach"
+    },
+    {
+      "name": "char_put_unknown_action",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "action": "zzz",
+      "body": {},
+      "httpOnly": true
+    },
+    {
+      "name": "gen_delete_in_use",
+      "kind": "itemDelete",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "dump": true
+    },
+    {
+      "name": "gen_delete_force",
+      "kind": "itemDelete",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "force",
+          "true"
+        ]
+      ],
+      "dump": true
+    },
+    {
+      "name": "gen_delete_force_one",
+      "kind": "itemDelete",
+      "scope": "general",
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "query": [
+        [
+          "force",
+          "1"
+        ]
+      ]
+    },
+    {
+      "name": "proj_delete_badge_in_use",
+      "kind": "itemDelete",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000004-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_delete",
+      "kind": "itemDelete",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000011-0000-4000-8000-000000000000",
+      "dump": true
+    },
+    {
+      "name": "char_delete_kit_member",
+      "kind": "itemDelete",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "dump": true
+    },
+    {
+      "name": "char_delete_missing",
+      "kind": "itemDelete",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000099-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "char_delete_archived_char",
+      "kind": "itemDelete",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "itemId": "a0000020-0000-4000-8000-000000000000",
+      "dump": true
+    },
+    {
+      "name": "transfer_move_to_general",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "general"
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "transfer_copy_to_wren",
+      "kind": "transfer",
+      "body": {
+        "action": "copy",
+        "itemId": "a0000002-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "general"
+        },
+        "to": {
+          "scope": "character",
+          "id": "c2000000-0000-4000-8000-000000000002"
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "transfer_move_to_storeless_project",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "project",
+          "id": "d2000000-0000-4000-8000-000000000002"
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "transfer_copy_nocopy",
+      "kind": "transfer",
+      "body": {
+        "action": "copy",
+        "itemId": "a0000018-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "general"
+        }
+      }
+    },
+    {
+      "name": "transfer_same_location",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        }
+      }
+    },
+    {
+      "name": "transfer_missing_item",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000099-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "general"
+        }
+      }
+    },
+    {
+      "name": "transfer_missing_source",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "d9000000-0000-4000-8000-000000000009"
+        },
+        "to": {
+          "scope": "general"
+        }
+      }
+    },
+    {
+      "name": "transfer_invalid_destination",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "project",
+          "id": "d9000000-0000-4000-8000-000000000009"
+        }
+      }
+    },
+    {
+      "name": "transfer_zod_scope",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "planet",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "general"
+        }
+      }
+    },
+    {
+      "name": "transfer_zod_action",
+      "kind": "transfer",
+      "body": {
+        "action": "teleport",
+        "itemId": "a0000017-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "general"
+        }
+      }
+    },
+    {
+      "name": "transfer_kit_stranded",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000003-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "project",
+          "id": "d1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "character",
+          "id": "c2000000-0000-4000-8000-000000000002"
+        }
+      }
+    },
+    {
+      "name": "transfer_move_pictured",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000001-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "general"
+        },
+        "to": {
+          "scope": "project",
+          "id": "d1000000-0000-4000-8000-000000000001"
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "transfer_id_collision",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000010-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c1000000-0000-4000-8000-000000000001"
+        },
+        "to": {
+          "scope": "character",
+          "id": "c2000000-0000-4000-8000-000000000002"
+        }
+      }
+    },
+    {
+      "name": "transfer_archived_char",
+      "kind": "transfer",
+      "body": {
+        "action": "move",
+        "itemId": "a0000020-0000-4000-8000-000000000000",
+        "from": {
+          "scope": "character",
+          "id": "c3000000-0000-4000-8000-000000000003"
+        },
+        "to": {
+          "scope": "general"
+        }
+      },
+      "dump": true
+    },
+    {
+      "name": "transfer_bad_json",
+      "kind": "transfer",
+      "rawBody": "{",
+      "httpOnly": true
+    },
+    {
+      "name": "chat_get_hall",
+      "kind": "chatGet",
+      "chatId": "b1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_get_inn",
+      "kind": "chatGet",
+      "chatId": "b3000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_get_arrival",
+      "kind": "chatGet",
+      "chatId": "b4000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_get_stage",
+      "kind": "chatGet",
+      "chatId": "b6000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_get_road",
+      "kind": "chatGet",
+      "chatId": "b2000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_get_missing",
+      "kind": "chatGet",
+      "chatId": "b9000000-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "chat_equip",
+      "kind": "chatPost",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b5000000-0000-4000-8000-000000000001"
+      },
+      "thenRead": "b5000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_equip_cap",
+      "kind": "chatPost",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000023-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b5000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "chat_equip_kit",
+      "kind": "chatPost",
+      "chatId": "b2000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000013-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b2000000-0000-4000-8000-000000000001"
+      },
+      "thenRead": "b2000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_equip_already",
+      "kind": "chatPost",
+      "chatId": "b2000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b2000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "chat_equip_not_participant",
+      "kind": "chatPost",
+      "chatId": "b2000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c2000000-0000-4000-8000-000000000002",
+        "ids": [
+          "a0000022-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "chat_equip_user_seat",
+      "kind": "chatPost",
+      "chatId": "b6000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c2000000-0000-4000-8000-000000000002",
+        "ids": [
+          "a0000022-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b6000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "chat_equip_zod",
+      "kind": "chatPost",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": []
+      }
+    },
+    {
+      "name": "chat_equip_zod_uuid",
+      "kind": "chatPost",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "not-a-uuid"
+        ]
+      }
+    },
+    {
+      "name": "chat_equip_missing_chat",
+      "kind": "chatPost",
+      "chatId": "b9000000-0000-4000-8000-000000000009",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "chat_equip_zod_before_chat",
+      "kind": "chatPost",
+      "chatId": "b9000000-0000-4000-8000-000000000009",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": []
+      }
+    },
+    {
+      "name": "chat_equip_operator_off_roster",
+      "kind": "chatPost",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "body": {
+        "characterId": "c2000000-0000-4000-8000-000000000002",
+        "ids": [
+          "a0000003-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "chat_unequip",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-unequip",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001",
+        "ids": [
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000099-0000-4000-8000-000000000000"
+        ]
+      },
+      "dump": {
+        "chat": "b3000000-0000-4000-8000-000000000001"
+      },
+      "thenRead": "b3000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_unequip_not_participant",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-unequip",
+      "body": {
+        "characterId": "c3000000-0000-4000-8000-000000000003",
+        "ids": [
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "chat_reset",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-reset-defaults",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001"
+      },
+      "dump": {
+        "chat": "b3000000-0000-4000-8000-000000000001"
+      },
+      "thenRead": "b3000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "chat_reset_project",
+      "kind": "chatPost",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "action": "inventory-reset-defaults",
+      "body": {
+        "characterId": "c1000000-0000-4000-8000-000000000001"
+      },
+      "dump": {
+        "chat": "b1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "chat_reset_not_participant",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-reset-defaults",
+      "body": {
+        "characterId": "c3000000-0000-4000-8000-000000000003"
+      }
+    },
+    {
+      "name": "chat_reset_user_seat",
+      "kind": "chatPost",
+      "chatId": "b6000000-0000-4000-8000-000000000001",
+      "action": "inventory-reset-defaults",
+      "body": {
+        "characterId": "c2000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "chat_reset_zod",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-reset-defaults",
+      "body": {}
+    },
+    {
+      "name": "chat_equip_bad_json",
+      "kind": "chatPost",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "action": "inventory-equip",
+      "rawBody": "{",
+      "httpOnly": true
+    }
+  ]
+}

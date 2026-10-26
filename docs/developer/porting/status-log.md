@@ -191526,3 +191526,77 @@ a trigger phrase in B's message does not fire A's tool; an unknown-tool refusal 
 stores'); `GET /api/v1/tools` in the chat tool-settings modal (`run_custom` and `Edit Custom Tool` under "Pascal's
 Custom Tools"); the Run Tool dialog's category label + 🎲; the `Edit Custom Tool` ToolMessage card on an
 operator-initiated run.
+
+
+
+## P4.D325 — the Inventory ROUTES: one `inventory*` verb family for four tiers + General, transfers, object pictures, the chat actions, the REST edges and the `details` envelope (lane `claude/p4.d325-inventory-routes-verb-family-c065d7`, pin `322a5488e`, 2026-10-26)
+
+### Lane start
+
+- **Session venue:** started in the app-made worktree `.claude/worktrees/vigilant-galileo-190549` on `main`'s tip (`914096110`), with no commits of its own; moved by `git switch -c claude/p4.d325-inventory-routes-verb-family-c065d7 c065d7e2f` onto the `INVENTORY` stacking commit (`c065d7e2f`, confirmed against P4.D324's status header on `claude/p4.d324-inventory-keystone-3c3c70`, `19f67712b`). Compiled against C1's landed spellings as that header records them.
+- **§2 freshness probe (an OBSERVATION, §R.2), 2026-10-26 15:05 CDT:** v4 checkout on `main`, tree CLEAN; `322a5488e..main` = 34 commits; the ledger's §1 records `a0905454b` (the `d1f7e0049` drift check) and **v4 moved past it: `9faed0c7e` (diagram lightbox + Copy PNG) and `3c9ae1fc3` (4.11.0 release-notes corrections)** — no `lib/inventory` / `app/api/v1/inventory` / chat-action hunk. `489b228b6..bugfix` empty. Lane continued on the pin.
+- **The pin:** `/tmp/qt-v4-pin-p4d325-322a5488e`, HEAD `322a5488e7bd93f0234a25b42f87d5418dbf4c2c`, `package.json` `4.11.0-dev.53`, `npm ci --offline` → `openai` 7.34.0, `@xterm/headless` 6.0.0.
+- **Span check:** `git diff --stat e8e17b2d9 322a5488e -- lib/inventory/routes app/api/v1/inventory 'app/api/v1/*/[id]/inventory' 'app/api/v1/chats/[id]/actions/inventory.ts'` = 7 files, +895 (all `4fbdad186`).
+
+### What landed (Tier 1 items 1–17)
+
+- **Item 1 — `details` on every transport (R-L / R-2).** `dispatch.rs`'s three error-wire merges folded into ONE `merge_error_wire` (no behaviour change; `already_saved_wire_tests` green), new `details_wire_tests` (a details-bearing 409 keeps 409, the bag's four keys in insertion order as bytes, `data.details` kept; a 400 `INVALID_SHAPE` twin). **Mutation proof:** dropping the details merge reddens both tests (measured). R-2 per transport: (a) HTTP dispatch — PASS (pinned); (b) Tauri IPC — `dispatch_inner` → the same `dispatch_body`, pinned once by construction (no `SharedState` without a booted host in `quilltap-tauri`'s unit tests — Tier 3 item 28); (c) REST — the NEW `inventory_routes::render`; **the red: `wardrobe_routes::unwrap_to_http(CAP_EXCEEDED)` answers 400 where `render` answers 409** (`a_details_bearing_409_stays_409_here_and_not_in_unwrap_to_http`); (d) SSE — N/A (no `CoreError` on the stream); (e) the SPA's `CoreDispatchError` — P4.D330's fence.
+- **Item 2 — the family (R-1).** `api::types::InventoryScope` (v4's `InventoryScopeSchema` ORDER) + `InventoryContainer`, the 24 `inventory*` verbs + four `chatInventory*`, ONE `Response::Inventory`. C7's names exactly. **Departures (Rust field shape only — the wire is C7's):** `InventoryClearOverride`, `InventoryDuplicate`, `InventoryItemImageSetCurrent` / `Delete` carry a FLATTENED raw `body` instead of R-1's single raw key (`fields` / `item_id` / `file_id`), so an ABSENT key stays Zod's `received undefined` (a `Value` field would turn absent into `null`). No `Option<Option<…>>` anywhere (R-17 — `tri_state_edges_share_the_decoder` unmoved).
+- **Item 3 — `api/inventory_route_factory.rs`.** The factory whole, v4's order of checks; `inventory_error_response` (R-3: `code` nested under `details`, the flat `CoreError.code` left `None`; folder 404 ignores the message; archived 409 + INFO; `StoreUnavailable` → the contextful 503; anything else 500 `Internal server error`). **Found while porting:** a refusal mapped INSIDE a `Db::write` closure logs its archived INFO on the writer thread (invisible, and not v4's request thread) — closures now return a `Fail` (`Respond` | `Refused(InventoryError)`) mapped after the write returns (`Fail::answer`).
+- **Item 4 — `api/inventory.rs`.** `GENERAL_INVENTORY`; `inventory_transfer_apply` / `_with_codec`; engine arm over `ready_db_and_blob_webp` with the `RefusingWebpTranscoder` fallback.
+- **Item 5 — `api/inventory_item_images.rs`.** The wardrobe twin minus `link_image`; `resolve_home` is a READ; `parse_generate_body` / `parse_file_id_body` (the latter answers v4's middleware `Validation error` with the Zod issue — `fileIdBodySchema.parse` inside the try is rethrown by `inventoryErrorResponse`). `generate` takes the engine's images-generate seams; its image summary is read from the object's own rows (v4 `files.findById` — the new file is linked).
+- **Item 6 — `api/chat_inventory.rs`.** `OPERATOR`, `cast_of`, the GET, `chat_inventory_equip(…, mode, effects)`, `chat_inventory_reset_defaults`, `InventoryChangeEffects` + `ProductionInventoryEffects` (the loud unwired WARN). **R-14 measured:** C1's `reset_inventory_to_defaults` already runs v4's `announce: false` avatar refresh (`refresh_avatars_after_arrival`), so the reset takes no seam.
+- **Item 7** — engine arms (two private dispatch helpers `inventory_collection` / `inventory_item`, every future boxed — the debug-stack lesson).
+- **Items 8–11 — REST.** `inventory_routes.rs` (`render`, the four action lists in v4's map orders, the General five + transfers, and — since `groups_routes.rs` / `projects_routes.rs` do NOT exist in v5 — the group and project tiers' ten edges, a recorded departure); `inventory_images_routes.rs` (`render` with the 502 restore, `SCOPE_ISSUE`, multipart upload, `generate` as text with v4's `Request body is not valid JSON` + DEBUG); `characters_routes.rs`'s five delegates; `lib.rs` mounts (fenced). Item PUT: an unparseable body answers the object's / owner's refusal when there is one (v4 finds the record before `req.json()`), else the 500. Group / project ITEM routes on REST where the wardrobe's are dispatch-only — deliberate (R-M). The chat route's pointer sentence for un-served POST actions is UNCHANGED (pinned by `query_param_semantics_equivalence`; P4.D335 also edits that arm — left for the union).
+- **Item 9** — `CHAT_GET_ACTIONS` + `inventory` (17 keys), `CHAT_POST_ACTIONS` + the three; `the_inventory_keys_sit_at_v4s_positions`.
+- **Items 12–13 — censuses.** `dispatch_wrong_type_census`: +26 rows (23 `container` — 17 `V4::Path`, 6 `V4::Query`; `include_archived`, `shared`, `force` `V4::Query`), the route-identifier exclusion 487 → 512 (+25: twelve `item_id`, four `project_id`, eight `chat_id`, `image_profile_id`), red at 512 first. `web_edge_body_parse_guard`: ONE row (`inventory_images_routes.rs`, 1 site — `render`'s `details.refused`); `inventory_routes.rs` ZERO sites. `web_edge_action_sites_census`: per-file `"action"` literal count — my two files carry none (green in the gate).
+- **Item 17 — HANDOFFs** (below).
+
+### Tier 2
+
+- Item 19 — `render_tests::every_kind_with_and_without_details` (+ the 502 only in the images edge: `generate_restores_v4s_502`). Item 20 — `unwrap_to_http`'s doc comment names the limitation. Item 21 — `api-boundary.md` carries no `CoreError` field table (measured), so recorded HERE: `CoreError.details` is the envelope's bag for v4's `errorResponse(message, status, details)` class — the Zod issue array and the Inventory's `{code, …}` object share the slot; the file-op `code` stays flat. Item 18 — no publish site in my files (the publishes are C1's).
+
+### Families (from the pin, through the sweep driver — ONE sweep, 6 families)
+
+| family | result |
+|---|---|
+| `inventory_routes_equivalence` (NEW) | GREEN — 168 cases / 217 rows; 157 dispatch + 159 REST drives (9 `directOnly`, 11 `httpOnly`); + `inventory_route_lines_are_v4s` (every R-10 factory / chat / archived line with silence legs) |
+| `inventory_item_images_routes_equivalence` (NEW) | GREEN — 49 cases / 53 rows; 48 REST + 26 dispatch; + `the_route_lines_are_v4s` |
+| `query_param_semantics_equivalence` | RED only on `chat_item_post__{bare,empty,unknown,empty_then_known}` — v4's list has P4.D335's `stop-turn` / `raise-hand` (measured: the ONLY difference; every other key in order). Green on the union. `chat_item_get` GREEN with `inventory`. |
+| `wardrobe_routes_equivalence`, `wardrobe_item_images_routes_equivalence`, `chat_cast_routes_equivalence` | GREEN (regression nets — unmoved) |
+
+`grep -c` markers: `"code":"CAP_EXCEEDED"` > 0, `"inherited":true` > 0, `Inventory object not found`, `"availableActions"`, `"success":true`, `Invalid destination`, `Request body is not valid JSON`, `id is required for this scope`, `That picture does not belong to this object` — all present. **Red-first:** on `INVENTORY` the variants do not exist, so every dispatch wire fails `serde_json::from_value::<Request>` and every REST path is unrouted (404) — all 168 / 49 cases red by construction (the families did not compile against `INVENTORY`).
+
+Named carves (both-ways): **`EFFECTS_UNWIRED_UNTIL_UNION`** — `chat_equip__dump`, `chat_equip_already__dump`, `chat_equip_kit__dump`, `chat_equip_user_seat__dump`, `chat_equip_operator_off_roster__dump`, `chat_unequip__dump` (v4 wrote Pascal's `chat_messages` row; this branch's seam did not). **`CHAT_GATE_ORDER`** — `chat_equip_zod_before_chat` (v4 404, v5 400 — Tier 3 item 24). **`TRANSFER_ERROR_SHAPES_P4D328`** — EMPTY, measured: the pair's one id-colliding object is a kit member, so v4 answers `KIT_STRANDED` before the collision arm; neither R-T arm is reachable here. `directOnly`: the unprovisioned-General rows (the served host's boot provisions General); `save_targets` (a booted host adds built-in stores). The REST dumps report `doc_mount_points` as the pair's count plus what the request added (the boot's stores excluded).
+
+**Fixture:** NEW committed pair `crates/quilltap-web/tests/fixtures/inventory-routes-{main,mount}.db`, built at the pin by `harness/oracle/fixtures/build-inventory-routes-fixture.ts` from `inventory-keystone.json` (read-only) + `inventory-routes.json#fixture` (user = `SINGLE_USER_ID`, a stranger's character, a second project / group, an `svg` object, a user-controlled seat). It invalidates no other oracle. **Measured:** v4's `projects.create` / `groups.create` ALWAYS provision a store, so the probe's "owner exists, no store" arm is reachable only through General (`mainSql` deletes `generalMountPointId`); a USER-type participant is unrepresentable at the pin (CHARACTER-only — as the keystone found).
+
+### Gate
+
+- fmt clean; clippy (both feature sets) clean on the final tree.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, both family env vars + `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin): **839 result lines / 5,510 passed / 4 failed / 3 ignored.** The two reds that are standing on this base: `public_schemas_vendor_guard` and `qtap_schema_embed_guard`, both against the pin's moved public schemas (P4.D339's). **Two reds were mine and are fixed, each green by name:**
+  - `zod_issues_home_guard::the_parsed_type_word_has_one_home…`: a private `zod_received` in `inventory_item_images.rs` copied v4's `util.parsedType`. It now calls `zod_issues::zod_parsed_type`.
+  - `tri_state_edges_share_the_decoder::typed_only_hand_built_construction_count…`: `inventory_routes.rs` added 19 rows (18 verbs + the PUT's bad-JSON `InventoryItemGet` probe) and `wardrobe_routes.rs` went 25 → 29 (the four chat Inventory keys), each with a census comment, and the summed total in the same test went 125 → 148.
+- Both new families ran in the gate, not skipped: `inventory_routes_equivalence` took 133.7 s and `inventory_item_images_routes_equivalence` took 39.5 s, each 2 / 2.
+- No SPA or Playwright run, since the order touches no `apps/web`.
+
+### Regen recipes
+
+- `inventory_routes_equivalence`: the `inventory-routes.test.ts` header (`cd ~/source/quilltap-server`, `/tmp/qt-iroutes-oracle` mirror, `QT_FIXTURE_IROUTES_MAIN/MOUNT` = the committed pair, `QT_ORACLE_OUT=/tmp/oracle-inventory-routes.ndjson`, `TZ=UTC`, jest `--testTimeout=240000 --roots "$PWD" --roots "$TMPO/cases" -- inventory-routes`), then `QT_ORACLE_INVENTORY_ROUTES=… cargo test -p quilltap-web --test inventory_routes_equivalence`.
+- `inventory_item_images_routes_equivalence`: the `.ts` header (`/tmp/qt-iiir-oracle`, `QT_FIXTURE_IIIR_MAIN/MOUNT` = the same pair, `QT_ORACLE_OUT=/tmp/oracle-inventory-item-images-routes.ndjson`), then `QT_ORACLE_IIIR=…`.
+- The pair: `QT_FIXTURE_OUT=…/inventory-routes-main.db QT_FIXTURE_MOUNT_OUT=…/inventory-routes-mount.db node --import tsx …/build-inventory-routes-fixture.ts` from the pin.
+- Both oracles stub v4's title lint (P4.D340's) and undo jest.setup's vault-bridge / vector-store / file-storage mocks. Neither writes an `llm_logs` row. `recipe_sweep.py --self-test` 0.
+
+### Tier 3 (recorded deferrals)
+
+22 — effects wiring (HANDOFF). 23 — the transfers error shapes (P4.D328; unreachable on this pair). 24 — chat POST gate order (`CHAT_GATE_ORDER`). 25 — 201 → 200 over dispatch (rows assert both). 26 — the 502 over dispatch / Tauri (`Internal` + details; REST restores). 27 — the middleware's two WARN lines: ALREADY emitted by `query::dispatch_action` (measured) — not a gap. 28 — Tauri pin by construction. 29 — `?projectId` / `?chatId` ported. 30 — `help/` + `docs/v4/` (HANDOFF). **Not done:** the images family's `direct` generate 201 / 422 / 502 rows with a mocked provider (no image profile on the pair; the mapping is pinned by `render`'s unit tests and the keystone's generation family); the success arm of `save-to-store` and its INFO, and the edge's `Generate body is not valid JSON` DEBUG, are not capture-pinned (the served host logs off-thread).
+
+### HANDOFFs
+
+- **(a) to the unifier (§S.5 wire 8):** `api/chat_inventory.rs`'s `ProductionInventoryEffects::fire` body → the ONE call `crate::services::inventory_change_effects::notify_inventory_changed(…)` (P4.D328, C2), then delete `EFFECTS_UNWIRED_UNTIL_UNION` (and the WARN assertion in `inventory_route_lines_are_v4s`) and run the family whole.
+- **(b) to P4.D328 / the unifier:** `TRANSFER_ERROR_SHAPES_P4D328` is empty — P4.D328's own family carries the two R-T arms.
+- **(c) to P4.D339:** `docs/v4/developer/API.md`'s `### Inventory (Pascal the Croupier)` section and `help/inventory.md` / `help/project-inventory.md` — the sentences these routes answer.
+- **(d) to the unifier (union):** `query_param_semantics_equivalence`'s four `chat_item_post` rows go green with P4.D335's two keys; `wardrobe_routes.rs`'s un-served-POST pointer sentence is shared with P4.D335.
+- **(e) to P4.D324:** none needed — C1's parsers return Zod issue arrays (R-4 measured), the error enum carries every sibling class (R-3), and every body byte matched (R-9).
+
+**Versions at close:** core 0.0.1325, web 0.0.245 (commit A: web 0.0.244). Harness frozen.

@@ -49,6 +49,12 @@ pub mod wardrobe_item_images;
 pub mod wardrobe_route_factory;
 pub mod wardrobe_wear_history;
 // === end P4.9f1 ===
+// === P4.D325: the Inventory routes (C7) ===
+pub mod chat_inventory;
+pub mod inventory;
+pub mod inventory_item_images;
+pub mod inventory_route_factory;
+// === end P4.D325 ===
 pub mod embedding_profiles;
 pub mod groups;
 pub mod image_profiles;

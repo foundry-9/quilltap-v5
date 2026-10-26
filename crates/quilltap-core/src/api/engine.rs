@@ -1723,6 +1723,52 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D315 ===
+            // === P4.D325: the chat Inventory actions (C7) ===
+            Request::ChatInventoryGet { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_inventory::chat_inventory_get(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatInventoryEquip { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    Box::pin(super::chat_inventory::chat_inventory_equip(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &body,
+                        super::chat_inventory::EquipMode::Equip,
+                        &super::chat_inventory::ProductionInventoryEffects,
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatInventoryUnequip { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    Box::pin(super::chat_inventory::chat_inventory_equip(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &body,
+                        super::chat_inventory::EquipMode::Unequip,
+                        &super::chat_inventory::ProductionInventoryEffects,
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatInventoryResetDefaults { chat_id, body } => match self.ready_db() {
+                Ok(db) => {
+                    Box::pin(super::chat_inventory::chat_inventory_reset_defaults(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        &body,
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D325 ===
             Request::ToolsList {
                 chat_id,
                 include_schemas,
@@ -5916,6 +5962,259 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D279 ===
+            // === P4.D325: the Inventory verb family (C7) ===
+            Request::InventoryList {
+                container,
+                include_archived,
+                shared,
+                project_id,
+                chat_id,
+            } => self.inventory_collection(
+                container,
+                super::inventory_route_factory::CollectionAction::List {
+                    include_archived,
+                    shared,
+                    project_id,
+                    chat_id,
+                },
+            )
+            .await,
+            Request::InventoryFolders { container } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::Folders,
+                )
+                .await
+            }
+            Request::InventoryArchetypes {
+                container,
+                project_id,
+                chat_id,
+            } => self.inventory_collection(
+                container,
+                super::inventory_route_factory::CollectionAction::Archetypes {
+                    project_id,
+                    chat_id,
+                },
+            )
+            .await,
+            Request::InventoryCreate {
+                container,
+                project_id,
+                chat_id,
+                body,
+            } => self.inventory_collection(
+                container,
+                super::inventory_route_factory::CollectionAction::Create {
+                    project_id,
+                    chat_id,
+                    body,
+                },
+            )
+            .await,
+            Request::InventoryInstantiate { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::Instantiate { body },
+                )
+                .await
+            }
+            Request::InventoryDuplicate { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::Duplicate { body },
+                )
+                .await
+            }
+            Request::InventoryFolderCreate { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::FolderCreate { body },
+                )
+                .await
+            }
+            Request::InventoryFolderRename { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::FolderRename { body },
+                )
+                .await
+            }
+            Request::InventoryFolderDelete { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::FolderDelete { body },
+                )
+                .await
+            }
+            Request::InventoryItemsMove { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::ItemsMove { body },
+                )
+                .await
+            }
+            Request::InventoryItemsCopy { container, body } => {
+                self.inventory_collection(
+                    container,
+                    super::inventory_route_factory::CollectionAction::ItemsCopy { body },
+                )
+                .await
+            }
+            Request::InventoryItemGet { container, item_id } => {
+                self.inventory_item(
+                    container,
+                    item_id,
+                    super::inventory_route_factory::ItemAction::Get,
+                )
+                .await
+            }
+            Request::InventoryDependents { container, item_id } => {
+                self.inventory_item(
+                    container,
+                    item_id,
+                    super::inventory_route_factory::ItemAction::Dependents,
+                )
+                .await
+            }
+            Request::InventoryUpdate {
+                container,
+                item_id,
+                project_id,
+                chat_id,
+                body,
+            } => self.inventory_item(
+                container,
+                item_id,
+                super::inventory_route_factory::ItemAction::Update {
+                    project_id,
+                    chat_id,
+                    body,
+                },
+            )
+            .await,
+            Request::InventoryClearOverride {
+                container,
+                item_id,
+                body,
+            } => self.inventory_item(
+                container,
+                item_id,
+                super::inventory_route_factory::ItemAction::ClearOverride { body },
+            )
+            .await,
+            Request::InventoryDetach { container, item_id } => {
+                self.inventory_item(
+                    container,
+                    item_id,
+                    super::inventory_route_factory::ItemAction::Detach,
+                )
+                .await
+            }
+            Request::InventoryDelete {
+                container,
+                item_id,
+                force,
+            } => self.inventory_item(
+                container,
+                item_id,
+                super::inventory_route_factory::ItemAction::Delete { force },
+            )
+            .await,
+            Request::InventoryTransfer { body } => match self.ready_db_and_blob_webp() {
+                Ok((db, blob_webp)) => {
+                    Box::pin(super::inventory::inventory_transfer_apply_with_codec(
+                        &db,
+                        SINGLE_USER_ID,
+                        body,
+                        blob_webp.unwrap_or_else(|| {
+                            Arc::new(
+                                crate::services::mount_index::blob_transcode::RefusingWebpTranscoder,
+                            )
+                        }),
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::InventoryItemImagesList { container, item_id } => match self.ready_db() {
+                Ok(db) => super::inventory_item_images::list(&db, &container, &item_id).await,
+                Err(r) => r,
+            },
+            Request::InventoryItemImageGenerate {
+                container,
+                item_id,
+                image_profile_id,
+            } => match self.ready_images_generate() {
+                Ok((db, seams)) => {
+                    Box::pin(super::inventory_item_images::generate(
+                        &db,
+                        &seams,
+                        SINGLE_USER_ID,
+                        &container,
+                        &item_id,
+                        image_profile_id.as_deref(),
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::InventoryItemImageSetCurrent {
+                container,
+                item_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::inventory_item_images::set_current(&db, &container, &item_id, &body)
+                        .await
+                }
+                Err(r) => r,
+            },
+            Request::InventoryItemImageDelete {
+                container,
+                item_id,
+                body,
+            } => match self.ready_db() {
+                Ok(db) => {
+                    super::inventory_item_images::delete(&db, &container, &item_id, &body).await
+                }
+                Err(r) => r,
+            },
+            Request::InventoryItemImageSaveTargets { container, item_id } => {
+                match self.ready_db() {
+                    Ok(db) => {
+                        super::inventory_item_images::save_targets(&db, &container, &item_id)
+                            .await
+                    }
+                    Err(r) => r,
+                }
+            }
+            Request::InventoryItemImageSaveToStore {
+                container,
+                item_id,
+                body,
+            } => match self.ready_save_image() {
+                Ok((db, bytes)) => {
+                    Box::pin(super::inventory_item_images::save_to_store(
+                        &db,
+                        bytes,
+                        Arc::new(crate::photos::mount_embedding_effects::MountEmbeddingSideEffects::new(db.clone()))
+                            as Arc<
+                                dyn crate::photos::save_image_to_album::SaveImageSideEffects
+                                    + Send
+                                    + Sync,
+                            >,
+                        SINGLE_USER_ID,
+                        &container,
+                        &item_id,
+                        &body,
+                        &crate::clock::now_iso(),
+                    ))
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D325 ===
             Request::WardrobeItemGet { item_id } => match self.ready_db() {
                 Ok(db) => super::wardrobe::wardrobe_item_get(&db, &item_id),
                 Err(r) => r,
@@ -6426,6 +6725,50 @@ impl CoreEngine {
         }
     }
     // === end P4.76 ===
+
+    // === P4.D325: the Inventory family's two dispatchers ===
+    /// One Inventory collection verb over the factory.
+    async fn inventory_collection(
+        &self,
+        container: super::types::InventoryContainer,
+        action: super::inventory_route_factory::CollectionAction,
+    ) -> Response {
+        match self.ready_db() {
+            Ok(db) => {
+                Box::pin(super::inventory_route_factory::collection_action(
+                    &db,
+                    action,
+                    &container,
+                    SINGLE_USER_ID,
+                ))
+                .await
+            }
+            Err(r) => r,
+        }
+    }
+
+    /// One Inventory item verb over the factory.
+    async fn inventory_item(
+        &self,
+        container: super::types::InventoryContainer,
+        item_id: String,
+        action: super::inventory_route_factory::ItemAction,
+    ) -> Response {
+        match self.ready_db() {
+            Ok(db) => {
+                Box::pin(super::inventory_route_factory::item_action(
+                    &db,
+                    action,
+                    &container,
+                    &item_id,
+                    SINGLE_USER_ID,
+                ))
+                .await
+            }
+            Err(r) => r,
+        }
+    }
+    // === end P4.D325 ===
 
     fn ready_db(&self) -> Result<Db, Response> {
         match &*self.inner.state.lock().unwrap() {

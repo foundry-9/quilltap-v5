@@ -521,6 +521,12 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     ("files_routes.rs", 9),
     ("help_routes.rs", 9),
     ("images_routes.rs", 4),
+    // P4.D325 (v4 `4fbdad186` at the `322a5488e` pin): the NEW Inventory
+    // REST edge — 18 verbs hand-built from path segments + `?action=` +
+    // the RAW body (every Zod parse runs in the core; no tri-state), plus
+    // a second `InventoryItemGet` (the PUT's bad-JSON probe: v4 resolves
+    // and finds the object BEFORE it parses).
+    ("inventory_routes.rs", 19),
     ("llm_logs_routes.rs", 5),
     ("messages_routes.rs", 2),
     // P4.D207 (v4 `f564b0de3`): the NEW swipe REST edge, 3 constructions of
@@ -579,7 +585,11 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // P4.D316 (v4 `8d8618819`): 24 → 25 — the chat POST's `?action=
     // wardrobe-rollback` arm hands the raw body to `ChatWardrobeRollback {
     // chat_id, body }` (typed-only; v4's Zod parse runs in the core).
-    ("wardrobe_routes.rs", 25),
+    // P4.D325 (v4 `4fbdad186`): 25 → 29 — the chat GET's `?action=
+    // inventory` and the chat POST's three Inventory keys hand-build
+    // `ChatInventoryGet` / `Equip` / `Unequip` / `ResetDefaults` (the
+    // body RAW; typed-only).
+    ("wardrobe_routes.rs", 29),
 ];
 
 #[test]
@@ -616,8 +626,11 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 125,
-        "125 = 124 + P4.D321's one (`characters_routes.rs`'s `CharacterWardrobeImages`, the \
+        total, 148,
+        "148 = 125 + P4.D325's twenty-three (`inventory_routes.rs`'s nineteen — the eighteen \
+         Inventory verbs plus the item PUT's bad-JSON `InventoryItemGet` probe — and \
+         `wardrobe_routes.rs`'s four chat Inventory keys, v4 `4fbdad186`). \
+         125 = 124 + P4.D321's one (`characters_routes.rs`'s `CharacterWardrobeImages`, the \
          wardrobe-pictures GET, v4 `1cfc9b504`). \
          124 = 123 + P4.D316's one (`wardrobe_routes.rs`'s `ChatWardrobeRollback`, the chat \
          POST's raw-body arm); \

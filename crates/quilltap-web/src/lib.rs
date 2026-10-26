@@ -94,6 +94,10 @@ pub mod text_replacements_routes;
 pub mod tools_routes;
 pub mod wardrobe_images_routes;
 pub mod wardrobe_routes;
+// === P4.D325: the Inventory REST edges ===
+pub mod inventory_images_routes;
+pub mod inventory_routes;
+// === end P4.D325 ===
 // ── P4.9G4 ──
 pub mod qtap_routes;
 
@@ -505,6 +509,60 @@ pub fn build_router(state: SharedState) -> Router {
                 .post(wardrobe_images_routes::wardrobe_item_images_post),
         )
         // === end P4.D263 ===
+        // === P4.D325: the Inventory REST edges (v4 `4fbdad186`) ===
+        .route(
+            "/api/v1/inventory",
+            get(inventory_routes::inventory_get).post(inventory_routes::inventory_post),
+        )
+        .route(
+            "/api/v1/inventory/transfers",
+            post(inventory_routes::inventory_transfers_post),
+        )
+        .route(
+            "/api/v1/inventory/{itemId}",
+            get(inventory_routes::inventory_item_get)
+                .put(inventory_routes::inventory_item_put)
+                .delete(inventory_routes::inventory_item_delete),
+        )
+        .route(
+            "/api/v1/inventory/{itemId}/images",
+            get(inventory_images_routes::inventory_item_images_get)
+                .post(inventory_images_routes::inventory_item_images_post),
+        )
+        .route(
+            "/api/v1/characters/{id}/inventory",
+            get(characters_routes::characters_inventory_get)
+                .post(characters_routes::characters_inventory_post),
+        )
+        .route(
+            "/api/v1/characters/{id}/inventory/{itemId}",
+            get(characters_routes::characters_inventory_item_get)
+                .put(characters_routes::characters_inventory_item_put)
+                .delete(characters_routes::characters_inventory_item_delete),
+        )
+        .route(
+            "/api/v1/groups/{id}/inventory",
+            get(inventory_routes::groups_inventory_get)
+                .post(inventory_routes::groups_inventory_post),
+        )
+        .route(
+            "/api/v1/groups/{id}/inventory/{itemId}",
+            get(inventory_routes::groups_inventory_item_get)
+                .put(inventory_routes::groups_inventory_item_put)
+                .delete(inventory_routes::groups_inventory_item_delete),
+        )
+        .route(
+            "/api/v1/projects/{id}/inventory",
+            get(inventory_routes::projects_inventory_get)
+                .post(inventory_routes::projects_inventory_post),
+        )
+        .route(
+            "/api/v1/projects/{id}/inventory/{itemId}",
+            get(inventory_routes::projects_inventory_item_get)
+                .put(inventory_routes::projects_inventory_item_put)
+                .delete(inventory_routes::projects_inventory_item_delete),
+        )
+        // === end P4.D325 ===
         // === P4.6ay: Pascal's custom-tools route ===
         .route(
             "/api/v1/chats/{id}/custom-tools",

@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(inventory): the Inventory routes — one verb family for four tiers, transfers, object pictures, the chat actions, REST edges (P4.D325)
+
+_Versions: core 0.0.1325, web 0.0.245._
+
+Ports v4's Inventory route surface at `322a5488e` (`lib/inventory/routes/**`, the eight thin route files, `inventory/transfers`, `inventory/[itemId]/images`, `chats/[id]/actions/inventory.ts`) over the keystone's modules. One dispatch family, `inventory*` with `container: {scope, id}`, plus the item-image verbs and `chatInventoryGet / Equip / Unequip / ResetDefaults`; one `Response::Inventory` body. `api::inventory_route_factory` holds v4's order of checks (a collection write parses before it resolves, an item route finds the object before it parses), the per-tier configs and log lines, and `inventory_error_response`: every refusal answers `{error, details: {code, …}}` at v4's status (409, or 400 for `INVALID_SHAPE` / `NOT_A_PARTICIPANT` / `INVALID_SVG`), folder errors and the archived-character 409 included. The three reads never provision a store; create, instantiate and create-folder do. `api::inventory` is the General config and the transfers verb; `api::inventory_item_images` the picture route (list with the archetype fall-through, generate, upload, set-current, delete, save-targets, save-to-store, no `link-image`); `api::chat_inventory` the cast read and the operator's gestures, whose after-write effects go through an `InventoryChangeEffects` seam (unwired on this branch, loudly, until P4.D328's `notify_inventory_changed` lands at the union).
+
+REST: `/api/v1/inventory` (+ `/{itemId}`, `/transfers`, `/{itemId}/images`) and the character, group and project tiers' collection and item routes, rendered through a new `inventory_routes::render` that keeps a details-bearing 409 a 409 (the wardrobe edge's renderer answers 400 for any error with a `details` bag). The chat route gains `?action=inventory` (GET) and the three gestures (POST) at v4's list positions.
+
+New differential families over a new committed pair (`inventory-routes-{main,mount}.db`, built by `build-inventory-routes-fixture.ts` from the keystone's spec plus a stranger's character, store-free owners, an `svg` object and a user-controlled seat): `inventory_routes_equivalence` (168 cases, dispatch and REST drivers, bodies compared as bytes, the store dumped after each write) and `inventory_item_images_routes_equivalence` (49 cases). `dispatch_wrong_type_census` gains 26 rows; `web_edge_body_parse_guard` one.
+
 #### 2026-10-26 — feat(web): every error `details` bag rides the dispatch wire through one merge (P4.D325)
 
 _Versions: web 0.0.244._

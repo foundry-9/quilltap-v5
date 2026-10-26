@@ -43,6 +43,14 @@ use crate::state::SharedState;
 use crate::text_replacements_routes::{chat_get_background, dispatch_core, error_to_http};
 
 /// Unwrap a wardrobe-family body to the raw route shape.
+///
+/// **Its `details` arm answers 400 for ANY error carrying a bag** (written for
+/// the Inform verbs' Zod `Validation error`, which IS a 400). A details-bearing
+/// error at another status — the Inventory's `CAP_EXCEEDED` 409 — would answer
+/// 400 here, so the Inventory edges render through
+/// [`crate::inventory_routes::render`] instead (P4.D325 R-2; pinned by its
+/// `a_details_bearing_409_stays_409_here_and_not_in_unwrap_to_http`). Whether
+/// `render` should become the shared renderer is a follow-ups-round question.
 pub(crate) fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
         CoreResponse::Wardrobe(v)
@@ -556,6 +564,17 @@ pub async fn chat_action_get(
             }
         }
         // === end P4.D315 ===
+        // === P4.D325: the cast's Inventory (v4 `4fbdad186`) ===
+        // Rendered through `inventory_routes::render`, never `unwrap_to_http`
+        // (a refusal's `details` must keep its own status).
+        Some("inventory") => {
+            let req = CoreRequest::ChatInventoryGet { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(resp) => crate::inventory_routes::rendered(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // === end P4.D325 ===
         // === P4.D205 (v4 `e7d77bb60`) ===
         // `GET ?action=informs` — the pending batches for the composer's chip.
         Some("informs") => {
@@ -624,7 +643,9 @@ pub async fn chat_action_get(
 /// at `68da64d9b` — the old if-ladder's order; `83334b9a5` adds
 /// `scenario-source` before `cost`, P4.D295's read, served over
 /// `/api/dispatch` like the rest; `8d8618819` adds `wardrobe-history` after
-/// `outfit-summary` — sixteen keys at `e8e17b2d9`, `get.ts:66-88`, P4.D315):
+/// `outfit-summary` — sixteen keys at `e8e17b2d9`, `get.ts:66-88`, P4.D315;
+/// `4fbdad186` adds `inventory` after `wardrobe-history` — seventeen at
+/// `322a5488e`, P4.D325):
 /// the `availableActions` of the unknown/bare refusal.
 const CHAT_GET_ACTIONS: &[&str] = &[
     "export",
@@ -634,6 +655,8 @@ const CHAT_GET_ACTIONS: &[&str] = &[
     "outfit",
     "outfit-summary",
     "wardrobe-history",
+    // P4.D325 (v4 `4fbdad186`, `get.ts:77`): the cast's Inventory.
+    "inventory",
     "photo-albums",
     "informs",
     "group-stores",
@@ -679,6 +702,10 @@ const CHAT_POST_ACTIONS: &[&str] = &[
     "reclassify-danger",
     "equip",
     "wardrobe-rollback",
+    // P4.D325 (v4 `4fbdad186`, `post.ts:113-115`): the operator's Inventory gestures.
+    "inventory-equip",
+    "inventory-unequip",
+    "inventory-reset-defaults",
     "toggle-avatar-generation",
     "regenerate-avatar",
     "render-conversation",
@@ -747,6 +774,26 @@ pub async fn chat_action_post(
             };
             CoreRequest::ChatWardrobeRollback { chat_id, body }
         }
+        // === P4.D325: the operator's Inventory gestures (v4 `4fbdad186`) ===
+        // v4 parses `await req.json()` before the chat read, OUTSIDE any try:
+        // an unparseable body is the middleware's generic 500. Rendered through
+        // `inventory_routes::render` (a `CAP_EXCEEDED` 409 keeps its status).
+        "inventory-equip" | "inventory-unequip" | "inventory-reset-defaults" => {
+            let body = match crate::inventory_routes::parse_json_or_v4_500(&body) {
+                Ok(v) => v,
+                Err(r) => return *r,
+            };
+            let req = match action {
+                "inventory-equip" => CoreRequest::ChatInventoryEquip { chat_id, body },
+                "inventory-unequip" => CoreRequest::ChatInventoryUnequip { chat_id, body },
+                _ => CoreRequest::ChatInventoryResetDefaults { chat_id, body },
+            };
+            return match dispatch_core(&state, req).await {
+                Ok(resp) => crate::inventory_routes::rendered(resp, StatusCode::OK),
+                Err(r) => r,
+            };
+        }
+        // === end P4.D325 ===
         "regenerate-avatar" => {
             let body = match parse_body(&body, "Failed to queue avatar regeneration") {
                 Ok(v) => v,
@@ -947,5 +994,35 @@ mod p4d316_tests {
                 .unwrap()
         };
         assert_eq!(at("wardrobe-rollback"), at("equip") + 1, "v4's map order");
+    }
+
+    /// P4.D325: v4's Inventory keys at their map positions (`get.ts:76-78`,
+    /// `post.ts:112-116`).
+    #[test]
+    fn the_inventory_keys_sit_at_v4s_positions() {
+        let get = |a: &str| {
+            super::CHAT_GET_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        assert_eq!(get("inventory"), get("wardrobe-history") + 1);
+        assert_eq!(get("photo-albums"), get("inventory") + 1);
+        let post = |a: &str| {
+            super::CHAT_POST_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        assert_eq!(post("inventory-equip"), post("wardrobe-rollback") + 1);
+        assert_eq!(post("inventory-unequip"), post("inventory-equip") + 1);
+        assert_eq!(
+            post("inventory-reset-defaults"),
+            post("inventory-unequip") + 1
+        );
+        assert_eq!(
+            post("toggle-avatar-generation"),
+            post("inventory-reset-defaults") + 1
+        );
     }
 }

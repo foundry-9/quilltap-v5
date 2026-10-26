@@ -1096,3 +1096,15 @@ pub async fn group_wardrobe_instructions_set(
     )
     .await
 }
+
+// === P4.D325: inventory (the tier's route-factory config) ===
+/// `groups/[id]/inventory` (+ `/[itemId]`) — v4's thin route files' config:
+/// `{ scope: 'group', logTag: '[Groups v1]', logIdKey: 'groupId' }`. The handlers are
+/// the factory's (`super::inventory_route_factory`).
+pub const GROUP_INVENTORY: super::inventory_route_factory::InventoryRouteConfig =
+    super::inventory_route_factory::InventoryRouteConfig {
+        scope: crate::inventory::types::InventoryScope::Group,
+        log_tag: "[Groups v1]",
+        log_id_key: "groupId",
+    };
+// === end P4.D325 ===

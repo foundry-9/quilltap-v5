@@ -1919,6 +1919,18 @@ pub async fn project_wardrobe_instructions_set(
     .await
 }
 
+// === P4.D325: inventory (the tier's route-factory config) ===
+/// `projects/[id]/inventory` (+ `/[itemId]`) — v4's thin route files' config:
+/// `{ scope: 'project', logTag: '[Projects v1]', logIdKey: 'projectId' }`. The handlers are
+/// the factory's (`super::inventory_route_factory`).
+pub const PROJECT_INVENTORY: super::inventory_route_factory::InventoryRouteConfig =
+    super::inventory_route_factory::InventoryRouteConfig {
+        scope: crate::inventory::types::InventoryScope::Project,
+        log_tag: "[Projects v1]",
+        log_id_key: "projectId",
+    };
+// === end P4.D325 ===
+
 #[cfg(test)]
 mod create_schema_tests {
     use super::*;
