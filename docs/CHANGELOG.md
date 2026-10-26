@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — port(theme): Madman's Box theme set at `322a5488e`; SPA 0.5.882
+
+_Versions: SPA 0.5.882._
+
+`theme.json` gains three icon mappings and the `inventory`, `hand-raised` and `stop-sign` SVGs arrive as byte copies. Nothing in the SPA reads them yet.
+
 #### 2026-10-26 — port(docs): bring docs/v4 to `322a5488e` (494 → 502)
 
 _Docs-only change._
