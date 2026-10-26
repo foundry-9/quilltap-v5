@@ -335,7 +335,8 @@ async fn an_unplanted_boot_logs_none_of_the_guarded_lines() {
     booted.assert_line(STATE_SEEDED);
     booted.assert_tool_folder_restored();
     // P4.D248: v4's PHASE 3.1 over a sound instance — nothing recorded, the
-    // DEBUG summary over all eleven tables, and no problem line.
+    // DEBUG summary over all twelve tables (P4.D331's `log_entries` the
+    // second), and no problem line.
     booted.assert_structural(&[]);
     booted.assert_line(STRUCTURE_VERIFIED);
     booted.assert_silent("Structural table check failed");
@@ -347,7 +348,7 @@ async fn an_unplanted_boot_logs_none_of_the_guarded_lines() {
 /// verify-structural-tables.ts:73-74` at `e5c6bd0c0`; `context` FIRST — v4's
 /// child-logger merge).
 const STRUCTURE_VERIFIED: &str =
-    "DEBUG quilltap::boot Structural tables verified context=startup.verify-structural-tables checked=11";
+    "DEBUG quilltap::boot Structural tables verified context=startup.verify-structural-tables checked=12";
 
 /// v4's per-problem ERROR (`verify-structural-tables.ts:63-66`).
 fn structural_line(repository: &str, problem: &str) -> String {
@@ -359,7 +360,7 @@ fn structural_line(repository: &str, problem: &str) -> String {
 /// v4's summary ERROR (`verify-structural-tables.ts:75-79`).
 fn damaged_line(damaged: usize) -> String {
     format!(
-        "ERROR quilltap::boot Structural tables damaged; /api/health will report degraded until repaired context=startup.verify-structural-tables checked=11 damaged={damaged}"
+        "ERROR quilltap::boot Structural tables damaged; /api/health will report degraded until repaired context=startup.verify-structural-tables checked=12 damaged={damaged}"
     )
 }
 
@@ -1548,6 +1549,13 @@ const MOUNT_PASSED: &str =
 const LLM_PASSED: &str =
     "INFO quilltap::db LLM logs database integrity check passed module=database:llm-logs-protection";
 
+/// P4.D331: a degraded LLM-logs partition reports BOTH of its structural
+/// tables (`llmLogs`, then `logEntries` — v4's container order), each with
+/// v4's guard sentence.
+fn llm_degraded_problems() -> Vec<&'static str> {
+    vec![LLM_DEGRADED_PROBLEM; 2]
+}
+
 fn nine_mount_problems() -> Vec<&'static str> {
     vec![MOUNT_DEGRADED_PROBLEM; 9]
 }
@@ -1665,15 +1673,17 @@ async fn a_garbage_llm_logs_file_degrades_after_four_attempts_and_boots() {
     booted.assert_silent("Mount index cold-open failed");
     booted.assert_silent("LLM logs database connection established");
     booted.assert_silent("LLM logs database integrity check");
-    booted.assert_structural(&[LLM_DEGRADED_PROBLEM]);
+    booted.assert_structural(&llm_degraded_problems());
     booted.assert_lines_in_order(&[
         structural_line("llmLogs", LLM_DEGRADED_PROBLEM),
-        damaged_line(1),
+        structural_line("logEntries", LLM_DEGRADED_PROBLEM),
+        damaged_line(2),
     ]);
     booted.assert_silent("Verified dedicated-database table structure collection=llm_logs ");
+    booted.assert_silent("Verified dedicated-database table structure collection=log_entries ");
 }
 
-/// (c) Both siblings garbage: both degrade, ten problems (LLM logs first —
+/// (c) Both siblings garbage: both degrade, eleven problems (LLM logs first —
 /// v4's container order).
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn both_garbage_siblings_degrade_and_the_boot_goes_on() {
@@ -1686,10 +1696,10 @@ async fn both_garbage_siblings_degrade_and_the_boot_goes_on() {
     booted.host();
     booted.assert_line(&llm_failed(&booted));
     booted.assert_line(&mount_failed(&booted));
-    let mut want = vec![LLM_DEGRADED_PROBLEM];
+    let mut want = llm_degraded_problems();
     want.extend(nine_mount_problems());
     booted.assert_structural(&want);
-    booted.assert_line(&damaged_line(10));
+    booted.assert_line(&damaged_line(11));
 }
 
 /// (d) The state does not persist: a second boot over the same garbage walks
@@ -1786,7 +1796,7 @@ async fn an_integrity_failed_llm_logs_file_degrades_and_boots() {
         .count();
     assert_eq!(failed, 1, "captured:\n{}", booted.lines.join("\n"));
     booted.assert_silent("LLM logs database integrity check passed");
-    booted.assert_structural(&[LLM_DEGRADED_PROBLEM]);
+    booted.assert_structural(&llm_degraded_problems());
 }
 
 /// (6) The walk's C3 re-staged: with the mount index DEGRADED, moving a chat

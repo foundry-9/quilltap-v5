@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(db): log_entries joins the structural census — created at boot from the re-dump (P4.D331)
+
+_Versions: core 0.0.1325._
+
+`STRUCTURAL_TABLES` gains v4's `logEntries` row second (after `llmLogs`, before `helpDocChunks`), pasted from `table_shape_equivalence`'s regenerated literal at the `322a5488e` pin; the census is twelve tables. That is the whole provisioning of the Log's table (R-B): a fresh instance replays the keystone's re-dumped `llmLogs` block, and an existing instance gains `log_entries` on its next boot from `create_missing_structural_tables` — the quoted table, the quoted `createdAt` index and v4's two unquoted `onTableEnsured` indexes under one savepoint, exactly as v4's PHASE 3.1 creates it. No ensure, no `migrations_state` row, nothing in `host.rs`.
+
+New unit tests pin the created table's three index texts and the re-dump's seven `llmLogs` statements (read, never written). A degraded LLM-logs partition now reports two structural problems (`llmLogs`, `logEntries`), as v4 does: `host_boot_hardness` and the web `health_structure` test move with it. `table_shape_equivalence` (red-first: 3 of 7 tests failed on the unported tree) and `degraded_sibling_open_equivalence` regenerated from the pin, green.
+
 #### 2026-10-26 — docs(porting): P4.D333 lane record — the grammar twins, the one corpus regen, the vendored schema
 
 _Docs-only change._

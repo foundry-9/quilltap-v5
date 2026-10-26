@@ -195,7 +195,10 @@ async fn a_degraded_mount_index_answers_503_with_nine_problems() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn a_degraded_llm_logs_file_answers_503_with_one_problem() {
+/// P4.D331: the LLM-logs partition holds TWO structural tables at v4
+/// `322a5488e` (`llm_logs`, then the Log's `log_entries`), so a degraded file
+/// reports two problems, each with v4's guard sentence.
+async fn a_degraded_llm_logs_file_answers_503_with_two_problems() {
     let (status, body) = get_health_with_garbage("quilltap-llm-logs.db").await;
     assert_eq!(status, 503, "{body}");
     assert_eq!(body["status"], "degraded");
@@ -203,8 +206,8 @@ async fn a_degraded_llm_logs_file_answers_503_with_one_problem() {
         body["services"]["structure"],
         json!({
             "status": "degraded",
-            "message": "1 damaged table; reads through it answer empty",
-            "problems": ["LLM logs database unavailable: LLM logs database is in degraded mode"],
+            "message": "2 damaged tables; reads through them answer empty",
+            "problems": vec!["LLM logs database unavailable: LLM logs database is in degraded mode"; 2],
         })
     );
     assert_other_services_healthy(&body);

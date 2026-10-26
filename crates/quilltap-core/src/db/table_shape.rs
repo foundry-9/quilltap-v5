@@ -19,7 +19,9 @@
 //! insertion order (`lib/database/repositories/index.ts:174-216` — `llmLogs`
 //! FIRST), each with its schema's field list. It is GENERATED, never typed: the
 //! `census` rows of `harness/oracle/cases/table-shape.ts` (v4's REAL container +
-//! schemas) at `e5c6bd0c0`, and `table_shape_equivalence` diffs it
+//! schemas) at `322a5488e` (P4.D331: v4's Log added `logEntries` SECOND — the
+//! sixteenth D23 move, created at boot by this pass exactly as v4's PHASE 3.1
+//! creates it; no ensure, no `migrations_state` row), and `table_shape_equivalence` diffs it
 //! field-for-field — on a mismatch that test prints the regenerated literal.
 //! `services/provisioning/fresh_schema.json` is NOT the source: it is SQL text
 //! and may carry columns no schema names.
@@ -98,6 +100,19 @@ pub const STRUCTURAL_TABLES: &[StructuralTable] = &[
             "rawProviderUsage",
             "requestHashes",
             "durationMs",
+            "createdAt",
+            "updatedAt",
+        ],
+    },
+    StructuralTable {
+        repository: "logEntries",
+        collection: "log_entries",
+        partition: Partition::LlmLogs,
+        fields: &[
+            "id",
+            "message",
+            "chatId",
+            "characterId",
             "createdAt",
             "updatedAt",
         ],
@@ -667,10 +682,12 @@ mod tests {
                 Partition::Main => TableRead::Read(Ok(None)),
             })
         });
-        assert_eq!(problems.len(), 1);
+        // P4.D331: both llm-logs tables (`llm_logs`, `log_entries`) report.
+        assert_eq!(problems.len(), 2);
         assert_eq!(problems[0].repository, "llmLogs");
+        assert_eq!(problems[1].repository, "logEntries");
         assert!(
-            lines.iter().any(|l| l.ends_with("checked=2 damaged=1")),
+            lines.iter().any(|l| l.ends_with("checked=3 damaged=2")),
             "{lines:#?}"
         );
         assert!(
@@ -682,10 +699,11 @@ mod tests {
     }
 
     #[test]
-    fn the_census_is_eleven_tables_led_by_llm_logs() {
-        assert_eq!(STRUCTURAL_TABLES.len(), 11);
+    fn the_census_is_twelve_tables_led_by_llm_logs() {
+        assert_eq!(STRUCTURAL_TABLES.len(), 12);
         assert_eq!(STRUCTURAL_TABLES[0].collection, "llm_logs");
-        assert_eq!(STRUCTURAL_TABLES[1].collection, "help_doc_chunks");
+        assert_eq!(STRUCTURAL_TABLES[1].collection, "log_entries");
+        assert_eq!(STRUCTURAL_TABLES[2].collection, "help_doc_chunks");
     }
 
     /// Found at the `e5c6bd0c0` unification: `doc_mount_files`' sha256 index is
@@ -707,6 +725,71 @@ mod tests {
         assert!(
             has,
             "doc_mount_files was created without idx_doc_mount_files_sha256"
+        );
+    }
+
+    /// P4.D331: an existing instance gains `log_entries` from the committed
+    /// re-dump — the quoted table, the quoted `createdAt` index and v4's two
+    /// `onTableEnsured` indexes in their UNQUOTED spelling, byte for byte.
+    #[test]
+    fn a_created_log_entries_carries_its_two_unquoted_indexes() {
+        let llm = Connection::open_in_memory().unwrap();
+        let mut failures = EnsureFailures::default();
+        create_missing_structural_tables(None, Some(&llm), &mut failures);
+        assert!(failures.is_empty(), "{failures:?}");
+        let mut stmt = llm
+            .prepare(
+                "SELECT sql FROM sqlite_master WHERE type = 'index' \
+                 AND tbl_name = 'log_entries' AND sql IS NOT NULL ORDER BY name",
+            )
+            .unwrap();
+        let indexes: Vec<String> = stmt
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            indexes,
+            [
+                "CREATE INDEX idx_log_entries_characterId ON log_entries (\"characterId\", \"createdAt\" DESC)",
+                "CREATE INDEX idx_log_entries_chatId ON log_entries (\"chatId\", \"createdAt\" DESC)",
+                "CREATE INDEX \"idx_log_entries_createdAt\" ON \"log_entries\" (\"createdAt\" DESC)",
+            ]
+        );
+    }
+
+    /// P4.D331 item 3 (R-A): the keystone's re-dump is READ, never written
+    /// here — its `llmLogs` block holds seven statements in the dumper's order,
+    /// and `fresh_ddl_for` hands the structural pass exactly the four that are
+    /// `log_entries`'.
+    #[test]
+    fn the_redumped_llm_logs_block_carries_log_entries() {
+        let block: Vec<&str> = FRESH_SCHEMA["llmLogs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert_eq!(block.len(), 7, "{block:#?}");
+        assert!(block[0].starts_with("CREATE TABLE \"llm_logs\" ("));
+        assert_eq!(
+            block[1],
+            "CREATE TABLE \"log_entries\" (\n  \"id\" TEXT PRIMARY KEY NOT NULL,\n  \"message\" TEXT NOT NULL,\n  \"chatId\" TEXT NOT NULL,\n  \"characterId\" TEXT,\n  \"createdAt\" TEXT NOT NULL,\n  \"updatedAt\" TEXT NOT NULL\n)"
+        );
+        assert_eq!(
+            &block[2..],
+            [
+                "CREATE INDEX \"idx_llm_logs_createdAt\" ON \"llm_logs\" (\"createdAt\" DESC)",
+                "CREATE INDEX \"idx_llm_logs_userId\" ON \"llm_logs\" (\"userId\" ASC)",
+                "CREATE INDEX idx_log_entries_characterId ON log_entries (\"characterId\", \"createdAt\" DESC)",
+                "CREATE INDEX idx_log_entries_chatId ON log_entries (\"chatId\", \"createdAt\" DESC)",
+                "CREATE INDEX \"idx_log_entries_createdAt\" ON \"log_entries\" (\"createdAt\" DESC)",
+            ]
+        );
+        let ddl = fresh_ddl_for(Partition::LlmLogs, "log_entries");
+        assert_eq!(
+            ddl,
+            [block[1], block[4], block[5], block[6]].map(str::to_string)
         );
     }
 
