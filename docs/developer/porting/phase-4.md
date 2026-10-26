@@ -7307,6 +7307,38 @@ build on its Friday copy, or the union build after this round unifies
 verb; a Rust re-implementation of xterm's reflow; the wardrobe `participant`
 tier in `db/tiered_mount_pool.rs` (search keeps it).
 
+**Re-checked before carryout (2026-10-26) — the human's ruling: CARRY OUT
+AS ORDERED, no re-plan, the pin STAYS `322a5488e`.** The `/driftcheck` of
+2026-10-26 (`d1f7e0049`) found v4 32 commits further (`a0905454b`,
+`4.11.0-dev.87`; ledger §3, all UNPROCESSED), several on this round's
+surfaces: `0276d10d9` ("Refactor: Inventory chokepoints") changes what
+P4.D324 / P4.D325 / P4.D326 / P4.D328 / P4.D330 specify (duplicate's 404 →
+a Zod 400, whole-handler error mapping, the cast's `type` filter dropped,
+publishes moved into the locations, the pick-up no-vault text, helpers the
+orders pin deleted); `b15fe9404` (declared tool effects) and `839575d89`
+(operator intervention) layer onto P4.D328 / P4.D329 / P4.D331 – P4.D334's
+tools, grammar and run service; `a8214b253` / `bdd09b75b` MOVE the v4 line
+ranges P4.D328 / P4.D332 / P4.D335 cite (behaviour at the pin unchanged —
+read every citation in the PIN worktree, never in the live checkout); and
+P4.D339's `help/` vendor is overtaken. Re-pinning was weighed and rejected:
+a later pin would force every lane whose oracle crosses the spine or
+`buildContext` to absorb bugs 262–265 and the five new D23 moves, growing
+the round to ~30 lanes against a v4 moving ~5 commits a day. **No order is
+edited:** §R.2 already makes the probe an observation (lanes will see
+`322a5488e..main` = 32 commits, RECORD it, CONTINUE) and forbids porting a
+hunk newer than the pin. **The pin was measured ready the same day:** a
+fresh `322a5488e` worktree's `npm ci --offline` succeeds in ~6 s with
+`openai` 7.34.0, `@xterm/headless` 6.0.0, `@quilltap/plugin-types` 2.8.0
+and no `mermaid` — so the cure is now REQUIRED (the live root
+`node_modules` is at HEAD's tree: `plugin-types` 2.9.0 + the four diagram
+deps); the `qtap-plugin-curl` / `qtap-plugin-mcp` `node_modules` the third
+symlink class borrows carry `plugin-types` 2.9.0, INERT at the pin (both
+`index.ts` import it `import type` only; `plugin-utils` unchanged). **The 32
+go to the NEXT catch-up round, after this one unifies, `0276d10d9`'s
+Inventory riders and the three vault-key writers (`humanoid`,
+`canDrawDiagrams` / `diagramStyle`, `pronounGuidance` — ledger §1's
+LIVE-DATA hazards) FIRST.**
+
 **Recommended arrangement:** Wave 0's six worktrees at once (P4.D324 and
 P4.D333 on the Opus / Fable tier; P4.D335 Opus; P4.D332 / P4.D338 / P4.D339
 Sonnet), the three SPA lanes as slots free (P4.D330 Opus, the other two

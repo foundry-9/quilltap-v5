@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): record the ruling to carry out the `322a5488e` round as ordered
+
+_Docs-only change._
+
+The round's block in `phase-4.md` and the ledger's §1 record the human's decision to carry out the `322a5488e` round (P4.D324–P4.D340) without re-planning, despite the 32 v4 commits that landed after it was ordered. The pin was measured ready: a fresh `322a5488e` worktree's `npm ci --offline` succeeds with `openai` 7.34.0, `@xterm/headless` 6.0.0 and `plugin-types` 2.8.0; the curl / mcp plugin trees' `plugin-types` 2.9.0 is type-only at the pin. No work order changed. The 32 commits go to the next catch-up round, with the Inventory-chokepoint riders and the three vault-key writers first.
+
 #### 2026-10-26 — docs(porting): drift check — 32 v4 commits past `322a5488e` (Storyteller, Pascal intervention, keystone memories, the spine and context-manager refactors, diagrams)
 
 _Docs-only change._

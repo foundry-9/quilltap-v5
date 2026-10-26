@@ -389,7 +389,11 @@ probe verifies against._
   `custom-tools.md` ×4, `wardrobe.md`, `inventory.md`, `brahma-console.md`,
   `salon-host-introductions.md`, `character-editing.md`, …); `docs/releases/
   4.11.0.md` NEW. The live root `node_modules` is now at HEAD's tree — the
-  pin's `npm ci --offline` rebuild is REQUIRED, not merely safe.
+  pin's `npm ci --offline` rebuild is REQUIRED, not merely safe (MEASURED
+  2026-10-26 at a fresh `322a5488e` worktree: succeeds offline in ~6 s;
+  `openai` 7.34.0, `@xterm/headless` 6.0.0, `plugin-types` 2.8.0, no
+  `mermaid`). The curl / mcp plugin `node_modules` (third symlink class)
+  carry `plugin-types` 2.9.0 — inert at the pin (`import type` only).
 - **Help / docs:** `help/` is **131 files at the pin**, md5-identical
   (P4.D323); `docs/v4/` has 494 files with TWO recorded deferrals (the
   Inventory spec docs, round (2)'s — R-Q). Past the pin: `help/` is **135 at
@@ -426,22 +430,28 @@ probe verifies against._
     APPROVED by the human on 2026-10-21: `vt100` 0.18.1 (R-C, P4.D337) and
     `regress` (R-I, P4.D331's `regexp()` unit). The owed `e8e17b2d9`
     dogfood pass and the follow-ups smalls round stay queued (R-Z).
-  - **NEW 2026-10-26 — the 32 commits past `322a5488e`** want a further
-    catch-up round (or two) AFTER the ordered `322a5488e` round lands, at a
-    later pin — they rewrite surfaces that round ports at its pin
-    (`0276d10d9` the Inventory chokepoints; `a8214b253` / `bdd09b75b` move
-    the spine + `buildContext` the interrupts and Inventory lanes cite;
-    `b15fe9404` / `839575d89` reshape the Pascal grammar, run service and
-    tool catalog P4.D328–P4.D334 port). Natural lanes: the D23 keystone
-    (17th–21st moves in ONE re-dump; the `storyteller_rounds` provisioning
-    ruling first); tool effects + Storyteller; Pascal intervention (+ its
-    two riders); keystones + the inner circle + the rubric; the referent
-    ledger trio; bugs 262–265 on the spine / budget (after the ledger, since
-    263 counts its sections); bugs 258–261; the three vault-key writers
-    (`humanoid`, diagrams, `pronounGuidance` — the hazards above make these
-    the most urgent); the Novel template; the Inventory riders (`0276d10d9`,
-    `265b711dd`, `074e1e01a`'s holdings); SPA smalls (Brahma, punctuation
-    lint, diagrams — the dependency ruling first); help / docs re-vendor.
+  - **RULED 2026-10-26 (the human): the `322a5488e` round is carried out
+    AS ORDERED — no re-plan, the pin stays** (`phase-4.md`'s round block,
+    "Re-checked before carryout"). The pin was measured ready that day (a
+    fresh worktree's `npm ci --offline` → `openai` 7.34.0, `@xterm/headless`
+    6.0.0, `plugin-types` 2.8.0, no `mermaid`; the curl / mcp plugin
+    `node_modules` carry `plugin-types` 2.9.0, inert — type-only imports).
+    No order was edited: §R.2 makes the probe an observation.
+  - **The 32 commits past `322a5488e`** go to the NEXT catch-up round, at a
+    later pin, after this one unifies — they rewrite surfaces the ordered
+    round ports at its pin (`0276d10d9` the Inventory chokepoints;
+    `a8214b253` / `bdd09b75b` move the spine + `buildContext`; `b15fe9404` /
+    `839575d89` reshape the Pascal grammar, run service and tool catalog).
+    **First, by the ruling:** `0276d10d9`'s Inventory riders and the three
+    vault-key writers (`humanoid`, diagrams, `pronounGuidance` — the
+    LIVE-DATA hazards). Then the natural lanes: the D23 keystone (17th–21st
+    moves in ONE re-dump; the `storyteller_rounds` provisioning ruling
+    first); tool effects + Storyteller; Pascal intervention (+ its two
+    riders); keystones + the inner circle + the rubric; the referent-ledger
+    trio; bugs 262–265 on the spine / budget (after the ledger, since 263
+    counts its sections); bugs 258–261; the Novel template; `265b711dd` /
+    `074e1e01a`'s Inventory parts; SPA smalls (Brahma, punctuation lint,
+    diagrams — the dependency ruling first); help / docs re-vendor.
   - The owed dogfood pass (`dogfood-findings.md`'s standing note of
     2026-10-19; a Friday copy taken at ANY v4 point).
   - The follow-ups smalls round (the ready rider branch
