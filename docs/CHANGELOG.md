@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): P4.D334 order status — lane complete
+
+_Docs-only change._
+
+The Workbench SPA order's status header records the lane as complete: what landed, what stays gated on the sibling lanes (184 skipped rows, measured green against their real code), and where the hand-off list lives.
+
 #### 2026-10-26 — test(spa): a Playwright walk of the Workbench's grammar, the tier-1 fixtures README, and the lane record (P4.D334)
 
 _Versions: SPA 0.5.887._
