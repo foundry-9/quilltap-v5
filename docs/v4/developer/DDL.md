@@ -7,7 +7,7 @@ This document describes the three SQLite databases used by Quilltap, how to acce
 | Database | Filename | Purpose |
 |----------|----------|---------|
 | **Main** | `quilltap.db` | All application data: users, characters, chats, messages, projects, files, memories, settings, etc. |
-| **LLM Logs** | `quilltap-llm-logs.db` | LLM request/response debug data. Isolated so high-churn logging can't corrupt main data. |
+| **LLM Logs** | `quilltap-llm-logs.db` | LLM request/response debug data (`llm_logs`) and the characters' log (`log_entries`). Isolated so high-churn logging can't corrupt main data. |
 | **Mount Index** | `quilltap-mount-index.db` | Document mount point tracking: file inventory, checksums, text chunks, and embeddings for external document directories. |
 
 All three databases live in `<data-dir>/data/`. Alongside them:
@@ -321,6 +321,7 @@ CREATE TABLE "characters" (
   "defaultSystemPromptId" TEXT DEFAULT NULL,
   "canDressThemselves" INTEGER DEFAULT NULL,
   "canCreateOutfits" INTEGER DEFAULT NULL,
+  "canManageInventory" INTEGER DEFAULT NULL,  -- Offered the inventory_* tools; NULL reads as on.
   "characterDocumentMountPointId" TEXT DEFAULT NULL,
   "archivedAt" TEXT DEFAULT NULL,            -- ISO timestamp when the character was archived into a tombstone.
   "archiveFileId" TEXT DEFAULT NULL,         -- File row holding the archived character bundle export.
@@ -675,6 +676,7 @@ CREATE TABLE "chats" (
   "cycleOrderParticipantIds" TEXT DEFAULT '[]',  -- JSON array of participantIds still to speak this cycle, in order. Drawn once per cycle (talkativeness-weighted, sampled without replacement) by resolveCycleOrder; struck from as each seat speaks. Empty = cycle spent, next selection draws afresh. Added by add-cycle-order-column-v1.
   "sceneState" TEXT DEFAULT NULL,
   "equippedOutfit" TEXT DEFAULT NULL,  -- JSON map { [characterId]: { top: [], bottom: [], footwear: [], accessories: [], hair: [] } }, each slot an array of wardrobe item ids (layering order significant). Unconstrained JSON: rows written before a slot existed simply lack the key and parse with an empty array.
+  "equippedInventory" TEXT DEFAULT NULL,  -- JSON map { [characterId]: string[] } of Inventory object ids each character carries in this chat (sorted, deduplicated). Patch-only: written solely by ChatsRepository.setEquippedInventory, never by a whole-row update. Added by add-chat-equipped-inventory-v1.
   "pendingOutfitNotifications" TEXT DEFAULT NULL,
   "characterAvatars" TEXT DEFAULT NULL,  -- JSON map { [characterId]: { imageId, generatedAt, afterMessageCount } } where imageId is a vault link id (post-photos-Phase-3); pre-cutover values were legacy files.id and are translated by the migration.
   "avatarGenerationEnabled" INTEGER DEFAULT NULL,
@@ -862,6 +864,8 @@ CREATE TABLE "terminal_sessions" (
   "exitedAt" TEXT,
   "exitCode" INTEGER,
   "transcriptPath" TEXT,
+  "cols" INTEGER DEFAULT NULL,
+  "rows" INTEGER DEFAULT NULL,
   FOREIGN KEY ("chatId") REFERENCES "chats" ("id") ON DELETE CASCADE
 );
 
@@ -880,6 +884,8 @@ CREATE INDEX "idx_terminal_sessions_startedAt" ON "terminal_sessions" ("startedA
 | exitedAt | TEXT (ISO 8601, nullable) | Session exit timestamp; `null` if session is still active |
 | exitCode | INTEGER (nullable) | Process exit code; `null` if session is still active |
 | transcriptPath | TEXT (nullable) | Relative path to transcript file if recorded; `null` if not recorded |
+| cols | INTEGER (nullable) | Terminal width at spawn, updated to its final value on exit; `terminal_read` replays an exited session's transcript at this size. `null` for sessions before 4.11 (read back at 80) |
+| rows | INTEGER (nullable) | Terminal height, as `cols` (`null` reads back at 24) |
 
 ### conversation_annotations
 
@@ -995,7 +1001,7 @@ CREATE TABLE "chat_messages" (
   "confirmationRevised" INTEGER DEFAULT NULL, -- Answer confirmation: shown content is a re-affirmation rewrite of the original.
   "confirmationNotes" TEXT DEFAULT NULL,      -- Answer confirmation: cheap-LLM discrepancy explanation (badge hover text).
   "confirmationOriginalContent" TEXT DEFAULT NULL, -- Answer confirmation: pre-revision text retained for the logs when confirmationRevised.
-  "pascalMeta" TEXT DEFAULT NULL,             -- Pascal the Croupier (custom pseudo-tools): JSON { tool, toolTitle?, chipLabel?, definitionTier, definitionMountId, params, rollForm, notation?, raw, diceRolls?, value, state, outcomeIndex, metadataTested?, llm?, effects?, invokedBy, triggerPhrase?, callerParticipantId? } on systemSender='pascal' messages. `toolTitle` is the display title at roll time; absent on rows written before it existed, where readers fall back to `tool`. `chipLabel` is the definition's chipLabel template rendered at roll time — the per-run label the Salon chip and the bubble heading share; absent on older rows and unlabelled tools, where readers fall back to `toolTitle`, then `tool`. `metadataTested` records the keys the winning row consulted at their roll-time values. `llm` records an LLM consult when the definition declared one: { ok, output, prompt, reason?, provider?, model? } — output is the model's trimmed answer, or the author's errorMessage when the consult failed (`reason` holds the technical cause). `effects` records the side effects the run applied, in order: [{ target, previous?, next, tier? }] — the raw target as written ('state.encounter.count' / 'metadata.lockpick'), the prior value when there was one, what was written, and (state targets only) which tier the write landed in; absent when the run declared or applied none. A wardrobe effect records one entry per change that landed, with target 'wardrobe.wear' / 'wardrobe.take_off' / 'wardrobe.clear_slot', `previous` the character's EquippedSlots before the change, and `next` = { item?: { id, title }, slot?, slotsAffected, effect: 'layered' | 'replaced' | 'removed' | 'cleared', slots } (the slots after it; `item` absent on clear_slot). `invokedBy` is 'llm' (a model's `run_custom`), 'user' (the operator's popup) or 'trigger' (a trigger phrase said in the chat, with the phrase as written in `triggerPhrase`). The Salon body shows none of it — the bubble stays the author's message; this column carries the audit. The server-side roll record — authoritative, so a model cannot fudge a failure into a success (nor its recorded consequences). NULL on every non-Pascal message. Added by add-pascal-message-meta-v1; chipLabel/effects/triggerPhrase ride the JSON column with no migration.
+  "pascalMeta" TEXT DEFAULT NULL,             -- Pascal the Croupier (custom pseudo-tools): JSON { tool, toolTitle?, chipLabel?, definitionTier, definitionMountId, params, rollForm, notation?, raw, diceRolls?, value, state, outcomeIndex, metadataTested?, llm?, effects?, invokedBy, triggerPhrase?, callerParticipantId? } on systemSender='pascal' messages. `toolTitle` is the display title at roll time; absent on rows written before it existed, where readers fall back to `tool`. `chipLabel` is the definition's chipLabel template rendered at roll time — the per-run label the Salon chip and the bubble heading share; absent on older rows and unlabelled tools, where readers fall back to `toolTitle`, then `tool`. `metadataTested` records the keys the winning row consulted at their roll-time values. `llm` records an LLM consult when the definition declared one: { ok, output, prompt, reason?, provider?, model? } — output is the model's trimmed answer, or the author's errorMessage when the consult failed (`reason` holds the technical cause). `effects` records the side effects the run applied, in order: [{ target, previous?, next, tier? }] — the raw target as written ('state.encounter.count' / 'metadata.lockpick'), the prior value when there was one, what was written, and (state targets only) which tier the write landed in; absent when the run declared or applied none. A wardrobe effect records one entry per change that landed, with target 'wardrobe.wear' / 'wardrobe.take_off' / 'wardrobe.clear_slot', `previous` the character's EquippedSlots before the change, and `next` = { item?: { id, title }, slot?, slotsAffected, effect: 'layered' | 'replaced' | 'removed' | 'cleared', slots } (the slots after it; `item` absent on clear_slot). An Inventory effect records one entry per object that landed, with target 'inventory.equip' / 'inventory.unequip' / 'inventory.pick_up', `previous` the character's equipped object ids before the gesture, and `next` = { item: { id, title }, created?, equipped } (the ids after it; `created` marks an instance the gesture made). `invokedBy` is 'llm' (a model's `run_custom`), 'user' (the operator's popup) or 'trigger' (a trigger phrase said in the chat, with the phrase as written in `triggerPhrase`). The Salon body shows none of it — the bubble stays the author's message; this column carries the audit. The server-side roll record — authoritative, so a model cannot fudge a failure into a success (nor its recorded consequences). NULL on every non-Pascal message. Added by add-pascal-message-meta-v1; chipLabel/effects/triggerPhrase ride the JSON column with no migration.
   "routeTrail" TEXT DEFAULT NULL              -- Message route trail: JSON [{ profileId, profileName, provider, modelName, via, outcome, trigger?, evidence?, profileKind?, detail? }] — every profile tried for this turn, in the order tried. `via` says how the profile came to be asked ('primary' | 'retry' | 'concierge' | 'understudy' | 'tier-pick'); `outcome` is 'answered' | 'failed' (fell over on its own) | 'refused' (declined on content grounds); `trigger` is the fallback engine's failure class ('auth' | 'rate-limit' | 'network' | 'model-missing' | 'provider-error' | 'empty-response' | 'moderation-refusal'), absent on the entry that answered; `evidence` says how a refusal was established ('typed-error' — the plugin threw a moderation rejection — 'provider-code', 'finish-reason' and 'message-pattern' — the provider said so, by code, stop reason or wording — or 'inferred' from an empty body on a Concierge-flagged turn); `profileKind` is 'image' when the entry names an image profile (absent = a connection profile); `detail` is a short reason capped at 200 chars, never the full error body. The last entry always agrees with this row's provider/modelName, which stay authoritative for who answered. NULL on every message whose turn had no failure (nearly all of them — a one-entry trail would say nothing provider/modelName do not). Besides assistant turns, image-bearing rows carry an image trail when a picture was refused on the way: the TOOL row of a generate_image call and the Lantern / Aurora announcement (written by generateImageWithConciergeFailover). JSON only — no schema migration. Added by add-route-trail-message-column-v1.
 );
 
@@ -1797,6 +1803,31 @@ CREATE TABLE "migrations_metadata" (
   "value" TEXT NOT NULL
 );
 ```
+
+### log_entries
+
+```sql
+CREATE TABLE "log_entries" (
+  "id" TEXT PRIMARY KEY,
+  "message" TEXT NOT NULL,
+  "chatId" TEXT NOT NULL,
+  "characterId" TEXT,
+  "createdAt" TEXT NOT NULL,
+  "updatedAt" TEXT NOT NULL
+);
+
+CREATE INDEX "idx_log_entries_createdAt" ON "log_entries" ("createdAt" DESC);
+CREATE INDEX "idx_log_entries_chatId" ON "log_entries" ("chatId", "createdAt" DESC);
+CREATE INDEX "idx_log_entries_characterId" ON "log_entries" ("characterId", "createdAt" DESC);
+```
+
+The log: short lines written by characters (`log_create_entry`) and by Pascal custom tools (the `log` side effect), readable by characters through `log_grep` and `log_read`. Created by `LogEntriesRepository` from the Zod schema in `lib/schemas/log-entry.types.ts`; there is no migration. The table is instance-wide: every chat and every character reads and writes the same one.
+
+`message` is 1 to 4000 characters, written once and never edited (`updatedAt` equals `createdAt`). It is plain text, not compressed. `chatId` is the chat the line was written from. `characterId` is the calling character, or NULL when the operator ran a tool with no character seat. `createdAt` / `updatedAt` are ISO-8601 text.
+
+The LLM logs connection registers a SQL function `regexp(pattern, value[, flags])` (`lib/database/backends/sqlite/regexp-function.ts`), so `message REGEXP 'pat'` works in this database. It uses JavaScript `RegExp`; flags are `i`, `m`, `s`, `u`. `log_grep` and `searchMessages` use it.
+
+Pruning: the `LLM_LOG_CLEANUP` job deletes rows older than the LLM logging retention days (`chatSettings.llmLoggingSettings.retentionDays`, default 30, 0 keeps forever), even when LLM logging itself is off. The table is not part of `.qtap` exports or logical backups (treated like `llm_logs`); a physical backup of the llm-logs database includes it. In the job child, writes are buffered and land when the job commits.
 
 ### SQLite statistics tables (auto-managed)
 

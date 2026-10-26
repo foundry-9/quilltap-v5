@@ -4,17 +4,17 @@
 //! Three pins over a REAL fresh-provisioned instance:
 //!
 //!   1. **The boot reconcile runs.** `Host::start` alone leaves `help_docs` at
-//!      the shipped tree's 131 rows with their section chunks — the
+//!      the shipped tree's 135 rows with their section chunks — the
 //!      `reconcile_help_docs_at_boot` call in `assemble` (v4's Phase 3.66
 //!      `ensureHelpDocsSynced`, EAGER at startup since `492771aff`; until then
 //!      v4 only reconciled lazily from `HelpSearch.loadFromDatabase()` and this
 //!      boot call was a recorded divergence — CONVERGED). Removing that call
 //!      reads 0 (the lane record's mutation).
 //!   2. **A second boot writes nothing.** The `contentHash` sync: every row
-//!      keeps its `updatedAt`, and the count stays 131.
+//!      keeps its `updatedAt`, and the count stays 135.
 //!   3. **`EMBEDDING_REINDEX_ALL` re-syncs from the EMBEDDED table.** With the
 //!      table emptied by hand, one reindex-all job pumped through the host's
-//!      registry restores all 131 rows. Tests run with cwd = the crate dir,
+//!      registry restores all 135 rows. Tests run with cwd = the crate dir,
 //!      which has NO `help/` — so restoring the retired `current_dir()` walk in
 //!      the registration reads an empty tree and leaves 0 rows (the lane
 //!      record's second mutation).
@@ -123,7 +123,12 @@ async fn boot_syncs_the_embedded_help_tree_and_reindex_reads_it() {
     // 131 at v4 `e8e17b2d9` (131, P4.D323): four pages re-vendored, none
     // added or retired — `character-gallery`, `custom-tools`,
     // `pascals-workbench`, `wardrobe`. Measured GREEN before and after.
-    assert_eq!(expected, 131, "the vendored tree at v4 01a83539d");
+    //
+    // 135 at v4 `322a5488e` (131 + 4, P4.D339): `interrupting`, `inventory`,
+    // `project-inventory`, `the-log` added; eighteen pages re-vendored. The
+    // assertion message now names the pin (it had read `01a83539d` since
+    // P4.D278). Measured RED at 135 vs 131 before the move.
+    assert_eq!(expected, 135, "the vendored tree at v4 322a5488e");
 
     // ── 1. The boot ensure. ──
     let host = Host::start(hermetic_config(dir.path())).unwrap();

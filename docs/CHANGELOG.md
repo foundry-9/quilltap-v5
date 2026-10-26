@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — port(help): re-vendor help/ whole at v4 `322a5488e` (131 → 135)
+
+_No crate versions bumped._
+
+Four pages added (`interrupting`, `inventory`, `project-inventory`, `the-log`) and eighteen overwritten, byte-exact from the pin. `help_tree_embed_guard`'s count and `host_help_docs_boot`'s literal move 131 → 135 (red first); the boot test's message now names the pin. `help_tree_equivalence` and `help_section_size_equivalence` green against oracles regenerated at the pin.
+
 #### 2026-10-26 — docs(porting): P4.D338 lane record — the four smalls
 
 _Docs-only change._

@@ -35,8 +35,9 @@ This document tracks planned features and improvements for Quilltap.
 
 ### Pascal the Croupier — the Inventory
 
-- [ ] The Inventory — objects a character carries, in four tiers, with archetypes, kits and per-chat equipped state (design: [inventory.md](inventory.md))
-- [ ] Inventory tools and Pascal support — the `inventory_*` family, the `inventory` / `inventoryCount` subjects, `$inventory` operand, placeholders and the `inventory` effect (design: [inventory-tools-and-pascal.md](inventory-tools-and-pascal.md); depends on the Inventory)
+- [x] The Inventory — objects a character carries, in four tiers, with archetypes, kits and per-chat equipped state (design: [complete/inventory.md](complete/inventory.md))
+- [x] Inventory tools and Pascal support — the `inventory_*` family, the `inventory` / `inventoryCount` subjects, `$inventory` operand, placeholders and the `inventory` effect (design: [complete/inventory-tools-and-pascal.md](complete/inventory-tools-and-pascal.md))
+- [x] Broader custom-tool gates — the `inventoryAggregate` subject (names, titles and `metadata` folded over the equipped, owned or reachable objects; per-entry list tests; `.min` / `.max` / `.sum` / `.count`), and OR as a one-level any-of array in gates and `when` tests (design: [complete/pascal-gate-broadening.md](complete/pascal-gate-broadening.md))
 
 ### Game and State (Pascal the Croupier)
 

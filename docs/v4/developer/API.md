@@ -31,7 +31,7 @@ API reference for Quilltap v4.3 and later.
 > - **Connection-profile fallback chains** — `fallbackProfileId` (the understudy) and `allowTierFallback` on connection profiles. Chains are capped at three attempts and never recurse. See [Connection Profiles](#connection-profiles).
 > - **Image-profile LoRA adapters and model options** — the reserved `loras` parameter key (validated by `ImageLoraSpecSchema`), the per-model `loraSupport` block on the models response, and `POST /api/v1/image-profiles?action=lora-metadata` for reading a LoRA source's public HuggingFace card.
 > - **Four-state Concierge** — `conciergeState` (`'monitored' | 'flagged' | 'vouched' | 'uncensored'`) on `POST /api/v1/chats` and `PUT /api/v1/chats/[id]`, applied through the one transition chokepoint `applyConciergeFlip`. *Superseded in 4.10 by the three states; see below.*
-> - **Chat-action set (current)** — `accessible-stores`, `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `cost`, `danger-classification`, `documents`, `export`, `export-markdown`, `group-stores`, `mailbox`, `memories`, `merge`, `outfit`, `outfit-summary`, `participants`, `impersonation-voice-preview`, `inform`, `photo-albums`, `rebuild-summary`, `recall-replay`, `regenerate-avatar`, `render-conversation`, `retry-image-uncensored`, `rng`, `run-tool`, `save-image`, `scenario`, `send-mail`, `state`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`, `wardrobe-history`, `wardrobe-rollback`. This supersedes the v4.3 list above.
+> - **Chat-action set (current)** — `accessible-stores`, `agent-mode`, `announcement`, `announcement-preview`, `avatars`, `bulk`, `cost`, `danger-classification`, `documents`, `export`, `export-markdown`, `group-stores`, `mailbox`, `memories`, `merge`, `outfit`, `outfit-summary`, `participants`, `impersonation-voice-preview`, `inform`, `photo-albums`, `rebuild-summary`, `recall-replay`, `regenerate-avatar`, `render-conversation`, `retry-image-uncensored`, `rng`, `run-tool`, `save-image`, `scenario`, `send-mail`, `state`, `stop-turn`, `raise-hand`, `story-background`, `tags`, `title`, `toggle-avatar-generation`, `tools`, `turn`, `wardrobe-history`, `wardrobe-rollback`. This supersedes the v4.3 list above.
 > - **Scenario changed mid-chat** — `POST /api/v1/chats/[id]?action=scenario`; the Host announces the change as a revision.
 > - **Archivable scenarios and wardrobe items** — archived rows drop out of every listing unless `includeArchived` is passed.
 
@@ -2229,6 +2229,45 @@ Every GENERATED image file linked to a wardrobe item in the character's wearable
 
 ---
 
+### Inventory (Pascal the Croupier)
+
+One `.json` file per object under a tier's `Inventory/` folder; four tiers, one route factory (`lib/inventory/routes/inventory-route-factory.ts`). Every object on the wire is **resolved**: an instance carries its archetype's fields where it does not override them, plus `overriddenFields`, `parentMissing`, `parentName` and `origin`. Refusals answer `409` (or `400`) with `details.code`: `ARCHETYPE_IN_USE` (with `dependents` and `holders`), `ARCHIVED_DEPENDENTS` (with `characters`), `NOT_COPYABLE`, `CAP_EXCEEDED` (with `itemId`, `itemName`, `cap`), `INVALID_PARENT`, `KIT_NESTING`, `KIT_STRANDED` (with `itemId`, `kits`: a move that would leave kits naming an object they can no longer reach), `NOT_EQUIPPABLE`, `INVALID_SHAPE` (400), `NOT_A_PARTICIPANT` (400), `INVALID_SVG` (400). A write to an archived character's vault is `409`.
+
+#### Collection — `/api/v1/characters/[id]/inventory`, `/api/v1/groups/[id]/inventory`, `/api/v1/projects/[id]/inventory`, `/api/v1/inventory` (Quilltap General)
+
+- `GET` — `{ mountPointId, items }`, the tier's objects (`?includeArchived=true` adds archived ones). The character tier's `?shared=true` lists the character's whole reachable pool (own > group > project > General), each tagged with its `origin`; `?projectId=` / `?chatId=` name the project tier.
+- `GET ?action=folders` — `{ folders: [{ path, name, itemCount }] }`. A read probe; nothing is provisioned.
+- `GET ?action=archetypes` — `{ items }`, the archetypes reachable from this tier (a character's with `?projectId=` / `?chatId=`), for the instantiate picker.
+- `POST` — create a standalone object, archetype or kit (`createInventorySchema`: `name`, `title`, `description`, `imageDescription`, `equippedByDefault`, `maxEquipped`, `canCopy`, `isArchetype`, `kind`, `itemIds`, `emoji`, `svg`, `metadata`, `folder`). A kit's members must resolve from this tier, never a kit. `svg` is sanitised (≤ 16 KB). Answers `201 { item }`.
+- `POST ?action=instantiate` — `{ archetypeId, folder?, overrides?, projectId?, chatId? }`: a sparse instance of a reachable archetype. Answers `201 { item }`.
+- `POST ?action=duplicate` — `{ itemId }`: a copy beside the original, titled "(copy)", keeping its name (kin); `NOT_COPYABLE` when `canCopy` is false.
+- `POST ?action=create-folder` / `rename-folder` / `delete-folder` — the wardrobe's folder rules (`{ path }`, `{ path, name }`).
+- `POST ?action=move-items` / `copy-items` — `{ itemIds, folder }`; a copy refuses any object with `canCopy: false`.
+
+#### Item — `…/inventory/[itemId]`
+
+- `GET` — `{ item }`. `GET ?action=dependents` — `{ dependents }`, an archetype's instances in every mount (holder, scope, whether the holder is archived).
+- `PUT` — `updateInventorySchema` (any field, nothing defaulted; `archived` archives, `imageFileId` must be one of the object's own pictures). On an instance a field set to `null` overrides the archetype with "none".
+- `PUT ?action=clear-override` — `{ fields }`: remove an instance's overrides so they inherit again.
+- `PUT ?action=detach` — bake the resolved values into the instance and drop its `parentId`.
+- `DELETE` — an archetype with dependents is `ARCHETYPE_IN_USE` unless `?force=true`, which bakes every instance first (refused with `ARCHIVED_DEPENDENTS` while an archived character holds one). A deleted object leaves its tier's kits. Answers `{ success, detached }`.
+
+#### `POST /api/v1/inventory/transfers`
+
+`{ action: 'move' | 'copy', itemId, from: { scope, id }, to: { scope, id } }`. A move keeps the id (equipped sets and kits still name it); a copy mints one and is refused when the object's resolved `canCopy` is false. Folder path kept; pictures travel. Answers `{ item }`.
+
+#### `/api/v1/inventory/[itemId]/images?scope=<scope>&id=<containerId>`
+
+The wardrobe item images route's shape over `Inventory/images/<itemId>/`: `GET` (an instance with none of its own lists its archetype's, `inherited: true`), `POST ?action=generate` (subject `imageDescription ?? description ?? name`; log type `INVENTORY_ITEM_IMAGE`), `upload`, `set-current`, `delete-image`, `GET ?action=save-targets`, `POST ?action=save-to-store`.
+
+#### Chat actions
+
+- `GET /api/v1/chats/[id]?action=inventory` — `{ inventory: { [characterId]: { equipped: ResolvedInventoryItem[], kits: { [kitId]: 'all' | 'some' | 'none' } } }, projectId }` for every seated character.
+- `POST /api/v1/chats/[id]?action=inventory-equip` / `inventory-unequip` — `{ characterId, ids }` (objects or kits). Equip answers `{ equipped, created, skipped, alreadyEquipped }`; unequip `{ unequipped, notEquipped }`. One Pascal line per call.
+- `POST /api/v1/chats/[id]?action=inventory-reset-defaults` — `{ characterId }`: clear the character's entry and re-apply the equipped-by-default set. Answers `{ equipped }`.
+
+---
+
 ### Chats
 
 #### `GET /api/v1/chats`
@@ -2593,6 +2632,40 @@ Re-attribute multiple messages from one participant to another in a single opera
   "memoriesDeleted": 7
 }
 ```
+
+#### `POST /api/v1/chats/[id]?action=stop-turn`
+
+Hard-stop the chat's open Salon stream(s) (`lib/chat/turn-control.ts`). A room with a rotation (not autonomous) is set `isPaused: true` first, so the chain's next decision reads it. The stream then stops listening to the provider, keeps the prose that had streamed as the character's reply (tools already run are kept; reasoning is dropped), and closes with `chainComplete` reason `stopped`. The response comes back once the stream has settled, or after 15 s.
+
+**Request Body**: none.
+
+**Response**: `200 OK`
+
+```json
+{ "stopped": 1, "settled": true, "paused": true }
+```
+
+`stopped: 0` means no stream was open in this process.
+
+#### `POST /api/v1/chats/[id]?action=raise-hand`
+
+Raise (or lower) the operator's hand on the chat's open Salon stream. The next LLM turn built afterwards is asked, in a trailing Turn note, whether to `[YIELD]`; the stream reports the answer with a `handAnswered` SSE event, and a yield closes the chain with `chainComplete` reason `yielded` (not paused).
+
+**Request Body**:
+
+```json
+{ "raised": true }
+```
+
+`raised` defaults to `true`.
+
+**Response**: `200 OK`
+
+```json
+{ "raised": true, "active": true }
+```
+
+`active: false` means no stream was open, so the floor is already the operator's.
 
 #### `POST /api/v1/chats/[id]?action=turn`
 
@@ -3340,11 +3413,13 @@ Dry-run a definition through the same `executeCustomTool` core live chats use. *
 
 `metadata` may instead be `{ "characterId": "uuid" }`, in which case the server hydrates that character and uses their real `metadata.json` (404 for an unknown id; a broken vault returns 422 with the reason).
 
+An optional `inventory` array mocks the rolling character's bag: `[{ "ref": "sword", "state": "equipped", "count": 1 }]` (`state` one of `equipped` / `carried` / `reachable` / `absent`; `count` defaults to 1 when equipped, else 0; at most 64 rows). `inventory` / `inventoryCount` tests, inventory gates (the `gate` verdict) and the audit read it; a reference no row names reads `absent`. Absent or empty → no bag at all, and every inventory test declines. `{{inventory.*}}` fields render as written and `$inventory` falls back, since the mock names states, not objects.
+
 **Response**: `200 OK` — the full run result (`tool`, `params`, `rollForm`, `raw`, `value`, `state`, `outcomeIndex`, rendered `message`, `diceBreakdown`, `visibility`, and `metadataTested` when the winning row consulted the sheet). An invalid definition returns 400 with the loader's rejection sentence; a run-time refusal (e.g. an inverted range after `$param` substitution) returns 422.
 
 #### `POST /api/v1/custom-tools?action=audit`
 
-Monte Carlo table audit: 10,000 draws with roll + outcome matching only (no template rendering). Body is the preview body without `private`; `metadata` resolves the same way and is threaded into the match subjects so metadata-gated rows can fire.
+Monte Carlo table audit: 10,000 draws with roll + outcome matching only (no template rendering). Body is the preview body without `private` (`inventory` included, held fixed across every draw); `metadata` resolves the same way and is threaded into the match subjects so metadata-gated rows can fire.
 
 **Response**: `200 OK`
 
@@ -3870,11 +3945,15 @@ copy.
 
 ### Photo Gallery
 
-The user's personal image gallery, stored at `<userUploadsMountPointId>/photos/` and deduped by SHA-256. Backed by `lib/photos/user-gallery-service.ts`.
+The user's personal image gallery: a roll-up of the `photos/` folder in every enabled non-character store, deduped by SHA-256. Saves land in `<userUploadsMountPointId>/photos/`. Character vaults are left out of the roll-up; each one is that character's own album. Backed by `lib/photos/user-gallery-service.ts`.
 
 #### `GET /api/v1/photos`
 
-List the user's gallery. Supports optional `query`, `tags`, and pagination parameters.
+List the user's gallery. Supports optional `q`, `tag` (repeatable), `limit` and `offset`. With `album=<mountPointId>`, lists that one store's `photos/` folder instead, character vaults included. Returns `404` for an unknown or disabled album.
+
+#### `GET /api/v1/photos?action=albums`
+
+Every album the `/photos` selector offers, as `{ albums: PhotoAlbumOption[] }` (`listAllPhotoAlbumOptions`): characters (archived vaults left out), projects, document stores and Quilltap General.
 
 #### `POST /api/v1/photos`
 
@@ -3886,7 +3965,7 @@ Get a single gallery entry with its link summary. `[id]` is a `doc_mount_file_li
 
 #### `DELETE /api/v1/photos/[id]`
 
-Remove a gallery entry. Cascades to chunks; garbage collection drops the underlying file row if this was its last link.
+Remove a gallery entry. Refuses a link in a character vault: use `DELETE /api/v1/characters/[id]/photos/[linkId]` for those. Cascades to chunks; garbage collection drops the underlying file row if this was its last link.
 
 ---
 
@@ -6617,6 +6696,8 @@ The full list lives in `lib/tools/*-tool.ts`. Highlights:
 | `upsert_annotation` / `delete_annotation` | Manage conversation annotations | Always available |
 | `wardrobe_list` / `wardrobe_read` / `wardrobe_wear` / `wardrobe_take_off` | Browse/inspect/wear/remove wardrobe items (own + project + Quilltap General) | `canDressThemselves` |
 | `wardrobe_create` / `wardrobe_update` / `wardrobe_archive` | Author/edit/retire wardrobe items (own items only for edit/archive) | `canCreateOutfits` |
+| `inventory_list` / `inventory_read` / `inventory_equip` / `inventory_unequip` / `inventory_pick_up` / `inventory_create` / `inventory_update` / `inventory_archive` / `inventory_give` | The objects a character carries (category `inventory`): list with states, read one, equip / unequip, pick up an instance of a reachable archetype, make / amend / archive their own, give one of their own to another participant | `canManageInventory` (null = on); never on the Brahma Console or the Scenario Builder |
+| `log_create_entry` / `log_grep` / `log_read` | The Log (category `log`, group "The Log"): write a line stamped with the current chat and character; JavaScript-regex search over every entry; read by chat, character (name or id) and ISO-8601 date range. grep/read answer `{ entries: [{ id, message, conversationId, characterId, characterName, createdAt }], count, limit }` over the whole instance. Store: `log_entries` in the LLM logs database | On by default in the Salon; per-chat/project tool settings can switch each off; never on the Brahma Console |
 | `submit_final_response` | Agent-mode wrap-up | Agent mode only |
 | `request_full_context` | Request full context expansion | Context compression enabled |
 

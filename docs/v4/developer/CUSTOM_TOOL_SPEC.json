@@ -57,7 +57,8 @@
     "errorMessage": "The oracle of locks is not answering today. (Demonstrates errorMessage: the consult's output when the call fails — the author's words, never the provider's. The technical failure reason goes to the roll record and the logs, not the fiction.)"
   },
   "effects": [
-    { "when": { "outcome": { "eq": "failure" } }, "wardrobe": { "action": "take_off", "items": ["{{params.gloves}}"] } }
+    { "when": { "outcome": { "eq": "failure" } }, "wardrobe": { "action": "take_off", "items": ["{{params.gloves}}"] } },
+    { "when": { "outcome": { "eq": "failure" } }, "log": "{{character}} failed to force the lock on {{params.label}} (rolled {{value}})." }
   ],
   "outcomes": [
     {
@@ -73,6 +74,24 @@
     {
       "when": { "gte": 40, "metadata": { "hasSkeletonKey": { "eq": true } } },
       "message": "{{params.label}} opens to the skeleton key before the score of {{value}} is properly consulted. Demonstrates the `metadata` subject: this tests the INVOKING character's metadata.json fact sheet (hasSkeletonKey = {{metadata.hasSkeletonKey}}), whose keys this file never declares — so the loader checks only the comparator's shape. A character without the key is not an error: the test simply fails, soft, and the roll falls through to the rows below. eq/neq address strings and booleans; ordering comparators need the sheet to hold a number, as the nerve row demonstrates further down.",
+      "state": "success"
+    },
+    {
+      "when": { "gte": 30, "inventory": { "crowbar": { "eq": "equipped" } } },
+      "message": "{{inventory.crowbar.title}} makes short work of {{params.label}} at a score of {{value}}. Demonstrates the `inventory` subject: this tests the ROLLING character's Inventory in this chat — the object named crowbar (by id, title or name, case-insensitive) is equipped. The four states are equipped, carried (in their own vault, not equipped), reachable (in a shared store) and absent; eq/neq only. A run nobody made declines the test and the roll falls through. {{inventory.crowbar.title}} renders the object's title, or its name when it has none.",
+      "state": "success"
+    },
+    {
+      "when": { "gte": 50, "inventoryCount": { "lockpick": { "gte": 2 } } },
+      "message": "With two picks in hand, {{params.label}} gives at {{value}}. Demonstrates `inventoryCount`: how many kin (same resolved name) of lockpick the rolling character has equipped in this chat — ordering comparators and eq/neq, no containment.",
+      "state": "success"
+    },
+    {
+      "when": [
+        { "gte": 45, "inventoryAggregate": { "equipped.metadata.toolAbilities": { "contains": "pick" } } },
+        { "gte": 45, "inventoryAggregate": { "owned.metadata.toolVersion.max": { "gte": 3 } } }
+      ],
+      "message": "Something in the kit answers to {{params.label}} at {{value}}. Demonstrates OR and `inventoryAggregate`. A `when` may be an ARRAY of test objects: the row wins when ANY one holds; inside each, tests AND together (one level, no nesting, at most 8). `inventoryAggregate` reads one attribute across a scope of the rolling character's bag, keyed <scope>.<field>: equipped, owned (own vault) or reachable; then count, names, titles, metadata.<key> (a list of the objects' values) or metadata.<key>.min/.max/.sum/.count (a number). A list compares entry by entry and ordering needs a fold. So: an equipped object whose toolAbilities mentions \"pick\", OR an owned one whose toolVersion is 3 or more. A run nobody made declines both.",
       "state": "success"
     },
     {

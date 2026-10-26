@@ -143,7 +143,11 @@ async fn shipped_help_tree_matches_oracle() {
     // `pascals-workbench.md` prose-only; `wardrobe.md`'s `tags:` widened);
     // measured RED on content alone (`docs[13]`, `chunks[80]` — the gallery
     // page's new Wardrobe Pictures section) before the four were re-vendored
-    // byte-exact; green after (chunks 786 → 790).
+    // byte-exact; green after (chunks 786 → 790). P4.D339 (v4 `322a5488e`):
+    // measured RED at the count (131 vs the pin's 135 — `interrupting.md`,
+    // `inventory.md`, `project-inventory.md`, `the-log.md` new; eighteen
+    // pages re-vendored) before the tree was re-vendored WHOLE; 135 = 135
+    // after (chunks 790 → 818).
     assert_eq!(
         files.len(),
         want.count,
