@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — refactor(spa): the wardrobe browser and folder picker on the shared item-browser pieces (v4 `4fbdad186`)
+
+_Versions: SPA 0.5.903._
+
+The wardrobe browser's folder bar, new-folder input, folder rows, tier rows and select bar, and the wardrobe folder picker's body, are now the shared `item-browser` pieces, as v4 lifted them — same strings, classes and test ids, no behaviour change; every wardrobe spec passes unedited. The folder picker keeps the wardrobe's own notes, tree and outfit-components choice. P4.D330, Tier 2 item 23.
+
 #### 2026-10-26 — feat(spa): the labelled-button alert, and the Inventory's two warnings through it
 
 _Versions: SPA 0.5.902._

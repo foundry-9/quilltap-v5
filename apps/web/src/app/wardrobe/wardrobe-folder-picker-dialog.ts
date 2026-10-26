@@ -1,4 +1,3 @@
-import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -12,11 +11,7 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import { Icon } from '../ui/icon';
-import { Modal } from '../ui/modal';
-import { ToastService } from '../ui/toast.service';
-import { QtAutofocus } from './autofocus.directive';
-import { folderName, folderSegments, isSameFolder, joinFolder } from './folders';
+import { ItemFolderPickerDialog } from '../item-browser/item-folder-picker-dialog';
 import type { WardrobeContainer } from './wardrobe-container';
 import {
   WardrobeComponentModeFieldset,
@@ -25,15 +20,12 @@ import {
 } from './wardrobe-component-mode-fieldset';
 import { createWardrobeFolder, createWardrobeFoldersStore } from './wardrobe-folders.api';
 
-interface PickerRow {
-  path: string;
-  label: string;
-  depth: number;
-}
-
 /**
  * "Move to folder…" / "Copy to folder…" — pick where in one wardrobe to file
- * one or more items, or copies of them. A port of v4
+ * one or more items, or copies of them. The picker itself is the shared
+ * `qt-item-folder-picker-dialog` since v4 `4fbdad186` (the item-browser lift,
+ * P4.D330 R-X); this wrapper adds the wardrobe's folder tree, its two notes and
+ * the outfit components choice. A port of v4
  * `components/wardrobe/WardrobeFolderPickerDialog.tsx` (`4a38222e6`;
  * `97f0d8cb8` moved its open state into the actions store; `bbbcd2388` added
  * the copy and the components ask).
@@ -70,65 +62,21 @@ interface PickerRow {
 @Component({
   selector: 'qt-wardrobe-folder-picker-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, Modal, NgTemplateOutlet, QtAutofocus, WardrobeComponentModeFieldset],
-  host: {
-    '(document:keydown.escape)': 'onEscape()',
-  },
+  imports: [ItemFolderPickerDialog, WardrobeComponentModeFieldset],
   template: `
-    <qt-modal
-      [title]="verb() + ' ' + subject() + ' to a folder'"
-      maxWidth="md"
-      overlayClass="z-[70]"
-      [closeOnBackdrop]="!working()"
-      (close)="closed.emit()"
+    <qt-item-folder-picker-dialog
+      [mode]="mode()"
+      [subject]="subject()"
+      [folders]="folders.folders()"
+      [loading]="folders.loading()"
+      rootLabel="Wardrobe (top level)"
+      [createFolder]="createFolder"
+      [currentFolder]="currentFolder()"
+      [working]="working()"
+      [note]="note()"
+      (closed)="closed.emit()"
+      (submitted)="submit($event)"
     >
-      <p class="qt-text-xs qt-text-secondary mb-2">
-        @if (mode() === 'move') {
-          Folders are for your browsing; what anyone can wear stays exactly as it was.
-        } @else {
-          Each copy is a new item with its own ID and a "(copy)" title, filed in the folder you choose.
-        }
-      </p>
-      @if (folders.loading()) {
-        <div class="text-sm qt-text-secondary px-2 py-3">Loading folders…</div>
-      } @else {
-        <ul role="listbox" aria-label="Folders" class="space-y-0.5 max-h-[50vh] overflow-y-auto">
-          @for (row of rows(); track row.path || '(root)') {
-            <li>
-              <button
-                type="button"
-                role="option"
-                [attr.aria-selected]="isSelected(row.path)"
-                [attr.aria-disabled]="isCurrent(row.path)"
-                [disabled]="isCurrent(row.path)"
-                (click)="highlighted.set(row.path)"
-                class="w-full text-left px-2 py-1 rounded text-sm disabled:opacity-50"
-                [class.qt-bg-muted]="isSelected(row.path)"
-                [class.text-foreground]="isSelected(row.path)"
-                [class.qt-text-secondary]="!isSelected(row.path)"
-                [style.padding-left.px]="row.depth * 16 + 8"
-                [attr.title]="isCurrent(row.path) ? 'Already here' : null"
-              >
-                <span class="inline-flex items-center gap-1.5">
-                  @if (row.path) {
-                    <qt-icon name="folder" class="w-3.5 h-3.5" />
-                  }
-                  {{ row.label }}
-                </span>
-                @if (isCurrent(row.path)) {
-                  <span class="qt-text-xs ml-2">(here now)</span>
-                }
-              </button>
-              @if (newFolderOpen() && isSelected(row.path)) {
-                <ng-container [ngTemplateOutlet]="newFolderInput" />
-              }
-            </li>
-          }
-          @if (newFolderOpen() && highlighted() === null) {
-            <ng-container [ngTemplateOutlet]="newFolderInput" />
-          }
-        </ul>
-      }
       @if (hasOutfits()) {
         <div class="mt-3">
           <qt-wardrobe-component-mode-fieldset
@@ -142,65 +90,11 @@ interface PickerRow {
           />
         </div>
       }
-
-      <div qt-modal-footer class="flex items-center justify-between gap-2 w-full">
-        <button
-          type="button"
-          class="qt-button-ghost qt-button-sm"
-          (click)="newFolderOpen.set(true)"
-          [disabled]="newFolderOpen()"
-        >
-          New folder…
-        </button>
-        <div class="flex gap-2">
-          <button
-            type="button"
-            (click)="closed.emit()"
-            class="qt-button-secondary qt-button-sm"
-            [disabled]="working()"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            class="qt-button-primary qt-button-sm"
-            [disabled]="!canSubmit()"
-            (click)="submit()"
-          >
-            {{ working() ? (mode() === 'move' ? 'Moving…' : 'Copying…') : verb() }}
-          </button>
-        </div>
-      </div>
-    </qt-modal>
-
-    <ng-template #newFolderInput>
-      <div class="flex items-center gap-2 px-2 py-1" [style.padding-left.px]="newFolderIndent()">
-        <input
-          type="text"
-          qtAutofocus
-          [value]="newFolderName()"
-          (input)="newFolderName.set($any($event.target).value)"
-          (keydown.enter)="$event.preventDefault(); submitNewFolder()"
-          (keydown.escape)="$event.stopPropagation(); closeNewFolder()"
-          placeholder="Folder name"
-          aria-label="New folder name"
-          class="qt-input qt-input-sm flex-1"
-        />
-        <button
-          type="button"
-          class="qt-button-secondary qt-button-sm"
-          [disabled]="pending() || !newFolderName().trim()"
-          (click)="submitNewFolder()"
-        >
-          Create
-        </button>
-      </div>
-    </ng-template>
+    </qt-item-folder-picker-dialog>
   `,
 })
 export class WardrobeFolderPickerDialog {
   private readonly core = inject(CoreClient);
-  private readonly toasts = inject(ToastService);
 
   /** Move the items, or file copies of them. */
   readonly mode = input<'move' | 'copy'>('move');
@@ -227,10 +121,6 @@ export class WardrobeFolderPickerDialog {
   readonly foldersChanged = output<void>();
 
   protected readonly folders = createWardrobeFoldersStore(this.core);
-  protected readonly highlighted = signal<string | null>(null);
-  protected readonly newFolderOpen = signal(false);
-  protected readonly newFolderName = signal('');
-  protected readonly pending = signal(false);
   /**
    * The components choice, starting at v4's `defaultComponentMode(mode)`. The
    * dialog mounts per open (the host's `@if`), so v4's reset on
@@ -250,21 +140,12 @@ export class WardrobeFolderPickerDialog {
     });
   }
 
-  protected readonly rows = computed<PickerRow[]>(() => [
-    { path: '', label: 'Wardrobe (top level)', depth: 0 },
-    ...this.folders.folders().map((f) => ({
-      path: f.path,
-      label: folderName(f.path),
-      depth: folderSegments(f.path).length,
-    })),
-  ]);
-
-  protected readonly verb = computed(() => (this.mode() === 'move' ? 'Move' : 'Copy'));
-
-  protected readonly canSubmit = computed(() => {
-    const target = this.highlighted();
-    return target !== null && !this.isCurrent(target) && !this.working();
-  });
+  /** The wardrobe's two notes, by mode (v4 keeps them in the wrapper). */
+  protected readonly note = computed(() =>
+    this.mode() === 'move'
+      ? 'Folders are for your browsing; what anyone can wear stays exactly as it was.'
+      : 'Each copy is a new item with its own ID and a "(copy)" title, filed in the folder you choose.',
+  );
 
   protected readonly hasOutfits = computed(() => this.outfits().length > 0);
 
@@ -278,62 +159,24 @@ export class WardrobeFolderPickerDialog {
       : `${outfits.length} of these are outfits, bundling ${n} ${noun} between them`;
   });
 
-  protected readonly newFolderIndent = computed(() => {
-    const h = this.highlighted();
-    return ((h ? folderSegments(h).length : 0) + 1) * 16 + 8;
-  });
-
-  /** A copy may land in the folder it came from; a move there would do nothing. */
-  protected isCurrent(path: string): boolean {
-    const current = this.currentFolder();
-    return this.mode() === 'move' && current !== null && isSameFolder(path, current);
-  }
-
-  protected isSelected(path: string): boolean {
-    const h = this.highlighted();
-    return h !== null && isSameFolder(h, path);
-  }
-
-  protected submit(): void {
-    const target = this.highlighted();
-    if (target === null) return;
-    // The key rides only with outfits among the items (v4 `hasOutfits ?
-    // componentMode : undefined`) — absent, never `undefined`.
-    this.submitted.emit(
-      this.hasOutfits() ? { folder: target, components: this.componentMode() } : { folder: target },
-    );
-  }
-
-  protected closeNewFolder(): void {
-    this.newFolderOpen.set(false);
-    this.newFolderName.set('');
-  }
-
-  protected async submitNewFolder(): Promise<void> {
-    const name = this.newFolderName().trim();
-    if (!name) return;
-    this.pending.set(true);
+  /**
+   * v4 `onCreateFolder` — the folder is made in this wardrobe; afterwards
+   * (success or failure, v4's `onSettled`) the picker's tree re-reads and the
+   * host refreshes the rest. A refusal reaches the shared dialog, which toasts
+   * the server's sentence.
+   */
+  protected readonly createFolder = async (path: string): Promise<{ path: string }> => {
     try {
-      const created = await createWardrobeFolder(
-        this.core,
-        this.container(),
-        joinFolder(this.highlighted() ?? '', name),
-      );
-      this.highlighted.set(created.path);
-      this.closeNewFolder();
-    } catch (error) {
-      this.toasts.showError(error instanceof Error ? error.message : 'The folder would not be made');
+      return await createWardrobeFolder(this.core, this.container(), path);
     } finally {
-      this.pending.set(false);
-      // v4 `onSettled`: every folder tree and list re-reads, success or failure.
       void this.folders.refresh();
       this.foldersChanged.emit();
     }
-  }
+  };
 
-  /** v4 `closeOnEscape={!working}` — the picker's own; the dialog's gate counts it. */
-  protected onEscape(): void {
-    if (this.working()) return;
-    this.closed.emit();
+  protected submit(folder: string): void {
+    // The key rides only with outfits among the items (v4 `hasOutfits ?
+    // componentMode : undefined`) — absent, never `undefined`.
+    this.submitted.emit(this.hasOutfits() ? { folder, components: this.componentMode() } : { folder });
   }
 }

@@ -12,9 +12,11 @@ import {
 
 import { CoreClient } from '../core/core-client';
 import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
-import { Icon } from '../ui/icon';
+import { ItemFolderBar, NewFolderInput } from '../item-browser/item-folder-bar';
+import { ItemFolderRow } from '../item-browser/item-folder-row';
+import { ItemSelectBar } from '../item-browser/item-select-bar';
+import { ItemTierRow } from '../item-browser/item-tier-row';
 import { ToastService } from '../ui/toast.service';
-import { QtAutofocus } from './autofocus.directive';
 import { isComposite } from './equipped-slots';
 import {
   childFolderRows,
@@ -28,7 +30,6 @@ import {
 import {
   folderCrumb,
   folderName,
-  folderSegments,
   isSameFolder,
   isUnderFolder,
   joinFolder,
@@ -68,135 +69,6 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
 const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
 /**
- * One subfolder in the browser: open it, or (managed) rename / delete it.
- * v4 `WardrobeBrowser.tsx:698-804` `WardrobeFolderRow`.
- */
-@Component({
-  selector: 'qt-wardrobe-folder-row',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, QtAutofocus],
-  template: `
-    <div
-      class="qt-card-interactive py-2 px-3 flex items-center gap-2"
-      data-testid="wardrobe-folder-row"
-    >
-      <qt-icon name="folder" class="w-4 h-4 qt-text-secondary flex-shrink-0" />
-      @if (renaming()) {
-        <input
-          type="text"
-          qtAutofocus
-          [value]="name()"
-          (input)="name.set($any($event.target).value)"
-          (keydown.enter)="$event.preventDefault(); submit()"
-          (keydown.escape)="$event.stopPropagation(); cancelRename()"
-          (blur)="submit()"
-          [attr.aria-label]="'Rename folder ' + row().name"
-          class="qt-input qt-input-sm flex-1"
-        />
-      } @else {
-        <button
-          type="button"
-          class="flex-1 min-w-0 text-left text-sm text-foreground truncate"
-          (click)="opened.emit()"
-        >
-          {{ row().name }}
-        </button>
-      }
-      <span class="qt-text-xs qt-text-secondary flex-shrink-0">{{
-        plural(row().itemCount, 'item')
-      }}</span>
-      @if (manageable() && !renaming()) {
-        <div class="relative">
-          <button
-            type="button"
-            class="qt-button-ghost qt-button-sm"
-            [attr.aria-label]="'Folder actions for ' + row().name"
-            aria-haspopup="menu"
-            [attr.aria-expanded]="menuOpen()"
-            (click)="menuOpen.set(!menuOpen())"
-          >
-            ⋮
-          </button>
-          @if (menuOpen()) {
-            <div
-              role="menu"
-              class="absolute right-0 top-full mt-1 z-30 min-w-[10rem] rounded border qt-border-default qt-bg-default shadow-md"
-              (mouseleave)="menuOpen.set(false)"
-            >
-              <ul class="divide-y qt-border-default">
-                <li>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="block w-full text-left px-3 py-2 text-sm hover:qt-bg-muted"
-                    (click)="startRename()"
-                  >
-                    Rename
-                  </button>
-                </li>
-                <li>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    class="block w-full text-left px-3 py-2 text-sm qt-text-destructive hover:qt-bg-muted"
-                    (click)="menuOpen.set(false); deleted.emit()"
-                  >
-                    Delete
-                  </button>
-                </li>
-              </ul>
-            </div>
-          }
-        </div>
-      }
-    </div>
-  `,
-})
-export class WardrobeFolderRow {
-  readonly row = input.required<FolderRowView>();
-  /** Rename / Delete are offered only in the wardrobe being browsed. */
-  readonly manageable = input(false);
-  /** Resolves true when the rename stuck (v4 `onRename`). */
-  readonly rename = input.required<(name: string) => Promise<boolean>>();
-  readonly opened = output<void>();
-  readonly deleted = output<void>();
-
-  protected readonly plural = plural;
-  protected readonly menuOpen = signal(false);
-  protected readonly renaming = signal(false);
-  protected readonly name = signal('');
-  /** One rename at a time: a blur landing while the Enter's call is out must not send it twice. */
-  private submitting = false;
-
-  protected startRename(): void {
-    this.menuOpen.set(false);
-    this.name.set(this.row().name);
-    this.renaming.set(true);
-  }
-
-  protected cancelRename(): void {
-    this.name.set(this.row().name);
-    this.renaming.set(false);
-  }
-
-  /** v4 `:713-720`: blank or unchanged just stops; otherwise stop only on success. */
-  protected async submit(): Promise<void> {
-    if (!this.renaming() || this.submitting) return;
-    const next = this.name().trim();
-    if (!next || next === this.row().name) {
-      this.renaming.set(false);
-      return;
-    }
-    this.submitting = true;
-    try {
-      if (await this.rename()(next)) this.renaming.set(false);
-    } finally {
-      this.submitting = false;
-    }
-  }
-}
-
-/**
  * The wardrobe browser — one container's closet as a small file manager: a
  * breadcrumb, the subfolders of the folder you are in, then its items, with
  * the search, kind, slot, sort and visibility filters, row actions, a select
@@ -233,7 +105,15 @@ export class WardrobeFolderRow {
 @Component({
   selector: 'qt-wardrobe-browser',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, QtAutofocus, WardrobeFolderPickerDialog, WardrobeFolderRow, WardrobeItemRow],
+  imports: [
+    ItemFolderBar,
+    NewFolderInput,
+    ItemSelectBar,
+    ItemTierRow,
+    ItemFolderRow,
+    WardrobeFolderPickerDialog,
+    WardrobeItemRow,
+  ],
   template: `
     <section class="flex flex-col min-h-0 relative">
       <div class="flex flex-col gap-2 mb-2">
@@ -329,93 +209,33 @@ export class WardrobeFolderRow {
           </label>
         </div>
 
-        <!-- Folder bar: where we are, and the filing controls. -->
+        <!-- Folder bar: where we are, and the filing controls (the shared
+             item-browser bar since v4 4fbdad186 — P4.D330 R-X). -->
         @if (container()) {
-          <div
-            class="flex flex-wrap items-center justify-between gap-2"
-            data-testid="wardrobe-folder-bar"
-          >
-            <nav
-              aria-label="Wardrobe folders"
-              class="flex flex-wrap items-center gap-1 qt-text-xs min-w-0"
-            >
-              @if (searching()) {
-                <span class="qt-text-secondary">Searching everywhere</span>
-              } @else {
-                <button
-                  type="button"
-                  class="qt-text-secondary hover:text-foreground"
-                  (click)="navigate(ownTier, '')"
-                  [attr.aria-current]="inOwnTier() && currentFolder() === '' ? 'page' : null"
-                >
-                  Wardrobe
-                </button>
-                @if (!inOwnTier()) {
-                  <span class="qt-text-secondary" aria-hidden="true">›</span>
-                  <button
-                    type="button"
-                    class="qt-text-secondary hover:text-foreground"
-                    (click)="navigate(currentTier(), '')"
-                    [attr.aria-current]="currentFolder() === '' ? 'page' : null"
-                  >
-                    {{ currentTierLabel() }}
-                  </button>
-                }
-                @for (crumb of crumbs(); track crumb.path; let last = $last) {
-                  <span class="inline-flex items-center gap-1">
-                    <span class="qt-text-secondary" aria-hidden="true">›</span>
-                    <button
-                      type="button"
-                      [class]="last ? 'text-foreground font-medium' : 'qt-text-secondary hover:text-foreground'"
-                      (click)="navigate(currentTier(), crumb.path)"
-                      [attr.aria-current]="last ? 'page' : null"
-                    >
-                      {{ crumb.segment }}
-                    </button>
-                  </span>
-                }
-              }
-            </nav>
-            @if (managed()) {
-              <div class="flex items-center gap-1">
-                @if (!searching()) {
-                  <button
-                    type="button"
-                    class="qt-button-ghost qt-button-sm"
-                    (click)="setNewFolderName('')"
-                    [disabled]="newFolderOpen()"
-                  >
-                    New folder
-                  </button>
-                }
-                <button
-                  type="button"
-                  class="qt-button-sm"
-                  [class.qt-button-secondary]="selectMode()"
-                  [class.qt-button-ghost]="!selectMode()"
-                  [attr.aria-pressed]="selectMode()"
-                  (click)="toggleSelectMode()"
-                >
-                  Select
-                </button>
-              </div>
-            }
-          </div>
+          <qt-item-folder-bar
+            rootLabel="Wardrobe"
+            navLabel="Wardrobe folders"
+            [searching]="searching()"
+            [tierLabel]="inOwnTier() ? null : currentTierLabel()"
+            [currentFolder]="currentFolder()"
+            (navigateRoot)="navigate(ownTier, '')"
+            (navigateTier)="navigate(currentTier(), '')"
+            (navigateFolder)="navigate(currentTier(), $event)"
+            [managed]="managed()"
+            [newFolderOpen]="newFolderOpen()"
+            (newFolder)="setNewFolderName('')"
+            [selectMode]="selectMode()"
+            (toggleSelect)="toggleSelectMode()"
+            testId="wardrobe-folder-bar"
+          />
         }
         @if (newFolderOpen() && managed() && !searching()) {
-          <div class="flex items-center gap-2">
-            <input
-              type="text"
-              qtAutofocus
-              [value]="newFolderName()"
-              (input)="setNewFolderName($any($event.target).value)"
-              (keydown.enter)="$event.preventDefault(); submitNewFolder()"
-              (keydown.escape)="$event.stopPropagation(); closeNewFolder()"
-              placeholder="Folder name — Enter to make it, Esc to think better of it"
-              aria-label="New folder name"
-              class="qt-input qt-input-sm flex-1"
-            />
-          </div>
+          <qt-new-folder-input
+            [name]="newFolderName()"
+            (nameChange)="setNewFolderName($event)"
+            (submitted)="submitNewFolder()"
+            (cancelled)="closeNewFolder()"
+          />
         }
       </div>
 
@@ -426,26 +246,26 @@ export class WardrobeFolderRow {
           <div class="text-sm qt-text-secondary px-3 py-4">Loading…</div>
         } @else {
           @for (row of folderRows(); track row.path) {
+            <!-- The shared item-browser row under the wardrobe's own element
+                 name (v4 4fbdad186 — P4.D330 R-X). -->
             <qt-wardrobe-folder-row
               [row]="row"
               [manageable]="managed()"
               [rename]="renameFolderFor(row.path)"
               (opened)="navigate(currentTier(), row.path)"
               (deleted)="deleteFolder(row.path)"
+              testId="wardrobe-folder-row"
+              countNoun="item"
             />
           }
           @for (row of sharedTierRows(); track row.key) {
-            <button
-              type="button"
-              class="qt-card-interactive w-full py-2 px-3 flex items-center gap-2 text-left"
-              (click)="navigate(row.key, '')"
-              data-testid="wardrobe-tier-row"
-            >
-              <qt-icon name="folder" class="w-4 h-4 qt-text-secondary" />
-              <span class="text-sm text-foreground flex-1 min-w-0 truncate">{{ row.label }}</span>
-              <span class="qt-badge qt-badge-wardrobe-shared">{{ chipFor(row) }}</span>
-              <span class="qt-text-xs qt-text-secondary">{{ plural(row.itemCount, 'item') }}</span>
-            </button>
+            <qt-item-tier-row
+              [label]="row.label"
+              [scope]="row.scope"
+              [itemCount]="row.itemCount"
+              (opened)="navigate(row.key, '')"
+              testId="wardrobe-tier-row"
+            />
           }
           @if (folderIsEmpty()) {
             <div class="text-sm qt-text-secondary px-3 py-4">Nothing hangs here yet.</div>
@@ -490,34 +310,29 @@ export class WardrobeFolderRow {
             }
           }
           @if (selectMode()) {
-            <div [class]="selectBarClass()" data-testid="wardrobe-select-bar">
-              <span class="qt-text-xs qt-text-secondary">{{ selectedIds().size }} selected</span>
-              <div class="flex items-center gap-2">
-                <button
-                  type="button"
-                  class="qt-button-secondary qt-button-sm"
-                  [disabled]="selectedItems().length === 0"
-                  (click)="openPickerFor(selectedItems(), 'move')"
-                >
-                  Move to folder…
-                </button>
-                <button
-                  type="button"
-                  class="qt-button-secondary qt-button-sm"
-                  [disabled]="selectedItems().length === 0"
-                  (click)="openPickerFor(selectedItems(), 'copy')"
-                >
-                  Copy to folder…
-                </button>
-                <button
-                  type="button"
-                  class="qt-button-ghost qt-button-sm"
-                  (click)="setSelectMode(false); clearSelection()"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
+            <qt-item-select-bar
+              [count]="selectedIds().size"
+              [sticky]="scrollList()"
+              testId="wardrobe-select-bar"
+              (cancelled)="setSelectMode(false); clearSelection()"
+            >
+              <button
+                type="button"
+                class="qt-button-secondary qt-button-sm"
+                [disabled]="selectedItems().length === 0"
+                (click)="openPickerFor(selectedItems(), 'move')"
+              >
+                Move to folder…
+              </button>
+              <button
+                type="button"
+                class="qt-button-secondary qt-button-sm"
+                [disabled]="selectedItems().length === 0"
+                (click)="openPickerFor(selectedItems(), 'copy')"
+              >
+                Copy to folder…
+              </button>
+            </qt-item-select-bar>
           }
         }
       </div>
@@ -569,7 +384,6 @@ export class WardrobeBrowser {
   readonly showArchivedChange = output<boolean>();
 
   protected readonly ownTier = OWN_TIER;
-  protected readonly plural = plural;
   protected readonly itemKinds: ItemKind[] = ['items', 'outfits'];
   protected readonly slotFilters = SLOT_FILTERS;
   protected readonly slotMeta = WARDROBE_SLOT_META;
@@ -766,28 +580,10 @@ export class WardrobeBrowser {
       !this.tierItems().some((i) => isSameFolder(i.folder ?? '', this.currentFolder())),
   );
 
-  protected readonly crumbs = computed(() => {
-    const segments = folderSegments(this.currentFolder());
-    return segments.map((segment, idx) => ({
-      segment,
-      path: segments.slice(0, idx + 1).join('/'),
-    }));
-  });
-
   /** v4 `:583` — the dialog caps the list's height; a card lets it grow. */
   protected readonly listClass = computed(
     () => `flex-1 space-y-1 pb-12 ${this.scrollList() ? 'overflow-y-auto max-h-[55vh]' : ''}`,
   );
-
-  /** v4 `:356` — sticky only inside the capped list. */
-  protected readonly selectBarClass = computed(
-    () =>
-      `${this.scrollList() ? 'sticky bottom-0' : ''} mt-2 flex items-center justify-between gap-2 rounded border qt-border-default qt-bg-default px-3 py-2 shadow-sm`,
-  );
-
-  protected chipFor(row: TierRowView): string {
-    return row.scope === 'general' ? 'Shared' : row.scope === 'project' ? 'Project' : 'Group';
-  }
 
   protected newItem(): void {
     this.actions().openCreate('single', [], {

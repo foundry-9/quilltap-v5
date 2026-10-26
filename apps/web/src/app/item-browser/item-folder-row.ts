@@ -25,7 +25,9 @@ const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' 
  * Enter's call is out does not send it twice (the wardrobe port's guard).
  */
 @Component({
-  selector: 'qt-item-folder-row',
+  // The wardrobe browser mounts this row under its pre-lift element name, so
+  // its DOM (and every wardrobe spec walking it) is unchanged by the lift.
+  selector: 'qt-item-folder-row, qt-wardrobe-folder-row',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, QtAutofocus],
   template: `
