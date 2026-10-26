@@ -223,6 +223,20 @@ pub enum ZodIssue {
         path: Vec<Value>,
         message: String,
     },
+    // === P4.D324: superRefine's ctx.addIssue (append-only) ===
+    /// A `superRefine`'s `ctx.addIssue({ code: 'custom', message, path? })` —
+    /// zod keeps the LITERAL's key order and appends a missing `path`, so the
+    /// issue is `code, message, path` (measured at zod 4.6.7 at the
+    /// `322a5488e` pin through v4's `createInventorySchema`:
+    /// `{"code":"custom","message":"A kit needs at least one member",
+    /// "path":[]}`) — unlike a `.refine`'s [`Self::Custom`] (`code, path,
+    /// message`).
+    CustomAdded {
+        code: &'static str,
+        message: String,
+        path: Vec<Value>,
+    },
+    // === end P4.D324 ===
     // === P4.D267: unrecognized_keys (append-only) ===
     /// A `.strict()` object's extra keys — `code, keys, path, message`
     /// (measured at zod 4.6.5 at the `01a83539d` pin through v4's
@@ -571,6 +585,18 @@ impl ZodIssue {
         }
     }
 
+    // === P4.D324: superRefine's ctx.addIssue (append-only) ===
+    /// A `superRefine`'s `ctx.addIssue({ code: 'custom', message, path })`
+    /// (see [`Self::CustomAdded`]).
+    pub fn custom_added(message: impl Into<String>, path: Vec<Value>) -> Self {
+        Self::CustomAdded {
+            code: "custom",
+            message: message.into(),
+            path,
+        }
+    }
+    // === end P4.D324 ===
+
     // === P4.D267: unrecognized_keys (append-only) ===
     /// A `.strict()` object's unknown keys: `Unrecognized key: "k"` for one,
     /// `Unrecognized keys: "a", "b"` for several (zod 4's own sentences).
@@ -615,6 +641,8 @@ impl ZodIssue {
             | Self::InvalidUnion { path, .. } => path,
             // P4.D267: unrecognized_keys
             Self::UnrecognizedKeys { path, .. } => path,
+            // P4.D324: superRefine's ctx.addIssue
+            Self::CustomAdded { path, .. } => path,
         }
     }
 
@@ -636,6 +664,8 @@ impl ZodIssue {
             | Self::InvalidUnion { message, .. } => message,
             // P4.D267: unrecognized_keys
             Self::UnrecognizedKeys { message, .. } => message,
+            // P4.D324: superRefine's ctx.addIssue
+            Self::CustomAdded { message, .. } => message,
         }
     }
 }
@@ -1664,6 +1694,8 @@ pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
         | ZodIssue::Custom { .. } => false,
         // P4.D267: unrecognized_keys — the strict tail never aborts.
         ZodIssue::UnrecognizedKeys { .. } => false,
+        // P4.D324: a superRefine issue continues.
+        ZodIssue::CustomAdded { .. } => false,
     }
 }
 

@@ -96,6 +96,12 @@ interface CaseSpec {
   streams: ChunkSpec[][];
   expectPost: boolean;
   brahma: boolean;
+  /** P4.D324: Inventory objects written into a vault before the case,
+   *  through v4's REAL location (they persist; the inventory cases run last). */
+  inventoryPlant?: Array<{ characterId: string; record: Record<string, unknown> }>;
+  /** P4.D324: the chat ROW's `equippedInventory` for the case (Carina reads
+   *  the chat from the database). */
+  equippedInventory?: Record<string, string[]>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -331,6 +337,24 @@ async function main(): Promise<void> {
   for (const call of spec.cases) {
     currentCase = call;
     streamCallIndex = 0;
+
+    if (call.inventoryPlant) {
+      const { resolveInventoryLocation } = await import('@/lib/inventory/location');
+      const { getRepositories } = await import('@/lib/repositories/factory');
+      for (const plant of call.inventoryPlant) {
+        const vault = await resolveInventoryLocation('character', plant.characterId, getRepositories(), spec.userId, {
+          ensure: true,
+        });
+        if (!vault) throw new Error(`no vault for ${plant.characterId}`);
+        await vault.create(plant.record as never);
+      }
+    }
+    if (call.equippedInventory) {
+      await rawQuery('UPDATE "chats" SET "equippedInventory" = ? WHERE "id" = ?', [
+        JSON.stringify(call.equippedInventory),
+        spec.chat.id,
+      ]);
+    }
 
     let postedEvent: unknown = null;
     accessLog = [];

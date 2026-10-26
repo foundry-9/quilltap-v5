@@ -135,6 +135,8 @@ impl SlimData {
             character_document_mount_point_id: None,
             can_dress_themselves: self.can_dress_themselves,
             can_create_outfits: self.can_create_outfits,
+            // P4.D324: the corpus never sets the Inventory flag.
+            can_manage_inventory: None,
             system_transparency: self.system_transparency,
             core_whisper_enabled: self.core_whisper_enabled,
             can_be_carina: self.can_be_carina,

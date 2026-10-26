@@ -374,8 +374,11 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
 /// and the shared image attempt (`image_gen::image_attempt`) writes nothing
 /// else. A wardrobe item's picture keeps its own type so the Inspector can
 /// tell it apart, but it is spend all the same (bug 196).
-pub const IMAGE_SPEND_LOG_TYPES: &[&str] =
-    &[log_type::IMAGE_GENERATION, log_type::WARDROBE_ITEM_IMAGE];
+pub const IMAGE_SPEND_LOG_TYPES: &[&str] = &[
+    log_type::IMAGE_GENERATION,
+    log_type::WARDROBE_ITEM_IMAGE,
+    log_type::INVENTORY_ITEM_IMAGE,
+];
 
 pub mod log_type {
     pub const CHAT_MESSAGE: &str = "CHAT_MESSAGE";
@@ -395,6 +398,11 @@ pub mod log_type {
     /// `logLLMCall` (`services::wardrobe_item_image_generation`); not a cheap-LLM
     /// task type, so [`map_task_type_to_log_type`] never yields it.
     pub const WARDROBE_ITEM_IMAGE: &str = "WARDROBE_ITEM_IMAGE";
+    /// An Inventory object's picture (v4 `LLMLogTypeEnum`
+    /// `'INVENTORY_ITEM_IMAGE'`, `4fbdad186` — after `WARDROBE_ITEM_IMAGE`).
+    /// Written only by the object-image generation's logged attempt
+    /// (`inventory::item_image_generation`); spend all the same.
+    pub const INVENTORY_ITEM_IMAGE: &str = "INVENTORY_ITEM_IMAGE";
     /// A custom tool's mid-run LLM consult (v4 `616930db`/`a2d9a3c8`).
     pub const CUSTOM_TOOL_CONSULT: &str = "CUSTOM_TOOL_CONSULT";
     pub const DANGER_CLASSIFICATION: &str = "DANGER_CLASSIFICATION";

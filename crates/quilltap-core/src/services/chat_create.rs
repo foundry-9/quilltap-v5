@@ -1643,6 +1643,38 @@ where
         .await;
     }
 
+    // === P4.D324 (v4 `4fbdad186`, `route.ts:1441-1449`) ===
+    // What everyone carries on arrival: a continuation copies the source chat's
+    // Inventory; otherwise each character's equipped-by-default objects. Never
+    // fails — a failure is logged per character. This span holds the writer
+    // connections, so the SYNC form runs here and the avatar refresh (v4's
+    // `notifyInventoryChanged` with `announce: false`, R-3) follows it.
+    {
+        let character_ids: Vec<String> = participants
+            .iter()
+            .filter(|p| p.get("type").and_then(Value::as_str) == Some("CHARACTER"))
+            .filter_map(|p| p.get("characterId").and_then(Value::as_str))
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .collect();
+        let arrivals = crate::inventory::apply_defaults::apply_inventory_defaults_holding_lock(
+            main,
+            mount,
+            &chat_id,
+            &character_ids,
+            &crate::inventory::apply_defaults::ApplyInventoryDefaultsOptions {
+                source: crate::inventory::apply_defaults::InventoryArrivalSource::ChatStart,
+                user_id: user_id.to_string(),
+                source_chat_id: req.continuation_from_chat_id.clone(),
+            },
+        );
+        crate::inventory::apply_defaults::refresh_avatars_after_arrival(
+            db, user_id, &chat_id, &arrivals,
+        )
+        .await;
+    }
+    // === end P4.D324 ===
+
     // 10. Precompile the per-participant identity stacks (non-fatal).
     emitter.status("Committing everyone\u{2019}s particulars to memory\u{2026}");
     let _ = compile_all_identity_stacks(main, mount, &chat);

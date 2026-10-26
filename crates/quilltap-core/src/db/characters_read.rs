@@ -73,6 +73,14 @@ const SLIM_COLUMNS: &str = "id, userId, name, defaultImageId, defaultConnectionP
 /// `add-character-archive-fields-v1`), selected AFTER [`SLIM_COLUMNS`].
 const ARCHIVE_COLUMNS: [&str; 3] = ["archivedAt", "archiveFileId", "archivedAvatarFileId"];
 
+/// P4.D324 (v4 `e1872c94f`, the FOURTEENTH D23 move): the inventory-tools
+/// flag, selected AFTER the archive triple (index 31) — appended, never at its
+/// DDL position (between `canCreateOutfits` and `canChooseOutfit`), since the
+/// archive marshal reads by INDEX — and probed like them, so a table that
+/// predates `add-character-inventory-flag-v1` reads it as absent (v4's
+/// `SELECT *`).
+const INVENTORY_FLAG_COLUMN: &str = "canManageInventory";
+
 /// The full `SELECT` list: [`SLIM_COLUMNS`] plus the three archive columns —
 /// or three literal `NULL`s when the table predates them.
 ///
@@ -98,7 +106,7 @@ fn select_columns(conn: &Connection) -> String {
     // ALTERs can carry `archivedAt` without `archiveFileId` — a single-column
     // probe would then name a missing column and break every read (the round-1
     // unification review's finding 4).
-    for col in ARCHIVE_COLUMNS {
+    for col in ARCHIVE_COLUMNS.into_iter().chain([INVENTORY_FLAG_COLUMN]) {
         list.push_str(", ");
         if table_has_column(conn, col) {
             list.push_str(col);
@@ -209,6 +217,10 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_string(&mut obj, "archivedAt", row.get(28)?);
     put_opt_string(&mut obj, "archiveFileId", row.get(29)?);
     put_opt_string(&mut obj, "archivedAvatarFileId", row.get(30)?);
+    // P4.D324: `canManageInventory` (`z.boolean().nullable().optional()`) —
+    // NULL → omitted (v4's `undefined`; the tools read `!== false`, so absent
+    // is "enabled").
+    put_opt_bool(&mut obj, "canManageInventory", row.get(31)?);
 
     // Managed columns sit at their DDL = Zod defaults (writes strip them); reproduce
     // the materialized ones. The nullable managed fields (title/identity/…/pronouns/

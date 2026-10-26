@@ -454,11 +454,12 @@ pub async fn apply_chat_merge(
         let mounts = project_mount_point_ids.clone();
         let pid = participant_id.clone();
         let chat_for_stack = updated_chat.clone();
-        let _ = db
+        let arriving = character_id.clone();
+        let arrivals = db
             .write(move |w| {
                 let main = w.main().connection();
                 let Some(mount_w) = w.mount_index() else {
-                    return Ok(());
+                    return Ok(Vec::new());
                 };
                 let mount = mount_w.connection();
                 // v4 logs a compile failure and continues.
@@ -496,9 +497,35 @@ pub async fn apply_chat_merge(
                 // v4 logs an outfit failure and continues.
                 let _ =
                     apply_outfit_selection_sync(main, mount, &outfits, &target, &selection, &ctx);
-                Ok(())
+                // === P4.D324 (v4 `apply-chat-merge.ts:265-267`) ===
+                // A merge brings what the character carried in the merged chat
+                // along (or their defaults, when they carried nothing there).
+                // Never fails; the avatar refresh (R-3) follows the closure.
+                Ok(
+                    crate::inventory::apply_defaults::apply_inventory_defaults_holding_lock(
+                        main,
+                        mount,
+                        &target,
+                        &[arriving],
+                        &crate::inventory::apply_defaults::ApplyInventoryDefaultsOptions {
+                            source: crate::inventory::apply_defaults::InventoryArrivalSource::Merge,
+                            user_id: uid.clone(),
+                            source_chat_id: Some(source.clone()),
+                        },
+                    ),
+                )
+                // === end P4.D324 ===
             })
             .await;
+        if let Ok(arrivals) = arrivals {
+            crate::inventory::apply_defaults::refresh_avatars_after_arrival(
+                db,
+                user_id,
+                target_chat_id,
+                &arrivals,
+            )
+            .await;
+        }
     }
 
     // Fold merged characters' tags into the chat's tag set (ONE update).

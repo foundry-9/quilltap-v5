@@ -129,9 +129,18 @@ const CHAT_WARDROBE_HISTORY: [&str; 3] = [
     quilltap_core::db::chat_wardrobe_history_repair::SEED_MIGRATION_ID,
 ];
 
+/// P4.D324: the Inventory's two column migrations the narrowed runner runs
+/// after the history three (`INVENTORY_MIGRATIONS`) — UNSTAMPED on v5's side
+/// (the P4.D304 arm), so v4's `shouldRun` (false once v5's chain appended both
+/// columns) is the whole zero-rerun proof for them.
+const INVENTORY_COLUMNS: [&str; 2] = [
+    quilltap_core::db::inventory_columns_repair::MIGRATION_ID_EQUIPPED_INVENTORY,
+    quilltap_core::db::inventory_columns_repair::MIGRATION_ID_INVENTORY_FLAG,
+];
+
 /// Run v5's span chain, then the 4.11 `chat_settings` chain, then the chat
-/// wardrobe history's (the host's boot order), on `path` (a caller-thread
-/// writer).
+/// wardrobe history's, then the Inventory columns' (the host's boot order),
+/// on `path` (a caller-thread writer).
 fn run_chain(path: &Path) {
     let w = Writer::open_writable(path, PEPPER).expect("open");
     quilltap_core::db::p4d288_span::run_span_ensures(w.connection(), "UTC")
@@ -142,6 +151,8 @@ fn run_chain(path: &Path) {
         w.connection(),
     )
     .expect("the chat wardrobe history chain");
+    quilltap_core::db::inventory_columns_repair::run_inventory_columns_ensures(w.connection())
+        .expect("the Inventory columns chain");
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
@@ -256,10 +267,10 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        16,
+        18,
         "v4 ran the twelve + the two 4.11 chat_settings migrations + the history table and \
-         seed on the planted base (the column is `not needed` on a table born at its final \
-         shape — P4.D315)"
+         seed (the column is `not needed` on a table born at its final shape — P4.D315) + \
+         the Inventory's two columns (P4.D324) on the planted base"
     );
     let build_ran: Vec<&str> = build[0]["ran"]
         .as_array()
@@ -275,7 +286,7 @@ fn no_migration_reruns_after_the_v5_chain() {
     );
     // P4.D304: v4 stamped the two 4.11 ids on its own migrated base; v5 never
     // stamps them on any base (R-B).
-    for id in CHAT_SETTINGS_4_11 {
+    for id in CHAT_SETTINGS_4_11.into_iter().chain(INVENTORY_COLUMNS) {
         assert!(
             v4_ledger.iter().any(|(i, _)| i == id),
             "v4's build stamped {id}"
@@ -378,8 +389,9 @@ fn no_migration_reruns_after_the_v5_chain() {
         }
         // P4.D304 (R-B): v5 stamps neither 4.11 id; only v4's own migrated
         // base carries them (its build ran them).
+        // P4.D324 (`UNSTAMPED_COLUMN_ENSURES`): the Inventory's two ids the same.
         if mode != "v4-migrated" {
-            for id in CHAT_SETTINGS_4_11 {
+            for id in CHAT_SETTINGS_4_11.into_iter().chain(INVENTORY_COLUMNS) {
                 if ledger_by_id(&row["before"]["ledger"])
                     .iter()
                     .any(|(i, _)| i == id)

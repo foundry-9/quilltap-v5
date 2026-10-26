@@ -2227,6 +2227,19 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                 );
             }
             // === end P4.D315 ===
+            // === P4.D324 (v4 4fbdad186 + e1872c94f, migrations add-chat-equipped-inventory-v1 / add-character-inventory-flag-v1) ===
+            // The Inventory's two columns — `chats.equippedInventory` then
+            // `characters.canManageInventory` — v4's registration order
+            // (`migrations/scripts/index.ts:924-926` at the `322a5488e` pin:
+            // after `seedChatWardrobeHistoryMigration`, before the terminal
+            // geometry), as ONE chain (`db::inventory_columns_repair` — the
+            // vintage mirror-boot and the zero-rerun differential run the same
+            // one), BEFORE the P4.160 index-family backfill. UNSTAMPED (a
+            // re-ADD is a no-op on either app), FATAL on failure (neither
+            // migration is `resumable`); each logs v5's ONE INFO when it added
+            // its column. v4's migration lines are NO-PORT.
+            quilltap_core::db::inventory_columns_repair::run_inventory_columns_ensures(main)?;
+            // === end P4.D324 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

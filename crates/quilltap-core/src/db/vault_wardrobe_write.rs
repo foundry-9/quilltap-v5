@@ -74,6 +74,12 @@ pub struct ProjectArrayOptions<'a> {
     /// note kept beside the items — is left alone.
     #[allow(clippy::type_complexity)]
     pub owns_file: Option<&'a dyn Fn(&str, Option<&str>) -> bool>,
+    /// The extension of the files the projection lists and may sweep (v4
+    /// `ext`, `4fbdad186`; default `.md` there — every markdown caller passes
+    /// it explicitly here, so no `Default` hides the choice). The Inventory
+    /// projects `.json` objects. Only files with this extension are ever
+    /// considered; the mapper's content is written as given.
+    pub ext: &'a str,
 }
 
 impl ProjectArrayOptions<'_> {
@@ -83,6 +89,7 @@ impl ProjectArrayOptions<'_> {
         preserve_file_names: &[],
         recursive: None,
         owns_file: None,
+        ext: ".md",
     };
 }
 
@@ -121,7 +128,7 @@ pub fn project_array_into_vault_folder<T>(
     let existing = docs.find_many_by_mount_points_in_folder_opts_or_empty(
         &[mount_point_id.to_string()],
         folder,
-        ".md",
+        opts.ext,
         recursive,
     )?;
 
@@ -316,6 +323,7 @@ pub fn project_vault_wardrobe(
             // that doesn't parse as an item, kept under `Wardrobe/` (at any
             // depth) is left exactly where the operator put it.
             owns_file: Some(&is_wardrobe_item_document),
+            ext: ".md",
         },
     )?;
 

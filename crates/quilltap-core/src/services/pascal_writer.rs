@@ -266,6 +266,101 @@ pub async fn post_pascal_result(
     }
 }
 
+// === P4.D324 (v4 `4fbdad186`, `writer.ts:185-228`) ===
+
+/// v4 `PASCAL_INVENTORY_CHANGE_KIND` — the `systemKind` of Pascal's plain
+/// Inventory line.
+pub const PASCAL_INVENTORY_CHANGE_KIND: &str = "inventory-change";
+
+/// Post Pascal's plain line for an Inventory gesture (v4
+/// `postPascalInventoryChange`): *"Vivienne takes up Excalibur."* The row
+/// carries NO `pascalMeta` (the key absent — it is not a roll, and nothing
+/// keyed on a roll record may treat it as one). Guards on the chat existing;
+/// every failure → `None` (v4's catch). The DEBUG `Pascal inventory line
+/// dropped — no such chat` (U+2014), the INFO `[Pascal] Inventory change
+/// posted` and the ERROR `[Pascal] Failed to post inventory change` all log
+/// on the caller's task after the `.await` (the [`post_pascal_result`]
+/// convention). The describer that builds `content` is P4.D328's.
+pub async fn post_pascal_inventory_change(
+    db: &Db,
+    chat_id: &str,
+    content: &str,
+) -> Option<PostedPascalMessage> {
+    let failed = |error: &str| {
+        tracing::error!(
+            target: "quilltap::pascal",
+            context = CONTEXT,
+            chatId = chat_id,
+            error = error,
+            "[Pascal] Failed to post inventory change",
+        );
+    };
+    let cid = chat_id.to_string();
+    match db.read_main(move |c| Ok(crate::db::chats_read::find_by_id_or_none(c, &cid))) {
+        Ok(Some(_)) => {}
+        Ok(None) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = chat_id,
+                "Pascal inventory line dropped — no such chat",
+            );
+            return None;
+        }
+        Err(error) => {
+            failed(&crate::db::fallback::error_text(&error));
+            return None;
+        }
+    }
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let message = json!({
+        "type": "message",
+        "id": message_id,
+        "role": "ASSISTANT",
+        "content": content,
+        "opaqueContent": content,
+        "attachments": [],
+        "createdAt": crate::clock::now_iso(),
+        "participantId": null,
+        "systemSender": "pascal",
+        "systemKind": PASCAL_INVENTORY_CHANGE_KIND,
+        "targetParticipantIds": null,
+    });
+    let event: ChatEventInput = match serde_json::from_value(message.clone()) {
+        Ok(e) => e,
+        Err(error) => {
+            failed(&error.to_string());
+            return None;
+        }
+    };
+    let cid = chat_id.to_string();
+    match db
+        .write(move |writers| writers.main().chat_messages().add_message(&cid, &event))
+        .await
+    {
+        Ok(()) => {
+            tracing::info!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = chat_id,
+                messageId = message_id.as_str(),
+                "[Pascal] Inventory change posted",
+            );
+            Some(PostedPascalMessage {
+                id: message_id,
+                message,
+                target_participant_ids: None,
+            })
+        }
+        Err(error) => {
+            failed(&crate::db::fallback::error_text(&error));
+            None
+        }
+    }
+}
+
+// === end P4.D324 ===
+
 #[cfg(test)]
 mod post_tests {
     //! P4.D319 (v4 `a05c6f755`, R-I): v4's two `writer.test.ts`

@@ -1,0 +1,247 @@
+{
+  "_comment": "P4.D324 tier-3 spec for v4 lib/inventory/item-image-generation.ts generateInventoryItemImage at 322a5488e, over the WARDROBE image-generation pair (build-wardrobe-item-image-generation-fixture.ts — its profiles, keys, chat settings, characters and project). Per scenario each side plants the scenario's Inventory object into its home (through its REAL Inventory location) on a fresh copy, applies `sql`, optionally writes the project's Lantern aesthetic doc, then runs ONE generation. The image provider is mocked BELOW v4's real code; logLLMCall runs REAL into a scratch llm-logs DB.",
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "userId": "0f1e2d3c-4b5a-4968-8776-655443322110",
+  "characterId": "1a2b3c4d-1001-4000-8000-000000000001",
+  "archivedCharacterId": "1a2b3c4d-1002-4000-8000-000000000002",
+  "projectId": "2b3c4d5e-1001-4000-8000-000000000001",
+  "webp": "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+  "lanternAestheticsFilename": "lantern-aesthetics.md",
+  "objects": {
+    "spyglass": {
+      "home": "character",
+      "record": {
+        "id": "f6000001-0000-4000-8000-000000000000",
+        "name": "spyglass",
+        "title": "Captain's spyglass",
+        "description": "A brass telescope.",
+        "imageDescription": "  a dented brass spyglass with a leather grip...  ",
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    "compass": {
+      "home": "character",
+      "record": {
+        "id": "f6000002-0000-4000-8000-000000000000",
+        "name": "compass",
+        "title": "Old compass",
+        "description": "Points north, mostly!",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    "ticket": {
+      "home": "character",
+      "record": {
+        "id": "f6000003-0000-4000-8000-000000000000",
+        "name": "ticket",
+        "title": "Return ticket.",
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    "pebble": {
+      "home": "character",
+      "record": {
+        "id": "f6000004-0000-4000-8000-000000000000",
+        "name": "pebble?!",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    "lamp": {
+      "home": "project",
+      "record": {
+        "id": "f6000005-0000-4000-8000-000000000000",
+        "name": "lamp",
+        "title": null,
+        "description": "A miner's lamp.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    "relic": {
+      "home": "archived",
+      "record": {
+        "id": "f6000006-0000-4000-8000-000000000000",
+        "name": "relic",
+        "title": null,
+        "description": "Dusty.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    }
+  },
+  "scenarios": [
+    {
+      "name": "image_description_subject",
+      "object": "spyglass",
+      "provider": "ok"
+    },
+    {
+      "name": "description_subject",
+      "object": "compass",
+      "provider": "ok"
+    },
+    {
+      "name": "title_subject",
+      "object": "ticket",
+      "provider": "ok"
+    },
+    {
+      "name": "name_subject",
+      "object": "pebble",
+      "provider": "ok"
+    },
+    {
+      "name": "project_lantern_aesthetic",
+      "object": "lamp",
+      "provider": "ok",
+      "lanternAesthetic": "Sepia ink washes, cross-hatched shadow, a draughtsman's restraint."
+    },
+    {
+      "name": "project_no_aesthetic",
+      "object": "lamp",
+      "provider": "ok"
+    },
+    {
+      "name": "override_profile",
+      "object": "spyglass",
+      "provider": "ok",
+      "imageProfileId": "b2b2b2b2-0003-4000-8000-000000000003"
+    },
+    {
+      "name": "no_profile",
+      "object": "spyglass",
+      "provider": "ok",
+      "sql": [
+        "UPDATE chat_settings SET wardrobeImageSettings = NULL",
+        "UPDATE image_profiles SET isDefault = 0"
+      ]
+    },
+    {
+      "name": "key_row_gone",
+      "object": "spyglass",
+      "provider": "ok",
+      "imageProfileId": "b2b2b2b2-0004-4000-8000-000000000004"
+    },
+    {
+      "name": "refused_off_duty",
+      "object": "spyglass",
+      "provider": "refuseAll",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":false}'"
+      ]
+    },
+    {
+      "name": "refused_rerouted",
+      "object": "spyglass",
+      "provider": "refuseFirst",
+      "sql": [
+        "UPDATE chat_settings SET conciergeSettings = '{\"enabled\":true,\"uncensoredImageProfileId\":\"b2b2b2b2-0005-4000-8000-000000000005\"}'"
+      ]
+    },
+    {
+      "name": "provider_failure",
+      "object": "spyglass",
+      "provider": "throw"
+    },
+    {
+      "name": "no_picture",
+      "object": "spyglass",
+      "provider": "nodata"
+    },
+    {
+      "name": "archived_owner_before_spend",
+      "object": "relic",
+      "provider": "ok"
+    }
+  ]
+}

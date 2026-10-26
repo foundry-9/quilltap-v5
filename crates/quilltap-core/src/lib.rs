@@ -289,6 +289,7 @@ pub mod cycle_order;
 pub mod room_characters;
 pub mod weighted_random;
 // === end P4.D172 ===
+pub mod inventory; // P4.D324 — the Inventory keystone
 pub mod wardrobe;
 pub mod wardrobe_folders;
 pub mod wardrobe_history;

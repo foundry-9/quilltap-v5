@@ -626,6 +626,7 @@ pub fn transfer_wardrobe_item(
                 destination_item_id: &planned.id,
                 destination_mount_point_id: &destination_mount_point_id,
                 user_id,
+                images_folder: crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
             },
             &mut mint_file_id,
             now,
@@ -674,7 +675,14 @@ pub fn transfer_wardrobe_item(
 
     // 8b. The moved items' source-side picture links go once their items have.
     for (item_id, pending) in &pending_image_moves {
-        commit_moved_images(main, mount, item_id, pending, now);
+        commit_moved_images(
+            main,
+            mount,
+            item_id,
+            pending,
+            now,
+            crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
+        );
     }
 
     // 9. Post-write verification: read the outfit BACK from the destination

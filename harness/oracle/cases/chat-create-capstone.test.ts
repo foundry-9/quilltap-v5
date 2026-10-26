@@ -128,6 +128,13 @@ interface CaseSpec {
   greetingByModel?: Record<string, CannedGreeting | { attempts: CannedGreeting[] }>;
   /** Canned outfit-choice content the cheap-LLM boundary returns. */
   outfitContent?: string;
+  /**
+   * P4.D324 (v4 `4fbdad186`): Inventory objects written into a character's
+   * vault on THIS case's copy, before the create, through v4's REAL location
+   * (`resolveInventoryLocation(…, { ensure: true })` + `create`) — what the
+   * arrival defaults read. The Rust side writes the same records.
+   */
+  inventoryPlant?: Array<{ characterId: string; record: Record<string, unknown> }>;
 }
 
 /**
@@ -385,6 +392,17 @@ async function runCase(
   await initializeDatabase();
   // P4.D316: this copy's history table (v4's migration-only DDL).
   await plantChatWardrobeHistoryTable();
+  if (c.inventoryPlant) {
+    const { resolveInventoryLocation } = await import('@/lib/inventory/location');
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    for (const plant of c.inventoryPlant) {
+      const vault = await resolveInventoryLocation('character', plant.characterId, getRepositories(), spec.userId, {
+        ensure: true,
+      });
+      if (!vault) throw new Error(`no vault for ${plant.characterId}`);
+      await vault.create(plant.record as never);
+    }
+  }
   if (c.conciergeSettings) {
     getRawDatabase()
       .prepare('UPDATE chat_settings SET "conciergeSettings" = ? WHERE "userId" = ?')

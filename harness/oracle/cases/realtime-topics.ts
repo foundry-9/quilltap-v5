@@ -27,6 +27,7 @@ import {
   topicsForWriteBatch,
 } from '@/lib/realtime/job-topics';
 import { BackgroundJobTypeEnum } from '@/lib/schemas/job.types';
+import { REALTIME_TOPICS } from '@/lib/schemas/realtime.types';
 
 type Payload = Record<string, unknown> | undefined;
 
@@ -302,3 +303,7 @@ for (const c of batchCases()) {
     output: topicsForWriteBatch(c.writes as { method: string; args?: unknown[] }[]),
   });
 }
+
+// P4.D324 (the keystone's topic): the server-side `REALTIME_TOPICS` list
+// itself, in v4's declaration order — `inventory` is the eighth (`e1872c94f`).
+emit({ name: 'realtime_topics_list', kind: 'topics', input: {}, output: [...REALTIME_TOPICS] });

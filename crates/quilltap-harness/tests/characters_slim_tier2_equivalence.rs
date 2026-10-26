@@ -262,6 +262,8 @@ fn characters_slim_tier2_matches_oracle() {
                                 .clone(),
                             can_dress_themselves: data.can_dress_themselves,
                             can_create_outfits: data.can_create_outfits,
+                            // P4.D324: the slim corpus never sets the Inventory flag.
+                            can_manage_inventory: None,
                             system_transparency: data.system_transparency,
                             core_whisper_enabled: data.core_whisper_enabled,
                             can_be_carina: data.can_be_carina,
@@ -307,6 +309,8 @@ fn characters_slim_tier2_matches_oracle() {
                                     .clone(),
                                 can_dress_themselves: data.can_dress_themselves,
                                 can_create_outfits: data.can_create_outfits,
+                                // P4.D324: never patched by the slim corpus.
+                                can_manage_inventory: None,
                                 system_transparency: data.system_transparency,
                                 core_whisper_enabled: data.core_whisper_enabled,
                                 can_be_carina: data.can_be_carina,

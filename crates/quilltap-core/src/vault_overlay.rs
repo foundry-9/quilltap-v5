@@ -1288,24 +1288,14 @@ pub fn resolve_wardrobe_item_id(
 /// `Wardrobe/` only — `rest.contains('/') → false`; that is exactly what
 /// flipped, and the carriers get the recursive form for free.)
 pub fn is_wardrobe_item_document_path(relative_path: &str) -> bool {
-    let prefix = "wardrobe/";
-    let lower = relative_path.to_lowercase();
-    let Some(rest) = lower.strip_prefix(prefix) else {
-        return false;
-    };
-    if rest.is_empty() || !rest.ends_with(".md") {
-        return false;
-    }
-    let segments: Vec<&str> = rest.split('/').collect();
-    if segments.iter().any(|segment| segment.is_empty()) {
-        return false;
-    }
-    if segments.len() > 1
-        && crate::wardrobe_folders::WARDROBE_RESERVED_FOLDER_SEGMENTS.contains(&segments[0])
-    {
-        return false;
-    }
-    !crate::wardrobe_instructions::is_wardrobe_instructions_file_name(segments[segments.len() - 1])
+    // v4 `isItemDocumentPath(WARDROBE_FOLDER_RULES, p, '.md',
+    // isWardrobeInstructionsFileName)` since the `4fbdad186` lift (P4.D324).
+    crate::inventory::item_folders::is_item_document_path(
+        &crate::wardrobe_folders::WARDROBE_FOLDER_RULES,
+        relative_path,
+        ".md",
+        Some(&crate::wardrobe_instructions::is_wardrobe_instructions_file_name),
+    )
 }
 
 /// v4 `isWardrobeItemDocument(doc)` (`parsers.ts:276-279`, `4a38222e6`) — true

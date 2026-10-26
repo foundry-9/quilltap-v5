@@ -1,0 +1,2009 @@
+{
+  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+  "seedTimestamp": "2026-02-01T00:00:00.000Z",
+  "userId": "11111111-1111-4111-8111-111111111111",
+  "user": {
+    "username": "keeper",
+    "email": null,
+    "name": "Keeper",
+    "image": null
+  },
+  "characters": {
+    "V": {
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "name": "Vivienne",
+      "archived": false
+    },
+    "W": {
+      "id": "c2000000-0000-4000-8000-000000000002",
+      "name": "Wren",
+      "archived": false
+    },
+    "Z": {
+      "id": "c3000000-0000-4000-8000-000000000003",
+      "name": "Zed",
+      "archived": true
+    }
+  },
+  "project": {
+    "id": "d1000000-0000-4000-8000-000000000001",
+    "name": "Lantern Hall",
+    "allowAnyCharacter": false,
+    "characterRoster": [
+      "c1000000-0000-4000-8000-000000000001"
+    ]
+  },
+  "group": {
+    "id": "e1000000-0000-4000-8000-000000000001",
+    "name": "The Guild",
+    "memberId": "e2000000-0000-4000-8000-000000000001",
+    "member": "c1000000-0000-4000-8000-000000000001"
+  },
+  "generalMountPointId": "f1000000-0000-4000-8000-000000000001",
+  "generalStoreName": "Quilltap General",
+  "ids": {
+    "archLantern": "a0000001-0000-4000-8000-000000000000",
+    "genCompass": "a0000002-0000-4000-8000-000000000000",
+    "projMap": "a0000003-0000-4000-8000-000000000000",
+    "projBadge": "a0000004-0000-4000-8000-000000000000",
+    "grpRope": "a0000005-0000-4000-8000-000000000000",
+    "grpBadge": "a0000006-0000-4000-8000-000000000000",
+    "vSword": "a0000010-0000-4000-8000-000000000000",
+    "vSwordKin": "a0000011-0000-4000-8000-000000000000",
+    "vLantern": "a0000012-0000-4000-8000-000000000000",
+    "vKit": "a0000013-0000-4000-8000-000000000000",
+    "vArchived": "a0000014-0000-4000-8000-000000000000",
+    "vSubkit": "a0000015-0000-4000-8000-000000000000",
+    "vBadge": "a0000016-0000-4000-8000-000000000000",
+    "vDefault": "a0000017-0000-4000-8000-000000000000",
+    "vNoCopy": "a0000018-0000-4000-8000-000000000000",
+    "vKitProj": "a0000019-0000-4000-8000-000000000000",
+    "zLantern": "a0000020-0000-4000-8000-000000000000",
+    "wCup": "a0000022-0000-4000-8000-000000000000",
+    "missing": "a0000099-0000-4000-8000-000000000000",
+    "dangling": "a0000098-0000-4000-8000-000000000000",
+    "vLantern2": "a0000023-0000-4000-8000-000000000000"
+  },
+  "objects": [
+    {
+      "scope": "general",
+      "owner": null,
+      "record": {
+        "id": "a0000001-0000-4000-8000-000000000000",
+        "name": "lantern",
+        "title": "Lantern",
+        "description": "A brass hand lantern.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": true,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": "🏮",
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {
+          "fuel": "oil"
+        },
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "general",
+      "owner": null,
+      "record": {
+        "id": "a0000002-0000-4000-8000-000000000000",
+        "name": "compass",
+        "title": null,
+        "description": "Points north, mostly.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "project",
+      "owner": "d1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000003-0000-4000-8000-000000000000",
+        "name": "map",
+        "title": null,
+        "description": "A map of the Hall.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": true,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "project",
+      "owner": "d1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000004-0000-4000-8000-000000000000",
+        "name": "badge",
+        "title": "Guild badge",
+        "description": "A guild badge.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": true,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "group",
+      "owner": "e1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000005-0000-4000-8000-000000000000",
+        "name": "rope",
+        "title": null,
+        "description": "Fifty feet of hemp.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "group",
+      "owner": "e1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000006-0000-4000-8000-000000000000",
+        "parentId": "a0000004-0000-4000-8000-000000000000",
+        "folder": "",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000010-0000-4000-8000-000000000000",
+        "name": "sword",
+        "title": "Excalibur",
+        "description": "Never dulls.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 2,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "Weapons",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000011-0000-4000-8000-000000000000",
+        "name": "Sword ",
+        "title": null,
+        "description": "A spare blade.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 2,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000012-0000-4000-8000-000000000000",
+        "parentId": "a0000001-0000-4000-8000-000000000000",
+        "title": "Old lantern",
+        "metadata": {
+          "dented": true
+        },
+        "folder": "",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000023-0000-4000-8000-000000000000",
+        "parentId": "a0000001-0000-4000-8000-000000000000",
+        "title": "Spare lantern",
+        "folder": "",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000013-0000-4000-8000-000000000000",
+        "name": "travel kit",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "kit",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [
+          "a0000001-0000-4000-8000-000000000000",
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000099-0000-4000-8000-000000000000",
+          "a0000014-0000-4000-8000-000000000000",
+          "a0000015-0000-4000-8000-000000000000"
+        ],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000014-0000-4000-8000-000000000000",
+        "name": "broken cup",
+        "title": null,
+        "description": "Chipped.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": "2026-02-02T00:00:00.000Z",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000015-0000-4000-8000-000000000000",
+        "name": "spare kit",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "kit",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [
+          "a0000011-0000-4000-8000-000000000000"
+        ],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000016-0000-4000-8000-000000000000",
+        "parentId": "a0000004-0000-4000-8000-000000000000",
+        "folder": "",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000017-0000-4000-8000-000000000000",
+        "name": "coin",
+        "title": null,
+        "description": "A lucky coin.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": true,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000018-0000-4000-8000-000000000000",
+        "name": "locket",
+        "title": null,
+        "description": "Not to be copied.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": false,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "Satchel/Pocket",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000019-0000-4000-8000-000000000000",
+        "name": "field kit",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "kit",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [
+          "a0000003-0000-4000-8000-000000000000",
+          "a0000002-0000-4000-8000-000000000000"
+        ],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c3000000-0000-4000-8000-000000000003",
+      "record": {
+        "id": "a0000020-0000-4000-8000-000000000000",
+        "parentId": "a0000001-0000-4000-8000-000000000000",
+        "folder": "",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c2000000-0000-4000-8000-000000000002",
+      "record": {
+        "id": "a0000010-0000-4000-8000-000000000000",
+        "name": "sword",
+        "title": null,
+        "description": "Wren's own blade.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c2000000-0000-4000-8000-000000000002",
+      "record": {
+        "id": "a0000022-0000-4000-8000-000000000000",
+        "name": "cup",
+        "title": null,
+        "description": "A tin cup.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": true,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    }
+  ],
+  "pictures": [
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "kind": "uploaded",
+      "webp": 0
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "item": "a0000010-0000-4000-8000-000000000000",
+      "kind": "generated",
+      "webp": 1,
+      "generationPrompt": "a sword",
+      "generationModel": "test-model"
+    },
+    {
+      "scope": "general",
+      "owner": null,
+      "item": "a0000001-0000-4000-8000-000000000000",
+      "kind": "imported",
+      "webp": 0
+    }
+  ],
+  "chats": [
+    {
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "title": "The Hall",
+      "projectId": "d1000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "b1100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "b1200000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "controlledBy": "user"
+        }
+      ],
+      "equipped": {
+        "c1000000-0000-4000-8000-000000000001": [
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "id": "b2000000-0000-4000-8000-000000000001",
+      "title": "The Road",
+      "projectId": null,
+      "participants": [
+        {
+          "id": "b2100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c1000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "equipped": {
+        "c1000000-0000-4000-8000-000000000001": [
+          "a0000011-0000-4000-8000-000000000000",
+          "a0000098-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "id": "b3000000-0000-4000-8000-000000000001",
+      "title": "The Inn",
+      "projectId": null,
+      "participants": [
+        {
+          "id": "b3100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "b3200000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c2000000-0000-4000-8000-000000000002"
+        }
+      ],
+      "equipped": {
+        "c1000000-0000-4000-8000-000000000001": [
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000017-0000-4000-8000-000000000000"
+        ],
+        "c2000000-0000-4000-8000-000000000002": []
+      }
+    },
+    {
+      "id": "b4000000-0000-4000-8000-000000000001",
+      "title": "The Arrival",
+      "projectId": "d1000000-0000-4000-8000-000000000001",
+      "participants": [
+        {
+          "id": "b4100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c1000000-0000-4000-8000-000000000001"
+        },
+        {
+          "id": "b4200000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c2000000-0000-4000-8000-000000000002"
+        },
+        {
+          "id": "b4300000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c3000000-0000-4000-8000-000000000003",
+          "status": "removed"
+        }
+      ],
+      "equipped": null
+    },
+    {
+      "id": "b5000000-0000-4000-8000-000000000001",
+      "title": "The Cellar",
+      "projectId": null,
+      "participants": [
+        {
+          "id": "b5100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c1000000-0000-4000-8000-000000000001"
+        }
+      ],
+      "equipped": {
+        "c1000000-0000-4000-8000-000000000001": [
+          "a0000012-0000-4000-8000-000000000000"
+        ]
+      }
+    }
+  ],
+  "webp": [
+    "UklGRjoAAABXRUJQVlA4IC4AAACQAQCdASoEAAQAAUAmJaACdLoAA5gA/vFNr+LaR0KZD/7xn/9xn/9xn/yIAAAA",
+    "UklGRjwAAABXRUJQVlA4IDAAAAAQAgCdASoEAAQAAUAmJaACdLoB+AH4AAPIAP7tBy/9wb7Iuf+tF/9ZVfJUfvyAAAA="
+  ],
+  "ops": [
+    {
+      "name": "resolve-vault",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "resolve-archived-vault",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "character",
+      "id": "c3000000-0000-4000-8000-000000000003"
+    },
+    {
+      "name": "resolve-unknown-character",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "character",
+      "id": "c9000000-0000-4000-8000-000000000009"
+    },
+    {
+      "name": "resolve-project",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "resolve-group",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "group",
+      "id": "e1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "resolve-general",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "general",
+      "id": null
+    },
+    {
+      "name": "resolve-project-no-id",
+      "family": "location",
+      "kind": "resolveLocation",
+      "scope": "project",
+      "id": null
+    },
+    {
+      "name": "read-vault",
+      "family": "location",
+      "kind": "readItems",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "read-vault-archived",
+      "family": "location",
+      "kind": "readItems",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "includeArchived": true
+    },
+    {
+      "name": "read-general",
+      "family": "location",
+      "kind": "readItems",
+      "at": {
+        "scope": "general",
+        "id": null
+      }
+    },
+    {
+      "name": "folders-vault",
+      "family": "location",
+      "kind": "listFolders",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "pool-vivienne-chat",
+      "family": "pool",
+      "kind": "loadPool",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "chatId": "b1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "pool-vivienne-bare",
+      "family": "pool",
+      "kind": "loadPool",
+      "characterId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "pool-wren-project",
+      "family": "pool",
+      "kind": "loadPool",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "projectId": "d1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "pool-zed",
+      "family": "pool",
+      "kind": "loadPool",
+      "characterId": "c3000000-0000-4000-8000-000000000003"
+    },
+    {
+      "name": "pool-for-project",
+      "family": "pool",
+      "kind": "loadPoolForLocation",
+      "at": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "pool-for-general",
+      "family": "pool",
+      "kind": "loadPoolForLocation",
+      "at": {
+        "scope": "general",
+        "id": null
+      }
+    },
+    {
+      "name": "pool-for-group",
+      "family": "pool",
+      "kind": "loadPoolForLocation",
+      "at": {
+        "scope": "group",
+        "id": "e1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "dependents-lantern",
+      "family": "dependents",
+      "kind": "findDependents",
+      "archetypeId": "a0000001-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "dependents-badge",
+      "family": "dependents",
+      "kind": "findDependents",
+      "archetypeId": "a0000004-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "dependents-none",
+      "family": "dependents",
+      "kind": "findDependents",
+      "archetypeId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "anywhere",
+      "family": "dependents",
+      "kind": "findRecordsAnywhere",
+      "ids": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000003-0000-4000-8000-000000000000",
+        "a0000099-0000-4000-8000-000000000000",
+        "a0000010-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "strand-map-to-general",
+      "family": "dependents",
+      "kind": "findKitsStranded",
+      "itemId": "a0000003-0000-4000-8000-000000000000",
+      "target": {
+        "scope": "general",
+        "id": null
+      }
+    },
+    {
+      "name": "strand-map-to-group",
+      "family": "dependents",
+      "kind": "findKitsStranded",
+      "itemId": "a0000003-0000-4000-8000-000000000000",
+      "target": {
+        "scope": "group",
+        "id": "e1000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "strand-map-to-wren",
+      "family": "dependents",
+      "kind": "findKitsStranded",
+      "itemId": "a0000003-0000-4000-8000-000000000000",
+      "target": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "strand-compass-to-wren",
+      "family": "dependents",
+      "kind": "findKitsStranded",
+      "itemId": "a0000002-0000-4000-8000-000000000000",
+      "target": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      }
+    },
+    {
+      "name": "set-chat1-v",
+      "family": "equipped_set",
+      "kind": "readEquippedSet",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "set-chat2-dangling",
+      "family": "equipped_set",
+      "kind": "readEquippedSet",
+      "chatId": "b2000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "set-chat3-w-empty",
+      "family": "equipped_set",
+      "kind": "readEquippedSet",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002"
+    },
+    {
+      "name": "set-chat4-none",
+      "family": "equipped_set",
+      "kind": "readEquippedSet",
+      "chatId": "b4000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "create-item",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "rope",
+        "description": "Coiled.",
+        "folder": "weapons",
+        "svg": "<svg><circle r='2'/></svg>",
+        "itemIds": []
+      }
+    },
+    {
+      "name": "create-kit",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "pack",
+        "kind": "kit",
+        "itemIds": [
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000001-0000-4000-8000-000000000000",
+          "a0000010-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "create-kit-nesting",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "bad pack",
+        "kind": "kit",
+        "itemIds": [
+          "a0000015-0000-4000-8000-000000000000",
+          "a0000099-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "create-kit-missing",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "bad pack",
+        "kind": "kit",
+        "itemIds": [
+          "a0000099-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "create-archetype-general",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "general",
+        "id": null
+      },
+      "body": {
+        "name": "key",
+        "isArchetype": true,
+        "canCopy": true
+      }
+    },
+    {
+      "name": "create-in-archived-vault",
+      "family": "mutations",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c3000000-0000-4000-8000-000000000003"
+      },
+      "body": {
+        "name": "ghost"
+      }
+    },
+    {
+      "name": "instantiate-root",
+      "family": "mutations",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "instantiate-overrides",
+      "family": "mutations",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000",
+        "folder": "Weapons",
+        "overrides": {
+          "title": "Night light",
+          "description": null,
+          "svg": "<svg/>"
+        }
+      }
+    },
+    {
+      "name": "instantiate-not-archetype",
+      "family": "mutations",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000010-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "instantiate-unreachable",
+      "family": "mutations",
+      "kind": "instantiate",
+      "at": {
+        "scope": "general",
+        "id": null
+      },
+      "body": {
+        "archetypeId": "a0000004-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "update-instance-title",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "title": "Older lantern",
+        "kind": "item",
+        "folder": "Weapons"
+      }
+    },
+    {
+      "name": "update-instance-kit-refused",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "kind": "kit"
+      }
+    },
+    {
+      "name": "update-instance-archetype-refused",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "isArchetype": true
+      }
+    },
+    {
+      "name": "update-archetype-in-use",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "body": {
+        "isArchetype": false
+      }
+    },
+    {
+      "name": "update-archetype-to-kit",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "body": {
+        "kind": "kit"
+      }
+    },
+    {
+      "name": "update-kit-archetype",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000013-0000-4000-8000-000000000000",
+      "body": {
+        "isArchetype": true
+      }
+    },
+    {
+      "name": "update-kit-members",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000013-0000-4000-8000-000000000000",
+      "body": {
+        "itemIds": [
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000010-0000-4000-8000-000000000000",
+          "a0000002-0000-4000-8000-000000000000"
+        ]
+      }
+    },
+    {
+      "name": "update-archive",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "archived": true,
+        "description": "Dulled at last."
+      }
+    },
+    {
+      "name": "update-svg-blank",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "svg": "   "
+      }
+    },
+    {
+      "name": "clear-overrides",
+      "family": "mutations",
+      "kind": "clearOverrides",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "fields": [
+        "metadata",
+        "description"
+      ]
+    },
+    {
+      "name": "clear-overrides-standalone",
+      "family": "mutations",
+      "kind": "clearOverrides",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "fields": [
+        "title"
+      ]
+    },
+    {
+      "name": "archive-idempotent",
+      "family": "mutations",
+      "kind": "setArchived",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000014-0000-4000-8000-000000000000",
+      "archived": true
+    },
+    {
+      "name": "restore",
+      "family": "mutations",
+      "kind": "setArchived",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000014-0000-4000-8000-000000000000",
+      "archived": false
+    },
+    {
+      "name": "detach",
+      "family": "mutations",
+      "kind": "detach",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "detach-standalone",
+      "family": "mutations",
+      "kind": "detach",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "detach-all-archived",
+      "family": "mutations",
+      "kind": "detachAll",
+      "archetypeId": "a0000001-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "detach-all-badge",
+      "family": "mutations",
+      "kind": "detachAll",
+      "archetypeId": "a0000004-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "delete-plain",
+      "family": "mutations",
+      "kind": "delete",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000011-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "delete-with-pictures",
+      "family": "mutations",
+      "kind": "delete",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "delete-archetype-in-use",
+      "family": "mutations",
+      "kind": "delete",
+      "at": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000004-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "delete-archetype-forced",
+      "family": "mutations",
+      "kind": "delete",
+      "at": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000004-0000-4000-8000-000000000000",
+      "force": true
+    },
+    {
+      "name": "delete-archetype-archived-dependents",
+      "family": "mutations",
+      "kind": "delete",
+      "at": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000001-0000-4000-8000-000000000000",
+      "force": true
+    },
+    {
+      "name": "duplicate",
+      "family": "mutations",
+      "kind": "duplicate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "duplicate-not-copyable",
+      "family": "mutations",
+      "kind": "duplicate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000018-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-to-folder",
+      "family": "mutations",
+      "kind": "moveToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000017-0000-4000-8000-000000000000",
+        "a0000010-0000-4000-8000-000000000000"
+      ],
+      "folder": "satchel"
+    },
+    {
+      "name": "move-missing",
+      "family": "mutations",
+      "kind": "moveToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000099-0000-4000-8000-000000000000"
+      ],
+      "folder": "Weapons"
+    },
+    {
+      "name": "copy-to-folder",
+      "family": "mutations",
+      "kind": "copyToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000017-0000-4000-8000-000000000000"
+      ],
+      "folder": "Copies"
+    },
+    {
+      "name": "copy-not-copyable",
+      "family": "mutations",
+      "kind": "copyToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000018-0000-4000-8000-000000000000"
+      ],
+      "folder": "Copies"
+    },
+    {
+      "name": "copy-missing",
+      "family": "mutations",
+      "kind": "copyToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000099-0000-4000-8000-000000000000"
+      ],
+      "folder": "Copies"
+    },
+    {
+      "name": "folder-create",
+      "family": "mutations",
+      "kind": "createFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "path": "Satchel/Side pocket"
+    },
+    {
+      "name": "folder-create-blank",
+      "family": "mutations",
+      "kind": "createFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "path": "  "
+    },
+    {
+      "name": "folder-rename",
+      "family": "mutations",
+      "kind": "renameFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "path": "/Satchel/",
+      "newName": "Bag"
+    },
+    {
+      "name": "folder-delete",
+      "family": "mutations",
+      "kind": "deleteFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "path": "Satchel"
+    },
+    {
+      "name": "list-own",
+      "family": "images",
+      "kind": "listImages",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "list-inherited",
+      "family": "images",
+      "kind": "listImages",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "list-none",
+      "family": "images",
+      "kind": "listImages",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000017-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "add-uploaded",
+      "family": "images",
+      "kind": "addImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000017-0000-4000-8000-000000000000",
+      "imageKind": "uploaded",
+      "webp": 1
+    },
+    {
+      "name": "set-current-oldest",
+      "family": "images",
+      "kind": "setCurrentImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "picture": 1
+    },
+    {
+      "name": "set-current-foreign",
+      "family": "images",
+      "kind": "setCurrentImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "fileId": "0f000000-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "delete-current",
+      "family": "images",
+      "kind": "deleteImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "picture": 0
+    },
+    {
+      "name": "delete-noncurrent",
+      "family": "images",
+      "kind": "deleteImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "picture": 1
+    },
+    {
+      "name": "delete-foreign",
+      "family": "images",
+      "kind": "deleteImage",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000017-0000-4000-8000-000000000000",
+      "fileId": "0f000000-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-to-general",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000017-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-with-pictures",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "copy-with-pictures",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "copy",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "group",
+        "id": "e1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "copy-not-copyable",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "copy",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000018-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "same-location",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-strands-kit",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      },
+      "itemId": "a0000003-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-reachable",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "project",
+        "id": "d1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000003-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "kit-contextual",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "copy",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      },
+      "itemId": "a0000019-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "kit-unreachable-member",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "copy",
+      "source": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "destination": {
+        "scope": "group",
+        "id": "e1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000019-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-from-archived",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "character",
+        "id": "c3000000-0000-4000-8000-000000000003"
+      },
+      "destination": {
+        "scope": "general",
+        "id": null
+      },
+      "itemId": "a0000020-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "move-id-collision",
+      "family": "transfers",
+      "kind": "transfer",
+      "action": "move",
+      "source": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      },
+      "destination": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "equip-one",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000011-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-cap",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000012-0000-4000-8000-000000000000",
+        "a0000011-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-cap-exceeded",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000023-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-cap-lenient-drop",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000023-0000-4000-8000-000000000000",
+        "a0000010-0000-4000-8000-000000000000"
+      ],
+      "lenient": true
+    },
+    {
+      "name": "equip-cap-boundary-kin",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000011-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-kit",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000013-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-archetype",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000001-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-archived",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000014-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-missing-lenient",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000099-0000-4000-8000-000000000000",
+        "a0000017-0000-4000-8000-000000000000"
+      ],
+      "lenient": true
+    },
+    {
+      "name": "equip-already",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000010-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-not-participant",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b2000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "ids": [
+        "a0000022-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-user-seat",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "ids": [
+        "a0000022-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-off-roster",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "ids": [
+        "a0000003-0000-4000-8000-000000000000"
+      ],
+      "provenance": "character"
+    },
+    {
+      "name": "equip-off-roster-operator",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "ids": [
+        "a0000003-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "equip-on-roster",
+      "family": "equip",
+      "kind": "equip",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000003-0000-4000-8000-000000000000"
+      ],
+      "provenance": "character"
+    },
+    {
+      "name": "unequip-one",
+      "family": "equip",
+      "kind": "unequip",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000099-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "unequip-kit",
+      "family": "equip",
+      "kind": "unequip",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "ids": [
+        "a0000013-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "pick-up",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "archetypeIds": [
+        "a0000001-0000-4000-8000-000000000000"
+      ],
+      "title": "  Spare lamp "
+    },
+    {
+      "name": "pick-up-no-equip",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "archetypeIds": [
+        "a0000001-0000-4000-8000-000000000000"
+      ],
+      "equip": false
+    },
+    {
+      "name": "pick-up-not-archetype",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "archetypeIds": [
+        "a0000010-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "pick-up-unreachable",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "archetypeIds": [
+        "a0000099-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "pick-up-off-roster",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b1000000-0000-4000-8000-000000000001",
+      "characterId": "c2000000-0000-4000-8000-000000000002",
+      "archetypeIds": [
+        "a0000004-0000-4000-8000-000000000000"
+      ],
+      "provenance": "character"
+    },
+    {
+      "name": "pick-up-cap",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b5000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "archetypeIds": [
+        "a0000001-0000-4000-8000-000000000000"
+      ]
+    },
+    {
+      "name": "drop-everywhere",
+      "family": "equip",
+      "kind": "dropEverywhere",
+      "characterId": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "also": [
+        "b4000000-0000-4000-8000-000000000001",
+        "b1000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "name": "arrival-defaults",
+      "family": "equip",
+      "kind": "applyDefaults",
+      "chatId": "b4000000-0000-4000-8000-000000000001",
+      "characterIds": [
+        "c1000000-0000-4000-8000-000000000001",
+        "c2000000-0000-4000-8000-000000000002",
+        "c1000000-0000-4000-8000-000000000001",
+        "c3000000-0000-4000-8000-000000000003"
+      ],
+      "source": "chat-start"
+    },
+    {
+      "name": "arrival-continuation",
+      "family": "equip",
+      "kind": "applyDefaults",
+      "chatId": "b4000000-0000-4000-8000-000000000001",
+      "characterIds": [
+        "c1000000-0000-4000-8000-000000000001"
+      ],
+      "source": "chat-start",
+      "sourceChatId": "b2000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "arrival-already-entry",
+      "family": "equip",
+      "kind": "applyDefaults",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterIds": [
+        "c2000000-0000-4000-8000-000000000002"
+      ],
+      "source": "participant-added"
+    },
+    {
+      "name": "arrival-no-chat",
+      "family": "equip",
+      "kind": "applyDefaults",
+      "chatId": "b9000000-0000-4000-8000-000000000009",
+      "characterIds": [
+        "c1000000-0000-4000-8000-000000000001"
+      ],
+      "source": "merge"
+    },
+    {
+      "name": "reset-defaults",
+      "family": "equip",
+      "kind": "resetDefaults",
+      "chatId": "b3000000-0000-4000-8000-000000000001",
+      "characterId": "c1000000-0000-4000-8000-000000000001"
+    }
+  ]
+}

@@ -3399,3 +3399,129 @@ pub fn log_tfidf_vocabulary_create_refused(zod: &str, profile_id: &str, user_id:
 }
 
 // === end P4.D293 ===
+
+// === P4.D324 — the Inventory keystone's repository fallbacks (append-only) ===
+
+/// v4 `ChatsRepository.getEquippedInventory`'s FALLBACK arm
+/// (`chats.repository.ts:780-790`, fallback `{}`): `Failed to get equipped
+/// inventory {collection, chatId, context: "inventory", error}`. Its only
+/// fallible step is the repository's own `findById` — itself a fallback that
+/// logs `Error finding entity by ID` and answers `null` — so the arm is
+/// UNREACHABLE through v4's real code; the home exists so a v5 read that can
+/// fail lands on v4's sentence (pinned NEGATIVE by the family).
+pub fn equipped_inventory_or_empty<T: Default>(
+    chat_id: &str,
+    read: impl FnOnce() -> Result<T, DbError>,
+) -> T {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            chatId = %chat_id,
+            context = "inventory",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Failed to get equipped inventory"
+        );
+        T::default()
+    })
+}
+
+/// v4 `ChatsRepository.setEquippedInventory`'s FALLBACK arm (`:802-830`,
+/// fallback `false` — R-K): `Failed to write equipped inventory {collection,
+/// chatId, characterId, context: "inventory", error}` with the BARE SQLite
+/// message (`no such column: equippedInventory` on a pre-column `chats`).
+pub fn equipped_inventory_written_or_false(
+    chat_id: &str,
+    character_id: &str,
+    write: impl FnOnce() -> Result<bool, DbError>,
+) -> bool {
+    write().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            chatId = %chat_id,
+            characterId = %character_id,
+            context = "inventory",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Failed to write equipped inventory"
+        );
+        false
+    })
+}
+
+/// v4 `findChatIdsCarryingInventoryId`'s FALLBACK arm (`:837-848`, fallback
+/// `[]`): `Failed to find chats carrying an inventory id {collection,
+/// characterId, itemId, context: "inventory", error}`.
+pub fn chats_carrying_inventory_id_or_empty(
+    character_id: &str,
+    item_id: &str,
+    read: impl FnOnce() -> Result<Vec<String>, DbError>,
+) -> Vec<String> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            characterId = %character_id,
+            itemId = %item_id,
+            context = "inventory",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Failed to find chats carrying an inventory id"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `removeEquippedInventoryId`'s FALLBACK arm (`:859-877`, fallback
+/// `false`): `Failed to remove an id from equipped inventory {collection,
+/// chatId, characterId, itemId, context: "inventory", error}`.
+pub fn equipped_inventory_id_removed_or_false(
+    chat_id: &str,
+    character_id: &str,
+    item_id: &str,
+    write: impl FnOnce() -> Result<bool, DbError>,
+) -> bool {
+    write().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "chats",
+            chatId = %chat_id,
+            characterId = %character_id,
+            itemId = %item_id,
+            context = "inventory",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Failed to remove an id from equipped inventory"
+        );
+        false
+    })
+}
+
+/// v4 `DocMountDocumentsRepository.findManyInFolderContaining`'s FALLBACK
+/// arm (`doc-mount-documents.repository.ts:222-264`, fallback `[]`): `Error
+/// finding documents in a folder by content {collection, folder, extension,
+/// needleCount, error}`.
+pub fn documents_in_folder_containing_or_empty<T>(
+    folder: &str,
+    extension: &str,
+    needle_count: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "doc_mount_documents",
+            folder = %folder,
+            extension = %extension,
+            needleCount = needle_count,
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error finding documents in a folder by content"
+        );
+        Vec::new()
+    })
+}
+
+// === end P4.D324 ===

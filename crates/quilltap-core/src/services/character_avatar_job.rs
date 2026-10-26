@@ -1348,6 +1348,7 @@ mod log_line_tests {
                     character_document_mount_point_id: None,
                     can_dress_themselves: None,
                     can_create_outfits: None,
+                    can_manage_inventory: None,
                     system_transparency: None,
                     core_whisper_enabled: None,
                     can_be_carina: None,

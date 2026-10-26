@@ -198,6 +198,11 @@ pub struct CharacterCreate {
     pub character_document_mount_point_id: Option<String>,
     pub can_dress_themselves: Option<bool>,
     pub can_create_outfits: Option<bool>,
+    /// P4.D324 (v4 `e1872c94f`): whether the character is offered the
+    /// `inventory_*` tools (NULL reads as on). Named in the INSERT only when
+    /// set — v4's `insertOne` names the document's keys, and an absent
+    /// optional key is no key.
+    pub can_manage_inventory: Option<bool>,
     pub system_transparency: Option<bool>,
     pub core_whisper_enabled: Option<bool>,
     pub can_be_carina: Option<bool>,
@@ -239,6 +244,9 @@ pub struct CharacterUpdate {
     pub character_document_mount_point_id: Option<String>,
     pub can_dress_themselves: Option<bool>,
     pub can_create_outfits: Option<bool>,
+    /// P4.D324: the inventory-tools flag. `Some(Some(b))` sets it,
+    /// `Some(None)` clears it to NULL, `None` leaves it.
+    pub can_manage_inventory: Option<Option<bool>>,
     pub system_transparency: Option<bool>,
     pub core_whisper_enabled: Option<bool>,
     pub can_be_carina: Option<bool>,
@@ -328,6 +336,14 @@ impl<'c> CharactersRepository<'c> {
                 opts.updated_at,
             ],
         )?;
+        if let Some(flag) = data.can_manage_inventory {
+            // The 28-column INSERT above is fixed; the flag is a second statement
+            // on the same writer connection (no reader sees the row between).
+            self.conn.execute(
+                "UPDATE characters SET canManageInventory = ?1 WHERE id = ?2",
+                params![i64::from(flag), opts.id],
+            )?;
+        }
         Ok(())
     }
 
@@ -406,6 +422,10 @@ impl<'c> CharactersRepository<'c> {
         );
         set_bool!(patch.can_dress_themselves, "canDressThemselves");
         set_bool!(patch.can_create_outfits, "canCreateOutfits");
+        if let Some(v) = patch.can_manage_inventory {
+            assignments.push(format!("canManageInventory = ?{}", values.len() + 1));
+            values.push(Box::new(v.map(i64::from)));
+        }
         set_bool!(patch.system_transparency, "systemTransparency");
         set_bool!(patch.core_whisper_enabled, "coreWhisperEnabled");
         set_bool!(patch.can_be_carina, "canBeCarina");

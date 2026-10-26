@@ -664,6 +664,14 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/doc_mount_folders.rs", "find_by_mount_point_id_or_empty", "find_by_mount_point_id", "internal"),
     ("quilltap-core/src/db/document_store_overlay.rs", "load_store_files", "find_many_by_mount_points_and_path_or_empty", "converted"),
     ("quilltap-core/src/db/document_store_overlay.rs", "read_properties", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
+    ("quilltap-core/src/db/inventory_readers.rs", "scan_inventory_folder", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "list_folders_in", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "list_folder_paths_in", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "find_stored_folder", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "rename_folder_in", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "delete_folder_in", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "delete_folder_in", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/db/item_folder_ops.rs", "delete_folder_in", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/db/scenarios.rs", "set_scenario_default_in_folder", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/db/vault_character_update.rs", "read_current_properties", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "load_vault_file_maps", "find_many_by_mount_points_and_path_or_empty", "converted"),
@@ -673,15 +681,9 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_read_overlay.rs", "vault_entry_names", "find_many_by_mount_points_in_folder_or_empty", "no-v4-counterpart"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/db/vault_read_overlay.rs", "read_character_vault_wardrobe", "find_many_by_mount_points_and_path_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "find_stored_folder", "find_by_mount_point_and_path_or_none", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "list_folders_in_mount", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "list_folder_paths_in_mount", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "rename_folder_in_mount", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_by_mount_point_id_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
-    ("quilltap-core/src/db/vault_wardrobe_public.rs", "delete_folder_in_mount", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/inventory/dependents.rs", "read_all_inventory_records", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
@@ -924,6 +926,13 @@ fn the_class_counts_are_pinned() {
 // so twins. (The location's `find_doc` reads `find_with_link_by_mount_point_
 // and_path` inside `document_by_mount_point_and_path_or_none` — a home's
 // closure, which the scanner does not count.)
+// **P4.D324 (+2 converted): 89 → 91** — the Inventory keystone (v4
+// `4fbdad186`): the wardrobe's seven folder-verb rows MOVED with the
+// item-folder lift (`vault_wardrobe_public.rs` → `db/item_folder_ops.rs`,
+// `noun`-parameterised, the `_in_mount` suffix dropped) and two reads are
+// new — `inventory_readers::scan_inventory_folder` (the `Inventory/` scan)
+// and `inventory::dependents::read_all_inventory_records` (the instance-wide
+// read the kit / dependents checks walk), both v4's fallback reads, so twins.
 const COUNTS: (
     usize,
     usize,
@@ -934,7 +943,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (89, 14, 19, 1, 13, 5, 1, 20, 5);
+) = (91, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`

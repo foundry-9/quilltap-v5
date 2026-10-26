@@ -694,6 +694,153 @@ pub fn find_full_json_by_mount_point_id(
     Ok(out)
 }
 
+// === P4.D324 — `findManyInFolderContaining` (append-only) ===
+
+/// One row of v4's joined document view (`DocMountDocumentWithLink`), every
+/// column `findManyInFolderContaining` selects.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocMountDocumentWithLink {
+    pub id: String,
+    pub file_id: String,
+    pub content: String,
+    pub content_sha256: Option<String>,
+    /// The cell as JS reads it (an integral REAL renders bare, as V8 does).
+    pub plain_text_length: Option<serde_json::Value>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub link_id: String,
+    pub mount_point_id: String,
+    pub relative_path: String,
+    pub file_name: String,
+    pub folder_id: Option<String>,
+    pub last_modified: Option<String>,
+    pub link_group_id: Option<String>,
+    pub file_type: Option<String>,
+}
+
+impl DocMountDocumentWithLink {
+    /// The folder-listing subset the per-file parsers read.
+    pub fn to_folder_doc(&self) -> VaultFolderDoc {
+        VaultFolderDoc {
+            content: self.content.clone(),
+            mount_point_id: self.mount_point_id.clone(),
+            relative_path: self.relative_path.clone(),
+            file_name: self.file_name.clone(),
+            created_at: self.created_at.clone(),
+            updated_at: self.updated_at.clone(),
+            last_modified: self.last_modified.clone().unwrap_or_default(),
+        }
+    }
+}
+
+impl<'c> DocMountDocumentsRepository<'c> {
+    /// v4 `findManyInFolderContaining(folder, extension, needles)`
+    /// (`doc-mount-documents.repository.ts:222-264`, `4fbdad186`): documents
+    /// under a named folder (any depth, ANY mount point) with the given
+    /// extension whose content contains at least one of `needles` (a plain
+    /// SUBSTRING match — `instr(d.content, ?) > 0`, ORed). Lets a caller that
+    /// wants a few records by an id kept inside the file fetch the candidates
+    /// instead of every file in the instance; callers still parse and match
+    /// exactly. Empty needles are dropped; none left → `[]` with NO query.
+    /// The SQL is v4's verbatim; the JS post-filter keeps `startsWith(prefix)
+    /// && endsWith(ext)` on the lower-cased path.
+    pub fn find_many_in_folder_containing(
+        &self,
+        folder: &str,
+        extension: &str,
+        needles: &[String],
+    ) -> Result<Vec<DocMountDocumentWithLink>, DbError> {
+        let wanted: Vec<&String> = needles.iter().filter(|n| !n.is_empty()).collect();
+        if wanted.is_empty() {
+            return Ok(Vec::new());
+        }
+        let prefix_lower = format!("{folder}/").to_lowercase();
+        let ext_lower = extension.to_lowercase();
+        let like_pattern = format!("{prefix_lower}%");
+        let contains = (0..wanted.len())
+            .map(|i| format!("instr(d.content, ?{}) > 0", i + 2))
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let sql = format!(
+            "SELECT \
+               d.id, d.fileId, d.content, d.contentSha256, d.plainTextLength, \
+               d.createdAt, d.updatedAt, \
+               l.id AS linkId, l.mountPointId, l.relativePath, l.fileName, \
+               l.folderId, l.lastModified, l.linkGroupId, \
+               f.fileType \
+             FROM doc_mount_file_links l \
+             JOIN doc_mount_documents d ON d.fileId = l.fileId \
+             JOIN doc_mount_files f ON f.id = l.fileId \
+             WHERE LOWER(l.relativePath) LIKE ?1 \
+               AND ({contains})"
+        );
+        let mut params: Vec<&dyn ToSql> = vec![&like_pattern];
+        for n in &wanted {
+            params.push(*n);
+        }
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows: Vec<DocMountDocumentWithLink> = stmt
+            .query_map(params.as_slice(), |r| {
+                Ok(DocMountDocumentWithLink {
+                    id: r.get(0)?,
+                    file_id: r.get(1)?,
+                    content: r.get(2)?,
+                    content_sha256: r.get(3)?,
+                    plain_text_length: r.get::<_, Option<f64>>(4)?.map(|f| {
+                        if f.fract() == 0.0 && f.abs() < 9_007_199_254_740_992.0 {
+                            serde_json::Value::from(f as i64)
+                        } else {
+                            serde_json::Value::from(f)
+                        }
+                    }),
+                    created_at: r.get(5)?,
+                    updated_at: r.get(6)?,
+                    link_id: r.get(7)?,
+                    mount_point_id: r.get(8)?,
+                    relative_path: r.get(9)?,
+                    file_name: r.get(10)?,
+                    folder_id: r.get(11)?,
+                    last_modified: r.get(12)?,
+                    link_group_id: r.get(13)?,
+                    file_type: r.get(14)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows
+            .into_iter()
+            .filter(|doc| {
+                let path_lower = doc.relative_path.to_lowercase();
+                path_lower.starts_with(&prefix_lower) && path_lower.ends_with(&ext_lower)
+            })
+            .collect())
+    }
+
+    /// [`Self::find_many_in_folder_containing`] exactly as v4's callers see
+    /// it: a fallback `withRawDb([])` — a failed read logs `Error finding
+    /// documents in a folder by content {collection, folder, extension,
+    /// needleCount, error}` and answers `[]`.
+    pub fn find_many_in_folder_containing_or_empty(
+        &self,
+        folder: &str,
+        extension: &str,
+        needles: &[String],
+    ) -> Vec<DocMountDocumentWithLink> {
+        let needle_count = needles.iter().filter(|n| !n.is_empty()).count();
+        if needle_count == 0 {
+            return Vec::new();
+        }
+        super::fallback::documents_in_folder_containing_or_empty(
+            folder,
+            extension,
+            needle_count,
+            || self.find_many_in_folder_containing(folder, extension, needles),
+        )
+    }
+}
+
+// === end P4.D324 ===
+
 #[cfg(test)]
 mod fallback_twin_tests {
     use super::*;

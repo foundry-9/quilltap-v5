@@ -306,6 +306,7 @@ pub fn file_items_to_folder(
                 destination_item_id: &id,
                 destination_mount_point_id: &mount_point_id,
                 user_id,
+                images_folder: crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
             },
             mint_file_id,
             now,

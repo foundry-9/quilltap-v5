@@ -645,6 +645,9 @@ const CHARACTER_BOOLEAN_COLUMNS: &[&str] = &[
     "defaultHelpToolsEnabled",
     "canDressThemselves",
     "canCreateOutfits",
+    // P4.D324 (v4 `e1872c94f`): a Zod boolean in v4; without the name a `1`
+    // cell would hydrate as a NUMBER.
+    "canManageInventory",
     "canChooseOutfit",
     "systemTransparency",
     "coreWhisperEnabled",

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — INVENTORY: the Inventory keystone — storage, model, mutations, pictures, transfers, equip, arrival defaults, the prompt section, and the round's schema re-dump (P4.D324)
+
+_Versions: core 0.0.1324, host 0.0.212._
+
+Ports v4's Inventory core (`lib/inventory/**` at `322a5488e`, bar the tools, the turn containers, the image phrase and the title lint, which are sibling lanes'). New `quilltap_core::inventory` module: the Zod-faithful types and body parsers, the folder rules (lifted out of the wardrobe into a shared `item_folders` / `db::item_folder_ops` and parameterised by noun), the `.json` readers and writers, tier locations, the four-tier pool, resolution with archetype inheritance, dependents and kit reachability, the equipped set, the thirteen refusal codes, the SVG sanitiser, object mutations (create, instantiate, update, clear overrides, archive, detach, detach-all, delete, duplicate, file, copy, folders), object pictures over the wardrobe's primitives (which now take an explicit images folder), picture generation through the Concierge failover, transfers between tiers, equip / unequip / pick up / drop everywhere (each returns its change; it never notifies), arrival defaults, and the `## Carried and equipped` prompt section. `db::chats_inventory` holds the four carried-set repository ops.
+
+Wiring: arrival defaults run at chat create, a seat added or reactivated, and a merge; `build_context` places the inventory section after the progressions report and before the inform block on every turn (continue mode included — bug 253); Pascal gains `post_pascal_inventory_change`; the realtime bus gains the `inventory` topic.
+
+Schema (D23 moves 13–16, one `fresh_schema.json` re-dump at the pin): `chats.equippedInventory`, `characters.canManageInventory`, `terminal_sessions.cols` / `rows`, and the llm-logs `log_entries` table with its three indexes. The two Inventory columns get unstamped boot ensures carrying both v4 shapes, wired in the host and in the restore mirror-boot list. Readers tolerate the columns' absence; inserts never name them unless set.
+
+Found while porting: v5's SQLite keeps the legacy double-quoted-string fallback that v4's refuses, so a quoted reference to a missing column read as a string; the carried-set reads now probe the column. `InventoryKitStrandedError`'s details carry three keys per kit, not four.
+
+New differential families: `inventory_types`, `inventory_folders`, `inventory_svg`, `inventory_columns_ensure`, `inventory_resolve`, `chats_inventory_tier2`, `inventory_keystone_tier2` (122 ops: location, pool, dependents, equipped set, mutations, pictures, transfers, equip, arrival), `inventory_item_image_generation_tier3`, `pascal_inventory_change`; `build_context_tier3` and `chat_create_capstone` grew inventory cases.
+
 #### 2026-10-27 — docs(porting): drift check — 14 v4 commits past `a0905454b` (the Log in backups, bugs 266–268, pdfjs-dist 6.4, the diagram lightbox)
 
 _Docs-only change._

@@ -3687,6 +3687,76 @@
         ],
         "scenarioId": "<scenario:aria:Opening>"
       }
+    },
+    {
+      "name": "inventory_defaults_arrival",
+      "progressId": "e0000000-0000-4000-8000-0000000000d4",
+      "tz": "UTC",
+      "nowMs": 1793664000000,
+      "random01": 0.0,
+      "request": {
+        "progressId": "e0000000-0000-4000-8000-0000000000d4",
+        "participants": [
+          {
+            "type": "CHARACTER",
+            "characterId": "a1000000-0000-4000-8000-0000000000a1",
+            "connectionProfileId": "b1000000-0000-4000-8000-000000000001"
+          }
+        ]
+      },
+      "_comment": "P4.D324 (v4 4fbdad186, route.ts:1441-1449): Aria's vault holds an equippedByDefault object and an ordinary one (planted on this case's copy through each side's REAL Inventory location) -> the created chat's equippedInventory carries the default's id for her; every other case stamps {\"<charId>\":[]}.",
+      "inventoryPlant": [
+        {
+          "characterId": "a1000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f5000001-0000-4000-8000-000000000000",
+            "name": "satchel",
+            "title": null,
+            "description": "A leather satchel.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": true,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "a1000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f5000002-0000-4000-8000-000000000000",
+            "name": "umbrella",
+            "title": null,
+            "description": "Black, furled.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2026-02-01T00:00:00.000Z",
+            "updatedAt": "2026-02-01T00:00:00.000Z"
+          }
+        }
+      ]
     }
   ],
   "conciergeSettings": {

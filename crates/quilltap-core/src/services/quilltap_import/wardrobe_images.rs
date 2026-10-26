@@ -31,7 +31,7 @@ use crate::db::vault_wardrobe_public::{
     update_vault_wardrobe_item, WardrobePatch, WardrobePublicError,
 };
 use crate::services::file_storage::build_mount_blob_storage_key;
-use crate::services::wardrobe_image_paths::wardrobe_item_image_path;
+use crate::services::wardrobe_image_paths::{wardrobe_item_image_path, WARDROBE_IMAGES_FOLDER};
 
 /// JS `${value}` for the item title in v4's sentences (`String(undefined)` is
 /// `"undefined"`).
@@ -120,7 +120,11 @@ pub(crate) fn import_wardrobe_item_images(
             for image in item["_imageFiles"].as_array().into_iter().flatten() {
                 let original_filename = opt_str(image, "originalFilename").unwrap_or_default();
                 let outcome = (|| -> Result<bool, String> {
-                    let relative_path = wardrobe_item_image_path(item_id, &original_filename);
+                    let relative_path = wardrobe_item_image_path(
+                        item_id,
+                        &original_filename,
+                        WARDROBE_IMAGES_FOLDER,
+                    );
                     let link = links
                         .find_by_mount_point_and_path(mount_point_id, &relative_path)
                         .map_err(|e| super::item_error_text(&e))?;

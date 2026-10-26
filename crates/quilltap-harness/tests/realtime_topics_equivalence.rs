@@ -90,6 +90,14 @@ fn realtime_topics_match_oracle() {
                     .collect();
                 hints_json(&topics_for_write_batch(&writes))
             }
+            // P4.D324: the topic list itself (`REALTIME_TOPICS`, declaration
+            // order — `inventory` the eighth).
+            "topics" => Value::Array(
+                quilltap_core::realtime::types::REALTIME_TOPICS
+                    .iter()
+                    .map(|t| Value::String(t.as_str().to_string()))
+                    .collect(),
+            ),
             other => panic!("unknown case kind {other}"),
         };
 

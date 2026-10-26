@@ -36,7 +36,7 @@
 //! `(main, links, docs)` shape and the old [`WardrobePublicError`] for the
 //! import / restore writers that still address items by owner.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use rusqlite::Connection;
 use serde_json::Value;
@@ -46,24 +46,17 @@ use crate::vault_overlay::{
     detect_component_cycles, has_stable_wardrobe_item_id, is_wardrobe_item_document, WardrobeItem,
 };
 use crate::wardrobe_folders::{
-    folder_name, folder_segments, is_safe_wardrobe_folder_path, is_same_folder, is_under_folder,
-    join_folder, normalize_wardrobe_folder_path_or_root, parent_folder, rebase_folder,
-    wardrobe_folder_store_path, WardrobeFolder, WardrobeFolderPathError,
-    WARDROBE_RESERVED_FOLDER_SEGMENTS,
+    is_safe_wardrobe_folder_path, normalize_wardrobe_folder_path_or_root, WardrobeFolder,
+    WardrobeFolderPathError,
 };
 
 use super::archetype_wardrobe::read_general_wardrobe;
-use super::database_store::{
-    delete_database_folder, move_database_folder, DbStoreErrorCode, StoreError,
-};
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
-use super::doc_mount_folders::DocMountFoldersRepository;
-use super::instance_settings;
 use super::vault_read_overlay::read_character_vault_wardrobe;
 use super::vault_wardrobe_write::project_vault_wardrobe;
 use super::wardrobe_location::WardrobeLocationError;
-use super::{characters_read, DbError};
+use super::DbError;
 
 /// A failure on the pre-`9ecebf986` public write path (the kept owner-hint
 /// adapters). `NoMount` / `Cycle` are v4's thrown `Error`s (the differential
@@ -93,47 +86,12 @@ impl From<DbError> for WardrobePublicError {
 pub const NO_MOUNT_MESSAGE: &str = "no Character Vault or Quilltap General mount is available. \
 Wardrobe items are stored exclusively in the document store.";
 
-/// The four wardrobe tiers (v4 `WardrobeMountScope` / `WardrobeScopeSchema`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum WardrobeScope {
-    Character,
-    Group,
-    Project,
-    General,
-}
+/// The four wardrobe tiers (v4 `WardrobeMountScope` — since `4fbdad186` a
+/// type alias of the shared `VaultFolderMountScope`; P4.D324's lift).
+pub type WardrobeScope = super::item_folder_ops::VaultFolderMountScope;
 
-impl WardrobeScope {
-    /// v4's wire spelling.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            WardrobeScope::Character => "character",
-            WardrobeScope::Group => "group",
-            WardrobeScope::Project => "project",
-            WardrobeScope::General => "general",
-        }
-    }
-}
-
-/// A wardrobe tier's folder on disk (v4 `WardrobeMount`).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct WardrobeMount {
-    pub mount_point_id: String,
-    pub scope: WardrobeScope,
-    /// Owning character for the `character` scope; `None` for every shared
-    /// tier.
-    pub character_id: Option<String>,
-}
-
-impl WardrobeMount {
-    /// The parse / log scope the reader and projector take — v4 `characterId
-    /// ?? mountPointId`.
-    pub fn scope_id(&self) -> &str {
-        self.character_id
-            .as_deref()
-            .unwrap_or(self.mount_point_id.as_str())
-    }
-}
+/// A wardrobe tier's folder on disk (v4 `WardrobeMount = VaultFolderMount`).
+pub type WardrobeMount = super::item_folder_ops::VaultFolderMount;
 
 /// A partial wardrobe update (v4's `Partial<WardrobeItem>` patch, `{...cur,
 /// ...patch}`) — by construction it cannot carry `id` / `createdAt` /
@@ -219,12 +177,7 @@ pub struct UpdateManyOptions {
 }
 
 /// What [`delete_folder_in_mount`] did.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeletedFolder {
-    pub moved_items: usize,
-    pub moved_folders: usize,
-    pub parent: String,
-}
+pub use super::item_folder_ops::DeletedFolder;
 
 /// Resolve the folder for a character id, or Quilltap General for `None` (v4
 /// `resolveWardrobeMount`). `Ok(None)` when no mount is available (no linked
@@ -235,47 +188,7 @@ pub fn resolve_wardrobe_mount(
     main: &Connection,
     character_id: Option<&str>,
 ) -> Result<Option<WardrobeMount>, DbError> {
-    match character_id {
-        None => {
-            let Some(mount_point_id) = instance_settings::get_general_mount_point_id(main)? else {
-                return Ok(None);
-            };
-            Ok(Some(WardrobeMount {
-                mount_point_id,
-                scope: WardrobeScope::General,
-                character_id: None,
-            }))
-        }
-        Some(cid) => {
-            let Some(row) = characters_read::find_by_id_raw(main, cid)? else {
-                return Ok(None);
-            };
-            // Archived characters keep a live vault (§4.2a prunes in place), so
-            // the old null-mount skip no longer fires for them. Refuse rather
-            // than answer `None` (v4 `wardrobe-writes.ts:92-107`, `d553f72a`).
-            if row
-                .get("archivedAt")
-                .and_then(Value::as_str)
-                .is_some_and(|s| !s.is_empty())
-            {
-                return Err(DbError::CharacterArchived {
-                    character_id: cid.to_string(),
-                });
-            }
-            let Some(mount_point_id) = row
-                .get("characterDocumentMountPointId")
-                .and_then(Value::as_str)
-                .filter(|s| !s.is_empty())
-            else {
-                return Ok(None);
-            };
-            Ok(Some(WardrobeMount {
-                mount_point_id: mount_point_id.to_string(),
-                scope: WardrobeScope::Character,
-                character_id: Some(cid.to_string()),
-            }))
-        }
-    }
+    super::item_folder_ops::resolve_vault_folder_mount(main, character_id)
 }
 
 /// [`resolve_wardrobe_mount`] for the dressing-instructions route (v4
@@ -565,22 +478,10 @@ pub fn delete_in_mount(
 /// the path is `Wardrobe` itself, outside it, or under the reserved `images/`
 /// (v4 `folderUnderWardrobe`).
 pub fn folder_under_wardrobe(store_path: &str) -> Option<String> {
-    let prefix = "Wardrobe/";
-    if !store_path
-        .to_lowercase()
-        .starts_with(&prefix.to_lowercase())
-    {
-        return None;
-    }
-    let folder = store_path.get(prefix.len()..).unwrap_or("");
-    if folder.is_empty() {
-        return None;
-    }
-    let first = folder_segments(folder)[0].to_lowercase();
-    if WARDROBE_RESERVED_FOLDER_SEGMENTS.contains(&first.as_str()) {
-        return None;
-    }
-    Some(folder.to_string())
+    crate::inventory::item_folders::folder_under_item_root(
+        &crate::wardrobe_folders::WARDROBE_FOLDER_RULES,
+        store_path,
+    )
 }
 
 /// The stored casing of a folder that exists, or `None` (v4
@@ -591,444 +492,154 @@ pub fn find_stored_folder(
     mount_point_id: &str,
     folder: &str,
 ) -> Option<String> {
-    DocMountFoldersRepository::new(mount)
-        .find_by_mount_point_and_path_or_none(mount_point_id, &wardrobe_folder_store_path(folder))
-        .and_then(|row| folder_under_wardrobe(&row.path))
+    super::item_folder_ops::find_stored_folder(
+        &crate::wardrobe_folders::WARDROBE_FOLDER_RULES,
+        mount,
+        mount_point_id,
+        folder,
+    )
 }
 
-fn is_live(item: &WardrobeItem) -> bool {
-    !matches!(&item.archived_at, Some(Some(a)) if !a.is_empty())
+/// The wardrobe's folder tree, as the shared folder operations see it (v4
+/// `WARDROBE_TREE`, `wardrobe-writes.ts:296-316`): `.md` items, context
+/// `wardrobe`, the wardrobe's predicates, `readMountItems`,
+/// `projectVaultWardrobe`, and a refile through `updateManyUnserialized` over
+/// the folder the delete already read (it re-checks each moved composite).
+pub struct WardrobeTree;
+
+impl super::item_folder_ops::ItemFolderTree for WardrobeTree {
+    type Item = WardrobeItem;
+    type Error = WardrobeLocationError;
+
+    fn rules(&self) -> &'static crate::inventory::item_folders::ItemFolderRules {
+        &crate::wardrobe_folders::WARDROBE_FOLDER_RULES
+    }
+    fn ext(&self) -> &'static str {
+        ".md"
+    }
+    fn context(&self) -> &'static str {
+        "wardrobe"
+    }
+    fn is_item_document(&self, relative_path: &str, content: Option<&str>) -> bool {
+        is_wardrobe_item_document(relative_path, content)
+    }
+    fn has_stable_id(&self, content: Option<&str>) -> bool {
+        has_stable_wardrobe_item_id(content)
+    }
+    fn filed(&self, item: &WardrobeItem) -> super::item_folder_ops::FiledItem {
+        super::item_folder_ops::FiledItem {
+            id: item.id.clone(),
+            folder: item.folder.clone(),
+            archived: matches!(&item.archived_at, Some(Some(a)) if !a.is_empty()),
+        }
+    }
+    fn read(&self, mount: &Connection, m: &WardrobeMount) -> Result<Vec<WardrobeItem>, DbError> {
+        read_mount_items(mount, m)
+    }
+    fn reproject(
+        &self,
+        mount: &Connection,
+        m: &WardrobeMount,
+        items: &[WardrobeItem],
+    ) -> Result<(), DbError> {
+        project(mount, m, items)
+    }
+    fn refile(
+        &self,
+        main: &Connection,
+        mount: &Connection,
+        m: &WardrobeMount,
+        current: &[WardrobeItem],
+        patches: &[(String, String)],
+    ) -> Result<(), WardrobeLocationError> {
+        let patches: Vec<WardrobeItemPatch> = patches
+            .iter()
+            .map(|(id, folder)| WardrobeItemPatch {
+                id: id.clone(),
+                patch: WardrobePatch {
+                    folder: Some(folder.clone()),
+                    ..Default::default()
+                },
+            })
+            .collect();
+        update_many_unserialized(
+            main,
+            mount,
+            m,
+            &patches,
+            current,
+            UpdateManyOptions::default(),
+        )
+        .map(|_| ())
+    }
+    fn path_error(&self, message: String) -> WardrobeLocationError {
+        WardrobeFolderPathError(message).into()
+    }
+    fn not_found(&self, folder: &str) -> WardrobeLocationError {
+        WardrobeLocationError::FolderNotFound {
+            folder: folder.to_string(),
+        }
+    }
+    fn conflict(&self, folder: &str, message: Option<String>) -> WardrobeLocationError {
+        match message {
+            Some(message) => WardrobeLocationError::FolderConflict {
+                folder: folder.to_string(),
+                message,
+            },
+            None => WardrobeLocationError::folder_conflict(folder),
+        }
+    }
 }
 
-/// The pure half of [`list_folders_in_mount`]: the store rows' folders, then
-/// the item-implied ones, every ancestor included, the first spelling per
-/// lower-cased key winning; counted, then sorted by path at BASE strength.
-///
-/// v4 builds an insertion-ordered `Map` (rows first, then items) and V8's sort
-/// is stable, so two paths that compare EQUAL at base strength yet differ in
-/// key (`Cafe` / `Café` — accents are a separate key, case is not) keep that
-/// insertion order. A `HashMap` here would hand them to the sort in hash
-/// order, a different answer per process; a `Vec` plus a key set keeps v4's.
-fn assemble_folders(
-    row_folders: impl Iterator<Item = String>,
-    items: &[WardrobeItem],
-) -> Vec<WardrobeFolder> {
-    let mut seen: HashSet<String> = HashSet::new();
-    let mut by_key: Vec<(String, String)> = Vec::new();
-    let mut add = |folder: &str| {
-        // Every ancestor is a folder too, even when only a deep path has a row.
-        let segments = folder_segments(folder);
-        for depth in 1..=segments.len() {
-            let path = segments[..depth].join("/");
-            let key = path.to_lowercase();
-            if seen.insert(key.clone()) {
-                by_key.push((key, path));
-            }
-        }
-    };
-    for folder in row_folders {
-        add(&folder);
-    }
-    for item in items {
-        if !item.folder.is_empty() {
-            add(&item.folder);
-        }
-    }
-
-    let mut counts: HashMap<String, usize> = HashMap::new();
-    for item in items {
-        if !is_live(item) || item.folder.is_empty() {
-            continue;
-        }
-        *counts.entry(item.folder.to_lowercase()).or_insert(0) += 1;
-    }
-
-    let mut folders: Vec<WardrobeFolder> = by_key
-        .into_iter()
-        .map(|(key, path)| WardrobeFolder {
-            name: folder_name(&path).to_string(),
-            item_count: counts.get(&key).copied().unwrap_or(0),
-            path,
-        })
-        .collect();
-    // Stable, as V8's is: base-equal paths keep their insertion order.
-    folders.sort_by(|a, b| crate::collation::locale_compare_base(&a.path, &b.path));
-    folders
-}
-
-/// Every folder under the tier's `Wardrobe/` (v4 `listFoldersInMount`): the
-/// union of the store's folder rows (empty folders persist as rows) and the
-/// folders implied by item paths, minus `images/`; every ancestor is a folder
-/// too, the first spelling per lower-cased key winning. `itemCount` counts
-/// non-archived items directly inside. Sorted by path, case-insensitively
-/// (`localeCompare(…, { sensitivity: 'base' })`). DEBUG `Wardrobe folders
-/// listed`.
+/// Every folder under the tier's `Wardrobe/` (v4 `listFoldersInMount` — a
+/// delegate over the shared `listFoldersIn`). DEBUG `Wardrobe folders listed`.
 pub fn list_folders_in_mount(
     mount: &Connection,
     loc: &WardrobeMount,
 ) -> Result<Vec<WardrobeFolder>, DbError> {
-    let rows =
-        DocMountFoldersRepository::new(mount).find_by_mount_point_id_or_empty(&loc.mount_point_id);
-    let items = read_mount_items(mount, loc)?;
-
-    let folders = assemble_folders(
-        rows.iter()
-            .filter_map(|row| folder_under_wardrobe(&row.path)),
-        &items,
-    );
-    tracing::debug!(
-        mountPointId = %loc.mount_point_id,
-        scope = loc.scope.as_str(),
-        folderRowCount = rows.len(),
-        folderCount = folders.len(),
-        context = "wardrobe",
-        "Wardrobe folders listed"
-    );
-    Ok(folders)
+    super::item_folder_ops::list_folders_in(&WardrobeTree, mount, loc)
 }
 
 /// The paths of every folder under the tier's `Wardrobe/`, from the store's
-/// folder rows alone (every item's folder has one — writes create them), minus
-/// `images/` (v4 `listFolderPathsInMount`). One query, no item parse: what
-/// `resolve_wardrobe_folder` resolves an operator's request against — so an
-/// item-implied folder with no row is invisible to resolution. A fallback
-/// read: never fails.
+/// folder rows alone, minus `images/` (v4 `listFolderPathsInMount`). A
+/// fallback read: never fails.
 pub fn list_folder_paths_in_mount(mount: &Connection, loc: &WardrobeMount) -> Vec<String> {
-    DocMountFoldersRepository::new(mount)
-        .find_by_mount_point_id_or_empty(&loc.mount_point_id)
-        .iter()
-        .filter_map(|row| folder_under_wardrobe(&row.path))
-        .collect()
+    super::item_folder_ops::list_folder_paths_in(&WardrobeTree, mount, loc)
 }
 
 /// Create a folder (and its missing ancestors) (v4 `createFolderInMount`).
-/// Idempotent and case-insensitive: creating `formal` beside `Formal` answers
-/// `Formal`. `folder` must already be normalised; `''` is refused (`The
-/// wardrobe root already exists`). DEBUG `Wardrobe folder ensured`.
+/// DEBUG `Wardrobe folder ensured`.
 pub fn create_folder_in_mount(
     mount: &Connection,
     loc: &WardrobeMount,
     folder: &str,
 ) -> Result<WardrobeFolder, WardrobeLocationError> {
-    if folder.is_empty() {
-        return Err(WardrobeFolderPathError("The wardrobe root already exists".to_string()).into());
-    }
-    let links = DocMountFileLinksRepository::new(mount);
-    links.ensure_folder_path(&loc.mount_point_id, &wardrobe_folder_store_path(folder))?;
-    let stored = find_stored_folder(mount, &loc.mount_point_id, folder)
-        .unwrap_or_else(|| folder.to_string());
-    let items = read_mount_items(mount, loc)?;
-    let item_count = items
-        .iter()
-        .filter(|i| is_live(i) && is_same_folder(Some(&i.folder), Some(&stored)))
-        .count();
-    tracing::debug!(
-        mountPointId = %loc.mount_point_id,
-        scope = loc.scope.as_str(),
-        requested = %folder,
-        folder = %stored,
-        itemCount = item_count,
-        context = "wardrobe",
-        "Wardrobe folder ensured"
-    );
-    Ok(WardrobeFolder {
-        name: folder_name(&stored).to_string(),
-        path: stored,
-        item_count,
-    })
+    super::item_folder_ops::create_folder_in(&WardrobeTree, mount, loc, folder)
 }
 
-/// Map a store-level failure of a folder move / delete onto the location's
-/// error vocabulary (v4's `DatabaseStoreError` code switches). A code the
-/// caller does not map is v4's `throw error` — the store's own sentence as-is.
-fn store_error(
-    e: StoreError,
-    conflict: Option<&dyn Fn() -> WardrobeLocationError>,
-    not_found: Option<&dyn Fn() -> WardrobeLocationError>,
-    not_empty: Option<&dyn Fn() -> WardrobeLocationError>,
-) -> WardrobeLocationError {
-    match e {
-        StoreError::Store(s) => {
-            let mapped = match s.code {
-                DbStoreErrorCode::Conflict => conflict,
-                DbStoreErrorCode::NotFound => not_found,
-                DbStoreErrorCode::NotEmpty => not_empty,
-                _ => None,
-            };
-            match mapped {
-                Some(f) => f(),
-                None => WardrobeLocationError::Db(DbError::Internal(s.message)),
-            }
-        }
-        StoreError::Db(d) => d.into(),
-    }
-}
-
-/// Rename a folder in place (`new_name` is one normalised segment) (v4
-/// `renameFolderInMount`). Its items, subfolders and any other files move with
-/// it — the path is the truth, so every item's `folder` follows. A sibling
-/// already holding the name (in any casing) is a `FolderConflict`; a case-only
-/// rename is allowed. The store moves the files without rewriting them, and an
-/// item file with no frontmatter `id` takes its id from its path — moving it
-/// would mint a new one and orphan its outfit slots, ledger, outfits and
-/// pictures — so every such file is STAMPED with the id it has now, first
-/// (one projection of the whole tier; DEBUG `Stamping ids into wardrobe files
-/// before a folder rename`). DEBUG `Wardrobe folder renamed`.
+/// Rename a folder in place (v4 `renameFolderInMount`). DEBUG `Wardrobe
+/// folder renamed` (and `Stamping ids into wardrobe files before a folder
+/// rename` when an id-less file moves).
 pub fn rename_folder_in_mount(
     mount: &Connection,
     loc: &WardrobeMount,
     folder: &str,
     new_name: &str,
 ) -> Result<WardrobeFolder, WardrobeLocationError> {
-    if folder.is_empty() {
-        return Err(
-            WardrobeFolderPathError("The wardrobe root cannot be renamed".to_string()).into(),
-        );
-    }
-    let Some(from) = find_stored_folder(mount, &loc.mount_point_id, folder) else {
-        return Err(WardrobeLocationError::FolderNotFound {
-            folder: folder.to_string(),
-        });
-    };
-    let to = join_folder(&[parent_folder(&from), new_name]);
-    if to != from {
-        let docs = DocMountDocumentsRepository::new(mount);
-        let docs_in = docs.find_many_by_mount_points_in_folder_opts_or_empty(
-            std::slice::from_ref(&loc.mount_point_id),
-            &wardrobe_folder_store_path(&from),
-            ".md",
-            true,
-        )?;
-        let unstamped = docs_in
-            .iter()
-            .filter(|d| {
-                is_wardrobe_item_document(&d.relative_path, Some(&d.content))
-                    && !has_stable_wardrobe_item_id(Some(&d.content))
-            })
-            .count();
-        if unstamped > 0 {
-            tracing::debug!(
-                mountPointId = %loc.mount_point_id,
-                folder = %from,
-                count = unstamped,
-                context = "wardrobe",
-                "Stamping ids into wardrobe files before a folder rename"
-            );
-            let items = read_mount_items(mount, loc)?;
-            project(mount, loc, &items)?;
-        }
-        move_database_folder(
-            mount,
-            &loc.mount_point_id,
-            &wardrobe_folder_store_path(&from),
-            &wardrobe_folder_store_path(&to),
-        )
-        .map_err(|e| {
-            store_error(
-                e,
-                Some(&|| WardrobeLocationError::folder_conflict(&to)),
-                Some(&|| WardrobeLocationError::FolderNotFound {
-                    folder: folder.to_string(),
-                }),
-                None,
-            )
-        })?;
-    }
-    let items = read_mount_items(mount, loc)?;
-    let item_count = items
-        .iter()
-        .filter(|i| is_live(i) && is_same_folder(Some(&i.folder), Some(&to)))
-        .count();
-    tracing::debug!(
-        mountPointId = %loc.mount_point_id,
-        scope = loc.scope.as_str(),
-        from = %from,
-        to = %to,
-        itemCount = item_count,
-        context = "wardrobe",
-        "Wardrobe folder renamed"
-    );
-    Ok(WardrobeFolder {
-        name: folder_name(&to).to_string(),
-        path: to,
-        item_count,
-    })
+    super::item_folder_ops::rename_folder_in(&WardrobeTree, mount, loc, folder, new_name)
 }
 
 /// Delete a folder, sending everything in it up one level (v4
-/// `deleteFolderInMount`): its items (archived included) to the parent, its
-/// subfolders to sit beside it — merging into a same-named folder there,
-/// case-insensitively. Nothing is deleted but folder rows. Everything is
-/// checked BEFORE anything moves, so a refusal leaves the wardrobe exactly as
-/// it was: (1) files the wardrobe doesn't own — a picture, a `.txt`, a note or
-/// a nested `instructions.md` — refuse with `Folder "<f>" holds N file(s) that
-/// are not wardrobe items; move them in the Scriptorium first`; (2) a
-/// subfolder sharing the folder's own name (`Formal/Formal`) would be sent up
-/// into the very place being removed — `Folder "<f>" holds a subfolder of the
-/// same name; rename one of them first`. Items go in ONE batch (one
-/// projection), each re-rooted via `rebase_folder`; subfolders are re-created
-/// (empty ones included) under the parent, then the old rows dropped deepest
-/// first; a late `NOT_EMPTY` is `Folder "<f>" is not empty yet; its items were
-/// moved up`. DEBUG `Wardrobe folder deleted; contents sent up`.
+/// `deleteFolderInMount`). A folder holding files that are not wardrobe items
+/// (a picture, a nested `instructions.md`, a `.txt`) is refused before
+/// anything moves. DEBUG `Wardrobe folder deleted; contents sent up`.
 pub fn delete_folder_in_mount(
     main: &Connection,
     mount: &Connection,
     loc: &WardrobeMount,
     folder: &str,
 ) -> Result<DeletedFolder, WardrobeLocationError> {
-    if folder.is_empty() {
-        return Err(
-            WardrobeFolderPathError("The wardrobe root cannot be deleted".to_string()).into(),
-        );
-    }
-    let Some(from) = find_stored_folder(mount, &loc.mount_point_id, folder) else {
-        return Err(WardrobeLocationError::FolderNotFound {
-            folder: folder.to_string(),
-        });
-    };
-    let parent = parent_folder(&from).to_string();
-    let store_from = wardrobe_folder_store_path(&from);
-    let store_prefix = format!("{store_from}/").to_lowercase();
-
-    let links_repo = DocMountFileLinksRepository::new(mount);
-    let docs = DocMountDocumentsRepository::new(mount);
-    let folders = DocMountFoldersRepository::new(mount);
-
-    // 1. Strays.
-    let links: Vec<_> = links_repo
-        .find_by_mount_point_id_or_empty(&loc.mount_point_id)
-        .into_iter()
-        .filter(|l| l.relative_path.to_lowercase().starts_with(&store_prefix))
-        .collect();
-    let docs_in = docs.find_many_by_mount_points_in_folder_opts_or_empty(
-        std::slice::from_ref(&loc.mount_point_id),
-        &store_from,
-        ".md",
-        true,
-    )?;
-    let docs_by_path: HashMap<String, &str> = docs_in
-        .iter()
-        .map(|d| (d.relative_path.to_lowercase(), d.content.as_str()))
-        .collect();
-    let strays = links
-        .iter()
-        .filter(
-            |l| match docs_by_path.get(&l.relative_path.to_lowercase()) {
-                None => true,
-                Some(content) => !is_wardrobe_item_document(&l.relative_path, Some(content)),
-            },
-        )
-        .count();
-    if strays > 0 {
-        return Err(WardrobeLocationError::FolderConflict {
-            folder: from.clone(),
-            message: format!(
-                "Folder \"{from}\" holds {strays} file(s) that are not wardrobe items; move them in the Scriptorium first"
-            ),
-        });
-    }
-
-    // 2. A subfolder sharing the folder's own name.
-    let mut rows: Vec<_> = folders
-        .find_by_mount_point_id_or_empty(&loc.mount_point_id)
-        .into_iter()
-        .filter(|r| r.path.to_lowercase().starts_with(&store_prefix))
-        .collect();
-    rows.sort_by_key(|r| std::cmp::Reverse(r.path.len()));
-    let items = read_mount_items(mount, loc)?;
-    let moving: Vec<&WardrobeItem> = items
-        .iter()
-        .filter(|item| is_under_folder(&item.folder, &from))
-        .collect();
-    let lands_inside = moving
-        .iter()
-        .map(|item| item.folder.clone())
-        .chain(
-            rows.iter()
-                .map(|row| folder_under_wardrobe(&row.path).unwrap_or_default()),
-        )
-        .any(|sub| !sub.is_empty() && is_under_folder(&rebase_folder(&sub, &from, &parent), &from));
-    if lands_inside {
-        return Err(WardrobeLocationError::FolderConflict {
-            folder: from.clone(),
-            message: format!(
-                "Folder \"{from}\" holds a subfolder of the same name; rename one of them first"
-            ),
-        });
-    }
-
-    // Items: one batch, one projection.
-    let moved_items = moving.len();
-    if moved_items > 0 {
-        let patches: Vec<WardrobeItemPatch> = moving
-            .iter()
-            .map(|item| WardrobeItemPatch {
-                id: item.id.clone(),
-                patch: WardrobePatch {
-                    folder: Some(rebase_folder(&item.folder, &from, &parent)),
-                    ..Default::default()
-                },
-            })
-            .collect();
-        // v4 `updateManyUnserialized`: on the mount's own chain, over the items
-        // already read — and, as every batch does, re-checking each moved
-        // composite against its peers (a re-rooting patch never changes
-        // components, but v4 checks whatever it merges).
-        update_many_unserialized(
-            main,
-            mount,
-            loc,
-            &patches,
-            &items,
-            UpdateManyOptions::default(),
-        )?;
-    }
-
-    // Subfolders: re-create each (empty ones included) under the parent, then
-    // drop the old rows deepest first.
-    for row in &rows {
-        let Some(sub) = folder_under_wardrobe(&row.path) else {
-            continue;
-        };
-        links_repo.ensure_folder_path(
-            &loc.mount_point_id,
-            &wardrobe_folder_store_path(&rebase_folder(&sub, &from, &parent)),
-        )?;
-    }
-    let not_empty = || WardrobeLocationError::FolderConflict {
-        folder: from.clone(),
-        message: format!("Folder \"{from}\" is not empty yet; its items were moved up"),
-    };
-    for row in &rows {
-        delete_database_folder(mount, &loc.mount_point_id, &row.path)
-            .map_err(|e| store_error(e, None, None, Some(&not_empty)))?;
-    }
-    delete_database_folder(mount, &loc.mount_point_id, &store_from)
-        .map_err(|e| store_error(e, None, None, Some(&not_empty)))?;
-
-    let child_depth = folder_segments(&from).len() + 1;
-    let moved_folders = rows
-        .iter()
-        .filter(|row| {
-            folder_segments(&folder_under_wardrobe(&row.path).unwrap_or_default()).len()
-                == child_depth
-        })
-        .count();
-    tracing::debug!(
-        mountPointId = %loc.mount_point_id,
-        scope = loc.scope.as_str(),
-        folder = %from,
-        parent = %parent,
-        movedItems = moved_items,
-        movedFolders = moved_folders,
-        context = "wardrobe",
-        "Wardrobe folder deleted; contents sent up"
-    );
-    Ok(DeletedFolder {
-        moved_items,
-        moved_folders,
-        parent,
-    })
+    super::item_folder_ops::delete_folder_in(&WardrobeTree, main, mount, loc, folder)
 }
 
 /// The body of [`update_many_in_mount`] over an ALREADY-READ folder — v4
@@ -1297,7 +908,9 @@ mod tests {
         items.push(upper);
         let rows = variants[..3].iter().map(|v| v.to_string());
 
-        let got = assemble_folders(rows, &items);
+        use crate::db::item_folder_ops::ItemFolderTree;
+        let filed: Vec<_> = items.iter().map(|i| WardrobeTree.filed(i)).collect();
+        let got = crate::db::item_folder_ops::assemble_folders(rows, &filed);
         let paths: Vec<&str> = got.iter().map(|f| f.path.as_str()).collect();
         // Every top-level variant is base-equal, so the stable sort leaves
         // them in insertion order (rows, then items) — and each `/Inner`

@@ -61,6 +61,7 @@ use quilltap_core::db::Writer;
 use quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder;
 use quilltap_core::services::wardrobe_container::{resolve_wardrobe_item_home, scope_str};
 use quilltap_core::services::wardrobe_image_bridge::WardrobeImageKind;
+use quilltap_core::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER;
 use quilltap_core::services::wardrobe_item_images::carry::{
     carry_item_images, commit_moved_images, drop_source_image_links, CarryArgs, CarryMode,
     SourceImageLink,
@@ -327,6 +328,7 @@ fn run_op(ctx: &Ctx<'_>, scenario: &Value) -> (Value, Vec<String>) {
                         id: &character_id,
                         mount_point_id: &mount_point_id,
                     },
+                    WARDROBE_IMAGES_FOLDER,
                 );
                 json!({ "done": true })
             }
@@ -352,6 +354,7 @@ fn run_op(ctx: &Ctx<'_>, scenario: &Value) -> (Value, Vec<String>) {
                         destination_item_id: &destination_item_id,
                         destination_mount_point_id: destination_mp.as_deref().unwrap(),
                         user_id: &user_id,
+                        images_folder: WARDROBE_IMAGES_FOLDER,
                     },
                     &mut || ImageMint::now().file_id,
                     &now,
@@ -359,7 +362,14 @@ fn run_op(ctx: &Ctx<'_>, scenario: &Value) -> (Value, Vec<String>) {
                 )
                 .unwrap();
                 if scenario["commit"] == true {
-                    commit_moved_images(main, mount, &item_id, &carried.pending_move, &now);
+                    commit_moved_images(
+                        main,
+                        mount,
+                        &item_id,
+                        &carried.pending_move,
+                        &now,
+                        WARDROBE_IMAGES_FOLDER,
+                    );
                 }
                 json!({
                     "fileIdMap": carried.file_id_map.iter().map(|(a, b)| json!([a, b])).collect::<Vec<_>>(),
@@ -376,7 +386,7 @@ fn run_op(ctx: &Ctx<'_>, scenario: &Value) -> (Value, Vec<String>) {
                 })
             }
             "drop" => {
-                drop_source_image_links(mount, &item_id, &drop_links);
+                drop_source_image_links(mount, &item_id, &drop_links, WARDROBE_IMAGES_FOLDER);
                 json!({ "done": true })
             }
             other => panic!("unknown op {other}"),

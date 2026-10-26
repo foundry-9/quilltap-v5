@@ -1318,7 +1318,37 @@ fn slots_from_value(v: &Value) -> crate::wardrobe::Slots {
 /// named warning), exactly like v4's no-resolvable-profile arm. The context
 /// mirrors v4 `participants.ts:186–189`: `scenarioText` from the chat,
 /// `cheapLLMConfig` from the user's chat settings, NO `sourceChatId`.
+///
+/// Then — whatever the dressing did, its early returns included — what the
+/// arriving character carries (P4.D324, v4 `participants.ts:240-242`): their
+/// equipped-by-default objects, unless a returning seat already has an entry.
+/// Never fails.
 pub async fn apply_outfit_for_added_participant(
+    db: &Db,
+    user_id: &str,
+    chat_id: &str,
+    character_id: &str,
+    outfit_selection: Option<&Value>,
+    runner: Option<&std::sync::Arc<dyn OutfitLlmChooseRunner>>,
+) {
+    dress_added_participant(db, user_id, chat_id, character_id, outfit_selection, runner).await;
+    // === P4.D324 ===
+    crate::inventory::apply_defaults::apply_inventory_defaults(
+        db,
+        chat_id,
+        &[character_id.to_string()],
+        &crate::inventory::apply_defaults::ApplyInventoryDefaultsOptions {
+            source: crate::inventory::apply_defaults::InventoryArrivalSource::ParticipantAdded,
+            user_id: user_id.to_string(),
+            source_chat_id: None,
+        },
+    )
+    .await;
+    // === end P4.D324 ===
+}
+
+/// The dressing half of [`apply_outfit_for_added_participant`] (v4's `try`).
+async fn dress_added_participant(
     db: &Db,
     user_id: &str,
     chat_id: &str,

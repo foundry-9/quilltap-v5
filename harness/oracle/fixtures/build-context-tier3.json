@@ -4744,6 +4744,301 @@
         "sentAt": "2024-01-03T09:00:00.000Z",
         "body": "The lighthouse key is under the third stone."
       }
+    },
+    {
+      "name": "inventory_section_turn",
+      "_comment": "P4.D324 (v4 4fbdad186): Ada carries two described objects -> '## Carried and equipped' rides the trailing tail after progressions, before the inform block; the title differs from the name (Brass lamp (lamp)); the description trimmed.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "inventoryPlant": [
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000001-0000-4000-8000-000000000000",
+            "name": "lamp",
+            "title": "Brass lamp",
+            "description": "Burns whale oil; smokes when tipped.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000002-0000-4000-8000-000000000000",
+            "name": "notebook",
+            "title": null,
+            "description": "  Ada's notes on the engine.  ",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000003-0000-4000-8000-000000000000",
+            "name": "pebble",
+            "title": null,
+            "description": null,
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000004-0000-4000-8000-000000000000",
+            "name": "desk kit",
+            "title": null,
+            "description": null,
+            "imageDescription": null,
+            "kind": "kit",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [
+              "f4000001-0000-4000-8000-000000000000",
+              "f4000002-0000-4000-8000-000000000000"
+            ],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000005-0000-4000-8000-000000000000",
+            "name": "pastry",
+            "title": "\u00e9clair",
+            "description": "Choux, filled.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000006-0000-4000-8000-000000000000",
+            "name": "cake",
+            "title": "Eclair",
+            "description": "A second eclair.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        },
+        {
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "record": {
+            "id": "f4000007-0000-4000-8000-000000000000",
+            "name": "bun",
+            "title": "eclair",
+            "description": "A third eclair.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2024-01-01T00:00:00.000Z",
+            "updatedAt": "2024-01-01T00:00:00.000Z"
+          }
+        }
+      ],
+      "chatOverrides": {
+        "equippedInventory": {
+          "ca000000-0000-4000-8000-0000000000a1": [
+            "f4000002-0000-4000-8000-000000000000",
+            "f4000001-0000-4000-8000-000000000000"
+          ]
+        }
+      }
+    },
+    {
+      "name": "inventory_section_continue_mode",
+      "_comment": "P4.D324 bug 253 (v4 at 322a5488e): the section is built on a continue-mode turn too (the first-shipped gate is NOT ported).",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "isContinueMode": true,
+      "chatOverrides": {
+        "equippedInventory": {
+          "ca000000-0000-4000-8000-0000000000a1": [
+            "f4000001-0000-4000-8000-000000000000"
+          ]
+        }
+      }
+    },
+    {
+      "name": "inventory_nothing_described_byte_identical",
+      "_comment": "P4.D324: a carried object with NO description -> no section; the turn is byte-identical to one carrying nothing.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "chatOverrides": {
+        "equippedInventory": {
+          "ca000000-0000-4000-8000-0000000000a1": [
+            "f4000003-0000-4000-8000-000000000000"
+          ]
+        }
+      }
+    },
+    {
+      "name": "inventory_kit_skipped",
+      "_comment": "P4.D324: a kit id in the carried set never renders (the equipped-set reader drops it); its member, carried directly, does.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "chatOverrides": {
+        "equippedInventory": {
+          "ca000000-0000-4000-8000-0000000000a1": [
+            "f4000004-0000-4000-8000-000000000000",
+            "f4000001-0000-4000-8000-000000000000"
+          ]
+        }
+      }
+    },
+    {
+      "name": "inventory_sort_base_sensitivity",
+      "_comment": "P4.D324: localeCompare base sensitivity on the label \u2014 \u00e9clair / Eclair / eclair tie, so the equipped-set order (sorted ids) holds.",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Just chatting.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Hello there."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "chatOverrides": {
+        "equippedInventory": {
+          "ca000000-0000-4000-8000-0000000000a1": [
+            "f4000007-0000-4000-8000-000000000000",
+            "f4000005-0000-4000-8000-000000000000",
+            "f4000006-0000-4000-8000-000000000000"
+          ]
+        }
+      }
     }
   ],
   "vaultConversationSummaries": [

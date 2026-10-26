@@ -1547,6 +1547,7 @@ pub async fn item_delete(
                         id: id_of(&location),
                         mount_point_id: &location.mount_point_id,
                     },
+                    crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
                 );
                 Ok(Ok(()))
             }

@@ -104,7 +104,29 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
      runEndedAt, runPausedAt, runPausedAccumMs, runTurnsConsumed, runTokensConsumed, \
      runMilestonesAnnounced, runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, \
      coreWhisperEnabled, coreWhisperInterval, showThinking, createdAt, updatedAt, \
-     answerConfirmationOverride, turnSkippingEnabled";
+     answerConfirmationOverride, turnSkippingEnabled, equippedInventory";
+
+/// P4.D324: the SELECT list as RUN — [`ALL_COLUMNS`], with the LAST column
+/// (`equippedInventory`, v4 `4fbdad186`) swapped for a literal `NULL` when the
+/// table predates it. v4 reads `chats` with `SELECT *`, so a pre-column table
+/// (an instance the boot ensure has not reached, a committed fixture opened
+/// without the host) simply has no key; naming the column would fail every
+/// read with `no such column`. The `characters_read` archive-column idiom.
+/// The WRITE side stays strict (`db::chats_inventory`'s fallback, R-K).
+fn select_list(conn: &Connection) -> std::borrow::Cow<'static, str> {
+    let present = conn
+        .prepare("SELECT 1 FROM pragma_table_info('chats') WHERE name = 'equippedInventory'")
+        .and_then(|mut stmt| stmt.exists([]))
+        .unwrap_or(true);
+    if present {
+        std::borrow::Cow::Borrowed(ALL_COLUMNS)
+    } else {
+        let head = ALL_COLUMNS
+            .strip_suffix("equippedInventory")
+            .expect("equippedInventory is ALL_COLUMNS' last column");
+        std::borrow::Cow::Owned(format!("{head}NULL"))
+    }
+}
 
 /// Insert a nullable-optional TEXT/UUID/enum value: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -426,6 +448,11 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
     put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(102)?);
+    // P4.D324 (v4 `4fbdad186`, the THIRTEENTH D23 move): the chat's carried
+    // Inventory, `{ [characterId]: string[] }` — APPENDED at the end of the
+    // marshal (the P4.D171 precedent), never at its DDL position (cid 66),
+    // so no earlier index shifts. NULL → omitted.
+    put_opt_json(&mut obj, "equippedInventory", row.get(103)?);
 
     Ok(Value::Object(obj))
 }
@@ -440,7 +467,7 @@ fn run(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let sql = format!("SELECT {ALL_COLUMNS} FROM chats {tail}");
+    let sql = format!("SELECT {} FROM chats {tail}", select_list(conn));
     let mut stmt = conn.prepare(sql.trim())?;
     let rows = stmt.query_map(params, marshal_row)?;
     let mut out = Vec::new();
@@ -501,7 +528,7 @@ fn run_dropping_invalid_rows(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let sql = format!("SELECT {ALL_COLUMNS} FROM chats {tail}");
+    let sql = format!("SELECT {} FROM chats {tail}", select_list(conn));
     let mut stmt = conn.prepare(sql.trim())?;
     let mut rows = stmt.query(params)?;
     let mut out = Vec::new();

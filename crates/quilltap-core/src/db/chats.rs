@@ -483,6 +483,12 @@ pub struct ChatCreate {
     pub scene_state: Option<Value>,
     #[serde(default)]
     pub equipped_outfit: Option<Value>,
+    /// P4.D324 (v4 `4fbdad186`): the chat's carried Inventory, `{ [characterId]:
+    /// string[] }`. A runtime create never sets it (the arrival defaults write
+    /// it right after through `db::chats_inventory`); the restore / import
+    /// `chats.create` carries it whole.
+    #[serde(default)]
+    pub equipped_inventory: Option<Value>,
     #[serde(default)]
     pub character_avatars: Option<Value>,
     #[serde(default)]
@@ -687,6 +693,13 @@ pub struct ChatUpdate {
     /// ([`super::chats_outfits`]). `Some(Some(v))` sets it; `Some(None)` clears to
     /// SQL NULL; `None` leaves it unset.
     pub equipped_outfit: Option<Option<Value>>,
+    /// Nullable `equippedInventory` (JSON object, P4.D324). PATCH-ONLY in v4
+    /// (`patchOnlyFields` — a whole-row `update` never carries it); in v5 that
+    /// is structural, since `ChatUpdate` is a patch struct and no whole-row
+    /// writer exists. The runtime writer is `db::chats_inventory` (its own
+    /// one-column UPDATE); this field is for the carriers. `Some(Some(v))`
+    /// sets it; `Some(None)` clears to SQL NULL; `None` leaves it unset.
+    pub equipped_inventory: Option<Option<Value>>,
     /// `compactionGeneration` (REAL) — bumped by the context-summary fold write
     /// and the summary invalidation ([`crate::services::context_summary`]).
     pub compaction_generation: Option<f64>,
@@ -1114,6 +1127,17 @@ impl<'c> ChatsRepository<'c> {
                 data.scenario_notes,
             ],
         )?;
+        // P4.D324 (v4 `4fbdad186`): `equippedInventory` is named only when the
+        // create carries it (a restore / import) — v4's `insertOne` names the
+        // document's keys, and a runtime create has none, so a pre-column
+        // table still takes a plain create. A second statement on the same
+        // writer connection; no reader sees the row between.
+        if data.equipped_inventory.is_some() {
+            self.conn.execute(
+                "UPDATE chats SET equippedInventory = ?1 WHERE id = ?2",
+                rusqlite::params![opt_json_text(&data.equipped_inventory)?, opts.id],
+            )?;
+        }
         Ok(())
     }
 
@@ -1269,6 +1293,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = &patch.equipped_outfit {
             set_col!("equippedOutfit", Box::new(opt_json_text(v)?));
+        }
+        if let Some(v) = &patch.equipped_inventory {
+            set_col!("equippedInventory", Box::new(opt_json_text(v)?));
         }
         if let Some(v) = patch.compaction_generation {
             set_col!("compactionGeneration", Box::new(v));

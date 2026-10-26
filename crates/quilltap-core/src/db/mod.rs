@@ -67,6 +67,7 @@ pub mod chats_moderation_refusal_ledger_repair;
 pub mod chats_transcript_version_repair;
 // === end P4.D182 ===
 pub mod chats_impersonation;
+pub mod chats_inventory; // P4.D324
 pub mod chats_messages;
 pub mod chats_messages_read;
 pub mod chats_outfits;
@@ -133,6 +134,10 @@ pub mod retired_job_rows_purge;
 pub(crate) mod schema_probe;
 pub mod tfidf_text_shape_repair;
 // === end P4.D288 ===
+pub mod inventory_columns_repair; // P4.D324
+pub mod inventory_readers; // P4.D324
+pub mod inventory_writes; // P4.D324
+pub mod item_folder_ops; // P4.D324 — the lift
 pub mod memory_tiers_repair;
 pub mod migration_index_family_repair;
 pub mod migrations_ledger;

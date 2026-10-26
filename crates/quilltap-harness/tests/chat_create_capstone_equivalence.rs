@@ -183,6 +183,14 @@ struct Spec {
     cases: Vec<CaseSpec>,
 }
 
+/// P4.D324: one planted Inventory object (see `CaseSpec::inventory_plant`).
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InventoryPlantSpec {
+    character_id: String,
+    record: Value,
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CaseSpec {
@@ -198,6 +206,12 @@ struct CaseSpec {
     /// the create (the `newChatsStartAs` arms) — the oracle's bytes.
     #[serde(default)]
     concierge_settings: Option<Value>,
+    /// P4.D324 (v4 `4fbdad186`): Inventory objects written into a character's
+    /// vault on THIS case's copy before the create, through the REAL location
+    /// (`resolve_inventory_location(…, ensure)` + `create`) — the oracle's
+    /// records.
+    #[serde(default)]
+    inventory_plant: Vec<InventoryPlantSpec>,
     #[serde(default)]
     greeting_content: Option<String>,
     #[serde(default)]
@@ -794,6 +808,29 @@ fn chat_create_capstone_matches_oracle() {
                 .expect("plant the case's Concierge settings");
         }
         let mount_w = open_w(&mount_work);
+        for plant in &c.inventory_plant {
+            let vault = quilltap_core::inventory::location::resolve_inventory_location(
+                main_w.connection(),
+                mount_w.connection(),
+                quilltap_core::inventory::types::InventoryScope::Character,
+                Some(&plant.character_id),
+                &spec.user_id,
+                quilltap_core::inventory::location::ResolveInventoryLocationOptions {
+                    ensure: true,
+                },
+            )
+            .expect("resolve the vault")
+            .expect("the character's vault");
+            vault
+                .create(
+                    main_w.connection(),
+                    mount_w.connection(),
+                    &quilltap_core::inventory::types::InventoryRecord(
+                        plant.record.as_object().unwrap().clone(),
+                    ),
+                )
+                .expect("plant the case's Inventory object");
+        }
         let llm_w = open_w(&llm_work);
 
         let db = Db::open(

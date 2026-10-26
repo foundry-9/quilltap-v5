@@ -202,6 +202,43 @@ pub fn ensure_chat_wardrobe_history_on(conn: &rusqlite::Connection) {
         .expect("ensure the chat wardrobe history table on a test fixture");
 }
 
+/// C1 (P4.D324): read a pre-round fixture pair as a booted instance would —
+/// the Inventory's two column ensures (`chats.equippedInventory`,
+/// `characters.canManageInventory`, the migrations' appended clauses), never a
+/// `migrations_state` stamp. The round's v5-side fixture plant (§R.3): every
+/// harness case on a committed pair that reaches a chat create / seat add /
+/// merge, an inventory read or write, or a carrier calls it on its per-case
+/// copy, beside the oracle's `plantInventoryColumns`
+/// (`harness/oracle/lib/v4-migrations.ts`). Idempotent; self-checking.
+pub fn ensure_inventory_columns_on(conn: &rusqlite::Connection) {
+    crate::db::inventory_columns_repair::run_inventory_columns_ensures(conn)
+        .expect("ensure the Inventory columns on a test fixture");
+    for (table, column) in [
+        (
+            "chats",
+            crate::db::inventory_columns_repair::EQUIPPED_INVENTORY_COLUMN,
+        ),
+        (
+            "characters",
+            crate::db::inventory_columns_repair::INVENTORY_FLAG_COLUMN,
+        ),
+    ] {
+        let has: bool = conn
+            .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+            .and_then(|mut s| {
+                let names: Vec<String> = s
+                    .query_map([], |r| r.get::<_, String>(1))?
+                    .collect::<Result<_, _>>()?;
+                Ok(names.iter().any(|n| n == column))
+            })
+            .expect("read the planted table's columns");
+        assert!(
+            has,
+            "ensure_inventory_columns_on: {table}.{column} is absent after the plant"
+        );
+    }
+}
+
 /// C1 §2 (P4.D265): heal a fixture's main partition with v4's
 /// `add-memory-tiers-v1` (`d58548051`) — the four `memories` tier columns, the
 /// `(characterId, tier)` index and the NULL-tier heal (v4's fourth step,

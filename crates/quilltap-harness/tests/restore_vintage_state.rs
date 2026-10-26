@@ -186,6 +186,20 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage main partition (P4.D315)");
     // === end P4.D315 ===
+    // === P4.D324: mirror-boot ensures ===
+    // The Inventory's two columns through the host's OWN chain
+    // (`db::inventory_columns_repair::run_inventory_columns_ensures` —
+    // `chats.equippedInventory`, then `characters.canManageInventory`), after
+    // the wardrobe-history chain as the host runs them. The vintage fixture's
+    // `chats` / `characters` predate both; the restore's `chats.create` /
+    // `characters.create` INSERTs name them.
+    db.write_blocking(|writers| {
+        quilltap_core::db::inventory_columns_repair::run_inventory_columns_ensures(
+            writers.main().connection(),
+        )
+    })
+    .expect("boot-align the vintage main partition (P4.D324)");
+    // === end P4.D324 ===
     db
 }
 

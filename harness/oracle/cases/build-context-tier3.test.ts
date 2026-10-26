@@ -48,6 +48,11 @@
  * guard's ring. Minted ids and `createdAt` are dropped; the rows are sorted by
  * `(systemKind, content)`.
  *
+ * P4.D324 (v4 `4fbdad186` + bug 253) adds the Inventory's trailing section:
+ * an op may plant Inventory objects into a vault (`inventoryPlant`, through
+ * v4's REAL location) and carry them through `chatOverrides.equippedInventory`
+ * (the chat object `buildContext` reads, never the row).
+ *
  * P4.D254 (v4 `94fbb1ae3`) adds a THIRD row per op (`kind: 'informLog'`):
  * every `[Inform] Delivering inform block as a trailing context section` debug
  * line `buildContext` logged during the op, with its fields — captured by
@@ -93,7 +98,16 @@ interface Op {
     summaryAnchorMessageIds?: string[];
     contextSummary?: string;
     commonplaceRecallHistory?: unknown;
+    /** P4.D324 (v4 `4fbdad186`): the chat's carried-objects map for the op —
+     *  spread onto the chat object `buildContext` reads it from, never written
+     *  to the row, so no other op sees it. */
+    equippedInventory?: unknown;
   };
+  /** P4.D324: Inventory objects written into a character's vault BEFORE the
+   *  op through v4's REAL location (`resolveInventoryLocation` + `create`);
+   *  they persist (the inventory ops run last, and only a chat's carried map
+   *  names them). */
+  inventoryPlant?: Array<{ characterId: string; record: Record<string, unknown> }>;
   respondingParticipantId?: string;
   /** P4.106 item 1: the swipe re-apply arm — `buildContext`'s
    *  `regenerationOfMessageIds` (the target + its swipe group). */
@@ -430,6 +444,14 @@ async function main(): Promise<void> {
   } as never;
 
   for (const op of spec.ops) {
+    if (op.inventoryPlant) {
+      const { resolveInventoryLocation } = await import('@/lib/inventory/location');
+      for (const plant of op.inventoryPlant) {
+        const vault = await resolveInventoryLocation('character', plant.characterId, repos, spec.userId, { ensure: true });
+        if (!vault) throw new Error(`no vault for ${plant.characterId}`);
+        await vault.create(plant.record as never);
+      }
+    }
     currentPrecompiledStack = op.precompiledIdentityStack ?? null;
     currentOp = op.name;
     const character = await repos.characters.findById(op.characterId);

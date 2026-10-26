@@ -161,6 +161,10 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         // memory id. Every chat-scoped subscriber would then filter that hint
         // out — coverage that reaches nobody, which is worse than none.
         RealtimeTopic::Memories => &[],
+        // P4.D324 (the keystone's topic, compile-forced here): collection-wide
+        // — v4 `TOPIC_ID_FIELDS.inventory = []`. The job-topic rows that
+        // announce it (`INVENTORY_PATH_PATTERN`) are P4.D328's.
+        RealtimeTopic::Inventory => &[],
     }
 }
 

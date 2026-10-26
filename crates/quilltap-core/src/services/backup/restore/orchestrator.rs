@@ -3359,6 +3359,9 @@ fn restore_one_character(
         character_document_mount_point_id: None,
         can_dress_themselves: ob(ch, "canDressThemselves"),
         can_create_outfits: ob(ch, "canCreateOutfits"),
+        // P4.D324 compiles the new field in; the restore's carried value is
+        // P4.D327's edit (HANDOFF).
+        can_manage_inventory: None,
         system_transparency: ob(ch, "systemTransparency"),
         core_whisper_enabled: ob(ch, "coreWhisperEnabled"),
         can_be_carina: ob(ch, "canBeCarina"),

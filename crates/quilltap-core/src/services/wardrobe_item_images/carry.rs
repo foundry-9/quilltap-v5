@@ -62,6 +62,8 @@ pub struct CarryArgs<'a> {
     pub destination_item_id: &'a str,
     pub destination_mount_point_id: &'a str,
     pub user_id: &'a str,
+    /// The images folder (v4 `args.imagesFolder`, `4fbdad186` — R-16).
+    pub images_folder: &'a str,
 }
 
 /// One source link a move drops once its row points at the destination.
@@ -165,6 +167,7 @@ pub fn carry_item_images(
                 content_type: &file.mime_type,
                 description: file.description.as_deref(),
                 leaf_name: Some(&file.original_filename),
+                images_folder: args.images_folder,
             },
             &LeafSeed {
                 now_ms: 0,
@@ -233,6 +236,7 @@ pub fn commit_moved_images(
     item_id: &str,
     pending: &PendingImageMove,
     now_iso: &str,
+    images_folder: &str,
 ) {
     let mut to_drop: Vec<SourceImageLink> = Vec::new();
     for repoint in &pending.repoints {
@@ -262,7 +266,7 @@ pub fn commit_moved_images(
             }
         }
     }
-    drop_source_image_links(mount, item_id, &to_drop);
+    drop_source_image_links(mount, item_id, &to_drop, images_folder);
 }
 
 /// v4 `dropSourceImageLinks(itemId, sourceLinks)` — after a move, drop the
@@ -277,10 +281,17 @@ pub fn drop_source_image_links(
     mount: &Connection,
     item_id: &str,
     source_links: &[SourceImageLink],
+    images_folder: &str,
 ) {
     let mut dropped = 0usize;
     for link in source_links {
-        if delete_wardrobe_item_image_link(mount, &link.mount_point_id, item_id, &link.leaf_name) {
+        if delete_wardrobe_item_image_link(
+            mount,
+            &link.mount_point_id,
+            item_id,
+            &link.leaf_name,
+            images_folder,
+        ) {
             dropped += 1;
         }
     }

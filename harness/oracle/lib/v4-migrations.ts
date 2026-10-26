@@ -117,6 +117,20 @@ export const CHAT_WARDROBE_HISTORY_MIGRATIONS: V4MigrationRef[] = [
 ];
 
 /**
+ * P4.D324 — the Inventory's two column migrations, in v4's registration order
+ * (`migrations/scripts/index.ts:924-926` at the `322a5488e` pin — after
+ * `CHAT_WARDROBE_HISTORY_MIGRATIONS`, before the terminal geometry):
+ * `chats.equippedInventory`, then `characters.canManageInventory`. Both
+ * column-gated `addColumnIfMissing` appends (`TEXT DEFAULT NULL` / `INTEGER
+ * DEFAULT NULL`); v5's ensures are UNSTAMPED. Kept beside — never inside —
+ * the lists above.
+ */
+export const INVENTORY_MIGRATIONS: V4MigrationRef[] = [
+  { file: 'migrations/scripts/add-chat-equipped-inventory-v1.ts', exportName: 'addChatEquippedInventoryMigration' },
+  { file: 'migrations/scripts/add-character-inventory-flag-v1.ts', exportName: 'addCharacterInventoryFlagMigration' },
+];
+
+/**
  * P4.D315 — the `e8e17b2d9` round's ONE shared fixture plant (§R.3, R-S).
  *
  * v4's fixtures are built from `generateDDL` (`initializeDatabase` runs no
@@ -158,6 +172,55 @@ export async function plantChatWardrobeHistoryTable(db?: {
   }
   if (typeof planted !== 'string' || planted.length === 0) {
     throw new Error('plantChatWardrobeHistoryTable: chat_wardrobe_history is absent after the plant');
+  }
+}
+
+/**
+ * P4.D324 — the `322a5488e` round's Inventory column plant (§R.3, C1).
+ *
+ * v4 at the pin WRITES `chats.equippedInventory` at every chat create / seat
+ * add / merge (`applyInventoryDefaults` — the `{"<charId>":[]}` stamp) and its
+ * character reads carry `canManageInventory`; a COMMITTED pair predates both
+ * columns, so v4's write is caught (`Failed to write equipped inventory`) and
+ * the dumps diverge from v5's. Every case on a committed pair calls this on
+ * its PER-RUN copy (never a widened committed pair), beside the v5 side's
+ * `test_support::ensure_inventory_columns_on` — the same two clauses the
+ * migrations append (`addColumnIfMissing`, `TEXT DEFAULT NULL` / `INTEGER
+ * DEFAULT NULL`), each only when the column is absent.
+ *
+ * Given a better-sqlite3 handle it runs on it; given none it runs through
+ * v4's `rawQuery` (`@/lib/database/manager`, a DYNAMIC import) on the
+ * initialised per-run database — the `plantChatWardrobeHistoryTable` shape:
+ * AWAIT it. Idempotent and self-checking: it throws unless `PRAGMA table_info`
+ * names both columns afterwards.
+ */
+export async function plantInventoryColumns(db?: {
+  exec(sql: string): unknown;
+  prepare(sql: string): { all(...params: unknown[]): unknown };
+}): Promise<void> {
+  const PLANTS: Array<[string, string, string]> = [
+    ['chats', 'equippedInventory', 'TEXT DEFAULT NULL'],
+    ['characters', 'canManageInventory', 'INTEGER DEFAULT NULL'],
+  ];
+  const columnsOf = async (table: string): Promise<string[]> => {
+    const sql = `PRAGMA table_info("${table}")`;
+    const rows = db
+      ? (db.prepare(sql).all() as Array<{ name: string }>)
+      : ((await (await import('@/lib/database/manager')).rawQuery(sql)) as Array<{ name: string }>);
+    return rows.map((r) => r.name);
+  };
+  for (const [table, column, decl] of PLANTS) {
+    const before = await columnsOf(table);
+    if (before.length === 0) throw new Error(`plantInventoryColumns: no ${table} table`);
+    if (before.includes(column)) continue;
+    const alter = `ALTER TABLE "${table}" ADD COLUMN "${column}" ${decl}`;
+    if (db) db.exec(alter);
+    else await (await import('@/lib/database/manager')).rawQuery(alter);
+  }
+  for (const [table, column] of PLANTS) {
+    if (!(await columnsOf(table)).includes(column)) {
+      throw new Error(`plantInventoryColumns: ${table}.${column} is absent after the plant`);
+    }
   }
 }
 

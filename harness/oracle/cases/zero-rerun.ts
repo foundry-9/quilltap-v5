@@ -58,6 +58,7 @@ import { fileURLToPath } from 'node:url';
 import {
   CHAT_SETTINGS_4_11_MIGRATIONS,
   CHAT_WARDROBE_HISTORY_MIGRATIONS,
+  INVENTORY_MIGRATIONS,
   P4D288_SPAN_MIGRATIONS,
 } from '../lib/v4-migrations';
 
@@ -143,11 +144,13 @@ async function runTwelve(path: string): Promise<string[]> {
   // P4.D304: the span, then the two 4.11 chat_settings migrations (v4's
   // registration order — both unstamped on v5's side, R-B); P4.D315: then the
   // chat wardrobe history's three (table → tool-name column → seed — v5 stamps
-  // the table and the seed as v4's runner would, R-C).
+  // the table and the seed as v4's runner would, R-C); P4.D324: then the
+  // Inventory's two columns (both unstamped on v5's side).
   for (const ref of [
     ...P4D288_SPAN_MIGRATIONS,
     ...CHAT_SETTINGS_4_11_MIGRATIONS,
     ...CHAT_WARDROBE_HISTORY_MIGRATIONS,
+    ...INVENTORY_MIGRATIONS,
   ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
   }
@@ -192,7 +195,12 @@ function buildPlanted(path: string): void {
     if (stmt.includes('"memory_extraction_cursors"')) continue;
     let s = stmt;
     if (s.startsWith('CREATE TABLE "memories" (')) s = strip(s, [`  "supersededAt" TEXT,\n`]);
-    if (s.startsWith('CREATE TABLE "chats" (')) s = strip(s, [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`]);
+    // P4.D324: the Inventory's two columns taken back too (the planted base is
+    // pre-round; v4's runner APPENDS them, v5's ensures do the same).
+    if (s.startsWith('CREATE TABLE "chats" (')) {
+      s = strip(s, [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`, `  "equippedInventory" TEXT,\n`]);
+    }
+    if (s.startsWith('CREATE TABLE "characters" (')) s = strip(s, [`  "canManageInventory" INTEGER,\n`]);
     if (s.startsWith('CREATE TABLE "tfidf_vocabularies" (')) s = strip(s, [`  "textShapeVersion" REAL DEFAULT 0,\n`]);
     // P4.D304: the 4.11 chat_settings toggles taken back too.
     if (s.startsWith('CREATE TABLE "chat_settings" (')) {

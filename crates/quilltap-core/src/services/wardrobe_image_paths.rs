@@ -15,16 +15,27 @@ pub use crate::services::file_storage::sanitize_leaf_name;
 /// v4 `WARDROBE_IMAGES_FOLDER` — where an item's pictures live inside its mount.
 pub const WARDROBE_IMAGES_FOLDER: &str = "Wardrobe/images";
 
-/// v4 `wardrobeItemImageFolder(itemId)` — `Wardrobe/images/<itemId>`, the id
-/// through [`sanitize_leaf_name`].
-pub fn wardrobe_item_image_folder(item_id: &str) -> String {
-    format!("{WARDROBE_IMAGES_FOLDER}/{}", sanitize_leaf_name(item_id))
+/// v4 `INVENTORY_IMAGES_FOLDER` (`wardrobe-image-bridge.ts`, `4fbdad186`;
+/// P4.D324) — an Inventory object's pictures, `Inventory/images/<itemId>/`.
+pub const INVENTORY_IMAGES_FOLDER: &str = "Inventory/images";
+
+/// v4 `wardrobeItemImageFolder(itemId, imagesFolder)` — `<imagesFolder>/<itemId>`,
+/// the id through [`sanitize_leaf_name`]. Since `4fbdad186` (P4.D324, R-16)
+/// the images folder is a parameter (v4 defaults it to the wardrobe's;
+/// Rust has no default argument, so every wardrobe caller passes
+/// [`WARDROBE_IMAGES_FOLDER`] and the Inventory its own).
+pub fn wardrobe_item_image_folder(item_id: &str, images_folder: &str) -> String {
+    format!("{images_folder}/{}", sanitize_leaf_name(item_id))
 }
 
-/// v4 `wardrobeItemImagePath(itemId, leafName)` — the mount-relative path of
-/// one picture (the leaf name is NOT re-sanitized, as v4's is not).
-pub fn wardrobe_item_image_path(item_id: &str, leaf_name: &str) -> String {
-    format!("{}/{leaf_name}", wardrobe_item_image_folder(item_id))
+/// v4 `wardrobeItemImagePath(itemId, leafName, imagesFolder)` — the
+/// mount-relative path of one picture (the leaf name is NOT re-sanitized, as
+/// v4's is not).
+pub fn wardrobe_item_image_path(item_id: &str, leaf_name: &str, images_folder: &str) -> String {
+    format!(
+        "{}/{leaf_name}",
+        wardrobe_item_image_folder(item_id, images_folder)
+    )
 }
 
 #[cfg(test)]
@@ -35,11 +46,15 @@ mod tests {
     fn paths() {
         let id = "7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f60";
         assert_eq!(
-            wardrobe_item_image_folder(id),
+            wardrobe_item_image_folder(id, WARDROBE_IMAGES_FOLDER),
             format!("Wardrobe/images/{id}")
         );
         assert_eq!(
-            wardrobe_item_image_path(id, "20261007-142233-generated-abcd1234.webp"),
+            wardrobe_item_image_path(
+                id,
+                "20261007-142233-generated-abcd1234.webp",
+                WARDROBE_IMAGES_FOLDER
+            ),
             format!("Wardrobe/images/{id}/20261007-142233-generated-abcd1234.webp")
         );
     }
@@ -49,10 +64,16 @@ mod tests {
     #[test]
     fn an_id_with_a_slash_is_sanitized() {
         assert_eq!(
-            wardrobe_item_image_folder("../x/evil"),
+            wardrobe_item_image_folder("../x/evil", WARDROBE_IMAGES_FOLDER),
             "Wardrobe/images/evil"
         );
-        assert_eq!(wardrobe_item_image_folder("a:b"), "Wardrobe/images/a_b");
-        assert_eq!(wardrobe_item_image_folder(""), "Wardrobe/images/unnamed");
+        assert_eq!(
+            wardrobe_item_image_folder("a:b", WARDROBE_IMAGES_FOLDER),
+            "Wardrobe/images/a_b"
+        );
+        assert_eq!(
+            wardrobe_item_image_folder("", WARDROBE_IMAGES_FOLDER),
+            "Wardrobe/images/unnamed"
+        );
     }
 }

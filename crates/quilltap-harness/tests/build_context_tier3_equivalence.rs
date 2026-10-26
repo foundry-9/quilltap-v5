@@ -143,6 +143,9 @@ struct SpecOp {
     existing_messages_repeat: Option<SpecRepeat>,
     #[serde(default)]
     chat_overrides: Option<SpecChatOverrides>,
+    /// P4.D324: the op's Inventory plants (see [`SpecInventoryPlant`]).
+    #[serde(default)]
+    inventory_plant: Vec<SpecInventoryPlant>,
     #[serde(default)]
     responding_participant_id: Option<String>,
     /// P4.106 item 1: the swipe re-apply arm (`regenerationOfMessageIds`).
@@ -302,6 +305,21 @@ struct SpecChatOverrides {
     context_summary: Option<String>,
     #[serde(default)]
     commonplace_recall_history: Option<Value>,
+    /// P4.D324 (v4 `4fbdad186`): the chat's carried-objects map for the op —
+    /// spread onto the chat `buildContext` reads, never written to the row.
+    #[serde(default)]
+    equipped_inventory: Option<Value>,
+}
+
+/// P4.D324: one Inventory object an op writes into a character's vault
+/// before it runs, through the REAL location (`resolve_inventory_location(…,
+/// ensure)` + `create`). The objects persist (the inventory ops run last, and
+/// only a chat's carried map names them).
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct SpecInventoryPlant {
+    character_id: String,
+    record: Value,
 }
 
 #[derive(Deserialize, Clone)]
@@ -685,6 +703,34 @@ async fn build_context_tier3_matches_oracle() {
         std::collections::HashMap::new();
     for (op, (oracle_op, oracle_result)) in spec.ops.iter().zip(&oracle_results) {
         assert_eq!(&op.name, oracle_op, "op order mismatch");
+        // P4.D324: the op's Inventory objects, through the REAL location.
+        for plant in op.inventory_plant.clone() {
+            let user = spec.user_id.clone();
+            db.write(move |ws| {
+                let main = ws.main().connection();
+                let mount = ws.mount_index().expect("mount writer").connection();
+                let vault = quilltap_core::inventory::location::resolve_inventory_location(
+                    main,
+                    mount,
+                    quilltap_core::inventory::types::InventoryScope::Character,
+                    Some(&plant.character_id),
+                    &user,
+                    quilltap_core::inventory::location::ResolveInventoryLocationOptions {
+                        ensure: true,
+                    },
+                )?
+                .expect("the character's vault");
+                let record = quilltap_core::inventory::types::InventoryRecord(
+                    plant.record.as_object().unwrap().clone(),
+                );
+                vault
+                    .create(main, mount, &record)
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{}: inventory plant failed: {e}", op.name));
+        }
         // P4.D268: the op's plants, before anything reads.
         for sql in &op.plant_sql {
             let sql = sql.clone();
@@ -1004,6 +1050,10 @@ async fn build_context_tier3_matches_oracle() {
                     .as_ref()
                     .and_then(|o| o.project_id.clone()),
                 precompiled_identity_stack: op.precompiled_identity_stack.clone(),
+                equipped_inventory: op
+                    .chat_overrides
+                    .as_ref()
+                    .and_then(|o| o.equipped_inventory.clone()),
                 ..Default::default()
             },
             existing_messages: build_existing(op),

@@ -147,6 +147,9 @@ pub struct WriteWardrobeItemImageInput<'a> {
     /// write upserts there). `None` mints a fresh `<timestamp>-<kind>.webp`
     /// and bumps on collision.
     pub leaf_name: Option<&'a str>,
+    /// The images folder (v4 `imagesFolder`, `4fbdad186` — default the
+    /// wardrobe's there; every caller names it here, R-16).
+    pub images_folder: &'a str,
 }
 
 /// v4 `WriteWardrobeItemImageResult`.
@@ -178,7 +181,7 @@ pub fn write_wardrobe_item_image(
     seed: &LeafSeed,
     blob_webp: &dyn WebpTranscoder,
 ) -> Result<WrittenWardrobeImage, DbError> {
-    let folder = wardrobe_item_image_folder(input.item_id);
+    let folder = wardrobe_item_image_folder(input.item_id, input.images_folder);
     // v4 `9ecebf986`: a fresh picture gets a sortable `<timestamp>-<kind>.webp`
     // leaf and lets the pipeline bump it (` (2)`, ` (3)`…) if the second is
     // already taken (`collisionStrategy: 'unique-suffix'`); a transfer re-link
@@ -275,8 +278,9 @@ pub fn delete_wardrobe_item_image_link(
     mount_point_id: &str,
     item_id: &str,
     leaf_name: &str,
+    images_folder: &str,
 ) -> bool {
-    let relative_path = wardrobe_item_image_path(item_id, leaf_name);
+    let relative_path = wardrobe_item_image_path(item_id, leaf_name, images_folder);
     let links = DocMountFileLinksRepository::new(mount);
     let Some(link) = links.find_by_mount_point_and_path_or_none(mount_point_id, &relative_path)
     else {

@@ -435,6 +435,9 @@ const NULLABLE_SLIM_COLUMNS: &[&str] = &[
     "defaultHelpToolsEnabled",
     "canDressThemselves",
     "canCreateOutfits",
+    // P4.D324 (v4 `e1872c94f`): a vaulted character's inventory-tools flag is
+    // a COLUMN write, like `canCreateOutfits`.
+    "canManageInventory",
     "systemTransparency",
     "coreWhisperEnabled",
     "canBeCarina",
@@ -687,6 +690,8 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
         #[serde(default)]
         can_create_outfits: Option<bool>,
         #[serde(default)]
+        can_manage_inventory: Option<bool>,
+        #[serde(default)]
         system_transparency: Option<bool>,
         #[serde(default)]
         core_whisper_enabled: Option<bool>,
@@ -730,6 +735,7 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
         character_document_mount_point_id: p.character_document_mount_point_id,
         can_dress_themselves: p.can_dress_themselves,
         can_create_outfits: p.can_create_outfits,
+        can_manage_inventory: p.can_manage_inventory.map(Some),
         system_transparency: p.system_transparency,
         core_whisper_enabled: p.core_whisper_enabled,
         can_be_carina: p.can_be_carina,

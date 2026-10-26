@@ -29,10 +29,14 @@ pub enum RealtimeTopic {
     /// id — the count beside a Salon's Delete Memories button is what watches
     /// this, and a memory's own id would mean nothing to it.
     Memories,
+    /// Inventory objects: a file created, instantiated, edited, archived or
+    /// moved. Collection-wide (lists and folders). What a chat carries is the
+    /// `chats` topic's. (v4 `e1872c94f`, P4.D324 — LAST.)
+    Inventory,
 }
 
 /// Every topic, in v4's declaration order.
-pub const REALTIME_TOPICS: [RealtimeTopic; 7] = [
+pub const REALTIME_TOPICS: [RealtimeTopic; 8] = [
     RealtimeTopic::Jobs,
     RealtimeTopic::AutonomousRooms,
     RealtimeTopic::Chats,
@@ -40,6 +44,7 @@ pub const REALTIME_TOPICS: [RealtimeTopic; 7] = [
     RealtimeTopic::Characters,
     RealtimeTopic::MountPoints,
     RealtimeTopic::Memories,
+    RealtimeTopic::Inventory,
 ];
 
 impl RealtimeTopic {
@@ -53,6 +58,7 @@ impl RealtimeTopic {
             RealtimeTopic::Characters => "characters",
             RealtimeTopic::MountPoints => "mountPoints",
             RealtimeTopic::Memories => "memories",
+            RealtimeTopic::Inventory => "inventory",
         }
     }
 }
@@ -100,9 +106,10 @@ mod tests {
     use crate::api::types::{Event, EventPayload};
 
     #[test]
-    fn topics_are_v4s_seven_in_order() {
-        // `memories` is LAST: bug 128 (`4a9be9878`) appended it, and the order
-        // is v4's declaration order in `REALTIME_TOPICS`.
+    fn topics_are_v4s_eight_in_order() {
+        // `memories` came seventh: bug 128 (`4a9be9878`) appended it;
+        // `inventory` is LAST (`e1872c94f`, P4.D324). The order is v4's
+        // declaration order in `REALTIME_TOPICS`.
         assert_eq!(
             REALTIME_TOPICS.map(RealtimeTopic::as_str).to_vec(),
             vec![
@@ -112,7 +119,8 @@ mod tests {
                 "projects",
                 "characters",
                 "mountPoints",
-                "memories"
+                "memories",
+                "inventory"
             ]
         );
     }

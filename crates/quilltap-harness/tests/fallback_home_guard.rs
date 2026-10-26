@@ -195,6 +195,13 @@ const HOME_MESSAGES: &[&str] = &[
     // === P4.D293 — the restore's 22l refusal (L-4) ===
     "Error creating TF-IDF vocabulary",
     // === end P4.D293 ===
+    // === P4.D324 — the Inventory keystone's repository fallbacks ===
+    "Failed to get equipped inventory",
+    "Failed to write equipped inventory",
+    "Failed to find chats carrying an inventory id",
+    "Failed to remove an id from equipped inventory",
+    "Error finding documents in a folder by content",
+    // === end P4.D324 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

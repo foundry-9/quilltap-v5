@@ -113,6 +113,14 @@ pub enum ItemImageCleanupMeta<'a> {
         id: &'a str,
         mount_point_id: &'a str,
     },
+    /// The Inventory's delete meta (P4.D324 — v4 `item-mutations.ts`
+    /// `deleteInventoryItem`): `{ scope, mountPointId, itemId, op: 'delete' }`
+    /// (`itemId` already among them, so the line's own `itemId` keeps its
+    /// position).
+    Inventory {
+        scope: &'a str,
+        mount_point_id: &'a str,
+    },
 }
 
 /// One cleanup line in the factory's meta shape.
@@ -140,6 +148,10 @@ macro_rules! cleanup_line {
                     ),
                 }
             }
+            ItemImageCleanupMeta::Inventory { scope, mount_point_id } => tracing::$level!(
+                scope = %scope, mountPointId = %mount_point_id, itemId = %$item_id,
+                op = "delete", $($rest)* "{}", $message
+            ),
         }
     };
 }
@@ -157,6 +169,7 @@ pub fn cleanup_item_images(
     item_id: &str,
     log_tag: &str,
     meta: ItemImageCleanupMeta<'_>,
+    images_folder: &str,
 ) -> usize {
     let images = match find_item_image_rows(main, item_id) {
         Ok(images) => images,
@@ -174,7 +187,7 @@ pub fn cleanup_item_images(
     };
     let mut removed = 0usize;
     for file in &images {
-        match remove_image_file(main, mount, item_id, file) {
+        match remove_image_file(main, mount, item_id, file, images_folder) {
             Ok(()) => removed += 1,
             Err(e) => {
                 let error = crate::db::fallback::error_text(&e);
@@ -204,16 +217,25 @@ pub fn cleanup_item_images(
 
 /// v4 `removeImageFile` — the picture's mount link (when the storage key
 /// parses), then its `files` row ALWAYS. Never fails on a missing link.
-pub(crate) fn remove_image_file(
+/// EXPORTED since `4fbdad186` (the Inventory's picture delete calls it with
+/// its own images folder).
+pub fn remove_image_file(
     main: &Connection,
     mount: &Connection,
     item_id: &str,
     file: &FileRow,
+    images_folder: &str,
 ) -> Result<(), DbError> {
     if let Some((mount_point_id, _blob_id)) =
         parse_mount_blob_storage_key(file.storage_key.as_deref().unwrap_or(""))
     {
-        delete_wardrobe_item_image_link(mount, &mount_point_id, item_id, &file.original_filename);
+        delete_wardrobe_item_image_link(
+            mount,
+            &mount_point_id,
+            item_id,
+            &file.original_filename,
+            images_folder,
+        );
     }
     FilesRepository::new(main).delete(&file.id)?;
     Ok(())
@@ -223,7 +245,7 @@ pub(crate) fn remove_image_file(
 mod tests {
     use super::*;
     use crate::db::wardrobe_location::WardrobeScope;
-    use crate::services::wardrobe_image_paths::wardrobe_item_image_path;
+    use crate::services::wardrobe_image_paths::{wardrobe_item_image_path, WARDROBE_IMAGES_FOLDER};
     use crate::test_support::captured_with;
     use rusqlite::params;
 
@@ -285,7 +307,7 @@ mod tests {
                     link_id,
                     format!("f-{link_id}"),
                     MP,
-                    wardrobe_item_image_path(ITEM, leaf),
+                    wardrobe_item_image_path(ITEM, leaf, WARDROBE_IMAGES_FOLDER),
                     leaf
                 ],
             )
@@ -395,6 +417,7 @@ mod tests {
                     id: "char-1",
                     mount_point_id: MP,
                 },
+                WARDROBE_IMAGES_FOLDER,
             )
         });
         assert_eq!(removed, 2);
@@ -434,6 +457,7 @@ mod tests {
                     id: "null",
                     mount_point_id: MP,
                 },
+                WARDROBE_IMAGES_FOLDER,
             )
         });
         assert_eq!(removed, 0);
@@ -466,6 +490,7 @@ mod tests {
                     id: "p-1",
                     mount_point_id: MP,
                 },
+                WARDROBE_IMAGES_FOLDER,
             )
         });
         assert_eq!(removed, 1);

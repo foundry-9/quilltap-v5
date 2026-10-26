@@ -190805,3 +190805,68 @@ pinned.
 `dogfood-findings.md`'s standing note of 2026-10-19 (the §S.8 queue; the
 headline row — the first v5 boot of a Friday copy, its vintage recorded
 first; the R-W filing candidates).
+
+## P4.D324 — the Inventory KEYSTONE: storage, model, mutations, pictures, transfers, equip + arrival defaults, the prompt section, and the round's ONE `fresh_schema.json` re-dump (lane `claude/p4.d324-inventory-keystone-3c3c70`, pin `322a5488e`, 2026-10-26)
+
+Session started in the app's worktree (branch `claude/eloquent-franklin-3c3c70`, no commits) and switched `-c` onto `claude/p4.d324-inventory-keystone-3c3c70` at `main` `914096110` (the orders' commit `c22ab5c8b` + the two docs-only commits after it). Pin worktree `/tmp/qt-v4-pin-p4d324-322a5488e` (`npm ci --offline`: openai 7.34.0, `@xterm/headless` 6.0.0, zod 4.6.7). The ledger §2 probe PASSED at lane start (v4 `main` clean at `a0905454b`, the 32 commits past the pin recorded by `d1f7e0049`; the round runs at the pin by the 2026-10-26 ruling).
+
+### Red-first (item 1), unported main from the pin
+
+- `provisioning_equivalence` (1d) RED: the live dump vs the committed one differ by exactly `chats."equippedInventory" TEXT`, `characters."canManageInventory" INTEGER`, `terminal_sessions."cols"` / `"rows"` REAL, and `llmLogs` 3 → 7 statements (`log_entries` + three indexes); `mountIndex` unchanged (31). (1b) RED on the four columns + `log_entries`; (1c) masked behind (1b).
+- `migration_index_backfill_equivalence` RED — not the order's predicted "v4 ALTERs three columns": the three `idx_log_entries_*` indexes.
+- `chat_create_capstone_equivalence` RED: `single_char_first_message` diverged on `chats` (48 `{"<charId>":[]}` cells).
+- `chat_cast_routes`, `chats_participants_tier2`, `chat_admin_routes` (the merge family), `realtime_topics`: GREEN on unported main (measured; the realtime family pins job → topic mappings, not the topic list — a `kind: 'topics'` row was added, red-first by mutation).
+
+### What landed (the `INVENTORY:` commit)
+
+Tier 1 items 2–23 whole, plus the R-16 refactor. The order's C1 names, with the departures recorded in the status header: the record / resolved types are `preserve_order` map newtypes with an accessor trait (`InventoryFields`) — key order is the contract; `get_equipped_inventory` / `normalize_equipped_inventory` answer `Vec<(String, Vec<String>)>`; `InventoryPool.by_id` is a V8-`Map`-faithful `RecordMap`; `load_cast_inventory_pools` answers `Vec<(String, InventoryPool)>`; the gestures answer `Result<(R, Option<InventoryChange>), InventoryError>` (refusals plus storage / plain errors in one type); `drop_carried_everywhere` is the sync form over `main` (one write closure is the lock); `build_inventory_section` takes the chat row as a `Value` (`ContextChat.equipped_inventory` threads it into `build_context`).
+
+### Families (all from the pin)
+
+| family | shape | result |
+|---|---|---|
+| `inventory_types_equivalence` | tier 1 | GREEN (Zod 4.6.7 measured: parse order, abort vs continue, superRefine gating, `addIssue` key order) |
+| `inventory_folders_equivalence` | tier 1 | GREEN 605 rows (the lifted rules, both nouns) |
+| `inventory_svg_equivalence` | tier 1 | GREEN |
+| `inventory_resolve_equivalence` | tier 1 NEW | GREEN 94 rows |
+| `inventory_columns_ensure_equivalence` | tier 2 | GREEN (7 shapes through v4's real narrowed runner; UNSTAMPED both ways) |
+| `chats_inventory_tier2_equivalence` | tier 2 NEW | GREEN 34 ops / 28 owned lines (RED first — the DQS finding below) |
+| `inventory_keystone_tier2_equivalence` | tier 2 NEW | GREEN 122 ops / 791 owned v4 lines / every delta + publish |
+| `inventory_item_image_generation_tier3_equivalence` | tier 3 NEW | GREEN 14 scenarios |
+| `pascal_inventory_change_equivalence` | tier 2 NEW | GREEN 4 ops |
+| `build_context_tier3_equivalence` | grown +5 ops | GREEN (the section after progressions, continue mode, nothing described, a kit id, base-sensitivity ties) |
+| `chat_create_capstone_equivalence` | grown +1 case | GREEN 151 cases (`inventory_defaults_arrival`: Aria's default object carried; every other case stamps `[]`) |
+| `realtime_topics_equivalence` | grown +1 row | GREEN |
+| `provisioning_equivalence`, `migration_index_backfill_equivalence`, `zero_migrations_rerun_equivalence` | existing | GREEN after the re-dump |
+
+The order's per-family split for readers / writes / location / pool / dependents / equipped set / mutations / item images / transfers / equip is ONE op-driven family over ONE pair (`build-inventory-mutations-fixture.ts`, spec `inventory-keystone.json`, rows tagged by family, `QT_INV_FAMILY` narrows), each op in its own v4 child process on a fresh copy — a recorded departure from the order's env names and separate builders (`QT_ORACLE_INV_KEYSTONE` + `QT_FIXTURE_INV_MAIN` / `_MOUNT`).
+
+### The regression net (sweep driver, from the pin, 61 families)
+
+58 GREEN first pass — the lifted wardrobe code (`wardrobe_*`, `vault_wardrobe_*`, `vault_projection_recursive_tier2`, `character_archive_tier2`), the column plumbing (`characters_*`, `chats_*`, `store_name_*`, `vault_character_write`), the spine (`chat_create_capstone`, `chat_cast_routes`, `chat_admin_routes`, `chats_participants_tier2`), `build_context_tier3`, `pascal_writers`, `doc_mount_documents_tier2`, `realtime_topics`. Three harness-literal compile errors (`can_manage_inventory`) fixed → GREEN. **`characters_arrays_tier2_equivalence` RED — the scenario read-back ORDER: v4 `1d0a31132` (the scenario sort) at the pin, owned by P4.D338; not this lane's.**
+
+### Findings
+
+- **v5's SQLite keeps the legacy double-quoted-string fallback (DQS); v4's refuses it.** `SELECT "equippedInventory"` on a pre-column `chats` read the TEXT `'equippedInventory'`; `WHERE "equippedInventory" LIKE ?` matched nothing instead of failing as v4's does. The carried-set reads probe `pragma_table_info`; the `LIKE` names the column unquoted. A memory note.
+- **`InventoryKitStrandedError`'s `details.kits` carries THREE keys** (`id`, `name`, `ownerName`) — v4's one caller maps the rows; the first port carried four.
+- **R-18's "USER-type seat" is unrepresentable at the pin** (`ParticipantTypeEnum` is CHARACTER-only); the user-controlled seat is `controlledBy: 'user'`.
+- **v4's pool reads its tiers under one `Promise.all` over better-sqlite3's synchronous reads**, so the per-mount `Inventory folder read` lines land in await-depth order — `PROMISE_ALL_TIER_READ_ORDER`, a recorded divergence: each consecutive run compared sorted.
+- **The oracles run v4 WITHOUT its title lint** (`title-lint.ts` and `title-lint-documents.ts` — P4.D340's, R-7): tsx compiles v4 to CommonJS, so an ESM `module.register` hook never sees the requires; a `require.cache` substitution with a self-check does (`withoutTitleLint` in the keystone case). Memory note.
+- **`buildInventorySection`'s catch is unreachable through v4's real code** (every tier read fails soft); the v5 WARN arm fires only when the mount-index read pool is absent. `projectShelfOpenTo`'s catch likewise (`projectRosterAdmits` never throws).
+- **The arrival-hook split at the seat add**: v5's dressing has early returns where v4's `try` has none, so `apply_outfit_for_added_participant` now calls `dress_added_participant` then the arrival defaults unconditionally.
+
+### Mutation proofs
+
+- **M1** — `delete_inventory_item`'s kit scrub `members.len() > 1` → `>= 1`: KILLED (`inventory_keystone_tier2` #57 `delete-plain`: three mount deltas + the lines).
+- **M2** — `equip`'s kin cap `kin + 1 > cap` → `kin > cap`: SURVIVED the first corpus — no op equipped AT the cap. Four cap ops added (`equip-at-cap`, `equip-past-cap`, a kit at the cap, a pick-up past it); re-run: KILLED.
+- **M3** — `render_inventory_section`'s sort removed: KILLED (`build_context_tier3`, the base-sensitivity tie op).
+
+### Gate (the `INVENTORY:` tree)
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean with and without `--features quilltap-core/native-transport`; `CARGO_INCREMENTAL=0 cargo test --workspace` with every lane oracle set: **837 binaries / 5,493 passed / 4 failed / 3 ignored, zero SKIP**. The four reds: `doc_mount_fallback_sites_census` ×2 (this lane's — the item-folder lift moved the wardrobe's seven folder-verb rows to `db/item_folder_ops.rs`, and `scan_inventory_folder` + `read_all_inventory_records` are two new fallback twins: EXPECTED re-homed, converted 89 → 91, green by name); `public_schemas_vendor_guard` and `qtap_schema_embed_guard` (STANDING — the vendored `qtap-custom-tool.schema.json` / `qtap-export.schema.json` differ from v4 at the pin as well as at HEAD; untouched here, re-vendored by P4.D333 / P4.D327 per their orders).
+
+### HANDOFFs
+
+- **P4.D327**: `can_manage_inventory: None` compile-forced lines in `restore/orchestrator.rs` and `quilltap_import/characters.rs` — the carriers replace them with the carried value.
+- **P4.D328**: the four change types are homed in `inventory::equip` (data only); `notify_inventory_changed` re-points the arrival's R-3 refresh (`apply_defaults::refresh_avatars_after_arrival`), adding the `[InventoryEffects]` line.
+- **P4.D340**: the eight lint seams are `// P4.D340 lint seam:` comments at v4's positions in `item_mutations.rs`.

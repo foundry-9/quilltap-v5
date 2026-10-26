@@ -215,6 +215,7 @@ pub fn add_wardrobe_item_image(
             content_type: input.content_type,
             description: Some(&description),
             leaf_name: None,
+            images_folder: crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
         },
         &mint.leaf,
         blob_webp,
@@ -367,7 +368,13 @@ pub fn delete_wardrobe_item_image(
 
     // Refuse a tombstone before touching anything.
     home.resolve_mount(main)?;
-    remove_image_file(main, mount, home.item_id(), target)?;
+    remove_image_file(
+        main,
+        mount,
+        home.item_id(),
+        target,
+        crate::services::wardrobe_image_paths::WARDROBE_IMAGES_FOLDER,
+    )?;
 
     let mut current = home.image_file_id().map(str::to_string);
     let dangling = current

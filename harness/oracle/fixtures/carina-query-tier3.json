@@ -636,6 +636,112 @@
       ],
       "expectPost": true,
       "brahma": false
+    },
+    {
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "expectPost": true,
+      "brahma": false,
+      "name": "inventory_carried",
+      "characterName": "Alice",
+      "question": "What do you have with you?",
+      "streams": [
+        [
+          {
+            "content": "Alice lifts the lamp."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "inventoryPlant": [
+        {
+          "characterId": "00000000-0000-4000-8000-616c69636500",
+          "record": {
+            "id": "f7000001-0000-4000-8000-000000000000",
+            "name": "lamp",
+            "title": "Archive lamp",
+            "description": "A shuttered lamp for the stacks.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2026-06-01T00:00:00.000Z",
+            "updatedAt": "2026-06-01T00:00:00.000Z"
+          }
+        }
+      ],
+      "equippedInventory": {
+        "00000000-0000-4000-8000-616c69636500": [
+          "f7000001-0000-4000-8000-000000000000"
+        ]
+      },
+      "_comment": "P4.D324 (v4 4fbdad186, carina.service.ts:592-598): the answerer's carried, described object rides the uncached user message after the question."
+    },
+    {
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "expectPost": true,
+      "brahma": false,
+      "name": "inventory_and_progressions",
+      "characterName": "Quill",
+      "question": "What are you carrying?",
+      "streams": [
+        [
+          {
+            "content": "Quill checks his pockets."
+          },
+          {
+            "done": true
+          }
+        ]
+      ],
+      "inventoryPlant": [
+        {
+          "characterId": "00000000-0000-4000-8000-7175696c6c00",
+          "record": {
+            "id": "f7000002-0000-4000-8000-000000000000",
+            "name": "compass",
+            "title": null,
+            "description": "Points at whatever Quill wagered on.",
+            "imageDescription": null,
+            "kind": "item",
+            "isArchetype": false,
+            "equippedByDefault": false,
+            "maxEquipped": 1,
+            "canCopy": false,
+            "emoji": null,
+            "svg": null,
+            "imageFileId": null,
+            "metadata": {},
+            "parentId": null,
+            "itemIds": [],
+            "folder": "",
+            "archivedAt": null,
+            "createdAt": "2026-06-01T00:00:00.000Z",
+            "updatedAt": "2026-06-01T00:00:00.000Z"
+          }
+        }
+      ],
+      "equippedInventory": {
+        "00000000-0000-4000-8000-7175696c6c00": [
+          "f7000002-0000-4000-8000-000000000000"
+        ]
+      },
+      "_comment": "P4.D324: question, progressions, inventory — the three-part join with BOTH separators."
     }
   ],
   "standingInstructions": {

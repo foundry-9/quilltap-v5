@@ -510,6 +510,10 @@ pub struct ContextChat {
     /// `None` (a test literal) takes the same `salon` default (P4.124 item 6,
     /// threaded at unification once the orchestrator's literal was reachable).
     pub chat_type: Option<String>,
+    /// The chat's carried-objects map, `chats.equippedInventory` as read (P4.D324,
+    /// v4 `4fbdad186`) — what the Inventory's trailing section reads. `None`
+    /// (a test literal, a pre-column row) carries nothing.
+    pub equipped_inventory: Option<Value>,
 }
 
 /// The full input bag (v4 `BuildContextOptions`, the subset in scope).
@@ -561,7 +565,7 @@ pub struct BuildContextInput {
     /// after the first, and every autonomous-room turn. Never a model
     /// finishing its own sentence. The Aurora Core whisper skips these turns
     /// by design; the other trailing sections (recall, mail, progressions,
-    /// inform) are built on them as on any turn.
+    /// inventory, inform) are built on them as on any turn.
     pub is_continue_mode: bool,
     // clock seams
     pub now_ms: i64,
@@ -2948,6 +2952,57 @@ where
         )
     };
 
+    // === P4.D324 (v4 `4fbdad186` + bug 253, `context-manager.ts:2185-2193`) ===
+    // The Inventory: what this character carries in this chat, by the objects'
+    // `description`s (what the characters know about them). A trailing section
+    // after the progressions report and before the inform block; empty — and so
+    // absent — when nothing carried has a description. Reads only, and built on
+    // every turn, continue mode included: that mode is every turn without a new
+    // user message (a chained speaker, a nudge, an autonomous room), and what a
+    // character carries is no less true on those. (The first-shipped gate on
+    // continue mode is bug 253's, fixed upstream and not ported.) The mount read
+    // runs on the READ pools; a chat carrying nothing never opens them.
+    let inventory_llm_context = {
+        let chat = serde_json::json!({
+            "id": input.chat.id,
+            "projectId": input.chat.project_id,
+            "equippedInventory": input.chat.equipped_inventory,
+        });
+        if crate::inventory::equipped_set::equipped_ids_of(
+            chat.get("equippedInventory"),
+            &input.character.id,
+        )
+        .is_empty()
+        {
+            String::new()
+        } else {
+            let character_id = input.character.id.clone();
+            match db.read_main(|main| {
+                db.read_mount_index(|mount| {
+                    Ok(crate::inventory::prompt_section::build_inventory_section(
+                        main,
+                        mount,
+                        &chat,
+                        &character_id,
+                    ))
+                })
+            }) {
+                Ok(section) => section.unwrap_or_default(),
+                Err(error) => {
+                    tracing::warn!(
+                        chatId = %input.chat.id,
+                        characterId = %input.character.id,
+                        context = "inventory",
+                        error = %crate::db::fallback::error_text(&error),
+                        "[InventorySection] Failed to build the carried-objects section; turn continues"
+                    );
+                    String::new()
+                }
+            }
+        }
+    };
+    // === end P4.D324 ===
+
     // "Nothing to add" turn-skipping: build the ephemeral Turn note when the
     // orchestrator has decided this character may pass. Injected as a trailing
     // context section on the new user message when there is one, or as its own
@@ -3054,8 +3109,8 @@ where
 
     // The trailing sections, in their one order: who the character is (Core
     // whisper), what it remembers (recall), what arrived for it (mail), what it
-    // is carrying (progressions), what the operator says is so (inform), and
-    // the turn note last. Built ONCE and used by both branches below — two
+    // is carrying (progressions, then the Inventory), what the operator says is
+    // so (inform), and the turn note last. Built ONCE and used by both branches below — two
     // hand-kept copies of this list is how recall, mail and the Core whisper
     // went missing from turns with no new user message while their side effects
     // (whisper posted, rows stamped, cadence advanced) still ran (bug 199).
@@ -3064,6 +3119,7 @@ where
         llm_recall_text.clone(),
         suparna_mail_llm_context.clone(),
         progressions_llm_context.clone(),
+        inventory_llm_context.clone(),
         inform_block.clone().unwrap_or_default(),
         turn_skip_instruction.clone(),
     ]

@@ -80,6 +80,7 @@ const RECURSIVE: ProjectArrayOptions<'static> = ProjectArrayOptions {
     preserve_file_names: &["instructions.md"],
     recursive: Some(&["images"]),
     owns_file: None,
+    ext: ".md",
 };
 
 struct TableSpec {
@@ -382,6 +383,7 @@ fn vault_projection_recursive_matches_oracle() {
                 preserve_file_names: &["instructions.md"],
                 recursive: Some(&["rainy"]),
                 owns_file: None,
+                ext: ".md",
             },
         )
     });
