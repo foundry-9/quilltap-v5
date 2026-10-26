@@ -53,6 +53,12 @@ export const REALTIME_TOPICS = [
    * Appended LAST, matching v4's own append order.
    */
   'memories',
+  /**
+   * Inventory objects: a file created, instantiated, edited, archived or
+   * moved. Collection-wide (lists and folders). What a chat carries is the
+   * `chats` topic's. (v4 `e1872c94f`, appended after `memories`; P4.D330.)
+   */
+  'inventory',
 ] as const;
 
 export type RealtimeTopic = (typeof REALTIME_TOPICS)[number];

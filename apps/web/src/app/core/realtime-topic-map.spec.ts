@@ -131,9 +131,9 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     }
   });
 
-  it('carries all seven topics and eight sweep prefixes (v4: eight and eight; mountPoints has none — v5 sweeps `memories` twice over)', () => {
-    expect(REALTIME_TOPICS).toHaveLength(7);
-    expect(REALTIME_TOPICS[REALTIME_TOPICS.length - 1]).toBe('memories');
+  it('carries all eight topics and eight sweep prefixes (v4: eight and ten; mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
+    expect(REALTIME_TOPICS).toHaveLength(8);
+    expect(REALTIME_TOPICS[REALTIME_TOPICS.length - 1]).toBe('inventory');
     expect(ALL_REALTIME_PREFIXES).toHaveLength(8);
     // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
     expect(ALL_REALTIME_PREFIXES[ALL_REALTIME_PREFIXES.length - 1]).toEqual(['memories']);
@@ -230,5 +230,11 @@ describe('the outfit timelines (P4.D318 — v4 8d8618819 topic-map.ts row, as an
     for (const unscoped of queryKeysForTopic('chats') as readonly (readonly unknown[])[]) {
       expect(partialMatchKey([...chatKeys.wardrobeHistories('chat-7')], [...unscoped])).toBe(false);
     }
+  });
+
+  it('resolves inventory to no query key — the lists are signal-held and subscribe directly (P4.D330 R-2)', () => {
+    expect(REALTIME_TOPICS).toContain('inventory');
+    expect(queryKeysForTopic('inventory')).toEqual([]);
+    expect(queryKeysForTopic('inventory', 'item-1')).toEqual([]);
   });
 });

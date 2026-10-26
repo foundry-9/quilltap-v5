@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the `inventory` realtime topic (v4 `e1872c94f`)
+
+_Versions: SPA 0.5.886._
+
+`REALTIME_TOPICS` gains `inventory` last, after `memories` (eight topics), with v4's doc. Its query-key row answers nothing: the Inventory's lists and folder trees are signal stores, so the dialog subscribes to the topic directly (the `characters` precedent) and the reconnect sweep is unchanged. P4.D330, Tier 1 item 21.
+
 #### 2026-10-26 — feat(spa): the Inventory tool rows — nine names and the action notice (v4 `e1872c94f`)
 
 _Versions: SPA 0.5.885._
