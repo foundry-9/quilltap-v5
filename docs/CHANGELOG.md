@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the Inventory's pure display, origin and refusal helpers + two v4 corpora
+
+_Versions: SPA 0.5.884._
+
+NEW `inventory/inventory-container.ts` (the wardrobe's container shape, `containerOfOrigin`, `inventoryOriginLabel` in v4's `Project: X` / `Group: X` / `General` spelling, `inventoryImagesUrl`, `inventoryTierKey`), `inventory/inventory-display.ts` (`inventoryDisplayName`, `inventoryLabel`, `isKin`, `isEquippable`, `kitState`) and `inventory/inventory-refusal.ts` (`describeInventoryRefusal` reading a `CoreDispatchError`'s `code` and `details`, with the title-lint join). Two tier-1 corpora recorded from v4's real functions at `322a5488e`: `inventory-display` (67 rows) and `inventory-refusal` (24 rows), each replayed whole. P4.D330, Tier 1 item 13.
+
 #### 2026-10-26 — feat(spa): the Inventory wire types — the P4.D330 `core-contract.ts` fence
 
 _Versions: SPA 0.5.883._

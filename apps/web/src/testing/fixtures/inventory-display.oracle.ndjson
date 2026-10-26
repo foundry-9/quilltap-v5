@@ -1,0 +1,67 @@
+{"fn":"inventoryDisplayName","id":"title-differs","args":[{"name":"sword","title":"Excalibur"}],"out":"\"Excalibur (sword)\""}
+{"fn":"inventoryDisplayName","id":"title-equal","args":[{"name":"sword","title":"sword"}],"out":"\"sword\""}
+{"fn":"inventoryDisplayName","id":"title-equal-by-case","args":[{"name":"Sword","title":"sWORD"}],"out":"\"sWORD\""}
+{"fn":"inventoryDisplayName","id":"title-equal-by-padding","args":[{"name":"  sword ","title":" sword  "}],"out":"\"sword\""}
+{"fn":"inventoryDisplayName","id":"title-padded-differs","args":[{"name":"sword","title":"  Excalibur  "}],"out":"\"Excalibur (sword)\""}
+{"fn":"inventoryDisplayName","id":"title-null","args":[{"name":"lantern","title":null}],"out":"\"lantern\""}
+{"fn":"inventoryDisplayName","id":"title-empty","args":[{"name":"lantern","title":""}],"out":"\"lantern\""}
+{"fn":"inventoryDisplayName","id":"title-whitespace","args":[{"name":"lantern","title":"   "}],"out":"\"lantern\""}
+{"fn":"inventoryDisplayName","id":"title-absent","args":[{"name":"lantern"}],"out":"\"lantern\""}
+{"fn":"inventoryDisplayName","id":"title-astral","args":[{"name":"ring","title":"💍 The One"}],"out":"\"💍 The One (ring)\""}
+{"fn":"inventoryDisplayName","id":"name-astral-equal","args":[{"name":"🗡️ blade","title":"🗡️ BLADE"}],"out":"\"🗡️ BLADE\""}
+{"fn":"inventoryDisplayName","id":"name-padded-title-absent","args":[{"name":"  bow  "}],"out":"\"  bow  \""}
+{"fn":"inventoryDisplayName","id":"title-dotless-i","args":[{"name":"istanbul","title":"İSTANBUL"}],"out":"\"İSTANBUL (istanbul)\""}
+{"fn":"inventoryDisplayName","id":"title-sharp-s","args":[{"name":"strasse","title":"STRAßE"}],"out":"\"STRAßE (strasse)\""}
+{"fn":"inventoryLabel","id":"title-differs","args":[{"name":"sword","title":"Excalibur"}],"out":"\"Excalibur\""}
+{"fn":"inventoryLabel","id":"title-equal","args":[{"name":"sword","title":"sword"}],"out":"\"sword\""}
+{"fn":"inventoryLabel","id":"title-equal-by-case","args":[{"name":"Sword","title":"sWORD"}],"out":"\"sWORD\""}
+{"fn":"inventoryLabel","id":"title-equal-by-padding","args":[{"name":"  sword ","title":" sword  "}],"out":"\"sword\""}
+{"fn":"inventoryLabel","id":"title-padded-differs","args":[{"name":"sword","title":"  Excalibur  "}],"out":"\"Excalibur\""}
+{"fn":"inventoryLabel","id":"title-null","args":[{"name":"lantern","title":null}],"out":"\"lantern\""}
+{"fn":"inventoryLabel","id":"title-empty","args":[{"name":"lantern","title":""}],"out":"\"lantern\""}
+{"fn":"inventoryLabel","id":"title-whitespace","args":[{"name":"lantern","title":"   "}],"out":"\"lantern\""}
+{"fn":"inventoryLabel","id":"title-absent","args":[{"name":"lantern"}],"out":"\"lantern\""}
+{"fn":"inventoryLabel","id":"title-astral","args":[{"name":"ring","title":"💍 The One"}],"out":"\"💍 The One\""}
+{"fn":"inventoryLabel","id":"name-astral-equal","args":[{"name":"🗡️ blade","title":"🗡️ BLADE"}],"out":"\"🗡️ BLADE\""}
+{"fn":"inventoryLabel","id":"name-padded-title-absent","args":[{"name":"  bow  "}],"out":"\"  bow  \""}
+{"fn":"inventoryLabel","id":"title-dotless-i","args":[{"name":"istanbul","title":"İSTANBUL"}],"out":"\"İSTANBUL\""}
+{"fn":"inventoryLabel","id":"title-sharp-s","args":[{"name":"strasse","title":"STRAßE"}],"out":"\"STRAßE\""}
+{"fn":"isKin","id":"same","args":[{"name":"sword"},{"name":"sword"}],"out":"true"}
+{"fn":"isKin","id":"case","args":[{"name":"Sword"},{"name":"sWORD"}],"out":"true"}
+{"fn":"isKin","id":"padding","args":[{"name":" sword "},{"name":"sword"}],"out":"true"}
+{"fn":"isKin","id":"differs","args":[{"name":"sword"},{"name":"swords"}],"out":"false"}
+{"fn":"isKin","id":"astral","args":[{"name":"💍 ring"},{"name":"💍 RING"}],"out":"true"}
+{"fn":"isEquippable","id":"plain","args":[{"isArchetype":false,"kind":"item","archivedAt":null}],"out":"true"}
+{"fn":"isEquippable","id":"archetype","args":[{"isArchetype":true,"kind":"item","archivedAt":null}],"out":"false"}
+{"fn":"isEquippable","id":"kit","args":[{"isArchetype":false,"kind":"kit","archivedAt":null}],"out":"false"}
+{"fn":"isEquippable","id":"archived","args":[{"isArchetype":false,"kind":"item","archivedAt":"2026-10-01T00:00:00.000Z"}],"out":"false"}
+{"fn":"isEquippable","id":"archived-absent","args":[{"isArchetype":false,"kind":"item"}],"out":"true"}
+{"fn":"isEquippable","id":"archived-empty","args":[{"isArchetype":false,"kind":"item","archivedAt":""}],"out":"true"}
+{"fn":"kitState","id":"none-carried","args":[{"itemIds":["a","b","c"]},[],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"none\""}
+{"fn":"kitState","id":"some-carried","args":[{"itemIds":["a","b","c"]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"some\""}
+{"fn":"kitState","id":"all-via-instance","args":[{"itemIds":["a","b","c"]},[{"id":"a","parentId":null},{"id":"b","parentId":null},{"id":"inst","parentId":"c"}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"all\""}
+{"fn":"kitState","id":"archetype-id-itself-not-carried","args":[{"itemIds":["a","b","c"]},[{"id":"a","parentId":null},{"id":"b","parentId":null},{"id":"c","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"some\""}
+{"fn":"kitState","id":"missing-members-ignored","args":[{"itemIds":["a","gone"]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"all\""}
+{"fn":"kitState","id":"archived-member-ignored","args":[{"itemIds":["a","x"]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null},"x":{"isArchetype":false,"kind":"item","archivedAt":"2026-10-01T00:00:00.000Z"}}],"out":"\"all\""}
+{"fn":"kitState","id":"nested-kit-ignored","args":[{"itemIds":["a","k"]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null},"k":{"isArchetype":false,"kind":"kit","archivedAt":null}}],"out":"\"all\""}
+{"fn":"kitState","id":"no-members","args":[{"itemIds":[]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"none\""}
+{"fn":"kitState","id":"only-unresolvable","args":[{"itemIds":["gone","k"]},[{"id":"gone","parentId":null}],{"k":{"isArchetype":false,"kind":"kit","archivedAt":null}}],"out":"\"none\""}
+{"fn":"kitState","id":"duplicate-member","args":[{"itemIds":["a","a"]},[{"id":"a","parentId":null}],{"a":{"isArchetype":false,"kind":"item","archivedAt":null},"b":{"isArchetype":false,"kind":"item","archivedAt":null},"c":{"isArchetype":true,"kind":"item","archivedAt":null}}],"out":"\"all\""}
+{"fn":"inventoryOriginLabel","id":"null","args":[null],"out":"null"}
+{"fn":"inventoryOriginLabel","id":"general","args":[{"scope":"general","id":null,"name":"Quilltap General"}],"out":"\"General\""}
+{"fn":"inventoryOriginLabel","id":"general-other-name","args":[{"scope":"general","id":null,"name":"Elsewhere"}],"out":"\"General\""}
+{"fn":"inventoryOriginLabel","id":"project","args":[{"scope":"project","id":"p-1","name":"The Quest"}],"out":"\"Project: The Quest\""}
+{"fn":"inventoryOriginLabel","id":"project-padded","args":[{"scope":"project","id":"p-1","name":"  The Quest "}],"out":"\"Project:   The Quest \""}
+{"fn":"inventoryOriginLabel","id":"group","args":[{"scope":"group","id":"g-1","name":"The Regulars"}],"out":"\"Group: The Regulars\""}
+{"fn":"inventoryOriginLabel","id":"character","args":[{"scope":"character","id":"c-viv","name":"Vivienne"}],"out":"null"}
+{"fn":"containerOfOrigin","id":"null","args":[null,{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"character\",\"id\":\"c-viv\"}"}
+{"fn":"containerOfOrigin","id":"general","args":[{"scope":"general","id":null,"name":"Quilltap General"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"general\",\"id\":null}"}
+{"fn":"containerOfOrigin","id":"general-other-name","args":[{"scope":"general","id":null,"name":"Elsewhere"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"general\",\"id\":null}"}
+{"fn":"containerOfOrigin","id":"project","args":[{"scope":"project","id":"p-1","name":"The Quest"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"project\",\"id\":\"p-1\"}"}
+{"fn":"containerOfOrigin","id":"project-padded","args":[{"scope":"project","id":"p-1","name":"  The Quest "},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"project\",\"id\":\"p-1\"}"}
+{"fn":"containerOfOrigin","id":"group","args":[{"scope":"group","id":"g-1","name":"The Regulars"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"group\",\"id\":\"g-1\"}"}
+{"fn":"containerOfOrigin","id":"character","args":[{"scope":"character","id":"c-viv","name":"Vivienne"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"character\",\"id\":\"c-viv\"}"}
+{"fn":"containerOfOrigin","id":"project-no-id","args":[{"scope":"project","id":null,"name":"Lost"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"character\",\"id\":\"c-viv\"}"}
+{"fn":"containerOfOrigin","id":"group-empty-id","args":[{"scope":"group","id":"","name":"Lost"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"character\",\"id\":\"c-viv\"}"}
+{"fn":"containerOfOrigin","id":"general-fallback-general","args":[null,{"scope":"general","id":null}],"out":"{\"scope\":\"general\",\"id\":null}"}
+{"fn":"containerOfOrigin","id":"general-with-id","args":[{"scope":"general","id":"odd","name":"Quilltap General"},{"scope":"character","id":"c-viv"}],"out":"{\"scope\":\"general\",\"id\":null}"}
