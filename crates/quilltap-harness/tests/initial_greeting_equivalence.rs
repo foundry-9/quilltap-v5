@@ -320,7 +320,11 @@ async fn initial_greeting_matches_oracle() {
             .filter_map(|l| l.find(GREETING_DEBUG).map(|at| l[at..].to_string()))
             .collect();
         let want_debug: Vec<String> = row.greeting_debug.iter().map(v4_debug_text).collect();
-        assert_eq!(got_debug, want_debug, "case {}: the trailing-sections DEBUG", c.id);
+        assert_eq!(
+            got_debug, want_debug,
+            "case {}: the trailing-sections DEBUG",
+            c.id
+        );
         if !c.trailing_context_sections.is_empty() {
             trailing_cases += 1;
         }
@@ -369,9 +373,16 @@ async fn initial_greeting_matches_oracle() {
     assert_eq!(oracle.len(), cases.len(), "oracle case count drifted");
     // P4.D324: a stale oracle (or a spec that lost the cases) would compare
     // empty DEBUG lists and pass vacuously.
-    assert!(trailing_cases >= 3, "the trailing-sections cases are missing");
     assert!(
-        oracle.values().filter(|r| !r.greeting_debug.is_empty()).count() >= 2,
+        trailing_cases >= 3,
+        "the trailing-sections cases are missing"
+    );
+    assert!(
+        oracle
+            .values()
+            .filter(|r| !r.greeting_debug.is_empty())
+            .count()
+            >= 2,
         "no case recorded the trailing-sections DEBUG — regenerate the oracle"
     );
     // P4.D79: a stale oracle predating the reasoning capture would carry no

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — P4.D324 closing gate record, formatting, and the order's Tier 2 status
+
+_No crate versions bumped._
+
+Formats `initial_greeting_equivalence.rs`, records the lane's closing gate in the status log (with a correction to the `INVENTORY` record's skip claim), and updates the P4.D324 order's status header with the Tier 2 commits.
+
 #### 2026-10-26 — Inventory keystone smalls: publish-site census rows, a reconcile boolean pin, the roster header (P4.D324)
 
 _Versions: core 0.0.1327._
