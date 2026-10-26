@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(ai-import): V4_APP_VERSION → `4.11.0-dev.53`
+
+_No crate versions bumped._
+
+The ai-import tier-3 family's v4 version stamp follows the round's pin; the family is green against an oracle regenerated at `322a5488e`.
+
 #### 2026-10-26 — port(theme): Madman's Box theme set at `322a5488e`; SPA 0.5.882
 
 _Versions: SPA 0.5.882._
