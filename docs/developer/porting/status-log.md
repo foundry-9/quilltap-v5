@@ -190914,3 +190914,20 @@ Ruling followed: v4 `main` moved two commits past the ledger's recorded HEAD mid
   LIVE v4 checkout's root install moving mid-lane (`openai` 7.34.0 → 7.45.0,
   `@openrouter/sdk` 1.4.25 → 1.5.9 — an environment move for `/driftcheck`,
   not this lane's). Version: core 0.0.1328.
+
+
+## P4.D328 — the Inventory TOOLS + the turn container + the spine (v4 `e1872c94f` / `102a23648` tool hunks, pin `322a5488e`)
+
+Lane branch `claude/p4.d328-inventory-tools-turn-83c0fd`. The session started in the app-made worktree `cool-perlman-83c0fd` on `main`'s tip (`914096110`, no commits of its own) and was moved with `git switch -c` onto **`INVENTORY` = `c065d7e2f`** (found by `git log --all … | grep ' INVENTORY:'`, confirmed against P4.D324's lane-branch status header `19f67712b`). Warm `target/` cloned from main's (`cp -cR`, 3 m 17 s for 206 G). Pin `/tmp/qt-v4-pin-p4d328-322a5488e` (`rev-parse` = `322a5488e7bd…`, `4.11.0-dev.53`; root `npm ci --offline` → `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless` 6.0.0).
+
+**The §2 probe (2026-10-26 15:05 CDT) — an OBSERVATION (§R.2):** v4 checkout on `main`, tree CLEAN, `bugfix` unmoved (`489b228b6..bugfix` empty); **v4 moved: `9faed0c7e` ("Feature: diagram lightbox and Copy PNG") and `3c9ae1fc3` ("Docs: 4.11.0 release notes corrections, part 2") past the ledger's recorded `a0905454b`.** Not ported (the pin rule); for the next `/driftcheck`.
+
+**C1's measured homes (R-1).** The four change types are in `inventory::equip` (data only), as C1 states. ⚑ **`InventoryChangeContext.pending` landed as `Option<&'a mut HashMap<String, PendingInventoryChange>>`, not R-2's `Option<&'a PendingInventoryAnnouncements>`** (the shared `Arc<Mutex<…>>`). No C1 gesture reads `pending` (every in-crate constructor passes `None`; the gestures return the change). A `&mut` taken from a `std::sync::MutexGuard` cannot live across the notify's awaits in a `Send` future, so this lane's `notify_inventory_changed` takes C1's context for `user_id` / `provenance` / `announce` and the turn's map as its own `pending: Option<&PendingInventoryAnnouncements>` argument (see unit 8).
+
+### Unit 1 — the catalog (Tier 1 items 1–2)
+
+- **Red-first:** with the enumerator's nine imports added (`tool-definitions.ts` / `-canonical.ts`, between `imageGeneration` and `keepImage` as v4's snapshot `ALL_TOOLS` orders them), the pin's oracle carries 72 keys (`grep -c '"key":"inventory'` = 9) and the unported tip fails `catalog size 63 != oracle size 72`.
+- **Port:** `gen-tool-catalog.mjs` over the pin's NDJSON → `data.rs` 72 entries; `catalog_is_complete_and_parses` → 72 with the history line.
+- **Measured residue of the regen (R-10's `terminalRead` measurement, generalised):** three EXISTING rows moved at the pin. `runCustom` — this lane's (`e1872c94f`'s `, or what they carry` preamble; Tier 3 item 1). `runSql` — v4 `e4a60ad9e` (the Log, P4.D331's). `terminalRead` — v4 `a6292f169` (bug 255, P4.D337's). The two siblings' rows keep the committed bytes; `tool_definitions_equivalence` carries `SIBLING_BYTES_UNTIL_UNION` (both ways — a carved row already equal to the pin's fails) beside `SIBLING_KEYS_UNTIL_UNION` (`logCreateEntry`, `logGrep`, `logRead`, `editCustomTool` — a no-op today: the enumerator imports none). The canonical spot-check drops the two carved names on both sides.
+- **Tier 3 item 1 (RED BY DESIGN):** `tools::run_custom::tests::empty_roster_description_matches_data_rs` — `RUN_CUSTOM_PREAMBLE` (P4.D329's bytes) reads `…, the rolling character's own records, or what they are wearing, server-side, as part of the roll.` where `data.rs` now reads `…, the rolling character's own records, what they are wearing, or what they carry, server-side, as part of the roll.` Green only on the union.
+- **Green:** `tool_definitions_equivalence` (72, two rows carved, canonical matched).

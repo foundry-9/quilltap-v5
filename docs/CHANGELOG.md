@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The tool catalog gains v4's nine Inventory tool definitions (P4.D328)
+
+_Versions: core 0.0.1325._
+
+Regenerates `tools/definitions/data.rs` from v4 `322a5488e` with the nine `inventory_*` definitions (`inventoryList` … `inventoryGive`) between `imageGeneration` and `keepImage`, as v4's catalog orders them; 72 entries. `run_custom`'s description takes the pin's preamble (`what they are wearing, or what they carry`). `run_sql` and `terminal_read` keep their committed bytes: their pin bytes belong to the Log and bug-255 lanes, and the catalog differential carves them by name until the union. The oracle enumerators import the nine.
+
 #### 2026-10-26 — The pre-column inventory write pin captures through the global rig (P4.D324)
 
 _Versions: core 0.0.1328._

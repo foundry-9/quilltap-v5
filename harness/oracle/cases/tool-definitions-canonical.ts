@@ -47,6 +47,17 @@ import { helpNavigateToolDefinition } from '@/lib/tools/help-navigate-tool';
 import { helpSearchToolDefinition } from '@/lib/tools/help-search-tool';
 import { helpSettingsToolDefinition } from '@/lib/tools/help-settings-tool';
 import { imageGenerationToolDefinition } from '@/lib/tools/image-generation-tool';
+// P4.D328 (v4 `e1872c94f`): the nine Inventory tools, between imageGeneration
+// and keepImage as v4's snapshot `ALL_TOOLS` orders them.
+import { inventoryListToolDefinition } from '@/lib/tools/inventory-list-tool';
+import { inventoryReadToolDefinition } from '@/lib/tools/inventory-read-tool';
+import { inventoryEquipToolDefinition } from '@/lib/tools/inventory-equip-tool';
+import { inventoryUnequipToolDefinition } from '@/lib/tools/inventory-unequip-tool';
+import { inventoryPickUpToolDefinition } from '@/lib/tools/inventory-pick-up-tool';
+import { inventoryCreateToolDefinition } from '@/lib/tools/inventory-create-tool';
+import { inventoryUpdateToolDefinition } from '@/lib/tools/inventory-update-tool';
+import { inventoryArchiveToolDefinition } from '@/lib/tools/inventory-archive-tool';
+import { inventoryGiveToolDefinition } from '@/lib/tools/inventory-give-tool';
 import { keepImageToolDefinition } from '@/lib/tools/keep-image-tool';
 import { listMailToolDefinition } from '@/lib/tools/list-mail-tool';
 import { readMailToolDefinition } from '@/lib/tools/read-mail-tool';
@@ -119,6 +130,15 @@ const ALL: UniversalTool[] = [
   helpSearchToolDefinition,
   helpSettingsToolDefinition,
   imageGenerationToolDefinition,
+  inventoryListToolDefinition,
+  inventoryReadToolDefinition,
+  inventoryEquipToolDefinition,
+  inventoryUnequipToolDefinition,
+  inventoryPickUpToolDefinition,
+  inventoryCreateToolDefinition,
+  inventoryUpdateToolDefinition,
+  inventoryArchiveToolDefinition,
+  inventoryGiveToolDefinition,
   keepImageToolDefinition,
   listMailToolDefinition,
   readMailToolDefinition,
