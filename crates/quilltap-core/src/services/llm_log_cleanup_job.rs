@@ -146,6 +146,31 @@ pub async fn handle_llm_log_cleanup(
         return Ok(());
     }
 
+    // 3½. P4.D331 (v4 `e4a60ad9e`, `:53-58`): the Log's entries are pruned on
+    //     the same window BEFORE the logging-enabled return below, so they go
+    //     even when LLM logging itself is switched off. A failed DELETE is the
+    //     repository's fallback (0); a `NaN` window throws `Invalid time value`
+    //     out of the prune — v4's sequence: the job fails here, before the
+    //     second settings read. v4's DEBUG carries `jobId`; v5's handler has no
+    //     job id (the existing `Cleanup completed` omits it too — recorded).
+    let tz_owned = tz.to_string();
+    let deleted_entry_count = db
+        .write(move |writers| {
+            let guard = crate::db::log_entries::llm_logs_guard_sentence(writers.llm_logs_state());
+            let conn = match (writers.llm_logs(), guard) {
+                (Some(w), None) => Ok(w.connection()),
+                (_, sentence) => Err(sentence.unwrap_or("LLM logs database is in degraded mode")),
+            };
+            crate::db::log_entries::cleanup_old_entries_on(conn, retention_days, now_ms, &tz_owned)
+        })
+        .await
+        .map_err(|e| crate::db::fallback::error_text(&e))?;
+    tracing::debug!(
+        deleted_entry_count,
+        retention_days,
+        "[LLMLogCleanup] Log entries pruned"
+    );
+
     // 4. The unconditional second fetch. A MISSING row does not bail here —
     //    v4's `chatSettings && !enabled` short-circuits and cleanup proceeds.
     if let Some(settings) = read_settings(db, user_id) {
@@ -239,5 +264,104 @@ mod tests {
             ),
             (true, 7.0)
         );
+    }
+
+    /// P4.D331: the Log's prune runs on the job's window — the payload
+    /// override here — before step 4, and logs v4's DEBUG `[LLMLogCleanup] Log
+    /// entries pruned {deletedEntryCount, retentionDays}` on the CALLER thread
+    /// (after the write), so the thread-scoped rig pins it. A `<= 0` window
+    /// returns before it: no prune, no line.
+    #[test]
+    fn the_log_prune_runs_on_the_window_and_logs_its_count() {
+        use crate::db::runtime::{Db, DbPaths};
+        use crate::db::Writer;
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.db");
+        let logs = dir.path().join("logs.db");
+        drop(Writer::open_writable(&main, PEPPER).unwrap());
+        {
+            let w =
+                Writer::open_writable_in(crate::db::table_shape::Partition::LlmLogs, &logs, PEPPER)
+                    .unwrap();
+            let mut failures = crate::db::table_shape::EnsureFailures::default();
+            crate::db::table_shape::create_missing_structural_tables(
+                None,
+                Some(w.connection()),
+                &mut failures,
+            );
+            assert!(failures.is_empty(), "{failures:?}");
+            let repo = crate::db::log_entries::LogEntriesRepository::new(w.connection());
+            for (id, at) in [
+                (
+                    "11111111-1111-4111-8111-000000000001",
+                    "2026-03-07T00:00:00.000Z",
+                ),
+                (
+                    "11111111-1111-4111-8111-000000000002",
+                    "2026-03-14T00:00:00.000Z",
+                ),
+            ] {
+                repo.create(
+                    "a line",
+                    "22222222-2222-4222-8222-222222222222",
+                    None,
+                    Some(&crate::db::log_entries::LogEntryCreateOptions {
+                        id: Some(id.into()),
+                        created_at: Some(at.into()),
+                        updated_at: Some(at.into()),
+                    }),
+                )
+                .unwrap();
+            }
+        }
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: Some(logs),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let now_ms = crate::clock::iso_to_ms("2026-03-15T17:00:00.000Z").unwrap();
+        let run = |days: Option<f64>| {
+            crate::test_support::captured_with(|| {
+                rt.block_on(handle_llm_log_cleanup(
+                    &db,
+                    "33333333-3333-4333-8333-333333333333",
+                    &LlmLogCleanupPayload {
+                        retention_days: days,
+                    },
+                    now_ms,
+                    "UTC",
+                ))
+            })
+        };
+        let (_, zero) = run(Some(0.0));
+        assert!(
+            !zero.iter().any(|l| l.contains("Log entries pruned")),
+            "{zero:#?}"
+        );
+        let (_, lines) = run(Some(7.0));
+        let pruned: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Log entries pruned"))
+            .collect();
+        assert_eq!(
+            pruned,
+            ["DEBUG quilltap_core::services::llm_log_cleanup_job [LLMLogCleanup] Log entries pruned deleted_entry_count=1 retention_days=7"],
+            "{lines:#?}"
+        );
+        let left: i64 = db
+            .read_llm_logs(|c| {
+                Ok(c.query_row("SELECT count(*) FROM log_entries", [], |r| r.get(0))?)
+            })
+            .unwrap();
+        assert_eq!(left, 1);
     }
 }

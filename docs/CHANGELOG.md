@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(jobs): the nightly cleanup prunes the Log on the LLM-log window (P4.D331)
+
+_Versions: core 0.0.1331._
+
+`LLM_LOG_CLEANUP` now prunes `log_entries` on the job's retention window right after the `<= 0` return and BEFORE the logging-enabled return (v4 `e4a60ad9e`, `llm-log-cleanup.ts:53-58`), so the Log is pruned even when LLM logging is off, with v4's DEBUG `[LLMLogCleanup] Log entries pruned` (no `jobId` — v5's handler has none, as for `Cleanup completed`). `cleanup_old_entries_on` keeps v4's order: the cutoff first (a `NaN` window throws `Invalid time value` out of the job, before the second settings read, as measured), then the partition guard (degraded or absent answers 0 with the `Dedicated database unavailable` DEBUG), then the DELETE.
+
+The cleanup family's committed `llm-log-cleanup-llmlogs.db` is WIDENED, not rebuilt: the builder's new `QT_FIXTURE_LLC_LOGS_BASE` mode copies the committed file and seeds ten `log_entries` rows through v4's real repository, so `sqlite_master` gains exactly `log_entries` and its three indexes and `llm_logs` stays byte-for-byte (a from-scratch rebuild at the pin would also have reshaped `llm_logs` with 4.9's two profile columns). The main file is untouched. Both timezone legs record the entries remaining after every job: job 001 prunes the DST-gap row under Chicago only, and the logging-disabled 5-day job prunes the band a prune placed after the enabled check would keep. Red-first: with the prune removed both legs diverge at step 0.
+
 #### 2026-10-26 — feat(pascal): the custom-tool log effect (P4.D331)
 
 _Versions: core 0.0.1330._

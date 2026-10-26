@@ -283,12 +283,20 @@ async function main(): Promise<void> {
       error = e instanceof Error ? e.message : String(e);
       await repos.backgroundJobs.markFailed(job.id, error);
     }
+    // P4.D331: the Log's entries remaining after THIS job — the prune runs on
+    // each job's window before the logging-enabled return, so the per-job list
+    // is what proves its position (the last job's window alone decides the
+    // final table).
+    const remaining = (getRawLLMLogsDatabase()!
+      .prepare('SELECT "id" FROM log_entries ORDER BY "id"')
+      .all() as Array<{ id: string }>).map((r) => r.id);
     lines.push(
       JSON.stringify({
         kind: 'processed',
         jobId: job.id,
         outcome: error === null ? 'completed' : 'failed',
         error,
+        logEntries: remaining,
       }),
     );
   }
@@ -314,6 +322,8 @@ async function main(): Promise<void> {
 
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpMain('background_jobs', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...dumpLogs('llm_logs', 'id') }));
+  // P4.D331: the Log's table beside the LLM logs.
+  lines.push(JSON.stringify({ kind: 'table', ...dumpLogs('log_entries', 'id') }));
 
   closeLLMLogsSQLiteClient();
   await closeDatabase();

@@ -196,6 +196,8 @@ struct ProcessedW {
     job_id: String,
     outcome: String,
     error: Option<String>,
+    /// P4.D331: the Log's entry ids remaining after this job.
+    log_entries: Vec<String>,
 }
 
 /// Replace every non-null value of a timestamp column with `<ts>`. Nothing else
@@ -282,6 +284,12 @@ async fn run_handler_leg(env_var: &str, leg: &str) {
             job_id: v["jobId"].as_str().unwrap().to_string(),
             outcome: v["outcome"].as_str().unwrap().to_string(),
             error: v.get("error").and_then(Value::as_str).map(str::to_string),
+            log_entries: v["logEntries"]
+                .as_array()
+                .expect("P4.D331: every processed line carries logEntries — regenerate")
+                .iter()
+                .map(|id| id.as_str().unwrap().to_string())
+                .collect(),
         })
         .collect();
 
@@ -361,10 +369,20 @@ async fn run_handler_leg(env_var: &str, leg: &str) {
                 ("failed".to_string(), Some(message))
             }
         };
+        let log_entries = db
+            .read_llm_logs(|conn| {
+                let mut stmt = conn.prepare(r#"SELECT "id" FROM log_entries ORDER BY "id""#)?;
+                let ids = stmt
+                    .query_map([], |r| r.get::<_, String>(0))?
+                    .collect::<rusqlite::Result<Vec<_>>>()?;
+                Ok(ids)
+            })
+            .expect("read the Log's remaining entries");
         got_sequence.push(ProcessedW {
             job_id: job.id.clone(),
             outcome: outcome_str,
             error,
+            log_entries,
         });
     }
 
@@ -383,7 +401,16 @@ async fn run_handler_leg(env_var: &str, leg: &str) {
     let got_logs = db
         .read_llm_logs(|conn| dump_table_json_conn(conn, "llm_logs", "id"))
         .expect("dump llm_logs");
+    let got_entries = db
+        .read_llm_logs(|conn| dump_table_json_conn(conn, "log_entries", "id"))
+        .expect("dump log_entries");
     drop(db);
+    // P4.D331: the Log's table, corpus-pinned like the LLM logs — EXACT.
+    assert_eq!(
+        got_entries,
+        take_table(&oracle, "log_entries"),
+        "[{leg}] log_entries diverges"
+    );
 
     let mut want_jobs = take_table(&oracle, "background_jobs");
     let want_logs = take_table(&oracle, "llm_logs");

@@ -329,25 +329,7 @@ impl<'c> LogEntriesRepository<'c> {
         now_ms: i64,
         tz: &str,
     ) -> Result<usize, DbError> {
-        if retention_days <= 0.0 {
-            return Ok(0);
-        }
-        let cutoff = super::llm_logs::llm_log_retention_cutoff_iso(now_ms, retention_days, tz)
-            .ok_or_else(|| DbError::Internal("Invalid time value".to_string()))?;
-        Ok(log_entries_cleanup_or_zero(retention_days, || {
-            let deleted = self.conn.execute(
-                r#"DELETE FROM log_entries WHERE "createdAt" < ?"#,
-                [&cutoff],
-            )?;
-            tracing::info!(
-                target: "quilltap::db",
-                retentionDays = %js_number_json(retention_days),
-                deletedCount = deleted,
-                cutoffDate = %cutoff,
-                "Cleaned up old log entries"
-            );
-            Ok(deleted)
-        }))
+        cleanup_old_entries_on(Ok(self.conn), retention_days, now_ms, tz)
     }
 
     /// One entry by id — a test / tooling read (v4 inherits `findById`).
@@ -360,6 +342,51 @@ impl<'c> LogEntriesRepository<'c> {
                 row_from,
             )
             .optional()?)
+    }
+}
+
+/// [`LogEntriesRepository::cleanup_old_entries`] over the partition as the
+/// caller holds it: `Err(sentence)` is a degraded / absent partition (v4's
+/// guard). v4's ORDER, kept: the `<= 0` return, then the cutoff (so a `NaN`
+/// window throws even on a degraded partition), THEN `withRawDb`'s guard —
+/// the `Dedicated database unavailable` DEBUG and `0` — then the DELETE.
+pub fn cleanup_old_entries_on(
+    conn: Result<&Connection, &str>,
+    retention_days: f64,
+    now_ms: i64,
+    tz: &str,
+) -> Result<usize, DbError> {
+    if retention_days <= 0.0 {
+        return Ok(0);
+    }
+    let cutoff = super::llm_logs::llm_log_retention_cutoff_iso(now_ms, retention_days, tz)
+        .ok_or_else(|| DbError::Internal("Invalid time value".to_string()))?;
+    let conn = match conn {
+        Ok(conn) => conn,
+        Err(sentence) => {
+            super::fallback::log_partition_unavailable(
+                super::table_shape::Partition::LlmLogs,
+                LOG_ENTRIES_TABLE,
+                &DbError::Internal(sentence.to_string()),
+            );
+            return Ok(0);
+        }
+    };
+    {
+        Ok(log_entries_cleanup_or_zero(retention_days, || {
+            let deleted = conn.execute(
+                r#"DELETE FROM log_entries WHERE "createdAt" < ?"#,
+                [&cutoff],
+            )?;
+            tracing::info!(
+                target: "quilltap::db",
+                retentionDays = %js_number_json(retention_days),
+                deletedCount = deleted,
+                cutoffDate = %cutoff,
+                "Cleaned up old log entries"
+            );
+            Ok(deleted)
+        }))
     }
 }
 

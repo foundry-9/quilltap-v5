@@ -34,11 +34,23 @@
  *     $N/node --import tsx $V5/harness/oracle/fixtures/build-llm-log-cleanup-fixture.ts
  *   cp /tmp/qt-llc-main.db    $V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-main.db
  *   cp /tmp/qt-llc-llmlogs.db $V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db
+ *
+ * P4.D331 — WIDENING the committed llm-logs file instead of rebuilding it:
+ * with `QT_FIXTURE_LLC_LOGS_BASE=<the committed llmlogs .db>` the builder
+ * starts the llm-logs output as a COPY of that file and seeds ONLY the Log's
+ * `log_entries` rows (step 7) through v4's REAL repository — whose ensure adds
+ * the table and its three indexes. The committed `llm_logs` table (a pre-4.9
+ * vintage without the two profile columns a fresh generateDDL renders) is
+ * left byte-for-byte, so the widened file differs from the committed one by
+ * `log_entries` alone. The MAIN output then goes to scratch and is discarded:
+ *   QT_FIXTURE_LLC_LOGS_BASE=$V5/crates/quilltap-web/tests/fixtures/llm-log-cleanup-llmlogs.db \
+ *   QT_FIXTURE_LLC_MAIN=/tmp/qt-llc-main-discard.db QT_FIXTURE_LLC_LOGS=/tmp/qt-llc-llmlogs.db \
+ *     $N/node --import tsx $V5/harness/oracle/fixtures/build-llm-log-cleanup-fixture.ts
  */
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, existsSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 interface UserSeed {
@@ -69,6 +81,8 @@ interface Spec {
   users: UserSeed[];
   jobs: JobSeed[];
   logs: LogSeed[];
+  /** P4.D331: the Log's entries (pinned ids / stamps). */
+  logEntries?: Array<{ id: string; createdAt: string; note: string; chatId: string; characterId: string | null }>;
 }
 
 async function main(): Promise<void> {
@@ -87,6 +101,10 @@ async function main(): Promise<void> {
       if (existsSync(p)) rmSync(p);
     }
   }
+
+  // P4.D331: widen an existing llm-logs file rather than build a fresh one.
+  const logsBase = process.env.QT_FIXTURE_LLC_LOGS_BASE;
+  if (logsBase) copyFileSync(logsBase, logsOut);
 
   const scratch = mkdtempSync(join(tmpdir(), 'qt-llc-build-'));
   mkdirSync(join(scratch, 'data'), { recursive: true });
@@ -173,7 +191,7 @@ async function main(): Promise<void> {
   // 6. The log corpus, through the REAL LLMLogsRepository — whose overridden
   //    getCollection() lazily CREATE-TABLEs and writes into the llm-logs
   //    PARTITION, not the main DB.
-  for (const log of spec.logs) {
+  for (const log of logsBase ? [] : spec.logs) {
     const userId = userById.get(log.user);
     if (!userId) throw new Error(`log ${log.id} names unknown user key ${log.user}`);
     await repos.llmLogs.create(
@@ -208,6 +226,16 @@ async function main(): Promise<void> {
         },
       } as never,
       { id: log.id, createdAt: log.createdAt, updatedAt: log.createdAt } as never,
+    );
+  }
+
+  // 7. P4.D331: the Log's entries, through the REAL LogEntriesRepository (its
+  //    own ensure creates `log_entries` with v4's three indexes in the
+  //    llm-logs partition). Pinned ids and stamps.
+  for (const entry of spec.logEntries ?? []) {
+    await repos.logEntries.create(
+      { message: entry.note, chatId: entry.chatId, characterId: entry.characterId } as never,
+      { id: entry.id, createdAt: entry.createdAt, updatedAt: entry.createdAt } as never,
     );
   }
 
