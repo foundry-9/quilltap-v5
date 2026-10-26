@@ -14,6 +14,7 @@ import { normalizeAvatarSrc } from '../../ui/avatar-stack';
 import { Icon } from '../../ui/icon';
 import { SubpromptPicker } from '../../subprompts/subprompt-picker';
 import { WardrobeDialogService } from '../../wardrobe/wardrobe-dialog.service';
+import { InventoryDialogService } from '../../inventory/inventory-dialog.service';
 import type { TurnOrderStatus } from '../turn-order';
 import { ProviderModelBadge } from './provider-model-badge';
 
@@ -130,6 +131,16 @@ export interface ConnectionProfileOption {
                 (click)="openWardrobe(cid)"
               >
                 <qt-icon name="wardrobe" class="w-3.5 h-3.5" />
+              </button>
+              <!-- P4.D330 — v4 ParticipantCard.tsx:358-371 (ASCII apostrophe, as v4 writes it). -->
+              <button
+                type="button"
+                class="qt-participant-avatar-tool-button"
+                [title]="inventoryLabel()"
+                [attr.aria-label]="inventoryLabel()"
+                (click)="openInventory(cid)"
+              >
+                <qt-icon name="inventory" class="w-3.5 h-3.5" />
               </button>
             }
           </div>
@@ -411,6 +422,7 @@ export interface ConnectionProfileOption {
 })
 export class ParticipantCard {
   private readonly wardrobeDialog = inject(WardrobeDialogService);
+  private readonly inventoryDialog = inject(InventoryDialogService);
 
   readonly participant = input.required<ParticipantDetail>();
   readonly isCurrentTurn = input(false);
@@ -663,5 +675,14 @@ export class ParticipantCard {
   protected openWardrobe(characterId: string): void {
     const chatId = this.chatId();
     this.wardrobeDialog.open(chatId ? { characterId, chatId } : { characterId });
+  }
+
+  /** v4 `:367-368` — `Open ${name}'s inventory`, ASCII apostrophe (R-7). */
+  protected readonly inventoryLabel = computed(() => `Open ${this.name()}'s inventory`);
+
+  /** v4 `inventoryDialog.open({characterId, ...(chatId && {chatId})})` (`ParticipantCard.tsx:358-365`, P4.D330). */
+  protected openInventory(characterId: string): void {
+    const chatId = this.chatId();
+    this.inventoryDialog.open({ characterId, ...(chatId ? { chatId } : {}) });
   }
 }

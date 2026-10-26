@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(spa): the participant card's inventory button (v4 `4fbdad186`)
+
+_Versions: SPA 0.5.899._
+
+A character's cast card gains `Open <name>'s inventory` (an ASCII apostrophe, as v4 writes it) directly after the wardrobe button; it opens the Inventory dialog on that character, scoped to the chat when there is one. P4.D330, Tier 1 item 20.
+
 #### 2026-10-26 — feat(spa): the `inventory` workspace tab and the rail's Inventory button
 
 _Versions: SPA 0.5.898._

@@ -9,6 +9,7 @@ import { coreStreamStub } from '../../core/core-client.testing';
 import type { ParticipantDetail } from '../../core/core-contract';
 import { IMAGES_HIDDEN } from '../hidden-image/images-hidden';
 import { ParticipantCard, USER_IMPERSONATION_VALUE } from './participant-card';
+import { InventoryDialogService } from '../../inventory/inventory-dialog.service';
 
 /**
  * The controls P4.9E1B restored to the cast card (v4
@@ -489,3 +490,41 @@ describe('ParticipantCard — the Salon Images switch (v4 e3937d7aa, via Avatar)
     expect(root.querySelector('qt-avatar')?.textContent?.trim()).toBe('B');
   });
 });
+
+// === P4.D330: the inventory button (v4 `4fbdad186` ParticipantCard.tsx:358-371) ===
+describe('ParticipantCard — the inventory button', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const buttons = (fixture: ComponentFixture<unknown>) =>
+    [...fixture.nativeElement.querySelectorAll('.qt-participant-avatar-tool-button')] as HTMLButtonElement[];
+
+  it('sits directly after the wardrobe button, titled with an ASCII apostrophe', () => {
+    const fixture = mount({ chatId: 'chat-1' });
+    const titles = buttons(fixture).map((b) => b.title);
+    const at = titles.indexOf('Open Bram’s wardrobe');
+    expect(titles[at + 1]).toBe("Open Bram's inventory");
+    const button = buttons(fixture)[at + 1];
+    expect(button.getAttribute('aria-label')).toBe("Open Bram's inventory");
+    expect(button.querySelector('qt-icon span')!.getAttribute('data-icon')).toBe('inventory');
+  });
+
+  it('opens the Inventory dialog on the character, in this chat when there is one', () => {
+    const fixture = mount({ chatId: 'chat-1' });
+    const dialog = TestBed.inject(InventoryDialogService);
+    buttons(fixture).find((b) => b.title === "Open Bram's inventory")!.click();
+    expect(dialog.isOpen()).toBe(true);
+    expect(dialog.context()).toEqual({ characterId: 'char-1', chatId: 'chat-1' });
+    const loose = mount({ chatId: null });
+    const looseDialog = TestBed.inject(InventoryDialogService);
+    buttons(loose).find((b) => b.title === "Open Bram's inventory")!.click();
+    expect(looseDialog.context()).toEqual({ characterId: 'char-1' });
+  });
+
+  it('is withheld from a seat with no character', () => {
+    const fixture = mount();
+    fixture.componentRef.setInput('participant', participant({ character: null }));
+    fixture.detectChanges();
+    expect(buttons(fixture).some((b) => b.title.includes('inventory'))).toBe(false);
+  });
+});
+// === end P4.D330 ===
