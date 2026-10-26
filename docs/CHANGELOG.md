@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — fix(spa): toasts raised from inside a dialog show above it (v4 5a8338b30)
+
+_Versions: SPA 0.5.883._
+
+`.qt-toast-container` moves from z-index 50 to 1000 — above every dialog overlay (60–101), below the startup gates (9999) — with v4's why-comment. A source-text guard (`toast_stacking_guard`, red on 50, green on 1000) pins the container's value, that no other layer reaches 1000 except the startup gates, and that the dialog overlay stays at 60. The SPA wire fence gains the albums request/result types and `album` on the gallery list request.
+
 #### 2026-10-26 — feat(photos): /photos leaves out character vaults and gains an album filter (v4 680b71044)
 
 _Versions: core 0.0.1326, web 0.0.244._

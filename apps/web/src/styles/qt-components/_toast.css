@@ -32,7 +32,9 @@
     position: fixed;
     bottom: 20px;
     right: 20px;
-    z-index: 50;
+    /* Above every dialog overlay (z-[60]–z-[101]) so a toast raised from inside
+       a modal is visible; below the full-screen startup gates at z-[9999]. */
+    z-index: 1000;
     pointer-events: none;
     display: flex;
     flex-direction: column;

@@ -6660,6 +6660,7 @@ export type MemoryRequest =
   | SystemDataDirRequest
   // P4.9a (folded at unification; the block at the end of this file).
   | PhotoGalleryListRequest
+  | PhotoGalleryAlbumsRequest
   | PhotoGallerySaveRequest
   | PhotoGalleryEntryGetRequest
   | PhotoGalleryEntryRemoveRequest
@@ -7908,6 +7909,8 @@ export interface SystemDataDirRequest {
 /** v4 `GET /api/v1/photos` — the cross-mount `photos/` roll-up. */
 export interface PhotoGalleryListRequest {
   type: 'photoGalleryList';
+  /** P4.D338 (v4 `680b71044`): list ONE store's album (`?album=<mountPointId>`); send only when non-empty. */
+  album?: string;
   q?: string;
   tag?: string[];
   limit?: number;
@@ -9342,3 +9345,13 @@ export interface PreviewWardrobeResolution {
   items: PreviewWardrobeItemResolution[];
 }
 // === end P4.D320 ===
+// === P4.D338: the /photos album wire (C9) ===
+/** v4 `GET /api/v1/photos?action=albums` — every album `/photos` can show (characters, projects, stores). */
+export interface PhotoGalleryAlbumsRequest {
+  type: 'photoGalleryAlbums';
+}
+/** The albums verb's answer: `{ albums }`, the option shape the save-target pickers already use. */
+export interface PhotoGalleryAlbumsResult {
+  albums: PhotoAlbumOption[];
+}
+// === end P4.D338 ===
