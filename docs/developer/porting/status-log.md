@@ -193050,3 +193050,51 @@ v4's second line carries `collection` too (measured — the chats repository's
   `QT_ORACLE_SYSTEM_EXPORT=… cargo test -p quilltap-harness --test
   system_export_equivalence -- --nocapture`.
 
+### Unit 3 — H-4 + P-1 + A4b: the restore's carried file arm
+
+`services/backup/restore/orchestrator.rs`: the carried arm is its own
+`restore_carried_file` (v4 `restore.ts:791-810` at `322a5488e`): the row
+keeps the ARCHIVE row's `mimeType` / `size` (H-4 — the human's ruling,
+CONVERGE); only the hash (bug 117 — the archived blob's, else the archive's
+`files.sha256`) and the rebuilt storage key come from the store.
+`CarriedBlob` loses `stored_mime_type` / `size_bytes` and its SELECT reads
+`sha256` only (the presence read stays — inside the 2026-07-26 ruled slot).
+A non-numeric / absent archive `size` is refused as v4's `FileEntrySchema`
+does (MEASURED: `invalid_type expected number, received undefined` at
+`["size"]`, the two repository ERRORs through `fallback::log_refused_create
+("files", …)`, then `Failed to restore file "<name>": <ZodError>` + WARN
+`Failed to restore file {fileId, error}`). P-1 (the planner's call,
+CONVERGE): a carried file skips `get_file_from_extracted_backup` — v4 never
+reads the disk there — so a carried file whose bytes are absent restores its
+row instead of `File not found in backup`. A4b: `carried_store_rows` resolves
+once per file before both passes (it ran twice per non-deferred file); the
+replays' bridges mint fresh blob ids, so the hoist cannot change an answer
+(written into the comment). The replay arm and a shared
+`write_restored_file_row` are otherwise unchanged. Unmeasured, recorded: a
+non-string `mimeType` on a carried row (v5 reads `""` via `s()`; v4's Zod
+would refuse) — no archive carries one.
+
+- **Fixture: `restore-archive-store-binding.zip` RE-DERIVED** through
+  `derive-restore-archive-store-binding.py` (deterministic — the unchanged
+  script reproduced the committed md5 `a42a35e4…` first; new md5
+  `04b34d28…`): `chart-blank.bin` now `application/x-quilltap-chart` / blob
+  size + 7; NEW `chart-no-bytes.bin` (carried through Lorian's vault key, no
+  bytes planted) and `chart-no-size.bin` (Riya's vault key, no `size`).
+  Manifest `files` 1 → 5. Read only by `system_restore_state` (grep) — no
+  other oracle invalidated.
+- Harness: `assert_carried_archive_row_meta` (by name on the RAW dumps, both
+  sides: the two kept rows' mime / size, the no-size row absent);
+  `REPO_LEVEL_CASES` += both `restore_store_binding_*` (the two repository
+  ERRORs capture-pinned, key order compared). `RESTORE_TS_MESSAGES` unchanged
+  (no `restore.ts` line moved).
+- **Red-first on unported main: 8 differences** (both cases: the log census,
+  `summary.files` 2 vs 3 / 3 vs 4, the warnings, `main.files`). Green after;
+  `system_restore_equivalence` re-run green (ran, not SKIP); core
+  `backup::restore` unit tests 47/0.
+- Regen recipe: the committed header's, staged at
+  `TMPO=/tmp/p4.167/sysrestore-oracle`,
+  `QT_RESTORE_ARCHIVES=$V5W/crates/quilltap-web/tests/fixtures/restore-archives`,
+  `QT_ORACLE_OUT=/tmp/p4.167/oracle-system-restore.ndjson`, run from the pin
+  (~30 s); then `QT_ORACLE_SYSTEM_RESTORE=… cargo test -p quilltap-harness
+  --test system_restore_state -- --nocapture`.
+

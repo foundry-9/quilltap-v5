@@ -22,8 +22,17 @@ Mutations, each one arm:
   blob the archive carries — bytes planted under `files/` as a real backup
   writes them) and a LOOSE one (a legacy storage key, bytes planted under
   `files/`) that a bound project's restore defers until after its links.
+- **carried metadata (P4.167, H-4)** — the CARRIED row's `mimeType` / `size`
+  deliberately DISAGREE with its blob (`application/x-quilltap-chart`, the
+  blob's size + 7): v4's carried arm spreads the ARCHIVE row and takes only
+  the blob's `sha256` (`restore.ts:791-810` at `322a5488e`).
+- **carried without bytes (P4.167, P-1)** — two more carried rows naming the
+  SAME blob through other mounts' keys (Lorian's vault, Riya's), whose bytes
+  are NOT planted under `files/`: v4's carried arm never reads the disk. The
+  second also has NO `size` (measured: how the archive row's absent size
+  decodes).
 
-The manifest's `files` count moves by two; every other byte is kept.
+The manifest's `files` count moves by four; every other byte is kept.
 `restore-archive.zip` is md5-checked unchanged before and after.
 
 Usage (from the v5 repo root):
@@ -50,6 +59,7 @@ BLOB = "bc000000-0000-4000-8000-000000000001"
 USER = "e18e05bc-63e8-4539-8a85-719b7a508850"
 CARRIED_KEY = f"mount-blob:{PROJECT_STORE}:{BLOB}"
 LOOSE_KEY = f"{USER}/voyage-notes.txt"
+CARRIED_MIME = "application/x-quilltap-chart"
 LOOSE_BYTES = b"Leg two: the wind backed north-east before dawn.\n"
 
 
@@ -83,14 +93,15 @@ def plan(zin, root):
     blob = [b for b in load(zin, root, "doc-mount-blobs") if b["id"] == BLOB]
     assert len(blob) == 1
     carried = dict(base)
-    # The row describes its blob exactly (a real backup's carried row does):
-    # v4's carried arm keeps the ROW's mime / size, v5's reads the blob's —
-    # a difference this archive is not about (recorded in the lane record).
+    # P4.167 (H-4): the row DISAGREES with its blob — v4's carried arm keeps
+    # the ROW's mime / size and only the blob's sha256 (the human's ruling of
+    # 2026-10-27: converge on v4's archive row).
+    assert blob[0]["storedMimeType"] != CARRIED_MIME
     carried.update(
         id="f0000002-0000-4000-8000-000000000001",
         originalFilename="chart-blank.bin",
-        mimeType=blob[0]["storedMimeType"],
-        size=blob[0]["sizeBytes"],
+        mimeType=CARRIED_MIME,
+        size=blob[0]["sizeBytes"] + 7,
         sha256=blob[0]["sha256"],
         category="DOCUMENT",
         storageKey=CARRIED_KEY,
@@ -113,7 +124,24 @@ def plan(zin, root):
     )
     for k in ("width", "height"):
         loose.pop(k, None)
-    files += [carried, loose]
+    # P4.167 (P-1): carried rows whose bytes the archive does NOT carry under
+    # `files/` (their keys name other mounts), so only a disk read misses them.
+    no_bytes = dict(carried)
+    no_bytes.update(
+        id="f0000004-0000-4000-8000-000000000001",
+        originalFilename="chart-no-bytes.bin",
+        mimeType="text/plain",
+        size=11,
+        storageKey=f"mount-blob:{LORIAN_VAULT}:{BLOB}",
+    )
+    no_size = dict(carried)
+    no_size.update(
+        id="f0000005-0000-4000-8000-000000000001",
+        originalFilename="chart-no-size.bin",
+        storageKey=f"mount-blob:{RIYA_VAULT}:{BLOB}",
+    )
+    del no_size["size"]
+    files += [carried, loose, no_bytes, no_size]
     return {
         "doc-mount-points": points,
         "characters": characters,

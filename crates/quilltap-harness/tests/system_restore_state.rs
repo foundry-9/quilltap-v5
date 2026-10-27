@@ -2270,6 +2270,10 @@ fn system_restore_state_equivalence() {
         // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
         assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
 
+        // [P4.167 H-4 / P-1] the carried rows' archive-row mime / size, from
+        // the RAW dumps.
+        assert_carried_archive_row_meta(name, &got_state, want_state, &mut failures);
+
         // [P4.D158] v4 `2edd823c0`'s four bag-key arms, within-tree.
         assert_bag_keys_survive(name, &got_state, &mut failures);
 
@@ -3539,6 +3543,70 @@ fn assert_bag_keys_survive(
                     format!("restored value is {raw:?} — perTurnConversationSummaries is gone"),
                 );
             }
+        }
+    }
+}
+
+/// [P4.167 H-4 — the human's ruling of 2026-10-27; P-1 — the planner's call]
+/// `restore-archive-store-binding.zip`'s carried rows, compared BY NAME on the
+/// RAW dumps (before any table normalization): v4's carried arm spreads the
+/// ARCHIVE row, so `chart-blank.bin` keeps the archive's `mimeType` /
+/// `size` (`application/x-quilltap-chart`, its blob's size + 7) and NOT the
+/// blob's; `chart-no-bytes.bin`, whose bytes the archive does not carry under
+/// `files/`, still restores (v4 never reads the disk on that arm); and
+/// `chart-no-size.bin` (no `size`) is refused by v4's `FileEntrySchema` on
+/// both sides.
+fn assert_carried_archive_row_meta(
+    name: &str,
+    got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if !name.starts_with("restore_store_binding_") {
+        return;
+    }
+    let by_name = |rows: &[Value]| -> BTreeMap<String, (Value, Value)> {
+        rows.iter()
+            .filter_map(|r| {
+                Some((
+                    r.get("originalFilename")?.as_str()?.to_string(),
+                    (r["mimeType"].clone(), r["size"].clone()),
+                ))
+            })
+            .collect()
+    };
+    let empty: Vec<Value> = Vec::new();
+    let v5 = by_name(
+        got.get("main")
+            .and_then(|p| p.get("files"))
+            .unwrap_or(&empty),
+    );
+    let v4 = by_name(
+        &want["main"]["files"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default(),
+    );
+    for (file, mime, size) in [
+        ("chart-blank.bin", "application/x-quilltap-chart", 31.0),
+        ("chart-no-bytes.bin", "text/plain", 11.0),
+    ] {
+        for (side, rows) in [("v5", &v5), ("v4", &v4)] {
+            match rows.get(file) {
+                Some((m, z)) if m == mime && z.as_f64() == Some(size) => {}
+                other => failures.push(format!(
+                    "[{name}] H-4/P-1 ({side}): {file} should keep the ARCHIVE row's \
+                     mimeType {mime:?} / size {size} — got {other:?}"
+                )),
+            }
+        }
+    }
+    for (side, rows) in [("v5", &v5), ("v4", &v4)] {
+        if rows.contains_key("chart-no-size.bin") {
+            failures.push(format!(
+                "[{name}] H-4 ({side}): chart-no-size.bin (no `size`) restored — \
+                 v4's FileEntrySchema refuses it"
+            ));
         }
     }
 }
@@ -6363,6 +6431,10 @@ const REPO_LEVEL_CASES: &[&str] = &[
     "restore_kind_refusals_replace",
     // [P4.D258] the `{}` embedding refusal (v4's three repository ERRORs).
     EMPTY_EMBEDDING_CASE,
+    // [P4.167 H-4] the carried `chart-no-size.bin`'s refused create (v4's
+    // `FileEntrySchema` `size` — the two repository ERRORs).
+    "restore_store_binding_replace",
+    "restore_store_binding_new_account",
 ];
 
 /// v5's captured lines (`LEVEL target message k=v …`) whose message is in

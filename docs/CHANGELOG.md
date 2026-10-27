@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — fix(restore): a carried file keeps the archive row's mimeType and size and needs no bytes on disk, as v4's carried arm does (H-4, P-1)
+
+_Versions: core 0.0.1339._
+
+A restore's carried file (one whose archive already holds its store rows) now keeps the archive row's `mimeType` and `size`. Previously it took them from the blob. This follows the human's ruling H-4 of 2026-10-27: v4's carried arm (`restore.ts:791-810` at `322a5488e`) spreads the archive row and takes only the blob's `sha256`. If the archive row has no numeric `size`, v4's `FileEntrySchema` refuses it, and v5 now does the same, logging the two repository ERRORs and giving the ZodError as the per-file warning. The carried arm also no longer reads the file's bytes from disk (P-1). Before this change, a carried file missing under `files/` was dropped with `File not found in backup`; v4 never reads the disk on that arm. The carried-store lookup now runs once per file instead of twice (A4b, a pure refactor). Differential: `restore-archive-store-binding.zip` is re-derived through its script with three carried-row arms: mime and size disagreeing with the blob, bytes absent, and size absent. `system_restore_state` gains a by-name pin on the raw cells and the repository-line capture on both store-binding cases. Red first on unported main: 8 differences.
+
 #### 2026-10-27 — fix(export): skip an unreadable chat row on .qtap export and preview with v4's two lines (H-3)
 
 _Versions: core 0.0.1338._

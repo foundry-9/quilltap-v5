@@ -1672,13 +1672,34 @@ fn restore_on_writer(
         let bound_project_ids: HashSet<String> =
             bound.projects.iter().map(|p| id_of(&p.row)).collect();
         let mut deferred: Vec<usize> = Vec::new();
+        // ⚠ RULED DIVERGENCE (2026-07-26) — see `carried_store_rows`. Resolved
+        // ONCE per file, before either pass (P4.167 A4b — it ran twice per
+        // non-deferred file). Hoisting cannot change an answer: the replays
+        // between the two former calls write blobs only through the bridges,
+        // which MINT fresh blob ids, so no replay can create the archive's blob
+        // id a later file's key names. The on-disk / archive lookup MUST use the
+        // original row: new-account remaps the id, the archive's file names and
+        // keys do not move (v4 `:133-136`).
+        let carried: Vec<Option<CarriedBlob>> = data
+            .files
+            .iter()
+            .enumerate()
+            .map(|(i, file)| {
+                let on_disk = extracted.data.files.get(i).unwrap_or(file);
+                carried_store_rows(mount, data, &extracted.data, on_disk)
+            })
+            .collect();
         let replay = |i: usize, file: &Value, w: &mut Vec<String>| {
             let name = s(file, "originalFilename");
-            // The on-disk lookup MUST use the original row: new-account remaps
-            // the id, the archive's file names do not move (v4 `:133-136`).
             let on_disk = extracted.data.files.get(i).unwrap_or(file);
-            // ⚠ RULED DIVERGENCE (2026-07-26) — see `carried_store_rows`.
-            let carried = carried_store_rows(mount, data, &extracted.data, on_disk);
+            // P4.167 (P-1 — the planner's call, CONVERGE): v4's carried arm
+            // (`restore.ts:791-810` at `322a5488e`) never reads the disk — the
+            // archived store rows ARE the file — so a carried file whose bytes
+            // the archive lacks under `files/` still restores its row. Only the
+            // replay arm reads the bytes (and warns `File not found in backup`).
+            if let Some(c) = carried[i].as_ref() {
+                return Some(restore_carried_file(main, target_user_id, file, c));
+            }
             let outcome = match get_file_from_extracted_backup(&root_path, on_disk, backup_format) {
                 Some(bytes) => Some(restore_one_file(
                     main,
@@ -1687,7 +1708,6 @@ fn restore_on_writer(
                     target_user_id,
                     file,
                     &bytes,
-                    carried.as_ref(),
                 )),
                 None => {
                     w.push(format!("File not found in backup: {name}"));
@@ -1697,12 +1717,11 @@ fn restore_on_writer(
             outcome
         };
         for (i, file) in data.files.iter().enumerate() {
-            let on_disk = extracted.data.files.get(i).unwrap_or(file);
             // v4's first pass: a carried file restores now (its archived
             // store rows are the file); a non-carried file of a bound project
             // waits for the second pass.
             let deferrable = os(file, "projectId").is_some_and(|p| bound_project_ids.contains(&p))
-                && carried_store_rows(mount, data, &extracted.data, on_disk).is_none();
+                && carried[i].is_none();
             if deferrable {
                 deferred.push(i);
                 continue;
@@ -3182,8 +3201,6 @@ fn preapply_builtin_pointers(
 struct CarriedBlob {
     /// `mount-blob:<mp>:<blob>` in the RESTORED id space.
     storage_key: String,
-    stored_mime_type: String,
-    size_bytes: f64,
     /// The archived blob's own hash (bug 117, v4 `0b0617fee`). `None` when the
     /// restored blob row carries no hash — v4's `carriedSha256 ? … : {}` arm,
     /// where the ARCHIVE's `files.sha256` stands.
@@ -3268,17 +3285,16 @@ fn carried_store_rows(
     // same array written to disk — INSIDE the ruled divergence above, which is
     // precisely the difference: v5 consults the restored store, v4 the parsed
     // archive. A NULL/empty hash reads as v4's falsy `carriedSha256`.
-    let (stored_mime_type, size_bytes, sha256) = mount
+    //
+    // P4.167 (H-4 — the human's ruling of 2026-10-27, CONVERGE on v4's archive
+    // row): ONLY the hash rides this read. v4's carried arm spreads the ARCHIVE
+    // row (its `mimeType`, its `size`) and takes nothing else from the blob, so
+    // neither does v5 (see [`restore_carried_file`]).
+    let sha256 = mount
         .query_row(
-            "SELECT storedMimeType, sizeBytes, sha256 FROM doc_mount_blobs WHERE id = ?1",
+            "SELECT sha256 FROM doc_mount_blobs WHERE id = ?1",
             rusqlite::params![blob_id],
-            |r| {
-                Ok((
-                    r.get::<_, String>(0)?,
-                    r.get::<_, f64>(1)?,
-                    r.get::<_, Option<String>>(2)?,
-                ))
-            },
+            |r| r.get::<_, Option<String>>(0),
         )
         .ok()?;
 
@@ -3298,8 +3314,6 @@ fn carried_store_rows(
             &mount_point_id,
             &blob_id,
         ),
-        stored_mime_type,
-        size_bytes,
         // v4's `carriedSha256 ? {sha256} : {}` is a JS truthiness test, so an
         // empty string is as absent as a NULL.
         sha256: sha256.filter(|h| !h.is_empty()),
@@ -3317,10 +3331,7 @@ fn carried_store_rows(
 /// `sha256`) a FileEntry that cannot be joined to the mount blob it points at
 /// (bug 117, v4 `0b0617fee`).
 ///
-/// `carried` short-circuits the ingest — see [`carried_store_rows`] for the
-/// ruling and the predicate. The row it writes keeps the same shape: the mime,
-/// size and hash still describe what is actually in the store, read off the
-/// archive's own blob rather than off a bridge that has just re-written it.
+/// A carried file never reaches here — see [`restore_carried_file`].
 fn restore_one_file(
     main: &Connection,
     mount: &Connection,
@@ -3328,49 +3339,88 @@ fn restore_one_file(
     target_user_id: &str,
     file: &Value,
     bytes: &[u8],
-    carried: Option<&CarriedBlob>,
 ) -> Result<(), DbError> {
     let filename = s(file, "originalFilename");
     let mime = s(file, "mimeType");
-    let stored = match carried {
-        Some(_) => None,
-        None => Some(match os(file, "projectId") {
-            Some(project_id) => crate::services::file_storage::write_project_file_to_mount_store(
-                mount,
-                codec,
-                &project_id,
-                &filename,
-                bytes,
-                &mime,
-                os(file, "folderPath").as_deref().or(Some("/")),
-                None,
-            )?,
-            None => crate::services::file_storage::write_user_upload_to_mount_store(
-                main, mount, codec, &filename, bytes, &mime, "restored", None,
-            )?,
-        }),
+    let stored = match os(file, "projectId") {
+        Some(project_id) => crate::services::file_storage::write_project_file_to_mount_store(
+            mount,
+            codec,
+            &project_id,
+            &filename,
+            bytes,
+            &mime,
+            os(file, "folderPath").as_deref().or(Some("/")),
+            None,
+        )?,
+        None => crate::services::file_storage::write_user_upload_to_mount_store(
+            main, mount, codec, &filename, bytes, &mime, "restored", None,
+        )?,
     };
     // Bug 117 (v4 `0b0617fee`): `sha256` joins `mimeType`/`size` in describing the
-    // bytes actually stored. The replay arm takes the bridge's answer; the carried
-    // arm takes the archived blob's own hash, falling back to the archive's
-    // `files.sha256` when the blob row carries none (v4's `carriedSha256 ? … : {}`).
-    let (storage_key, stored_mime_type, size_bytes, sha256) = match (&stored, carried) {
-        (Some(s), _) => (
-            s.storage_key(),
-            s.stored_mime_type.clone(),
-            s.size_bytes as f64,
-            s.sha256.clone(),
-        ),
-        (None, Some(c)) => (
-            c.storage_key.clone(),
-            c.stored_mime_type.clone(),
-            c.size_bytes,
-            c.sha256.clone().unwrap_or_else(|| s(file, "sha256")),
-        ),
-        // Unreachable: `stored` is `None` only when `carried` is `Some`.
-        (None, None) => unreachable!("the file phase either ingests or reuses"),
-    };
+    // bytes actually stored — the replay arm takes the bridge's answer.
+    write_restored_file_row(
+        main,
+        target_user_id,
+        file,
+        stored.storage_key(),
+        stored.stored_mime_type.clone(),
+        stored.size_bytes as f64,
+        stored.sha256.clone(),
+    )
+}
 
+/// The carried arm (v4 `restore.ts:791-810` at `322a5488e`): the archive
+/// already holds this file's store rows ([`carried_store_rows`]), so nothing is
+/// read from disk or ingested. P4.167 (H-4 — the human's ruling of 2026-10-27,
+/// CONVERGE on v4's archive row): v4 spreads the ARCHIVE row —
+/// `{...stripLegacyFileRowFields(file), ...(carriedSha256 ? {sha256} : {}),
+/// storageKey}` — so the row keeps the archive's `mimeType` and `size`; only
+/// the hash (bug 117 — the archived blob's own, falling back to the archive's
+/// `files.sha256` when the blob carries none) and the rebuilt storage key come
+/// from the store. An archive row without a numeric `size` is refused by v4's
+/// `FileEntrySchema` (`z.number()`) with the two repository ERRORs and the
+/// ZodError as the per-file warning (measured on
+/// `restore_store_binding_*`'s `chart-no-size.bin`).
+fn restore_carried_file(
+    main: &Connection,
+    target_user_id: &str,
+    file: &Value,
+    carried: &CarriedBlob,
+) -> Result<(), DbError> {
+    let Some(size) = file.get("size").and_then(Value::as_f64) else {
+        let issue = crate::api::zod_issues::ZodIssue::invalid_type(
+            "number",
+            vec![Value::String("size".into())],
+            file.get("size"),
+        );
+        let zod = crate::api::zod_issues::zod_error_message(&[issue]);
+        crate::db::fallback::log_refused_create("files", &zod);
+        return Err(DbError::Internal(zod));
+    };
+    write_restored_file_row(
+        main,
+        target_user_id,
+        file,
+        carried.storage_key.clone(),
+        s(file, "mimeType"),
+        size,
+        carried.sha256.clone().unwrap_or_else(|| s(file, "sha256")),
+    )
+}
+
+/// The `files` row both arms write: the archive row's own fields with the
+/// arm's storage key, mime, size and hash.
+fn write_restored_file_row(
+    main: &Connection,
+    target_user_id: &str,
+    file: &Value,
+    storage_key: String,
+    stored_mime_type: String,
+    size_bytes: f64,
+    sha256: String,
+) -> Result<(), DbError> {
+    let filename = s(file, "originalFilename");
     let create = crate::db::files::FileCreate {
         user_id: target_user_id.to_string(),
         sha256,
