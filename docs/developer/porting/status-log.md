@@ -193586,3 +193586,96 @@ core 0.0.1339 (from 0.0.1336), web 0.0.250 (from 0.0.246); harness frozen 0.0.11
 ### Fixtures changed
 - `harness/oracle/fixtures/wardrobe-tools.json` (ops appended at the END — prior indices kept; the builder's DB output is unchanged, so `wardrobe_wear_commit_tier2` and the avatar trigger's fixtures stay byte-identical); `wardrobe-routes.json` (one case inserted before `rb_malformed_json`); NEW `wardrobe-announcement-job.json`. No committed real-DB pair rebuilt.
 
+
+## P4.165 — R-4 overturned: Stop ends Carina's in-turn Brahma one-shot answer + Carina's service lines (lane `claude/p4.165-r4-brahma-stop-6c7ea4`, pin `322a5488e`, 2026-10-27) — LANE RECORD
+
+**Where the session started / moved.** Started on `main` @ `6c7ea4410` in the main checkout; moved before the first edit to the spaceless worktree `.claude/worktrees/p4.165` on branch `claude/p4.165-r4-brahma-stop-6c7ea4`, cut from `main` @ `6c7ea4410`; target cloned warm (`cp -cR`).
+
+**§R.2 probe (observation, not a gate).** 2026-10-27 16:05 CDT: v4 checkout on `main`, HEAD `b892227eb`; `b892227eb..main` EMPTY; `489b228b6..bugfix` EMPTY; tree dirty in `help/salon-host-introductions.md` only (not `lib/`/`app/`/`packages/`/`plugins/`). Recorded; the lane continued on its pin.
+
+**The pin.** `/tmp/qt-v4-pin-p4165-322a5488e` @ `322a5488e7bd93f0234a25b42f87d5418dbf4c2c`, `package.json` `4.11.0-dev.53`; the three symlink classes, then the root link replaced by `npm ci --offline` → `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless` 6.0.0.
+
+**The ruling.** H-1 (the human, 2026-10-27): R-4 (A), CONVERGE on v4 — overturning P4.D335's R-4 and its Tier 3 item 31 (that order's text is history, not edited — R-C). R-A (the stop's ONE source is `CarinaQueryDeps.turn_control`) and R-B (v4's done-only llm-log gate, measured first) followed as written.
+
+**N-1 — v4 `carina.service.ts` @ `322a5488e`, every logger call (16 + 1 DEBUG), and where each landed:**
+
+| v4 line | level | message | v5 | pin |
+|---|---|---|---|---|
+| :148 | WARN | `Failed to load prior exchanges; proceeding without continuity` | NOT PORTED — dead in v4: `repos.chats.getMessages` is a `safeQuery` fallback and never throws (the status-log fallback census row, `load_prior_carina_exchanges`); v4 logs the repository's ERROR instead | — |
+| :189 | WARN | `Failed to resolve asker identity; answering without attribution` | NOT PORTED — reached only by a THROW from v4's overlaid `repos.characters.findById`; whether that read can throw at the pin was not measured this lane (recorded by name) | — |
+| :243 | WARN | `Memory recall failed; answering without it` | already ported (`load_carina_memory_recall`) | silence leg in `carina_query_tier3` (no case fails recall) |
+| :296 | WARN | `Failed to resolve asker Carina flag; treating line as answerer-gated` | NOT PORTED — reached only by a throw from `repos.chats.findById` / `findByIdRaw` (v5's `resolve_asker_flag` folds every failure into `false`); not measured | — |
+| :337 | WARN | `Failed to resolve asker transparency for Brahma; treating as unreachable` | NOT PORTED — the same shape as :296 | — |
+| :390 | WARN | `Live Brahma answer emit failed; answer stands` | NO v5 HOME — `EventSink::emit` cannot fail (comment at the site) | — |
+| :398 | INFO | `Brahma Console answered` | `answer_as_brahma` | `orchestrator_tier3` (`interrupt_stop_mid_brahma_markup`, `…_between_tool_turns`) + `carina_query_tier3` (`brahma_reachable`) |
+| :414 | ERROR | `Brahma query failed` | `answer_as_brahma`, on `BrahmaConsoleResult.threw` (a NEW field: the one-shot loop's `Err` — v4's propagated throw) | `orchestrator_tier3` (`carina_brahma_stream_error`) |
+| :491 | INFO | `Brahma requested by an unauthorized asker; treating as not-found` | `run_carina_query` | `carina_query_tier3` (`brahma_unreachable`) |
+| :498 | INFO | `No reachable answerer found` | `run_carina_query` | `carina_query_tier3` (`asker_gate_notfound`, `brahma_unreachable`) |
+| :506 | INFO | `No connection profile resolvable` | `run_carina_query` | `carina_query_tier3` (NEW `no_profile` case) |
+| :752 | DEBUG | `Tool-iteration budget exhausted; forcing a final text answer` | `run_carina_query` | `carina_query_tier3` (`forced_text`) |
+| :795 | WARN | `Live answer emit failed; answer stands` | NO v5 HOME — as :390 | — |
+| :816 | WARN | `Failed to enqueue memory extraction; answer stands` | `run_carina_query`, the enqueue's `Err` arm (it was `let _ =`) | NOT capture-pinned — no corpus case makes the enqueue fail (a DB write failure); ported by inspection, recorded as such |
+| :824 | INFO | `Query answered` | `run_carina_query` | `carina_query_tier3` (every answered case, 11) |
+| :842 | ERROR | `Query failed` | NO v5 HOME today — see the FINDING below | — |
+
+**FINDING (NEW, recorded — not fixed here, out of N-1's log-lines scope):** v5's Carina `run_stream` (`services/carina_query.rs`) ends its `while let` on `Err(_) => break` — a mid-stream provider error is SWALLOWED, the partial text kept, and the answer posted (or `empty response` when nothing streamed). v4's `runStream` `for await` THROWS out of the guarded region into `runCarinaQuery`'s catch: ERROR `[Carina] Query failed` `{context, chatId, characterName, error}` and `{ok:false, llm-failed, detail: <message>}` → Prospero's card naming the error, NOTHING posted. That is v4's `:842` line's missing home AND a behavioural divergence no corpus case reaches (the Carina corpus has no stream-error case). The P4.79 shape (`Err(_) => break` reshaped to propagation, with a scripted-error corpus arm) is the fix; proposed as a follow-up.
+
+### What landed (Tier 1 — all; Tier 2 — both; Tier 3 — recorded)
+
+1. `RunBrahmaConsole::run(…, stop: Option<&StopSignal>)` — the LAST parameter; `UnavailableBrahmaConsole` and the harness `CannedBrahma` ignore it, `RealBrahmaConsole` forwards it. `answer_as_brahma` passes `deps.turn_control.map(TurnControlHandle::stop_signal)` — R-A: the ONE source, so the finalizer's markup path and the `ask_carina` tool (whose `TypedAskCarina` already forwards its handle) both inherit it. **No spine edit; no host bump.**
+2. `run_brahma_query(…, stop)` → `RunOneShotToolLoopOptions.stop: Option<&'a StopSignal>` (added LAST). The loop's `signal` is untouched (v4 passes none). The Scenario Builder and the `brahma_console_tier3` harness literal pass `None`.
+3. `run_stream` wraps with `watch_stream_with_stop(…, stop)`. **R-B measured:** in `brahma-console-tier3.json` (37 sequences) and `scenario-builder-tier3.json` (58), the ONLY sequences that close without `done` end in an `error` chunk (3 of 95) — none logged under the old gate — so the gate is v4's done-only `error.is_none() && saw_done` (the dead `aborted` local removed).
+4. `stream_watchdog_wrap_census`: the one-shot row `(1, 1, 0)` → `(1, 0, 1)` with a why-string citing v4 `streaming.service.ts:458` via ALS; `STOP_SITES` + `services/agent_loop/one_shot_loop.rs`; the stop total 7 → 8; the module doc ("the four others: greeting, help chat, the standalone Brahma console, the swipe") and the H-1 paragraph. `model/stream_watchdog.rs` and `services/turn_control.rs` module docs corrected.
+5. The three Brahma lines — INFO `Brahma Console answered` and ERROR `Brahma query failed` ported (a new `BrahmaConsoleResult.threw: bool` marks the one-shot loop's `Err`, v4's propagated throw; `detail` carries the message); WARN `Live Brahma answer emit failed` has no v5 home (`EventSink::emit` cannot fail — commented at the site).
+6. The differential — four NEW `orchestrator_tier3` cases on four NEW chats (`d165000{1..4}-…`, Clara [`systemTransparency: true`] + the user persona), each with a NEW per-call `defaultProfile` key (Brahma's one-shot resolves `findDefault(userId)` and the corpus seeds none — at first v4 answered `no-profile`, measured): a raw `isDefault` flip to `ChainPrimary` (OPENAI `gpt-chains`) before the send, undone after, on both sides.
+   - `interrupt_stop_mid_brahma_markup` — Brahma streams `There are`, then the `latch:'stop'`: v4 posts `There are` as Brahma's carina row, ONE `[LLMStream]` INFO (`chunksReceived: 1`, no `characterId`/`messageId`), `[Carina] Brahma Console answered` (`answerLength: 9`), the chain-stopped INFO, `{stopped:1, settled:true, paused:true}`, and NO Brahma `llm_logs` row.
+   - `…_before_first_chunk` — `{latch:'stop'}` first: `chunksReceived: 0`, `empty response` → Prospero's `carina-error` card `Prospero reports that Brahma was unable to respond — empty response.`
+   - `…_between_tool_turns` — a native `run_sql` (`SELECT 1 AS one`) on a `done`, then the stop: the next stream yields nothing (a second INFO, `chunksReceived: 0`), and the bug-47 salvage posts `I reached my 50-turn budget …` with the tool result.
+   - `carina_brahma_stream_error` — Brahma streams `Half a` then `error: socket hang up`: ERROR `[Carina] Brahma query failed {context, chatId, error}` and Prospero's `… — socket hang up.` card.
+   - Harness: the Carina markup engine now gets the registered turn's handle (`turn_control: Some(&turn_handle)`, as the spine passes it); the finalizer's Prospero seam is the spine's REAL `ThreadedProspero` (it was a no-op closure — no corpus markup consult had ever failed; the before-first-chunk case's v5 run first lacked v4's Prospero card for exactly that reason); a `carinaLog` capture (`Logger.prototype` info/warn/error, the three Brahma messages) on the oracle and a verbatim-key comparator on the Rust side — a silence leg for every call.
+7. In-crate rows (`brahma_console/tests.rs`, over a provisioned instance's real llm-logs partition): a stop mid-stream keeps the partial and writes NO `llm_logs` row (with a positive control — the same rig logs ONE row for a `done` leg); a stop before the first chunk is `empty response`; the stop INFO's bag carries no `character_id` / `message_id` (the `global_capture` rig).
+8. Playwright beat (H) in `salon-interrupt-flow.spec.ts` (commit `2b5865b3e`): Aria planted `systemTransparency`, a default OPENAI_COMPATIBLE profile, the mock answers `@Brahma:` markup then streams Brahma slowly; Stop mid-consult settles under 10 s with the toast, Brahma's partial bubble persists ONCE and the full reply never does. Not red-first against unported bins (no fresh unported release build was made; the R-4 red is the tier-3 one above).
+9. N-1 — the table above; the corpus side: a `carinaLog` capture in `carina-query-tier3.test.ts` (the singleton logger, seven messages, every level) + a comparator in `carina_query_tier3_equivalence.rs` (non-vacuity: ≥ 5 lines), and a NEW `no_profile` case (`hideProfiles: true` — every profile's `userId` swapped off the user for that case only, restored after, both sides).
+10. Tier 3 — the user-message Carina path stays deferred (`user_message_carina`). **HANDOFF(unifier):** `services/orchestrator.rs` is no lane's file; append to its module note at `:45-54` (the `user_message_carina` seam): "P4.165: once wired, this path inherits the operator's stop for free — pass the send's `turn_control` handle into `CarinaQueryDeps.turn_control`, the ONE source `answer_as_brahma` reads."
+
+### Red-first (§R.6)
+
+- **R-4:** the unported-main binary (`orchestrator_tier3_equivalence-65c63203f5f37558`, built before any core edit) against the pin's oracle: RED at `interrupt_stop_mid_brahma_markup` — `the interrupts fired mid-stream` `{"stopped":1,"settled":false,…}` vs v4's `"settled":true` (v5's Brahma stream never heard the stop; the stop waited out the 15 s settle — the run took 50.7 s against 7 s green).
+- **The log gate (mutation):** the old disjunct restored (`saw_done || true`) → RED `llm_logs row count diverges (got 276 vs oracle 273)` — exactly the three stopped legs.
+- **The Brahma INFO keys (mutation):** `answerLength` → `answer_length` → RED `interrupt_stop_mid_brahma_markup: Carina's Brahma lines`.
+- **N-1:** the tree with the six N-1 `tracing` calls removed (scripted, 6 removed) against the new carina oracle → RED at case `plain` (`left: []` vs v4's `INFO [Carina] Query answered …`).
+
+### Gate (§R.9)
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean, and again with `--features quilltap-core/native-transport`.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, `QT_V4_CHECKOUT`/`QT_V4_ROOT` = the pin, the orchestrator + carina oracle/fixture env set, `TZ=UTC`): **862 binaries / 5,706 passed / 0 failed / 3 ignored**. `orchestrator_tier3_equivalence` ran (7.83 s, the full corpus + four new calls) and so did `carina_query_tier3_equivalence`; both are ok. No SKIP among this lane's families.
+- Re-run by name through the sweep driver from the pin: `stream_watchdog_wrap_census`, `orchestrator_tier3`, `carina_query_tier3`, `brahma_console_tier3`, `scenario_builder_tier3`, `primary_stream_tier3`, all ok. `recipe_sweep.py --self-test` returned 0.
+- SPA: `npm ci` plus `npm run build` OK. No SPA source is touched; the one file is the spec.
+- Playwright, `salon-interrupt-flow.spec.ts` by FILE alone, `--repeat-each=3` on fresh release bins (`cargo build --release -p quilltap-web -p quilltap-cli`): **24 passed / 0 failed / 3 skipped** (the skips are the spec's standing (F) park). Beat (H) passed 3/3 at 14.5 s each. The first attempt never reached a test: global setup's `server did not become ready within 30s`, and teardown deleted the server log. A sibling's server on the fixed port 4319 is the likely cause, but this was not measured. The re-run was green.
+
+### Fixtures changed (re-run these families at unification)
+
+- `harness/oracle/fixtures/orchestrator-tier3.json` adds four chats and four calls, plus a per-call `defaultProfile` key. **P4.174 also appends an `orchestrator_tier3` case; the unifier re-runs the family.**
+- `harness/oracle/fixtures/carina-query-tier3.json` adds the `no_profile` case, with a per-case `hideProfiles` key.
+
+### Regen recipes (pin `/tmp/qt-v4-pin-p4165-322a5488e`, Node 24.13.1; each oracle in its OWN invocation; the fixture builder re-mints mount ids, so the oracle and the fixture ALWAYS regenerate together)
+
+- **orchestrator_tier3:** mirror `cases/orchestrator-tier3.test.ts`, `lib/pinned-draws.ts`, `lib/v4-migrations.ts` and `fixtures/orchestrator-tier3.json` into a `/tmp` dir (jest ignores `.claude/`). Then, from the pin, run `QT_FIXTURE_OUT=… QT_FIXTURE_MOUNT_OUT=… npx tsx <v5w>/harness/oracle/fixtures/build-orchestrator-fixture.ts`, followed by `QT_FIXTURE_ORCH_MAIN=… QT_FIXTURE_ORCH_MOUNT=… TZ=UTC QT_ORACLE_OUT=… npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots <mirror>/cases -- orchestrator-tier3`. Run the FULL corpus: a `QT_ORCH_CALLS` subset trips the corpus-integrity asserts.
+- **carina_query_tier3:** the same shape, using `build-carina-query-fixture.ts` and `QT_FIXTURE_CARINA_MAIN`/`_MOUNT`, with `-- carina-query-tier3`.
+- Rust: `QT_ORACLE_ORCHESTRATOR` / `QT_FIXTURE_ORCH_MAIN` / `QT_FIXTURE_ORCH_MOUNT` and `QT_ORACLE_CARINA_QUERY` / `QT_FIXTURE_CARINA_MAIN` / `QT_FIXTURE_CARINA_MOUNT`.
+
+### 💸 for the dogfood pass
+
+On the Friday copy:
+- Give a transparent character a reply containing `@Brahma: <question>` and use a slow provider. Press Stop mid-Brahma. Expect: the partial Brahma bubble posts, the composer idles at once, `combined.log` shows ONE `[LLMStream] Abandoned …` INFO, and there is no Brahma `llm_logs` row.
+- Repeat with Stop before the first Brahma token. Expect Prospero's card.
+- `combined.log` should carry `[Carina] Brahma Console answered` with `answerLength`.
+
+### Versions at close
+
+core **0.0.1337** (+1); harness frozen 0.0.1110; host 0.0.214, web 0.0.246, cli 0.0.34, tauri 0.0.9 and SPA 0.5.905 unchanged.
+
+### Commits
+
+`91270deef` feat(carina) (Rust, oracle, harness, CHANGELOG, core bump); `2b5865b3e` test(e2e) beat (H).
+
