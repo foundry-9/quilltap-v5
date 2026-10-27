@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): the P4.D331 lane record and LANE COMPLETE (P4.D331)
+
+_Docs-only change._
+
+The lane record goes into `status-log.md`: commits, red-first and mutation proofs, ruled divergences, sibling carves, and the gate (841 binaries / 5,514 / 3 / 3 — the lane's inventory pin fixed, plus two schema re-vendor guards owned by sibling lanes). The order's status header now reads LANE COMPLETE.
+
 #### 2026-10-26 — test(core): the tool inventory's count pins move to 44 / 48 (P4.D331)
 
 core 0.0.1332

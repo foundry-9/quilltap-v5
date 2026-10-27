@@ -191228,3 +191228,116 @@ As the order lists: a v4-written any-of tool loads and is withheld with `groups:
 
 ### Playwright (by file, one invocation at a time; debug binaries from the gate's build — the cloned stale `target/release` bins removed first)
 `workbench-gate-flow` 1 passed / 1 skipped; `workbench-progress-flow` 2 passed; `workbench-triggers-effects-flow` 6 passed; `workbench-wardrobe-picker-flow` 8 passed. `workbench-flow` red on its first run (2 failed, 7 not reached: `maybeUnlock` — the passphrase entered, `qt-shell` not visible within 15 s on the cold server's first spec, with two sibling workspace gates loading the machine — the unlock / boot path, before any grammar code ran); re-run ALONE: **7 passed / 2 skipped**. No e2e file added (§R.9).
+
+
+
+## P4.D331 — the Log (lane record, 2026-10-26)
+
+Branch `claude/p4.d331-the-log-c065d7`, stacked on `INVENTORY` (`c065d7e2f`, confirmed against P4.D324's lane-branch status header). The session started in the app-made worktree `nifty-murdock-c5b6e6` on `claude/nifty-murdock-c5b6e6` at main's `914096110` with no commits of its own, and switched there to the lane branch at `c065d7e2f` before the first edit — so no sanctioned rebase was needed (the lane never pre-started from `main`). Pin `/tmp/qt-v4-pin-p4d331-322a5488e` (HEAD `322a5488e7bd…`, `4.11.0-dev.53`, `npm ci --offline` → openai 7.34.0, @xterm/headless 6.0.0).
+
+**§2 probe (an observation, §R.2):** branch `main`, tree clean, bugfix `489b228b6..bugfix` empty; **v4 moved:** `a0905454b..main` = `9faed0c7e` ("Feature: diagram lightbox and Copy PNG") and `3c9ae1fc3` ("Docs: 4.11.0 release notes corrections, part 2"), observed 2026-10-26 17:03 CDT. The lane continued on the pin.
+
+**R-I's YES — recorded.** Who: the human, in the `/setupphase` session. When: 2026-10-21. Verbatim: "Approved: vt100 0.18.1 for P4.D337 and regress for P4.D331's regexp() unit." Measured at lane start: `cargo info regress` → 0.12.0; pinned `regress = { version = "=0.12.0", features = ["utf16"] }`.
+
+### Commits
+
+1. `07ee2d2d0` — the `STRUCTURAL_TABLES` row (census 12), the re-dump read (items 2, 3). core 0.0.1325.
+2. `5c4cf47b2` — `db::regexp_function` + the partition-aware registration + the engine (items 5, 5b, 7). core 0.0.1326.
+3. `85e0ec6b0` — `db::log_entries` (item 4). core 0.0.1327.
+4. `22097a3cb` — the catalog regen, `LLM_LOGS_REPO_KEYS`, the Brahma bullet (items 6, 8, 13). core 0.0.1328.
+5. `697972fca` — the three tools, the executor arm, `tool_build`, the tools-route rows (items 9, 11, Tier 2 item 23). core 0.0.1329.
+6. `268df6c04` — the Pascal `log` effect (items 15–19). core 0.0.1330.
+7. `285ff3189` — the cleanup prune + the WIDENED `llm-log-cleanup-llmlogs.db` (items 10, 12). core 0.0.1331.
+8. `3d383b80f` — table-shape plants + `regexp_registration_sites` (Tier 2 items 21, 22).
+9. `b8d551767` — the host boot smoke (Tier 2 item 24, as a `host_boot_hardness` case).
+10. `3be7bd1a9` — `log_tools` reads `QT_FIXTURE_LOG_TOOLS_LLMLOGS`.
+11. `e1017e5aa` — the tool inventory's count pins 44 / 48 (the gate's one lane-caused red). core 0.0.1332.
+12. (this record) — the lane record + the order's status header.
+
+### Red-first and mutation proofs
+
+- `table_shape_equivalence` on the unported `INVENTORY` tip: 3 of 7 tests RED (`the_census_is_v4s_container_in_order` — census 12 vs 11, the regenerated literal printed and pasted; `every_shape_over_every_real_schema_matches` — 60 vs 55 shapes; `every_degraded_partition_reports_what_v4s_pass_reports`).
+- `provisioning_equivalence` on `INVENTORY` (the keystone's re-dump committed): (1d) / (1b) / (1c) GREEN for `log_entries` before any edit of mine, and green after (3 / 3; v4 opened the v5-provisioned instance). No `ORACLE_ONLY_*` row.
+- `degraded_sibling_open_equivalence` regenerated from the pin (it replays the structural pass): green with the second LLM-logs problem.
+- `llm_log_cleanup_equivalence`: with the prune removed, both legs diverge at step 0 (the per-job `logEntries` lists); the enqueuer leg unaffected.
+- Mutations, each KILLED: M1 the clause guards on `is_some` (27 disagreements in `log_entries_tier2`); M2 search ascending (4); M3 cleanup `< 0` (8); M4 `compile_sql_regexp` without the flags check (the five refused-flag compile rows + `bad-flags`); M5 `LLM_LOGS_REPO_KEYS` without `logEntries` (`write_partition` red); M6 `log_read_bound_instant` parsing a bare-date `to` (4 disagreements: `read-same-bare-day`, `read-feb-31-to`).
+- `tool_definitions` / `tools_inventory` / the Pascal families' log rows: red by construction on the unported tree (the three names absent from the catalog and route; the definition rows refused by `unrecognized_keys`); measured green after each unit.
+
+### Families (all regenerated from the pin; outputs under `/tmp/p4d331/`)
+
+| Family | Result |
+|---|---|
+| `table_shape_equivalence` | 7 / 7 (20 plants; `log-entries-view` a recorded both-ways divergence beside `chunk-view`) |
+| `regexp_function_equivalence` (NEW) | 57 compile + 59 match rows; `REGEXP_ENGINE_GAP` 2 rows |
+| `log_entries_tier2_equivalence` (NEW) | 50 ops agree; `LONE_SURROGATE_CLIP` 1 row |
+| `log_tools_equivalence` (NEW) | 49 calls agree; `CHILD_BUFFER_VISIBILITY` pinned from v5 |
+| `tool_definitions_equivalence` | 66; `runCustom` / `terminalRead` carved (`SIBLING_ROWS_UNTIL_UNION`) |
+| `tools_inventory_equivalence` | 8 / 8 bodies; 11 sibling ids carved |
+| `write_partition_equivalence` | green (+2 classify rows, + `log-entries-mixed`) |
+| `llm_log_cleanup_equivalence` | 4 / 4 (both legs + enqueuer + the DST guard) |
+| `brahma_console_tier3_equivalence` | green, `grep -c log_entries` = 25 |
+| `pascal_custom_tool_definition_equivalence` | green on the 12 log rows; 39 sibling rows carved by id |
+| `pascal_custom_tools_execution_equivalence` | green (+8 rows) |
+| `pascal_side_effects_equivalence` | green (+10 corpus rows, 65) |
+| `pascal_tool_vocabulary_equivalence` | green (+2 rows; 5 sibling keys carved) |
+| `pascal_run_custom_equivalence` | green (+3 rows; the preamble sentence carved) |
+| `provisioning_equivalence`, `zero_migrations_rerun_equivalence`, `restore_vintage_state` (10), `host_boot_fresh_indexes` (9), `host_boot_hardness` (35), `degraded_sibling_open_equivalence`, `regexp_registration_sites`, web `health_structure` | green |
+
+### Measurements the order asked for
+
+- **R-6 / `LONE_SURROGATE_CLIP`:** a clip splitting a surrogate pair STORES `EF BF BD` on v4's side (better-sqlite3's UTF-8 conversion) — the bytes v5's lossy UTF-16 truncate writes; the dump rows agree. The entry v4 RETURNS keeps the lone surrogate (a JS string can), v5's is well-formed: ONE row, `write-clip-astral-split` (`outWellFormed` false / true), observable only in `log_create_entry`'s echo. Zod 4.6.7's `.max(4000)` counts CODE POINTS (`create-4000-astral` accepted at 8,000 units, clipped by the door to 2,000 emoji; `create-4001` refused) — the two bounds disagree on astral text as the order predicted (Tier 3 item 34: a v4 filing candidate).
+- **R-8:** `_create`'s failure line is `Error creating entity` with `{collection: 'log_entries', error}` (`base.repository.ts:320`); the guard sentence reaches the tool bare.
+- **R-10 — CORRECTED by measurement:** v4 renders the prune cutoff BEFORE `withRawDb`, so a `NaN` window THROWS `Invalid time value` out of `cleanupOldEntries` — no `Error cleaning up old log entries` line, no fallback `0` — and the job fails there (`[LLMLogCleanup] Cleanup failed` + rethrow), before the second settings read. Ported as measured (`cleanup_old_entries_on`: cutoff, then guard, then the DELETE); v5's payload decode admits `NaN` (`to_number`).
+- **Zod 4's refine semantics (found by the tools oracle):** `log_read`'s span refine runs even after a bound failed its own `instant` refine, so `{from: "garbage", to: "2026-01-01"}` throws `RangeError: Invalid time value` out of `safeParse` and the executor answers `Invalid time value` with no handler line. Ported (`validate_log_read_input` → `Err`); a type mismatch (an aborting issue) skips the refine.
+- **R-12 / the engine:** `regress` 0.12.0 matches the subject as UCS-2 without `u` and UTF-16 with it, and compiles a non-`u` pattern from its UTF-16 units — so astral text behaves as in V8 (`dot-astral`, `two-dots-astral`, `negated-class-astral`, `astral-literal-no-u` agree). V8's error catalogue is reached through a mapping table keyed by the engine's message and disambiguated by the pattern, plus two V8-only refusals checked first (a quantified lookbehind; an undefined named reference under `u` or with named groups) and V8's repeated-flag constructor message. **`REGEXP_ENGINE_GAP` (2 rows, measured):** `icase-long-s` (V8's non-`u` `i` keeps `ſ` ≠ `s`; regress folds it) and `unicode-escape-no-u` (Annex B reads `\u{2}` as `uu`). Neither is lookbehind or backreferences, which agree — nothing to flag for the help page.
+- **Item 8:** `write_partition.rs` carries no census against the repositories' partitions — no v5 twin of v4's `write-partition-repo-keys.test.ts` (recorded).
+- **R-2:** `crates/quilltap-cli/src/dbopen.rs` opens its own connection and never calls the core openers, so it already registers no `regexp` — v4's CLI's shape. No CLI source change, no CLI bump.
+- **Item 12:** a from-scratch rebuild at the pin also reshaped `llm_logs` (4.9's two profile columns in schema position — the committed file is a pre-4.9 vintage). Closed in the builder: `QT_FIXTURE_LLC_LOGS_BASE` WIDENS the committed file through v4's real `logEntries.create`; `sqlite_master` diff = `log_entries` + its three indexes (+ the PK autoindex), `llm_logs` byte-equal, the main file untouched. Only consumer: `llm_log_cleanup_equivalence` (+ its two jest cases and the builder).
+- **Tier 3 item 32:** v4's `Entity created` INFO carries `{collection, id}` only (pinned in the tier-2 lines).
+
+### Departures from the order (each deliberate, recorded)
+
+- **R-1 / R-4 shapes as landed:** `Writer::open_writable_in(partition, path, pepper)`; `runtime::open_readonly(path, key_hex, partition)`; `test_support::open_readonly_in(partition, path, pepper)`; `write_log_entry(conn, params)` plus `write_log_entry_via(params, create)` (the seam the applier's differential mocks, as v4's suite mocks `getRepositories().logEntries.create`); `cleanup_old_entries_on(Result<&Connection, &str>, …)` for the job's degraded arm. `find_entries` returns `Vec` (the fallback is internal), `cleanup_old_entries` returns `Result<usize, DbError>` (R-10's correction).
+- **The tools' degraded-partition sentence** is chosen by `PartitionState`; `WriterSet` now carries `llm_logs_state()` so a write closure (the applier, the prune) can tell degraded from absent. `llm_logs_guard_sentence` lives in `db::log_entries`.
+- **The handler lines** carry v4's child-logger bindings `service=LogToolHandler module=service` (§R.5); target `quilltap::tools`.
+- **Tier 2 item 24** is a case in `host_boot_hardness.rs` (its boot-plant helpers), not a new `host_boot_p4d331_log_entries.rs`.
+- **The applier's WARN** uses this module's snake_case field convention (`chat_id`, `effect_index`), and `pascal_side_effects_equivalence` maps v4's `effectIndex`; it is pinned through the differential's `plan_run_logged` on the test thread (the same `apply_log_effects` production calls inside the write).
+- **The cleanup DEBUG** omits `jobId` (v5's handler has none — Tier 3 item 33) and uses the module's snake_case fields; pinned by a core unit test (caller thread).
+- **The log_tools family** reads `QT_FIXTURE_LOG_TOOLS_LLMLOGS` (the order's `QT_FIXTURE_LOG_ENTRIES` collides with the tier-2 family's file). The archived-namesake resolver row was NOT planted (the resolver is `character_resolver`'s existing differential; recorded).
+
+### Sibling residue, by name (lifted on the union)
+
+- `tool_definitions_equivalence`: `runCustom` (P4.D328 / P4.D329's preamble), `terminalRead` (P4.D337, bug 255) — kept at pre-round bytes in `data.rs`. The unifier's ONE regen sets 76.
+- `tools_inventory_equivalence`: `run_custom` (P4.D332's `pascal` category), `edit_custom_tool`, the nine `inventory_*`.
+- `pascal_custom_tool_definition_equivalence`: 39 rows — P4.D329's inventory `must test …` sentences, P4.D333's any-of arms, key-refinement sentence and list rule (`withheld-key-holds-array-offers`, a gate row); the full id list is `SIBLING_RESIDUE_UNTIL_UNION` in the test.
+- `pascal_tool_vocabulary_equivalence`: `inventoryReads`, `inventoryAggregates`, `equips`, `unequips`, `picksUp`.
+- `pascal_run_custom_equivalence`: the preamble's "or what they carry" (P4.D329).
+- The fenced `validate_template_placeholders` stand-in in `custom_tool_types.rs` (`// === P4.D331 stand-in for C3 (LANE-REMOVE at union …) ===`) — P4.D329's landed signature `(declared: &QtapCustomTool, has_llm_block, key, issues, path)`; delete it at the union. `is_inventory` is `false` in the effect refine on this branch.
+
+### HANDOFFs
+
+- **Tier 3 item 36 — the SPA `BUILT_IN_CATEGORY_GROUPS` row `log: 'The Log'`** (v4 `components/tools/tool-settings/utils.ts:47`): no lane owns it; recommended to P4.D332 beside its `pascal` rows (the orchestrator's question).
+- **Tier 3 item 37 — P4.D339:** `help/the-log.md`'s five sections and `docs/v4/developer/DDL.md`'s `### log_entries` (vendored as v4 wrote it — its `"id" TEXT PRIMARY KEY,` is inaccurate; generateDDL writes `PRIMARY KEY NOT NULL`).
+- **Tier 3 item 38 — the unifier:** the three-way unions in `custom_tool_types.rs` / `custom_tools.rs` / `side_effects.rs` (`merge_applied(writes, changes, carried, logged)`; `plan_run_logged`) / `tool_vocabulary.rs` / `run_custom.rs`; delete the C3 stand-in; lift every carve above; `definitions/mod.rs` 76.
+- **P4.D334 (R-V):** the wire is `ResolvedEffect::Log` → `{"index","log"}` on the bench, `{"target":"log","next":{"id","message"}}` in `pascalMeta.effects`.
+
+### Tier 3 (recorded)
+
+26 (moot — R-I approved), 27 (moot), 28 `CHILD_BUFFER_VISIBILITY` NO-PORT (pinned), 29 no lazy ensure (`ensure_table_or_log` is the home), 30 the compile cache ported as a shape, 31 BLOB `value` unreachable (a NUMBER row is in the corpus), 32 measured, 33 recorded, 34 measured (a v4 filing candidate for the findings file), 35 the CLI `db schema` domain row `'Log entries': ['log_entries']` (the verb stays refused; not edited — `cli_differential` untouched).
+
+### 💸 for the dogfood pass
+
+The order's list stands (the three tools on a real Salon turn; a Pascal `log` effect visible to a same-turn `log_read` — `CHILD_BUFFER_VISIBILITY` live; the nightly prune with logging OFF; Brahma `run_sql` `REGEXP` on llm-logs vs main; the first boot creating `log_entries` on a pre-round copy, a NO-OP on a v4-booted one). The "The Log" settings group only if Tier 3 item 36 lands.
+
+### Versions at close
+
+core 0.0.1332 (from 0.0.1324 at `INVENTORY`); host 0.0.212, web 0.0.243, cli 0.0.34, tauri 0.0.9, SPA 0.5.881 UNCHANGED (host / web test files only); harness frozen 0.0.1110.
+
+### Gate
+
+The lane's own workspace gate ran at `3be7bd1a9` (2026-10-26 19:50 → 21:50, queued behind two sibling gates, `CARGO_INCREMENTAL=0`, the full env block): `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean, and also clean with `--features quilltap-core/native-transport`; `cargo test --workspace --no-fail-fast` **841 binaries / 5,514 passed / 3 failed / 3 ignored**. Every family of this lane ran by name with no SKIP (`regexp_function_equivalence`, `log_entries_tier2_equivalence`, `log_tools_equivalence`, `regexp_registration_sites`, `table_shape_equivalence` 7/7, `provisioning_equivalence` 3/3, `llm_log_cleanup_equivalence`, `pascal_side_effects`, `tool_definitions_equivalence`, `tools_inventory_equivalence`, `pascal_custom_tool_definition_equivalence`, `pascal_run_custom`, `pascal_tool_vocabulary`); `cli_differential` ok (no CLI change, R-2). The three reds:
+
+- `services::tools_inventory::tests::every_schema_key_resolves` (core lib), **caused by this lane**: the count pins were still 41 / 45 after the three Log rows. Fixed in `e1017e5aa` (44 / 48, core 0.0.1332) and green by name.
+- `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` (`qtap-custom-tool.schema.json`, v4 63,595 bytes vs vendored 44,021) and `qtap_schema_embed_guard::the_embedded_schema_equals_the_v4_checkouts` (`qtap-export.schema.json`, v4 109,559 vs 108,678): expected by design. Both are re-vendors owned by P4.D333 / P4.D339, not this lane (the order's NOT list), and they turn green at the union.
+
+`characters_arrays_tier2` was ok in this gate. The SPA gate and Playwright did not run, because the lane touches no `apps/web` file.
