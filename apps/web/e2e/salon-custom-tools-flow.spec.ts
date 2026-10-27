@@ -174,9 +174,15 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
       data: { type: 'chatCustomToolsList', chatId },
     });
     const roster = (await rosterRes.json()) as {
-      data?: { tools?: Array<{ mountPointId: string }> };
+      data?: { tools?: Array<{ mountPointId: string; asCharacterId: string }> };
     };
     const mountPointId = roster.data?.tools?.[0]?.mountPointId;
+    // Whose roster that store is on. Since v4 `cfa0cba29` a tool in a
+    // character's vault is that character's only, so a run that names nobody
+    // (the operator's own perspective) cannot reach it; the listing says whose
+    // perspective produced the row, and v4's POST replays it
+    // (`chats/[id]/custom-tools/route.ts` `asCharacterId`).
+    const asCharacterId = roster.data?.tools?.[0]?.asCharacterId;
     expect(mountPointId, 'the seeded Tools roster should resolve').toBeTruthy();
 
     // A fixed roll (min === max), so the rendered label is deterministic.
@@ -200,7 +206,7 @@ test.describe('Salon custom tools + whispers (P4.6ba)', () => {
     expect(write.ok()).toBe(true);
 
     const run = await ctx.post(`${BASE_URL}/api/dispatch`, {
-      data: { type: 'chatCustomToolRun', chatId, tool: 'e2e_labelled' },
+      data: { type: 'chatCustomToolRun', chatId, tool: 'e2e_labelled', asCharacterId },
     });
     expect(run.ok()).toBe(true);
     await ctx.dispose();
