@@ -258,6 +258,22 @@ pub enum DbError {
         /// The holder's STORED casing — v4's message quotes it.
         holder_name: String,
     },
+    /// A repository `create` refused its row against the collection's Zod
+    /// schema — v4 `_create`'s `this.validate(...)` throwing a `ZodError`
+    /// (`base.repository.ts:130-141, 350-379`), which reaches the route
+    /// middleware as v4's 400 `{"error": "Validation error", "details":
+    /// <issues>}` (`lib/api/responses.ts:108-118`). Contract C1 of the
+    /// `322a5488e` follow-ups round (P4.168, the human's ruling H-2): the
+    /// memories repository raises it today. `issues` is the `ZodError.issues`
+    /// array, byte-shaped as v4 emits it (the `details`); the `ZodError.message`
+    /// v4 logs is its two-space pretty-print
+    /// ([`DbError::row_schema_refusal_message`]).
+    RowSchemaRefusal {
+        /// The collection whose schema refused the row (`"memories"`).
+        collection: &'static str,
+        /// The `ZodError.issues` array.
+        issues: serde_json::Value,
+    },
 }
 
 /// v4 `MountPointNameTakenError.code` — record only (see
@@ -265,6 +281,20 @@ pub enum DbError {
 pub const MOUNT_POINT_NAME_TAKEN_CODE: &str = "MOUNT_POINT_NAME_TAKEN";
 
 impl DbError {
+    /// The `ZodError.message` of a [`DbError::RowSchemaRefusal`] — v4's
+    /// `JSON.stringify(issues, null, 2)` (the `error` of its `Data validation
+    /// failed` / `Error creating entity` / `Error creating memory` lines).
+    /// `None` for every other variant.
+    pub fn row_schema_refusal_message(&self) -> Option<String> {
+        match self {
+            DbError::RowSchemaRefusal { issues, .. } => Some(
+                serde_json::to_string_pretty(issues)
+                    .unwrap_or_else(|_| "Invalid input".to_string()),
+            ),
+            _ => None,
+        }
+    }
+
     /// v4 `CharacterArchivedError`'s constructed `.message` — the byte-exact
     /// sentence every surface that reports this error carries.
     pub fn character_archived_message(character_id: &str) -> String {
@@ -289,6 +319,8 @@ impl std::fmt::Display for DbError {
             DbError::CharacterArchived { character_id } => {
                 write!(f, "{}", DbError::character_archived_message(character_id))
             }
+            // v4's `validationError()` body `error` (C1).
+            DbError::RowSchemaRefusal { .. } => write!(f, "Validation error"),
             // v4's constructed message, byte for byte (the HOLDER's casing,
             // U+2014).
             DbError::MountPointNameTaken { holder_name, .. } => write!(

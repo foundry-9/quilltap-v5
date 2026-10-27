@@ -531,8 +531,11 @@ const RETIRED_MEMORY_VERB_UNKNOWN_VARIANT: &[(&str, &str, &str)] = &[
 /// {"status": 502}` (no new `ErrorKind`; a dispatch / Tauri caller sees 500).
 /// Pinned both ways: v4 must answer 502 with the message, v5 `Internal` + the
 /// carrier with the same message.
-const MEMORY_BAD_GATEWAY_AS_INTERNAL: &[&str] =
-    &["create_embedding_failed_502", "update_text_no_profile_502"];
+const MEMORY_BAD_GATEWAY_AS_INTERNAL: &[&str] = &[
+    "create_embedding_failed_502",
+    "create_offset_occurred_at_embedding_failed_502",
+    "update_text_no_profile_502",
+];
 
 // The create rows' key ORDER was a §S.5 residue at the lane (P4.D290's
 // `without_embedding` dropped the vector with serde_json's `Map::remove` — a
@@ -541,19 +544,12 @@ const MEMORY_BAD_GATEWAY_AS_INTERNAL: &[&str] =
 // `shift_remove` landed at the `83334b9a5` unification; every 200 create row
 // now compares by BYTES (values AND order) below.
 
-/// §R.7-style named table `OFFSET_OCCURRED_AT_ROW_SCHEMA` (MEASURED; a
-/// finding, not this lane's code): v4's route schema admits an offset
-/// `occurredAt` (`z.iso.datetime({ offset: true })`), but its memories
-/// repository `create` validates `MemorySchema`, whose `TimestampSchema` is
-/// `Z`-only — the ZodError surfaces as the middleware's 400 `Validation
-/// error` and no row is written. v5's insert path (P4.D290's `insert_row` over
-/// P4.D288's `MemCreate`) validates no row schema and inserts it (201). Pinned
-/// both ways: `(row, v4 status, v5 action)`.
-const OFFSET_OCCURRED_AT_ROW_SCHEMA: &[(&str, u64, &str)] = &[(
-    "create_offset_occurred_at_row_refusal",
-    400,
-    "insert-linked",
-)];
+// `OFFSET_OCCURRED_AT_ROW_SCHEMA` RETIRED (P4.168, the human's ruling H-2 of
+// 2026-10-27 — "refuse as v4 does"): v5's memories repository `create` now
+// validates the row against `MemorySchema` as v4's `_create` does, so
+// `create_offset_occurred_at_row_refusal` compares like every 400 row (status,
+// `error`, the row delta); v4's three repository ERROR lines are pinned by the
+// dedicated `memory_row_schema_refusal_lines` binary (writer-thread lines).
 
 /// The keys a create / edit mints (masked to `<minted>` on both sides).
 const MINTED_MEMORY_KEYS: &[&str] = &["id", "createdAt", "updatedAt", "lastReinforcedAt"];
@@ -815,6 +811,26 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 Some(50),
+                None,
+            ),
+            &mut failed,
+        );
+    }
+    // P4.168 (B1-3): `parseInt('0', 10) || 50` — a zero limit pages 50.
+    {
+        let db = fresh_db(&spec, "lz");
+        check_body(
+            "list_limit_zero",
+            &memories::memory_list(
+                &db,
+                MNEMO,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(0),
                 None,
             ),
             &mut failed,
@@ -2002,6 +2018,29 @@ fn memories_routes_match_oracle() {
                 true,
             ),
             ("create_embedding_failed_502", base.clone(), None, false),
+            // P4.168 (H-2): the refusal sits AFTER the embedding call — an
+            // offset with a failing embedding answers the 502 on both sides.
+            (
+                "create_offset_occurred_at_embedding_failed_502",
+                with(json!({ "occurredAt": "2026-03-01T10:00:00+05:30" })),
+                None,
+                false,
+            ),
+            // P4.168 (H-2, the fold arm — MEASURED): an offset twin of `a1`
+            // absorbs into it and v4 leaves the survivor's `occurredAt` as it
+            // was (200 `absorb`, no `_update` refusal), so the fold arm needs
+            // no row validation.
+            (
+                "create_offset_occurred_at_fold",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "Alden the lighthouse keeper trusts only the harbor master.",
+                    "summary": "Alden trusts the harbor master.",
+                    "occurredAt": "2026-03-01T10:00:00+05:30",
+                }),
+                None,
+                true,
+            ),
             (
                 "create_entities_over_cap_400",
                 with(json!({
@@ -2066,23 +2105,6 @@ fn memories_routes_match_oracle() {
             // `insert-linked`) measured v4's neighbour search over the PROCESS-
             // singleton index cache another case's copy had loaded; reloaded per
             // case, v4 links `f1` too (the `83334b9a5` unification).
-            if let Some((_, v4_status, v5_action)) = OFFSET_OCCURRED_AT_ROW_SCHEMA
-                .iter()
-                .find(|(n, _, _)| *n == name)
-            {
-                let got_action = response_data(&resp)["action"].clone();
-                if want_status == *v4_status && got_action == json!(v5_action) {
-                    eprintln!(
-                        "[{name}] OFFSET_OCCURRED_AT_ROW_SCHEMA holds (v4 {v4_status}, v5 {v5_action})."
-                    );
-                } else {
-                    eprintln!(
-                        "[{name}] OFFSET_OCCURRED_AT_ROW_SCHEMA moved: v4 {want_status}, v5 {got_action}"
-                    );
-                    failed.push(format!("{name}:offset-row-schema"));
-                }
-                continue;
-            }
             // Status + body (the L-5 carrier for the 502; L-1 for the 400s).
             match &resp {
                 Response::Error(e) => {
@@ -2165,6 +2187,10 @@ fn memories_routes_match_oracle() {
                     got_lines.join("\n")
                 ));
             }
+            // P4.168 (H-2, §R.5): the memories REPOSITORY's ERROR lines (the
+            // oracle's `repoLogs`) are emitted on the WRITER thread, which this
+            // binary's thread-local capture cannot see — they are pinned IN
+            // ORDER by the dedicated `memory_row_schema_refusal_lines` binary.
             let want_rows = (
                 rec["tables"]["rowsBefore"].as_i64(),
                 rec["tables"]["rowsAfter"].as_i64(),

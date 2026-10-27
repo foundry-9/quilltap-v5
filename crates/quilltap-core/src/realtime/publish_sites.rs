@@ -833,7 +833,7 @@ mod memory_gate_tests {
     fn seed_memories(w: &Writer, rows: &[(&str, &str, &str)]) {
         for (id, character_id, chat_id) in rows {
             w.memories()
-                .create(
+                .plant_unvalidated(
                     &MemCreate {
                         character_id: (*character_id).to_string(),
                         about_character_id: None,

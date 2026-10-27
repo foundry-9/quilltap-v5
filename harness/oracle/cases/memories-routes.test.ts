@@ -266,6 +266,10 @@ async function runCase(
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
       logs: logs.own,
       siblingMessages: [...new Set(logs.sibling)],
+      // P4.168 (H-2): the memories REPOSITORY's ERROR lines (`Data validation
+      // failed` / `Error creating entity` / `Error creating memory` / the
+      // fallback reads' lines), compared IN ORDER on the rows that name them.
+      repoLogs: logs.repo,
     };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
@@ -293,11 +297,16 @@ interface LogLine {
  *  OMITTED by the JSON round-trip — §R.5); `sibling` = the bare messages of
  *  the chokepoints' lines (`memory:retire` / `memory:admission` /
  *  `memory:update-memory`), compared by PRESENCE only. */
-async function installLogCapture(): Promise<{ own: LogLine[]; sibling: string[] }> {
+async function installLogCapture(): Promise<{
+  own: LogLine[];
+  sibling: string[];
+  repo: LogLine[];
+}> {
   process.env.LOG_LEVEL = 'debug';
   const { logger } = await import('@/lib/logger');
   const own: LogLine[] = [];
   const sibling: string[] = [];
+  const repo: LogLine[] = [];
   const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
   internal.transports.splice(0, internal.transports.length, {
     write: (d: unknown) => {
@@ -312,6 +321,9 @@ async function installLogCapture(): Promise<{ own: LogLine[]; sibling: string[] 
         unknown
       >;
       if (data.error) fields.error = data.error.message;
+      if (data.level === 'error' && fields.collection === 'memories') {
+        repo.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      }
       if (/^\[(Memories API|Messages API v1|Chats v1)/.test(data.message)) {
         own.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
       } else if (
@@ -322,7 +334,7 @@ async function installLogCapture(): Promise<{ own: LogLine[]; sibling: string[] 
       }
     },
   });
-  return { own, sibling };
+  return { own, sibling, repo };
 }
 
 /** Plant SQL on the case's own copy through a DEDICATED keyed connection, then
@@ -574,6 +586,8 @@ async function main(): Promise<void> {
       run: () => listGet(`characterId=${MNEMO}&limit=50&source=MANUAL`),
     },
     // --- List (legacy, no limit) ---
+    // P4.168 (B1-3): `parseInt('0') || 50` — a zero limit is 50, not 1.
+    { name: 'list_limit_zero', run: () => listGet(`characterId=${MNEMO}&limit=0`) },
     { name: 'list_legacy', run: () => listGet(`characterId=${ORLA}`) },
     { name: 'list_legacy_search', run: () => listGet(`characterId=${MNEMO}&search=barometer`) },
     // --- List errors ---
@@ -848,6 +862,22 @@ async function main(): Promise<void> {
           summary: 'Alden trusts the harbor master.',
         }),
         create('create_embedding_failed_502', base, { embeddingFails: true }),
+        // P4.168 (H-2): the offset refusal sits AFTER the embedding call — an
+        // offset with a failing embedding answers the 502, not the 400.
+        create(
+          'create_offset_occurred_at_embedding_failed_502',
+          { ...base, occurredAt: '2026-03-01T10:00:00+05:30' },
+          { embeddingFails: true },
+        ),
+        // P4.168 (H-2, the fold arm): an offset twin of `a1` FOLDS into it;
+        // `foldInto` patches the survivor's `occurredAt` with the earliest one,
+        // and `_update` validates the merged row against `MemorySchema`.
+        create('create_offset_occurred_at_fold', {
+          characterId: MNEMO,
+          content: 'Alden the lighthouse keeper trusts only the harbor master.',
+          summary: 'Alden trusts the harbor master.',
+          occurredAt: '2026-03-01T10:00:00+05:30',
+        }),
         create('create_entities_over_cap_400', {
           ...base,
           entities: Array.from({ length: 13 }, (_, i) => `entity-${i}`),

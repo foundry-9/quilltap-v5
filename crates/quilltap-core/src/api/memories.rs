@@ -162,8 +162,16 @@ pub fn memory_list(
     let result: Result<Value, DbError> = db.read_main(move |main| {
         let tm = tag_map(main)?;
         if let Some(limit_raw) = limit {
-            // Paginated path — clamp exactly as v4 (`Math.max(1, Math.min(200, limit||50))`).
-            let limit = limit_raw.clamp(1, 200);
+            // Paginated path — v4 `Math.max(1, Math.min(200, parseInt(limitParam,
+            // 10) || 50))` (`route.ts:323-331`): a ZERO limit is falsy and pages
+            // 50 (P4.168, B1-3 — it used to clamp to 1); a negative one clamps
+            // to 1. (A non-numeric `limit` never reaches the dispatch edge —
+            // the wire type is an integer.)
+            let limit = if limit_raw == 0 {
+                50
+            } else {
+                limit_raw.clamp(1, 200)
+            };
             let offset = offset.unwrap_or(0).max(0);
             let opts = memories_read::PaginateOptions {
                 limit,
@@ -909,6 +917,18 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
     };
     let outcome = match outcome {
         Ok(o) => o,
+        // P4.168 (H-2): the repository's `MemorySchema` refusal (an offset
+        // `occurredAt`) — v4's ZodError reaches `handleRouteError`, which
+        // answers 400 `{"error": "Validation error", "details": issues}`
+        // (`context.ts:166-167`, `responses.ts:108-118`). AFTER the embedding
+        // call: an offset with a failing embedding answers the 502 above.
+        Err(DbError::RowSchemaRefusal { issues, .. }) => {
+            let mut resp = bad_request("Validation error");
+            if let Response::Error(e) = &mut resp {
+                e.details = Some(Box::new(issues));
+            }
+            return resp;
+        }
         Err(e) => return internal(e),
     };
 

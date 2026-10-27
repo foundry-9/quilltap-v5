@@ -964,7 +964,7 @@ mod tests {
         w.connection().execute_batch(DDL).unwrap();
         for s in seeds {
             w.memories()
-                .create(
+                .plant_unvalidated(
                     &MemCreate {
                         character_id: s.character_id.to_string(),
                         about_character_id: s.about.map(str::to_string),

@@ -159,8 +159,11 @@ pub struct TierExtra {
 /// `reinforcementCount` 1, `reinforcedImportance` 0.5, the four arrays `[]`
 /// — R-C: the restore used to fill 5.0 / `AUTO` / 0 / 0).
 ///
-/// Production `create` callers (memory extraction, the manual create) are NOT
-/// gated by this yet — P4.161 Tier 3 item 13, by name.
+/// Since P4.168 (H-2) every production `create` is gated too —
+/// [`MemoriesRepository::create`] validates the row it writes through the same
+/// `zod_memory_issues`; this pre-parse stays the importer's / restorer's own
+/// (it also fills `MemorySchema`'s DEFAULTS, which the repository check does
+/// not).
 pub fn parse_create_memory(item: &Value, claimed_id: Option<&str>) -> Result<MemCreate, String> {
     use crate::api::zod_issues::{zod_error_message, zod_memory_issues};
     let mut entity = item.as_object().cloned().unwrap_or_default();
@@ -347,6 +350,104 @@ impl MemUpdate {
 }
 // === end P4.D288 ===
 
+/// P4.168 (H-2): the entity v4's `_create` validates —
+/// `{...data, id, createdAt, updatedAt}` (`base.repository.ts:350-366`) over
+/// what the memories repository's `create` prefilled (`tier ?? 'hot'`,
+/// `consolidatedFrom ?? []`, every caller's `MemCreate` states both) — checked
+/// against `MemorySchema` through the ONE port,
+/// [`zod_memory_issues`](crate::api::zod_issues::zod_memory_issues). A `None`
+/// nullable is left ABSENT (v4's `undefined` / `null` both pass
+/// `.nullable().optional()`); the embedding is left out (every arm of v4's
+/// union accepts a vector — a `Float32Array` is always valid). `Err` is
+/// [`DbError::RowSchemaRefusal`] carrying the issues v4's 400 `details` names.
+fn validate_create_row(data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
+    use crate::api::zod_issues::{zod_issue_details, zod_memory_issues};
+    use serde_json::Map;
+    let mut row = Map::new();
+    let mut put = |k: &str, v: Value| {
+        row.insert(k.to_string(), v);
+    };
+    let opt = |v: &Option<String>| v.clone().map(Value::String);
+    put("id", Value::String(opts.id.clone()));
+    put("characterId", Value::String(data.character_id.clone()));
+    for (k, v) in [
+        ("aboutCharacterId", &data.about_character_id),
+        ("chatId", &data.chat_id),
+        ("projectId", &data.project_id),
+    ] {
+        if let Some(v) = opt(v) {
+            put(k, v);
+        }
+    }
+    put("content", Value::String(data.content.clone()));
+    put("summary", Value::String(data.summary.clone()));
+    put("keywords", serde_json::json!(data.keywords));
+    put("tags", serde_json::json!(data.tags));
+    put("importance", super::js_number_to_json(data.importance));
+    put("source", Value::String(data.source.clone()));
+    for (k, v) in [
+        ("witnessedContext", &data.witnessed_context),
+        ("occurredAt", &data.occurred_at),
+        ("narrativeTime", &data.narrative_time),
+    ] {
+        if let Some(v) = opt(v) {
+            put(k, v);
+        }
+    }
+    put("entities", serde_json::json!(data.entities));
+    put("kind", Value::String(data.kind.clone()));
+    for (k, v) in [
+        ("sourceMessageId", &data.source_message_id),
+        ("lastAccessedAt", &data.last_accessed_at),
+    ] {
+        if let Some(v) = opt(v) {
+            put(k, v);
+        }
+    }
+    put(
+        "reinforcementCount",
+        super::js_number_to_json(data.reinforcement_count),
+    );
+    if let Some(v) = opt(&data.last_reinforced_at) {
+        put("lastReinforcedAt", v);
+    }
+    put(
+        "relatedMemoryIds",
+        serde_json::json!(data.related_memory_ids),
+    );
+    put(
+        "reinforcedImportance",
+        super::js_number_to_json(data.reinforced_importance),
+    );
+    put("tier", Value::String(data.tier.clone()));
+    for (k, v) in [
+        ("supersededById", &data.superseded_by_id),
+        ("supersededAt", &data.superseded_at),
+    ] {
+        if let Some(v) = opt(v) {
+            put(k, v);
+        }
+    }
+    put(
+        "consolidatedFrom",
+        serde_json::json!(data.consolidated_from),
+    );
+    if let Some(v) = opt(&data.consolidated_at) {
+        put("consolidatedAt", v);
+    }
+    put("createdAt", Value::String(opts.created_at.clone()));
+    put("updatedAt", Value::String(opts.updated_at.clone()));
+    let issues = zod_memory_issues(&row);
+    if issues.is_empty() {
+        Ok(())
+    } else {
+        Err(DbError::RowSchemaRefusal {
+            collection: "memories",
+            issues: zod_issue_details(&issues),
+        })
+    }
+}
+
 /// Repository over a borrowed MAIN-db connection (held by the [`super::Writer`]).
 pub struct MemoriesRepository<'c> {
     conn: &'c Connection,
@@ -365,11 +466,47 @@ impl<'c> MemoriesRepository<'c> {
     /// `Error creating entity` (through `db::fallback`) then the repository's
     /// own `Error creating memory {collection, characterId}`
     /// (`memories.repository.ts:418-430`) — and propagates.
+    ///
+    /// P4.168 (the human's ruling H-2, 2026-10-27 — "refuse as v4 does"): the
+    /// row is validated against `MemorySchema` FIRST, as v4's `_create` runs
+    /// `this.validate({...data, id, createdAt, updatedAt})` before the insert
+    /// (`base.repository.ts:350-379`). A refused row (an offset `occurredAt` —
+    /// the route's `z.iso.datetime({ offset: true })` admits it, the row's
+    /// `Z`-only `TimestampSchema` does not) logs v4's THREE ERRORs in order —
+    /// `Data validation failed` / `Error creating entity` / `Error creating
+    /// memory`, each carrying the `ZodError.message` — writes nothing, and
+    /// answers [`DbError::RowSchemaRefusal`] (contract C1; the route's 400
+    /// `Validation error`). ONE check for every caller: the manual create and
+    /// every admission insert (`services/admission/apply.rs`), the
+    /// consolidation digest (`services/consolidation.rs`), and — a second,
+    /// redundant check after their own pre-validation — the `.qtap` import and
+    /// the backup restore (P4.161).
     pub fn create(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        if let Err(refusal) = validate_create_row(data, opts) {
+            let zod = refusal.row_schema_refusal_message().unwrap_or_default();
+            // `error_text` renders the variant's Display (`Validation error`);
+            // v4's three lines carry the `ZodError.message` — the P4.161
+            // `log_refused_create` pair, then the repository's own wrap over
+            // the same text.
+            super::fallback::log_refused_create("memories", &zod);
+            super::fallback::log_memory_create_failure(&data.character_id, &DbError::Internal(zod));
+            return Err(refusal);
+        }
         self.create_row(data, opts).inspect_err(|e| {
             super::fallback::log_create_failure("memories", e);
             super::fallback::log_memory_create_failure(&data.character_id, e);
         })
+    }
+
+    /// TEST PLANT ONLY (P4.168): write `data` with NO `MemorySchema` check —
+    /// the in-code twin of a raw-SQL plant, for the unit seeds whose legacy
+    /// fixture ids (`m-1`, `char-a`) the repository `create` now refuses as
+    /// v4's does. A row v4's own instance can hold (pre-validation legacy
+    /// data) is still a row the readers must handle. Never compiled into a
+    /// production build.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn plant_unvalidated(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.create_row(data, opts)
     }
 
     fn create_row(&self, data: &MemCreate, opts: &CreateOptions) -> Result<(), DbError> {
@@ -1431,7 +1568,7 @@ mod tests {
         w.connection().execute_batch(DDL).unwrap();
         let repo = w.memories();
         for (id, character_id, related) in rows {
-            repo.create(
+            repo.plant_unvalidated(
                 &MemCreate {
                     character_id: (*character_id).to_string(),
                     about_character_id: None,
@@ -1939,5 +2076,81 @@ mod tests {
                 "ERROR quilltap::db Error bulk deleting memories for character collection=memories characterId=c-1 count=1 error=planted",
             ]
         );
+    }
+    /// P4.168 (H-2): the repository `create` refuses a row `MemorySchema`
+    /// refuses — an offset `occurredAt` — with v4's three ERRORs in order
+    /// (each the `ZodError.message`), [`DbError::RowSchemaRefusal`] carrying
+    /// the issues, and NO row; the same row with a `Z` time is written.
+    #[test]
+    fn create_refuses_a_row_memory_schema_refuses_with_v4s_three_lines() {
+        let (_d, w) = seed(&[]);
+        let repo = w.memories();
+        let id = "c1680000-0000-4000-8000-000000000001";
+        let row = |occurred_at: &str| MemCreate {
+            character_id: "c1680000-0000-4000-8000-0000000000c1".to_string(),
+            about_character_id: None,
+            chat_id: None,
+            project_id: None,
+            content: "c".to_string(),
+            summary: "s".to_string(),
+            keywords: vec![],
+            tags: vec![],
+            importance: 0.5,
+            embedding: None,
+            source: "MANUAL".to_string(),
+            witnessed_context: None,
+            occurred_at: Some(occurred_at.to_string()),
+            narrative_time: None,
+            entities: Vec::new(),
+            kind: "semantic".to_string(),
+            source_message_id: None,
+            last_accessed_at: None,
+            reinforcement_count: 1.0,
+            last_reinforced_at: None,
+            related_memory_ids: vec![],
+            reinforced_importance: 0.5,
+            tier: "hot".to_string(),
+            superseded_by_id: None,
+            superseded_at: None,
+            consolidated_from: Vec::new(),
+            consolidated_at: None,
+        };
+        let opts = CreateOptions {
+            id: id.to_string(),
+            created_at: "2026-10-27T00:00:00.000Z".to_string(),
+            updated_at: "2026-10-27T00:00:00.000Z".to_string(),
+        };
+        let mut result = None;
+        let lines =
+            captured(|| result = Some(repo.create(&row("2026-03-01T10:00:00+05:30"), &opts)));
+        let err = result
+            .unwrap()
+            .expect_err("an offset occurredAt is refused");
+        let DbError::RowSchemaRefusal { collection, issues } = &err else {
+            panic!("not a row-schema refusal: {err:?}");
+        };
+        assert_eq!(*collection, "memories");
+        assert_eq!(issues[0]["path"], serde_json::json!(["occurredAt"]));
+        assert_eq!(issues[0]["code"], "invalid_format");
+        assert_eq!(err.to_string(), "Validation error");
+        let zod = err.row_schema_refusal_message().unwrap();
+        let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
+        assert_eq!(
+            errors,
+            [
+                &format!("ERROR quilltap::db Data validation failed collection=memories error={zod}"),
+                &format!("ERROR quilltap::db Error creating entity collection=memories error={zod}"),
+                &format!(
+                    "ERROR quilltap::db Error creating memory collection=memories characterId=c1680000-0000-4000-8000-0000000000c1 error={zod}"
+                ),
+            ]
+        );
+        let rows: i64 = w
+            .connection()
+            .query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 0, "a refused row is never written");
+        repo.create(&row("2026-03-01T10:00:00.000Z"), &opts)
+            .expect("a Z time passes");
     }
 }

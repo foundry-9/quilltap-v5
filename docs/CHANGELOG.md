@@ -26,6 +26,16 @@ v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that
 
 Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
 
+#### 2026-10-27 — fix(memories): validate every memory row against v4's MemorySchema at the repository create (P4.168 unit 1, H-2) + the list's `limit=0`
+
+_Versions: core 0.0.1337._
+
+`MemoriesRepository::create` now validates the row it writes through `zod_memory_issues`, as v4's `_create` does. A row v4 refuses (an offset `occurredAt` the route admits but the `Z`-only `TimestampSchema` does not) logs v4's three ERRORs in order (`Data validation failed`, `Error creating entity`, `Error creating memory`, each the `ZodError.message`), writes nothing, and fails with the new `DbError::RowSchemaRefusal { collection, issues }` (contract C1; Display `Validation error`). `memory_create` answers it as v4's 400 `Validation error` with the issues as `details`. The check sits after the embedding call, so an offset with a failing embedding still answers 502. One check covers the manual create, every admission insert, and consolidation digests. Ruled by the human (H-2, 2026-10-27): refuse as v4 does; the `OFFSET_OCCURRED_AT_ROW_SCHEMA` divergence pin is deleted. Measured: v4's fold arm does not reach a refusal (an offset twin absorbs and v4 leaves the survivor's `occurredAt` alone), so updates are not validated.
+
+The paginated memory list now treats `limit=0` as 50, as v4's `parseInt(limit) || 50` does (it clamped to 1).
+
+Tests: `memories_routes_equivalence` gains three rows (`create_offset_occurred_at_embedding_failed_502`, `create_offset_occurred_at_fold`, `list_limit_zero`); the oracle case records the repository's ERROR lines as `repoLogs`; the new `memory_row_schema_refusal_lines` binary pins the three writer-thread lines and the 400's `details` bytes against v4. Unit seeds with legacy ids (`m-1`, `char-a`) plant through a test-only `plant_unvalidated`.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._
