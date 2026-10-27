@@ -338,6 +338,9 @@ test.describe('P4.D334 — any-of lines, briefs, the Inventory and the Log in th
     await gate.getByRole('button', { name: 'Joined by AND — switch to OR' }).click();
     await page.getByLabel('Consult an LLM').check();
     await page.locator('#wb-llm-prompt').fill('Say {{outcome.brief}}.');
+    // v4 `validateDraft` (`lib/pascal/tool-draft.ts:2167`) refuses a consult with
+    // no error message — Save stays greyed until it has one.
+    await page.locator('#wb-llm-error').fill('The wire crackles.');
     await page.getByLabel('Outcome brief for the LLM consult').first().fill('It opened.');
     await page.getByLabel('Outcome brief for the LLM consult').last().fill('It stuck.');
     await page.getByRole('button', { name: /Add effect/ }).click();
@@ -353,6 +356,9 @@ test.describe('P4.D334 — any-of lines, briefs, the Inventory and the Log in th
     await expect(page.getByText('Pascal has filed the contrivance.')).toBeVisible({ timeout: 15_000 });
 
     await page.getByRole('button', { name: 'Library' }).click();
+    // The library has replaced the editor (whose heading, hint and preview also
+    // carry the title) before its row is clicked.
+    await expect(page.getByRole('button', { name: 'New contrivance', exact: true })).toBeVisible();
     await page.getByText('E2E Grammar Contrivance').click();
     await expect(page.locator('qt-gate-section qt-joiner-toggle')).toHaveCount(1);
     await expect(page.getByLabel('Outcome brief for the LLM consult').first()).toHaveValue('It opened.');
@@ -431,9 +437,23 @@ test.describe('P4.D334 — any-of lines, briefs, the Inventory and the Log in th
     await newContrivance(page);
     await page.getByRole('button', { name: /Add effect/ }).click();
     await page.getByLabel('Effect kind').selectOption('inventory');
+    // An object to name, in a store the picker can browse.
+    const planted = await fetch(`${GP_BASE_URL}/api/dispatch`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        type: 'inventoryCreate',
+        container: { scope: 'general', id: null },
+        body: { name: 'Brass Key' },
+      }),
+    });
+    expect(planted.ok).toBe(true);
     await page.getByRole('button', { name: 'Choose…' }).click();
     await expect(page.getByRole('heading', { name: 'Choose an object' })).toBeVisible();
-    await page.getByTestId('inventory-reference-picker-list').getByRole('button').first().click();
+    // v4's picker lists nothing until a vantage is chosen — "Choose whose
+    // inventory to browse above." (`inventory-reference-picker.tsx:101-102`).
+    await page.getByRole('dialog').getByLabel('Whose inventory to browse').selectOption({ label: 'Quilltap General' });
+    await page.getByTestId('inventory-reference-picker-list').getByRole('button', { name: /Brass Key/ }).click();
     await expect(page.getByTestId('inventory-reference-chip')).toBeVisible();
     await page.getByRole('button', { name: 'by name' }).click();
     await expect(page.getByRole('button', { name: 'by id' })).toBeVisible();

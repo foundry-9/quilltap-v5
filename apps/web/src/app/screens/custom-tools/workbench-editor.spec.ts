@@ -192,6 +192,41 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
     expect(fixture.componentInstance.location()).toBeNull();
   });
 
+  it('two gestures inside one render window build on each other (v4 React flushes a discrete event)', async () => {
+    // Measured LIVE (`workbench-grammar-flow` (h)/(i)): a second gesture that
+    // lands before the zoneless scheduler's pass read the section's STALE
+    // `draft` input — the second "Add effect" replaced the first, and an edit
+    // straight after a second "add condition" dropped a chip. No
+    // `detectChanges()` between the gestures here, on purpose.
+    const fixture = await renderEditor(stubClient(), { create: {} });
+    const root = fixture.nativeElement as HTMLElement;
+    const button = (label: RegExp): HTMLButtonElement => {
+      const found = [...root.querySelectorAll('button')].find((b) => label.test(b.textContent ?? ''));
+      if (!found) throw new Error(`no button ${label}`);
+      return found;
+    };
+    button(/Add effect/).click();
+    button(/Add effect/).click();
+    expect(fixture.componentInstance.draft()?.effects).toHaveLength(2);
+
+    const gate = root.querySelector('qt-gate-section') as HTMLElement;
+    const only = [...gate.querySelectorAll('[role="radio"]')].find((b) =>
+      (b.textContent ?? '').includes('Only show if'),
+    ) as HTMLElement;
+    only.click();
+    const addCondition = (): void =>
+      ([...gate.querySelectorAll('button')].find((b) => (b.textContent ?? '').includes('add condition')) as HTMLButtonElement).click();
+    addCondition();
+    addCondition();
+    // The new chip is in the DOM before the gesture returns, and an edit to it
+    // keeps its sibling.
+    const keys = gate.querySelectorAll<HTMLInputElement>('input[aria-label="Metadata key"]');
+    expect(keys).toHaveLength(2);
+    keys[1].value = 'b';
+    keys[1].dispatchEvent(new Event('input'));
+    expect(fixture.componentInstance.draft()?.gateConditions.map((c) => c.key)).toEqual(['', 'b']);
+  });
+
   it('a duplicate template pre-fills but keeps NO location — it must save-as', async () => {
     const fixture = await renderEditor(stubClient(), {
       create: { template: VALID_DEFINITION },

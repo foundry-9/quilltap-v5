@@ -1,5 +1,6 @@
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   computed,
   effect,
@@ -326,6 +327,7 @@ function extractErrorMessage(err: unknown): string {
 })
 export class WorkbenchEditor {
   private readonly core = inject(CoreClient);
+  private readonly cdr = inject(ChangeDetectorRef);
   private readonly toasts = inject(ToastService);
 
   /** Edit an existing file. */
@@ -788,6 +790,19 @@ export class WorkbenchEditor {
   onDraftChange(next: ToolDraft): void {
     this.draft.set(next);
     this.dirty.set(true);
+    // Render the new draft NOW, before the gesture that caused it returns.
+    //
+    // Every section builds its emission from its `draft` input
+    // (`{ ...this.draft(), gateConditions }`), exactly as v4's sections build
+    // from their props. React flushes a discrete event's state synchronously,
+    // so v4's props are never stale when the next event lands. Zoneless
+    // Angular defers change detection to a setTimeout / rAF race, so a second
+    // event inside that window read the PREVIOUS draft: a second "add
+    // condition" followed at once by an edit dropped a chip, a second "Add
+    // effect" replaced the first, and the DOM still lacked the row just added
+    // (measured LIVE: `workbench-grammar-flow` (b)/(h)/(i)). One synchronous
+    // pass here gives every section v4's guarantee at once.
+    this.cdr.detectChanges();
   }
 
   onMatched(outcomeId: string | null): void {
