@@ -306,6 +306,19 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — fix(web): a missing chat or item answers its 404 before a body refusal; the outfit actions log v4's malformed-body ERRORs; `unwrap_to_http` shares `inventory_routes::render` (P4.170)
+
+_Versions: web 0.0.247._
+
+P4.170, the web-edge half.
+
+- Ruling P-12 (the "body before load" class: survey I-1, C.10 and F.8). v4's `handlePost` finds the chat before ANY POST action reads its body, and the item factory's PUT runs `findItem` before its body parse. So a missing entity answers its 404 whatever the body holds. The REST edge now probes the entity on its own refusal paths, with no wire change. The members are raise-hand (a non-object body), equip, the wardrobe rollback, the three inventory gestures, regenerate-avatar, inform and cancel-inform (both refuse in core, whose Zod parse runs before its chat read, faithfully to `handleInform`), and the General item PUT. Any non-404 refusal the core answers for a chat POST action is re-checked against the chat. This mirrors the inventory item PUT's existing probe.
+- F.7: an unparsable equip or rollback body on an existing chat logs v4's `[Chats v1] Error equipping wardrobe slot` / `[Chats v1] Error rolling back wardrobe` `{chatId}`. Its `error` carries V8's SyntaxError text for the bytes, from `jsstr::v8_json_parse_message`.
+- P-10 (D325-R2c): `wardrobe_routes::unwrap_to_http` now renders errors through `inventory_routes::render`. The status comes from the error kind and `details` are merged. This was latent, since no wardrobe route emits a details-bearing non-400. The inventory test is inverted to `a_details_bearing_409_stays_409_in_both_renderers`.
+- Differentials: the salon-skip oracle gains nine REST-only rows (v4's REAL chat POST route), and its log splice also captures `[Chats v1] Error` lines. The wardrobe-routes corpus gains `update_missing_bad_body`. `chat_interrupt_rest_routes` compares the class and the item PUT over real HTTP. A `wardrobe_routes` unit test pins the two ERROR lines against v4's captured rows.
+
+Red-first on unported main: 3/3 REST tests red (9 rows, the item PUT's 500, and the missing line).
+
 #### 2026-10-27 — fix(wardrobe): the update/create tools refuse `null` inputs, `[ItemMutations]` fields follow each caller's order, a stashed stage never outlives a failed write (P4.170)
 
 _Versions: core 0.0.1337._

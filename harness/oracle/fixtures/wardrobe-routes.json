@@ -3326,6 +3326,13 @@
       }
     },
     {
+      "_doc": "P4.170 C.10 (ruling P-12): the General item PUT finds the item BEFORE it parses the body (`wardrobe-route-factory.ts:490-495`) — a missing id with an unparsable body is the item's 404, not the parse's 500. The REST edge is compared in quilltap-web's `chat_interrupt_rest_routes`.",
+      "name": "update_missing_bad_body",
+      "kind": "wardrobeUpdate",
+      "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      "rawBody": "{not json"
+    },
+    {
       "name": "rb_malformed_json",
       "kind": "wardrobeRollback",
       "chatId": "c1000000-0000-4000-8000-000000000001",

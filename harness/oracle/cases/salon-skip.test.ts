@@ -207,7 +207,13 @@ async function runCase(
     internal.transports.splice(0, internal.transports.length, {
       write: (d: unknown) => {
         const data = d as { level: string; message: string; context?: Record<string, unknown> };
-        if (!data.message.startsWith('[Interrupt]') && !data.message.startsWith('[TurnControl]')) return;
+        // [P4.170 F.7] + the actions' own catch ERRORs (the malformed-body rows).
+        if (
+          !data.message.startsWith('[Interrupt]') &&
+          !data.message.startsWith('[TurnControl]') &&
+          !data.message.startsWith('[Chats v1] Error')
+        )
+          return;
         const { service: _s, module: _m, environment: _e, ...fields } = (data.context ?? {}) as Record<
           string,
           unknown
@@ -295,6 +301,15 @@ async function main(): Promise<void> {
     action: 'stop-turn',
     plantSql,
   });
+  // [P4.170] any POST action on the GROUP chat (or `paramId`).
+  const act = (name: string, action: string, extra: Partial<CaseSpec> = {}): CaseSpec => ({
+    name,
+    paramId: GROUP,
+    body: {},
+    random01: 0.42,
+    action,
+    ...extra,
+  });
   const raise = (name: string, body: unknown, extra: Partial<CaseSpec> = {}): CaseSpec => ({
     name,
     paramId: GROUP,
@@ -349,6 +364,19 @@ async function main(): Promise<void> {
     raise('raise_array_body', []),
     raise('raise_string_body', 'yes'),
     raise('raise_unknown_chat', { raised: null }, { paramId: UNKNOWN }),
+    // [P4.170 P-12] REST-only: `handlePost` finds the chat BEFORE any action
+    // reads its body, so a missing chat is the 404 whatever the body holds —
+    // the "body before load" class (raise-hand I-1, the rollback F.8, and the
+    // other POST actions whose REST edge refuses a body itself).
+    raise('raise_array_body_unknown_chat', [], { paramId: UNKNOWN }),
+    act('equip_unparsable_body', 'equip', { jsonThrows: true }),
+    act('equip_unparsable_unknown_chat', 'equip', { jsonThrows: true, paramId: UNKNOWN }),
+    act('rollback_unparsable_body', 'wardrobe-rollback', { jsonThrows: true }),
+    act('rollback_unparsable_unknown_chat', 'wardrobe-rollback', { jsonThrows: true, paramId: UNKNOWN }),
+    act('inventory_equip_unparsable_unknown_chat', 'inventory-equip', { jsonThrows: true, paramId: UNKNOWN }),
+    act('regenerate_avatar_unparsable_unknown_chat', 'regenerate-avatar', { jsonThrows: true, paramId: UNKNOWN }),
+    act('inform_array_body_unknown_chat', 'inform', { body: [], paramId: UNKNOWN }),
+    act('cancel_inform_array_body_unknown_chat', 'cancel-inform', { body: [], paramId: UNKNOWN }),
   ];
 
   const outLines: string[] = [];

@@ -778,6 +778,14 @@ async fn wardrobe_routes_equivalence() {
                 ),
                 Some(other) => panic!("unknown action {other}"),
             },
+            // P4.170 C.10: an unparsable body never reaches the core — the web
+            // edge probes the item first (`wardrobe_routes::wardrobe_item_put`)
+            // and answers its 404; the edge itself is compared against this
+            // row in `chat_interrupt_rest_routes`. Here v4's row is held to the
+            // probe's answer for the same missing id.
+            "wardrobeUpdate" if case.raw_body.is_some() => {
+                wardrobe_item_get(&db, case.item_id.as_deref().unwrap())
+            }
             "wardrobeUpdate" => wardrobe_update(&db, case.item_id.as_deref().unwrap(), body).await,
             "wardrobeDelete" => wardrobe_delete(&db, case.item_id.as_deref().unwrap()).await,
             "transferDestinations" => wardrobe_transfer_destinations(&db, user),

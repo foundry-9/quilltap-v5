@@ -19,9 +19,9 @@
 //! ones.)
 //!
 //! Each edge dispatches one `inventory*` verb and renders the result through
-//! [`render`] — NEVER `wardrobe_routes::unwrap_to_http`, whose details arm is
-//! hard-coded to 400: a `CAP_EXCEEDED` 409 carrying `details` must stay a 409
-//! (R-2). A body v4 reads with an unguarded `await req.json()` that does not
+//! [`render`] — the ONE error renderer, which `wardrobe_routes::unwrap_to_http`
+//! now shares (P4.170, ruling P-10): a `CAP_EXCEEDED` 409 carrying `details`
+//! stays a 409 (R-2). A body v4 reads with an unguarded `await req.json()` that does not
 //! parse is v4's middleware 500 `Internal server error` (R-4) — except where
 //! v4 finds the object FIRST (the item PUT's edit and `clear-override`), where
 //! the object's own 404 wins.
@@ -574,19 +574,22 @@ mod render_tests {
         )
     }
 
-    /// The reason these edges never call `wardrobe_routes::unwrap_to_http`:
-    /// its details arm answers 400 for ANY details-bearing error, so v4's
-    /// `CAP_EXCEEDED` 409 would become a 400 there. `render` keeps the 409.
+    /// P4.170 (ruling P-10, D325-R2c): `wardrobe_routes::unwrap_to_http`
+    /// renders its errors through THIS renderer, so a details-bearing 409
+    /// (v4's `CAP_EXCEEDED`) keeps its 409 on both edges — inverted from
+    /// P4.D325 R-2's pin, where the wardrobe edge answered 400 for it.
     #[tokio::test]
-    async fn a_details_bearing_409_stays_409_here_and_not_in_unwrap_to_http() {
+    async fn a_details_bearing_409_stays_409_in_both_renderers() {
+        let want = r#"{"error":"\"Excalibur\" can be carried at most 1 at a time","details":{"code":"CAP_EXCEEDED","itemId":"x","itemName":"Excalibur","cap":1}}"#;
         let wardrobe = crate::wardrobe_routes::unwrap_to_http(cap_exceeded(), StatusCode::OK);
-        assert_eq!(wardrobe.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(wardrobe.status(), StatusCode::CONFLICT);
+        let bytes = axum::body::to_bytes(wardrobe.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        assert_eq!(std::str::from_utf8(&bytes).unwrap(), want);
         let (status, body) = render(cap_exceeded(), StatusCode::OK);
         assert_eq!(status, StatusCode::CONFLICT);
-        assert_eq!(
-            body.to_string(),
-            r#"{"error":"\"Excalibur\" can be carried at most 1 at a time","details":{"code":"CAP_EXCEEDED","itemId":"x","itemName":"Excalibur","cap":1}}"#
-        );
+        assert_eq!(body.to_string(), want);
     }
 
     /// Every `ErrorKind` × with / without `details` → the status and the body

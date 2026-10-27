@@ -313,7 +313,7 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
         PUT: (...a: unknown[]) => Promise<unknown>;
       };
       return respond(
-        await mod.PUT(mockRequest(`${B}/wardrobe/${c.itemId}`, 'PUT', c.body), {
+        await mod.PUT(mockRequest(`${B}/wardrobe/${c.itemId}`, 'PUT', c.body, c.rawBody), {
           params: Promise.resolve({ itemId: c.itemId }),
         }),
       );

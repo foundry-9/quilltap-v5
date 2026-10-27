@@ -44,13 +44,15 @@ use crate::text_replacements_routes::{chat_get_background, dispatch_core, error_
 
 /// Unwrap a wardrobe-family body to the raw route shape.
 ///
-/// **Its `details` arm answers 400 for ANY error carrying a bag** (written for
-/// the Inform verbs' Zod `Validation error`, which IS a 400). A details-bearing
-/// error at another status — the Inventory's `CAP_EXCEEDED` 409 — would answer
-/// 400 here, so the Inventory edges render through
-/// [`crate::inventory_routes::render`] instead (P4.D325 R-2; pinned by its
-/// `a_details_bearing_409_stays_409_here_and_not_in_unwrap_to_http`). Whether
-/// `render` should become the shared renderer is a follow-ups-round question.
+/// An error renders through the ONE shared renderer,
+/// [`crate::inventory_routes::render`] (P4.170, ruling P-10 — D325-R2c): the
+/// status from the error KIND, `details` merged onto `{error}` whatever the
+/// kind. The old arm answered 400 for ANY details-bearing error (written for
+/// the Inform verbs' Zod `Validation error`, which IS a 400), so a
+/// details-bearing error at another status — the Inventory's `CAP_EXCEEDED`
+/// 409 — would have answered 400 here (latent: no wardrobe route emits one
+/// today). Pinned by `inventory_routes`'s
+/// `a_details_bearing_409_stays_409_in_both_renderers`.
 pub(crate) fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
         CoreResponse::Wardrobe(v)
@@ -94,19 +96,9 @@ pub(crate) fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> 
         // v4's `validationError(zodError)` puts BOTH keys on the wire —
         // `{error: 'Validation error', details: [issues]}` at 400
         // (`lib/api/responses.ts:108-118`, reached from the route middleware's
-        // `handleRouteError`). The shared `error_to_http` renders only
-        // `{error}`, so a details-bearing refusal — the Inform verbs' Zod arm —
-        // is rendered here, the same way `images_routes`/`subprompts_routes`/
-        // `prompt_templates_routes`/`chats_routes` already render theirs.
-        CoreResponse::Error(e) => match e.validation_wire_body() {
-            Some(body) => (
-                StatusCode::BAD_REQUEST,
-                [("content-type", "application/json")],
-                body.to_string(),
-            )
-                .into_response(),
-            None => error_to_http(e),
-        },
+        // `handleRouteError`) — and `errorResponse(message, status, details)`
+        // keeps its own status. The shared renderer carries both (P-10).
+        resp @ CoreResponse::Error(_) => crate::inventory_routes::rendered(resp, success_status),
         _ => error_json(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Unexpected core response",
@@ -131,6 +123,69 @@ pub(crate) fn read_include_archived(query: &HashMap<String, String>) -> bool {
 fn parse_body(body: &str, on_bad_json: &str) -> Result<Value, Box<AxumResponse>> {
     serde_json::from_str::<Value>(body)
         .map_err(|_| Box::new(error_json(StatusCode::INTERNAL_SERVER_ERROR, on_bad_json)))
+}
+
+/// P4.170 (ruling P-12, survey I-1 / C.10 / F.8): the "body before load"
+/// class. v4 loads the entity BEFORE it reads the body — `handlePost` finds
+/// the chat ahead of every POST action (`handlers/post.ts:78-82`), the item
+/// factory's PUT runs `findItem` ahead of `updateWardrobeSchema.parse(await
+/// req.json())` (`wardrobe-route-factory.ts:490-495`) — so a missing entity
+/// answers its 404 whatever the body holds. This edge refuses an unreadable
+/// body ITSELF (core never sees it), so on THAT path only it first dispatches
+/// `probe`: any refusal the probe answers (the 404, or the owner's) wins over
+/// the body's — the inventory item PUT's shape (`inventory_routes::item_put`).
+/// `None` = the entity is there; answer the body's refusal.
+async fn probe_refusal(state: &SharedState, probe: CoreRequest) -> Option<AxumResponse> {
+    match dispatch_core(state, probe).await {
+        Ok(resp @ CoreResponse::Error(_)) => Some(unwrap_to_http(resp, StatusCode::OK)),
+        Ok(_) => None,
+        Err(r) => Some(r),
+    }
+}
+
+/// [`probe_refusal`] for a chat POST action: the chat's 404 first.
+async fn chat_first(state: &SharedState, chat_id: &str) -> Option<AxumResponse> {
+    probe_refusal(
+        state,
+        CoreRequest::ChatGet {
+            chat_id: chat_id.to_string(),
+        },
+    )
+    .await
+}
+
+/// v4's `await req.json()` SyntaxError message — V8's own text where V8
+/// refuses the bytes (`jsstr::v8_json_parse_message`), serde's where only
+/// serde does (the recorded class).
+fn json_syntax_error(body: &str, e: &serde_json::Error) -> String {
+    quilltap_core::jsstr::v8_json_parse_message(body).unwrap_or_else(|| e.to_string())
+}
+
+/// P4.170 F.7: an outfit action's unparsable body on an EXISTING chat — v4's
+/// catch logs `logger.error(message, { chatId }, error)` (the throw is the
+/// logger's error argument, the file envelope's `error`) and answers
+/// `serverError(answer)` (`outfit.ts:287-292`, `:409-414`).
+fn malformed_outfit_body(
+    chat_id: &str,
+    body: &str,
+    e: &serde_json::Error,
+    message: &'static str,
+    answer: &str,
+) -> AxumResponse {
+    let error = json_syntax_error(body, e);
+    match message {
+        "[Chats v1] Error equipping wardrobe slot" => tracing::error!(
+            chatId = %chat_id,
+            error = %error,
+            "[Chats v1] Error equipping wardrobe slot"
+        ),
+        _ => tracing::error!(
+            chatId = %chat_id,
+            error = %error,
+            "[Chats v1] Error rolling back wardrobe"
+        ),
+    }
+    error_json(StatusCode::INTERNAL_SERVER_ERROR, answer)
 }
 
 // ===========================================================================
@@ -361,7 +416,13 @@ pub async fn wardrobe_item_put(
 ) -> AxumResponse {
     let item = match parse_body(&body, "Internal server error") {
         Ok(v) => v,
-        Err(r) => return *r,
+        Err(r) => {
+            // P-12 / C.10: `findItem`'s 404 before the throw.
+            let probe = CoreRequest::WardrobeItemGet {
+                item_id: item_id.clone(),
+            };
+            return probe_refusal(&state, probe).await.unwrap_or(*r);
+        }
     };
     match dispatch_core(&state, CoreRequest::WardrobeUpdate { item_id, item }).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
@@ -770,26 +831,46 @@ pub async fn chat_action_post(
         Ok(a) => a,
         Err(r) => return *r,
     };
+    // P-12: `handlePost`'s chat 404 precedes every action-level refusal, so
+    // a refusal the CORE answers (an action's own Zod parse runs before its
+    // chat read — `handleInform`'s, faithfully) is re-checked against the chat.
+    let probe_chat = chat_id.clone();
     let req = match action {
-        "equip" => {
-            let body = match parse_body(&body, "Failed to equip wardrobe slot") {
-                Ok(v) => v,
-                Err(r) => return *r,
-            };
-            CoreRequest::ChatEquip { chat_id, body }
-        }
-        // P4.D316 (v4 `8d8618819`): the operator's Wear again. A malformed
-        // JSON body is v4's 500 (`req.json()` throws a SyntaxError, not a
-        // ZodError); v4 also logs `[Chats v1] Error rolling back wardrobe`
-        // for it, which this edge does not (the `equip` arm's shape — a
-        // recorded edge-only gap; dispatch callers send JSON).
-        "wardrobe-rollback" => {
-            let body = match parse_body(&body, "Failed to roll back the outfit") {
-                Ok(v) => v,
-                Err(r) => return *r,
-            };
-            CoreRequest::ChatWardrobeRollback { chat_id, body }
-        }
+        // A malformed JSON body is v4's 500: `req.json()` throws a
+        // SyntaxError (not a ZodError) inside the action's try, whose catch
+        // logs the ERROR with the throw as its error (`outfit.ts:287-292`,
+        // `:409-414`; P4.170 F.7) — after `handlePost`'s chat 404 (P-12).
+        "equip" => match serde_json::from_str::<Value>(&body) {
+            Ok(body) => CoreRequest::ChatEquip { chat_id, body },
+            Err(e) => {
+                if let Some(r) = chat_first(&state, &chat_id).await {
+                    return r;
+                }
+                return malformed_outfit_body(
+                    &chat_id,
+                    &body,
+                    &e,
+                    "[Chats v1] Error equipping wardrobe slot",
+                    "Failed to equip wardrobe slot",
+                );
+            }
+        },
+        // P4.D316 (v4 `8d8618819`): the operator's Wear again.
+        "wardrobe-rollback" => match serde_json::from_str::<Value>(&body) {
+            Ok(body) => CoreRequest::ChatWardrobeRollback { chat_id, body },
+            Err(e) => {
+                if let Some(r) = chat_first(&state, &chat_id).await {
+                    return r;
+                }
+                return malformed_outfit_body(
+                    &chat_id,
+                    &body,
+                    &e,
+                    "[Chats v1] Error rolling back wardrobe",
+                    "Failed to roll back the outfit",
+                );
+            }
+        },
         // === P4.D325: the operator's Inventory gestures (v4 `4fbdad186`) ===
         // v4 parses `await req.json()` before the chat read, OUTSIDE any try:
         // an unparseable body is the middleware's generic 500. Rendered through
@@ -797,7 +878,8 @@ pub async fn chat_action_post(
         "inventory-equip" | "inventory-unequip" | "inventory-reset-defaults" => {
             let body = match crate::inventory_routes::parse_json_or_v4_500(&body) {
                 Ok(v) => v,
-                Err(r) => return *r,
+                // P-12: `handlePost`'s chat 404 still comes first.
+                Err(r) => return chat_first(&state, &chat_id).await.unwrap_or(*r),
             };
             let req = match action {
                 "inventory-equip" => CoreRequest::ChatInventoryEquip { chat_id, body },
@@ -805,7 +887,10 @@ pub async fn chat_action_post(
                 _ => CoreRequest::ChatInventoryResetDefaults { chat_id, body },
             };
             return match dispatch_core(&state, req).await {
-                Ok(resp) => crate::inventory_routes::rendered(resp, StatusCode::OK),
+                Ok(resp) => match refused_after_chat_probe(&state, &probe_chat, &resp).await {
+                    Some(r) => r,
+                    None => crate::inventory_routes::rendered(resp, StatusCode::OK),
+                },
                 Err(r) => r,
             };
         }
@@ -813,7 +898,8 @@ pub async fn chat_action_post(
         "regenerate-avatar" => {
             let body = match parse_body(&body, "Failed to queue avatar regeneration") {
                 Ok(v) => v,
-                Err(r) => return *r,
+                // P-12: `handlePost`'s chat 404 first.
+                Err(r) => return chat_first(&state, &chat_id).await.unwrap_or(*r),
             };
             CoreRequest::ChatRegenerateAvatar { chat_id, body }
         }
@@ -832,17 +918,25 @@ pub async fn chat_action_post(
                 // P4.D249 (v4 `52d6e7ecd`): `permanent` rides the same
                 // tri-state as its siblings, so `null` is v4's Zod 400 here too.
                 &["contentMarkdown", "targetParticipantIds", "permanent"],
-                &[("chatId", serde_json::Value::String(chat_id))],
+                &[("chatId", serde_json::Value::String(chat_id.clone()))],
             ) {
                 Some(r) => {
                     // v4 answers 201 for a posted inform.
                     return match dispatch_core(&state, r).await {
-                        Ok(resp) => unwrap_to_http(resp, StatusCode::CREATED),
+                        Ok(resp) => {
+                            match refused_after_chat_probe(&state, &probe_chat, &resp).await {
+                                Some(r) => r,
+                                None => unwrap_to_http(resp, StatusCode::CREATED),
+                            }
+                        }
                         Err(r) => r,
                     };
                 }
                 None => {
-                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                    // P-12: `handlePost`'s chat 404 first.
+                    return chat_first(&state, &chat_id).await.unwrap_or_else(|| {
+                        error_json(StatusCode::BAD_REQUEST, "Validation error")
+                    });
                 }
             }
         }
@@ -853,11 +947,14 @@ pub async fn chat_action_post(
                 "chatInformCancel",
                 &parsed,
                 &["batchId"],
-                &[("chatId", serde_json::Value::String(chat_id))],
+                &[("chatId", serde_json::Value::String(chat_id.clone()))],
             ) {
                 Some(r) => r,
                 None => {
-                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                    // P-12: `handlePost`'s chat 404 first.
+                    return chat_first(&state, &chat_id).await.unwrap_or_else(|| {
+                        error_json(StatusCode::BAD_REQUEST, "Validation error")
+                    });
                 }
             }
         }
@@ -874,6 +971,10 @@ pub async fn chat_action_post(
             let parsed: serde_json::Value = serde_json::from_str(&body)
                 .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
             if !parsed.is_object() {
+                // P-12 / I-1: `handlePost`'s chat 404 before the Zod parse.
+                if let Some(r) = chat_first(&state, &chat_id).await {
+                    return r;
+                }
                 let issue = quilltap_core::api::zod_issues::ZodIssue::invalid_type(
                     "object",
                     vec![],
@@ -892,11 +993,13 @@ pub async fn chat_action_post(
                 "chatRaiseHand",
                 &parsed,
                 &["raised"],
-                &[("chatId", serde_json::Value::String(chat_id))],
+                &[("chatId", serde_json::Value::String(chat_id.clone()))],
             ) {
                 Some(r) => r,
                 None => {
-                    return error_json(StatusCode::BAD_REQUEST, "Validation error");
+                    return chat_first(&state, &chat_id).await.unwrap_or_else(|| {
+                        error_json(StatusCode::BAD_REQUEST, "Validation error")
+                    });
                 }
             }
         }
@@ -915,8 +1018,26 @@ pub async fn chat_action_post(
         }
     };
     match dispatch_core(&state, req).await {
-        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+        Ok(resp) => match refused_after_chat_probe(&state, &probe_chat, &resp).await {
+            Some(r) => r,
+            None => unwrap_to_http(resp, StatusCode::OK),
+        },
         Err(r) => r,
+    }
+}
+
+/// P-12: a core refusal that is not already the 404 → the chat probe's
+/// refusal when the chat is missing (`None` = answer the core's own).
+async fn refused_after_chat_probe(
+    state: &SharedState,
+    chat_id: &str,
+    resp: &CoreResponse,
+) -> Option<AxumResponse> {
+    match resp {
+        CoreResponse::Error(e) if e.kind != quilltap_core::api::types::ErrorKind::NotFound => {
+            chat_first(state, chat_id).await
+        }
+        _ => None,
     }
 }
 
@@ -1021,12 +1142,73 @@ mod preview_avatar_edge_tests {
 }
 
 #[cfg(test)]
+mod p4170_f7_tests {
+    /// P4.170 F.7 (§R.5): the two outfit actions' malformed-body ERRORs —
+    /// v4's line (the salon-skip oracle's `equip_unparsable_body` /
+    /// `rollback_unparsable_body` rows: v4's REAL `handlePost`, a rejecting
+    /// `req.json()`, the transports spliced) against v5's captured line:
+    /// level, message, `chatId`, then v5's `error` (the file envelope's error,
+    /// v4's logger error argument — the oracle's canned `SyntaxError` text is
+    /// not the bytes', so v5's V8 message for the bytes is pinned literally).
+    #[test]
+    fn the_malformed_outfit_bodies_log_v4s_lines() {
+        let Ok(path) = std::env::var("QT_ORACLE_SALON_SKIP") else {
+            eprintln!("SKIP: set QT_ORACLE_SALON_SKIP (chat_interrupt_rest_routes' recipe).");
+            return;
+        };
+        let rows: Vec<serde_json::Value> = std::fs::read_to_string(&path)
+            .unwrap()
+            .lines()
+            .filter_map(|l| serde_json::from_str(l).ok())
+            .collect();
+        let chat = "c1000000-0000-4000-8000-000000000002";
+        for (row, message, answer) in [
+            (
+                "equip_unparsable_body",
+                "[Chats v1] Error equipping wardrobe slot",
+                "Failed to equip wardrobe slot",
+            ),
+            (
+                "rollback_unparsable_body",
+                "[Chats v1] Error rolling back wardrobe",
+                "Failed to roll back the outfit",
+            ),
+        ] {
+            let want = rows
+                .iter()
+                .find(|r| r["name"] == row)
+                .unwrap_or_else(|| panic!("{row}: regenerate the oracle"));
+            assert_eq!(want["status"], 500);
+            assert_eq!(want["body"], serde_json::json!({ "error": answer }));
+            let logs = want["logs"].as_array().unwrap();
+            assert_eq!(logs.len(), 1, "{row}: {logs:?}");
+            assert_eq!(logs[0]["level"], "error");
+            assert_eq!(logs[0]["message"], message);
+            assert_eq!(logs[0]["fields"], serde_json::json!({ "chatId": chat }));
+            let err = serde_json::from_str::<serde_json::Value>("{not json").unwrap_err();
+            let (resp, lines) = quilltap_core::test_support::captured_with(|| {
+                super::malformed_outfit_body(chat, "{not json", &err, message, answer)
+            });
+            assert_eq!(resp.status(), axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+            assert_eq!(
+                lines,
+                vec![format!(
+                    "ERROR quilltap_web::wardrobe_routes {message} chatId={chat} error=Expected property name or '}}' in JSON at position 1 (line 1 column 2)"
+                )],
+                "{row}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod p4d316_tests {
     /// P4.D316 R-5 — the rollback POST's malformed-JSON arm: v4's `req.json()`
     /// throws a SyntaxError (not a ZodError) into the handler's catch → 500
     /// `Failed to roll back the outfit` (`wardrobe_routes_equivalence`'s
     /// `rb_malformed_json` row holds v4 to it). The edge answers it before the
-    /// core is reached, without v4's ERROR line (a recorded edge-only gap).
+    /// core is reached; v4's ERROR line for it is pinned over REST
+    /// (`chat_interrupt_rest_routes`, P4.170 F.7).
     #[tokio::test]
     async fn a_malformed_rollback_body_is_v4s_500() {
         let resp = match super::parse_body("{not json", "Failed to roll back the outfit") {
