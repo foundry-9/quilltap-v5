@@ -997,10 +997,22 @@ pub(super) fn import_chats(
 /// (`ScenarioSourceSchema.nullable().optional()`, `chat.types.ts:926` — a
 /// non-object, a JSON STRING included, a non-RFC `mountPointId`, a `path` of 0
 /// or > 500 UTF-16 units, a `bodySha256` not exactly 64 units; `null` passes)
-/// BEFORE the three Concierge enums (`:1008-1012`, P4.124). ONE ZodError
-/// message over both, or `None`.
+/// BEFORE the three Concierge enums (`:1008-1012`, P4.124), with v4's twelve
+/// `JsonSchema` columns (`z.record(z.string(), z.unknown())`,
+/// `common.types.ts:61`) in their declaration places — `sillyTavernMetadata`
+/// AHEAD of `scenarioSource` (`chat.types.ts:840` vs `:940` at `322a5488e`),
+/// the rest around the enums: see [`CHAT_RECORD_COLUMNS_BEFORE_SOURCE`],
+/// [`CHAT_RECORD_COLUMNS_BEFORE_CONCIERGE`] and
+/// [`CHAT_RECORD_COLUMNS_AFTER_CONCIERGE`]. ONE ZodError message over all of
+/// them, or `None`.
+///
+/// v4 validates at the repository's `_create`, so every create path refuses;
+/// v5 checks at the import site only (P4.167, re-ported from the `cb88a3840`
+/// rider) — the restore and the chat-create routes reach v5 through their own
+/// decoders, and the repository-level twin is NOT ported.
 fn chat_create_zod_error(chat: &Value) -> Option<String> {
     let mut issues: Vec<Value> = Vec::new();
+    chat_record_column_issues(chat, CHAT_RECORD_COLUMNS_BEFORE_SOURCE, &mut issues);
     if let Some(source) = chat.get("scenarioSource").filter(|v| !v.is_null()) {
         let prefix = [Value::String("scenarioSource".into())];
         issues.extend(
@@ -1009,6 +1021,7 @@ fn chat_create_zod_error(chat: &Value) -> Option<String> {
                 .filter_map(|issue| serde_json::to_value(issue).ok()),
         );
     }
+    chat_record_column_issues(chat, CHAT_RECORD_COLUMNS_BEFORE_CONCIERGE, &mut issues);
     if let Some(message) =
         crate::services::dangerous_content::chat_override::concierge_columns_zod_error(chat)
     {
@@ -1016,8 +1029,64 @@ fn chat_create_zod_error(chat: &Value) -> Option<String> {
         // `JSON.stringify(issues, null, 2)`), appended after the source's.
         issues.extend(serde_json::from_str::<Vec<Value>>(&message).unwrap_or_default());
     }
+    chat_record_column_issues(chat, CHAT_RECORD_COLUMNS_AFTER_CONCIERGE, &mut issues);
     (!issues.is_empty())
         .then(|| serde_json::to_string_pretty(&issues).unwrap_or_else(|_| "Invalid input".into()))
+}
+
+/// v4 `ChatMetadataSchema`'s one `JsonSchema` column declared BEFORE
+/// `scenarioSource` (`chat.types.ts:840` at `322a5488e`), with whether `null`
+/// passes (`.nullable().optional()`).
+const CHAT_RECORD_COLUMNS_BEFORE_SOURCE: &[(&str, bool)] = &[("sillyTavernMetadata", true)];
+
+/// The `JsonSchema` columns declared between `scenarioSource` and the
+/// Concierge enums (`chat.types.ts:977-983` at `322a5488e`), in declaration
+/// order: `pendingOutfitNotifications` and `compressionCache` are
+/// `.nullable().optional()`; `state` is `.default({})` — a missing key
+/// defaults, but `null` is refused.
+const CHAT_RECORD_COLUMNS_BEFORE_CONCIERGE: &[(&str, bool)] = &[
+    ("pendingOutfitNotifications", true),
+    ("state", false),
+    ("compressionCache", true),
+];
+
+/// The `JsonSchema.nullable().optional()` columns declared AFTER the
+/// Concierge enums (`chat.types.ts:1037-1122` at `322a5488e`), in declaration
+/// order.
+const CHAT_RECORD_COLUMNS_AFTER_CONCIERGE: &[(&str, bool)] = &[
+    ("sceneState", true),
+    ("equippedOutfit", true),
+    ("equippedInventory", true),
+    ("characterAvatars", true),
+    ("compiledIdentityStacks", true),
+    ("courierCheckpoints", true),
+    ("commonplaceSceneCache", true),
+    ("commonplaceRecallHistory", true),
+];
+
+/// `z.record(z.string(), z.unknown())` over each column: anything but a plain
+/// object — a string (even one HOLDING a JSON object), a number, a boolean, an
+/// array (`commonplaceRecallHistory`'s documented `string[][]` included — the
+/// schema, not the doc comment, decides), or `null` where the column is not
+/// nullable — is `invalid_type` `expected record` at `[column]`. A missing key
+/// passes (`.optional()` / `.default({})`). Measured against v4's real
+/// `executeImport` at `322a5488e` (`system_import_state`'s
+/// `execute_chat_record_columns{,_preserve}`).
+fn chat_record_column_issues(chat: &Value, columns: &[(&str, bool)], issues: &mut Vec<Value>) {
+    for &(column, nullable) in columns {
+        match chat.get(column) {
+            None | Some(Value::Object(_)) => {}
+            Some(Value::Null) if nullable => {}
+            got => {
+                let issue = crate::api::zod_issues::ZodIssue::invalid_type(
+                    "record",
+                    vec![Value::String(column.into())],
+                    got,
+                );
+                issues.push(issue.to_value());
+            }
+        }
+    }
 }
 
 /// The create half of [`import_chats`] (v4 `:403-428`): the bundle chat with
@@ -1112,6 +1181,82 @@ fn create_chat(
         super::item_error_text(&e)
     })?;
     Ok((id, cursors))
+}
+
+#[cfg(test)]
+mod chat_record_column_tests {
+    use super::*;
+
+    /// v4's `JsonSchema` columns: a missing key, a record, or `null` on a
+    /// nullable column pass; `state: null` (`.default({})`) and every other
+    /// non-record value refuse — ONE ZodError, issues in `ChatMetadataSchema`
+    /// declaration order: `sillyTavernMetadata` ahead of `scenarioSource`, the
+    /// Concierge enum between `compressionCache` and `sceneState` (the bytes
+    /// `execute_chat_record_columns` measured at `322a5488e`).
+    #[test]
+    fn non_record_columns_refuse_in_declaration_order() {
+        assert_eq!(chat_create_zod_error(&json!({"title": "t"})), None);
+        assert_eq!(
+            chat_create_zod_error(&json!({
+                "sillyTavernMetadata": null, "pendingOutfitNotifications": {},
+                "state": {"k": 1}, "compressionCache": null,
+                "equippedOutfit": {"a": {}}, "equippedInventory": {},
+                "courierCheckpoints": null, "commonplaceRecallHistory": null,
+            })),
+            None
+        );
+        let one = chat_create_zod_error(&json!({"pendingOutfitNotifications": "not json"}))
+            .expect("a string is not a record");
+        assert_eq!(
+            one,
+            "[\n  {\n    \"expected\": \"record\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"pendingOutfitNotifications\"\n    ],\n    \"message\": \"Invalid input: expected record, received string\"\n  }\n]"
+        );
+        let all: Vec<Value> = serde_json::from_str(
+            &chat_create_zod_error(&json!({
+                "commonplaceRecallHistory": [["a"]], "commonplaceSceneCache": 3,
+                "courierCheckpoints": "c", "compiledIdentityStacks": "s",
+                "characterAvatars": [1], "equippedInventory": "x",
+                "equippedOutfit": "{\"a\":\"b\"}", "sceneState": true,
+                "conciergeMode": "bogus", "compressionCache": 5, "state": null,
+                "pendingOutfitNotifications": [], "scenarioSource": "s",
+                "sillyTavernMetadata": 7,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let paths: Vec<&str> = all.iter().map(|i| i["path"][0].as_str().unwrap()).collect();
+        assert_eq!(
+            paths,
+            [
+                "sillyTavernMetadata",
+                "scenarioSource",
+                "pendingOutfitNotifications",
+                "state",
+                "compressionCache",
+                "conciergeMode",
+                "sceneState",
+                "equippedOutfit",
+                "equippedInventory",
+                "characterAvatars",
+                "compiledIdentityStacks",
+                "courierCheckpoints",
+                "commonplaceSceneCache",
+                "commonplaceRecallHistory",
+            ]
+        );
+        assert_eq!(
+            all[0]["message"],
+            "Invalid input: expected record, received number"
+        );
+        assert_eq!(
+            all[3]["message"],
+            "Invalid input: expected record, received null"
+        );
+        assert_eq!(
+            all[13]["message"],
+            "Invalid input: expected record, received array"
+        );
+    }
 }
 
 #[cfg(test)]

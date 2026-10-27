@@ -4510,6 +4510,29 @@ async function main(): Promise<void> {
       false,
       ['DROP TABLE "chat_wardrobe_history"'],
     ),
+    // [P4.167 — the chat record columns, re-ported from the `cb88a3840`
+    // rider] v4's `ChatMetadataSchema` types TWELVE chat columns as
+    // `JsonSchema` (`z.record(z.string(), z.unknown())`); a bundle chat
+    // carrying a non-record value in one is REFUSED at `repos.chats.create`.
+    // Once under the default (reminting) options, once under `preserveIds`
+    // (no remint — the courier checkpoints reach the schema as written).
+    executeCase(
+      'execute_chat_record_columns',
+      () => chatRecordColumnsPayload(chatsInformsPayload),
+      { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
+      true,
+    ),
+    executeCase(
+      'execute_chat_record_columns_preserve',
+      () => chatRecordColumnsPayload(chatsInformsPayload),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: false,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+      true,
+    ),
   ];
 
   const outLines: string[] = [
@@ -4535,3 +4558,78 @@ const scratchDirs: string[] = [];
 afterAll(() => {
   for (const d of scratchDirs) rmSync(d, { recursive: true, force: true });
 });
+
+// === P4.167 chat record columns (append-only) — v4's `JsonSchema` chat columns ===
+
+/**
+ * The twelve `JsonSchema.nullable().optional()` / `.default({})` chat columns
+ * in `ChatMetadataSchema` DECLARATION order (`lib/schemas/chat.types.ts` at
+ * `322a5488e`): `sillyTavernMetadata` (`:840`, AHEAD of `scenarioSource`
+ * `:940`), `pendingOutfitNotifications`, `state`, `compressionCache` — then
+ * the Concierge enums — `sceneState`, `equippedOutfit`, `equippedInventory`,
+ * `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`,
+ * `commonplaceSceneCache`, `commonplaceRecallHistory`.
+ * `conciergeBogusPayload`'s template, with the ids overridden. Re-ported by
+ * hand from the `cb88a3840` rider (nine columns at `25b8fab6a`).
+ */
+function chatRecordColumnsPayload(base: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const id = (n: string) => `a4d17000-0000-4000-8000-0000000000${n}`;
+  return conciergeBogusPayload(base, [
+    // The finding as filed (P4.D317's lane record): one string column.
+    [1, { id: id('c1'), title: 'Record String', pendingOutfitNotifications: 'not json' }],
+    // Every column wrong at once, a Concierge enum and a bad scenario source
+    // among them: ONE ZodError, issues in declaration order; `state: null`
+    // refused (`.default({})` is not nullable); an array is not a record —
+    // `commonplaceRecallHistory`'s documented `string[][]` included.
+    [
+      2,
+      {
+        id: id('c2'),
+        title: 'Record All',
+        sillyTavernMetadata: 'st',
+        scenarioSource: 'not a source',
+        pendingOutfitNotifications: [],
+        state: null,
+        compressionCache: 5,
+        conciergeMode: 'bogus',
+        sceneState: true,
+        equippedOutfit: 'x',
+        equippedInventory: 'x',
+        characterAvatars: [1],
+        compiledIdentityStacks: 's',
+        courierCheckpoints: 'not json',
+        commonplaceSceneCache: 3,
+        commonplaceRecallHistory: [['a', 'b']],
+      },
+    ],
+    // The courier checkpoints alone: the remint rewrites them (a non-object →
+    // null) before the schema sees them; `preserveIds` does not.
+    [3, { id: id('c3'), title: 'Record Courier', courierCheckpoints: 'not json' }],
+    // A string HOLDING a JSON object is still a string.
+    [4, { id: id('c4'), title: 'Record JSON String', equippedOutfit: '{"a":"b"}' }],
+    // The three columns the rider missed, one each.
+    [6, { id: id('c6'), title: 'Record SillyTavern', sillyTavernMetadata: 7 }],
+    [7, { id: id('c7'), title: 'Record Inventory', equippedInventory: 'x' }],
+    [8, { id: id('c8'), title: 'Record Recall History', commonplaceRecallHistory: [['a']] }],
+    // Records and nulls land.
+    [
+      5,
+      {
+        id: id('c5'),
+        title: 'Record Objects',
+        sillyTavernMetadata: { a: 1 },
+        pendingOutfitNotifications: {},
+        state: { k: 1 },
+        compressionCache: null,
+        sceneState: null,
+        equippedOutfit: { someone: { top: null } },
+        equippedInventory: null,
+        characterAvatars: null,
+        compiledIdentityStacks: {},
+        courierCheckpoints: {},
+        commonplaceSceneCache: null,
+        commonplaceRecallHistory: {},
+      },
+    ],
+  ]);
+}

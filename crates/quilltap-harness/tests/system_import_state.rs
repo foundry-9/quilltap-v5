@@ -1842,7 +1842,58 @@ fn system_import_execute_state_equivalence() {
     // 83).
     // …+ P4.D317's four outfit-history arms (83 + 4 = 87).
     // …+ P4.D327's `execute_inventory_carriers{,_duplicate}` (87 + 2 = 89).
-    assert_eq!(ran, 89, "expected 89 cases, ran {ran}");
+    // …+ P4.167's chat record columns' two arms (`execute_chat_record_columns`,
+    // `…_preserve` — the `cb88a3840` rider re-ported at the pin) (89 + 2 = 91).
+    assert_eq!(ran, 91, "expected 91 cases, ran {ran}");
+    // [P4.167 chat record columns] Non-vacuity: v4 REFUSED the planted chats
+    // with its `expected record` ZodError (the whole-state diff above compares
+    // v5's warnings and rows with these), and the remint's null-out of a
+    // string `courierCheckpoints` is what lets `Record Courier` land only
+    // without `preserveIds`.
+    for (name, refused) in [
+        (
+            "execute_chat_record_columns",
+            &[
+                "Record String",
+                "Record All",
+                "Record JSON String",
+                "Record SillyTavern",
+                "Record Inventory",
+                "Record Recall History",
+            ][..],
+        ),
+        (
+            "execute_chat_record_columns_preserve",
+            &[
+                "Record String",
+                "Record All",
+                "Record Courier",
+                "Record JSON String",
+                "Record SillyTavern",
+                "Record Inventory",
+                "Record Recall History",
+            ][..],
+        ),
+    ] {
+        let case = cases
+            .iter()
+            .find(|c| c["name"] == name)
+            .unwrap_or_else(|| panic!("the oracle is missing `{name}` — regenerate it"));
+        let warnings: Vec<&str> = case["result"]["warnings"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        assert_eq!(warnings.len(), refused.len(), "[{name}] {warnings:?}");
+        for (w, title) in warnings.iter().zip(refused) {
+            assert!(
+                w.starts_with(&format!("Failed to import chat \"{title}\": [")),
+                "[{name}] {w}"
+            );
+            assert!(w.contains("\"expected\": \"record\""), "[{name}] {w}");
+        }
+    }
     // [P4.D294] Non-vacuity of the carrier-line compare: every execute case
     // compared it, and each message fired somewhere.
     assert!(
@@ -2577,9 +2628,10 @@ fn system_import_execute_state_equivalence() {
     // [P4.D317] + the three single-run outfit-history arms (72); the no-table
     // arm's phase-7f WARN (48).
     // [P4.D327] + the two Inventory-carrier arms (74); neither fires one (48).
+    // [P4.167] + the two chat-record-column arms (76); neither fires one (48).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        74,
+        76,
         "cases comparing the import WARNs"
     );
     assert_eq!(
@@ -2595,9 +2647,10 @@ fn system_import_execute_state_equivalence() {
     // [P4.D317] 69 → 72; 6 → 8 (7f's INFO on the cross-instance arm and the
     // never-merge hole; the no-table arm's 7f fails before it logs).
     // [P4.D327] 72 → 74 (the Inventory-carrier arms fire none — a silence leg).
+    // [P4.167] 74 → 76 (the chat-record-column arms — silence legs).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        74,
+        76,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2616,9 +2669,10 @@ fn system_import_execute_state_equivalence() {
     // `execute_chats_only_memories`, bug 240's local characters).
     // [P4.D317] 69 → 72 cases (the outfit-history arms import no memory).
     // [P4.D327] 72 → 74 cases (the Inventory-carrier arms import no memory).
+    // [P4.167] 74 → 76 cases (the chat-record-column arms import no memory).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        74,
+        76,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
@@ -2633,9 +2687,11 @@ fn system_import_execute_state_equivalence() {
     // [P4.D294] …+ `execute_chats_only_memories` (silent) and
     // `execute_scenario_source_invalid` (five refused chats × v4's three
     // repository ERRORs + the WARN — L-B) (15).
+    // [P4.167] …+ the two chat-record-column arms (six / seven refused chats ×
+    // the same three ERRORs + the WARN) (17).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        15,
+        17,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(

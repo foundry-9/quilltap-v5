@@ -192975,3 +192975,48 @@ dialog opening empty (not erroring), the transfer dialog listing General only.
   never moved.
 - Versions: core 0.0.1337 (harness frozen 0.0.1110).
 
+
+## P4.167 — the carriers smalls (lane record, `322a5488e` follow-ups smalls round)
+
+Lane branch `claude/p4.167-carriers-6c7ea4`, worktree
+`~/source/quilltap-v5/.claude/worktrees/p4.167`, cut from `main` at
+`6c7ea4410` (the session started in the main checkout on `main` at
+`6c7ea4410` and moved to the worktree before the first edit). Pin:
+`/tmp/qt-v4-pin-p4167-322a5488e` (`322a5488e7bd…`, `4.11.0-dev.53`; `npm ci
+--offline` → `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless` 6.0.0).
+
+**§2 probe at lane start (2026-10-27 16:03 CDT, §R.2 — an observation):**
+v4 checkout on `main`, tree CLEAN; `b892227eb..main` EMPTY; `489b228b6..bugfix`
+EMPTY. No v4 movement observed.
+
+### Unit 1 — the rider at the pin (twelve `JsonSchema` columns)
+
+`chat_create_zod_error` (`services/quilltap_import/entities.rs`) now checks
+v4's twelve `JsonSchema` chat columns in `ChatMetadataSchema` declaration
+order: `sillyTavernMetadata` (`:840`) AHEAD of the `scenarioSource` issues,
+`pendingOutfitNotifications` / `state` (`.default({})`, `null` refused) /
+`compressionCache` ahead of the Concierge enums, the other eight after.
+Re-ported BY HAND from `cb88a3840` (never cherry-picked); the rider's nine
+columns lacked `sillyTavernMetadata`, `equippedInventory` (NEW since
+`25b8fab6a`) and `commonplaceRecallHistory` (whose documented shape is
+`string[][]` but whose schema is `z.record` — an array is refused, measured).
+The repository-level twin (v4 validates in `_create`, so every create path
+refuses) is NOT ported: the restore and chat-create routes reach v5 through
+their own decoders (recorded, as the survey recommends).
+
+- Oracle: `system-import-execute.test.ts`'s two new arms
+  `execute_chat_record_columns{,_preserve}` (eight chats: one per finding
+  shape, one every-column-wrong row with a bad `scenarioSource` and a bogus
+  `conciergeMode` pinning the issue order, one per added column, one
+  all-records-and-nulls row that lands). Regenerated from the pin.
+- **Red-first on unported main: 8 import-state differences** (4 per arm:
+  repository lines, carrier lines, result body, `main.chats`). Green after:
+  91 cases ran (89 + 2), the counters 76 / 76 / 76 / 17.
+- Unit test `chat_record_column_tests::non_record_columns_refuse_in_declaration_order`.
+- The rider branch `claude/import-chat-record-columns-f49fb0` is SUPERSEDED by
+  this unit; the unifier deletes it after this lane lands.
+- Regen recipe (the committed header's, staged lane-private): `TMPO=/tmp/p4.167/sysimportexec-oracle`,
+  `QT_ORACLE_OUT=/tmp/p4.167/oracle-system-import-execute.ndjson`, run from the
+  pin; then `QT_ORACLE_SYSTEM_IMPORT_EXECUTE=… cargo test -p quilltap-harness
+  --test system_import_state -- --nocapture`.
+
