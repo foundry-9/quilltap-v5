@@ -25,7 +25,7 @@
 //! does. v4's `Promise.all` of the four tier reads is order-free; they run
 //! sequentially here in v4's listed order (own, group, project, general).
 
-use std::cell::{OnceCell, RefCell};
+use std::sync::{Mutex, OnceLock};
 use std::collections::HashSet;
 
 use rusqlite::Connection;
@@ -125,8 +125,8 @@ pub struct InventoryPool {
     pub own: Vec<InventoryRecord>,
     weakest_first: [Vec<InventoryRecord>; 4],
     external_parents: RecordMap,
-    reachable_cache: OnceCell<Vec<InventoryRecord>>,
-    warned: RefCell<HashSet<String>>,
+    reachable_cache: OnceLock<Vec<InventoryRecord>>,
+    warned: Mutex<HashSet<String>>,
 }
 
 /// Build a pool from tiers already in hand (v4 `buildInventoryPool`). Pure
@@ -155,8 +155,8 @@ pub fn build_inventory_pool(
         own: layers.own,
         weakest_first,
         external_parents,
-        reachable_cache: OnceCell::new(),
-        warned: RefCell::new(HashSet::new()),
+        reachable_cache: OnceLock::new(),
+        warned: Mutex::new(HashSet::new()),
     }
 }
 
@@ -192,7 +192,11 @@ impl InventoryPool {
             self.by_id.get(id).or_else(|| self.external_parents.get(id))
         });
         if item.parent_missing() == Some(true)
-            && self.warned.borrow_mut().insert(record.id().to_string())
+            && self
+                .warned
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(record.id().to_string())
         {
             tracing::warn!(
                 characterId = self.character_id.as_deref().unwrap_or("null"),

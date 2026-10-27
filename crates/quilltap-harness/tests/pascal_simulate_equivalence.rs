@@ -73,7 +73,7 @@ fn simulate_outcomes_matches_oracle() {
             // draw. Absent on every pre-existing row.
             progress.as_ref(),
             bag.as_ref()
-                .map(|b| b as &dyn quilltap_core::pascal::p4d329_c2_standins::InventoryContext),
+                .map(|b| b as &dyn quilltap_core::inventory::refs::InventoryContext),
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));
         assert_eq!(rng.consumed(), 0, "case '{id}' consumed bytes");

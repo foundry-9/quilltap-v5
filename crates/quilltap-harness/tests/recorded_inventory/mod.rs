@@ -21,8 +21,12 @@ use quilltap_core::inventory::types::ResolvedInventoryItem;
 use quilltap_core::pascal::bench_inventory::{
     mock_inventory_context, parse_mock_inventory, MockInventoryContext,
 };
-use quilltap_core::pascal::p4d329_c2_standins::{
-    AggregateObject, AggregateScope, InventoryContext, InventoryState,
+use std::collections::HashSet;
+use std::sync::OnceLock;
+
+use quilltap_core::inventory::refs::{
+    AggregateObject, AggregateScope, InventoryContext, InventoryState, ResolvedInventoryPool,
+    AGGREGATE_SCOPES,
 };
 use serde_json::{Map, Value};
 
@@ -31,6 +35,9 @@ pub struct RecordedInventoryContext {
     character_id: String,
     chat_id: Option<String>,
     calls: Vec<(String, String, Value)>,
+    /// Each scope's recorded answer, looked up on first ask (a scope v4 never
+    /// read stays a MISS until v5 asks for it).
+    scopes: [OnceLock<Vec<AggregateObject>>; 3],
 }
 
 impl RecordedInventoryContext {
@@ -51,6 +58,7 @@ impl RecordedInventoryContext {
             character_id: v["characterId"].as_str().unwrap_or_default().to_string(),
             chat_id: v["chatId"].as_str().map(str::to_string),
             calls,
+            scopes: Default::default(),
         }
     }
 
@@ -85,10 +93,10 @@ impl InventoryContext for RecordedInventoryContext {
     fn state(&self, reference: &str) -> InventoryState {
         state_of(self.answer("state", reference).as_str().expect("a state"))
     }
-    fn equipped_kin_count(&self, reference: &str) -> f64 {
+    fn equipped_kin_count(&self, reference: &str) -> usize {
         self.answer("equippedKinCount", reference)
-            .as_f64()
-            .expect("a count")
+            .as_u64()
+            .expect("a count") as usize
     }
     fn item(&self, reference: &str) -> Option<ResolvedInventoryItem> {
         match self.answer("item", reference) {
@@ -96,17 +104,26 @@ impl InventoryContext for RecordedInventoryContext {
             _ => None,
         }
     }
-    fn scope_objects(&self, scope: AggregateScope) -> Vec<AggregateObject> {
-        self.answer("scopeObjects", scope.as_str())
-            .as_array()
-            .expect("objects")
-            .iter()
-            .map(|o| AggregateObject {
-                name: o["name"].as_str().unwrap_or_default().to_string(),
-                title: o["title"].as_str().unwrap_or_default().to_string(),
-                metadata: o["metadata"].as_object().cloned().unwrap_or_else(Map::new),
-            })
-            .collect()
+    fn scope_objects(&self, scope: AggregateScope) -> &[AggregateObject] {
+        let at = AGGREGATE_SCOPES.iter().position(|s| *s == scope).unwrap();
+        self.scopes[at].get_or_init(|| {
+            self.answer("scopeObjects", scope.as_str())
+                .as_array()
+                .expect("objects")
+                .iter()
+                .map(|o| AggregateObject {
+                    name: o["name"].as_str().unwrap_or_default().to_string(),
+                    title: o["title"].as_str().unwrap_or_default().to_string(),
+                    metadata: o["metadata"].as_object().cloned().unwrap_or_else(Map::new),
+                })
+                .collect()
+        })
+    }
+    fn pool(&self) -> Option<&ResolvedInventoryPool> {
+        None
+    }
+    fn equipped_ids(&self) -> Option<&HashSet<String>> {
+        None
     }
 }
 

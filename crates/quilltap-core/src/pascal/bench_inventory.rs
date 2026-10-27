@@ -16,8 +16,11 @@ use serde_json::{json, Map, Value};
 use crate::api::zod_issues::ZodIssue;
 // === LANE-REMOVE (P4.D329): C2 import ===
 use super::inventory_subjects::INVENTORY_STATE_VALUES;
-use super::p4d329_c2_standins::{
-    AggregateObject, AggregateScope, InventoryContext, InventoryState,
+use std::collections::HashSet;
+
+use crate::inventory::refs::{
+    AggregateObject, AggregateScope, InventoryContext, InventoryState, ResolvedInventoryPool,
+    AGGREGATE_SCOPES,
 };
 use crate::inventory::types::ResolvedInventoryItem;
 
@@ -263,6 +266,9 @@ pub struct MockInventoryContext {
     /// v4's `Map<key, row>`: a later row for the same key REPLACES the value
     /// but keeps the FIRST position (a JS `Map.set`).
     by_ref: Vec<(String, MockEntry)>,
+    /// The three `inventoryAggregate` scopes, in `AGGREGATE_SCOPES` order,
+    /// built ONCE from the rows (v4 builds them per read; both are pure).
+    scopes: [Vec<AggregateObject>; 3],
 }
 
 /// v4 `mockInventoryContext(rows)`. Keyed by `ref.trim().toLowerCase()`; LATER
@@ -292,7 +298,8 @@ pub fn mock_inventory_context(rows: &[MockInventoryRow]) -> MockInventoryContext
             None => by_ref.push((key, entry)),
         }
     }
-    MockInventoryContext { by_ref }
+    let scopes = AGGREGATE_SCOPES.map(|scope| scope_objects_of_rows(&by_ref, scope));
+    MockInventoryContext { by_ref, scopes }
 }
 
 impl MockInventoryContext {
@@ -300,6 +307,32 @@ impl MockInventoryContext {
         let key = crate::jsstr::js_trim(reference).to_lowercase();
         self.by_ref.iter().find(|(k, _)| *k == key).map(|(_, e)| e)
     }
+}
+
+/// One scope's objects over the rows (v4's `scopeObjects` on the mock).
+fn scope_objects_of_rows(by_ref: &[(String, MockEntry)], scope: AggregateScope) -> Vec<AggregateObject> {
+    let mut objects = Vec::new();
+    for (_, entry) in by_ref {
+        if !in_scope(scope, entry.state) {
+            continue;
+        }
+        // v4 `for (let i = 0; i < copies; i++)` — a JS number count.
+        let copies = if entry.state == InventoryState::Equipped {
+            entry.count
+        } else {
+            1.0
+        };
+        let mut i = 0.0;
+        while i < copies {
+            objects.push(AggregateObject {
+                name: entry.reference.clone(),
+                title: entry.reference.clone(),
+                metadata: entry.metadata.clone(),
+            });
+            i += 1.0;
+        }
+    }
+    objects
 }
 
 fn in_scope(scope: AggregateScope, state: InventoryState) -> bool {
@@ -326,35 +359,26 @@ impl InventoryContext for MockInventoryContext {
         self.lookup(reference)
             .map_or(InventoryState::Absent, |e| e.state)
     }
-    fn equipped_kin_count(&self, reference: &str) -> f64 {
-        self.lookup(reference).map_or(0.0, |e| e.count)
+    fn equipped_kin_count(&self, reference: &str) -> usize {
+        // v4's count is `z.number().int().min(0).max(999)` — integral by
+        // construction, so the cast is exact.
+        self.lookup(reference).map_or(0, |e| e.count as usize)
     }
     /// ALWAYS absent (R-U): a mock row names a state, not an object.
     fn item(&self, _reference: &str) -> Option<ResolvedInventoryItem> {
         None
     }
-    fn scope_objects(&self, scope: AggregateScope) -> Vec<AggregateObject> {
-        let mut objects = Vec::new();
-        for (_, entry) in &self.by_ref {
-            if !in_scope(scope, entry.state) {
-                continue;
-            }
-            // v4 `for (let i = 0; i < copies; i++)` — a JS number count.
-            let copies = if entry.state == InventoryState::Equipped {
-                entry.count
-            } else {
-                1.0
-            };
-            let mut i = 0.0;
-            while i < copies {
-                objects.push(AggregateObject {
-                    name: entry.reference.clone(),
-                    title: entry.reference.clone(),
-                    metadata: entry.metadata.clone(),
-                });
-                i += 1.0;
-            }
-        }
-        objects
+    fn scope_objects(&self, scope: AggregateScope) -> &[AggregateObject] {
+        let at = AGGREGATE_SCOPES
+            .iter()
+            .position(|s| *s == scope)
+            .expect("every scope is in AGGREGATE_SCOPES");
+        &self.scopes[at]
+    }
+    fn pool(&self) -> Option<&ResolvedInventoryPool> {
+        None
+    }
+    fn equipped_ids(&self) -> Option<&HashSet<String>> {
+        None
     }
 }

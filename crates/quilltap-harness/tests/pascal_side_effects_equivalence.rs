@@ -54,7 +54,8 @@ use quilltap_core::pascal::custom_tools::{ResolvedEffect, ResolvedValue, Resolve
 // P4.D329: the third pass.
 use quilltap_core::pascal::custom_tool_types::InventoryEffectAction;
 use quilltap_core::pascal::custom_tools::ResolvedInventoryGesture;
-use quilltap_core::pascal::p4d329_c2_standins::{InventoryContext, PendingInventoryAnnouncements};
+use quilltap_core::inventory::refs::InventoryContext;
+use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::pascal::side_effects::{
     differential::plan_run_logged, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
 };

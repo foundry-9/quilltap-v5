@@ -22,7 +22,7 @@
 use quilltap_core::pascal::bench_inventory::{
     mock_inventory_context, parse_mock_inventory, MockInventoryRow,
 };
-use quilltap_core::pascal::p4d329_c2_standins::{AggregateScope, InventoryContext};
+use quilltap_core::inventory::refs::{AggregateScope, InventoryContext};
 use serde_json::{json, Map, Value};
 
 /// A parsed row in v4's shape order (`ref`, `state`, `count?`, `metadata?`).

@@ -46,8 +46,8 @@ use super::custom_tool_types::{
 use super::tool_gate::{evaluate_tool_gate, gate_names_progress, has_tool_gate};
 // === P4.D329: the invoker's bag ===
 use super::inventory_subjects::gate_names_inventory;
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::{load_inventory_context, InventoryContext, LoadedInventoryContext};
+use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
+use crate::inventory::refs::InventoryContext;
 use crate::progressions::flatten_progressions;
 
 /// Tier precedence, nearest first. A nearer tier shadows a farther one.
@@ -245,7 +245,7 @@ pub fn invoker_inventory(
                 equipped = loaded.equipped_ids.len(),
                 "Custom-tool gates: loaded the invoker\u{2019}s inventory",
             );
-            Some(std::sync::Arc::new(loaded))
+            Some(std::sync::Arc::new(loaded.context))
         }
         Err(error) => {
             tracing::debug!(

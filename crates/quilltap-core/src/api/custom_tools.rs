@@ -44,7 +44,7 @@ use crate::pascal::custom_tools::{
     LlmInvokeResult, LlmInvoker, LlmSubject,
 };
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
-use crate::pascal::p4d329_c2_standins::InventoryContext;
+use crate::inventory::refs::InventoryContext;
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };

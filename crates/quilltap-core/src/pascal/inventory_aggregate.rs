@@ -29,9 +29,8 @@ use serde_json::{Map, Value};
 
 use super::custom_tool_types::MetadataComparator;
 use super::metadata_match::{js_primitive, metadata_comparator_holds, ResolvedValue};
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::InventoryContext;
-pub use super::p4d329_c2_standins::{AggregateObject, AggregateScope};
+use crate::inventory::refs::InventoryContext;
+pub use crate::inventory::refs::{AggregateObject, AggregateScope};
 
 /// v4 `AGGREGATE_SCOPES` — cumulative: equipped ⊆ owned ⊆ reachable.
 pub const AGGREGATE_SCOPES: [&str; 3] = ["equipped", "owned", "reachable"];

@@ -375,7 +375,7 @@ pub fn scope_objects_of(
 /// character's bag (v4 `InventoryContext`). A trait so the Proving Bench's
 /// mock (P4.D329, R-U: `pool()` / `equipped_ids()` `None`, `item()` always
 /// `None`) and the real pool's context answer the same readers.
-pub trait InventoryContext {
+pub trait InventoryContext: Send + Sync {
     fn character_id(&self) -> &str;
     fn chat_id(&self) -> Option<&str>;
     /// The best state of a reference.

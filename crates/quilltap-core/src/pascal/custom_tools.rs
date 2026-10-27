@@ -38,7 +38,7 @@ use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, Ran
 use super::expressions::{evaluate_expression, parse_expression};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
-use super::p4d329_c2_standins::InventoryContext;
+use crate::inventory::refs::InventoryContext;
 use super::placeholders::InventoryPlaceholderField;
 use super::placeholders::{
     classify_placeholder, OutcomeField, PlaceholderRef, PLACEHOLDER_PATTERN,

@@ -80,8 +80,8 @@ use super::inventory_effects::{
     apply_inventory_effects, finish_inventory_effects, ApplyInventoryEffectsParams,
 };
 use crate::inventory::equip::InventoryChange;
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::{InventoryContext, PendingInventoryAnnouncements};
+use crate::inventory::refs::InventoryContext;
+use crate::services::inventory_change_effects::PendingInventoryAnnouncements;
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::WriterSet;
 use crate::progressions::{

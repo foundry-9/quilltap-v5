@@ -26,8 +26,7 @@ use serde_json::Value;
 
 use super::custom_tool_types::{InventoryRef, StateRefFallback, ToolGate};
 use super::metadata_match::ResolvedValue;
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::{InventoryContext, InventoryState};
+use crate::inventory::refs::{InventoryContext, InventoryState};
 use super::placeholders::{split_inventory_reference, InventoryPlaceholderField};
 
 /// v4 `INVENTORY_STATE_VALUES` — the four states, as the schema's enum spells
@@ -152,7 +151,8 @@ pub fn inventory_count_holds(
         }
         return false;
     };
-    let count = ctx.equipped_kin_count(reference);
+    // A count of copies, exact as a JS number.
+    let count = ctx.equipped_kin_count(reference) as f64;
     for (key, operand) in [
         ("gt", test.gt),
         ("gte", test.gte),

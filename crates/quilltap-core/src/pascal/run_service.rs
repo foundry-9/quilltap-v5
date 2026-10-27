@@ -41,8 +41,8 @@ use super::roster::DiscoveredCustomTool;
 use super::side_effects::{apply_effects_for_run, AppliedEffect};
 // === P4.D329: the rolling character's bag ===
 use super::tool_vocabulary::collect_tool_vocabulary;
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::{load_inventory_context, InventoryContext};
+use crate::inventory::context::load_inventory_context;
+use crate::inventory::refs::InventoryContext;
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::jsstr::js_trim;
@@ -562,7 +562,7 @@ fn load_run_inventory(
         })
     });
     let error = match loaded {
-        Ok(Ok(loaded)) => return Some(Arc::new(loaded)),
+        Ok(Ok(loaded)) => return Some(Arc::new(loaded.context)),
         Ok(Err(e)) => e.to_string(),
         Err(e) => e.to_string(),
     };

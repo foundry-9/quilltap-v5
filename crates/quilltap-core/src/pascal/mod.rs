@@ -15,7 +15,6 @@ pub mod inventory_subjects;
 pub mod js_value;
 pub mod llm_consult;
 pub mod metadata_match;
-pub mod p4d329_c2_standins;
 pub mod placeholders;
 pub mod roster;
 pub mod run_service;

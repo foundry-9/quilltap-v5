@@ -59,12 +59,9 @@ use crate::inventory::equip::{
 };
 use crate::inventory::resolve::inventory_label;
 use crate::inventory::types::{InventoryFields, InventoryKind, ResolvedInventoryItem};
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::{
-    load_inventory_context, notify_inventory_changed, pick_for_gesture, resolve_inventory_ref,
-    InventoryContext, LoadedInventoryContext, PendingInventoryAnnouncements,
-    ResolveInventoryRefOptions, ResolvedInventoryPool,
-};
+use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
+use crate::services::inventory_change_effects::{notify_inventory_changed, PendingInventoryAnnouncements};
+use crate::inventory::refs::{pick_for_gesture, Gesture, resolve_inventory_ref, InventoryContext, ResolveInventoryRefOptions, ResolvedInventoryPool};
 
 pub use super::custom_tools::ResolvedInventoryGesture;
 
@@ -424,9 +421,9 @@ pub fn apply_inventory_effects(
                         ResolveInventoryRefOptions::default(),
                     );
                     let pick = if action == InventoryEffectAction::Equip {
-                        pick_for_gesture(&matches, "equip")
+                        pick_for_gesture(&matches, Gesture::Equip)
                     } else {
-                        pick_for_gesture(&matches, "unequip").or_else(|| {
+                        pick_for_gesture(&matches, Gesture::Unequip).or_else(|| {
                             matches.iter().find(|m| m.item.kind() == InventoryKind::Kit)
                         })
                     };
@@ -562,43 +559,15 @@ pub async fn finish_inventory_effects(
     pending: Option<&PendingInventoryAnnouncements>,
 ) {
     for change in changes {
-        let outcome = match pending {
-            Some(map) => {
-                // Taken out of the lock for the await, and put back after —
-                // the turn's map is touched only here, sequentially.
-                let mut held = std::mem::take(&mut *map.lock().unwrap_or_else(|e| e.into_inner()));
-                let mut ctx = InventoryChangeContext {
-                    user_id,
-                    provenance: InventoryChangeProvenance::Pascal,
-                    announce: true,
-                    pending: Some(&mut held),
-                };
-                let r = notify_inventory_changed(db, chat_id, character_id, change, &mut ctx).await;
-                *map.lock().unwrap_or_else(|e| e.into_inner()) = held;
-                r
-            }
-            None => {
-                let mut ctx = InventoryChangeContext {
-                    user_id,
-                    provenance: InventoryChangeProvenance::Pascal,
-                    announce: true,
-                    pending: None,
-                };
-                notify_inventory_changed(db, chat_id, character_id, change, &mut ctx).await
-            }
+        // v4's notify never throws; with the turn's map it nets the change
+        // into the turn's entry, without one it posts now.
+        let ctx = InventoryChangeContext {
+            user_id,
+            provenance: InventoryChangeProvenance::Pascal,
+            announce: true,
+            pending: None,
         };
-        if let Err(e) = outcome {
-            // v4's notify never throws; a v5 failure to notify is logged, not
-            // fatal (the run already happened).
-            tracing::warn!(
-                target: "quilltap::pascal",
-                context = CONTEXT,
-                chatId = chat_id,
-                tool = tool_name,
-                error = %e,
-                "Custom tool inventory change could not be announced",
-            );
-        }
+        notify_inventory_changed(db, chat_id, character_id, change, &ctx, pending).await;
     }
     tracing::debug!(
         target: "quilltap::pascal",

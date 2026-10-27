@@ -64,7 +64,7 @@ use quilltap_core::pascal::custom_tool_types::{InventoryEffectAction, OutcomeSta
 use quilltap_core::pascal::custom_tools::{
     CustomToolRunResult, ResolvedEffect, ResolvedInventoryGesture, RollForm,
 };
-use quilltap_core::pascal::p4d329_c2_standins::PendingInventoryAnnouncements;
+use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::pascal::side_effects::apply_effects_for_run;
 use quilltap_core::test_support::CaptureLayer;
 use serde::Deserialize;

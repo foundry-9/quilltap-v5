@@ -59,8 +59,7 @@ use super::inventory_subjects::{
     inventory_count_holds, inventory_state_holds, ResolvedInventoryCountTest,
     ResolvedInventoryStateTest,
 };
-// === LANE-REMOVE (P4.D329): C2 import ===
-use super::p4d329_c2_standins::InventoryContext;
+use crate::inventory::refs::InventoryContext;
 
 /// What a gate decided, and which clause decided it (v4 `ToolGateVerdict`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
