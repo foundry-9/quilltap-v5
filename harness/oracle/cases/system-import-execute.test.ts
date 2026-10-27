@@ -4120,6 +4120,21 @@ async function main(): Promise<void> {
       },
       true,
     ),
+    // [P4.167 — P4.D272 R-E] A NON-STRING preserved memory id under
+    // `preserveIds`: v4's map is the identity (`memoryIdMap.set(memory.id,
+    // memory.id)`), so `id: 5` reaches `MemorySchema` as the create's id — see
+    // `preservedNumericIdPayload`.
+    executeCase(
+      'execute_memory_preserved_numeric_id',
+      () => preservedNumericIdPayload(mergedPayload),
+      {
+        conflictStrategy: 'skip',
+        includeMemories: true,
+        includeRelatedEntities: false,
+        preserveIds: true,
+      },
+      true,
+    ),
     // [P4.D272 Tier 2 item 12] The chat watermark rides `importChats` raw.
     executeCase('execute_chat_watermark', () => chatWatermarkPayload(chatsInformsPayload), {
       conflictStrategy: 'duplicate',
@@ -4632,4 +4647,31 @@ function chatRecordColumnsPayload(base: { manifest: unknown; data: Record<string
       },
     ],
   ]);
+}
+
+// === P4.167 preserved non-string memory ids (append-only) ===
+
+/**
+ * [P4.167 — P4.D272 R-E] `memoryRefusalsPayload`'s accepted item (11) under
+ * fresh ids (`rewriteIds` — `preserveIds` refuses a collision with the merged
+ * fixture's rows), then three items whose `id` is NOT a string: `5`, `6` with a
+ * bad `importance` too (issue ORDER — `id` is `MemorySchema`'s first key), and
+ * `true`. The string-id item lands.
+ */
+function preservedNumericIdPayload(merged: { manifest: unknown; data: Record<string, unknown[]> }) {
+  const p = rewriteIds(memoryRefusalsPayload(merged)) as {
+    manifest: unknown;
+    data: Record<string, unknown[]>;
+  };
+  const mems = p.data.memories as Array<Record<string, unknown>>;
+  const keep = mems.find((m) => m.summary === 'Refusal memory 11');
+  if (!keep) throw new Error('preservedNumericIdPayload needs refusal memory 11');
+  const mk = (patch: Record<string, unknown>) => ({ ...JSON.parse(JSON.stringify(keep)), ...patch });
+  p.data.memories = [
+    mk({ id: 5, summary: 'Numeric id memory' }),
+    mk({ id: 6, summary: 'Numeric id and importance', importance: '0.5' }),
+    mk({ id: true, summary: 'Boolean id memory' }),
+    keep,
+  ];
+  return p;
 }

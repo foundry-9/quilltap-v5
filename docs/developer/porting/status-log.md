@@ -193118,3 +193118,26 @@ seeded `portrait.png` replay), the Uploads-rollup table and
 fire (1 fresh store, 31 rows each). No v5 source change, so no red-first
 (a NEW measurement of an existing ruled divergence).
 
+### Unit 5 — D272-RE: a preserved non-string memory id (option (a), CONVERGE)
+
+`services/quilltap_import/memories.rs`: `preserved_id_issue` — under
+`preserveIds` a TRUTHY non-string source id is `MemorySchema`'s `id` issue
+(`invalid_type expected string` at `["id"]`), prepended to the rest of the
+row's ZodError (`with_preserved_id_issue` — `id` is the schema's FIRST key);
+the refusal then rides the existing P4.161 path (the two repository ERRORs,
+`Error creating memory`, the per-item warning + WARN). A falsy one (`0`,
+`false`, `null`, `""`) mints on both sides (v4's `options?.id ||
+generateId()`). The memory repository (P4.168's) is untouched.
+
+- **Measured at the pin** (`execute_memory_preserved_numeric_id`, NEW —
+  `memoryRefusalsPayload`'s accepted item under `rewriteIds` + `id: 5`, `id:
+  6` with `importance: '0.5'`, `id: true`): three refusals (`received
+  number` / `number` then `importance` / `boolean`), the string-id memory
+  lands; v4's WARN carries `memoryId=5` (a number) — v5's `id_field` renders
+  it identically (the WARN compare is green).
+- **Red-first on unported main: 6 differences** (repository lines 3 vs 9,
+  the WARNs, the `Imported memory` lines, result body, `background_jobs`,
+  `memories`). Green: 92 cases; counters 77 / 51 fired, 77, 77 / 48 fired, 18.
+- The module header's "deferred by name under P4.D272 R-E" paragraph is
+  rewritten (CLOSED).
+

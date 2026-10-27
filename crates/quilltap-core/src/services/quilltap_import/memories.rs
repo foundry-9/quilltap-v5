@@ -55,11 +55,13 @@
 //! seed's 42 memories) keep them — v4 ships no backfill either. Imports from
 //! now on resolve.
 //!
-//! **A non-string preserved id** (`preserveIds` with `id: 5`) still MINTS here
-//! ([`super::mint_or_preserve`] reads `""`) where v4 passes the `5` through and
-//! `MemorySchema` refuses it — a pre-existing divergence older than
-//! `d58548051` (`getPreserveIdsCreateOptions` did the same), deferred by name
-//! under P4.D272 R-E.
+//! **A non-string preserved id** (`preserveIds` with `id: 5`) is REFUSED as
+//! v4 refuses it (P4.167, converging P4.D272 R-E): v4's map is the identity
+//! under `preserveIds`, so a TRUTHY non-string id reaches `_create` as the
+//! entity's id (`options?.id || generateId()`) and `MemorySchema` refuses it —
+//! `invalid_type expected string` at `["id"]`, the schema's FIRST key, ahead of
+//! the row's other issues ([`preserved_id_issue`]). A falsy one (`0`, `false`,
+//! `null`, `""`) mints on both sides.
 //!
 //! ## Embeddings are dropped, not validated (v4 `7189a968`)
 //!
@@ -247,6 +249,36 @@ fn insert_consolidation_fields(
     payload.insert("consolidatedFrom".into(), consolidated_from);
     payload.insert("consolidatedAt".into(), consolidated_at);
     Ok(())
+}
+
+/// P4.167 (P4.D272 R-E): under `preserveIds` a TRUTHY non-string source id is
+/// `MemorySchema`'s `id` issue (`UUIDSchema` — `invalid_type expected string`
+/// at `["id"]`); measured against v4's real `executeImport` at `322a5488e`
+/// (`system_import_state`'s `execute_memory_preserved_numeric_id`: `5`, `6`
+/// with a bad `importance` — the id issue FIRST — and `true`).
+fn preserved_id_issue(memory: &Value, options: &ImportOptions) -> Option<Value> {
+    let raw = memory.get("id");
+    (options.preserve_ids
+        && crate::api::system_qtap::js_truthy(raw)
+        && !raw.is_some_and(Value::is_string))
+    .then(|| {
+        crate::api::zod_issues::ZodIssue::invalid_type(
+            "string",
+            vec![Value::String("id".into())],
+            raw,
+        )
+        .to_value()
+    })
+}
+
+/// Prepend the preserved-id issue to the rest of the row's ZodError (or stand
+/// alone when the rest of the row passes): ONE ZodError, `id` first.
+fn with_preserved_id_issue<T>(id_issue: Value, rest: Result<T, String>) -> Result<T, String> {
+    let mut issues = vec![id_issue];
+    if let Err(message) = &rest {
+        issues.extend(serde_json::from_str::<Vec<Value>>(message).unwrap_or_default());
+    }
+    Err(serde_json::to_string_pretty(&issues).unwrap_or_else(|_| "Invalid input".into()))
 }
 
 pub(super) fn import_memories(
@@ -456,14 +488,21 @@ pub(super) fn import_memories(
         let parsed = match fields {
             Err(type_error) => Err(type_error),
             Ok(()) => {
-                crate::db::memories::parse_create_memory(&Value::Object(payload), Some(&new_id))
-                    .inspect_err(|zod| {
-                        crate::db::fallback::log_refused_create("memories", zod);
-                        crate::db::fallback::log_memory_create_failure(
-                            new_character_id,
-                            &DbError::Internal(zod.clone()),
-                        );
-                    })
+                let parsed = crate::db::memories::parse_create_memory(
+                    &Value::Object(payload),
+                    Some(&new_id),
+                );
+                match preserved_id_issue(memory, options) {
+                    Some(id_issue) => with_preserved_id_issue(id_issue, parsed),
+                    None => parsed,
+                }
+                .inspect_err(|zod| {
+                    crate::db::fallback::log_refused_create("memories", zod);
+                    crate::db::fallback::log_memory_create_failure(
+                        new_character_id,
+                        &DbError::Internal(zod.clone()),
+                    );
+                })
             }
         };
         let now = crate::clock::now_iso();

@@ -1844,7 +1844,9 @@ fn system_import_execute_state_equivalence() {
     // …+ P4.D327's `execute_inventory_carriers{,_duplicate}` (87 + 2 = 89).
     // …+ P4.167's chat record columns' two arms (`execute_chat_record_columns`,
     // `…_preserve` — the `cb88a3840` rider re-ported at the pin) (89 + 2 = 91).
-    assert_eq!(ran, 91, "expected 91 cases, ran {ran}");
+    // …+ P4.167's `execute_memory_preserved_numeric_id` (P4.D272 R-E) (91 + 1
+    // = 92).
+    assert_eq!(ran, 92, "expected 92 cases, ran {ran}");
     // [P4.167 chat record columns] Non-vacuity: v4 REFUSED the planted chats
     // with its `expected record` ZodError (the whole-state diff above compares
     // v5's warnings and rows with these), and the remint's null-out of a
@@ -2629,14 +2631,16 @@ fn system_import_execute_state_equivalence() {
     // arm's phase-7f WARN (48).
     // [P4.D327] + the two Inventory-carrier arms (74); neither fires one (48).
     // [P4.167] + the two chat-record-column arms (76); neither fires one (48).
+    // [P4.167] + `execute_memory_preserved_numeric_id` (77; three memory WARNs).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        76,
+        77,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
-        48,
+        // [P4.167] 48 → 51: the three refused preserved-id memories' WARNs.
+        51,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
@@ -2647,10 +2651,11 @@ fn system_import_execute_state_equivalence() {
     // [P4.D317] 69 → 72; 6 → 8 (7f's INFO on the cross-instance arm and the
     // never-merge hole; the no-table arm's 7f fails before it logs).
     // [P4.D327] 72 → 74 (the Inventory-carrier arms fire none — a silence leg).
-    // [P4.167] 74 → 76 (the chat-record-column arms — silence legs).
+    // [P4.167] 74 → 76 (the chat-record-column arms — silence legs) → 77
+    // (`execute_memory_preserved_numeric_id` — a silence leg).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        76,
+        77,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2669,15 +2674,17 @@ fn system_import_execute_state_equivalence() {
     // `execute_chats_only_memories`, bug 240's local characters).
     // [P4.D317] 69 → 72 cases (the outfit-history arms import no memory).
     // [P4.D327] 72 → 74 cases (the Inventory-carrier arms import no memory).
-    // [P4.167] 74 → 76 cases (the chat-record-column arms import no memory).
+    // [P4.167] 74 → 76 cases (the chat-record-column arms import no memory)
+    // → 77 (`execute_memory_preserved_numeric_id` — the string-id memory's line).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        76,
+        77,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
         MEMORY_LOGS_FIRED.load(Ordering::SeqCst),
-        47,
+        // [P4.167] 47 → 48: the preserved string-id memory's DEBUG.
+        48,
         "v4 `Imported memory` lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).
@@ -2689,9 +2696,11 @@ fn system_import_execute_state_equivalence() {
     // repository ERRORs + the WARN — L-B) (15).
     // [P4.167] …+ the two chat-record-column arms (six / seven refused chats ×
     // the same three ERRORs + the WARN) (17).
+    // [P4.167] …+ `execute_memory_preserved_numeric_id` (three refused memories ×
+    // v4's three repository ERRORs) (18).
     assert_eq!(
         REPO_LOG_CASES.load(Ordering::SeqCst),
-        17,
+        18,
         "cases that compared a refused create's repository lines"
     );
     assert_eq!(

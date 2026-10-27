@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — fix(import): refuse a preserved non-string memory id as v4's MemorySchema does (P4.D272 R-E)
+
+_Versions: core 0.0.1340._
+
+A `.qtap` import under `preserveIds` now refuses a memory whose `id` is a truthy non-string (`5`, `true`), as v4 does. Under `preserveIds` v4's memory id map is the identity, so the value reaches `_create` as the entity id and `MemorySchema` refuses it. The error is `invalid_type expected string` at `["id"]`, and since `id` is the schema's first key, that issue comes before the row's other issues. Previously v5 minted a fresh id and imported the memory (P4.D272 R-E). A falsy non-string id still mints on both sides. Differential: `system_import_state`'s new `execute_memory_preserved_numeric_id`, which compares the warnings, the repository lines and the rows (92 cases). Red first on unported main: 6 differences.
+
 #### 2026-10-27 — test(restore): the dup-store-id arm in new-account mode — the ruled first-row divergence measured in both modes
 
 _No crate versions bumped._
