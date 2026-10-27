@@ -923,6 +923,16 @@ mod tests {
     /// A throwaway base64 pepper keys the fresh encrypted DB (never a real one).
     const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
     const SENTINEL: &str = "2020-01-01T00:00:00.000Z";
+    // P4.168 (C-1): the rows `find_by_ids` must READ — a digest's surviving
+    // member — carry UUIDs, as every v4 row does: `findByIds`' `validateSafe`
+    // drops a schema-invalid row (v4 `retire.ts:174`), so a legacy-id member
+    // would read as absent and its digest as dead.
+    const H: &str = "b1680000-0000-4000-8000-0000000000c1";
+    const DIGEST_LIVE: &str = "b1680000-0000-4000-8000-0000000000d1";
+    const MEMBER_LIVE: &str = "b1680000-0000-4000-8000-0000000000e1";
+    const D_PAIR: &str = "b1680000-0000-4000-8000-0000000000d2";
+    const X: &str = "b1680000-0000-4000-8000-0000000000e3";
+    const Y: &str = "b1680000-0000-4000-8000-0000000000e2";
     const DDL: &str = "
         CREATE TABLE memories (
             id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT,
@@ -1080,38 +1090,38 @@ mod tests {
             Seed {
                 source: "MANUAL",
                 chat_id: Some("c1"),
-                ..seed("manual", "h")
+                ..seed("manual", H)
             },
             Seed {
                 tier: "cold",
                 chat_id: Some("c1"),
-                ..seed("cold", "h")
+                ..seed("cold", H)
             },
             Seed {
                 source: "CONSOLIDATED",
                 chat_id: Some("c1"),
-                consolidated_from: &["member-live"],
-                ..seed("digest-live", "h")
+                consolidated_from: &[MEMBER_LIVE],
+                ..seed(DIGEST_LIVE, H)
             },
             Seed {
                 tier: "cold",
-                superseded_by: Some("digest-live"),
-                ..seed("member-live", "h")
+                superseded_by: Some(DIGEST_LIVE),
+                ..seed(MEMBER_LIVE, H)
             },
             Seed {
                 source: "CONSOLIDATED",
                 chat_id: Some("c1"),
                 about: Some("subject"),
                 consolidated_from: &["auto"],
-                ..seed("digest-dead", "h")
+                ..seed("digest-dead", H)
             },
             Seed {
                 chat_id: Some("c1"),
-                ..seed("auto", "h")
+                ..seed("auto", H)
             },
             Seed {
                 related: &["manual", "auto"],
-                ..seed("neighbour", "h")
+                ..seed("neighbour", H)
             },
         ]);
         let r = retire_chat_memories(w.connection(), "c1").unwrap();
@@ -1134,18 +1144,18 @@ mod tests {
         );
         assert_eq!(
             r.announcement.unwrap().digest_buckets,
-            vec![("h".to_string(), ids(&["subject"]))]
+            vec![(H.to_string(), ids(&["subject"]))]
         );
         // The preview decides the same rows without writing.
         let (_d2, w2) = writer(&[
             Seed {
                 source: "MANUAL",
                 chat_id: Some("c2"),
-                ..seed("m", "h")
+                ..seed("m", H)
             },
             Seed {
                 chat_id: Some("c2"),
-                ..seed("a", "h")
+                ..seed("a", H)
             },
         ]);
         let preview = preview_chat_wipe(w2.connection(), "c2").unwrap();
@@ -1163,52 +1173,52 @@ mod tests {
                 Seed {
                     source: "CONSOLIDATED",
                     consolidated_from: &["only"],
-                    ..seed("d-single", "h")
+                    ..seed("d-single", H)
                 },
                 Seed {
                     tier: "cold",
                     superseded_by: Some("d-single"),
-                    ..seed("only", "h")
+                    ..seed("only", H)
                 },
                 Seed {
                     source: "CONSOLIDATED",
-                    consolidated_from: &["x", "y"],
-                    ..seed("d-pair", "h")
+                    consolidated_from: &[X, Y],
+                    ..seed(D_PAIR, H)
                 },
                 Seed {
                     tier: "cold",
-                    superseded_by: Some("d-pair"),
-                    ..seed("x", "h")
+                    superseded_by: Some(D_PAIR),
+                    ..seed(X, H)
                 },
                 Seed {
                     tier: "cold",
-                    superseded_by: Some("d-pair"),
-                    ..seed("y", "h")
+                    superseded_by: Some(D_PAIR),
+                    ..seed(Y, H)
                 },
                 Seed {
                     source: "CONSOLIDATED",
                     consolidated_from: &["z"],
-                    ..seed("d-gone", "h")
+                    ..seed("d-gone", H)
                 },
                 Seed {
                     tier: "hot",
                     superseded_by: Some("d-gone"),
-                    ..seed("z", "h")
+                    ..seed("z", H)
                 },
             ]
         };
         let (_d, w) = writer(&seeds());
         let r = retire_memories(
             w.connection(),
-            &ids(&["only", "x", "d-gone"]),
+            &ids(&["only", X, "d-gone"]),
             RetireOptions::new(RetireReason::ItemDelete),
         )
         .unwrap();
         assert_eq!(r.digests_retired_with_last_member, 1);
         assert_eq!(cell(&w, "d-single", "id"), None);
         assert_eq!(
-            cell(&w, "d-pair", "consolidatedFrom"),
-            Some(Some("[\"y\"]".into()))
+            cell(&w, D_PAIR, "consolidatedFrom"),
+            Some(Some(format!("[\"{Y}\"]")))
         );
         assert_eq!(cell(&w, "z", "supersededById"), Some(None));
         assert_eq!(cell(&w, "z", "tier"), Some(Some("cold".into())));

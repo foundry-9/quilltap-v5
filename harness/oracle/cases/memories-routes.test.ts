@@ -415,6 +415,19 @@ const P4D298_RETIRE_FAILS_PLANT = [
   "CREATE TRIGGER qt_p4d298_retire_fails BEFORE DELETE ON memories BEGIN SELECT RAISE(ABORT, 'planted retire failure'); END",
 ];
 
+/** P4.168: see `memories-config.test.ts` — every `memories.embedding` read
+ *  throws. */
+const P4168_EMBEDDING_READ_FAILS_PLANT = [
+  'ALTER TABLE memories DROP COLUMN embedding',
+  "ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL",
+];
+
+/** P4.168 (C-1): the fixture's MANUAL `a1` carries a tag `MemorySchema`
+ *  refuses (`tags: z.array(UUIDSchema)`). */
+const P4168_INVALID_A1_PLANT = [
+  `UPDATE memories SET tags = '["not-a-uuid"]' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'`,
+];
+
 /** The chat the derived-project create names carries a project id. */
 const P4D298_CHAT_PROJECT_PLANT = [
   "UPDATE chats SET projectId = 'b7000000-0000-4000-8000-000000000001' WHERE id = 'c1000000-0000-4000-8000-000000000001'",
@@ -595,6 +608,15 @@ async function main(): Promise<void> {
     // --- Item GET ---
     { name: 'get', run: () => itemGet(MEM_TAGGED_2) },
     { name: 'get_missing', run: () => itemGet(MISSING) },
+    // P4.168: the route's `findById` read FAILS — v4's `_findById` falls back
+    // to null (`Error finding entity by ID`) → the 404, not a 500.
+    {
+      name: 'get_read_fails_404',
+      run: async () => {
+        await plantSql(P4168_EMBEDDING_READ_FAILS_PLANT);
+        return itemGet(MEM_TAGGED_2);
+      },
+    },
     // --- Count by chat ---
     { name: 'count_by_chat', run: () => listGet(`chatId=${CHAT_SALON}`) },
     { name: 'count_by_chat_missing', run: () => listGet(`chatId=${MISSING}`) },
@@ -862,6 +884,19 @@ async function main(): Promise<void> {
           summary: 'Alden trusts the harbor master.',
         }),
         create('create_embedding_failed_502', base, { embeddingFails: true }),
+        // P4.168 (C-1): the twin `a1` is schema-INVALID (a non-UUID tag) —
+        // `findByIds`' `validateSafe` drops it (`Data validation failed` +
+        // `Safe validation failed`), so admission never sees it as a neighbour.
+        create(
+          'create_invalid_neighbour_dropped',
+          {
+            characterId: MNEMO,
+            content: 'Alden the lighthouse keeper trusts only the harbor master.',
+            summary: 'Alden trusts the harbor master.',
+          },
+          {},
+          P4168_INVALID_A1_PLANT,
+        ),
         // P4.168 (H-2): the offset refusal sits AFTER the embedding call — an
         // offset with a failing embedding answers the 502, not the 400.
         create(
@@ -923,6 +958,9 @@ async function main(): Promise<void> {
         put('update_blank_after_trim_400', MEM_TAGGED_1, { summary: ' \u00a0 ' }),
         put('update_bad_body_missing_memory_404', MISSING, { importance: 'very' }),
         put('update_null_about_character', MEM_TAGGED_1, { aboutCharacterId: null, keywords: ['alden'] }),
+        // P4.168 (B3): the owner read FAILS — v4's `findByIdForCharacter`
+        // falls back to null (`Error finding entity by filter`) → the 404.
+        put('update_owner_read_fails_404', MEM_TAGGED_1, { importance: 0.4 }, P4168_EMBEDDING_READ_FAILS_PLANT),
       ];
     })(),
     // The three re-attribution / cascade lines (af48f6cc2) over this fixture's

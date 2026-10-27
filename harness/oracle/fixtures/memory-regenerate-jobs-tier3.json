@@ -378,6 +378,40 @@
     "standardProfileId": "9c000000-0000-4000-8000-000000000001",
     "dangerousProfileId": "9c000000-0000-4000-8000-000000000002"
    }
+  },
+  {
+   "name": "fan_out_chat_list_fails_strict",
+   "kind": "all",
+   "payload": {
+    "standardProfileId": "9c000000-0000-4000-8000-000000000001",
+    "dangerousProfileId": "9c000000-0000-4000-8000-000000000002"
+   },
+   "plants": {
+    "sqlBefore": [
+     "DELETE FROM background_jobs",
+     "ALTER TABLE chats RENAME TO qt_p4168_chats_held"
+    ],
+    "sqlAfter": [
+     "ALTER TABLE qt_p4168_chats_held RENAME TO chats"
+    ]
+   }
+  },
+  {
+   "name": "fan_out_distinct_chat_ids_fails",
+   "kind": "all",
+   "payload": {
+    "standardProfileId": "9c000000-0000-4000-8000-000000000001",
+    "dangerousProfileId": "9c000000-0000-4000-8000-000000000002"
+   },
+   "plants": {
+    "sqlBefore": [
+     "DELETE FROM background_jobs",
+     "ALTER TABLE memories RENAME TO qt_p4168_memories_held"
+    ],
+    "sqlAfter": [
+     "ALTER TABLE qt_p4168_memories_held RENAME TO memories"
+    ]
+   }
   }
  ]
 }

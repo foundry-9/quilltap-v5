@@ -26,6 +26,16 @@ v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that
 
 Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
 
+#### 2026-10-27 — fix(memories): v4's validateSafe + repository fallbacks on the memory reads; regenerate-all's chat list and the maintenance batch loader kept strict (P4.168 unit 2)
+
+_Versions: core 0.0.1338._
+
+The memory reads now behave like v4's repository methods. `find_by_ids`, `search_by_content` and the maintenance batch loader drop a row `MemorySchema` refuses, as v4's `findByFilter` `validateSafe` does, logging `Data validation failed` and `Safe validation failed`. A schema-invalid neighbour is now an orphan on both sides, and the `FIND_BY_IDS_UNVALIDATED` divergence pin is retired. A failed read falls back as v4's does: `find_by_ids` / `search_by_content` answer `[]` (`Error finding entities by filter`), `find_by_id_for_character` answers `None` (`Error finding entity by filter`), `count_without_embedding` answers `0` (`Error counting entities`), and `find_distinct_chat_ids` answers `[]` (`Error listing distinct memory chatIds`). Inside the strict scope each also logs the method's own line with `strictFailures` and propagates. The memory item routes (GET/PUT/DELETE) read through v4's `_findById` fallback, so a failed read is 404 `Memory not found`, not 500. Regenerate-all's in-flight job snapshot falls back to `[]` as v4's does.
+
+Two reads stay strict by the planner's rulings, each pinned both ways against v4. `REGENERATE_ALL_STRICT_CHAT_LIST`: when the chats read fails, v4 queues an orphan memory wipe for every chat with memories, while v5 logs v4's line and fails the job. `MAINTENANCE_BATCH_LOADER_STRICT`: when a corpus page read fails, v4 truncates the corpus and maintenance plans from it, while v5 logs v4's line and fails the run.
+
+Tests: new rows in `memories_routes_equivalence` (`create_invalid_neighbour_dropped`, `update_owner_read_fails_404`, `get_read_fails_404`, `backfill_progress_count_fails`, each comparing the repository's ERROR lines), `memory_regenerate_jobs_tier3_equivalence` (`fan_out_chat_list_fails_strict`, `fan_out_distinct_chat_ids_fails`) and `memory_maintenance_tier2_equivalence` (`corpus_read_fails_strict`), plus unit pins for both sides of the strict scope. Two `memory_retire` unit tests now seed UUID ids for the rows `find_by_ids` must read.
+
 #### 2026-10-27 — fix(memories): validate every memory row against v4's MemorySchema at the repository create (P4.168 unit 1, H-2) + the list's `limit=0`
 
 _Versions: core 0.0.1337._

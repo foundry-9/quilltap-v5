@@ -18,9 +18,13 @@
 //! appends — v4's `Map.set`.
 //!
 //! v4 yields to the event loop between pages (`setImmediate`) — scheduling,
-//! no DB effect; NO-PORT. v4's batch loader truncates the corpus on a failing
-//! page (`Error loading memory batch`); v5's reader fails the run (P4.D265's
-//! reader, recorded with P4.D271 — Tier 3).
+//! no DB effect; NO-PORT. v4's batch loader TRUNCATES the corpus on a failing
+//! page (its inner `findByFilter` fallback logs `Error finding entities by
+//! filter` and answers `[]`, which ends the generator — the outer `Error
+//! loading memory batch` fires only inside the strict scope); v5's reader logs
+//! v4's line and FAILS the run, so no phase plans from a partial corpus — the
+//! planner's ruling P-5, `MAINTENANCE_BATCH_LOADER_STRICT` (P4.168), pinned
+//! both ways by `memory_maintenance_tier2_equivalence`.
 
 use serde_json::{Map, Value};
 

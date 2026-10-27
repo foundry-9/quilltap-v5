@@ -235,10 +235,11 @@ interface LogLine {
 
 /** The `memories-routes` capture's twin: the route's `[Memories API…]` lines,
  *  `service` / `environment` dropped, `undefined` fields omitted (§R.5). */
-async function installLogCapture(): Promise<{ own: LogLine[] }> {
+async function installLogCapture(): Promise<{ own: LogLine[]; repo: LogLine[] }> {
   process.env.LOG_LEVEL = 'debug';
   const { logger } = await import('@/lib/logger');
   const own: LogLine[] = [];
+  const repo: LogLine[] = [];
   const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
   internal.transports.splice(0, internal.transports.length, {
     write: (d: unknown) => {
@@ -253,16 +254,29 @@ async function installLogCapture(): Promise<{ own: LogLine[] }> {
         unknown
       >;
       if (data.error) fields.error = data.error.message;
+      // P4.168: the memories REPOSITORY's ERROR lines (the fallback reads').
+      if (data.level === 'error' && fields.collection === 'memories') {
+        repo.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+      }
       if (/^\[Memories API/.test(data.message)) {
         own.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
       }
     },
   });
-  return { own };
+  return { own, repo };
 }
 
 /** Plant SQL on the case's own copy through a DEDICATED keyed connection, then
  *  re-open v4's connection (memory note `jest-oracle-in-case-plants`). */
+/** P4.168: every read of `memories.embedding` THROWS (a VIRTUAL generated
+ *  column over malformed JSON, re-added in the stored column's place — the
+ *  read column itself, so both sides' reads fail; memory note
+ *  `throwing-plant-must-fail-both-reads`). */
+const P4168_EMBEDDING_READ_FAILS_PLANT = [
+  'ALTER TABLE memories DROP COLUMN embedding',
+  "ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL",
+];
+
 async function plantSql(statements: string[]): Promise<void> {
   const Driver = require(
     require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
@@ -353,6 +367,7 @@ async function runCase(
       ...(out.tables !== undefined ? { tables: out.tables } : {}),
       ...(out.storedAfter !== undefined ? { storedAfter: out.storedAfter } : {}),
       logs: logs.own,
+      repoLogs: logs.repo,
     };
   } finally {
     // Let any fire-and-forget write (the item-GET access-time bump; the search
@@ -867,6 +882,15 @@ async function main(): Promise<void> {
     // === end ===
     // --- Regenerate + backfill status (job-structural) ---
     { name: 'backfill_progress', run: () => listGet(`action=backfill-embeddings`) },
+    // P4.168 (B4): the `embedding IS NULL` count fails — v4's base `count`
+    // falls back to 0 (`Error counting entities`), so `remaining: 0`.
+    {
+      name: 'backfill_progress_count_fails',
+      run: async () => {
+        await plantSql(P4168_EMBEDDING_READ_FAILS_PLANT);
+        return listGet(`action=backfill-embeddings`);
+      },
+    },
     { name: 'regenerate_status', run: () => listGet(`action=regenerate-all`) },
     {
       name: 'regenerate_all',

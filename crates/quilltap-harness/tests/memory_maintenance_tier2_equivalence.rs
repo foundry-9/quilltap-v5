@@ -172,6 +172,28 @@ fn strings(v: Option<&Value>) -> Option<Vec<String>> {
         .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect())
 }
 
+/// P4.168 (P-5, the planner's ruling) — `MAINTENANCE_BATCH_LOADER_STRICT`,
+/// pinned both ways: with every `memories` row read failing, v4's
+/// `findByCharacterIdInBatches` page falls back to `[]` (`Error finding
+/// entities by filter`) and the run plans from an empty — in general a
+/// TRUNCATED — corpus; v5 logs v4's line and fails the run.
+const MAINTENANCE_BATCH_LOADER_STRICT: &str = "corpus_read_fails_strict";
+
+/// P4.168: run a run's `sqlBefore` / `sqlAfter` plant statements.
+async fn exec_all(db: &Db, statements: Option<&Value>) {
+    for sql in statements.and_then(Value::as_array).into_iter().flatten() {
+        let sql = sql.as_str().unwrap().to_string();
+        db.write(move |w| {
+            w.main()
+                .connection()
+                .execute_batch(&sql)
+                .map_err(quilltap_core::db::DbError::from)
+        })
+        .await
+        .expect("plant");
+    }
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn memory_maintenance_tier2_matches_oracle() {
     let (Ok(oracle_path), Ok(fixture_main), Ok(fixture_mount)) = (
@@ -261,6 +283,7 @@ async fn memory_maintenance_tier2_matches_oracle() {
                     .await
                     .unwrap();
             }
+            exec_all(&db, plant.get("sqlBefore")).await;
         }
         let holder = run["holder"].as_str().unwrap();
         let character_id = if holder == "unknown" {
@@ -296,6 +319,30 @@ async fn memory_maintenance_tier2_matches_oracle() {
             ctx,
         )))
         .await;
+        exec_all(&db, run.get("plant").and_then(|p| p.get("sqlAfter"))).await;
+        if name == MAINTENANCE_BATCH_LOADER_STRICT {
+            // Both ways: v4 answers the failed page `[]` (its inner
+            // `findByFilter` line) and the run completes over an EMPTY
+            // corpus; v5 logs v4's line and fails the run.
+            let line = |l: &str| {
+                l.starts_with("ERROR Error finding entities by filter collection=memories ")
+            };
+            let v4_line = want["repoLines"]
+                .as_array()
+                .is_some_and(|ls| ls.iter().map(render_oracle_line).any(|l| line(&l)));
+            let v4_completed = want["report"].is_object();
+            let v5_line = captured.iter().map(|l| strip_target(l)).any(|l| line(&l));
+            match (&run_result, v4_completed && v4_line && v5_line) {
+                (Err(e), true) => eprintln!(
+                    "[{name}] MAINTENANCE_BATCH_LOADER_STRICT holds (v4 ran on an empty corpus; v5 failed: {e})."
+                ),
+                (r, _) => failures.push(format!(
+                    "{name}: MAINTENANCE_BATCH_LOADER_STRICT moved\n  v4 completed {v4_completed} / line {v4_line}\n  v5 {:?} / line {v5_line}",
+                    r.as_ref().map(|_| "completed")
+                )),
+            }
+            continue;
+        }
         let run_result = run_result.unwrap_or_else(|e| panic!("{name}: run failed: {e}"));
         let got = normalize_report(run_result.report.to_json());
         let expected = normalize_report(want["report"].clone());

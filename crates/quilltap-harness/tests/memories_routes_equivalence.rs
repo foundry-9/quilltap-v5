@@ -370,6 +370,72 @@ fn render_v4_line(line: &Value) -> String {
     out
 }
 
+/// P4.168: one of v4's memories-REPOSITORY ERROR lines (the oracle's
+/// `repoLogs` — level `error`, `collection: 'memories'`), rendered as v5's
+/// `quilltap::db` capture renders it.
+fn render_v4_repo_line(line: &Value) -> String {
+    let level = line["level"].as_str().unwrap().to_uppercase();
+    let message = line["message"].as_str().unwrap();
+    let mut out = format!("{level} quilltap::db {message}");
+    if let Some(fields) = line["fields"].as_object() {
+        for (k, v) in fields {
+            match v {
+                Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                other => out.push_str(&format!(" {k}={other}")),
+            }
+        }
+    }
+    out
+}
+
+/// P4.168: v5's captured memories-repository ERROR lines (the twin of the
+/// oracle's `repoLogs` filter). Read-path lines run on the caller thread
+/// (`Db::read_main`), so this binary's capture sees them; the create's lines
+/// run on the WRITER thread (`WRITER_THREAD_REPO_LINES`).
+fn repo_v5_lines(lines: &[String]) -> Vec<String> {
+    lines
+        .iter()
+        .filter(|l| l.starts_with("ERROR quilltap::db ") && l.contains(" collection=memories"))
+        .cloned()
+        .collect()
+}
+
+/// P4.168: compare a row's repository ERROR lines IN ORDER (§R.5).
+fn repo_lines_mismatch(rec: &Value, lines: &[String]) -> Option<String> {
+    let want: Vec<String> = rec["repoLogs"]
+        .as_array()
+        .expect("repoLogs (regenerate the oracle — P4.168)")
+        .iter()
+        .map(render_v4_repo_line)
+        .collect();
+    let got = repo_v5_lines(lines);
+    (got != want).then(|| {
+        format!(
+            "repository lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+            want.join("\n"),
+            got.join("\n")
+        )
+    })
+}
+
+/// P4.168: rows whose repository lines are emitted inside `Db::write` (the
+/// writer thread this binary's capture cannot see) — pinned by the dedicated
+/// `memory_row_schema_refusal_lines` binary instead.
+const WRITER_THREAD_REPO_LINES: &[&str] = &["create_offset_occurred_at_row_refusal"];
+
+/// P4.168: every `memories.embedding` read THROWS — the twin of the oracle's
+/// `P4168_EMBEDDING_READ_FAILS_PLANT` (the read column itself, re-added as a
+/// VIRTUAL generated column over malformed JSON).
+const P4168_EMBEDDING_READ_FAILS_PLANT: &[&str] = &[
+    "ALTER TABLE memories DROP COLUMN embedding",
+    "ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL",
+];
+
+/// P4.168 (C-1): the fixture's `a1` carries a non-UUID tag.
+const P4168_INVALID_A1_PLANT: &[&str] = &[
+    "UPDATE memories SET tags = '[\"not-a-uuid\"]' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'",
+];
+
 /// v5's captured `[Memories API…]` lines — the route's own (siblings' lines
 /// are compared by presence, on v4's side, where they are visible).
 fn own_v5_lines(lines: &[String]) -> Vec<String> {
@@ -1262,6 +1328,21 @@ fn memories_routes_match_oracle() {
             &mut failed,
         );
     }
+    // P4.168 (B4): the `embedding IS NULL` count fails — v4's base `count`
+    // falls back to 0 (`Error counting entities`): `remaining: 0`, not a 500.
+    {
+        use quilltap_core::test_support::global_capture;
+        let name = "backfill_progress_count_fails";
+        let db = fresh_db(&spec, "bfpf");
+        plant(&rt, &db, P4168_EMBEDDING_READ_FAILS_PLANT);
+        let (resp, lines) =
+            global_capture::capture(|| memories::memory_backfill_progress(&db, &uid));
+        check_body(name, &resp, &mut failed);
+        if let Some(m) = repo_lines_mismatch(&oracle[name], &lines) {
+            eprintln!("[{name}] MISMATCH (P4.168):\n{m}");
+            failed.push(format!("{name}:lines"));
+        }
+    }
     {
         let db = fresh_db(&spec, "rgs");
         check_body(
@@ -1656,6 +1737,20 @@ fn memories_routes_match_oracle() {
                 global_capture::capture(|| rt.block_on(memories::memory_get(&db, MISSING)));
             check_row("get_missing", &resp, &lines, None, &mut failed);
         }
+        // P4.168: the route's `findById` read FAILS — v4's 404 over its
+        // `_findById` fallback (`Error finding entity by ID`).
+        {
+            let name = "get_read_fails_404";
+            let db = fresh_db(&spec, "getf-d298");
+            plant(&rt, &db, P4168_EMBEDDING_READ_FAILS_PLANT);
+            let (resp, lines) =
+                global_capture::capture(|| rt.block_on(memories::memory_get(&db, MEM_TAGGED_2)));
+            check_row(name, &resp, &lines, None, &mut failed);
+            if let Some(m) = repo_lines_mismatch(&oracle[name], &lines) {
+                eprintln!("[{name}] MISMATCH (P4.168):\n{m}");
+                failed.push(format!("{name}:lines"));
+            }
+        }
         // Item DELETE through the ONE retire path; the INFO.
         {
             let db = fresh_db(&spec, "del-d298");
@@ -2018,6 +2113,18 @@ fn memories_routes_match_oracle() {
                 true,
             ),
             ("create_embedding_failed_502", base.clone(), None, false),
+            // P4.168 (C-1): `a1` is schema-invalid, so `find_by_ids` drops it
+            // (`FIND_BY_IDS_UNVALIDATED` retired) and admission inserts.
+            (
+                "create_invalid_neighbour_dropped",
+                json!({
+                    "characterId": MNEMO,
+                    "content": "Alden the lighthouse keeper trusts only the harbor master.",
+                    "summary": "Alden trusts the harbor master.",
+                }),
+                Some(P4168_INVALID_A1_PLANT),
+                true,
+            ),
             // P4.168 (H-2): the refusal sits AFTER the embedding call — an
             // offset with a failing embedding answers the 502 on both sides.
             (
@@ -2187,10 +2294,15 @@ fn memories_routes_match_oracle() {
                     got_lines.join("\n")
                 ));
             }
-            // P4.168 (H-2, §R.5): the memories REPOSITORY's ERROR lines (the
-            // oracle's `repoLogs`) are emitted on the WRITER thread, which this
-            // binary's thread-local capture cannot see — they are pinned IN
-            // ORDER by the dedicated `memory_row_schema_refusal_lines` binary.
+            // P4.168 (§R.5): the memories REPOSITORY's ERROR lines, IN ORDER
+            // (the C-1 neighbour drop's `Data validation failed` pair). The
+            // create's own refusal lines run on the WRITER thread — pinned by
+            // the dedicated `memory_row_schema_refusal_lines` binary.
+            if !WRITER_THREAD_REPO_LINES.contains(&name) {
+                if let Some(m) = repo_lines_mismatch(rec, &lines) {
+                    bad.push(m);
+                }
+            }
             let want_rows = (
                 rec["tables"]["rowsBefore"].as_i64(),
                 rec["tables"]["rowsAfter"].as_i64(),
@@ -2281,6 +2393,13 @@ fn memories_routes_match_oracle() {
                 json!({ "aboutCharacterId": null, "keywords": ["alden"] }),
                 None,
             ),
+            // P4.168 (B3): the owner read FAILS — v4's 404 over its fallback.
+            (
+                "update_owner_read_fails_404",
+                MEM_TAGGED_1,
+                json!({ "importance": 0.4 }),
+                Some(P4168_EMBEDDING_READ_FAILS_PLANT),
+            ),
         ] {
             let db = fresh_db(&spec, &format!("{name}-d298"));
             if let Some(sql) = plant_sql {
@@ -2357,6 +2476,10 @@ fn memories_routes_match_oracle() {
                     want_lines.join("\n"),
                     got_lines.join("\n")
                 ));
+            }
+            // P4.168 (§R.5): the repository's ERROR lines, IN ORDER.
+            if let Some(m) = repo_lines_mismatch(rec, &lines) {
+                bad.push(m);
             }
             // The edited row and its neighbour as the oracle dumps them.
             let dumped: Vec<Value> = dump_all_memories(&db)

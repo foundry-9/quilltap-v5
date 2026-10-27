@@ -41,7 +41,15 @@ import { tmpdir } from 'node:os';
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-const CAPTURED_PREFIXES = ['[MemoryRegenerateChat]', '[MemoryRegenerateAll]'];
+const CAPTURED_PREFIXES = [
+  '[MemoryRegenerateChat]',
+  '[MemoryRegenerateAll]',
+  // P4.168 (survey B5): the repository fallback lines the fan-out's three
+  // reads log.
+  'Error finding entities by filter',
+  'Error finding background jobs by user ID',
+  'Error listing distinct memory chatIds',
+];
 
 function ownContext(ctx: Record<string, unknown> | undefined): Record<string, unknown> {
   const { service: _s, environment: _e, ...rest } = ctx ?? {};
@@ -150,6 +158,9 @@ async function main(): Promise<void> {
       await enqueueMemoryRegenerateChat(userId, { chatId: plants.inFlightWipe, connectionProfileId: spec.connectionProfiles[0].id });
     }
 
+    // P4.168: a failing-read plant (a held table), undone right after the op.
+    for (const sql of (plants.sqlBefore ?? []) as string[]) await rawQuery(sql);
+
     sink = [];
     let error: string | null = null;
     const job = { id: `job-${op.name}`, userId, type: op.kind === 'chat' ? 'MEMORY_REGENERATE_CHAT' : 'MEMORY_REGENERATE_ALL', payload: op.payload };
@@ -161,6 +172,7 @@ async function main(): Promise<void> {
     }
     const captured = sink;
     sink = null;
+    for (const sql of (plants.sqlAfter ?? []) as string[]) await rawQuery(sql);
     if (plants.mode) await rawQuery(`DELETE FROM "instance_settings" WHERE "key" = 'memoryExtractionMode'`);
     lines.push(
       JSON.stringify({

@@ -26,6 +26,18 @@
       "plant": { "maintenance": { "enabled": false } },
       "request": { "reason": "watermark", "phases": ["demote", "retire"], "exemptPhases": [] }
     },
-    { "name": "maintenance_off_manual_exempt", "holder": "order", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 1 } } }
+    { "name": "maintenance_off_manual_exempt", "holder": "order", "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 1 } } },
+    {
+      "name": "corpus_read_fails_strict",
+      "holder": "order",
+      "plant": {
+        "sqlBefore": [
+          "ALTER TABLE memories DROP COLUMN embedding",
+          "ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL"
+        ],
+        "sqlAfter": ["ALTER TABLE memories DROP COLUMN embedding", "ALTER TABLE memories ADD COLUMN embedding BLOB"]
+      },
+      "request": { "reason": "manual", "phases": ["demote"], "settings": { "cap": 1 } }
+    }
   ]
 }

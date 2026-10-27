@@ -37,8 +37,8 @@
 //! `admission_content_key` over a corpus (LR-7 — control characters, a
 //! non-BMP character, U+2028) and the key scope's minted keys (LR-1).
 //!
-//! Ruled / measured divergences (both ways, named):
-//!  - [`FIND_BY_IDS_UNVALIDATED`] — the `invalid_row_neighbour` step.
+//! Ruled / measured divergences: none (`FIND_BY_IDS_UNVALIDATED` retired by
+//! P4.168 — the `invalid_row_neighbour` step compares like every other).
 //!
 //! Recipe (canonical; outputs under `/tmp/p4d290/` while the lane runs):
 //!   N=$HOME/.nvm/versions/node/v24.13.1/bin
@@ -86,16 +86,11 @@ const OWNED_MODULES: &[&str] = &[
     "memory:admission:apply",
 ];
 
-/// FIND_BY_IDS_UNVALIDATED — measured, both ways (a FINDING for the human, not
-/// a ruling this lane makes): v4's `findByIds` runs every row through
-/// `MemorySchema` (`findByFilter`'s `validateSafe`) and silently drops one it
-/// refuses, so a schema-invalid row (here a non-UUID id) that the index still
-/// loads is an ORPHAN (bug 200's WARN; admission decides on the next row);
-/// v5's `memories_read::find_by_ids` (P4.D288's file) does not validate, so
-/// the same row is a LIVE neighbour. The step's outcome and lines therefore
-/// differ by design on this one step; each side is pinned to what it does.
-/// A v5 that validates (or a v4 that stops) trips the pin.
-const FIND_BY_IDS_UNVALIDATED: &str = "invalid_row_neighbour";
+// `FIND_BY_IDS_UNVALIDATED` RETIRED (P4.168, survey C-1): v5's
+// `memories_read::find_by_ids` now runs every row through `MemorySchema` as
+// v4's `findByFilter` `validateSafe` does, so the `invalid_row_neighbour`
+// step's schema-invalid row (a non-UUID id the index still loads) is an
+// ORPHAN on both sides and the step compares like every other.
 
 /// The note a ledger-answered repeat carries (v4 `admitPrepared`).
 const LEDGER_NOTE: &str = "already admitted by an earlier attempt of this job";
@@ -341,10 +336,8 @@ fn compare_leg(spec: &Value, leg: &Value, oracle: &[Value], got: &LegResult) {
     // --- the steps ----------------------------------------------------------
     let want_steps: Vec<&Value> = oracle.iter().filter(|l| l["kind"] == "step").collect();
     assert_eq!(want_steps.len(), got.steps.len(), "{leg_name}: step count");
-    let mut diverged_rows: HashSet<String> = HashSet::new();
     for ((name, g), w) in got.steps.iter().zip(want_steps) {
         assert_eq!(w["name"].as_str(), Some(name.as_str()), "step order");
-        let ruled = name == FIND_BY_IDS_UNVALIDATED;
         // Embedding calls, in order (v4's absent priority is interactive).
         let want_calls: Vec<Value> = w["embedCalls"]
             .as_array()
@@ -376,22 +369,6 @@ fn compare_leg(spec: &Value, leg: &Value, oracle: &[Value], got: &LegResult) {
             got_out.len(),
             "{leg_name}/{name}: outcome count"
         );
-        if ruled {
-            // FIND_BY_IDS_UNVALIDATED: v4 sees the invalid row as an orphan and
-            // absorbs into the valid neighbour; v5 absorbs into the invalid row.
-            assert_eq!(want_out[0]["action"]["kind"], "absorb");
-            assert_eq!(
-                want_out[0]["action"]["into"],
-                seeded_id_of(spec, "Kit trims the lantern wick.")
-            );
-            assert_eq!(want_out[0]["trace"]["orphansIgnored"], 1);
-            assert_eq!(got_out[0]["action"]["kind"], "absorb");
-            assert_eq!(got_out[0]["action"]["into"], "orphan-row-0001");
-            assert_eq!(got_out[0]["trace"]["orphansIgnored"], 0);
-            diverged_rows.insert("orphan-row-0001".into());
-            diverged_rows.insert(seeded_id_of(spec, "Kit trims the lantern wick."));
-            continue;
-        }
         let action_bytes: Vec<String> = want_out
             .iter()
             .map(|o| norm_want.ids(&serde_json::to_string(&o["action"]).unwrap()))
@@ -443,10 +420,9 @@ fn compare_leg(spec: &Value, leg: &Value, oracle: &[Value], got: &LegResult) {
         assert_eq!(wm_got, wm_want, "{leg_name}/{name}: watermark calls");
     }
 
-    // The dump, minus the rows the ruled step reached.
-    let keep = |r: &&Value| !diverged_rows.contains(r["id"].as_str().unwrap_or_default());
-    let rows_got: Vec<&Value> = rows_got.iter().filter(keep).collect();
-    let rows_want: Vec<&Value> = rows_want.iter().filter(keep).collect();
+    // The dump.
+    let rows_got: Vec<&Value> = rows_got.iter().collect();
+    let rows_want: Vec<&Value> = rows_want.iter().collect();
     assert_eq!(
         rows_got.len(),
         rows_want.len(),
@@ -458,17 +434,6 @@ fn compare_leg(spec: &Value, leg: &Value, oracle: &[Value], got: &LegResult) {
             "{leg_name}: memories row diverged\n  rust:   {g}\n  oracle: {w}"
         );
     }
-}
-
-fn seeded_id_of(spec: &Value, content: &str) -> String {
-    spec["seeds"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|s| s["content"] == content)
-        .and_then(|s| s["id"].as_str())
-        .unwrap()
-        .to_string()
 }
 
 #[tokio::test(flavor = "current_thread")]

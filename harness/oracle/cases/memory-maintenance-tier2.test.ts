@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(fs.readFileSync(join(here, '..', 'fixtures', 'memory-maintenance-tier2.json'), 'utf8'));
   const { runs } = JSON.parse(fs.readFileSync(join(here, '..', 'fixtures', 'memory-maintenance-tier2-runs.json'), 'utf8')) as {
-    runs: Array<{ name: string; holder: string; plant?: Record<string, Record<string, unknown>>; ctx?: { timeBudgetMs?: number }; request: Record<string, unknown> }>;
+    runs: Array<{ name: string; holder: string; plant?: Record<string, any>; ctx?: { timeBudgetMs?: number }; request: Record<string, unknown> }>;
   };
   const fixtureMain = process.env.QT_FIXTURE_MAINTENANCE_MAIN;
   const fixtureMount = process.env.QT_FIXTURE_MAINTENANCE_MOUNT;
@@ -129,6 +129,8 @@ async function main(): Promise<void> {
     const { Logger } = await import('@/lib/logger');
 
     let sink: Array<{ level: string; message: string; context: unknown }> | null = null;
+    // P4.168: the memories repository's ERROR lines, apart from `lines`.
+    let repoSink: Array<{ level: string; message: string; context: unknown }> | null = null;
     for (const level of ['error', 'warn', 'info', 'debug'] as const) {
       const proto = Logger.prototype as unknown as Record<string, (...a: unknown[]) => void>;
       const original = proto[level];
@@ -136,6 +138,9 @@ async function main(): Promise<void> {
         const { service: _s, environment: _e, ...own } = this.context ?? {};
         const merged = { ...own, ...(context ?? {}) };
         const mod = typeof merged.module === 'string' ? merged.module : '';
+        if (repoSink && level === 'error' && merged.collection === 'memories') {
+          repoSink.push({ level, message, context: JSON.parse(JSON.stringify(merged)) });
+        }
         if (sink && typeof message === 'string' && (mod.startsWith('memory:maintenance') || message === '[MemorySettings] Resolved memory settings')) {
           sink.push({ level, message, context: JSON.parse(JSON.stringify(merged)) });
         }
@@ -149,15 +154,20 @@ async function main(): Promise<void> {
     for (const run of runs) {
       if (run.plant?.maintenance) await settings.setMemoryMaintenanceSettings(run.plant.maintenance as never);
       if (run.plant?.consolidation) await settings.setMemoryConsolidationSettings(run.plant.consolidation as never);
+      // P4.168: a failing-read plant, undone right after the run.
+      for (const sql of (run.plant?.sqlBefore ?? []) as string[]) await rawQuery(sql);
       sink = [];
+      repoSink = [];
       const report = await runMaintenance(
         { characterId: holderId(run.holder), ...run.request } as never,
         { now: new Date(spec.now), ...(run.ctx ?? {}) },
       );
       // `void` effects (the retirement announce, the realtime bus) settle before the next run.
       for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
-      lines.push(JSON.stringify({ kind: 'run', name: run.name, report, lines: sink }));
+      lines.push(JSON.stringify({ kind: 'run', name: run.name, report, lines: sink, repoLines: repoSink }));
       sink = null;
+      repoSink = null;
+      for (const sql of (run.plant?.sqlAfter ?? []) as string[]) await rawQuery(sql);
     }
     for (const [text, vector] of embeddings) lines.push(JSON.stringify({ kind: 'embedding', text, vector }));
     const hex = (v: unknown) => (v instanceof Uint8Array ? Buffer.from(v).toString('hex') : v);

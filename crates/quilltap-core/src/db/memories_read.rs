@@ -405,6 +405,85 @@ fn query_count(
     Ok(n)
 }
 
+// === P4.168 (C-1, B1–B5): v4's base-repository validation + the memories
+// repository's own fallback wraps ===
+
+/// v4 `findByFilter`'s per-row `validateSafe` (`base.repository.ts:283-298`,
+/// `:146-157`): a row `MemorySchema` refuses is DROPPED, after `validate`'s
+/// ERROR `Data validation failed` and `validateSafe`'s WARN `Safe validation
+/// failed` (both `{collection, error: ZodError.message}`). The row validated
+/// is the read shape (NULL nullable cells absent, as `hydrateRow` leaves
+/// them); the `embedding` is left out — every arm of v4's union accepts a
+/// stored vector.
+fn drop_schema_invalid(rows: Vec<Value>) -> Vec<Value> {
+    use crate::api::zod_issues::{zod_error_message, zod_memory_issues};
+    rows.into_iter()
+        .filter(|row| {
+            let Some(obj) = row.as_object() else {
+                return false;
+            };
+            let mut bag = obj.clone();
+            bag.remove("embedding");
+            let issues = zod_memory_issues(&bag);
+            if issues.is_empty() {
+                return true;
+            }
+            super::fallback::log_safe_validation_drop("memories", &zod_error_message(&issues));
+            false
+        })
+        .collect()
+}
+
+/// v4 `findOneByFilter`'s `this.validate(result)` (`base.repository.ts:303-
+/// 313`): a refused row logs `Data validation failed` and THROWS into the
+/// method's own fallback `safeQuery` — the `Err` carries the `ZodError.message`
+/// as that line's `error`.
+fn validate_one(row: Option<Value>) -> Result<Option<Value>, DbError> {
+    use crate::api::zod_issues::{zod_error_message, zod_memory_issues};
+    let Some(row) = row else { return Ok(None) };
+    let mut bag = row.as_object().cloned().unwrap_or_default();
+    bag.remove("embedding");
+    let issues = zod_memory_issues(&bag);
+    if issues.is_empty() {
+        return Ok(Some(row));
+    }
+    let zod = zod_error_message(&issues);
+    super::fallback::log_data_validation_failed("memories", &zod);
+    Err(DbError::Internal(zod))
+}
+
+/// The memories repository's OWN fallback `safeQuery` above a base read
+/// (`safe-query.ts:51-72`): `log` (with `strictFailures` when the strict scope
+/// is active), then `Err` inside the scope, `Ok(fallback)` outside it. Above
+/// a strict-aware inner home it fires only inside the scope — outside it the
+/// inner line already fell back. The twin of `db::fallback`'s private
+/// `memories_fallback` (P4.166 owns that file this round — §S fold).
+fn strict_outer_fallback<T>(
+    fallback: T,
+    read: impl FnOnce() -> Result<T, DbError>,
+    log: impl FnOnce(&DbError, Option<bool>),
+) -> Result<T, DbError> {
+    read().or_else(|error| {
+        let strict = super::fallback::strict_repository_failures_active();
+        log(&error, strict.then_some(true));
+        if strict {
+            Err(error)
+        } else {
+            Ok(fallback)
+        }
+    })
+}
+/// The inner base `findByFilter` fallback line, ALONE — `Error finding
+/// entities by filter {collection, error, strictFailures?}` — for a read the
+/// port KEEPS STRICT where v4's fallback would act on a failed read (P-4's
+/// regenerate-all chat list): v4's line logged, then the caller propagates.
+pub(crate) fn log_find_by_filter_line(collection: &'static str, error: &DbError) {
+    let _ = super::fallback::find_by_filter_strict_aware::<Value>(collection, || {
+        Err(DbError::Internal(super::fallback::error_text(error)))
+    });
+}
+// === end P4.168 ===
+
 // ============================================================================
 // $regex → LIKE pattern (the exact v4 mangling)
 // ============================================================================
@@ -450,18 +529,57 @@ pub fn find_by_id(conn: &Connection, id: &str) -> Result<Option<Value>, DbError>
     Ok(v.pop())
 }
 
+/// P4.168 — v4 `_findById`'s read (`base.repository.ts:247-258`): the row
+/// `validate`d against `MemorySchema` (a refused row logs `Data validation
+/// failed` and is an `Err` carrying the `ZodError.message`). The caller wraps
+/// it in [`find_by_id_or_none`](super::fallback::find_by_id_or_none) — v4's
+/// fallback `Error finding entity by ID {collection, id, error}` → `None` — as
+/// the item routes' `memories.findById` does. (The bare [`find_by_id`] stays
+/// for the edit chokepoint's in-closure re-reads, which stand in for v4's
+/// `update` return — survey B9.)
+pub fn find_by_id_validated(conn: &Connection, id: &str) -> Result<Option<Value>, DbError> {
+    validate_one(find_by_id(conn, id)?)
+}
+
 /// `findByIdForCharacter` — `findOneByFilter({ id, characterId })`.
+///
+/// P4.168 (B3): v4's fallback shape (`memories.repository.ts:139-152`). The
+/// inner `findOneByFilter` `validate`s the row (a refused row logs `Data
+/// validation failed` and throws) and is itself a fallback `safeQuery` —
+/// `Error finding entity by filter {collection, error}` → `None`; inside the
+/// strict scope it gains `strictFailures=true` and the outer `Error finding
+/// memory by ID for character {collection, characterId, memoryId, error,
+/// strictFailures}` fires before the `Err` propagates. So a failed read is
+/// v4's 404 (the edit) / invalid related id (the link check), not a 500.
 pub fn find_by_id_for_character(
     conn: &Connection,
     character_id: &str,
     memory_id: &str,
 ) -> Result<Option<Value>, DbError> {
-    let mut v = query_memories(
-        conn,
-        "WHERE id = ?1 AND characterId = ?2 LIMIT 1",
-        &[&memory_id, &character_id],
-    )?;
-    Ok(v.pop())
+    strict_outer_fallback(
+        None,
+        || {
+            super::fallback::find_one_by_filter_strict_aware("memories", || {
+                let mut v = query_memories(
+                    conn,
+                    "WHERE id = ?1 AND characterId = ?2 LIMIT 1",
+                    &[&memory_id, &character_id],
+                )?;
+                validate_one(v.pop())
+            })
+        },
+        |error, strict| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = %character_id,
+                memoryId = %memory_id,
+                error = %super::fallback::error_text(error),
+                strictFailures = strict,
+                "Error finding memory by ID for character"
+            );
+        },
+    )
 }
 
 pub fn find_all(conn: &Connection) -> Result<Vec<Value>, DbError> {
@@ -474,6 +592,20 @@ pub fn find_by_character_id(conn: &Connection, character_id: &str) -> Result<Vec
 
 /// `findByCharacterIdInBatches` — the skip/limit generator, sorted by id ASC.
 /// Returns the batches in order; errors if `batch_size <= 0` (v4 throws).
+///
+/// Each page is v4's `findByFilter` — schema-invalid rows DROPPED with
+/// `validateSafe`'s two lines ([`drop_schema_invalid`]), and the page's
+/// length after the drop is what ends the generator (`batch.length <
+/// batchSize`), as in v4.
+///
+/// P4.168 (P-5, the planner's ruling — `MAINTENANCE_BATCH_LOADER_STRICT`):
+/// a page whose READ fails is KEPT STRICT. v4 answers it `[]` — the inner
+/// `findByFilter` fallback logs `Error finding entities by filter
+/// {collection, error}` (the outer `Error loading memory batch` fires only
+/// inside the strict scope) — and the generator ENDS, truncating the corpus
+/// maintenance then plans folds / demotions from. v5 logs v4's line and
+/// propagates the `Err`, so the run fails instead of acting on a partial set.
+/// Recorded as a v4 filing candidate (not filed).
 pub fn find_by_character_id_in_batches(
     conn: &Connection,
     character_id: &str,
@@ -489,7 +621,11 @@ pub fn find_by_character_id_in_batches(
             conn,
             "WHERE characterId = ?1 ORDER BY id ASC LIMIT ?2 OFFSET ?3",
             &[&character_id, &batch_size, &skip],
-        )?;
+        )
+        .map(drop_schema_invalid)
+        // v4's line for this page (the inner fallback's), then the strict
+        // refusal (P-5).
+        .inspect_err(|error| log_find_by_filter_line("memories", error))?;
         let n = batch.len() as i64;
         if n == 0 {
             return Ok(batches);
@@ -503,16 +639,44 @@ pub fn find_by_character_id_in_batches(
 }
 
 /// `findByIds` — `{ id: { $in: ids } }`; empty input → `[]`.
+///
+/// P4.168 (C-1, B1/B2): v4's shape (`memories.repository.ts:210-225`). The
+/// inner `findByFilter` DROPS every schema-invalid row through `validateSafe`
+/// (`Data validation failed` + `Safe validation failed`) — `FIND_BY_IDS_
+/// UNVALIDATED` retired, so an invalid neighbour is an orphan on both sides —
+/// and a failed read is its fallback `Error finding entities by filter` →
+/// `[]` (admission sees no neighbours, the maintenance fold skips the group);
+/// inside the strict scope both that line and the outer `Error finding
+/// memories by IDs {collection, count, error, strictFailures}` fire and the
+/// `Err` propagates.
 pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<Value>, DbError> {
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let placeholders = (1..=ids.len())
-        .map(|i| format!("?{i}"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let params: Vec<&dyn ToSql> = ids.iter().map(|s| s as &dyn ToSql).collect();
-    query_memories(conn, &format!("WHERE id IN ({placeholders})"), &params)
+    strict_outer_fallback(
+        Vec::new(),
+        || {
+            super::fallback::find_by_filter_strict_aware("memories", || {
+                let placeholders = (1..=ids.len())
+                    .map(|i| format!("?{i}"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let params: Vec<&dyn ToSql> = ids.iter().map(|s| s as &dyn ToSql).collect();
+                query_memories(conn, &format!("WHERE id IN ({placeholders})"), &params)
+                    .map(drop_schema_invalid)
+            })
+        },
+        |error, strict| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                count = ids.len(),
+                error = %super::fallback::error_text(error),
+                strictFailures = strict,
+                "Error finding memories by IDs"
+            );
+        },
+    )
 }
 
 /// Options for [`find_by_character_id_paginated`] (v4's `options` bag; `sort_by`
@@ -645,10 +809,34 @@ pub fn search_by_content(
         return Ok(Vec::new());
     }
     let pat = like_pattern(query);
-    query_memories(
-        conn,
-        "WHERE characterId = ?1 AND ((content LIKE ?2) OR (summary LIKE ?2))",
-        &[&character_id, &pat],
+    // P4.168 (B1): v4's shape (`memories.repository.ts:298-322`) — the inner
+    // `findByFilter` drops schema-invalid rows and falls back `[]` with
+    // `Error finding entities by filter`; inside the strict scope the outer
+    // `Error searching memories by content {collection, characterId,
+    // queryLength, error, strictFailures}` fires too and the `Err` propagates.
+    strict_outer_fallback(
+        Vec::new(),
+        || {
+            super::fallback::find_by_filter_strict_aware("memories", || {
+                query_memories(
+                    conn,
+                    "WHERE characterId = ?1 AND ((content LIKE ?2) OR (summary LIKE ?2))",
+                    &[&character_id, &pat],
+                )
+                .map(drop_schema_invalid)
+            })
+        },
+        |error, strict| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = %character_id,
+                queryLength = utf16_len(query),
+                error = %super::fallback::error_text(error),
+                strictFailures = strict,
+                "Error searching memories by content"
+            );
+        },
     )
 }
 
@@ -1129,14 +1317,36 @@ pub fn count_created_since(
 }
 
 /// `countWithoutEmbedding` — `embedding IS NULL`, optional character scope.
+///
+/// P4.168 (B4): v4's shape (`memories.repository.ts:1482-1494`) — the base
+/// `count` is a fallback `safeQuery` (`Error counting entities {collection,
+/// error}` → `0`); inside the strict scope the outer `Error counting memories
+/// without embedding {collection, characterId, error, strictFailures}` fires
+/// too and the `Err` propagates. (`characterId` is OMITTED when absent — v4's
+/// `undefined` field.)
 pub fn count_without_embedding(
     conn: &Connection,
     character_id: Option<&str>,
 ) -> Result<i64, DbError> {
-    match character_id {
-        Some(c) => query_count(conn, "WHERE characterId = ?1 AND embedding IS NULL", &[&c]),
-        None => query_count(conn, "WHERE embedding IS NULL", &[]),
-    }
+    strict_outer_fallback(
+        0,
+        || {
+            super::fallback::count_strict_aware("memories", || match character_id {
+                Some(c) => query_count(conn, "WHERE characterId = ?1 AND embedding IS NULL", &[&c]),
+                None => query_count(conn, "WHERE embedding IS NULL", &[]),
+            })
+        },
+        |error, strict| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                characterId = character_id,
+                error = %super::fallback::error_text(error),
+                strictFailures = strict,
+                "Error counting memories without embedding"
+            );
+        },
+    )
 }
 
 /// `findIdsWithoutEmbedding` — `{ id, characterId }` of rows missing an
@@ -1294,18 +1504,40 @@ pub fn find_distinct_character_ids(conn: &Connection) -> Vec<String> {
 }
 
 /// `findDistinctChatIds` — distinct non-null, non-empty chatIds.
+///
+/// P4.168 (B5 — the two reads that CONVERGE): v4's fallback `safeQuery`
+/// (`memories.repository.ts:1754-1768`) — `Error listing distinct memory
+/// chatIds {collection, error}` → `[]` (regenerate-all then skips its orphan
+/// sweep); inside the strict scope the line gains `strictFailures=true` and
+/// the `Err` propagates. (v4's backend `Raw query failed` line is v4-only —
+/// P4.113's recorded class.)
 pub fn find_distinct_chat_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
-    let mut stmt = conn.prepare("SELECT DISTINCT chatId FROM memories WHERE chatId IS NOT NULL")?;
-    let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
-    let mut out = Vec::new();
-    for r in rows {
-        if let Some(s) = r? {
-            if !s.is_empty() {
-                out.push(s);
+    strict_outer_fallback(
+        Vec::new(),
+        || {
+            let mut stmt =
+                conn.prepare("SELECT DISTINCT chatId FROM memories WHERE chatId IS NOT NULL")?;
+            let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+            let mut out = Vec::new();
+            for r in rows {
+                if let Some(s) = r? {
+                    if !s.is_empty() {
+                        out.push(s);
+                    }
+                }
             }
-        }
-    }
-    Ok(out)
+            Ok(out)
+        },
+        |error, strict| {
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "memories",
+                error = %super::fallback::error_text(error),
+                strictFailures = strict,
+                "Error listing distinct memory chatIds"
+            );
+        },
+    )
 }
 
 // === P4.D288 (C1-3): the index-store reads ===
@@ -2170,5 +2402,178 @@ mod alignment_census {
         // Source order is schema order too (the JSON key order).
         let in_order: Vec<usize> = pairs.iter().map(|(i, _)| *i).collect();
         assert_eq!(in_order, (0..cols.len()).collect::<Vec<_>>());
+    }
+}
+
+// === P4.168: the fallback homes, both sides of the strict scope ===
+#[cfg(test)]
+mod p4168_fallback_tests {
+    use super::*;
+    use crate::db::fallback::with_strict_repository_failures;
+
+    /// A connection with NO `memories` table: every read fails `no such
+    /// table: memories`.
+    fn broken() -> Connection {
+        Connection::open_in_memory().unwrap()
+    }
+
+    fn errors(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR"))
+            .cloned()
+            .collect()
+    }
+
+    const INNER: &str =
+        "ERROR quilltap::db Error finding entities by filter collection=memories error=no such table: memories";
+
+    #[test]
+    fn find_by_ids_falls_back_outside_the_strict_scope_and_propagates_inside_it() {
+        let conn = broken();
+        let ids = vec!["a".to_string(), "b".to_string()];
+        let mut got = None;
+        let lines = crate::test_support::captured(|| got = Some(find_by_ids(&conn, &ids)));
+        assert_eq!(got.unwrap().unwrap(), Vec::<Value>::new());
+        assert_eq!(errors(&lines), [INNER]);
+
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| find_by_ids(&conn, &ids)))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines),
+            [
+                format!("{INNER} strictFailures=true"),
+                "ERROR quilltap::db Error finding memories by IDs collection=memories count=2 error=no such table: memories strictFailures=true".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn search_by_content_falls_back_and_propagates_inside_the_strict_scope() {
+        let conn = broken();
+        let mut got = None;
+        let lines =
+            crate::test_support::captured(|| got = Some(search_by_content(&conn, "c1", "lamp😀")));
+        assert_eq!(got.unwrap().unwrap(), Vec::<Value>::new());
+        assert_eq!(errors(&lines), [INNER]);
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                search_by_content(&conn, "c1", "lamp😀")
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines)[1],
+            "ERROR quilltap::db Error searching memories by content collection=memories characterId=c1 queryLength=6 error=no such table: memories strictFailures=true"
+        );
+    }
+
+    #[test]
+    fn find_by_id_for_character_falls_back_to_none() {
+        let conn = broken();
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(find_by_id_for_character(&conn, "c1", "m1"))
+        });
+        assert_eq!(got.unwrap().unwrap(), None);
+        assert_eq!(
+            errors(&lines),
+            ["ERROR quilltap::db Error finding entity by filter collection=memories error=no such table: memories"]
+        );
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                find_by_id_for_character(&conn, "c1", "m1")
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines)[1],
+            "ERROR quilltap::db Error finding memory by ID for character collection=memories characterId=c1 memoryId=m1 error=no such table: memories strictFailures=true"
+        );
+    }
+
+    #[test]
+    fn count_without_embedding_falls_back_to_zero() {
+        let conn = broken();
+        let mut got = None;
+        let lines =
+            crate::test_support::captured(|| got = Some(count_without_embedding(&conn, None)));
+        assert_eq!(got.unwrap().unwrap(), 0);
+        assert_eq!(
+            errors(&lines),
+            ["ERROR quilltap::db Error counting entities collection=memories error=no such table: memories"]
+        );
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                count_without_embedding(&conn, Some("c1"))
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines)[1],
+            "ERROR quilltap::db Error counting memories without embedding collection=memories characterId=c1 error=no such table: memories strictFailures=true"
+        );
+    }
+
+    #[test]
+    fn find_distinct_chat_ids_falls_back_to_empty() {
+        let conn = broken();
+        let mut got = None;
+        let lines = crate::test_support::captured(|| got = Some(find_distinct_chat_ids(&conn)));
+        assert_eq!(got.unwrap().unwrap(), Vec::<String>::new());
+        assert_eq!(
+            errors(&lines),
+            ["ERROR quilltap::db Error listing distinct memory chatIds collection=memories error=no such table: memories"]
+        );
+    }
+
+    /// P-5 (`MAINTENANCE_BATCH_LOADER_STRICT`): v4's line, then the `Err` —
+    /// outside the strict scope too.
+    #[test]
+    fn the_batch_loader_logs_v4s_line_and_stays_strict() {
+        let conn = broken();
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(find_by_character_id_in_batches(&conn, "c1", 250))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(errors(&lines), [INNER]);
+    }
+
+    /// C-1: `findByFilter`'s `validateSafe` drops a schema-invalid row with
+    /// `Data validation failed` + `Safe validation failed`; a valid one passes.
+    #[test]
+    fn a_schema_invalid_row_is_dropped_with_validate_safes_two_lines() {
+        let ok = serde_json::json!({
+            "id": "c1680000-0000-4000-8000-0000000000a1",
+            "characterId": "c1680000-0000-4000-8000-0000000000c1",
+            "content": "c", "summary": "s",
+            "createdAt": "2026-10-27T00:00:00.000Z", "updatedAt": "2026-10-27T00:00:00.000Z",
+        });
+        let mut bad = ok.clone();
+        bad["tags"] = serde_json::json!(["not-a-uuid"]);
+        let mut kept = None;
+        let lines = crate::test_support::captured(|| {
+            kept = Some(drop_schema_invalid(vec![bad, ok.clone()]))
+        });
+        assert_eq!(kept.unwrap(), vec![ok]);
+        let shapes: Vec<String> = lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
+            .map(|l| l.split(" error=").next().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            shapes,
+            [
+                "ERROR quilltap::db Data validation failed collection=memories",
+                "WARN quilltap::db Safe validation failed collection=memories",
+            ]
+        );
     }
 }

@@ -393,7 +393,9 @@ pub fn memory_by_message(db: &Db, user_id: &str, message_id: &str) -> Response {
 pub async fn memory_get(db: &Db, memory_id: &str) -> Response {
     let mid = memory_id.to_string();
     let loaded: Result<Option<(Value, String)>, DbError> = db.read_main(move |main| {
-        let Some(memory) = memories_read::find_by_id(main, &mid)? else {
+        let Some(memory) = crate::db::fallback::find_by_id_or_none("memories", &mid, || {
+            memories_read::find_by_id_validated(main, &mid)
+        }) else {
             return Ok(None);
         };
         let character_id = memory
@@ -1115,7 +1117,9 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
     // Ownership: find existing + its character.
     let mid = memory_id.to_string();
     let character_id: Result<Option<String>, DbError> = db.read_main(move |main| {
-        let Some(existing) = memories_read::find_by_id(main, &mid)? else {
+        let Some(existing) = crate::db::fallback::find_by_id_or_none("memories", &mid, || {
+            memories_read::find_by_id_validated(main, &mid)
+        }) else {
             return Ok(None);
         };
         let cid = existing
@@ -1232,7 +1236,9 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
 pub async fn memory_delete(db: &Db, user_id: &str, memory_id: &str, now_ms: f64) -> Response {
     let mid = memory_id.to_string();
     let owner: Result<Option<String>, DbError> = db.read_main(move |main| {
-        let Some(existing) = memories_read::find_by_id(main, &mid)? else {
+        let Some(existing) = crate::db::fallback::find_by_id_or_none("memories", &mid, || {
+            memories_read::find_by_id_validated(main, &mid)
+        }) else {
             return Ok(None);
         };
         let cid = existing

@@ -63,7 +63,22 @@ fn spec_path() -> std::path::PathBuf {
         .join("../../harness/oracle/fixtures/memory-regenerate-jobs-tier3.json")
 }
 
-const PREFIXES: &[&str] = &["[MemoryRegenerateChat]", "[MemoryRegenerateAll]"];
+const PREFIXES: &[&str] = &[
+    "[MemoryRegenerateChat]",
+    "[MemoryRegenerateAll]",
+    // P4.168 (survey B5): the repository fallback lines the fan-out's three
+    // reads log.
+    "Error finding entities by filter",
+    "Error finding background jobs by user ID",
+    "Error listing distinct memory chatIds",
+];
+
+/// P4.168 (P-4, the planner's ruling) — `REGENERATE_ALL_STRICT_CHAT_LIST`,
+/// pinned both ways: with the chats table unreadable, v4's `findByUserId`
+/// fallback answers `[]` and the fan-out queues an orphan `MEMORY_REGENERATE_
+/// CHAT` wipe for EVERY chat that holds memories (no error); v5 logs v4's
+/// line, fails the job, and queues nothing.
+const REGENERATE_ALL_STRICT_CHAT_LIST: &str = "fan_out_chat_list_fails_strict";
 
 /// A cell as the JS side reads it (v4's REAL columns hold integers).
 fn cell(v: rusqlite::types::ValueRef<'_>) -> Value {
@@ -203,6 +218,15 @@ async fn memory_regenerate_jobs_tier3_matches_oracle() {
                 .expect("plant an in-flight wipe");
         }
 
+        for sql in plants
+            .get("sqlBefore")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            exec(&db, sql.as_str().unwrap(), vec![]).await;
+        }
+
         logs.lock().unwrap().clear();
         let job_id = format!("job-{name}");
         let error = if op["kind"] == "chat" {
@@ -224,6 +248,49 @@ async fn memory_regenerate_jobs_tier3_matches_oracle() {
         }
         .err();
         let captured = logs.lock().unwrap().clone();
+        for sql in plants
+            .get("sqlAfter")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            exec(&db, sql.as_str().unwrap(), vec![]).await;
+        }
+        if name == REGENERATE_ALL_STRICT_CHAT_LIST {
+            // Both ways: v4 no error + ≥1 orphan wipe queued; v5 the error +
+            // NOTHING queued; both log v4's chats-table line first.
+            let got_jobs = dump(&db, JOBS_SQL);
+            let v4_wipes = want["jobs"].as_array().map_or(0, Vec::len);
+            let line = |l: &String| {
+                l.starts_with("ERROR Error finding entities by filter collection=chats ")
+            };
+            let v4_line = want["lines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(render_v4)
+                .any(|l| line(&l));
+            let held = want["error"].is_null()
+                && v4_wipes > 0
+                && v4_line
+                && error.is_some()
+                && got_jobs.as_array().is_some_and(Vec::is_empty)
+                && captured.first().is_some_and(line);
+            if held {
+                eprintln!(
+                    "[{name}] REGENERATE_ALL_STRICT_CHAT_LIST holds (v4 queued {v4_wipes} orphan wipe(s); v5 failed the job: {error:?})."
+                );
+            } else {
+                failures.push(format!(
+                    "{name}: REGENERATE_ALL_STRICT_CHAT_LIST moved\n  v4 error {} / {v4_wipes} job(s) / line {v4_line}\n  v5 error {error:?} / jobs {got_jobs} / lines {captured:?}",
+                    want["error"]
+                ));
+            }
+            if plants.get("mode").is_some() {
+                unreachable!("the strict op plants no mode");
+            }
+            continue;
+        }
         if plants.get("mode").is_some() {
             exec(
                 &db,

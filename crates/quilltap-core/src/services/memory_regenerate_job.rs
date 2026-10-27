@@ -223,9 +223,28 @@ pub async fn handle_memory_regenerate_chat(
     Ok(())
 }
 
-/// v4 `handleMemoryRegenerateAll(job)` — the fan-out. `Err(message)` is v4's
-/// `throw` (a failed chat list or job snapshot); a failed per-chat enqueue logs
-/// v4's ERROR and moves on.
+/// v4 `handleMemoryRegenerateAll(job)` — the fan-out. A failed per-chat
+/// enqueue logs v4's ERROR and moves on.
+///
+/// P4.168 (survey B5) — the three reads v4 answers with repository fallbacks:
+///
+/// - **the chat list — KEPT STRICT** (P-4, the planner's ruling —
+///   `REGENERATE_ALL_STRICT_CHAT_LIST`). v4's `chats.findByUserId` is the base
+///   `findByFilter`, which logs `Error finding entities by filter
+///   {collection: 'chats', error}` and answers `[]`; the fan-out then queues
+///   no per-chat wipe and counts EVERY chat that holds memories as an orphan —
+///   a `MEMORY_REGENERATE_CHAT` wipe on the standard profile for each (the
+///   dangerous routing lost), so a transient chats-table failure retires and
+///   re-extracts every chat's memories. v5 logs v4's line and fails the job
+///   (`Err`), so nothing is wiped. A v4 filing candidate (not filed).
+/// - **the in-flight job snapshot — CONVERGED**: each `findByUserId(status)`
+///   is v4's fallback `Error finding background jobs by user ID {userId}` over
+///   the inner `findByFilter` (whose line is the one that fires outside the
+///   strict scope) → `[]`; only the dedup short-circuit is lost (the enqueue
+///   dedups anyway).
+/// - **the distinct memory chatIds — CONVERGED**:
+///   [`memories_read::find_distinct_chat_ids`]'s fallback `[]` skips the
+///   orphan sweep.
 pub async fn handle_memory_regenerate_all(
     db: &Db,
     job_id: &str,
@@ -235,6 +254,7 @@ pub async fn handle_memory_regenerate_all(
     let uid = user_id.to_string();
     let user_chats = db
         .read_main(move |c| chats_read::find_by_user_id(c, &uid))
+        .inspect_err(|e| memories_read::log_find_by_filter_line("chats", e))
         .map_err(|e| error_text(&e))?;
     let valid_chat_ids: HashSet<String> = user_chats
         .iter()
@@ -247,8 +267,12 @@ pub async fn handle_memory_regenerate_all(
     let in_flight = db
         .read_main(move |c| {
             let repo = BackgroundJobsRepository::new(c);
-            let mut jobs = repo.find_by_user_id(&uid, Some("PENDING"))?;
-            jobs.extend(repo.find_by_user_id(&uid, Some("PROCESSING"))?);
+            let mut jobs = background_jobs_by_user_or_empty(&uid, || {
+                repo.find_by_user_id(&uid, Some("PENDING"))
+            })?;
+            jobs.extend(background_jobs_by_user_or_empty(&uid, || {
+                repo.find_by_user_id(&uid, Some("PROCESSING"))
+            })?);
             Ok(jobs)
         })
         .map_err(|e| error_text(&e))?;
@@ -333,4 +357,27 @@ pub async fn handle_memory_regenerate_all(
         "[MemoryRegenerateAll] Fan-out complete"
     );
     Ok(())
+}
+
+/// v4 `backgroundJobs.findByUserId(userId, status)` as the fan-out sees it
+/// (`background-jobs.repository.ts:120-138`, P4.168 B5): the inner
+/// `findByFilter` fallback (`Error finding entities by filter {collection:
+/// 'background_jobs', error}` → `[]`) is the line that fires outside the strict
+/// scope; inside it that line gains `strictFailures=true` and the method's own
+/// `Error finding background jobs by user ID {collection, userId, error,
+/// strictFailures}` fires before the `Err` propagates.
+fn background_jobs_by_user_or_empty<T>(
+    user_id: &str,
+    read: impl FnOnce() -> Result<Vec<T>, crate::db::DbError>,
+) -> Result<Vec<T>, crate::db::DbError> {
+    crate::db::fallback::find_by_filter_strict_aware("background_jobs", read).inspect_err(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "background_jobs",
+            userId = %user_id,
+            error = %error_text(error),
+            strictFailures = true,
+            "Error finding background jobs by user ID"
+        );
+    })
 }
