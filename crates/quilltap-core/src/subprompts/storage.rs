@@ -16,6 +16,7 @@
 //! vault for a live character that somehow lacks one, "the same posture as
 //! the wardrobe writers".
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde_json::Value;
 
@@ -360,6 +361,7 @@ pub fn create_character_subprompt(
         &vault_id,
         &subprompt_path_for_id(&id),
         &compose_subprompt_content(&title, &content),
+        TitleLintScope::Unlinted { main },
     )?;
     tracing::info!(
         target: LOG_TARGET,
@@ -419,6 +421,7 @@ pub fn update_character_subprompt(
         &vault_id,
         &path,
         &compose_subprompt_content(&title, &content),
+        TitleLintScope::Unlinted { main },
     )?;
     // `Object.keys(patch).filter((k) => patch[k] !== undefined)` — the PRESENT
     // keys, in v4's declaration order.
@@ -460,7 +463,12 @@ pub fn delete_character_subprompt(
         return Ok(false);
     }
     let vault_id = resolve_vault_for_write(main, mount, character_id)?;
-    let deleted = delete_database_document(mount, &vault_id, &subprompt_path_for_id(subprompt_id))?;
+    let deleted = delete_database_document(
+        mount,
+        &vault_id,
+        &subprompt_path_for_id(subprompt_id),
+        TitleLintScope::Unlinted { main },
+    )?;
     tracing::info!(
         target: LOG_TARGET,
         character_id = %character_id,

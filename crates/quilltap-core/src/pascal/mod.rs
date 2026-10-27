@@ -21,6 +21,7 @@ pub mod roster;
 pub mod run_service;
 pub mod side_effects;
 pub mod tool_gate;
+pub mod tool_gate_keys;
 pub mod tool_vocabulary;
 pub mod trigger_phrases;
 pub mod trigger_runner;

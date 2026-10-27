@@ -19,6 +19,7 @@
 //! pointer + the Quilltap General singleton.
 
 use crate::db::runtime::Db;
+use crate::inventory::lint_scope::TitleLintScope;
 use crate::jsstr::{js_trim, utf16_len, utf16_truncate};
 
 /// v4 `LANTERN_AESTHETICS_FILENAME`.
@@ -193,13 +194,20 @@ pub fn write_aesthetic_file(
     content: &str,
 ) -> Result<(), crate::db::DbError> {
     if js_trim(content).is_empty() {
-        crate::db::database_store::delete_database_document(mount, mount_point_id, filename)?;
+        crate::db::database_store::delete_database_document(
+            mount,
+            mount_point_id,
+            filename,
+            TitleLintScope::NeverClaimed,
+        )
+        .map_err(crate::db::database_store::StoreError::into_db_error)?;
     } else {
         crate::db::database_store::write_database_document(
             mount,
             mount_point_id,
             filename,
             content,
+            TitleLintScope::NeverClaimed,
         )
         .map_err(|e| crate::db::DbError::Internal(e.to_string()))?;
     }

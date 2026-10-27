@@ -626,6 +626,8 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_content_and_mtime_by_mount_point_and_path", "no-v4-counterpart"),
+    ("quilltap-core/src/db/database_store.rs", "delete_database_document", "find_by_mount_point_and_path_or_none", "converted"), // P4.D340
+    ("quilltap-core/src/db/database_store.rs", "delete_database_document", "delete_with_gc_or_false", "converted"), // P4.D340
     ("quilltap-core/src/db/database_store.rs", "move_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "move_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "move_database_document", "find_by_mount_point_and_path_or_none", "converted"),
@@ -684,6 +686,8 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/vault_wardrobe_write.rs", "project_array_into_vault_folder", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
     ("quilltap-core/src/documents/mod.rs", "classify_resolved_target", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/inventory/dependents.rs", "read_all_inventory_records", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"),
+    ("quilltap-core/src/inventory/title_lint_documents.rs", "lint_inventory_document_change", "find_many_by_mount_points_in_folder_opts_or_empty", "converted"), // P4.D340
+    ("quilltap-core/src/inventory/title_lint_documents.rs", "lint_inventory_document_change", "find_by_mount_point_and_path_or_none", "converted"), // P4.D340
     ("quilltap-core/src/photos/avatar_rolls_service.rs", "delete_avatar_roll", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "list_character_gallery", "find_by_mount_point_id_or_empty", "converted"),
     ("quilltap-core/src/photos/character_gallery_service.rs", "remove_from_character_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
@@ -943,7 +947,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (91, 14, 19, 1, 13, 5, 1, 20, 5);
+) = (95, 14, 19, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`
@@ -1077,6 +1081,9 @@ const DOCEDIT_SITES: &[(&str, usize)] = &[
     ("doc_edit/uri_producers.rs", 1),
     ("documents/mod.rs", 1),
     ("pascal/roster.rs", 1),
+    // P4.D340: the census stand-in's store listing (LANE-REMOVE at §S.5 —
+    // v4's `listAllCustomTools` read, through the same fallback).
+    ("pascal/tool_gate_keys.rs", 1),
     ("pascal/workbench.rs", 1),
     ("photos/user_gallery_service.rs", 1),
     ("services/embedding_reindex_job.rs", 1),

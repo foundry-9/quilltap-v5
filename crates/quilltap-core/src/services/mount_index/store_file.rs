@@ -17,6 +17,7 @@
 //! context cannot arise. (The why is kept because the single-writer rule is
 //! the correctness content of v4's guard.)
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 
@@ -309,16 +310,26 @@ pub fn store_mount_file(
             }
         }
         // ...the linkDocumentContent write...
-        let mtime =
-            match crate::db::database_store::write_database_document(mount, &mp.id, &rel, &text) {
-                Ok(m) => m,
-                Err(crate::db::database_store::StoreError::Store(se)) => {
-                    return Err(MountFileError::Store(se))
-                }
-                Err(crate::db::database_store::StoreError::Db(de)) => {
-                    return Err(MountFileError::Db(de))
-                }
-            };
+        let mtime = match crate::db::database_store::write_database_document(
+            mount,
+            &mp.id,
+            &rel,
+            &text,
+            TitleLintScope::Unlinted { main },
+        ) {
+            Ok(m) => m,
+            Err(crate::db::database_store::StoreError::Store(se)) => {
+                return Err(MountFileError::Store(se))
+            }
+            Err(crate::db::database_store::StoreError::Db(de)) => {
+                return Err(MountFileError::Db(de))
+            }
+            // Neither a FileOpError nor a DatabaseStoreError in v4: the
+            // route's catch-all 500 `Failed to write file` (P4.D340 R-8).
+            Err(crate::db::database_store::StoreError::TitleLint(r)) => {
+                return Err(MountFileError::Other(r.message))
+            }
+        };
         // ...and the parent-side inline chunk pass (v4's why-comment: without
         // it the embedding scheduler finds no chunks and the document stays
         // unsearchable until a manual rescan).

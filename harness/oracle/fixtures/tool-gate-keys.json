@@ -1,0 +1,192 @@
+{
+ "ops": [
+  {
+   "name": "tgk-no-tools",
+   "tools": false,
+   "steps": []
+  },
+  {
+   "name": "tgk-plain-only",
+   "tools": false,
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "name": "tgk-keyed-pair",
+   "tools": true,
+   "steps": [],
+   "carve": "UNTIL_UNION_S9_C3_C4"
+  },
+  {
+   "name": "tgk-both-clauses-both-subjects",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/lambda.tool.json",
+     "content": "{\n  \"name\": \"lambda\",\n  \"description\": \"The lambda tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ],\n  \"availableWhen\": {\n    \"inventory\": {\n      \"ansible resonator\": {\n        \"eq\": \"equipped\"\n      }\n    }\n  }\n}\n"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/kappa.tool.json",
+     "content": "{\n  \"name\": \"kappa\",\n  \"description\": \"The kappa tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ],\n  \"withheldWhen\": {\n    \"inventoryCount\": {\n      \"lantern\": {\n        \"gte\": 1\n      }\n    }\n  }\n}\n"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "name": "tgk-listed-gone-on-open",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/ghost.tool.json",
+     "content": "{\n  \"name\": \"ghost\",\n  \"description\": \"The ghost tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    },
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "DELETE FROM doc_mount_documents WHERE fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath = 'Tools/ghost.tool.json')"
+    }
+   ]
+  },
+  {
+   "name": "tgk-unparseable-and-schema",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/broken.tool.json",
+     "content": "{ not json"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/invalid.tool.json",
+     "content": "{\"name\": \"invalid\"}"
+    }
+   ]
+  },
+  {
+   "name": "tgk-no-enabled-store",
+   "tools": false,
+   "steps": [
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "UPDATE doc_mount_points SET enabled = 0"
+    }
+   ]
+  },
+  {
+   "name": "tgk-any-of-groups",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/tune.tool.json",
+     "content": "{\"name\": \"tune\", \"description\": \"Tune.\", \"withheldWhen\": [{\"inventory\": {\"resonator\": {\"eq\": \"equipped\"}}}, {\"inventoryCount\": {\"ring\": {\"gte\": 2}}, \"inventoryAggregate\": {\"equipped.names\": {\"eq\": \"lantern\"}}}], \"outcomes\": [{\"when\": true, \"message\": \"x\", \"state\": \"info\"}]}"
+    }
+   ]
+  },
+  {
+   "name": "tgk-integer-like-key",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/count.tool.json",
+     "content": "{\n  \"name\": \"count\",\n  \"description\": \"The count tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ],\n  \"availableWhen\": {\n    \"inventory\": {\n      \"lamp\": {\n        \"eq\": \"equipped\"\n      },\n      \"42\": {\n        \"eq\": \"equipped\"\n      }\n    }\n  }\n}\n"
+    }
+   ]
+  },
+  {
+   "name": "tgk-two-stores-ordering",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/broken.tool.json",
+     "content": "{ not json"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/ghost.tool.json",
+     "content": "{\n  \"name\": \"ghost\",\n  \"description\": \"The ghost tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    },
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "DELETE FROM doc_mount_documents WHERE fileId IN (SELECT fileId FROM doc_mount_file_links WHERE relativePath = 'Tools/ghost.tool.json')"
+    }
+   ]
+  },
+  {
+   "name": "tgk-duplicate-name-not-unread",
+   "tools": false,
+   "carve": "UNTIL_UNION_S9_C3_C4",
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/a.tool.json",
+     "content": "{\n  \"name\": \"twin\",\n  \"description\": \"The twin tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/b.tool.json",
+     "content": "{\n  \"name\": \"twin\",\n  \"description\": \"The twin tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ]
+  },
+  {
+   "name": "tgk-disabled-store-skipped",
+   "tools": false,
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/broken.tool.json",
+     "content": "{ not json"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    },
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "UPDATE doc_mount_points SET enabled = 0 WHERE id = '{{mp:project}}'"
+    }
+   ]
+  }
+ ]
+}

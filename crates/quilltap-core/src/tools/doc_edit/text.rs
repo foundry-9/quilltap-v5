@@ -353,7 +353,7 @@ pub fn handle_write_file(
         .ok()
         .map(|d| d.content);
 
-    let mtime = write_file_with_mtime_check(mount, &resolved, &content_to_write)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved, &content_to_write)?;
     // triggerReindexIfNeeded: no-op seam.
     let written_uri = uri_for_resolved_path(
         main,
@@ -534,7 +534,7 @@ pub fn handle_str_replace(
         replace,
         utf16_substring(&content, index + length, content.encode_utf16().count())
     );
-    let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     let line_number = get_line_number(&content, index);
     let edited_uri = uri_for_resolved_path(
         main,
@@ -684,7 +684,7 @@ pub fn handle_insert_text(
         insert_content,
         utf16_substring(&content, insert_offset, content_len)
     );
-    let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     let line_number = get_line_number(&new_content, insert_offset);
     let edited_uri = uri_for_resolved_path(
         main,

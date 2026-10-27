@@ -15,12 +15,18 @@
 //! this through `inventory::location::resolve_inventory_location`.
 //!
 //! **NO-PORT: `runSerialized`** — v5's writer task serialises every write.
-//! **NOT HERE (P4.D340): `withInventoryWritesLinted`** — v4 marks these
-//! writes as already linted so the document-store hooks skip them; the title
-//! lint's `linted` argument is threaded through this module by P4.D340 (T9).
+//! **`with_inventory_writes_linted`** (P4.D340, R-9) — v4 runs these writes
+//! inside `withInventoryWritesLinted` so the document-store hooks skip them
+//! (the mutations lint for themselves). v5 passes the scope as an explicit
+//! argument: the projection writes through the REPOSITORY methods, which
+//! carry no hook at all (the same outcome as v4's linted scope); the one
+//! write here that reaches a hook is the folder RENAME's
+//! `move_database_folder`, which takes the scope this closure hands out.
 
 use rusqlite::Connection;
 use serde_json::{Map, Value};
+
+use crate::inventory::lint_scope::TitleLintScope;
 
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
@@ -485,6 +491,12 @@ pub fn create_inventory_folder_in_mount(
     item_folder_ops::create_folder_in(&INVENTORY_TREE, mount, m, folder)
 }
 
+/// Run `f` with its document writes marked as already linted by the
+/// Inventory mutations (v4 `withInventoryWritesLinted`).
+pub fn with_inventory_writes_linted<T>(f: impl FnOnce(TitleLintScope<'static>) -> T) -> T {
+    f(TitleLintScope::Linted)
+}
+
 /// Rename a folder in place.
 pub fn rename_inventory_folder_in_mount(
     mount: &Connection,
@@ -492,7 +504,10 @@ pub fn rename_inventory_folder_in_mount(
     folder: &str,
     new_name: &str,
 ) -> Result<InventoryFolder, InventoryWriteError> {
-    item_folder_ops::rename_folder_in(&INVENTORY_TREE, mount, m, folder, new_name)
+    // v4 `runSerialized` wraps the folder writers in `withInventoryWritesLinted`.
+    with_inventory_writes_linted(|linted| {
+        item_folder_ops::rename_folder_in(&INVENTORY_TREE, mount, m, folder, new_name, linted)
+    })
 }
 
 /// Delete a folder, sending its objects and subfolders up to its parent.

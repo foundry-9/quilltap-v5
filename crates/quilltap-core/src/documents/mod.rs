@@ -21,6 +21,7 @@
 //! corpus is entirely database-backed (matching the whole doc-edit surface) —
 //! the fs branches are a tracked deferral, never exercised by the diff.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde::Serialize;
 
@@ -154,6 +155,7 @@ fn store_err(e: StoreError) -> DocError {
             _ => DocError::Store(s.message),
         },
         StoreError::Db(d) => DocError::Store(d.to_string()),
+        StoreError::TitleLint(r) => DocError::Store(r.message),
     }
 }
 
@@ -410,7 +412,7 @@ pub fn open_document_file(
         params.mount_point,
         params.target_folder,
     )?;
-    let mtime = write_database(mount, &resolved, "")?;
+    let mtime = write_database(main, mount, &resolved, "")?;
     let display_title = display_title_for(params.title, &file_path);
     Ok(OpenedDocumentFile {
         file_path,
@@ -438,7 +440,7 @@ pub fn write_document_file(
 ) -> Result<i64, DocError> {
     let resolved = resolve_operator_doc_path(main, mount, ctx, scope, file_path, mount_point, None)
         .map_err(resolve_err)?;
-    let mtime = write_database_checked(mount, &resolved, content, expected_mtime)?;
+    let mtime = write_database_checked(main, mount, &resolved, content, expected_mtime)?;
 
     if scope == DocEditScope::DocumentStore {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
@@ -531,6 +533,7 @@ pub fn rename_document_file(
                 mp,
                 &resolved_old.relative_path,
                 &resolved_new.relative_path,
+                TitleLintScope::Unlinted { main },
             )
             .map_err(|e| match e {
                 StoreError::Store(s) if s.code == DbStoreErrorCode::Conflict => {
@@ -605,8 +608,13 @@ pub fn delete_document_file(
 
     if resolved.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
-            let deleted =
-                database_store::delete_database_document(mount, mp, &resolved.relative_path)?;
+            let deleted = database_store::delete_database_document(
+                mount,
+                mp,
+                &resolved.relative_path,
+                TitleLintScope::Unlinted { main },
+            )
+            .map_err(store_err)?;
             return Ok(if deleted {
                 DeleteOutcome::Deleted
             } else {
@@ -784,6 +792,7 @@ fn read_database(mount: &Connection, resolved: &ResolvedPath) -> Result<ReadDoc,
 /// `writeFileWithMtimeCheck` with no `expectedMtime`): a database store via the
 /// store primitive, a filesystem-backed path to host disk.
 fn write_database(
+    main: &Connection,
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
@@ -795,8 +804,14 @@ fn write_database(
     let mp = resolved.mount_point_id.as_deref().ok_or_else(|| {
         DocError::Store("Database-backed ResolvedPath is missing mountPointId".into())
     })?;
-    database_store::write_database_document(mount, mp, &resolved.relative_path, content)
-        .map_err(store_err)
+    database_store::write_database_document(
+        mount,
+        mp,
+        &resolved.relative_path,
+        content,
+        TitleLintScope::Unlinted { main },
+    )
+    .map_err(store_err)
 }
 
 /// Write with the v4 `writeDatabaseDocument` `expectedMtime` guard: when an
@@ -805,6 +820,7 @@ fn write_database(
 /// not itself port the guard — it is reproduced here so the 409 arm is faithful,
 /// without touching lane A's `database_store.rs`).
 fn write_database_checked(
+    main: &Connection,
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
@@ -840,8 +856,14 @@ fn write_database_checked(
             Err(e) => return Err(store_err(e)),
         }
     }
-    database_store::write_database_document(mount, mp, &resolved.relative_path, content)
-        .map_err(store_err)
+    database_store::write_database_document(
+        mount,
+        mp,
+        &resolved.relative_path,
+        content,
+        TitleLintScope::Unlinted { main },
+    )
+    .map_err(store_err)
 }
 
 /// v4 `params.title || path.basename(filePath)`.
@@ -905,6 +927,24 @@ fn node_dirname(p: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D340 R-8 (c): Document Mode answers v4's `Failed to write document:
+    /// <message>` 500 — a refusal is a plain store error here, carrying its
+    /// message.
+    #[test]
+    fn a_title_lint_refusal_is_a_store_error_with_its_message() {
+        let r = crate::inventory::errors::InventoryRefusal::title_shadow(
+            "Lantern",
+            &[
+                crate::inventory::errors::InventoryTitleCollision::KindNameShadow {
+                    kind_name: "lantern".into(),
+                },
+            ],
+        );
+        let e = store_err(StoreError::TitleLint(r.clone()));
+        assert!(matches!(e, DocError::Store(_)));
+        assert_eq!(e.message(), r.message);
+    }
 
     fn ok(current: &str, title: &str) -> (String, String) {
         match compute_rename_target(current, title) {

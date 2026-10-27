@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(inventory): the title lint — the protected sets, the document-write door, and the four store hooks (P4.D340)
+
+_Versions: core 0.0.1325._
+
+Ports v4's Inventory title lint at `322a5488e` (`7263105c6`'s lint half). New `inventory::title_lint`: `normalize_title` (the resolver's fold, NFKD, marks stripped, JS whitespace collapsed), the before / after event (entering / leaving), the two protected sets (every kind name in the writing location's pool, archived and archetypes included; gate keys resolved against the pool), fail-closed refusals when anything could not be read, the five row reasons, and one census DEBUG per call. New `inventory::title_lint_documents`: the document-write door (prior state, per-object pairs, the census-only arm for tool files, the folder move across `Inventory/`). New `inventory::lint_scope`: the three path predicates and `TitleLintScope`, an explicit argument instead of v4's async-local scope; its unlinted arm carries the main connection the lint reads. New `pascal::tool_gate_keys`: the instance-wide gate-key census.
+
+The four `database_store` hooks (write, delete, move, move-folder) take the scope last and lint a claimed path before the change, writing the rows after it lands; `StoreError` gains `TitleLint`, and `delete_database_document` now answers `StoreError`. Every caller passes a scope; writers whose paths are fixed and never claimed pass `NeverClaimed` (a census test pins them). `db::inventory_writes::with_inventory_writes_linted` marks the Inventory folder rename. A refusal surfaces as v4's does at each layer: the Scriptorium and folder-move routes answer their generic 500, Document Mode its `Failed to write document: …`, the doc tools the refusal's message.
+
+On this branch the gate-key resolution (`resolve_inventory_ref`) and the census walk over gate records and any-of groups are siblings' work; both are fenced stand-ins that fail closed (an entering title over a counted key is refused as unchecked; a leaving one rings `gate unverifiable`). The production census counts no key until the union.
+
+New families: `inventory_title_lint_equivalence` (path / normalization / message rows exact, plus 66 lint / document / store ops on a new rebuilt pair — 53 compared, 13 carved until the union and pinned to the stand-in) and `tool_gate_keys_equivalence` (12 census ops, 8 carved). One v4 refusal is not ported: "its prior state could not be read" sits behind a fallback read v4's real code never throws through.
+
+The document-store read census gains the four new fallback-read sites (91 → 95 converted) and the census stand-in's store listing; the two LANE-REMOVE marker guards accept this round's markers when they name v4's `7263105c6`.
+
 #### 2026-10-26 — docs(porting): P4.D327 lane record and status header (LANE COMPLETE)
 
 _Docs-only change (no crate version moves)._

@@ -1,0 +1,2570 @@
+{
+ "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
+ "seedTimestamp": "2026-02-01T00:00:00.000Z",
+ "userId": "11111111-1111-4111-8111-111111111110",
+ "user": {
+  "username": "keeper",
+  "email": null,
+  "name": "Keeper",
+  "image": null
+ },
+ "friday": {
+  "id": "c1000000-0000-4000-8000-000000000001",
+  "name": "Friday"
+ },
+ "project": {
+  "id": "d1000000-0000-4000-8000-000000000001",
+  "name": "The Quest"
+ },
+ "group": {
+  "id": "e1000000-0000-4000-8000-000000000001",
+  "name": "The Covenant",
+  "memberId": "e2000000-0000-4000-8000-000000000001",
+  "member": "c1000000-0000-4000-8000-000000000001"
+ },
+ "generalMountPointId": "f1000000-0000-4000-8000-000000000001",
+ "generalStoreName": "Quilltap General",
+ "ids": {
+  "tape": "a0000001-0000-4000-8000-000000000000",
+  "res": "a0000010-0000-4000-8000-000000000000",
+  "lamp": "a0000011-0000-4000-8000-000000000000",
+  "compass": "a0000012-0000-4000-8000-000000000000",
+  "map": "a0000013-0000-4000-8000-000000000000",
+  "key": "a0000014-0000-4000-8000-000000000000",
+  "ftape": "a0000020-0000-4000-8000-000000000000",
+  "lantern": "11111111-1111-4111-8111-111111111111",
+  "decoy": "22222222-2222-4222-8222-222222222222",
+  "beltA": "33333333-3333-4333-8333-333333333331",
+  "beltB": "33333333-3333-4333-8333-333333333332"
+ },
+ "objects": [
+  {
+   "scope": "general",
+   "owner": null,
+   "record": {
+    "id": "a0000001-0000-4000-8000-000000000000",
+    "name": "tape measure",
+    "title": null,
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": true,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000010-0000-4000-8000-000000000000",
+    "name": "ansible resonator",
+    "title": null,
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": false,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000011-0000-4000-8000-000000000000",
+    "name": "lamp",
+    "title": "Brass Lamp",
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": false,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000012-0000-4000-8000-000000000000",
+    "name": "compass",
+    "title": "North Star",
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": false,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000013-0000-4000-8000-000000000000",
+    "name": "map",
+    "title": "North Star",
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": false,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000014-0000-4000-8000-000000000000",
+    "name": "key",
+    "title": "Brass Key",
+    "description": null,
+    "imageDescription": null,
+    "kind": "item",
+    "isArchetype": false,
+    "equippedByDefault": false,
+    "maxEquipped": 1,
+    "canCopy": true,
+    "emoji": null,
+    "svg": null,
+    "imageFileId": null,
+    "metadata": {},
+    "parentId": null,
+    "itemIds": [],
+    "folder": "",
+    "archivedAt": null,
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z"
+   }
+  },
+  {
+   "scope": "character",
+   "owner": "c1000000-0000-4000-8000-000000000001",
+   "record": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "parentId": "a0000001-0000-4000-8000-000000000000",
+    "title": "Friday's Yellow Tape Measure",
+    "createdAt": "2026-02-01T00:00:00.000Z",
+    "updatedAt": "2026-02-01T00:00:00.000Z",
+    "folder": ""
+   }
+  }
+ ],
+ "docs": [
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "path": "Inventory/lantern.json",
+   "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "path": "Inventory/decoy.json",
+   "content": "{\n  \"id\": \"22222222-2222-4222-8222-222222222222\",\n  \"kind\": \"item\",\n  \"name\": \"decoy\",\n  \"title\": \"ansible resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "path": "Inventory/Belt/a.json",
+   "content": "{\n  \"id\": \"33333333-3333-4333-8333-333333333331\",\n  \"kind\": \"item\",\n  \"name\": \"buckle\",\n  \"title\": \"Silver Buckle\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+  },
+  {
+   "scope": "project",
+   "owner": "d1000000-0000-4000-8000-000000000001",
+   "path": "Inventory/Belt/b.json",
+   "content": "{\n  \"id\": \"33333333-3333-4333-8333-333333333332\",\n  \"kind\": \"item\",\n  \"name\": \"pouch\",\n  \"title\": \"Leather Pouch\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+  },
+  {
+   "scope": "general",
+   "owner": null,
+   "path": "Tools/measure_twice.tool.json",
+   "content": "{\n  \"name\": \"measure_twice\",\n  \"description\": \"The measure_twice tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ],\n  \"availableWhen\": {\n    \"inventory\": {\n      \"Friday's Yellow Tape Measure\": {\n        \"eq\": \"equipped\"\n      }\n    }\n  }\n}\n"
+  }
+ ],
+ "paths": [
+  "Inventory/tape measure.json",
+  "inventory/Belt/tape.json",
+  "Tools/measure_twice.tool.json",
+  "Tools/archive/old.tool.json",
+  "metadata.json",
+  "Inventory/x.json",
+  "Inventory",
+  "Inventory Notes",
+  "/Tools/x.tool.json",
+  "//TOOLS/X.TOOL.JSON",
+  "Tools/x.tool.json/",
+  "Tools/.tool.json",
+  "/Inventory/",
+  "//inventory//",
+  "İnventory/x.json",
+  "Inventory.json",
+  "Inventory/x.JSON",
+  "/Inventory/x.json",
+  "Inventory/x.jsonl",
+  "Inventory/images/abc/x.json",
+  "Inventory/a/b/c/d/e/f/g/h/i/j.json",
+  "inventory/",
+  "INVENTORY/X.Json",
+  "Attic/Belt/tape.json",
+  "Tools/x.tool.JSON",
+  "tools/x.Tool.Json",
+  "Tools/x.tool.json.bak",
+  "Tools//x.tool.json",
+  "Inventory/é.json",
+  "Tool/x.tool.json",
+  "a b/inventory/x/xx.md",
+  "//xü.md",
+  "INVENTORY/tools/tools/xx.json",
+  "/images/Atticx.TOOL.JSON",
+  "//INVENTORY/tools/tools/INVENTORYy z.tool.json/",
+  "INVENTORY/Inventoryx.tool.json/",
+  "images/INVENTORYy z.md",
+  "/Inventory/Belt/Attic/inventoryx.jsonl",
+  "Inventory/Belt/Inventoryü.Json",
+  "images/inventory/Inventory/INVENTORYx",
+  "Été/Belt/Toolsü.TOOL.JSON",
+  "INVENTORY/tools/Inventoryy z.json",
+  "/Inventory/inventory/images/Toolsx.TOOL.JSON",
+  "a b/x/Toolsx.tool.json",
+  "//inventory/Étéx.json",
+  "//Inventory/Été/Tools/imagesx.jsonl/",
+  "//Belt/x/x.tool.json/",
+  "//imagesy z.tool.json",
+  "//INVENTORY/x/Toolsü.jsonl",
+  "//Tools/tools/Tools/imagesx.Json/",
+  "//tools/Inventory/INVENTORYy z.json",
+  "//Inventory/Beltx.JSON/",
+  "images/inventory/inventory/imagesü.jsonl",
+  "Étéü.tool.json/",
+  "Tools//xy z.tool.json",
+  "///ü",
+  "/inventoryy z.TOOL.JSON",
+  "Attic/inventoryü.TOOL.JSON",
+  "/Atticü.md",
+  "Inventory/Atticü.JSON",
+  "a bü",
+  "/Toolsy z.jsonl",
+  "//a b/Toolsü.tool.json",
+  "//imagesü.Json",
+  "Tools/images/INVENTORYy z.tool.json/",
+  "//Inventoryx.Json/",
+  "x/images/toolsx.Json",
+  "Inventory/inventory/Étéy z.Json/",
+  "//INVENTORY/Attic/a b/Étéy z.TOOL.JSON/",
+  "/tools/Belt/Inventory/Atticx.tool.json"
+ ],
+ "norms": [
+  {
+   "v": "Friday's Yellow Tape Measure"
+  },
+  {
+   "v": "  Friday's   Yellow\tTape  Measure "
+  },
+  {
+   "v": "Ansíble Résonator"
+  },
+  {
+   "v": " FRIDAY'S YELLOW TAPE MEASURE "
+  },
+  {
+   "v": "Ansible Resonator"
+  },
+  {
+   "v": "ansible resonator"
+  },
+  {
+   "v": "ANSÍBLE resonator"
+  },
+  {
+   "v": "É"
+  },
+  {
+   "v": "é"
+  },
+  {
+   "v": "a﻿b"
+  },
+  {
+   "v": "a b"
+  },
+  {
+   "v": "a b"
+  },
+  {
+   "v": "a　b"
+  },
+  {
+   "v": "ab"
+  },
+  {
+   "v": "﻿x﻿"
+  },
+  {
+   "v": "  "
+  },
+  {
+   "v": "x"
+  },
+  {
+   "v": "é"
+  },
+  {
+   "v": "é"
+  },
+  {
+   "v": "kaःb"
+  },
+  {
+   "v": "x⃝"
+  },
+  {
+   "v": "ﬁsh"
+  },
+  {
+   "v": "①"
+  },
+  {
+   "v": "ＡＢ"
+  },
+  {
+   "v": "ⅷ"
+  },
+  {
+   "v": "Σ"
+  },
+  {
+   "v": "ΟΣ"
+  },
+  {
+   "v": "İ"
+  },
+  {
+   "v": "𝅧x"
+  },
+  {
+   "v": "x𝅧"
+  },
+  {
+   "v": "한국어"
+  },
+  {
+   "v": "it's"
+  },
+  {
+   "v": "it’s"
+  },
+  {
+   "v": ""
+  },
+  {
+   "v": "   "
+  },
+  {
+   "v": "\t\n"
+  },
+  {
+   "v": "Brass Lamp"
+  },
+  {
+   "v": "brass  lamp"
+  },
+  {
+   "v": "BRASS LAMP"
+  },
+  {
+   "v": "North Star"
+  },
+  {
+   "v": "Ångström"
+  },
+  {
+   "v": "Ångström"
+  },
+  {
+   "v": "Straße"
+  },
+  {
+   "v": "ẞ"
+  },
+  {
+   "v": "ŉ"
+  },
+  {
+   "v": "Ǆ"
+  },
+  {
+   "v": "ᾈ"
+  },
+  {
+   "v": "Å"
+  },
+  {
+   "v": "Ω"
+  },
+  {
+   "v": "½"
+  },
+  {
+   "v": "™"
+  },
+  {
+   "v": "㎒"
+  },
+  {
+   "v": "﹣"
+  },
+  {
+   "v": "بَ"
+  },
+  {
+   "v": "कि"
+  },
+  {
+   "v": "Z͑ͫ̓ͪ̂"
+  },
+  {
+   "v": "x᪰"
+  },
+  {
+   "v": "x᷀"
+  },
+  {
+   "v": "x⃰"
+  },
+  {
+   "v": "x︠"
+  },
+  {
+   "v": "x󠄀"
+  },
+  {
+   "v": "xͅ"
+  },
+  {
+   "v": "İstanbul"
+  },
+  {
+   "v": "ẛ̣"
+  },
+  {
+   "v": null
+  }
+ ],
+ "messages": [
+  {
+   "kind": "shadow",
+   "title": "Lantern",
+   "collisions": [
+    {
+     "reason": "kind-name shadow",
+     "kindName": "lantern"
+    }
+   ]
+  },
+  {
+   "kind": "shadow",
+   "title": "North Star",
+   "collisions": [
+    {
+     "reason": "live gate shadow",
+     "toolName": "navigate",
+     "ref": "north star",
+     "landsOn": [
+      "North Star (The Quest)",
+      "North Star (The Quest)"
+     ]
+    }
+   ]
+  },
+  {
+   "kind": "shadow",
+   "title": "Ansible Resonator",
+   "collisions": [
+    {
+     "reason": "kind-name shadow",
+     "kindName": "ansible resonator"
+    },
+    {
+     "reason": "live gate shadow",
+     "toolName": "lambda",
+     "ref": "ansible resonator",
+     "landsOn": [
+      "ansible resonator (The Quest)"
+     ]
+    }
+   ]
+  },
+  {
+   "kind": "shadow",
+   "title": "X",
+   "collisions": [
+    {
+     "reason": "live gate shadow",
+     "toolName": "a",
+     "ref": "x",
+     "landsOn": [
+      "one"
+     ]
+    },
+    {
+     "reason": "live gate shadow",
+     "toolName": "b",
+     "ref": "X",
+     "landsOn": [
+      "two",
+      "three"
+     ]
+    }
+   ]
+  },
+  {
+   "kind": "shadow",
+   "title": "The \"Great\" Lamp",
+   "collisions": [
+    {
+     "reason": "kind-name shadow",
+     "kindName": "the \"great\" lamp"
+    }
+   ]
+  },
+  {
+   "kind": "shadow",
+   "title": "Z",
+   "collisions": [
+    {
+     "reason": "live gate shadow",
+     "toolName": "t",
+     "ref": "z",
+     "landsOn": []
+    }
+   ]
+  },
+  {
+   "kind": "unavailable",
+   "title": "Brass Key",
+   "unread": [
+    {
+     "pool": "the inventory in store mp-x",
+     "reason": "no such store; an empty read from it is not an answer"
+    }
+   ]
+  },
+  {
+   "kind": "unavailable",
+   "title": "Brass Key",
+   "unread": [
+    {
+     "pool": "a",
+     "reason": "1"
+    },
+    {
+     "pool": "b",
+     "reason": "2"
+    },
+    {
+     "pool": "c",
+     "reason": "3"
+    }
+   ]
+  },
+  {
+   "kind": "unavailable",
+   "title": "Q\"uote",
+   "unread": [
+    {
+     "pool": "the custom tools' Tools/ folders",
+     "reason": "census on fire"
+    }
+   ]
+  },
+  {
+   "kind": "unavailable",
+   "title": "",
+   "unread": []
+  },
+  {
+   "kind": "shadow",
+   "title": "",
+   "collisions": []
+  },
+  {
+   "kind": "unavailable",
+   "title": "Tape",
+   "unread": [
+    {
+     "pool": "Tools/ghost.tool.json in store \"Friday Character Vault\"",
+     "reason": "listed but not found on open"
+    }
+   ]
+  }
+ ],
+ "ops": [
+  {
+   "name": "lint-crafted-create",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000001-0000-4000-8000-000000000000",
+     "name": "pocket ansible",
+     "title": "Ansible Resonator",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-crafted-rename",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000014-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000014-0000-4000-8000-000000000000",
+    "patch": {
+     "title": "Ansible Resonator"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-crafted-diacritics",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000002-0000-4000-8000-000000000000",
+     "name": "pocket ansible",
+     "title": "Ansíble  Resonator",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-kind-only-own-name",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000003-0000-4000-8000-000000000000",
+     "name": "lantern",
+     "title": "Lantern",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-third-door",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000011-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000011-0000-4000-8000-000000000000",
+    "patch": {
+     "name": "brass lamp"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-ordinary-rename",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000014-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000014-0000-4000-8000-000000000000",
+    "patch": {
+     "title": "Silver Key"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-noop-rename-over-collision",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "11111111-1111-4111-8111-111111111111"
+   },
+   "after": {
+    "id": "11111111-1111-4111-8111-111111111111",
+    "patch": {
+     "title": "Lantern",
+     "description": "Smoky."
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-naming-tape",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "title": null
+    }
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10",
+   "context": {
+    "projectId": "d1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "lint-two-objects-shadow",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000004-0000-4000-8000-000000000000",
+     "name": "sextant",
+     "title": "North Star",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "north star",
+      "toolName": "navigate",
+      "clause": "withheldWhen",
+      "subject": "inventoryCount",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/navigate.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-two-tools-sorted",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000005-0000-4000-8000-000000000000",
+     "name": "pocket ansible",
+     "title": "Ansible Resonator",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "zeta",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/zeta.tool.json"
+     },
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     },
+     {
+      "ref": "Ansible Resonator",
+      "toolName": "lambda",
+      "clause": "withheldWhen",
+      "subject": "inventoryCount",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-leaving-dark",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "title": "Old Yellow"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10",
+   "context": {
+    "projectId": "d1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "lint-leaving-redirected",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "title": null
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "plant",
+     "at": {
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+     },
+     "record": {
+      "id": "b0000006-0000-4000-8000-000000000000",
+      "name": "ruler",
+      "title": "Friday's Yellow Tape Measure",
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+     }
+    }
+   ],
+   "carve": "UNTIL_UNION_S10",
+   "context": {
+    "projectId": "d1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "lint-fail-closed-dangling-group",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000007-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": "Brass Key",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "INSERT INTO group_doc_mount_links (id, groupId, mountPointId, createdAt, updatedAt) VALUES ('e3000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001', 'f9999999-0000-4000-8000-000000000099', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')"
+    }
+   ]
+  },
+  {
+   "name": "lint-fail-closed-census-unread",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000008-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": "Brass Key",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [
+     {
+      "mountName": "Friday Character Vault",
+      "definitionPath": "Tools/ghost.tool.json",
+      "reason": "listed but not found on open"
+     }
+    ],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-no-title-unchecked",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000009-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": null,
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [
+     {
+      "mountName": "X",
+      "definitionPath": "Tools/",
+      "reason": "listing failed"
+     }
+    ],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-archive-dark",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "archive",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-delete-dark",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "delete",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": null,
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-restore-collides",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "archive",
+   "before": {
+    "id": "a0000011-0000-4000-8000-000000000000",
+    "patch": {
+     "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
+   },
+   "after": {
+    "id": "a0000011-0000-4000-8000-000000000000"
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "plant",
+     "at": {
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+     },
+     "record": {
+      "id": "b0000010-0000-4000-8000-000000000000",
+      "name": "brass lamp",
+      "title": null,
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lint-leaving-unverifiable-mount",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "archive",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "Friday's Yellow Tape Measure",
+      "toolName": "measure_twice",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/measure_twice.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "sql",
+     "db": "mount",
+     "sql": "INSERT INTO group_doc_mount_links (id, groupId, mountPointId, createdAt, updatedAt) VALUES ('e3000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001', 'f9999999-0000-4000-8000-000000000099', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')"
+    }
+   ],
+   "carve": "UNTIL_UNION_S10"
+  },
+  {
+   "name": "lint-leaving-unverifiable-census",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "archive",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [
+     {
+      "mountName": "Friday Character Vault",
+      "definitionPath": "Tools/ghost.tool.json",
+      "reason": "listed but not found on open"
+     }
+    ],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-census-line-description-only",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000014-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000014-0000-4000-8000-000000000000",
+    "patch": {
+     "description": "Opens the cellar."
+    }
+   },
+   "census": {
+    "keys": [
+     {
+      "ref": "ansible resonator",
+      "toolName": "lambda",
+      "clause": "availableWhen",
+      "subject": "inventory",
+      "mountName": "Quilltap General",
+      "definitionPath": "Tools/lambda.tool.json"
+     }
+    ],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-census-throws",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000011-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": "Brass Key",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "throw": "census on fire"
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-census-throws-leaving",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "archive",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "archivedAt": "2026-03-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "throw": "census on fire"
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-pool-unread-mount",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000012-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": "Brass Key",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "poolUnread": [
+    {
+     "mountPointId": "f1000000-0000-4000-8000-000000000001",
+     "error": "disk on fire"
+    }
+   ]
+  },
+  {
+   "name": "lint-unread-masks-kind",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000013-0000-4000-8000-000000000000",
+     "name": "lantern",
+     "title": "Lantern",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "poolUnread": [
+    {
+     "mountPointId": "f1000000-0000-4000-8000-000000000001",
+     "error": "disk on fire"
+    }
+   ]
+  },
+  {
+   "name": "lint-pool-unread-unknown-mount",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000022-0000-4000-8000-000000000000",
+     "name": "key",
+     "title": "Brass Key",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "poolUnread": [
+    {
+     "mountPointId": "f7777777-0000-4000-8000-000000000077",
+     "error": "gone"
+    }
+   ]
+  },
+  {
+   "name": "lint-kind-from-archived",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000014-0000-4000-8000-000000000000",
+     "name": "lamp two",
+     "title": "Old Lamp",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "plant",
+     "at": {
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+     },
+     "record": {
+      "id": "b0000015-0000-4000-8000-000000000000",
+      "name": "old lamp",
+      "title": null,
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": "2026-03-01T00:00:00.000Z",
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lint-kind-from-archetype",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000016-0000-4000-8000-000000000000",
+     "name": "spare",
+     "title": "Tape  Measure",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-kind-first-spelling",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000017-0000-4000-8000-000000000000",
+     "name": "spare",
+     "title": "DECOY",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [
+    {
+     "do": "plant",
+     "at": {
+      "scope": "project",
+      "id": "d1000000-0000-4000-8000-000000000001"
+     },
+     "record": {
+      "id": "b0000018-0000-4000-8000-000000000000",
+      "name": "Decoy",
+      "title": null,
+      "description": null,
+      "imageDescription": null,
+      "kind": "item",
+      "isArchetype": false,
+      "equippedByDefault": false,
+      "maxEquipped": 1,
+      "canCopy": true,
+      "emoji": null,
+      "svg": null,
+      "imageFileId": null,
+      "metadata": {},
+      "parentId": null,
+      "itemIds": [],
+      "folder": "",
+      "archivedAt": null,
+      "createdAt": "2026-02-01T00:00:00.000Z",
+      "updatedAt": "2026-02-01T00:00:00.000Z"
+     }
+    }
+   ]
+  },
+  {
+   "name": "lint-friday-pool-order",
+   "kind": "lint",
+   "at": {
+    "scope": "character",
+    "id": "c1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000020-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000020-0000-4000-8000-000000000000",
+    "patch": {
+     "description": "Yellow."
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": [],
+   "context": {
+    "projectId": "d1000000-0000-4000-8000-000000000001"
+   }
+  },
+  {
+   "name": "lint-name-change-same-title",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "update",
+   "before": {
+    "id": "a0000014-0000-4000-8000-000000000000"
+   },
+   "after": {
+    "id": "a0000014-0000-4000-8000-000000000000",
+    "patch": {
+     "name": "iron key"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-unicode-ws-title",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000019-0000-4000-8000-000000000000",
+     "name": "spare",
+     "title": "Brass﻿Lamp",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-u0085-title",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000020-0000-4000-8000-000000000000",
+     "name": "spare",
+     "title": "BrassLamp",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "lint-precomposed-title",
+   "kind": "lint",
+   "at": {
+    "scope": "project",
+    "id": "d1000000-0000-4000-8000-000000000001"
+   },
+   "door": "create",
+   "before": null,
+   "after": {
+    "record": {
+     "id": "b0000021-0000-4000-8000-000000000000",
+     "name": "spare",
+     "title": "Ansíble Resonator",
+     "description": null,
+     "imageDescription": null,
+     "kind": "item",
+     "isArchetype": false,
+     "equippedByDefault": false,
+     "maxEquipped": 1,
+     "canCopy": true,
+     "emoji": null,
+     "svg": null,
+     "imageFileId": null,
+     "metadata": {},
+     "parentId": null,
+     "itemIds": [],
+     "folder": "",
+     "archivedAt": null,
+     "createdAt": "2026-02-01T00:00:00.000Z",
+     "updatedAt": "2026-02-01T00:00:00.000Z"
+    }
+   },
+   "census": {
+    "keys": [],
+    "unread": [],
+    "storesConsulted": [
+     "Quilltap General"
+    ]
+   },
+   "steps": []
+  },
+  {
+   "name": "doc-rewrite-shadow",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-rewrite-away",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Smoky Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-delete",
+   "kind": "doc",
+   "change": {
+    "kind": "delete",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-move-out",
+   "kind": "doc",
+   "change": {
+    "kind": "move",
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Inventory/lantern.json",
+    "toPath": "Attic/lantern.json"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-description-only",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\",\n  \"description\": \"Smoky.\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-tool-write",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:general}}",
+    "relativePath": "Tools/plain.tool.json",
+    "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-linted",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false,
+   "linted": true
+  },
+  {
+   "name": "doc-tool-delete",
+   "kind": "doc",
+   "change": {
+    "kind": "delete",
+    "mountPointId": "{{mp:general}}",
+    "relativePath": "Tools/plain.tool.json"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "doc-tool-move",
+   "kind": "doc",
+   "change": {
+    "kind": "move",
+    "mountPointId": "{{mp:general}}",
+    "fromPath": "Tools/plain.tool.json",
+    "toPath": "Tools/plainer.tool.json"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "doc-tool-into-inventory",
+   "kind": "doc",
+   "change": {
+    "kind": "move",
+    "mountPointId": "{{mp:general}}",
+    "fromPath": "Tools/plain.tool.json",
+    "toPath": "Inventory/plain.json"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/plain.tool.json",
+     "content": "{\n  \"name\": \"plain\",\n  \"description\": \"The plain tool.\",\n  \"outcomes\": [\n    {\n      \"when\": true,\n      \"message\": \"done\",\n      \"state\": \"info\"\n    }\n  ]\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "doc-non-object-json",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/notes.json",
+    "content": "{\"hello\": 1}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-images-path",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/images/abc/x.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-different-id",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"44444444-4444-4444-8444-444444444444\",\n  \"kind\": \"item\",\n  \"name\": \"lamp oil\",\n  \"title\": \"Lamp Oil\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-missing-mount",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "f8888888-0000-4000-8000-000000000088",
+    "relativePath": "Inventory/x.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-move-folder-out",
+   "kind": "doc",
+   "change": {
+    "kind": "move-folder",
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Inventory/Belt",
+    "toPath": "Attic/Belt"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-move-folder-within",
+   "kind": "doc",
+   "change": {
+    "kind": "move-folder",
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Inventory/Belt",
+    "toPath": "Inventory/Pouch"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-move-folder-in",
+   "kind": "doc",
+   "change": {
+    "kind": "move-folder",
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Attic",
+    "toPath": "Inventory/Attic"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Attic/c.json",
+     "content": "{\n  \"id\": \"55555555-5555-4555-8555-555555555555\",\n  \"kind\": \"item\",\n  \"name\": \"ansible resonator\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "doc-group-store",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:group}}",
+    "relativePath": "Inventory/badge.json",
+    "content": "{\n  \"id\": \"66666666-6666-4666-8666-666666666666\",\n  \"kind\": \"item\",\n  \"name\": \"badge\",\n  \"title\": \"Guild Badge\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-friday-vault-new",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/whistle.json",
+    "content": "{\n  \"id\": \"77777777-7777-4777-8777-777777777777\",\n  \"kind\": \"item\",\n  \"name\": \"whistle\",\n  \"title\": \"Tin Whistle\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "doc-keyed-naming",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/tape.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": true,
+   "carve": "UNTIL_UNION_S9_C3_C4"
+  },
+  {
+   "name": "doc-keyed-tool-delete",
+   "kind": "doc",
+   "change": {
+    "kind": "delete",
+    "mountPointId": "{{mp:general}}",
+    "relativePath": "Tools/measure_twice.tool.json"
+   },
+   "steps": [],
+   "tools": true,
+   "carve": "UNTIL_UNION_S9_C3_C4"
+  },
+  {
+   "name": "store-write-refused",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-write-allowed",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/kettle.json",
+    "content": "{\n  \"id\": \"99999999-9999-4999-8999-999999999999\",\n  \"kind\": \"item\",\n  \"name\": \"kettle\",\n  \"title\": \"Copper Kettle\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-write-rename",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Smoky Lantern\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-delete",
+   "kind": "store",
+   "fn": "delete",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-delete-absent",
+   "kind": "store",
+   "fn": "delete",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/none.json"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-move",
+   "kind": "store",
+   "fn": "move",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Inventory/lantern.json",
+    "toPath": "Attic/lantern.json"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-move-folder",
+   "kind": "store",
+   "fn": "move-folder",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Inventory/Belt",
+    "toPath": "Attic/Belt"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-move-folder-refused",
+   "kind": "store",
+   "fn": "move-folder",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Attic",
+    "toPath": "Inventory/Attic"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Attic/c.json",
+     "content": "{\n  \"id\": \"55555555-5555-4555-8555-555555555555\",\n  \"kind\": \"item\",\n  \"name\": \"spare\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "store-metadata-json",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "metadata.json",
+    "content": "{}\n"
+   },
+   "steps": [],
+   "tools": false
+  },
+  {
+   "name": "store-linted",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/lantern.json",
+    "content": "{\n  \"id\": \"11111111-1111-4111-8111-111111111111\",\n  \"kind\": \"item\",\n  \"name\": \"lantern\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": false,
+   "linted": true
+  },
+  {
+   "name": "store-move-refused",
+   "kind": "store",
+   "fn": "move",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "fromPath": "Attic/c.json",
+    "toPath": "Inventory/c.json"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Attic/c.json",
+     "content": "{\n  \"id\": \"55555555-5555-4555-8555-555555555555\",\n  \"kind\": \"item\",\n  \"name\": \"spare\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": false
+  }
+ ]
+}

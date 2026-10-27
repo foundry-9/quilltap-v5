@@ -323,6 +323,7 @@ fn inventory_item_image_generation_tier3_matches_oracle() {
                     &mount_point_id,
                     spec["lanternAestheticsFilename"].as_str().unwrap(),
                     aesthetic,
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
                 )
                 .unwrap();
             }

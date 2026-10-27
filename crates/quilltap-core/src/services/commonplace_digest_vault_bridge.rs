@@ -32,6 +32,7 @@
 //! file), so the per-file WARN and every debug line run on the caller's thread.
 //! v4's `context:` field rides each line as a key.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use serde_json::{json, Value};
 
 use crate::commonplace_file::{
@@ -178,7 +179,15 @@ async fn delete_database_document_if_exists(
                 crate::write_partition::WriteDbTarget::MountIndex,
             ));
         };
-        delete_database_document(mi.connection(), &mp, &rel)
+        delete_database_document(
+            mi.connection(),
+            &mp,
+            &rel,
+            TitleLintScope::Unlinted {
+                main: writers.main().connection(),
+            },
+        )
+        .map_err(StoreError::into_db_error)
     })
     .await
     .map_err(|e| match &e {
@@ -191,6 +200,7 @@ fn store_to_db_error(e: StoreError) -> DbError {
     match e {
         StoreError::Db(e) => e,
         StoreError::Store(e) => DbError::Internal(e.message),
+        StoreError::TitleLint(r) => DbError::Internal(r.message),
     }
 }
 
@@ -398,8 +408,16 @@ async fn mirror(
                         crate::write_partition::WriteDbTarget::MountIndex,
                     ));
                 };
-                write_database_document(mi.connection(), &mp, &rel, &content)
-                    .map_err(store_to_db_error)
+                write_database_document(
+                    mi.connection(),
+                    &mp,
+                    &rel,
+                    &content,
+                    TitleLintScope::Unlinted {
+                        main: writers.main().connection(),
+                    },
+                )
+                .map_err(store_to_db_error)
             })
             .await
             .map_err(|e| match &e {

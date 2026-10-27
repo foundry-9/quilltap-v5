@@ -62,6 +62,12 @@ const ROUND_SHAS: [&str; 20] = [
 /// The wardrobe round's shas (its census's scope).
 const WARDROBE_SHAS: [&str; 3] = ["7a8d6dacc", "9ecebf986", "4a38222e6"];
 
+// === P4.D340: the `322a5488e` round's markers name the v4 commit their lane
+// absorbs (P4.D340's: `7263105c6`, the title lint). No census of that round's
+// markers exists yet; the unifier folds this list into one at §S.5. ===
+const INVENTORY_ROUND_SHAS: [&str; 1] = ["7263105c6"];
+// === end P4.D340 ===
+
 fn core_src() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src")
 }
@@ -138,7 +144,8 @@ fn every_memory_lane_remove_marker_names_its_owners_and_a_round_commit() {
     for (file, line, text) in all_markers() {
         if !names_round_sha(&text) {
             assert!(
-                WARDROBE_SHAS.iter().any(|sha| text.contains(sha)),
+                WARDROBE_SHAS.iter().any(|sha| text.contains(sha))
+                    || INVENTORY_ROUND_SHAS.iter().any(|sha| text.contains(sha)),
                 "{file}:{line}: a LANE-REMOVE marker names neither this round's commits nor \
                  the wardrobe round's — it would hide from both censuses: {text}"
             );

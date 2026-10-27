@@ -5,6 +5,7 @@
 //! *create* lives with the folders route (`scanner::create_filesystem_folder`
 //! / `database_store::create_database_folder`).
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 
 use crate::db::database_store::{delete_database_folder, move_database_folder, StoreError};
@@ -32,6 +33,9 @@ fn store_err(e: StoreError) -> MountFileError {
     match e {
         StoreError::Store(s) => MountFileError::Store(s),
         StoreError::Db(d) => MountFileError::Db(d),
+        // v4 rethrows the refusal, which is neither a FileOpError nor a
+        // DatabaseStoreError: the route's catch-all 500 (P4.D340 R-8).
+        StoreError::TitleLint(r) => MountFileError::Other(r.message),
     }
 }
 
@@ -78,6 +82,7 @@ pub fn delete_folder(
 /// path prefixes so search/read keep resolving until the next full scan.
 /// Returns `{mountPointId, fromPath, toPath}`.
 pub fn move_folder(
+    main: &Connection,
     conn: &Connection,
     mount_point_id: &str,
     from_path: &str,
@@ -95,7 +100,14 @@ pub fn move_folder(
     }
 
     if !mp.is_filesystem_mount() {
-        move_database_folder(conn, &mp.id, &from_rel, &to_rel).map_err(store_err)?;
+        move_database_folder(
+            conn,
+            &mp.id,
+            &from_rel,
+            &to_rel,
+            TitleLintScope::Unlinted { main },
+        )
+        .map_err(store_err)?;
         return Ok(serde_json::json!({
             "mountPointId": mp.id,
             "fromPath": from_rel,
@@ -158,4 +170,28 @@ pub fn move_folder(
         "fromPath": from_rel,
         "toPath": to_rel,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.D340 R-8 (e): v4 rethrows the refusal from `moveFolder`; it is
+    /// neither a `FileOpError` nor a `DatabaseStoreError`, so the route's
+    /// catch-all answers 500 — v5's `Other` arm.
+    #[test]
+    fn a_title_lint_refusal_is_the_untyped_arm() {
+        let r = crate::inventory::errors::InventoryRefusal::title_shadow(
+            "Lantern",
+            &[
+                crate::inventory::errors::InventoryTitleCollision::KindNameShadow {
+                    kind_name: "lantern".into(),
+                },
+            ],
+        );
+        match store_err(StoreError::TitleLint(r.clone())) {
+            MountFileError::Other(m) => assert_eq!(m, r.message),
+            other => panic!("{other:?}"),
+        }
+    }
 }

@@ -29,6 +29,7 @@
 //!   `chat_documents` Document-Mode pointer sync) — skipped; the corpus seeds no
 //!   open `chat_documents` rows, so both are verified no-ops.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde_json::{json, Value};
 
@@ -180,6 +181,7 @@ pub fn handle_move_file(
                 mp,
                 &resolved_source.relative_path,
                 &resolved_dest.relative_path,
+                TitleLintScope::Unlinted { main },
             )
             .map_err(store_error_message)?;
             // syncChatDocumentsAfterFileMove: no-op seam (see the module header).
@@ -513,7 +515,7 @@ pub fn handle_copy_file(
 
     // Read the source content, write the destination.
     let content = read_file_with_mtime(mount, &resolved_source)?.content;
-    let mtime = write_file_with_mtime_check(mount, &resolved_dest, &content)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved_dest, &content)?;
     // triggerReindexIfNeeded: no-op seam (see the module header).
 
     let copied_uri = uri_for(main, mount, &resolved_dest, ctx);
@@ -601,9 +603,13 @@ pub fn handle_delete_file(
 
     if resolved.mount_type.as_deref() == Some("database") {
         if let Some(mp) = resolved.mount_point_id.as_deref() {
-            let deleted =
-                database_store::delete_database_document(mount, mp, &resolved.relative_path)
-                    .map_err(|e| e.to_string())?;
+            let deleted = database_store::delete_database_document(
+                mount,
+                mp,
+                &resolved.relative_path,
+                TitleLintScope::Unlinted { main },
+            )
+            .map_err(|e| e.to_string())?;
             if !deleted {
                 if database_folder_exists(mount, mp, &resolved.relative_path)
                     .map_err(|e| e.to_string())?
@@ -907,6 +913,7 @@ pub fn handle_move_folder(
                 mp,
                 &resolved_source.relative_path,
                 &resolved_dest.relative_path,
+                TitleLintScope::Unlinted { main },
             ) {
                 Ok(()) => {
                     // syncChatDocumentsAfterFolderMove: no-op seam (see module header).

@@ -14,6 +14,7 @@
 //! reads return `{}`, `ensure` no-ops, and only the authenticated `write` path
 //! errors.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde_json::{Map, Value};
 
@@ -73,12 +74,14 @@ pub fn ensure_general_state_file(main: &Connection, mount: &Connection) -> Resul
         return Ok(false);
     }
 
-    write_database_document(mount, &mount_point_id, GENERAL_STATE_JSON_PATH, "{}").map_err(
-        |e| match e {
-            StoreError::Db(db) => db,
-            StoreError::Store(s) => DbError::Internal(s.message),
-        },
-    )?;
+    write_database_document(
+        mount,
+        &mount_point_id,
+        GENERAL_STATE_JSON_PATH,
+        "{}",
+        TitleLintScope::Unlinted { main },
+    )
+    .map_err(StoreError::into_db_error)?;
     Ok(true)
 }
 
@@ -153,7 +156,13 @@ pub fn write_general_state(
             GeneralStateWriteError::Db(DbError::Internal(format!("general state serialize: {e}")))
         })?
     };
-    write_database_document(mount, &mount_point_id, GENERAL_STATE_JSON_PATH, &body)
-        .map_err(GeneralStateWriteError::Store)?;
+    write_database_document(
+        mount,
+        &mount_point_id,
+        GENERAL_STATE_JSON_PATH,
+        &body,
+        TitleLintScope::Unlinted { main },
+    )
+    .map_err(GeneralStateWriteError::Store)?;
     Ok(())
 }

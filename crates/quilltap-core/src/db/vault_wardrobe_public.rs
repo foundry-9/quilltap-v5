@@ -626,7 +626,15 @@ pub fn rename_folder_in_mount(
     folder: &str,
     new_name: &str,
 ) -> Result<WardrobeFolder, WardrobeLocationError> {
-    super::item_folder_ops::rename_folder_in(&WardrobeTree, mount, loc, folder, new_name)
+    // `Wardrobe/` is never a title-lint path (v4 does not wrap the wardrobe).
+    super::item_folder_ops::rename_folder_in(
+        &WardrobeTree,
+        mount,
+        loc,
+        folder,
+        new_name,
+        crate::inventory::lint_scope::TitleLintScope::NeverClaimed,
+    )
 }
 
 /// Delete a folder, sending everything in it up one level (v4

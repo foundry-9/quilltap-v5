@@ -45,6 +45,7 @@
 //! ([`read_file_with_mtime`] / [`write_file_with_mtime_check`]) and the
 //! enumeration walks (`text.rs`) branch on `mount_type` accordingly.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use std::collections::HashSet;
 
 use rusqlite::Connection;
@@ -777,6 +778,7 @@ pub fn store_error_message(e: StoreError) -> String {
     match e {
         StoreError::Store(s) => s.message,
         StoreError::Db(d) => d.to_string(),
+        StoreError::TitleLint(r) => r.message,
     }
 }
 
@@ -816,6 +818,7 @@ pub fn read_file_with_mtime(
 /// the new mtime (ms). The `expected_mtime` guard is not ported (reindex/mtime
 /// seam — see the module header).
 pub fn write_file_with_mtime_check(
+    main: &Connection,
     mount: &Connection,
     resolved: &ResolvedPath,
     content: &str,
@@ -827,8 +830,14 @@ pub fn write_file_with_mtime_check(
         .mount_point_id
         .as_deref()
         .ok_or("Database-backed ResolvedPath is missing mountPointId")?;
-    database_store::write_database_document(mount, mp, &resolved.relative_path, content)
-        .map_err(store_error_message)
+    database_store::write_database_document(
+        mount,
+        mp,
+        &resolved.relative_path,
+        content,
+        TitleLintScope::Unlinted { main },
+    )
+    .map_err(store_error_message)
 }
 
 /// The host-disk arm of [`read_file_with_mtime`] — v4's `fs.readFile` +
@@ -943,6 +952,24 @@ pub fn arg_i64(args: &Value, key: &str) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D340 R-8 (b): a title-lint refusal reaches the doc tool as the
+    /// refusal's own message, as v4's handler catch renders `error.message`.
+    #[test]
+    fn a_title_lint_refusal_is_its_message() {
+        let r = crate::inventory::errors::InventoryRefusal::title_shadow(
+            "Lantern",
+            &[
+                crate::inventory::errors::InventoryTitleCollision::KindNameShadow {
+                    kind_name: "lantern".into(),
+                },
+            ],
+        );
+        assert_eq!(
+            store_error_message(StoreError::TitleLint(r.clone())),
+            r.message
+        );
+    }
 
     #[test]
     fn extname_matches_node() {

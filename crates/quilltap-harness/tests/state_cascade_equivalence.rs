@@ -352,7 +352,13 @@ async fn run_general_cases(
         ("gen_ensure_absent_seeds", {
             let mp = mp.clone();
             Box::new(move |main, mount| {
-                delete_database_document(mount, &mp, "state.json").expect("delete doc");
+                delete_database_document(
+                    mount,
+                    &mp,
+                    "state.json",
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+                )
+                .expect("delete doc");
                 let created = ensure_general_state_file(main, mount).expect("ensure");
                 let read_back = read_general_state(main, Some(mount));
                 json!({"created": created, "readBack": read_back})
@@ -373,28 +379,55 @@ async fn run_general_cases(
         ("gen_corrupt_body", {
             let mp = mp.clone();
             Box::new(move |main, mount| {
-                write_database_document(mount, &mp, "state.json", "{ not json").expect("write");
+                write_database_document(
+                    mount,
+                    &mp,
+                    "state.json",
+                    "{ not json",
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+                )
+                .expect("write");
                 read_general_state(main, Some(mount))
             })
         }),
         ("gen_array_body", {
             let mp = mp.clone();
             Box::new(move |main, mount| {
-                write_database_document(mount, &mp, "state.json", "[1,2,3]").expect("write");
+                write_database_document(
+                    mount,
+                    &mp,
+                    "state.json",
+                    "[1,2,3]",
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+                )
+                .expect("write");
                 read_general_state(main, Some(mount))
             })
         }),
         ("gen_null_body", {
             let mp = mp.clone();
             Box::new(move |main, mount| {
-                write_database_document(mount, &mp, "state.json", "null").expect("write");
+                write_database_document(
+                    mount,
+                    &mp,
+                    "state.json",
+                    "null",
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+                )
+                .expect("write");
                 read_general_state(main, Some(mount))
             })
         }),
         ("gen_missing_doc", {
             let mp = mp.clone();
             Box::new(move |main, mount| {
-                delete_database_document(mount, &mp, "state.json").expect("delete doc");
+                delete_database_document(
+                    mount,
+                    &mp,
+                    "state.json",
+                    quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+                )
+                .expect("delete doc");
                 read_general_state(main, Some(mount))
             })
         }),

@@ -144,7 +144,7 @@ pub fn handle_update_frontmatter(
         .unwrap_or_default();
     let replace_all = arg_bool(args, "replace_all").unwrap_or(false);
     let new_content = update_frontmatter_in_content(&content, &updates, replace_all);
-    let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
+    let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
     // reindex: no-op seam.
     let edited_uri = uri_for_resolved_path(
         main,
@@ -295,7 +295,7 @@ pub fn handle_update_heading(
     match find_heading_section(&content, &heading_arg, level_arg) {
         Ok(heading) => {
             let new_content = replace_heading_content(&content, &heading, &new_section, preserve);
-            let mtime = write_file_with_mtime_check(mount, &resolved, &new_content)?;
+            let mtime = write_file_with_mtime_check(main, mount, &resolved, &new_content)?;
             // reindex: no-op seam.
             let edited_uri = uri_for_resolved_path(
                 main,

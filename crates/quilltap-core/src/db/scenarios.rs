@@ -18,6 +18,7 @@
 //! Every function is a free function over a borrowed [`rusqlite::Connection`] —
 //! the **mount-index** DB connection (where document bytes live).
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde::Serialize;
 use serde_json::{Map, Value};
@@ -303,6 +304,7 @@ pub fn store_error_text(e: &StoreError) -> String {
     match e {
         StoreError::Db(db) => super::fallback::error_text(db),
         StoreError::Store(store) => store.to_string(),
+        StoreError::TitleLint(r) => r.message.clone(),
     }
 }
 
@@ -339,7 +341,13 @@ pub fn set_scenario_default_in_folder(
         let updated =
             update_frontmatter_in_content(&chosen.content, &one_bool("isDefault", true), false);
         if updated != chosen.content {
-            write_database_document(mount, mount_point_id, &chosen.relative_path, &updated)?;
+            write_database_document(
+                mount,
+                mount_point_id,
+                &chosen.relative_path,
+                &updated,
+                TitleLintScope::NeverClaimed,
+            )?;
         }
     }
 
@@ -357,9 +365,13 @@ pub fn set_scenario_default_in_folder(
             let updated =
                 update_frontmatter_in_content(&doc.content, &one_bool("isDefault", false), false);
             if updated != doc.content {
-                if let Err(error) =
-                    write_database_document(mount, mount_point_id, &doc.relative_path, &updated)
-                {
+                if let Err(error) = write_database_document(
+                    mount,
+                    mount_point_id,
+                    &doc.relative_path,
+                    &updated,
+                    TitleLintScope::NeverClaimed,
+                ) {
                     tracing::warn!(
                         mountPointId = %mount_point_id,
                         folderName = %folder_name,

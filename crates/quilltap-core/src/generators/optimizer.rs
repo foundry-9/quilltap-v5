@@ -23,6 +23,7 @@
 //! exists to catch. [`crate::api::system_qtap::js_truthy`] and
 //! [`crate::pascal::js_value::to_js_string`] are those two semantics.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -1570,9 +1571,17 @@ async fn write_suggestions_file_to_vault(
             .mount_index()
             .ok_or_else(|| DbError::Internal("no mount-index database".into()))?
             .connection();
-        write_database_document(mount, &mid, &rel, &content)
-            .map(|_| ())
-            .map_err(|e| DbError::Internal(e.to_string()))
+        write_database_document(
+            mount,
+            &mid,
+            &rel,
+            &content,
+            TitleLintScope::Unlinted {
+                main: writers.main().connection(),
+            },
+        )
+        .map(|_| ())
+        .map_err(|e| DbError::Internal(e.to_string()))
     })
     .await
     .map_err(|e| e.to_string())?;

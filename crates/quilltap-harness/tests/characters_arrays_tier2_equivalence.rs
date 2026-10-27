@@ -547,6 +547,7 @@ fn run_op(
                 &mount_id,
                 op.path.as_deref().expect("path"),
                 op.content.as_deref().expect("content"),
+                quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
             )
             .unwrap_or_else(|e| panic!("plant scenario file: {e}"));
         }

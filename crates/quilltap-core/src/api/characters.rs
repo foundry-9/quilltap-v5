@@ -15,6 +15,7 @@
 //! by `55752ad4` — it had always ignored its userId argument) collapses to
 //! NotFound-on-absent for the single-user v5.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use serde_json::{json, Map, Value};
 
 use crate::db::characters::CharacterCreate;
@@ -334,12 +335,15 @@ pub async fn character_depiction_guidelines_update(
                 mount,
                 &mount_id,
                 DEPICTION_GUIDELINES_FILENAME,
-            )?;
+                TitleLintScope::Unlinted { main },
+            )
+            .map_err(database_store::StoreError::into_db_error)?;
         } else if let Err(e) = database_store::write_database_document(
             mount,
             &mount_id,
             DEPICTION_GUIDELINES_FILENAME,
             &content,
+            TitleLintScope::Unlinted { main },
         ) {
             return Ok(Err(internal(e)));
         }

@@ -21,6 +21,7 @@
 //! (`collect_unalerted_mail` / `mark_alerted`) drive the Commonplace-time mail
 //! whisper.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
 
@@ -153,6 +154,7 @@ fn store_to_db(e: StoreError) -> DbError {
     match e {
         StoreError::Db(db) => db,
         StoreError::Store(s) => DbError::Internal(s.message),
+        StoreError::TitleLint(r) => DbError::Internal(r.message),
     }
 }
 
@@ -326,6 +328,7 @@ pub fn deliver_letter(mount: &Connection, params: &DeliverLetterParams) -> Resul
         params.recipient_vault_id,
         &path,
         &compose_letter_content(&frontmatter, params.body),
+        TitleLintScope::NeverClaimed,
     )
     .map_err(store_to_db)?;
     Ok(path)
@@ -411,7 +414,14 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
     updates.insert("alerted".to_string(), Value::Bool(true));
     let updated =
         crate::doc_edit::markdown_parser::update_frontmatter_in_content(&content, &updates, false);
-    write_database_document(mount, vault_id, path, &updated).map_err(store_to_db)?;
+    write_database_document(
+        mount,
+        vault_id,
+        path,
+        &updated,
+        TitleLintScope::NeverClaimed,
+    )
+    .map_err(store_to_db)?;
     Ok(())
 }
 
@@ -433,7 +443,8 @@ pub fn mark_alerted(mount: &Connection, vault_id: &str, path: &str) -> Result<()
 /// v4's on exactly that (P4.131). Logs DEBUG `Letter discarded {vaultId, path,
 /// deleted}` — v4 `01f508d4e` renamed the message from the bare function name.
 pub fn discard_letter(mount: &Connection, vault_id: &str, path: &str) -> Result<bool, DbError> {
-    let deleted = delete_database_document(mount, vault_id, path)?;
+    let deleted = delete_database_document(mount, vault_id, path, TitleLintScope::NeverClaimed)
+        .map_err(store_to_db)?;
     tracing::debug!(
         target: LOG_TARGET,
         vaultId = vault_id,

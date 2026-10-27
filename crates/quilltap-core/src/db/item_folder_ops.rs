@@ -19,6 +19,7 @@
 //! The DEBUG lines carry v4's `${rules.root} …` messages; their `context`
 //! field is the tree's.
 
+use crate::inventory::lint_scope::TitleLintScope;
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
@@ -358,6 +359,7 @@ fn store_error<T: ItemFolderTree>(
             }
         }
         StoreError::Db(d) => d.into(),
+        StoreError::TitleLint(r) => DbError::Internal(r.message).into(),
     }
 }
 
@@ -376,6 +378,7 @@ pub fn rename_folder_in<T: ItemFolderTree>(
     m: &VaultFolderMount,
     folder: &str,
     new_name: &str,
+    linted: TitleLintScope<'_>,
 ) -> Result<ItemFolder, T::Error> {
     let rules = tree.rules();
     if folder.is_empty() {
@@ -417,6 +420,7 @@ pub fn rename_folder_in<T: ItemFolderTree>(
             &m.mount_point_id,
             &item_folder_store_path(rules, &from),
             &item_folder_store_path(rules, &to),
+            linted,
         )
         .map_err(|e| {
             store_error::<T>(

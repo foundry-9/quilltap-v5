@@ -62,6 +62,12 @@ const MEMORY_ROUND_SHAS: [&str; 20] = [
     "83334b9a5",
 ];
 
+// === P4.D340: the `322a5488e` round's markers name the v4 commit their lane
+// absorbs (P4.D340's: `7263105c6`, the title lint). No census of that round's
+// markers exists yet; the unifier folds this list into one at §S.5. ===
+const INVENTORY_ROUND_SHAS: [&str; 1] = ["7263105c6"];
+// === end P4.D340 ===
+
 fn names_wardrobe_sha(text: &str) -> bool {
     WARDROBE_SHAS.iter().any(|sha| text.contains(sha))
 }
@@ -138,7 +144,8 @@ fn every_lane_remove_marker_names_a_lane_and_the_v4_commit() {
     for (file, line, text) in markers() {
         if !names_wardrobe_sha(&text) {
             assert!(
-                MEMORY_ROUND_SHAS.iter().any(|sha| text.contains(sha)),
+                MEMORY_ROUND_SHAS.iter().any(|sha| text.contains(sha))
+                    || INVENTORY_ROUND_SHAS.iter().any(|sha| text.contains(sha)),
                 "{file}:{line}: a LANE-REMOVE marker names neither the wardrobe round's commits \
                  nor the memory round's — it would hide from both censuses: {text}"
             );

@@ -126,11 +126,32 @@ fn mount_case_moves_matches_oracle() {
     .expect("move file case-only");
 
     // 1. case-only DOCUMENT rename (notes.md → Notes.md).
-    move_database_document(conn, STORE_ID, "notes.md", "Notes.md").expect("move doc case-only");
+    move_database_document(
+        conn,
+        STORE_ID,
+        "notes.md",
+        "Notes.md",
+        quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+    )
+    .expect("move doc case-only");
     // 2. move Lore under Archive, addressing the parent in a different casing.
-    move_database_folder(conn, STORE_ID, "Lore", "archive/Lore").expect("move folder canonicalise");
+    move_database_folder(
+        conn,
+        STORE_ID,
+        "Lore",
+        "archive/Lore",
+        quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+    )
+    .expect("move folder canonicalise");
     // 3. case-only rename of Archive (now containing Lore) — allow-self + descendants.
-    move_database_folder(conn, STORE_ID, "Archive", "ARCHIVE").expect("move folder case-only");
+    move_database_folder(
+        conn,
+        STORE_ID,
+        "Archive",
+        "ARCHIVE",
+        quilltap_core::inventory::lint_scope::TitleLintScope::Linted,
+    )
+    .expect("move folder case-only");
 
     let folders_dump = writer
         .dump_table_json("doc_mount_folders", "path")

@@ -33,6 +33,7 @@
 //! (`with_both_conns`) — which is also why their lines are pinned through the
 //! global capture (the writer thread is invisible to the thread-scoped rig).
 
+use crate::inventory::lint_scope::TitleLintScope;
 use rusqlite::Connection;
 use serde_json::{Map, Value};
 
@@ -472,7 +473,13 @@ impl StoreScenarioLocation {
             input.archived.unwrap_or(false),
             &input.body,
         );
-        write_database_document(mount, &self.mount_point_id, &path, &content)?;
+        write_database_document(
+            mount,
+            &self.mount_point_id,
+            &path,
+            &content,
+            TitleLintScope::NeverClaimed,
+        )?;
         if input.is_default == Some(true) {
             set_scenario_default_in_folder(
                 mount,
@@ -508,7 +515,13 @@ impl StoreScenarioLocation {
                 .unwrap_or_else(|| is_scenario_content_archived(&existing.content)),
             &patch.body,
         );
-        write_database_document(mount, &self.mount_point_id, &resolved, &content)?;
+        write_database_document(
+            mount,
+            &self.mount_point_id,
+            &resolved,
+            &content,
+            TitleLintScope::NeverClaimed,
+        )?;
         if patch.is_default == Some(true) {
             set_scenario_default_in_folder(
                 mount,
@@ -541,7 +554,13 @@ impl StoreScenarioLocation {
             if find_doc(mount, &self.mount_point_id, &new_path).is_some() {
                 return Err(ScenarioLocationError::Conflict(cleaned));
             }
-            move_database_document(mount, &self.mount_point_id, &resolved, &new_path)?;
+            move_database_document(
+                mount,
+                &self.mount_point_id,
+                &resolved,
+                &new_path,
+                TitleLintScope::NeverClaimed,
+            )?;
             tracing::debug!(
                 scope = self.scope.as_str(),
                 id = self.id.as_deref().unwrap_or("null"),
@@ -558,7 +577,12 @@ impl StoreScenarioLocation {
     /// v4 `delete(path)` (`location.ts:302-307`): nothing deleted → `NotFound`.
     pub fn delete(&self, mount: &Connection, path: &str) -> Result<(), ScenarioLocationError> {
         let resolved = require_path(path)?;
-        if !delete_database_document(mount, &self.mount_point_id, &resolved)? {
+        if !delete_database_document(
+            mount,
+            &self.mount_point_id,
+            &resolved,
+            TitleLintScope::NeverClaimed,
+        )? {
             return Err(ScenarioLocationError::NotFound(resolved));
         }
         self.log_write("[ScenarioLocation] Deleted scenario", &resolved);

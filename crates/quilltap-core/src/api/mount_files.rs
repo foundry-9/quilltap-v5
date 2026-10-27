@@ -12,6 +12,7 @@
 use crate::db::doc_mount_points::{DocMountPointsRepository, MountServiceInfo};
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::inventory::lint_scope::TitleLintScope;
 use crate::services::mount_index::base_path_availability::BasePathUnavailableError;
 use crate::services::mount_index::converters::default_text_extractor;
 use crate::services::mount_index::embedding_scheduler::enqueue_embedding_jobs_for_mount_point;
@@ -348,10 +349,18 @@ pub async fn mount_folder_move(
         from_path.to_string(),
         to_path.to_string(),
     );
-    let out = run_mount_op(db, move |conn| {
-        crate::services::mount_index::folder_ops::move_folder(conn, &mp, &fp, &tp)
-    })
-    .await;
+    let out = db
+        .write(move |ws| {
+            let mount = mount_conn(ws)?;
+            Ok(crate::services::mount_index::folder_ops::move_folder(
+                ws.main().connection(),
+                mount,
+                &mp,
+                &fp,
+                &tp,
+            ))
+        })
+        .await;
     match out {
         Ok(Ok(v)) => Response::MountFile(v),
         Ok(Err(e)) => map_file_or_store(e, "Failed to move folder"),
@@ -883,7 +892,15 @@ pub async fn mount_blob_delete(db: &Db, mount_point_id: &str, path: &str) -> Res
             if blobs.delete_by_mount_point_and_path(&mp, &p)? {
                 return Ok(true);
             }
-            crate::db::database_store::delete_database_document(mount, &mp, &p)
+            crate::db::database_store::delete_database_document(
+                mount,
+                &mp,
+                &p,
+                TitleLintScope::Unlinted {
+                    main: ws.main().connection(),
+                },
+            )
+            .map_err(crate::db::database_store::StoreError::into_db_error)
         })
         .await;
     match out {
@@ -1288,5 +1305,27 @@ pub fn mount_file_read(
     match read_mount_file(db, mount_point_id, path, opts) {
         Ok(r) => Response::MountFile(r.to_json()),
         Err(e) => map_error(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.D340 R-8 (a / e): the untyped arm a title-lint refusal lands in is
+    /// v4's `handleFileOpError` catch-all — 500 `Failed to <action>`, never the
+    /// refusal's 409.
+    #[test]
+    fn the_untyped_arm_is_the_routes_500() {
+        let r = map_file_or_store(
+            MountFileError::Other("title rejected: \"Lantern\"".into()),
+            "Failed to move folder",
+        );
+        let text = format!("{r:?}");
+        assert!(
+            text.contains("Internal") && text.contains("Failed to move folder"),
+            "{text}"
+        );
+        assert!(!text.contains("title rejected"), "{text}");
     }
 }

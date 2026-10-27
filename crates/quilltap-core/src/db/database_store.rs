@@ -58,6 +58,11 @@ use super::doc_mount_files::{DmfUpdate, DocMountFilesRepository};
 use super::doc_mount_folders::DocMountFoldersRepository;
 use super::DbError;
 use crate::clock::{iso_to_ms, now_iso, now_unix_ms};
+use crate::inventory::errors::InventoryRefusal;
+use crate::inventory::lint_scope::{is_title_lint_folder, is_title_lint_path, TitleLintScope};
+use crate::inventory::title_lint_documents::{
+    lint_inventory_document_change, InventoryDocumentChange, PendingTitleLintRows,
+};
 
 /// v4 `DatabaseStoreError.code` — the discriminant the tool handlers dispatch on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -100,6 +105,10 @@ impl std::error::Error for DatabaseStoreError {}
 pub enum StoreError {
     Store(DatabaseStoreError),
     Db(DbError),
+    /// The Inventory title lint refused the change (P4.D340). v4 rethrows the
+    /// `InventoryRefusal` untouched through the store; each caller renders it
+    /// as v4's caller renders a thrown refusal at that layer (R-8).
+    TitleLint(InventoryRefusal),
 }
 
 impl From<DbError> for StoreError {
@@ -119,11 +128,57 @@ impl std::fmt::Display for StoreError {
         match self {
             StoreError::Store(e) => write!(f, "{e}"),
             StoreError::Db(e) => write!(f, "{e}"),
+            StoreError::TitleLint(r) => f.write_str(&r.message),
         }
     }
 }
 
 impl std::error::Error for StoreError {}
+
+impl StoreError {
+    /// A caller that answers `DbError`: a DB error passes through untouched
+    /// (what `delete_database_document` answered before it could refuse); a
+    /// store error or a title-lint refusal becomes `Internal(<its message>)`.
+    pub fn into_db_error(self) -> DbError {
+        match self {
+            StoreError::Db(d) => d,
+            StoreError::Store(s) => DbError::Internal(s.message),
+            StoreError::TitleLint(r) => DbError::Internal(r.message),
+        }
+    }
+}
+
+impl From<InventoryRefusal> for StoreError {
+    fn from(r: InventoryRefusal) -> Self {
+        StoreError::TitleLint(r)
+    }
+}
+
+/// The Inventory title lint at the document layer (v4 `lintInventoryChange`,
+/// `database-store.ts:44-52`): every write, delete or move of an
+/// `Inventory/*.json` or `Tools/*.tool.json` file — whoever's hands made it —
+/// is linted before it lands (a refusal stops it), and the answered rows are
+/// written once it has. Writes from the Inventory mutations, which lint for
+/// themselves, pass straight through; an unclaimed path is no read and no line.
+fn lint_inventory_change(
+    conn: &Connection,
+    change: InventoryDocumentChange<'_>,
+    linted: &TitleLintScope<'_>,
+) -> Result<PendingTitleLintRows, StoreError> {
+    if linted.is_linted() {
+        return Ok(PendingTitleLintRows::nothing());
+    }
+    let relevant = match change {
+        InventoryDocumentChange::MoveFolder {
+            from_path, to_path, ..
+        } => is_title_lint_folder(from_path) || is_title_lint_folder(to_path),
+        _ => change.paths().iter().any(|p| is_title_lint_path(p)),
+    };
+    if !relevant {
+        return Ok(PendingTitleLintRows::nothing());
+    }
+    Ok(lint_inventory_document_change(conn, &change, linted)?)
+}
 
 // ============================================================================
 // READ
@@ -193,6 +248,7 @@ pub fn write_database_document(
     mount_point_id: &str,
     relative_path: &str,
     content: &str,
+    linted: TitleLintScope<'_>,
 ) -> Result<i64, StoreError> {
     let rel = normalise_relative_path(relative_path)?;
     let file_type = detect_database_file_type(&rel).ok_or_else(|| {
@@ -212,6 +268,16 @@ pub fn write_database_document(
     // two non-catch lines, not one (P4.131).
     let _ = DocMountDocumentsRepository::new(conn)
         .find_by_mount_point_and_path_or_none(mount_point_id, &rel);
+
+    let after_lint = lint_inventory_change(
+        conn,
+        InventoryDocumentChange::Write {
+            mount_point_id,
+            relative_path: &rel,
+            content,
+        },
+        &linted,
+    )?;
 
     let content_sha256 = sha256_of_string(content);
     let file_name = basename(&rel).to_string();
@@ -247,6 +313,7 @@ pub fn write_database_document(
         mount_point_id,
         &rel,
     );
+    after_lint.write();
 
     // v4 returns `new Date(now).getTime()` for a `now` minted in the same JS
     // millisecond the repo stamps `lastModified` with (single-threaded, both
@@ -276,13 +343,29 @@ pub fn write_database_document(
 /// `findByMountPointAndPath` is a fallback `queryJoined`). A failed GC logs and
 /// still answers `true`: v4 emits `documentDeleted` and returns `true` whatever
 /// `deleteWithGC` answered. The `emitDocumentDeleted` event is a no-op seam
-/// (skipped).
+/// (skipped). An absent path is never linted (v4 returns before the lint).
 pub fn delete_database_document(
     conn: &Connection,
     mount_point_id: &str,
     relative_path: &str,
-) -> Result<bool, DbError> {
-    DocMountFileLinksRepository::new(conn).delete_database_document(mount_point_id, relative_path)
+    linted: TitleLintScope<'_>,
+) -> Result<bool, StoreError> {
+    let rel = normalise_relative_path(relative_path)?;
+    let links = DocMountFileLinksRepository::new(conn);
+    let Some(link) = links.find_by_mount_point_and_path_or_none(mount_point_id, &rel) else {
+        return Ok(false);
+    };
+    let after_lint = lint_inventory_change(
+        conn,
+        InventoryDocumentChange::Delete {
+            mount_point_id,
+            relative_path: &rel,
+        },
+        &linted,
+    )?;
+    links.delete_with_gc_or_false(&link.id);
+    after_lint.write();
+    Ok(true)
 }
 
 // ============================================================================
@@ -299,6 +382,7 @@ pub fn move_database_document(
     mount_point_id: &str,
     from_relative_path: &str,
     to_relative_path: &str,
+    linted: TitleLintScope<'_>,
 ) -> Result<(), StoreError> {
     let from_rel = normalise_relative_path(from_relative_path)?;
     let to_rel = normalise_relative_path(to_relative_path)?;
@@ -342,6 +426,16 @@ pub fn move_database_document(
         .into());
     }
 
+    let after_lint = lint_inventory_change(
+        conn,
+        InventoryDocumentChange::Move {
+            mount_point_id,
+            from_path: &from_rel,
+            to_path: &to_rel,
+        },
+        &linted,
+    )?;
+
     // Ensure destination folder exists and get its ID.
     let links = DocMountFileLinksRepository::new(conn);
     let dest_folder_path = dirname(&to_rel);
@@ -377,6 +471,7 @@ pub fn move_database_document(
         }
     }
 
+    after_lint.write();
     Ok(())
 }
 
@@ -539,6 +634,7 @@ pub fn move_database_folder(
     mount_point_id: &str,
     from_path: &str,
     to_path: &str,
+    linted: TitleLintScope<'_>,
 ) -> Result<(), StoreError> {
     let from_rel = normalise_relative_path(from_path)?;
     let to_rel = normalise_relative_path(to_path)?;
@@ -569,6 +665,17 @@ pub fn move_database_folder(
             .into());
         }
     }
+
+    // v4 lints the folder's STORED path, not the caller-typed one.
+    let after_lint = lint_inventory_change(
+        conn,
+        InventoryDocumentChange::MoveFolder {
+            mount_point_id,
+            from_path: &source_folder.path,
+            to_path: &to_rel,
+        },
+        &linted,
+    )?;
 
     // Ensure parent of destination exists + resolve its id AND its stored path.
     let dest_dir = dirname(&to_rel);
@@ -656,6 +763,7 @@ pub fn move_database_folder(
         }
     }
 
+    after_lint.write();
     Ok(())
 }
 
@@ -809,7 +917,7 @@ mod tests {
     const MP: &str = "mount-1";
 
     fn seed(conn: &Connection, rel: &str, content: &str) {
-        write_database_document(conn, MP, rel, content).unwrap();
+        write_database_document(conn, MP, rel, content, TitleLintScope::Linted).unwrap();
     }
 
     #[test]
@@ -830,7 +938,9 @@ mod tests {
     #[test]
     fn write_returns_the_stored_mtime() {
         let conn = open_store_db();
-        let returned = write_database_document(&conn, MP, "ledger.md", "first").unwrap();
+        let returned =
+            write_database_document(&conn, MP, "ledger.md", "first", TitleLintScope::Linted)
+                .unwrap();
         let stored = read_database_document(&conn, MP, "ledger.md")
             .unwrap()
             .mtime_ms;
@@ -914,7 +1024,14 @@ mod tests {
             .expect("both links exist");
 
         // Write through ONE member via the FREE FUNCTION.
-        write_database_document(&conn, MP, "left.md", "Second revision, shared.").unwrap();
+        write_database_document(
+            &conn,
+            MP,
+            "left.md",
+            "Second revision, shared.",
+            TitleLintScope::Linted,
+        )
+        .unwrap();
 
         // The SIBLING's chunk set must carry the new bytes.
         let sibling_chunks: Vec<String> = {
@@ -957,7 +1074,8 @@ mod tests {
     #[test]
     fn write_unsupported_extension_message_matches_v4() {
         let conn = open_store_db();
-        let err = write_database_document(&conn, MP, "photo.yaml", "x").unwrap_err();
+        let err = write_database_document(&conn, MP, "photo.yaml", "x", TitleLintScope::Linted)
+            .unwrap_err();
         match err {
             StoreError::Store(e) => {
                 assert_eq!(e.code, DbStoreErrorCode::Unsupported);
@@ -973,7 +1091,8 @@ mod tests {
     #[test]
     fn write_no_extension_reports_empty_ext() {
         let conn = open_store_db();
-        let err = write_database_document(&conn, MP, "README", "x").unwrap_err();
+        let err =
+            write_database_document(&conn, MP, "README", "x", TitleLintScope::Linted).unwrap_err();
         match err {
             StoreError::Store(e) => assert!(
                 e.message.ends_with("Got: "),
@@ -989,17 +1108,17 @@ mod tests {
         let conn = open_store_db();
         seed(&conn, "a.md", "content");
         assert!(database_document_exists(&conn, MP, "a.md").unwrap());
-        assert!(delete_database_document(&conn, MP, "a.md").unwrap());
+        assert!(delete_database_document(&conn, MP, "a.md", TitleLintScope::Linted).unwrap());
         assert!(!database_document_exists(&conn, MP, "a.md").unwrap());
         // Deleting again is the tolerant false.
-        assert!(!delete_database_document(&conn, MP, "a.md").unwrap());
+        assert!(!delete_database_document(&conn, MP, "a.md", TitleLintScope::Linted).unwrap());
     }
 
     #[test]
     fn move_document_updates_path() {
         let conn = open_store_db();
         seed(&conn, "old.md", "body");
-        move_database_document(&conn, MP, "old.md", "sub/new.md").unwrap();
+        move_database_document(&conn, MP, "old.md", "sub/new.md", TitleLintScope::Linted).unwrap();
         assert!(!database_document_exists(&conn, MP, "old.md").unwrap());
         let doc = read_database_document(&conn, MP, "sub/new.md").unwrap();
         assert_eq!(doc.content, "body");
@@ -1012,7 +1131,8 @@ mod tests {
         let conn = open_store_db();
         seed(&conn, "a.md", "one");
         seed(&conn, "b.md", "two");
-        let err = move_database_document(&conn, MP, "a.md", "b.md").unwrap_err();
+        let err =
+            move_database_document(&conn, MP, "a.md", "b.md", TitleLintScope::Linted).unwrap_err();
         match err {
             StoreError::Store(e) => {
                 assert_eq!(e.code, DbStoreErrorCode::Conflict);
@@ -1025,7 +1145,8 @@ mod tests {
     #[test]
     fn move_missing_source_not_found() {
         let conn = open_store_db();
-        let err = move_database_document(&conn, MP, "nope.md", "there.md").unwrap_err();
+        let err = move_database_document(&conn, MP, "nope.md", "there.md", TitleLintScope::Linted)
+            .unwrap_err();
         match err {
             StoreError::Store(e) => {
                 assert_eq!(e.code, DbStoreErrorCode::NotFound);
@@ -1104,7 +1225,7 @@ mod tests {
         let conn = open_store_db();
         seed(&conn, "A/one.md", "1");
         seed(&conn, "A/sub/two.md", "2");
-        move_database_folder(&conn, MP, "A", "B").unwrap();
+        move_database_folder(&conn, MP, "A", "B", TitleLintScope::Linted).unwrap();
         // Old paths gone, new paths present.
         assert!(!database_document_exists(&conn, MP, "A/one.md").unwrap());
         assert!(database_document_exists(&conn, MP, "B/one.md").unwrap());
@@ -1209,7 +1330,7 @@ mod tests {
         seed(&conn, "Mail/a.md", "hello");
         break_links(&conn);
         let (res, lines) = crate::test_support::captured_with(|| {
-            delete_database_document(&conn, MP, "Mail/a.md").unwrap()
+            delete_database_document(&conn, MP, "Mail/a.md", TitleLintScope::Linted).unwrap()
         });
         assert!(!res);
         let e = errors(&lines);
@@ -1237,7 +1358,7 @@ mod tests {
         )
         .unwrap();
         let (res, lines) = crate::test_support::captured_with(|| {
-            delete_database_document(&conn, MP, "Mail/a.md").unwrap()
+            delete_database_document(&conn, MP, "Mail/a.md", TitleLintScope::Linted).unwrap()
         });
         assert!(res, "v4 answers true whatever deleteWithGC answered");
         let e = errors(&lines);
@@ -1260,7 +1381,7 @@ mod tests {
         let conn = open_store_db();
         break_links(&conn);
         let (res, lines) = crate::test_support::captured_with(|| {
-            write_database_document(&conn, MP, "Mail/new.md", "hello")
+            write_database_document(&conn, MP, "Mail/new.md", "hello", TitleLintScope::Linted)
         });
         assert!(res.is_err(), "the link upsert must still throw");
         let e = errors(&lines);
@@ -1283,9 +1404,265 @@ mod tests {
             list_database_files(&conn, MP, None).unwrap();
             database_document_exists(&conn, MP, "Mail/a.md").unwrap();
             database_folder_exists(&conn, MP, "Mail").unwrap();
-            delete_database_document(&conn, MP, "Mail/a.md").unwrap();
-            delete_database_document(&conn, MP, "Mail/missing.md").unwrap();
+            delete_database_document(&conn, MP, "Mail/a.md", TitleLintScope::Linted).unwrap();
+            delete_database_document(&conn, MP, "Mail/missing.md", TitleLintScope::Linted).unwrap();
         });
         assert!(errors(&lines).is_empty(), "{lines:?}");
+    }
+
+    // ---- P4.D340: the title lint's four hooks (v4 `database-store-title-lint.test.ts`) ----
+    // A hook-order spy is not available in Rust, so the ORDER is pinned by its
+    // effect: a refused write leaves the store byte-equal; a write that fails
+    // AFTER its lint writes the census line but never the rows.
+
+    fn object(id: &str, name: &str, title: &str) -> String {
+        format!(
+            "{{\n  \"id\": \"{id}\",\n  \"kind\": \"item\",\n  \"name\": \"{name}\",\n  \"title\": \"{title}\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}}\n"
+        )
+    }
+
+    const A: &str = "33333333-3333-4333-8333-333333333331";
+    const B: &str = "33333333-3333-4333-8333-333333333332";
+
+    fn lint_lines(lines: &[String]) -> Vec<&String> {
+        lines
+            .iter()
+            .filter(|l| l.contains("[InventoryTitleLint]") || l.contains("[ToolGateKeys]"))
+            .collect()
+    }
+
+    fn store_rows(conn: &Connection) -> String {
+        let mut out = String::new();
+        for t in [
+            "doc_mount_file_links",
+            "doc_mount_documents",
+            "doc_mount_files",
+            "doc_mount_folders",
+        ] {
+            let mut stmt = conn
+                .prepare(&format!("SELECT * FROM {t} ORDER BY id"))
+                .unwrap();
+            let n = stmt.column_count();
+            let rows = stmt
+                .query_map([], |r| {
+                    Ok((0..n)
+                        .map(|j| format!("{:?}", r.get::<_, rusqlite::types::Value>(j).unwrap()))
+                        .collect::<Vec<_>>()
+                        .join("|"))
+                })
+                .unwrap();
+            for row in rows {
+                out.push_str(&row.unwrap());
+                out.push('\n');
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn title_lint_refused_write_leaves_the_store_untouched() {
+        let conn = open_store_db();
+        let main = Connection::open_in_memory().unwrap();
+        seed(&conn, "Inventory/a.json", &object(A, "lantern", "Old"));
+        let before = store_rows(&conn);
+        let (res, lines) = crate::test_support::captured_with(|| {
+            write_database_document(
+                &conn,
+                MP,
+                "Inventory/b.json",
+                &object(B, "spare", "Lantern"),
+                TitleLintScope::Unlinted { main: &main },
+            )
+        });
+        match res {
+            Err(StoreError::TitleLint(r)) => assert_eq!(
+                r.message,
+                "title rejected: \"Lantern\"\ncollides with KIND NAME \"lantern\" (reason: kind-name shadow)\nchoose a title that is not a kind name."
+            ),
+            other => panic!("expected the title refusal, got {other:?}"),
+        }
+        assert_eq!(
+            store_rows(&conn),
+            before,
+            "a refused write changed the store"
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[InventoryTitleLint] Title rejected")),
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn title_lint_unclaimed_and_linted_writes_never_lint() {
+        let conn = open_store_db();
+        let main = Connection::open_in_memory().unwrap();
+        let ((), lines) = crate::test_support::captured_with(|| {
+            write_database_document(
+                &conn,
+                MP,
+                "metadata.json",
+                "{}\n",
+                TitleLintScope::Unlinted { main: &main },
+            )
+            .unwrap();
+            write_database_document(
+                &conn,
+                MP,
+                "Inventory/c.json",
+                &object(A, "x", "Lantern"),
+                TitleLintScope::Linted,
+            )
+            .unwrap();
+            move_database_document(
+                &conn,
+                MP,
+                "metadata.json",
+                "meta.json",
+                TitleLintScope::Unlinted { main: &main },
+            )
+            .unwrap();
+        });
+        assert!(lint_lines(&lines).is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn title_lint_absent_delete_never_lints() {
+        let conn = open_store_db();
+        let main = Connection::open_in_memory().unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            delete_database_document(
+                &conn,
+                MP,
+                "Inventory/none.json",
+                TitleLintScope::Unlinted { main: &main },
+            )
+        });
+        assert!(!res.unwrap());
+        assert!(lint_lines(&lines).is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn title_lint_delete_move_and_folder_move_lint_a_claimed_path() {
+        let conn = open_store_db();
+        let main = Connection::open_in_memory().unwrap();
+        seed(&conn, "Inventory/a.json", &object(A, "lamp", "Old Lamp"));
+        seed(
+            &conn,
+            "Inventory/Belt/b.json",
+            &object(B, "buckle", "Silver Buckle"),
+        );
+        for (what, run) in [
+            (
+                "move",
+                Box::new(|| {
+                    move_database_document(
+                        &conn,
+                        MP,
+                        "Inventory/a.json",
+                        "Attic/a.json",
+                        TitleLintScope::Unlinted { main: &main },
+                    )
+                    .map(|_| ())
+                }) as Box<dyn Fn() -> Result<(), StoreError>>,
+            ),
+            (
+                "move-folder",
+                Box::new(|| {
+                    move_database_folder(
+                        &conn,
+                        MP,
+                        "Inventory/Belt",
+                        "Attic/Belt",
+                        TitleLintScope::Unlinted { main: &main },
+                    )
+                }),
+            ),
+            (
+                "delete",
+                Box::new(|| {
+                    delete_database_document(
+                        &conn,
+                        MP,
+                        "Attic/a.json",
+                        TitleLintScope::Unlinted { main: &main },
+                    )
+                    .map(|_| ())
+                }),
+            ),
+        ] {
+            let (res, lines) = crate::test_support::captured_with(run);
+            res.unwrap();
+            let linted = lines
+                .iter()
+                .any(|l| l.contains("[InventoryTitleLint] Document change linted"));
+            // A delete of `Attic/a.json` is not a claimed path: no lint at all.
+            assert_eq!(linted, what != "delete", "{what}: {lines:?}");
+        }
+    }
+
+    #[test]
+    fn title_lint_rows_are_written_only_after_the_write_lands() {
+        let conn = open_store_db();
+        let main = Connection::open_in_memory().unwrap();
+        // An unreadable tool file makes the census incomplete, so a LEAVING
+        // title rings `gate unverifiable` (and an entering one is refused).
+        seed(&conn, "Tools/broken.tool.json", "{ not json");
+        seed(&conn, "Inventory/a.json", &object(A, "lamp", "Old Lamp"));
+        let blank = || object(A, "lamp", "").replace("\"title\": \"\"", "\"title\": null");
+
+        // The write fails AFTER the lint (a new content row is refused): the
+        // census line, never the rows.
+        conn.execute_batch(
+            "CREATE TRIGGER refuse_files BEFORE INSERT ON doc_mount_files BEGIN SELECT RAISE(ABORT, 'no new files'); END;",
+        )
+        .unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            write_database_document(
+                &conn,
+                MP,
+                "Inventory/a.json",
+                &blank(),
+                TitleLintScope::Unlinted { main: &main },
+            )
+        });
+        assert!(res.is_err());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("[InventoryTitleLint] Census")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("A gate key was left behind")),
+            "{lines:?}"
+        );
+
+        // The same write once it lands: the row.
+        conn.execute_batch("DROP TRIGGER refuse_files;").unwrap();
+        let (res, lines) = crate::test_support::captured_with(|| {
+            write_database_document(
+                &conn,
+                MP,
+                "Inventory/a.json",
+                &blank(),
+                TitleLintScope::Unlinted { main: &main },
+            )
+        });
+        res.unwrap();
+        let row = lines
+            .iter()
+            .find(|l| l.contains("[InventoryTitleLint] A gate key was left behind"))
+            .unwrap_or_else(|| panic!("{lines:?}"));
+        assert!(
+            row.contains(
+                "reason=gate unverifiable: Tools/broken.tool.json in store \"Test Store\""
+            ),
+            "{row}"
+        );
+        assert!(row.contains("alert=true"), "{row}");
     }
 }
