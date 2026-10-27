@@ -12,9 +12,7 @@
  */
 
 import { CoreDispatchError } from '../../../core/core-contract';
-import { getErrorMessage } from '../../../memory/memory-format';
-
-export { getErrorMessage };
+import { getErrorMessage } from '../../../core/error-utils';
 
 /**
  * For a read: any server failure reads as `fallback` (the body is not

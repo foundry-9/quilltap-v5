@@ -1,4 +1,4 @@
-import { Signal, WritableSignal, computed, effect, inject, signal } from '@angular/core';
+import { Signal, computed, effect, inject, signal } from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
@@ -20,7 +20,7 @@ import { readErrorText, writeErrorText } from './api-error-text';
  * the global topic map invalidates `['memories', …]` keys (R-AB).
  */
 export interface MemorySettingsDocument<T> {
-  config: WritableSignal<T>;
+  config: Signal<T>;
   loading: Signal<boolean>;
   saving: Signal<boolean>;
   error: Signal<string | null>;
@@ -86,7 +86,7 @@ export function injectMemorySettingsDocument<T extends object>(options: {
   };
 
   return {
-    config,
+    config: config.asReadonly(),
     loading: computed(() => query.isLoading()),
     saving: saving.asReadonly(),
     error: error.asReadonly(),

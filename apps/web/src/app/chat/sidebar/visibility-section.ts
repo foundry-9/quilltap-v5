@@ -45,7 +45,7 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
  * v4 splits the labour: the section renders, `useChatControls` writes. v5 keeps
  * the writes here, but the shape is v4's exactly — an optimistic local set, the
  * `{chat: {…}}` PUT, and a revert plus v4's error copy when it fails
- * (`useChatControls.ts:207-345`). Local state is seeded from the chat record
+ * (`useChatControls.ts:216-345`). Local state is seeded from the chat record
  * only when the field is DEFINED (v4's `if (chat?.X !== undefined)` guards).
  * `showThinking` and `answerConfirmationOverride` are now among the projected
  * columns (v4 `bd419ae9`, bug 22), so the seed finds them and both controls
@@ -239,7 +239,7 @@ export class VisibilitySection {
 
   constructor() {
     // v4 seeds each control from the chat record when the field is DEFINED
-    // (`useChatControls.ts:104-160`); the columns the GET omits keep whatever the
+    // (`useChatControls.ts:145-191`); the columns the GET omits keep whatever the
     // operator last chose.
     effect(() => {
       const s = this.state();

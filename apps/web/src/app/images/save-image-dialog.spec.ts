@@ -104,6 +104,18 @@ describe('SaveImageDialog', () => {
     expect(fixture.nativeElement.textContent).not.toContain('No document stores are available.');
   });
 
+  it('a failed album read shows v4’s sentence without the status, beside the empty sentence (ALBUM_LOAD_STATUS_ABSENT)', async () => {
+    const client = {
+      dispatchData: (async () => {
+        throw new Error('boom');
+      }) as CoreClient['dispatchData'],
+    } as Partial<CoreClient>;
+    const fixture = await render(client);
+    const alert = fixture.nativeElement.querySelector('[role="alert"]') as HTMLElement;
+    expect(alert.textContent?.trim()).toBe('Failed to load photo albums');
+    expect(fixture.nativeElement.textContent).toContain('No photo albums are available for this chat.');
+  });
+
   it('saves via messageSaveImage with the default album and trimmed caption (the message door)', async () => {
     const log: DispatchLog = { requests: [] };
     const fixture = await render(stubClient(log, albums()));

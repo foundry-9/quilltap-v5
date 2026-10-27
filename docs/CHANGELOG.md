@@ -402,6 +402,12 @@ Differential: four new `orchestrator_tier3` cases (`interrupt_stop_mid_brahma_ma
 
 Three in-crate rows in `brahma_console/tests.rs`.
 
+#### 2026-10-27 — fix(spa): multi-character stop over v4's base participants, no memory-list Source link, one `getErrorMessage`, and the P4.173 smalls
+
+_Versions: SPA 0.5.906._
+
+The Salon's multi-character check now reads v4's base participants (CHARACTER seats carrying a character, `controlledBy ?? 'llm'`; `MULTI_CHARACTER_HYDRATED_ID`: the wire has no `characterId`, so the hydrated `character` stands in). The memory list no longer shows the v5-only Source link (v4's list passes no `onNavigateToSource`). `getErrorMessage` lives in `core/error-utils.ts`; the re-export is gone. The resolved-dispatch frame-error toast uses the default duration (only the failed-send catch keeps 8 s). `MemoryCreateReply.action` is optional, `MemorySettingsDocument.config` is read-only, and the in-chat scenario control's `From:` line has no leading whitespace so `/^From:/` matches. `CollapsibleCard` guards `scrollIntoView`. The Prospero wardrobe card mounts its browser only when open (no folders read while collapsed). The Wardrobe Pictures shelf uses `isLoading`. The save-image dialog shows `Failed to load photo albums` on a failed read (`ALBUM_LOAD_STATUS_ABSENT`: no status in the dispatch error) and no longer retries. The wardrobe move/copy request is built typed, without the `as CoreRequest` cast. The bug-139 spec holds the pause write on a deferred promise as v4's test does. Stale v4 line citations in `useChatControls` references corrected against the pin.
+
 #### 2026-10-27 — test(e2e): the mock LLM's opt-in streamed tool-call arm, inventory beat (g) live, group plate, toast stacking, F.9 whisper (P4.173)
 
 _No crate versions bumped._

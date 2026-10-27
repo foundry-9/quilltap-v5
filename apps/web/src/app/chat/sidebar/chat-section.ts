@@ -63,7 +63,7 @@ export interface ChatSectionState {
   scenarioText: string | null;
   /**
    * The RESOLVED agent-mode value (v4 syncs its local `agentModeEnabled` from
-   * `chat.resolvedAgentModeEnabled`, `useChatControls.ts:76-82`), which is what
+   * `chat.resolvedAgentModeEnabled`, `useChatControls.ts:145-152`), which is what
    * the badge displays and what its next-value computation reads.
    */
   agentModeEnabled: boolean | null;
@@ -401,7 +401,7 @@ export class ChatSection {
 
   /**
    * The badge's displayed value. Seeded from the chat's RESOLVED agent mode and
-   * re-synced when it moves (v4 `useChatControls.ts:76-82`), then adopted
+   * re-synced when it moves (v4 `useChatControls.ts:145-152`), then adopted
    * optimistically from the reply — which is what makes the badge flip without
    * waiting for the parent refetch.
    */

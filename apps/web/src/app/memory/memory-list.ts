@@ -10,7 +10,6 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Router } from '@angular/router';
 import { injectInfiniteQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../core/core-client';
@@ -21,7 +20,8 @@ import { MaintenanceDialog } from './maintenance-dialog';
 import { MemoryCard } from './memory-card';
 import { MemoryDigestViewer } from './memory-digest-viewer';
 import { MemoryEditor } from './memory-editor';
-import { appendUniqueMemories, getErrorMessage } from './memory-format';
+import { getErrorMessage } from '../core/error-utils';
+import { appendUniqueMemories } from './memory-format';
 import { deleteMemory } from './memory.api';
 import { ToastService } from '../ui/toast.service';
 
@@ -42,13 +42,10 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
  *
  * The "Maintenance" button opens the Memory Maintenance dialog fixed to this
  * character (v4 `b045dd986`; it replaced "Cleanup" and the housekeeping dialog
- * — the title is bare, as v4 passes no name). The Source link on a card
- * navigates to the source chat (deep message anchoring is a P4.6t deferral). An archived card's `Superseded by a digest` opens the
+ * — the title is bare, as v4 passes no name). A card carries no
+ * Source link here: v4's list never passes `onNavigateToSource`
+ * (`memory-list.tsx:335-342`), so it never shows one (P4.173 P-6). An archived card's `Superseded by a digest` opens the
  * digest in v4's viewer (`memoryGet`, v4 `handleViewDigest` `:195-205`).
- *
- * **Recorded divergence (P4.D276 R-A):** v4's list never passes
- * `onNavigateToSource` (`memory-list.tsx:335-342` at `01a83539d`), so it never
- * shows "Source"; this list does. Pre-existing, not drift; kept.
  */
 @Component({
   selector: 'qt-memory-list',
@@ -166,9 +163,9 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
                 [memory]="memory"
                 [isDeleting]="deletingId() === memory.id"
                 [canViewDigest]="true"
+                [canNavigateToSource]="false"
                 (edit)="openEdit($event)"
                 (delete)="confirmDelete($event)"
-                (navigateToSource)="navigateToSource($event)"
                 (viewDigest)="openDigest($event)"
               />
             }
@@ -242,7 +239,6 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
 export class MemoryList {
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
-  private readonly router = inject(Router);
   private readonly queryClient = injectQueryClient();
   private readonly destroyRef = inject(DestroyRef);
 
@@ -429,11 +425,6 @@ export class MemoryList {
     } catch (err) {
       this.toasts.showError(getErrorMessage(err, 'Failed to load the digest'));
     }
-  }
-
-  protected navigateToSource(e: { chatId: string; messageId: string }): void {
-    // Deep message anchoring is a P4.6t deferral; navigate to the chat.
-    void this.router.navigate(['/salon', e.chatId]);
   }
 
   protected errorMessage(): string {

@@ -244,6 +244,8 @@ function charOf(id: string, name: string): ParticipantDetail['character'] {
 }
 
 interface StubOptions {
+  /** Hold every `chatUpdate` reply until this settles (v4's deferred `setPauseState`). */
+  holdUpdate?: Promise<void>;
   /** The `turn` payload the `query` action returns. */
   query?: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null };
   /** The `skipUserTurn` response — a `turnAction` turn, or an error message. */
@@ -333,6 +335,9 @@ function stubClient(
           type: 'chatSend',
           data: { messageId: 'x', hasContent: true, isMultiCharacter: true, isPaused: false },
         };
+      case 'chatUpdate':
+        if (opts.holdUpdate) await opts.holdUpdate;
+        return { type: 'ack', data: {} };
       default:
         return { type: 'ack', data: {} };
     }
@@ -1532,6 +1537,39 @@ describe('SalonConversation — a paused room grants one turn and no more (bugs 
       .map((c) => c[0] as CoreRequest)
       .find((r) => r.type === 'chatUpdate') as { chat?: { isPaused?: boolean } };
     expect(update.chat?.isPaused).toBe(false);
+  });
+
+  it('the all-LLM Continue asks for no turn until the un-pause has been persisted (bug 139, v4’s deferred-pause shape)', async () => {
+    // v4 `all-llm-pause-actions.test.ts` ("continueAllLLMRoom (bug 139)"): hold
+    // the pause write on a deferred promise, call Continue, assert the turn
+    // action has NOT gone out, resolve, assert the order.
+    let release: () => void = () => {};
+    const holdUpdate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }), {
+      query: { nextSpeakerId: 'pA', nextSpeakerControlledBy: 'llm' },
+      holdUpdate,
+    });
+    const fixture = await render(client);
+    const mounted = dispatch.mock.calls.length;
+    const types = () =>
+      dispatch.mock.calls
+        .slice(mounted)
+        .map((c) => (c[0] as CoreRequest).type)
+        .filter((t) => t === 'chatUpdate' || t === 'chatTurnAction' || t === 'chatSend');
+
+    const done = (
+      fixture.componentInstance as unknown as { onAllLLMContinue(): Promise<void> }
+    ).onAllLLMContinue();
+    await new Promise((r) => setTimeout(r, 0));
+    // The un-pause is in flight and unresolved: no turn may have been requested.
+    expect(types()).toEqual(['chatUpdate']);
+
+    release();
+    await done;
+    await new Promise((r) => setTimeout(r, 0));
+    expect(types()).toEqual(['chatUpdate', 'chatTurnAction', 'chatSend']);
   });
 });
 

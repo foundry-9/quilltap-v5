@@ -352,7 +352,7 @@ describe('ChatSection — the other per-chat controls', () => {
 
 /**
  * The agent-mode badge (v4 `ChatSidebar.tsx:1116-1127` +
- * `useChatControls.ts:367-395`). The load-bearing claim is that a TWO-state
+ * `useChatControls.ts:265-293`). The load-bearing claim is that a TWO-state
  * badge drives a THREE-state verb without ever reaching for the third arm.
  */
 describe('ChatSection — the agent-mode badge', () => {

@@ -80,9 +80,9 @@ export type SaveImageTarget =
  * **Recorded mechanism divergences.** v4 fetches URLs; v5 rides verbs (album
  * reads: `chatPhotoAlbums` for both chat doors, `wardrobeItemImageSaveTargets`
  * for the wardrobe door — each under its own TanStack key). v4's
- * `Failed to load photo albums (<status>)` line has no counterpart (the
- * dispatch error carries no status; a failed read renders the empty sentence —
- * P4.D277 Tier 3 item 17). And (R-C) v5's `qt-modal` renders in place with no
+ * `Failed to load photo albums (<status>)` line is rendered WITHOUT the status
+ * (the dispatch error carries none — `ALBUM_LOAD_STATUS_ABSENT`, P4.173 R-A),
+ * beside the empty sentence, as v4 does. And (R-C) v5's `qt-modal` renders in place with no
  * Escape, so this dialog ports v4 `BaseModal`'s two behaviours LOCALLY for all
  * three doors: it reparents its own host to `document.body` (so it paints
  * above a body-portalled full-screen viewer, and escapes the item editor's
@@ -191,7 +191,7 @@ export type SaveImageTarget =
           />
         </div>
 
-        @if (error(); as e) {
+        @if (shownError(); as e) {
           <div class="qt-alert-error text-sm" role="alert">{{ e }}</div>
         }
       </div>
@@ -235,6 +235,15 @@ export class SaveImageDialog {
   protected readonly caption = signal('');
   protected readonly submitting = signal(false);
   protected readonly error = signal<string | null>(null);
+  /**
+   * v4's one `error` state also holds the album-load failure
+   * (`Failed to load photo albums (${res.status})`, `SaveImageDialog.tsx:138`).
+   * The dispatch error carries no status, so the sentence is rendered without
+   * it — the recorded divergence `ALBUM_LOAD_STATUS_ABSENT` (P4.173 R-A).
+   */
+  protected readonly shownError = computed(
+    () => this.error() ?? (this.albumsQuery.isError() ? 'Failed to load photo albums' : null),
+  );
   protected readonly selectedMountPointId = signal('');
 
   protected readonly imageAttachments = computed(() =>
@@ -270,6 +279,8 @@ export class SaveImageDialog {
   protected readonly albumsQuery = injectQuery(() => {
     const target = this.target();
     return {
+      // v4 fetches once on mount and does not retry a failure.
+      retry: false,
       queryKey:
         target.kind === 'wardrobe'
           ? ['wardrobeItemImageSaveTargets', target.itemId, target.container.scope, target.container.id]

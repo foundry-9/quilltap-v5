@@ -339,11 +339,7 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
     await unlockIfLocked(page);
     await openChatDrawer(page);
     const control = page.locator('qt-chat-scenario-control');
-    // A SUBSTRING locator, not `/^From:/`: Angular keeps the template's leading
-    // whitespace in that text node and Playwright's regex runs over the raw
-    // text, so the anchored form never matched the rendered line (the
-    // `83334b9a5` unification's first live run; `toHaveText` normalizes).
-    await expect(control.getByText('From:')).toHaveText(`From: ${label}`, { timeout: 15_000 });
+    await expect(control.getByText(/^From:/)).toHaveText(`From: ${label}`, { timeout: 15_000 });
     await expect(control.locator('#chat-scenario-select')).toHaveValue(/^store:/);
   });
 
@@ -402,7 +398,7 @@ test.describe('P4.D302 — the scenario browser and the recorded source', () => 
     await unlockIfLocked(page);
     await openChatDrawer(page);
     const control = page.locator('qt-chat-scenario-control');
-    await expect(control.getByText('From:')).toHaveText(`From: ${HOME_PROJECT} › ${HOME_SCENE.name}`, {
+    await expect(control.getByText(/^From:/)).toHaveText(`From: ${HOME_PROJECT} › ${HOME_SCENE.name}`, {
       timeout: 15_000,
     });
 

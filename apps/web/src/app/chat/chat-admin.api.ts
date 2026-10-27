@@ -17,7 +17,7 @@ import type { AvailableTool } from './tools/tool-settings';
  * responses, so nothing here may assume a field it does not check for.
  */
 
-/** What v4's toggle-agent-mode reply drives (`useChatControls.ts:383-390`). */
+/** What v4's toggle-agent-mode reply drives (`useChatControls.ts:281-291`). */
 export interface AgentModeResult {
   /** `data.resolvedAgentModeEnabled ?? data.agentModeEnabled` — the badge's new value. */
   enabled: boolean | null;
@@ -27,7 +27,7 @@ export interface AgentModeResult {
 
 /**
  * §1 `ChatToggleAgentMode` — v4's badge handler
- * (`useChatControls.ts:367-395`).
+ * (`useChatControls.ts:265-293`).
  *
  * ⚠ **Two arms of a three-armed verb, deliberately.** The column and the verb
  * are tri-state (absent / `null` / boolean), but v4's badge computes

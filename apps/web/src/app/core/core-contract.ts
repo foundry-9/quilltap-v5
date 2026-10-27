@@ -576,7 +576,7 @@ export interface ChatRunToolRequest {
  * The column is TRI-state and the variant carries all three arms (`Rust
  * Option<Option<bool>>`): key absent ⇒ leave alone, `null` ⇒ clear the per-chat
  * override back to the cascade, `true`/`false` ⇒ pin it. **v4's badge only ever
- * sends `true` or `false`** (`useChatControls.ts:369` computes
+ * sends `true` or `false`** (`useChatControls.ts:267` computes
  * `agentModeEnabled === null || !agentModeEnabled`), so the ported badge sends
  * only those two arms — a client that sent `null` would be inventing a control
  * v4 does not have.
@@ -6556,7 +6556,8 @@ export type AdmissionActionKind = 'insert' | 'insert-linked' | 'reinforce' | 'ab
 /** v4 POST `/api/v1/memories` → `{ memory, action }` (201 iff `insert` / `insert-linked`). */
 export interface MemoryCreateReply {
   memory: MemoryDto;
-  action: AdmissionActionKind;
+  /** Absent from a pre-round server (`{ memory }` alone) — callers test it. */
+  action?: AdmissionActionKind;
 }
 // MemoryWriteBag: DROP `source`.
 

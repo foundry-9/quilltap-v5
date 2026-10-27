@@ -29,10 +29,8 @@ import {
  * digest viewer binds `[showActions]="false"` — v4's handler-less
  * `<MemoryCard memory={viewedDigest} />`.
  *
- * **Recorded divergence (P4.D276 R-A):** v4's `MemoryList` never passes
- * `onNavigateToSource` (`memory-list.tsx:335-342` at the pin), so v4's list
- * never shows "Source"; v5's list does (`memory-list.ts` `navigateToSource`).
- * Pre-existing, not drift; kept.
+ * `canNavigateToSource` (default true) is v4's `onNavigateToSource` presence:
+ * v4's list passes none (`memory-list.tsx:335-342`), so it binds false.
  */
 @Component({
   selector: 'qt-memory-card',
@@ -146,6 +144,8 @@ export class MemoryCard {
   readonly showActions = input(true);
   /** R-D: v4's `onViewDigest` presence — the button over the plain text. */
   readonly canViewDigest = input(false);
+  /** R-D: v4's `onNavigateToSource` presence — the Source link needs it (v4's list passes none). */
+  readonly canNavigateToSource = input(true);
 
   readonly edit = output<MemoryDto>();
   readonly delete = output<string>();
@@ -200,7 +200,7 @@ export class MemoryCard {
   /** v4: source link only for AUTO memories carrying both chatId + sourceMessageId. */
   protected readonly showSource = computed(() => {
     const m = this.memory();
-    return m.source === 'AUTO' && !!m.sourceMessageId && !!m.chatId;
+    return this.canNavigateToSource() && m.source === 'AUTO' && !!m.sourceMessageId && !!m.chatId;
   });
 
   protected toggle(): void {

@@ -54,7 +54,7 @@ export interface ConnectionProfileOption {
  *
  * The talkativeness slider keeps v4's local-then-report shape: the thumb tracks
  * the drag immediately and the WRITE is debounced by the Salon (v4
- * `useChatControls:613-635` — 400 ms per participant), so a drag makes one
+ * `useChatControls:541-568` — 400 ms per participant), so a drag makes one
  * request on release, not one per step.
  *
  * (P4.9H1's note listed Whisper among those deferrals. It does not belong there:

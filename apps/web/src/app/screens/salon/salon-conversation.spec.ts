@@ -774,7 +774,7 @@ describe('SalonConversation (read path)', () => {
   });
 });
 
-describe('SalonConversation — story-background regeneration (v4 useChatControls.ts:397-416)', () => {
+describe('SalonConversation — story-background regeneration (v4 useChatControls.ts:295-314)', () => {
   interface RegenStub {
     calls: string[];
     client: Partial<CoreClient>;
@@ -4939,7 +4939,8 @@ describe('SalonConversation — a failed send hands the submission back (P4.D301
     });
     expect(h.showError).toHaveBeenCalledTimes(1);
     expect(h.showError.mock.calls[0][0]).toBe(`Failed to generate response: ${DETAILS}`);
-    expect(h.showError.mock.calls[0][1]).toBe(SEND_FAILURE_TOAST_MS);
+    // v4's frame-error toast is a plain `showErrorToast`: the default duration.
+    expect(h.showError.mock.calls[0][1]).toBeUndefined();
     expect(h.editor().getMarkdown()).toBe('');
   });
 });
@@ -5160,6 +5161,31 @@ describe('SalonConversation — raise a hand / stop (v4 useSSEStreaming 2b5e8ee2
     await inst.stop();
     expect(requests.some((r) => r.type === 'chatUpdate')).toBe(false);
     expect(newToasts(n)).toEqual(['Stopped. The floor is yours.']);
+  });
+
+  it('stop() counts only CHARACTER seats that carry a character, as v4’s base participants do', async () => {
+    // v4 `participantsAsBase` (`useParticipants.ts:34-57`) drops a seat that is not
+    // `type === 'CHARACTER'` or has no character id before `isMultiCharacterChat`
+    // looks — a non-CHARACTER LLM seat and a hydration-less seat do not rotate.
+    const { inst, requests } = await mountLive(
+      room([
+        userSeat(),
+        { ...llmSeat('p1', 'c1'), type: 'PERSONA' },
+        { ...llmSeat('p2', 'c2'), character: null },
+      ]),
+    );
+    await beginTurn(inst);
+    await inst.stop();
+    expect(requests.some((r) => r.type === 'chatUpdate')).toBe(false);
+  });
+
+  it('stop() reads a seat with no controlledBy as an LLM seat (v4’s `?? \'llm\'`)', async () => {
+    const seat = { ...llmSeat('p1', 'c1') } as Partial<ParticipantDetail>;
+    delete seat.controlledBy;
+    const { inst, requests } = await mountLive(room([userSeat(), seat as ParticipantDetail]));
+    await beginTurn(inst);
+    await inst.stop();
+    expect(requests.some((r) => r.type === 'chatUpdate')).toBe(true);
   });
 
   it('keeps the overlay when the server stopped something, and lets go after 3 s if it never closes', async () => {

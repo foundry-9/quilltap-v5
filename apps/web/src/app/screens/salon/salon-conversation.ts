@@ -240,7 +240,7 @@ const DOC_RELOAD_TOOLS = new Set<string>([
 
 /**
  * v4 debounces the per-chat talkativeness write by 400 ms PER PARTICIPANT
- * (`useChatControls:613-635`), so dragging the slider fires one request on
+ * (`useChatControls:541-568`), so dragging the slider fires one request on
  * release rather than one per step.
  */
 const TALKATIVENESS_DEBOUNCE_MS = 400;
@@ -712,7 +712,7 @@ interface CascadePrompt {
       />
     }
 
-    <!-- v4 answers Remove with showConfirmation() (useChatControls:458-464);
+    <!-- v4 answers Remove with showConfirmation() (useChatControls:347-395);
          v5 has no confirm service, so the sentence lives in a qt-modal — the
          characters-vertical idiom. The copy is v4's, word for word. -->
     @if (removeTarget(); as target) {
@@ -1352,7 +1352,7 @@ export class SalonConversation {
         ?.enabled ?? false,
   );
 
-  // --- story-background regeneration (v4 useChatControls.ts:397-416) ---
+  // --- story-background regeneration (v4 useChatControls.ts:295-314) ---
 
   private readonly poller = new StoryBackgroundPoller();
   /** v4 clears the interval on unmount (`:144-150`) — a live 3-minute timer must not outlive the view. */
@@ -1467,7 +1467,7 @@ export class SalonConversation {
 
   /**
    * Composition mode (dogfood finding #8): the per-chat flag rides the chat's
-   * `documentEditingMode` column (v4 `useChatControls.ts:348-365` — local state
+   * `documentEditingMode` column (v4 `useChatControls.ts:259-263` — local state
    * seeded from the chat, toggle persisted via the chat PUT). The optimistic
    * override is keyed to the chat id so switching chats falls back to the
    * canonical value.
@@ -2723,15 +2723,24 @@ export class SalonConversation {
 
   /**
    * v4 `isMultiCharacterChat` (`lib/chat/turn-manager/utils.ts:204`): two or
-   * more present user-controlled seats, or one present LLM character seat.
+   * more present user-controlled seats, or one present LLM character seat —
+   * over v4's BASE participants (`useParticipants.participantsAsBase`,
+   * `:34-57`), which keep only `type === 'CHARACTER'` seats that carry a
+   * character id and default `controlledBy` to `'llm'`. The enriched wire
+   * participant does not emit `characterId`, so the hydrated `character` stands
+   * in for v4's `p.characterId || p.character?.id` (the ruled divergence
+   * `MULTI_CHARACTER_HYDRATED_ID`, P4.173 R-B: measured — the server's
+   * `EnrichedParticipantDetail` carries no `characterId`).
    */
   private readonly isMultiCharacterRoom = computed(() => {
-    const seats = this.chat()?.participants ?? [];
+    const seats = (this.chat()?.participants ?? []).filter(
+      (p) => p.type === 'CHARACTER' && p.character,
+    );
     const userControlled = seats.filter(
-      (p) => isParticipantPresent(p.status) && p.controlledBy === 'user',
+      (p) => isParticipantPresent(p.status) && (p.controlledBy ?? 'llm') === 'user',
     );
     const llm = seats.filter(
-      (p) => isParticipantPresent(p.status) && p.character && p.controlledBy === 'llm',
+      (p) => isParticipantPresent(p.status) && (p.controlledBy ?? 'llm') === 'llm',
     );
     return userControlled.length >= 2 || llm.length >= 1;
   });
@@ -2939,7 +2948,7 @@ export class SalonConversation {
       // the scene actually in force instead of always on "Custom…".
       scenarioText: c?.scenarioText ?? null,
       // v4 seeds its badge from the RESOLVED cascade value, not the stored
-      // column (`useChatControls.ts:76-82`).
+      // column (`useChatControls.ts:145-152`).
       agentModeEnabled: c?.resolvedAgentModeEnabled ?? null,
     };
   });
@@ -3027,7 +3036,7 @@ export class SalonConversation {
   );
 
   /**
-   * v4 `handleConnectionProfileChange` (`useChatControls:500-526`). The subtle
+   * v4 `handleConnectionProfileChange` (`useChatControls:398-426`). The subtle
    * part is on the wire, not here: user control sends `connectionProfileId:
    * undefined`, which `JSON.stringify` DROPS — so the key is absent, never null.
    * {@link updateParticipant} reproduces that by not passing the key at all.
@@ -3065,7 +3074,7 @@ export class SalonConversation {
   }
 
   /**
-   * v4 `handleSubpromptsChange` (`useChatControls.ts:464-493`) — the whole next
+   * v4 `handleSubpromptsChange` (`useChatControls.ts:459-485`) — the whole next
    * set, replacing whatever the seat carried. The server recompiles the cached
    * identity stack when the set actually changes (an order-insensitive compare,
    * §C.3), so re-sending the same ids in a different order costs nothing.
@@ -3532,7 +3541,7 @@ export class SalonConversation {
   }
 
   /**
-   * v4 `setPauseState` (`useChatControls.ts:222-228`) — persist the flag, and
+   * v4 `setPauseState` (`useChatControls.ts:216-220`) — persist the flag, and
    * say NOTHING. The toast belongs to `togglePause`, its caller, not here.
    *
    * v4 used to have a second, silent caller, `unpauseChat`, for the seams where
@@ -3548,7 +3557,7 @@ export class SalonConversation {
     await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
   }
 
-  /** v4 `togglePause` (`useChatControls.ts:230-238`) — persist, then ITS toast. */
+  /** v4 `togglePause` (`useChatControls.ts:223-231`) — persist, then ITS toast. */
   protected async onTogglePause(): Promise<void> {
     const chat = this.chat();
     if (!chat) return;
@@ -4037,7 +4046,9 @@ export class SalonConversation {
     if (!failure) {
       // The dispatch resolved, but the frame recorded an error — a chain
       // failure after the initial turn saved its rows. One toast, no restore.
-      if (frameError) this.toasts.showError(frameError, SEND_FAILURE_TOAST_MS);
+      // v4's frame-error toast is a plain `showErrorToast` (the default duration);
+      // only the failed-SEND catch keeps the long one (P4.173 C-15).
+      if (frameError) this.toasts.showError(frameError);
       return;
     }
     const rider = failure instanceof CoreDispatchError ? failure.submission : undefined;

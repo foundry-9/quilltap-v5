@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, linkedSignal, signal } from '@angular/core';
 
 import { CoreClient } from '../../../core/core-client';
 import { CollapsibleCard } from '../../../ui/collapsible-card';
@@ -37,17 +37,20 @@ import { createWardrobeListData } from '../../../wardrobe/wardrobe-list-data';
       [title]="'Wardrobe (' + data.listItems().length + ')'"
       description="Shared garments every character in this project can wear"
       icon="wardrobe"
-      [defaultOpen]="defaultOpen()"
+      [isOpen]="open()"
+      (openChange)="open.set($event)"
     >
       <qt-wardrobe-instructions-section [container]="container()" />
-      <qt-wardrobe-browser
-        [container]="container()"
-        [data]="data"
-        [actions]="actions"
-        [showArchived]="showArchived()"
-        (showArchivedChange)="showArchived.set($event)"
-        [scrollList]="false"
-      />
+      @if (open()) {
+        <qt-wardrobe-browser
+          [container]="container()"
+          [data]="data"
+          [actions]="actions"
+          [showArchived]="showArchived()"
+          (showArchivedChange)="showArchived.set($event)"
+          [scrollList]="false"
+        />
+      }
     </qt-collapsible-card>
     <qt-wardrobe-item-overlays
       [container]="container()"
@@ -63,6 +66,13 @@ export class ProjectWardrobeCard {
   readonly defaultOpen = input(false);
 
   private readonly core = inject(CoreClient);
+
+  /**
+   * The card owns its open state so the browser mounts only once opened (v4's
+   * `expanded && <WardrobeBrowser …>` gate, `WardrobeCard.tsx`): a collapsed card
+   * issues no folders read. Seeded from `defaultOpen`.
+   */
+  protected readonly open = linkedSignal(() => this.defaultOpen());
 
   protected readonly container = computed<WardrobeContainer>(() => ({
     scope: 'project',

@@ -27,7 +27,12 @@
 import { signal, type Signal } from '@angular/core';
 
 import type { CoreClient } from '../core/core-client';
-import type { CoreRequest, WardrobeFolderDto, WardrobeItemDto } from '../core/core-contract';
+import type {
+  WardrobeFolderDto,
+  WardrobeItemDto,
+  WardrobeItemsCopyRequest,
+  WardrobeItemsMoveRequest,
+} from '../core/core-contract';
 import type { WardrobeContainer } from './wardrobe-container';
 
 export type { WardrobeFolderDto } from '../core/core-contract';
@@ -114,23 +119,14 @@ export type WardrobeFolderComponentMode = 'move' | 'copy' | 'none';
 /**
  * v4 `fileItems(mode, container, itemIds, folder, components?)` — one
  * `move-items` / `copy-items` call; `components` rides ONLY when set (a
- * conditional spread — the key is absent, never `undefined`).
+ * conditional spread — the key is absent, never `undefined`). The two requests
+ * are built typed at their callers (a copy cannot take `'move'`), so no cast.
  */
 async function fileItems(
   core: CoreClient,
-  mode: 'move' | 'copy',
-  container: WardrobeContainer,
-  itemIds: string[],
-  folder: string,
-  components?: WardrobeFolderComponentMode,
+  request: WardrobeItemsMoveRequest | WardrobeItemsCopyRequest,
 ): Promise<WardrobeItemDto[]> {
-  const data = await core.dispatchData({
-    type: mode === 'move' ? 'wardrobeItemsMove' : 'wardrobeItemsCopy',
-    ...containerFields(container),
-    itemIds,
-    folder,
-    ...(components ? { components } : {}),
-  } as CoreRequest);
+  const data = await core.dispatchData(request);
   return (data['items'] as WardrobeItemDto[] | undefined) ?? [];
 }
 
@@ -142,7 +138,13 @@ export async function moveWardrobeItemsToFolder(
   folder: string,
   components?: WardrobeFolderComponentMode,
 ): Promise<WardrobeItemDto[]> {
-  return fileItems(core, 'move', container, itemIds, folder, components);
+  return fileItems(core, {
+    type: 'wardrobeItemsMove',
+    ...containerFields(container),
+    itemIds,
+    folder,
+    ...(components ? { components } : {}),
+  });
 }
 
 /**
@@ -156,7 +158,13 @@ export async function copyWardrobeItemsToFolder(
   folder: string,
   components?: 'copy' | 'none',
 ): Promise<WardrobeItemDto[]> {
-  return fileItems(core, 'copy', container, itemIds, folder, components);
+  return fileItems(core, {
+    type: 'wardrobeItemsCopy',
+    ...containerFields(container),
+    itemIds,
+    folder,
+    ...(components ? { components } : {}),
+  });
 }
 
 /** One container's folder tree, held as signals (v4 `useWardrobeFolders`). */

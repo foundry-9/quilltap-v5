@@ -131,7 +131,7 @@ export async function updateParticipant(
   await core.dispatchData(request);
 }
 
-/** §1 `ChatRemoveParticipant` — soft-remove (v4 `useChatControls:466-471`). */
+/** §1 `ChatRemoveParticipant` — soft-remove (v4 `useChatControls:347-395`). */
 export async function removeParticipant(
   core: CoreClient,
   chatId: string,

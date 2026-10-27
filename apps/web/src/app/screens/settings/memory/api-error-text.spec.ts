@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { CoreDispatchError } from '../../../core/core-contract';
-import { getErrorMessage, readErrorText, writeErrorText } from './api-error-text';
+import { getErrorMessage } from '../../../core/error-utils';
+import { readErrorText, writeErrorText } from './api-error-text';
 
 /**
  * P4.D276 R-G — v5's twin of v4 `components/tools/hooks/api-error-text.ts:17-32`

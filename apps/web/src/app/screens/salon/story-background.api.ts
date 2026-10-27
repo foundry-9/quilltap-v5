@@ -62,7 +62,7 @@ export interface RegenerateBackgroundResult {
 
 /**
  * POST the regeneration request (v4 `?action=regenerate-background`,
- * `useChatControls.ts:397-416`). A rejection carries the server's own message —
+ * `useChatControls.ts:295-314`). A rejection carries the server's own message —
  * v4 throws `errorData.error` and shows it verbatim, which is what makes the §2
  * badRequest strings ("Story backgrounds are not enabled. …") reach the user.
  */

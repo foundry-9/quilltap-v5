@@ -107,9 +107,14 @@ export class CollapsibleCard implements OnInit {
         }
         if (!this.scrolled) {
           this.scrolled = true;
-          requestAnimationFrame(() =>
-            this.host.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-          );
+          requestAnimationFrame(() => {
+            // Guarded like `tab-strip.ts` / `scenario-browser-dialog.ts`: jsdom has
+            // no `scrollIntoView`, and a throw inside the frame is an unhandled error.
+            const el = this.host.nativeElement;
+            if (typeof el.scrollIntoView === 'function') {
+              el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          });
         }
       } else {
         this.scrolled = false;

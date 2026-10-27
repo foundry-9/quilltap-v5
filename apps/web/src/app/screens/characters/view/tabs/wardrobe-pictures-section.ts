@@ -59,7 +59,8 @@ import { ToastService } from '../../../../ui/toast.service';
  * The detail modal gets NO generation prompt (v4's `ImageData` has no prompt
  * field), whatever `help/character-gallery.md` says.
  *
- * Hidden on a failed read too (trap 9): TanStack's `isPending` is false on an
+ * Hidden on a failed read too (trap 9): TanStack's `isLoading` (v4's name for it — pending AND
+ * fetching, so a paused query is not "loading") is false on an
  * error and `total` is 0, so the shelf vanishes with no error text — v4's
  * `!isLoading && total === 0`.
  */
@@ -209,7 +210,7 @@ export class WardrobePicturesSection {
     (this.picturesQuery.data()?.entries ?? []).map(toWardrobeGalleryImage),
   );
   protected readonly total = computed(() => this.picturesQuery.data()?.total ?? 0);
-  protected readonly loading = computed(() => this.picturesQuery.isPending());
+  protected readonly loading = computed(() => this.picturesQuery.isLoading());
 
   /** v4 `:70-72` — `…` while the count is unknown, else `N picture(s)`. */
   protected readonly countLabel = computed(() => {

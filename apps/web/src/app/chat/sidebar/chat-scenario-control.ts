@@ -124,10 +124,11 @@ interface ScenarioDraft {
         />
       }
       @if (provenance(); as p) {
-        <!-- v4 :411-428. The revised arm's trailing space is interpolated: a
-             whitespace-only text node before the button would be dropped. -->
-        <div class="mb-2 qt-text-secondary text-xs font-normal">
-          From: <em>{{ p.ownerName }}</em> › <em>{{ p.name }}</em>{{ p.exists ? '' : ' — the shelf copy is gone' }}
+        <!-- v4 :411-428. "From:" opens the div on the same line: a leading
+             whitespace text node would defeat the e2e /^From:/ locator. The
+             revised arm's space is interpolated: a whitespace-only text node
+             before the button would be dropped. -->
+        <div class="mb-2 qt-text-secondary text-xs font-normal">From: <em>{{ p.ownerName }}</em> › <em>{{ p.name }}</em>{{ p.exists ? '' : ' — the shelf copy is gone' }}
           @if (p.exists && p.changed) {
             {{ ' — the shelf copy has been revised ' }}<button
               type="button"

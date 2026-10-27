@@ -37,7 +37,7 @@ async function settle(fixture: ComponentFixture<unknown>, ticks = 10): Promise<v
   }
 }
 
-async function render(projectName?: string) {
+async function render(projectName?: string, defaultOpen = true) {
   const seen: AnyRequest[] = [];
   const core = {
     ...coreStreamStub(),
@@ -64,13 +64,24 @@ async function render(projectName?: string) {
   const fixture = TestBed.createComponent(ProjectWardrobeCard);
   fixture.componentRef.setInput('projectId', 'p1');
   if (projectName !== undefined) fixture.componentRef.setInput('projectName', projectName);
-  fixture.componentRef.setInput('defaultOpen', true);
+  fixture.componentRef.setInput('defaultOpen', defaultOpen);
   fixture.detectChanges();
   await settle(fixture);
   return { fixture, seen, el: fixture.nativeElement as HTMLElement };
 }
 
 describe('ProjectWardrobeCard (v4 `WardrobeCard.tsx`)', () => {
+  it('mounts the browser only when open: a collapsed card reads no folders until opened (E.1)', async () => {
+    const { el, fixture, seen } = await render('The Estate', false);
+    expect(fixture.debugElement.query(By.directive(WardrobeBrowser))).toBeNull();
+    expect(seen.some((r) => r.type === 'wardrobeFoldersList')).toBe(false);
+    const header = el.querySelector('qt-collapsible-card button') as HTMLButtonElement;
+    header.click();
+    await settle(fixture);
+    expect(fixture.debugElement.query(By.directive(WardrobeBrowser))).not.toBeNull();
+    expect(seen.some((r) => r.type === 'wardrobeFoldersList')).toBe(true);
+  });
+
   it('titles the card by the project list and mounts the shared browser on the project', async () => {
     const { el, fixture, seen } = await render('The Estate');
     expect(el.textContent).toContain('Wardrobe (2)');

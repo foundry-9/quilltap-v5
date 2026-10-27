@@ -188,6 +188,19 @@ describe('MemoryList', () => {
     expect(fixture.nativeElement.textContent).toContain('Auto one');
   });
 
+  it('shows no Source link on a sourced AUTO card — v4’s list passes no onNavigateToSource (P-6)', async () => {
+    const fixture = await render(
+      stubClient([
+        mem({ id: 'a', source: 'AUTO', summary: 'Sourced one', chatId: 'chat-1', sourceMessageId: 'msg-1' }),
+      ]),
+    );
+    expect(fixture.nativeElement.textContent).toContain('Sourced one');
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+    );
+    expect(buttons.some((b) => b.textContent?.includes('Source'))).toBe(false);
+  });
+
   it('opens the editor via Add Memory', async () => {
     const fixture = await render(stubClient([]));
     const addBtn = Array.from(
