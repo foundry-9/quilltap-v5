@@ -116,6 +116,10 @@ pub fn open_encrypted(
         conn.pragma_update(None, "key", format!("x'{key_hex}'"))
             .map_err(|e| OpenFailure::bare(sqlite_msg(&e)))?;
     }
+    // v4's driver is built `SQLITE_DQS=0`; v5 switches the fallback off at
+    // runtime, after the key and before the probe's first read (P4.172).
+    quilltap_core::db::runtime::refuse_double_quoted_strings(&conn)
+        .map_err(|e| OpenFailure::bare(sqlite_msg(&e)))?;
     if let Err(e) = conn.query_row("SELECT 1", [], |_| Ok(())) {
         return Err(OpenFailure::bare(format!(
             "Cannot open {}: {}\nThe database may be encrypted with a different key, or the .dbkey file may be missing.",
@@ -134,4 +138,39 @@ pub fn open_encrypted(
     quilltap_core::db::text_compression::register_qt_text(&conn)
         .map_err(|e| OpenFailure::bare(sqlite_msg(&e)))?;
     Ok(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// P4.172: both of the CLI's direct opens (read-only and read-write) refuse
+    /// SQLite's double-quoted-string fallback as v4's `SQLITE_DQS=0` build does.
+    #[test]
+    fn direct_opens_refuse_double_quoted_strings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("quilltap.db");
+        drop(quilltap_core::db::Writer::open_writable(&path, PEPPER).unwrap());
+        for readonly in [true, false] {
+            let conn = open_encrypted(
+                path.to_str().unwrap(),
+                Some(PEPPER),
+                OpenOptions {
+                    readonly,
+                    friendly_name: "main database",
+                },
+            )
+            .unwrap_or_else(|e| panic!("open (readonly={readonly}): {}", e.message));
+            let err = conn
+                .query_row(r#"SELECT "nosuchcol""#, [], |r| r.get::<_, String>(0))
+                .unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                "no such column: \"nosuchcol\" - should this be a string literal in single-quotes?",
+                "readonly={readonly}"
+            );
+        }
+    }
 }

@@ -104,6 +104,8 @@ pub fn open_read(path: &Path, pepper_b64: &str) -> Result<Connection> {
         .map_err(|e| SanitizeError::Key(e.to_string()))?;
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "key", format!("x'{hex}'"))?;
+    // v4's `SQLITE_DQS=0`, at runtime, right after the key (P4.172).
+    quilltap_core::db::runtime::refuse_double_quoted_strings(&conn)?;
     // `qt_text()` on both of the sanitizer's opens (P4.D203). The WRITE one is
     // the sharper case: `sanitize_db` replays every `sqlite_master` row into
     // the destination VERBATIM — triggers included — and then bulk-INSERTs
@@ -122,6 +124,8 @@ pub fn open_write_fresh(path: &Path, pepper_b64: &str) -> Result<Connection> {
         .map_err(|e| SanitizeError::Key(e.to_string()))?;
     let conn = Connection::open(path)?;
     conn.pragma_update(None, "key", format!("x'{hex}'"))?;
+    // v4's `SQLITE_DQS=0`, at runtime, right after the key (P4.172).
+    quilltap_core::db::runtime::refuse_double_quoted_strings(&conn)?;
     // `qt_text()` on both of the sanitizer's opens (P4.D203). The WRITE one is
     // the sharper case: `sanitize_db` replays every `sqlite_master` row into
     // the destination VERBATIM — triggers included — and then bulk-INSERTs
@@ -695,6 +699,25 @@ mod tests {
     fn cell_text(conn: &Connection, sql: &str) -> Option<String> {
         conn.query_row(sql, [], |r| r.get::<_, Option<String>>(0))
             .unwrap()
+    }
+
+    /// P4.172: both sanitizer opens refuse SQLite's double-quoted-string
+    /// fallback as v4's `SQLITE_DQS=0` build does.
+    #[test]
+    fn opens_refuse_double_quoted_strings() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("q.db");
+        let fresh = open_write_fresh(&path, SRC_PEPPER).unwrap();
+        let read = open_read(&path, SRC_PEPPER).unwrap();
+        for conn in [&fresh, &read] {
+            let err = conn
+                .query_row(r#"SELECT "nosuchcol""#, [], |r| r.get::<_, String>(0))
+                .unwrap_err();
+            assert_eq!(
+                err.to_string(),
+                "no such column: \"nosuchcol\" - should this be a string literal in single-quotes?"
+            );
+        }
     }
 
     #[test]

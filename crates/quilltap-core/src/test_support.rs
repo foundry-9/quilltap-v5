@@ -455,6 +455,8 @@ pub fn open_readonly_in(
     .unwrap_or_else(|e| panic!("read-only open of {}: {e}", path.display()));
     conn.pragma_update(None, "key", format!("x'{key_hex}'"))
         .expect("the cipher key, first and only pragma");
+    crate::db::runtime::refuse_double_quoted_strings(&conn)
+        .expect("DQS off, as the engine's opens");
     crate::db::text_compression::register_qt_text(&conn).expect("register qt_text");
     if partition == crate::db::table_shape::Partition::LlmLogs {
         crate::db::regexp_function::register_regexp(&conn).expect("register regexp");

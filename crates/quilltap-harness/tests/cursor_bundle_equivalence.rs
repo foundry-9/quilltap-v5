@@ -19,8 +19,11 @@
 //!   Zod-drops rows, so its WARN arm is POSED in the oracle by a throwing
 //!   method (v5 fails for real); that op's `error` text is masked
 //!   (`maskError`) — its level, message, `module` and key set still compare.
-//!   v4's quoted-identifier hint maps onto v5's bare text
-//!   ([`common::normalize_v4_sqlite`]).
+//!   Every `error` text compares STRICT, v4's quoted-identifier hint included:
+//!   since P4.172 v5's connections refuse SQLite's double-quoted-string
+//!   fallback as v4's `SQLITE_DQS=0` build does, so the renamed `chatId` fails
+//!   the same read with the same sentence on both sides (the four rows the
+//!   retired `DQS_QUOTED_IDENTIFIER_FALLBACK` table pinned both ways).
 //!
 //! Regenerate (Node 24, from the round's pin), one invocation per shape:
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -57,27 +60,6 @@ const BUNDLE_MESSAGES: [&str; 4] = [
     "[ExtractionCursors] Restored bundled cursors",
 ];
 
-/// **`DQS_QUOTED_IDENTIFIER_FALLBACK`** — a named, both-ways divergence of the
-/// SQLite BUILDS, not of this module: v4's driver compiles SQLite with
-/// `SQLITE_DQS=0` (`better-sqlite3-multiple-ciphers/deps/defines.gypi:17`), so
-/// a double-quoted identifier naming a column that does not exist is an error
-/// (`no such column: "chatId" - should this be a string literal in
-/// single-quotes?`). v5's pinned `quilltap-sqlite3mc-sys` sets no `SQLITE_DQS`,
-/// so SQLite's legacy fallback reads the same `"chatId"` as the STRING
-/// `'chatId'`: after the oracle renames the column, the repository's reads
-/// match nothing instead of failing, so the two strict-scope WARN arms after
-/// the rename (the one-read load, the per-chat read) do not fire. Each row:
-/// `(shape, op index)`.
-/// v4's side is pinned as recorded (the WARN present), v5's as measured (an
-/// empty / unchanged answer, no WARN). v5's own WARN arms are unit-tested in
-/// `services::carriers::cursor_bundle` over a read that fails in v5's build.
-const DQS_QUOTED_IDENTIFIER_FALLBACK: [(&str, usize); 4] = [
-    ("migration", 9),
-    ("migration", 11),
-    ("fresh", 9),
-    ("fresh", 11),
-];
-
 /// A v4 cursor map (`{"other-fold": …}`) as v5's struct.
 fn map_from_json(v: &Value) -> ExtractionCursorMap {
     let mut map = ExtractionCursorMap::default();
@@ -88,7 +70,7 @@ fn map_from_json(v: &Value) -> ExtractionCursorMap {
     map
 }
 
-/// v4's lines as `LEVEL message k=v …` (`error` normalized; masked on request).
+/// v4's lines as `LEVEL message k=v …` (`error` strict; masked on request).
 fn want_lines(op: &Value, mask_error: bool) -> Vec<String> {
     op["lines"]
         .as_array()
@@ -103,7 +85,6 @@ fn want_lines(op: &Value, mask_error: bool) -> Vec<String> {
             for (k, v) in l["fields"].as_object().unwrap() {
                 let rendered = match v {
                     Value::String(_) if k == "error" && mask_error => "<masked>".to_string(),
-                    Value::String(s) if k == "error" => common::normalize_v4_sqlite(s),
                     Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
@@ -225,7 +206,7 @@ fn cursor_bundle_matches_v4() {
         return;
     };
     let mut failures = Vec::new();
-    let (mut pure, mut stateful, mut compared_lines, mut ruled) = (0usize, 0usize, 0usize, 0usize);
+    let (mut pure, mut stateful, mut compared_lines) = (0usize, 0usize, 0usize);
     for shape in ["migration", "fresh", "absent"] {
         let path =
             std::path::Path::new(&oracle_dir).join(format!("oracle-cursor-bundle-{shape}.ndjson"));
@@ -254,35 +235,6 @@ fn cursor_bundle_matches_v4() {
             let (got, got_l) = replay(&writer, op);
             let got_l = got_lines(got_l, mask);
             let want_l = want_lines(op, mask);
-            if DQS_QUOTED_IDENTIFIER_FALLBACK.contains(&(shape, i)) {
-                // Both ways: v4 warned (and a load answered null); v5 did not.
-                assert_eq!(
-                    want_l.len(),
-                    1,
-                    "{shape} op {i}: v4's WARN moved — re-rule DQS"
-                );
-                assert!(
-                    want_l[0].starts_with("WARN [ExtractionCursors] Could not read"),
-                    "{want_l:?}"
-                );
-                assert!(
-                    got_l.is_empty(),
-                    "{shape} op {i}: v5 now warns — retire the DQS row: {got_l:?}"
-                );
-                if kind == "load" {
-                    assert_eq!(op["result"], Value::Null, "{shape} op {i}: v4's null");
-                    assert_eq!(got, json!([]), "{shape} op {i}: v5 reads nothing");
-                } else {
-                    assert_eq!(
-                        got.to_string(),
-                        op["result"].to_string(),
-                        "{shape} op {i}: the chat"
-                    );
-                }
-                ruled += 1;
-                stateful += 1;
-                continue;
-            }
             // `with` answers a chat whose key ORDER is v4's spread — bytes;
             // `load`'s per-chat maps follow v4's query plan, an order v5's
             // struct does not carry (the module doc) — `Value` equality,
@@ -312,11 +264,6 @@ fn cursor_bundle_matches_v4() {
     }
     assert!(failures.is_empty(), "{}", failures.join("\n\n"));
     assert_eq!(pure, 7, "the tier-1 case count");
-    assert_eq!(
-        ruled,
-        DQS_QUOTED_IDENTIFIER_FALLBACK.len(),
-        "every DQS row met"
-    );
     assert!(
         stateful >= 28 && compared_lines >= 8,
         "{stateful} ops / {compared_lines} lines"

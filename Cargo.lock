@@ -3935,7 +3935,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-cli"
-version = "0.0.34"
+version = "0.0.35"
 dependencies = [
  "jiff",
  "libc",
@@ -3949,7 +3949,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.1336"
+version = "0.0.1337"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-fixture-sanitizer"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "quilltap-core",
  "quilltap-sqlite3mc-sys",

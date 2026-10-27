@@ -686,6 +686,10 @@ fn open_readonly(path: &Path, key_hex: &str, partition: Partition) -> Result<Con
         | OpenFlags::SQLITE_OPEN_URI;
     let conn = Connection::open_with_flags(path, flags)?;
     conn.pragma_update(None, "key", format!("x'{key_hex}'"))?;
+    // v4's `SQLITE_DQS=0` build, at runtime (P4.172) — a connection setting,
+    // not a pragma, and it reads nothing, so `key` stays the only pragma
+    // before the first read.
+    refuse_double_quoted_strings(&conn)?;
     // `qt_text()` immediately after the key, on EVERY connection — v4 registers
     // it at the same position in all six of its open sites. A read of a
     // compressed column through raw SQL, and every FTS trigger v4 4.10 puts
@@ -721,6 +725,48 @@ pub(crate) fn apply_cache_pragmas(conn: &Connection, first_read: bool) -> Result
     }
     conn.pragma_update(None, "cache_size", -64000)?;
     conn.pragma_update(None, "temp_store", "MEMORY")?;
+    Ok(())
+}
+
+/// v4's SQLite refuses the legacy double-quoted-string-literal fallback ("DQS"):
+/// `better-sqlite3-multiple-ciphers` compiles it with `SQLITE_DQS=0`
+/// (`deps/defines.gypi:17`), so a double-quoted identifier naming a column that
+/// does not exist is an ERROR there — `no such column: "chatId" - should this be
+/// a string literal in single-quotes?` — where SQLite's default build silently
+/// reads it as the STRING `'chatId'` (wrong data, and the WARN / fallback arm
+/// v4 takes never fires). The pinned `quilltap-sqlite3mc-sys` sets no
+/// `SQLITE_DQS` (and is never recompiled for it — the C compile cache), so
+/// every v5 connection switches both halves off at runtime instead: DML
+/// (`SELECT` / `INSERT` / `UPDATE` / `DELETE`) and DDL (`CREATE TABLE` /
+/// `CREATE INDEX` …). SQLite still accepts the misfeature while it PARSES an
+/// existing schema, exactly as v4's build does.
+///
+/// Called right after `PRAGMA key` on every connection v5 opens (the writer,
+/// the read pool, the CLI's direct opens, the fixture sanitizer). It is a
+/// `sqlite3_db_config` call, not a pragma, and touches no page — the
+/// read-path rule ("`key` is the first and only pragma before the first
+/// read") is unaffected. The workspace's rusqlite build carries no
+/// `modern_sqlite` feature (where `DbConfig::SQLITE_DBCONFIG_DQS_*` live), so
+/// this calls the C API directly with the bindgen-generated op codes.
+pub fn refuse_double_quoted_strings(conn: &Connection) -> rusqlite::Result<()> {
+    use rusqlite::ffi;
+    for op in [ffi::SQLITE_DBCONFIG_DQS_DML, ffi::SQLITE_DBCONFIG_DQS_DDL] {
+        // SAFETY: `handle()` is this live connection's own `sqlite3*`, used on
+        // this thread for one call and not retained. The DQS ops take
+        // `(int onoff, int *pRes)`; `0` turns the setting off and a NULL
+        // `pRes` asks for no read-back (both permitted by the C API).
+        let rc = unsafe {
+            ffi::sqlite3_db_config(
+                conn.handle(),
+                op,
+                0 as std::os::raw::c_int,
+                std::ptr::null_mut::<std::os::raw::c_int>(),
+            )
+        };
+        if rc != ffi::SQLITE_OK {
+            return Err(rusqlite::Error::SqliteFailure(ffi::Error::new(rc), None));
+        }
+    }
     Ok(())
 }
 
@@ -786,6 +832,80 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(logged, 1);
+    }
+
+    /// v4's `SQLITE_DQS=0` sentence — a double-quoted name that is no column.
+    const DQS_REFUSAL: &str =
+        "no such column: \"nosuchcol\" - should this be a string literal in single-quotes?";
+
+    /// P4.172: every engine connection refuses SQLite's double-quoted-string
+    /// fallback as v4's build does — the writer and the read pool, on all
+    /// three partitions — in DML (`SELECT "nosuchcol"` fails instead of
+    /// answering the string) AND DDL (a `CHECK` naming a quoted non-column
+    /// fails to create); a single-quoted literal and a quoted REAL identifier
+    /// still work.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn every_engine_connection_refuses_double_quoted_strings() {
+        let dir = tempdir().unwrap();
+        let paths = DbPaths {
+            main: dir.path().join("main.db"),
+            mount_index: Some(dir.path().join("mount.db")),
+            llm_logs: Some(dir.path().join("logs.db")),
+        };
+        drop(Writer::open_writable(&paths.main, PEPPER).unwrap());
+        drop(
+            Writer::open_writable_in(
+                Partition::MountIndex,
+                paths.mount_index.as_ref().unwrap(),
+                PEPPER,
+            )
+            .unwrap(),
+        );
+        drop(
+            Writer::open_writable_in(Partition::LlmLogs, paths.llm_logs.as_ref().unwrap(), PEPPER)
+                .unwrap(),
+        );
+        let db = Db::open(paths, PEPPER).unwrap();
+        // The refusal is a COMPILE error, so it fires on an empty table too
+        // (with the fallback, this would answer `'nosuchcol'`).
+        let dml = |c: &Connection| -> Result<String, DbError> {
+            Ok(c.query_row(r#"SELECT "nosuchcol""#, [], |r| r.get(0))?)
+        };
+        let ok = |c: &Connection| -> Result<String, DbError> {
+            Ok(c.query_row(r#"SELECT 'lit' AS "alias""#, [], |r| r.get(0))?)
+        };
+        for (name, read) in [
+            ("main", db.read_main(dml)),
+            ("mount", db.read_mount_index(dml)),
+            ("logs", db.read_llm_logs(dml)),
+        ] {
+            assert_eq!(error_text(&read.unwrap_err()), DQS_REFUSAL, "{name} pool");
+        }
+        assert_eq!(db.read_main(ok).unwrap(), "lit");
+        let writes = db
+            .write(move |ws| {
+                let ddl = r#"CREATE TABLE t (a TEXT CHECK (a <> "nosuchcol"))"#;
+                let mut out = Vec::new();
+                for c in [
+                    ws.main().connection(),
+                    ws.mount_index().expect("open").connection(),
+                    ws.llm_logs().expect("open").connection(),
+                ] {
+                    out.push((
+                        error_text(&dml(c).unwrap_err()),
+                        c.execute_batch(ddl).unwrap_err().to_string(),
+                        ok(c)?,
+                    ));
+                }
+                Ok(out)
+            })
+            .await
+            .unwrap();
+        for (dml_err, ddl_err, lit) in writes {
+            assert_eq!(dml_err, DQS_REFUSAL, "writer DML");
+            assert_eq!(ddl_err, DQS_REFUSAL, "writer DDL");
+            assert_eq!(lit, "lit");
+        }
     }
 
     /// Concurrent writers funnel through the one writer thread, so a

@@ -341,6 +341,10 @@ impl Writer {
         let conn = Connection::open(path)?;
         // Key MUST be the first pragma. Raw-hex form -> KDF skipped.
         conn.pragma_update(None, "key", format!("x'{key_hex}'"))?;
+        // v4's `SQLITE_DQS=0`, at runtime, right after the key (P4.172; see
+        // `runtime::refuse_double_quoted_strings`) — a connection setting, not
+        // a pragma, so the open sequence's pragmas are unchanged.
+        runtime::refuse_double_quoted_strings(&conn)?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         // journal_mode returns the resulting mode as a row; consume it.
         let _mode: String =

@@ -18,6 +18,14 @@ _Docs-only change._
 
 Recorded v4 `d64b25e96` in the drift ledger. It changes the Host's pronouns in two sentences of `help/salon-host-introductions.md`, a page v5 vendors verbatim, so it re-vendors with the catch-up's help/docs lane. No code changes. The regen rule stays PIN REQUIRED at `322a5488e`.
 
+#### 2026-10-27 — fix(db): refuse SQLite's double-quoted-string fallback on every connection, as v4's SQLITE_DQS=0 build does (P4.172)
+
+_Versions: core 0.0.1337, cli 0.0.35, fixture-sanitizer 0.0.5._
+
+v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that matches no column is an error (`no such column: "chatId" - should this be a string literal in single-quotes?`). v5's pinned SQLite3MC build kept the legacy fallback, which reads that name as the string `'chatId'` and returns wrong data without an error. New `db::runtime::refuse_double_quoted_strings` turns off both halves (DML and DDL) through `sqlite3_db_config`, called right after `PRAGMA key` on every production open: the writer (`Writer::open_writable_in`), the read pool (`open_readonly`), the CLI's direct `open_encrypted`, and both fixture-sanitizer opens. `test_support::open_readonly` mirrors the engine's read opener and gets it too. This is a connection setting, not a pragma, and it reads no page, so `key` is still the only pragma before the first read. The sys crate is untouched. rusqlite's `DbConfig::SQLITE_DBCONFIG_DQS_*` sits behind the `modern_sqlite` feature, which the workspace doesn't enable, so the call goes through `rusqlite::ffi` using the bindgen op codes.
+
+Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._
