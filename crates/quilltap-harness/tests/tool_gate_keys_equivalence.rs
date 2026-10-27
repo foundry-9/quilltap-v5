@@ -10,12 +10,12 @@
 //! (`{keys, unread, storesConsulted}` — key order is the contract) and the
 //! `[ToolGateKeys] Census taken` DEBUG.
 //!
-//! **Carved on this branch, by NAME (`UNTIL_UNION_S9_C3_C4`)**: every op with
-//! a keyed definition (the branch's census walk is a fenced stand-in that
-//! counts no key — the gate records are P4.D329's, `gate_groups` P4.D333's)
-//! and every op whose v4 `unread` depends on the library's `stage` (the
-//! branch counts every load error, fail closed — P4.D328's / P4.D332's
-//! reshape). Each carved row still PINS the branch: no key counted.
+//! No op is carved (the P4.D340 stand-in walk was replaced by v4's at the
+//! `322a5488e` unification, §S.5 wire 18): keyed definitions, any-of groups,
+//! and the `stage` filter (`read` / `json` unread, `schema` / `duplicate`
+//! not) are all compared whole. `tgk-schema-error-keeps-keys` pins that a
+//! schema failure beside two keyed definitions neither hides their keys nor
+//! lands in `unread`.
 //!
 //! Generate (Node 24, from the v4 checkout — the title-lint pair first):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -123,7 +123,7 @@ fn tool_gate_keys_matches_oracle() {
     let mp_re = Regex::new(r"\{\{mp:(\w+)\}\}").unwrap();
 
     let mut failures = Vec::new();
-    let (mut compared, mut carved) = (0, 0);
+    let mut compared = 0;
     for op in spec["ops"].as_array().unwrap() {
         let name = op["name"].as_str().unwrap();
         let want = &rows[name];
@@ -198,14 +198,6 @@ fn tool_gate_keys_matches_oracle() {
         }
         let (census, captured) = captured_with(|| collect_tool_gate_keys(mount));
         let got = serde_json::to_string(&census).unwrap();
-        if op.get("carve").is_some() {
-            assert!(
-                census.keys.is_empty(),
-                "{name} (UNTIL_UNION_S9_C3_C4): the branch stand-in counted a key: {got}"
-            );
-            carved += 1;
-            continue;
-        }
         let wanted = want["census"].as_str().unwrap();
         if got != wanted {
             failures.push(format!("{name} CENSUS\n  v5: {got}\n  v4: {wanted}"));
@@ -216,7 +208,7 @@ fn tool_gate_keys_matches_oracle() {
         }
         compared += 1;
     }
-    eprintln!("tool gate keys: {compared} ops compared, {carved} carved (pinned: no key counted)");
+    eprintln!("tool gate keys: {compared} ops compared");
     assert!(
         failures.is_empty(),
         "{} mismatches:\n{}",

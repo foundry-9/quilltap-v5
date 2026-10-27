@@ -56,15 +56,8 @@
 //! Two layers call it: the Inventory mutations (`item_mutations`) and the
 //! document-write layer (`title_lint_documents`), which catches edits made
 //! with ordinary document tools.
-//!
-//! **On this lane's branch the gate-key resolution is a fenced refusal arm**
-//! (P4.D340 R-3): `resolve_inventory_ref` is P4.D328's (S10). Until the
-//! unifier wires it, a key the census holds for an entering title fails
-//! CLOSED (`TITLE_CHECK_UNAVAILABLE`) and one for a leaving title rings `gate
-//! unverifiable` — v4's own posture toward "could not look". The production
-//! census counts no key on this branch (`tool_gate_keys`, R-4), so only an
-//! injected census reaches the arm.
 
+use std::collections::HashSet;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -75,6 +68,9 @@ use unicode_normalization::UnicodeNormalization;
 use super::errors::{InventoryRefusal, InventoryTitleCollision, InventoryTitleLintUnread};
 use super::location::InventoryLocation;
 use super::pool::{load_pool_for_location, InventoryPool, LoadPoolContext};
+use super::refs::{
+    resolve_inventory_ref, InventoryRefMatch, ResolveInventoryRefOptions, ResolvedInventoryPool,
+};
 use super::resolve::resolve_item;
 use super::types::{InventoryFields, InventoryRecord, InventoryScope};
 use crate::db::doc_mount_points::DocMountPointsRepository;
@@ -473,32 +469,13 @@ fn unique_tools(uses: &[&ToolGateKeyUse]) -> Vec<String> {
     names
 }
 
-// === LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6): S10 resolve_inventory_ref is P4.D328's (C2) ===
-// The unifier replaces `gate_key_hits`' body with `resolve_inventory_ref(
-// reference, &ResolvedInventoryPool { items, owns }, &HashSet::new(),
-// ResolveInventoryRefOptions::default())` and deletes `PoolView` / `GateKeyHit`
-// for C2's `ResolvedInventoryPool` / `InventoryRefMatch` (`hit.item`).
-
-/// The pool as the resolver sees it, the object replaced (or left out) — v4
-/// `resolvedWith`.
-#[allow(dead_code)]
-struct PoolView<'p> {
-    items: Vec<super::types::ResolvedInventoryItem>,
-    pool: &'p InventoryPool,
-}
-
-/// One resolver hit (C2's `InventoryRefMatch`).
-#[allow(dead_code)]
-struct GateKeyHit {
-    item: super::types::ResolvedInventoryItem,
-}
-
-/// v4 `resolvedWith(pool, itemId, replacement)`.
-fn resolved_with<'p>(
-    pool: &'p InventoryPool,
+/// The pool as the resolver sees it, the object replaced by `replacement` (or
+/// left out) — v4 `resolvedWith`.
+fn resolved_with(
+    pool: &InventoryPool,
     item_id: &str,
     replacement: Option<&Side>,
-) -> PoolView<'p> {
+) -> ResolvedInventoryPool {
     let items = pool
         .resolved()
         .into_iter()
@@ -519,23 +496,25 @@ fn resolved_with<'p>(
             Some(item)
         })
         .collect();
-    PoolView { items, pool }
-}
-
-fn gate_key_hits(_reference: &str, _pool: &PoolView<'_>) -> Result<Vec<GateKeyHit>, &'static str> {
-    Err("not_available: resolve_inventory_ref (P4.D328, S10) is not on this branch")
-}
-
-/// The unread entry a failed resolution stands for (R-3).
-fn unresolved_key(reference: &str, reason: &str) -> InventoryTitleLintUnread {
-    InventoryTitleLintUnread {
-        pool: format!("the gate key \"{reference}\""),
-        reason: reason.to_string(),
+    let own: HashSet<String> = pool.own.iter().map(|r| r.id().to_string()).collect();
+    ResolvedInventoryPool {
+        items,
+        owns: Box::new(move |id| own.contains(id)),
     }
 }
-// === end LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6) ===
 
-fn describe_hit(hit: &GateKeyHit) -> String {
+/// v4 `resolveInventoryRef(ref, pool, new Set())` — nothing equipped, default
+/// options (no archetypes, no archived).
+fn gate_key_hits(reference: &str, pool: &ResolvedInventoryPool) -> Vec<InventoryRefMatch> {
+    resolve_inventory_ref(
+        reference,
+        pool,
+        &HashSet::new(),
+        ResolveInventoryRefOptions::default(),
+    )
+}
+
+fn describe_hit(hit: &InventoryRefMatch) -> String {
     let origin = hit.item.origin().map(|o| o.name);
     describe_item(&hit.item, origin.as_deref())
 }
@@ -558,7 +537,7 @@ pub fn lint_inventory_title(
     request: TitleLintRequest<'_>,
     opts: TitleLintOptions<'_>,
 ) -> Result<TitleLintVerdict, InventoryRefusal> {
-    let mut reading = read(main, mount, location, &opts);
+    let reading = read(main, mount, location, &opts);
     let pool = reading.pool.as_ref().map(PoolRef::get);
     let before = side_of(request.before, pool);
     let after = side_of(request.after, pool);
@@ -657,15 +636,7 @@ pub fn lint_inventory_title(
         let mut naming: Vec<&ToolGateKeyUse> = Vec::new();
         let others = resolved_with(pool, &item_id, None);
         for (reference, ref_uses) in uses_of(census, &after_key) {
-            let hits = match gate_key_hits(reference, &others) {
-                Ok(hits) => hits,
-                // === LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6): S10 — an unresolvable key
-                // is one more unread entry: the entering title fails closed. ===
-                Err(reason) => {
-                    reading.unread.push(unresolved_key(reference, reason));
-                    return Err(refused_incomplete(&title, &reading.unread));
-                } // === end LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6) ===
-            };
+            let hits = gate_key_hits(reference, &others);
             if hits.is_empty() {
                 naming.extend(ref_uses);
                 continue;
@@ -748,22 +719,9 @@ fn leaving_rows(
             });
             continue;
         };
-        let hits = match gate_key_hits(reference, &resolved_with(pool, item_id, after)) {
-            Ok(hits) => hits,
-            // === LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6): S10 — an unresolvable key
-            // cannot tell dark from redirected: unverifiable. ===
-            Err(reason) => {
-                let mut unread = unread_names.clone();
-                unread.push(unresolved_key(reference, reason).pool);
-                rows.push(TitleLintRow::GateUnverifiable {
-                    gate_key: reference.to_string(),
-                    tools,
-                    unread,
-                });
-                continue;
-            } // === end LANE-REMOVE(P4.D340 → §S.5, v4 7263105c6) ===
-        };
-        let others: Vec<&GateKeyHit> = hits.iter().filter(|h| h.item.id() != item_id).collect();
+        let hits = gate_key_hits(reference, &resolved_with(pool, item_id, after));
+        let others: Vec<&InventoryRefMatch> =
+            hits.iter().filter(|h| h.item.id() != item_id).collect();
         if !others.is_empty() {
             rows.push(TitleLintRow::GateRedirected {
                 gate_key: reference.to_string(),

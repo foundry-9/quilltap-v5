@@ -706,8 +706,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-crafted-rename",
@@ -742,8 +741,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-crafted-diacritics",
@@ -794,8 +792,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-kind-only-own-name",
@@ -961,7 +958,6 @@
     ]
    },
    "steps": [],
-   "carve": "UNTIL_UNION_S10",
    "context": {
     "projectId": "d1000000-0000-4000-8000-000000000001"
    }
@@ -1015,8 +1011,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-two-tools-sorted",
@@ -1083,8 +1078,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-leaving-dark",
@@ -1120,7 +1114,6 @@
     ]
    },
    "steps": [],
-   "carve": "UNTIL_UNION_S10",
    "context": {
     "projectId": "d1000000-0000-4000-8000-000000000001"
    }
@@ -1189,7 +1182,6 @@
      }
     }
    ],
-   "carve": "UNTIL_UNION_S10",
    "context": {
     "projectId": "d1000000-0000-4000-8000-000000000001"
    }
@@ -1371,8 +1363,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-delete-dark",
@@ -1402,8 +1393,7 @@
      "Quilltap General"
     ]
    },
-   "steps": [],
-   "carve": "UNTIL_UNION_S10"
+   "steps": []
   },
   {
    "name": "lint-restore-collides",
@@ -1500,8 +1490,7 @@
      "db": "mount",
      "sql": "INSERT INTO group_doc_mount_links (id, groupId, mountPointId, createdAt, updatedAt) VALUES ('e3000000-0000-4000-8000-000000000001', 'e1000000-0000-4000-8000-000000000001', 'f9999999-0000-4000-8000-000000000099', '2026-02-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')"
     }
-   ],
-   "carve": "UNTIL_UNION_S10"
+   ]
   },
   {
    "name": "lint-leaving-unverifiable-census",
@@ -2406,8 +2395,7 @@
     "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
    },
    "steps": [],
-   "tools": true,
-   "carve": "UNTIL_UNION_S9_C3_C4"
+   "tools": true
   },
   {
    "name": "doc-keyed-tool-delete",
@@ -2418,8 +2406,7 @@
     "relativePath": "Tools/measure_twice.tool.json"
    },
    "steps": [],
-   "tools": true,
-   "carve": "UNTIL_UNION_S9_C3_C4"
+   "tools": true
   },
   {
    "name": "store-write-refused",
@@ -2562,6 +2549,126 @@
      "mp": "{{mp:project}}",
      "path": "Attic/c.json",
      "content": "{\n  \"id\": \"55555555-5555-4555-8555-555555555555\",\n  \"kind\": \"item\",\n  \"name\": \"spare\",\n  \"title\": \"Ansible Resonator\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": false
+  },
+  {
+   "name": "doc-keyed-shadow",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/tape2.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888889\",\n  \"kind\": \"item\",\n  \"name\": \"measuring tape\",\n  \"title\": \"FRIDAY'S YELLOW TAPE MEASURE\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:friday}}",
+     "path": "Inventory/tape.json",
+     "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "doc-keyed-retitle-redirected",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/tape.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Plain Tape\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:friday}}",
+     "path": "Inventory/tape.json",
+     "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "store-keyed-shadow-refused",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/tape2.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888889\",\n  \"kind\": \"item\",\n  \"name\": \"measuring tape\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:friday}}",
+     "path": "Inventory/tape.json",
+     "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "store-schema-error-write-allowed",
+   "kind": "store",
+   "fn": "write",
+   "args": {
+    "mountPointId": "{{mp:project}}",
+    "relativePath": "Inventory/kettle.json",
+    "content": "{\n  \"id\": \"99999999-9999-4999-8999-999999999999\",\n  \"kind\": \"item\",\n  \"name\": \"kettle\",\n  \"title\": \"Copper Kettle\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/invalid.tool.json",
+     "content": "{\"name\": \"invalid\"}"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "doc-schema-error-keyed-naming",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/tape.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/invalid.tool.json",
+     "content": "{\"name\": \"invalid\"}"
+    }
+   ],
+   "tools": true
+  },
+  {
+   "name": "doc-keyed-retitle-dark",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/gauge.json",
+    "content": "{\n  \"id\": \"88888888-8888-4888-8888-88888888888a\",\n  \"kind\": \"item\",\n  \"name\": \"gauge\",\n  \"title\": \"Plain Gauge\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/gauge_ready.tool.json",
+     "content": "{\"name\": \"gauge_ready\", \"description\": \"Gauge ready.\", \"availableWhen\": [{\"inventoryCount\": {\"Unique Gauge\": {\"gte\": 1}}}, {\"inventory\": {\"compass\": {\"eq\": \"equipped\"}}}], \"outcomes\": [{\"when\": true, \"message\": \"x\", \"state\": \"info\"}]}"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:friday}}",
+     "path": "Inventory/gauge.json",
+     "content": "{\n  \"id\": \"88888888-8888-4888-8888-88888888888a\",\n  \"kind\": \"item\",\n  \"name\": \"gauge\",\n  \"title\": \"Unique Gauge\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
     }
    ],
    "tools": false

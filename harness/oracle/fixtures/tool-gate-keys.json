@@ -20,13 +20,11 @@
   {
    "name": "tgk-keyed-pair",
    "tools": true,
-   "steps": [],
-   "carve": "UNTIL_UNION_S9_C3_C4"
+   "steps": []
   },
   {
    "name": "tgk-both-clauses-both-subjects",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -51,7 +49,6 @@
   {
    "name": "tgk-listed-gone-on-open",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -69,7 +66,6 @@
   {
    "name": "tgk-unparseable-and-schema",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -99,7 +95,6 @@
   {
    "name": "tgk-any-of-groups",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -112,7 +107,6 @@
   {
    "name": "tgk-integer-like-key",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -125,7 +119,6 @@
   {
    "name": "tgk-two-stores-ordering",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -149,7 +142,6 @@
   {
    "name": "tgk-duplicate-name-not-unread",
    "tools": false,
-   "carve": "UNTIL_UNION_S9_C3_C4",
    "steps": [
     {
      "do": "doc-plant",
@@ -185,6 +177,24 @@
      "do": "sql",
      "db": "mount",
      "sql": "UPDATE doc_mount_points SET enabled = 0 WHERE id = '{{mp:project}}'"
+    }
+   ]
+  },
+  {
+   "name": "tgk-schema-error-keeps-keys",
+   "tools": true,
+   "steps": [
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:general}}",
+     "path": "Tools/invalid.tool.json",
+     "content": "{\"name\": \"invalid\"}"
+    },
+    {
+     "do": "doc-plant",
+     "mp": "{{mp:project}}",
+     "path": "Tools/lamp_lit.tool.json",
+     "content": "{\"name\": \"lamp_lit\", \"description\": \"Lamp lit.\", \"withheldWhen\": {\"inventoryCount\": {\"Brass Lamp\": {\"gte\": 1}}}, \"outcomes\": [{\"when\": true, \"message\": \"x\", \"state\": \"info\"}]}"
     }
    ]
   }

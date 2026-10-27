@@ -23,8 +23,8 @@
  *     and the mount tables' delta.
  *
  * Unless an op says `tools: true`, General's keyed `Tools/measure_twice.
- * tool.json` is deleted (linted — no line) before the op runs: v5's branch
- * cannot read a keyed gate (P4.D340 R-4), so only carved rows keep it.
+ * tool.json` is deleted (linted — no line) before the op runs, so an op's
+ * census holds only the keys it plants.
  *
  * Run (Node 24, from the v4 checkout), AFTER the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin

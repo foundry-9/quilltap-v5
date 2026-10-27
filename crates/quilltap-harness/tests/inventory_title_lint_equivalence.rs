@@ -20,13 +20,18 @@
 //!     lines (§R.5 — the keystone owns their bytes), and the mount tables'
 //!     delta, minted ids / timestamps normalised identically on both sides.
 //!
-//! **Carved on this branch, by NAME** (`CARVED`): the rows whose census holds
-//! a key that normalises to the title (`UNTIL_UNION_S10` — the gate-key
-//! resolution is P4.D328's `resolve_inventory_ref`) and the rows that keep
-//! General's KEYED tool (`UNTIL_UNION_S9_C3_C4` — the census walk is P4.D328 /
-//! P4.D329 / P4.D333's). Each carved row is still a PIN: it asserts v5's
-//! branch answer is the fail-closed stand-in (R-3 / R-4). The unifier lifts
-//! the carve at §S.5.
+//! No row is carved: every op is compared whole, on the REAL census
+//! (`pascal::tool_gate_keys`) and the REAL `resolve_inventory_ref` (the
+//! P4.D340 stand-ins were lifted at the `322a5488e` unification, §S.5 wire
+//! 18). `doc-keyed-shadow` / `store-keyed-shadow-refused` keep General's KEYED
+//! tool and plant a second object under its key, so a title landing on the
+//! key is refused (`live gate shadow`); `doc-keyed-retitle-redirected`
+//! retitles that plant (the key still lands on Friday's instance — `gate
+//! redirected`); `doc-keyed-retitle-dark` plants an any-of keyed tool and
+//! the one object it names, then retitles it (`gate dark`);
+//! `store-schema-error-write-allowed` / `doc-schema-error-keyed-naming` plant
+//! a definition that parses but fails the schema — v4 never deals it and
+//! never counts it as unread, so the lint still verifies the title.
 //!
 //! Generate (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -84,24 +89,6 @@ const TABLES: &[&str] = &[
     "doc_mount_files",
     "doc_mount_file_links",
     "doc_mount_folders",
-];
-
-/// Rows carved until the union (§S.5), by NAME — each still pinned to the
-/// branch's fail-closed stand-in.
-const CARVED: &[(&str, &str)] = &[
-    ("lint-crafted-create", "UNTIL_UNION_S10"),
-    ("lint-crafted-rename", "UNTIL_UNION_S10"),
-    ("lint-crafted-diacritics", "UNTIL_UNION_S10"),
-    ("lint-naming-tape", "UNTIL_UNION_S10"),
-    ("lint-two-objects-shadow", "UNTIL_UNION_S10"),
-    ("lint-two-tools-sorted", "UNTIL_UNION_S10"),
-    ("lint-leaving-dark", "UNTIL_UNION_S10"),
-    ("lint-leaving-redirected", "UNTIL_UNION_S10"),
-    ("lint-archive-dark", "UNTIL_UNION_S10"),
-    ("lint-delete-dark", "UNTIL_UNION_S10"),
-    ("lint-leaving-unverifiable-mount", "UNTIL_UNION_S10"),
-    ("doc-keyed-naming", "UNTIL_UNION_S9_C3_C4"),
-    ("doc-keyed-tool-delete", "UNTIL_UNION_S9_C3_C4"),
 ];
 
 /// v4's repository lines a lint read can reach (the R-7 fallbacks).
@@ -699,17 +686,6 @@ impl Pair<'_> {
     }
 }
 
-/// A carved row's branch answer: the fail-closed stand-in (R-3 / R-4) — a
-/// `TITLE_CHECK_UNAVAILABLE` naming the unresolvable key or the keyed file,
-/// or a `gate unverifiable` row.
-fn is_branch_stand_in(outcome: &Value) -> bool {
-    let text = outcome.to_string();
-    text.contains("not_available: resolve_inventory_ref")
-        || text.contains("TITLE_CHECK_UNAVAILABLE")
-        || text.contains("gate unverifiable")
-        || outcome["result"] == r#"{"written":true}"#
-}
-
 #[test]
 fn inventory_title_lint_matches_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_INV_TITLE_LINT") else {
@@ -820,9 +796,7 @@ fn inventory_title_lint_matches_oracle() {
         }
         k
     };
-    let carved: HashMap<&str, &str> = CARVED.iter().copied().collect();
     let mut ran = 0;
-    let mut carved_pinned = 0;
     let mut lines_compared = 0;
     for op in spec["ops"].as_array().unwrap() {
         let name = op["name"].as_str().unwrap();
@@ -885,14 +859,6 @@ fn inventory_title_lint_matches_oracle() {
             Some(e) => json!({ "error": e }),
             None => json!({ "result": want["result"] }),
         };
-        if let Some(carve) = carved.get(name) {
-            assert!(
-                is_branch_stand_in(&outcome),
-                "{name} ({carve}): v5's branch answer is not the fail-closed stand-in: {outcome}"
-            );
-            carved_pinned += 1;
-            continue;
-        }
         let (want_lines, want_tags) = v4_lines(&want["logs"]);
         let (got_lines, got_tags) = v5_lines(&captured);
         lines_compared += want_lines.len();
@@ -928,7 +894,7 @@ fn inventory_title_lint_matches_oracle() {
         ran += 1;
     }
     eprintln!(
-        "inventory title lint: {} paths, {} norms, {} messages, {ran} ops compared, {carved_pinned} carved (pinned to the branch stand-in), {lines_compared} v4 lines",
+        "inventory title lint: {} paths, {} norms, {} messages, {ran} ops compared, {lines_compared} v4 lines",
         paths.len(),
         norms.len(),
         messages.len()
