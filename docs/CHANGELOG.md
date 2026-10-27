@@ -402,6 +402,12 @@ Differential: four new `orchestrator_tier3` cases (`interrupt_stop_mid_brahma_ma
 
 Three in-crate rows in `brahma_console/tests.rs`.
 
+#### 2026-10-27 — docs(porting): P4.173 lane record — the SPA + e2e smalls
+
+_Docs-only change._
+
+Appended the P4.173 lane record to the status log (landed items, the measured facts — the wire has no participant `characterId`, a live tool turn renders grouped into the assistant message, `salon-image-detail-flow` skipped by file on a locked server, `settings-flow` red on unmodified `main` too — the deferrals, the gate) and set the order's status header to LANE COMPLETE.
+
 #### 2026-10-27 — fix(spa): multi-character stop over v4's base participants, no memory-list Source link, one `getErrorMessage`, and the P4.173 smalls
 
 _Versions: SPA 0.5.906._

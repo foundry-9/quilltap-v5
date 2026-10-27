@@ -193679,3 +193679,58 @@ core **0.0.1337** (+1); harness frozen 0.0.1110; host 0.0.214, web 0.0.246, cli 
 
 `91270deef` feat(carina) (Rust, oracle, harness, CHANGELOG, core bump); `2b5865b3e` test(e2e) beat (H).
 
+
+
+## P4.173 — the SPA + e2e smalls (lane `claude/p4.173-spa-e2e-smalls-6c7ea4`, pin `322a5488e`, 2026-10-27) — LANE RECORD
+
+**Session start / base:** the session opened on `main` at `6c7ea4410` (the checkout); moved to the spaceless worktree `.claude/worktrees/p4.173` on branch `claude/p4.173-spa-e2e-smalls-6c7ea4`, cut from `main` at `6c7ea4410`. `target/` cloned warm (`cp -cR`); `npm ci` in the worktree's `apps/web`; release bins rebuilt fresh (`cargo build --release -p quilltap-web -p quilltap-cli`, 7 m 10 s) before any e2e.
+
+**§2 probe (observation, §R.2):** v4 branch `main`; `log b892227eb..main` EMPTY; `bugfix` untouched; the tree showed ONE dirty file, `help/salon-host-introductions.md` (not in `lib/` / `app/` / `packages/` / `plugins/`). Recorded; lane continued; nothing newer than `322a5488e` ported. No oracle regen this lane (SPA + e2e only; no server crate touched).
+
+### Landed (two commits)
+
+1. `test(e2e): the mock LLM's opt-in streamed tool-call arm, inventory beat (g) live, group plate, toast stacking, F.9 whisper (P4.173)` — no crate versions.
+2. `fix(spa): multi-character stop over v4's base participants, no memory-list Source link, one getErrorMessage, and the P4.173 smalls` — SPA 0.5.905 → 0.5.906.
+
+**Tier 1 — all landed.**
+- **D330-g — the mock-LLM tool arm.** `e2e/support/mock-llm.ts` `MockLlmOptions.toolCall` (`{ name, arguments }`): the FIRST streamed completion answers one streamed `tool_calls` delta + `finish_reason: 'tool_calls'`; any request carrying a `role: 'tool'` message (the tool loop's follow-up) and every later request get the plain reply. Off by default — no existing spec moved (35 consumers). Beat (g) now plants a `Marlinspike` ARCHETYPE in Aria's vault, sends a real turn, and asserts INSIDE the assistant message row holding the mock's reply text (`.qt-chat-message-row` filtered by `MOCK_LLM_REPLY`): `Pick Up Success` chip + the expanded Tool Response containing `"name": "Marlinspike"`. **Measured, and the reason the first form was wrong:** a LIVE turn groups the tool row into the assistant's message (`groupToolMessagesIntoAssistants`) — it renders as the chip + collapsed request/response, NOT the standalone `.qt-chat-wardrobe-notice` that beat (i)'s planted row renders; and the first `Tool Response` button on the page was beat (i)'s planted `unicorn horn` row (the sibling-row trap the order named — the row-scoped locator cannot pass on it). 3/3 by file: see Gate.
+- **D336-multichar (R-B):** MEASURED — `EnrichedParticipantDetail` (`services/chat_enrichment.rs:332`) emits no `characterId`; the SPA tests the hydrated `p.character` (`MULTI_CHARACTER_HYDRATED_ID`). `isMultiCharacterRoom` now runs over v4's BASE participants (`useParticipants.participantsAsBase`, `:34-57`): `type === 'CHARACTER'` seats carrying a character, `controlledBy ?? 'llm'` on both legs. Two vitest cases in `salon-conversation.spec.ts` (a non-CHARACTER / hydration-less LLM seat does not pause; an absent `controlledBy` reads as LLM).
+- **B1-R1 (P-6):** the memory list's Source link removed — the binding, the handler, the `Router` and the docblock's divergence note; the card's `canNavigateToSource` input (default true, v4's `onNavigateToSource` presence) is bound `false` by the list. A list spec pins a sourced AUTO card shows no Source.
+- **D278-10 (P-11):** `salon-turn-controls.spec.ts` — `chatUpdate` held on a deferred promise (`StubOptions.holdUpdate`), `onAllLLMContinue()` called, the request log is exactly `['chatUpdate']` (no `chatTurnAction`) until released, then `['chatUpdate','chatTurnAction','chatSend']` — v4's `all-llm-pause-actions.test.ts` shape.
+- **C-15 (SPA side):** the resolved-dispatch frame-error toast takes the default duration (v4's plain `showErrorToast`); the failed-send catch keeps `SEND_FAILURE_TOAST_MS`. The existing frame-error spec flipped from `SEND_FAILURE_TOAST_MS` to `undefined`. The cross-language `STREAM_FAILURE_ERROR` source-text guard is §S.1(e) (the unifier's, with the server constant).
+- **E.7:** `CollapsibleCard` guards `typeof el.scrollIntoView === 'function'` (siblings `tab-strip.ts`, `scenario-browser-dialog.ts`).
+- **SPA lows:** `MemoryCreateReply.action?` (a pre-round server answers `{ memory }` alone); `MemorySettingsDocument.config` is a read-only `Signal` (`config.asReadonly()`); `chat-scenario-control`'s `From:` opens its div on the same line, and both `scenario-browser-flow` locators are back to `getByText(/^From:/)` (comment explains why; the `/^…/` regex form was the unification's workaround).
+- **B1-8:** `getErrorMessage` → `core/error-utils.ts`; `memory-format.ts` and `api-error-text.ts` re-exports dropped; importers moved.
+
+**Tier 2 — all landed.**
+- **D338-20:** NEW `e2e/toast-stacking-flow.spec.ts` (own instance port 4352, no mock LLM needed): saving a new item in the open Inventory dialog toasts `"<name>" is laid on the table`; `elementFromPoint` at the toast's centre is inside `.qt-toast-container`. (v5's container is already `z-index: 1000` — `_toast.css:37` — so this is a pin, green first run.)
+- **D.8:** the beat did not "skip on the shared fixture" — it skipped BY FILE because the shared server was still locked (`listChats` answers an error envelope; `foundation.spec.ts` unlocks it in the full suite). The beat now unlocks the server itself (idempotent). Green by file; the R-B re-pin is exercised.
+- **F.9:** `wardrobe-flow` history beat polls `chatTranscript` (bounded 90 s) for Aurora's NEWEST `Aurora marks an alteration to Aria` whisper and asserts it names `History Brogues` and not `History Cravat`. **Measured: the job runner pumps in the e2e server and the whisper lands (green).** Also: the file's `unlockIfLocked` wait raised 10 s → 45 s (PBKDF2 under a loaded machine took >10 s — it was the single cause of 14/21 reds in the file's first run on this loaded host, load avg 13).
+- **G.2:** `character-wardrobe-pictures-flow` — the instance materializes `groups` / `group_doc_mount_links` from the D23 dump (the `inventory-flow` recipe); a group with Aria as member and one garment with a picture; the shelf reads `3 pictures`, the third plate captions `Group · The Flying Circus`.
+- **E.1:** `ProjectWardrobeCard` owns its open state (`linkedSignal` seeded from `defaultOpen`, controlled `[isOpen]`/`(openChange)`) and mounts the browser inside `@if (open())`; a vitest spec pins no `wardrobeFoldersList` until opened.
+- **G.3:** NOT the save dialog — the survey's "the section" is `wardrobe-pictures-section.ts` (`loading` → `isLoading()`; the docblock updated). (A first mis-aimed edit to `save-image-dialog` was reverted.)
+- **D.11 (R-A):** the save-image dialog shows `Failed to load photo albums` (no status — `ALBUM_LOAD_STATUS_ABSENT`) beside the empty sentence on a failed read; the album query no longer retries (v4 fetches once on mount). A vitest spec pins it.
+- **P4.D309 cast:** `fileItems` takes a typed `WardrobeItemsMoveRequest | WardrobeItemsCopyRequest`; both callers build theirs; no `as CoreRequest`.
+- **D278-11:** the two stale `useChatControls` cites fixed (`:216-220`, `:223-231`) and every other cite in `src/` checked against the pin and corrected to the real function ranges (`:145-152` resolved-agent-mode sync, `:145-191` sync effects, `:259-263` document-editing, `:265-293` agent mode / `:267` the tri-state computation / `:281-291` its reply, `:295-314` regenerate-background, `:347-395` remove, `:398-426` connection profile, `:459-485` subprompts, `:541-568` talkativeness, `:216-345` the shared writes). The old `:613-635` pointed past the end of the 603-line file.
+
+**Tier 3 — deferred, recorded.** `workspace-help-ask-flow`'s fifth beat (a `help_navigate` turn): the arm exists now, but a one-shot `toolCall` on the shared global-setup mock would land on an arbitrary earlier send; it needs a spec-owned instance. Header comment updated; no stub. P4.D309 item 21 (outfit-asks beat): not attempted (optional).
+
+### Recorded divergences / observations
+- `MULTI_CHARACTER_HYDRATED_ID` (R-B) and `ALBUM_LOAD_STATUS_ABSENT` (R-A), above.
+- Observation: a `page.reload()` of `/salon/<id>` inside the wardrobe-flow history beat showed `Failed to fetch chat` after the rollback (the transcript READ over dispatch was fine); not chased — the beat reads `chatTranscript` instead. A dogfood candidate if it reproduces.
+- **HANDOFFs:** none. (C-15's server constant and its source-text guard stay §S.1(e).)
+
+### 💸 for the dogfood pass
+The memory list shows no Source link; Stop in a two-character room pauses as v4 does; a collapsed project Wardrobe card issues no folders read until opened; a stacked toast over an open modal is clickable; a failed album read in the save dialog says `Failed to load photo albums`.
+
+### Gate
+- **No Rust source touched** (no crate version bumped but the SPA's); `cargo fmt` / `clippy` / `cargo test --workspace` not re-run — the release bins used by e2e are built from the unchanged `main` source.
+- **SPA:** `npm run lint` clean (961 `qt-*` classes); `npm test` **568 files / 13,113 passed**; `npm run build` clean.
+- **Playwright by file (fresh release bins, fresh SPA build):** `inventory-flow` 9/9 ×3 (beat (g) green each run, then in the full suite); `toast-stacking-flow` 1/1 ×3; `character-wardrobe-pictures-flow` 1/1 (+ the full suite); `salon-image-detail-flow` 1/1 (RUNS now, was skipping); `scenario-browser-flow` 7/7; `wardrobe-flow`'s history beat green alone (the file's other beats red only on the loaded host before the unlock wait was raised — full-suite run green).
+- **Full Playwright suite (once):** **439 passed / 14 failed / 8 skipped (23.4 m)** on a host at load average 13 (ten lanes). Each red re-run BY FILE: green — `character-wizard-flow` 3/3, `salon-inform-flow` 5/5, `salon-roleplay-template-flow` 2/2, `salon-streaming-avatar-flow` 2/2, `salon-thinking-indicator` 1/1, `salon-transcript-subscribed-read` 2/2, `setup-flow` 1/1, `settings-memory-consolidation-flow` 3/3, `wardrobe-items-editor-flow` 4/4. Two classified: **`settings-flow`** (the `:856` Recall Relevance beat) — red on three runs under load, 9/9 twice later on this branch; **the SAME file is red on UNMODIFIED `main` `6c7ea4410` too** (`:671`, then `:834`+`:856`, then three setup beats) — a loaded-host flake in a file this lane did not touch. **`salon-regenerate-stream-flow`** — red in the full suite and in two by-file runs (`:102` plate timeout at the Chats heading; `:192` Stop never greying), green on `main` and on the e2e commit alone, then green 2/3 on this branch: the RECORDED Salon-streaming timing intermittent (the P4.d17 quill), not attributed to the lane — no file it exercises changed besides the mock's inert-by-default arm and the Salon's multi-character check, which `stop()` alone reads.
+- Baseline attribution used a throwaway detached worktree of `main` (`.claude/worktrees/p4.173-base`, removed at close).
+
+### Versions
+
+SPA 0.5.905 → 0.5.906; core 0.0.1336, host 0.0.214, web 0.0.246, cli 0.0.34, tauri 0.0.9 unchanged; harness frozen 0.0.1110.
+
