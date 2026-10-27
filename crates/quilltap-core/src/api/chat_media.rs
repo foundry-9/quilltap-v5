@@ -2565,6 +2565,20 @@ async fn attach_mount_document(
     }))
 }
 
+/// v4's `attribution.role` string (`'character' | 'user' | 'system'`) for the
+/// `[SaveGalleryImage] saving` DEBUG (P4.170 D.1 — the Debug rendering was
+/// v5's variant name).
+fn attribution_role_str(
+    role: crate::photos::keep_image_markdown::KeptImageAttributionRole,
+) -> &'static str {
+    use crate::photos::keep_image_markdown::KeptImageAttributionRole as R;
+    match role {
+        R::Character => "character",
+        R::User => "user",
+        R::System => "system",
+    }
+}
+
 #[cfg(test)]
 mod gallery_route_degrade_tests {
     use super::*;
@@ -2624,19 +2638,5 @@ mod gallery_route_degrade_tests {
                 .any(|l| l.contains("Failed to list chat gallery")),
             "the old 500 sentence must be gone: {lines:#?}"
         );
-    }
-}
-
-/// v4's `attribution.role` string (`'character' | 'user' | 'system'`) for the
-/// `[SaveGalleryImage] saving` DEBUG (P4.170 D.1 — the Debug rendering was
-/// v5's variant name).
-fn attribution_role_str(
-    role: crate::photos::keep_image_markdown::KeptImageAttributionRole,
-) -> &'static str {
-    use crate::photos::keep_image_markdown::KeptImageAttributionRole as R;
-    match role {
-        R::Character => "character",
-        R::User => "user",
-        R::System => "system",
     }
 }

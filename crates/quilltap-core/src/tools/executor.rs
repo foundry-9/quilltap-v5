@@ -1789,7 +1789,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             .await;
         let stage = match staged_after_write(written, &stash) {
             Ok(stage) => stage,
-            Err(written) => return written,
+            Err(written) => return *written,
         };
         // v4 `tool-executor.ts:725-738`: every change any wardrobe tool makes is
         // recorded as the calling character's — `{ source: 'character',
@@ -1877,7 +1877,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             .await;
         let stage = match staged_after_write(written, &stash) {
             Ok(stage) => stage,
-            Err(written) => return written,
+            Err(written) => return *written,
         };
         let output = finish_inventory_tool(
             &db,
@@ -2294,14 +2294,17 @@ impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
 /// `Db::write` errs after the closure ran only as `WriterGone` — so this arm is
 /// unreachable today; the guard keeps the ordering a property of the code,
 /// not of `wardrobe_write`'s current shape.
-fn staged_after_write<S>(written: ToolResult, stash: &Mutex<Option<S>>) -> Result<S, ToolResult> {
+fn staged_after_write<S>(
+    written: ToolResult,
+    stash: &Mutex<Option<S>>,
+) -> Result<S, Box<ToolResult>> {
     let stage = stash.lock().unwrap_or_else(|e| e.into_inner()).take();
     if !written.success {
-        return Err(written);
+        return Err(Box::new(written));
     }
     // No stage: the write itself failed before the handler ran (no
     // mount-index, a writer error) — `written` carries that failure.
-    stage.ok_or(written)
+    stage.ok_or_else(|| Box::new(written))
 }
 
 fn ok(tool_name: &str, result: Value) -> ToolResult {

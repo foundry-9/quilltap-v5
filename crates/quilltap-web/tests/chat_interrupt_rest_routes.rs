@@ -144,6 +144,60 @@ const CASES: &[(&str, &str, &str, Option<&str>)] = &[
     ),
 ];
 
+#[tokio::test(flavor = "multi_thread")]
+async fn the_interrupt_actions_answer_v4s_bytes_over_rest() {
+    let Ok(path) = std::env::var("QT_ORACLE_SALON_SKIP") else {
+        eprintln!("SKIP: set QT_ORACLE_SALON_SKIP (see the header).");
+        return;
+    };
+    let oracle: HashMap<String, Value> = std::fs::read_to_string(&path)
+        .expect("read the oracle")
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| {
+            let v: Value = serde_json::from_str(l).expect("an oracle row");
+            (v["name"].as_str().unwrap().to_string(), v)
+        })
+        .collect();
+
+    let base = common::materialize_salon_instance();
+    let (addr, _state) = common::serve_instance(base.path(), |mut c| {
+        c.terminal = false;
+        c
+    })
+    .await;
+    let client = reqwest::Client::new();
+
+    let mut failures = Vec::new();
+    for (case, chat, action, body) in CASES {
+        let want = oracle
+            .get(*case)
+            .unwrap_or_else(|| panic!("{case}: no oracle row — regenerate"));
+        let mut req = client.post(format!("http://{addr}/api/v1/chats/{chat}?action={action}"));
+        if let Some(b) = body {
+            req = req
+                .header("content-type", "application/json")
+                .body((*b).to_string());
+        }
+        let resp = req.send().await.unwrap();
+        let status = resp.status().as_u16();
+        let got = resp.text().await.unwrap();
+        if u64::from(status) != want["status"].as_u64().unwrap() {
+            failures.push(format!("{case}: status {status} vs v4 {}", want["status"]));
+        }
+        let want_body = serde_json::to_string(&want["body"]).unwrap();
+        if got != want_body {
+            failures.push(format!("{case}: body\n  v5 {got}\n  v4 {want_body}"));
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{} REST divergence(s):\n{}",
+        failures.len(),
+        failures.join("\n")
+    );
+}
+
 /// P4.170 C.10 (ruling P-12): `PUT /api/v1/wardrobe/{itemId}` with an
 /// unparsable body on a MISSING id — v4's factory runs `findItem` before
 /// `updateWardrobeSchema.parse(await req.json())`, so the answer is the

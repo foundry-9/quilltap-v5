@@ -306,6 +306,12 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — fix(p4.170): restore the REST interrupt test a test move deleted; clippy's boxed `Err` and test-module order
+
+_Versions: core 0.0.1339, web 0.0.248._
+
+Follow-up to the P4.170 web-edge commit. Moving the F.7 line pin out of `chat_interrupt_rest_routes` also deleted `the_interrupt_actions_answer_v4s_bytes_over_rest`, which sat between the two markers. It is restored from `main` and now runs all 23 rows (the 14 standing ones plus the nine P-12 class rows): green. `staged_after_write` now returns `Box<ToolResult>` as its error (clippy `result_large_err`), and `chat_media`'s `attribution_role_str` sits above the test modules (clippy `items_after_test_module`). No behaviour change.
+
 #### 2026-10-27 — feat(core): the wardrobe announcement job logs v4's lines and validates `EquippedSlotsSchema`; `findEnabled` drops a bad `mountType`; the save doors' log keys; the item picture's chat-settings fallback (P4.170)
 
 _Versions: core 0.0.1338._
