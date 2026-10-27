@@ -497,6 +497,52 @@ pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
     super::fallback::find_by_id_or_none("chats", id, || find_by_id(conn, id))
 }
 
+/// P4.167 H-3 (the human's ruling of 2026-10-27, CONVERGE): v4's
+/// `repos.chats.findById` OUTSIDE a strict scope, for a row v4's schema
+/// refuses. `_findById` runs `validate` inside `safeQuery(…, 'Error finding
+/// entity by ID', { id }, null)` (`base.repository.ts:130-141, :247-258`), so
+/// an unreadable row (a non-object TEXT `scenarioSource` — P4.D294 Tier 2
+/// #19 — or any per-row cell [`run_dropping_invalid_rows`] drops) logs ERROR
+/// `Data validation failed {collection, error}` then ERROR `Error finding
+/// entity by ID {collection, id, error}` and answers `None` — v4's export
+/// (`ndjson-writer.ts:352`) and preview (`quilltap-export-service.ts:154`)
+/// then SKIP the chat. A whole-query failure still propagates, so v5's
+/// strict-export ruling stands for a broken database; only this ONE class
+/// converges.
+pub fn find_by_id_dropping_invalid(conn: &Connection, id: &str) -> Result<Option<Value>, DbError> {
+    let sql = format!("SELECT {} FROM chats WHERE id = ?1", select_list(conn));
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query([id])?;
+    let mut found = None;
+    while let Some(row) = rows.next()? {
+        match marshal_row(row) {
+            Ok(v) => found = Some(v),
+            Err(
+                e @ (rusqlite::Error::InvalidColumnType(..)
+                | rusqlite::Error::FromSqlConversionFailure(..)),
+            ) => {
+                let error = dropped_row_error_text(&e);
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    error = %error,
+                    "Data validation failed"
+                );
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    id = %id,
+                    error = %error,
+                    "Error finding entity by ID"
+                );
+                return Ok(None);
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(found)
+}
+
 /// Find all chats (v4 `findAll`). v4's `_findAll` runs the same per-row
 /// `validateSafe` as `findByFilter` (`base.repository.ts:263-278`), so a
 /// corrupt row is DROPPED with the two lines and the rest answered — dogfood

@@ -224,7 +224,9 @@ pub(super) fn stream_chats(
     };
 
     for id in ids {
-        let Some(chat) = chats_read::find_by_id(main, id)? else {
+        // P4.167 H-3: v4's non-strict `findById` — an unreadable chat row is
+        // SKIPPED with v4's two lines, not a failed export.
+        let Some(chat) = chats_read::find_by_id_dropping_invalid(main, id)? else {
             continue;
         };
 

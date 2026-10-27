@@ -172,10 +172,11 @@ function buildCases(spec: Spec): CaseSpec[] {
       const { createNdjsonStream } = await import('@/lib/export/ndjson-writer');
       // [P4.D294] the `[ExtractionCursors]` lines, a silence leg on every case.
       // [P4.D317] + the outfit-history lines (`historyLogs`).
-      const { out: lines, cursorLogs, historyLogs } = await withCursorLogs(() =>
+      // [P4.167 H-3] + the unreadable-chat lines (`findByIdLogs`).
+      const { out: lines, cursorLogs, historyLogs, findByIdLogs } = await withCursorLogs(() =>
         drain(createNdjsonStream(spec.userId, options as never)),
       );
-      return { kind: 'ndjson', options, lines, cursorLogs, historyLogs };
+      return { kind: 'ndjson', options, lines, cursorLogs, historyLogs, findByIdLogs };
     },
   });
 
@@ -183,8 +184,11 @@ function buildCases(spec: Spec): CaseSpec[] {
     name,
     run: async () => {
       const { previewExport } = await import('@/lib/export/quilltap-export-service');
-      const preview = await previewExport(spec.userId, options as never);
-      return { kind: 'preview', options, body: preview };
+      // [P4.167 H-3] + the unreadable-chat lines (`findByIdLogs`).
+      const { out: preview, findByIdLogs } = await withCursorLogs(() =>
+        previewExport(spec.userId, options as never),
+      );
+      return { kind: 'preview', options, body: preview, findByIdLogs };
     },
   });
 
@@ -463,6 +467,18 @@ function buildCases(spec: Spec): CaseSpec[] {
     }),
     scenarioTextCell: true,
   });
+  // [P4.167 H-3] …and previewed: v4's `previewExport` reads each selected chat
+  // through the same non-strict `findById` (`quilltap-export-service.ts:154`),
+  // so the chat is left out of the entity list with the same two lines.
+  cases.push({
+    ...previewCase('preview_chats_selected_one_scenario_text', {
+      type: 'chats',
+      scope: 'selected',
+      selectedIds: [CHAT_1],
+      includeMemories: false,
+    }),
+    scenarioTextCell: true,
+  });
 
   return cases;
 }
@@ -715,12 +731,18 @@ function plantThrowingCursors(db: { exec(sql: string): unknown }): void {
  */
 async function withCursorLogs<T>(
   body: () => Promise<T>,
-): Promise<{ out: T; cursorLogs: string[]; historyLogs: string[] }> {
+): Promise<{ out: T; cursorLogs: string[]; historyLogs: string[]; findByIdLogs: string[] }> {
   const { Logger } = await import('@/lib/logger');
   const cursorLogs: string[] = [];
   // [P4.D317] `ndjson-writer.ts`'s two outfit-history lines, same rendering.
   const historyLogs: string[] = [];
   const HISTORY = new Set(['Exported outfit history', 'Failed to load outfit history for export']);
+  // [P4.167 H-3] The base repository's validate + `_findById` lines: an
+  // unreadable chat row read through the non-strict `findById` logs ERROR
+  // `Data validation failed {collection, error}` then ERROR `Error finding
+  // entity by ID {id, error}` and answers `null` (the chat is skipped).
+  const findByIdLogs: string[] = [];
+  const FIND_BY_ID = new Set(['Data validation failed', 'Error finding entity by ID']);
   const originals = {
     error: Logger.prototype.error,
     warn: Logger.prototype.warn,
@@ -751,11 +773,19 @@ async function withCursorLogs<T>(
         }
         historyLogs.push(line);
       }
+      if (FIND_BY_ID.has(message)) {
+        let line = `${level} ${message}`;
+        for (const [k, v] of Object.entries(context ?? {})) {
+          if (k === 'module' || v === undefined) continue;
+          line += ` ${k}=${v instanceof Error ? v.message : String(v)}`;
+        }
+        findByIdLogs.push(line);
+      }
       return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
     } as never;
   }
   try {
-    return { out: await body(), cursorLogs, historyLogs };
+    return { out: await body(), cursorLogs, historyLogs, findByIdLogs };
   } finally {
     Object.assign(Logger.prototype, originals);
   }

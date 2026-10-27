@@ -92,7 +92,9 @@ fn preview_export_strict(
                 entity_ids
             };
             for id in ids {
-                let Some(c) = chats_read::find_by_id(main, &id)? else {
+                // P4.167 H-3: an unreadable chat row is left out with v4's
+                // two lines (`find_by_id_dropping_invalid`).
+                let Some(c) = chats_read::find_by_id_dropping_invalid(main, &id)? else {
                     continue;
                 };
                 push_entity(&mut entities, &c, "title");

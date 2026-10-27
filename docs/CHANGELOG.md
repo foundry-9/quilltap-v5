@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — fix(export): skip an unreadable chat row on .qtap export and preview with v4's two lines (H-3)
+
+_Versions: core 0.0.1338._
+
+A `.qtap` export and its preview now skip a chat whose row v4's schema refuses, such as a non-object TEXT `scenarioSource`. Previously the whole export failed. This follows the human's ruling H-3 of 2026-10-27. v4's non-strict `findById` logs ERROR `Data validation failed {collection, error}` then ERROR `Error finding entity by ID {collection, id, error}` and answers `null`, so `ndjson-writer.ts:352` and `quilltap-export-service.ts:154` skip the chat. The new `chats_read::find_by_id_dropping_invalid` does the same, and `qtap_export/records.rs` and `preview.rs` now use it. A whole-query failure still propagates, so the strict-export ruling stands for a broken database. The both-ways pin in `system_export_equivalence` (P4.D294 Tier 2 #19) is deleted. Its replacement compares v4's and v5's two lines on every stream and preview case, and the new `preview_chats_selected_one_scenario_text` case is added (71 cases). Red first on unported main: 4 failures.
+
 #### 2026-10-27 — fix(import): refuse a .qtap chat whose twelve JsonSchema columns are not objects, as v4's ChatMetadataSchema does
 
 _Versions: core 0.0.1337._

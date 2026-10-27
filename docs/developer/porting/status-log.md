@@ -193020,3 +193020,33 @@ their own decoders (recorded, as the survey recommends).
   pin; then `QT_ORACLE_SYSTEM_IMPORT_EXECUTE=… cargo test -p quilltap-harness
   --test system_import_state -- --nocapture`.
 
+### Unit 2 — H-3: an unreadable chat is SKIPPED on export / preview (ruled CONVERGE)
+
+New `chats_read::find_by_id_dropping_invalid` (v4's non-strict `findById`):
+a per-row refusal (the `run_dropping_invalid_rows` class — a `ZodRowRefusal`
+or an unreadable cell) logs ERROR `Data validation failed {collection,
+error}` then ERROR `Error finding entity by ID {collection, id, error}` and
+answers `Ok(None)`; a whole-query failure still propagates (the
+strict-export ruling stands for a broken DB — only this class converges).
+Used at `qtap_export/records.rs` (the stream) and `qtap_export/preview.rs`.
+v4's second line carries `collection` too (measured — the chats repository's
+`safeQuery` context), so the key set is v4's exactly.
+
+- Oracle: `system-export.test.ts` gains a `findByIdLogs` capture bucket
+  (both messages through the `Logger.prototype` spy, every stream and
+  preview case — a silence leg everywhere but the plant) and the new case
+  `preview_chats_selected_one_scenario_text` (v4: `{type: chats, entities:
+  []}`). Regenerated from the pin.
+- **The P4.D294 Tier 2 #19 both-ways pin is DELETED** (the `Err(e) if name ==
+  "stream_chats_selected_one_scenario_text"` arm), replaced by
+  `assert_find_by_id_logs` — capture pinned on
+  `stream_chats_selected_one_scenario_text` and
+  `preview_chats_selected_one_scenario_text`.
+- **Red-first on unported main: 4 failures** (both cases: the lines, the
+  throw). Green: 71 cases.
+- Regen recipe: the committed header's, staged at
+  `TMPO=/tmp/p4.167/sysexport-oracle`,
+  `QT_ORACLE_OUT=/tmp/p4.167/oracle-system-export.ndjson`; then
+  `QT_ORACLE_SYSTEM_EXPORT=… cargo test -p quilltap-harness --test
+  system_export_equivalence -- --nocapture`.
+

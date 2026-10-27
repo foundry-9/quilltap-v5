@@ -249,35 +249,13 @@ fn system_export_matches_oracle() {
                 });
                 assert_cursor_logs(name, exp, &v5_cursor_lines(&lines), &mut failed);
                 assert_history_logs(name, exp, &lines, &mut failed);
+                assert_find_by_id_logs(name, exp, &lines, &mut failed);
                 match got {
                     Ok(records) => {
                         if let Some(msg) =
                             diff_lines(name, &records, exp["lines"].as_array().unwrap())
                         {
                             failed.push(msg);
-                            continue;
-                        }
-                    }
-                    // [P4.D294 Tier 2 #19] A RECORDED consequence of the
-                    // strict-export ruling (`resolve_export_ids`' doc), pinned
-                    // BOTH WAYS: v4's non-strict `findById` refuses the row in
-                    // Zod and answers `null`, so its export SKIPS the chat (no
-                    // chat line); v5's strict read surfaces the same ZodError and
-                    // the export FAILS rather than drop a chat silently.
-                    Err(e) if name == "stream_chats_selected_one_scenario_text" => {
-                        let v4_skipped =
-                            !exp["lines"].as_array().unwrap().iter().any(|l| {
-                                l.as_str().is_some_and(|l| l.contains(r#""kind":"chat""#))
-                            });
-                        let text = e.to_string();
-                        if !v4_skipped
-                            || !text.contains("Invalid input: expected object, received string")
-                            || !text.contains("scenarioSource")
-                        {
-                            failed.push(format!(
-                                "{name}: the strict-export pin moved — v4 skipped the chat: \
-                                 {v4_skipped}; v5: {text}"
-                            ));
                             continue;
                         }
                     }
@@ -291,13 +269,17 @@ fn system_export_matches_oracle() {
             }
             "preview" => {
                 let opts = options_from(&exp["options"]);
-                let got = db
-                    .read_main(|main| {
+                // [P4.167 H-3] captured: an unreadable selected chat's two
+                // lines (the reads run on this thread — `with_conn`).
+                let (got, lines) = quilltap_core::test_support::captured_with(|| {
+                    db.read_main(|main| {
                         db.read_mount_index(|mount| {
                             Ok(qtap_export::preview_export(main, mount, &user, &opts))
                         })
                     })
-                    .expect("read");
+                    .expect("read")
+                });
+                assert_find_by_id_logs(name, exp, &lines, &mut failed);
                 let Ok(body) = got else {
                     failed.push(format!(
                         "{name}: rust threw on a preview the oracle answered"
@@ -414,7 +396,8 @@ fn system_export_matches_oracle() {
     // P4.D317: 64 + 4 = 68 (three `…_outfit_history` cases + the
     // `…_no_history_table` stream).
     // P4.D327: 68 + 2 = 70 (the two `…_inventory` streams).
-    assert_eq!(ran, 70, "expected 70 cases to run, ran {ran}");
+    // P4.167 H-3: 70 + 1 = 71 (`preview_chats_selected_one_scenario_text`).
+    assert_eq!(ran, 71, "expected 71 cases to run, ran {ran}");
     assert_eq!(
         inventory_cases, 2,
         "the two P4.D327 Inventory cases read their own copy"
@@ -780,6 +763,43 @@ fn plant_outfit_history(conn: &rusqlite::Connection) {
 /// `…_no_history_table` case), nothing on any other type. v4's line renders
 /// `level message chatId=… count=…` (`module` dropped); v5's twin carries the
 /// file's `chat_id` spelling (the inform line's), mapped back here.
+/// [P4.167 H-3 — the human's ruling of 2026-10-27, CONVERGE] An unreadable
+/// chat row (P4.D294 Tier 2 #19: a non-object TEXT `scenarioSource`) read
+/// through v4's non-strict `findById` logs ERROR `Data validation failed
+/// {collection, error}` then ERROR `Error finding entity by ID {collection,
+/// id, error}` and answers `null`, so the export and the preview SKIP the
+/// chat. This compares v5's two lines (`chats_read::find_by_id_dropping_
+/// invalid`) with v4's on every stream and preview case — a silence leg
+/// everywhere but the two `…_scenario_text` cases. It REPLACES the both-ways
+/// pin that recorded v5's export failing on that row.
+fn assert_find_by_id_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Vec<String>) {
+    let Some(v4) = oracle["findByIdLogs"].as_array() else {
+        failed.push(format!(
+            "{name}: the oracle carries no `findByIdLogs` — regenerate it"
+        ));
+        return;
+    };
+    let v4: Vec<String> = v4.iter().map(|l| l.as_str().unwrap().to_string()).collect();
+    let got: Vec<String> = v5
+        .iter()
+        .filter(|l| {
+            l.contains(" Data validation failed") || l.contains(" Error finding entity by ID")
+        })
+        .map(|l| {
+            // `LEVEL target message k=v …` → `level message k=v …`.
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap_or("").to_lowercase();
+            let _target = parts.next();
+            format!("{level} {}", parts.next().unwrap_or(""))
+        })
+        .collect();
+    if got != v4 {
+        failed.push(format!(
+            "{name}: unreadable-chat lines differ\n  rust:   {got:?}\n  oracle: {v4:?}"
+        ));
+    }
+}
+
 fn assert_history_logs(name: &str, oracle: &Value, v5: &[String], failed: &mut Vec<String>) {
     let Some(v4) = oracle["historyLogs"].as_array() else {
         failed.push(format!(
