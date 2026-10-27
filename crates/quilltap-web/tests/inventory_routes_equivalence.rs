@@ -28,10 +28,6 @@
 //!
 //! Named carves (both-ways — each asserts v4 HAS the difference and v5 does
 //! NOT, so it reddens the moment the owner lands):
-//!   - `EFFECTS_UNWIRED_UNTIL_UNION` (R-14): the operator gesture's effects
-//!     (Pascal's `chat_messages` row) are P4.D328's `notify_inventory_changed`;
-//!     on this branch `ProductionInventoryEffects` is the loud unwired arm. The
-//!     unifier lifts it with the one-line wiring.
 //!   - `TRANSFER_ERROR_SHAPES_P4D328` (R-T): the transfers module's
 //!     id-collision arm is P4.D328's shape; this branch asserts v4's status only.
 //!
@@ -65,17 +61,6 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
-
-/// R-14: rows whose v4 dump carries the operator gesture's effects (Pascal's
-/// line) that this branch's unwired seam does not write.
-const EFFECTS_UNWIRED_UNTIL_UNION: &[&str] = &[
-    "chat_equip__dump",
-    "chat_equip_already__dump",
-    "chat_equip_kit__dump",
-    "chat_equip_user_seat__dump",
-    "chat_equip_operator_off_roster__dump",
-    "chat_unequip__dump",
-];
 
 /// R-T: the transfers module's error shapes P4.D328 moves — v4's status only.
 /// EMPTY on this pair, measured: the one object whose id a second vault also
@@ -796,15 +781,6 @@ fn status_matches(driver: &str, v4: u16, v5: u16) -> bool {
     v4 == v5
 }
 
-fn drop_effects(v: &Value) -> Value {
-    let mut v = v.clone();
-    if let Some(o) = v.as_object_mut() {
-        o.remove("messages");
-        o.remove("jobs");
-    }
-    v
-}
-
 #[allow(clippy::too_many_arguments)]
 fn compare(
     driver: &str,
@@ -834,21 +810,7 @@ fn compare(
         // R-T: v4's status only — the body is P4.D328's shape.
         return;
     }
-    let (want_body, got_body) = if EFFECTS_UNWIRED_UNTIL_UNION.contains(&name) {
-        // Both ways: v4 wrote Pascal's line; this branch's seam did not.
-        let v4_msgs = want["body"]["messages"].as_i64().unwrap_or(0);
-        let v5_msgs = got_body["messages"].as_i64().unwrap_or(0);
-        if v4_msgs <= v5_msgs {
-            eprintln!(
-                "[{driver}:{name}] EFFECTS_UNWIRED_UNTIL_UNION no longer holds (v4 {v4_msgs}, v5 {v5_msgs}) — lift the carve"
-            );
-            failed.push(format!("{driver}:{name}"));
-            return;
-        }
-        (drop_effects(&want["body"]), drop_effects(got_body))
-    } else {
-        (want["body"].clone(), got_body.clone())
-    };
+    let (want_body, got_body) = (want["body"].clone(), got_body.clone());
     let w = normalize(
         &serde_json::to_string(&want_body).unwrap(),
         known,
@@ -1333,11 +1295,10 @@ fn inventory_route_lines_are_v4s() {
         &format!("[Chats v1] Inventory equip chatId={B5} characterId={V} idsJson=[\"{SWORD}\"] context=inventory"),
         "INFO",
     );
-    // R-14's loud unwired seam, until the union wires P4.D328's effects.
-    line(
-        &lines,
-        "Inventory change effects not wired on this branch",
-        "WARN",
+    // R-14 wired at the union: the real effects ran (v4 `notifyInventoryChanged`).
+    assert!(
+        !lines.iter().any(|l| l.contains("not wired")),
+        "no unwired-seam line: {lines:?}"
     );
     let (_, lines) = rt.block_on(capture_async(chat_inventory_equip(
         &db,

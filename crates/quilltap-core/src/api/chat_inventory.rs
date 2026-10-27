@@ -18,9 +18,8 @@
 //! the avatar refresh) after the write, before the response. That function is
 //! P4.D328's (`services::inventory_change_effects`), so the handlers take an
 //! [`InventoryChangeEffects`] and the engine passes
-//! [`ProductionInventoryEffects`] — whose body is the LOUD unwired arm on this
-//! lane branch (HANDOFF to the unifier: replace it with the one
-//! `notify_inventory_changed` call). The reset needs no seam: C1's
+//! [`ProductionInventoryEffects`] — the one `notify_inventory_changed` call
+//! (wired at the `322a5488e` union). The reset needs no seam: C1's
 //! `reset_inventory_to_defaults` already runs v4's `announce: false` refresh.
 
 use std::future::Future;
@@ -71,26 +70,31 @@ pub trait InventoryChangeEffects: Send + Sync {
     ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>>;
 }
 
-/// The production effects. HANDOFF (to the unifier, §S.5 wire 8): the body
-/// becomes the ONE call `crate::services::inventory_change_effects::
-/// notify_inventory_changed(…)` once P4.D328's C2 lands; until then it is the
-/// loud unwired arm and the response is unaffected.
+/// The production effects: v4's `notifyInventoryChanged` — Pascal's
+/// `inventory-change` line and the per-chat avatar refresh (💸 when the chat's
+/// avatar auto-update is on: a real image job, as in v4). An operator gesture
+/// holds no turn, so there is no pending map.
 pub struct ProductionInventoryEffects;
 
 impl InventoryChangeEffects for ProductionInventoryEffects {
     fn fire<'a>(
         &'a self,
-        _db: &'a Db,
-        _chat: &'a EquipChat,
-        _character_id: &'a str,
-        _change: InventoryChange,
-        _ctx: &'a InventoryChangeContext<'a>,
+        db: &'a Db,
+        chat: &'a EquipChat,
+        character_id: &'a str,
+        change: InventoryChange,
+        ctx: &'a InventoryChangeContext<'a>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send + 'a>> {
-        Box::pin(async {
-            tracing::warn!(
-                target: "quilltap::api::chat_inventory",
-                "[Chats v1] Inventory change effects not wired on this branch (P4.D328's notify_inventory_changed — HANDOFF)"
-            );
+        Box::pin(async move {
+            crate::services::inventory_change_effects::notify_inventory_changed(
+                db,
+                &chat.id,
+                character_id,
+                &change,
+                ctx,
+                None,
+            )
+            .await;
         })
     }
 }

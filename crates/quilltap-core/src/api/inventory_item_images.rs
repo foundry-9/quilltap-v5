@@ -20,7 +20,7 @@
 use serde_json::{json, Map, Value};
 
 use super::inventory_route_factory::{
-    escaped, internal_server_error, inventory_error_response, not_found, validation_error,
+    escaped, inventory_error_response, not_found, validation_error,
 };
 use super::types::{ErrorKind, InventoryContainer, InventoryScope, Response};
 use super::wardrobe_item_images::CONTAINER_ID_EMPTY_ISSUE;
@@ -521,7 +521,8 @@ pub async fn save_to_store_on_home(
         ))
     }) {
         Ok(a) => a,
-        Err(_) => return internal_server_error(),
+        // v4 rethrows; the context middleware answers a broken store's 503.
+        Err(e) => return escaped(e),
     };
     // `caption ?? (title || name)`.
     let caption = parsed.caption.clone().unwrap_or_else(|| {
@@ -566,6 +567,8 @@ pub async fn save_to_store_on_home(
             Response::Inventory(saved_image_body(&saved))
         }
         Ok(Err(err)) => save_image_error_response(err),
-        Err(_) => internal_server_error(),
+        // v4 rethrows a non-`SaveImageToAlbumError`: a broken store is the
+        // middleware's 503, anything else the generic 500 (`escaped`).
+        Err(e) => escaped(e),
     }
 }
