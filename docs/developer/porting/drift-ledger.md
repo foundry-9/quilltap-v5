@@ -28,12 +28,16 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-27 14:33 CDT, by `/driftcheck` on main (`dd3b89e2c`)
-  — fetched first; **NOTHING NEW**: local equals `origin` on all three
-  branches (`main` = `86cc25482`, `bugfix` = `489b228b6`, `release` =
-  `2432b9057`), the checkout on `main` and CLEAN, and `gh issue list -R
-  foundry-9/quilltap-server --label bug --state all` returns NO issues yet
-  (no post-catalogue bug to converge). Every §1 fact below stands unchanged.
+- **Checked:** 2026-10-27 ~15:10 CDT, by `/driftcheck` run as `/setupphase`
+  started on main (`f10f6ac4c`) — the §2 probe FAILED on ONE new `main`
+  commit past the recorded `86cc25482` (the first probe also caught the
+  checkout mid-commit, its tree staged-dirty; the re-probe seconds later was
+  CLEAN). Fetched first; local equals `origin` on all three branches
+  (`main` = `b09ff5c86`, `bugfix` = `489b228b6`, `release` = `2432b9057`);
+  `gh issue list -R foundry-9/quilltap-server --label bug --state all`
+  returns NO issues. The one commit was classified directly from its hunks.
+  - **Earlier the same day (14:33):** `/driftcheck` on main (`dd3b89e2c`) —
+    NOTHING NEW at `86cc25482`.
   - **Earlier the same day:** 2026-10-27 (afternoon), by `/driftcheck` run on
     main right after the `322a5488e` round's unification (`a87b3b4b1`) — the §2 probe
     FAILED on 5 new `main` commits past the recorded `85c002822`. Fetched
@@ -57,9 +61,9 @@ probe verifies against._
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `86cc25482`** ("Fix: legible dialogue in user
-  messages; Rains user text; Great Estate sidebar", 2026-10-27 10:16,
-  `4.11.0-dev.97`) — **FIFTY-ONE commits past the baseline**, ALL
+- **v4 `main` HEAD at check: `b09ff5c86`** ("Docs: feature-spec cleanup;
+  split composer # references into its own spec", 2026-10-27 14:54,
+  `4.11.0-dev.98`) — **FIFTY-TWO commits past the baseline**, ALL
   UNPROCESSED in §3, two merges among them (`5e18ede6a`, `744596158`):
   - **The 32 of 2026-10-26** (`6fd2d5ffb` … `a0905454b`):
     - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
@@ -136,7 +140,18 @@ probe verifies against._
       new prop beside, not on, the round's raise-hand / stop) and
       `cce44e098`'s one `help/pascals-workbench.md` sentence (the
       hidden-field hand — rides UNPORTED intervention `839575d89`).
-  - **No CONVERGENCE** in the 51: bugs 258–269 were all found by v4 itself;
+  - **The 1 of 2026-10-27 late afternoon:** `b09ff5c86` (NO-PORT? —
+    feature-spec docs only: three proposals DELETED, `composer-typeahead.md`
+    and `svar-bridge-spike-findings.md` moved to `complete/`, a NEW
+    `composer-document-references.md`, ROADMAP; the one source hunk is a
+    doc-path COMMENT in `components/chat/lexical/typeahead/types.ts`; the
+    `dev.98` stamp). Its only v5 consequence is the `docs/v4/` mirror —
+    SEVEN mirrored paths move or vanish (`docs/v4/developer/features/
+    {ROADMAP,composer-typeahead,comfy_ui_local_image,usage-tracking,
+    roleplay-block-narration,svar-bridge-spike-findings}.md` +
+    `complete/{composer-emoji,nanogpt-lora}.md`), for the catch-up's
+    help/docs re-vendor lane.
+  - **No CONVERGENCE** in the 52: bugs 258–269 were all found by v4 itself;
     v5 status `Owed` (269: `Not assessed`) in every row.
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
     `0276d10d9`, `a8214b253`, `bdd09b75b`; and `6588972d5`'s "nothing new is
@@ -145,10 +160,10 @@ probe verifies against._
   branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
   BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `86cc25482`.
-  HEAD is fifty-one commits past the baseline, so it poisons a regen by
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `b09ff5c86`.
+  HEAD is fifty-two commits past the baseline, so it poisons a regen by
   DRIFT.
-- **Verdict: DRIFT PENDING — 51 commits (§3), all UNPROCESSED.**
+- **Verdict: DRIFT PENDING — 52 commits (§3), all UNPROCESSED.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -415,6 +430,7 @@ passes the commit.
 | `cce44e098` | 2026-10-27 | Fix: legibility pass over the qt-* surfaces added since 4.9 | **PORT (SPA CSS + bundled theme packs) + riders on UNPORTED surfaces; NO server, NO behaviour** (classified 2026-10-27 from the hunks; 27 files +165 / −51; `dev.95`; parent `2b2b190b6`). Core `qt-components`: `_chat.css` — `.qt-chat-regenerating-plate-text` takes the bubble's ink (`--qt-chat-regenerating-plate-fg` → `--qt-chat-assistant-fg`), `.qt-danger-badge` / `-muted` and `.qt-concierge-mark` read `--qt-alert-error-fg` (the Concierge badge); `_variables.css` light `--qt-response-status-streaming-fg` 38% → 29% lightness; `_intervention.css` (note ink → `--qt-alert-warning-fg`; the hidden-field hand struck through instead of `opacity: 0.5`) and `_storyteller.css` — both UNPORTED features (`839575d89`, `b15fe9404`). Themes: art-deco, earl-grey, great-estate (`tokens.json` too), madmans-box (diagram pane — UNPORTED `6588972d5`), old-school, rains (`tokens.json` too) — `styles.css` + `theme.json` version bumps. `theme-storybook` 1.0.87 mirror (NO-PORT — v5 has none). Help: one `pascals-workbench.md` sentence (the struck-through hand — rides the UNPORTED intervention). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`:164` the plate, `:3101` / `:3110` / `:3120` the badge + mark), `_variables.css:389`, and `apps/web/public/themes/*` (vendored at the pin's versions, P4.5 onward); the vendored `help/pascals-workbench.md` (P4.D339) gets the sentence only with intervention. | UNPROCESSED |
 | `dd200c695` | 2026-10-27 | Docs: move bug filing to GitHub Issues; freeze catalogue at Bug 269 | **NO-PORT? (docs / infra) — BUT a PROCESS change for this port** (classified 2026-10-27 from the hunks; 5 files +140 / −38: NEW `.github/ISSUE_TEMPLATE/bug.yml` (Severity, Who it bites, Provenance Original/Pinned/Faithful/Inert, How found, v5 status, Symptom, Root cause, Why it survived, Fix site, How to verify), v4 `CLAUDE.md` "Filing bugs", `docs/developer/bugs.md` FROZEN header + "How these are filed" rewrite, `.claude/commands/update-documentation.md`, CHANGELOG; no stamp; parent `cce44e098`). v4's catalogue takes no entries past Bug 269; new bugs are GitHub issues cited `#N` and closed by `Fixes #N`. **v5 intersection:** no code. The CONVERGENCE check (§4 step 5) must now also read `gh issue list -R foundry-9/quilltap-server --label bug --state all`; a v4 bug this port files (as the dogfood passes have — bugs 57 … 185) is now a GitHub issue via the Bug form, outward-facing, so confirm with the human first; v5 code comments citing a future v4 bug use `#N`. `docs/v4/developer/bugs.md` mirror re-vendors at the catch-up. | UNPROCESSED |
 | `86cc25482` | 2026-10-27 | Fix: legible dialogue in user messages; Rains user text; Great Estate sidebar | **PORT (SPA CSS + two bundled theme packs); NO server, NO behaviour** (classified 2026-10-27 from the hunks; 12 files +113 / −9; `dev.97`; parent `dd200c695`). `_chat.css` NEW rule `.qt-chat-message-user .qt-chat-message-content .qt-chat-dialogue { --qt-rp-fg: var(--qt-rp-user-dialogue-color, var(--qt-chat-user-fg)) }` (a NEW theme hook `--qt-rp-user-dialogue-color`); `themes/bundled/rains/styles.css` `--qt-chat-user-fg` `hsl(40 6% 98%)` → `hsl(var(--text-000))`; `great-estate/styles.css` +31 (light-mode left-sidebar icons / labels in cream); both `theme.json` version bumps; `theme-storybook` 1.0.88 (+55, the dialogue / narration / monologue / OOC chip family — NO-PORT). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`.qt-chat-dialogue` at `:1948`) and `apps/web/public/themes/{rains,great-estate}` — one SPA small with `cce44e098`. | UNPROCESSED |
+| `b09ff5c86` | 2026-10-27 | Docs: feature-spec cleanup; split composer # references into its own spec | **NO-PORT? (docs only)** (classified 2026-10-27 from the hunks; 19 files +149 / −830; `dev.98`; parent `86cc25482`). DELETES `docs/developer/features/{comfy_ui_local_image,roleplay-block-narration,usage-tracking}.md`; MOVES `composer-typeahead.md` (its Phase 3 cut out) and `svar-bridge-spike-findings.md` to `complete/`; NEW `composer-document-references.md` (the unbuilt composer `#` references — a proposal, nothing shipped); edits ROADMAP, `complete/{capabilities-report-update,composer-emoji,composer-slash-commands,nanogpt-lora}.md`, `svar-file-manager-implementation-plan.md`, README, `.claude/commands/update-documentation.md`, CHANGELOG. The ONE source hunk is a doc-path comment in `components/chat/lexical/typeahead/types.ts`. **v5 intersection:** no code; the `docs/v4/developer/features/` mirror (P4.D339's 502) — six mirrored paths deleted / moved and two `complete/` pages edited; ride the catch-up's help/docs re-vendor. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

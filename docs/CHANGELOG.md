@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): drift check — 1 new v4 commit (`b09ff5c86` feature-spec docs cleanup; 52 past the `322a5488e` baseline)
+
+_Docs-only change._
+
+Recorded v4 `b09ff5c86` in the drift ledger as a NO-PORT? candidate: a feature-spec docs cleanup with one doc-path comment hunk. Its only v5 consequence is the `docs/v4/developer/features/` mirror, which re-vendors with the catch-up. The regen rule stays PIN REQUIRED at `322a5488e`.
+
 #### 2026-10-27 — docs: v4 bugs found during the port are filed as GitHub issues
 
 _Docs-only change._
