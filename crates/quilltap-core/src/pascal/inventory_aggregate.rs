@@ -328,7 +328,7 @@ pub fn inventory_aggregate_holds<E>(
         }
     };
     let mut sheet = Map::new();
-    if let Some(value) = aggregate_value(&parsed, &ctx.scope_objects(parsed.scope)) {
+    if let Some(value) = aggregate_value(&parsed, ctx.scope_objects(parsed.scope)) {
         sheet.insert(key.to_string(), value.to_value());
     }
     metadata_comparator_holds(comparator, key, &sheet, resolve_operand, on_decline)
@@ -363,7 +363,7 @@ pub fn describe_aggregate_value(
     let ctx = ctx?;
     let parsed = parse_aggregate_key(key).ok()?;
     Some(
-        match aggregate_value(&parsed, &ctx.scope_objects(parsed.scope)) {
+        match aggregate_value(&parsed, ctx.scope_objects(parsed.scope)) {
             None => DescribedAggregate::Absent,
             Some(AggregateValue::List(entries)) => DescribedAggregate::ListOf(entries.len()),
             Some(AggregateValue::Number(n)) => DescribedAggregate::Number(n),
