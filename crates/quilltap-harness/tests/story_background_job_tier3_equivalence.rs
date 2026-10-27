@@ -120,6 +120,10 @@ struct ChatSpec {
     /// P4.D228 (E.8): a planted refusal ledger count on the chat.
     #[serde(default, rename = "ledgerPlant")]
     ledger_plant: Option<i64>,
+    /// [4fbdad186] P4.D326: an object the chat's character carries, planted
+    /// per case ([`common::plant_carried_inventory`]).
+    #[serde(default)]
+    carry: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -816,6 +820,15 @@ fn story_background_job_matches_oracle() {
         }
         if let Some(count) = case.ledger_plant {
             plant_ledger(&main_work, &spec.test_pepper_base64, &case.id, count);
+        }
+        if let Some(carry) = &case.carry {
+            common::plant_carried_inventory(
+                &main_work,
+                &mount_work,
+                &spec.test_pepper_base64,
+                &case.id,
+                carry,
+            );
         }
 
         let db = Db::open(

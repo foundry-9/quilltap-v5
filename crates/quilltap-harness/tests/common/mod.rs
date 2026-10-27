@@ -596,3 +596,55 @@ pub fn pinned_capture_lines(lines: &[String], target: &str, pinned: &[&str]) -> 
         .cloned()
         .collect()
 }
+
+/// [4fbdad186] P4.D326 — plant what a character CARRIES on a per-case fixture
+/// copy, the twin of the oracles' `plantCarriedInventory`: the Inventory
+/// columns (C1's `test_support::ensure_inventory_columns_on`), ONE object file
+/// in the character's vault through the REAL `write_database_document` (v4's
+/// `writeDatabaseDocument`, byte-identical content), and the chat's
+/// `equippedInventory` cell. `carry` is the corpus object `{ characterId,
+/// fileName, content, equippedInventory }`; the committed pairs are never
+/// widened (the cell is planted per case).
+pub fn plant_carried_inventory(
+    main_work: &Path,
+    mount_work: &Path,
+    pepper: &str,
+    chat_id: &str,
+    carry: &Value,
+) {
+    let field = |k: &str| {
+        carry
+            .get(k)
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| panic!("carry.{k} missing"))
+            .to_string()
+    };
+    let character_id = field("characterId");
+    let main =
+        Writer::open_writable(main_work, pepper).expect("open the main copy for the carry plant");
+    quilltap_core::test_support::ensure_inventory_columns_on(main.connection());
+    let vault: String = main
+        .connection()
+        .query_row(
+            "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+            [&character_id],
+            |r| r.get(0),
+        )
+        .expect("read the carrying character's vault");
+    main.connection()
+        .execute(
+            "UPDATE chats SET equippedInventory = ?1 WHERE id = ?2",
+            rusqlite::params![field("equippedInventory"), chat_id],
+        )
+        .expect("plant chats.equippedInventory");
+    drop(main);
+    let mount =
+        Writer::open_writable(mount_work, pepper).expect("open the mount copy for the carry plant");
+    quilltap_core::db::database_store::write_database_document(
+        mount.connection(),
+        &vault,
+        &format!("Inventory/{}", field("fileName")),
+        &field("content"),
+    )
+    .unwrap_or_else(|e| panic!("plant the carried object's file: {e}"));
+}

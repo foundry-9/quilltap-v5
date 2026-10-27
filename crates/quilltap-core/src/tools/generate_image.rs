@@ -851,15 +851,17 @@ fn load_and_validate_profile<A: ApiKeyResolver>(
 // ===========================================================================
 
 /// One resolved placeholder (v4 `PlaceholderInfo`, the subset the handler uses).
+/// Public (with [`build_expansion_context`]) so the tier-1 family can drive the
+/// expansion context bare, as v4's own test drives `buildExpansionContext`.
 #[derive(Clone, Debug, Default)]
-struct ResolvedPlaceholder {
-    placeholder: String,
-    name: String,
-    entity_id: Option<String>,
+pub struct ResolvedPlaceholder {
+    pub placeholder: String,
+    pub name: String,
+    pub entity_id: Option<String>,
     /// The character's `physicalDescription` (a single description, or none).
-    physical_description: Option<Value>,
+    pub physical_description: Option<Value>,
     /// The character's `pronouns` object (for the gender hint).
-    pronouns: Option<Value>,
+    pub pronouns: Option<Value>,
 }
 
 /// v4 `resolvePlaceholders`. Reads the chat + characters (both connections for the
@@ -1064,7 +1066,7 @@ fn desc_tier(desc: Option<&Value>, key: &str) -> Option<String> {
 
 /// v4 `buildExpansionContext`: per-placeholder detail (resolved appearance wins
 /// over raw description tiers).
-fn build_expansion_context(
+pub fn build_expansion_context(
     original_prompt: &str,
     resolved: &[ResolvedPlaceholder],
     provider: &str,
@@ -1090,10 +1092,9 @@ fn build_expansion_context(
             });
 
             if let Some(app) = resolved_app {
-                let clothing = if app.clothing_description.is_empty() {
-                    Vec::new()
-                } else {
-                    vec![ExpansionClothing {
+                let mut clothing = Vec::new();
+                if !app.clothing_description.is_empty() {
+                    clothing.push(ExpansionClothing {
                         name: if app.clothing_source == "narrative" {
                             "Current outfit (from story)".to_string()
                         } else {
@@ -1101,8 +1102,22 @@ fn build_expansion_context(
                         },
                         usage_context: None,
                         description: Some(app.clothing_description.clone()),
-                    }]
-                };
+                    });
+                }
+                // What the character carries (the Inventory), beside the
+                // outfit (v4 `4fbdad186`): a clothing-less carrying character
+                // has a ONE-entry list.
+                if let Some(carrying) = app
+                    .carrying_description
+                    .as_deref()
+                    .filter(|c| !c.is_empty())
+                {
+                    clothing.push(ExpansionClothing {
+                        name: "Carried".to_string(),
+                        usage_context: None,
+                        description: Some(carrying.to_string()),
+                    });
+                }
                 ExpansionPlaceholder {
                     placeholder: ph.placeholder.clone(),
                     name: ph.name.clone(),
@@ -2017,6 +2032,7 @@ where
 
         if let Some(selection) = &appearance_selection {
             let resolution = resolve_character_appearances(
+                db,
                 deps.executor,
                 deps.completion,
                 &db_ctx.appearance_inputs,

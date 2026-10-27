@@ -20,6 +20,7 @@ pub mod equip;
 pub mod equipped_set;
 pub mod errors;
 pub mod folders;
+pub mod image_description;
 pub mod item_folders;
 pub mod item_image_generation;
 pub mod item_images;

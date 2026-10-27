@@ -62,6 +62,8 @@
  *   TMPO=/tmp/qt-story-oracle; rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/fixtures"
  *   cp $WT/harness/oracle/cases/story-background-job.test.ts "$TMPO/cases/"
  *   cp $WT/harness/oracle/fixtures/story-background-job.json "$TMPO/fixtures/"
+ *   mkdir -p "$TMPO/lib"
+ *   cp $WT/harness/oracle/lib/carried-inventory.ts $WT/harness/oracle/lib/v4-migrations.ts "$TMPO/lib/"
  *   QT_FIXTURE_STORY_MAIN=/tmp/qt-story-main.db QT_FIXTURE_STORY_MOUNT=/tmp/qt-story-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-story-background-job.ndjson \
  *     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -115,6 +117,8 @@ interface ChatSpec {
   forceUncensored?: boolean;
   /** P4.D228 (E.8): a planted refusal ledger count on the chat. */
   ledgerPlant?: number;
+  /** [4fbdad186] P4.D326: an object the payload character carries (`../lib/carried-inventory`). */
+  carry?: import('../lib/carried-inventory').CarrySpec;
   /**
    * [97b25fc53] P4.D239: the conceal-mode sanitize reply — a rewrite
    * (`appearanceText`) or the input text back (`echo`), `undressed` spliced in.
@@ -437,6 +441,14 @@ async function main(): Promise<void> {
         'UPDATE chats SET "moderationRefusalCount" = ?, "lastModerationRefusalAt" = ? WHERE id = ?',
         [chat.ledgerPlant, '2020-01-01T00:00:00.000Z', chat.id],
       );
+    }
+
+    // [4fbdad186] P4.D326: what a character CARRIES, planted on this copy
+    // only (v4's Inventory columns, ONE object file through the REAL
+    // `writeDatabaseDocument`, the chat's `equippedInventory` cell).
+    if (chat.carry) {
+      const { plantCarriedInventory } = await import('../lib/carried-inventory');
+      await plantCarriedInventory(chat.id, chat.carry);
     }
 
     const frozen = spec.frozenNowMs;

@@ -517,6 +517,7 @@ where
     let mut appearance_result = if !appearance_inputs.is_empty() {
         Some(
             resolve_character_appearances(
+                db,
                 deps.executor,
                 deps.completion,
                 &appearance_inputs,
@@ -560,6 +561,7 @@ where
     if should_retry_appearance {
         if let Some(uncensored) = &uncensored_selection {
             let retry = resolve_character_appearances(
+                db,
                 deps.executor,
                 deps.completion,
                 &appearance_inputs,

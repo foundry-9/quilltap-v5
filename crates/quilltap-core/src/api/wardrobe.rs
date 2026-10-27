@@ -783,6 +783,8 @@ async fn run_wardrobe_preview_avatar(
                 equipped_slots: Some(crate::wardrobe::Slots::from_value(Some(&slots_for_prompt))),
                 project_mount_point_ids: Vec::new(),
                 character_aesthetic: character_aesthetic.clone(),
+                // v4's preview-avatar route passes no `carrying` (measured).
+                carrying: None,
             },
         )
     })

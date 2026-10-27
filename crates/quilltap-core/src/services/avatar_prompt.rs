@@ -39,6 +39,12 @@ pub struct AvatarPromptOptions {
     /// preamble (avatars have no LLM rewrite step). The Ariel Clause does NOT
     /// apply to avatars.
     pub character_aesthetic: Option<String>,
+    /// What the character carries in the chat, as rendering hints ("carrying a
+    /// longsword with a jewelled pommel") — the Inventory's phrase, built by
+    /// the caller (`inventory::image_description::load_carrying_phrase`).
+    /// Joins the portrait beside the outfit; omitted when `None` (v4
+    /// `4fbdad186`).
+    pub carrying: Option<String>,
 }
 
 /// v4 `BuildPromptResult`.
@@ -168,6 +174,19 @@ pub fn build_character_avatar_prompt(
         leaf_counts.hair = resolved.hair.len();
     }
 
+    // The carrying sentence: the trimmed phrase with its first UTF-16 unit
+    // upper-cased, a trailing `.!?` run stripped from the rest, then one `.`
+    // (v4's `charAt(0).toUpperCase()` + `slice(1).replace(/[.!?]+$/, '')`).
+    // Carrying alone makes no appearance.
+    let carrying_text = match options
+        .carrying
+        .as_deref()
+        .map(crate::jsstr::js_trim)
+        .filter(|c| !c.is_empty())
+    {
+        Some(carrying) => carrying_sentence(carrying),
+        None => String::new(),
+    };
     let has_appearance = !physical_text.is_empty() || !outfit_text.is_empty();
     let mut prompt = String::new();
     if has_appearance {
@@ -191,10 +210,18 @@ pub fn build_character_avatar_prompt(
         } else {
             format!("\n\n{outfit_text}\n\n")
         };
-        prompt = if phys_block.is_empty() {
-            format!("{intro}{outfit_block}{outro}")
+        // What they carry follows the outfit, as its own sentence.
+        let carrying_block = if carrying_text.is_empty() {
+            String::new()
+        } else if outfit_text.is_empty() {
+            format!("{carrying_text} ")
         } else {
-            format!("{intro} {phys_block}{outfit_block}{outro}")
+            format!("{carrying_text}\n\n")
+        };
+        prompt = if phys_block.is_empty() {
+            format!("{intro}{outfit_block}{carrying_block}{outro}")
+        } else {
+            format!("{intro} {phys_block}{outfit_block}{carrying_block}{outro}")
         };
 
         // Prepend the Aurora character aesthetic as a capped art-direction
@@ -219,6 +246,23 @@ pub fn build_character_avatar_prompt(
         has_appearance,
         leaf_counts,
     })
+}
+
+/// v4's `${trim.charAt(0).toUpperCase()}${trim.slice(1).replace(/[.!?]+$/, '')}.`
+/// over an already-trimmed, non-empty phrase: the first UTF-16 unit
+/// upper-cased (an astral first character is a lone surrogate to JS and stays
+/// as it is), the trailing punctuation run stripped from the REST only, one
+/// `.` appended — so `"."` alone becomes `".."`, v4's bytes.
+fn carrying_sentence(carrying: &str) -> String {
+    let mut chars = carrying.chars();
+    let first = chars.next().expect("a non-empty phrase");
+    let rest = chars.as_str().trim_end_matches(['.', '!', '?']);
+    let head: String = if first.len_utf16() > 1 {
+        first.to_string()
+    } else {
+        first.to_uppercase().collect()
+    };
+    format!("{head}{rest}.")
 }
 
 /// How much of the figure a picture shows (v4 `FigureFraming`,

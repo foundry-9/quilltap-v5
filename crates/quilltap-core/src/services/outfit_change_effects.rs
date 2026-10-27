@@ -120,13 +120,53 @@ async fn settle_history(
     }
 }
 
-/// Refresh the character's per-chat avatar if the chat auto-updates avatars.
-/// Never fails (v4 `refreshAvatarForOutfit`).
+/// Whose per-chat avatar to refresh (v4's `Pick<OutfitChangeContext, 'userId'
+/// | 'chatId' | 'characterId'>`).
+#[derive(Clone, Copy, Debug)]
+pub struct AvatarRefreshWho<'a> {
+    pub user_id: &'a str,
+    pub chat_id: &'a str,
+    pub character_id: &'a str,
+}
+
+/// Refresh the character's per-chat avatar if the chat auto-updates avatars:
+/// the character's appearance changed — their outfit, or what they carry (the
+/// Inventory calls this too). Never fails (v4 `refreshAvatarForAppearance`,
+/// `4fbdad186`).
 ///
 /// `source_context` is v4's `sourceContext`, handed on as the trigger's
 /// `callerContext` — read only as the `context` field of its WARN lines, never
 /// written into the job. It is `&'static str` because every v4 call site
-/// passes a literal and [`AvatarGenerationParams::caller_context`] is typed so.
+/// passes a literal (`'inventory-change'` included) and
+/// [`AvatarGenerationParams::caller_context`] is typed so.
+pub async fn refresh_avatar_for_appearance(
+    db: &Db,
+    who: &AvatarRefreshWho<'_>,
+    source_context: &'static str,
+) {
+    trigger_avatar_generation_if_enabled(db, &avatar_refresh_params(who, source_context)).await;
+}
+
+/// The trigger's parameters for a refresh — ONE body under both names.
+fn avatar_refresh_params(
+    who: &AvatarRefreshWho<'_>,
+    source_context: &'static str,
+) -> AvatarGenerationParams {
+    AvatarGenerationParams {
+        user_id: who.user_id.to_string(),
+        chat_id: who.chat_id.to_string(),
+        character_id: who.character_id.to_string(),
+        caller_context: source_context,
+        image_profile_id_override: None,
+        equipped_slots_override: None,
+        force: false,
+    }
+}
+
+/// The outfit's name for [`refresh_avatar_for_appearance`] (v4 `export const
+/// refreshAvatarForOutfit = refreshAvatarForAppearance` — one function, two
+/// names), kept with its old positional signature so every outfit caller
+/// compiles unchanged.
 pub async fn refresh_avatar_for_outfit(
     db: &Db,
     user_id: &str,
@@ -134,17 +174,14 @@ pub async fn refresh_avatar_for_outfit(
     character_id: &str,
     source_context: &'static str,
 ) {
-    trigger_avatar_generation_if_enabled(
+    refresh_avatar_for_appearance(
         db,
-        &AvatarGenerationParams {
-            user_id: user_id.to_string(),
-            chat_id: chat_id.to_string(),
-            character_id: character_id.to_string(),
-            caller_context: source_context,
-            image_profile_id_override: None,
-            equipped_slots_override: None,
-            force: false,
+        &AvatarRefreshWho {
+            user_id,
+            chat_id,
+            character_id,
         },
+        source_context,
     )
     .await;
 }
@@ -420,6 +457,31 @@ mod tests {
             .iter()
             .position(|l| l.contains(message))
             .unwrap_or_else(|| panic!("{message} not logged: {lines:#?}"))
+    }
+
+    /// [4fbdad186] `refresh_avatar_for_appearance` and its outfit alias build
+    /// ONE set of trigger parameters (v4's `refreshAvatarForOutfit =
+    /// refreshAvatarForAppearance` — one function, two names).
+    #[test]
+    fn refresh_avatar_for_appearance_builds_the_outfit_alias_params() {
+        let who = AvatarRefreshWho {
+            user_id: "u",
+            chat_id: CHAT,
+            character_id: A,
+        };
+        let params = avatar_refresh_params(&who, "inventory-change");
+        assert_eq!(
+            (
+                params.user_id.as_str(),
+                params.chat_id.as_str(),
+                params.character_id.as_str(),
+                params.caller_context,
+                params.image_profile_id_override.is_none(),
+                params.equipped_slots_override.is_none(),
+                params.force,
+            ),
+            ("u", CHAT, A, "inventory-change", true, true, false)
+        );
     }
 
     #[test]

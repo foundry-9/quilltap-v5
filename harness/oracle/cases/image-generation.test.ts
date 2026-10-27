@@ -71,6 +71,7 @@
  *   cp $WT/harness/oracle/fixtures/image-generation.json "$TMPO/fixtures/"
  *   mkdir -p "$TMPO/lib"
  *   cp $WT/harness/oracle/lib/blob-image-facts.ts "$TMPO/lib/"
+ *   cp $WT/harness/oracle/lib/carried-inventory.ts $WT/harness/oracle/lib/v4-migrations.ts "$TMPO/lib/"
  *   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp "$TMPO/fixtures/"
  *   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-image-generation.ndjson \
@@ -124,6 +125,8 @@ interface ChatSpec {
   conciergeSettings?: Record<string, unknown>;
   /** P4.104: the image profile this case generates through (default `spec.profileId`). */
   profileId?: string;
+  /** [4fbdad186] P4.D326: an object the chat's character carries (`../lib/carried-inventory`). */
+  carry?: import('../lib/carried-inventory').CarrySpec;
   /**
    * P4.104: a seed image under `fixtures/` the provider answers with, and the
    * switch that makes this case's transcode + blob normalization REAL.
@@ -438,6 +441,14 @@ async function main(): Promise<void> {
         JSON.stringify(chat.conciergeSettings),
         spec.userId,
       ]);
+    }
+
+    // [4fbdad186] P4.D326: what a character CARRIES, planted on this copy
+    // only (v4's Inventory columns, ONE object file through the REAL
+    // `writeDatabaseDocument`, the chat's `equippedInventory` cell).
+    if (chat.carry) {
+      const { plantCarriedInventory } = await import('../lib/carried-inventory');
+      await plantCarriedInventory(chat.id, chat.carry);
     }
 
     // Freeze Date.now() so the provider filename `generated_<ts>.<ext>` is pinned.

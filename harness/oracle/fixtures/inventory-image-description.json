@@ -1,0 +1,750 @@
+{
+  "$comment": [
+    "P4.D326 item 16 — the tier-1 corpus for `inventory_image_description_equivalence`.",
+    "Drives v4's REAL `renderCarryingPhrase` (lib/inventory/image-description.ts), `sceneDescriptionParts`",
+    "(lib/image-gen/appearance-resolution.ts), `buildExpansionContext` (lib/image-gen/prompt-expansion.ts) and",
+    "`buildCharacterAvatarPrompt` with NO equippedSlots (lib/image-gen/avatar-prompt.ts — reads no repository then),",
+    "at `322a5488e` (`4fbdad186` + the `d88c1ce39` seed test). The `phrases` mirror image-description.test.ts's three",
+    "shapes plus the edges: absent / null / '' / whitespace descriptions, a kit, the trailing `.!?` RUN strip (a",
+    "description that is ONLY punctuation is an EMPTY element — v4's bytes), base-sensitivity sorting (accents and case",
+    "fold, ties keep input order), a title over a name, 40 items. `scene` mirrors appearance-carrying.test.ts's strings",
+    "plus the one-UTF-16-unit capitalisation edges (ß → SS, an astral first character unchanged, ǆ → Ǆ, a leading",
+    "combining mark unchanged), `expansion` the `Carried` entry, `avatar` the portrait's carrying sentence on the no-outfit branch (the",
+    "with-outfit spacing needs equippedSlots — pinned by avatar_job_tier3's carried row)."
+  ],
+  "phrases": [
+    {
+      "label": "null_empty_whitespace_absent",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000001",
+          "name": "a",
+          "title": null,
+          "kind": "item",
+          "imageDescription": null
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000002",
+          "name": "b",
+          "title": null,
+          "kind": "item"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000003",
+          "name": "c",
+          "title": null,
+          "kind": "item",
+          "imageDescription": ""
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000004",
+          "name": "d",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "   \n\t "
+        }
+      ]
+    },
+    {
+      "label": "seed_two_depicted",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000005",
+          "name": "ring",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "  a brass signet ring. "
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000006",
+          "name": "pebble",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "  "
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000007",
+          "name": "sword",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a longsword with a jewelled pommel"
+        }
+      ]
+    },
+    {
+      "label": "seed_kit_never",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000008",
+          "name": "kit",
+          "title": null,
+          "kind": "kit",
+          "imageDescription": "a burglar's kit"
+        }
+      ]
+    },
+    {
+      "label": "kit_beside_a_member",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000009",
+          "name": "kit",
+          "title": null,
+          "kind": "kit",
+          "imageDescription": "a satchel"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000010",
+          "name": "quill",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a raven quill"
+        }
+      ]
+    },
+    {
+      "label": "only_punctuation_alone",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000011",
+          "name": "bang",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "!!!"
+        }
+      ]
+    },
+    {
+      "label": "only_punctuation_beside_another",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000012",
+          "name": "aaa",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "!!!"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000013",
+          "name": "ring",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a brass ring"
+        }
+      ]
+    },
+    {
+      "label": "trailing_run_stripped",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000014",
+          "name": "ring",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a ring?!."
+        }
+      ]
+    },
+    {
+      "label": "interior_dots_kept",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000015",
+          "name": "scroll",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a scroll... sealed.\n"
+        }
+      ]
+    },
+    {
+      "label": "base_ties_keep_input_order",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000016",
+          "name": "éclair",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a pastry box"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000017",
+          "name": "Eclair",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a lacquered tin"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000018",
+          "name": "eclair",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a paper bag"
+        }
+      ]
+    },
+    {
+      "label": "accent_folds_under_base",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000019",
+          "name": "nutmeg",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a nutmeg grater"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000020",
+          "name": "ñandu",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a feathered fan"
+        }
+      ]
+    },
+    {
+      "label": "case_folds_under_base",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000021",
+          "name": "Zebra",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a striped scarf"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000022",
+          "name": "apple",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a red apple"
+        }
+      ]
+    },
+    {
+      "label": "title_beats_name",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000023",
+          "name": "zz-charm",
+          "title": "Aardvark charm",
+          "kind": "item",
+          "imageDescription": "a bone charm"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000024",
+          "name": "bell",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "a brass bell"
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000025",
+          "name": "cord",
+          "title": "   ",
+          "kind": "item",
+          "imageDescription": "a silk cord"
+        }
+      ]
+    },
+    {
+      "label": "forty_items",
+      "items": [
+        {
+          "id": "e1000000-0000-4000-8000-000000000100",
+          "name": "item-08",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 08."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000101",
+          "name": "item-28",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 28."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000102",
+          "name": "item-24",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 24."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000103",
+          "name": "item-27",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 27."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000104",
+          "name": "item-37",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 37."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000105",
+          "name": "item-35",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 35."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000106",
+          "name": "item-23",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 23."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000107",
+          "name": "item-22",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 22."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000108",
+          "name": "item-13",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 13."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000109",
+          "name": "item-14",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 14."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000110",
+          "name": "item-38",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 38."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000111",
+          "name": "item-12",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 12."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000112",
+          "name": "item-07",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 07."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000113",
+          "name": "item-32",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 32."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000114",
+          "name": "item-21",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 21."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000115",
+          "name": "item-15",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 15."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000116",
+          "name": "item-01",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 01."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000117",
+          "name": "item-17",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 17."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000118",
+          "name": "item-20",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 20."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000119",
+          "name": "item-33",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 33."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000120",
+          "name": "item-09",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 09."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000121",
+          "name": "item-00",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 00."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000122",
+          "name": "item-26",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 26."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000123",
+          "name": "item-34",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 34."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000124",
+          "name": "item-36",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 36."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000125",
+          "name": "item-11",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 11."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000126",
+          "name": "item-03",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 03."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000127",
+          "name": "item-05",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 05."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000128",
+          "name": "item-18",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 18."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000129",
+          "name": "item-31",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 31."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000130",
+          "name": "item-10",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 10."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000131",
+          "name": "item-16",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 16."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000132",
+          "name": "item-39",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 39."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000133",
+          "name": "item-04",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 04."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000134",
+          "name": "item-25",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 25."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000135",
+          "name": "item-29",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 29."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000136",
+          "name": "item-02",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 02."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000137",
+          "name": "item-19",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 19."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000138",
+          "name": "item-30",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 30."
+        },
+        {
+          "id": "e1000000-0000-4000-8000-000000000139",
+          "name": "item-06",
+          "title": null,
+          "kind": "item",
+          "imageDescription": "object number 06."
+        }
+      ]
+    },
+    {
+      "label": "empty_list",
+      "items": []
+    }
+  ],
+  "scene": [
+    {
+      "label": "seed_with_carrying",
+      "physicalDescription": "a tall woman",
+      "clothingDescription": "a green cloak",
+      "carryingDescription": "carrying a longsword with a jewelled pommel",
+      "genderPrefix": "Woman: "
+    },
+    {
+      "label": "seed_without_carrying",
+      "physicalDescription": "a tall woman",
+      "clothingDescription": "a green cloak",
+      "genderPrefix": ""
+    },
+    {
+      "label": "empty_clothing_with_carrying",
+      "physicalDescription": "a lean man",
+      "clothingDescription": "",
+      "carryingDescription": "carrying an oil lantern",
+      "genderPrefix": "Man: "
+    },
+    {
+      "label": "sharp_s_first",
+      "physicalDescription": "p",
+      "clothingDescription": "",
+      "carryingDescription": "ßeta pendant on a chain",
+      "genderPrefix": ""
+    },
+    {
+      "label": "emoji_first",
+      "physicalDescription": "p",
+      "clothingDescription": "a coat",
+      "carryingDescription": "🗡 a dagger at the hip",
+      "genderPrefix": ""
+    },
+    {
+      "label": "dz_digraph_first",
+      "physicalDescription": "p",
+      "clothingDescription": "",
+      "carryingDescription": "ǆ-shaped brooch",
+      "genderPrefix": ""
+    },
+    {
+      "label": "whitespace_only_carrying",
+      "physicalDescription": "p",
+      "clothingDescription": "a coat",
+      "carryingDescription": "   ",
+      "genderPrefix": ""
+    },
+    {
+      "label": "padded_carrying_trimmed",
+      "physicalDescription": "p",
+      "clothingDescription": "a coat",
+      "carryingDescription": "  carrying a lute  ",
+      "genderPrefix": ""
+    },
+    {
+      "label": "combining_mark_first",
+      "physicalDescription": "p",
+      "clothingDescription": "",
+      "carryingDescription": "́accented charm",
+      "genderPrefix": ""
+    }
+  ],
+  "expansion": [
+    {
+      "label": "seed_outfit_and_carried",
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000000c1",
+        "characterName": "Vivienne",
+        "physicalDescription": "a tall woman",
+        "physicalDescriptionName": "Portrait",
+        "clothingDescription": "a green cloak",
+        "clothingSource": "narrative",
+        "carryingDescription": "carrying a longsword with a jewelled pommel",
+        "wasSanitized": false
+      }
+    },
+    {
+      "label": "carried_only",
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000000c1",
+        "characterName": "Vivienne",
+        "physicalDescription": "a tall woman",
+        "physicalDescriptionName": "Portrait",
+        "clothingDescription": "",
+        "clothingSource": "stored",
+        "carryingDescription": "carrying a brass signet ring",
+        "wasSanitized": false
+      }
+    },
+    {
+      "label": "outfit_only",
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000000c1",
+        "characterName": "Vivienne",
+        "physicalDescription": "a tall woman",
+        "physicalDescriptionName": "Portrait",
+        "clothingDescription": "a grey gown",
+        "clothingSource": "stored",
+        "wasSanitized": false
+      }
+    },
+    {
+      "label": "neither",
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000000c1",
+        "characterName": "Vivienne",
+        "physicalDescription": "a tall woman",
+        "physicalDescriptionName": "Portrait",
+        "clothingDescription": "",
+        "clothingSource": "default",
+        "wasSanitized": false
+      }
+    }
+  ],
+  "avatar": [
+    {
+      "label": "seed_with_carrying",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "carrying a longsword with a jewelled pommel"
+    },
+    {
+      "label": "seed_null",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": null
+    },
+    {
+      "label": "punctuation_run_to_one_period",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "  carrying a lamp!?. "
+    },
+    {
+      "label": "only_a_period",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "."
+    },
+    {
+      "label": "sharp_s_first",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "ßeta pendant"
+    },
+    {
+      "label": "emoji_first",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "🗡 a dagger"
+    },
+    {
+      "label": "whitespace_only",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "mediumPrompt": "A tall woman."
+        }
+      },
+      "carrying": "   "
+    },
+    {
+      "label": "carrying_alone_is_no_appearance",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000000c1",
+        "name": "Vivienne"
+      },
+      "carrying": "carrying a lute"
+    }
+  ]
+}

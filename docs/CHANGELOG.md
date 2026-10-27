@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — port(image): what a character carries reaches the pictures (P4.D326, v4 `4fbdad186`)
+
+_Versions: core 0.0.1326._
+
+Ports the Inventory's picture side: one phrase builder, handed to the image pipelines as text.
+
+- New `inventory::image_description`: `render_carrying_phrase` (`carrying <imageDescription, …>` over the non-kit, described objects, base-sensitivity order, a trailing `.!?` run stripped), `describe_equipped_inventory_for_images`, and `load_carrying_phrase` (no read when nothing is carried; `[InventoryImages] Built the carrying phrase` DEBUG).
+- `resolve_character_appearances` takes `db` and adds each character's phrase after the Inventory-free resolution (`resolve_appearances_without_inventory`); a failed two-connection read logs `Could not add carried objects to appearances` and keeps the appearances.
+- The avatar job loads the phrase before building the portrait; `AvatarPromptOptions.carrying` renders it as its own sentence after the outfit (`\n\n` beside an outfit, one space without). The wardrobe preview passes none, as v4 does.
+- The image tool's expansion context gains a `Carried` entry beside the outfit; `build_expansion_context` and `ResolvedPlaceholder` are public for the tier-1 family.
+- `refresh_avatar_for_appearance(db, who, source_context)` with `AvatarRefreshWho`; `refresh_avatar_for_outfit` kept as its alias.
+
+Differentials: new `inventory_image_description_equivalence` (tier 1 — 14 phrase, 9 scene, 4 expansion, 8 avatar rows over v4's real functions); carried rows in `image_generation_tier3` (+2), `story_background_job_tier3` (+2) and `avatar_job_tier3` (+2, with the carrying-phrase DEBUG compared through a process-global capture — the loader runs on the writer thread). A shared `lib/carried-inventory.ts` / `common::plant_carried_inventory` plants the object per case on both sides.
+
 #### 2026-10-26 — port(image): the bug-133 re-ruling and the appearance carry seams (P4.D326, v4 `406dbdd5a` + `4fbdad186`)
 
 _Versions: core 0.0.1325._

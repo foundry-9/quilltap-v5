@@ -275,6 +275,7 @@ where
     let character_for_prompt = character.clone();
     let chat_id_for_prompt = payload.chat_id.clone();
     let character_id_for_prompt = payload.character_id.clone();
+    let chat_for_prompt = chat.clone();
     let prompt_result = common::with_both_conns(db, move |main, mount| {
         // equippedSlots = override ?? getEquippedOutfitForCharacter(chat, char).
         let equipped_slots: Option<Slots> = match &equipped_override {
@@ -294,6 +295,14 @@ where
                 mount,
                 &chat_id_for_prompt,
             );
+        // What the character carries in this chat (the Inventory's image
+        // phrase), beside the outfit. `None` when nothing carried is depicted.
+        let carrying = crate::inventory::image_description::load_carrying_phrase(
+            main,
+            mount,
+            &chat_for_prompt,
+            &character_id_for_prompt,
+        );
         let docs = crate::db::doc_mount_documents::DocMountDocumentsRepository::new(mount);
         build_character_avatar_prompt(
             main,
@@ -304,6 +313,7 @@ where
                 equipped_slots,
                 project_mount_point_ids,
                 character_aesthetic: character_aesthetic.clone(),
+                carrying,
             },
         )
     })

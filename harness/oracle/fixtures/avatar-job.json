@@ -746,6 +746,62 @@
       "conciergeMode": "unmoderated",
       "equipped": {},
       "expectWrite": true
+    },
+    "carried_object_in_the_portrait": {
+      "id": "ca000017-0000-4000-8000-000000000017",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a1000000-0000-4000-8000-000000000002"
+        ],
+        "footwear": [
+          "a1000000-0000-4000-8000-000000000003"
+        ],
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "expectWrite": true,
+      "$comment": "[4fbdad186] P4.D326 item 17: Aurora CARRIES a described object in this chat (planted per case). The job loads the phrase AFTER the aesthetic and BEFORE the prompt, and the portrait ends `…<outfit>\\n\\nCarrying a silver hand mirror.\\n\\nCharacter portrait…` — the with-outfit spacing. v4's `[InventoryImages] Built the carrying phrase` DEBUG (`present: true`) is compared.",
+      "carry": {
+        "characterId": "c0aa0000-0000-4000-8000-000000000001",
+        "fileName": "silver-hand-mirror.json",
+        "content": "{\n  \"id\": \"e2000000-0000-4000-8000-000000000005\",\n  \"kind\": \"item\",\n  \"name\": \"Silver hand mirror\",\n  \"imageDescription\": \"a silver hand mirror\",\n  \"createdAt\": \"2020-01-01T00:00:00.000Z\",\n  \"updatedAt\": \"2020-01-01T00:00:00.000Z\"\n}\n",
+        "equippedInventory": "{\"c0aa0000-0000-4000-8000-000000000001\":[\"e2000000-0000-4000-8000-000000000005\"]}"
+      }
+    },
+    "carried_object_not_depicted": {
+      "id": "ca000018-0000-4000-8000-000000000018",
+      "userId": "aa000000-0000-4000-8000-0000000000aa",
+      "characterId": "c0aa0000-0000-4000-8000-000000000001",
+      "imageProfileId": "e0aa0000-0000-4000-8000-000000000001",
+      "equipped": {
+        "top": [
+          "a1000000-0000-4000-8000-000000000001"
+        ],
+        "bottom": [
+          "a1000000-0000-4000-8000-000000000002"
+        ],
+        "footwear": [
+          "a1000000-0000-4000-8000-000000000003"
+        ],
+        "accessories": [
+          "a1000000-0000-4000-8000-000000000004"
+        ]
+      },
+      "expectWrite": true,
+      "$comment": "[4fbdad186] P4.D326 item 17 — the vacuous-row guard the other way: Aurora carries an object with NO `imageDescription`, so the pool loads and the DEBUG says `present: false`, and the portrait is the uncarried one.",
+      "carry": {
+        "characterId": "c0aa0000-0000-4000-8000-000000000001",
+        "fileName": "pocket-watch.json",
+        "content": "{\n  \"id\": \"e2000000-0000-4000-8000-000000000006\",\n  \"kind\": \"item\",\n  \"name\": \"Pocket watch\",\n  \"createdAt\": \"2020-01-01T00:00:00.000Z\",\n  \"updatedAt\": \"2020-01-01T00:00:00.000Z\"\n}\n",
+        "equippedInventory": "{\"c0aa0000-0000-4000-8000-000000000001\":[\"e2000000-0000-4000-8000-000000000006\"]}"
+      }
     }
   }
 }

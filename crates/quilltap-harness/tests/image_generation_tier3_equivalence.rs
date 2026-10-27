@@ -63,6 +63,7 @@
 //!   cp $WT/harness/oracle/fixtures/image-generation.json  $STAGE/fixtures/
 //!   mkdir -p $STAGE/lib
 //!   cp $WT/harness/oracle/lib/blob-image-facts.ts $STAGE/lib/
+//!   cp $WT/harness/oracle/lib/carried-inventory.ts $WT/harness/oracle/lib/v4-migrations.ts $STAGE/lib/
 //!   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp $STAGE/fixtures/
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_IMGGEN_MAIN=/tmp/qt-imggen-main.db QT_FIXTURE_IMGGEN_MOUNT=/tmp/qt-imggen-mount.db \
@@ -295,6 +296,10 @@ struct ChatSpec {
     /// normalization REAL.
     #[serde(default, rename = "imageSeed")]
     image_seed: Option<String>,
+    /// [4fbdad186] P4.D326: an object the chat's character carries, planted
+    /// per case ([`common::plant_carried_inventory`]).
+    #[serde(default)]
+    carry: Option<Value>,
 }
 
 /// [cc65d6bfc] The per-case `conciergeSettings` patch, mirroring the
@@ -945,6 +950,15 @@ fn image_generation_matches_oracle() {
                 &spec.test_pepper_base64,
                 &spec.user_id,
                 settings,
+            );
+        }
+        if let Some(carry) = &case.carry {
+            common::plant_carried_inventory(
+                &main_work,
+                &mount_work,
+                &spec.test_pepper_base64,
+                &case.id,
+                carry,
             );
         }
 

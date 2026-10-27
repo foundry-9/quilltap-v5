@@ -57,6 +57,7 @@
  *   cp $WT/harness/oracle/fixtures/avatar-job.json "$TMPO/fixtures/"
  *   mkdir -p "$TMPO/lib"
  *   cp $WT/harness/oracle/lib/blob-image-facts.ts "$TMPO/lib/"
+ *   cp $WT/harness/oracle/lib/carried-inventory.ts $WT/harness/oracle/lib/v4-migrations.ts "$TMPO/lib/"
  *   cp $WT/harness/oracle/fixtures/normalize-blob-image/photo-lossless.webp "$TMPO/fixtures/"
  *   QT_FIXTURE_AVATAR_MAIN=/tmp/qt-avatar-main.db QT_FIXTURE_AVATAR_MOUNT=/tmp/qt-avatar-mount.db \
  *   QT_ORACLE_OUT=/tmp/oracle-avatar-job.ndjson \
@@ -126,6 +127,8 @@ interface ChatSpec {
    * switch that makes this case's transcode + blob normalization REAL.
    */
   imageSeed?: string;
+  /** [4fbdad186] P4.D326: an object the chat's character carries (`../lib/carried-inventory`). */
+  carry?: import('../lib/carried-inventory').CarrySpec;
 }
 interface Spec {
   testPepperBase64: string;
@@ -353,6 +356,34 @@ async function main(): Promise<void> {
       return { id, userId, label: 'canned', provider: 'OPENAI', key_value: key, isActive: true, createdAt: '2020-01-01T00:00:00.000Z', updatedAt: '2020-01-01T00:00:00.000Z' };
     };
 
+    // [4fbdad186] P4.D326: what a character CARRIES, planted on this copy
+    // only (v4's Inventory columns, ONE object file through the REAL
+    // `writeDatabaseDocument`, the chat's `equippedInventory` cell).
+    if (chat.carry) {
+      const { plantCarriedInventory } = await import('../lib/carried-inventory');
+      await plantCarriedInventory(chat.id, chat.carry);
+    }
+
+    // [4fbdad186] P4.D326: v4's REAL `[InventoryImages] Built the carrying
+    // phrase` DEBUG calls, recorded by a delegating spy (every chat; an
+    // uncarried chat's loader short-circuits before the line — the silence leg).
+    const carryingLogs: unknown[] = [];
+    {
+      const loggerModule = (await import('@/lib/logger')) as {
+        logger: Record<string, (...a: unknown[]) => unknown>;
+      };
+      const originalDebug = loggerModule.logger.debug;
+      jest.spyOn(loggerModule.logger as never, 'debug' as never).mockImplementation(((
+        message: string,
+        context?: unknown,
+      ) => {
+        if (message === '[InventoryImages] Built the carrying phrase') {
+          carryingLogs.push(JSON.parse(JSON.stringify(context ?? null)));
+        }
+        return originalDebug.call(loggerModule.logger, message, context);
+      }) as never);
+    }
+
     const frozen = spec.frozenNowMs;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     global.Date = class extends RealDate {
@@ -530,6 +561,7 @@ async function main(): Promise<void> {
       record.characterAvatars = chatRows.length > 0 ? chatRows[0].characterAvatars : null;
       const charRows = (await rawQuery(`SELECT avatarOverrides FROM characters WHERE id = ?`, [chat.characterId])) as Array<{ avatarOverrides: string | null }>;
       record.avatarOverrides = charRows.length > 0 ? charRows[0].avatarOverrides : null;
+      record.carryingLogs = carryingLogs;
 
       // W4.10b: the IMAGE_GENERATION rows this case wrote (fire-and-forget →
       // settle first; a skipped case makes no model call → empty).

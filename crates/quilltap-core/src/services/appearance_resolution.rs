@@ -294,10 +294,112 @@ fn map_resolution_results(
         .collect()
 }
 
-/// v4 `resolveCharacterAppearances`. `scene_state` takes precedence (fast path,
-/// no LLM); then the trivial-case skip; then the cheap-LLM resolution.
+/// v4 `resolveCharacterAppearances` (`4fbdad186`): the appearances resolved
+/// WITHOUT the Inventory ([`resolve_appearances_without_inventory`]), then —
+/// in a chat, with anything resolved — what each character carries added by
+/// [`with_carrying`]. The one place the image pipelines learn of the
+/// Inventory.
 #[allow(clippy::too_many_arguments)]
 pub async fn resolve_character_appearances<C: CompletionProvider>(
+    db: &Db,
+    executor: &CheapLlmTaskExecutor,
+    completion: &C,
+    characters: &[AppearanceResolutionInput],
+    recent_messages: &[ChatMessage],
+    image_prompt: &str,
+    selection: &CheapLlmSelection,
+    user_id: &str,
+    chat_id: Option<&str>,
+    scene_state: Option<&[SceneStateCharacter]>,
+) -> AppearanceResolutionResult {
+    let mut result = resolve_appearances_without_inventory(
+        executor,
+        completion,
+        characters,
+        recent_messages,
+        image_prompt,
+        selection,
+        user_id,
+        chat_id,
+        scene_state,
+    )
+    .await;
+    let Some(chat_id) = chat_id else {
+        return result;
+    };
+    if result.appearances.is_empty() {
+        return result;
+    }
+    result.appearances = with_carrying(db, std::mem::take(&mut result.appearances), chat_id).await;
+    result
+}
+
+/// Add what each character carries in the chat (the Inventory) to its
+/// resolved appearance (v4 `withCarrying`). Fails soft to the appearances as
+/// they were.
+///
+/// The chat is read through v4's fallback `findById` (a failed read logs the
+/// repository's line and answers "no chat" — as were, silently), and the
+/// phrase loader never fails, so v4's `catch` (`Could not add carried objects
+/// to appearances`) is unreachable through v4's real code. v5's home for it is
+/// the two-connection read failing outright — a degraded mount index.
+async fn with_carrying(
+    db: &Db,
+    appearances: Vec<ResolvedCharacterAppearance>,
+    chat_id: &str,
+) -> Vec<ResolvedCharacterAppearance> {
+    let character_ids: Vec<String> = appearances.iter().map(|a| a.character_id.clone()).collect();
+    let cid = chat_id.to_string();
+    let phrases = crate::services::image_job_common::with_both_conns(db, move |main, mount| {
+        let Some(chat) = crate::db::chats_read::find_by_id_or_none(main, &cid) else {
+            return Ok(None);
+        };
+        Ok(Some(
+            character_ids
+                .iter()
+                .map(|character_id| {
+                    crate::inventory::image_description::load_carrying_phrase(
+                        main,
+                        mount,
+                        &chat,
+                        character_id,
+                    )
+                })
+                .collect::<Vec<_>>(),
+        ))
+    })
+    .await;
+    match phrases {
+        Ok(Some(phrases)) => appearances
+            .into_iter()
+            .zip(phrases)
+            .map(|(mut appearance, carrying)| {
+                if carrying.is_some() {
+                    appearance.carrying_description = carrying;
+                }
+                appearance
+            })
+            .collect(),
+        Ok(None) => appearances,
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::appearance_resolution",
+                context = "image-gen.appearance-resolution",
+                chat_id = chat_id,
+                error = %crate::db::fallback::error_text(&error),
+                "[AppearanceResolution] Could not add carried objects to appearances"
+            );
+            appearances
+        }
+    }
+}
+
+/// The appearances resolved without the Inventory (v4
+/// `resolveAppearancesWithoutInventory` — the pre-`4fbdad186` body, renamed).
+/// `scene_state` takes precedence (fast path, no LLM); then the trivial-case
+/// skip; then the cheap-LLM resolution.
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn resolve_appearances_without_inventory<C: CompletionProvider>(
     executor: &CheapLlmTaskExecutor,
     completion: &C,
     characters: &[AppearanceResolutionInput],
@@ -735,6 +837,47 @@ mod tests {
                 })
                 .collect(),
         }
+    }
+
+    /// R-9 — v4's `Could not add carried objects to appearances` catch is
+    /// UNREACHABLE through v4's real code (the chat read is a fallback read,
+    /// the phrase loader never throws). v5's home is the two-connection read
+    /// failing outright — here a `Db` with no mount index: the WARN with v4's
+    /// `context` / `chat_id` / `error`, and the appearances as they were.
+    #[tokio::test]
+    async fn with_carrying_without_a_mount_index_warns_and_keeps_the_appearances() {
+        crate::test_support::global_capture::install();
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let appearances = build_default_appearances(&[char_with_items(1)]);
+        let (out, lines) = crate::test_support::global_capture::capture_async(with_carrying(
+            &db,
+            appearances.clone(),
+            "chat-r9",
+        ))
+        .await;
+        assert_eq!(out, appearances);
+        let warn: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains("[AppearanceResolution] Could not add carried objects to appearances")
+            })
+            .collect();
+        assert_eq!(warn.len(), 1, "{lines:?}");
+        assert!(
+            warn[0].starts_with("WARN quilltap::appearance_resolution"),
+            "{}",
+            warn[0]
+        );
+        assert!(
+            warn[0].contains("context=image-gen.appearance-resolution chat_id=chat-r9 error="),
+            "{}",
+            warn[0]
+        );
     }
 
     #[test]

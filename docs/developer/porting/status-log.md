@@ -191639,3 +191639,54 @@ Named carves (both-ways): **`EFFECTS_UNWIRED_UNTIL_UNION`** — `chat_equip__dum
 **Gate (this unit's tree):** fmt clean; clippy clean with and without `--features quilltap-core/native-transport`; `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the lane env block: **837 binaries / 5,496 passed / 2 failed / 3 ignored, zero SKIP** — the two reds the keystone recorded as standing (`public_schemas_vendor_guard`, `qtap_schema_embed_guard`; P4.D333 / P4.D327 re-vendor). Sweep (announced, one at a time) from the pin over 13 related families — `danger_routing`, `outfit_change_effects_tier3`, `tool_image_generation` (the CHECK — unmoved), `image_failover_tier3`, `retry_uncensored_tier3`, `images_generate_route`, `image_generate_route`, `inventory_item_image_generation_tier3`, `courier_images_routes`, `post_office_routes`, `image_attempt_tier3`, `tool_execution_process_tier3`, `wardrobe_item_images_tier2`: **13 ok**. Versions: core 0.0.1325.
 
 **Regen recipes (lane-private, every output under `/tmp/p4d326/`):** `/tmp/p4d326/regen.sh <agate|story|imggen|wiig|avatar> <tag>` — the committed headers' recipes run from the pin; imggen and avatar run jest as their own process group and end it on the case's `oracle wrote` line (v4's jest never exits after those cases; `--forceExit` does not end it either).
+
+### P4.D326 unit 2 — the Inventory's picture side (2026-10-26)
+
+**One commit for the order's planned units 2 and 3** (items 8, 9, 12–17 + R-13): they share every family and the gate, so they landed together (unit 1 already took item 7, the pure carry seams).
+
+**Landed:**
+- `inventory/image_description.rs` (item 12; the `pub mod` line appended in `inventory/mod.rs`, P4.D324's file): `render_carrying_phrase` / `describe_equipped_inventory_for_images` / `load_carrying_phrase(main, mount, chat, character_id)` (R-4). C1 names consumed: `equipped_ids_of`, `read_equipped_set`, `load_inventory_pool` + `LoadInventoryPoolOptions`, `inventory_label`, `InventoryFields`. **Log convention measured** at `INVENTORY`: the keystone's `[Inventory…]` lines carry NO explicit target and camelCase fields; the `[InventoryImages]` lines match.
+- The resolver tail (item 13, R-3): `resolve_character_appearances(db, …)` → `resolve_appearances_without_inventory` (`pub(crate)`) + `with_carrying` (ONE `with_both_conns` closure: the chat through `chats_read::find_by_id_or_none` — v4's fallback `findById`, so a failed chat read logs the repository line and leaves the appearances as were — then the loader per appearance, in order). Callers pass `db` (`generate_image.rs`, `story_background_job.rs` ×2).
+- The avatar job's loader (item 14) inside its closure, after the project mounts and before the prompt; `AvatarPromptOptions.carrying` + `carrying_sentence` + the two-shaped block (item 8); `api/wardrobe.rs`'s preview literal `carrying: None` (v4's preview passes none — measured).
+- `build_expansion_context` + `ResolvedPlaceholder` `pub` and the `Carried` entry (item 9, R-12).
+- `refresh_avatar_for_appearance(db, &AvatarRefreshWho, source_context)` + ONE `avatar_refresh_params` body + `refresh_avatar_for_outfit` kept as the delegate (R-13); a unit test pins the parameters.
+
+**R-9 (NEGATIVE, v5 home):** v4's `Could not add carried objects to appearances` catch is unreachable through v4's real code (the chat read is a fallback read; the loader never throws). v5's home: `with_both_conns` failing — pinned by `with_carrying_without_a_mount_index_warns_and_keeps_the_appearances` (a `Db` with no mount index: one WARN, `context`, `chat_id`, `error`; appearances unchanged).
+**R-10 (measured → NEGATIVE, v5 home):** v4's `loadInventoryPool` cannot throw through real code — `characters.findByIdRaw` is `_findById` (a fallback `safeQuery`), `readSetting` catches, the tier reads fail soft — so `[InventoryImages] Failed to build the carrying phrase` is unreachable in v4; v5's home is the pool's `Err` arm (kept, with v4's bytes). The DEBUG `[InventoryImages] Built the carrying phrase` is a both-ways pin (`avatar_job_tier3`'s `carryingLogs`, keys `chatId, characterId, present, op, context`).
+**The order was wrong about the capture rig:** `with_both_conns` is a `Db::write` closure — it runs on the WRITER thread, invisible to `captured_with`. The avatar family reads the DEBUG through a process-global capture installed before the first case.
+
+**Tier-1 family (item 16):** `inventory_image_description_equivalence` over `cases/inventory-image-description.test.ts` (jest, not tsx: v4's avatar builder pulls the repository / logger graph `jest.setup` already mocks — the `wardrobe-item-image-prompt` tier-1 precedent) and `fixtures/inventory-image-description.json`: 14 phrase rows (absent / null / '' / whitespace, the seed's three shapes, a kit beside a member, `!!!` alone → `carrying `, beside another → `carrying , a brass ring`, `a ring?!.`, interior dots kept, `éclair`/`Eclair`/`eclair` ties in input order, `ñandu` vs `nutmeg`, `Zebra` vs `apple`, a title over a name, a whitespace title falling back to the name, 40 shuffled items, an empty list), 9 scene rows (the seed's two strings, empty clothing, `ß` → `SS`, an emoji first character unchanged, `ǆ` → `Ǆ`, whitespace-only carrying, a padded phrase, a leading combining mark), 4 expansion rows (outfit + carried, carried only, outfit only, neither — the key absent), 8 avatar rows (the seed, null, `!?.` → one `.`, `.` alone → `..`, `ß`, an emoji, whitespace, carrying alone is no appearance). Green on its first run. **Red-first by mutation (four, all KILLED):** sort by `locale_compare` → `base_ties_keep_input_order`; strip `.` only → `only_punctuation_alone`; `to_ascii_uppercase` → `sharp_s_first` (the order's "emoji-first" mutant would SURVIVE by construction — an emoji has no upper case; the ASCII mutant stands in); `"\n\n"` on the no-outfit branch → `avatar seed_with_carrying`.
+
+**Carried rows (item 17):** the plant is per case, both sides — `harness/oracle/lib/carried-inventory.ts` (`plantCarriedInventory`: C1's `plantInventoryColumns`, ONE `Inventory/*.json` through the REAL `writeDatabaseDocument` with v4's serialised bytes, the `equippedInventory` cell) and `common::plant_carried_inventory` (C1's `ensure_inventory_columns_on`, `database_store::write_database_document`, the same UPDATE); the committed pairs are not widened. Rows: `image_generation_tier3` — `carried_object_in_the_expansion` (Concierge off; the `Carried` entry reaches the craft call), `carried_object_sanitized_with_the_rest` (the `phys.. carrying …` sanitize key; the changed text clears the phrase); `story_background_job_tier3` — `carried_object_in_the_description` (`… Wearing: …. Carrying a brass spyglass`), `carried_and_concealed` (the echo arm: `…. Carrying an oil lantern. Undressed in this scene; …`, the marker LAST); `avatar_job_tier3` — `carried_object_in_the_portrait` (the with-outfit `\n\n` spacing; `present: true`), `carried_object_not_depicted` (no `imageDescription`; `present: false`; the uncarried portrait). `wardrobe_item_image_generation_tier3`: none (garments carry no inventory). Red-first by mutation (both KILLED): the resolver tail disabled → `image_generation_tier3` (`carried_object_in_the_expansion`) + `story_background_job_tier3` (`carried_and_concealed`) red; the avatar loader disabled → `avatar_job_tier3` (`carried_object_in_the_portrait`) red. `grep -c carrying`: imggen 3, story 5, avatar 26.
+
+**Recipes:** the imggen / story / avatar headers now stage `lib/carried-inventory.ts` + `lib/v4-migrations.ts` beside the case; `recipe_sweep.py --self-test` 0.
+
+**Gate:** fmt / clippy (both feature sets) clean; `cargo test --workspace` 838 binaries / 5,499 passed / 2 failed (the standing `public_schemas_vendor_guard` + `qtap_schema_embed_guard`, P4.D333 / P4.D327) / 3 ignored, zero SKIP, every new and widened family RAN by name (env block: agate-a2, story-b1, imggen-b1, wiig-a1, avatar-b1, invimg-a1). Version: core 0.0.1326.
+
+### P4.D326 lane close (2026-10-26)
+
+**Status: LANE COMPLETE** on `claude/p4.d326-inventory-image-side-bug-133-c065d7` (two commits on `INVENTORY` = `c065d7e2f`; no rebase).
+
+- **Tier 1:** items 1–18 landed. Item 11's Locked row collapses to rule 2 in `image_generation_tier3` (the corpus has no per-case chat state); the story family's Locked row is the existing `refused_locked_lantern_bubble`. The avatar family's post-classification arm (`:556`) is not posed (its oracle mocks no classifier). Both are recorded in unit 1.
+- **Tier 2:**
+  - Item 1 (capture pins for the reroute DEBUG) NOT landed. Measured: none of `wardrobe_item_image_generation_tier3` / `story_background_job_tier3` / `avatar_job_tier3` captures the wrapper's lines today. This is follow-up material, not a defect.
+  - Item 2 landed.
+  - Item 3: `tool_image_generation_equivalence` CHECK ok (unmoved), and `danger_routing_equivalence` is green with the new field (unit 1's sweep).
+  - Item 4 is the HANDOFFs below.
+- **Tier 3:**
+  - No typed refusal in the slice; nothing answers `not_available`.
+  - R-9 and R-10 are pinned NEGATIVE with v5 homes (unit 2).
+  - v4's `__tests__/**` are mirrored as oracle rows, not ported as files.
+- **HANDOFF: P4.D339** — `help/the-concierge.md`'s "What Gets Cleaned Up" (+24 lines at `406dbdd5a`), `help/image-generation-profiles.md`'s two lines, and `help/inventory.md`'s picture-phrase sentence: the vendored `help/` copies are untouched here, for byte comparison at §S.5 (12).
+- **P4.D338 does NOT touch bug 133**: it owns the scenario sort. The re-ruling is wholly this lane's: `406dbdd5a` in unit 1, the carry in unit 2.
+- **`cli_differential`** ran once inside the unit-2 workspace gate (ok, 842 s). No Tier R row moved; the CLI is untouched.
+- **💸 dogfood rows:** as the order's "💸 for the dogfood pass" lists them. These are:
+  - the carried phrase in a real `generate_image` / story background / avatar refresh;
+  - the empty-clothing classify body (`phys` alone);
+  - bug 133 re-ruled across three chats (own-compatible Moderated; Unmoderated on a moderated painter with no desk; Locked);
+  - the desk as a chat's own profile staying put.
+- **Versions at close:** core 0.0.1326 (from 0.0.1324 at `INVENTORY`). Harness frozen; no host / web / cli / SPA bump.
+- **Fixtures changed** (other oracles invalidated: none outside this lane's families; every pair shared with another family is planted per case, never widened):
+  - `appearance-sanitize-gate.json`, `image-generation.json`, `story-background-job.json`, `wardrobe-item-image-generation-tier3.json`, `avatar-job.json` (+ `build-avatar-job-fixture.ts`);
+  - NEW `inventory-image-description.json`;
+  - NEW `lib/carried-inventory.ts`.

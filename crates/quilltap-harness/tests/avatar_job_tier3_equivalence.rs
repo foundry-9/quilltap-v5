@@ -222,6 +222,10 @@ struct ChatSpec {
     /// normalization REAL.
     #[serde(default, rename = "imageSeed")]
     image_seed: Option<String>,
+    /// [4fbdad186] P4.D326: an object the chat's character carries, planted
+    /// per case ([`common::plant_carried_inventory`]).
+    #[serde(default)]
+    carry: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -265,6 +269,10 @@ struct ResultRow {
     character_avatars: Option<String>,
     #[serde(default, rename = "avatarOverrides")]
     avatar_overrides: Option<String>,
+    /// [4fbdad186] P4.D326: v4's `[InventoryImages] Built the carrying phrase`
+    /// DEBUG contexts, in call order.
+    #[serde(default, rename = "carryingLogs")]
+    carrying_logs: Option<Vec<Value>>,
     /// W4.10b: the `llm_logs` rows this case wrote (IMAGE_GENERATION; empty for a
     /// skipped case). `{columns, rows}`.
     #[serde(default, rename = "llmLogs")]
@@ -759,12 +767,25 @@ fn avatar_job_matches_oracle() {
         .build()
         .expect("tokio runtime");
 
+    // Installed before any callsite is reached (a callsite first seen with no
+    // global subscriber would be cached as uninteresting).
+    let _ = writer_thread_lines();
+    let mut carrying_lines = 0usize;
     let mut chat_keys: Vec<&String> = spec.chats.keys().collect();
     chat_keys.sort();
 
     for label in chat_keys {
         let case = &spec.chats[label];
         let (main_work, mount_work, _scratch) = fresh_copy(&main_fixture, &mount_fixture, label);
+        if let Some(carry) = &case.carry {
+            common::plant_carried_inventory(
+                &main_work,
+                &mount_work,
+                &spec.test_pepper_base64,
+                &case.id,
+                carry,
+            );
+        }
 
         // W4.10b: a fresh per-case llm-logs partition for the IMAGE_GENERATION rows.
         let ll_work = main_work.with_file_name(format!("avatar-ll-{label}.db"));
@@ -804,6 +825,7 @@ fn avatar_job_matches_oracle() {
             force: false,
         };
 
+        writer_thread_lines().lock().unwrap().clear();
         let outcome = rt.block_on(handle_character_avatar_generation(
             &db,
             &deps,
@@ -812,6 +834,30 @@ fn avatar_job_matches_oracle() {
             "job-1",
         ));
         let got_threw: Option<String> = outcome.err();
+
+        // [4fbdad186] P4.D326: the carrying phrase's DEBUG, emitted inside the
+        // job's two-connection closure — on the WRITER thread, so it is read
+        // from the process-global capture. Fields in v4's order; an uncarried
+        // chat is the silence leg (v4's loader short-circuits before it).
+        let got_carrying: Vec<String> = writer_thread_lines()
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|l| l.contains(CARRYING_DEBUG))
+            .cloned()
+            .collect();
+        let want_carrying: Vec<String> = want
+            .carrying_logs
+            .as_ref()
+            .unwrap_or_else(|| panic!("oracle case {label} has no carryingLogs"))
+            .iter()
+            .map(render_v4_carrying)
+            .collect();
+        assert_eq!(
+            got_carrying, want_carrying,
+            "{label}: the carrying-phrase DEBUG diverged"
+        );
+        carrying_lines += want_carrying.len();
 
         // P4.D184: the second run, and the surgical change before it.
         let mut got_threw_second: Option<String> = None;
@@ -1157,6 +1203,12 @@ fn avatar_job_matches_oracle() {
         let _ = std::fs::remove_file(&ll_work);
     }
 
+    // [4fbdad186] the carrying rows must be non-vacuous: a phrase present and
+    // one absent (the undescribed object).
+    assert!(
+        carrying_lines >= 2,
+        "only {carrying_lines} carrying-phrase DEBUG lines compared"
+    );
     eprintln!("OK: avatar-job differential matched the oracle across all cases.");
 }
 
@@ -1289,4 +1341,39 @@ fn concierge_footprint(db: &Db, chat_id: &str, sender: &str, kind: &str) -> Valu
         }))
     })
     .expect("read the Concierge footprint")
+}
+
+const CARRYING_DEBUG: &str = "[InventoryImages] Built the carrying phrase";
+
+/// A PROCESS-GLOBAL capture: the avatar job's two-connection closure runs on
+/// the WRITER thread, which the thread-scoped `captured_with` cannot see.
+fn writer_thread_lines() -> std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    static BUF: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    BUF.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry()
+            .with(quilltap_core::test_support::CaptureLayer(buf.clone()));
+        tracing::subscriber::set_global_default(subscriber).expect("one global capture per binary");
+        buf
+    })
+    .clone()
+}
+
+/// v4's carrying-phrase DEBUG context rendered as the capture renders v5's
+/// event (`LEVEL target message k=v…`), keys in v4's order.
+fn render_v4_carrying(ctx: &Value) -> String {
+    let Value::Object(m) = ctx else {
+        panic!("v4 carrying context is not an object: {ctx:?}");
+    };
+    let mut out = format!("DEBUG quilltap_core::inventory::image_description {CARRYING_DEBUG}");
+    for (k, v) in m {
+        let val = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {k}={val}"));
+    }
+    out
 }

@@ -689,6 +689,54 @@
         }
       },
       "primaryVia": "concierge"
+    },
+    "carried_object_in_the_expansion": {
+      "$comment": "[4fbdad186] P4.D326 item 17: Aurora CARRIES a described object in this chat (planted per case: the Inventory columns, ONE `Inventory/*.json` in her vault through the REAL `writeDatabaseDocument`, the chat's `equippedInventory` cell). The Concierge is off, so the appearance goes out as resolved, and the image tool's expansion context gains a `Carried` entry beside the outfit — the craft call's user message carries it (a v5 divergence is a canned-key MISS).",
+      "id": "aaaa0054-0000-4000-8000-000000000054",
+      "op": "generate",
+      "prompt": "{{Aurora}} at the harbour",
+      "orientation": "portrait",
+      "carry": {
+        "characterId": "cccc1111-1111-4111-8111-111111111111",
+        "fileName": "oil-lantern.json",
+        "content": "{\n  \"id\": \"e2000000-0000-4000-8000-000000000001\",\n  \"kind\": \"item\",\n  \"name\": \"Oil lantern\",\n  \"imageDescription\": \"an oil lantern with a cracked pane\",\n  \"createdAt\": \"2020-01-01T00:00:00.000Z\",\n  \"updatedAt\": \"2020-01-01T00:00:00.000Z\"\n}\n",
+        "equippedInventory": "{\"cccc1111-1111-4111-8111-111111111111\":[\"e2000000-0000-4000-8000-000000000001\"]}"
+      }
+    },
+    "carried_object_sanitized_with_the_rest": {
+      "$comment": "[4fbdad186] P4.D326 item 17: the `detect_only_sanitizes_appearance` shape (a Moderated chat with the pre-screen on, bound for a moderated painter) with a CARRIED object: the classify text joins the carrying phrase, the sanitize user message is `phys.. carrying …` (Aurora's clothing is empty here), and the changed text clears the phrase — so no `Carried` entry reaches the craft call.",
+      "id": "aaaa0055-0000-4000-8000-000000000055",
+      "op": "generate",
+      "prompt": "{{Aurora}} on a jetty at dusk",
+      "orientation": "portrait",
+      "conciergeSettings": {
+        "enabled": true,
+        "uncensoredTextProfileId": null,
+        "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2",
+        "uncensoredVisionProfileId": null,
+        "imagePromptProfileId": null,
+        "autoSwitchAfterRefusals": 2,
+        "newChatsStartAs": "moderated",
+        "display": {
+          "mode": "SHOW",
+          "showWarningBadges": true
+        },
+        "preScreen": {
+          "enabled": true,
+          "threshold": 0.7,
+          "scanTextChat": true,
+          "scanImagePrompts": false,
+          "scanImageGeneration": false,
+          "customClassificationPrompt": null,
+          "summaryClassification": true
+        }
+      },
+      "carry": {
+        "characterId": "cccc1111-1111-4111-8111-111111111111",
+        "fileName": "tarred-rope.json",
+        "content": "{\n  \"id\": \"e2000000-0000-4000-8000-000000000002\",\n  \"kind\": \"item\",\n  \"name\": \"Tarred rope\",\n  \"imageDescription\": \"a coil of tarred rope over one shoulder\",\n  \"createdAt\": \"2020-01-01T00:00:00.000Z\",\n  \"updatedAt\": \"2020-01-01T00:00:00.000Z\"\n}\n",
+        "equippedInventory": "{\"cccc1111-1111-4111-8111-111111111111\":[\"e2000000-0000-4000-8000-000000000002\"]}"
+      }
     }
   }
 }
