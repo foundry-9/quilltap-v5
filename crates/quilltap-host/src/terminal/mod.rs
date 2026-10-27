@@ -14,14 +14,18 @@
 //!
 //! ## The Ariel flush drivers
 //!
-//! Raw output accumulates in a per-session buffer; a per-session tokio task
-//! flushes it on **idle** (30 s of quiet since the last chunk) or **max-age**
-//! (120 s since the buffer started filling, guarding a steady drip — e.g. a
-//! long build — that would never satisfy the idle condition). A flush cleans
-//! the buffer (`quilltap_core::terminal_clean::clean_terminal_output`) and
-//! posts one Ariel message through the core writer
-//! (`services::ariel_notifications`); when the writer actually posted
-//! something, subscribers get a `chat-update` nudge. The timers live HERE
+//! Every session feeds a server-side terminal emulator
+//! (`quilltap_core::terminal_screen::TerminalScreen`, bug 255) the same bytes
+//! the operator's pane gets; a per-session tokio task flushes on **idle** (30 s
+//! of quiet since the last chunk) or **max-age** (120 s since output started
+//! arriving, guarding a steady drip — e.g. a long build — that would never
+//! satisfy the idle condition). A flush asks the screen what to post
+//! (`take_summary` — a full-screen program's current screen, or the lines a
+//! shell wrote since the last summary) and posts one Ariel message through the
+//! core writer (`services::ariel_notifications`); when the writer actually
+//! posted something, subscribers get a `chat-update` nudge. Flushes are
+//! serialised per session (`take_summary` is stateful), so summaries post in
+//! order and a second flush waits for the first. The timers live HERE
 //! (D20: the core is scheduler-free); the durations are config knobs whose
 //! defaults are v4's constants (tests shorten them).
 //!
@@ -74,7 +78,7 @@ use quilltap_core::services::ariel_notifications::{
     reconcile_terminal_sessions_for_chat, ArielFlushReason, ArielSessionClosedAnnouncement,
     ArielTerminalOutputAnnouncement, TerminalLivenessProbe,
 };
-use quilltap_core::terminal_clean::clean_terminal_output;
+use quilltap_core::terminal_screen::{ScreenRendering, TerminalScreen};
 
 use protocol::{ChatUpdateReason, PtySessionMeta, WsServerMessage};
 
@@ -176,11 +180,16 @@ pub struct Subscription {
 
 struct SessionIo {
     ring_buffer: String,
-    ariel_buffer: String,
+    /// The server-side emulator mirroring the screen; what text read-back
+    /// renders from (v4 `PtySession.screen`).
+    screen: TerminalScreen,
+    /// Output has arrived since the last Ariel summary flush (v4
+    /// `arielPending`).
+    ariel_pending: bool,
     /// Instant of the most recent output chunk (drives the idle deadline).
     last_data_at: Option<Instant>,
-    /// Instant the Ariel buffer started filling after the last flush (drives
-    /// the max-age deadline — v4 arms the max-age timer only when unset).
+    /// Instant output started arriving after the last flush (drives the
+    /// max-age deadline — v4 arms the max-age timer only when unset).
     ariel_started_at: Option<Instant>,
     subscribers: Vec<(u64, mpsc::UnboundedSender<WsServerMessage>)>,
     transcript: Option<File>,
@@ -191,6 +200,11 @@ struct SessionShared {
     io: Mutex<SessionIo>,
     /// Wakes the Ariel timer task on new data / exit.
     notify: Notify,
+    /// v4's per-session `arielFlush` promise chain: held across a pending
+    /// flush's summary + post, so flushes post in order and a caller that must
+    /// wait for the in-flight one (`kick_all_for_chat`, the exit sequence)
+    /// does.
+    ariel_flush: tokio::sync::Mutex<()>,
     exited: AtomicBool,
     /// Child pid for signal delivery (unix `SIGTERM`).
     pid: Option<u32>,
@@ -352,10 +366,18 @@ impl TerminalManager {
             .map(|s| s.io.lock().expect("io lock").ring_buffer.clone())
     }
 
-    /// The pending (unflushed) Ariel buffer length, for instrumentation/tests.
-    pub fn ariel_buffer_len(&self, id: &str) -> Option<usize> {
+    /// Whether output is pending an Ariel summary, for instrumentation/tests.
+    pub fn ariel_pending(&self, id: &str) -> Option<bool> {
         self.get_session(id)
-            .map(|s| s.io.lock().expect("io lock").ariel_buffer.len())
+            .map(|s| s.io.lock().expect("io lock").ariel_pending)
+    }
+
+    /// v4 `renderScreen(id)` — a live session's screen through its emulator
+    /// (the full-screen program's current screen, or the shell's scrollback);
+    /// `None` for an unknown session.
+    pub fn render_screen(&self, id: &str) -> Option<ScreenRendering> {
+        self.get_session(id)
+            .map(|s| s.io.lock().expect("io lock").screen.render())
     }
 
     /// v4 `spawn(opts)` — spawn a shell into a fresh PTY, wire the transcript /
@@ -446,19 +468,23 @@ impl TerminalManager {
             transcript_path: transcript
                 .is_some()
                 .then(|| transcript_path.to_string_lossy().into_owned()),
+            cols: Some(i64::from(cols)),
+            rows: Some(i64::from(rows)),
         };
 
         let shared = Arc::new(SessionShared {
             meta: Mutex::new(meta.clone()),
             io: Mutex::new(SessionIo {
                 ring_buffer: String::new(),
-                ariel_buffer: String::new(),
+                screen: TerminalScreen::new(cols, rows),
+                ariel_pending: false,
                 last_data_at: None,
                 ariel_started_at: None,
                 subscribers: Vec::new(),
                 transcript,
             }),
             notify: Notify::new(),
+            ariel_flush: tokio::sync::Mutex::new(()),
             exited: AtomicBool::new(false),
             pid,
             killer: Mutex::new(killer),
@@ -518,8 +544,8 @@ impl TerminalManager {
                 exited_at: None,
                 exit_code: None,
                 transcript_path: meta.transcript_path.clone(),
-                cols: None,
-                rows: None,
+                cols: meta.cols.map(|c| c as f64),
+                rows: meta.rows.map(|r| r as f64),
             };
             let row_id = id.clone();
             let db_result = self
@@ -563,9 +589,10 @@ impl TerminalManager {
         Ok(meta)
     }
 
-    /// The per-chunk data path (v4's `onData` handler): cap-append the ring
-    /// buffer, grow the Ariel buffer (+ schedule the flush), append the raw
-    /// transcript, and broadcast an `output` frame.
+    /// The per-chunk data path (v4's `onData` handler), in v4's order:
+    /// cap-append the ring buffer, feed the screen model and mark a summary
+    /// pending (+ schedule the flush), append the raw transcript, and broadcast
+    /// an `output` frame.
     fn on_data(shared: &Arc<SessionShared>, data: &str) {
         {
             let mut io = shared.io.lock().expect("io lock");
@@ -573,7 +600,8 @@ impl TerminalManager {
             io.ring_buffer.push_str(data);
             cap_ring_utf16(&mut io.ring_buffer, MAX_RING_BUFFER_SIZE);
 
-            io.ariel_buffer.push_str(data);
+            io.screen.write(data);
+            io.ariel_pending = true;
             let now = Instant::now();
             io.last_data_at = Some(now);
             if io.ariel_started_at.is_none() {
@@ -605,11 +633,11 @@ impl TerminalManager {
         signal: Option<String>,
     ) {
         let now = now_iso();
-        let (chat_id, session_id) = {
+        let (chat_id, session_id, cols, rows) = {
             let mut meta = shared.meta.lock().expect("meta lock");
             meta.exited_at = Some(now.clone());
             meta.exit_code = code;
-            (meta.chat_id.clone(), meta.id.clone())
+            (meta.chat_id.clone(), meta.id.clone(), meta.cols, meta.rows)
         };
 
         // Drain any remaining buffered output so trailing bytes (and the final
@@ -654,8 +682,11 @@ impl TerminalManager {
                         &sid,
                         &exited_at,
                         code.map(|c| c as f64),
-                        None,
-                        None,
+                        // Geometry is stored at spawn and again here, at its
+                        // final value, so `terminal_read` can replay the
+                        // transcript at the size it was drawn for.
+                        cols.map(|c| c as f64),
+                        rows.map(|r| r as f64),
                         &updated_at,
                     )
                     .map(|_| ())
@@ -748,19 +779,31 @@ impl TerminalManager {
         }
     }
 
-    /// v4 `resize(id, cols, rows)` — failures are swallowed.
+    /// v4 `resize(id, cols, rows)` — the PTY, the screen model and the meta in
+    /// ONE step: a PTY resize failure moves neither of the others (v4's single
+    /// `try`). Failures are swallowed (v4's `[PTY] Resized` DEBUG / `[PTY]
+    /// Failed to resize PTY` WARN predate bug 255 and stay unported).
     pub fn resize(&self, id: &str, cols: u16, rows: u16) {
         let Some(shared) = self.get_session(id) else {
             return;
         };
-        let master = shared.master.lock().expect("master lock");
-        if let Some(m) = master.as_ref() {
-            let _ = m.resize(PtySize {
-                rows,
-                cols,
-                pixel_width: 0,
-                pixel_height: 0,
-            });
+        let resized = {
+            let master = shared.master.lock().expect("master lock");
+            master.as_ref().is_some_and(|m| {
+                m.resize(PtySize {
+                    rows,
+                    cols,
+                    pixel_width: 0,
+                    pixel_height: 0,
+                })
+                .is_ok()
+            })
+        };
+        if resized {
+            shared.io.lock().expect("io lock").screen.resize(cols, rows);
+            let mut meta = shared.meta.lock().expect("meta lock");
+            meta.cols = Some(i64::from(cols));
+            meta.rows = Some(i64::from(rows));
         }
     }
 
@@ -815,31 +858,51 @@ fn default_shell() -> String {
     }
 }
 
-/// v4 `flushArielBuffer`: clear the timers (here: the started/last markers the
-/// deadlines derive from), drain the buffer (empty → no-op), clean it, post one
-/// Ariel message, and — only when the writer actually wrote something —
-/// broadcast a `chat-update` nudge to subscribers. Errors are swallowed:
-/// terminal I/O must not fail because chat persistence had a hiccup.
+/// v4 `flushArielBuffer` + `postArielSummary`: clear the timers (here: the
+/// started/last markers the deadlines derive from); with nothing pending, wait
+/// out any in-flight flush and return (v4 returns the chain); otherwise, in
+/// turn behind any in-flight flush, ask the screen model what to post
+/// (`take_summary`), post one Ariel message, and — only when the writer
+/// actually wrote something — broadcast a `chat-update` nudge to subscribers.
+/// Errors are swallowed: terminal I/O must not fail because chat persistence
+/// had a hiccup.
+///
+/// v4's WARN `[PTY] Failed to render terminal summary` has no v5 home:
+/// `take_summary` cannot fail (xterm's async parse is what could reject in v4).
 async fn flush_ariel(db: &Db, shared: &Arc<SessionShared>, reason: ArielFlushReason) {
-    let (raw, chat_id, session_id) = {
+    let (pending, chat_id, session_id) = {
         let mut io = shared.io.lock().expect("io lock");
         io.last_data_at = None;
         io.ariel_started_at = None;
-        let raw = std::mem::take(&mut io.ariel_buffer);
+        let pending = std::mem::take(&mut io.ariel_pending);
         let meta = shared.meta.lock().expect("meta lock");
-        (raw, meta.chat_id.clone(), meta.id.clone())
+        (pending, meta.chat_id.clone(), meta.id.clone())
     };
-    if raw.is_empty() {
+    let _chain = shared.ariel_flush.lock().await;
+    if !pending {
         return;
     }
 
-    let cleaned = clean_terminal_output(&raw);
+    let summary = shared.io.lock().expect("io lock").screen.take_summary();
+    tracing::debug!(
+        target: "quilltap::terminal",
+        module = "pty-manager",
+        sessionId = %session_id,
+        reason = reason.as_str(),
+        kind = summary.as_ref().map_or("null", |s| s.kind.as_str()),
+        chars = summary.as_ref().map_or(0, |s| utf16_len(&s.text)),
+        "[PTY] Ariel summary taken"
+    );
+    let Some(summary) = summary else {
+        return;
+    };
     let posted = post_ariel_terminal_output_announcement(
         db,
         &ArielTerminalOutputAnnouncement {
             chat_id: chat_id.clone(),
             session_id,
-            cleaned_output: cleaned,
+            cleaned_output: summary.text,
+            kind: summary.kind,
             reason,
         },
     )
@@ -871,7 +934,7 @@ async fn ariel_timer_loop(db: Db, shared: Arc<SessionShared>, idle: Duration, ma
         }
         let deadline: Option<(Instant, ArielFlushReason)> = {
             let io = shared.io.lock().expect("io lock");
-            if io.ariel_buffer.is_empty() {
+            if !io.ariel_pending {
                 None
             } else {
                 let idle_dl = io.last_data_at.map(|t| t + idle);

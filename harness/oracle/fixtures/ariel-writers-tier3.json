@@ -18,7 +18,9 @@
       "chatRef": "main",
       "shell": "/bin/bash",
       "cwd": "/data/files",
-      "exited": false
+      "exited": false,
+      "cols": 120,
+      "rows": 40
     },
     {
       "id": "0b000000-0000-4000-8000-00000000000b",
@@ -127,6 +129,55 @@
       "sessionId": "5000000c-0000-4000-8000-00000000000c",
       "reason": "max-age",
       "cleanedOutput": "  \n\t  "
+    },
+    {
+      "name": "screen_idle",
+      "kind": "output",
+      "summaryKind": "screen",
+      "sessionId": "50000011-0000-4000-8000-000000000011",
+      "reason": "idle",
+      "cleanedOutput": "Claude\n> prompt"
+    },
+    {
+      "name": "screen_max_age",
+      "kind": "output",
+      "summaryKind": "screen",
+      "sessionId": "50000012-0000-4000-8000-000000000012",
+      "reason": "max-age",
+      "cleanedOutput": "  ⏺ Fixing it.\n\n> "
+    },
+    {
+      "name": "screen_session_closed",
+      "kind": "output",
+      "summaryKind": "screen",
+      "sessionId": "50000013-0000-4000-8000-000000000013",
+      "reason": "session-closed",
+      "cleanedOutput": "top\n\n bottom"
+    },
+    {
+      "name": "screen_whitespace_only",
+      "kind": "output",
+      "summaryKind": "screen",
+      "sessionId": "50000014-0000-4000-8000-000000000014",
+      "reason": "idle",
+      "cleanedOutput": " \n 　"
+    },
+    {
+      "name": "screen_elided",
+      "kind": "output",
+      "summaryKind": "screen",
+      "sessionId": "50000015-0000-4000-8000-000000000015",
+      "reason": "idle",
+      "repeatSegment": "│ row ─ ",
+      "repeatTimes": 2600
+    },
+    {
+      "name": "output_explicit_kind",
+      "kind": "output",
+      "summaryKind": "output",
+      "sessionId": "50000016-0000-4000-8000-000000000016",
+      "reason": "idle",
+      "cleanedOutput": "$ pwd\n/tmp\n$"
     },
     {
       "name": "closed_zero",

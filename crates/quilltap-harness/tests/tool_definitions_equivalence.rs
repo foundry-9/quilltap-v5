@@ -50,14 +50,6 @@ fn tool_definitions_match_oracle() {
         .map(|l| serde_json::from_str::<DefRow>(l).unwrap())
         .collect();
 
-    // P4.D332 carve — lifted at §S.5 (3), when the unifier regenerates the
-    // catalog ONCE from the pin. At `322a5488e` three entries' bytes belong to
-    // sibling lanes (each regenerates its own): `runCustom` (P4.D329 / P4.D333 —
-    // the preamble sentence), `runSql` (P4.D331 — the Log's prompt bytes) and
-    // `terminalRead` (P4.D337 — the rendered-screen description). This lane owns
-    // `editCustomTool` alone and compares everything else RAW.
-    const SIBLING_OWNED_BYTES: &[&str] = &["runCustom", "runSql", "terminalRead"];
-
     // Completeness: same key set, no extras / omissions.
     let oracle_keys: HashMap<&str, &DefRow> = rows.iter().map(|r| (r.key.as_str(), r)).collect();
     assert_eq!(
@@ -80,13 +72,6 @@ fn tool_definitions_match_oracle() {
         let oracle = oracle_keys[d.key];
         assert_eq!(d.name, oracle.name, "name mismatch for {}", d.key);
         // The stored constant IS the v4 bytes.
-        if SIBLING_OWNED_BYTES.contains(&d.key) {
-            eprintln!(
-                "CARVE: {} — sibling-owned bytes, not compared on this branch.",
-                d.key
-            );
-            continue;
-        }
         assert_eq!(d.json, oracle.def_json, "stored bytes drift for {}", d.key);
         // Parse with preserve-order serde and re-serialize; must reproduce JS.
         let parsed: Value = serde_json::from_str(d.json).unwrap();
@@ -113,19 +98,7 @@ fn tool_definitions_match_oracle() {
     let want = &canon_row["canonicalized"];
 
     let got = canonicalize_universal_tools(&all_universal_tools());
-    let mut got_value = serde_json::to_value(&got).unwrap();
-    // The same carve, by wire name, on both sides.
-    let mut want = want.clone();
-    for side in [&mut got_value, &mut want] {
-        if let Value::Array(tools) = side {
-            tools.retain(|t| {
-                !matches!(
-                    t["function"]["name"].as_str(),
-                    Some("run_custom" | "run_sql" | "terminal_read")
-                )
-            });
-        }
-    }
+    let got_value = serde_json::to_value(&got).unwrap();
     assert_eq!(
         got_value, want,
         "canonicalize_universal_tools diverges from v4"

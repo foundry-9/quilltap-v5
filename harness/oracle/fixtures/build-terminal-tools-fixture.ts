@@ -20,6 +20,13 @@
  * the Rust differential reads the same files (via the transcriptPath in the row)
  * and hands the bytes to `execute_terminal_read` — identical bytes on both sides.
  *
+ * P4.D337 (bug 255): a session may carry `cols` / `rows` (written through the
+ * real repository create — the pin's `TerminalSessionSchema` has them, so the
+ * table `ensureCollection` makes has 13 columns); `scrollbackGenerate` writes
+ * a large transcript generated HERE (`line` × `count`, `{i}` → the index) — the
+ * >64 K raw tail and the >4 MiB replay window — and `transcriptMissing`
+ * records a path whose file is never written (v4's WARN arm).
+ *
  * Run (Node 24, from the v4 checkout):
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -50,6 +57,16 @@ interface SessionSpec {
   exitCode: number | null;
   transcriptFile: string;
   scrollbackContent: string;
+  /** P4.D337: the session's stored geometry (absent → not written → NULL). */
+  cols?: number | null;
+  rows?: number | null;
+  /**
+   * P4.D337: a large transcript, generated here (never committed as text):
+   * `line` repeated `count` times with `{i}` replaced by the 0-based index.
+   */
+  scrollbackGenerate?: { line: string; count: number };
+  /** P4.D337: record a `transcriptPath` whose file is never written. */
+  transcriptMissing?: boolean;
 }
 
 interface Spec {
@@ -105,7 +122,14 @@ async function main(): Promise<void> {
   for (const s of spec.sessions) {
     // Write the transcript file with exact bytes.
     const transcriptPath = join(scrollbackDir, s.transcriptFile);
-    writeFileSync(transcriptPath, s.scrollbackContent, 'utf8');
+    if (!s.transcriptMissing) {
+      const content = s.scrollbackGenerate
+        ? Array.from({ length: s.scrollbackGenerate.count }, (_, i) =>
+            s.scrollbackGenerate!.line.replace('{i}', String(i)),
+          ).join('')
+        : s.scrollbackContent;
+      writeFileSync(transcriptPath, content, 'utf8');
+    }
 
     await repo.create(
       {
@@ -117,6 +141,8 @@ async function main(): Promise<void> {
         exitedAt: s.exitedAt,
         exitCode: s.exitCode,
         transcriptPath,
+        ...(s.cols !== undefined ? { cols: s.cols } : {}),
+        ...(s.rows !== undefined ? { rows: s.rows } : {}),
       } as never,
       { id: s.id, createdAt: s.startedAt, updatedAt: s.startedAt }
     );

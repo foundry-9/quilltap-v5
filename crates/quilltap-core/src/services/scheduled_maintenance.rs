@@ -723,7 +723,8 @@ mod tests {
                     id TEXT PRIMARY KEY, chatId TEXT NOT NULL, label TEXT,
                     shell TEXT NOT NULL, cwd TEXT NOT NULL, startedAt TEXT NOT NULL,
                     exitedAt TEXT, exitCode REAL, transcriptPath TEXT,
-                    createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL);",
+                    createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL,
+                    cols REAL, rows REAL);",
             )?;
             Ok(())
         })

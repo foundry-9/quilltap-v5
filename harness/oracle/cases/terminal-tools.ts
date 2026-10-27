@@ -79,7 +79,21 @@ async function main(): Promise<void> {
   process.env.SQLITE_PATH = work;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D337: DEBUG so `Terminal read executed` reaches the capture; the
+  // console transport is spliced out, so stdout stays the NDJSON's alone.
+  process.env.LOG_LEVEL = 'debug';
+  let currentCase = '';
+  const logs: Array<{ case: string; level: string; message: string; fields: Record<string, unknown> }> = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown> };
+      if (data.message !== 'Terminal read executed' && data.message !== 'Failed to read transcript file') return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      logs.push({ case: currentCase, level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const {
@@ -101,6 +115,7 @@ async function main(): Promise<void> {
   }> = [];
 
   for (const c of spec.readCases) {
+    currentCase = c.name;
     const ctx = { userId: undefined, chatId: c.chatId, config: {} };
     try {
       const output = await executeTerminalReadTool(c.args as never, ctx as never);
@@ -134,6 +149,7 @@ async function main(): Promise<void> {
     JSON.stringify({
       case: 'terminal-tools',
       readResults,
+      logs,
       readValidateResults,
       listResults,
     }) + '\n'

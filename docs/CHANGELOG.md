@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(terminal): terminal_read and Ariel render through the screen model (P4.D337 unit 3)
+
+_Versions: core 0.0.1327, host 0.0.214._
+
+Bug 255 (v4 `a6292f169`) is now in effect. `terminal_read` returns rendered text: a live session's screen through its emulator, or an exited session's last 4 MiB of transcript replayed at the stored geometry (80×24 when unknown). The result always carries `buffer` (`alternate` adds the `Screen:` sentence), `rawScrollback` is the raw stream's last 64 K UTF-16 units, and `totalLines` counts rendered lines. The seam becomes `TerminalReadSource` (`read` → `TerminalReadSnapshot`), consulted after the session checks; `with_scrollback` and the host's `PtyScrollbackSource` keep their names. The `terminal_read` catalog row is regenerated from the pin.
+
+The host feeds every PTY session into a `TerminalScreen`. Ariel's flush asks it for a summary through a per-session chain, so summaries post in order and a racing flush waits. A resize moves the screen and the meta only when the PTY resize succeeds. Spawn and exit store the geometry, and `render_screen` is new. Ariel's announcement gains `kind`, and a full-screen program's snapshot gets the heading ``Screen of session `…` (a full-screen program has the terminal):``. `PtySessionMeta` carries `cols` / `rows`. New log lines, each matched against v4's captured line: `Terminal read executed`, both `[ArielNotification]` terminal-output DEBUGs, `[PTY] Ariel summary taken`, and `Failed to read transcript file` (Node's `ENOENT` text).
+
+`terminal_tools` grew seven read cases (alt screen at a stored and the default geometry, soft wraps, a 64 K raw tail, a 4 MiB replay window, a slice, a missing transcript) plus v4's DEBUG per read; all 15 reads are byte-equal. `ariel_writers_tier3` grew six kind cases and a geometry-carrying reconcile orphan, compares v4's captured DEBUG lines, and now names every red cell. Its only red is the standing compressed-bytes cell (row 0, decoded text equal). `tool_definitions` carves two sibling rows (`run_custom`, `run_sql`) until the union. The `terminal_pty` table twin is widened; it had been turning every spawn into a silent SKIP.
+
 #### 2026-10-26 — feat(terminal): terminal_sessions geometry columns and their boot ensure (P4.D337 unit 2)
 
 _Versions: core 0.0.1326, host 0.0.213._

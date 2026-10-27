@@ -33,12 +33,15 @@
 //!   the fallback (→ `Unknown tool: <name>` by default). Mirroring the real
 //!   plugin precedence waits for the plugin subsystem (later wave). This is the
 //!   only divergence from v4's dispatch, and only for installed-plugin setups.
-//! - **`terminal_read` scrollback source.** v4's handler reads the raw scrollback
-//!   from the live PTY ring buffer or by tailing the transcript file — both
-//!   host-side I/O. The port lifted that to an injected `full_content` (see
-//!   [`crate::tools::terminal`]); here it is the [`TerminalScrollbackSource`]
-//!   seam (default [`EmptyScrollback`], the "no live session / no transcript"
-//!   case). Production wires ptyManager / transcript tailing (host-side).
+//! - **`terminal_read` source.** v4's handler renders a live PTY's screen
+//!   through its emulator or replays the transcript tail at the stored
+//!   geometry (bug 255) — both host-side I/O. Here it is the
+//!   [`TerminalReadSource`] seam (default [`EmptyTerminalRead`], the "no live
+//!   session / no transcript" case), consulted inside
+//!   [`crate::tools::terminal::execute_terminal_read`] after its session
+//!   checks. Production wires the PTY manager / transcript replay (host-side;
+//!   the builder keeps its `with_scrollback` name so the host's spine needs no
+//!   edit).
 //! - **`rng` byte source.** The tool-loop `rng` path uses OS randomness here
 //!   ([`OsRandomBytes`](crate::tools::rng::OsRandomBytes)); an injectable byte
 //!   source for the response-path RNG lands with the tool loops (W4.1e). The
@@ -84,6 +87,7 @@ use crate::photos::save_image_to_album::{
 use crate::services::tool_execution::{
     ToolCall, ToolExecutionContext, ToolMetadata, ToolResult, ToolRunner,
 };
+use crate::terminal_screen::ScreenRendering;
 use crate::tools::doc_edit::shared::collect_peer_character_ids_for_reads;
 use crate::tools::generate_image;
 use crate::tools::photo::PhotoToolContext;
@@ -313,26 +317,36 @@ fn is_ported_doc_edit_tool(name: &str) -> bool {
 }
 
 // ===========================================================================
-// The terminal-scrollback seam
+// The terminal-read seam
 // ===========================================================================
 
-/// Resolve the raw scrollback bytes for a terminal session (v4's live-PTY /
-/// transcript-tail read, host-side). Injected into [`BuiltInToolRunner`] so the
-/// core stays free of PTY/fs I/O.
-pub trait TerminalScrollbackSource: Send + Sync {
-    /// The raw scrollback for `session_id` (empty when no live buffer / no
-    /// transcript is available — v4's `fullContent = ''` default).
-    fn scrollback(&self, session_id: &str) -> String;
+/// What a terminal read resolves to (P4.D337, bug 255): the session rendered
+/// through a terminal emulator — a live session's screen, or an exited
+/// session's transcript tail replayed at its stored geometry — and the raw
+/// byte stream `raw: true` returns the tail of (the live ring buffer, or the
+/// transcript tail). `rendering: None` with an empty `raw` is v4's
+/// neither-live-nor-transcript arm.
+#[derive(Debug, Clone, Default)]
+pub struct TerminalReadSnapshot {
+    pub rendering: Option<ScreenRendering>,
+    pub raw: String,
 }
 
-/// The default source: always empty (no live session, no transcript). Faithful to
-/// v4 when neither a live PTY nor a transcript file exists.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct EmptyScrollback;
+/// Resolve a terminal session for `terminal_read` (v4's live-PTY / transcript
+/// read, host-side). Injected into [`BuiltInToolRunner`] so the core stays free
+/// of PTY / fs I/O.
+pub trait TerminalReadSource: Send + Sync {
+    fn read(&self, session_id: &str) -> TerminalReadSnapshot;
+}
 
-impl TerminalScrollbackSource for EmptyScrollback {
-    fn scrollback(&self, _session_id: &str) -> String {
-        String::new()
+/// The default source: no live session, no transcript. Faithful to v4 when
+/// neither a live PTY nor a transcript file exists.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EmptyTerminalRead;
+
+impl TerminalReadSource for EmptyTerminalRead {
+    fn read(&self, _session_id: &str) -> TerminalReadSnapshot {
+        TerminalReadSnapshot::default()
     }
 }
 
@@ -396,7 +410,7 @@ impl ToolRunner for LoudFallbackRunner {
 pub struct BuiltInToolRunner<F: ToolRunner = LoudFallbackRunner> {
     db: Db,
     self_inventory_env: SelfInventoryEnv,
-    scrollback: Arc<dyn TerminalScrollbackSource>,
+    terminal_read: Arc<dyn TerminalReadSource>,
     /// The embedding provider the `search` / `help_search` tools use (v4's
     /// `generateEmbeddingForUser`). Defaults to the always-failing
     /// [`ErasedEmbeddingProvider::none`] until a real provider is wired (W4.1g);
@@ -474,7 +488,7 @@ impl BuiltInToolRunner<LoudFallbackRunner> {
         BuiltInToolRunner {
             db,
             self_inventory_env,
-            scrollback: Arc::new(EmptyScrollback),
+            terminal_read: Arc::new(EmptyTerminalRead),
             embedding_provider: ErasedEmbeddingProvider::none(),
             web_search_provider: Arc::new(web_search::NotConfiguredWebSearch),
             file_bytes: Arc::new(NotConfiguredBytes),
@@ -498,7 +512,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         BuiltInToolRunner {
             db: self.db,
             self_inventory_env: self.self_inventory_env,
-            scrollback: self.scrollback,
+            terminal_read: self.terminal_read,
             embedding_provider: self.embedding_provider,
             web_search_provider: self.web_search_provider,
             file_bytes: self.file_bytes,
@@ -615,10 +629,11 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
         self
     }
 
-    /// Replace the terminal-scrollback source (production wires PTY/transcript
-    /// reads here).
-    pub fn with_scrollback(mut self, scrollback: Arc<dyn TerminalScrollbackSource>) -> Self {
-        self.scrollback = scrollback;
+    /// Replace the terminal-read source (production wires the PTY manager /
+    /// transcript replay here). The name predates bug 255's rendering seam and
+    /// is kept so the host's spine wiring needs no edit (P4.D337 R-6).
+    pub fn with_scrollback(mut self, source: Arc<dyn TerminalReadSource>) -> Self {
+        self.terminal_read = source;
         self
     }
 
@@ -888,8 +903,14 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 "Invalid arguments for terminal_read: sessionId is required",
             );
         };
-        let full_content = self.scrollback.scrollback(&input.session_id);
-        match terminal::execute_terminal_read(&self.db, &ctx.chat_id, &input, &full_content).await {
+        match terminal::execute_terminal_read(
+            &self.db,
+            &ctx.chat_id,
+            &input,
+            self.terminal_read.as_ref(),
+        )
+        .await
+        {
             Ok(out) => {
                 let formatted = terminal::format_terminal_read(&out);
                 let mut result = Map::new();
@@ -904,6 +925,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 result.insert("startLine".into(), json!(out.start_line));
                 result.insert("endLine".into(), json!(out.end_line));
                 result.insert("truncated".into(), json!(out.truncated));
+                result.insert("buffer".into(), json!(out.buffer));
                 result.insert("scrollback".into(), json!(out.scrollback));
                 if let Some(raw) = &out.raw_scrollback {
                     result.insert("rawScrollback".into(), json!(raw));

@@ -37,6 +37,8 @@ interface Case {
   shell?: string;
   cwd?: string;
   reason?: 'idle' | 'max-age' | 'session-closed';
+  /** P4.D337: the summary's kind (bug 255) — absent → v4's default `output`. */
+  summaryKind?: 'output' | 'screen';
   cleanedOutput?: string;
   repeatSegment?: string;
   repeatTimes?: number;
@@ -82,7 +84,29 @@ async function main(): Promise<void> {
   process.env.SQLITE_MOUNT_INDEX_PATH = join(scratch, 'mount-scratch.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D337: DEBUG so the writer's two terminal-output lines reach the
+  // capture; the console transport is spliced out below, so stdout stays the
+  // NDJSON's alone.
+  process.env.LOG_LEVEL = 'debug';
+
+  // Capture the writer's two DEBUG lines per case (splice a transport into the
+  // singleton logger — child loggers share its transports).
+  const CAPTURED = new Set([
+    '[ArielNotification] Posting terminal-output announcement',
+    '[ArielNotification] Skipping empty terminal-output announcement',
+  ]);
+  let currentCase = '';
+  const logs: Array<{ case: string; level: string; message: string; fields: Record<string, unknown> }> = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown> };
+      if (!CAPTURED.has(data.message)) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      logs.push({ case: currentCase, level: data.level, message: data.message, fields });
+    },
+  });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const writer = await import('@/lib/services/ariel-notifications/writer');
@@ -93,6 +117,7 @@ async function main(): Promise<void> {
   const results: Array<{ name: string; posted?: boolean; reconciled?: number }> = [];
 
   for (const c of spec.cases) {
+    currentCase = c.name;
     const chatId = c.chatRef === 'missing' ? spec.missingChatId : spec.chat.id;
     switch (c.kind) {
       case 'opened': {
@@ -111,6 +136,7 @@ async function main(): Promise<void> {
           chatId,
           sessionId: c.sessionId!,
           cleanedOutput: caseOutput(c),
+          ...(c.summaryKind !== undefined ? { kind: c.summaryKind } : {}),
           reason: c.reason!,
         });
         results.push({ name: c.name, posted: posted !== null });
@@ -157,6 +183,7 @@ async function main(): Promise<void> {
     JSON.stringify({
       case: 'ariel-writers-tier3',
       results,
+      logs,
       chatMessages,
       chats,
       terminalSessions,

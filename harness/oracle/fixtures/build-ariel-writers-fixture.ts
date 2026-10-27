@@ -35,6 +35,9 @@ interface TerminalSeed {
   cwd: string;
   exited: boolean;
   exitCode?: number;
+  /** P4.D337: spawn-time geometry (the reconcile pass must leave it). */
+  cols?: number;
+  rows?: number;
 }
 interface Spec {
   testPepperBase64: string;
@@ -132,6 +135,8 @@ async function main(): Promise<void> {
         exitedAt: seed.exited ? spec.seedTimestamp : null,
         exitCode: seed.exited ? seed.exitCode ?? null : null,
         transcriptPath: null,
+        ...(seed.cols !== undefined ? { cols: seed.cols } : {}),
+        ...(seed.rows !== undefined ? { rows: seed.rows } : {}),
       },
       { id: seed.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }
     );

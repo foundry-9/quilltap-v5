@@ -39,6 +39,16 @@ pub struct PtySessionMeta {
     pub exit_code: Option<i64>,
     #[serde(rename = "transcriptPath", default)]
     pub transcript_path: Option<String>,
+    /// The session's geometry — spawn-time, kept in step with every resize
+    /// (v4 `PtySessionMeta.cols` / `rows`, bug 255). An `i64` because a REST
+    /// meta is the DB row read back (REAL or INTEGER, collapsed — the wire
+    /// carries `80`, never `80.0`); `None` (a row recorded before v4 stored
+    /// it) serialises as an explicit `null`, never skipped. (The client
+    /// `resize` message's `cols` / `rows` stay `u16`.)
+    #[serde(default)]
+    pub cols: Option<i64>,
+    #[serde(default)]
+    pub rows: Option<i64>,
 }
 
 /// Client-to-server WebSocket message (v4 `WsClientMessageSchema`,
@@ -173,8 +183,9 @@ mod tests {
 
     #[test]
     fn server_meta_round_trip() {
-        // v4's meta literal, keys in construction order, nullables explicit.
-        let v4 = r#"{"type":"meta","meta":{"id":"6a1e8e0c-6a5f-4d2a-9d5b-2f6f1a3b4c5d","chatId":"c0000001-0000-4000-8000-0000000000c1","label":null,"shell":"/bin/bash","cwd":"/tmp/files","startedAt":"2026-07-08T12:00:00.000Z","exitedAt":null,"exitCode":null,"transcriptPath":"/tmp/logs/terminals/6a1e8e0c.log"}}"#;
+        // v4's meta literal, keys in construction order, nullables explicit —
+        // `cols` / `rows` after `transcriptPath` since bug 255 (`a6292f169`).
+        let v4 = r#"{"type":"meta","meta":{"id":"6a1e8e0c-6a5f-4d2a-9d5b-2f6f1a3b4c5d","chatId":"c0000001-0000-4000-8000-0000000000c1","label":null,"shell":"/bin/bash","cwd":"/tmp/files","startedAt":"2026-07-08T12:00:00.000Z","exitedAt":null,"exitCode":null,"transcriptPath":"/tmp/logs/terminals/6a1e8e0c.log","cols":80,"rows":24}}"#;
         let msg: WsServerMessage = serde_json::from_str(v4).unwrap();
         match &msg {
             WsServerMessage::Meta { meta } => {
@@ -213,6 +224,36 @@ mod tests {
         let no_reason = r#"{"type":"chat-update","chatId":"c1"}"#;
         let msg: WsServerMessage = serde_json::from_str(no_reason).unwrap();
         assert_eq!(serde_json::to_string(&msg).unwrap(), no_reason);
+    }
+
+    /// P4.D337 (bug 255): the meta carries the geometry after
+    /// `transcriptPath`, an explicit `null` when unknown — never skipped.
+    #[test]
+    fn meta_carries_the_geometry_after_transcript_path() {
+        let mut meta = PtySessionMeta {
+            id: "s1".into(),
+            chat_id: "c1".into(),
+            label: None,
+            shell: "/bin/sh".into(),
+            cwd: "/".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+            exited_at: None,
+            exit_code: None,
+            transcript_path: Some("/t.log".into()),
+            cols: Some(80),
+            rows: Some(24),
+        };
+        let live = r#"{"id":"s1","chatId":"c1","label":null,"shell":"/bin/sh","cwd":"/","startedAt":"2026-01-01T00:00:00.000Z","exitedAt":null,"exitCode":null,"transcriptPath":"/t.log","cols":80,"rows":24}"#;
+        assert_eq!(serde_json::to_string(&meta).unwrap(), live);
+        meta.cols = None;
+        meta.rows = None;
+        assert!(serde_json::to_string(&meta)
+            .unwrap()
+            .ends_with(r#""transcriptPath":"/t.log","cols":null,"rows":null}"#));
+        // A v4 meta without the keys still parses (serde default).
+        let old = r#"{"id":"s1","chatId":"c1","shell":"/bin/sh","cwd":"/","startedAt":"t"}"#;
+        let parsed: PtySessionMeta = serde_json::from_str(old).unwrap();
+        assert_eq!((parsed.cols, parsed.rows), (None, None));
     }
 
     #[test]

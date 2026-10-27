@@ -6,15 +6,29 @@
 //! SAME cases, and the results compare **exactly** — NO normalization, because
 //! nothing is mutated so no timestamp is ever minted.
 //!
-//! ## The scrollback-source seam
+//! ## The terminal-read seam (P4.D337, bug 255)
 //!
-//! v4's `executeTerminalReadTool` resolves the raw scrollback from a live PTY OR
-//! from `tailFile(session.transcriptPath)`. There is no live PTY in the oracle,
-//! so v4 tails the transcript file the fixture builder wrote. The Rust port takes
-//! the resolved scrollback as an INJECTED input; this test reproduces v4's
-//! resolution by reading the SAME transcript file (via the `transcriptPath` on the
-//! row the port's `find_by_id` returns) and handing those bytes to
-//! `execute_terminal_read`. Identical bytes on both sides.
+//! v4's `executeTerminalReadTool` renders a live PTY's screen through its
+//! emulator OR replays `tailFile(session.transcriptPath, 4 MiB)` through
+//! `renderTranscript` at the row's stored `cols` / `rows` (80×24 when NULL).
+//! There is no live PTY in the oracle (`ptyManager.get` is undefined there), so
+//! every session — live or exited — takes the transcript branch. The Rust port
+//! resolves through the `TerminalReadSource` seam; this test's source reads the
+//! row's transcript tail (`TRANSCRIPT_REPLAY_BYTES`, lossy UTF-8 as Node's
+//! `Buffer.toString`) and calls core's `snapshot_from_transcript` — the SAME
+//! function the host seam calls, so the harness never re-implements the arm. A
+//! missing file answers the empty snapshot (v4's WARN arm). The source PANICS
+//! if consulted for a session that does not exist or belongs to another chat:
+//! v4 throws on those BEFORE reading anything, and so must the port (R-5).
+//!
+//! The new sessions (the alternate-screen transcript at its stored 20×4 and the
+//! SAME bytes at the default 80×24, soft wraps at a stored width, a >64 K
+//! UTF-16-unit raw tail, a >4 MiB transcript whose replay window starts
+//! mid-stream, a missing transcript) carry `cols` / `rows` through the fixture
+//! builder (13 columns at the pin). Every alternate-screen read renders
+//! differently from the old strip over the same bytes — asserted, so no such
+//! row is vacuous. Markers: `"buffer":"alternate"`, `Screen: a full-screen
+//! program`.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -36,9 +50,12 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::runtime::Db;
 use quilltap_core::db::terminal_sessions;
+use quilltap_core::terminal_clean::clean_terminal_output;
+use quilltap_core::tools::executor::{TerminalReadSnapshot, TerminalReadSource};
 use quilltap_core::tools::terminal::{
     execute_terminal_list, execute_terminal_read, format_terminal_list, format_terminal_read,
-    validate_terminal_list_input, validate_terminal_read_input, TerminalToolError,
+    snapshot_from_transcript, validate_terminal_list_input, validate_terminal_read_input,
+    TerminalToolError, TRANSCRIPT_REPLAY_BYTES,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -84,6 +101,9 @@ struct ListCase {
 struct Oracle {
     #[serde(rename = "readResults")]
     read_results: Vec<OracleRead>,
+    /// P4.D337: v4's captured `Terminal read executed` / `Failed to read
+    /// transcript file` lines, per read case.
+    logs: Vec<Value>,
     #[serde(rename = "readValidateResults")]
     read_validate_results: Vec<OracleValidate>,
     #[serde(rename = "listResults")]
@@ -128,17 +148,42 @@ fn parse_read_args(args: &Value) -> quilltap_core::tools::terminal::TerminalRead
         .unwrap_or_else(|| panic!("read case args should validate: {args}"))
 }
 
-/// Resolve the raw scrollback the way v4's handler would: read the transcript
-/// file recorded on the session row. Mirrors v4's `tailFile(transcriptPath)` for
-/// a <1 MB file (whole-file read).
-fn resolve_scrollback(db: &Db, session_id: &str) -> String {
-    let path = db
-        .read_main(|conn| terminal_sessions::find_by_id(conn, session_id))
-        .expect("find_by_id")
-        .and_then(|row| row.transcript_path);
-    match path {
-        Some(p) => std::fs::read_to_string(&p).unwrap_or_default(),
-        None => String::new(),
+/// v4 `tailFile(path, maxBytes)`: the last `maxBytes` bytes, decoded lossily.
+fn tail_file(path: &str, max_bytes: u64) -> std::io::Result<String> {
+    use std::io::{Read as _, Seek as _, SeekFrom};
+    let mut f = std::fs::File::open(path)?;
+    let size = f.metadata()?.len();
+    f.seek(SeekFrom::Start(size.saturating_sub(max_bytes)))?;
+    let mut buf = Vec::new();
+    f.read_to_end(&mut buf)?;
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// The oracle's world: no live PTY, so every session replays its transcript.
+struct TranscriptSource {
+    db: Db,
+    chat_id: std::sync::Mutex<String>,
+}
+
+impl TerminalReadSource for TranscriptSource {
+    fn read(&self, session_id: &str) -> TerminalReadSnapshot {
+        let row = self
+            .db
+            .read_main(|conn| terminal_sessions::find_by_id(conn, session_id))
+            .expect("find_by_id")
+            .unwrap_or_else(|| panic!("consulted for an unknown session {session_id} (R-5)"));
+        assert_eq!(
+            row.chat_id,
+            *self.chat_id.lock().unwrap(),
+            "consulted for another chat's session (R-5)"
+        );
+        match row.transcript_path.as_deref() {
+            Some(p) => match tail_file(p, TRANSCRIPT_REPLAY_BYTES) {
+                Ok(raw) => snapshot_from_transcript(raw, row.cols, row.rows),
+                Err(_) => TerminalReadSnapshot::default(),
+            },
+            None => TerminalReadSnapshot::default(),
+        }
     }
 }
 
@@ -176,6 +221,22 @@ async fn terminal_tools_matches_oracle() {
     // at the original files. Reads never mutate, so opening in place is safe.
     let db = Db::open_main(Path::new(&fixture), &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open: {e}"));
+    let source = TranscriptSource {
+        db: db.clone(),
+        chat_id: std::sync::Mutex::new(String::new()),
+    };
+    let mut alternate_reads = 0usize;
+    // `Terminal read executed` (v4's DEBUG, never ported before P4.D337) per
+    // case — logged on this thread (`#[tokio::test]` polls here).
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let _capture = {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_default(
+            tracing_subscriber::registry()
+                .with(quilltap_core::test_support::CaptureLayer(captured.clone())),
+        )
+    };
+    let mut v5_logs: Vec<(String, String)> = Vec::new();
 
     // ---- terminal_read cases ----
     assert_eq!(
@@ -188,8 +249,18 @@ async fn terminal_tools_matches_oracle() {
         assert_eq!(oc.name, c.name, "read case {i}: name mismatch");
 
         let input = parse_read_args(&c.args);
-        let scrollback = resolve_scrollback(&db, &input.session_id);
-        let result = execute_terminal_read(&db, &c.chat_id, &input, &scrollback).await;
+        *source.chat_id.lock().unwrap() = c.chat_id.clone();
+        captured.lock().unwrap().clear();
+        let result = execute_terminal_read(&db, &c.chat_id, &input, &source).await;
+        for line in captured.lock().unwrap().iter() {
+            if line.contains(" Terminal read executed ") {
+                // `LEVEL target message …` → `LEVEL message …`.
+                let mut parts = line.splitn(3, ' ');
+                let level = parts.next().unwrap().to_string();
+                let _target = parts.next();
+                v5_logs.push((c.name.clone(), format!("{level} {}", parts.next().unwrap())));
+            }
+        }
 
         match (&c.expect_throw, result) {
             (Some(expected), Err(err)) => {
@@ -218,6 +289,32 @@ async fn terminal_tools_matches_oracle() {
                 let want = oc.output.as_ref().unwrap_or_else(|| {
                     panic!("read case {} ({}): oracle has no output", i, c.name)
                 });
+                // Byte-exact (key order is the point: `buffer` sits between
+                // `truncated` and `scrollback`) — `Value ==` ignores order.
+                assert_eq!(
+                    serde_json::to_string(&got).unwrap(),
+                    serde_json::to_string(want).unwrap(),
+                    "read case {} ({}): output bytes diverged",
+                    i,
+                    c.name
+                );
+                if out.buffer == quilltap_core::terminal_screen::ScreenBufferKind::Alternate {
+                    // Not vacuous: the old strip over the same bytes answers
+                    // something else.
+                    let row = db
+                        .read_main(|conn| terminal_sessions::find_by_id(conn, &input.session_id))
+                        .unwrap()
+                        .unwrap();
+                    let raw = std::fs::read_to_string(row.transcript_path.unwrap()).unwrap();
+                    assert_ne!(
+                        clean_terminal_output(&raw),
+                        out.scrollback,
+                        "read case {} ({}): the strip already answers this row",
+                        i,
+                        c.name
+                    );
+                    alternate_reads += 1;
+                }
                 assert_eq!(
                     &got,
                     want,
@@ -299,6 +396,33 @@ async fn terminal_tools_matches_oracle() {
         );
     }
 
+    assert!(
+        alternate_reads >= 2,
+        "only {alternate_reads} alternate-screen reads"
+    );
+    // The DEBUG line, field for field in v4's order (the child binding
+    // `module` first); the refused reads log nothing on either side.
+    let v4_logs: Vec<(String, String)> = oracle
+        .logs
+        .iter()
+        .filter(|l| l["message"] == "Terminal read executed")
+        .map(|l| {
+            let mut line = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                match v {
+                    Value::String(s) => line.push_str(&format!(" {k}={s}")),
+                    other => line.push_str(&format!(" {k}={other}")),
+                }
+            }
+            (l["case"].as_str().unwrap().to_string(), line)
+        })
+        .collect();
+    assert_eq!(v4_logs.len(), 13, "one line per successful read");
+    assert_eq!(v5_logs, v4_logs, "`Terminal read executed`");
     eprintln!(
         "OK: terminal tools matched oracle ({} read, {} validate, {} list).",
         spec.read_cases.len(),

@@ -21,7 +21,8 @@ use std::time::Duration;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::{terminal_sessions, Writer};
 use quilltap_core::jsstr::utf16_len;
-use quilltap_core::tools::executor::TerminalScrollbackSource;
+use quilltap_core::terminal_screen::ScreenBufferKind;
+use quilltap_core::tools::executor::TerminalReadSource;
 use quilltap_host::terminal::protocol::WsServerMessage;
 use quilltap_host::terminal::scrollback::PtyScrollbackSource;
 use quilltap_host::terminal::{SpawnOptions, TerminalManager, TerminalManagerConfig};
@@ -52,7 +53,8 @@ fn test_instance() -> TestInstance {
                 "CREATE TABLE terminal_sessions (\
                    id TEXT PRIMARY KEY, chatId TEXT, label TEXT, shell TEXT, \
                    cwd TEXT, startedAt TEXT, exitedAt TEXT, exitCode REAL, \
-                   transcriptPath TEXT, createdAt TEXT, updatedAt TEXT);",
+                   transcriptPath TEXT, createdAt TEXT, updatedAt TEXT, \
+                   cols REAL, rows REAL);",
             )
             .expect("create terminal_sessions");
     }
@@ -378,25 +380,25 @@ async fn ariel_idle_flush_drains_the_buffer() {
     let id = meta.id.clone();
     assert!(
         wait_until(
-            move || mgr2.ariel_buffer_len(&id).map(|n| n > 0).unwrap_or(false),
+            move || mgr2.ariel_pending(&id) == Some(true),
             Duration::from_secs(10),
         )
         .await,
-        "output buffered for Ariel"
+        "output pending an Ariel summary"
     );
 
     // After the idle window (with no further output) the driver flushes: the
-    // buffer drains even though the announcement no-ops here (no chats table —
-    // the writer's error-swallow shape).
+    // pending mark clears even though the announcement no-ops here (no chats
+    // table — the writer's error-swallow shape).
     let mgr2 = Arc::clone(&mgr);
     let id = meta.id.clone();
     assert!(
         wait_until(
-            move || mgr2.ariel_buffer_len(&id) == Some(0),
+            move || mgr2.ariel_pending(&id) == Some(false),
             Duration::from_secs(10),
         )
         .await,
-        "idle flush drained the Ariel buffer"
+        "idle flush took the pending summary"
     );
 
     let _ = mgr.write(&meta.id, "exit\n");
@@ -416,29 +418,25 @@ async fn ariel_max_age_flush_fires_under_steady_drip() {
     let id = meta.id.clone();
     assert!(
         wait_until(
-            move || mgr2.ariel_buffer_len(&id).map(|n| n > 0).unwrap_or(false),
+            move || mgr2.ariel_pending(&id) == Some(true),
             Duration::from_secs(10),
         )
         .await,
-        "drip buffered"
+        "drip pending"
     );
 
-    // The idle deadline keeps moving; the max-age cap still fires and drains.
-    // Observe a drain by watching the buffer length drop below its running max.
-    let mut drained = false;
-    let mut seen_max = 0usize;
+    // The idle deadline keeps moving; the max-age cap still fires. Observe the
+    // flush as the pending mark clearing between two drips (100 ms apart).
+    let mut flushed = false;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
     while tokio::time::Instant::now() < deadline {
-        if let Some(n) = mgr.ariel_buffer_len(&meta.id) {
-            if n < seen_max {
-                drained = true;
-                break;
-            }
-            seen_max = seen_max.max(n);
+        if mgr.ariel_pending(&meta.id) == Some(false) {
+            flushed = true;
+            break;
         }
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    assert!(drained, "max-age flush drained the buffer mid-drip");
+    assert!(flushed, "max-age flush took the summary mid-drip");
 
     // Break the drip loop and end the shell (SIGINT-free path: close via exit
     // after ^C; simplest is SIGKILL through the portable-pty killer — but the
@@ -504,10 +502,19 @@ async fn scrollback_source_live_then_transcript() {
         .await
     );
 
-    // Live session + exitedAt null → the ring buffer verbatim.
-    let live = source.scrollback(&meta.id);
-    assert_eq!(live, mgr.get_ring_buffer(&meta.id).unwrap());
-    assert!(live.contains("scroll_marker"));
+    // Live session + exitedAt null → the live screen rendered, and the ring
+    // buffer verbatim as the raw stream.
+    let live = source.read(&meta.id);
+    assert_eq!(live.raw, mgr.get_ring_buffer(&meta.id).unwrap());
+    assert!(live.raw.contains("scroll_marker"));
+    let rendering = live.rendering.expect("a live rendering");
+    assert_eq!(rendering.buffer, ScreenBufferKind::Normal);
+    assert!(
+        rendering.lines.iter().any(|l| l == "scroll_marker"),
+        "the echoed line, rendered: {:?}",
+        rendering.lines
+    );
+    assert_eq!((rendering.cols, rendering.rows), (80, 24));
 
     // After exit the row's exitedAt is set → the transcript tail (even though
     // the session lingers in the map until unsubscribed).
@@ -522,14 +529,21 @@ async fn scrollback_source_live_then_transcript() {
         .await
     );
     assert!(mgr.contains(&meta.id), "exited session lingers in the map");
-    let post_exit = source.scrollback(&meta.id);
+    let post_exit = source.read(&meta.id);
     assert!(
-        post_exit.contains("scroll_marker"),
+        post_exit.raw.contains("scroll_marker"),
         "transcript tail served"
     );
+    let replay = post_exit.rendering.expect("the transcript replayed");
+    assert!(replay.lines.iter().any(|l| l == "scroll_marker"));
+    // Replayed at the stored geometry (spawn-time 80×24, stamped again on exit).
+    let row = read_row(&inst.db, &meta.id).unwrap();
+    assert_eq!((row.cols, row.rows), (Some(80), Some(24)));
+    assert_eq!((replay.cols, replay.rows), (80, 24));
 
-    // Unknown session → empty (the seam's total contract).
-    assert_eq!(source.scrollback("does-not-exist"), "");
+    // Unknown session → nothing (the seam's total contract).
+    let unknown = source.read("does-not-exist");
+    assert!(unknown.rendering.is_none() && unknown.raw.is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -620,3 +634,222 @@ async fn manager_is_the_chat_get_liveness_probe() {
         "exited-but-subscribed session lingers (v4 ptyManager.get parity)"
     );
 }
+
+// === P4.D337 (bug 255): the screen model, resize, and the exit geometry ===
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_full_screen_program_renders_its_screen() {
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let meta = spawn_or_skip!(mgr, sh_opts());
+    assert_eq!((meta.cols, meta.rows), (Some(80), Some(24)));
+
+    assert!(mgr.write(&meta.id, "printf '\\033[?1049h\\033[HTUI'\n"));
+    let mgr2 = Arc::clone(&mgr);
+    let id = meta.id.clone();
+    assert!(
+        wait_until(
+            move || mgr2
+                .render_screen(&id)
+                .is_some_and(|r| r.buffer == ScreenBufferKind::Alternate),
+            Duration::from_secs(10),
+        )
+        .await,
+        "the alternate screen took over"
+    );
+    let r = mgr.render_screen(&meta.id).unwrap();
+    assert!(r.lines[0].starts_with("TUI"), "{:?}", r.lines);
+    assert!(mgr.render_screen("does-not-exist").is_none());
+    let _ = mgr.write(&meta.id, "printf '\\033[?1049l'; exit 0\n");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn resize_moves_the_screen_and_the_meta_and_the_exit_stamps_it() {
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let meta = spawn_or_skip!(mgr, sh_opts());
+    let row = read_row(&inst.db, &meta.id).unwrap();
+    assert_eq!(
+        (row.cols, row.rows),
+        (Some(80), Some(24)),
+        "spawn-time geometry"
+    );
+
+    mgr.resize(&meta.id, 100, 30);
+    let r = mgr.render_screen(&meta.id).unwrap();
+    assert_eq!((r.cols, r.rows), (100, 30));
+    let m = mgr.session_meta(&meta.id).unwrap();
+    assert_eq!((m.cols, m.rows), (Some(100), Some(30)));
+
+    assert!(mgr.write(&meta.id, "exit 0\n"));
+    assert!(
+        wait_until(
+            || read_row(&inst.db, &meta.id)
+                .map(|r| r.exited_at.is_some())
+                .unwrap_or(false),
+            Duration::from_secs(10),
+        )
+        .await
+    );
+    let row = read_row(&inst.db, &meta.id).unwrap();
+    assert_eq!(
+        (row.cols, row.rows),
+        (Some(100), Some(30)),
+        "the exit stamp wrote the last resize"
+    );
+}
+
+/// The process-wide capture (the flush runs on runtime worker threads, so a
+/// thread-scoped one cannot see it). Lines are filtered by session id, so the
+/// binary's parallel tests do not disturb each other.
+fn global_lines() -> &'static std::sync::Arc<std::sync::Mutex<Vec<String>>> {
+    use tracing_subscriber::layer::SubscriberExt;
+    static LOGS: std::sync::OnceLock<std::sync::Arc<std::sync::Mutex<Vec<String>>>> =
+        std::sync::OnceLock::new();
+    LOGS.get_or_init(|| {
+        let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry()
+                .with(quilltap_core::test_support::CaptureLayer(logs.clone())),
+        )
+        .expect("this binary owns the global subscriber");
+        logs
+    })
+}
+
+fn lines_with(needle: &str, session_id: &str) -> Vec<String> {
+    global_lines()
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.contains(needle) && l.contains(&format!("sessionId={session_id}")))
+        .cloned()
+        .collect()
+}
+
+/// v4's DEBUG `[PTY] Ariel summary taken` `{ sessionId, reason, kind, chars }`
+/// (+ the `pty-manager` child binding); a flush with nothing pending logs
+/// nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_summary_taken_line_and_its_silence() {
+    global_lines();
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_millis(200), Duration::from_secs(60));
+    let meta = spawn_or_skip!(
+        mgr,
+        SpawnOptions {
+            chat_id: "log-chat".to_string(),
+            shell: Some("/bin/sh".to_string()),
+            ..Default::default()
+        }
+    );
+    assert!(mgr.write(&meta.id, "printf 'summary_marker\\n'\n"));
+    let mgr2 = Arc::clone(&mgr);
+    let id = meta.id.clone();
+    assert!(
+        wait_until(
+            move || mgr2.ariel_pending(&id) == Some(true),
+            Duration::from_secs(10)
+        )
+        .await
+    );
+    let mgr2 = Arc::clone(&mgr);
+    let id = meta.id.clone();
+    assert!(
+        wait_until(
+            move || mgr2.ariel_pending(&id) == Some(false),
+            Duration::from_secs(10)
+        )
+        .await
+    );
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    let taken = lines_with("[PTY] Ariel summary taken", &meta.id);
+    assert_eq!(taken.len(), 1, "{taken:#?}");
+    let prefix = format!(
+        "DEBUG quilltap::terminal [PTY] Ariel summary taken module=pty-manager sessionId={} \
+         reason=idle kind=output chars=",
+        meta.id
+    );
+    assert!(taken[0].starts_with(&prefix), "{}", taken[0]);
+
+    // Silence: nothing pending → the kick's flush takes no summary.
+    mgr.kick_all_for_chat("log-chat").await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(lines_with("[PTY] Ariel summary taken", &meta.id).len(), 1);
+}
+
+/// v4's WARN `Failed to read transcript file` `{ sessionId, transcriptPath,
+/// error }` (+ the `terminal-tool-handler` child binding), with Node's `fs`
+/// message; a readable transcript logs nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn the_transcript_read_warn_and_its_silence() {
+    global_lines();
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let source = PtyScrollbackSource::new(Arc::clone(&mgr), inst.db.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let present = dir.path().join("present.log");
+    std::fs::write(&present, "$ ls\r\nfile\r\n$ ").unwrap();
+    let missing = dir.path().join("missing.log");
+    for (id, path) in [
+        ("0f000000-0000-4000-8000-0000000000f1", &present),
+        ("0f000000-0000-4000-8000-0000000000f2", &missing),
+    ] {
+        let path = path.to_string_lossy().into_owned();
+        let id = id.to_string();
+        inst.db
+            .write(move |writers| {
+                writers.main().terminal_sessions().create(
+                    &terminal_sessions::TsCreate {
+                        chat_id: CHAT_ID.to_string(),
+                        label: None,
+                        shell: "/bin/sh".to_string(),
+                        cwd: "/tmp".to_string(),
+                        started_at: "2026-01-01T00:00:00.000Z".to_string(),
+                        exited_at: Some("2026-01-01T00:01:00.000Z".to_string()),
+                        exit_code: Some(0.0),
+                        transcript_path: Some(path),
+                        cols: Some(20.0),
+                        rows: Some(4.0),
+                    },
+                    &terminal_sessions::CreateOptions {
+                        id,
+                        created_at: "2026-01-01T00:00:00.000Z".to_string(),
+                        updated_at: "2026-01-01T00:01:00.000Z".to_string(),
+                    },
+                )
+            })
+            .await
+            .unwrap();
+    }
+
+    let read = source.read("0f000000-0000-4000-8000-0000000000f1");
+    let r = read.rendering.expect("replayed");
+    assert_eq!(
+        (r.cols, r.rows, r.lines.clone()),
+        (20, 4, vec!["$ ls".to_string(), "file".into(), "$".into()])
+    );
+    assert!(lines_with(
+        "Failed to read transcript file",
+        "0f000000-0000-4000-8000-0000000000f1"
+    )
+    .is_empty());
+
+    let read = source.read("0f000000-0000-4000-8000-0000000000f2");
+    assert!(read.rendering.is_none() && read.raw.is_empty());
+    let warn = lines_with(
+        "Failed to read transcript file",
+        "0f000000-0000-4000-8000-0000000000f2",
+    );
+    assert_eq!(
+        warn,
+        [format!(
+            "WARN quilltap::terminal Failed to read transcript file module=terminal-tool-handler \
+             sessionId=0f000000-0000-4000-8000-0000000000f2 transcriptPath={0} \
+             error=ENOENT: no such file or directory, open '{0}'",
+            missing.display()
+        )]
+    );
+}
+// === end P4.D337 ===

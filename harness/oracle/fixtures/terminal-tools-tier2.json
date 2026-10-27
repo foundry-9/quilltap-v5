@@ -39,6 +39,99 @@
       "exitCode": null,
       "transcriptFile": "terminal-tools-other.log",
       "scrollbackContent": "secret other-chat scrollback\n"
+    },
+    {
+      "id": "dddd0001-dddd-4ddd-8ddd-dddddddddd01",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "vim 20x4",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:10:00.000Z",
+      "exitCode": 0,
+      "transcriptFile": "terminal-tools-alt-geom.log",
+      "scrollbackContent": "\u001b[?1049h\u001b[H\u001b[2Jvim: notes.md\u001b[2;1H~\u001b[3;1H~\u001b[4;1H-- INSERT --\u001b[2;3Hhello",
+      "cols": 20,
+      "rows": 4
+    },
+    {
+      "id": "dddd0002-dddd-4ddd-8ddd-dddddddddd02",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "vim no geometry",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:11:00.000Z",
+      "exitCode": 0,
+      "transcriptFile": "terminal-tools-alt-nogeom.log",
+      "scrollbackContent": "\u001b[?1049h\u001b[H\u001b[2Jvim: notes.md\u001b[2;1H~\u001b[3;1H~\u001b[4;1H-- INSERT --\u001b[2;3Hhello",
+      "cols": null,
+      "rows": null
+    },
+    {
+      "id": "dddd0003-dddd-4ddd-8ddd-dddddddddd03",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "soft wraps",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:12:00.000Z",
+      "exitCode": 0,
+      "transcriptFile": "terminal-tools-softwrap.log",
+      "scrollbackContent": "$ cat long.txt\r\n0123456789abcdefghijKLMNOPQRST\r\nshort\r\n$ ",
+      "cols": 12,
+      "rows": 3
+    },
+    {
+      "id": "dddd0004-dddd-4ddd-8ddd-dddddddddd04",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "big raw",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:13:00.000Z",
+      "exitCode": 0,
+      "transcriptFile": "terminal-tools-big.log",
+      "scrollbackContent": "",
+      "cols": 80,
+      "rows": 24,
+      "scrollbackGenerate": {
+        "line": "line {i}: the quick brown fox — ünïcödé ✓\r\n",
+        "count": 2000
+      }
+    },
+    {
+      "id": "dddd0005-dddd-4ddd-8ddd-dddddddddd05",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "over 4 MiB",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:14:00.000Z",
+      "exitCode": 0,
+      "transcriptFile": "terminal-tools-huge.log",
+      "scrollbackContent": "",
+      "cols": 80,
+      "rows": 24,
+      "scrollbackGenerate": {
+        "line": "\u001b[32mrow {i}\u001b[0m padded to make the transcript long enough to pass the replay window\r\n",
+        "count": 48000
+      }
+    },
+    {
+      "id": "dddd0006-dddd-4ddd-8ddd-dddddddddd06",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "label": "missing transcript",
+      "shell": "/bin/zsh",
+      "cwd": "/Users/csebold/project",
+      "startedAt": "2026-07-03T12:00:00.000Z",
+      "exitedAt": "2026-07-03T12:15:00.000Z",
+      "exitCode": 1,
+      "transcriptFile": "terminal-tools-missing.log",
+      "scrollbackContent": "",
+      "cols": 80,
+      "rows": 24,
+      "transcriptMissing": true
     }
   ],
   "readCases": [
@@ -105,6 +198,61 @@
         "sessionId": "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
       },
       "expectThrow": "Session does not belong to this chat"
+    },
+    {
+      "name": "alt-screen-stored-geometry",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0001-dddd-4ddd-8ddd-dddddddddd01"
+      }
+    },
+    {
+      "name": "alt-screen-default-geometry",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0002-dddd-4ddd-8ddd-dddddddddd02"
+      }
+    },
+    {
+      "name": "soft-wraps-at-stored-width",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0003-dddd-4ddd-8ddd-dddddddddd03"
+      }
+    },
+    {
+      "name": "raw-tail-over-64k",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0004-dddd-4ddd-8ddd-dddddddddd04",
+        "raw": true,
+        "lines": 5
+      }
+    },
+    {
+      "name": "slice-rendered-scrollback",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0004-dddd-4ddd-8ddd-dddddddddd04",
+        "start": -12,
+        "end": -8
+      }
+    },
+    {
+      "name": "replay-window-over-4mib",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0005-dddd-4ddd-8ddd-dddddddddd05",
+        "lines": 4
+      }
+    },
+    {
+      "name": "missing-transcript-file",
+      "chatId": "11111111-1111-4111-8111-111111111111",
+      "args": {
+        "sessionId": "dddd0006-dddd-4ddd-8ddd-dddddddddd06",
+        "raw": true
+      }
     }
   ],
   "readValidateCases": [

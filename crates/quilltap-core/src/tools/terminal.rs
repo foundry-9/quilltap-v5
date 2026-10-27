@@ -3,30 +3,45 @@
 //! `lib/tools/terminal-read-tool.ts` / `lib/tools/terminal-list-tool.ts` and the
 //! dispatch rows in `lib/chat/tool-executor.ts`).
 //!
-//! `terminal_read` returns cleaned scrollback (a line window) from a terminal
-//! session in the chat; `terminal_list` summarizes every session in the chat.
-//! The terminal is operator-controlled — these tools only READ.
+//! `terminal_read` returns a line window of a terminal session in the chat as
+//! RENDERED text; `terminal_list` summarizes every session in the chat. The
+//! terminal is operator-controlled — these tools only READ.
 //!
-//! ## The scrollback-source seam (host-side I/O, injected)
+//! ## Rendered, never stripped (bug 255, v4 `a6292f169`)
 //!
-//! v4's `executeTerminalReadTool` resolves the raw scrollback bytes from one of
-//! two host runtime sources:
-//!   - the live PTY ring buffer (`ptyManager.getRingBuffer(sessionId)`), used
-//!     only when a live session exists AND `session.exitedAt == null`; else
-//!   - the transcript file on disk (`tailFile(session.transcriptPath)`, tailing
-//!     the last ≤1 MB), used when `transcriptPath` is set; else `''`.
+//! v4's why, carried: text is rendered through a terminal emulator, never by
+//! stripping escape codes — a full-screen program (Claude Code, vim, less)
+//! draws with cursor addressing that stripping turns into fragments. The lines
+//! are a [`ScreenRendering`]'s (the emulator is [`crate::terminal_screen`]): a
+//! shell's scrollback with soft wraps joined, or a full-screen program's
+//! current screen (`buffer: alternate` — the formatted text says so).
+//! `cleanTerminalOutput` lost its caller here, exactly as v4's `clean-output.ts`
+//! did; the strip stays ported (`terminal_clean`) with no production caller.
 //!
-//! Both are host runtime I/O (a PTY manager and the filesystem) with no ported
-//! equivalent in `quilltap-core`. So the resolved raw scrollback is modeled as an
-//! **injected input**: [`execute_terminal_read`] takes `full_content: &str` (the
-//! bytes v4 would have read) and the differential feeds identical bytes on both
-//! sides (the oracle seeds the session with a `transcriptPath` pointing at a
-//! fixture text file, so v4's `tailFile` reads exactly those bytes; the Rust side
-//! is handed the same bytes). **Everything else** — the session lookup
-//! (`terminal_sessions` repo), the `splitLines` / `sliceByRange` / `tailByCount` /
-//! `resolveIndex` line math, `cleanTerminalOutput`, the status / exitCode / range
-//! fields, the `raw` → `rawScrollback` branch, and `MAX_RETURN_LINES = 2000` — is
-//! ported here and differential-verified.
+//! ## The terminal-read seam (host-side I/O, injected)
+//!
+//! v4's `executeTerminalReadTool` resolves the rendering from one of two host
+//! runtime sources, AFTER its session checks:
+//!   - a live session (`ptyManager.get(id)` AND `session.exitedAt == null`):
+//!     `ptyManager.renderScreen(id)`, with the 256 KB ring buffer as the raw
+//!     stream; else
+//!   - the transcript (`session.transcriptPath`): the last 4 MiB
+//!     ([`TRANSCRIPT_REPLAY_BYTES`]) replayed through `renderTranscript` at the
+//!     row's stored `cols` / `rows` (80×24 when NULL — [`DEFAULT_COLS`] /
+//!     [`DEFAULT_ROWS`]); a read failure WARNs and leaves no rendering;
+//!   - else no rendering and an empty raw stream.
+//!
+//! Both are host runtime I/O. The port takes them through
+//! [`TerminalReadSource`], consulted inside [`execute_terminal_read`] after the
+//! not-found / wrong-chat checks (v4's order — the seam can log and replay
+//! 4 MiB, so it must never run for a refused read). The transcript arm's pure
+//! half is [`snapshot_from_transcript`], called by the host seam and by the
+//! harness's test source alike. **Everything else** — the session lookup, the
+//! `sliceByRange` / `tailByCount` / `resolveIndex` line math over the rendered
+//! lines, the status / exitCode / range fields, `buffer` (always present,
+//! `normal` when there is no rendering), `rawScrollback` (the raw stream's
+//! last 64 K UTF-16 units — [`RAW_RETURN_CHARS`]), the `Screen:` sentence, and
+//! `MAX_RETURN_LINES = 2000` — is ported here and differential-verified.
 //!
 //! The `status` field is `"live"` when `session.exitedAt == null`, else
 //! `"exited"` (v4 uses this same rule; whether a live PTY actually exists is a
@@ -49,11 +64,47 @@ use serde_json::Value;
 
 use crate::db::runtime::Db;
 use crate::db::{terminal_sessions, DbError};
-use crate::terminal_clean::clean_terminal_output;
+use crate::jsstr::{utf16_len, utf16_slice_from};
+use crate::terminal_screen::{render_transcript, ScreenBufferKind};
+use crate::tools::executor::{TerminalReadSnapshot, TerminalReadSource};
 use crate::tools::llm_number::llm_number;
 
 /// v4 `MAX_RETURN_LINES` — the per-read line cap for both slice and tail modes.
 const MAX_RETURN_LINES: usize = 2000;
+
+/// v4 `TRANSCRIPT_REPLAY_BYTES` — how much of an exited session's transcript
+/// is replayed through the emulator.
+pub const TRANSCRIPT_REPLAY_BYTES: u64 = 4 * 1024 * 1024;
+
+/// v4 `RAW_RETURN_CHARS` — how much of the raw byte stream `raw: true`
+/// returns, in UTF-16 code units (v4's `raw.slice(-RAW_RETURN_CHARS)`).
+pub const RAW_RETURN_CHARS: usize = 64 * 1024;
+
+/// v4 `DEFAULT_COLS` / `DEFAULT_ROWS` — the geometry assumed for a transcript
+/// recorded before sessions stored theirs.
+pub const DEFAULT_COLS: u16 = 80;
+pub const DEFAULT_ROWS: u16 = 24;
+
+/// v4's transcript arm, once: `renderTranscript(raw, session.cols ?? 80,
+/// session.rows ?? 24)`, keeping `raw` for `rawScrollback`. A stored geometry
+/// outside `u16` (unreachable through the spawn path, which takes `u16`s) is
+/// clamped; the emulator applies xterm's own `cols >= 2` / `rows >= 1` floor.
+pub fn snapshot_from_transcript(
+    raw: String,
+    cols: Option<i64>,
+    rows: Option<i64>,
+) -> TerminalReadSnapshot {
+    let clamp = |v: i64| u16::try_from(v.max(0)).unwrap_or(u16::MAX);
+    let rendering = render_transcript(
+        &raw,
+        cols.map(clamp).unwrap_or(DEFAULT_COLS),
+        rows.map(clamp).unwrap_or(DEFAULT_ROWS),
+    );
+    TerminalReadSnapshot {
+        rendering: Some(rendering),
+        raw,
+    }
+}
 
 /// v4's `TerminalToolError` (a thrown `Error` the dispatcher catches). The
 /// `Db` variant carries an unexpected database failure (v4 has no analogue — a DB
@@ -134,6 +185,9 @@ pub struct TerminalReadOutput {
     #[serde(rename = "endLine")]
     pub end_line: i64,
     pub truncated: bool,
+    /// `alternate`: a full-screen program has the terminal and `scrollback`
+    /// is its current screen. Always present (`normal` with no rendering).
+    pub buffer: ScreenBufferKind,
     pub scrollback: String,
     #[serde(rename = "rawScrollback", skip_serializing_if = "Option::is_none")]
     pub raw_scrollback: Option<String>,
@@ -183,37 +237,6 @@ impl TerminalStatus {
 // ============================================================================
 // Line math (v4's private helpers)
 // ============================================================================
-
-/// v4 `splitLines`: `text.split(/\r?\n/)`. An empty string splits to `[""]`
-/// (one element), matching JS `''.split(/\r?\n/) === ['']`.
-fn split_lines(text: &str) -> Vec<&str> {
-    // JS `.split(/\r?\n/)` splits on each `\n` optionally preceded by `\r`.
-    // Reproduce by splitting on '\n' after stripping a trailing '\r' from each
-    // piece — but the regex splits at the delimiter, so a "\r\n" is one split
-    // point. Implement by scanning.
-    let mut out = Vec::new();
-    let bytes = text.as_bytes();
-    let mut start = 0usize;
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'\n' {
-            // delimiter is "\r?\n": if the char before is '\r', the segment ends
-            // before that '\r'.
-            let seg_end = if i > start && bytes[i - 1] == b'\r' {
-                i - 1
-            } else {
-                i
-            };
-            out.push(&text[start..seg_end]);
-            start = i + 1;
-            i += 1;
-        } else {
-            i += 1;
-        }
-    }
-    out.push(&text[start..]);
-    out
-}
 
 /// v4 `resolveIndex`: a negative value counts back from `lastIndex`
 /// (`lastIndex - abs(value)`); a non-negative value is returned as-is.
@@ -398,13 +421,13 @@ fn json_int(v: &Value) -> Option<i64> {
 
 /// v4 `executeTerminalReadTool`. `chat_id` is the tool context's chat (v4's
 /// `ctx.chatId`) — an empty string models a missing chat context (v4 throws on
-/// `!ctx.chatId`). `full_content` is the injected raw scrollback (see the module
-/// header seam note).
+/// `!ctx.chatId`). `source` resolves the rendering and the raw stream (see the
+/// module header seam note) — consulted only after the session checks pass.
 pub async fn execute_terminal_read(
     db: &Db,
     chat_id: &str,
     args: &TerminalReadInput,
-    full_content: &str,
+    source: &dyn TerminalReadSource,
 ) -> Result<TerminalReadOutput, TerminalToolError> {
     if chat_id.is_empty() {
         return Err(TerminalToolError::NoChatContext);
@@ -422,10 +445,16 @@ pub async fn execute_terminal_read(
         return Err(TerminalToolError::WrongChat);
     }
 
-    // The raw scrollback bytes are injected (host seam). v4 resolves them from the
-    // live ring buffer or the transcript file; here `full_content` IS the resolved
-    // bytes (identical on both sides of the differential).
-    let all_lines = split_lines(full_content);
+    // Text is rendered through a terminal emulator, never by stripping escape
+    // codes (bug 255). The host seam resolves the live screen or replays the
+    // transcript tail.
+    let TerminalReadSnapshot { rendering, raw } = source.read(&args.session_id);
+    let has_rendering = rendering.is_some();
+    let buffer = rendering
+        .as_ref()
+        .map_or(ScreenBufferKind::Normal, |r| r.buffer);
+    let lines: Vec<String> = rendering.map(|r| r.lines).unwrap_or_default();
+    let all_lines: Vec<&str> = lines.iter().map(String::as_str).collect();
     let total_lines = all_lines.len() as i64;
 
     let use_slice = args.start.is_some() || args.end.is_some();
@@ -435,8 +464,25 @@ pub async fn execute_terminal_read(
         tail_by_count(&all_lines, args.lines.unwrap_or(200))
     };
 
-    let cleaned = clean_terminal_output(&result.text);
     let status = TerminalStatus::from_exited_at(&session.exited_at);
+
+    tracing::debug!(
+        module = "terminal-tool-handler",
+        sessionId = %args.session_id,
+        status = match status {
+            TerminalStatus::Live => "live",
+            TerminalStatus::Exited => "exited",
+        },
+        mode = if use_slice { "slice" } else { "tail" },
+        startLine = result.start_line,
+        endLine = result.end_line,
+        linesReturned = result.count,
+        totalLines = total_lines,
+        truncated = result.truncated,
+        buffer = %if has_rendering { buffer.as_str() } else { "null" },
+        raw = args.raw == Some(true),
+        "Terminal read executed"
+    );
 
     let mut output = TerminalReadOutput {
         session_id: args.session_id.clone(),
@@ -449,12 +495,16 @@ pub async fn execute_terminal_read(
         start_line: result.start_line,
         end_line: result.end_line,
         truncated: result.truncated,
-        scrollback: cleaned,
+        buffer,
+        scrollback: result.text,
         raw_scrollback: None,
     };
 
     if args.raw == Some(true) {
-        output.raw_scrollback = Some(result.text);
+        output.raw_scrollback = Some(utf16_slice_from(
+            &raw,
+            utf16_len(&raw).saturating_sub(RAW_RETURN_CHARS),
+        ));
     }
 
     Ok(output)
@@ -512,6 +562,11 @@ pub fn format_terminal_read(out: &TerminalReadOutput) -> String {
     } else {
         "Lines: 0".to_string()
     };
+    let screen_str = if out.buffer == ScreenBufferKind::Alternate {
+        "\nScreen: a full-screen program has the terminal; these lines are its current screen, not scrollback."
+    } else {
+        ""
+    };
     let truncation_str = if out.truncated {
         // v4 uses the EM DASH (U+2014).
         "\n\n[scrollback truncated \u{2014} output exceeded the per-read line cap]"
@@ -527,7 +582,7 @@ pub fn format_terminal_read(out: &TerminalReadOutput) -> String {
         "{status_badge}{exit_code_str}\n\
          Shell: {}\n\
          Working Directory: {}\n\
-         {range_str}\n\
+         {range_str}{screen_str}\n\
          \n\
          ```\n\
          {}\n\
@@ -573,16 +628,6 @@ pub fn format_terminal_list(out: &TerminalListOutput) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
-
-    #[test]
-    fn split_lines_matches_js() {
-        assert_eq!(split_lines(""), vec![""]);
-        assert_eq!(split_lines("a"), vec!["a"]);
-        assert_eq!(split_lines("a\nb"), vec!["a", "b"]);
-        assert_eq!(split_lines("a\r\nb"), vec!["a", "b"]);
-        assert_eq!(split_lines("a\nb\n"), vec!["a", "b", ""]);
-        assert_eq!(split_lines("a\r\nb\r\n"), vec!["a", "b", ""]);
-    }
 
     #[test]
     fn resolve_index_negative_counts_back() {
@@ -656,11 +701,16 @@ mod tests {
             start_line: 0,
             end_line: 1,
             truncated: false,
+            buffer: ScreenBufferKind::Normal,
             scrollback: "a\nb".into(),
             raw_scrollback: None,
         };
         let v = serde_json::to_value(&out).unwrap();
         assert!(v.get("rawScrollback").is_none());
+        // `buffer` sits between `truncated` and `scrollback` (v4's key order).
+        assert!(serde_json::to_string(&out)
+            .unwrap()
+            .contains(r#""truncated":false,"buffer":"normal","scrollback":"#));
         assert_eq!(v["status"], "live");
         assert_eq!(v["exitCode"], Value::Null);
     }
@@ -678,13 +728,24 @@ mod tests {
             start_line: 0,
             end_line: 0,
             truncated: false,
+            buffer: ScreenBufferKind::Normal,
             scrollback: "boom".into(),
             raw_scrollback: None,
         };
         let s = format_terminal_read(&out);
         assert!(s.starts_with("\u{26AB} EXITED (exit code: 137)"));
         assert!(s.contains("Shell: /bin/zsh"));
-        assert!(s.contains("Lines: 1 (showing 0\u{2013}0 of 1)"));
+        assert!(s.contains("Lines: 1 (showing 0\u{2013}0 of 1)\n\n```"));
+        assert!(!s.contains("Screen:"));
+        // Bug 255: a full-screen program's screen says so, after the range.
+        let screen = TerminalReadOutput {
+            buffer: ScreenBufferKind::Alternate,
+            ..out
+        };
+        assert!(format_terminal_read(&screen).contains(
+            "Lines: 1 (showing 0\u{2013}0 of 1)\nScreen: a full-screen program has the terminal; \
+             these lines are its current screen, not scrollback.\n\n```"
+        ));
     }
 
     #[test]

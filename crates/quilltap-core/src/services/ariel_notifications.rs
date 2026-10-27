@@ -36,6 +36,7 @@ use crate::db::runtime::Db;
 use crate::db::{chats_read, terminal_sessions};
 use crate::jsstr::{js_trim, utf16_len, utf16_slice_from, utf16_truncate};
 use crate::services::primary_stream::to_locale_string;
+use crate::terminal_screen::SummaryKind;
 
 /// v4 `TERMINAL_OUTPUT_MAX_CHARS` — the whole-body cap before eliding
 /// (UTF-16 code units; v4 measures JS `.length`).
@@ -200,10 +201,14 @@ pub async fn post_ariel_session_opened_announcement(
 pub struct ArielTerminalOutputAnnouncement {
     pub chat_id: String,
     pub session_id: String,
-    /// Output already cleaned by
-    /// [`clean_terminal_output`](crate::terminal_clean::clean_terminal_output)
-    /// (the PTY manager cleans before posting; no write-time cleaning elsewhere).
+    /// The text to post — since bug 255 (v4 `a6292f169`) the screen model's
+    /// RENDERED summary (`TerminalScreen::take_summary`), not a strip of the
+    /// raw stream; the field keeps v4's name. No write-time cleaning here.
     pub cleaned_output: String,
+    /// v4's `kind?: 'output' | 'screen'` (`?? 'output'`): `Output`, lines a
+    /// shell wrote since the last summary; `Screen`, a snapshot of a
+    /// full-screen program's current screen.
+    pub kind: SummaryKind,
     pub reason: ArielFlushReason,
 }
 
@@ -252,6 +257,14 @@ pub async fn post_ariel_terminal_output_announcement(
 ) -> Option<PostedArielMessage> {
     // v4: `!params.cleanedOutput || params.cleanedOutput.trim().length === 0`.
     if js_trim(&params.cleaned_output).is_empty() {
+        tracing::debug!(
+            module = "ariel-notifications",
+            context = "ariel-notifications",
+            chatId = %params.chat_id,
+            sessionId = %params.session_id,
+            reason = params.reason.as_str(),
+            "[ArielNotification] Skipping empty terminal-output announcement"
+        );
         return None;
     }
 
@@ -265,8 +278,29 @@ pub async fn post_ariel_terminal_output_announcement(
         ArielFlushReason::Idle => "",
     };
 
-    let content = format!(
-        "Terminal output from session `{session_label}`{reason_note}:\n\n{fence}\n{elided}\n{fence}"
+    // Bug 255: a full-screen program's snapshot says so. (The reason notes
+    // carry their own leading space.)
+    let heading = match params.kind {
+        SummaryKind::Screen => format!(
+            "Screen of session `{session_label}` (a full-screen program has the terminal){reason_note}:"
+        ),
+        SummaryKind::Output => format!("Terminal output from session `{session_label}`{reason_note}:"),
+    };
+    let content = format!("{heading}\n\n{fence}\n{elided}\n{fence}");
+
+    let cleaned_chars = utf16_len(&params.cleaned_output);
+    let posted_chars = utf16_len(&elided);
+    tracing::debug!(
+        module = "ariel-notifications",
+        context = "ariel-notifications",
+        chatId = %params.chat_id,
+        sessionId = %params.session_id,
+        reason = params.reason.as_str(),
+        kind = params.kind.as_str(),
+        cleanedChars = cleaned_chars,
+        postedChars = posted_chars,
+        elided = posted_chars != cleaned_chars,
+        "[ArielNotification] Posting terminal-output announcement"
     );
 
     // Terminal output body is already neutral — no persona reference, just the

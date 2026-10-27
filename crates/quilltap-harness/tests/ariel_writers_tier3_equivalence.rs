@@ -15,6 +15,15 @@
 //!   3. `chats` — the `add_message` side-effect (messageCount etc.),
 //!   4. `terminal_sessions` — the reconcile exit stamps (sentinel-aware).
 //!
+//! P4.D337 (bug 255): each terminal-output case may carry `summaryKind`
+//! (absent → v4's `output`); the screen cases (idle / max-age /
+//! session-closed, a whitespace-only one that posts nothing, one over 16 K)
+//! pin the `Screen of session …` heading. The reconcile orphan is seeded with
+//! `cols: 120, rows: 40`, which the pass must leave (R-4 — v4's reconcile
+//! patch carries no geometry). Every red cell is reported by name, a cell
+//! whose compressed bytes differ but whose decoded text matches flagged
+//! `(bytes only)` (the family's standing red — R-10).
+//!
 //! v4's REAL `postAriel*` + `reconcileTerminalSessionsForChat` are driven by
 //! the oracle (`harness/oracle/cases/ariel-writers-tier3.ts` — the PTY manager
 //! map is empty there, so the Rust side passes the matching `is_live = false`
@@ -50,6 +59,7 @@ use quilltap_core::services::ariel_notifications::{
     ArielFlushReason, ArielSessionClosedAnnouncement, ArielSessionOpenedAnnouncement,
     ArielTerminalOutputAnnouncement,
 };
+use quilltap_core::terminal_screen::SummaryKind;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -76,6 +86,9 @@ struct Case {
     cwd: Option<String>,
     #[serde(default)]
     reason: Option<String>,
+    /// P4.D337: the summary's kind (bug 255) — absent → v4's `?? 'output'`.
+    #[serde(default)]
+    summary_kind: Option<String>,
     #[serde(default)]
     cleaned_output: Option<String>,
     #[serde(default)]
@@ -183,7 +196,26 @@ fn normalize_terminal_sessions(dump: &mut Value, sentinel: &str) {
     }
 }
 
-fn assert_dump_eq(got: &Value, oracle: &Value, label: &str) {
+/// A dumped compressed-TEXT cell (hex of the codec's blob) decoded, so a cell
+/// that differs only in its compressed BYTES is told apart from one whose text
+/// differs.
+fn decoded(cell: &Value) -> Option<String> {
+    let hex = cell.as_str()?;
+    if hex.len() % 2 != 0 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).ok())
+        .collect::<Option<_>>()?;
+    quilltap_core::db::text_compression::is_compressed_text_blob(&bytes)
+        .then(|| quilltap_core::db::text_compression::decode_blob(&bytes))
+}
+
+/// Every differing cell, by name (`row N column` — P4.D337 R-10 records them
+/// all), with a cell whose compressed bytes differ but whose decoded text is
+/// equal reported as `(bytes only)`.
+fn dump_diffs(got: &Value, oracle: &Value, label: &str) -> Vec<String> {
     assert_eq!(
         got.get("columns"),
         oracle.get("columns"),
@@ -195,12 +227,21 @@ fn assert_dump_eq(got: &Value, oracle: &Value, label: &str) {
         .and_then(Value::as_array)
         .expect("oracle rows");
     assert_eq!(g.len(), o.len(), "{label}: row count differs");
+    let mut diffs = Vec::new();
     for (i, (gr, or)) in g.iter().zip(o.iter()).enumerate() {
-        assert_eq!(
-            gr, or,
-            "{label}: row {i} differs\n  rust:   {gr}\n  oracle: {or}"
-        );
+        for (col, ov) in or.as_object().expect("row object") {
+            let gv = &gr[col.as_str()];
+            if gv == ov {
+                continue;
+            }
+            let bytes_only = matches!((decoded(gv), decoded(ov)), (Some(a), Some(b)) if a == b);
+            diffs.push(format!(
+                "{label} row {i} {col}{}",
+                if bytes_only { " (bytes only)" } else { "" }
+            ));
+        }
     }
+    diffs
 }
 
 // ---------------------------------------------------------------------------
@@ -258,10 +299,24 @@ async fn ariel_writers_tier3_matches_oracle() {
     )
     .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
 
+    // P4.D337: capture the writer's two DEBUG lines per case on this thread
+    // (the writer logs them on the caller's thread, before any `Db::write`;
+    // `#[tokio::test]` polls on this one thread, so the guard covers them).
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+    let _capture = {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_default(
+            tracing_subscriber::registry()
+                .with(quilltap_core::test_support::CaptureLayer(captured.clone())),
+        )
+    };
+    let mut v5_logs: Vec<(String, String)> = Vec::new();
+
     // Run the case sequence; collect the per-case results exactly as the
     // oracle records them.
     let mut results: Vec<Value> = Vec::new();
     for c in &spec.cases {
+        captured.lock().unwrap().clear();
         let chat_id = if c.chat_ref.as_deref() == Some("missing") {
             spec.missing_chat_id.clone()
         } else {
@@ -289,6 +344,11 @@ async fn ariel_writers_tier3_matches_oracle() {
                         chat_id,
                         session_id: c.session_id.clone().expect("sessionId"),
                         cleaned_output: c.output(),
+                        kind: match c.summary_kind.as_deref() {
+                            None | Some("output") => SummaryKind::Output,
+                            Some("screen") => SummaryKind::Screen,
+                            Some(other) => panic!("unknown summaryKind {other}"),
+                        },
                         reason: flush_reason(c.reason.as_deref().expect("reason")),
                     },
                 )
@@ -314,6 +374,13 @@ async fn ariel_writers_tier3_matches_oracle() {
                 results.push(serde_json::json!({ "name": c.name, "reconciled": n }));
             }
             other => panic!("unknown case kind {other}"),
+        }
+        for line in captured.lock().unwrap().iter() {
+            if line.contains("[ArielNotification] Posting terminal-output announcement")
+                || line.contains("[ArielNotification] Skipping empty terminal-output announcement")
+            {
+                v5_logs.push((c.name.clone(), line.clone()));
+            }
         }
     }
 
@@ -357,17 +424,94 @@ async fn ariel_writers_tier3_matches_oracle() {
     normalize_terminal_sessions(&mut got_terminal, &spec.seed_timestamp);
     normalize_terminal_sessions(&mut oracle_terminal, &spec.seed_timestamp);
 
-    assert_dump_eq(&got_messages, &oracle_messages, "chat_messages");
-    assert_dump_eq(&got_chats, &oracle_chats, "chats");
-    assert_dump_eq(&got_terminal, &oracle_terminal, "terminal_sessions");
+    // The writer's two DEBUG lines against v4's captured ones, per case, field
+    // for field in v4's order (the child binding `module` first).
+    let v4_logs: Vec<(String, String)> = oracle["logs"]
+        .as_array()
+        .expect("oracle logs")
+        .iter()
+        .map(|l| {
+            let mut line = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                match v {
+                    Value::String(s) => line.push_str(&format!(" {k}={s}")),
+                    other => line.push_str(&format!(" {k}={other}")),
+                }
+            }
+            (l["case"].as_str().unwrap().to_string(), line)
+        })
+        .collect();
+    let v5_logs: Vec<(String, String)> = v5_logs
+        .into_iter()
+        .map(|(case, line)| {
+            // `LEVEL target message …` → `LEVEL message …`.
+            let mut parts = line.splitn(3, ' ');
+            let level = parts.next().unwrap().to_string();
+            let _target = parts.next();
+            (
+                case,
+                format!("{level} {}", parts.next().unwrap_or_default()),
+            )
+        })
+        .collect();
+    assert_eq!(v4_logs.len(), 14, "v4 logged one line per output case");
+    assert_eq!(v5_logs, v4_logs, "the writer's DEBUG lines");
+
+    let mut diffs = dump_diffs(&got_messages, &oracle_messages, "chat_messages");
+    diffs.extend(dump_diffs(&got_chats, &oracle_chats, "chats"));
+    diffs.extend(dump_diffs(
+        &got_terminal,
+        &oracle_terminal,
+        "terminal_sessions",
+    ));
 
     let nm = got_messages["rows"]
         .as_array()
         .map(|a| a.len())
         .unwrap_or(0);
     assert_eq!(
-        nm, 13,
-        "expected 12 posted announcement rows + 1 reconcile close row"
+        nm, 18,
+        "expected 12 output / opened / closed rows + 5 screen / explicit-kind rows + 1 \
+         reconcile close row"
+    );
+    // P4.D337: the screen heading reached v5's rows (the oracle's too — its
+    // dump is compared above, decoded where the content is compressed).
+    let headings = got_messages["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|r| {
+            let c = &r["content"];
+            decoded(c)
+                .or_else(|| c.as_str().map(str::to_string))
+                .is_some_and(|t| t.contains("\nScreen of session `"))
+        })
+        .count();
+    assert_eq!(headings, 4, "the four posted screen summaries");
+    // R-4: the reconciled orphan keeps its spawn-time geometry, both sides.
+    for (side, dump) in [("v5", &got_terminal), ("v4", &oracle_terminal)] {
+        let orphan = dump["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == "0a000000-0000-4000-8000-00000000000a")
+            .expect("the orphan");
+        assert_eq!(
+            (&orphan["cols"], &orphan["rows"]),
+            (&serde_json::json!(120), &serde_json::json!(40)),
+            "{side}: the reconcile pass touched the orphan's geometry"
+        );
+        assert_ne!(orphan["exitedAt"], Value::Null, "{side}: reconciled");
+    }
+    assert!(
+        diffs.is_empty(),
+        "{} red cells:\n{}",
+        diffs.len(),
+        diffs.join("\n")
     );
     eprintln!(
         "OK: ariel-writers tier-3 matched oracle ({} cases, {nm} rows, reconcile stamps).",
