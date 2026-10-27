@@ -245,16 +245,20 @@ pub async fn post_outfit_change_whisper(
 // ============================================================================
 
 /// v4 `handleWardrobeOutfitAnnouncement` (`handlers/wardrobe-announcement.ts`),
-/// the debounced job body. Reads the chat's `equippedOutfit[characterId]` slots
-/// (skipping silently when the chat is gone, the character has no equipped slots,
-/// or the stored slot shape is not a JSON object — v4's `EquippedSlotsSchema.
-/// safeParse` failure branch), resolves the equipped outfit across the project
-/// tier, reads the character name, and posts an `outfit-change` whisper.
+/// the debounced job body. Logs v4's start INFO (with the job id), reads the
+/// chat's `equippedOutfit[characterId]` slots (skipping when the chat is gone or
+/// the character has no truthy slot value), validates them through
+/// `EquippedSlotsSchema` (a failure WARNs with the first three issues and
+/// skips), resolves the equipped outfit across the project tier, reads the
+/// character name, and posts an `outfit-change` whisper.
 ///
-/// Ported as a plain public function taking the job `payload` (`{ chatId,
-/// characterId }`); the job-runner dispatch row that registers it for the
-/// `WARDROBE_OUTFIT_ANNOUNCEMENT` type is owned by W4.8 (see the module note).
-pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Result<(), DbError> {
+/// Takes the job's id (`job.id`) and `payload` (`{ chatId, characterId }`);
+/// [`WardrobeOutfitAnnouncementHandler`] is the runner-registry wiring.
+pub async fn handle_wardrobe_outfit_announcement(
+    db: &Db,
+    job_id: &str,
+    payload: &Value,
+) -> Result<(), DbError> {
     let chat_id = payload
         .get("chatId")
         .and_then(Value::as_str)
@@ -265,6 +269,14 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    // P4.170 B.2: v4's first statement, before any read.
+    tracing::info!(
+        context = "background-jobs.wardrobe-announcement",
+        jobId = %job_id,
+        chatId = %chat_id,
+        characterId = %character_id,
+        "[WardrobeAnnouncement] Starting announcement"
+    );
     if chat_id.is_empty() {
         return Ok(());
     }
@@ -274,29 +286,35 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
     // Everything needing BOTH connections (chat read, project-mount resolution,
     // outfit resolution over the vault, the overlaid character name) runs in one
     // writer closure that holds both — the `wardrobe_write` precedent.
-    let resolved: Option<(OutfitSlotValues, String)> = db
+    // `Err(issues)` = the slot shape failed validation: the WARN is logged on
+    // the CALLER's thread, once the write returns (a writer-thread line is
+    // invisible to the capture rig, and the order is v4's either way).
+    let resolved: Result<Option<(OutfitSlotValues, String)>, Vec<Value>> = db
         .write(move |w| {
             let Some(mount_w) = w.mount_index() else {
-                return Ok(None);
+                return Ok(Ok(None));
             };
             let mount = mount_w.connection();
             let main = w.main().connection();
 
             // v4 `const chat = await repos.chats.findById(chatId); if (!chat) return;`
             let Some(chat) = chats_read::find_by_id(main, &cid)? else {
-                return Ok(None);
+                return Ok(Ok(None));
             };
 
-            // v4 `const rawSlots = (chat.equippedOutfit ?? {})[characterId];`
-            // A missing/null value → skip; a non-object → `EquippedSlotsSchema.
-            // safeParse` fails → skip (per-element UUID validation is a documented
-            // minor seam — `Slots::from_value` is lenient there; the corpus feeds
-            // only validated slot shapes).
-            let Some(raw_slots) = chat.get("equippedOutfit").and_then(|e| e.get(&char_id)) else {
-                return Ok(None);
-            };
-            if !raw_slots.is_object() {
-                return Ok(None);
+            // v4 `const rawSlots = (chat.equippedOutfit ?? {})[characterId];
+            // if (rawSlots) { EquippedSlotsSchema.safeParse(rawSlots) … }` — a
+            // FALSY value (absent, null, 0, '') skips silently; anything else
+            // is parsed, and a failure WARNs with the first three issues and
+            // skips (P4.170 B.2).
+            let raw_slots = chat.get("equippedOutfit").and_then(|e| e.get(&char_id));
+            if !crate::inventory::types::js_truthy(raw_slots) {
+                return Ok(Ok(None));
+            }
+            let raw_slots = raw_slots.expect("truthy is present");
+            let issues = equipped_slots_issues(raw_slots);
+            if !issues.is_empty() {
+                return Ok(Err(issues.iter().take(3).map(|i| i.to_value()).collect()));
             }
             let slots = Slots::from_value(Some(raw_slots));
 
@@ -323,15 +341,58 @@ pub async fn handle_wardrobe_outfit_announcement(db: &Db, payload: &Value) -> Re
                 .and_then(|c| c.get("name").and_then(Value::as_str).map(str::to_string))
                 .unwrap_or_else(|| "A character".to_string());
 
-            Ok(Some((outfit, name)))
+            Ok(Ok(Some((outfit, name))))
         })
         .await?;
 
+    let resolved = match resolved {
+        Ok(resolved) => resolved,
+        Err(first) => {
+            tracing::warn!(
+                context = "background-jobs.wardrobe-announcement",
+                chatId = %chat_id,
+                characterId = %character_id,
+                issuesJson = %serde_json::Value::Array(first),
+                "[WardrobeAnnouncement] equippedOutfit slot shape failed validation, skipping"
+            );
+            return Ok(());
+        }
+    };
     let Some((outfit, char_name)) = resolved else {
         return Ok(());
     };
     post_outfit_change_whisper(db, &chat_id, &char_name, &outfit).await;
     Ok(())
+}
+
+/// v4 `EquippedSlotsSchema.safeParse(rawSlots)` (`wardrobe.types.ts:310-318`)
+/// — the issues, in Zod's order: a non-object is ONE `invalid_type` at the
+/// root; else each of the five slots in shape order, each `z.array(UUIDSchema)
+/// .default([])` (absent → the default; `null` or a non-array → `invalid_type`
+/// array; per element a non-string → `invalid_type` string, a non-UUID string
+/// → `invalid_format` uuid). Unknown keys are stripped (no `.strict()`).
+fn equipped_slots_issues(raw: &Value) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::{zod_uuid_ok, ZodIssue};
+    let Some(obj) = raw.as_object() else {
+        return vec![ZodIssue::invalid_type("object", vec![], Some(raw))];
+    };
+    let mut issues = Vec::new();
+    for slot in crate::wardrobe::WARDROBE_SLOT_TYPES {
+        let Some(v) = obj.get(slot) else { continue };
+        let Some(items) = v.as_array() else {
+            issues.push(ZodIssue::invalid_type("array", vec![json!(slot)], Some(v)));
+            continue;
+        };
+        for (i, item) in items.iter().enumerate() {
+            let at = vec![json!(slot), json!(i)];
+            match item.as_str() {
+                Some(s) if zod_uuid_ok(s) => {}
+                Some(_) => issues.push(ZodIssue::invalid_uuid(at)),
+                None => issues.push(ZodIssue::invalid_type("string", at, Some(item))),
+            }
+        }
+    }
+    issues
 }
 
 /// The [`crate::services::job_runner::JobHandler`] for `WARDROBE_OUTFIT_ANNOUNCEMENT`
@@ -348,7 +409,7 @@ impl crate::services::job_runner::JobHandler for WardrobeOutfitAnnouncementHandl
     ) -> crate::services::job_runner::JobFuture<'a> {
         Box::pin(async move {
             let payload: Value = serde_json::from_str(&job.payload).unwrap_or(Value::Null);
-            match handle_wardrobe_outfit_announcement(db, &payload).await {
+            match handle_wardrobe_outfit_announcement(db, &job.id, &payload).await {
                 Ok(()) => crate::services::job_runner::JobOutcome::Completed(None),
                 Err(e) => crate::services::job_runner::JobOutcome::Failed(e.to_string()),
             }

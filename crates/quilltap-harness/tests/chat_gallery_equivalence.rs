@@ -1137,8 +1137,8 @@ fn the_message_door_lines_are_v4s() {
     assert_eq!(
         save_lines(lines),
         vec![format!(
-            "INFO quilltap_core::api::chat_media [SaveImage] rejected chatId={CHAT} messageId={M_GEN} code=ALREADY_SAVED errorMessage={}",
-            refused["error"].as_str().unwrap()
+            "INFO quilltap_core::api::chat_media [SaveImage] rejected chatId={CHAT} messageId={M_GEN} code=ALREADY_SAVED messageJson={}",
+            serde_json::to_string(refused["error"].as_str().unwrap()).unwrap()
         )]
     );
     // Silence: a refused body never reaches the save.

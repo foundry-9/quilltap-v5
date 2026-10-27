@@ -914,8 +914,8 @@ fn the_save_route_lines_are_v4s() {
     assert_eq!(
         lines_of(lines),
         vec![format!(
-            "INFO [Wardrobe Images v1] Save to store rejected itemId={coat} scope=character fileId={own} mountPointId={general} code=ALREADY_SAVED errorMessage={}",
-            e.message
+            "INFO [Wardrobe Images v1] Save to store rejected itemId={coat} scope=character fileId={own} mountPointId={general} code=ALREADY_SAVED messageJson={}",
+            serde_json::to_string(&e.message).unwrap()
         )]
     );
 

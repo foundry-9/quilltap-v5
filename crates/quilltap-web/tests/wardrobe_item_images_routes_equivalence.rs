@@ -783,9 +783,10 @@ async fn direct_request(
 /// P4.D275 Tier 2 #18 — v4's `[Wardrobe Images v1]` lines' meta KEYS (in
 /// order) for the picture viewer's two actions, as the routes oracle captures
 /// them. v5's lines carry these keys — capture-pinned in the item-images
-/// tier-2 family's `the_save_route_lines_are_v4s` — save that v4's `message`
-/// is v5's `errorMessage` (a tracing field named `message` would replace the
-/// file record's envelope message; recorded).
+/// tier-2 family's `the_save_route_lines_are_v4s` — v4's `message` rides
+/// v5's `messageJson` (the `…Json` suffix rule renders it as `message` in the
+/// file record — a bare `message` field would replace the envelope message;
+/// P4.170 D.1).
 /// P4.D281 — v4's `handleLinkImage` INFO and its meta keys (in order).
 const V4_LINK_LINE: (&str, [&str; 4]) = (
     "[Wardrobe Images v1] Linked an existing picture to a wardrobe item",

@@ -351,10 +351,10 @@ pub async fn message_save_image(
                 messageId = %message_id,
                 code = save_image_error_code(err.code),
                 // v4's meta key is `message`; a tracing field of that name
-                // becomes the file record's ENVELOPE message (the P4.D184
-                // `resultMessage` measurement), so the key is renamed —
-                // recorded divergence (the meta's KEY only).
-                errorMessage = %err.message,
+                // would become the file record's ENVELOPE message, so it rides
+                // the `…Json` suffix rule — the file layer renders it as
+                // `message` (P4.170 D.1).
+                messageJson = %serde_json::to_string(&err.message).unwrap_or_default(),
                 "[SaveImage] rejected"
             );
             save_image_error_response(err)
@@ -467,7 +467,7 @@ pub async fn chat_save_gallery_image(
         // 126-131`): anything that is not a `SaveImageToAlbumError` answers the
         // fixed `serverError('Failed to save image')`, never the DB's own text.
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            tracing::error!(chatId = %chat_id, error = %e, "[SaveGalleryImage] failed");
             return Response::error(ErrorKind::Internal, "Failed to save image");
         }
     };
@@ -481,7 +481,7 @@ pub async fn chat_save_gallery_image(
     }) {
         Ok(e) => e,
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            tracing::error!(chatId = %chat_id, error = %e, "[SaveGalleryImage] failed");
             return Response::error(ErrorKind::Internal, "Failed to save image");
         }
     };
@@ -490,9 +490,9 @@ pub async fn chat_save_gallery_image(
         .find(|e| e.get("id").and_then(Value::as_str) == Some(file_id.as_str()))
     else {
         tracing::info!(
-            chat_id = %chat_id,
-            file_id = %file_id,
-            gallery_total = entries.len(),
+            chatId = %chat_id,
+            fileId = %file_id,
+            galleryTotal = entries.len(),
             "[SaveGalleryImage] rejected: id is not in this chat gallery"
         );
         return bad_request("Image is not in this chat");
@@ -525,12 +525,12 @@ pub async fn chat_save_gallery_image(
             let attribution =
                 resolve_save_attribution(main, mount, &chat_owned, &mp_owned, &user_id_owned);
             tracing::debug!(
-                chat_id = %chat_id_for_scene,
-                file_id = %file_owned,
-                id_kind = %id_kind,
+                chatId = %chat_id_for_scene,
+                fileId = %file_owned,
+                idKind = %id_kind,
                 source = %source_for_log,
-                mount_point_id = %mp_owned,
-                attribution_role = ?attribution.role,
+                mountPointId = %mp_owned,
+                attributionRole = attribution_role_str(attribution.role),
                 "[SaveGalleryImage] saving"
             );
             let input = SaveImageToAlbumInput {
@@ -555,21 +555,21 @@ pub async fn chat_save_gallery_image(
     match result {
         Ok(Ok(saved)) => {
             tracing::info!(
-                chat_id = %chat_id,
-                file_id = %file_id,
+                chatId = %chat_id,
+                fileId = %file_id,
                 source = %source,
-                mount_point_id = %mount_point_id,
-                relative_path = %saved.relative_path,
-                link_id = %saved.link_id,
+                mountPointId = %mount_point_id,
+                relativePath = %saved.relative_path,
+                linkId = %saved.link_id,
                 "[SaveGalleryImage] saved"
             );
             Response::ChatMedia(saved_image_body(&saved))
         }
         Ok(Err(err)) => {
             tracing::info!(
-                chat_id = %chat_id,
-                code = ?err.code,
-                message = %err.message,
+                chatId = %chat_id,
+                code = save_image_error_code(err.code),
+                messageJson = %serde_json::to_string(&err.message).unwrap_or_default(),
                 "[SaveGalleryImage] rejected"
             );
             // Already in that album is the answer, not a failure (the shared
@@ -577,7 +577,7 @@ pub async fn chat_save_gallery_image(
             save_image_error_response(err)
         }
         Err(e) => {
-            tracing::error!(chat_id = %chat_id, error = %e, "[SaveGalleryImage] failed");
+            tracing::error!(chatId = %chat_id, error = %e, "[SaveGalleryImage] failed");
             Response::error(ErrorKind::Internal, "Failed to save image")
         }
     }
@@ -2624,5 +2624,19 @@ mod gallery_route_degrade_tests {
                 .any(|l| l.contains("Failed to list chat gallery")),
             "the old 500 sentence must be gone: {lines:#?}"
         );
+    }
+}
+
+/// v4's `attribution.role` string (`'character' | 'user' | 'system'`) for the
+/// `[SaveGalleryImage] saving` DEBUG (P4.170 D.1 — the Debug rendering was
+/// v5's variant name).
+fn attribution_role_str(
+    role: crate::photos::keep_image_markdown::KeptImageAttributionRole,
+) -> &'static str {
+    use crate::photos::keep_image_markdown::KeptImageAttributionRole as R;
+    match role {
+        R::Character => "character",
+        R::User => "user",
+        R::System => "system",
     }
 }

@@ -779,9 +779,9 @@ pub async fn save_to_store_on_home(
                 fileId = %file_id,
                 mountPointId = %mount_point_id,
                 code = save_image_error_code(err.code),
-                // v4's `message` key renamed — see `chat_media`'s
-                // `[SaveImage] rejected` (the envelope clobber).
-                errorMessage = %err.message,
+                // v4's `message` key through the `…Json` suffix rule — see
+                // `chat_media`'s `[SaveImage] rejected` (P4.170 D.1).
+                messageJson = %serde_json::to_string(&err.message).unwrap_or_default(),
                 "{LOG_TAG} Save to store rejected"
             );
             save_image_error_response(err)

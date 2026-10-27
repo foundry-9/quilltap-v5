@@ -1,0 +1,86 @@
+{
+  "_doc": "P4.170 B.2 \u2014 the WARDROBE_OUTFIT_ANNOUNCEMENT job body over the wardrobe-tools seed pair (built with QT_WT_TOOLS_CORPUS=1). Cases run IN ORDER on ONE copy; plants are cumulative. See harness/oracle/cases/wardrobe-announcement-job.ts.",
+  "cases": [
+    {
+      "name": "announce_ok",
+      "jobId": "job-ok",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222"
+    },
+    {
+      "name": "missing_chat",
+      "jobId": "job-missing-chat",
+      "chatId": "55555555-5555-4555-8555-0000000000ff",
+      "characterId": "22222222-2222-4222-8222-222222222222"
+    },
+    {
+      "name": "no_slots_for_character",
+      "jobId": "job-no-slots",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "99999999-9999-4999-8999-999999999999"
+    },
+    {
+      "name": "element_not_a_uuid",
+      "jobId": "job-bad-uuid",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('{\"top\":[\"not-a-uuid\"]}')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "slot_null",
+      "jobId": "job-slot-null",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('{\"top\":null}')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "four_issues_first_three",
+      "jobId": "job-four",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('{\"top\":[1,2],\"bottom\":\"x\",\"hair\":[true]}')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "slots_an_array",
+      "jobId": "job-array",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('[]')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "slots_a_string",
+      "jobId": "job-string",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('\"red\"')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "slots_falsy_zero",
+      "jobId": "job-zero",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('0')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    },
+    {
+      "name": "announce_after_repair",
+      "jobId": "job-repaired",
+      "chatId": "55555555-5555-4555-8555-555555555555",
+      "characterId": "22222222-2222-4222-8222-222222222222",
+      "plants": [
+        "UPDATE chats SET \"equippedOutfit\" = json_set(\"equippedOutfit\", '$.\"22222222-2222-4222-8222-222222222222\"', json('{\"top\":[\"a0000000-0000-4000-8000-000000000001\"]}')) WHERE id = '55555555-5555-4555-8555-555555555555'"
+      ]
+    }
+  ]
+}

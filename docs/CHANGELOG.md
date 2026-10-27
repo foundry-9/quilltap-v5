@@ -306,6 +306,19 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — feat(core): the wardrobe announcement job logs v4's lines and validates `EquippedSlotsSchema`; `findEnabled` drops a bad `mountType`; the save doors' log keys; the item picture's chat-settings fallback (P4.170)
+
+_Versions: core 0.0.1338._
+
+P4.170, the job and repository half.
+
+- B.2: `handle_wardrobe_outfit_announcement(db, job_id, payload)` logs v4's start INFO `[WardrobeAnnouncement] Starting announcement {context, jobId, chatId, characterId}` before any read. The slot value is now gated on JS truthiness and run through a port of `EquippedSlotsSchema`'s issues: an object of five `z.array(UUIDSchema).default([])` slots, with `null`, non-array, non-string and non-UUID elements refused in Zod's order. A failure logs v4's WARN with the first three issues (`issuesJson`) and skips. Before, a non-object was skipped silently and the lenient `Slots::from_value` dressed anything else. The job id comes from `job.id`, so `job_runner.rs` is unchanged. NEW tier-3 family `wardrobe_announcement_job_tier3_equivalence` runs v4's REAL handler over ten cumulative cases on the wardrobe-tools pair. It compares lines whole and the appended Aurora whisper rows. The degraded-mount arm stays Tier 3 (P4.166).
+- D.3 / ruling P-8 (`ENABLED_STORE_ZOD_DROP` converged): both `doc_mount_points` enabled readers validate `mountType` per row. A bad row is dropped after v4's ERROR `Data validation failed` and WARN `Safe validation failed` `{collection, error}`. The photo-album-options carve and its count string-replace are retired; the row compares whole.
+- C2: the item-picture generator's chat-settings read goes through a lane-local `find_by_user_id_or_none`, which logs v4's `Error finding chat settings by user ID` before its `None`. It was swallowed silently. HANDOFF(P4.169): fold onto `chat_settings::find_by_user_id_or_none`. The contract's `ChatSettings` names no type at the pin, so the copy answers `Option<Value>`.
+- D.1: the three save doors' rejection lines carry v4's `message` through `messageJson`, which the file layer renders as `message`. The gallery door's keys are camelCase (`chatId`, `fileId`, `galleryTotal`, `idKind`, `mountPointId`, `attributionRole` as v4's string, `relativePath`, `linkId`), and its `code` is v4's string.
+
+Red-first on unported main against the pin: the announcement family is red on every case (no INFO, plus the warn rows), and photo-album-options is red on `malformed_store_row`'s albums and lines.
+
 #### 2026-10-27 — fix(web): a missing chat or item answers its 404 before a body refusal; the outfit actions log v4's malformed-body ERRORs; `unwrap_to_http` shares `inventory_routes::render` (P4.170)
 
 _Versions: web 0.0.247._

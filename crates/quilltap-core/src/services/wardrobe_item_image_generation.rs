@@ -277,11 +277,14 @@ pub async fn generate_wardrobe_item_image(
     }
 
     // The profile: override → designated → default. v4's
-    // `chatSettings.findByUserId` is a fallback read.
+    // `chatSettings.findByUserId` is a fallback read (contract C2, survey B.5:
+    // it logs v4's ERROR before its `null` — the read was swallowed silently).
     let chat_settings: Option<Value> = db
-        .read_main(|c| crate::db::chat_settings::find_by_user_id(c, user_id))
-        .ok()
-        .flatten();
+        .read_main(|c| Ok(find_by_user_id_or_none(c, user_id)))
+        .unwrap_or_else(|e| {
+            log_chat_settings_read_failure(user_id, &e);
+            None
+        });
     let override_id = args.image_profile_id.map(str::to_string);
     let profile = {
         let cs = chat_settings.clone();
@@ -674,4 +677,35 @@ async fn resolve_owner(db: &Db, home: &WardrobeItemHome) -> Option<Value> {
             None
         }
     }
+}
+
+// HANDOFF(P4.169): fold onto chat_settings::find_by_user_id_or_none — contract
+// C2's home (`db/chat_settings.rs`). This lane-local copy keeps C2's
+// signature but for its return type: `ChatSettings` names no type at the pin
+// (`chat_settings::find_by_user_id` answers the row as a `serde_json::Value`),
+// so the copy answers `Option<Value>`; the fold takes whatever type the home
+// lands with.
+/// v4 `chatSettings.findByUserId` — `safeQuery(…, 'Error finding chat
+/// settings by user ID', {userId}, null)` (`chat-settings.repository.ts:
+/// 39-46`): a failed read logs v4's ERROR and answers `None`.
+fn find_by_user_id_or_none(conn: &rusqlite::Connection, user_id: &str) -> Option<Value> {
+    match crate::db::chat_settings::find_by_user_id(conn, user_id) {
+        Ok(row) => row,
+        Err(e) => {
+            log_chat_settings_read_failure(user_id, &e);
+            None
+        }
+    }
+}
+
+/// v4's fallback line for a failed `findByUserId` (the line
+/// `db::chat_settings::wardrobe_tool_images_enabled` logs).
+fn log_chat_settings_read_failure(user_id: &str, e: &crate::db::DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chat_settings",
+        userId = %user_id,
+        error = %crate::db::fallback::error_text(e),
+        "Error finding chat settings by user ID"
+    );
 }

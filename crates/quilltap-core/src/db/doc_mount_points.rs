@@ -757,7 +757,11 @@ impl<'c> DocMountPointsRepository<'c> {
                 })
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        // v4's `findByFilter` drops a row its schema refuses (P4.170 D.3).
+        Ok(rows
+            .into_iter()
+            .filter(|r| enabled_row_validates(&r.mount_type))
+            .collect())
     }
 
     /// v4 `findEnabled()` as the **global document search** consumes it (P4.D122):
@@ -780,19 +784,27 @@ impl<'c> DocMountPointsRepository<'c> {
     /// No `ORDER BY`: v4's `findByFilter({enabled:true})` yields rowid order, and
     /// the engine's `storeById` map and `mountPointIds` list both ride on it.
     pub fn find_enabled_for_search(&self) -> Result<Vec<EnabledStoreRow>, DbError> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT id, name, storeType FROM doc_mount_points WHERE enabled = 1")?;
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, storeType, mountType FROM doc_mount_points WHERE enabled = 1",
+        )?;
         let rows = stmt
             .query_map([], |row| {
-                Ok(EnabledStoreRow {
-                    id: row.get::<_, String>(0)?,
-                    name: row.get::<_, String>(1)?,
-                    store_type: row.get::<_, Option<String>>(2)?,
-                })
+                Ok((
+                    EnabledStoreRow {
+                        id: row.get::<_, String>(0)?,
+                        name: row.get::<_, String>(1)?,
+                        store_type: row.get::<_, Option<String>>(2)?,
+                    },
+                    row.get::<_, String>(3)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(rows)
+        // v4's `findByFilter` drops a row its schema refuses (P4.170 D.3).
+        Ok(rows
+            .into_iter()
+            .filter(|(_, mount_type)| enabled_row_validates(mount_type))
+            .map(|(row, _)| row)
+            .collect())
     }
 
     /// v4 `countByName` = `findByName(name).length` — the number of ENABLED mount
@@ -805,6 +817,41 @@ impl<'c> DocMountPointsRepository<'c> {
 }
 
 /// The full-JSON column list every route read selects (schema field order).
+/// v4 `DocMountPointSchema.mountType` (`mount-index.types.ts:25`).
+const MOUNT_TYPES: [&str; 3] = ["filesystem", "obsidian", "database"];
+
+/// P4.170 D.3 (ruling P-8 — `ENABLED_STORE_ZOD_DROP` converged): v4's
+/// `findEnabled` is `findByFilter({enabled: true})`, which runs EVERY row
+/// through `validateSafe` (`base.repository.ts:130-157`) and DROPS one the
+/// schema refuses — after `validate`'s ERROR `Data validation failed
+/// {collection, error}` and `validateSafe`'s WARN `Safe validation failed
+/// {collection, error}`, both carrying the ZodError's message. The two
+/// enabled readers select `mountType`, the one schema-constrained column they
+/// read that a stored row can carry out of range (a hand-planted `bogus`).
+fn enabled_row_validates(mount_type: &str) -> bool {
+    if MOUNT_TYPES.contains(&mount_type) {
+        return true;
+    }
+    let issues = [crate::api::zod_issues::ZodIssue::invalid_value(
+        &MOUNT_TYPES,
+        vec![serde_json::Value::String("mountType".into())],
+    )];
+    let error = crate::api::zod_issues::zod_error_message(&issues);
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "doc_mount_points",
+        error = %error,
+        "Data validation failed"
+    );
+    tracing::warn!(
+        target: "quilltap::db",
+        collection = "doc_mount_points",
+        error = %error,
+        "Safe validation failed"
+    );
+    false
+}
+
 const DMP_FULL_COLUMNS: &str = "id, name, basePath, mountType, storeType, includePatterns, \
      excludePatterns, enabled, lastScannedAt, scanStatus, lastScanError, conversionStatus, \
      conversionError, fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt";

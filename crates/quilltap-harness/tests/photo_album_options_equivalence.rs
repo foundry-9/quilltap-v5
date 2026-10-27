@@ -15,14 +15,11 @@
 //!     side) and v4's backend `Raw query failed` dropped by the standing
 //!     convention.
 //!
-//! **Three measured divergences, each a NAMED both-ways carve** (a v4 change —
-//! or a v5 one — trips it):
-//!   - `ENABLED_STORE_ZOD_DROP` (`malformed_store_row`, M2): v4's `findEnabled`
-//!     runs every row through `DocMountPointSchema` and DROPS one whose
-//!     `mountType` is outside the enum (after `Data validation failed` + `Safe
-//!     validation failed`); v5's `find_enabled_for_search` reads `id, name,
-//!     storeType` and keeps it, so v5 offers it as a `document-store`. Recorded,
-//!     not fixed — `db/doc_mount_points.rs` is P4.D274's (a follow-ups item).
+//! **Two measured divergences, each a NAMED both-ways carve** (a v4 change —
+//! or a v5 one — trips it). (`ENABLED_STORE_ZOD_DROP` — `malformed_store_row`
+//! — CONVERGED by P4.170, ruling P-8: v5's enabled readers now validate
+//! `mountType` per row and drop the bad one after v4's two lines, so that row
+//! compares whole.)
 //!   - `RAW_CHARACTER_ZOD_DROP` (`archived_with_empty_vault_pointer`): v4's
 //!     `characters.findAllRaw()` Zod-drops a row whose
 //!     `characterDocumentMountPointId` is `''` (not a uuid) — on BOTH of its
@@ -186,42 +183,6 @@ fn photo_album_options_match_oracle() {
             .collect();
 
         match name {
-            "malformed_store_row" => {
-                // ENABLED_STORE_ZOD_DROP — both ways.
-                carves_seen += 1;
-                let odd = r#"{"mountPointId":"aa000000-0000-4000-8000-00000000000a","name":"Odd Shelf","kind":"document-store"}"#;
-                assert!(
-                    !want_albums.contains("Odd Shelf"),
-                    "[{name}] v4 now offers the malformed store — ENABLED_STORE_ZOD_DROP \
-                     converged: retire the carve"
-                );
-                assert_eq!(
-                    got_albums.replace(&format!("{odd},"), ""),
-                    want_albums,
-                    "[{name}] v5 = v4 plus the kept row"
-                );
-                assert!(
-                    want_lines.iter().any(|l| l
-                        .starts_with("ERROR Data validation failed collection=doc_mount_points")),
-                    "[{name}] v4's validation drop line: {want_lines:#?}"
-                );
-                let v4_rest: Vec<&String> = want_lines
-                    .iter()
-                    .filter(|l| !l.contains("validation failed"))
-                    .collect();
-                let v4_rest: Vec<String> = v4_rest
-                    .into_iter()
-                    .map(|l| {
-                        l.replace("enabledStores=6", "enabledStores=7")
-                            .replace("offered=5", "offered=6")
-                    })
-                    .collect();
-                assert_eq!(
-                    got_lines, v4_rest,
-                    "[{name}] lines (v5 counts the kept row)"
-                );
-                continue;
-            }
             "archived_with_empty_vault_pointer" => {
                 // RAW_CHARACTER_ZOD_DROP — both ways.
                 carves_seen += 1;
@@ -287,7 +248,7 @@ fn photo_album_options_match_oracle() {
             failed.push(format!("{name}:lines"));
         }
     }
-    assert_eq!(carves_seen, 3, "every named carve ran");
+    assert_eq!(carves_seen, 2, "every named carve ran");
     assert!(
         failed.is_empty(),
         "photo-album-options diverged: {failed:?}"
