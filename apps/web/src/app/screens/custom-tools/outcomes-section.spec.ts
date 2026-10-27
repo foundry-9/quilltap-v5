@@ -1,7 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import {
   newDraft,
   validateDraft,
@@ -18,8 +17,8 @@ import { OutcomesSection, describeSlot, subjectSelectValue } from './outcomes-se
  * OutcomesSection rows plus this lane's own).
  *
  * v4's cases load a document through `draftFromDefinition`, which reads
- * P4.D333's twin of the schema — each of those is gated on `P4D333_SPA_LANDED`
- * and has an UNGATED twin that builds the same draft by hand.
+ * P4.D333's twin of the schema — each of those has a twin that builds the
+ * same draft by hand.
  */
 
 let id = 0;
@@ -151,7 +150,7 @@ describe('OutcomesSection — chips drawn as lines', () => {
     expect(chips[3]).toMatchObject({ subject: { kind: 'value' }, comparator: 'gt' });
   });
 
-  it.skipIf(!P4D333_SPA_LANDED)('draws an any-of row as lines (loading through the parse)', async () => {
+  it('draws an any-of row as lines (loading through the parse)', async () => {
     const { draftFromDefinition } = await import('../../pascal/tool-draft');
     const draft = draftFromDefinition({
       name: 'x',
@@ -361,7 +360,7 @@ describe('OutcomesSection — the narrator’s brief', () => {
   });
 
   // The warning reads `{{outcome.brief}}` through the `outcome` classify arm — P4.D333's.
-  it.skipIf(!P4D333_SPA_LANDED)('shows the missing-brief warning under its row', async () => {
+  it('shows the missing-brief warning under its row', async () => {
     const withWarn = draftWith([], (d) => {
       d.llmEnabled = true;
       d.llmPrompt = 'Say {{outcome.brief}}.';

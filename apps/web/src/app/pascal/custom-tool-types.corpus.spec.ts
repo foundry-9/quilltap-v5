@@ -128,24 +128,6 @@ const gateVerdictRows = rows.filter((r): r is GateRow => r.kind === 'gate');
 const P4D307_ROW_FLOORS = { 'triggers-': 20, 'effects-wardrobe-': 18 } as const;
 
 /**
- * Gate rows whose clause is an any-of ARRAY (or carries an Inventory record):
- * the draft layer's `gateConditionsFromGate` / `gateFromConditions` pair
- * (`./tool-draft`, P4.D334's to widen) reads one bare group only, so the
- * round-trip leg below is skipped for these — and ONLY that leg: the verdict
- * leg still runs. The unifier deletes this set when P4.D334 lands.
- */
-const DRAFT_ROUNDTRIP_PENDING_P4D334: ReadonlySet<string> = new Set([
-  'anyof-gate-two-groups',
-  'anyof-gate-one-element',
-  'anyof-gate-empty',
-  'anyof-gate-empty-group',
-  'anyof-gate-past-the-cap',
-  'anyof-gate-both-clauses-arrays',
-  'anyof-gate-progress-bad-key-in-group-1',
-  'anyof-gate-array-element-fails-hard',
-]);
-
-/**
  * The corpus was first generated at v4 `c4d4b0de` (P4.D35's §C extension, 299 rows; 301 since the `d883a5ee1` refresh; 362 since the `25f534c0b` progressions round, whose Pascal lane grew the generator by 40 definition + 21 gate rows for the `progress` family; 425 since the `25b8fab6a` pin, P4.D307; 449 at the round's unification; 458 at the `e8e17b2d9` round's unification —
  * the chipLabel/effects arms joined at the `c4d4b0de` drift round). The map is
  * empty — every row passes against the fixture's own bytes. The map and its
@@ -208,13 +190,6 @@ describe('custom-tool schema — the committed v4 corpus', () => {
       // rejected one must carry the sentence. A row missing its own half would
       // otherwise compare against `null` and pass.
       expect(typeof (row.success ? row.data : row.reason), row.id).toBe('string');
-    }
-  });
-
-  it('the P4.D334 round-trip carve names only rows the fixture actually carries', () => {
-    const ids = new Set(definitionRows.map((r) => r.id));
-    for (const id of DRAFT_ROUNDTRIP_PENDING_P4D334) {
-      expect(ids.has(id), `the carve names "${id}", which the corpus does not`).toBe(true);
     }
   });
 
@@ -286,10 +261,6 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         const gate = result.data.availableWhen ?? result.data.withheldWhen;
         expect(hasToolGate(result.data)).toBe(gate !== undefined);
         if (!gate) return;
-        // An any-of clause is not yet the draft layer's to read (P4.D334).
-        if (DRAFT_ROUNDTRIP_PENDING_P4D334.has(row.id)) return;
-        // A new any-of row the carve does not name must fail loudly, not skip.
-        if (Array.isArray(gate)) throw new Error(`${row.id}: an any-of gate outside the P4.D334 carve`);
 
         // Flatten to chips and reassemble: byte-identical, key order included —
         // over the gate's NON-EMPTY records. v4's `gateFromConditions` emits a
@@ -300,11 +271,22 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         // in v4 exactly as here. The bijection this pins is over the editor's
         // own domain, and the empty record is normalised out of the expected
         // side rather than out of the twin.
-        const expected: Record<string, unknown> = {};
-        for (const subject of ['metadata', 'progress'] as const) {
-          const record = gate[subject];
-          if (record && Object.keys(record).length > 0) expected[subject] = record;
-        }
+        // An any-of clause round-trips group by group (the draft's `or`
+        // joiners); a group left with no non-empty record carries no chip and
+        // drops, and a single surviving group collapses to the bare object —
+        // v4's `collapseGroups`, so the normalisation is the same on both sides.
+        const subjects = ['metadata', 'progress', 'inventory', 'inventoryCount', 'inventoryAggregate'] as const;
+        const groups = (Array.isArray(gate) ? gate : [gate])
+          .map((group) => {
+            const normalised: Record<string, unknown> = {};
+            for (const subject of subjects) {
+              const record = group[subject];
+              if (record && Object.keys(record).length > 0) normalised[subject] = record;
+            }
+            return normalised;
+          })
+          .filter((group) => Object.keys(group).length > 0);
+        const expected = groups.length === 0 ? undefined : groups.length === 1 ? groups[0] : groups;
         expect(JSON.stringify(gateFromConditions(gateConditionsFromGate(gate)))).toBe(
           JSON.stringify(expected),
         );

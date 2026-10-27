@@ -26,11 +26,7 @@ import {
 import { CustomToolPresets } from './custom-tool-presets';
 import { CustomToolAggregateLine, inventoryAggregateKeys } from './custom-tool-aggregate-line';
 import { CustomToolWardrobeLines, wardrobeReferenceLines } from './custom-tool-wardrobe-lines';
-import {
-  CustomToolInventoryLines,
-  inventoryReferenceLines,
-  type ReferencesAtPin,
-} from '../screens/custom-tools/p4d330-stand-ins';
+import { CustomToolInventoryLines, inventoryReferenceLines } from './custom-tool-inventory-lines';
 import {
   customToolsKeys,
   fetchCustomToolsRoster,
@@ -892,7 +888,7 @@ export class CustomToolsPopup {
    * `qt-custom-tool-aggregate-line`.
    */
   protected readonly readsInventory = computed<string[]>(
-    () => (this.selectedTool()?.references as ReferencesAtPin | undefined)?.inventoryReads ?? [],
+    () => this.selectedTool()?.references?.inventoryReads ?? [],
   );
   protected readonly readsAggregates = computed(() =>
     inventoryAggregateKeys(this.selectedTool()?.references),

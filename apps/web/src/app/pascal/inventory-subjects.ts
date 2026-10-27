@@ -22,7 +22,9 @@
  * inventory.
  */
 
-import { compareOrdered, gateGroups, splitInventoryReference, type ToolGate } from './p4d333-stand-ins';
+import { gateGroups, type ToolGate } from './custom-tool-types';
+import { compareOrdered } from './metadata-match';
+import { splitInventoryReference } from './placeholders';
 import type { InventoryContext, InventoryState } from './inventory-refs';
 
 export type { InventoryContext, InventoryState } from './inventory-refs';

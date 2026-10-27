@@ -5,21 +5,21 @@ import type {
   WardrobeEffectAction,
   WardrobeEffectMode,
   WardrobeItemType,
+  InventoryEffectAction,
 } from '../../pascal/custom-tool-types';
-import type { InventoryEffectAction, ToolGateVerdict } from '../../pascal/p4d333-stand-ins';
+import type { ToolGateVerdict } from '../../pascal/tool-gate';
 import type {
-  CoreRequest,
   CustomToolAuditResult,
   CustomToolDestinations,
   CustomToolLibraryEntry,
   CustomToolLibraryResponse,
   CustomToolMetadataInput,
   CustomToolRunResult,
+  MockInventoryRow,
   MountFileReadResult,
   MountFileWriteResult,
   PreviewWardrobeResolution,
 } from '../../core/core-contract';
-import { asAuditRequest, asPreviewRequest, type MockInventoryRow } from './p4d330-stand-ins';
 
 /**
  * Pascal's Workbench read/write surface (§W of the unit-12 ∥ P4.6bb round).
@@ -233,7 +233,7 @@ export async function previewCustomTool(
   },
 ): Promise<BenchRoll> {
   const data = await core.dispatchData(
-    asPreviewRequest({
+    {
       type: 'customToolPreview',
       definition: args.definition,
       params: args.params,
@@ -242,7 +242,7 @@ export async function previewCustomTool(
       state: args.state,
       inventory: args.inventory,
       llm: args.llm,
-    }),
+    },
   );
   return data as unknown as BenchRoll;
 }
@@ -262,7 +262,7 @@ export async function auditCustomTool(
   },
 ): Promise<CustomToolAuditResult> {
   const data = await core.dispatchData(
-    asAuditRequest({
+    {
       type: 'customToolAudit',
       definition: args.definition,
       params: args.params,
@@ -270,7 +270,7 @@ export async function auditCustomTool(
       state: args.state,
       inventory: args.inventory,
       llm: args.llm,
-    }),
+    },
   );
   return data as unknown as CustomToolAuditResult;
 }

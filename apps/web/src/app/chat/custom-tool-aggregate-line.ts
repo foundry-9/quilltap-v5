@@ -1,6 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
-import type { ReferencesAtPin } from '../screens/custom-tools/p4d330-stand-ins';
 import type { CustomToolReferences } from './custom-tools.api';
 
 /** The aggregate sentence's lead (v4 `CustomToolRunDialog.tsx:1062`, `a53024d3c`). */
@@ -12,12 +11,10 @@ export const INVENTORY_AGGREGATE_TAIL = '. Run as nobody, it finds no inventory 
 /**
  * The `inventoryAggregate` keys a tool tests, in the server's order, verbatim
  * (`equipped.names`, `owned.metadata.toolVersion.max`…). Absent on an older
- * server, which reads as none. The key is read through {@link ReferencesAtPin}
- * until the unifier adds `inventoryAggregates?` to `CustomToolReferences` in
- * place (P4.D334 R-10).
+ * server, which reads as none.
  */
 export function inventoryAggregateKeys(refs: CustomToolReferences | undefined): string[] {
-  return (refs as ReferencesAtPin | undefined)?.inventoryAggregates ?? [];
+  return refs?.inventoryAggregates ?? [];
 }
 
 /**

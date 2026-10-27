@@ -23,7 +23,7 @@
  * `MockInventoryRow` comes from the contract.
  */
 
-import type { MockInventoryRow } from '../screens/custom-tools/p4d330-stand-ins';
+import type { MockInventoryRow } from '../core/core-contract';
 import type { AggregateObject, AggregateScope } from './inventory-aggregate';
 import type { InventoryContext, InventoryState } from './inventory-refs';
 

@@ -8,7 +8,6 @@ import {
   validateDraft,
   type ToolDraft,
 } from '../../pascal/tool-draft';
-import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import { BuilderForm, coerceIdentifier } from './builder-form';
 import { OutcomesSection } from './outcomes-section';
 
@@ -739,7 +738,7 @@ describe('BuilderForm — From an object (v4 e1872c94f)', () => {
   });
 
   // A clean path is judged by P4.D333's `parseInventoryOperand`; until it lands the draft reports an error instead.
-  it.skipIf(!P4D333_SPA_LANDED)('shows the hint while the roll is clean', async () => {
+  it('shows the hint while the roll is clean', async () => {
     const draft = draftWith({ rollForm: 'inventory', rollInventory: { path: 'sword.metadata.damage', fallback: '1d4' } });
     const fixture = await renderForm(draft);
     expect(text(fixture).replace(/\s+/g, ' ')).toContain(

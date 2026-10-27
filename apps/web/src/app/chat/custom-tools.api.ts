@@ -84,6 +84,8 @@ export interface CustomToolReferences {
   // === P4.D330: the inventory vocabulary (v4 `e1872c94f`) ===
   /** Inventory object references this tool reads (tests, quotes, draws from). Absent on older servers. */
   inventoryReads?: string[];
+  /** `inventoryAggregate` keys this tool tests (`equipped.names`, …). Absent on older servers. */
+  inventoryAggregates?: string[];
   /** References this tool's inventory effects may equip, verbatim. Absent on older servers. */
   equips?: string[];
   /** References this tool's inventory effects may unequip, verbatim. Absent on older servers. */

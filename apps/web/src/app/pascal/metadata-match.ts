@@ -31,6 +31,28 @@
 
 import { COMPARATOR_KEYS, type MetadataComparator } from './custom-tool-types';
 
+/** The four keys that order two numbers. */
+export type OrderingKey = 'gt' | 'gte' | 'lt' | 'lte';
+
+/**
+ * Whether `subject <key> operand` holds — the one ordering ladder every
+ * comparator evaluator (metadata, declared parameters, the LLM answer, the
+ * inventory count) climbs (v4 `metadata-match.ts:36`). Type checks are the
+ * caller's business: this only orders two numbers.
+ */
+export function compareOrdered(key: OrderingKey, subject: number, operand: number): boolean {
+  switch (key) {
+    case 'gt':
+      return subject > operand;
+    case 'gte':
+      return subject >= operand;
+    case 'lt':
+      return subject < operand;
+    case 'lte':
+      return subject <= operand;
+  }
+}
+
 /** The value types a comparator can actually compare. */
 export type Primitive = number | string | boolean;
 
@@ -103,15 +125,7 @@ export function metadataComparatorHolds(
         `${comparatorKey} orders ${JSON.stringify(subject)}, and only numbers can be ordered`,
       );
     }
-    const held =
-      comparatorKey === 'gt'
-        ? subject > operand
-        : comparatorKey === 'gte'
-          ? subject >= operand
-          : comparatorKey === 'lt'
-            ? subject < operand
-            : subject <= operand;
-    if (!held) return false;
+    if (!compareOrdered(comparatorKey, subject, operand)) return false;
   }
 
   if (comparator.eq !== undefined && subject !== hooks.resolveOperand('eq')) return false;

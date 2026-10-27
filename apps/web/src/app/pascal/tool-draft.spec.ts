@@ -15,7 +15,6 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { P4D333_SPA_LANDED } from '../../testing/p4d334-gates';
 import { safeParse, type WhenObject } from './custom-tool-types';
 import {
   emptyDraftInventoryGesture,
@@ -1739,12 +1738,9 @@ describe('defaultWardrobeVantage', () => {
 // (v4 a53024d3c, 322a5488e, e1872c94f, e4a60ad9e at the pin).
 //
 // v4's own cases are transcribed NAME FOR NAME. Cases that load a document
-// through `draftFromDefinition` read P4.D333's twin of the schema, so they are
-// gated on `P4D333_SPA_LANDED`; each has an UNGATED twin that builds the same
-// draft by hand and asserts this lane's half.
+// through `draftFromDefinition` read P4.D333's twin of the schema; each has a
+// twin that builds the same draft by hand.
 // ===========================================================================
-
-const gated = it.skipIf(!P4D333_SPA_LANDED);
 
 const messagesOf = (draft: ToolDraft) => validateDraft(draft).map((i) => i.message);
 const errorsOf = (draft: ToolDraft) =>
@@ -1884,7 +1880,7 @@ describe('the any-of groups in the draft (pascal-gate-broadening)', () => {
     ],
   };
 
-  gated('round-trips an any-of gate, outcome and effect byte-equal after key sort', () => {
+  it('round-trips an any-of gate, outcome and effect byte-equal after key sort', () => {
     const draft = draftFromDefinition(ANY_OF)!;
     expect(draft.gateConditions.map((c) => c.joiner ?? 'and')).toEqual(['and', 'and', 'or', 'and']);
     expect(draft.outcomes[0].conditions.map((c) => c.joiner ?? 'and')).toEqual(['and', 'or', 'and']);
@@ -1894,7 +1890,7 @@ describe('the any-of groups in the draft (pascal-gate-broadening)', () => {
     expect(errorsOf(draft)).toEqual([]);
   });
 
-  gated('collapses a single line to a bare object, and drops a line of incomplete chips', () => {
+  it('collapses a single line to a bare object, and drops a line of incomplete chips', () => {
     const draft = draftFromDefinition(ANY_OF)!;
     draft.gateConditions = draft.gateConditions.map((c) => ({ ...c, joiner: 'and' as const }));
     expect(Array.isArray(definitionFromDraft(draft)['availableWhen'])).toBe(false);
@@ -1917,7 +1913,7 @@ describe('the any-of groups in the draft (pascal-gate-broadening)', () => {
     expect((definitionFromDraft(draft)['outcomes'] as Array<{ when: unknown }>)[0].when).toEqual({ gte: 0.9 });
   });
 
-  gated('lets two lines repeat a slot, but not one line', () => {
+  it('lets two lines repeat a slot, but not one line', () => {
     const draft = draftFromDefinition({ ...ANY_OF, availableWhen: [{ metadata: { rank: { gt: 3 } } }, { metadata: { rank: { gt: 5 } } }] })!;
     expect(errorsOf(draft)).toEqual([]);
     draft.gateConditions = draft.gateConditions.map((c) => ({ ...c, joiner: 'and' as const }));
@@ -2089,7 +2085,7 @@ describe('the outcome brief in the draft (bug 257)', () => {
     expect(reEmitted.outcomes[0]).not.toHaveProperty('brief');
   });
 
-  gated('round-trips a brief, and omits a blank one', () => {
+  it('round-trips a brief, and omits a blank one', () => {
     const emitted = definitionFromDraft(draftOf(scanner())) as { outcomes: Array<{ brief?: string }> };
     expect(emitted.outcomes.map((o) => o.brief)).toEqual(['Confirmed at {{params.layers}} layers.', 'Not found.']);
     const blank = draftOf(scanner());
@@ -2105,7 +2101,7 @@ describe('the outcome brief in the draft (bug 257)', () => {
     expect(row['brief']).toBe('  padded  ');
   });
 
-  gated('is valid as written', () => {
+  it('is valid as written', () => {
     expect(errorsOf(draftOf(scanner()))).toEqual([]);
   });
 
@@ -2114,7 +2110,7 @@ describe('the outcome brief in the draft (bug 257)', () => {
     expect(errorsOf(draft)).toEqual([]);
   });
 
-  gated('warns about a row that has no brief when the prompt reads one', () => {
+  it('warns about a row that has no brief when the prompt reads one', () => {
     const draft = draftOf(scanner());
     draft.outcomes[1].brief = '';
     const warnings = validateDraft(draft).filter((i) => i.severity === 'warning' && i.where.section === 'brief');
@@ -2122,7 +2118,7 @@ describe('the outcome brief in the draft (bug 257)', () => {
     expect(warnings[0].where).toMatchObject({ id: draft.outcomes[1].id });
   });
 
-  gated('errors on {{outcome.*}} in the prompt when a row tests the consult', () => {
+  it('errors on {{outcome.*}} in the prompt when a row tests the consult', () => {
     const draft = draftOf(scanner());
     draft.outcomes[0].conditions.push({ id: 'c-llm', subject: { kind: 'llm' }, comparator: 'eq', operand: { kind: 'string', text: 'YES' } });
     const errors = validateDraft(draft).filter((i) => i.severity === 'error' && i.where.section === 'llm');
@@ -2159,7 +2155,7 @@ describe('the outcome brief in the draft (bug 257)', () => {
       { index: 0, hits: 12 },
       { index: 1, hits: 988 },
     ];
-    expect(reachableOutcomesMissingBrief(draft, hits)).toEqual(P4D333_SPA_LANDED ? [0] : []);
+    expect(reachableOutcomesMissingBrief(draft, hits)).toEqual([0]);
     draft.llmPrompt = 'Write a report.';
     expect(reachableOutcomesMissingBrief(draft, hits)).toEqual([]);
   });
@@ -2232,7 +2228,7 @@ describe('the Inventory in the draft (e1872c94f)', () => {
   }
 
   describe('round trip', () => {
-    gated('serialises back to the same definition', () => {
+    it('serialises back to the same definition', () => {
       const draft = load(TOOL);
       expect(draft.rollForm).toBe('inventory');
       expect(draft.effects.map((e) => e.kind)).toEqual(['inventory', 'inventory']);
@@ -2287,7 +2283,7 @@ describe('the Inventory in the draft (e1872c94f)', () => {
   });
 
   describe('validation', () => {
-    gated('a state chip needs one of the four states, and only = or ≠', () => {
+    it('a state chip needs one of the four states, and only = or ≠', () => {
       const draft = load(TOOL);
       const chipOf = draft.outcomes[0].conditions.find((c) => c.subject.kind === 'inventory')!;
       chipOf.operand = { kind: 'string', text: 'worn' };
@@ -2305,7 +2301,7 @@ describe('the Inventory in the draft (e1872c94f)', () => {
       expect(messagesOf(draft)).toContain('an inventory state can only be tested with = or ≠');
     });
 
-    gated('a gate key may not carry a placeholder', () => {
+    it('a gate key may not carry a placeholder', () => {
       const draft = load(TOOL);
       draft.gateConditions[0].key = '{{params.weapon}}';
       expect(messagesOf(draft)).toContain('a gate is answered before any parameter exists — name the object literally');
@@ -2317,7 +2313,7 @@ describe('the Inventory in the draft (e1872c94f)', () => {
       expect(messagesOf(draft)).toContain('a gate is answered before any parameter exists — name the object literally');
     });
 
-    gated('an inventory effect states the per-action rule and names undeclared parameters', () => {
+    it('an inventory effect states the per-action rule and names undeclared parameters', () => {
       const draft = load(TOOL);
       draft.effects[0].inventory = { action: 'equip', items: ['{{params.ghost}}'], equip: true };
       expect(messagesOf(draft)).toContain('{{params.ghost}} names no declared parameter');
@@ -2331,7 +2327,7 @@ describe('the Inventory in the draft (e1872c94f)', () => {
       expect(messagesOf(draft)).toContain('{{params.ghost}} names no declared parameter');
     });
 
-    gated('a $inventory roll needs an object path and dice to fall back on', () => {
+    it('a $inventory roll needs an object path and dice to fall back on', () => {
       const draft = load(TOOL);
       draft.rollInventory = { path: 'sword.title', fallback: 'four' };
       const messages = messagesOf(draft);
@@ -2383,7 +2379,7 @@ describe('log effects (e4a60ad9e)', () => {
     return Object.assign(draft, extra);
   };
 
-  gated('round-trips a log line with and without a when', () => {
+  it('round-trips a log line with and without a when', () => {
     const doc = {
       name: 'x',
       description: 'x',

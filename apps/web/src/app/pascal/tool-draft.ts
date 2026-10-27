@@ -49,16 +49,11 @@ import {
   type QtapCustomTool,
   type StateRef,
   type Visibility,
-} from './custom-tool-types';
-// The grammar names P4.D333 lands — read through the stand-in until the unifier
-// re-points this import at `./custom-tool-types` / `./placeholders` (R-1).
-import {
   MAX_WHEN_GROUPS,
   effectWhenGroups,
   gateGroups,
   inventoryGestureProblems,
   isInventoryRef,
-  scanPlaceholders,
   whenGroups,
   type CustomToolEffect,
   type CustomToolInventoryGesture,
@@ -70,7 +65,8 @@ import {
   type ToolGate,
   type ToolGateGroup,
   type WhenObject,
-} from './p4d333-stand-ins';
+} from './custom-tool-types';
+import { scanPlaceholders } from './placeholders';
 import type { CustomToolDestinations } from '../core/core-contract';
 import { parseProgressKey } from '../progressions/schema';
 import { GENERAL_CONTAINER, type WardrobeContainer } from '../wardrobe/wardrobe-container';

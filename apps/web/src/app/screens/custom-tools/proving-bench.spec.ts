@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../../core/core-client';
 import { draftFromDefinition, newDraft, type ToolDraft } from '../../pascal/tool-draft';
-import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import * as bench from './proving-bench';
 import {
   ProvingBench,
@@ -1224,15 +1223,13 @@ describe('ProvingBench — Mock inventory', () => {
       { id: 'p2', name: 'n', type: 'number', defaultValue: '2', description: '', min: '', max: '' },
     ];
     const fixture = await render(draft, stubClient());
-    // Until P4.D333's `isInventoryRef` lands the stand-in cannot recognise the object, so `reach`
-    // is still listed; with it, only `n` is.
+    // `isInventoryRef` recognises the object, so only `n` is listed.
     const names = Object.keys(fixture.componentInstance.paramSpecs());
-    expect(names).toContain('n');
-    if (P4D333_SPA_LANDED) expect(names).toEqual(['n']);
+    expect(names).toEqual(['n']);
   });
 
   // The verdict over an inventory gate reads P4.D333's three loops in `tool-gate.ts` (R-3).
-  it.skipIf(!P4D333_SPA_LANDED)('sends a row’s metadata, refuses bad JSON, and names the line', async () => {
+  it('sends a row’s metadata, refuses bad JSON, and names the line', async () => {
     const draft = validDraft();
     draft.gateMode = 'available';
     draft.gateConditions = [
@@ -1350,7 +1347,7 @@ describe('ProvingBench — the audit’s missing-brief flag (v4 322a5488e)', () 
   });
 
   // `promptReadsBrief` reads P4.D333's `outcome` classify arm; until it lands the flag cannot fire.
-  it.skipIf(!P4D333_SPA_LANDED)('flags a reachable row with no brief, before the never-fired line, and not an unreachable one', async () => {
+  it('flags a reachable row with no brief, before the never-fired line, and not an unreachable one', async () => {
     const fixture = await render(briefDraft(), stubClient({ audit: auditWith([{ index: 0, hits: 12 }, { index: 1, hits: 9988 }]) }));
     await fixture.componentInstance.runAudit();
     fixture.detectChanges();

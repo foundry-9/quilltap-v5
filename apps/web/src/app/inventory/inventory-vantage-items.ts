@@ -12,7 +12,7 @@
  * object counts as own).
  *
  * v5 shape: a small signal loader (the wardrobe loader's), consumed by
- * P4.D334's Workbench behind `P4D330_SPA_LANDED` (C10). It mints no query key.
+ * P4.D334's Workbench (C10). It mints no query key.
  *
  * @module inventory/inventory-vantage-items
  */

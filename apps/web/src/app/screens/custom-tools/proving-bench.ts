@@ -38,17 +38,14 @@ import {
   type WardrobeVantage,
 } from '../../pascal/tool-draft';
 import { flattenProgressions, type ProgressPrimitive } from '../../progressions/engine';
-import {
-  evaluateToolGate,
-  isInventoryRef,
-  scanPlaceholders,
-  type ToolGateVerdict,
-} from '../../pascal/p4d333-stand-ins';
+import { isInventoryRef } from '../../pascal/custom-tool-types';
+import { scanPlaceholders } from '../../pascal/placeholders';
+import { evaluateToolGate, type ToolGateVerdict } from '../../pascal/tool-gate';
 import { Icon } from '../../ui/icon';
 import { formatSlotLabels } from '../../wardrobe/slot-meta';
 import { wardrobeOriginLabel } from '../../wardrobe/wardrobe-container';
 import { WardrobeItemThumbnail } from '../../wardrobe/wardrobe-item-thumbnail';
-import type { MockInventoryRow } from './p4d330-stand-ins';
+import type { MockInventoryRow } from '../../core/core-contract';
 import * as api from './workbench.api';
 import {
   isApplicableInventoryEffect,

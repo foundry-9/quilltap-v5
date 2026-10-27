@@ -7,7 +7,6 @@ import {
   type DraftGateCondition,
   type ToolDraft,
 } from '../../pascal/tool-draft';
-import { P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import { GateSection, comparatorsFor, withSubject } from './gate-section';
 
 /**
@@ -430,7 +429,7 @@ describe('GateSection — chips drawn as lines (v4 a53024d3c)', () => {
     expect(hints[2]).toMatch(/^A key the character lacks never matches\./);
   });
 
-  it.skipIf(!P4D333_SPA_LANDED)('draws an any-of gate as lines and flips a joiner', async () => {
+  it('draws an any-of gate as lines and flips a joiner', async () => {
     const { draftFromDefinition } = await import('../../pascal/tool-draft');
     const draft = draftFromDefinition({
       name: 'tune',

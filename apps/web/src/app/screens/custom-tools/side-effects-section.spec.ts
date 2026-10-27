@@ -21,7 +21,6 @@ import {
   type ToolDraft,
   type WardrobeVantage,
 } from '../../pascal/tool-draft';
-import { P4D330_SPA_LANDED, P4D333_SPA_LANDED } from '../../../testing/p4d334-gates';
 import { SideEffectsSection, whenChoiceOf } from './side-effects-section';
 
 /**
@@ -651,7 +650,7 @@ describe('SideEffectsSection — Change the inventory', () => {
 
   // Needs the real vantage loader (the `inventoryList` read), the pick rule and the picture —
   // P4.D330's — and the parse, because v4's case loads its tool through `draftFromDefinition`.
-  it.skipIf(!P4D330_SPA_LANDED || !P4D333_SPA_LANDED)(
+  it(
     'warns when equip names an archetype, and shows the equip switch on pick up',
     async () => {
       const pool = [

@@ -5,18 +5,15 @@ import {
   MAX_INVENTORY_EFFECT_ITEMS,
   MAX_INVENTORY_REF_LENGTH,
   type InventoryEffectAction,
-} from '../../pascal/p4d333-stand-ins';
+} from '../../pascal/custom-tool-types';
 import { resolveInventoryRef, type ResolvedInventoryPool } from '../../pascal/inventory-refs';
 import type { DraftInventoryGesture, WardrobeVantage } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
-import {
-  InventoryPicture,
-  inventoryDisplayName,
-  inventoryLabel,
-  inventoryOriginLabel,
-  inventoryPickRule,
-  type ResolvedInventoryItem,
-} from './p4d330-stand-ins';
+import type { ResolvedInventoryItem } from '../../core/core-contract';
+import { inventoryOriginLabel } from '../../inventory/inventory-container';
+import { inventoryDisplayName, inventoryLabel } from '../../inventory/inventory-display';
+import { InventoryPicture } from '../../inventory/inventory-glyph';
+import { inventoryPickRule } from '../../inventory/inventory-reference-picker';
 
 /** v4 `InventoryEffectFields.tsx:35-39` — the Action select's options (`pick up`'s apostrophe is curly). */
 export const INVENTORY_ACTIONS: ReadonlyArray<{ value: InventoryEffectAction; label: string; title: string }> = [

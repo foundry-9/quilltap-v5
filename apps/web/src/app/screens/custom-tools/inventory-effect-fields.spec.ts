@@ -1,11 +1,10 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { P4D330_SPA_LANDED } from '../../../testing/p4d334-gates';
 import type { ResolvedInventoryPool } from '../../pascal/inventory-refs';
 import type { DraftInventoryGesture, WardrobeVantage } from '../../pascal/tool-draft';
 import { INVENTORY_ACTIONS, InventoryEffectFields } from './inventory-effect-fields';
-import type { ResolvedInventoryItem } from './p4d330-stand-ins';
+import type { ResolvedInventoryItem } from '../../core/core-contract';
 
 /**
  * InventoryEffectFields — v4 `InventoryEffectFields.tsx` (`e1872c94f`), the
@@ -234,7 +233,7 @@ describe('InventoryEffectFields — a resolved reference as a chip', () => {
     expect(q(fixture, 'input[aria-label="Object 1"]')).not.toBeNull();
   });
 
-  it.skipIf(!P4D330_SPA_LANDED)('names the object by its display name, origin and refusal (P4.D330’s display / pick rule)', () => {
+  it('names the object by its display name, origin and refusal (P4.D330’s display / pick rule)', () => {
     const { fixture } = render(gesture({ items: ['magic bow'] }), lens);
     expect(el(fixture).textContent).toContain('magic bow');
     expect(el(fixture).textContent).toContain('Project: Thornfield');

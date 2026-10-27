@@ -38,12 +38,9 @@ import {
 } from '../../wardrobe/wardrobe-reference-picker';
 import { WardrobeVantageItemsLoader } from '../../wardrobe/wardrobe-vantage-items';
 import { InventoryEffectFields } from './inventory-effect-fields';
-import {
-  InventoryReferencePicker,
-  InventoryVantageItemsLoader,
-  inventoryLabel,
-  type InventoryReferenceForm,
-} from './p4d330-stand-ins';
+import { inventoryLabel } from '../../inventory/inventory-display';
+import { InventoryReferencePicker, type InventoryReferenceForm } from '../../inventory/inventory-reference-picker';
+import { InventoryVantageItemsLoader } from '../../inventory/inventory-vantage-items';
 import { WardrobeFields, slotIsCoupled } from './wardrobe-fields';
 import {
   WardrobeVantageSelect,

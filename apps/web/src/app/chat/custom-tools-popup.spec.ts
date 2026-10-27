@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import { CoreDispatchError } from '../core/core-contract';
-import { P4D330_SPA_LANDED } from '../../testing/p4d334-gates';
 import { CustomToolsPopup } from './custom-tools-popup';
 import type { CustomToolRosterEntry, CustomToolsRoster } from './custom-tools.api';
 import { ToastService } from '../ui/toast.service';
@@ -693,7 +692,7 @@ describe('CustomToolRunDialog — the reference panel', () => {
   // The reads paragraph and the three gesture lines are P4.D330's component; the order
   // (reads → aggregate → gestures, as v4) is the unifier's R-9 handoff, so this row is
   // red until that lands and gated on the sibling.
-  it.skipIf(!P4D330_SPA_LANDED)('opens the panel for a tool that only reads the inventory, and keeps v4’s order', async () => {
+  it('opens the panel for a tool that only reads the inventory, and keeps v4’s order', async () => {
     const fixture = await mount(
       stub({
         tools: [

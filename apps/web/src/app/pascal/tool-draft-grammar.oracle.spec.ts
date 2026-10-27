@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import corpusText from '../../testing/fixtures/tool-draft-grammar.oracle.ndjson';
-import { P4D333_SPA_LANDED } from '../../testing/p4d334-gates';
 import {
   conditionSlotKey,
   definitionFromDraft,
@@ -29,8 +28,8 @@ import {
  * The draft inputs are draft JSON with their ids normalised to first-appearance
  * tokens, so v5 feeds the SAME object to `definitionFromDraft` /
  * `validateDraft` without going through the parse; only the `definition` rows
- * (and the rows whose truth reads a P4.D333 grammar twin — `needs`) wait for
- * the sibling. A row whose sibling has not landed is skipped by name.
+ * (and the rows whose truth reads a P4.D333 grammar twin — `needs`) read the
+ * sibling's code, landed at the round's unification.
  */
 
 type Need = 'P4D333' | 'P4D330';
@@ -55,13 +54,8 @@ const ROWS: Row[] = (corpusText as unknown as string)
   .map((line) => JSON.parse(line) as Row);
 const ofKind = (kind: Row['kind']) => ROWS.filter((r) => r.kind === kind);
 
-function blocked(row: Row): string | null {
-  return row.needs.includes('P4D333') && !P4D333_SPA_LANDED ? 'P4D333_SPA_LANDED' : null;
-}
 function replay(row: Row, run: () => void): void {
-  const reason = blocked(row);
-  if (reason) it.skip(`${row.id} (needs ${reason})`, run);
-  else it(row.id, run);
+  it(row.id, run);
 }
 
 /** Replay the recorder's `run()`: the definition, the serialised text, the issues. */

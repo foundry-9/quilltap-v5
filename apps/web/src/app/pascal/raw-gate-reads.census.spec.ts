@@ -47,13 +47,6 @@ const RAW_CLAUSE_READ =
 /** The files that BUILD clauses, and so read them raw by construction. */
 const EXEMPT: ReadonlySet<string> = new Set(['pascal/custom-tool-types.ts', 'pascal/tool-draft.ts']);
 
-/**
- * Offenders under `screens/custom-tools/**` — the Workbench screens P4.D334
- * re-ports. Named here rather than fixed, so this lane never edits that tree;
- * empty at P4.D333's measurement.
- */
-const PENDING_P4D334: ReadonlySet<string> = new Set<string>();
-
 /** `apps/web/src/app`, from the runner's working directory (`apps/web`). */
 function appRoot(): string {
   const cwd = (globalThis as unknown as { process: { cwd(): string } }).process.cwd();
@@ -107,12 +100,11 @@ describe('the raw clause-read census (v4 a53024d3c)', () => {
   });
 
   it('no reader outside the exemptions reaches into a clause raw', () => {
-    const exempt = new Set([...EXEMPT, ...PENDING_P4D334]);
-    expect(offenders(exempt)).toEqual([]);
+    expect(offenders(EXEMPT)).toEqual([]);
   });
 
   it('every exemption names a file that exists', () => {
-    for (const rel of [...EXEMPT, ...PENDING_P4D334]) {
+    for (const rel of EXEMPT) {
       expect(() => fs.statSync(`${appRoot()}/${rel}`), rel).not.toThrow();
     }
   });

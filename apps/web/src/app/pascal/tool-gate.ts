@@ -42,15 +42,18 @@
  * the fail-closed / fail-open reading below holds for an array unchanged (v4
  * `a53024d3c`).
  *
- * ## Inventory, as data only
+ * ## Inventory
  *
- * v4 gates may also test the invoker's Inventory (`inventory`,
- * `inventoryCount`, `inventoryAggregate`). The browser has no Inventory
- * context yet, so this port takes v4's fourth argument only in its NULL form —
- * under which v4 declines every Inventory test (`inventoryStateHolds` /
- * `inventoryCountHolds` / `inventoryAggregateHolds` all answer false for a
- * missing bag). A group carrying any non-empty Inventory record therefore
- * never holds here, exactly as it never holds in v4 with no bag.
+ * `inventory` and `inventoryCount` ask about what the invoker carries in this
+ * chat — keyed by a LITERAL object reference (a gate has no parameters to
+ * fill a template). With no context (no character, no chat, an unreadable
+ * vault — or a Workbench bench with no mock inventory) every inventory
+ * comparator declines, the same reading a missing metadata key gets.
+ *
+ * `inventoryAggregate` reads one attribute across every object in a scope
+ * (`equipped.names`, `owned.metadata.toolVersion.max`) — a derived sheet,
+ * through the same comparison table, declining with no context like the
+ * other two.
  *
  * CLIENT-SAFE: pure, and imports only client-safe modules, so the Workbench can
  * tell an author whether a fact sheet would be dealt to without a round trip.
@@ -58,6 +61,9 @@
 
 import type { ProgressPrimitive } from '../progressions/engine';
 import { gateGroups, type QtapCustomTool, type ToolGate, type ToolGateGroup } from './custom-tool-types';
+import { inventoryAggregateHolds } from './inventory-aggregate';
+import type { InventoryContext } from './inventory-refs';
+import { inventoryCountHolds, inventoryStateHolds } from './inventory-subjects';
 import { metadataComparatorHolds, type Primitive } from './metadata-match';
 
 /** What a gate decided, and which clause decided it. */
@@ -97,15 +103,14 @@ export function evaluateToolGate(
    */
   progress?: Record<string, ProgressPrimitive> | null,
   /**
-   * v4's Inventory context for this chat. The browser has none yet, so only
-   * the absent form is admitted: every `inventory` / `inventoryCount` /
-   * `inventoryAggregate` test declines (see the module note).
+   * The invoker's Inventory context for this chat. Omitted or null → every
+   * `inventory` / `inventoryCount` / `inventoryAggregate` test declines.
    */
-  inventory: null = null,
+  inventory?: InventoryContext | null,
 ): ToolGateVerdict {
   const sheet = metadata ?? {};
   const progressSheet = progress ?? {};
-  const bag = inventory;
+  const bag = inventory ?? null;
 
   let opened: number | undefined;
   if (definition.availableWhen) {
@@ -131,7 +136,7 @@ function heldGroupOf(
   clause: ToolGate,
   metadata: Record<string, unknown>,
   progress: Record<string, ProgressPrimitive>,
-  inventory: null,
+  inventory: InventoryContext | null,
 ): number | undefined {
   const index = gateGroups(clause).findIndex((group) => gateHolds(group, metadata, progress, inventory));
   return index >= 0 ? index : undefined;
@@ -142,7 +147,7 @@ function gateHolds(
   gate: ToolGateGroup,
   metadata: Record<string, unknown>,
   progress: Record<string, ProgressPrimitive>,
-  inventory: null,
+  inventory: InventoryContext | null,
 ): boolean {
   // Both subjects go through the SAME comparison table — one semantics, no
   // second implementation to drift — differing only in which sheet they read.
@@ -162,12 +167,19 @@ function gateHolds(
     if (!holds) return false;
   }
 
-  // v4 reads these three against the invoker's bag; with no bag (`null`, the
-  // only form this port admits) every one of v4's three holds-functions
-  // declines, so a group naming any Inventory test cannot hold. An EMPTY
-  // record tests nothing and is skipped, as v4's loop over no entries is.
-  for (const subject of ['inventory', 'inventoryCount', 'inventoryAggregate'] as const) {
-    if (Object.keys(gate[subject] ?? {}).length > 0 && inventory === null) return false;
+  // Literal operands, literal keys: the comparison table in
+  // `inventory-subjects.ts`, against the invoker's bag.
+  for (const [ref, comparator] of Object.entries(gate.inventory ?? {})) {
+    if (!inventoryStateHolds(comparator, ref, inventory)) return false;
+  }
+  for (const [ref, comparator] of Object.entries(gate.inventoryCount ?? {})) {
+    if (!inventoryCountHolds(comparator, ref, inventory)) return false;
+  }
+  for (const [key, comparator] of Object.entries(gate.inventoryAggregate ?? {})) {
+    const holds = inventoryAggregateHolds(comparator, key, inventory, {
+      resolveOperand: (comparatorKey) => comparator[comparatorKey] as Primitive,
+    });
+    if (!holds) return false;
   }
 
   return true;

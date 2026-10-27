@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import corpusText from '../../testing/fixtures/pascal-inventory-twins.oracle.ndjson';
-import { P4D330_SPA_LANDED, P4D333_SPA_LANDED } from '../../testing/p4d334-gates';
 import { mockInventoryContext } from './bench-inventory';
 import {
   aggregateKeyEndsInFold,
@@ -27,8 +26,8 @@ import {
  *
  * Every row carries `needs` — the sibling lane whose code the row's truth
  * reads (the list rule / `compareOrdered` / `splitInventoryReference` are
- * P4.D333's, `kitState` is P4.D330's). A row whose sibling has not landed is
- * skipped by name; the unifier flips the flags (`src/testing/p4d334-gates.ts`).
+ * P4.D333's, `kitState` is P4.D330's); both landed at the round's
+ * unification, so every row replays.
  */
 
 type Need = 'P4D333' | 'P4D330';
@@ -124,18 +123,8 @@ const ROWS: Row[] = (corpusText as unknown as string)
 
 const byFn = (fn: string) => ROWS.filter((r) => r.fn === fn);
 
-/** A row is skipped by name while a sibling it reads has not landed. */
-function blocked(row: Row): string | null {
-  if (row.needs.includes('P4D333') && !P4D333_SPA_LANDED) return 'P4D333_SPA_LANDED';
-  if (row.needs.includes('P4D330') && !P4D330_SPA_LANDED) return 'P4D330_SPA_LANDED';
-  return null;
-}
-
 function replay(row: Row, run: (row: Row) => unknown): void {
-  const reason = blocked(row);
-  const body = () => expect(JSON.stringify(run(row))).toBe(row.out);
-  if (reason) it.skip(`${row.id} (needs ${reason})`, body);
-  else it(row.id, body);
+  it(row.id, () => expect(JSON.stringify(run(row))).toBe(row.out));
 }
 
 describe('the Inventory evaluator twins agree with v4 row for row', () => {

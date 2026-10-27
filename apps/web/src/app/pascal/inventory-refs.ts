@@ -21,7 +21,8 @@
  * Client-safe: pure.
  */
 
-import { isKin, kitState, type ResolvedInventoryItem } from '../screens/custom-tools/p4d330-stand-ins';
+import type { ResolvedInventoryItem } from '../core/core-contract';
+import { isKin, kitState } from '../inventory/inventory-display';
 import type { AggregateObject, AggregateScope } from './inventory-aggregate';
 
 /** Where an object stands for the rolling character in this chat. */
