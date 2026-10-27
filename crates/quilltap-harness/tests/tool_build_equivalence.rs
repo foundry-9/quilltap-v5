@@ -208,18 +208,7 @@ fn tool_build_matches_oracle() {
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
-        let mut row: OracleRow = serde_json::from_str(line).expect("oracle row parses");
-        // P4.D332 carve — lifted at §S.5 (3)/(15): at `322a5488e` the Log's three
-        // tools ride every workspace slate (P4.D331 ports them). Removed from the
-        // ORACLE side BY NAME; the order of everything else is compared RAW.
-        if let Some(tools) = row.tools.as_array_mut() {
-            tools.retain(|t| {
-                !matches!(
-                    t["function"]["name"].as_str().or(t["name"].as_str()),
-                    Some("log_create_entry" | "log_grep" | "log_read")
-                )
-            });
-        }
+        let row: OracleRow = serde_json::from_str(line).expect("oracle row parses");
         want.insert(row.name.clone(), row);
     }
 

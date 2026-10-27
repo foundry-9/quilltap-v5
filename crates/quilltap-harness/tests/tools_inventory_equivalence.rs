@@ -35,27 +35,6 @@ const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
 /// P4.D328: Nora, `TOOLS_CHAT_PROJ`'s first character.
 const NORA: &str = "a2000000-0000-4000-8000-000000000001";
 
-/// P4.D332 carve (R-H) — lifted at §S.5 (3), when the unifier sets the table to
-/// the pin's 58 rows. At `322a5488e` twelve rows belong to sibling lanes: the
-/// nine Inventory tools (P4.D328) and the three Log tools (P4.D331). They are
-/// removed from the ORACLE side BY ID; every other row, its order, its
-/// description bytes and its key order are compared RAW (this lane's own two:
-/// `run_custom` moving to `pascal` and the new `edit_custom_tool`).
-const SIBLING_OWNED_ROWS: &[&str] = &[
-    "inventory_list",
-    "inventory_read",
-    "inventory_equip",
-    "inventory_unequip",
-    "inventory_pick_up",
-    "inventory_create",
-    "inventory_update",
-    "inventory_archive",
-    "inventory_give",
-    "log_create_entry",
-    "log_grep",
-    "log_read",
-];
-
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Spec {
@@ -144,22 +123,7 @@ fn tools_inventory_matches_oracle() {
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
-        let mut v: Value = serde_json::from_str(line).unwrap();
-        let mut carved_count = None;
-        if let Some(tools) = v
-            .get_mut("body")
-            .and_then(|b| b.get_mut("tools"))
-            .and_then(Value::as_array_mut)
-        {
-            tools.retain(|t| !SIBLING_OWNED_ROWS.contains(&t["id"].as_str().unwrap_or_default()));
-            carved_count = Some(tools.len());
-        }
-        // The envelope's `count` is the row count: carve it with the rows.
-        if let Some(n) = carved_count {
-            if v["body"].get("count").is_some() {
-                v["body"]["count"] = n.into();
-            }
-        }
+        let v: Value = serde_json::from_str(line).unwrap();
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
     assert!(
