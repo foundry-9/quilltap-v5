@@ -299,6 +299,52 @@ describe('InventoryControlDialogInner', () => {
     expect(el.querySelector('qt-inventory-item-editor')!.textContent).toContain("Kept in Vivienne's inventory");
   });
 
+  it('From archetype: a row click SURVIVES change detection through the real parent binding (one archetype read)', async () => {
+    // Review finding (BLOCKING, `322a5488e` unification): the parent bound
+    // `[destination]="destinationOf(request)"`, a NEW object every change
+    // detection, so the instantiate dialog's seed effect re-ran on each click —
+    // `chosen` back to null and the archetypes refetched — and no archetype
+    // could ever be selected. v4 seeds once (`useState`). This mounts the REAL
+    // control dialog and opens the dialog the way an operator does.
+    const route: Route = (req) => (req['type'] === 'inventoryArchetypes' ? { items: [BOW] } : LISTS(req));
+    const { fixture, el, seen } = await inner({ initial: { scope: 'character', id: 'c-viv' } }, route);
+    const open = [...el.querySelectorAll('button')].find((b) => b.textContent!.includes('From archetype'))!;
+    open.click();
+    await settle(fixture);
+    const reads = () => seen.filter((r) => r['type'] === 'inventoryArchetypes').length;
+    expect(reads()).toBe(1);
+    const option = () => el.querySelector('qt-inventory-instantiate-dialog [role="option"]') as HTMLButtonElement;
+    expect(option().getAttribute('aria-selected')).toBe('false');
+    option().click();
+    await settle(fixture);
+    expect(option().getAttribute('aria-selected')).toBe('true');
+    const make = [...el.querySelectorAll('qt-inventory-instantiate-dialog button')].find(
+      (b) => b.textContent!.trim() === 'Instantiate',
+    ) as HTMLButtonElement;
+    expect(make.disabled).toBe(false);
+    expect(reads()).toBe(1);
+  });
+
+  it('an open editor is handed ONE container object across change detection (no refetch per keystroke)', async () => {
+    // Review finding (SHOULD-FIX): `editorContainer(...)` / `actions.addressOf(...)`
+    // built a new object per change detection, so every keystroke refetched the
+    // editor's General list, its pictures and the folder tree.
+    const { fixture, el, seen } = await inner({ initial: { scope: 'character', id: 'c-viv' } });
+    const row = [...el.querySelectorAll('[data-testid="inventory-item-row"]')].find((r) => r.textContent!.includes('lantern'))!;
+    (row.querySelector('[aria-label="More actions"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    ([...el.querySelectorAll('[role="menuitem"]')][0] as HTMLButtonElement).click();
+    await settle(fixture);
+    const before = seen.length;
+    const name = el.querySelector('qt-inventory-item-editor input') as HTMLInputElement;
+    for (const ch of 'abc') {
+      name.value += ch;
+      name.dispatchEvent(new Event('input'));
+      await settle(fixture);
+    }
+    expect(seen.slice(before)).toEqual([]);
+  });
+
   it('the inventory realtime topic reloads the list and the tree; chats (this chat) the carried read', async () => {
     const { fixture, seen, stream } = await inner({ chatId: 'chat-1', initial: { scope: 'character', id: 'c-viv' } });
     const count = (type: string) => seen.filter((r) => r['type'] === type).length;

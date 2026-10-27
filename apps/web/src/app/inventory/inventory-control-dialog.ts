@@ -39,6 +39,11 @@ import { createInventoryListData } from './inventory-list-data';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
 
+/** Two containers name the same tier (by their encoded value — the select's own key). */
+function sameContainer(a: InventoryContainer | null, b: InventoryContainer | null): boolean {
+  return a === b || (!!a && !!b && encodeInventoryContainer(a) === encodeInventoryContainer(b));
+}
+
 /** v4 `:49` — the catalogue's sort (default `localeCompare`, no options). */
 const byName = (a: { name: string }, b: { name: string }): number => a.name.localeCompare(b.name);
 
@@ -168,7 +173,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
       @if (actions.editor(); as editor) {
         @if (container()) {
           <qt-inventory-item-editor
-            [container]="editorContainer(editor.kind === 'edit' ? editor.item : null)!"
+            [container]="editorContainer()!"
             [containerLabel]="containerLabel()"
             [item]="editor.kind === 'edit' ? editor.item : null"
             [createMode]="editor.kind === 'create' ? editor.mode : 'item'"
@@ -184,7 +189,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
       @if (actions.folderPicker(); as picker) {
         @if (container()) {
           <qt-inventory-folder-picker-dialog
-            [container]="actions.addressOf(picker.items[0])"
+            [container]="folderPickerContainer()!"
             [items]="picker.items"
             [actions]="actions"
             (closed)="actions.closeFolderPicker()"
@@ -196,7 +201,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
           <qt-inventory-transfer-dialog
             [item]="transfer.item"
             [mode]="transfer.mode"
-            [from]="actions.addressOf(transfer.item)"
+            [from]="transferFrom()!"
             [catalogue]="catalogue()"
             [actions]="actions"
             (closed)="actions.closeTransfer()"
@@ -206,7 +211,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
       @if (actions.instantiateFor(); as request) {
         <qt-inventory-instantiate-dialog
           [archetype]="archetypeOf(request)"
-          [destination]="destinationOf(request)"
+          [destination]="instantiateDestination()"
           [projectId]="effectiveProjectId()"
           [catalogue]="catalogue()"
           [actions]="actions"
@@ -394,17 +399,58 @@ export class InventoryControlDialogInner {
   protected archetypeOf(request: InventoryInstantiateRequest): ResolvedInventoryItem | null {
     return 'archetype' in request ? request.archetype : null;
   }
-  protected destinationOf(
-    request: InventoryInstantiateRequest,
-  ): { container: InventoryContainer; folder: string } | null {
-    return 'destination' in request ? { container: request.destination, folder: request.folder } : null;
-  }
+
+  /*
+   * The overlays' container inputs are COMPUTED, not template method calls: a
+   * call builds a NEW object every change detection, and each child keys an
+   * effect on its input — the instantiate dialog re-seeded `chosen = null` and
+   * refetched its archetypes on every click (so no archetype could ever be
+   * chosen; v4 seeds once with `useState`), and the editor refetched its
+   * General list, its pictures and the folder tree on every keystroke. A
+   * computed recomputes only when its sources move, and `sameContainer` keeps
+   * the old object when an unrelated source (a list reload) re-runs it.
+   */
+
+  /** v4 `:356-358` — the destination the instantiate dialog is opened INTO. */
+  protected readonly instantiateDestination = computed(
+    (): { container: InventoryContainer; folder: string } | null => {
+      const request = this.actions.instantiateFor();
+      return request && 'destination' in request ? { container: request.destination, folder: request.folder } : null;
+    },
+    {
+      equal: (a, b) =>
+        a === b || (!!a && !!b && a.folder === b.folder && sameContainer(a.container, b.container)),
+    },
+  );
 
   /** v4 `:180-181` — an object's own tier, for the editor. */
-  protected editorContainer(item: ResolvedInventoryItem | null): InventoryContainer | null {
-    const container = this.container();
-    return item && container ? containerOfOrigin(item.origin, container) : container;
-  }
+  protected readonly editorContainer = computed(
+    (): InventoryContainer | null => {
+      const editor = this.actions.editor();
+      const item = editor?.kind === 'edit' ? editor.item : null;
+      const container = this.container();
+      return item && container ? containerOfOrigin(item.origin, container) : container;
+    },
+    { equal: sameContainer },
+  );
+
+  /** The folder picker's tier — its first object's own (v4 `addressOf`). */
+  protected readonly folderPickerContainer = computed(
+    (): InventoryContainer | null => {
+      const picker = this.actions.folderPicker();
+      return picker && picker.items.length > 0 ? this.actions.addressOf(picker.items[0]) : null;
+    },
+    { equal: sameContainer },
+  );
+
+  /** The transfer's source tier (v4 `addressOf`). */
+  protected readonly transferFrom = computed(
+    (): InventoryContainer | null => {
+      const transfer = this.actions.transfer();
+      return transfer ? this.actions.addressOf(transfer.item) : null;
+    },
+    { equal: sameContainer },
+  );
 
   /** v4 `gesture` (`:187-205`). */
   protected async gesture(kind: 'equip' | 'unequip', ids: string[]): Promise<void> {
