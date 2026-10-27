@@ -19,557 +19,253 @@ write it** — a lane that finds the probe failing STOPs and reports instead.
 _Updated only by `/driftcheck` and `/unify`. Every field here is what the §2
 probe verifies against._
 
-- **Oracle baseline: `e8e17b2d9`**: "Fix: restore and import keep chat
-  outfits (bug 252) (#101)" (v4 main, 2026-10-18 14:21, `package.json`
-  `4.11.0-dev.26` — the lockfile stamp lags at `dev.21`). It was adopted when
-  the `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252 drift
-  catch-up round was unified (2026-10-19). All nine lanes landed: P4.D315 →
-  {P4.D316 ∥ P4.D317} ∥ P4.D318 ∥ P4.D319 ∥ P4.D320 ∥ P4.D321 ∥ P4.D322 ∥
-  P4.D323. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
-  bullet both name `e8e17b2d9`, and they AGREE with this file (re-checked
-  2026-10-26).
-- **Checked:** 2026-10-27, by `/driftcheck` — the §2 probe FAILED as the
-  `322a5488e` round's `/unify` started (14 new `main` commits past the
-  ledger's recorded HEAD `a0905454b`). Both branches re-probed locally AND
-  against the remote after a fetch (`git ls-remote origin`: `main` =
-  `85c002822`, `bugfix` = `489b228b6`, `release` = `2432b9057` — local
-  equals remote). The 14 were classified from their hunks by the checker
-  directly, with the cross-cutting facts measured: NO migration in the span
-  (`git diff a0905454b main -- migrations` is empty), the lockfile's
-  dependency moves, v4's `bugs.md` rows 266–268 (every one found by v4 itself
-  — no convergence), an IMPORT-DEAD census of the span's deleted exports and
-  removed packages over `harness/oracle` (ONE hit — `pdf-parse`), and the v5
-  surfaces bugs 267 / 268 name (`quilltap-host::terminal` still `SIGTERM`
-  only; `kick_all_for_chat` without a production caller; no orphan-transcript
-  sweep in `services/scheduled_maintenance.rs`).
+- **Oracle baseline: `322a5488e`**: "Fix: custom-tool LLM consult can narrate
+  a verdict the table already reached (bug 257)" (v4 main, 2026-10-20 16:50
+  −0500, `package.json` `4.11.0-dev.53`). It was adopted when the
+  `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255
+  drift catch-up round was unified (2026-10-27). All seventeen lanes landed:
+  P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥ P4.D329 ∥ P4.D331 ∥
+  P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
+  P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
+  its "Oracle baseline" bullet both name `322a5488e`.
+- **Checked:** 2026-10-27, by `/driftcheck` (`15277d2ee`, run as the
+  round's `/unify` started — the §2 probe had FAILED on 14 new `main`
+  commits past the then-recorded `a0905454b`). Both branches re-probed
+  locally AND against the remote after a fetch (`main` = `85c002822`,
+  `bugfix` = `489b228b6`, `release` = `2432b9057` — local equals remote).
+  That check classified the 14 directly; the 32 of 2026-10-26 were
+  classified by five parallel readers. The unify itself regenerated every
+  oracle from the detached pin `/tmp/qt-v4-pin-unify-322a5488e` (its own
+  `npm ci --offline` tree: `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless`
+  6.0.0, `plugin-types` 2.8.0; the plugin `node_modules` linked from the live
+  checkout, `plugin-types` 2.9.0 there — inert at the pin, type-only
+  imports).
   - **Before that:** 2026-10-26 (`a0905454b`, 32 rows); 2026-10-20 evening
-    (`322a5488e`, seven rows);
-    2026-10-19 late evening (`e27fb6b34`, eight rows, at `/unify`'s close
-    probe) and morning (`a6292f169`); 2026-10-18 evening (`102a23648`) and
-    morning (`1cfc9b504`); 2026-10-17 twice; 2026-10-16 twice; 2026-10-15;
-    and the earlier checks the §6 bullets record.
+    (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
+    morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
+    checks the §6 bullets record.
 - **v4 `main` HEAD at check: `85c002822`** ("Fix terminal Kill ignored by
   bash; deleted chats leave shells running (#119)", 2026-10-26 20:52,
-  `4.11.0-dev.91`) — 14 commits past the `a0905454b` the 2026-10-26 check
-  recorded, ONE of them a merge (`744596158`; the span is not linear:
-  `9faed0c7e` → … → `40cc6ffda` → {`539bb4012` → `cc5f2347c` ∥ `026222176`}
-  → `744596158` → `c50cdddc6` → `85c002822`). The 2026-10-26 span before it
-  (32 commits past `322a5488e`) had its own merge `5e18ede6a`.
-  - **SIXTY-EIGHT commits past the baseline** (all §3 rows):
-    - **The 22 recorded 2026-10-18 → -20** (`4fbdad186` … `322a5488e`) — ALL
-      `ORDERED(…)` as the `322a5488e` round (P4.D324–P4.D340, pinned at
-      `322a5488e`; not yet carried out — no lane worktree exists).
-    - **The 32 recorded 2026-10-26 (all UNPROCESSED):**
-      - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
-        `a5efdbb97` the inner circle in the frozen archive (PORT-NEW);
-        **`8cb584eff` keystone memories WITH THE SEVENTEENTH D23 MOVE**.
-      - *Storyteller + Pascal:* **`b15fe9404` Storyteller mode + declared
-        tool effects WITH THE EIGHTEENTH + NINETEENTH MOVES** (a NEW table
-        `storyteller_rounds`; `llm_logs.storytellerRoundId`; the autonomous
-        withheld set widens 3 → 5); `332c650b9` a spec (NO-PORT?);
-        `eb2d87788` every LLM call logs (PORT — image-spend tallies now
-        count failed `IMAGE_GENERATION` attempts); **`839575d89` operator
-        intervention WITH THE TWENTIETH MOVE**; `946a50a04`, `8ae8a127c`,
-        `b02d902f3` riders on those two.
-      - *Salon:* `036b32a78` bug 258 (a whisper is single-turn); **`778b97b2b`
-        the Novel template WITH THE TWENTY-FIRST MOVE + a boot-seed rewrite
-        of `narrationDelimiters`**; `fa126bde8` bug 259 (the 80k rehydration
-        cap removed); `40fab1c54` bugs 260 / 261 (upload text + a boot
-        backfill; a real glob); `f7a1789df` → `d68c1af88` → `9a88f862f` the
-        referent ledger, closing echo and absent-character name chips (ONE
-        lane); `1dd0a0c01` composer punctuation warnings (a JSON key, no
-        column); `cb94e6e99` the dead `debugLLMRequest` frame (NO-PORT?).
-      - *Wardrobe / characters / Inventory / SPA:* `eb90d9ed8` wardrobe
-        pronoun guidance (a vault key); `99463fc56` the floating Brahma
-        Console (SPA); `265b711dd` picture-cue guidance + the
-        `wardrobe_create` text-block body fix; `074e1e01a` `self_inventory`'s
-        core-file checklist + holdings; `b27e5089a` the `humanoid` flag (a
-        vault key); **`0276d10d9` "Refactor: Inventory chokepoints" — NOT
-        neutral; it changes what five ORDERED Inventory lanes specify**;
-        `4a25f7eab` / `505a524fa` release notes (NO-PORT?).
-      - *Refactors + diagrams:* **`a8214b253` the Salon turn pipeline (bug
-        262; `done` frame key order)**; **`bdd09b75b` the context manager
-        (bugs 263 / 264 / 265 — the history budget re-measured, prompt bytes
-        move)**; `6588972d5` diagrams (two vault keys, an opt-in prompt note,
-        FOUR client deps); `5e18ede6a` the merge (dropped the deps) +
-        `a0905454b` (restored them) — both NO-PORT?.
-    - **NEW 2026-10-27 (classified by this check, all UNPROCESSED):**
-      - ⚠ **Land on surfaces the `322a5488e` round just ported:**
-        **`cc5f2347c` backups now carry the Log** (REVERSES the pin's
-        "the Log is not carried" rule that P4.D327 asserts and P4.D331
-        documents — `data/log-entries.json`, restore `22n-quater`, the
-        new-account remap, `deleteAll()` on replace / delete-all); **`85c002822`
-        bugs 267 / 268** (the `pty-manager.ts` P4.D337 re-ported at the pin —
-        `kickAllForChat` REPLACED by `disposeChatSessions`, `terminate` =
-        SIGHUP → SIGKILL, the orphan-transcript sweep; `help/ariel.md`, which
-        P4.D339 vendors); `c50cdddc6` (help only — `ariel.md` +
-        `system-backup-restore.md`, both vendored by P4.D339); `7d7e38d2f`
-        (tests only — a toast-stacking pin on P4.D338's toast z-index).
-      - *Server:* `026222176` bug 266 + pdfjs-dist 6.4 + `pdf-parse` REMOVED
-        (an in-house reader; a WARN line's text moves; ⚠ ONE IMPORT-DEAD
-        oracle; `openai` 7.34.0 → 7.45.0 rides the same commit).
-      - *SPA / client:* `9faed0c7e` the diagram lightbox + Copy PNG (a rider
-        on the UNPORTED diagrams); `2041bb875` the Automation checkbox class
-        (v5 HAS the old classes); `8bf856050` diagram trace lines pruned.
-      - *CLI:* `40cc6ffda` `db --count` prints `String(count)` (verify-only).
-      - *NO-PORT? candidates:* `3c9ae1fc3` (release notes), `8becfc6ce` (dead
-        code — no oracle imports it), `66f8c4d41` (v4 JS plugin bundling),
-        `539bb4012` (CLI README), `744596158` (the merge — CHANGELOG only).
-  - **Stamps:** dev.53 → dev.87 → dev.91 (`332c650b9`, `4a25f7eab`,
-    `505a524fa` stamp nothing; `0276d10d9`, `a8214b253`, `b27e5089a` jump
-    several; of the 14 only `9faed0c7e`, `40cc6ffda`, `026222176`,
-    `85c002822` stamp).
-- **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
-  branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY
-  (re-probed 2026-10-27, local and `origin`).
-  **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe BOTH
-  branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `85c002822`.
-  HEAD is sixty-eight commits past the baseline (forty-six past the ordered
-  round's pin `322a5488e`), so it poisons a regen by DRIFT.
-- **Verdict: DRIFT PENDING — 68 commits (§3): 22 `ORDERED(…)` (the
-  `322a5488e` round, P4.D324–P4.D340) + 46 UNPROCESSED (32 of 2026-10-26 +
-  14 new 2026-10-27).**
-  - **⏳ The `322a5488e` round's `/unify` is IN PROGRESS (started
-    2026-10-27, another session).** That unify moves the baseline to
-    `322a5488e` ITSELF and retires the 22 ORDERED rows to §6; this check
-    does NOT move the baseline. After it lands, the 46 UNPROCESSED rows are
-    the drift past the new baseline and the regen rule is PIN REQUIRED at
-    `322a5488e`.
-  - **Classes of the 14 (new 2026-10-27):**
-    - 3 PORT on ported surfaces: `cc5f2347c` (the Log in backups — ⚠ the
-      round's own surface), `85c002822` (bugs 267 / 268 — ⚠ the round's own
-      `pty-manager` surface), `026222176` (bug 266's server half: the WARN
-      text, the reader's spec, the dependency moves).
-    - 1 PORT (SPA small): `2041bb875`.
-    - 1 PORT (verify-only): `40cc6ffda`.
-    - 1 PORT-NEW rider on the UNPORTED diagrams: `9faed0c7e`.
-    - 8 NO-PORT? (`3c9ae1fc3`, `8bf856050`, `8becfc6ce`, `7d7e38d2f`,
-      `66f8c4d41`, `539bb4012`, `744596158`, and `c50cdddc6`'s code half —
-      its two help paragraphs ride the next re-vendor).
-    - NO D23 move in the 14 (no `migrations/` hunk; no new column read).
-    - **No CONVERGENCE:** bugs 266 (found live on `V4test`), 267 ("by code
-      reading") and 268 ("while fixing 267") are all v4-originated; v5
-      status `Owed` in each row.
-  - **Classes of the 32:**
-    - 1 PORT-NEW **WITH THE SEVENTEENTH D23 MOVE** (`8cb584eff`,
-      `memories.keystone`).
-    - 1 PORT-NEW + PORT **WITH THE EIGHTEENTH + NINETEENTH MOVES**
-      (`b15fe9404` — `chats.turnMode` / `storytellerInviteFilter`,
-      `chat_messages.storytellerBid`, the NEW `storyteller_rounds` table;
-      `llm_logs.storytellerRoundId`, the second llm-logs move).
-    - 1 PORT-NEW **WITH THE TWENTIETH MOVE** (`839575d89`,
-      `chat_settings.customToolIntervention`).
-    - 1 PORT + PORT-NEW **WITH THE TWENTY-FIRST MOVE** (`778b97b2b`,
-      `roleplay_templates.unmarkedStyle` / `markdownAsterisks`).
-    - 9 PORT-NEW (`a5efdbb97`, `946a50a04`, `8ae8a127c`, `b02d902f3`,
-      `f7a1789df`, `1dd0a0c01`, `6588972d5`, `0276d10d9` — a rider on the
-      ordered Inventory; `9a88f862f`'s route half).
-    - 13 PORT (`6fd2d5ffb`, `036b32a78` bug 258, `eb2d87788`, `eb90d9ed8`,
-      `99463fc56`, `265b711dd`, `fa126bde8` bug 259, `40fab1c54` bugs 260 /
-      261, `074e1e01a`, `d68c1af88`, `b27e5089a`, `a8214b253` bug 262,
-      `bdd09b75b` bugs 263–265 — several also carry a PORT-NEW part).
-    - 6 NO-PORT? (`332c650b9`, `4a25f7eab`, `505a524fa`, `cb94e6e99`,
-      `5e18ede6a`, `a0905454b`). (`8cb584eff`'s CLI `keystone` verb is
-      NO-PORT by the `phase-4.md` R-AL ruling.)
-  - **No CONVERGENCE:** bugs 258–265 were all found by v4 itself (operator
-    reports, live `Friday`, or "found while refactoring"); v5 status `Owed`
-    in every row; none appears in v5's filings.
+  `4.11.0-dev.91`) — **FORTY-SIX commits past the baseline**, ALL
+  UNPROCESSED in §3, two merges among them (`5e18ede6a`, `744596158`):
+  - **The 32 of 2026-10-26** (`6fd2d5ffb` … `a0905454b`):
+    - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
+      `a5efdbb97` the inner circle in the frozen archive (PORT-NEW);
+      **`8cb584eff` keystone memories WITH THE SEVENTEENTH D23 MOVE**.
+    - *Storyteller + Pascal:* **`b15fe9404` Storyteller mode + declared tool
+      effects WITH THE EIGHTEENTH + NINETEENTH MOVES** (a NEW table
+      `storyteller_rounds`; `llm_logs.storytellerRoundId`); `332c650b9` a
+      spec (NO-PORT?); `eb2d87788` every LLM call logs (PORT); **`839575d89`
+      operator intervention WITH THE TWENTIETH MOVE**; `946a50a04`,
+      `8ae8a127c`, `b02d902f3` riders on those two.
+    - *Salon:* `036b32a78` bug 258; **`778b97b2b` the Novel template WITH THE
+      TWENTY-FIRST MOVE + a boot-seed rewrite of `narrationDelimiters`**;
+      `fa126bde8` bug 259; `40fab1c54` bugs 260 / 261; `f7a1789df` →
+      `d68c1af88` → `9a88f862f` the referent ledger, closing echo and
+      absent-character name chips (ONE lane); `1dd0a0c01` composer
+      punctuation warnings; `cb94e6e99` the dead `debugLLMRequest` frame
+      (NO-PORT?).
+    - *Wardrobe / characters / Inventory / SPA:* `eb90d9ed8` wardrobe pronoun
+      guidance; `99463fc56` the floating Brahma Console; `265b711dd`
+      picture-cue guidance; `074e1e01a` `self_inventory`'s checklist +
+      holdings; `b27e5089a` the `humanoid` flag; **`0276d10d9` "Refactor:
+      Inventory chokepoints" — NOT neutral; it changes what the round just
+      landed** (duplicate's 404 → a Zod 400, whole-handler error mapping,
+      the cast's `type` filter dropped, publishes moved into the locations,
+      the pick-up no-vault text); `4a25f7eab` / `505a524fa` release notes.
+    - *Refactors + diagrams:* **`a8214b253` the Salon turn pipeline (bug 262;
+      `done` frame key order)**; **`bdd09b75b` the context manager (bugs 263
+      / 264 / 265 — prompt bytes move)**; `6588972d5` diagrams (two vault
+      keys, an opt-in prompt note, FOUR client deps); `5e18ede6a` the merge +
+      `a0905454b` (restored the deps) — both NO-PORT?.
+  - **The 14 of 2026-10-27** (`9faed0c7e` … `85c002822`):
+    - ⚠ **On surfaces this round just LANDED:** **`cc5f2347c` backups now
+      carry the Log** (REVERSES the pin's "not carried" rule P4.D327 pins and
+      P4.D331 documents — `data/log-entries.json`, restore `22n-quater`, the
+      new-account remap, `deleteAll()` on replace / delete-all); **`85c002822`
+      bugs 267 / 268** (over P4.D337's `pty-manager` port —
+      `kickAllForChat` → `disposeChatSessions`, SIGHUP → SIGKILL, the
+      orphan-transcript sweep; `help/ariel.md`, vendored by P4.D339);
+      `c50cdddc6` (help only — `ariel.md` + `system-backup-restore.md`);
+      `7d7e38d2f` (tests only — a toast-stacking pin on P4.D338's z-index).
+    - *Server:* `026222176` bug 266 + pdfjs-dist 6.4 + `pdf-parse` REMOVED
+      (a WARN line's text moves; ⚠ ONE IMPORT-DEAD oracle; `openai` 7.34.0 →
+      7.45.0 in the same commit).
+    - *SPA / client:* `9faed0c7e` the diagram lightbox; `2041bb875` the
+      Automation checkbox class; `8bf856050` diagram trace lines pruned.
+    - *CLI:* `40cc6ffda` `db --count` (verify-only).
+    - *NO-PORT? candidates:* `3c9ae1fc3`, `8becfc6ce`, `66f8c4d41`,
+      `539bb4012`, `744596158`.
+  - **No CONVERGENCE** in the 46: bugs 258–268 were all found by v4 itself;
+    v5 status `Owed` in every row.
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
-    `0276d10d9` (status codes, cast membership, realtime publishes, error
-    and log text), `a8214b253` (bug 262, `done`-frame key order, fail-soft
-    links, log tags), `bdd09b75b` (bugs 263–265 — prompt bytes). And
-    `6588972d5`'s CHANGELOG claim "nothing new is stored" is FALSE.
-  - **Production surface of the 32:** `git diff 322a5488e a0905454b` 481
-    files, +24,927 / −7,104 (`lib app packages plugins components public
-    migrations`; 636 files +37,887 / −7,739 in all); the largest
-    `b15fe9404` 172 files +5,433, `839575d89` 55 files +3,435, `a8214b253`
-    +2,705 / −2,530, `bdd09b75b` +2,335 / −2,084).
-  - **Regen rule: PIN REQUIRED at `e8e17b2d9`** (§5.1) — unchanged; the
-    ordered round regens at its own pin `322a5488e` per the 2026-10-09
-    setupphase ruling (the 14 new commits change nothing for it: the round
-    regens at `322a5488e`, never past it). When the in-progress `/unify`
-    moves the baseline, the rule becomes PIN REQUIRED at `322a5488e`.
+    `0276d10d9`, `a8214b253`, `bdd09b75b`; and `6588972d5`'s "nothing new is
+    stored" is FALSE.
+- **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
+  branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
+  **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
+  BOTH branches every time.
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `85c002822`.
+  HEAD is forty-six commits past the baseline, so it poisons a regen by
+  DRIFT.
+- **Verdict: DRIFT PENDING — 46 commits (§3), all UNPROCESSED.**
+- **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
+  `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
+  deps; `openai` 7.45.0 once the human installs past `026222176`), so the
+  pin's own `npm ci --offline` rebuild is REQUIRED, not merely safe
+  (measured 2026-10-26 and again at this unify: ~6 s offline).
 
 ### ⚠ LIVE-DATA — what stands at this baseline
 
-- **A v5 at `e8e17b2d9` reads, writes and carries `chat_wardrobe_history`.**
-  The table is BOOT-CREATED through three ported ensures (table →
-  `actorToolName` → seed, the seed STAMPED; the human's 2026-10-19 standing
-  ruling for every migration-only table), so **a Friday copy taken at ANY v4
-  point opens:** on a pre-`83387d0e5` copy the first v5 boot CREATES the
-  table and seeds entry 0 per dressed `(chat, character)`; on a copy v4
-  ALTERed (`4ae20977f`) or created whole every ensure is a NO-OP (the
-  ensures are differentially compared against v4's REAL runner in five
-  modes). Outfit history SURVIVES a v5 backup / restore / `.qtap` round trip
-  (P4.D317); the `{{character}}` / `announceAsCharacter` definitions LOAD
-  (P4.D319); archiving a character KEEPS its `Inventory/` folder (P4.D322 —
-  **the 2026-10-18 "ARCHIVING A CHARACTER IN v5 DELETES ITS INVENTORY" hazard
-  is RETIRED** by `character_archive_tier2_equivalence` 21 / 21 against the
-  `4fbdad186` oracle, incl. the populated folder, a picture link, an empty
-  subfolder and the bare folder); bug 252 is FIXED (a `new-account` restore
-  and a re-keyed `.qtap` import keep the outfit, the avatars and the courier
-  checkpoints); bug 254 is FIXED (progressions on every turn).
-- **The general rule stands:** a v5 build from BEFORE this round must not
-  open an instance this round's ensures have altered (a pre-round v5 never
-  reads the table, so the hazard is only the P4.D288 class: the table's
-  presence is harmless, but a pre-round v5's backup / restore LOSES it).
-- **Past `a0905454b` (the 14 of 2026-10-27) — NO boot / schema hazard** (no
-  migration, no new column, no vault key). Non-corrupting notes for a v5
-  sharing an instance with v4 at HEAD: a v4-HEAD backup carries
-  `data/log-entries.json`, which a v5 restore ignores (every Log line is lost
-  on a v5 restore — still true once the `322a5488e` round lands, since it
-  ports the pin's "not carried" rule); a v5 `replace` restore / delete-all
-  leaves `log_entries` untouched where v4 HEAD clears it. v4 HEAD's daily
-  maintenance now unlinks `logs/terminals/*.log` that no `terminal_sessions`
-  row names and nobody wrote for an hour — on a shared instance it collects
-  v5's orphans too, which is the intended outcome, and a live v5 PTY whose
-  row exists is spared by name.
-- **Past the pin — NO boot-blocking, NO ping-pong, NO NOT-NULL-insert hazard
-  (classified 2026-10-17 → 2026-10-19).** `chats.equippedInventory`,
-  `characters.canManageInventory` and `terminal_sessions.cols` / `rows` are
-  all NULLABLE and column-gated; `log_entries` is a NEW table in the llm-logs
-  partition created lazily by v4's repository (no migration, no
-  `migrations_state` row, nothing in an existing table); v5's chat /
-  character / terminal-session reads and writes name their columns. Non-
-  corrupting notes for a v5 at this baseline sharing an instance with v4 at
-  HEAD: a v5 backup / `.qtap` export omits `equippedInventory` (a `replace`
-  restore re-inserts chats with it NULL) and `canManageInventory` (an
-  explicit `false` reads back as on); a v5 new-account restore re-mints
-  Inventory object ids in `files.linkedTo` and leaves each object's
-  `imageFileId` stale; custom tools using `when` / gate `inventory` /
-  `inventoryCount`, a `$inventory` operand or roll, an `inventory` or a
-  `log` effect are REFUSED by v5's loader and drop off its roster; v5 turns /
-  Carina / greetings omit `## Carried and equipped`; v5 publishes
-  `qtap://self` addresses (bug 256 LIVE in v5); v5 still sanitizes / reroutes
-  image prompts under the old bug-133 rule; v5 deals co-participants' vault
-  custom tools (`cfa0cba29`); v5's `/photos` still lists vault photos and its
-  delete still removes a vault photo link (`680b71044`); a v5 `terminal_read`
-  still strips escape codes (bug 255); v4 lists scenarios by TITLE where v5
-  lists by PATH, so a vault's promoted default scenario can DIFFER until the
-  sort is ported; **`log_entries`:** v5 never prunes it (rows outlive
-  `retentionDays` until v4's cleanup runs), v5's PHYSICAL backup carries it
-  whole, v5's logical backup / `.qtap` export skip it exactly as v4's do, and
-  v5's `replace` restore deletes `llm_logs` ROWS through the repository and
-  never recreates the llm-logs file, so a v4-created `log_entries` table
-  survives it untouched (`services/delete_all.rs:338-480`). **Added
-  2026-10-20 (no schema move in the seven):** a definition v4 can now write
-  with an any-of ARRAY as its gate / outcome `when` / effect `when`, an
-  `inventoryAggregate` test, or an outcome `brief` is REFUSED by v5's loader
-  and drops off its roster; a v5 `edit_custom_tool` does not exist; a v5
-  consult on a table with no `llm` test still runs BEFORE the table (bug 257
-  live in v5); a v5 Salon has neither raised hand nor server-side stop. The `Inventory/`
-  files themselves survive v5's mount-index backup / restore intact. Measure
-  first at port time: that `store_name_reconcile.rs` `read_vault_owner_rows`'
-  `SELECT *` tolerates the extra `characters` cell.
-- **Past `322a5488e` — NEW 2026-10-26: THREE vault-key ERASURE hazards
-  (MEASURED in v5's writers) + two probable read hazards (unmeasured).** A
-  v5 at this baseline sharing an instance with v4 at HEAD (`dev.87`):
+- **A v5 at `322a5488e` reads and writes `chats.equippedInventory`,
+  `characters.canManageInventory`, `terminal_sessions.cols` / `rows` and
+  `log_entries`.** The first v5 boot of a pre-`4fbdad186` Friday copy ADDS the
+  three columns (two Inventory column ensures + the geometry ensure — all
+  UNSTAMPED, column-gated, v4's shapes) and CREATES `log_entries` through the
+  structural pass (R-B); a copy v4 migrated sees NO-OP ensures. A custom tool
+  with an Inventory / Log gate or effect, an any-of array or a `brief` LOADS;
+  `edit_custom_tool` exists; the consult runs after the table (bug 257
+  fixed); the Salon has raise-hand and stop; `qtap://self` is gone from every
+  published address (bug 256); `/photos` excludes vaults; scenarios list by
+  title; `terminal_read` renders the screen (bug 255 — screen sizes clamped
+  at 500 × 200, a ruled divergence: vt100 preallocates every cell).
+  `equippedInventory` and `canManageInventory` survive a backup / restore /
+  `.qtap` round trip; the Log is NOT carried by a logical backup (the pin's
+  rule — see `cc5f2347c` below).
+- **The general rule BITES now:** a v5 build from BEFORE this round must not
+  open an instance this round's ensures have altered — the owed `e8e17b2d9`
+  dogfood pass runs on a copy with a PRE-round build, or with the union
+  build.
+- **Past `322a5488e` — THREE vault-key ERASURE hazards (MEASURED in v5's
+  writers, 2026-10-26)** for a v5 sharing an instance with v4 at HEAD:
   - ⚠ **`humanoid` (`b27e5089a`):** v5's `render_physical_prompts_json`
-    (`db/vault_character_write.rs:252`) serializes a FIXED five-key
-    `PhysicalPromptsJson` — every v5 physical write (character PUT, wizard,
-    optimizer, the P4.82 head-and-shoulders backfill) ERASES a v4
-    `"humanoid": false`, turning a non-humanoid character humanoid again; the
-    backfill would also write it a head-and-shoulders prompt v4 skips.
+    (`db/vault_character_write.rs`) serializes a FIXED five-key
+    `PhysicalPromptsJson` — every v5 physical write ERASES a v4
+    `"humanoid": false`; the P4.82 backfill would also write it a
+    head-and-shoulders prompt v4 skips.
   - ⚠ **`canDrawDiagrams` / `diagramStyle` (`6588972d5`):** v5's
-    `PropertiesJson` (`db/vault_character_write.rs:202`) writes six keys, so
-    any v5 properties write drops both (a character loses its diagram
-    opt-in).
+    `PropertiesJson` writes six keys, so any v5 properties write drops both.
   - ⚠ **`pronounGuidance` (`eb90d9ed8`):** v5's `build_wardrobe_item_file`
-    (`vault_overlay.rs:2358`) rebuilds a wardrobe item from its struct, so a
-    v5 item rewrite drops the key (reported by the reader; the struct has no
-    field for it).
+    rebuilds a wardrobe item from its struct, dropping the key.
   - v5's readers ignore unknown keys, so READS are safe; only writes erase.
-  - **Probable, measure at port time:** (a) `778b97b2b`'s every-boot seed
-    re-encodes built-in templates' `narrationDelimiters` as JSON (`*` →
-    `"*"`) and inserts a Novel template with `narrationDelimiters` NULL;
-    v5's read is a RAW passthrough (`db/roleplay_templates.rs:593`), so a
-    v5 may read the delimiter as the three-character string `"*"` and may
-    fail or drop the NULL row. (b) `8cb584eff`'s keystones are invisible to
-    v5's maintenance — a v5 consolidation / demotion / fold / chat-wipe
-    can touch a memory v4 protects; a v5 backup / `.qtap` export omits the
-    column (a `replace` restore re-inserts it `0`).
-  - **Non-corrupting:** the five new migrations are all additive with
-    DEFAULTs (`memories.keystone` is `NOT NULL DEFAULT 0`, so a v5 INSERT
-    that does not name it is legal); `storyteller_rounds` cascades from
-    `chats` and a v5 `replace` restore leaves it to the cascade; v5 never
-    writes `turnMode`, so a v4 Storyteller chat reads as rotation in v5;
-    `40fab1c54`'s boot backfill fills upload blobs' extracted text that v5
-    ignores; `1dd0a0c01`'s `punctuationWarnings` is a JSON key v5's
-    `SmartTypographySettings` drops on its next settings write (the key
-    reads back `true` by v4's default — no visible loss).
-  - **The standing rule holds: no v5 build against live Friday.** Dogfood a
-    COPY, and do not round-trip v4-written characters through v5 writes
-    while comparing with v4.
-- **Standing:** the extraction rate ledger is per-process (a v4 and a v5
-  sharing an instance each keep their own hourly count). The `52d6e7ecd` /
-  `07b8f0209` notes and the P4.D274 store-name plan probe on a copy also stand.
+  - **Probable, measure at port time:** `778b97b2b`'s every-boot seed
+    re-encodes built-in templates' `narrationDelimiters` as JSON and inserts
+    a Novel template with it NULL (v5's raw read may see `"*"`, may drop the
+    NULL row); `8cb584eff`'s keystones are invisible to v5's maintenance (a
+    v5 consolidation / demotion / fold / chat-wipe can touch a memory v4
+    protects; a v5 backup omits the column).
+  - **Non-corrupting:** the five newer migrations are additive with
+    DEFAULTs (`memories.keystone` `NOT NULL DEFAULT 0`, so a v5 INSERT that
+    does not name it is legal); `storyteller_rounds` cascades from `chats`;
+    v5 never writes `turnMode`; `40fab1c54`'s backfill fills blob text v5
+    ignores; `punctuationWarnings` reads back `true` by v4's default.
+- **Past `a0905454b` — NO boot / schema hazard** (no migration, no column,
+  no vault key). Non-corrupting: a v4-HEAD backup carries
+  `data/log-entries.json`, which a v5 restore ignores (every Log line is lost
+  on a v5 restore); a v5 `replace` restore / delete-all leaves `log_entries`
+  untouched where v4 HEAD clears it; v4 HEAD's daily maintenance unlinks
+  `logs/terminals/*.log` no `terminal_sessions` row names (v5's orphans too —
+  intended; a live v5 PTY whose row exists is spared by name); a v4-HEAD
+  terminal kill / chat delete ends shells v5 would leave running (bugs 267 /
+  268 live in v5).
+- **The standing rule holds: no v5 build against live Friday.** Dogfood a
+  COPY, and do not round-trip v4-written characters through v5 writes while
+  comparing with v4.
+- **Standing:** the extraction rate ledger is per-process; the `52d6e7ecd` /
+  `07b8f0209` notes and the P4.D274 store-name plan probe on a copy stand.
 
 ### Schema / D23
 
-- **LANDED this round (P4.D315): the TWELFTH move, BOOT-CREATED.**
-  `chat_wardrobe_history` (11 columns, `actorToolName` LAST; UNIQUE
-  `idx_chat_wardrobe_history_entry`; partial UNIQUE
-  `idx_chat_wardrobe_history_current` `WHERE "isCurrent" = 1`; FK `chatId →
-  chats ON DELETE CASCADE`, `characterId` with NO FK) is created by three
-  ported ensures in v4's registration order — `add-chat-wardrobe-history-
-  table-v1` (stamped `1` / `Created …`, FATAL), `add-chat-wardrobe-history-
-  tool-name-v1` (stamped only on the pre-column vintage, FATAL), `seed-chat-
-  wardrobe-history-v1` (stamped `N` / `Seeded N … across M`, NON-fatal) —
-  each differentially compared against v4's REAL narrowed `MigrationRunner`
-  (five modes, both legal `sqlite_master` texts: a fresh 11-column table and
-  a 10-column table ALTERed `\n  , "actorToolName" TEXT)`). **`fresh_schema.
-  json`, `chat_settings_seed.json` and `migration_indexes.json` are UNMOVED**
-  (v4's generateDDL never renders the table); `provisioning_equivalence`'s
-  (1b) / (1c) carry the both-ways `BOOT_CREATED_HISTORY_TABLE` rows (the
-  first boot-created-table tripwire, recorded, not silenced) and
-  `host_boot_fresh_indexes` the `BOOT_CREATED_INDEXES` carve;
-  `zero_migrations_rerun_equivalence` grows by the two ids v4 records on a
-  fresh table; all three join `restore_vintage_state`'s boot-align list.
-  The 2026-10-19 ruling STANDS for every future migration-only table:
-  boot ensures, never a v4-dumped artifact.
-- **PENDING — the THIRTEENTH move (`4fbdad186`): `chats."equippedInventory"
-  TEXT`.** generateDDL-RENDERED (`ChatsRepository` is a
-  `TaggableBaseRepository`): a fresh table puts it at cid 66 between
-  `equippedOutfit` and `characterAvatars` with no DEFAULT; v4's
-  `add-chat-equipped-inventory-v1` (`dependsOn add-equipped-outfit-field-v1`,
-  column-gated, registered after `seedChatWardrobeHistoryMigration`) APPENDS
-  it as `TEXT DEFAULT NULL` — two shapes, carry BOTH (the P4.D249 precedent).
-  The D23 tripwire FIRES (`provisioning_equivalence` 1d +
-  `zero_migrations_rerun_equivalence`); no ruling needed.
-- **PENDING — the FOURTEENTH move (`e1872c94f`):
-  `characters."canManageInventory" INTEGER DEFAULT NULL`.** generateDDL-
-  rendered between `canCreateOutfits` and `characterDocumentMountPointId`;
-  v4's `add-character-inventory-flag-v1` (`dependsOn
-  add-character-wardrobe-flags-v1`, column-gated, registered LAST after
-  `addChatEquippedInventoryMigration`) appends it. Two shapes again; ONE
-  re-dump with the thirteenth.
-- **PENDING — the FIFTEENTH move (`a6292f169`, bug 255):
-  `terminal_sessions."cols" INTEGER DEFAULT NULL` + `"rows" INTEGER DEFAULT
-  NULL`.** generateDDL-RENDERED (`TerminalSessionsRepository extends
-  AbstractBaseRepository<TerminalSession>` over `TerminalSessionSchema`,
-  which gains `cols` / `rows` as `z.number().int().nullable().optional()`
-  after `transcriptPath` and before `createdAt`); v4's
-  `add-terminal-session-geometry-v1` (`introducedInVersion 4.11.0`,
-  `dependsOn add-terminal-sessions-table-v1`, `shouldRun` = SQLite + table
-  present + EITHER column absent, `addColumnIfMissing(... 'INTEGER DEFAULT
-  NULL')` ×2, INFO `Added geometry columns to terminal_sessions` `{ added }` /
-  ERROR `Failed to add geometry columns to terminal_sessions`, registered LAST
-  after `addCharacterInventoryFlagMigration`; prettify `Measuring each of
-  Ariel's terminal windows, the better to read them back`) appends both. No
-  backfill: a NULL reads back as 80×24. The D23 tripwire FIRES; the port needs
-  a **terminal-emulator crate** (v4 adds `@xterm/headless ^6.0.0`), a NEW
-  dependency the human must approve at that round's planning.
-- **PENDING — the SIXTEENTH move (`e4a60ad9e`, the Log): a NEW table
-  `log_entries` in the LLM-LOGS partition.** `LogEntriesRepository extends
-  AbstractDedicatedDbRepository<LogEntry>` (`dbTarget: 'llmLogs'`) over
-  `LogEntrySchema { id UUID, message string 1..4000, chatId UUID,
-  characterId UUID.nullable(), createdAt, updatedAt }`; generateDDL RENDERS
-  it, but v4 creates it LAZILY at first repository use (`ensureTable`), not
-  at boot, with NO migration script and NO `migrations_state` row; three
-  indexes (`idx_log_entries_createdAt DESC` from generateDDL;
-  `idx_log_entries_chatId ("chatId", "createdAt" DESC)` and
-  `idx_log_entries_characterId` from `onTableEnsured`); `DDL.md` +27 ("there
-  is no migration"). The first schema move in that partition
-  (`fresh_schema.json`'s `llmLogs` block). **A provisioning RULING is owed
-  at round (2)'s planning:** a lazy first-use ensure (v4's shape) vs a boot
-  ensure / a `fresh_schema.json` row — the 2026-10-19 "v5's schema is
-  self-sufficient" ruling leans to the latter. ⚠ `dump-fresh-schema.ts`
-  dumps the LIVE llm-logs DB, so a re-dump carries `log_entries` only once
-  v4's repository has lazily ensured it on the dumped instance: VERIFY at
-  re-dump. The port also needs a `regexp` scalar function on the llm-logs
-  connection (v5's one scalar fn is `text_compression.rs:386` — a NEW seam).
-
-- **PENDING (NEW 2026-10-26) — the SEVENTEENTH to TWENTY-FIRST moves, all
-  additive, all with v4 migrations (so each needs a boot ensure + the
-  `restore_vintage_state` boot-align entry, by the 2026-10-19 ruling):**
+- **LANDED this round: the THIRTEENTH to SIXTEENTH moves in ONE
+  `fresh_schema.json` re-dump (R-A, P4.D324)** — `chats."equippedInventory"
+  TEXT` (cid 66, between `equippedOutfit` and `characterAvatars`),
+  `characters."canManageInventory" INTEGER` (after `canCreateOutfits`),
+  `terminal_sessions."cols"` / `"rows"` `REAL` (the fresh shape is `REAL`,
+  not the migration's `INTEGER`), and the seven-statement `llmLogs` block
+  with `log_entries` + its three indexes. The re-dump was re-run from the pin
+  at unification and is **byte-equal** to P4.D324's committed file (83 main
+  / 31 mount-index / 7 llm-logs statements). The two Inventory columns and
+  the geometry columns arrive on an existing instance through three
+  UNSTAMPED, column-gated boot ensures carrying both v4 shapes, wired in
+  `host.rs` and `restore_vintage_state`'s mirror-boot; `log_entries` through
+  the structural pass (one `STRUCTURAL_TABLES` row). `migration_indexes.json`
+  UNMOVED. `provisioning_equivalence` (1d) green on the union.
+- **PENDING — the SEVENTEENTH to TWENTY-FIRST moves, all additive, all with
+  v4 migrations** (each a boot ensure + the `restore_vintage_state`
+  boot-align entry, by the 2026-10-19 ruling):
   - **17th (`8cb584eff`):** `memories."keystone"` — migration `INTEGER NOT
     NULL DEFAULT 0` APPENDED; `MemorySchema` places it between
-    `consolidatedAt` and `createdAt` (generateDDL's shape — verify at the
-    re-dump; TWO shapes likely) + the migration-only partial index
-    `idx_memories_keystone ("characterId", "aboutCharacterId") WHERE
-    "keystone" = 1`.
-  - **18th (`b15fe9404`, `add-storyteller-mode-v1`):** `chats."turnMode" TEXT
-    DEFAULT NULL`, `chats."storytellerInviteFilter" INTEGER DEFAULT 0`,
-    `chat_messages."storytellerBid" TEXT DEFAULT NULL`, and a **NEW TABLE
-    `storyteller_rounds`** that generateDDL DOES render (its repository is
-    in the container) but WITHOUT the migration's FK `chatId → chats ON
-    DELETE CASCADE` and `idx_storyteller_rounds_chat` — a fresh-vs-migrated
-    shape split like `chat_wardrobe_history`'s; a provisioning ruling is
-    owed at planning (boot-create the migration's shape vs the dump's).
-  - **19th (`b15fe9404`, `add-llm-logs-storyteller-round-id-column-v1`):**
-    `llm_logs."storytellerRoundId" TEXT DEFAULT NULL` + its index — the
-    second llm-logs-partition move (after `log_entries`).
+    `consolidatedAt` and `createdAt` (TWO shapes likely) + the
+    migration-only partial index `idx_memories_keystone`.
+  - **18th (`b15fe9404`, `add-storyteller-mode-v1`):** `chats."turnMode"`,
+    `chats."storytellerInviteFilter"`, `chat_messages."storytellerBid"`, and
+    a **NEW TABLE `storyteller_rounds`** that generateDDL renders WITHOUT the
+    migration's FK and index — a provisioning ruling is owed at planning.
+  - **19th (`b15fe9404`):** `llm_logs."storytellerRoundId"` + its index —
+    the second llm-logs-partition move (after `log_entries`).
   - **20th (`839575d89`):** `chat_settings."customToolIntervention" INTEGER
-    DEFAULT 1` (default ON), rendered after `customToolTriggers`; the
-    chat-settings seed artifact moves with it.
-  - **21st (`778b97b2b`):** `roleplay_templates."unmarkedStyle" TEXT` +
-    `"markdownAsterisks" INTEGER DEFAULT 1` — appended by the migration,
-    placed before `createdAt` by Zod (two shapes); PLUS the boot-seed DATA
-    rewrite of `narrationDelimiters` (JSON-encoded) and a third built-in row.
-  - **Not D23 (vault / JSON keys, no migration):** `memories`-free
-    `physical-prompts.json` `humanoid`, `properties.json` `canDrawDiagrams` /
-    `diagramStyle`, wardrobe `pronounGuidance`, `smartTypographySettings.
-    punctuationWarnings`, the `systemKind` value `off-scene-left-behind`.
-  - All five land AFTER the ordered round's ONE `fresh_schema.json` re-dump
-    (P4.D324, at `322a5488e`), so a further re-dump is owed at the next pin.
+    DEFAULT 1`; the chat-settings seed artifact moves with it.
+  - **21st (`778b97b2b`):** `roleplay_templates."unmarkedStyle"` +
+    `"markdownAsterisks"` (two shapes) PLUS the boot-seed DATA rewrite of
+    `narrationDelimiters` and a third built-in row.
+  - **Not D23 (vault / JSON keys):** `physical-prompts.json` `humanoid`,
+    `properties.json` `canDrawDiagrams` / `diagramStyle`, wardrobe
+    `pronounGuidance`, `smartTypographySettings.punctuationWarnings`, the
+    `systemKind` value `off-scene-left-behind`.
+  - A further `fresh_schema.json` re-dump is owed at the next pin.
 
 ### Regen, dependencies, help
 
-- **Regen rule: PIN REQUIRED at `e8e17b2d9`** (§5.1).
-  - The pin's own `npm ci --offline` tree carries `openai` 7.34.0 and `zod`
-    4.6.7 (`@quilltap/plugin-utils` 2.7.1 ×14 through the plugin symlinks);
-    the lockfile diff `25b8fab6a..e8e17b2d9` is version stamps only, so the
-    pin shares the previous baseline's dependency tree. The live root
-    `node_modules` (reinstalled at `dev.46`) differs from the pin's lockfile
-    by `@xterm/headless` alone (imported by nothing at the pin) — the
-    `npm ci --offline` rebuild stays the safe default.
-  - **Past the pin:** the Inventory span re-shapes `OutfitChangeContext`'s
-    consumers and every `run_custom` description; `cfa0cba29` deletes
-    `RosterContext.characterIds` and `RunCustomToolContext.characterIds`
-    (the oracle cases that build one will need re-aiming — an IMPORT-DEAD
-    census at round (2)'s `/setupphase`); `e4a60ad9e` moves the tool catalog
-    (+3 tools, +`edit_custom_tool` from `ea2cb60ab`: 59 → 63 on v4) and the
-    Pascal effect schema (`log`); `c56fe278c` re-shapes
-    `editCustomToolInputSchema` (a `.refine`, all fields optional — the
-    definitions snapshot moves); `a53024d3c` + `322a5488e` move the
-    custom-tool definition schema (any-of unions, `inventoryAggregate`,
-    `brief`) and `public/schemas/qtap-custom-tool.schema.json`.
-- **Dependencies:** `openai` 7.34.0 at the root, re-bundled into the ten
-  `plugins/dist` bundles; `zod` 4.6.7; plugin-utils 2.7.1. `provider_sdk_
-  version_guard` and `zod_version_guard` pin them (P4.D311). **Past the
-  pin: `a6292f169` adds `@xterm/headless ^6.0.0`** — the one runtime
-  dependency added since the openai 7.34.0 move; `a6292f169..e27fb6b34`'s
-  lockfile diff is version stamps only (no new dependency in the eight), and
-  so is `5a8338b30..322a5488e`'s (none in the seven).
-- **Past `322a5488e` (NEW 2026-10-26):** `6588972d5` adds FOUR runtime
-  dependencies, all CLIENT-only (the diagram renderers): `mermaid ^12.2.0`,
-  `@hpcc-js/wasm-graphviz ^1.30.0`, `dompurify ^3.4.17`, `svg2roughjs
-  ^3.2.3` (dropped by the merge `5e18ede6a`, restored byte-exact by
-  `a0905454b`); `@quilltap/plugin-types` 2.8.0 → 2.9.0 (`ToolEffect`, by
-  `b15fe9404`), the MCP plugin 1.1.45 and curl 1.0.32. Porting diagrams to
-  the Angular SPA needs a **dependency ruling** like the `vt100` / `regress`
-  approvals. `help/` past the ordered pin: NEW `storyteller-mode.md`,
-  `diagrams.md`; edits to ~20 pages (`memory-recall-relevance.md` ×3,
-  `custom-tools.md` ×4, `wardrobe.md`, `inventory.md`, `brahma-console.md`,
-  `salon-host-introductions.md`, `character-editing.md`, …); `docs/releases/
-  4.11.0.md` NEW. The live root `node_modules` is now at HEAD's tree — the
-  pin's `npm ci --offline` rebuild is REQUIRED, not merely safe (MEASURED
-  2026-10-26 at a fresh `322a5488e` worktree: succeeds offline in ~6 s;
-  `openai` 7.34.0, `@xterm/headless` 6.0.0, `plugin-types` 2.8.0, no
-  `mermaid`). The curl / mcp plugin `node_modules` (third symlink class)
-  carry `plugin-types` 2.9.0 — inert at the pin (`import type` only).
-- **Past `a0905454b` (NEW 2026-10-27):** `026222176` REMOVES `pdf-parse`
-  (2.4.5) and moves `pdfjs-dist` 5.7.284 → 6.4.299 and `@napi-rs/canvas`
-  0.1.100 → 1.0.13 (the `overrides` dropped); in the same commit's
-  "minor and patch" sweep **`openai` 7.34.0 → 7.45.0** (lockfile;
-  `provider_sdk_version_guard` reddens at any pin past it — measure the
-  openai-compatible wire before re-pinning), `@openrouter/sdk` 1.4.25 →
-  1.5.9, `next` 16.4.3, `react` 19.3.1; **`zod` UNCHANGED at 4.6.7**. Eight
-  `plugins/dist/*/index.js` bundles re-built (+5,246 lines each);
-  `66f8c4d41` bundles `@quilltap/plugin-types` into two more (manifests
-  default-system-prompts 1.1.27, openai-compatible 1.0.50). ⚠
+- **Dependencies at the baseline:** `openai` 7.34.0 (root + the ten
+  `plugins/dist` bundles), `zod` 4.6.7, plugin-utils 2.7.1,
+  `@xterm/headless` 6.0.0 (v5's twin is the `vt100` 0.18.1 crate, R-C);
+  v5's `regress` crate backs the llm-logs `regexp()` scalar (R-I).
+  `provider_sdk_version_guard` and `zod_version_guard` pin the JS side.
+- **Past the baseline:** `6588972d5` adds FOUR client-only runtime deps
+  (`mermaid`, `@hpcc-js/wasm-graphviz`, `dompurify`, `svg2roughjs` — a
+  dependency ruling before diagrams are ported); `@quilltap/plugin-types`
+  2.8.0 → 2.9.0 (`b15fe9404`); `026222176` REMOVES `pdf-parse`, moves
+  `pdfjs-dist` 5.7.284 → 6.4.299 and **`openai` 7.34.0 → 7.45.0**
+  (`provider_sdk_version_guard` reddens at any pin past it — measure the
+  openai-compatible wire before re-pinning); `zod` UNCHANGED. ⚠
   **IMPORT-DEAD:** `harness/oracle/cases/file-content-extractor.test.ts:149`
-  `require.resolve('pdf-parse')` dies at any pin ≥ `026222176` — re-aim it to
-  mock `@/lib/mount-index/converters/pdf-converter` (as the two tier-3
-  oracles already do) or `pdfjs-dist/legacy/build/pdf.mjs`. The dead-code
-  sweep `8becfc6ce` deletes nothing `harness/oracle` imports.
-- **Help / docs:** `help/` is **131 files at the pin**, md5-identical
-  (P4.D323); `docs/v4/` has 494 files with TWO recorded deferrals (the
-  Inventory spec docs, round (2)'s — R-Q). Past the pin: `help/` is **135 at
-  v4 HEAD** (+`inventory.md`, `project-inventory.md` from the Inventory
-  span; +`the-log.md` from `e4a60ad9e`; +`interrupting.md` from
-  `2b5e8ee24`), with 15 pages modified by 10-19 (the seven add
-  `custom-tools.md` ×3, `pascals-workbench.md` ×2, `inventory.md`,
-  `chats.md`, `chat-turn-manager.md`, `chat-participants.md`)
-  (`custom-tools.md` +33 / −3 by `ea2cb60ab` / `cfa0cba29` / `e4a60ad9e`;
-  `the-concierge.md` +24 / −7; `inventory.md`; `photo-gallery.md`;
-  `pascals-workbench.md`; `document-editing-tools.md`;
-  `image-generation-profiles.md`; `system-llm-logs.md`; `tools-settings.md`;
-  `general-scenarios.md`; `scenario-browser.md`; `ariel.md`; …). Each
-  catch-up round re-vendors what it absorbs.
-  Past `a0905454b` (2026-10-27): `help/` stays 135 files; `ariel.md` ×2
-  (`c50cdddc6`, `85c002822` — P4.D339 vendors it at the pin),
-  `system-backup-restore.md` ×2 (`cc5f2347c`, `c50cdddc6`), `the-log.md`
-  (`cc5f2347c` — P4.D331's page), `diagrams.md` (`9faed0c7e`). `docs/`:
-  `releases/4.11.0.md` (`3c9ae1fc3`), `bugs.md` + three NEW
-  `bugs/fixed/bug-266/267/268-*.md`, `DEAD-CODE-REPORT.md`.
+  `require.resolve('pdf-parse')` dies at any pin ≥ `026222176` — a stage-0
+  re-aim at the next `/setupphase`.
+- **Help / docs:** `help/` is **135 files**, md5-identical to the pin
+  (P4.D339); `docs/v4/` **502** with ZERO deferrals (the two Inventory specs
+  landed at their `complete/` paths). Past the baseline: NEW
+  `storyteller-mode.md`, `diagrams.md`; ~20 pages edited (`ariel.md` ×2,
+  `system-backup-restore.md` ×2, `the-log.md`, `custom-tools.md` ×4,
+  `memory-recall-relevance.md` ×3, `wardrobe.md`, `inventory.md`, …);
+  `docs/releases/4.11.0.md`, `bugs.md` + `bugs/fixed/bug-266/267/268-*.md`.
 
 ### Rounds, guards, state
 
-- **The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252
-  drift catch-up round — UNIFIED 2026-10-19** (the §6 bullet; the round
-  record in `status-log.md`; `phase-4.md`'s UNIFIED block). Round (1) of the
-  split: the fourteen rows through `e8e17b2d9` retired to §6; the two riders
-  annotated `PORTED(P4.D322)` on their rows.
-- **The `25b8fab6a` round — UNIFIED 2026-10-17** (the §6 bullet).
+- **The `322a5488e` round — UNIFIED 2026-10-27** (the §6 bullet; the round
+  record in `status-log.md`; `phase-4.md`'s UNIFIED block). The twenty-two
+  rows retired to §6.
+- **The `e8e17b2d9` round — UNIFIED 2026-10-19** (the §6 bullet).
 - **Next:**
-  - **ORDERED 2026-10-20 — the `322a5488e` round (round (2) of the split),
-    seventeen lanes P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥
-    P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥
-    P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339, pinned at `322a5488e`
-    (v4 HEAD at planning; the probe PASSED).** The planner's rulings R-A …
-    R-Z are in every order's §R.11; the four D23 moves land in ONE
-    `fresh_schema.json` re-dump (R-A); `log_entries` provisions through the
-    structural pass (R-B — the "lazy" premise below is false in effect: v4's
-    PHASE 3.1 pass creates it at every boot); TWO new Rust crates, both
-    APPROVED by the human on 2026-10-21: `vt100` 0.18.1 (R-C, P4.D337) and
-    `regress` (R-I, P4.D331's `regexp()` unit). The owed `e8e17b2d9`
-    dogfood pass and the follow-ups smalls round stay queued (R-Z).
-  - **RULED 2026-10-26 (the human): the `322a5488e` round is carried out
-    AS ORDERED — no re-plan, the pin stays** (`phase-4.md`'s round block,
-    "Re-checked before carryout"). The pin was measured ready that day (a
-    fresh worktree's `npm ci --offline` → `openai` 7.34.0, `@xterm/headless`
-    6.0.0, `plugin-types` 2.8.0, no `mermaid`; the curl / mcp plugin
-    `node_modules` carry `plugin-types` 2.9.0, inert — type-only imports).
-    No order was edited: §R.2 makes the probe an observation.
-  - **The 32 commits past `322a5488e`** go to the NEXT catch-up round, at a
-    later pin, after this one unifies — they rewrite surfaces the ordered
-    round ports at its pin (`0276d10d9` the Inventory chokepoints;
-    `a8214b253` / `bdd09b75b` move the spine + `buildContext`; `b15fe9404` /
-    `839575d89` reshape the Pascal grammar, run service and tool catalog).
-    **First, by the ruling:** `0276d10d9`'s Inventory riders and the three
-    vault-key writers (`humanoid`, diagrams, `pronounGuidance` — the
-    LIVE-DATA hazards). Then the natural lanes: the D23 keystone (17th–21st
-    moves in ONE re-dump; the `storyteller_rounds` provisioning ruling
-    first); tool effects + Storyteller; Pascal intervention (+ its two
-    riders); keystones + the inner circle + the rubric; the referent-ledger
-    trio; bugs 262–265 on the spine / budget (after the ledger, since 263
-    counts its sections); bugs 258–261; the Novel template; `265b711dd` /
-    `074e1e01a`'s Inventory parts; SPA smalls (Brahma, punctuation lint,
-    diagrams — the dependency ruling first); help / docs re-vendor.
-  - **IN PROGRESS 2026-10-27 — the `322a5488e` round's `/unify`** (another
-    session); the baseline moves to `322a5488e` there, not here.
-  - **The 14 commits past `a0905454b` (2026-10-27)** join the 32 for the
-    NEXT catch-up round. Two of them rewrite what THIS round ports at its
-    pin and must be ported over its landed code: `cc5f2347c` (the Log in
-    backups — flips P4.D327's "no `log_entries` file" assertions and the
-    restore census by design; it is v4 drift, not a v5 bug) and
-    `85c002822` (bugs 267 / 268 over P4.D337's `pty-manager` port +
-    `help/ariel.md`). The IMPORT-DEAD `pdf-parse` oracle (`026222176`)
-    needs a stage-0 re-aim at that round's `/setupphase`.
-  - The owed dogfood pass (`dogfood-findings.md`'s standing note of
-    2026-10-19; a Friday copy taken at ANY v4 point).
+  - The owed dogfood pass — BOTH queues (the `e8e17b2d9` round's and this
+    round's §S.8), on a Friday copy with the UNION build.
   - The follow-ups smalls round (the ready rider branch
-    `claude/import-chat-record-columns-f49fb0` first; the review's recorded
-    items; the carried lists — `phase-4.md`'s NEXT 2).
-  - **Round (2) — the Inventory + Log drift catch-up** (`/driftcheck` first;
-    the terminal-emulator crate ruling before bug 255's lane; the
-    `log_entries` provisioning ruling before the Log's): `4fbdad186` →
-    `e1872c94f` → `102a23648` (the rest), `1d0a31132`, `cad017599`,
-    `a6292f169`, and the eight 10-19 commits `7263105c6` … `e27fb6b34` —
-    the THIRTEENTH + FOURTEENTH + FIFTEENTH (+ SIXTEENTH, by ruling) moves in
-    ONE `fresh_schema.json` re-dump at a later pin; bug 256 (`7263105c6`) is
-    small enough for a standalone PORT lane inside it. **Plus the seven
-    10-20 commits** (no schema move): the interrupts `2b5e8ee24` +
-    `b8362beb5` as their own chat-spine lane (server: `turn-control`, the
-    watchdog's abort, the finalizer / tool-loop / failover guards, the yield
-    note + Host message; SPA: the composer buttons, the SSE `handAnswered` /
-    `stopped` / `yielded` events); the Pascal pair `a53024d3c` (OR on the
-    ported gates; `inventoryAggregate` only after the Inventory grammar) +
-    `322a5488e` bug 257 on the run service; `c56fe278c` folded into the
-    `edit_custom_tool` lane; `d88c1ce39` into the Inventory SPA;
-    `cc57e6cbc` ratified with the docs lane.
+    `claude/import-chat-record-columns-f49fb0` first; this round's OPEN
+    review items; the R-4 Brahma-stop ruling; the carried lists —
+    `phase-4.md`'s NEXT).
+  - **The 46-commit catch-up** (`/driftcheck` first), at a later pin:
+    **first, by the 2026-10-26 ruling,** `0276d10d9`'s Inventory riders and
+    the three vault-key writers (`humanoid`, diagrams, `pronounGuidance` —
+    the LIVE-DATA hazards); then `cc5f2347c` (the Log in backups — flips
+    P4.D327's "no `log_entries` file" pins and the restore census by design;
+    v4 drift, not a v5 bug) and `85c002822` (bugs 267 / 268 over P4.D337's
+    port); then the natural lanes: the D23 keystone (17th–21st moves in ONE
+    re-dump; the `storyteller_rounds` ruling first); tool effects +
+    Storyteller; Pascal intervention (+ its riders); keystones + the inner
+    circle + the rubric; the referent-ledger trio; bugs 262–265 on the spine
+    / budget; bugs 258–261 and 266; the Novel template; SPA smalls (Brahma,
+    punctuation lint, `2041bb875`, diagrams — the dependency ruling first);
+    help / docs re-vendor. The IMPORT-DEAD `pdf-parse` oracle needs its
+    stage-0 re-aim.
 
 ## §2 The freshness probe
 
@@ -610,28 +306,6 @@ passes the commit.
 
 | sha | date | subject | class | intersects (already-ported work) | disposition |
 |---|---|---|---|---|---|
-| `4fbdad186` | 2026-10-18 | Feature: The Inventory — objects a character carries (#100) | **PORT-NEW WITH THE THIRTEENTH D23 MOVE (`chats."equippedInventory"`, nullable, one additive migration; NOT destructive, no index) + SIX PORT hunks on ported surfaces; NO model-visible tool** (classified 2026-10-18 from the hunks; 151 files, +13,094 / −1,022; `4.11.0-dev.26` → `dev.33`; squash of #100, phases A–I + review; parent `e8e17b2d9`). **Schema:** `equippedInventory: JsonSchema.nullable().optional()` in BOTH `ChatMetadataSchema` and `ChatMetadataBaseSchema` after `equippedOutfit` — generateDDL renders `"equippedInventory" TEXT` at cid 66 (chats DDL 103 → 104 lines); `add-chat-equipped-inventory-v1` (`introducedInVersion 4.11.0`, `dependsOn add-equipped-outfit-field-v1`, column-gated, `addColumnIfMissing('chats','equippedInventory','TEXT DEFAULT NULL')` — APPENDED; INFO `Added equippedInventory column to chats` / ERROR `Failed to add equippedInventory column to chats`; registered LAST after `seedChatWardrobeHistoryMigration`; prettify `Fitting each chat with a croupier's ledger of what everyone is carrying`). Value `{ [characterId]: string[] }` sorted / de-duplicated. `patchOnlyFields()` adds it (never on a whole-row `_update`); ONE writer `setEquippedInventory` (DEBUG `Equipped inventory write`), `getEquippedInventory` (`{}` fallback), `normalizeEquippedInventory`. `LLMLogTypeEnum` + `INVENTORY_ITEM_IMAGE`; `IMAGE_SPEND_LOG_TYPES` gains it. **The objects are FILES, not tables:** one `.json` per object under each tier's `Inventory/` (character vault, Quilltap General, project / group official stores), `JSON.stringify(out, null, 2) + '\n'` in `INVENTORY_FILE_KEYS` order, `sanitizeFileName(title \|\| name \|\| stem \|\| 'object-<id8>').json`, pictures under `Inventory/images/<itemId>/`, folder depth 8 with `images` reserved; `lib/schemas/inventory.types.ts` (`kind item\|kit`, `name` 1–200, `title`, `description` ≤4000, `imageDescription` ≤2000, `equippedByDefault`, `maxEquipped` 1–999 default 1, `canCopy`, `isArchetype`, `parentId`, `itemIds` ≤200, `emoji` ≤16, `svg` ≤16 KiB, `imageFileId`, `metadata`, `archivedAt`; instances SPARSE — inheritable fields omitted). **Server PORT-NEW:** ONE route factory for `/api/v1/{characters,groups,projects}/[id]/inventory(/[itemId])` + `/api/v1/inventory(/[itemId])` (collection GET / folders / archetypes; POST create / instantiate / duplicate / create-, rename-, delete-folder / move- / copy-items; item GET / dependents / PUT / clear-override / detach / DELETE `?force`); `POST /api/v1/inventory/transfers`; `/api/v1/inventory/[itemId]/images` (generation SYNCHRONOUS — `Still-life product photograph of …` through `withArtDirection`); refusal codes `ARCHETYPE_IN_USE` / `ARCHIVED_DEPENDENTS` / `NOT_COPYABLE` / `CAP_EXCEEDED` / `INVALID_PARENT` / `KIT_NESTING` / `KIT_STRANDED` / `NOT_EQUIPPABLE` / `INVALID_SHAPE` / `NOT_A_PARTICIPANT` / `INVALID_SVG` (allowlist SVG sanitiser); chat GET `?action=inventory`, POST `inventory-equip` / `inventory-unequip` / `inventory-reset-defaults` (plan-then-write, kit expansion, archetype members INSTANTIATED as vault files, cap check before any write, per-chat lock, realtime `chats`); Pascal's `*<Name> sets down … and takes up …*` (`systemKind 'inventory-change'`, no `pascalMeta`, INFO `[Pascal] Inventory change posted`); `refreshAvatarForAppearance` (`refreshAvatarForOutfit` aliased). **Model-visible:** the trailing `## Carried and equipped\n- <Title (name)\|name>: <description>` section (after progressions, before inform; kits and undescribed skipped; continue mode skipped — reversed by `102a23648` bug 253); Carina `[question, progressions, inventory]` joined by `\n\n---\n\n`; the greeting user turn `<instruction>\n\n---\n\n<sections>`; `carrying <imageDescription, …>` in appearance resolution, the story background, `buildExpansionContext` and the avatar prompt. Arrival defaults at chat create / seat add / merge write `{charId: []}` EVEN WITH NO INVENTORY. Carriers: new-account restore step `22f-quater` repoints objects' `imageFileId`; `remapLinkId` keeps object ids VERBATIM in `files.linkedTo`; `equippedInventory` joins bug 252's `CHARACTER_KEYED_CHAT_FIELDS`; `.qtap` export spreads it, import creates it. `docMountDocuments.findManyInFolderContaining` (raw `instr`). **PORT hunks:** (1) the appearance-sanitizer classify text `${phys} ${cloth}` → `[phys,cloth,carry].filter(Boolean).join(' ')` — moves the moderation bytes whenever physical or clothing is EMPTY, inventory or not; (2) chat create / seat add / merge DB state (`{charId: []}`); (3) the archive prune keep-set adds `Inventory/`; (4) the new-account remap (`remapLinkId`, the repoint); (5) the wardrobe lift into generic `item-folders.ts` / `item-folder-ops.ts` + `imagesFolder` / `ext` options — strings preserved byte-for-byte (no behaviour); (6) `IMAGE_SPEND_LOG_TYPES`. Client: the Inventory dialog, a new `inventory` workspace tab kind (`The Inventory`, icon `dice`), the editor / transfer / folder dialogs, Carrying-now pane, Prospero `InventoryCard`, the ParticipantCard button, SaveImageDialog `inventory` target, `system-message-labels` `'inventory-change'` (Pascal `medium`), shared `components/item-browser/*`. Help NEW `inventory.md` (+149), `project-inventory.md` (+38) → **133 files**, plus four +1 cross-links; `API.md` +39; spec → `features/complete/inventory.md`; `qtap-export.schema.json` +8. §5.3: "patch-only, one writer" holds for `_update` only (`chats.create` writes it via import / restore); the message never mentions the classifier-join byte change or the empty arrival entries. | **D23:** `fresh_schema.json` re-dump — SEEN by `provisioning_equivalence` 1d + `zero_migrations_rerun_equivalence`; a boot ensure carrying BOTH shapes vs v4's REAL runner, on `restore_vintage_state`'s boot-align list; `db/chats_read.rs` (explicit column list), `db/chats.rs` (create INSERT, named `update`, a new `set_equipped_inventory` on the writer task); `chats_tier2_equivalence`, the committed `*-main.db` pairs; `services/qtap_export/schema-key-order.json` (`equippedInventory` between `equippedOutfit` and `characterAvatars`); the `generators/` schema copy. **PORT hunks:** `services/appearance_resolution.rs` (~l. 484, `appearance_sanitize_gate_tier3_equivalence`); `services/chat_create.rs` (`chat_create_capstone_equivalence`, `initial_greeting_equivalence`), `services/chat_participants.rs` / `api/chat_cast.rs` (`chat_cast_routes_equivalence`, `chats_participants_tier2_equivalence`), `services/chat_merge.rs`; **`services/character_archive/service.rs` `KEPT_MANAGED_PATHS` / `prune_empty_folders` (`character_archive_tier2_equivalence`) — the LIVE-DATA hazard**; `services/backup/uuid_remap.rs` `remap_link_id` + `restore/orchestrator.rs` (a step-22f-quater twin; `RESTORE_TS_MESSAGES` both sides); `services/llm_logging.rs` `IMAGE_SPEND_LOG_TYPES`, `almanack/phase6_wire_records.rs`; `wardrobe_folders.rs`, `vault_overlay.rs`, `db/vault_wardrobe_write.rs`, `services/wardrobe_image_bridge.rs` / `wardrobe_item_images/` (the generic lift — `wardrobe_folders_equivalence`, `wardrobe_folder_writes_tier2_equivalence`, `vault_projection_recursive_tier2_equivalence`); `services/outfit_change_effects.rs`. **PORT-NEW homes:** a new `inventory` module; `db/doc_mount_documents.rs`; `services/build_context.rs` (`build_context_tier3_equivalence`), `carina_query.rs`, `initial_greeting.rs`, `avatar_prompt.rs` / `character_avatar_job.rs`, `story_background_job.rs`, `tools/generate_image.rs`, `services/pascal_writer.rs`; `crates/quilltap-web` inventory / transfers / images routes + the chat actions, each with `COLLAPSE_CENSUS` rows. **SPA:** `apps/web/src/app/wardrobe/*` (the lift), `workspace/core/{tab-meta,reducer}.ts`, `core/realtime-topic-map.ts`, `chat/system-message-labels.ts`, `chat/sidebar/participant-card.ts`, `screens/prospero/project-detail.ts`. Help → `p4.9i2` (131 → 133). Tools: none. | **ORDERED(P4.D324 ∥ P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D330 ∥ P4.D339)** (2026-10-20, the `322a5488e` round; the keystone owns the THIRTEENTH move + the ONE `fresh_schema.json` re-dump — R-A) — past the `25b8fab6a` round's pin; ORDER after `e8e17b2d9` (extends its keyed-field list). Keystone of the Inventory round. **The `Inventory/` archive keep hunk ALONE (`lib/characters/archive-service.ts`) is ORDERED(P4.D322) as an AHEAD-OF-PIN rider of the `e8e17b2d9` round (2026-10-19), from a lane-unique second pin at `4fbdad186` under the A/B rule; the rest of the commit stays UNPROCESSED for round (2).** **PORTED(P4.D322) — the `Inventory/` archive keep ONLY (`KEPT_FOLDERS [Wardrobe, Inventory]` + the prefix rule in `prune_vault` / `prune_empty_folders`; the one string constant `CHARACTER_INVENTORY_FOLDER`), A/B-proven at `e8e17b2d9` and this pin, red-first from a new extend-by-mutation archive case, landed at the `e8e17b2d9` unification (2026-10-19) — the §1 "archiving a character in v5 deletes its Inventory" hazard RETIRED by that measurement (21 / 21 against the `4fbdad186` oracle); baseline not yet past — the rest of the Inventory stays UNPROCESSED.** |
-| `e1872c94f` | 2026-10-18 | Feature: Inventory tools and Pascal inventory support (#102) | **PORT-NEW WITH THE FOURTEENTH D23 MOVE (`characters."canManageInventory"`, nullable, one additive migration; NOT destructive) + NINE model-visible tools + the Pascal inventory grammar + PORT on ported Pascal / tool-site / Almanack / realtime surfaces** (classified 2026-10-18 from the hunks; 131 files, +7,933 / −341; `4.11.0-dev.33` → `dev.35`; squash of #102; parent `4fbdad186`). **Schema:** `CharacterSchema.canManageInventory: z.boolean().nullable().optional()` after `canCreateOutfits` → generateDDL `"canManageInventory" INTEGER DEFAULT NULL` before `characterDocumentMountPointId`; `add-character-inventory-flag-v1` (`dependsOn add-character-wardrobe-flags-v1`, column-gated, appends; INFO `Added canManageInventory column to characters` / ERROR `Failed to add canManageInventory column to characters`; registered LAST after `addChatEquippedInventoryMigration`, verified; prettify `Granting characters leave to rummage through their own bags`); the characters PUT key; `qtap-export.schema.json` character property; `ChatsRepository.findChatIdsCarryingInventoryId` / `removeEquippedInventoryId`. `KNOWN_TOP_LEVEL_KEYS` unchanged. **Tools:** `inventory_list` (`equipped?`, `kind?`, `folder?`, `tier?`, `include_archived?`), `_read` (`ref`), `_equip` / `_unequip` (`refs` 1–8), `_pick_up` (`ref`, `title?`, `equip?` default true), `_create` (`name`, `title?`, `description?` ≤4000, `image_description?` ≤2000, `emoji?` ≤16, `max_equipped?` 1–999, `metadata?`, `equip?`), `_update` (refine `Name at least one field to change`), `_archive` (`ref`, `archived`), `_give` (`ref`, `to`); ONE `inventory-tool-flags.ts` (on unless `canManageInventory === false`); OFF for Brahma, the Scenario Builder, Carina and Help chat (a NEW positional `canManageInventory` in `buildTools` after `canCreateOutfits`); listed after `wardrobe_archive` in the plugin builder, `BUILT_IN_TOOLS` + ONE `INVENTORY_TOOL_TABLE` (no character → `The inventory tools need a character to act for.`), `GET /api/v1/tools` category `inventory` (`List Inventory` … `Give Object`; unavailable `Character does not have inventory management enabled`), simple-JSON aliases (`list_inventory`, `inventory`, `read_inventory`, `equip_item`, `unequip_item`, `pick_up`, `give_item`), nine text-block tags (`[[LIST_INVENTORY /]]` … `[[GIVE_ITEM ref= to=]]`, 19 name aliases; only `archived` / `equip` / `max_equipped` coerced), `determineTextBlockToolOptions` gains an 8th argument; the snapshot +310. Failures `Inventory Error: …` (`No object "<ref>" is in your inventory or within reach. Use inventory_list to see what there is.`, the shared-store sentence, `<display> [<id>] — <state\|archetype>, <tier>`); ONE `resolveInventoryRef` (id → title → name, own before shared); `pickUpItems` checks the cap before instantiating; give moves the file FIRST, then `dropCarriedEverywhere`; turn containers gain `pendingInventoryAnnouncements`, drained by `flushPendingInventoryAnnouncements` after the wardrobe flush (moved by `102a23648`); a give posts `*X hands the Y to Z.*`. **Pascal:** `InventoryRefSchema` `{ $inventory: "<ref>.metadata.<key>", fallback }` in every operand union; a WHOLE roll may be `$inventory` (fallback must be dice — `a roll drawn from $inventory needs a dice-notation fallback, like "1d4"`); `when.inventory` / `when.inventoryCount` (templated keys) and gate `inventory` / `inventoryCount` (LITERAL keys — `a gate's inventory key must be a literal object reference; …`); `{{inventory.<ref>.title\|name\|description\|state}}` / `.metadata.<key>` placeholders; the `effects[].inventory` gesture `{ action: equip\|unequip\|pick_up, items[1–8], equip? }` after the wardrobe gestures, record `inventory.<action>`; `collectToolVocabulary` APPENDS `inventoryReads`, `equips`, `unequips`, `picksUp` after `clearsSlots` on the `references` wire; preview / audit `inventory: MockInventorySchema.nullish()`. **PORT (ported behaviour that moves):** the `RUN_CUSTOM_PREAMBLE` side-effects sentence gains `, what they are wearing, or what they carry,` in EVERY `run_custom` description; `describeRoll` / `describeWhen` / `describeEffects` arms + a `    Reads: your inventory for …` line; FIVE loader refusal sentences reworded (the two `must test something: …` variants, the gate's `must test at least one metadata key, progress field, or inventory object`, `an effect is exactly one of a write (target + value), a wardrobe gesture, or an inventory gesture`, `an effect needs target + value, wardrobe, or inventory`); the Almanack `- **May manage their inventory**: N` line after `May create outfits`; `REALTIME_TOPICS` + `inventory`. NO-PORT: the job child's overlays. Client: Aurora Profiles "Inventory Management" select, nine `ToolMessage` rows, the run dialog, Workbench `InventoryEffectFields` / picker / chips / "From an object" roll / Mock inventory. Help `custom-tools.md` +68, `inventory.md` +31, `pascals-workbench.md` +15; `qtap-custom-tool.schema.json` +313; `CUSTOM_TOOL_SPEC.json`; spec → `features/complete/`. §5.3: the message's give order ("after removeEquippedInventoryId drops it from every chat") is wrong — move first, then `dropCarriedEverywhere`. | **Schema:** `fresh_schema.json` (ONE re-dump with `4fbdad186`), a column-gated boot ensure (mirror-boot list), `db/characters.rs` / `characters_read.rs` / `api/characters.rs` / `db/vault_character_update.rs` / `quilltap_import/characters.rs` / the restore orchestrator's character field list; `db/store_name_reconcile.rs` `read_vault_owner_rows` (`SELECT *` — measure); `characters_mutations_equivalence`, `characters_slim_tier2_equivalence`. **Tools:** `tools/definitions/` (`tool_definitions_equivalence`; `TOOL_DEFINITIONS.len()` 61 → 63 with `ebb480edd` → **72**; "all 57 tools" → 57 + 2 + 9), `tools/executor.rs` + a new inventory tool table, `text_block_parser.rs` / `_prompt.rs`, `simple_json_parser.rs` / `_prompt.rs` (`pseudo_tool_parsers_equivalence`, `pseudo_tool_prompts_equivalence`), `services/tool_build.rs` (`tool_build_equivalence`, `pascal_build_tools_roster`), `services/pseudo_tool.rs`, `services/tools_inventory.rs` (`tools_inventory_equivalence`), `services/orchestrator.rs`, `services/outfit_change_effects.rs`, the four off-sites (`brahma_console/`, `scenario_builder/`, `carina_query.rs`, `help_chat/`). v5's `tools/self_inventory.rs` is a different tool — no collision. **Pascal:** `pascal/{custom_tool_types,placeholders,custom_tools,tool_gate,roster,tool_vocabulary,side_effects,run_service,trigger_runner,workbench}.rs`, `tools/run_custom.rs` — `pascal_custom_tool_definition_equivalence`, `pascal_custom_tools_execution_equivalence`, `pascal_simulate_equivalence`, `pascal_roster_equivalence`, `pascal_tool_vocabulary_equivalence`, `pascal_side_effects_equivalence`, **`pascal_run_custom(_handler)_equivalence` (the preamble moves for every roster)**, `pascal_workbench(_route)_equivalence`, `pascal_custom_tools_route_equivalence`. **Other:** `almanack/{phase3_ledgers,render,types}.rs` (`almanack_tier2_equivalence`, `almanack_render_equivalence`), `realtime/types.rs` (`realtime_topics_equivalence`, `realtime_publish_sites_guard`). **SPA:** `pascal/tool-draft.ts`, `screens/custom-tools/*`, `chat/tool-message.ts`, the run dialog, `screens/characters/view/tabs/defaults-tab.ts`, `core/realtime-topic-map.ts`, `core/core-contract.ts`. Help → `p4.9i2`; both public schemas re-vendored. | **ORDERED(P4.D324 [the flag column] ∥ P4.D328 ∥ P4.D329 ∥ P4.D330 ∥ P4.D334 ∥ P4.D339)** (2026-10-20) — past the `25b8fab6a` round's pin; ORDER after `4fbdad186` (flag + D23 ensure as a keystone, then tools ∥ Pascal ∥ SPA). |
-| `102a23648` | 2026-10-18 | Fix: Inventory dogfood fixes, bugs 253/254, and the project roster gate | **PORT (bug 254 — v5 HAS IT) + PORT-NEW folded into the Inventory programme (bug 253, the roster shelf gate, dogfood fixes); NOT a convergence (253 / 254 found by v4's own Inventory dogfood; v5 status **Owed**). NO schema move** (classified 2026-10-18 from the hunks; 45 files, +850 / −284; `4.11.0-dev.35` → `dev.36`; parent `e1872c94f`). **Bug 254 (`lib/chat/context-manager.ts`):** `buildProgressionsSection` was built only when `!isContinueMode` — v4's ORIGINAL guard, ported faithfully — and is now built on EVERY turn (Continue, nudge, every chained speaker after the first, every autonomous-room turn), riding the trailing-only user message; the `isContinueMode` doc comment is rewritten; the Core whisper keeps its skip. Model-visible: the progressions report now reaches chained / nudged / autonomous turns on each progression's cadence. `PROMPT_ARCHITECTURE.md` + `features/complete/character-progressions.md` reworded. **Bug 253:** `buildInventorySection` ungated the same way (unported section — port it ungated). **Roster:** `lib/projects/roster-access.ts` is COMMENT-ONLY (±4 — the roster now gates "files, shared wardrobe and inventory shelf"); `projectRosterAdmits` and the policy UNCHANGED. NEW `lib/inventory/roster-gate.ts` (`isCharacterGesture` — provenance `!== 'operator'`; `projectShelfOpenTo` — a throw means CLOSED, WARN `[InventoryRoster] Roster lookup failed; the project shelf stays closed`; `isOnClosedShelf`); consumers Inventory-only (`loadInventoryContext` DEBUG `projectShelf: 'none' \| 'open' \| 'closed by roster'`; `assertShelfReach` before the cap in `equipItems` / `pickUpItems`); refusal `OFF_ROSTER` / 409 — model-visible `"<name>"[, …] is\|are on the project's shelf, and you are not on this project's character roster. Ask the user to add you to the roster in the project's Characters card.`; INFO `[InventoryEquip] Refused`. **Inventory fixes:** the inventory flush moves into a `try … finally` after every save branch (Pascal's line now posts AFTER the saved turn; the wardrobe flush unchanged, still before); `equip-effects.ts` `looksPlural` (`some <name>`) and `indefiniteArticle` (`/^(uni\|use\|usu\|uti\|eu\|one\|once)/i` → `a`); the pool's project-tier origin `name` from `projects.findById` (fallback `'Project'`, WARN `[InventoryPool] Project name lookup failed`); SPA fixes; the Workbench `WardrobeVantageSelect` `browsing` prop (default `'wardrobe'` — wording unchanged). Help `inventory.md`, `project-inventory.md`, `project-characters.md` +24, `projects.md` ±4; `bugs.md` + two `bugs/fixed/` files. §5.3 / unmeasured: "arrival defaults are ungated" holds only if arrival uses `operator` provenance or bypasses `assertShelfReach` — measure at port time. | **Bug 254:** `crates/quilltap-core/src/services/build_context.rs` (~l. 2907–2943 — drop the `is_continue_mode` guard and its "finishing its own sentence" comment; fix the "NO continue-mode gate, unlike progressions above" comment and the `BuildContextInput.is_continue_mode` doc); **`build_context_tier3_equivalence` op `progressions_continue_mode` (`harness/oracle/fixtures/build-context-tier3.json`) PINS the skip today and flips red on the regen** (verified 2026-10-18); measure `orchestrator_tier3`, `regenerate_swipe_tier3` and the enclave autonomous tier on chained legs. `trailing_context_sections` already lists progressions. **Roster:** `crates/quilltap-core/src/project_roster_access.rs` header ("seven sites") gains the inventory sites when the Inventory ports; `project_roster_access_equivalence` does NOT move. **Everything else** lands with the unported Inventory programme. Help (`help_tree_equivalence`): `project-characters.md`, `projects.md` re-vendored WITH the Inventory (they link `project-inventory.md`); `docs/v4/developer/` `PROMPT_ARCHITECTURE.md`, `character-progressions.md`, `bugs.md` + the two fixed-bug files. | **ORDERED(P4.D324 [bug 253] ∥ P4.D328 ∥ P4.D330)** (2026-10-20) — past the `25b8fab6a` round's pin. Bug 254 is a one-guard PORT that can ride an earlier round; the rest ORDER with the Inventory programme. **Bug 254's progressions guard ALONE (`lib/chat/context-manager.ts`, the `buildProgressionsSection` hunk) is ORDERED(P4.D322) as an AHEAD-OF-PIN rider of the `e8e17b2d9` round (2026-10-19), from a lane-unique second pin at `102a23648` under the A/B rule; bug 253's inventory half and the rest stay UNPROCESSED for round (2).** **PORTED(P4.D322) — bug 254's progressions guard ONLY (the unconditional `buildProgressionsSection`; the Core whisper keeps its skip; the doc comment without "inventory"), A/B-proven at `e8e17b2d9` and this pin, landed at the `e8e17b2d9` unification (2026-10-19); baseline not yet past — the rest of the commit (bug 253, the Inventory fixes, the roster shelf gate) stays UNPROCESSED.** |
-| `1d0a31132` | 2026-10-19 | Fix: scenario lists sort by title | **PORT — a display-order change on every list of scenario objects; NO D23 move, NO route, NO model-visible text** (classified 2026-10-19 from the hunks; 14 files, +257 / −27 incl. a 124-line test; `4.11.0-dev.36` → `dev.37`; parent `102a23648`). NEW pure, client-safe `lib/scenarios/sort.ts` (56): `SortableScenario { title, filename, path? }`; `scenarioSortKey(value)` = `trim()`, then `replace(/^the[\s_-]+/i, '')`, falling back to the trimmed value when the strip empties it (a title that is only "The" keeps itself); `compareScenarios` = `localeCompare(undefined, { sensitivity: 'base' })` on the two keys (title, then filename), then the UNTRIMMED titles with the same options, then `(a.path ?? '').localeCompare(b.path ?? '')` (DEFAULT options — the only case-sensitive leg); `sortScenarios(items, toSortable)` = map-to-key, V8 `Array.prototype.sort` (stable), map back. Applied at: `lib/mount-index/scenarios-common.ts` `buildScenarioList` (the list sorted AFTER default-conflict resolution, which still walks path order; a NEW DEBUG `Scenarios: built list` `{ ...logContext, count }`); NEW `lib/database/repositories/vault-overlay/parsers.ts` `parseScenarioFilesSorted(docs, characterId)` (parse every `Scenarios/*.md`, drop nulls, sort by `{ title: scenario.title, filename: doc.fileName.replace(/\.md$/i, ''), path: doc.relativePath }`) replacing the `relativePath.localeCompare` sort + `parseScenarioFile` map in BOTH `read-overlay.ts` `hydrateOne` (so `character.scenarios` and therefore the vault's "first scenario" changes order) and `vault-readers.ts` `readCharacterVaultScenarios`; `components/scenario/ScenarioSelect.tsx` sorts every optgroup locally too (`storeSortFields` = `{ title: name, filename, path }`, `characterSortFields` = `{ title, filename: title, path: id }`, the group map's arrays sorted in place). Help `general-scenarios.md` (+2, the "shelved by title" paragraph), `scenario-browser.md` (+1). | `crates/quilltap-core/src/db/scenarios.rs` (`build_scenario_list` sorts by `locale_compare(relative_path)` at `:232` — P4.6n / P4.D295), `db/vault_read_overlay.rs:398-402` (the vault `Scenarios/*.md` fold — `localeCompare(relativePath)`) and `:252` (the default promoted is the FIRST in sorted order — the order now moves), the `readCharacterVaultScenarios` twin in `vault_read_overlay.rs` / `vault_overlay.rs`, `scenarios/location.rs`; `collation::locale_compare_base` exists (`scenarios/everywhere.rs:72`) — the default-options leg needs `locale_compare`; families: the scenarios-common tier-2 (P4.6n), the vault read-overlay families (P4.6f / `4a38222e6` round), `scenarios_everywhere`, plus a NEW tier-1 family over v4's REAL `compareScenarios` / `scenarioSortKey` (the ICU `sensitivity: 'base'` + the V8 stable sort — memory note `v8-sort-and-memory-calendar-gotchas`); SPA `apps/web/src/app/scenario/scenario-select.ts` (P4.D302) + `scenario-browser.logic.ts`; help → `p4.9i2`. **LIVE-DATA:** read-time only — v5 lists in path order where v4 lists by title, and a character's promoted default can differ (§1). | **ORDERED(P4.D338)** (2026-10-20) — past the `25b8fab6a` round's pin and OUTSIDE the `e8e17b2d9` round (it sits after the Inventory commits); the Inventory round's. |
-| `cad017599` | 2026-10-19 | Test: inventory-gated custom tool end to end (Measure Twice) | **NO-PORT? — test-only, VERIFIED** (classified 2026-10-19 from the hunks; 2 files, +232; no stamp; parent `1d0a31132`): NEW `__tests__/unit/lib/pascal/custom-tools-measure-twice.test.ts` (228 — a title-keyed `availableWhen` inventory gate over the shared Inventory test store, `{{inventory.*}}` rendering of an apostrophed title and a metadata value) + CHANGELOG. `git show --stat cad017599 -- lib app packages plugins components help public migrations` EMPTY. | None in v5 today. Once the Inventory lands (`e1872c94f`), the case is a candidate tier-3 MIRROR for `pascal_run_custom_equivalence` (an inventory-gated `availableWhen` + `{{inventory.*}}` row) — record it in that lane's Tier 2, not here. | **ORDERED(P4.D339 — NO-PORT ratification; its seven cases MIRRORED by P4.D329)** (2026-10-20) — past the `25b8fab6a` round's pin; NO-PORT ratification at the Inventory round's unification. |
-| `a6292f169` | 2026-10-19 | Fix: Ariel reads full-screen programs (bug 255) | **PORT WITH THE FIFTEENTH D23 MOVE (`terminal_sessions.cols` / `rows`, nullable, one additive column-gated migration; NOT destructive) + a NEW runtime dependency (`@xterm/headless ^6.0.0`) + model-visible text; v4-ORIGINATED bug 255 (found live on `Friday`; v5 status **Owed**) and v5 HAS THE DEFECT — NOT a convergence** (classified 2026-10-19 from the hunks; 21 files, +637 / −57 incl. a 107-line test and the lockfile; `4.11.0-dev.37` → `dev.38`; parent `cad017599`). **Schema:** `TerminalSessionSchema` + `TerminalSessionCreateSchema` gain `cols` / `rows: z.number().int().nullable().optional()` after `transcriptPath` (generateDDL-rendered — the repository is an `AbstractBaseRepository`); migration `add-terminal-session-geometry-v1` (details in §1 Schema / D23); `prettify.ts` +1 label; `DDL.md` +4. **The emulator:** NEW `lib/terminal/screen.ts` (196) — `TerminalScreen` over `new Terminal({ cols, rows, scrollback: 5000, allowProposedApi: true })` (`SCREEN_SCROLLBACK_LINES = 5000`; its `onData` is NEVER wired to the PTY — the browser answers device queries); `write`, `resize` (WARN `[TerminalScreen] Failed to resize emulator` `{ cols, rows, error }`), `settle()` (a `write('', resolve)`), `render()` → `{ buffer: 'normal' \| 'alternate', lines, cols, rows }` (`readLines(buffer, 0, length, joinWrapped = buffer === 'normal')`: `translateToString(true).trimEnd()` per row, soft-wrapped rows JOINED onto their row only on the normal buffer, the trailing run of blank rows trimmed); `takeSummary()` → `{ kind: 'screen', text }` while the alternate buffer is active (null when blank or equal to the last snapshot) else `{ kind: 'output', text }` from a `registerMarker(0)` summary marker (a disposed marker → from 0; the first line dropped when it equals `lastSummaryTail`; null when nothing non-blank); `dispose`; `renderTranscript(raw, cols, rows)` for exited sessions. **The PTY manager:** `PtySession` drops `arielFlushBuffer` for `screen: TerminalScreen`, `arielPending: boolean`, `arielFlush: Promise<void>` (a per-session CHAIN so summaries post in order); `onData` → `screen.write(data)` + `arielPending = true`; `flushArielBuffer` returns the chain (no-op when nothing pending) and `postArielSummary` awaits `takeSummary()` (WARN `[PTY] Failed to render terminal summary` `{ sessionId, reason, error }` → return; DEBUG `[PTY] Ariel summary taken` `{ sessionId, reason, kind, chars }`; null → return) then `postArielTerminalOutputAnnouncement({ …, cleanedOutput: summary.text, kind: summary.kind, reason })`; `onExit` AWAITS the final `session-closed` flush BEFORE `postArielSessionClosedAnnouncement`, then `screen.dispose()` in a `finally`; `meta.cols` / `rows` set at spawn and on `resize` (`screen.resize` too), and the exit-stamp `update` now writes `cols` / `rows` (comment: a session orphaned by a restart keeps its spawn-time geometry); NEW `renderScreen(id)`; `shutdown` AWAITS each session's flush. **The Ariel writer:** `ArielTerminalOutputAnnouncement.kind?: 'output' \| 'screen'`; the heading is `Screen of session \`<label>\` (a full-screen program has the terminal)<reasonNote>:` for `screen`, else the unchanged `Terminal output from session …`; the DEBUG log object gains `kind: params.kind ?? 'output'` after `reason`. **The tool:** `executeTerminalReadTool` renders through the emulator — live: `ptyManager.renderScreen(id)` + the ring buffer as `raw`; exited: `tailFile(transcriptPath, 4 MiB)` replayed by `renderTranscript(raw, session.cols ?? 80, session.rows ?? 24)` (`tailFile`'s default dropped — `maxBytes` REQUIRED); `allLines = rendering?.lines ?? []`; `cleanTerminalOutput` GONE from the tool (and from the manager — `clean-output.ts` keeps no production caller); DEBUG `Terminal read executed` gains `buffer`; `TerminalReadOutput.buffer: 'normal' \| 'alternate'` (between `truncated` and `scrollback`), `scrollback = result.text` (rendered), `rawScrollback = raw.slice(-65536)` (was the cleaned slice's raw twin); `formatTerminalReadResults` adds `\nScreen: a full-screen program has the terminal; these lines are its current screen, not scrollback.` after the `Lines:` line when `buffer === 'alternate'`; the `raw` parameter description and the `terminal_read` tool DESCRIPTION both change (model-visible; the snapshot moves). Help `ariel.md` +4; `bugs.md`; `bugs/fixed/bug-255-terminal-read-tui-garbled.md` (69). | `crates/quilltap-host/src/terminal/{mod,scrollback,protocol}.rs` (P4.1c — the ring buffer, the idle / max-age flush drivers, the exit sequence; `scrollback.rs` IS v4's old `executeTerminalReadTool` resolution, quoted in its module doc), `crates/quilltap-core/src/terminal_clean.rs` (the strip — loses both production callers), `tools/terminal.rs` (`execute_terminal_read` `:403`, `format_terminal_read` `:497`, `TerminalReadOutput` `:118-138`, `validate_terminal_read_input`), `tools/definitions/data.rs` (`tool_definitions_equivalence` — the description bytes), `services/ariel_notifications.rs` (`:264-269` the heading; the DEBUG object), `db/terminal_sessions.rs` (two columns on create + the exit update; `:86` the explicit column list), `services/provisioning/fresh_schema.json` (the FIFTEENTH move — ONE re-dump with the 13th / 14th), the Almanack label twin; families: `ariel_writers_tier3_equivalence` (a STANDING RED since the `25b8fab6a` round's gate — measure first), `terminal_tools` (P4.6u / P4.7b), the host terminal tests, `tool_definitions_equivalence`, `provisioning_equivalence` + `zero_migrations_rerun_equivalence`. **The dependency:** v4's emulator is `@xterm/headless`; v5 needs a Rust VT emulator crate (candidates to evaluate at planning: `vt100`, `alacritty_terminal`, `wezterm-term`) whose rendering of the SAME byte stream must match xterm's `translateToString` — a tier-1 family over recorded PTY streams; a human ruling on the crate is OWED before the lane. | **ORDERED(P4.D337 ∥ P4.D339; the FIFTEENTH move rides P4.D324's re-dump — the fresh shape is `REAL`, the migration's `INTEGER DEFAULT NULL`; `vt100` 0.18.1 — R-C, APPROVED 2026-10-21)** (2026-10-20) — past the `25b8fab6a` round's pin and OUTSIDE the `e8e17b2d9` round (it sits after the Inventory commits); the Inventory round's, re-dumped with the 13th / 14th moves. |
-| `7263105c6` | 2026-10-19 | Feature: Inventory title lint; Fix: published vault addresses name the vault (bug 256) | **PORT (bug 256 — v5 HAS the defect; v4-ORIGINATED, NOT a convergence) + PORT-NEW (the Inventory title lint, riding the UNPROCESSED Inventory rows) — NO D23 move** (classified 2026-10-19 from the hunks at the `e8e17b2d9` unification's close probe; 48 files +2,211 / −158 incl. seven new tests; prod 24 files +1,126 / −147; `4.11.0-dev.39`; parent `a6292f169`). **Bug 256:** `lib/doc-edit/uri-producers.ts` — `docStoreUriFor` / `uriForResolvedPath` / `buildDocStoreUriResolver` DROP their `characterId` parameter, `selfVaultMountPointId` and every `formatSelfUri` branch (a character's own vault is named like any store, the UUID when ambiguous); `lib/services/librarian-notifications/writer.ts` `librarianUri` prints `path "<p>" in a character's vault` for a `self` / missing mount (+ DEBUG `[LibrarianNotification] No store name for an announced path; printing the bare path`), `scopeLabel` `self` → `a character's vault`; NEW `publishedMountPoint(resolved, requested)` in `lib/tools/handlers/doc-edit/shared.ts` threaded through every Librarian announcement in `text-` / `markdown-` / `file-management-` / `document-ui-handlers.ts` and into Document Mode's `chat_documents` row (`mountPoint: storeName`); `blob-handlers.ts` + `search-scriptorium-handler.ts` drop the `characterId` arg; `self-inventory/builders.ts` vault files via `formatDocStoreUri`, `buildContextFileUri` → `''` for a `self` / null row, `buildHowToReach(uri, filePath)` → `unknown store: "<path>" was opened from someone's own vault before stores were recorded by name; find it with doc_list_files in the vault you mean`; `formatters.ts` footer rewritten; `path-resolver.ts` `MISSING_CONTEXT` / `NOT_FOUND` texts (`No document store "<mp>" is reachable in this context — nothing was read`). **The lint (PORT-NEW):** NEW `lib/inventory/title-lint.ts` (`normalizeTitle` NFKD + strip marks, `lintInventoryTitle` → `TITLE_SHADOW` / `TITLE_CHECK_UNAVAILABLE` 409, the `[InventoryTitleLint] Census` DEBUG), `title-lint-documents.ts`, `lint-scope.ts` (`AsyncLocalStorage`), `lib/pascal/tool-gate-keys.ts`; `errors.ts` +2 codes; `item-mutations.ts` lints create / instantiate / update / clearOverrides / archive / delete / duplicate / copy; `pool.ts` `consultedMounts` / `unreadMounts`; `vault-overlay/inventory-writes.ts`; `lib/mount-index/database-store.ts` lint hook before write / delete / move / moveFolder (Inventory / Tools paths only); `lib/pascal/custom-tools.ts` `loadToolsFromMount` returns `unread` + `CustomToolLoadError.stage`, `listAllCustomTools` `unread` + `storesConsulted`. **NO-PORT parts:** `jest.setup.ts` deletes `QUILLTAP_TIMEZONE`; `package.json` `test:unit` gains `NODE_ENV=test`; CLAUDE.md / README; `bugs.md` + `bugs/fixed/bug-256-…md`; the Inventory spec edit. Help: `document-editing-tools.md` +4 / −1, `inventory.md` +19. | **Bug 256 side (ported, v5 shares the defect):** `crates/quilltap-core/src/doc_edit/uri_producers.rs:22-39, 100-123` (PREFERS `qtap://self`), `services/librarian_notifications.rs:107-120` (the `format_self_uri` arm), `tools/self_inventory.rs:1963, 2440` (the old footer verbatim), `tools/doc_edit/document_ui.rs:288-294, 359` (stores the caller's `addressing.mount_point` raw), `doc_edit/path_resolver.rs`, `tools/search.rs`, `tools/doc_edit/{blob,text,markdown,file_management,shared}.rs` — the qtap URI codec + producers (the P4.d5 ∥ P4.d6 ∥ P4.6ay round), Document Mode (P4.6w), doc-edit shared (P4.32), `self_inventory` (P4.15 / P4.D157). **The lint:** nothing in v5 (no `title_lint` / `lint_scope`); it touches `pascal/roster.rs:416 load_tools_from_mount` (the ENOENT skip at `:508` — the `unread` seam) and `db/database_store.rs:191 / 280 / 297 / 537`. | **ORDERED(P4.D340 [the lint] ∥ P4.D338 [bug 256] ∥ P4.D330)** (2026-10-20) — past the `e8e17b2d9` baseline; the bug-256 half is a standalone PORT lane candidate; the lint rides the Inventory round (2). |
-| `406dbdd5a` | 2026-10-19 | Change: clean image prompts only for a Moderated chat bound for a moderated painter (#103) | **PORT — NO D23 move; the bug-133 rule RE-RULED (v5 carries the OLD rule), model-visible** (17 files +479 / −137 incl. a 203-line new test; prod 6 files +113 / −71; `dev.40`; parent `7263105c6`). NEW `isUncensoredImageProfile(profile, policy)` in `lib/services/dangerous-content/understudy.ts` (`isDangerousCompatible === true` OR `id === policy.desk.imageProfileId`). `lib/image-gen/appearance-resolution.ts` `sanitizeAppearancesIfNeeded` SIGNATURE CHANGE: `(appearances, policy, imageTargetUncensored, selection, userId, chatId?, mode)` — `isDangerousChat` + `routesDangerousToUncensored` GONE; rule 1: target uncensored → unchanged, no classifier call, NEW DEBUG `[AppearanceResolution] Image bound for an uncensored profile; appearances left as written` `{chatId, conciergeState}`; rule 2: `!preScreen.enabled` → unchanged (the old `&& !routeDirect` arm REMOVED — an Unmoderated chat on a moderated painter is now sent AS WRITTEN); the classify DEBUG drops `routesDangerousToUncensored`; old step 4 deleted. `provider-routing.service.ts` `resolveImageProviderForDangerousContent` NEW early return `{ rerouted: false, imageProfile: originalProfile, apiKey, reason: 'Image profile is already uncensored: <name>' }` + DEBUG `[DangerousContent] Image profile is already uncensored; not rerouting` (tool, story backgrounds, avatars, wardrobe item images). `image-generation-handler.ts` `resolveAppearances` gains `effectiveImageProfile` (= `profileAfterClassification`) → `imageTargetUncensored`. `story-background.ts`: `paintsOnUncensoredProfile`, `routesDirectToDesk = forced === null && !paints && isDangerous && hasDesk && routeDirect`, `uncensoredImageTarget = forced !== null \|\| paints \|\| isDangerousChat`, the policy DEBUG gains both keys, primary reroute `else if (routesDirectToDesk)`. Help: `the-concierge.md` +24 ("What Gets Cleaned Up"), `image-generation-profiles.md` 2. | `crates/quilltap-core/src/services/appearance_resolution.rs:442-454` (the old two-flag signature), `tools/generate_image.rs:2009-2020` + `:2804 tool_routes_dangerous_to_uncensored`, `services/story_background_job.rs:393-401, 574-586, 716`, `services/dangerous_content/provider_routing.rs:274` (no already-uncensored short-circuit), `db/image_profiles.rs` (`isDangerousCompatible`). Lanes: bug 133 P4.D178 (+ P4.87 / P4.88), the image side P4.D282 / P4.D283, dangerous content P4.D208, routing P4.114 / P4.D225. **The both-direction bug-133 pins WILL trip at the baseline move by design (§5.4).** | **ORDERED(P4.D326 ∥ P4.D339)** (2026-10-20 — the appearance-sanitize grid is RE-SHAPED, no named carve exists) — past the baseline. |
-| `ea2cb60ab` | 2026-10-19 | Feature: edit_custom_tool saves or validates a custom tool definition | **PORT-NEW (a new built-in tool — 59 → 60 on v4's catalog) + PORT (`run_custom`'s category `utility` → `pascal`; `loadToolsFromMount` refactored over a shared validator; `CustomToolLoadError.name`) — NO D23 move** (21 files +759 / −46 incl. a 244-line test; prod 14 files +479 / −33; `dev.41`; parent `406dbdd5a`). NEW `lib/tools/edit-custom-tool-tool.ts`: Zod `mount_point` min 1 (`self` allowed), `file` min 1, `content` `z.unknown().optional()`; NEW handler `lib/tools/handlers/edit-custom-tool-handler.ts` (232): `toolDefinitionPathFor` (in `lib/pascal/custom-tools.ts`: stem / `.tool.json` / `Tools/` prefix, case-insensitive; null for nested, empty, `.` / `..`), check-only when `content` is undefined OR null → `resolveDocEditPath('document_store', …)` + `assertCharacterMayRead` + `readFileWithMtime` (ENOENT → `There is no <path> in "<mp>" to validate.`), `validateToolDefinitionText` (NEW, split out of `loadToolsFromMount`: `is not valid JSON: …` / `formatDefinitionIssues`, unknown keys tolerated), `findSameStoreClash` via `loadToolsFromMount(id, 'global')`; save: `contentToText` (a string verbatim, else `JSON.stringify(…, null, 2)`), refusals `Not saved. <path> fails the custom-tool schema: …` / `Not saved. <clash> in "<mp>" already defines "<name>", …`, then **`handleWriteFile({scope: 'document_store', mount_point, path, content})`** (ONE write path: policy, Librarian, reindex); results `Saved "<name>" to <uri>. It passed schema validation.` / `<uri> is a valid custom tool definition ("<name>").` / `Custom tool edit error: …`. `tool-executor.ts` BUILT_IN_TOOLS + dispatch; `plugin-tool-builder.ts` `editCustomTool?: boolean`; `streaming.service.ts` `buildTools` `editCustomTool: !!customToolContext` (offered with an EMPTY roster); `app/api/v1/tools/route.ts` registers it (`category: 'pascal'`) and MOVES `run_custom` to `pascal`. SPA: `RunToolModal` CATEGORY_INFO `pascal: "Pascal's Custom Tools" 🎲`, `ToolMessage` card `Edit Custom Tool`, `tool-settings/utils.ts` group `pascal`. Help: `custom-tools.md` +14. | `crates/quilltap-core/src/pascal/roster.rs:190-198` (the inline parse / unknown-keys / `safe_parse` — the seam to split), `tools/executor.rs`, `services/tool_build.rs` (P4.D83), `tools/definitions/data.rs` (63 names on the union), `tools/doc_edit/text.rs:268 handle_write_file`, the `/api/v1/tools` listing; SPA `chat/tools/run-tool-modal.ts`, `chat/tools/tool-settings.ts:77-80` (no `pascal` group), the ToolMessage card (P4.17 / P4.D318 / P4.D319). Lanes: P4.6ay / P4.D155 / P4.D305 / P4.D311. | **ORDERED(P4.D332 ∥ P4.D339)** (2026-10-20) — past the baseline. |
-| `680b71044` | 2026-10-19 | Change: /photos leaves out character vaults and gains an album selector | **PORT (the roll-up EXCLUDES character vaults; remove / get REFUSE vault links) + PORT-NEW (`?action=albums`, the `album=` filter, the SPA selector) — NO D23 move** (12 files +311 / −82; prod 5 files +198 / −48; `dev.42`; parent `ea2cb60ab`). `lib/photos/user-gallery-service.ts`: NEW `isUserGalleryMount(mp) = mp.storeType !== 'character'`, `isUserGalleryLink(link, repos)` (a photos path AND a non-character mount), `ListUserGalleryInput.mountPointId?`, NEW `resolveAlbumMountPoints` (null → `findEnabled().filter(isUserGalleryMount)`; an id → `findById`, `!mp \|\| !mp.enabled` → throw `Album not found: <id>`), NEW DEBUG `Listing user gallery` `{mountPointId, galleryMounts, hasQuery}`; `removeFromUserGallery` throws `Link is not a gallery entry` and `getUserGalleryEntry` answers null for a VAULT link. `app/api/v1/photos/route.ts`: `listQuerySchema.album` min 1; GET through `withCollectionActionDispatch({ albums: handleListAlbums }, handleListGallery)`; `?action=albums` → `{ albums }` from the pre-existing `listAllPhotoAlbumOptions` + DEBUG `[Photos v1] Listed albums for the gallery selector` `{count}`; `Album not found` → 404. `app/photos/PhotosView.tsx` +122: a grouped `<select>` (Characters / Projects / Document stores / Quilltap General), the title `<Name>’s Photos` / the store name / `My Photos`, three blurbs, `photoDeleteUrl` → `/api/v1/characters/<id>/photos/<linkId>` for a character album; `lib/query/keys.ts` `photos.albums()`. Help: `photo-gallery.md` +12 / −2; `API.md`. NOT done: no server change to `POST /photos` or the entry route. | `crates/quilltap-core/src/photos/user_gallery_service.rs:128-145` (fans over `find_enabled_for_docedit` with NO vault filter — v5 still SHOWS vault photos), `:385` (remove accepts a vault link — v5 can DELETE a character-vault photo link v4 now refuses), `api/photos.rs:115 photo_gallery_list` (no `?action=` dispatch), `photos/photo_album_options.rs` (exists, P4.D275); SPA `screens/photos/{photos-page,photos.api}.ts`. Lanes: P4.9a (My Photos), P4.D275, P4.163. | **ORDERED(P4.D338 [server] ∥ P4.D330 [client])** (2026-10-20) — past the baseline. |
-| `cfa0cba29` | 2026-10-19 | Change: custom tools in a character's vault are that character's only | **PORT — the roster's `participant` tier REMOVED (v5 still deals every co-participant's vault tools and honours their `disabled` tombstones); NO D23 move** (20 files +76 / −71; prod 8 files +21 / −45; `dev.43`; parent `680b71044`). `lib/pascal/custom-tools.ts`: `TIER_ORDER = ['character', 'group', 'project', 'global']` (+ a why-comment), `RosterContext.characterIds` DELETED, `orderedMounts` `participant: []`, `resolveCustomToolRoster` → `resolveTieredMountPool({userId, characterId, characterMountPointId, projectId})` with NO `characterIds` and NO `{ includeParticipants: true }`. Callers drop the field: `trigger-runner.ts` (`RunTriggeredCustomToolsParams.characterIds`), `trigger-phrase-sites.ts` (`roomCharacterIds` + `RoomShape.participants`), `orchestrator.service.ts:1050`, `tool-executor.ts:636`, `run-custom-handler.ts` (`RunCustomToolContext.characterIds`), `app/api/v1/chats/[id]/custom-tools/route.ts` (`resolveForPerspective` loses `allCharacterIds` in list AND run). **NOT done:** `lib/mount-index/tiered-mount-pool.ts` is UNTOUCHED (the participant tier still exists for its other consumers); no SPA / popup hunk. Help: `custom-tools.md` (tiers), `pascals-workbench.md`; the Pascal spec's "Changed in 4.11". | `crates/quilltap-core/src/pascal/roster.rs:49 TIER_ORDER: [MountTier; 5]`, `:110-111 character_ids`, `:237 Participant`, `:604-608 include_participants: true`; `api/custom_tools.rs:144-155, 390-414` (`all_character_ids`); `pascal/trigger_runner.rs:85, 198`; `tools/run_custom.rs:490`; `tools/executor.rs`; `services/orchestrator.rs`. `db/tiered_mount_pool.rs` keeps `include_participants` for `tools/search.rs`, `doc_edit/path_resolver.rs`, `services/build_context.rs`, `scenario_builder/mount_pool.rs` — leave those. Lanes: P4.6ay / P4.D155 / P4.D168–D171 / P4.D305; `tiered_mount_pool_equivalence` P4.131. | **ORDERED(P4.D332)** (2026-10-20) — past the baseline. |
-| `e4a60ad9e` | 2026-10-19 | Feature: the Log — log_entries table, log_* tools, and a custom-tool log effect | **PORT-NEW WITH THE SIXTEENTH D23 MOVE (a NEW TABLE `log_entries` in the LLM-LOGS partition — the first schema move in that partition; NO migration script) + PORT (the Pascal effect schema / resolver / applier / draft / vocabulary / `run_custom`'s description; `LLM_LOG_CLEANUP`; `run_sql` + the Brahma prompt text; the CLI `db` domains)** (54 files +1,719 / −47 incl. five new tests; prod 32 files +1,132 / −35; `dev.44`; parent `cfa0cba29`). **Schema:** NEW `lib/schemas/log-entry.types.ts` `LogEntrySchema { id UUID, message string 1..4000, chatId UUID, characterId UUID.nullable(), createdAt, updatedAt }`, `MAX_LOG_ENTRY_MESSAGE_LENGTH = 4000`. NEW `LogEntriesRepository extends AbstractDedicatedDbRepository<LogEntry>` (`dbTarget: 'llmLogs'`, `acquireDb: requireLLMLogsDb`) — `ensureTable` runs `generateDDL('log_entries', schema)` so **generateDDL RENDERS it**, LAZILY at first repository use (not at boot), in `quilltap-llm-logs.db`; `onTableEnsured` adds `idx_log_entries_chatId ("chatId", "createdAt" DESC)` + `idx_log_entries_characterId`; generateDDL emits `idx_log_entries_createdAt DESC` (`DDL.md` +27, a new `### log_entries`: "there is no migration"). `message` / `chatId` / `createdAt` / `updatedAt` NOT NULL without defaults on a NEW table — no existing-row hazard; `characterId` nullable. **Repository API:** `findEntries({chatId?, characterId?, from?, to?, limit})` `ORDER BY "createdAt" DESC LIMIT ?` (fallback `[]`), `searchMessages(pattern, flags, limit)` `WHERE regexp(?, "message", ?)` ('rethrow'), `cleanupOldEntries(days)` (`<= 0` → 0; INFO `Cleaned up old log entries`). NEW `lib/database/backends/sqlite/regexp-function.ts` registered on the llm-logs connection: `regexp(pattern, value[, flags])` over JS `RegExp`, flags `/^[imsu]*$/`, a 64-entry cache, NULL → NULL, a bad pattern throws `Invalid regular expression: …`; `compileSqlRegexp` exported. `repositories/index.ts` `logEntries`; `write-partition.ts` `LLM_LOGS_REPO_KEYS` + `'logEntries'`. NEW `lib/log-entries/write.ts` `writeLogEntry` (trim; empty → `A log entry needs a message`; CLIPS at 4000 with a DEBUG). **Tools:** `log-create-entry-tool.ts` (`message` trim 1..4000), `log-grep-tool.ts` (`pattern` 1..500, `ignore_case?`, `limit` `llmNumber` 1..200 default 50), `log-read-tool.ts` (`conversationId?` — `"current"`, `character?`, `from` / `to` `instant`, `limit`; refine `from <= to`); `log-handler.ts`: `toViews` via `characters.findNamesByIds`, `resolveCharacterByNameOrId` → `No character named "<x>" was found.`, errors `The log entry could not be written: …` / `The log could not be searched: …` / `The log could not be read: …` / `Invalid regular expression: …`; grep / read answer `{ entries: [{id, message, conversationId, characterId, characterName, createdAt}], count, limit }`, create `{ entry: {id, message, conversationId, createdAt} }`. `tool-executor.ts` BUILT_IN_TOOLS + one dispatch (`LogToolContext {userId, chatId, characterId?}`); `plugin-tool-builder.ts` pushes the three inside the workspace-tools block after the Scriptorium trio ("always offered to characters"); `app/api/v1/tools/route.ts` `category: 'log'`; `tool-settings/utils.ts` `log: 'The Log'`. **Pascal:** `CustomToolEffectSchema.log` string 1..1000 optional, the superRefine texts "…, an inventory gesture, or a log line" / "…, inventory, or log", `isLogEffect`, `validateInventoryKey` → `validateTemplatePlaceholders` (+ log); `custom-tools.ts` `ResolvedEffect \| {index, log}`, `isApplicableLogEffect`, `resolveEffects` renders the template (`.trim()`, empty → skipped `log line rendered empty`); `side-effects.ts` `applyLogEffects` runs LAST, `AppliedEffect {target: 'log', next: {id, message}}`, WARN `Custom tool log effect failed; skipped`; `tool-draft.ts` kind `'log'` (+ `a log line needs some prose to write down` / `a log line is at most 1000 characters`); `tool-vocabulary.ts` collects `effect.log` placeholders; `run-custom-tool.ts` `describeEffects` appends `writes to the log`; `run-sql-tool.ts` + `brahma-sql-prompt.ts` text; `llm-log-cleanup.ts` prunes entries FIRST (DEBUG `[LLMLogCleanup] Log entries pruned`), BEFORE the logging-enabled early return; `packages/quilltap/lib/db-commands.js` logs domain `'Log entries': ['log_entries']`; `public/schemas/qtap-custom-tool.schema.json` +52 (`log` maxLength 1000 in the Effect oneOf). SPA: `SideEffectsSection` fourth kind "Enter a log line", `ProvingBench` `→ log: … (would write)`. Help: NEW `the-log.md` (45), `custom-tools.md` +13, `pascals-workbench.md`, `system-llm-logs.md`, `tools-settings.md`. Docs: `DDL.md`, `BACKGROUND_JOBS_CHILD.md`, `API.md`, `CUSTOM_TOOL_SPEC.json`. | **Nothing of the Log in v5** (`log_entries` / `log_*` absent; the only `regexp` hit is `message_formatter.rs`). Surfaces it will touch: `tools/definitions/data.rs` (63 names on the union → 67 with `edit_custom_tool` + the three), `tools/executor.rs`, `services/tool_build.rs`, `pascal/custom_tool_types.rs:943-948` (write + wardrobe only — the inventory effect is ALSO unported), `pascal/side_effects.rs`, `pascal/tool_vocabulary.rs`, `tools/run_custom.rs:119 describe_effects`, `services/llm_log_cleanup_job.rs` (P4.24), `db/llm_logs.rs` (P4.37) + the llm-logs partition (P4.D49 / P4.94 / P4.126; the one scalar fn is `text_compression.rs:386` — a `regexp` twin is a NEW seam), the Brahma prompt (P4.D226 / D227), SPA `pascal/tool-draft.ts` / `screens/custom-tools/{proving-bench,workbench-editor}` (P4.D155 / P4.D320), `chat/tools/tool-settings.ts`, the CLI `db` domains (Tier R), `provisioning/fresh_schema.json:121-123` (its `llmLogs` partition — `dump-fresh-schema.ts` dumps the LIVE llm-logs DB, so a re-dump carries `log_entries` only once v4's repository has lazily ensured it: VERIFY at re-dump), the Almanack's llm-logs ledgers. | **ORDERED(P4.D331 ∥ P4.D324 [the re-dump's `llmLogs` block] ∥ P4.D333 [the schema] ∥ P4.D334 [the effect UI] ∥ P4.D339)** (2026-10-20 — RULED R-B: a `fresh_schema.json` row + ONE `STRUCTURAL_TABLES` row, no ensure; v4's PHASE 3.1 pass creates it at every boot, so "lazy" is false in effect; `regress` for `regexp()` — R-I, APPROVED 2026-10-21) — past the baseline; the SIXTEENTH D23 move pending a provisioning ruling (a lazy first-use ensure vs a boot ensure — the 2026-10-19 "v5's schema is self-sufficient" ruling leans to a boot ensure or `fresh_schema.json`). |
-| `a495faa26` | 2026-10-19 | Fix: the Log's date bounds and regex errors | **PORT on an UNPORTED surface — a rider on `e4a60ad9e` (fold into the Log lane; port the post-fix shape directly); NO D23 move** (11 files +55 / −16; prod 5 files +25 / −9; `dev.45`; parent `e4a60ad9e`). `lib/tools/log-read-tool.ts` NEW `BARE_DATE = /^\d{4}-\d{2}-\d{2}$/` + exported `logReadBoundInstant(value, 'from' \| 'to')`: a bare-date `to` → `${value}T23:59:59.999Z`, everything else `new Date(value).toISOString()`; the refine compares the two bound STRINGS; `to`'s description → `A bare date means the end of that day (UTC), so from and to may name the same date.` (snapshot +1 / −1). `log-handler.ts` `executeLogReadTool` uses the helper for both bounds. `regexp-function.ts` `compileSqlRegexp` strips V8's `^Invalid regular expression:\s*` from `reason` (callers add the prefix once). Help `the-log.md` 2 lines. | None (see `e4a60ad9e`). | **ORDERED(P4.D331)** (2026-10-20) — past the baseline; absorbed with the Log. |
-| `e27fb6b34` | 2026-10-19 | Change: the Inventory gets its own icon | **PORT-NEW (an SPA asset + a registry entry, riding the UNPORTED Inventory SPA); NO D23 move** (22 files +85 / −17; prod 12 files +21 / −9, plus `themes/` 3 files +14 / −3; `dev.46`; parent `a495faa26`). `components/ui/icons/icon-registry.ts` + `'inventory': { defaultFile: '/images/icons/inventory.svg', defaultMode: 'mask' }`; `app/styles/qt-components/_icons.css` + `[data-icon="inventory"]`; NEW `public/images/icons/inventory.svg` (24×24 stroke, an open box with two flaps); `dice` → `inventory` at `InventoryCard.tsx:39`, `ParticipantCard.tsx:369`, `sidebar-footer.tsx:277`, `lib/workspace/tab-meta.ts:40` (`inventory: { title: 'The Inventory', icon: 'inventory' }`); `dice` stays for RNG + the Workbench. The Madman's Box override `themes/bundled/madmans-box/icons/inventory.svg` + `theme.json`; the icon preview tool 79 → 86 (also adding the already-missing `mail`, `thinking`, `brahma-console`); `theme-storybook` (NO-PORT); `ICON_INVENTORY.md`; help `inventory.md` 2; a NEW guard test. | SPA `apps/web/src/app/ui/icon.ts:20` (has `dice`, no `inventory`), `apps/web/public/images/icons/` (has `dice.svg`), `apps/web/src/app/theme/bundled-themes.ts` (madmans-box), `workspace/core/tab-meta.ts:48` (no `inventory` tab kind yet — the tab lands with `4fbdad186`'s SPA). | **ORDERED(P4.D330 ∥ P4.D339)** (2026-10-20) — past the baseline; rides the Inventory SPA lane. |
-| `5a8338b30` | 2026-10-19 | Fix: toasts raised from inside a dialog were hidden behind it | **PORT — ONE production line, NO D23 move** (observed at the `e8e17b2d9` unification's cleanup; 6 files +12 / −6, prod 1 file +3 / −1; `4.11.0-dev.47`; parent `e27fb6b34`). `lib/toast.tsx`: the toast container's `style.zIndex` `'50'` → `'1000'` with the why-comment "Above every dialog overlay (z-[60]–z-[101]) so a toast raised from inside a modal is visible; below the full-screen startup gates at z-[9999]". README badge + CHANGELOG + stamps otherwise. | SPA `apps/web/src/styles/qt-components/_toast.css` `.qt-toast-container` (the container's stacking rule) / `apps/web/src/app/ui/toast-container.ts` — the toast vertical (P4.6-era). **Measured at the cleanup: `_toast.css:35` `.qt-toast-container { z-index: 50 }` — v4's OLD value, so v5 SHARES the defect** (a toast raised inside a dialog overlay sits behind it); a one-line SPA port, with v5's own overlay z-tiers checked at port time. | **ORDERED(P4.D338)** (2026-10-20) — past the baseline; a smalls-round rider. |
-| `2b5e8ee24` | 2026-10-20 | Feature: raise a hand or stop from the composer | **PORT-NEW on the PORTED chat spine — NO D23 move, NO new dependency; model-visible (the yield Turn note) + a new Host message kind** (classified 2026-10-20 from the hunks; 56 files +1,823 / −206 incl. ~390 lines of tests; `dev.47` → `dev.48`; parent `5a8338b30`). NEW `lib/chat/turn-control.ts` (189 — a `processSingleton` registry of open Salon streams per chat + an `AsyncLocalStorage` handle per stream; `setHandRaised`, `stopActiveTurns` (aborts, then waits bounded for the partial save), `isCurrentTurnStopped`, `currentTurnStopSignal`). NEW `app/api/v1/chats/[id]/actions/interrupt.ts`: `?action=stop-turn` (a non-autonomous multi-character room is PAUSED first via `repos.chats.update({isPaused:true})`, then every stream aborted; `{stopped, settled, paused}`; `[Interrupt] Stop handled`) and `?action=raise-hand` (`raiseHandSchema = { raised: z.boolean().prefault(true) }`, body parse `.catch(() => ({}))`; `{raised: raised && streams > 0, active}`; `[Interrupt] Hand state changed`). NEW `lib/chat/turn-manager/yield-signal.ts` (114 — `buildTurnYieldInstruction(operatorName)` + the `[YIELD]` sentinel through a NEW shared `matchesSentinelLine(line, phrase)` that `skip-signal.ts`'s `[NOTHING TO ADD]` matcher now delegates to); `buildContext`'s NEW `offerYield` option appends the yield note LAST (after the turn-skip note) with a `[TurnYield]` debug line. `host-notifications/writer.ts`: NEW `postHostTurnYieldAnnouncement` (`systemKind` `turn-yield`, persona + opaque texts, `hostEvent.participantId`). `lib/llm/stream-watchdog.ts`: NEW `abortSignal` option — the next-chunk await races a STOPPED promise; on stop the stream ENDS quietly (no error, so no fallback / recovery reads it as a provider failure), `[LLMStream] Abandoned a provider stream at the operator's stop` INFO; `streaming.service.ts` passes `currentTurnStopSignal()` at every chat-message call site. `message-finalizer.service.ts`: a stopped reply skips answer confirmation, RNG auto-detect, reply triggers and the Carina pass. `orchestrator.service.ts` (334 lines changed) / `turn-orchestrator.service.ts` / both tool loops / `provider-failover.service.ts` / `context-builder.service.ts`: no further tool call, recovery retry or chained turn after a stop; chain end reasons gain `'yielded'` / `'stopped'`; SSE `encodeHandAnsweredEvent` (`{handAnswered, participantId, characterName, yielded}`) + `done` flags `yielded` / `stopped`. SPA: `ChatComposer.tsx` Send + amber raised-hand + red stop-sign buttons, `useSSEStreaming.ts` (+124), `ParticipantCard.tsx` LOSES its Stop button, `.qt-chat-interrupt-button`, two new icons (+ Madman's Box overrides), the `.qt-chat-stop-button` specificity fix; theme-storybook 1.0.76; `help/interrupting.md` NEW, `chat-turn-manager.md` / `chats.md` / `chat-participants.md` edited; `docs/developer/API.md` documents the two actions. **v5 intersection:** the chat spine + chain (P4.2 / P4.6 Salon, the turn chain), `model/stream_watchdog.rs` (the stream-watchdog port), `skip_signal.rs` (turn-skipping, P4.d), `turn_state.rs`'s Host turn-pass, the finalizer's answer confirmation / dice / trigger-phrase (P4.D305) / Carina sites, the SPA `chat/chat-composer.ts` (its client-side `qt-chat-stop-button`) and participant card. A standalone chat-spine lane. | **ORDERED(P4.D335 ∥ P4.D336 ∥ P4.D339)** (2026-10-20) |
-| `cc57e6cbc` | 2026-10-20 | Docs: spec for broader custom-tool gates (inventory aggregates, OR, numeric folds) | **NO-PORT? — docs only, VERIFIED** (classified 2026-10-20 from the hunks; 3 files +214: `docs/CHANGELOG.md`, `docs/developer/features/ROADMAP.md`, NEW `docs/developer/features/pascal-gate-broadening.md`; no stamp; parent `2b5e8ee24`). The spec is MOVED to `features/complete/` and edited by `a53024d3c` — ratify with the docs lane's `docs/v4/` re-vendor at its post-`a53024d3c` path. | **ORDERED(P4.D339 — NO-PORT ratification)** (2026-10-20) |
-| `c56fe278c` | 2026-10-20 | Add schema action to edit_custom_tool (#104) | **PORT-NEW riding the UNPORTED `ea2cb60ab` (`edit_custom_tool`) — NO D23 move; model-visible** (classified 2026-10-20 from the hunks; 11 files +127 / −36; prod 5 files; `dev.49`; parent `cc57e6cbc`). `lib/tools/edit-custom-tool-tool.ts`: `editCustomToolInputSchema` gains `action: z.enum(['schema']).optional()`, `mount_point` / `file` become `.optional()`, and a `.refine` requires both unless `action === 'schema'` (message: "`mount_point` and `file` are required unless `action` is \"schema\"."); the tool description gains "or fetch the definition format (JSON Schema and worked examples)"; the output's `action` widens to `'saved' \| 'validated' \| 'schema'` with `schema` / `examples`. The handler answers `action: 'schema'` touching NO store: it imports `public/schemas/qtap-custom-tool.schema.json` and returns the two reference specimens. `lib/chat/tool-executor.ts` forwards `schema` / `examples`; `app/api/v1/tools/route.ts` one line; the tool-definitions snapshot moves (15 lines). Fold into the `edit_custom_tool` lane and port the post-fix shape directly. | **ORDERED(P4.D332)** (2026-10-20) |
-| `a53024d3c` | 2026-10-20 | Feature: OR and inventoryAggregate in custom-tool gates and when tests | **PORT (any-of arrays on the PORTED gate / outcome / effect grammar — v5's loader REFUSES the new shapes) + PORT-NEW (`inventoryAggregate`, riding the UNPORTED Inventory grammar — v5 has no `inventory` / `inventoryCount` subject) — NO D23 move; model-visible (schema `.describe` texts, the `run_custom` description)** (classified 2026-10-20 from the hunks; 41 files +2,501 / −388 incl. ~770 lines of tests; `dev.50`; parent `c56fe278c`). `lib/pascal/custom-tool.types.ts`: NEW `MAX_WHEN_GROUPS = 8`; `ToolGateSchema` = `z.union([ToolGateGroupSchema, z.array(ToolGateGroupSchema).min(1).max(8, 'at most 8 groups')])` with `gateGroups()`; `WhenSchema` = `true` \| object \| array (`whenGroups()` — `[]` for the catch-all); NEW `EffectConditionSchema` (`effectWhenGroups()`); every reader goes through those three; the gate placeholder check iterates groups with an index in the issue path; the "must test something" messages gain `inventoryAggregate`; `availableWhen` / `withheldWhen` describe texts reworded. NEW `lib/pascal/inventory-aggregate.ts` (208 — `parseAggregateKey` `"<scope>.<field>"`, scopes `equipped` / `owned` / `reachable`, fields `count` / `names` / `titles` / `metadata.<key>` / `.min` / `.max` / `.sum` / `.count`; list comparands match entry-wise). Touches `custom-tools.ts`, `tool-gate.ts`, `metadata-match.ts`, `tool-draft.ts` (241 lines changed), `tool-vocabulary.ts`, `tool-gate-keys.ts`, `bench-inventory.ts`, `inventory-subjects.ts`, `run-service.ts`, `lib/inventory/refs.ts`, `lib/tools/run-custom-tool.ts` (+61). SPA: Workbench `GateSection` / `OutcomesSection` / `ProvingBench` + NEW `ConditionGroups.tsx` / `AggregateKeyField.tsx`; `CustomToolRunDialog.tsx`. `public/schemas/qtap-custom-tool.schema.json` (274 lines changed), `docs/developer/CUSTOM_TOOL_SPEC.json`, `help/custom-tools.md` +79, `pascals-workbench.md`. **v5 intersection:** `pascal/custom_tool_types.rs` (the Rust definition twin + its Zod 4.6.7 census, P4.D311), `tool_gate.rs`, `metadata_match.rs`, `custom_tools.rs`, `tool_vocabulary.rs`, the Workbench SPA (P4.D307 / P4.D320), the vendored public schema (P4.D313). Split: OR now; the aggregate after the Inventory lane. | **ORDERED(P4.D333 ∥ P4.D329 [the aggregate] ∥ P4.D334 ∥ P4.D339)** (2026-10-20 — the `metadata-match.ts` list rule is P4.D333's, a ported-behaviour change) |
-| `b8362beb5` | 2026-10-20 | Fix: stack the composer's Send / raise-hand / Stop buttons vertically | **PORT — a CSS rider on `2b5e8ee24` (fold into the interrupts lane; port the post-fix shape); NO D23 move** (classified 2026-10-20 from the hunks; 9 files +24 / −31; prod: `app/styles/qt-components/_chat.css` +8 / −13 and its storybook twin; `help/interrupting.md` one line; `dev.51`; parent `a53024d3c`). | **ORDERED(P4.D336)** (2026-10-20) |
-| `d88c1ce39` | 2026-10-20 | Docs: say blank Inventory drawing descriptions are invisible | **PORT-NEW — a one-line rider on the UNPORTED Inventory item editor; NO D23 move** (classified 2026-10-20 from the hunks; 8 files +53 / −7, of which a 42-line test of existing behavior; prod: `components/inventory/inventory-item-editor.tsx` one hint string, `help/inventory.md` one line; `dev.52`; parent `b8362beb5`). The message says "Docs" but the editor string ships — fold into the Inventory SPA lane. | **ORDERED(P4.D330 ∥ P4.D339)** (2026-10-20) |
-| `322a5488e` | 2026-10-20 | Fix: custom-tool LLM consult can narrate a verdict the table already reached (bug 257) | **PORT on the PORTED Pascal run path — v4-ORIGINATED bug 257 (found live on `Friday`; v5 status **Owed**), NOT a convergence; v5 HAS the old run order; NO D23 move; model-visible** (classified 2026-10-20 from the hunks; 18 files +913 / −32 incl. a 287-line test and the 256-line bug doc; prod 9 files; `dev.53`; parent `d88c1ce39`). `lib/pascal/custom-tool.types.ts`: outcome rows gain `brief: z.string().min(1).max(MAX_MESSAGE_LENGTH).optional()`; NEW exported `outcomeTableTestsLlm(outcomes)` (any group of any row with `llm !== undefined`); NEW `validateOutcomeBriefs` in the definition refine — a `{{outcome.*}}` in `llm.prompt` is REJECTED when a row tests `llm`; a `brief` without an `llm` block is REJECTED; a `brief` quoting `{{llm}}` / `{{outcome.*}}` is REJECTED (three new issue messages, verbatim in the hunk); the `llm.prompt` describe text gains the brief guidance. `lib/pascal/custom-tools.ts`: `consultFirst = definition.llm !== undefined && outcomeTableTestsLlm(outcomes)` — when false the table is dealt BEFORE the consult and the prompt renders `{{outcome.state}}` / `{{outcome.index}}` / `{{outcome.brief}}`; the result's `outcome` gains `brief`. `lib/pascal/placeholders.ts`: an `outcome` ref kind + a debug line when it cannot render. `tool-draft.ts` +121 (Workbench lint / audit: comparing prompts, missing briefs), `tool-vocabulary.ts`; SPA `OutcomesSection.tsx` (a brief field) + `ProvingBench.tsx`; `public/schemas/qtap-custom-tool.schema.json` +10; `help/custom-tools.md` +37. **v5 intersection:** `pascal/run_service.rs` / `custom_tools.rs` (P4.D305's one run service), `llm_consult.rs` (the consult wire, P4.D305's `OrchestratorDeps.consult`), `placeholders.rs`, `custom_tool_types.rs` + its Zod census, the Workbench SPA (P4.D307). Pair with `a53024d3c`. | **ORDERED(P4.D333 ∥ P4.D334 ∥ P4.D339)** (2026-10-20) |
 | `6fd2d5ffb` | 2026-10-21 | Fix: memory importance scale no longer rates work commitments with family facts | **PORT — the importance rubric recalibrated in all four memory-writing prompts; NO D23 move, NO route; model-visible text only** (classified 2026-10-26 from the hunks; 13 files +836 / −23 incl. a 144-line test and the 560-line NEW spec `docs/developer/features/inner-circle-recall.md`; prod 5 files +103 / −18; `4.11.0-dev.54`; parent `322a5488e`). `lib/memory/extraction/prompts/shared.ts` NEW `WORK_IMPORTANCE_CEILING = 0.65` (rendered `toFixed(2)`) + `IMPORTANCE_WORK_CEILING_NOTE` ("Work, project, and tooling agreements — building, filing, fixing, or ruling on something — never score above 0.65, …") + `IMPORTANCE_FACT_NOT_TELLING_NOTE` ("Score the fact, not the telling. …"), both appended after every ladder (ceiling note, blank line, fact note; in SELF / OTHER the ceiling note follows `< 0.20  Do not extract.` with NO blank line). SELF / OTHER: the 0.90 anchor REPLACED by a 0.95 life/bond anchor + a 0.85 revelation / personal-commitment anchor; the 0.65 / 0.60 anchors gain the build/file/fix/rule clause; NEW 0.45 work-decision anchors; examples re-scored (SELF summarizer 0.85 → 0.65; OTHER cache-layout 0.85 → 0.55, rename-deferral 0.65 → 0.45) and a NEW 0.95 pregnancy example each. Episode (`episode.ts`): the `importance` field text becomes the 0.95 / 0.85 / 0.5 / 0.45 ladder + both notes. Consolidation (`cheap-llm-tasks/consolidation-tasks.ts` `CONSOLIDATION_SYSTEM_PROMPT`): the IMPORTANCE paragraph rewritten on the same ladder + both notes. Existing rows are NOT rescored. `help/memory-recall-relevance.md` +16. **v5 intersection:** `memory_extraction/prompts/prompt_text.rs` (SELF / OTHER / episode — P4.D296, P4.D270) and `consolidation_tasks/prompt_text.rs` (P4.D271); every tier-3 family byte-comparing those prompts moves. NOT touched by P4.D324–P4.D340, but P4.D339 vendors `help/` at the pin. **The message overstates:** only SELF and OTHER gained a 0.95 example; episode and consolidation got ladder text only. | UNPROCESSED |
 | `a5efdbb97` | 2026-10-21 | Feature: group members get reserved full-text slots in recall | **PORT-NEW on the ported recall surfaces — a group "inner circle" step in the frozen archive; NO D23 move, NO route; model-visible (`## Those Closest to You` + full-text rows)** (classified 2026-10-26 from the hunks; 23 files +723 / −66 incl. four test files; prod 11 files +389 / −47; `dev.55`; parent `6fd2d5ffb`). NEW `lib/memory/recall/inner-circle.ts` `resolveInnerCircle(holderId, {excludeIds})` (group memberships via `groupCharacterMembers` / `groups.findByIdRaw`; tiers = RANK of the holder's distinct group sizes ascending; each candidate keeps its tightest group by size → name `localeCompare` → id; names via `characters.findNamesByIds(ids, {excludeArchived: true})` — a NEW option; sort tier → groupName → name → id; DEBUG `[InnerCircle] Resolved inner circle`), `innerCircleSignature`, `innerCircleAllowanceFor`. `recall/tags.ts` `INNER_CIRCLE_ARCHIVE_SHARE = 1/3`, `INNER_CIRCLE_ALLOWANCE = [3,2,1]` → `RECALL_TUNING_DEFAULTS.innerCircleShare` / `innerCircleAllowance`; the strict `RecallTuningInputSchema` gains both (`describeRecallTuning` appends them when non-default). `recall/archive.ts`: `getOrComputeFrozenArchive` returns `{anchors, circle}` (was `Memory[]`), resolves the circle EVERY call before the cache check, and keys the cache on `"${share}\|${allowance}\|${signature}"`; `computeFrozenArchive` gains step 3 (`cap = min(floor(size*share), size - chosen.size)`, `drawInnerCircle` via `findHotDigests`, tier-boundary break, `innerCircleTrimOrder`); anchors sorted by `id.localeCompare`; the compose DEBUG gains `circleMembers` / `circle` / `circleCap` / `filled`. `recall/render.ts` NEW `renderInnerCircle` (header `## Those Closest to You`, body `content \|\| summary`, no age tag); `assemble.ts` renders the circle first within `floor(archiveTokenBudget * innerCircleShare)`, anchors get the rest, joined `\n\n`; the trace gains `circleHeld` / `circleRendered` / `circleMembers` / `circleTokenBudget`. `RecallReplayResult.warnings`. CLI `recall-replay-command.js` help text gains the two knobs. help `groups.md` +8, `memory-recall-relevance.md` +10. **v5 intersection:** `services/frozen_archive.rs` (P4.D268 / P4.D291), `services/recall/{render,assemble,types}.rs` (P4.D291), `recall_tuning.rs` (P4.D267), `services/recall_replay.rs` + the CLI's captured `recall_replay_help.txt` (P4.D267 / P4.D269 / P4.D299), `db/characters_read.rs` `find_names_by_ids` (which ordered P4.D331 also calls — additive, same function). A cross-partition read (mount-index group membership) on a main-DB recall path. | UNPROCESSED |
 | `8cb584eff` | 2026-10-21 | Feature: keystone memories | **PORT-NEW WITH THE SEVENTEENTH D23 MOVE — `memories."keystone" INTEGER NOT NULL DEFAULT 0` (`add-memory-keystone-v1`, main partition, additive, NO data rewrite) + a migration-only partial index `idx_memories_keystone`** (classified 2026-10-26 from the hunks; 56 files +1,211 / −156 incl. 12 test files; prod 32 files +636 / −122; `dev.56`; parent `a5efdbb97`). Migration: `dependsOn add-memory-tiers-v1`, `introducedInVersion 4.11.0`, runs when the column OR the index is absent; `addColumnIfMissing('memories','keystone','INTEGER NOT NULL DEFAULT 0')` (appended) + `CREATE INDEX IF NOT EXISTS "idx_memories_keystone" ON "memories" ("characterId", "aboutCharacterId") WHERE "keystone" = 1`; INFO `Added memories.keystone column` / `Created idx_memories_keystone`, result `Keystone memories in place (N changes)`, ERROR `Keystone-memory migration failed`; prettify `Setting keystones in the Commonplace Book, that certain facts never slip`. `MemorySchema.keystone: z.boolean().default(false)` between `consolidatedAt` and `createdAt` → generateDDL renders it in schema order (probably a nullable `INTEGER DEFAULT 0` — TWO shapes; verify at the re-dump); the index → a boot ensure (2026-10-19 ruling). `KEYSTONES_PER_SUBJECT_MAX = 5`. Repository: `create` defaults `keystone ?? false`; the list's `keystone` filter; `hydrateRawRows` maps number / bigint / null → boolean BEFORE `safeParse` (v5's P4.D265 hydrate needs the same or raw reads fail / drop rows); NEW `findKeystones` (hot only, `ORDER BY createdAt, id`) / `countKeystones`. Recall: present characters' keystones LIFTED into the circle (`tier: -1`), self keystones into the anchors before self digests; `renderArchive` / `renderHead` render a keystone `content \|\| summary`. Protection: `foldInto` writes no footnotes / empty patch onto a keystone survivor (`anchorPatch` extracted); consolidation skips keystones; `isDemotable` excludes them; `PolicyProtection` gains `'keystone'` FIRST (`sparedBy.keystone` first — the chat wipe, `MEMORY_REGENERATE_CHAT`, fold eligibility); `cascadeEmptiedDigests` KEEPS a keystone digest (DEBUG `Keystone digest kept though its last member retires`); scoring protection treats it like MANUAL. Admission edit: `keystone-refused` — `An archived memory cannot be a keystone; it belongs to the digest that replaced it.` / `A character may keep at most 5 keystones about one subject; unmark one first.`. Routes: PUT `keystone` (400 on refusal); create pre-checks then marks after admission (`The memory was saved, but not as a keystone: <msg>`); list `?keystone=true`. Carriers: `importMemories` `keystone ?? false`; `qtap-export.schema.json` memory `keystone`. SPA: badge, editor checkbox `Keystone — always remembered`, `Keystones only` filter. CLI `quilltap memories` `--keystone`, a NEW `keystone <id> [--off] [--write]` verb, completion templates. help ×3, `DDL.md`. **v5 intersection:** D23 re-dump + a boot ensure (join `restore_vintage_state`'s boot-align list); `db/memories_read.rs` (P4.D265 / P4.D269 / P4.D298); `services/frozen_archive.rs` + `recall/render.rs` (P4.D268 / P4.D291); `admission/fold.rs` (P4.D290); maintenance consolidate / demote / fold (P4.D271 / P4.D297); `policy_protection.rs`, `memory_retire.rs` (P4.D288 / P4.D297); scoring (P4.D289); `admission/update_memory.rs` + the memories routes (P4.D298); carriers (P4.D293 / P4.D294); memory SPA (P4.D276 / P4.D300). The `quilltap memories` CLI family is RULED OUT of v5 (`phase-4.md` R-AL) — the verb is NO-PORT, but v5's captured completion templates list memories verbs and will move. Collides with ordered P4.D324 (the round's ONE re-dump is at `322a5488e`) and P4.D327 (`qtap-export.schema.json`). **"keystone" here ≠ P4.D324's "Inventory KEYSTONE" lane title.** **The message overstates:** "every digest is cut before any keystone" holds only inside the circle; self keystones sit among id-sorted anchors with no priority. | UNPROCESSED |
@@ -673,11 +347,11 @@ passes the commit.
 | `66f8c4d41` | 2026-10-26 | Bundle plugin-types in default-system-prompts and openai-compatible plugins (#115) | **NO-PORT? — v4 JS-plugin bundling only** (classified 2026-10-27; 9 files +16 / −17; prod 8 files; no stamp; parent `7d7e38d2f`): `@quilltap/plugin-types` no longer marked esbuild-external in two `plugins/dist` bundles (a bare `require` that only resolved through a host `node_modules`); manifests default-system-prompts 1.1.26 → 1.1.27, openai-compatible 1.0.49 → 1.0.50. **v5 intersection:** none — v5's providers are declarative manifests (no JS plugins; neither version string appears in v5). | UNPROCESSED |
 | `40cc6ffda` | 2026-10-26 | Fix: quilltap db --count printed ANSI color codes under FORCE_COLOR | **PORT (verify-only) — `packages/quilltap/bin/quilltap.js`'s `--count` prints `String(row.count)`, so `console.log` no longer colours the number under `FORCE_COLOR`** (classified 2026-10-27; 6 files +10 / −6; prod 2 lines; `dev.89`; parent `66f8c4d41`). **v5 intersection:** the CLI Tier R `db --count` (P4.3; `crates/quilltap-cli/src/db_cmd.rs`) writes no ANSI — expected to match v4's post-fix bytes; Tier R runs without `FORCE_COLOR`, so no row should move (confirm at the catch-up). | UNPROCESSED |
 | `539bb4012` | 2026-10-26 | Docs: CLI README lists memories keystone among server-backed verbs (#116) | **NO-PORT? — docs only, VERIFIED** (classified 2026-10-27; 2 files +6 / −2; `packages/quilltap/README.md` two lines; no stamp; parent `40cc6ffda`). **v5 intersection:** none — the `keystone` CLI verb is NO-PORT by R-AL (`8cb584eff`'s row). | UNPROCESSED |
-| `cc5f2347c` | 2026-10-26 | Fix: backups now carry the Log (log_entries) (#117) | **PORT — ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED: it REVERSES the pin's rule that the Log is NOT carried by a logical backup; NO D23 move; `.qtap` still omits the Log** (classified 2026-10-27 from the hunks; 15 files +350 / −2; prod 8 files +102; no stamp; parent `539bb4012`; merged by `744596158`). Backup: `data/log-entries.json` via a NEW `LogEntriesRepository.findAllEntries()` (`SELECT … ORDER BY "createdAt" ASC`, `[]` while degraded, DEBUG `All log entries read`), DEBUG `Collected Log entries for backup {rowCount}`, manifest `counts.logEntries`. Restore: `parseBackupZip` reads it optional; step **22n-quater** after the chats re-creates each line under its own `id` + `createdAt` + `updatedAt`; while the logs DB is degraded WARN `Skipping Log restore — logs database is in degraded mode {rowCount}` + warning `Log entries were not restored because the logs database is in degraded mode`; per-row warning `Failed to restore Log entry: <msg>` + WARN; DEBUG `Restored Log entries {total, restored}`; `RestoreSummary.logEntries`; preview count. New-account: `remapFields(entry, ['id','chatId','characterId'])`. Replace / delete-all: `clearFormat3Entities` calls a NEW `deleteAll()` (INFO `Deleted all log entries {deletedCount}`). Help: `system-backup-restore.md` (+ the Log under *Logs & History*; + open Storyteller rounds under *Not Included*), `the-log.md` one sentence. Tests: a 4.11 `restore-field-fidelity` block naming every 4.11 data-model addition — a ready checklist for the catch-up's carriers lane. **v5 intersection:** P4.D327 (its item 25 + "assert NO `log_entries` file in any archive") and P4.D331 (the Log's repository + the `DDL.md` note) port the PIN's rule — correct at `322a5488e`, v4 drift once the baseline passes this commit: those assertions flip BY DESIGN. Also moves: `services/backup/collect.rs`, the restore driver + remapper + delete-all path, the restore census whitelist (`RESTORE_TS_MESSAGES`, TS + Rust — the new lines), the backup / restore oracle families and `restore_vintage_state`'s archives. | UNPROCESSED |
+| `cc5f2347c` | 2026-10-26 | Fix: backups now carry the Log (log_entries) (#117) | **PORT — ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED: it REVERSES the pin's rule that the Log is NOT carried by a logical backup; NO D23 move; `.qtap` still omits the Log** (classified 2026-10-27 from the hunks; 15 files +350 / −2; prod 8 files +102; no stamp; parent `539bb4012`; merged by `744596158`). Backup: `data/log-entries.json` via a NEW `LogEntriesRepository.findAllEntries()` (`SELECT … ORDER BY "createdAt" ASC`, `[]` while degraded, DEBUG `All log entries read`), DEBUG `Collected Log entries for backup {rowCount}`, manifest `counts.logEntries`. Restore: `parseBackupZip` reads it optional; step **22n-quater** after the chats re-creates each line under its own `id` + `createdAt` + `updatedAt`; while the logs DB is degraded WARN `Skipping Log restore — logs database is in degraded mode {rowCount}` + warning `Log entries were not restored because the logs database is in degraded mode`; per-row warning `Failed to restore Log entry: <msg>` + WARN; DEBUG `Restored Log entries {total, restored}`; `RestoreSummary.logEntries`; preview count. New-account: `remapFields(entry, ['id','chatId','characterId'])`. Replace / delete-all: `clearFormat3Entities` calls a NEW `deleteAll()` (INFO `Deleted all log entries {deletedCount}`). Help: `system-backup-restore.md` (+ the Log under *Logs & History*; + open Storyteller rounds under *Not Included*), `the-log.md` one sentence. Tests: a 4.11 `restore-field-fidelity` block naming every 4.11 data-model addition — a ready checklist for the catch-up's carriers lane. **v5 intersection:** P4.D327 (its item 25 + "assert NO `log_entries` file in any archive") and P4.D331 (the Log's repository + the `DDL.md` note) port the PIN's rule — correct at `322a5488e`, v4 drift once the baseline passes this commit: those assertions flip BY DESIGN. Also moves: `services/backup/collect.rs`, the restore driver + remapper + delete-all path, the restore census whitelist (`RESTORE_TS_MESSAGES`, TS + Rust — the new lines), the backup / restore oracle families and `restore_vintage_state`'s archives. | UNPROCESSED — ⚠ ported over the `322a5488e` round's LANDED Log carriers (P4.D327 / P4.D331 on main 2026-10-27): flips their "no `log_entries` file" pins by design |
 | `026222176` | 2026-10-26 | Security: pdfjs-dist 6.4, in-house PDF text reader; fix PDF preview race (bug 266) | **PORT (one WARN text + the converter's spec) + NO-PORT? (dependencies, bundles, the SPA canvas race); NO D23 move** (classified 2026-10-27 from the hunks; 25 files +36,229 / −29,196; prod 13 files +35,646 / −28,773 — nearly all `public/pdf.worker.mjs` and eight re-built `plugins/dist/*/index.js`; `dev.90`; parent `40cc6ffda`, a parallel branch to `539bb4012` → `cc5f2347c`). `pdf-parse` REMOVED; `convertPdfBufferToText` reads with `pdfjs-dist/legacy/build/pdf.mjs` 6.4.299 directly — pdf-parse 2.x's line (4.6 pt) / cell (7 pt → `\t`) assembly, `\n\n-- N of T --\n\n` page markers, `enableXfa: false`, `page.cleanup()`, `loadingTask.destroy()` always, a NEW DEBUG `Extracted PDF text {pages, chars}`; the failure WARN unchanged. `file-content-extractor.ts`'s WARN `pdf-parse found no text, using native fallback extraction` → **`PDF reader found no text, using native fallback extraction`**. Bug 266 (v4-ORIGINATED, found live on `V4test`; v5 Owed): `FilePreviewPdf.tsx` cancels + awaits an in-flight render before re-rendering. Lockfile: `pdfjs-dist` 6.4.299, `@napi-rs/canvas` 1.0.13, **`openai` 7.34.0 → 7.45.0**, `@openrouter/sdk` 1.5.9, `next` 16.4.3; `zod` unchanged 4.6.7. **v5 intersection:** the WARN text is pinned at `crates/quilltap-core/src/generators/file_content.rs:341` / `:499` (P4.D253, bug 177), `ai_import.rs`, `common_helpers_selftest.rs`, `ai_import_tier3_equivalence.rs`, and the `character-wizard-tier3` / `ai-import-tier3` oracles — a byte move. v5's production `DocumentTextExtractor` is `RefusingTextExtractor` (P4.D253), so the reader's assembly is spec for a future host converter, not a behaviour move today. ⚠ **IMPORT-DEAD:** `harness/oracle/cases/file-content-extractor.test.ts:149` `require.resolve('pdf-parse')`. `provider_sdk_version_guard` (P4.D311, openai 7.34.0) reddens at any pin past this. The v5 SPA has no `pdfjs-dist` (no canvas preview) — bug 266's SPA half is a NO-PORT? candidate pending a look at the Files preview's PDF arm. | UNPROCESSED |
 | `744596158` | 2026-10-26 | Merge remote-tracking branch 'origin/main' | **NO-PORT? — the merge of `026222176` with `cc5f2347c` (+ `539bb4012`); conflict ONLY in `docs/CHANGELOG.md`, no code resolved** (classified 2026-10-27 from `git show --cc`; `dev.90`; parents `026222176` `cc5f2347c`). **v5 intersection:** none beyond its two parents' rows. | UNPROCESSED |
 | `c50cdddc6` | 2026-10-26 | Document terminal sessions as excluded from backups (#118) | **NO-PORT? (code) + help text — no production code** (classified 2026-10-27; 6 files +238 / −1; no stamp; parent `744596158`): `help/ariel.md` (one paragraph extended — sessions and transcripts stay out of a backup), `help/system-backup-restore.md` (+ an *Ariel's terminal sessions* Not-Included bullet), a release-checklist line, a NEW test `terminal-sessions-excluded.test.ts`, and a mock fix (`logEntries` in `delete-service-annotations.test.ts`). **v5 intersection:** ⚠ `help/ariel.md` is a page the `322a5488e` round just vendored (P4.D339, with P4.D337's `:27-30`) — re-vendor at the catch-up; confirm v5's backup also leaves `terminal_sessions` out (expected — the pin's rule). | UNPROCESSED |
-| `85c002822` | 2026-10-26 | Fix terminal Kill ignored by bash; deleted chats leave shells running (#119) | **PORT — bugs 267 + 268 (both v4-ORIGINATED — 267 "by code reading", 268 "while fixing 267"; v5 Owed), NOT a convergence; ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED; NO D23 move** (classified 2026-10-27 from the hunks; 17 files +571 / −25; prod 8 files +291 / −19; `dev.91`; parent `c50cdddc6`). **Bug 268:** `ptyManager.terminate(id, graceMs = 3000)` — `kill(id,'SIGHUP')`, then SIGKILL if `meta.exitedAt` is still null (WARN `[PTY] Session ignored SIGHUP; sending SIGKILL {sessionId, graceMs}`); BOTH `/api/v1/terminals/[id]` kill and DELETE use it (were `kill(id,'SIGTERM')`); async `kickAllForChat` (which flushed Ariel first) REPLACED by sync `disposeChatSessions(chatId)` → terminate + drop each, INFO `[PTY] Terminated sessions of deleted chat {chatId, count}` / DEBUG `[PTY] No live sessions for deleted chat`; called from `ChatsRepository.delete` after the row is gone (WARN `Failed to terminate terminal sessions for deleted chat`). **Bug 267:** `TerminalSessionsRepository.sweepOrphanedTranscripts({isLive, graceMs, now?})` unlinks `<logs>/terminals/*.log` no row names (by id or resolved `transcriptPath`), not live, unwritten for `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` (1 h); INFO `Swept orphaned terminal transcripts {scanned, deleted}`; daily-maintenance step **6b** `orphan-transcripts` (`Orphaned-transcript sweep failed — continuing`) and a NEW `MaintenanceSweepSummary.orphanedTranscriptsSwept {scanned, deleted}` key. `help/ariel.md` rewritten (+2 paragraphs). **v5 intersection:** P4.D337 (bug 255) re-ported `pty-manager.ts` at the pin, reading `kickAllForChat` (`:625-646`), and P4.D339 vendors `help/ariel.md`. v5 HAS both defects: `crates/quilltap-host/src/terminal/mod.rs` `kill` sends `SIGTERM` only and `kick_all_for_chat` has no production caller (P4.1's PTY lane); `crates/quilltap-core/src/services/scheduled_maintenance.rs` has no orphan-transcript sweep — the new summary key moves the scheduled-maintenance differential. | UNPROCESSED |
+| `85c002822` | 2026-10-26 | Fix terminal Kill ignored by bash; deleted chats leave shells running (#119) | **PORT — bugs 267 + 268 (both v4-ORIGINATED — 267 "by code reading", 268 "while fixing 267"; v5 Owed), NOT a convergence; ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED; NO D23 move** (classified 2026-10-27 from the hunks; 17 files +571 / −25; prod 8 files +291 / −19; `dev.91`; parent `c50cdddc6`). **Bug 268:** `ptyManager.terminate(id, graceMs = 3000)` — `kill(id,'SIGHUP')`, then SIGKILL if `meta.exitedAt` is still null (WARN `[PTY] Session ignored SIGHUP; sending SIGKILL {sessionId, graceMs}`); BOTH `/api/v1/terminals/[id]` kill and DELETE use it (were `kill(id,'SIGTERM')`); async `kickAllForChat` (which flushed Ariel first) REPLACED by sync `disposeChatSessions(chatId)` → terminate + drop each, INFO `[PTY] Terminated sessions of deleted chat {chatId, count}` / DEBUG `[PTY] No live sessions for deleted chat`; called from `ChatsRepository.delete` after the row is gone (WARN `Failed to terminate terminal sessions for deleted chat`). **Bug 267:** `TerminalSessionsRepository.sweepOrphanedTranscripts({isLive, graceMs, now?})` unlinks `<logs>/terminals/*.log` no row names (by id or resolved `transcriptPath`), not live, unwritten for `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` (1 h); INFO `Swept orphaned terminal transcripts {scanned, deleted}`; daily-maintenance step **6b** `orphan-transcripts` (`Orphaned-transcript sweep failed — continuing`) and a NEW `MaintenanceSweepSummary.orphanedTranscriptsSwept {scanned, deleted}` key. `help/ariel.md` rewritten (+2 paragraphs). **v5 intersection:** P4.D337 (bug 255) re-ported `pty-manager.ts` at the pin, reading `kickAllForChat` (`:625-646`), and P4.D339 vendors `help/ariel.md`. v5 HAS both defects: `crates/quilltap-host/src/terminal/mod.rs` `kill` sends `SIGTERM` only and `kick_all_for_chat` has no production caller (P4.1's PTY lane); `crates/quilltap-core/src/services/scheduled_maintenance.rs` has no orphan-transcript sweep — the new summary key moves the scheduled-maintenance differential. | UNPROCESSED — ⚠ ported over the `322a5488e` round's LANDED terminal port (P4.D337 on main 2026-10-27) + the vendored `help/ariel.md` (P4.D339) |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -842,6 +516,52 @@ don't silently swap it in.
 
 ## §6 History
 
+- **The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar +
+  bug-255 drift catch-up round (2026-10-27, baseline `e8e17b2d9` →
+  `322a5488e`; seventeen lanes, one stacking point `INVENTORY`):** the
+  twenty-two rows `e8e17b2d9..322a5488e` retired. Round record:
+  `status-log.md` → "The `322a5488e` … round — UNIFICATION record
+  (2026-10-27)".
+  - **`NO-PORT-RATIFIED(P4.D339)`:**
+    - `cad017599`, the Measure Twice test (its seven cases mirrored by
+      P4.D329 over the widened `pascal-run-custom` pair).
+    - `cc57e6cbc`, the broader-gates spec (docs only).
+  - **ABSORBED:**
+    - `4fbdad186` (P4.D324, P4.D325, P4.D326, P4.D327, P4.D330, P4.D339; the
+      archive keep was P4.D322's), the Inventory — the THIRTEENTH D23 move.
+    - `e1872c94f` (P4.D324 [the flag column], P4.D328, P4.D329, P4.D330,
+      P4.D334, P4.D339; `child-repositories-proxy.ts` NO-PORT), the Inventory
+      tools + Pascal inventory support — the FOURTEENTH move.
+    - `102a23648` (P4.D324 [bug 253], P4.D328, P4.D330; bug 254 was
+      P4.D322's), the Inventory dogfood fixes + the roster shelf gate.
+    - `1d0a31132` (P4.D338), scenario lists by title.
+    - `a6292f169` (P4.D337, P4.D339), bug 255 — the FIFTEENTH move, `vt100`
+      0.18.1 (approved 2026-10-21).
+    - `7263105c6` (P4.D340 [the lint], P4.D338 [bug 256], P4.D330), the
+      Inventory title lint + published vault addresses.
+    - `406dbdd5a` (P4.D326, P4.D339), the bug-133 re-ruling.
+    - `ea2cb60ab` (P4.D332, P4.D339), `edit_custom_tool`.
+    - `680b71044` (P4.D338 [server], P4.D330 [client]), `/photos` without
+      vaults + the album selector.
+    - `cfa0cba29` (P4.D332), vault custom tools as the character's only.
+    - `e4a60ad9e` (P4.D324 [the re-dump's `llmLogs` block], P4.D331, P4.D334
+      [the effect UI], P4.D333 [the schema], P4.D339), the Log — the
+      SIXTEENTH move, `regress` (approved 2026-10-21).
+    - `a495faa26` (P4.D331), the Log's date bounds + regex errors.
+    - `e27fb6b34` (P4.D330, P4.D339; theme-storybook NO-PORT), the Inventory
+      icon.
+    - `5a8338b30` (P4.D338), the toast z-index.
+    - `2b5e8ee24` (P4.D335, P4.D336, P4.D339; theme-storybook NO-PORT), raise
+      a hand / stop.
+    - `c56fe278c` (P4.D332), `edit_custom_tool`'s `schema` action.
+    - `a53024d3c` (P4.D333, P4.D329 [the aggregate], P4.D334, P4.D339), OR /
+      any-of + `inventoryAggregate`.
+    - `b8362beb5` (P4.D336), the stacked composer buttons.
+    - `d88c1ce39` (P4.D330, P4.D339), the blank-description hint.
+    - `322a5488e` (P4.D333, P4.D334, P4.D339), bug 257 — the table dealt
+      before the consult.
+  - P4.D339 also joins every row whose `help/` or `docs/` hunk it vendored
+    (its order's HANDOFF table is the measured list).
 - **The `e8e17b2d9` outfit-history + Workbench-picker + gallery + bug-252
   drift catch-up round (2026-10-19, baseline `25b8fab6a` → `e8e17b2d9`;
   nine lanes, one stacking point):** the fourteen rows through `e8e17b2d9`

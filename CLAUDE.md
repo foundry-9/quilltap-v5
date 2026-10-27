@@ -1074,10 +1074,38 @@ records THERE. Update this summary only when a phase or round completes.
     sixteenth D23 moves in ONE re-dump (two rulings owed first: the
     terminal-emulator crate for bug 255, the `log_entries` provisioning
     shape) — `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `e8e17b2d9` (2026-10-18, v4 main — "Fix: restore and
-  import keep chat outfits (bug 252) (#101)", `4.11.0-dev.26`), adopted at
-  the `e8e17b2d9` round's unification
-  (2026-10-19).** **Drift state, the drift-check method,
+- **The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar +
+  bug-255 drift catch-up round (P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥
+  P4.D328 ∥ P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥
+  P4.D333 ∥ P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339): UNIFIED on main
+  (2026-10-27) — ALL SEVENTEEN LANES LANDED; the oracle baseline MOVES to
+  `322a5488e`; the twenty-two rows retire; the 46 v4 commits past the pin stay
+  in the ledger's §3 UNPROCESSED, PIN REQUIRED.** v4's Inventory programme
+  whole (moves 13–16 in ONE `fresh_schema.json` re-dump), the Log (`regress`
+  `regexp()`), the custom-tool grammar (inventory, any-of, bug 257), vault-only
+  custom tools + `edit_custom_tool`, raise a hand / stop, bug 255 over `vt100`,
+  the smalls, `help/` 135 / `docs/v4/` 502. **The §3 review (six readers + the
+  unifier + four fix agents): ONE defect that would have shipped — a client's
+  65535 × 65535 terminal resize made vt100 preallocate ~137 GB and abort the
+  server (clamped, a ruled divergence) — and five union obligations no lane
+  could see** (P4.D329's C2 stand-ins live in production, their signatures
+  drifted from the real C2; Pascal effects missing the turn's container;
+  operator Inventory gestures unwired; the title lint's gate-key fences;
+  oracle-side carves and five oracle-side v4-title-lint stubs no census saw).
+  Fixed red-first beside them: the archetype picker that could never select,
+  the lock-held participant guard, the Workbench's stale draft between
+  gestures, 500 vs 503, the V8 JSON reason. ESCALATED: the Brahma one-shot
+  stop (contradicts R-4). Gate: sweep 753 ok of 767, every non-standing red
+  resolved; 862 binaries / 5,688 / 15 (2 standing + 1 fixed census + 12
+  env-block, green by name) / 3, zero SKIP; SPA 568 / 13,107; Playwright 448 /
+  3 / 9, each red green by file. Versions: core 0.0.1336, web 0.0.246, SPA
+  0.5.905. **Next: the owed dogfood pass (union build), the follow-ups smalls
+  round (the R-4 ruling first), then the 46-commit catch-up** — `phase-4.md`.
+  Round record: `status-log.md`.
+- **Oracle baseline: `322a5488e` (2026-10-20, v4 main — "Fix: custom-tool
+  LLM consult can narrate a verdict the table already reached (bug 257)",
+  `4.11.0-dev.53`), adopted at the `322a5488e` round's unification
+  (2026-10-27).** **Drift state, the drift-check method,
   and the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
   and by `/unify` at baseline moves; the other porting commands run the

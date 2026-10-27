@@ -7151,7 +7151,70 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
-## The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round (P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥ P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339) — ORDERED 2026-10-20
+## The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round (P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥ P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339) — UNIFIED 2026-10-27 (ordered 2026-10-20)
+
+**UNIFIED on main (2026-10-27). ALL SEVENTEEN LANES LANDED, and the oracle
+baseline MOVES `e8e17b2d9` → `322a5488e`.** The twenty-two §3 rows retire to
+the drift ledger's §6 (twenty ABSORBED, two NO-PORT-RATIFIED(P4.D339)); the
+46 commits v4 landed past the pin (32 of 2026-10-26 + 14 of 2026-10-27,
+`/driftcheck` `15277d2ee` at unify start) stay in §3 UNPROCESSED; regen rule
+PIN REQUIRED at `322a5488e`. Round record: `status-log.md`.
+- **Landed:** the Inventory whole (storage + model + the THIRTEENTH /
+  FOURTEENTH D23 moves, the routes for four tiers, the nine tools, the
+  Pascal inventory grammar, the image carry + the bug-133 re-ruling, the
+  carriers, the title lint, the SPA); the Log (the SIXTEENTH move through the
+  structural pass, `regexp()` over `regress`, three tools, the Pascal `log`
+  effect); any-of gates / whens + bug 257; vault-only rosters +
+  `edit_custom_tool`; raise a hand / stop (server + SPA); bug 255 over
+  `vt100` (the FIFTEENTH move); the four smalls; `help/` 135, `docs/v4/` 502.
+  The ONE `fresh_schema.json` re-dump re-run from the pin: byte-equal.
+- **The §3 review (six parallel readers + the unifier) — the defect that
+  would have shipped:** P4.D337's `clamp_size` had no ceiling; vt100
+  preallocates every cell, so a client resize of 65535 × 65535 (or a stored
+  size replayed by `terminal_read`) asked for ~137 GB and ABORTED the server
+  where v4 survives. Now clamped at 500 × 200 (a ruled divergence, pinned).
+  Also BLOCKING and fixed: the Inventory SPA's "New from archetype…" could
+  never select (a per-CD object binding re-seeded the dialog — lane-
+  introduced, the spec had used a stable signal); the lock-held unequip /
+  pick-up skipped v4's participant guard.
+- **Union obligations the lanes could not see, all closed:** P4.D329's C2
+  stand-ins REFUSED every bag load on the union (every inventory gate
+  declined, no inventory effect applied) and had drifted from P4.D328's real
+  signatures — swapped onto the real C2 with `InventoryPool` made `Sync`; the
+  Pascal run passed no pending Inventory map; operator Inventory gestures
+  fired no effects (wire 8); the title lint's gate-key census and resolver
+  were still fenced (wire 18 — a schema-stage error anywhere made every titled
+  Inventory write refuse). Plus: the three-way Pascal grammar union hand-
+  merged and verified point by point against v4; every `UNTIL_UNION` carve
+  lifted; the catalog (76) and the definition corpus (710) regenerated ONCE;
+  should-fixes (save-to-store's 503, the V8 JSON reason, one route-profile
+  reader, the editor's per-keystroke refetches).
+- **Escalated:** R-4 is contested — v4's Carina → Brahma answer inside a
+  Salon turn honours Stop (AsyncLocalStorage); v5's one-shot loop does not.
+  A ruling is owed before the follow-ups round.
+- **Gate:** fmt / clippy (both feature sets) / release clean; the full sweep from the pin 753 ok / 9 / 1 refused / 4 non-extractable of 767 — every non-standing red resolved (two missed oracle-side carves and five oracle-side title-lint stubs lifted, two sweep-order artifacts green re-run, the SDK guard green against the pin); `cargo test --workspace` 862 binaries / 5,688 / 15 / 3 ignored, zero SKIP (the two standing, one census the unifier moved and fixed, twelve env-block collisions each green by name); Tier R ok; SPA 568 files / 13,107; Playwright 448 / 3 / 9 (17.8 m), each red green by file (the recorded `salon-regenerate-stream` intermittent 3/3, 3/3, 2/3; `salon-thinking-indicator` 1/1; `wardrobe-flow` 21/21) after the e2e round fixed one port defect (the Workbench stale draft) and the spec premises the always-rendered composer trio and the vault-only rosters moved. Versions: core 0.0.1336, host 0.0.214, web 0.0.246, SPA 0.5.905.
+
+**NEXT** (in order; the orders' status headers carry each lane's OPEN items):
+1. **The owed dogfood pass — BOTH queues** (the `e8e17b2d9` round's and this
+   round's §S.8), on a Friday copy with the UNION build (record the copy's
+   vintage first; every ensure an INFO or a NO-OP).
+2. **The follow-ups smalls round:** the ready rider branch
+   `claude/import-chat-record-columns-f49fb0` first; the R-4 Brahma-stop
+   ruling; this round's OPEN review items (raise-hand's 404 / 400 order, the
+   SPA multi-character check, the librarian `null` log field, the pending
+   map's insertion order, integer-like gate-key ordering in the evaluators,
+   the `chat_messages` lazy-create question, the `chats_read` probe, the
+   merge's arrival WARN, inventory-flow beat (g)'s tool-calling mock, the
+   `workspace-core` `_meta.baseline` literal, P4.D334's help-sentence
+   byte-compare, the v4-shared SVG filing candidate); the carried lists.
+3. **The 46-commit drift catch-up** (`/driftcheck` first; a later pin):
+   `0276d10d9`'s Inventory riders and the three vault-key writers
+   (`humanoid`, diagrams, `pronounGuidance`) FIRST per the 2026-10-26 ruling;
+   `cc5f2347c` (the Log in backups) and `85c002822` (bugs 267 / 268) over
+   this round's landed code; then the D23 keystone (17th–21st moves) and the
+   natural lanes in the ledger's §1 "Next"; the IMPORT-DEAD `pdf-parse`
+   oracle's stage-0 re-aim.
+
 
 **Baseline `e8e17b2d9`. The round is PINNED at v4 `322a5488e`** ("Fix:
 custom-tool LLM consult can narrate a verdict the table already reached

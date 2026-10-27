@@ -12,6 +12,22 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — unify: the `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round — seventeen lanes (P4.D324–P4.D340), the baseline moves `e8e17b2d9` → `322a5488e`
+
+_Docs-only change._
+
+The round record, the phase plan's UNIFIED block and NEXT list, the drift ledger (§1 rewritten for the new baseline; the twenty-two absorbed rows retired to §6 — twenty ABSORBED, two NO-PORT-RATIFIED(P4.D339); the 46 v4 commits past the pin kept in §3 UNPROCESSED), CLAUDE.md's round and baseline bullets, the seventeen orders' Unification paragraphs with what stays OPEN, and the three sweep-results artifacts.
+
+Scope landed: v4's Inventory programme whole (the keystone module, the two Inventory columns and the round's ONE `fresh_schema.json` re-dump carrying moves 13–16, arrivals, the prompt section and bug 253, the nine tools and the third turn container, the routes with `details` on every transport, the image side and the bug-133 re-ruling, the carriers, the title lint, the SPA), the Log (`log_entries`, a V8-faithful `regexp()` over `regress`, three tools, the Pascal `log` effect), the custom-tool grammar (inventory gates / aggregates / effects, any-of groups, the list rule, bug 257's two run orders), vault-only custom tools and `edit_custom_tool`, raise a hand / stop (server + composer), bug 255's server-side screen over `vt100`, the scenario sort, bug 256, the `/photos` album filter, the toast z-index, `help/` 135 and `docs/v4/` 502.
+
+Wires: the Pascal grammar's three-way union resolved in the picks; P4.D329's C2 stand-ins replaced by the real C2 (the signatures had drifted; the pool made `Sync`); the catalog (76) and the definition corpus (710 rows) regenerated once; the re-dump byte-equal; operator Inventory gestures and the title lint's gate keys wired; the `pascal-run-custom` pair rebuilt once; every until-union carve lifted, plus two oracle-side carves and five oracle-side title-lint stubs no census saw.
+
+Review: the would-ship defect was a client-chosen 65535 × 65535 terminal resize making vt100 preallocate ~137 GB and abort the server (now clamped, a ruled divergence); also the archetype picker that could never select, the lock-held participant guard, Pascal effects missing the turn's container, the Workbench's stale draft between gestures, 500 vs 503 on save-to-store, the V8 JSON reason. The Brahma one-shot stop is escalated for a ruling (R-4).
+
+Gate: fmt / clippy (both feature sets) / release clean; the sweep from the pin 753 ok / 9 / 1 refused / 4 non-extractable of 767, every non-standing red resolved; `cargo test --workspace` 862 binaries / 5,688 / 15 / 3 ignored, zero SKIP (two standing, one census fixed, twelve env-block collisions green by name); Tier R ok; SPA 568 files / 13,107; Playwright 448 / 3 / 9 (17.8 m), each red green by file.
+
+Final versions: core 0.0.1336, host 0.0.214, web 0.0.246, cli 0.0.34, tauri 0.0.9, SPA 0.5.905; harness frozen 0.0.1110.
+
 #### 2026-10-26 — feat(spa): raise a hand / stop — the composer's interrupt trio, a real stop dispatch (P4.D336)
 
 _Versions: SPA 0.5.882._

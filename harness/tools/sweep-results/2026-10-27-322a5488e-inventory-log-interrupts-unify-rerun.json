@@ -1,0 +1,90 @@
+{
+  "label": null,
+  "v5w": "/Users/csebold/source/quilltap-v5/.claude/worktrees/unify-322a5488e",
+  "venue_is_worktree": true,
+  "requested": [
+    "tool_build_equivalence",
+    "tools_inventory_equivalence",
+    "inventory_tools_equivalence",
+    "inventory_routes_equivalence",
+    "memory_maintenance_routes_equivalence",
+    "extraction_context_degrade"
+  ],
+  "excluded": [],
+  "nothing_to_run": [
+    "api_key_read_sites_census",
+    "blob_path_normaliser_census",
+    "concierge_legacy_settings_census",
+    "concierge_state_writers_census",
+    "doc_mount_fallback_sites_census",
+    "generation_key_travels_as_is_guard",
+    "get_messages_caller_census",
+    "moderation_refusal_ledger_isolation_guard",
+    "nanogpt_lora_wire_log",
+    "p4_6ao_wire_contract",
+    "p4_6ar_wire_contract",
+    "p4_6ay_workbench_wire_contract",
+    "p4_9g1_wire_contract",
+    "p4_9g6_seam_contract",
+    "p4_d10_wire_contract",
+    "photo_side_effects_wiring",
+    "route_trail_continuation_guard",
+    "salon_fixture_p4d171_ensure",
+    "tool_loop_leg_logging",
+    "transcript_version_isolation_guard",
+    "character_prompt_set_default_dispatch_wire",
+    "graceful_shutdown",
+    "images_edge_routes",
+    "lock_conflict_boot_status",
+    "qtap_import_large_multipart",
+    "completion_behavior"
+  ],
+  "families": [
+    {
+      "family": "tool_build_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "tools_inventory_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "inventory_tools_equivalence",
+      "status": "run_failed",
+      "cause": "  \"DEBUG [InventoryEquip] Dropped an object from every carried set <tagged>\",\n  \"INFO [Pascal] Inventory change posted <tagged>\",\n  \"DEBUG [InventoryEffects] Inventory change effects fired chatId=b1000000-0000-4000-8000-000000000001 characterId=c1000000-0000-4000-8000-000000000001 announced=true provenance=character equippedJson=[] unequippedJson=[\\\"ring\\\"] context=inventory\",\n  \"DEBUG [InventoryTools] inventory_archive context=inventory-tools chatId=b1000000-0000-4000-8000-000000000001 characterId=c1000000-0000-4000-8000-000000000001 tool=inventory_archive refsJson=[\\\"ring\\\"] resolvedJson=[\\\"a0000030-0000-4000-8000-000000000000\\\"] outcome=changed archived=true\",\n  \"DEBUG [InventoryPool] Loaded inventory pool <tagged>\",\n  \"DEBUG [InventoryContext] Loaded characterId=c1000000-0000-4000-8000-000000000001 chatId=b1000000-0000-4000-8000-000000000001 reachable=22 equipped=0 projectShelf=open context=inventory\",\n  \"DEBUG [InventoryLocation] Resolved inventory location <tagged>\",\n  \"DEBUG [InventoryMutations] Archive state changed <tagged>\",\n  \"DEBUG [InventoryTools] inventory_archive context=inventory-tools chatId=b1000000-0000-4000-8000-000000000001 characterId=c1000000-0000-4000-8000-000000000001 tool=inventory_archive refsJson=[\\\"ring\\\"] resolvedJson=[\\\"a0000030-0000-4000-8000-000000000000\\\"] outcome=changed archived=false\"\n]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-harness --test inventory_tools_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "inventory_routes_equivalence",
+      "status": "run_failed",
+      "cause": "    \"http:chat_equip_kit__dump\",\n    \"direct:chat_equip_already__dump\",\n    \"http:chat_equip_already__dump\",\n    \"direct:chat_equip_user_seat__dump\",\n    \"http:chat_equip_user_seat__dump\",\n    \"direct:chat_equip_operator_off_roster__dump\",\n    \"http:chat_equip_operator_off_roster__dump\",\n    \"direct:chat_unequip__dump\",\n    \"http:chat_unequip__dump\",\n]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nerror: test failed, to rerun pass `-p quilltap-web --test inventory_routes_equivalence`",
+      "exit": 101,
+      "warnings": []
+    },
+    {
+      "family": "memory_maintenance_routes_equivalence",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    },
+    {
+      "family": "extraction_context_degrade",
+      "status": "ok",
+      "cause": null,
+      "exit": 0,
+      "warnings": []
+    }
+  ],
+  "totals": {
+    "ok": 4,
+    "run_failed": 2
+  }
+}
