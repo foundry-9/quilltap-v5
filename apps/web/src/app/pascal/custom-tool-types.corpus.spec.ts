@@ -7,7 +7,13 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 537 rows (10 title + 457
+ * This replays the COMMITTED oracle corpus — 710 rows (10 title + 601
+ * definition + 99 gate), the unifier's ONE union regen at the `322a5488e`
+ * unification over the merged generator (P4.D333's 537 rows byte-identical,
+ * plus 173 sibling rows: the inventory / aggregate / log / edit-tool grammar,
+ * and gate rows posed against an Inventory context — a bench's mock rows, or a
+ * real context's calls recorded and replayed here, see `inventoryOf`). Before
+ * that, 537 rows (10 title + 457
  * definition + 70 gate), regenerated ONCE by P4.D333 from v4's REAL
  * `QtapCustomToolSchema` at the `322a5488e` pin (R-F — the round's one regen;
  * siblings merge rows by id and the unifier re-runs it): the any-of gate /
@@ -63,6 +69,10 @@ import {
 import { evaluateToolGate, hasToolGate } from './tool-gate';
 import { gateConditionsFromGate, gateFromConditions } from './tool-draft';
 import type { ProgressPrimitive } from '../progressions/engine';
+import type { MockInventoryRow, ResolvedInventoryItem } from '../core/core-contract';
+import { mockInventoryContext } from './bench-inventory';
+import type { AggregateObject } from './inventory-aggregate';
+import type { InventoryContext, InventoryState } from './inventory-refs';
 
 interface TitleRow {
   kind: 'title';
@@ -105,8 +115,46 @@ interface GateRow {
    * predate the `progress` subject.
    */
   progress?: Record<string, ProgressPrimitive> | null;
+  /**
+   * The Inventory context the gate was posed against (`322a5488e`): a bench's
+   * mock rows (v4 `mockInventoryContext`), or a real context's calls as the
+   * oracle recorded them. Absent on the rows that predate the subject.
+   */
+  inventory?: { rows: MockInventoryRow[] } | { recorded: RecordedInventory };
   hasGate: boolean;
   verdict: string;
+}
+
+interface RecordedInventory {
+  characterId: string;
+  chatId: string | null;
+  calls: Array<{ method: 'state' | 'equippedKinCount' | 'item' | 'scopeObjects'; arg: string; answer: unknown }>;
+}
+
+/**
+ * The context a gate row was posed against. A recorded context answers each
+ * `(method, arg)` the oracle saw with v4's own answer, and THROWS on any call
+ * v4 never made — so a v5 gate that reads a reference v4's did not fails loudly
+ * instead of reading a guessed state.
+ */
+function inventoryOf(row: GateRow): InventoryContext | null {
+  const inv = row.inventory;
+  if (!inv) return null;
+  if ('rows' in inv) return mockInventoryContext(inv.rows);
+  const { characterId, chatId, calls } = inv.recorded;
+  const answer = (method: string, arg: string): unknown => {
+    const call = calls.find((c) => c.method === method && c.arg === arg);
+    if (!call) throw new Error(`${row.id}: v4 never called ${method}(${JSON.stringify(arg)})`);
+    return call.answer;
+  };
+  return {
+    characterId,
+    chatId,
+    state: (ref) => answer('state', ref) as InventoryState,
+    equippedKinCount: (ref) => answer('equippedKinCount', ref) as number,
+    item: (ref) => answer('item', ref) as ResolvedInventoryItem | null,
+    scopeObjects: (scope) => answer('scopeObjects', scope) as readonly AggregateObject[],
+  };
 }
 
 type Row = TitleRow | DefinitionRow | GateRow;
@@ -314,8 +362,12 @@ describe('custom-tool schema — the committed v4 corpus', () => {
         // The third argument is the row's recorded progress sheet (P4.D169);
         // the unification's re-record was what first put a `progress` gate
         // through this replay, and every one failed closed until it was passed.
+        // The fourth is the row's Inventory context (`322a5488e`, wire 17 —
+        // v4's three inventory loops in `tool-gate.ts`).
         expect(
-          JSON.stringify(evaluateToolGate(parsed.data, row.metadata, row.progress ?? undefined)),
+          JSON.stringify(
+            evaluateToolGate(parsed.data, row.metadata, row.progress ?? undefined, inventoryOf(row)),
+          ),
         ).toBe(row.verdict);
       });
     }
