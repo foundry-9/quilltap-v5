@@ -370,6 +370,12 @@ P4.170 (the `322a5488e` follow-ups smalls round), the wardrobe-tool half.
 
 Red-first on unported main against the pin's oracle: 7 divergence keys (the key-order op's lines, both `null` ops' outputs and lines, the read-back, and one picture-scenario line). All 66 ops are green after the change.
 
+#### 2026-10-27 — test(e2e): Playwright beat (H) — Stop mid-Brahma ends the consult and keeps its partial answer (P4.165)
+
+_No crate versions bumped._
+
+`salon-interrupt-flow.spec.ts` gains beat (H). The spec plants Aria as `systemTransparency` and a default OpenAI-compatible profile. The mock answers Aria with `@Brahma:` markup and then streams Brahma slowly. The operator presses Stop mid-consult. Stop must settle in under 10 s and the toast must show. Brahma's partial answer must be persisted exactly once, with no full reply. Passed 3/3 by file on fresh release bins.
+
 #### 2026-10-27 — feat(carina): Stop ends an in-turn Brahma consult, as v4 does (P4.165, R-4 overturned) + Carina's service log lines
 
 _Versions: core 0.0.1337._

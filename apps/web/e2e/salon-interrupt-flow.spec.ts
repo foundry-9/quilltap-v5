@@ -49,6 +49,14 @@ import {
  * `P4D279_SERVER_LANDED` precedent): flipped `true` at the `322a5488e`
  * unification. With the server landed, (F)'s premise (a refused dispatch) is
  * gone, so (F) skips itself; (A) supersedes it.
+ *
+ * **(H) — P4.165** (the human's ruling H-1, overturning P4.D335's R-4): Stop
+ * while Aria's `@Brahma:` consult is answering ends Brahma's one-shot stream at
+ * once, as v4's turn-scoped `currentTurnStopSignal()` does — the composer idles
+ * well inside the 15 s settle window, Brahma's partial answer is posted, and
+ * the rest is never heard. The beat makes Aria `systemTransparency` (Brahma's
+ * reachability gate) and the mock's profile the user's default (the profile
+ * Brahma's one-shot resolves).
  */
 const P4D335_SERVER_LANDED = true;
 const GATE_REASON =
@@ -81,6 +89,10 @@ const STOP_TITLE_REST = 'Stop (while someone is speaking)';
 const HAND_TITLE_LIVE = 'Raise your hand — the next speaker may yield the floor to you';
 const HAND_TITLE_SINGLE = 'Only one character is present — the floor returns to you after this reply';
 const HAND_TITLE_UP = 'Hand raised — the next speaker will be asked to yield. Click to lower it.';
+/** (H): Aria's reply consults Brahma; Brahma's answer streams slowly. */
+const BRAHMA_MARKUP_REPLY = 'Let me consult the Console.\n@Brahma: How many chats are there?';
+const BRAHMA_SLOW_REPLY =
+  'The ledger shows eleven conversations in all, counted twice over by lamplight before the clerk retired';
 
 /** What the spec-local mock answers; a beat sets it before each send. */
 const plan: { replies: string[]; delayMs: number; calls: number } = {
@@ -206,6 +218,13 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     runCliWrite(
       cli,
       `UPDATE chats SET participants = (SELECT json_group_array(CASE WHEN json_extract(value, '$.controlledBy') = 'user' THEN json_set(value, '$.isActive', json('false')) ELSE value END) FROM json_each(chats.participants)) WHERE title = 'Solo Voyage';`,
+    );
+    // (H): Aria may reach Brahma (v4 `brahmaIsReachable` — `systemTransparency`),
+    // and Brahma's one-shot resolves the user's DEFAULT profile — the mock's.
+    runCliWrite(cli, `UPDATE characters SET systemTransparency = 1 WHERE name = 'Aria';`);
+    runCliWrite(
+      cli,
+      `UPDATE connection_profiles SET isDefault = CASE WHEN provider = 'OPENAI_COMPATIBLE' AND id = (SELECT MIN(id) FROM connection_profiles WHERE provider = 'OPENAI_COMPATIBLE') THEN 1 ELSE 0 END;`,
     );
     mock = await startSequencedMock(INT_MOCK_PORT);
 
@@ -407,6 +426,36 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await expect(page.locator('.qt-chat-messages-list').getByText(YIELD_REPLY, { exact: true })).toHaveCount(0);
     await expect(hand(page)).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText('carried on regardless')).toHaveCount(0);
+  });
+
+  test('(H) Stop mid-Brahma ends the consult at once and keeps its partial answer', async ({ page }) => {
+    test.setTimeout(120_000);
+    plan.replies = [BRAHMA_MARKUP_REPLY, BRAHMA_SLOW_REPLY];
+    plan.delayMs = 350;
+    plan.calls = 0;
+    const resumed = await dispatchRaw({ type: 'chatUpdate', chatId: soloChatId, chat: { isPaused: false } });
+    expect(resumed.type, 'resume the solo room').not.toBe('error');
+    await openChat(page, soloChatId);
+    await send(page, 'Would you ask the Console for me?');
+    await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
+    // Brahma's one-shot is the SECOND streamed call (Aria's markup reply first);
+    // it surfaces nothing live, so wait for it at the mock, then let a few of
+    // its words go out before stopping.
+    await expect.poll(() => plan.calls, { timeout: 30_000 }).toBeGreaterThanOrEqual(2);
+    await page.waitForTimeout(1_200);
+    const clickedAt = Date.now();
+    await stopButton(page).click();
+    await expect(page.locator('[role="toast-container"] .qt-toast-info', { hasText: STOP_TOAST })).toBeVisible({
+      timeout: 10_000,
+    });
+    // The stop settles at once — never the 15 s settle timeout a Brahma stream
+    // deaf to the stop used to cost.
+    await expect(stopButton(page)).toBeDisabled({ timeout: 10_000 });
+    expect(Date.now() - clickedAt).toBeLessThan(10_000);
+    // Brahma's partial answer is posted; the rest of it never streamed.
+    await expect.poll(() => persistedCount(soloChatId, 'The ledger shows'), { timeout: 15_000 }).toBe(1);
+    expect(await persistedCount(soloChatId, BRAHMA_SLOW_REPLY)).toBe(0);
+    await expect(page.getByText('The ledger shows').first()).toBeVisible({ timeout: 15_000 });
   });
 });
 
