@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — Lane close record for the Inventory tools and the turn container (P4.D328)
+
+_No crate versions bumped._
+
+Docs only: the work order is marked complete and the status log records the final family sweep, the workspace gate, and the handoffs to the unifier.
+
 #### 2026-10-26 — The pascal-run-custom pair carries the Inventory columns and the Inventory tools' objects (P4.D328)
 
 _No crate versions bumped._
