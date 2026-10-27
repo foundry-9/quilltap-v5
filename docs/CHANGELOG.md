@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — test(restore): the 22f-bis wardrobe folder arms through a derived pre-cutover archive (P4.D284 banked)
+
+_No crate versions bumped._
+
+Adds the restore-side tier-2 row for 22f-bis's wardrobe `folder` arms (P4.D284, banked until now). A new derived archive `restore-archive-wardrobe-folders.zip` (`derive-restore-archive-wardrobe-folders.py`) carries six legacy `wardrobeItems` rows on Riya, with folder values `"Formal"`, `"../x"`, `""`, `5`, `["Formal"]`, and one with no folder. Measured at `322a5488e`: v4 refuses `5` and `["Formal"]` with `path.includes` / `path.split is not a function`, files `Formal Gloves` under `Wardrobe/Formal/`, and files the other three at the root. v5 matches on the first run (`carried_wardrobe_folder` from P4.D284), so no source change was needed. `system_restore_state` runs 71 cases and adds a non-vacuity check. This commit also includes `cargo fmt` on the previous commit's new test file.
+
 #### 2026-10-27 — fix(import): the .qtap NDJSON reader logs v4's skip lines and counts an array record as an unknown kind (P4.D317 #30)
 
 _Versions: core 0.0.1342._

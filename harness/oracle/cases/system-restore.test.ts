@@ -719,6 +719,14 @@ const RESTORE_CASES: Array<{
   // remapped file. The tombstone twin archives Lorian: his vault is never
   // written, so the coat keeps the SOURCE pointer.
   { name: 'restore_wardrobe_picture_replace', archive: 'restore-archive-wardrobe-picture.zip' },
+  // [P4.167 — P4.D284 banked] `restore-archive-wardrobe-folders.zip`
+  // (`fixtures/derive-restore-archive-wardrobe-folders.py`): six legacy
+  // `wardrobeItems` rows on Riya, one per 22f-bis `folder` arm — a safe
+  // folder, an unsafe one, `""`, `5`, `["Formal"]`, absent.
+  {
+    name: 'restore_wardrobe_folders_replace',
+    archive: 'restore-archive-wardrobe-folders.zip',
+  },
   {
     name: 'restore_wardrobe_picture_new_account',
     archive: 'restore-archive-wardrobe-picture.zip',

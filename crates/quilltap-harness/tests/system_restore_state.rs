@@ -1424,6 +1424,9 @@ fn archive_for(name: &str) -> &'static str {
         "restore_wardrobe_picture_replace" | "restore_wardrobe_picture_new_account" => {
             "restore-archive-wardrobe-picture.zip"
         }
+        // [P4.167 — P4.D284 banked] 22f-bis's `folder` arms —
+        // `derive-restore-archive-wardrobe-folders.py`.
+        "restore_wardrobe_folders_replace" => "restore-archive-wardrobe-folders.zip",
         "restore_wardrobe_picture_tombstone_new_account" => {
             "restore-archive-wardrobe-picture-tombstone.zip"
         }
@@ -2291,6 +2294,10 @@ fn system_restore_state_equivalence() {
         // [P4.D152] bug 117's own comparand, taken from the RAW dumps.
         assert_bug117_stored_sha(name, &got_state, want_state, &mut failures);
 
+        // [P4.167 — P4.D284 banked] 22f-bis's `folder` arms stay LIVE in the
+        // oracle (the row diff above proves v5 equal to it).
+        assert_wardrobe_folder_arms_live(name, &case["summary"], want_state, &mut failures);
+
         // [P4.167 H-4 / P-1] the carried rows' archive-row mime / size, from
         // the RAW dumps.
         assert_carried_archive_row_meta(name, &got_state, want_state, &mut failures);
@@ -2420,15 +2427,16 @@ fn system_restore_state_equivalence() {
     // skips, the bad slot in both modes — the new-account one a refusal).
     // 66 + 3 = 69: P4.D327's Inventory carriers (replace, new-account, the
     // tombstone twin). 69 + 1 = 70: P4.167's `new-account` twin of the
-    // dup-store-id arm (P4.D273 Tier 2 #17).
+    // dup-store-id arm (P4.D273 Tier 2 #17). 70 + 1 = 71: P4.167's
+    // wardrobe-folders arm (P4.D284 banked — 22f-bis's `folder`).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        70,
-        "expected all seventy restore cases in the oracle (ten + the #58 orphan-links arm \
+        71,
+        "expected all seventy-one restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2442,7 +2450,7 @@ fn system_restore_state_equivalence() {
          arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
          legacy-settings arms in both modes and the legacy-settings own / null arms \
          + P4.D317's five outfit-history arms + P4.D327's three Inventory arms \
-         + P4.167's new-account dup-store-id arm)"
+         + P4.167's new-account dup-store-id and wardrobe-folders arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -3566,6 +3574,50 @@ fn assert_bag_keys_survive(
                     format!("restored value is {raw:?} — perTurnConversationSummaries is gone"),
                 );
             }
+        }
+    }
+}
+
+/// [P4.167 — P4.D284 banked] `restore-archive-wardrobe-folders.zip`'s six
+/// legacy rows, as v4 restored them at `322a5488e`: the two truthy
+/// non-strings refused with v4's TypeErrors (`path.includes` / `path.split`),
+/// `Formal` filed under `Wardrobe/Formal/`, the other three at the root. Keeps
+/// the archive from going vacuous; the row / warning diff above compares v5.
+fn assert_wardrobe_folder_arms_live(
+    name: &str,
+    want_summary: &Value,
+    want: &Value,
+    failures: &mut Vec<String>,
+) {
+    if name != "restore_wardrobe_folders_replace" {
+        return;
+    }
+    let warnings: Vec<&str> = want_summary["warnings"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    for w in [
+        "Failed to restore wardrobe item \"Numbered Boots\": path.includes is not a function",
+        "Failed to restore wardrobe item \"Listed Sash\": path.split is not a function",
+    ] {
+        if !warnings.contains(&w) {
+            failures.push(format!("[{name}] 22f-bis folder (v4): no {w:?}"));
+        }
+    }
+    let paths: HashSet<&str> = rows_of(want, "mountIndex", "doc_mount_file_links")
+        .iter()
+        .filter_map(|l| str_at(l, "relativePath"))
+        .collect();
+    for p in [
+        "Wardrobe/Formal/Formal Gloves.md",
+        "Wardrobe/Escaped Hat.md",
+        "Wardrobe/Root Scarf.md",
+        "Wardrobe/Unfiled Belt.md",
+    ] {
+        if !paths.contains(p) {
+            failures.push(format!("[{name}] 22f-bis folder (v4): no {p:?} link"));
         }
     }
 }

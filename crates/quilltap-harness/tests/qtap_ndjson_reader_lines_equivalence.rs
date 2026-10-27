@@ -65,7 +65,10 @@ fn v5_records(lines: &[String]) -> Vec<Value> {
         else {
             continue;
         };
-        let mut pairs = vec![json!(["level", level.to_lowercase()]), json!(["message", message])];
+        let mut pairs = vec![
+            json!(["level", level.to_lowercase()]),
+            json!(["message", message]),
+        ];
         for kv in rest[message.len()..].split_whitespace() {
             if let Some((k, v)) = kv.split_once('=') {
                 pairs.push(json!([k, v]));
@@ -108,8 +111,8 @@ fn qtap_ndjson_reader_lines_equivalence() {
         return;
     };
     let text = std::fs::read_to_string(&path).expect("read the oracle");
-    let case: Value = serde_json::from_str(text.lines().next().expect("one case line"))
-        .expect("oracle JSON");
+    let case: Value =
+        serde_json::from_str(text.lines().next().expect("one case line")).expect("oracle JSON");
     assert_eq!(case["name"], "reader_lines");
     let v4_lines = case["lines"].as_array().expect("lines");
     assert_eq!(
@@ -119,12 +122,14 @@ fn qtap_ndjson_reader_lines_equivalence() {
     );
 
     let bytes = std::fs::read(fixture()).expect("read the fixture");
-    let (got, lines) =
-        quilltap_core::test_support::captured_with(|| load_qtap_from_upload(&bytes));
+    let (got, lines) = quilltap_core::test_support::captured_with(|| load_qtap_from_upload(&bytes));
     let export = got.expect("the bundle reassembles on v5");
 
     let (g, w) = (v5_records(&lines), v4_records(v4_lines));
-    assert_eq!(g, w, "the reader lines differ\n  rust:   {g:?}\n  oracle: {w:?}");
+    assert_eq!(
+        g, w,
+        "the reader lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
+    );
 
     // The reassembled shape: the FIRST envelope's manifest, the kept
     // character with only its kept wardrobe item, no plugin data.

@@ -193193,3 +193193,22 @@ measurement: an ARRAY record is an object to JS, so v4's `typeof raw !==
   `QT_ORACLE_QTAP_NDJSON_READER_LINES=… cargo test -p quilltap-harness --test
   qtap_ndjson_reader_lines_equivalence -- --nocapture`.
 
+### Unit 8 — D284-banked: the restore-side 22f-bis `folder` row
+
+Harness + oracle + a NEW derived archive. `derive-restore-archive-wardrobe-
+folders.py` → `restore-archive-wardrobe-folders.zip` (md5 `8571447b…`,
+deterministic — two runs identical; `restore-archive.zip` md5-checked
+unchanged): six legacy `wardrobeItems` rows on Riya, `folder` = `"Formal"` /
+`"../x"` / `""` / `5` / `["Formal"]` / absent; `counts.wardrobeItems` 6. New
+case `restore_wardrobe_folders_replace` (71 cases). **Measured at the pin:**
+`5` → `Failed to restore wardrobe item "Numbered Boots": path.includes is not
+a function`, `["Formal"]` → `… "Listed Sash": path.split is not a function`
+(each with the WARN `{wardrobeItemId, error}`); `Formal Gloves` filed at
+`Wardrobe/Formal/`, the escaped / empty / absent ones at the root. **v5 GREEN
+on the first run** — P4.D284's `carried_wardrobe_folder` already converged;
+no source change, so no red-first (the banked row lands as a pin).
+`assert_wardrobe_folder_arms_live` keeps the oracle from going vacuous. Only
+`system_restore_state` reads the new archive. (This commit also carries the
+`cargo fmt` of unit 7's new test file — unit 7 had been committed after
+clippy without a fresh `fmt`.)
+
