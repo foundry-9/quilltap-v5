@@ -41,8 +41,8 @@ import { openSidebarSection } from './support/sidebar';
  *
  * **GATED beats** — flipped `true` at the `322a5488e` unification (§S.9, R-V).
  * NAMED constants, never a capability probe. Each gated beat calls
- * `test.skip(…)` first thing. Beat (g) stays skipped on its own premise: the
- * shared mock LLM answers text only, so no `inventory_pick_up` turn can be posed.
+ * `test.skip(…)` first thing. Beat (g) drives a real turn through the mock LLM's opt-in streamed
+ * `toolCall` arm (P4.173) and asserts on its own archetype's row.
  */
 // ACTIVATE-AT-UNIFY: P4.D324's `INVENTORY` — the inventory module, the columns, the pool.
 const P4D324_SERVER_LANDED = true;
@@ -63,6 +63,9 @@ const INV_MOCK_LLM_PORT = 45346;
 const INV_INSTANCE_DIR = resolve(ARTIFACTS_DIR, 'inventory-instance');
 const INV_DATA_DIR = resolve(INV_INSTANCE_DIR, 'data');
 const INV_SERVER_LOG = resolve(ARTIFACTS_DIR, 'inventory-server.log');
+
+/** Beat (g)'s archetype — a name no other beat (nor beat (i)'s planted row) carries. */
+const G_ARCHETYPE_NAME = 'Marlinspike';
 
 const SOLO_VOYAGE_CHAT_ID = 'c1000000-0000-4000-8000-000000000001';
 /** Aria on the `characters-main.db` pair (the `workbench-wardrobe-picker-flow` constant). */
@@ -136,7 +139,12 @@ test.describe('P4.D330 — the Inventory SPA, the /photos album selector and the
         `'{"toolName":"inventory_pick_up","success":true,"result":{"item":{"id":"i1","name":"unicorn horn","title":null},"archetype":{"id":"a1","name":"unicorn horn","title":null},"equipped":true}}', ` +
         `'2026-02-02T00:00:00.000Z');`,
     );
-    mock = await startMockLlm(MOCK_LLM_REPLY, INV_MOCK_LLM_PORT);
+    // Beat (g)'s turn: the FIRST streamed completion answers one
+    // `inventory_pick_up` call (the mock's opt-in `toolCall` arm); the tool
+    // loop's follow-up request gets the plain text reply.
+    mock = await startMockLlm(MOCK_LLM_REPLY, INV_MOCK_LLM_PORT, 0, {
+      toolCall: { name: 'inventory_pick_up', arguments: { ref: G_ARCHETYPE_NAME } },
+    });
 
     const logFd = openSync(INV_SERVER_LOG, 'w');
     server = spawn(
@@ -318,15 +326,34 @@ test.describe('P4.D330 — the Inventory SPA, the /photos album selector and the
 
   test('(g) a tool message shows the Pick Up notice', async ({ page }) => {
     test.skip(!P4D324_SERVER_LANDED || !P4D325_SERVER_LANDED || !P4D328_SERVER_LANDED, GATE_REASON);
-    // The order's beat drives a real turn whose model answers one
-    // `inventory_pick_up` call. `e2e/support/mock-llm.ts` (shared, not this
-    // lane's) answers TEXT only — no tool calls — so the turn cannot be posed
-    // yet: HANDOFF to the unifier (a tool-calling arm on the shared mock).
-    // Beat (i) proves the row's rendering from a planted message meanwhile.
-    test.skip(true, 'needs a tool-calling arm on the shared mock LLM (HANDOFF — e2e/support/mock-llm.ts)');
+    // A real turn: the mock answers the first completion with one
+    // `inventory_pick_up` call naming an archetype planted here, so the row
+    // asserted below can only be this turn's — beat (i)'s planted row is a
+    // `unicorn horn`, and the filter keys on this beat's own object.
+    const planted = (await dispatch({
+      type: 'inventoryCreate',
+      container: { scope: 'character', id: ARIA_ID },
+      body: { name: G_ARCHETYPE_NAME, isArchetype: true },
+    })) as { type?: string };
+    expect(planted.type, 'the Marlinspike archetype plant').toBe('inventory');
     await page.goto(`/salon/${SOLO_VOYAGE_CHAT_ID}`);
     await maybeUnlock(page);
-    await expect(page.locator('.qt-chat-wardrobe-notice').filter({ hasText: 'Inventory' })).toContainText('Picked up ');
+    const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
+    await composer.click();
+    await page.keyboard.type('Take up the marlinspike, would you?');
+    await page.keyboard.press('Enter');
+    // A LIVE turn groups the tool row into the assistant's message (v4's
+    // `groupToolMessagesIntoAssistants`), so it renders as the "Pick Up Success"
+    // chip with a collapsed request / response — the standalone notice is the
+    // planted row's shape (beat (i)). The response carries the archetype's name,
+    // which only this turn's call can have produced.
+    // Scoped to the assistant message holding THIS turn's reply (the mock's
+    // fixed text): the planted row in the same chat (beat (i)) groups into
+    // another message, so nothing here can pass on it.
+    const turn = page.locator('.qt-chat-message-row').filter({ hasText: MOCK_LLM_REPLY });
+    await expect(turn.getByText('Pick Up Success')).toBeVisible({ timeout: 30_000 });
+    await turn.getByRole('button', { name: /Tool Response/ }).click();
+    await expect(turn.getByText(/"name":\s*"Marlinspike"/)).toBeVisible({ timeout: 10_000 });
   });
 
   test('(i) a planted inventory_pick_up tool row renders the Pick Up notice (LIVE — SPA rendering only)', async ({

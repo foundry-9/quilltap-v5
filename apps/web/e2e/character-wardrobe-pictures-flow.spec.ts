@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from './support/fixtures';
@@ -11,6 +11,7 @@ import {
   E2E_PASSPHRASE,
   FIXTURE_USER,
   FIXTURES_DIR,
+  REPO_ROOT,
   SINGLE_USER_ID,
   spaDir,
   TEST_PEPPER,
@@ -51,6 +52,8 @@ const USER_TABLES = ['characters', 'chats', 'tags', 'files'];
 
 const OWN_TITLE = 'Flying Coat';
 const GENERAL_TITLE = 'Brass Goggles';
+const GROUP_NAME = 'The Flying Circus';
+const GROUP_TITLE = 'Tin Whistle';
 
 /** A real 2×2 lossy WebP (the avatar-rolls spec's bytes) — an `<img>` it can load. */
 const PICTURE_BYTES = Buffer.from(
@@ -97,6 +100,33 @@ test.describe('P4.D321 — Wardrobe Pictures in the Photo Gallery tab', () => {
       'CREATE TABLE IF NOT EXISTS instance_settings (' +
         '"key" TEXT PRIMARY KEY, "value" TEXT NOT NULL);',
     );
+    // The group plate (G.2) needs a group: the pair predates the `groups` /
+    // `group_doc_mount_links` tables, so materialize them from the committed D23
+    // dump (the `inventory-flow.spec.ts` recipe) — instance materialization, not
+    // a fixture regen.
+    const freshSchema = JSON.parse(
+      readFileSync(
+        resolve(REPO_ROOT, 'crates/quilltap-core/src/services/provisioning/fresh_schema.json'),
+        'utf8',
+      ),
+    ) as { main: string[]; mountIndex: string[] };
+    for (const [partition, table] of [
+      ['main', 'groups'],
+      ['mountIndex', 'group_doc_mount_links'],
+    ] as const) {
+      const create = freshSchema[partition].find((sql) => sql.startsWith(`CREATE TABLE "${table}"`));
+      if (!create) throw new Error(`fresh_schema.json carries no ${table} CREATE TABLE`);
+      const args = [
+        'db',
+        '--data-dir',
+        PICTURES_INSTANCE_DIR,
+        '--write',
+        create.replace('CREATE TABLE', 'CREATE TABLE IF NOT EXISTS'),
+      ];
+      if (partition === 'mountIndex') args.splice(1, 0, '--mount-points');
+      const res = spawnSync(cli, args, { env: cliEnv(), encoding: 'utf8' });
+      if (res.status !== 0) throw new Error(`${table} plant failed:\n${res.stdout}\n${res.stderr}`);
+    }
     ariaId = readOne(cli, `SELECT id FROM characters WHERE name = 'Aria' LIMIT 1;`) ?? '';
     if (!ariaId) throw new Error('the characters fixture has no Aria');
     await startServer();
@@ -128,6 +158,19 @@ test.describe('P4.D321 — Wardrobe Pictures in the Photo Gallery tab', () => {
     const generalItemId = await createItem('/api/v1/wardrobe', GENERAL_TITLE, 'accessories');
     await uploadPicture(ownItemId, `scope=character&id=${ariaId}`, 'flying-coat.webp');
     await uploadPicture(generalItemId, 'scope=general', 'brass-goggles.webp');
+    // The group tier (G.2): a group with Aria as a member and one garment of its
+    // own, so the third plate reads `Group · <name>`.
+    const groupId = await dispatchData<{ group: { id: string } }>({
+      type: 'groupCreate',
+      name: GROUP_NAME,
+    }).then((d) => d.group.id);
+    await dispatchData({ type: 'groupMemberAdd', groupId, characterId: ariaId });
+    const groupItemId = await dispatchData<{ wardrobeItem: { id: string } }>({
+      type: 'groupWardrobeCreate',
+      groupId,
+      item: { title: GROUP_TITLE, types: ['accessories'] },
+    }).then((d) => d.wardrobeItem.id);
+    await uploadPicture(groupItemId, `scope=group&id=${groupId}`, 'tin-whistle.webp');
 
     await openAriaGallery(page);
     await expect(page.locator('qt-avatar-rolls-section')).toBeAttached();
@@ -146,7 +189,11 @@ test.describe('P4.D321 — Wardrobe Pictures in the Photo Gallery tab', () => {
       cli,
       `SELECT id FROM files WHERE category = 'IMAGE' AND linkedTo LIKE '%${generalItemId}%' LIMIT 1;`,
     );
-    if (!ownFile || !generalFile) throw new Error('the uploads left no files rows to flip');
+    const groupFile = readOne(
+      cli,
+      `SELECT id FROM files WHERE category = 'IMAGE' AND linkedTo LIKE '%${groupItemId}%' LIMIT 1;`,
+    );
+    if (!ownFile || !generalFile || !groupFile) throw new Error('the uploads left no files rows to flip');
     const ownName = readOne(cli, `SELECT originalFilename FROM files WHERE id = '${ownFile}';`);
     const generalName = readOne(
       cli,
@@ -161,18 +208,22 @@ test.describe('P4.D321 — Wardrobe Pictures in the Photo Gallery tab', () => {
       cli,
       `UPDATE files SET source = 'GENERATED', generationPrompt = 'Product photograph of brass goggles', createdAt = '2026-10-17T10:00:00.000Z' WHERE id = '${generalFile}';`,
     );
+    runCliWrite(
+      cli,
+      `UPDATE files SET source = 'GENERATED', generationPrompt = 'Product photograph of a tin whistle', createdAt = '2026-10-17T09:59:59.000Z' WHERE id = '${groupFile}';`,
+    );
     await startServer();
 
     await page.goto(`${PICTURES_BASE_URL}/characters`);
     await unlockIfLocked(page);
     await openAriaGallery(page);
 
-    // The shelf: heading, `2 pictures`, collapsed.
+    // The shelf: heading, `3 pictures`, collapsed.
     const section = page.locator('qt-wardrobe-pictures-section');
     const header = section.locator('button[aria-expanded]');
     await expect(header).toBeVisible({ timeout: 15_000 });
     await expect(header).toContainText('Wardrobe Pictures');
-    await expect(header).toContainText('2 pictures');
+    await expect(header).toContainText('3 pictures');
     await expect(header).toHaveAttribute('aria-expanded', 'false');
     await expect(
       section.getByText('Every likeness the house has sketched of the garments within Aria', {
@@ -181,17 +232,19 @@ test.describe('P4.D321 — Wardrobe Pictures in the Photo Gallery tab', () => {
     ).toBeVisible();
     await expect(section.locator('img')).toHaveCount(0);
 
-    // Expand → two captioned plates, the newer (Aria's own) FIRST.
+    // Expand → three captioned plates, newest first (Aria's own, General's, the group's).
     await header.click();
-    await expect(section.locator('img')).toHaveCount(2);
+    await expect(section.locator('img')).toHaveCount(3);
     const plates = section.locator('.grid > .relative.group');
-    await expect(plates).toHaveCount(2);
+    await expect(plates).toHaveCount(3);
     await expect(plates.nth(0).locator('.qt-gallery-caption-title')).toHaveText(OWN_TITLE);
     await expect(plates.nth(0).locator('.qt-gallery-caption-detail')).toHaveText('Own wardrobe');
     await expect(plates.nth(1).locator('.qt-gallery-caption-title')).toHaveText(GENERAL_TITLE);
     await expect(plates.nth(1).locator('.qt-gallery-caption-detail')).toHaveText(
       'Shared · Quilltap General',
     );
+    await expect(plates.nth(2).locator('.qt-gallery-caption-title')).toHaveText(GROUP_TITLE);
+    await expect(plates.nth(2).locator('.qt-gallery-caption-detail')).toHaveText(`Group · ${GROUP_NAME}`);
     await expect(plates.nth(0).locator('.qt-gallery-caption')).toHaveAttribute(
       'title',
       `${OWN_TITLE} — Own wardrobe`,
@@ -268,6 +321,16 @@ function stopServer(): void {
     spawnSync('sleep', ['0.2']);
   }
   server = undefined;
+}
+
+async function dispatchData<T = unknown>(request: Record<string, unknown>): Promise<T> {
+  const res = await api<{ type: string; data: T }>('/api/dispatch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (res.type === 'error') throw new Error(`${request['type']} → ${JSON.stringify(res.data)}`);
+  return res.data;
 }
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {

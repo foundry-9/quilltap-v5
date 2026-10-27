@@ -36,6 +36,22 @@ export interface MockLlmOptions {
    * send only into a chat it created itself (`salon-impersonation-voice-flow`).
    */
   nonStreaming?: boolean;
+  /**
+   * Answer the FIRST streamed completion of a turn with one streamed
+   * `tool_calls` delta (`finish_reason: 'tool_calls'`) instead of text. OPT-IN
+   * (off by default, so no existing spec moves). The tool loop's follow-up
+   * request carries a `role: 'tool'` message — that one, and every request that
+   * already carries one, gets the ordinary text reply, so the loop ends. Each
+   * `toolCall` is consumed once per mock: a later fresh turn answers with text.
+   */
+  toolCall?: MockToolCall;
+}
+
+export interface MockToolCall {
+  /** The tool's registered name (`inventory_pick_up`). */
+  name: string;
+  /** The call's arguments object; serialized into the streamed `arguments`. */
+  arguments: Record<string, unknown>;
 }
 
 export async function startMockLlm(
@@ -44,6 +60,7 @@ export async function startMockLlm(
   delayMs = 0,
   options: MockLlmOptions = {},
 ): Promise<MockLlm> {
+  let pendingToolCall = options.toolCall;
   const server = createServer((req, res) => {
     // The models-list + validate probe (OPENAI_COMPATIBLE `GET {baseUrl}/models`
     // → `{ data: [{ id }] }`; a successful list is also the connection validate).
@@ -70,11 +87,55 @@ export async function startMockLlm(
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
       let streaming = true;
+      let hasToolResult = false;
       try {
         const body = JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}');
         streaming = body.stream === true;
+        hasToolResult =
+          Array.isArray(body.messages) &&
+          body.messages.some((m: { role?: string }) => m?.role === 'tool');
       } catch {
         streaming = true;
+      }
+      if (pendingToolCall && streaming && !hasToolResult) {
+        const call = pendingToolCall;
+        pendingToolCall = undefined;
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+        });
+        const toolChunk = (delta: object, finish: string | null, extra: object = {}) =>
+          `data: ${JSON.stringify({
+            id: 'mock-tc-1',
+            object: 'chat.completion.chunk',
+            model: 'mock-model',
+            choices: [{ index: 0, delta, finish_reason: finish }],
+            ...extra,
+          })}\n\n`;
+        res.write(
+          toolChunk(
+            {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'call_mock_1',
+                  type: 'function',
+                  function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+                },
+              ],
+            },
+            null,
+          ),
+        );
+        res.write(
+          toolChunk({}, 'tool_calls', {
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          }),
+        );
+        res.write('data: [DONE]\n\n');
+        res.end();
+        return;
       }
       if (options.nonStreaming && !streaming) {
         const words = reply.split(' ');

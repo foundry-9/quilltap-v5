@@ -335,7 +335,8 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       await passphrase.fill(E2E_PASSPHRASE);
       await page.getByRole('button', { name: 'Unlock' }).click();
     }
-    await expect(roster).toBeVisible({ timeout: 10_000 });
+    // The unlock runs PBKDF2; on a loaded machine it outlasts a 10 s wait.
+    await expect(roster).toBeVisible({ timeout: 45_000 });
   }
 
   /** Open Aria's detail view from the roster (card BODY click — finding #4). */
@@ -1364,7 +1365,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
       !P4D315_SERVER_LANDED || !P4D316_SERVER_LANDED,
       'ACTIVATE-AT-UNIFY (P4.D318 → P4.D315 / P4.D316): the history GET and the rollback POST + recording are the server lanes\' — flipped at unification (§S.9)',
     );
-    test.setTimeout(90_000);
+    test.setTimeout(240_000);
     const { chatId, ariaId } = await reachSoloVoyage(page);
     const broguesId = await createGarment(page, ariaId, 'History Brogues', 'footwear');
     await createGarment(page, ariaId, 'History Cravat', 'accessories');
@@ -1415,9 +1416,21 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(entries).toHaveCount(count);
     await page.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
-    // Aurora's announcement in the Salon is the unifier's to MEASURE on the
-    // live run and pin (P4.D318 item 13 — not measurable on this lane's
-    // branch, which has no rollback server); until then the 💸 row carries it.
+    // F.9 (P4.173): Aurora's `outfit-change` whisper lands in the chat after the
+    // debounced announcement job runs; the NEWEST one describes the brogues-only
+    // outfit the rollback returned to (the cravat is gone from it). A bounded
+    // poll of the transcript read the Salon itself subscribes to.
+    await expect(async () => {
+      const transcript = await dispatch(page, { type: 'chatTranscript', chatId });
+      const messages = (transcript['messages'] ?? []) as Array<{ content?: string }>;
+      const whispers = messages
+        .map((m) => m.content ?? '')
+        .filter((c) => /Aurora marks an alteration to Aria/.test(c));
+      expect(whispers.length, "Aurora has whispered about Aria's attire").toBeGreaterThan(0);
+      const newest = whispers[whispers.length - 1];
+      expect(newest, 'the newest Aurora outfit-change whisper').toContain('History Brogues');
+      expect(newest).not.toContain('History Cravat');
+    }).toPass({ timeout: 90_000, intervals: [2_000, 3_000, 5_000] });
   });
 
   test('in chat: with staged Live edits, Wear again confirms and discards them', async ({ page }) => {

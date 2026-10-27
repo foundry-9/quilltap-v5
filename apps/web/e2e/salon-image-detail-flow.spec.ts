@@ -71,6 +71,13 @@ test.describe('P4.9a2 — the deep image-detail modal family', () => {
     const ctx = await pwRequest.newContext();
     let chatId: string | null = null;
     try {
+      // Unlock the shared server ourselves (idempotent): run BY FILE this beat
+      // used to find the instance locked, read an error envelope for `listChats`
+      // and skip — the re-pin below never ran (P4.173 D.8). In the full suite
+      // `foundation.spec.ts` has unlocked it already; the repeat is a no-op.
+      await ctx.post(`${BASE_URL}/api/dispatch`, {
+        data: { type: 'unlock', passphrase: E2E_PASSPHRASE },
+      });
       const res = await ctx.post(`${BASE_URL}/api/dispatch`, { data: { type: 'listChats' } });
       const body = (await res.json().catch(() => null)) as {
         data?: { id: string; project?: unknown }[];

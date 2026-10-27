@@ -22,13 +22,15 @@ import { seedHelpFixture, type HelpSeedResult } from './support/seed-help-fixtur
  * ## The Tier-3 deferral, MEASURED not assumed
  *
  * A `help_navigate` tool turn is NOT exercised here. `support/mock-llm.ts`
- * emits `content` deltas and a `finish_reason: stop` chunk and nothing else —
- * it has no `tool_calls` branch — so no browser walk can make the server emit a
- * `toolResult` frame named `help_navigate`. Rather than stub the assertion, the
+ * gained an opt-in streamed `toolCall` arm (P4.173), but its call is consumed by
+ * the FIRST streamed completion of the mock it was given, and this spec rides
+ * the shared global-setup server whose mock every earlier file's sends reach
+ * first — a one-shot tool call there would land on an arbitrary beat. A fifth
+ * beat needs a spec-owned instance (the `inventory-flow.spec.ts` recipe); that
+ * is recorded as P4.173's Tier-3 deferral, not stubbed. Meanwhile the
  * navigation-link path is proven at unit tier (`help-stream.spec.ts` folds the
  * real frames; `help-dialog.spec.ts` drives the strips through the real
- * component). Teaching the mock to answer a tool call is the follow-up that
- * would activate a fifth beat here.
+ * component).
  *
  * Beats:
  *   1. The rail opens the dialog; the Ask tab shows the eligible seat as a pill.
