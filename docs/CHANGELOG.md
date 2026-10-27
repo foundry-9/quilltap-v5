@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): drift check — CLEAR of new commits since `86cc25482` (still 51 past the `322a5488e` baseline)
+
+_Docs-only change._
+
+Re-fetched v4: `main` still `86cc25482`, `bugfix` `489b228b6`, `release` `2432b9057`, local equal to `origin`; checkout clean on `main`. No new §3 rows. No v4 bug issues exist on GitHub yet, so nothing past the frozen Bug 269 catalogue to check for convergence. §1's check line updated; the verdict (DRIFT PENDING — 51 commits, all UNPROCESSED) and the regen rule (pin required at `322a5488e`) stand.
+
 #### 2026-10-27 — docs(porting): drift check — 5 v4 commits past `85c002822` (bug 269 NanoGPT image sizes, composer prose mode, two legibility passes, bug filing moved to GitHub Issues)
 
 _Docs-only change._

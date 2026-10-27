@@ -28,13 +28,19 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-27 (afternoon), by `/driftcheck` run on main right
-  after the `322a5488e` round's unification (`a87b3b4b1`) — the §2 probe
-  FAILED on 5 new `main` commits past the recorded `85c002822`. Fetched
-  first; local equals remote on all three branches (`main` = `86cc25482`,
-  `bugfix` = `489b228b6`, `release` = `2432b9057`). The 5 were classified
-  directly from their hunks.
-  - **Before that:** 2026-10-27 (morning), by `/driftcheck`
+- **Checked:** 2026-10-27 14:33 CDT, by `/driftcheck` on main (`dd3b89e2c`)
+  — fetched first; **NOTHING NEW**: local equals `origin` on all three
+  branches (`main` = `86cc25482`, `bugfix` = `489b228b6`, `release` =
+  `2432b9057`), the checkout on `main` and CLEAN, and `gh issue list -R
+  foundry-9/quilltap-server --label bug --state all` returns NO issues yet
+  (no post-catalogue bug to converge). Every §1 fact below stands unchanged.
+  - **Earlier the same day:** 2026-10-27 (afternoon), by `/driftcheck` run on
+    main right after the `322a5488e` round's unification (`a87b3b4b1`) — the §2 probe
+    FAILED on 5 new `main` commits past the recorded `85c002822`. Fetched
+    first; local equals remote on all three branches (`main` = `86cc25482`,
+    `bugfix` = `489b228b6`, `release` = `2432b9057`). The 5 were classified
+    directly from their hunks.
+  - **Before that (morning):** 2026-10-27, by `/driftcheck`
     (`15277d2ee`, run as the
     round's `/unify` started — the §2 probe had FAILED on 14 new `main`
     commits past the then-recorded `a0905454b`). Both branches re-probed
