@@ -193141,3 +193141,20 @@ generateId()`). The memory repository (P4.168's) is untouched.
 - The module header's "deferred by name under P4.D272 R-E" paragraph is
   rewritten (CLOSED).
 
+### Unit 6 — 156.d: the `equippedInventory` probe cached (positive only)
+
+`db/chats_read.rs`: `select_list`'s per-read `pragma_table_info` probe is
+replaced by `prepare_select` — the FULL list through `prepare_cached` (the
+connection's statement cache holds the positive answer as the compiled
+statement; a column can only appear, and SQLite re-prepares a cached
+statement on a schema change); only a prepare refused with `no such column:
+equippedInventory` takes the `NULL` form, never cached, so a column the boot
+ensure adds on the same connection is read from the next call on. All three
+SELECT sites (`run`, `run_dropping_invalid_rows`,
+`find_by_id_dropping_invalid`) use it. Chose the statement cache over
+`sqlite3_set_clientdata` (no `unsafe` FFI). Behaviour-identical: unit test
+`inventory_column_probe_tests::the_column_probe_caches_only_the_positive_answer`
+(present twice / absent → `NULL` / ALTER on the same connection → full / a
+non-inventory refusal still surfaces); `chats_read` tests 8/0;
+`salon_reads_equivalence` re-run from the pin (ran, green).
+

@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — perf(chats): cache the equippedInventory column answer per connection instead of probing on every read (156.d)
+
+_Versions: core 0.0.1341._
+
+`chats_read` no longer runs a `pragma_table_info('chats')` probe for `equippedInventory` on every read (dogfood 156.d). The full SELECT list is now prepared through the connection's statement cache, so the positive answer is cached per connection by the compiled statement. Only a prepare refused with `no such column: equippedInventory` falls back to the `NULL` form, and that failure is never cached, so a column added later on the same connection is read from the next call on. Reads behave the same as before. A new unit test `inventory_column_probe_tests` covers it, and `salon_reads_equivalence` was re-run green.
+
 #### 2026-10-27 — fix(import): refuse a preserved non-string memory id as v4's MemorySchema does (P4.D272 R-E)
 
 _Versions: core 0.0.1340._

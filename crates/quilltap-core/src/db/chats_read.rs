@@ -113,18 +113,28 @@ const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sill
 /// without the host) simply has no key; naming the column would fail every
 /// read with `no such column`. The `characters_read` archive-column idiom.
 /// The WRITE side stays strict (`db::chats_inventory`'s fallback, R-K).
-fn select_list(conn: &Connection) -> std::borrow::Cow<'static, str> {
-    let present = conn
-        .prepare("SELECT 1 FROM pragma_table_info('chats') WHERE name = 'equippedInventory'")
-        .and_then(|mut stmt| stmt.exists([]))
-        .unwrap_or(true);
-    if present {
-        std::borrow::Cow::Borrowed(ALL_COLUMNS)
-    } else {
-        let head = ALL_COLUMNS
-            .strip_suffix("equippedInventory")
-            .expect("equippedInventory is ALL_COLUMNS' last column");
-        std::borrow::Cow::Owned(format!("{head}NULL"))
+///
+/// P4.167 (dogfood 156.d): no `pragma_table_info` probe on every read. The
+/// FULL list is prepared through the connection's statement cache
+/// (`prepare_cached`), so the POSITIVE answer — the column exists — is cached
+/// per connection by the compiled statement itself (a column can only appear,
+/// never vanish, and SQLite re-prepares a cached statement on a schema
+/// change). Only a prepare refused with `no such column: equippedInventory`
+/// takes the `NULL` form; that failure is never cached, so a column the boot
+/// ensure adds later on the same connection is read from the next call on.
+fn prepare_select<'c>(
+    conn: &'c Connection,
+    tail: &str,
+) -> Result<rusqlite::CachedStatement<'c>, rusqlite::Error> {
+    let full = format!("SELECT {ALL_COLUMNS} FROM chats {tail}");
+    match conn.prepare_cached(full.trim()) {
+        Err(e) if e.to_string().contains("no such column: equippedInventory") => {
+            let head = ALL_COLUMNS
+                .strip_suffix("equippedInventory")
+                .expect("equippedInventory is ALL_COLUMNS' last column");
+            conn.prepare_cached(format!("SELECT {head}NULL FROM chats {tail}").trim())
+        }
+        prepared => prepared,
     }
 }
 
@@ -467,8 +477,7 @@ fn run(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let sql = format!("SELECT {} FROM chats {tail}", select_list(conn));
-    let mut stmt = conn.prepare(sql.trim())?;
+    let mut stmt = prepare_select(conn, tail)?;
     let rows = stmt.query_map(params, marshal_row)?;
     let mut out = Vec::new();
     for r in rows {
@@ -510,8 +519,7 @@ pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
 /// strict-export ruling stands for a broken database; only this ONE class
 /// converges.
 pub fn find_by_id_dropping_invalid(conn: &Connection, id: &str) -> Result<Option<Value>, DbError> {
-    let sql = format!("SELECT {} FROM chats WHERE id = ?1", select_list(conn));
-    let mut stmt = conn.prepare(&sql)?;
+    let mut stmt = prepare_select(conn, "WHERE id = ?1")?;
     let mut rows = stmt.query([id])?;
     let mut found = None;
     while let Some(row) = rows.next()? {
@@ -574,8 +582,7 @@ fn run_dropping_invalid_rows(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let sql = format!("SELECT {} FROM chats {tail}", select_list(conn));
-    let mut stmt = conn.prepare(sql.trim())?;
+    let mut stmt = prepare_select(conn, tail)?;
     let mut rows = stmt.query(params)?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
@@ -1068,5 +1075,49 @@ mod alignment_census {
         assert_eq!(migrated["sceneState"]["location"], "the conservatory");
         assert_eq!(migrated["equippedOutfit"]["p1"]["top"], "w1");
         assert_eq!(migrated["createdAt"], "2026-09-28T00:00:00.000Z");
+    }
+}
+
+#[cfg(test)]
+mod inventory_column_probe_tests {
+    use super::*;
+
+    fn conn_with(columns: &str) -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        let cols: Vec<String> = ALL_COLUMNS
+            .split(',')
+            .map(str::trim)
+            .filter(|c| columns.contains("inventory") || *c != "equippedInventory")
+            .map(|c| format!("\"{c}\""))
+            .collect();
+        conn.execute_batch(&format!("CREATE TABLE chats ({})", cols.join(", ")))
+            .unwrap();
+        conn
+    }
+
+    /// P4.167 (156.d): the full list prepares (and is served from the
+    /// connection's statement cache on the second read) when the column
+    /// exists; a pre-column table reads through the `NULL` form; and a column
+    /// added on the SAME connection is read from the next call on (the absent
+    /// answer is never cached).
+    #[test]
+    fn the_column_probe_caches_only_the_positive_answer() {
+        let with = conn_with("inventory");
+        for _ in 0..2 {
+            let stmt = prepare_select(&with, "WHERE id = ?1").unwrap();
+            assert!(stmt.column_names().last() == Some(&"equippedInventory"));
+        }
+        let without = conn_with("");
+        let stmt = prepare_select(&without, "WHERE id = ?1").unwrap();
+        assert_eq!(stmt.column_names().last(), Some(&"NULL"));
+        drop(stmt);
+        assert!(find_by_id(&without, "x").unwrap().is_none());
+        without
+            .execute_batch("ALTER TABLE chats ADD COLUMN \"equippedInventory\" TEXT")
+            .unwrap();
+        let stmt = prepare_select(&without, "WHERE id = ?1").unwrap();
+        assert_eq!(stmt.column_names().last(), Some(&"equippedInventory"));
+        // A refusal that is NOT the inventory column still surfaces.
+        assert!(prepare_select(&with, "WHERE nope = 1").is_err());
     }
 }
