@@ -28,33 +28,38 @@ probe verifies against._
   P4.D323. CLAUDE.md's Status bullet for the round and its "Oracle baseline"
   bullet both name `e8e17b2d9`, and they AGREE with this file (re-checked
   2026-10-26).
-- **Checked:** 2026-10-26, by `/driftcheck` — the §2 probe FAILED (32 new
-  `main` commits past the ledger's recorded HEAD `322a5488e`). Both branches
-  re-probed locally AND against the remote after a fetch (`git ls-remote
-  origin`: `main` = `a0905454b`, `bugfix` = `489b228b6`, `release` =
-  `2432b9057` — local equals remote). The 32 were classified from their
-  hunks by five parallel readers (memory / Storyteller + Pascal / Salon /
-  wardrobe + Inventory / the two refactors + diagrams), and the checker
-  measured the cross-cutting facts directly: the five new migrations' DDL
-  (`git diff 322a5488e main -- migrations`), the dependency diff of
-  `package.json`, v4's `bugs.md` rows 258–265 (every one "found" by v4 itself
-  — no convergence), and the two v5 vault writers the hazards name
-  (`render_physical_prompts_json`, `PropertiesJson`).
-  - **Before that:** 2026-10-20 evening (`322a5488e`, seven rows);
+- **Checked:** 2026-10-27, by `/driftcheck` — the §2 probe FAILED as the
+  `322a5488e` round's `/unify` started (14 new `main` commits past the
+  ledger's recorded HEAD `a0905454b`). Both branches re-probed locally AND
+  against the remote after a fetch (`git ls-remote origin`: `main` =
+  `85c002822`, `bugfix` = `489b228b6`, `release` = `2432b9057` — local
+  equals remote). The 14 were classified from their hunks by the checker
+  directly, with the cross-cutting facts measured: NO migration in the span
+  (`git diff a0905454b main -- migrations` is empty), the lockfile's
+  dependency moves, v4's `bugs.md` rows 266–268 (every one found by v4 itself
+  — no convergence), an IMPORT-DEAD census of the span's deleted exports and
+  removed packages over `harness/oracle` (ONE hit — `pdf-parse`), and the v5
+  surfaces bugs 267 / 268 name (`quilltap-host::terminal` still `SIGTERM`
+  only; `kick_all_for_chat` without a production caller; no orphan-transcript
+  sweep in `services/scheduled_maintenance.rs`).
+  - **Before that:** 2026-10-26 (`a0905454b`, 32 rows); 2026-10-20 evening
+    (`322a5488e`, seven rows);
     2026-10-19 late evening (`e27fb6b34`, eight rows, at `/unify`'s close
     probe) and morning (`a6292f169`); 2026-10-18 evening (`102a23648`) and
     morning (`1cfc9b504`); 2026-10-17 twice; 2026-10-16 twice; 2026-10-15;
     and the earlier checks the §6 bullets record.
-- **v4 `main` HEAD at check: `a0905454b`** ("Fix: restore diagram
-  dependencies dropped by merge", 2026-10-25, `4.11.0-dev.87`) — 32 commits
-  past the `322a5488e` the 2026-10-20 check recorded, ONE of them a merge
-  (`5e18ede6a`; the span is not linear: `a8214b253` → {`6588972d5` ∥
-  `cb94e6e99` → `bdd09b75b`} → `5e18ede6a` → `a0905454b`).
-  - **FIFTY-FOUR commits past the baseline** (all §3 rows):
+- **v4 `main` HEAD at check: `85c002822`** ("Fix terminal Kill ignored by
+  bash; deleted chats leave shells running (#119)", 2026-10-26 20:52,
+  `4.11.0-dev.91`) — 14 commits past the `a0905454b` the 2026-10-26 check
+  recorded, ONE of them a merge (`744596158`; the span is not linear:
+  `9faed0c7e` → … → `40cc6ffda` → {`539bb4012` → `cc5f2347c` ∥ `026222176`}
+  → `744596158` → `c50cdddc6` → `85c002822`). The 2026-10-26 span before it
+  (32 commits past `322a5488e`) had its own merge `5e18ede6a`.
+  - **SIXTY-EIGHT commits past the baseline** (all §3 rows):
     - **The 22 recorded 2026-10-18 → -20** (`4fbdad186` … `322a5488e`) — ALL
       `ORDERED(…)` as the `322a5488e` round (P4.D324–P4.D340, pinned at
       `322a5488e`; not yet carried out — no lane worktree exists).
-    - **NEW 2026-10-26 (classified by this check, all UNPROCESSED):**
+    - **The 32 recorded 2026-10-26 (all UNPROCESSED):**
       - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
         `a5efdbb97` the inner circle in the frozen archive (PORT-NEW);
         **`8cb584eff` keystone memories WITH THE SEVENTEENTH D23 MOVE**.
@@ -88,17 +93,64 @@ probe verifies against._
         move)**; `6588972d5` diagrams (two vault keys, an opt-in prompt note,
         FOUR client deps); `5e18ede6a` the merge (dropped the deps) +
         `a0905454b` (restored them) — both NO-PORT?.
-  - **Stamps:** dev.53 → dev.87 (`332c650b9`, `4a25f7eab`, `505a524fa` stamp
-    nothing; `0276d10d9`, `a8214b253`, `b27e5089a` jump several).
+    - **NEW 2026-10-27 (classified by this check, all UNPROCESSED):**
+      - ⚠ **Land on surfaces the `322a5488e` round just ported:**
+        **`cc5f2347c` backups now carry the Log** (REVERSES the pin's
+        "the Log is not carried" rule that P4.D327 asserts and P4.D331
+        documents — `data/log-entries.json`, restore `22n-quater`, the
+        new-account remap, `deleteAll()` on replace / delete-all); **`85c002822`
+        bugs 267 / 268** (the `pty-manager.ts` P4.D337 re-ported at the pin —
+        `kickAllForChat` REPLACED by `disposeChatSessions`, `terminate` =
+        SIGHUP → SIGKILL, the orphan-transcript sweep; `help/ariel.md`, which
+        P4.D339 vendors); `c50cdddc6` (help only — `ariel.md` +
+        `system-backup-restore.md`, both vendored by P4.D339); `7d7e38d2f`
+        (tests only — a toast-stacking pin on P4.D338's toast z-index).
+      - *Server:* `026222176` bug 266 + pdfjs-dist 6.4 + `pdf-parse` REMOVED
+        (an in-house reader; a WARN line's text moves; ⚠ ONE IMPORT-DEAD
+        oracle; `openai` 7.34.0 → 7.45.0 rides the same commit).
+      - *SPA / client:* `9faed0c7e` the diagram lightbox + Copy PNG (a rider
+        on the UNPORTED diagrams); `2041bb875` the Automation checkbox class
+        (v5 HAS the old classes); `8bf856050` diagram trace lines pruned.
+      - *CLI:* `40cc6ffda` `db --count` prints `String(count)` (verify-only).
+      - *NO-PORT? candidates:* `3c9ae1fc3` (release notes), `8becfc6ce` (dead
+        code — no oracle imports it), `66f8c4d41` (v4 JS plugin bundling),
+        `539bb4012` (CLI README), `744596158` (the merge — CHANGELOG only).
+  - **Stamps:** dev.53 → dev.87 → dev.91 (`332c650b9`, `4a25f7eab`,
+    `505a524fa` stamp nothing; `0276d10d9`, `a8214b253`, `b27e5089a` jump
+    several; of the 14 only `9faed0c7e`, `40cc6ffda`, `026222176`,
+    `85c002822` stamp).
 - **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
-  branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY.
+  branch", 2026-10-14). It has not moved: `489b228b6..bugfix` is EMPTY
+  (re-probed 2026-10-27, local and `origin`).
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe BOTH
   branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `a0905454b`.
-  HEAD is fifty-four commits past the baseline, so it poisons a regen by
-  DRIFT.
-- **Verdict: DRIFT PENDING — 54 commits (§3): 22 `ORDERED(…)` (the
-  `322a5488e` round, P4.D324–P4.D340) + 32 UNPROCESSED (new 2026-10-26).**
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `85c002822`.
+  HEAD is sixty-eight commits past the baseline (forty-six past the ordered
+  round's pin `322a5488e`), so it poisons a regen by DRIFT.
+- **Verdict: DRIFT PENDING — 68 commits (§3): 22 `ORDERED(…)` (the
+  `322a5488e` round, P4.D324–P4.D340) + 46 UNPROCESSED (32 of 2026-10-26 +
+  14 new 2026-10-27).**
+  - **⏳ The `322a5488e` round's `/unify` is IN PROGRESS (started
+    2026-10-27, another session).** That unify moves the baseline to
+    `322a5488e` ITSELF and retires the 22 ORDERED rows to §6; this check
+    does NOT move the baseline. After it lands, the 46 UNPROCESSED rows are
+    the drift past the new baseline and the regen rule is PIN REQUIRED at
+    `322a5488e`.
+  - **Classes of the 14 (new 2026-10-27):**
+    - 3 PORT on ported surfaces: `cc5f2347c` (the Log in backups — ⚠ the
+      round's own surface), `85c002822` (bugs 267 / 268 — ⚠ the round's own
+      `pty-manager` surface), `026222176` (bug 266's server half: the WARN
+      text, the reader's spec, the dependency moves).
+    - 1 PORT (SPA small): `2041bb875`.
+    - 1 PORT (verify-only): `40cc6ffda`.
+    - 1 PORT-NEW rider on the UNPORTED diagrams: `9faed0c7e`.
+    - 8 NO-PORT? (`3c9ae1fc3`, `8bf856050`, `8becfc6ce`, `7d7e38d2f`,
+      `66f8c4d41`, `539bb4012`, `744596158`, and `c50cdddc6`'s code half —
+      its two help paragraphs ride the next re-vendor).
+    - NO D23 move in the 14 (no `migrations/` hunk; no new column read).
+    - **No CONVERGENCE:** bugs 266 (found live on `V4test`), 267 ("by code
+      reading") and 268 ("while fixing 267") are all v4-originated; v5
+      status `Owed` in each row.
   - **Classes of the 32:**
     - 1 PORT-NEW **WITH THE SEVENTEENTH D23 MOVE** (`8cb584eff`,
       `memories.keystone`).
@@ -135,7 +187,9 @@ probe verifies against._
     +2,705 / −2,530, `bdd09b75b` +2,335 / −2,084).
   - **Regen rule: PIN REQUIRED at `e8e17b2d9`** (§5.1) — unchanged; the
     ordered round regens at its own pin `322a5488e` per the 2026-10-09
-    setupphase ruling.
+    setupphase ruling (the 14 new commits change nothing for it: the round
+    regens at `322a5488e`, never past it). When the in-progress `/unify`
+    moves the baseline, the rule becomes PIN REQUIRED at `322a5488e`.
 
 ### ⚠ LIVE-DATA — what stands at this baseline
 
@@ -160,6 +214,17 @@ probe verifies against._
   open an instance this round's ensures have altered (a pre-round v5 never
   reads the table, so the hazard is only the P4.D288 class: the table's
   presence is harmless, but a pre-round v5's backup / restore LOSES it).
+- **Past `a0905454b` (the 14 of 2026-10-27) — NO boot / schema hazard** (no
+  migration, no new column, no vault key). Non-corrupting notes for a v5
+  sharing an instance with v4 at HEAD: a v4-HEAD backup carries
+  `data/log-entries.json`, which a v5 restore ignores (every Log line is lost
+  on a v5 restore — still true once the `322a5488e` round lands, since it
+  ports the pin's "not carried" rule); a v5 `replace` restore / delete-all
+  leaves `log_entries` untouched where v4 HEAD clears it. v4 HEAD's daily
+  maintenance now unlinks `logs/terminals/*.log` that no `terminal_sessions`
+  row names and nobody wrote for an hour — on a shared instance it collects
+  v5's orphans too, which is the intended outcome, and a live v5 PTY whose
+  row exists is spared by name.
 - **Past the pin — NO boot-blocking, NO ping-pong, NO NOT-NULL-insert hazard
   (classified 2026-10-17 → 2026-10-19).** `chats.equippedInventory`,
   `characters.canManageInventory` and `terminal_sessions.cols` / `rows` are
@@ -394,6 +459,21 @@ probe verifies against._
   `openai` 7.34.0, `@xterm/headless` 6.0.0, `plugin-types` 2.8.0, no
   `mermaid`). The curl / mcp plugin `node_modules` (third symlink class)
   carry `plugin-types` 2.9.0 — inert at the pin (`import type` only).
+- **Past `a0905454b` (NEW 2026-10-27):** `026222176` REMOVES `pdf-parse`
+  (2.4.5) and moves `pdfjs-dist` 5.7.284 → 6.4.299 and `@napi-rs/canvas`
+  0.1.100 → 1.0.13 (the `overrides` dropped); in the same commit's
+  "minor and patch" sweep **`openai` 7.34.0 → 7.45.0** (lockfile;
+  `provider_sdk_version_guard` reddens at any pin past it — measure the
+  openai-compatible wire before re-pinning), `@openrouter/sdk` 1.4.25 →
+  1.5.9, `next` 16.4.3, `react` 19.3.1; **`zod` UNCHANGED at 4.6.7**. Eight
+  `plugins/dist/*/index.js` bundles re-built (+5,246 lines each);
+  `66f8c4d41` bundles `@quilltap/plugin-types` into two more (manifests
+  default-system-prompts 1.1.27, openai-compatible 1.0.50). ⚠
+  **IMPORT-DEAD:** `harness/oracle/cases/file-content-extractor.test.ts:149`
+  `require.resolve('pdf-parse')` dies at any pin ≥ `026222176` — re-aim it to
+  mock `@/lib/mount-index/converters/pdf-converter` (as the two tier-3
+  oracles already do) or `pdfjs-dist/legacy/build/pdf.mjs`. The dead-code
+  sweep `8becfc6ce` deletes nothing `harness/oracle` imports.
 - **Help / docs:** `help/` is **131 files at the pin**, md5-identical
   (P4.D323); `docs/v4/` has 494 files with TWO recorded deferrals (the
   Inventory spec docs, round (2)'s — R-Q). Past the pin: `help/` is **135 at
@@ -408,6 +488,12 @@ probe verifies against._
   `image-generation-profiles.md`; `system-llm-logs.md`; `tools-settings.md`;
   `general-scenarios.md`; `scenario-browser.md`; `ariel.md`; …). Each
   catch-up round re-vendors what it absorbs.
+  Past `a0905454b` (2026-10-27): `help/` stays 135 files; `ariel.md` ×2
+  (`c50cdddc6`, `85c002822` — P4.D339 vendors it at the pin),
+  `system-backup-restore.md` ×2 (`cc5f2347c`, `c50cdddc6`), `the-log.md`
+  (`cc5f2347c` — P4.D331's page), `diagrams.md` (`9faed0c7e`). `docs/`:
+  `releases/4.11.0.md` (`3c9ae1fc3`), `bugs.md` + three NEW
+  `bugs/fixed/bug-266/267/268-*.md`, `DEAD-CODE-REPORT.md`.
 
 ### Rounds, guards, state
 
@@ -452,6 +538,16 @@ probe verifies against._
     counts its sections); bugs 258–261; the Novel template; `265b711dd` /
     `074e1e01a`'s Inventory parts; SPA smalls (Brahma, punctuation lint,
     diagrams — the dependency ruling first); help / docs re-vendor.
+  - **IN PROGRESS 2026-10-27 — the `322a5488e` round's `/unify`** (another
+    session); the baseline moves to `322a5488e` there, not here.
+  - **The 14 commits past `a0905454b` (2026-10-27)** join the 32 for the
+    NEXT catch-up round. Two of them rewrite what THIS round ports at its
+    pin and must be ported over its landed code: `cc5f2347c` (the Log in
+    backups — flips P4.D327's "no `log_entries` file" assertions and the
+    restore census by design; it is v4 drift, not a v5 bug) and
+    `85c002822` (bugs 267 / 268 over P4.D337's `pty-manager` port +
+    `help/ariel.md`). The IMPORT-DEAD `pdf-parse` oracle (`026222176`)
+    needs a stage-0 re-aim at that round's `/setupphase`.
   - The owed dogfood pass (`dogfood-findings.md`'s standing note of
     2026-10-19; a Friday copy taken at ANY v4 point).
   - The follow-ups smalls round (the ready rider branch
@@ -568,6 +664,20 @@ passes the commit.
 | `6588972d5` | 2026-10-25 | Feature: diagrams in the Salon (iteration 1) | **PORT-NEW — TWO NEW vault keys in `properties.json` (`canDrawDiagrams`, `diagramStyle`; no SQL, no migration), an opt-in system-prompt note, wire fields, and client-only rendering with FOUR NEW client dependencies; ⚠ LIVE-DATA: v5's six-key `properties.json` writer DROPS both keys** (classified 2026-10-26 from the hunks; 68 files +4,025 / −231; prod 46 files +1,687 / −140 + `package.json` +4 deps; `dev.84`; parent `a8214b253`). `canDrawDiagrams` (absent = `false`), `diagramStyle` (`'handDrawn'\|'clean'`, leniently `'handDrawn'`), appended after `canChooseOutfit` in the full writer, the RMW patch writer (`propsKeys` → 8) and the scaffold — so EVERY v4 properties write now writes both; `MANAGED_FIELDS`, the read overlay, `CharacterSchema`; DEBUG `[VaultOverlay] Writing diagram settings to properties.json`. Model-visible: `DIAGRAM_FORMATTING_INSTRUCTION` (`[FORMATTING: DIAGRAMS]` — copy verbatim from `system-prompt-builder.ts`) pushed right after `MATH_FORMATTING_INSTRUCTION` in block 1 ONLY when `canDrawDiagrams === true` (otherwise byte-identical; `IDENTITY_STACK_BUILDER_VERSION` unchanged). Wire: the character PUT accepts both; the list GET emits both; `getEnrichedCharacter` / `getCharacterDetail` emit `diagramStyle` after `archivedAt`; `.qtap` schema +2. Not updated: `CORE_VAULT_FILE_SUMMARIES`' `properties.json` line. Client: `lib/markdown/diagrams.ts` fences (mermaid / dot / graphviz / svg), renderers under a DOMPurify allow-list, the Aurora toggle. Deps (client-only): `mermaid ^12.2.0`, `@hpcc-js/wasm-graphviz ^1.30.0`, `dompurify ^3.4.17`, `svg2roughjs ^3.2.3` — the Angular renderer needs a dependency RULING. `help/diagrams.md` NEW (117). **v5 intersection:** the vault properties reader / writers (P4.6bh lineage): `vault_overlay.rs`, `db/{character_vault,vault_character_write,vault_character_update,vault_read_overlay,characters,characters_read,store_name_reconcile}.rs`, `api/characters.rs`, `services/character_enrichment.rs`; `system_prompt.rs:528` (the math note); `qtap_export/schema-key-order.json`; the vendored export schema. **The message is false:** "nothing new is stored" — `properties.json` gains both keys on every write. | UNPROCESSED |
 | `5e18ede6a` | 2026-10-25 | Merge origin/main into main | **NO-PORT? — the merge of `6588972d5` with `cb94e6e99` + `bdd09b75b`; NO code resolved, version stamps only — but it silently DROPPED the four diagram dependencies** (classified 2026-10-26 from `git show --cc`; conflicts only in README / CHANGELOG / both `package.json`s / the lockfile; `dev.86`; parents `6588972d5` `bdd09b75b`). Each side's files came cleanly; the diagram note lands in block 1, which `bdd09b75b`'s budget measures. **v5 intersection:** none. | UNPROCESSED |
 | `a0905454b` | 2026-10-25 | Fix: restore diagram dependencies dropped by merge | **NO-PORT? — restores exactly the four client deps the merge dropped** (classified 2026-10-26; 5 files +1,256 / −88; `git diff 6588972d5 a0905454b -- package.json package-lock.json` is the version line only; `dev.87`; parent `5e18ede6a`). **v5 intersection:** none beyond `6588972d5`'s dependency ruling. | UNPROCESSED |
+| `9faed0c7e` | 2026-10-26 | Feature: diagram lightbox and Copy PNG | **PORT-NEW — a CLIENT-only rider on the UNPORTED diagrams feature (`6588972d5`); NO server, NO schema, NO dependency move** (classified 2026-10-27 from the hunks; 25 files +2,005 / −11; prod 14 files +1,487 / −6; `dev.88`; parent `a0905454b`). The lightbox (`DiagramLightbox.tsx` — wheel / pinch zoom about the pointer, pan, Fit, 100%, Escape returns to the scroll anchor), Copy PNG at 2× with a Transparent toggle (`export-png.ts`, re-lettering `foreignObject` labels), the drawing becomes a `role="button"` (Enter / Space / click; a text selection is not a click), an Enlarge toolbar button; `lib/clipboard-utils.ts` gains client `copyPngBlobToClipboard` (a promised `ClipboardItem` for Safari, Electron fallback); `_content.css` / `_variables.css` + the theme-storybook mirror; `help/diagrams.md` +15 ("The Viewing Room"). **v5 intersection:** none — v5 has no diagrams; fold into the diagrams SPA lane (the `6588972d5` row's dependency ruling gates it). | UNPROCESSED |
+| `3c9ae1fc3` | 2026-10-26 | Docs: 4.11.0 release notes corrections, part 2 | **NO-PORT? — docs only, VERIFIED** (classified 2026-10-27; 1 file `docs/releases/4.11.0.md` +84 / −11; no stamp; parent `9faed0c7e`). **v5 intersection:** `docs/v4/releases/` is vendored — rides the next docs re-vendor with `4a25f7eab` / `505a524fa`. | UNPROCESSED |
+| `2041bb875` | 2026-10-26 | Fix: Automation settings checkbox uses qt-checkbox (#111) | **PORT — ONE SPA class change; NO server** (classified 2026-10-27 from the hunks; 2 files +5 / −1; prod 1 line; no stamp; parent `3c9ae1fc3`). `AutomationSettings.tsx`'s checkbox `mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary` → `qt-checkbox mt-1`. **v5 intersection:** `apps/web/src/app/screens/settings/chat/automation-settings.ts` (P4.D307) still carries the OLD Tailwind classes — v5 HAS the visual defect; an SPA small. | UNPROCESSED |
+| `8bf856050` | 2026-10-26 | Chore: prune diagram trace logging (#112) | **NO-PORT? — four client `console.debug('[diagrams] …')` lines removed from the UNPORTED diagram components** (classified 2026-10-27; 4 files +4 / −4; prod 3 files −4; no stamp; parent `2041bb875`). **v5 intersection:** none; the diagrams lane ports the post-prune shape. | UNPROCESSED |
+| `8becfc6ce` | 2026-10-26 | Chore: dead code sweep for v4.11 release (#113) | **NO-PORT? — four unreferenced exports deleted; no behaviour move** (classified 2026-10-27 from the hunks; 6 files +38 / −43; prod 4 files −37; no stamp; parent `8bf856050`): the `components/inventory/index.ts` barrel, `resolveMemoryMaintenance` (`lib/memory/settings.ts`), `isComputedTool` (`lib/tools/effects.ts` — `b15fe9404`'s UNPORTED module), the `ProjectFileInfo` interface (`lib/tools/project-info-tool.ts`); `DEAD-CODE-REPORT.md` updated. **IMPORT-DEAD census (2026-10-27): `harness/oracle` imports none of the four.** **v5 intersection:** none. | UNPROCESSED |
+| `7d7e38d2f` | 2026-10-26 | Test: regression tests for toast stacking and storyteller keepOrder (#114) | **NO-PORT? — tests only, VERIFIED** (classified 2026-10-27; 3 files +144; `__tests__/unit/lib/toast-stacking.test.ts`, `lib/storyteller/__tests__/plan-run-order.test.ts`; no stamp; parent `8becfc6ce`). **v5 intersection:** the toast pin covers `5a8338b30` — ⚠ a surface the `322a5488e` round just ported (P4.D338's toast z-index); the storyteller one is spec input for `b15fe9404`'s UNPORTED planner. | UNPROCESSED |
+| `66f8c4d41` | 2026-10-26 | Bundle plugin-types in default-system-prompts and openai-compatible plugins (#115) | **NO-PORT? — v4 JS-plugin bundling only** (classified 2026-10-27; 9 files +16 / −17; prod 8 files; no stamp; parent `7d7e38d2f`): `@quilltap/plugin-types` no longer marked esbuild-external in two `plugins/dist` bundles (a bare `require` that only resolved through a host `node_modules`); manifests default-system-prompts 1.1.26 → 1.1.27, openai-compatible 1.0.49 → 1.0.50. **v5 intersection:** none — v5's providers are declarative manifests (no JS plugins; neither version string appears in v5). | UNPROCESSED |
+| `40cc6ffda` | 2026-10-26 | Fix: quilltap db --count printed ANSI color codes under FORCE_COLOR | **PORT (verify-only) — `packages/quilltap/bin/quilltap.js`'s `--count` prints `String(row.count)`, so `console.log` no longer colours the number under `FORCE_COLOR`** (classified 2026-10-27; 6 files +10 / −6; prod 2 lines; `dev.89`; parent `66f8c4d41`). **v5 intersection:** the CLI Tier R `db --count` (P4.3; `crates/quilltap-cli/src/db_cmd.rs`) writes no ANSI — expected to match v4's post-fix bytes; Tier R runs without `FORCE_COLOR`, so no row should move (confirm at the catch-up). | UNPROCESSED |
+| `539bb4012` | 2026-10-26 | Docs: CLI README lists memories keystone among server-backed verbs (#116) | **NO-PORT? — docs only, VERIFIED** (classified 2026-10-27; 2 files +6 / −2; `packages/quilltap/README.md` two lines; no stamp; parent `40cc6ffda`). **v5 intersection:** none — the `keystone` CLI verb is NO-PORT by R-AL (`8cb584eff`'s row). | UNPROCESSED |
+| `cc5f2347c` | 2026-10-26 | Fix: backups now carry the Log (log_entries) (#117) | **PORT — ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED: it REVERSES the pin's rule that the Log is NOT carried by a logical backup; NO D23 move; `.qtap` still omits the Log** (classified 2026-10-27 from the hunks; 15 files +350 / −2; prod 8 files +102; no stamp; parent `539bb4012`; merged by `744596158`). Backup: `data/log-entries.json` via a NEW `LogEntriesRepository.findAllEntries()` (`SELECT … ORDER BY "createdAt" ASC`, `[]` while degraded, DEBUG `All log entries read`), DEBUG `Collected Log entries for backup {rowCount}`, manifest `counts.logEntries`. Restore: `parseBackupZip` reads it optional; step **22n-quater** after the chats re-creates each line under its own `id` + `createdAt` + `updatedAt`; while the logs DB is degraded WARN `Skipping Log restore — logs database is in degraded mode {rowCount}` + warning `Log entries were not restored because the logs database is in degraded mode`; per-row warning `Failed to restore Log entry: <msg>` + WARN; DEBUG `Restored Log entries {total, restored}`; `RestoreSummary.logEntries`; preview count. New-account: `remapFields(entry, ['id','chatId','characterId'])`. Replace / delete-all: `clearFormat3Entities` calls a NEW `deleteAll()` (INFO `Deleted all log entries {deletedCount}`). Help: `system-backup-restore.md` (+ the Log under *Logs & History*; + open Storyteller rounds under *Not Included*), `the-log.md` one sentence. Tests: a 4.11 `restore-field-fidelity` block naming every 4.11 data-model addition — a ready checklist for the catch-up's carriers lane. **v5 intersection:** P4.D327 (its item 25 + "assert NO `log_entries` file in any archive") and P4.D331 (the Log's repository + the `DDL.md` note) port the PIN's rule — correct at `322a5488e`, v4 drift once the baseline passes this commit: those assertions flip BY DESIGN. Also moves: `services/backup/collect.rs`, the restore driver + remapper + delete-all path, the restore census whitelist (`RESTORE_TS_MESSAGES`, TS + Rust — the new lines), the backup / restore oracle families and `restore_vintage_state`'s archives. | UNPROCESSED |
+| `026222176` | 2026-10-26 | Security: pdfjs-dist 6.4, in-house PDF text reader; fix PDF preview race (bug 266) | **PORT (one WARN text + the converter's spec) + NO-PORT? (dependencies, bundles, the SPA canvas race); NO D23 move** (classified 2026-10-27 from the hunks; 25 files +36,229 / −29,196; prod 13 files +35,646 / −28,773 — nearly all `public/pdf.worker.mjs` and eight re-built `plugins/dist/*/index.js`; `dev.90`; parent `40cc6ffda`, a parallel branch to `539bb4012` → `cc5f2347c`). `pdf-parse` REMOVED; `convertPdfBufferToText` reads with `pdfjs-dist/legacy/build/pdf.mjs` 6.4.299 directly — pdf-parse 2.x's line (4.6 pt) / cell (7 pt → `\t`) assembly, `\n\n-- N of T --\n\n` page markers, `enableXfa: false`, `page.cleanup()`, `loadingTask.destroy()` always, a NEW DEBUG `Extracted PDF text {pages, chars}`; the failure WARN unchanged. `file-content-extractor.ts`'s WARN `pdf-parse found no text, using native fallback extraction` → **`PDF reader found no text, using native fallback extraction`**. Bug 266 (v4-ORIGINATED, found live on `V4test`; v5 Owed): `FilePreviewPdf.tsx` cancels + awaits an in-flight render before re-rendering. Lockfile: `pdfjs-dist` 6.4.299, `@napi-rs/canvas` 1.0.13, **`openai` 7.34.0 → 7.45.0**, `@openrouter/sdk` 1.5.9, `next` 16.4.3; `zod` unchanged 4.6.7. **v5 intersection:** the WARN text is pinned at `crates/quilltap-core/src/generators/file_content.rs:341` / `:499` (P4.D253, bug 177), `ai_import.rs`, `common_helpers_selftest.rs`, `ai_import_tier3_equivalence.rs`, and the `character-wizard-tier3` / `ai-import-tier3` oracles — a byte move. v5's production `DocumentTextExtractor` is `RefusingTextExtractor` (P4.D253), so the reader's assembly is spec for a future host converter, not a behaviour move today. ⚠ **IMPORT-DEAD:** `harness/oracle/cases/file-content-extractor.test.ts:149` `require.resolve('pdf-parse')`. `provider_sdk_version_guard` (P4.D311, openai 7.34.0) reddens at any pin past this. The v5 SPA has no `pdfjs-dist` (no canvas preview) — bug 266's SPA half is a NO-PORT? candidate pending a look at the Files preview's PDF arm. | UNPROCESSED |
+| `744596158` | 2026-10-26 | Merge remote-tracking branch 'origin/main' | **NO-PORT? — the merge of `026222176` with `cc5f2347c` (+ `539bb4012`); conflict ONLY in `docs/CHANGELOG.md`, no code resolved** (classified 2026-10-27 from `git show --cc`; `dev.90`; parents `026222176` `cc5f2347c`). **v5 intersection:** none beyond its two parents' rows. | UNPROCESSED |
+| `c50cdddc6` | 2026-10-26 | Document terminal sessions as excluded from backups (#118) | **NO-PORT? (code) + help text — no production code** (classified 2026-10-27; 6 files +238 / −1; no stamp; parent `744596158`): `help/ariel.md` (one paragraph extended — sessions and transcripts stay out of a backup), `help/system-backup-restore.md` (+ an *Ariel's terminal sessions* Not-Included bullet), a release-checklist line, a NEW test `terminal-sessions-excluded.test.ts`, and a mock fix (`logEntries` in `delete-service-annotations.test.ts`). **v5 intersection:** ⚠ `help/ariel.md` is a page the `322a5488e` round just vendored (P4.D339, with P4.D337's `:27-30`) — re-vendor at the catch-up; confirm v5's backup also leaves `terminal_sessions` out (expected — the pin's rule). | UNPROCESSED |
+| `85c002822` | 2026-10-26 | Fix terminal Kill ignored by bash; deleted chats leave shells running (#119) | **PORT — bugs 267 + 268 (both v4-ORIGINATED — 267 "by code reading", 268 "while fixing 267"; v5 Owed), NOT a convergence; ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED; NO D23 move** (classified 2026-10-27 from the hunks; 17 files +571 / −25; prod 8 files +291 / −19; `dev.91`; parent `c50cdddc6`). **Bug 268:** `ptyManager.terminate(id, graceMs = 3000)` — `kill(id,'SIGHUP')`, then SIGKILL if `meta.exitedAt` is still null (WARN `[PTY] Session ignored SIGHUP; sending SIGKILL {sessionId, graceMs}`); BOTH `/api/v1/terminals/[id]` kill and DELETE use it (were `kill(id,'SIGTERM')`); async `kickAllForChat` (which flushed Ariel first) REPLACED by sync `disposeChatSessions(chatId)` → terminate + drop each, INFO `[PTY] Terminated sessions of deleted chat {chatId, count}` / DEBUG `[PTY] No live sessions for deleted chat`; called from `ChatsRepository.delete` after the row is gone (WARN `Failed to terminate terminal sessions for deleted chat`). **Bug 267:** `TerminalSessionsRepository.sweepOrphanedTranscripts({isLive, graceMs, now?})` unlinks `<logs>/terminals/*.log` no row names (by id or resolved `transcriptPath`), not live, unwritten for `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` (1 h); INFO `Swept orphaned terminal transcripts {scanned, deleted}`; daily-maintenance step **6b** `orphan-transcripts` (`Orphaned-transcript sweep failed — continuing`) and a NEW `MaintenanceSweepSummary.orphanedTranscriptsSwept {scanned, deleted}` key. `help/ariel.md` rewritten (+2 paragraphs). **v5 intersection:** P4.D337 (bug 255) re-ported `pty-manager.ts` at the pin, reading `kickAllForChat` (`:625-646`), and P4.D339 vendors `help/ariel.md`. v5 HAS both defects: `crates/quilltap-host/src/terminal/mod.rs` `kill` sends `SIGTERM` only and `kick_all_for_chat` has no production caller (P4.1's PTY lane); `crates/quilltap-core/src/services/scheduled_maintenance.rs` has no orphan-transcript sweep — the new summary key moves the scheduled-maintenance differential. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

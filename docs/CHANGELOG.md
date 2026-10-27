@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): drift check — 14 v4 commits past `a0905454b` (the Log in backups, bugs 266–268, pdfjs-dist 6.4, the diagram lightbox)
+
+_Docs-only change._
+
+v4 `main` moved to `85c002822` (`4.11.0-dev.91`); `bugfix` and `release` unchanged, checkout clean on `main`. 14 new UNPROCESSED §3 rows, classified from the hunks; no migration in the span and no convergence (bugs 266–268 were all found by v4). Two land on surfaces the in-progress `322a5488e` round just ported: `cc5f2347c` makes logical backups carry the Log (`data/log-entries.json`, a restore step, the new-account remap, a table clear on replace / delete-all), reversing the pin's rule that P4.D327 asserts; `85c002822` fixes bugs 267 / 268 in the PTY manager P4.D337 re-ported (SIGHUP then SIGKILL, chat deletes end their shells, a daily orphan-transcript sweep) — v5 has both defects. `026222176` drops `pdf-parse` for an in-house pdfjs 6.4 reader (a WARN text moves; one oracle goes import-dead) and moves `openai` 7.34.0 → 7.45.0. The rest are an SPA checkbox class, a CLI `--count` fix v5 already matches, a diagrams rider, and NO-PORT candidates. §1 records that the round's `/unify` is in progress and will move the baseline to `322a5488e`; this check does not move it.
+
 #### 2026-10-26 — docs(porting): record the ruling to carry out the `322a5488e` round as ordered
 
 _Docs-only change._
