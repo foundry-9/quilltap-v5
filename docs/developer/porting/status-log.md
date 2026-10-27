@@ -191036,3 +191036,111 @@ Lane branch `claude/p4.d328-inventory-tools-turn-83c0fd`. The session started in
 - **The final family sweep (lane-private `run_family.sh`, every regen from the pin, 2026-10-26 evening):** GREEN — `tool_definitions`, `tool_build`, `pseudo_tool_prompts`, `pseudo_tool_parsers`, `realtime_topics`, `inventory_refs`, `inventory_tools`, `tools_inventory`, `characters_mutations`, `almanack_tier2`, `almanack_render`, `help_chat_orchestrator_tier3` (5 / 5), `scenario_builder_tier3`, `wardrobe_tools` (2 / 2), `wardrobe_rollback_tier2`, `outfit_change_effects_tier3` (5 / 5), `pascal_definition_reader`, `pascal_trigger_runner`, `pascal_build_tools_roster`, plus the in-crate guards (`realtime_publish_sites_guard`, the census test, `library_reshape_tests`). RED, each the recorded sibling residue at its first divergence: `tool_dispatch` (ops 7 / 8, bug 256 — P4.D338), `orchestrator_tier3` (`tool_settings_changed`'s 36 vs 32 — the four sibling tools; this lane's room-order block, which runs BEFORE that assertion, passed on the unstubbed oracle too), `brahma_orchestrator_tier3` (every case's console prompt — P4.D331's `log_entries` sentence), `carina_query_tier3` (`inventory_carried` — the keystone's `31693aa3e`, not on `INVENTORY`), `pascal_run_custom_handler` / `pascal_custom_tools_route` / `pascal_roster` (P4.D332's vault-only roster). `recipe_sweep.py --self-test` 0 failures.
 - **fmt / clippy:** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean; with `--features quilltap-core/native-transport` clean.
 - **`cargo test --workspace` (`CARGO_INCREMENTAL=0`, the branch tip `42836a3e8`):** 833 binaries / 5,502 passed / 4 failed / 3 ignored, zero SKIP in the lane's families. The four reds, each classified: `tools::run_custom::tests::empty_roster_description_matches_data_rs` (BY DESIGN — Tier 3 record (1), the union lifts it); `public_schemas_vendor_guard` + `qtap_schema_embed_guard` (the keystone's standing reds against the live v4 checkout — P4.D339 re-vendors); `provider_sdk_version_guard` (an env artifact: it reads the LIVE checkout's ROOT `node_modules`, where v4 — past the ledger — moved `openai` 7.34.0 → 7.45.0 and `@openrouter/sdk` 1.4.25 → 1.5.9; no lane file reads either, and the pin's tree is unchanged — a `/driftcheck` item, not this lane's). `characters_arrays_tier2` green this run.
+
+
+
+## P4.D329 — the Pascal Inventory grammar: subjects, aggregates, `$inventory`, placeholders, effects, the bench bag, vocabulary, describers (2026-10-26) — LANE COMPLETE
+
+Branch `claude/p4.d329-pascal-inventory-grammar-c065d7` from `INVENTORY` `c065d7e2f` (P4.D324's stacking commit). The session started in the app's worktree on `claude/bold-visvesvaraya-5ad152` at `914096110` with no commits of its own and was moved with `git switch -c` onto the base before the first edit. Pin `322a5488e`, pinned worktree `/tmp/qt-v4-pin-p4d329-322a5488e` (`npm ci --offline`; `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless` 6.0.0 verified).
+
+**§2 probe (OBSERVATION, the pin rule):** at 2026-10-26 15:04 CDT v4 `main` had moved past the ledger's `a0905454b` by `9faed0c7e` (diagram lightbox) and `3c9ae1fc3` (release-notes docs); tree clean; `bugfix` `489b228b6` unmoved. Recorded; the lane follows the pin.
+
+Commits: `e123e0735` (the grammar and every Rust unit; core 0.0.1325, web 0.0.244), `5c0b84f3d` (the Measure Twice mirror + the widened `pascal-run-custom` pair), `fdbe7278f` (placeholder classify rows), and this record. **Recorded departure:** the order asks for one commit per unit 2–16; the units were built interleaved in shared files (`custom_tool_types.rs`, `custom_tools.rs`, `side_effects.rs`, the api seams), and splitting after the fact would have produced non-compiling intermediates, so units 2–16 ride ONE commit (item 11's web bump included).
+
+### Landed (Tier 1)
+
+- **Item 2 — the C2 stand-in module** `pascal/p4d329_c2_standins.rs` (LANE-REMOVE; every fn refuses `NOT_AVAILABLE`; one unit test). Its names vs P4.D328's landed header — see HANDOFFs.
+- **Item 3** `pascal/inventory_subjects.rs`; **item 4** `pascal/inventory_aggregate.rs`; **item 10** `pascal/bench_inventory.rs` (Zod issue objects built with `api::zod_issues`).
+- **Item 5** the grammar in `custom_tool_types.rs` (the three records on gate / `when` / effect condition; `$inventory` on every operand union, the parameter default and the whole roll; the `inventory` gesture; the load-time rules and the pin's sentences); **item 6** `PlaceholderRef::Inventory`; **item 7** the deal (`custom_tools.rs`) with v4's five DEBUG lines; **item 8** `tool_gate.rs`'s 4th positional; **item 9** the roster's lazy bag (`RosterContext.inventory`, `invoker_inventory`, three DEBUGs); **item 11** the bench wire (both transports); **item 12** `pascal/inventory_effects.rs` + the third pass; **item 13** `run_service.rs::load_run_inventory`; **item 14** `RollForm::Inventory`; **item 15** the `run_custom` describers + `data.rs`'s `runCustom` re-dumped from the pin (the count stays 63); **item 16** the vocabulary's five keys.
+- **Item 17** every oracle row family below; **item 18** the capture pins (`inventory_effects::tests` ×4, `run_service::inventory_read_tests` ×3, each with its silence leg; the refusal's `error` field carved by name).
+
+### Differentials (all regenerated from the pin under `/tmp/p4d329/`)
+
+| family | rows | result |
+|---|---|---|
+| `pascal_inventory_aggregate_equivalence` NEW | 95 | GREEN bar `LIST_RULE_RESIDUE` (16, P4.D333's list rule) |
+| `pascal_bench_inventory_equivalence` NEW | 40 | GREEN |
+| `pascal_inventory_effects_equivalence` NEW | 20 steps | 2 GREEN (no gestures, nobody rolled); 18 RED by design (R-1), named |
+| `pascal_custom_tool_definition_equivalence` | 619 (161 mine) | GREEN bar `P4D329_RESIDUE_P4D333` (27: 7 mine + 20 pre-existing — the `invalid_key` arm, the union rendering, the list rule) |
+| `pascal_custom_tools_execution_equivalence` | 458 (`inventorySubject` 42 + matchesWhen / render / params / execute rows) | GREEN, v4's inventory lines compared byte for byte, bar `LIST_RULE_RESIDUE` (3) |
+| `pascal_side_effects_equivalence` | 61 cases (+6 `merge-inventory-*`) | GREEN |
+| `pascal_roster_equivalence` | 54 scenarios (+8 inventory) | GREEN bar `P4D332_RESIDUE` (`full-precedence-chain`) |
+| `pascal_simulate_equivalence` | 21 (+9) | GREEN |
+| `pascal_tool_vocabulary_equivalence` | 96 (+22) | GREEN |
+| `pascal_run_custom_equivalence` | 33 (+8) | GREEN |
+| `pascal_expressions_equivalence` | +19 classify rows | GREEN |
+| `pascal_workbench_route_equivalence` | 91 (+13) | GREEN |
+| `pascal_workbench_equivalence` | 2 (library 10 tools, one `rollForm: "inventory"`) | GREEN |
+| `pascal_run_custom_handler_equivalence` | 49 (+12) | GREEN bar `RED_UNTIL_UNION` (9, R-1) and `P4D332_RESIDUE` (7: 5 pre-existing + 2 mirror) |
+| `pascal_trigger_runner_equivalence` | 25 (+1) | GREEN bar `RED_UNTIL_UNION` (`inventory-pick-up-posted-now`) |
+| `pascal_definition_reader_equivalence`, `pascal_build_tools_roster` | unmoved | GREEN on the widened pair |
+| `pascal_bench_wardrobe`, `pascal_wardrobe_effects`, `pascal_llm_consult` | unmoved | GREEN from the pin |
+| `pascal_custom_tools_route_equivalence` | 47 | RED at the pin BEFORE the widen (first red `list-llm-led` — P4.D332's vault-only roster); the widen moves only `list-trigger-room` (the mirror's item (g)) |
+| `tool_definitions_equivalence` | 63 | `runCustom` GREEN; first red `runSql` (the Log lane's `log_entries` sentence) |
+
+### Red-first (item 1) — the `INVENTORY` tip against the regenerated oracles
+
+Measured AFTER the source edits (the order asks for before — a recorded departure): a scratch worktree at `c065d7e2f` running each pre-existing family against this lane's pin-regenerated oracles (`/tmp/p4d329/redfirst.log`). Every family RED:
+
+- `pascal_custom_tool_definition_equivalence`: 174 distinct cases red — 132 of this lane's rows (records refused `Unrecognized key`, the `$inventory` unions, the gesture) + 42 pre-existing (the four-kind effect sentences, the gate / `when` "must test …" sentences, and P4.D333's residue).
+- `pascal_custom_tools_execution_equivalence`: `unknown row kind 'inventorySubject'` (the pre-existing rows were green at the pin before the rows landed).
+- `pascal_tool_vocabulary_equivalence`: `quotes-nothing` — every row moves (the five keys).
+- `pascal_run_custom_equivalence`: `minimal` — every row moves (the preamble clause).
+- `pascal_simulate_equivalence`: `inventory-mock-bag` — the definition is refused (`Unrecognized keys: "inventory", "inventoryCount"`).
+- `pascal_side_effects_equivalence`: the corpus grew (55 → 61) — the base harness refuses the stale count.
+- `pascal_roster_equivalence`: `full-precedence-chain` first (P4.D332's — also red after).
+- `pascal_workbench_equivalence` / `_route_equivalence`: `library` (the widened pair's tenth tool).
+- `pascal_run_custom_handler_equivalence`: 37 vs 49 cases; `pascal_trigger_runner_equivalence`: 4 comparands (the new row).
+- `tool_definitions_equivalence`: `runCustom` drifted (the preamble clause).
+- Vacuous rows (memory note `tier-r-vacuous-equal-rows`): the workbench route's `inventory-preview-null-bag` / `-absent-bag` / `-empty-bag` / `inventory-audit-null-bag` answer the same with or without the bench wire; `inventory-preview-mock-bag`, `-lantern-only`, `inventory-audit-mock-bag` and both operand-roll rows do not.
+
+### Mutation proofs (item 1, the new pure modules)
+
+- **M1** `parse_aggregate_key` taking the FIRST dot as the fold: KILLED (`parse-owned.metadata.a.b.min`).
+- **M2** `sum` as a right fold: KILLED (`value-float-order-sum`, `value-float-order-sum-in-arrays`).
+- **M3** `resolve_inventory_value` without the `typeof` check: KILLED (`operand-value-typeof-mismatch`).
+- **M4** `inventory_count_holds` comparing `eq` before the orderings: an EQUIVALENT mutant (a boolean conjunction), recorded, not run.
+- **M5** `mock_inventory_context` first-row-wins: KILLED (`context-later-row-wins-first-position`).
+- **M6** the applier landing `equip`'s `after` unsorted: NOT MEASURABLE on this branch (every applier step is red by design); the `pascal_inventory_effects` rows with two ids carry it at the union.
+
+### The widens (recorded)
+
+- **`workbench-{main,mount}.db`** through `extend-workbench-inventory-roll.ts` (+ the builder): main unchanged (byte-identical); mount `sqlite_master` hash UNCHANGED (`e025ac8b…`), +1 file / document / link / chunk (`Tools/kappa_inventory.tool.json`).
+- **`pascal-run-custom-{main,mount}.db`** through `extend-pascal-run-custom-inventory.ts` (LANE-REMOVE minimal form): main `sqlite_master` `095e1bf8…` → changed by the two Inventory columns only (`chats.equippedInventory`, `characters.canManageInventory`), row counts unchanged; mount `sqlite_master` hash UNCHANGED (`2f4bc70b…`), +14 links / files / documents (`Inventory/` files: four project archetypes in the project's official store, four CHAR_A instances, one CHAR_B instance; nine `Tools/*.tool.json` on the Trigger Shelf). Readers re-run: handler / trigger runner / definition reader / build-tools roster pre-existing rows byte-identical (minted ids and timestamps masked) — the three trigger-room handler rows gain only the roster's bag lines in the new `inventoryLines` field; route moves only `list-trigger-room`. The e2e seeder copies vault A's `Tools/` only — unaffected.
+
+### Measurements the order asked for
+
+- Item 10: the bench's 400 `details` are v4's raw Zod issue objects (`invalid_value` / `invalid_type` / `too_big` / `unrecognized_keys` measured in `pascal-bench-inventory.ts`); v5's envelope drops `details` (the standing P4.6bb deferral), so the issue bytes are pinned by the bench family and the route compares the 400 status + error.
+- Item 11: `dispatch_wrong_type_census` / `web_edge_body_parse_guard` — both green and UNMOVED (`dispatch_wrong_type_census` 14 / 0; `web_edge_body_parse_guard` 2 / 0, `COLLAPSE_CENSUS` untouched — the bench's `inventory` rows ride the existing preview / audit body parse, no new route).
+- Item 14: the library's `rollForm: "inventory"` measured on the widened workbench pair (one entry).
+- Item 15: the regenerated `data.rs` changes ONE entry (`runCustom`, the preamble clause); count 63.
+- Item 17 (j): v4's trigger runner posts `*Bertie picks up a tape measure.*` and logs `announcement: posted now` — red by design here.
+- Tracing renders `r#ref = …` as `ref=…` (the execution family's line compare is green).
+- v4 writes a project's inventory objects to the project's OFFICIAL store, not to a linked store like the Trigger Shelf.
+
+### HANDOFFs (item 19)
+
+1. **Unifier:** delete `pascal::p4d329_c2_standins` and repoint every import to P4.D328's `inventory::{refs, context}` / `services::inventory_change_effects`. Spelling deltas against P4.D328's landed header: the trait has NO `Send + Sync` supertraits there and `LoadedInventoryContext` is not `Sync` — this lane's async deal holds `&dyn InventoryContext` across the consult's await and shares `Arc<dyn InventoryContext + Send + Sync>` into the write, so either C1's pool becomes `Sync` or the entrances stop holding the bag across an await (a type-level union item); `equipped_kin_count` is `usize` there (`f64` here); `scope_objects` returns `&[AggregateObject]` (a `Vec` here); `notify_inventory_changed` takes the turn's map as a sixth argument with `ctx.pending: None` — `inventory_effects::finish_inventory_effects` must switch. `run_service.rs`'s `apply_effects_for_run(…, inventory.clone(), None)` is the LANE-REMOVE line for `RunCustomToolParams.pending_inventory_announcements`. `apply_custom_tool_effects` returns a 3-tuple (R-8). `roster.rs`'s bag thunk sits beside P4.D333's `:384-390`; `gate_names_inventory` reads ONE group (P4.D333's `gate_groups` walk wraps it); `tool_vocabulary.rs`'s `GroupReads` + `collect_group` match P4.D333's shape; the `inventory_aggregates` vocabulary line. The extender: keep P4.D328's `extend-pascal-run-custom-inventory.ts`, add this lane's ONE import + ONE `addPascalInventoryShelf` call, re-run the extenders in pick order on main's committed pair.
+2. **P4.D328:** the connection-level `load_inventory_context(main, mount, …)` — landed as asked; the `Sync` question above.
+3. **P4.D339:** `help/custom-tools.md`'s Inventory sections (the `$inventory` operand, the `inventory` / `inventoryCount` / `inventoryAggregate` subjects, the `inventory` effect, `Reads:` / `Takes stock of:`).
+
+### Not covered (recorded)
+
+- The applier's re-read FAILURE after a landed gesture (`stopped — could not be re-read`) needs a plant that throws on the second pool read only; not staged (the unit's line is the module's; no capture pin either, since every load refuses on this branch).
+- The run service's load-FAILURE row on the handler family (a plant on the vault read): not staged; on this branch every load takes the stand-in's refusal, which `run_service::inventory_read_tests` pins with the `error` field carved.
+- Item 8's gate rows use v4's REAL `inventoryContextFrom` over literal items (the R-3 recorded idiom), not the `inventory-fake-store` helper.
+
+### Gate
+
+fmt clean; clippy `-D warnings` clean on both feature sets (default and `--features quilltap-core/native-transport`); `recipe_sweep.py --self-test` 0 failures.
+
+`cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, every lane oracle exported from `/tmp/p4d329/`): **840 binaries / 5,505 passed / 5 failed / 3 ignored**. Every red is named, and none is this lane's:
+- `pascal_custom_tools_route_equivalence` — RED at the pin before my widen (first red `list-llm-led`, the perspective moves `…0a` → `…0b`: P4.D332's vault-only roster). Not carved here; my widen moves only `list-trigger-room`.
+- `tool_definitions_equivalence` — the first red is `runSql` (the Log lane P4.D331's `log_entries` sentence); `runCustom` is green.
+- `provider_sdk_version_guard`, `public_schemas_vendor_guard`, `qtap_schema_embed_guard` — the gate did not export `QT_V4_CHECKOUT`, so they read the LIVE v4 checkout (`85c002822`, past the pin). Re-run with `QT_V4_CHECKOUT` at the pin: the SDK guard is green (4 / 0). The two schema guards stay red at the pin by ownership: `qtap-custom-tool.schema.json` is P4.D333's re-vendor and `qtap-export.schema.json` is P4.D327's.
+
+The LANE-REMOVE census (the `no_*_lane_remove_markers_left` guards) is green; my markers are inside the C2 stand-in module and the two named lines, and they name the lane and the commit.
+
+Tier R (`cli_differential`, `QT_V4_CHECKOUT` = the pin): **422 cases, 0 failures** (438 s).
+
+Versions at close: core 0.0.1325, web 0.0.244; harness frozen 0.0.1110.

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — docs(porting): record the P4.D329 lane and mark the order LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D329 lane record to `status-log.md` (gate, residue by owner, HANDOFFs, measurements) and sets the order's status header to LANE COMPLETE with the branch.
+
 #### 2026-10-26 — test(pascal): classify rows for the {{inventory.<ref>.<field>}} placeholder (P4.D329)
 
 _No crate versions bumped._
