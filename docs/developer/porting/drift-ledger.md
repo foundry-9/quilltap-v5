@@ -28,25 +28,32 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-27, by `/driftcheck` (`15277d2ee`, run as the
-  round's `/unify` started — the §2 probe had FAILED on 14 new `main`
-  commits past the then-recorded `a0905454b`). Both branches re-probed
-  locally AND against the remote after a fetch (`main` = `85c002822`,
-  `bugfix` = `489b228b6`, `release` = `2432b9057` — local equals remote).
-  That check classified the 14 directly; the 32 of 2026-10-26 were
-  classified by five parallel readers. The unify itself regenerated every
-  oracle from the detached pin `/tmp/qt-v4-pin-unify-322a5488e` (its own
-  `npm ci --offline` tree: `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless`
-  6.0.0, `plugin-types` 2.8.0; the plugin `node_modules` linked from the live
-  checkout, `plugin-types` 2.9.0 there — inert at the pin, type-only
-  imports).
-  - **Before that:** 2026-10-26 (`a0905454b`, 32 rows); 2026-10-20 evening
+- **Checked:** 2026-10-27 (afternoon), by `/driftcheck` run on main right
+  after the `322a5488e` round's unification (`a87b3b4b1`) — the §2 probe
+  FAILED on 5 new `main` commits past the recorded `85c002822`. Fetched
+  first; local equals remote on all three branches (`main` = `86cc25482`,
+  `bugfix` = `489b228b6`, `release` = `2432b9057`). The 5 were classified
+  directly from their hunks.
+  - **Before that:** 2026-10-27 (morning), by `/driftcheck`
+    (`15277d2ee`, run as the
+    round's `/unify` started — the §2 probe had FAILED on 14 new `main`
+    commits past the then-recorded `a0905454b`). Both branches re-probed
+    locally AND against the remote after a fetch (`main` = `85c002822`,
+    `bugfix` = `489b228b6`, `release` = `2432b9057` — local equals remote).
+    That check classified the 14 directly; the 32 of 2026-10-26 were
+    classified by five parallel readers. The unify itself regenerated every
+    oracle from the detached pin `/tmp/qt-v4-pin-unify-322a5488e` (its own
+    `npm ci --offline` tree: `openai` 7.34.0, `zod` 4.6.7, `@xterm/headless`
+    6.0.0, `plugin-types` 2.8.0; the plugin `node_modules` linked from the live
+    checkout, `plugin-types` 2.9.0 there — inert at the pin, type-only
+    imports).
+  - **Earlier:** 2026-10-26 (`a0905454b`, 32 rows); 2026-10-20 evening
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `85c002822`** ("Fix terminal Kill ignored by
-  bash; deleted chats leave shells running (#119)", 2026-10-26 20:52,
-  `4.11.0-dev.91`) — **FORTY-SIX commits past the baseline**, ALL
+- **v4 `main` HEAD at check: `86cc25482`** ("Fix: legible dialogue in user
+  messages; Rains user text; Great Estate sidebar", 2026-10-27 10:16,
+  `4.11.0-dev.97`) — **FIFTY-ONE commits past the baseline**, ALL
   UNPROCESSED in §3, two merges among them (`5e18ede6a`, `744596158`):
   - **The 32 of 2026-10-26** (`6fd2d5ffb` … `a0905454b`):
     - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
@@ -96,8 +103,35 @@ probe verifies against._
     - *CLI:* `40cc6ffda` `db --count` (verify-only).
     - *NO-PORT? candidates:* `3c9ae1fc3`, `8becfc6ce`, `66f8c4d41`,
       `539bb4012`, `744596158`.
-  - **No CONVERGENCE** in the 46: bugs 258–268 were all found by v4 itself;
-    v5 status `Owed` in every row.
+  - **The 5 of 2026-10-27 afternoon** (`4b0d1cb04` … `86cc25482`; NO
+    migration, NO D23 move, NO vault key, NO dependency move — the lockfile
+    hunks are version stamps only):
+    - *Server:* `4b0d1cb04` **bug 269** (v4-ORIGINATED, found live on
+      Friday) — the NanoGPT image provider fits `size` / a NEW flat
+      `aspect_ratio` body key to the model's detailed-catalog entry, fetches
+      a cold catalog, and retries a shape-refused non-square once as a
+      square (PORT on P4.D101's NanoGPT image dialect; v5 HAS the defect).
+    - *SPA / client:* `2b2b190b6` composer prose mode (PORT-NEW — rides the
+      UNPORTED punctuation lint `1dd0a0c01` + Novel template `778b97b2b`;
+      on the Salon composer the round's interrupt pair just touched);
+      `cce44e098` the legibility pass and `86cc25482` legible user dialogue
+      (PORT — `qt-components` CSS + five vendored theme packs; the
+      intervention / Storyteller halves ride their UNPORTED features).
+    - *Process:* `dd200c695` (NO-PORT? code-wise) — **v4's bug catalogue is
+      FROZEN at Bug 269; new v4 bugs are GitHub issues `#N`**. A convergence
+      check now reads BOTH `docs/developer/bugs.md` (bugs ≤ 269) AND the
+      issues (`gh issue list -R foundry-9/quilltap-server --label bug
+      --state all`); a v4 bug this port files from now on is a GitHub issue
+      via the Bug form — outward-facing, confirm with the human first (§4
+      step 5).
+    - **None lands on a surface the `322a5488e` round just ported**
+      (Inventory, the Log, interrupts, the custom-tool grammar, the terminal,
+      scenarios, `/photos`): the nearest are `2b2b190b6` (the composer — a
+      new prop beside, not on, the round's raise-hand / stop) and
+      `cce44e098`'s one `help/pascals-workbench.md` sentence (the
+      hidden-field hand — rides UNPORTED intervention `839575d89`).
+  - **No CONVERGENCE** in the 51: bugs 258–269 were all found by v4 itself;
+    v5 status `Owed` (269: `Not assessed`) in every row.
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
     `0276d10d9`, `a8214b253`, `bdd09b75b`; and `6588972d5`'s "nothing new is
     stored" is FALSE.
@@ -105,10 +139,10 @@ probe verifies against._
   branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
   BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `85c002822`.
-  HEAD is forty-six commits past the baseline, so it poisons a regen by
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `86cc25482`.
+  HEAD is fifty-one commits past the baseline, so it poisons a regen by
   DRIFT.
-- **Verdict: DRIFT PENDING — 46 commits (§3), all UNPROCESSED.**
+- **Verdict: DRIFT PENDING — 51 commits (§3), all UNPROCESSED.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -168,6 +202,10 @@ probe verifies against._
   intended; a live v5 PTY whose row exists is spared by name); a v4-HEAD
   terminal kill / chat delete ends shells v5 would leave running (bugs 267 /
   268 live in v5).
+- **Past `85c002822` — NO boot / schema / vault hazard** (the 5 are a
+  plugin wire fix, client CSS / themes and docs). Non-corrupting: a v5
+  NanoGPT image job against a Qwen Image 3 profile still 400s (bug 269
+  lives in v5).
 - **The standing rule holds: no v5 build against live Friday.** Dogfood a
   COPY, and do not round-trip v4-written characters through v5 writes while
   comparing with v4.
@@ -238,6 +276,16 @@ probe verifies against._
   `system-backup-restore.md` ×2, `the-log.md`, `custom-tools.md` ×4,
   `memory-recall-relevance.md` ×3, `wardrobe.md`, `inventory.md`, …);
   `docs/releases/4.11.0.md`, `bugs.md` + `bugs/fixed/bug-266/267/268-*.md`.
+  The afternoon's 5 add `help/image-generation-profiles.md` (+1 paragraph,
+  bug 269), `help/chat-settings-composer.md` + `help/roleplay-templates.md`
+  (prose mode), `help/pascals-workbench.md` (one sentence),
+  `bugs/fixed/bug-269-*.md`, and `bugs.md`'s FREEZE (later v4 bugs live in
+  GitHub issues, not `docs/` — nothing to vendor for them).
+- **Themes / CSS:** v5 vendors `apps/web/public/themes/*` (theme versions
+  equal to the pin's) and `apps/web/src/styles/qt-components/*.css`.
+  `cce44e098` + `86cc25482` move both (art-deco, earl-grey, great-estate,
+  madmans-box, old-school, rains); v5 has no `theme-storybook` (its mirror
+  hunks are NO-PORT).
 
 ### Rounds, guards, state
 
@@ -252,7 +300,10 @@ probe verifies against._
     `claude/import-chat-record-columns-f49fb0` first; this round's OPEN
     review items; the R-4 Brahma-stop ruling; the carried lists —
     `phase-4.md`'s NEXT).
-  - **The 46-commit catch-up** (`/driftcheck` first), at a later pin:
+  - **The 51-commit catch-up** (`/driftcheck` first), at a later pin
+    (the afternoon's 5 add: bug 269 on the NanoGPT image dialect, prose
+    mode WITH the punctuation-lint lane, the CSS / theme legibility pair as
+    one SPA small):
     **first, by the 2026-10-26 ruling,** `0276d10d9`'s Inventory riders and
     the three vault-key writers (`humanoid`, diagrams, `pronounGuidance` —
     the LIVE-DATA hazards); then `cc5f2347c` (the Log in backups — flips
@@ -352,6 +403,11 @@ passes the commit.
 | `744596158` | 2026-10-26 | Merge remote-tracking branch 'origin/main' | **NO-PORT? — the merge of `026222176` with `cc5f2347c` (+ `539bb4012`); conflict ONLY in `docs/CHANGELOG.md`, no code resolved** (classified 2026-10-27 from `git show --cc`; `dev.90`; parents `026222176` `cc5f2347c`). **v5 intersection:** none beyond its two parents' rows. | UNPROCESSED |
 | `c50cdddc6` | 2026-10-26 | Document terminal sessions as excluded from backups (#118) | **NO-PORT? (code) + help text — no production code** (classified 2026-10-27; 6 files +238 / −1; no stamp; parent `744596158`): `help/ariel.md` (one paragraph extended — sessions and transcripts stay out of a backup), `help/system-backup-restore.md` (+ an *Ariel's terminal sessions* Not-Included bullet), a release-checklist line, a NEW test `terminal-sessions-excluded.test.ts`, and a mock fix (`logEntries` in `delete-service-annotations.test.ts`). **v5 intersection:** ⚠ `help/ariel.md` is a page the `322a5488e` round just vendored (P4.D339, with P4.D337's `:27-30`) — re-vendor at the catch-up; confirm v5's backup also leaves `terminal_sessions` out (expected — the pin's rule). | UNPROCESSED |
 | `85c002822` | 2026-10-26 | Fix terminal Kill ignored by bash; deleted chats leave shells running (#119) | **PORT — bugs 267 + 268 (both v4-ORIGINATED — 267 "by code reading", 268 "while fixing 267"; v5 Owed), NOT a convergence; ⚠ LANDS ON A SURFACE THE `322a5488e` ROUND JUST PORTED; NO D23 move** (classified 2026-10-27 from the hunks; 17 files +571 / −25; prod 8 files +291 / −19; `dev.91`; parent `c50cdddc6`). **Bug 268:** `ptyManager.terminate(id, graceMs = 3000)` — `kill(id,'SIGHUP')`, then SIGKILL if `meta.exitedAt` is still null (WARN `[PTY] Session ignored SIGHUP; sending SIGKILL {sessionId, graceMs}`); BOTH `/api/v1/terminals/[id]` kill and DELETE use it (were `kill(id,'SIGTERM')`); async `kickAllForChat` (which flushed Ariel first) REPLACED by sync `disposeChatSessions(chatId)` → terminate + drop each, INFO `[PTY] Terminated sessions of deleted chat {chatId, count}` / DEBUG `[PTY] No live sessions for deleted chat`; called from `ChatsRepository.delete` after the row is gone (WARN `Failed to terminate terminal sessions for deleted chat`). **Bug 267:** `TerminalSessionsRepository.sweepOrphanedTranscripts({isLive, graceMs, now?})` unlinks `<logs>/terminals/*.log` no row names (by id or resolved `transcriptPath`), not live, unwritten for `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` (1 h); INFO `Swept orphaned terminal transcripts {scanned, deleted}`; daily-maintenance step **6b** `orphan-transcripts` (`Orphaned-transcript sweep failed — continuing`) and a NEW `MaintenanceSweepSummary.orphanedTranscriptsSwept {scanned, deleted}` key. `help/ariel.md` rewritten (+2 paragraphs). **v5 intersection:** P4.D337 (bug 255) re-ported `pty-manager.ts` at the pin, reading `kickAllForChat` (`:625-646`), and P4.D339 vendors `help/ariel.md`. v5 HAS both defects: `crates/quilltap-host/src/terminal/mod.rs` `kill` sends `SIGTERM` only and `kick_all_for_chat` has no production caller (P4.1's PTY lane); `crates/quilltap-core/src/services/scheduled_maintenance.rs` has no orphan-transcript sweep — the new summary key moves the scheduled-maintenance differential. | UNPROCESSED — ⚠ ported over the `322a5488e` round's LANDED terminal port (P4.D337 on main 2026-10-27) + the vendored `help/ariel.md` (P4.D339) |
+| `4b0d1cb04` | 2026-10-27 | Fix NanoGPT image sizes: fit each request to the model (bug 269) | **PORT — bug 269 (v4-ORIGINATED, found live on Friday from "no avatars arriving"; v4's v5 status `Not assessed`), NOT a convergence; NO D23 move, NO dependency move** (classified 2026-10-27 from the hunks; 11 files +698 / −15 incl. a 237-line test and the bug file; prod: `plugins/dist/qtap-plugin-nanogpt/image-provider.ts` +99 / −5 and a NEW pure `image-sizes.ts` 126 lines, the rebuilt `index.js`, plugin 1.2.11; lockfile hunk is the root version stamp only; parent `85c002822`). NEW `fitImageShape(supported_parameters, size, aspectRatio)` picks the nearest listed concrete size by aspect ratio (in the model's own `x` / `*` spelling) or, for a tier model (`1k` / `2k`), the nearest tier by long edge plus the nearest listed `aspect_ratio` (a NEW catalog field), posted as a NEW flat body key `aspect_ratio`; `generateImage` now reads the model's catalog entry first via NEW `catalogEntryFor` (refreshes a cold cache with the call's key — WARN `Could not refresh the NanoGPT image catalog; posting the size as asked`), DEBUG `Fitted the requested image shape to the model {model, requestedSize, requestedAspectRatio, size, aspectRatio}`; the `Posting NanoGPT image request` DEBUG now logs the POSTED `size` + `aspectRatio` (was `params.size`), and so does the `NanoGPT image request failed` ERROR; a non-square request refused on its shape (`503`, or `400` whose message matches `size|resolution|aspect|dimension|output`) retries ONCE as the fitted square (`1024x1024` with no catalog entry) with WARN `NanoGPT turned down a non-square image; retrying once as a square`. Help: `image-generation-profiles.md` +1 paragraph. **v5 intersection:** P4.D101 (the NanoGPT bundled provider) + the LoRA train — `crates/quilltap-core/src/model/image_dialects.rs` (`RealImageProvider::generate_image`, the `Posting NanoGPT image request` DEBUG at `:2086` logs `params.size` — a field move, pinned by `crates/quilltap-harness/tests/nanogpt_lora_wire_log.rs`), `model/nanogpt_catalog.rs` (the detailed-catalog cache — v5 has no forked job child, so the "cold in the child" premise differs: measure whether v5's cache is warm in the job path), `image_gen/params_builder.rs`. v5 HAS bug 269 (forwards `size` as given). `image-sizes.ts` is a tier-1 pure-function candidate. | UNPROCESSED |
+| `2b2b190b6` | 2026-10-27 | Composer prose mode: narration/OOC preview and a no-dialogue warning | **PORT-NEW (SPA / client only) — rides the UNPORTED punctuation lint (`1dd0a0c01`) and the UNPORTED Novel template (`778b97b2b`); NO server, NO wire, NO schema, NO setting** (classified 2026-10-27 from the hunks; 21 files +787 / −51 incl. ~410 lines of tests + a 281-line `prose-vectors.json` contract corpus; `dev.94`; parent `4b0d1cb04`). `lib/punctuation-lint/engine.ts`: a `proseMode` option, a NEW rule `no-dialogue` (message `No dialogue yet — not a single opening quote in the whole draft. Meant to say this aloud? Put the speech in double quotes.`), `lintQuotes` returns the outermost dialogue runs, NEW `oocSpans` / `classifyParagraph` / `classifyProse` (narration vs `((ooc))` runs, quotes masked inside asides, scene breaks excluded). NEW `lib/punctuation-lint/prose-mode.ts` `isProseTemplate(template)` (unmarked narration + double-quoted dialogue). `PunctuationLintPlugin` publishes four prioritized CSS Custom Highlight names; `SalonView` → `ChatComposer` → `LexicalComposerWrapper` thread a `proseMode` prop; NEW `::highlight` rules + tokens in `_chat.css` / `_variables.css`. Help: `chat-settings-composer.md`, `roleplay-templates.md`. The preview ignores the `punctuationWarnings` toggle; the no-dialogue warning honours it. **v5 intersection:** the v5 SPA composer (`apps/web`, the Salon composer the `322a5488e` round's interrupt lanes just touched for raise-hand / stop) — a new input BESIDE, not on, that work; v5 has no punctuation lint and no Novel template yet, so this ports WITH `1dd0a0c01` + `778b97b2b` (one lane), and `prose-vectors.json` is a ready contract corpus for it. | UNPROCESSED |
+| `cce44e098` | 2026-10-27 | Fix: legibility pass over the qt-* surfaces added since 4.9 | **PORT (SPA CSS + bundled theme packs) + riders on UNPORTED surfaces; NO server, NO behaviour** (classified 2026-10-27 from the hunks; 27 files +165 / −51; `dev.95`; parent `2b2b190b6`). Core `qt-components`: `_chat.css` — `.qt-chat-regenerating-plate-text` takes the bubble's ink (`--qt-chat-regenerating-plate-fg` → `--qt-chat-assistant-fg`), `.qt-danger-badge` / `-muted` and `.qt-concierge-mark` read `--qt-alert-error-fg` (the Concierge badge); `_variables.css` light `--qt-response-status-streaming-fg` 38% → 29% lightness; `_intervention.css` (note ink → `--qt-alert-warning-fg`; the hidden-field hand struck through instead of `opacity: 0.5`) and `_storyteller.css` — both UNPORTED features (`839575d89`, `b15fe9404`). Themes: art-deco, earl-grey, great-estate (`tokens.json` too), madmans-box (diagram pane — UNPORTED `6588972d5`), old-school, rains (`tokens.json` too) — `styles.css` + `theme.json` version bumps. `theme-storybook` 1.0.87 mirror (NO-PORT — v5 has none). Help: one `pascals-workbench.md` sentence (the struck-through hand — rides the UNPORTED intervention). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`:164` the plate, `:3101` / `:3110` / `:3120` the badge + mark), `_variables.css:389`, and `apps/web/public/themes/*` (vendored at the pin's versions, P4.5 onward); the vendored `help/pascals-workbench.md` (P4.D339) gets the sentence only with intervention. | UNPROCESSED |
+| `dd200c695` | 2026-10-27 | Docs: move bug filing to GitHub Issues; freeze catalogue at Bug 269 | **NO-PORT? (docs / infra) — BUT a PROCESS change for this port** (classified 2026-10-27 from the hunks; 5 files +140 / −38: NEW `.github/ISSUE_TEMPLATE/bug.yml` (Severity, Who it bites, Provenance Original/Pinned/Faithful/Inert, How found, v5 status, Symptom, Root cause, Why it survived, Fix site, How to verify), v4 `CLAUDE.md` "Filing bugs", `docs/developer/bugs.md` FROZEN header + "How these are filed" rewrite, `.claude/commands/update-documentation.md`, CHANGELOG; no stamp; parent `cce44e098`). v4's catalogue takes no entries past Bug 269; new bugs are GitHub issues cited `#N` and closed by `Fixes #N`. **v5 intersection:** no code. The CONVERGENCE check (§4 step 5) must now also read `gh issue list -R foundry-9/quilltap-server --label bug --state all`; a v4 bug this port files (as the dogfood passes have — bugs 57 … 185) is now a GitHub issue via the Bug form, outward-facing, so confirm with the human first; v5 code comments citing a future v4 bug use `#N`. `docs/v4/developer/bugs.md` mirror re-vendors at the catch-up. | UNPROCESSED |
+| `86cc25482` | 2026-10-27 | Fix: legible dialogue in user messages; Rains user text; Great Estate sidebar | **PORT (SPA CSS + two bundled theme packs); NO server, NO behaviour** (classified 2026-10-27 from the hunks; 12 files +113 / −9; `dev.97`; parent `dd200c695`). `_chat.css` NEW rule `.qt-chat-message-user .qt-chat-message-content .qt-chat-dialogue { --qt-rp-fg: var(--qt-rp-user-dialogue-color, var(--qt-chat-user-fg)) }` (a NEW theme hook `--qt-rp-user-dialogue-color`); `themes/bundled/rains/styles.css` `--qt-chat-user-fg` `hsl(40 6% 98%)` → `hsl(var(--text-000))`; `great-estate/styles.css` +31 (light-mode left-sidebar icons / labels in cream); both `theme.json` version bumps; `theme-storybook` 1.0.88 (+55, the dialogue / narration / monologue / OOC chip family — NO-PORT). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`.qt-chat-dialogue` at `:1948`) and `apps/web/public/themes/{rains,great-estate}` — one SPA small with `cce44e098`. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
@@ -392,6 +448,10 @@ passes the commit.
    and tests-only changes are NO-PORT candidates. Check v4's
    `docs/developer/bugs.md` for the bug number: a bug this port filed
    coming back fixed is a **CONVERGENCE** row (pins will trip; §5.4).
+   **Since `dd200c695` (2026-10-27) that catalogue is FROZEN at Bug 269** —
+   later v4 bugs are GitHub issues cited `#N` (`Fixes #N` in the fixing
+   commit); check them too with `gh issue list -R
+   foundry-9/quilltap-server --label bug --state all`.
 6. **Update §1 and §3** — never touch existing ORDERED/ABSORBED
    dispositions except to append newer facts. Commit per
    `.claude/commands/commit.md` (docs-only) and report: the verdict, the

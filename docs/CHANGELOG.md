@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): drift check — 5 v4 commits past `85c002822` (bug 269 NanoGPT image sizes, composer prose mode, two legibility passes, bug filing moved to GitHub Issues)
+
+_Docs-only change._
+
+v4 `main` moved to `86cc25482` (`4.11.0-dev.97`); `bugfix` and `release` unchanged, checkout clean on `main`. 5 new UNPROCESSED §3 rows (51 past the `322a5488e` baseline), classified from the hunks; no migration, no D23 move, no vault key, no dependency move, no convergence. `4b0d1cb04` fixes bug 269 in the NanoGPT image provider (fit `size` / a new `aspect_ratio` key to the model's catalog entry, retry a shape-refused non-square once as a square) — v5's NanoGPT image dialect has the defect. `2b2b190b6` adds composer prose mode on top of the unported punctuation lint and Novel template. `cce44e098` and `86cc25482` are CSS and bundled-theme legibility fixes on vendored SPA files. `dd200c695` freezes v4's bug catalogue at Bug 269 and moves new bugs to GitHub issues; the ledger's convergence check (§4 step 5) now reads the issues too. None lands on a surface the `322a5488e` round just ported. The baseline stays `322a5488e`; pin required.
+
 #### 2026-10-27 — unify: the `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round — seventeen lanes (P4.D324–P4.D340), the baseline moves `e8e17b2d9` → `322a5488e`
 
 _Docs-only change._
