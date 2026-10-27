@@ -223,7 +223,10 @@ never batch the recording to the end**.
      `db::tolerant_select_list` for missing columns; add a regression test
      over both table shapes.
    - **Faithfully ported v4 bug** — do NOT silently fix; flag to the human
-     and record the decision (candidate for the v4 bugs doc).
+     and record the decision (a candidate v4 bug). **v4 bugs are now
+     GitHub issues** on `foundry-9/quilltap-server` (the Bug form), NOT
+     entries in v4's `docs/developer/bugs.md` (frozen at Bug 269) — filing
+     one is outward-facing, so draft it and get the human's go-ahead first.
 3. **Fix in place**, with the full loop: the v4-faithful code fix; a unit
    test proving the fixed behavior AND the guard; extend the e2e to use the
    **gesture that was actually broken**, not the one that already worked; a
@@ -259,7 +262,8 @@ go. Walk them through interactively, recording results in the same walk doc.
   order's status header now.
 - New reusable gotchas → the round's memory note + MEMORY.md.
 - Report to the human: what passed, what was found and fixed, what's filed
-  upstream, what remains deferred, and the concrete next steps.
+  upstream (as GitHub issues `#N`, with links), what remains deferred, and
+  the concrete next steps.
 
 ## Standing browser-walk gotchas (check before blaming the app)
 

@@ -287,6 +287,12 @@ is the master key to all data — never commit it, never write it where it syncs
   identity / description / personality / title are **not interchangeable**;
   never collapse them. (Full definitions: `docs/v4/.../` and the v4 CLAUDE.md.)
 - **Principles:** encapsulation, single source of truth, SRP, DRY, KISS, YAGNI.
+- **v4 bugs found during the port are GitHub issues** on
+  `foundry-9/quilltap-server` (the Bug form; cite as `#N`), **not** entries
+  in v4's `docs/developer/bugs.md` / `bugs/` — that catalogue is FROZEN at
+  Bug 269 (v4 `dd200c695`, 2026-10-27). Filing is outward-facing: draft the
+  issue and get the human's go-ahead first. Convergence checks read both
+  (`drift-ledger.md` §4 step 5).
 
 ## Hard stops (ask first)
 

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs: v4 bugs found during the port are filed as GitHub issues
+
+_Docs-only change._
+
+CLAUDE.md, `/driftcheck` and `/dogfood` now say that v4 bugs are filed as GitHub issues on `foundry-9/quilltap-server` (with the human's go-ahead first), not in v4's `docs/developer/bugs.md`, which v4 froze at Bug 269. Convergence checks read both.
+
 #### 2026-10-27 — docs(porting): drift check — CLEAR of new commits since `86cc25482` (still 51 past the `322a5488e` baseline)
 
 _Docs-only change._

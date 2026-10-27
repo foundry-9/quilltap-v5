@@ -28,9 +28,13 @@ you:
    diff — the squash topology makes its commit list a lie), and record the
    checkout's branch + dirty state.
 3. Classify every new commit from its **shipped hunks, never its message**
-   (§4 step 4 / §5.3), including the CONVERGENCE check against v4's
-   `docs/developer/bugs.md` (a bug this port filed coming back fixed means
-   pins will trip by design — §5.4).
+   (§4 step 4 / §5.3), including the CONVERGENCE check (a bug this port
+   filed coming back fixed means pins will trip by design — §5.4). v4's
+   `docs/developer/bugs.md` catalogue is **FROZEN at Bug 269** (v4
+   `dd200c695`, 2026-10-27): check it for bugs ≤ 269, and check **GitHub
+   issues** for everything later — `gh issue list -R
+   foundry-9/quilltap-server --label bug --state all` (a fixing commit cites
+   `Fixes #N`).
 4. Delineate each commit's intersection with already-ported work by naming
    the v5 surface and the round/lane that ported it (grep `status-log.md`
    and CLAUDE.md's round bullets for the v4 path / feature / bug number).
