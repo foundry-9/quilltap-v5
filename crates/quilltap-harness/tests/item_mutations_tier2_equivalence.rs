@@ -50,8 +50,9 @@ use quilltap_core::services::wardrobe_folder_mutations::{
     create_wardrobe_folder, delete_wardrobe_folder, rename_wardrobe_folder,
 };
 use quilltap_core::services::wardrobe_item_mutations::{
-    component_lookup_for, create_item, move_items_to_folder, set_item_archived, update_item,
-    validate_component_refs, CreateItemOptions, ItemPatch, PreservedIdentity, WardrobeCreateBody,
+    component_lookup_for, create_item, move_items_to_folder, set_item_archived,
+    update_item_with_origin, validate_component_refs, CreateItemOptions, ItemPatch, PatchOrigin,
+    PreservedIdentity, WardrobeCreateBody,
 };
 use quilltap_core::test_support::captured_with;
 use quilltap_core::vault_overlay::WardrobeItem;
@@ -542,7 +543,17 @@ fn run_op(
                 _ => None,
             };
             let patch = patch_from_json(op.patch.as_ref().expect("patch"));
-            match update_item(mc, xc, location, &current, &patch, lookup.as_ref()) {
+            // Every corpus patch's keys sit in the same order under either origin
+            // (C3); the route's is v4's direct-`updateItem` caller shape here.
+            match update_item_with_origin(
+                mc,
+                xc,
+                location,
+                &current,
+                &patch,
+                lookup.as_ref(),
+                PatchOrigin::Route,
+            ) {
                 Ok(updated) => {
                     let cur_archived = current.archived_at.clone().flatten();
                     let upd_archived = updated

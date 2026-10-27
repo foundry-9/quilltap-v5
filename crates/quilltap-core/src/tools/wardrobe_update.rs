@@ -15,7 +15,7 @@ use serde_json::Value;
 
 use crate::db::vault_wardrobe_public::{WardrobePatch, WardrobeScope};
 use crate::db::wardrobe_location::{resolve_wardrobe_location, ResolveWardrobeLocationOptions};
-use crate::services::wardrobe_item_mutations::{update_item, ItemPatch};
+use crate::services::wardrobe_item_mutations::{update_item_with_origin, ItemPatch, PatchOrigin};
 use crate::vault_overlay::WardrobeItem;
 use crate::wardrobe::normalize_no_item_sentinel;
 use crate::wear_ops::{find_in_pool, WearableRef};
@@ -68,9 +68,13 @@ const VALIDATION_ERROR: &str = "Invalid input: item_id or item_title is required
 
 const SLOT_ENUM: [&str; 5] = crate::wardrobe::WARDROBE_SLOT_TYPES;
 
+// P4.170 C.9: v4's tool input schema marks NO key `.nullable()` — every one
+// is `.optional()` (`.default(false)` for `equip_now`), so an explicit `null`
+// is a Zod refusal, never "absent". Each typed read below answers `None` only
+// for a MISSING key.
 fn opt_string(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<String>, ()> {
     match obj.get(key) {
-        None | Some(Value::Null) => Ok(None),
+        None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
         Some(_) => Err(()),
     }
@@ -78,7 +82,7 @@ fn opt_string(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<
 
 fn opt_bool(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<bool>, ()> {
     match obj.get(key) {
-        None | Some(Value::Null) => Ok(None),
+        None => Ok(None),
         Some(Value::Bool(b)) => Ok(Some(*b)),
         Some(_) => Err(()),
     }
@@ -107,7 +111,7 @@ fn validate(args: &Value) -> Option<UpdateInput> {
     let appropriateness = opt_string(obj, "appropriateness").ok()?;
     // types: non-empty array of the slot enum.
     let types = match obj.get("types") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::Array(a)) => {
             if a.is_empty() {
                 return None; // `.nonempty()`
@@ -129,7 +133,7 @@ fn validate(args: &Value) -> Option<UpdateInput> {
     let generate_image = opt_bool(obj, "generate_image").ok()?;
     // component_item_ids: array of string.
     let component_item_ids = match obj.get("component_item_ids") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::Array(a)) => {
             let mut v = Vec::with_capacity(a.len());
             for e in a {
@@ -283,13 +287,15 @@ fn run(
     )
     .map_err(|e| crate::db::fallback::error_text(&e))?;
     let updated = match &location {
-        Some(location) => update_item(
+        // C3: the tool's own patch order (`wardrobe-update-handler.ts:99-107`).
+        Some(location) => update_item_with_origin(
             main,
             mount,
             location,
             &WardrobeItem::from_read_value(item),
             &patch,
             Some(pool.by_id()),
+            PatchOrigin::Tool,
         )
         .map_err(|e| e.message())?,
         None => None,

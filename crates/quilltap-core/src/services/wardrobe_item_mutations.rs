@@ -335,29 +335,70 @@ pub struct ItemPatch {
     pub archived: Option<bool>,
 }
 
-/// The key order of an [`ItemPatch`]'s own fields — v4's `...fields` spread
-/// keeps the CALLER's object order; this port fixes it as the field order
-/// (callers that want byte-equal `fields` lines order their JSON the same).
-const ITEM_PATCH_KEY_ORDER: [&str; 11] = [
-    "title",
-    "types",
-    "componentItemIds",
-    "description",
-    "imagePrompt",
-    "appropriateness",
-    "isDefault",
-    "replace",
-    "imageFileId",
-    "migratedFromClothingRecordId",
-    "folder",
-];
+/// Which caller built an [`ItemPatch`] (contract C3, P4.170 — ruling P-7,
+/// survey C.3 option A). v4's `fields: Object.keys(next)` is the `...fields`
+/// spread of the CALLER's object, so the `[ItemMutations] Updated wardrobe
+/// item` line's key order is the caller's: the item routes hand
+/// `updateItem` the Zod parse of `updateWardrobeSchema` (shape order), the
+/// `wardrobe_update` tool its hand-built patch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatchOrigin {
+    /// The item routes (`wardrobe-route-factory.ts:495-506`): Zod's output
+    /// follows `updateWardrobeSchema`'s shape — `wardrobeItemFieldsSchema`
+    /// (`wardrobe.types.ts:155-173`) `.partial()`, then the `.extend`'s
+    /// `archived` (stripped before `updateItem`) and `imageFileId`.
+    Route,
+    /// `wardrobe-update-handler.ts:99-107`'s conditional assignments.
+    Tool,
+}
+
+impl PatchOrigin {
+    /// The caller's key order. Each list ends with the keys that caller never
+    /// sends, so every [`ItemPatch`] field has a slot whatever the origin
+    /// (`migratedFromClothingRecordId` is the migration's alone).
+    fn key_order(self) -> &'static [&'static str; 11] {
+        match self {
+            PatchOrigin::Route => &[
+                "title",
+                "description",
+                "imagePrompt",
+                "types",
+                "appropriateness",
+                "isDefault",
+                "componentItemIds",
+                "replace",
+                "folder",
+                "imageFileId",
+                "migratedFromClothingRecordId",
+            ],
+            PatchOrigin::Tool => &[
+                "title",
+                "description",
+                "imagePrompt",
+                "appropriateness",
+                "types",
+                "isDefault",
+                "replace",
+                "componentItemIds",
+                "folder",
+                "imageFileId",
+                "migratedFromClothingRecordId",
+            ],
+        }
+    }
+}
 
 /// The keys of the patch object v4 actually sends to `location.update`, in
-/// v4's `Object.keys(next)` order: the `...fields` spread (`folder` dropped
-/// when it names the current folder), then `archivedAt` when stamped, then a
-/// recomputed `types` — which keeps its spread slot when the patch restated
-/// `types`, and lands LAST when it did not.
-fn patch_keys(next: &WardrobePatch, types_restated: bool) -> Vec<&'static str> {
+/// v4's `Object.keys(next)` order: the `...fields` spread in the CALLER's
+/// order (`folder` dropped when it names the current folder), then
+/// `archivedAt` when stamped, then a recomputed `types` — which keeps its
+/// spread slot when the patch restated `types`, and lands LAST when it did
+/// not.
+fn patch_keys(
+    next: &WardrobePatch,
+    types_restated: bool,
+    origin: PatchOrigin,
+) -> Vec<&'static str> {
     let present = |key: &str| match key {
         "title" => next.title.is_some(),
         "types" => next.types.is_some(),
@@ -373,7 +414,8 @@ fn patch_keys(next: &WardrobePatch, types_restated: bool) -> Vec<&'static str> {
         "archivedAt" => next.archived_at.is_some(),
         _ => false,
     };
-    let mut keys: Vec<&'static str> = ITEM_PATCH_KEY_ORDER
+    let mut keys: Vec<&'static str> = origin
+        .key_order()
         .iter()
         .copied()
         .filter(|k| present(k) && (*k != "types" || types_restated))
@@ -387,11 +429,12 @@ fn patch_keys(next: &WardrobePatch, types_restated: bool) -> Vec<&'static str> {
     keys
 }
 
-/// v4 `updateItem(location, current, patch, { lookup })` — patch `current` at
-/// its location. A composite's `types` are recomputed whenever its components
-/// or designated slots change, widening over the slots it already claimed
-/// unless the patch restates them. `Ok(None)` when the item vanished under
-/// the write. DEBUG `[ItemMutations] Updated wardrobe item`.
+/// [`update_item_with_origin`] for the item routes' patch
+/// ([`PatchOrigin::Route`]).
+// HANDOFF(P4.166): `api/wardrobe_route_factory.rs`'s update call passes
+// `PatchOrigin::Route` to `update_item_with_origin` (§S.1(b), contract C3);
+// this wrapper — kept only so the factory compiles untouched on the P4.170
+// branch — is then deleted.
 pub fn update_item(
     main: &Connection,
     mount: &Connection,
@@ -399,6 +442,33 @@ pub fn update_item(
     current: &WardrobeItem,
     patch: &ItemPatch,
     lookup: Option<&ComponentLookup>,
+) -> Result<Option<WardrobeItem>, WardrobeLocationError> {
+    update_item_with_origin(
+        main,
+        mount,
+        location,
+        current,
+        patch,
+        lookup,
+        PatchOrigin::Route,
+    )
+}
+
+/// v4 `updateItem(location, current, patch, { lookup })` — patch `current` at
+/// its location. A composite's `types` are recomputed whenever its components
+/// or designated slots change, widening over the slots it already claimed
+/// unless the patch restates them. `Ok(None)` when the item vanished under
+/// the write. DEBUG `[ItemMutations] Updated wardrobe item`.
+///
+/// `origin` (C3) orders the line's `fields` as the caller's own object.
+pub fn update_item_with_origin(
+    main: &Connection,
+    mount: &Connection,
+    location: &WardrobeLocation,
+    current: &WardrobeItem,
+    patch: &ItemPatch,
+    lookup: Option<&ComponentLookup>,
+    origin: PatchOrigin,
 ) -> Result<Option<WardrobeItem>, WardrobeLocationError> {
     let mut next = WardrobePatch {
         title: patch.title.clone(),
@@ -447,7 +517,7 @@ pub fn update_item(
         ));
     }
 
-    let fields = patch_keys(&next, patch.types.is_some());
+    let fields = patch_keys(&next, patch.types.is_some(), origin);
     let updated = location.update(main, mount, &current.id, &next)?;
     tracing::debug!(
         scope = location.scope.as_str(),
@@ -656,15 +726,52 @@ mod tests {
             archived_at: Some(None),
             ..WardrobePatch::default()
         };
-        // `types` restated → keeps its spread slot ahead of `description`.
+        // `types` restated → keeps its spread slot — after `description` in
+        // both callers' orders (Zod shape / the tool's assignments).
         assert_eq!(
-            patch_keys(&next, true),
-            vec!["types", "description", "archivedAt"]
+            patch_keys(&next, true, PatchOrigin::Route),
+            vec!["description", "types", "archivedAt"]
         );
         // `types` recomputed only → lands after `archivedAt`.
         assert_eq!(
-            patch_keys(&next, false),
+            patch_keys(&next, false, PatchOrigin::Route),
             vec!["description", "archivedAt", "types"]
+        );
+    }
+
+    /// C3 (P-7): each caller's object order. The route's Zod parse follows
+    /// `updateWardrobeSchema`'s shape (`types` before `appropriateness`,
+    /// `componentItemIds` before `replace`); the tool assigns `appropriateness`
+    /// before `types` and `componentItemIds` last.
+    #[test]
+    fn patch_keys_follow_each_callers_order() {
+        let next = WardrobePatch {
+            title: Some("Coat".into()),
+            types: Some(s(&["top"])),
+            appropriateness: Some(Some("formal".into())),
+            component_item_ids: Some(s(&["a"])),
+            replace: Some(true),
+            ..WardrobePatch::default()
+        };
+        assert_eq!(
+            patch_keys(&next, true, PatchOrigin::Route),
+            vec![
+                "title",
+                "types",
+                "appropriateness",
+                "componentItemIds",
+                "replace"
+            ]
+        );
+        assert_eq!(
+            patch_keys(&next, true, PatchOrigin::Tool),
+            vec![
+                "title",
+                "appropriateness",
+                "types",
+                "replace",
+                "componentItemIds"
+            ]
         );
     }
 }

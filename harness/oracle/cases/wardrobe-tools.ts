@@ -78,6 +78,7 @@ interface Spec {
   wearPlant: Array<{ itemId: string; wearer: string | null; chatId: string | null; at: string }>;
   picturePlant: { itemId: string; imageFileId: string };
   pictureScenario: { imageProfile: Record<string, unknown> & { id: string }; ops: Op[] };
+  toolsCorpusGrowth: { unvaultedCharacterId: string };
 }
 
 async function main(): Promise<void> {
@@ -194,8 +195,13 @@ async function main(): Promise<void> {
     op: Op,
     containers: Record<string, unknown> = { pendingWardrobeAnnouncements, pendingWardrobeHistory },
   ): Promise<{ name: string; tool: string; output: unknown; formatted: string; logs: unknown[] }> => {
+    // [P4.170 C.2] `unvaulted` = the corpus growth's vault-less participant.
     const characterId =
-      op.characterId === 'recipient' ? spec.recipientCharacterId : spec.callerCharacterId;
+      op.characterId === 'recipient'
+        ? spec.recipientCharacterId
+        : op.characterId === 'unvaulted'
+          ? spec.toolsCorpusGrowth.unvaultedCharacterId
+          : spec.callerCharacterId;
     // [P4.D280] v4's executor hands EVERY wardrobe tool the turn's Set — and
     // [P4.D316] the Map and the caller's provenance (`tool-executor.ts:725-738`).
     const base = {

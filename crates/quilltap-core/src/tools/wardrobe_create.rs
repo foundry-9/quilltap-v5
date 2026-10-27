@@ -135,9 +135,13 @@ struct CreateInput {
     generate_image: Option<bool>,
 }
 
+// P4.170 C.9: v4's tool input schema marks NO key `.nullable()` — every one
+// is `.optional()` (`.default(false)` for `equip_now`), so an explicit `null`
+// is a Zod refusal, never "absent". Each typed read below answers `None` only
+// for a MISSING key.
 fn opt_string(obj: &serde_json::Map<String, Value>, key: &str) -> Result<Option<String>, ()> {
     match obj.get(key) {
-        None | Some(Value::Null) => Ok(None),
+        None => Ok(None),
         Some(Value::String(s)) => Ok(Some(s.clone())),
         Some(_) => Err(()),
     }
@@ -149,7 +153,7 @@ fn opt_nonempty_string_array(
     key: &str,
 ) -> Result<Option<Vec<String>>, ()> {
     match obj.get(key) {
-        None | Some(Value::Null) => Ok(None),
+        None => Ok(None),
         Some(Value::Array(a)) => {
             let mut v = Vec::with_capacity(a.len());
             for e in a {
@@ -179,7 +183,7 @@ fn validate(args: &Value) -> Option<CreateInput> {
     let description = opt_string(obj, "description").ok()?;
     let image_prompt = opt_string(obj, "image_prompt").ok()?;
     let types = match obj.get("types") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::Array(a)) => {
             if a.is_empty() {
                 return None;
@@ -198,13 +202,13 @@ fn validate(args: &Value) -> Option<CreateInput> {
     };
     let appropriateness = opt_string(obj, "appropriateness").ok()?;
     let equip_now = match obj.get("equip_now") {
-        None | Some(Value::Null) => false, // .default(false)
+        None => false, // .default(false)
         Some(Value::Bool(b)) => *b,
         Some(_) => return None,
     };
     // recipient: string, trim>0 (when present).
     let recipient = match obj.get("recipient") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::String(s)) => {
             if s.trim().is_empty() {
                 return None;
@@ -216,12 +220,12 @@ fn validate(args: &Value) -> Option<CreateInput> {
     let component_item_ids = opt_nonempty_string_array(obj, "component_item_ids").ok()?;
     let component_titles = opt_nonempty_string_array(obj, "component_titles").ok()?;
     let replace = match obj.get("replace") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };
     let generate_image = match obj.get("generate_image") {
-        None | Some(Value::Null) => None,
+        None => None,
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };

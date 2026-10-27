@@ -211,7 +211,9 @@ fn vault_character_write_matches_oracle() {
         for (i, op) in spec.ops.iter().enumerate() {
             let input: CharacterVaultWriteInput = serde_json::from_value(op.character.clone())
                 .unwrap_or_else(|e| panic!("deserialize op {i} character: {e}"));
-            write_character_vault_managed_fields(&links, &docs, store_id, &input)
+            // v4's `character.id` (the projections' log scope, P4.170 C.4).
+            let character_id = op.character.get("id").and_then(Value::as_str).unwrap_or("");
+            write_character_vault_managed_fields(&links, &docs, store_id, character_id, &input)
                 .unwrap_or_else(|e| panic!("write_character_vault_managed_fields op {i}: {e:?}"));
         }
     }

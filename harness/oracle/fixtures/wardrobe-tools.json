@@ -634,6 +634,88 @@
           }
         ]
       }
+    },
+    {
+      "name": "takeoff_not_found_title",
+      "tool": "wardrobe_take_off",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Ghost Cloak"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wear_not_found_title",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Ghost Cloak"
+          }
+        ]
+      }
+    },
+    {
+      "name": "wear_archived_red_hat",
+      "tool": "wardrobe_wear",
+      "args": {
+        "operations": [
+          {
+            "item_title": "Red Hat"
+          }
+        ]
+      }
+    },
+    {
+      "name": "update_unvaulted_caller",
+      "tool": "wardrobe_update",
+      "characterId": "unvaulted",
+      "args": {
+        "item_title": "Silk Scarf",
+        "description": "A scarf of no fixed abode."
+      }
+    },
+    {
+      "name": "archive_unvaulted_caller",
+      "tool": "wardrobe_archive",
+      "characterId": "unvaulted",
+      "args": {
+        "item_title": "Silk Scarf"
+      }
+    },
+    {
+      "name": "update_tool_key_order",
+      "tool": "wardrobe_update",
+      "args": {
+        "item_title": "Grey Slacks",
+        "types": [
+          "bottom"
+        ],
+        "appropriateness": "casual",
+        "description": "Pressed grey slacks.",
+        "is_default": true
+      }
+    },
+    {
+      "name": "update_generate_image_null",
+      "tool": "wardrobe_update",
+      "args": {
+        "item_title": "Loafers",
+        "generate_image": null
+      }
+    },
+    {
+      "name": "create_null_description",
+      "tool": "wardrobe_create",
+      "args": {
+        "title": "Null Hat",
+        "types": [
+          "accessories"
+        ],
+        "description": null
+      }
     }
   ],
   "callerGroupItems": [

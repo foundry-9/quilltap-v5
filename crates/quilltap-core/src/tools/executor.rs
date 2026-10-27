@@ -1787,9 +1787,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 ok(&handler_name, Value::Null)
             })
             .await;
-        let Some(stage) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-            // The write itself failed (no mount-index, a writer error).
-            return written;
+        let stage = match staged_after_write(written, &stash) {
+            Ok(stage) => stage,
+            Err(written) => return written,
         };
         // v4 `tool-executor.ts:725-738`: every change any wardrobe tool makes is
         // recorded as the calling character's — `{ source: 'character',
@@ -1875,9 +1875,9 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
                 ok(&handler_name, Value::Null)
             })
             .await;
-        let Some(stage) = stash.lock().unwrap_or_else(|e| e.into_inner()).take() else {
-            // The write itself failed (no mount-index, a writer error).
-            return written;
+        let stage = match staged_after_write(written, &stash) {
+            Ok(stage) => stage,
+            Err(written) => return written,
         };
         let output = finish_inventory_tool(
             &db,
@@ -2283,6 +2283,27 @@ impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
 // ===========================================================================
 
 /// A success [`ToolResult`] (`result` present, `error`/`message` absent).
+/// The stage a wardrobe / inventory handler stashed, ONLY when its write
+/// reported success (P4.170 C.1). v4 runs the handler and its effects inside
+/// one `await` chain (`tool-executor.ts:775-807`): a write that throws never
+/// reaches `notifyWardrobeChanged` / the picture / the Inventory effects. A
+/// stash taken from a FAILED `written` is dropped, so a stage can never ride
+/// past its own write's failure into the after-commit half.
+///
+/// Measured at the pin: `wardrobe_write`'s closure always answers `ok`, and
+/// `Db::write` errs after the closure ran only as `WriterGone` — so this arm is
+/// unreachable today; the guard keeps the ordering a property of the code,
+/// not of `wardrobe_write`'s current shape.
+fn staged_after_write<S>(written: ToolResult, stash: &Mutex<Option<S>>) -> Result<S, ToolResult> {
+    let stage = stash.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if !written.success {
+        return Err(written);
+    }
+    // No stage: the write itself failed before the handler ran (no
+    // mount-index, a writer error) — `written` carries that failure.
+    stage.ok_or(written)
+}
+
 fn ok(tool_name: &str, result: Value) -> ToolResult {
     ToolResult {
         tool_name: tool_name.to_string(),
@@ -2384,6 +2405,29 @@ fn photo_result_row(name: &str, out: photo::PhotoToolResult, pass_through: bool)
 mod tests {
     use super::*;
     use crate::services::tool_execution::create_tool_context;
+
+    // === P4.170 C.1 ===
+    #[test]
+    fn a_failed_write_drops_its_stashed_stage() {
+        let stash = Mutex::new(Some("stage"));
+        let got = staged_after_write(fail("wardrobe_wear", "commit failed"), &stash);
+        assert_eq!(
+            got.map_err(|r| r.error),
+            Err(Some("commit failed".to_string()))
+        );
+        assert!(
+            stash.lock().unwrap().is_none(),
+            "the stage is dropped, not left behind"
+        );
+        let stash = Mutex::new(Some("stage"));
+        assert_eq!(
+            staged_after_write(ok("wardrobe_wear", Value::Null), &stash).ok(),
+            Some("stage")
+        );
+        let stash: Mutex<Option<&str>> = Mutex::new(None);
+        let got = staged_after_write(ok("wardrobe_wear", Value::Null), &stash);
+        assert!(got.is_err(), "no stage → the write's own answer");
+    }
 
     /// P4.D234 (§D.3): the letter tools' `result.path` is v4's `out.path` —
     /// `undefined` on failure, so the KEY is absent (never `null`) wherever the

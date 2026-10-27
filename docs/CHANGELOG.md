@@ -306,6 +306,20 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — fix(wardrobe): the update/create tools refuse `null` inputs, `[ItemMutations]` fields follow each caller's order, a stashed stage never outlives a failed write (P4.170)
+
+_Versions: core 0.0.1337._
+
+P4.170 (the `322a5488e` follow-ups smalls round), the wardrobe-tool half.
+
+- C3 / ruling P-7: `services::wardrobe_item_mutations` gains `PatchOrigin { Route, Tool }` and `update_item_with_origin(…, origin)`. The `[ItemMutations] Updated wardrobe item` line's `fields` now follow the caller's own object order, as v4's `Object.keys(next)` does. `Route` uses `updateWardrobeSchema`'s Zod shape order and `Tool` uses `wardrobe-update-handler.ts:99-107`'s assignment order. `folder` is still dropped when it names the current folder, `archivedAt` is appended, and a recomputed `types` comes last. The old fixed order matched neither caller. `tools/wardrobe_update.rs` passes `Tool`. The 6-argument `update_item` stays as a Route-ordered wrapper so P4.166's factory compiles untouched. HANDOFF(P4.166): the factory's call passes `PatchOrigin::Route` to `update_item_with_origin` and the wrapper is deleted (§S.1(b)).
+- C.9: v4's wardrobe update and create tool schemas mark no key `.nullable()`, so an explicit `null` on ANY key is a Zod refusal. v5 had read `null` as absent on every key. Both parsers now refuse it.
+- C.1: the wardrobe and inventory tool runners share `staged_after_write`. A stage stashed by a write that reported failure is dropped and never reaches the after-commit effects. Measured unreachable today, because `wardrobe_write`'s closure always answers `ok`; the guard keeps the ordering a property of the code.
+- C.4: `write_character_vault_managed_fields` takes the character id. The Prompts/ and Scenarios/ projections now log v4's `character.id` as the stale-delete WARN's `characterId`, not the mount id. That WARN is unreachable in v5, whose delete fails soft.
+- C.2: the `wardrobe-tools` corpus grows from 58 to 66 ops, appended at the end. The new ops are take-off and wear of a missing title, wearing an archived item, update and archive by the vault-less participant (a new `characterId: "unvaulted"` key on both sides), a multi-key update that tells the two orders apart, and the two `null` refusals. The family now compares the update line's `fields` exactly, beyond R-H's by-tag rule.
+
+Red-first on unported main against the pin's oracle: 7 divergence keys (the key-order op's lines, both `null` ops' outputs and lines, the read-back, and one picture-scenario line). All 66 ops are green after the change.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._

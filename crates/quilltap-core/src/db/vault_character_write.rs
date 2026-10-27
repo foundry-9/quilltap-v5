@@ -264,10 +264,16 @@ pub fn render_physical_prompts_json(physical: Option<&PhysicalDescriptionWrite>)
 /// Project every vault-managed content field of a character out to its file (v4
 /// `writeCharacterVaultManagedFields`). Writes each single file then reprojects
 /// the `Prompts/` and `Scenarios/` folders. Wardrobe is NOT handled here.
+///
+/// `character_id` is v4's `character.id` — the folder projections' log scope
+/// (`managed-fields.ts:302-323` pass it as `projectArrayIntoVaultFolder`'s
+/// `characterId`, the stale-delete WARN's key). The write input carries no id
+/// of its own (it is the vault-managed field set), so the caller names it.
 pub fn write_character_vault_managed_fields(
     links: &DocMountFileLinksRepository,
     docs: &DocMountDocumentsRepository,
     mount_point_id: &str,
+    character_id: &str,
     character: &CharacterVaultWriteInput,
 ) -> Result<WriteResult, DbError> {
     let mut result = WriteResult::default();
@@ -355,7 +361,8 @@ pub fn write_character_vault_managed_fields(
                 build_system_prompt_file(&p.name, p.is_default, &p.content),
             )
         },
-        mount_point_id,
+        // P4.170 C.4: v4's `character.id`, never the mount id.
+        character_id,
         // v4 passes no options here: the managed-fields projections are FLAT
         // and sweep normally (`4a38222e6` left the prompts / scenarios callers
         // on exactly the top-level behaviour they always had).
@@ -375,7 +382,8 @@ pub fn write_character_vault_managed_fields(
                 build_scenario_file(&s.title, &s.content, s.description.as_deref(), s.archived),
             )
         },
-        mount_point_id,
+        // P4.170 C.4: v4's `character.id`, never the mount id.
+        character_id,
         // v4 passes no options here: the managed-fields projections are FLAT
         // and sweep normally (`4a38222e6` left the prompts / scenarios callers
         // on exactly the top-level behaviour they always had).

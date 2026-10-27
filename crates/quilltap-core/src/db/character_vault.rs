@@ -383,7 +383,7 @@ pub fn ensure_character_vault(
     scaffold_character_mount(mount, &mount_point_id)?;
     let links = DocMountFileLinksRepository::new(mount);
     let docs = DocMountDocumentsRepository::new(mount);
-    write_character_vault_managed_fields(&links, &docs, &mount_point_id, vault)?;
+    write_character_vault_managed_fields(&links, &docs, &mount_point_id, character_id, vault)?;
 
     // 3. Link: set the FK on the slim row, then CONFIRM it stuck.
     link_character_to_vault(main, character_id, &mount_point_id)?;

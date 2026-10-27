@@ -115,6 +115,10 @@ struct Spec {
     /// [P4.D316] the planted timeline + the two tools' ops.
     #[serde(rename = "historyScenario")]
     history_scenario: Value,
+    /// P4.170 C.2: the `QT_WT_TOOLS_CORPUS=1` growth — its vault-less
+    /// participant is the `characterId: "unvaulted"` ops' caller.
+    #[serde(rename = "toolsCorpusGrowth")]
+    tools_corpus_growth: Value,
 }
 
 #[derive(Deserialize)]
@@ -379,9 +383,14 @@ fn wardrobe_tools_match_oracle() {
     let turn = new_wardrobe_turn_containers();
     let mut failed: Vec<String> = Vec::new();
 
+    let unvaulted = spec.tools_corpus_growth["unvaultedCharacterId"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
     for (i, op) in spec.ops.iter().enumerate() {
         let character_id = match op.character_id.as_deref() {
             Some("recipient") => &spec.recipient_character_id,
+            Some("unvaulted") => &unvaulted,
             _ => &spec.caller_character_id,
         };
         let (output, lines) = global_capture::capture(|| {
@@ -1168,11 +1177,25 @@ fn compare_logs(v5: &[String], v4: &Value) -> Option<String> {
         normalize(&handler(&v4_lines)),
     );
     let (got_tags, want_tags) = (tags(&v5_lines), tags(&v4_lines));
-    if got == want && got_tags == want_tags {
+    // P4.170 C3 (ruling P-7): the item-update line's `fields` — the CALLER's
+    // key order — compares exactly, past R-H's by-tag rule.
+    let update_fields = |lines: &[LogLine]| -> Vec<String> {
+        lines
+            .iter()
+            .filter(|(_, m, _)| m == "[ItemMutations] Updated wardrobe item")
+            .filter_map(|(_, _, f)| {
+                f.iter()
+                    .find(|(k, _)| k == "fields")
+                    .map(|(_, v)| v.clone())
+            })
+            .collect()
+    };
+    let (got_fields, want_fields) = (update_fields(&v5_lines), update_fields(&v4_lines));
+    if got == want && got_tags == want_tags && got_fields == want_fields {
         return None;
     }
     Some(format!(
-        "  v5 handler lines: {got}\n  v4 handler lines: {want}\n  v5 tags: {got_tags:?}\n  v4 tags: {want_tags:?}"
+        "  v5 handler lines: {got}\n  v4 handler lines: {want}\n  v5 tags: {got_tags:?}\n  v4 tags: {want_tags:?}\n  v5 update fields: {got_fields:?}\n  v4 update fields: {want_fields:?}"
     ))
 }
 
