@@ -414,16 +414,13 @@ pub fn build_extraction_context(
     // `chatSettings.findByUserId` logs `Error finding chat settings by user ID`
     // and answers `null`, `connections.findByUserId` is `findByFilter`'s `[]`.
     let uid = user_id.to_string();
+    // Contract C2's home logs a failed read; a failed pool checkout routes
+    // through the same emitter (v4's `getCollection()` runs inside the one
+    // `safeQuery`).
     let chat_settings_row = db
-        .read_main(move |c| chat_settings::find_by_user_id(c, &uid))
+        .read_main(move |c| Ok(chat_settings::find_by_user_id_or_none(c, &uid)))
         .unwrap_or_else(|error| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "chat_settings",
-                userId = %user_id,
-                error = %error_text(&error),
-                "Error finding chat settings by user ID"
-            );
+            chat_settings::log_find_by_user_id_failure(user_id, &error);
             None
         });
     let uid = user_id.to_string();

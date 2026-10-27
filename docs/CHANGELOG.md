@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — refactor(core): the extraction context reads chat settings through C2's fallback home (P4.169)
+
+_Versions:_ quilltap-core 0.0.1338.
+
+The extraction context's chat-settings read now goes through contract C2's home, and a failed pool checkout logs through the same emitter. `extraction_context_degrade` ran green against a fixture built at the pin. HANDOFF(P4.166): fold `services/headshoulders_backfill_job.rs:223-236` onto `chat_settings::find_by_user_id_or_none` (that copy also logs snake_case `user_id`, carries no `quilltap::db` target and no `collection` key, and keeps the `sqlite error:` prefix).
+
 #### 2026-10-27 — feat(core): contract C2 — the chat-settings fallback home `find_by_user_id_or_none` (P4.169)
 
 _Versions:_ quilltap-core 0.0.1337.
