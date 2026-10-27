@@ -1082,10 +1082,9 @@ const DOCEDIT_SITES: &[(&str, usize)] = &[
     ("doc_edit/path_resolver.rs", 1),
     ("doc_edit/uri_producers.rs", 1),
     ("documents/mod.rs", 1),
+    // (`pascal/tool_gate_keys.rs`'s stand-in store listing left at the union —
+    // the census reads `CustomToolLibrary.stores_consulted`, roster.rs's read.)
     ("pascal/roster.rs", 1),
-    // P4.D340: the census stand-in's store listing (LANE-REMOVE at §S.5 —
-    // v4's `listAllCustomTools` read, through the same fallback).
-    ("pascal/tool_gate_keys.rs", 1),
     ("pascal/workbench.rs", 1),
     ("services/embedding_reindex_job.rs", 1),
     ("tools/search.rs", 1),
