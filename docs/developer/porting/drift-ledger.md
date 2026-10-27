@@ -61,9 +61,10 @@ probe verifies against._
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `b09ff5c86`** ("Docs: feature-spec cleanup;
-  split composer # references into its own spec", 2026-10-27 14:54,
-  `4.11.0-dev.98`) — **FIFTY-TWO commits past the baseline**, ALL
+- **v4 `main` HEAD at check: `b892227eb`** ("Docs: 4.11.0 release notes
+  corrections, part 3", 2026-10-27 15:12, no stamp — the last stamp is
+  `b09ff5c86`'s `4.11.0-dev.98`; recorded by `/setupphase`'s pre-commit
+  re-probe, docs only) — **FIFTY-THREE commits past the baseline**, ALL
   UNPROCESSED in §3, two merges among them (`5e18ede6a`, `744596158`):
   - **The 32 of 2026-10-26** (`6fd2d5ffb` … `a0905454b`):
     - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
@@ -151,7 +152,9 @@ probe verifies against._
     roleplay-block-narration,svar-bridge-spike-findings}.md` +
     `complete/{composer-emoji,nanogpt-lora}.md`), for the catch-up's
     help/docs re-vendor lane.
-  - **No CONVERGENCE** in the 52: bugs 258–269 were all found by v4 itself;
+  - **And `b892227eb`** (NO-PORT? — `docs/releases/4.11.0.md` only; seen by
+    `/setupphase`'s pre-commit re-probe).
+  - **No CONVERGENCE** in the 53: bugs 258–269 were all found by v4 itself;
     v5 status `Owed` (269: `Not assessed`) in every row.
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
     `0276d10d9`, `a8214b253`, `bdd09b75b`; and `6588972d5`'s "nothing new is
@@ -160,10 +163,10 @@ probe verifies against._
   branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
   BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `b09ff5c86`.
-  HEAD is fifty-two commits past the baseline, so it poisons a regen by
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `b892227eb`.
+  HEAD is fifty-three commits past the baseline, so it poisons a regen by
   DRIFT.
-- **Verdict: DRIFT PENDING — 52 commits (§3), all UNPROCESSED.**
+- **Verdict: DRIFT PENDING — 53 commits (§3), all UNPROCESSED.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -317,12 +320,11 @@ probe verifies against._
 - **Next:**
   - The owed dogfood pass — BOTH queues (the `e8e17b2d9` round's and this
     round's §S.8), on a Friday copy with the UNION build.
-  - The follow-ups smalls round (the ready rider branch
-    `claude/import-chat-record-columns-f49fb0` first; this round's OPEN
-    review items; the R-4 Brahma-stop RULING ITEM, ruled by the human
-    in-round; the carried lists —
-    `phase-4.md`'s NEXT).
-  - **The 51-commit catch-up** (`/driftcheck` first), at a later pin
+  - **The follow-ups smalls round — ORDERED 2026-10-27 as P4.165–P4.174**
+    (`phase-4.md`'s ORDERED section), pinned at the baseline `322a5488e`; it
+    absorbs NO §3 row. The R-4 Brahma-stop ruling was made at planning:
+    (A) converge (P4.165).
+  - **The 53-commit catch-up** (`/driftcheck` first), at a later pin
     (the afternoon's 5 add: bug 269 on the NanoGPT image dialect, prose
     mode WITH the punctuation-lint lane, the CSS / theme legibility pair as
     one SPA small):
@@ -431,6 +433,7 @@ passes the commit.
 | `dd200c695` | 2026-10-27 | Docs: move bug filing to GitHub Issues; freeze catalogue at Bug 269 | **NO-PORT? (docs / infra) — BUT a PROCESS change for this port** (classified 2026-10-27 from the hunks; 5 files +140 / −38: NEW `.github/ISSUE_TEMPLATE/bug.yml` (Severity, Who it bites, Provenance Original/Pinned/Faithful/Inert, How found, v5 status, Symptom, Root cause, Why it survived, Fix site, How to verify), v4 `CLAUDE.md` "Filing bugs", `docs/developer/bugs.md` FROZEN header + "How these are filed" rewrite, `.claude/commands/update-documentation.md`, CHANGELOG; no stamp; parent `cce44e098`). v4's catalogue takes no entries past Bug 269; new bugs are GitHub issues cited `#N` and closed by `Fixes #N`. **v5 intersection:** no code. The CONVERGENCE check (§4 step 5) must now also read `gh issue list -R foundry-9/quilltap-server --label bug --state all`; a v4 bug this port files (as the dogfood passes have — bugs 57 … 185) is now a GitHub issue via the Bug form, outward-facing, so confirm with the human first; v5 code comments citing a future v4 bug use `#N`. `docs/v4/developer/bugs.md` mirror re-vendors at the catch-up. | UNPROCESSED |
 | `86cc25482` | 2026-10-27 | Fix: legible dialogue in user messages; Rains user text; Great Estate sidebar | **PORT (SPA CSS + two bundled theme packs); NO server, NO behaviour** (classified 2026-10-27 from the hunks; 12 files +113 / −9; `dev.97`; parent `dd200c695`). `_chat.css` NEW rule `.qt-chat-message-user .qt-chat-message-content .qt-chat-dialogue { --qt-rp-fg: var(--qt-rp-user-dialogue-color, var(--qt-chat-user-fg)) }` (a NEW theme hook `--qt-rp-user-dialogue-color`); `themes/bundled/rains/styles.css` `--qt-chat-user-fg` `hsl(40 6% 98%)` → `hsl(var(--text-000))`; `great-estate/styles.css` +31 (light-mode left-sidebar icons / labels in cream); both `theme.json` version bumps; `theme-storybook` 1.0.88 (+55, the dialogue / narration / monologue / OOC chip family — NO-PORT). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`.qt-chat-dialogue` at `:1948`) and `apps/web/public/themes/{rains,great-estate}` — one SPA small with `cce44e098`. | UNPROCESSED |
 | `b09ff5c86` | 2026-10-27 | Docs: feature-spec cleanup; split composer # references into its own spec | **NO-PORT? (docs only)** (classified 2026-10-27 from the hunks; 19 files +149 / −830; `dev.98`; parent `86cc25482`). DELETES `docs/developer/features/{comfy_ui_local_image,roleplay-block-narration,usage-tracking}.md`; MOVES `composer-typeahead.md` (its Phase 3 cut out) and `svar-bridge-spike-findings.md` to `complete/`; NEW `composer-document-references.md` (the unbuilt composer `#` references — a proposal, nothing shipped); edits ROADMAP, `complete/{capabilities-report-update,composer-emoji,composer-slash-commands,nanogpt-lora}.md`, `svar-file-manager-implementation-plan.md`, README, `.claude/commands/update-documentation.md`, CHANGELOG. The ONE source hunk is a doc-path comment in `components/chat/lexical/typeahead/types.ts`. **v5 intersection:** no code; the `docs/v4/developer/features/` mirror (P4.D339's 502) — six mirrored paths deleted / moved and two `complete/` pages edited; ride the catch-up's help/docs re-vendor. | UNPROCESSED |
+| `b892227eb` | 2026-10-27 | Docs: 4.11.0 release notes corrections, part 3 | **NO-PORT? (docs only)** (classified 2026-10-27 from the hunks, recorded by `/setupphase` after the orders were written; ONE file, `docs/releases/4.11.0.md` +23 / −7; no stamp; parent `b09ff5c86`). **v5 intersection:** no code; `docs/v4/releases/` re-vendors `4.11.0.md` at the catch-up (with `4a25f7eab` / `505a524fa`'s earlier edits to the same page). | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

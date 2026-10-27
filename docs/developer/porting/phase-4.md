@@ -7151,6 +7151,52 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — ORDERED 2026-10-27
+
+**ORDERED 2026-10-27 — NEXT item 2 of the `322a5488e` unification, carried
+(and grown) through five consecutive unifications.** Pinned at the baseline
+`322a5488e` (a follow-ups round ports no v4 change; regen rule PIN REQUIRED —
+the live checkout is 53 commits ahead, `b892227eb`). The ledger's §3 rows stay
+UNPROCESSED for the next catch-up. Five read-only surveys measured every OPEN /
+recorded / Tier-3 item of P4.D265–P4.D340 plus the carried lists against main
+`4e43b714e` — ~130 still open, ~95 closed or no-action by measurement — and
+were committed as the survey records `work-orders/surveys/2026-10-27-setupphase-
+followups-{carriers,memory-scenarios,pascal-turn-interrupts,wardrobe-degraded-
+mount,inventory-log-spa-harness}.md`.
+
+- **The human's rulings (2026-10-27), all CONVERGE ON v4:** H-1 R-4
+  Brahma-stop (A) — overturns P4.D335's R-4 (P4.165); H-2
+  `OFFSET_OCCURRED_AT_ROW_SCHEMA` refused as v4 does, no v4 issue (P4.168);
+  H-3 P4.D294 item 19 — the unreadable chat is skipped (P4.167); H-4 P4.D273's
+  carried-file metadata from the archive row (P4.167).
+- **The planner's calls (§R.7 P-1 … P-13; the human may overrule before lane
+  start):** converge everywhere except P-4 (regenerate-all's chat list) and
+  P-5 (the maintenance batch loader) — both KEPT STRICT with both-ways pins,
+  because v4's fallback acts on a failed scan (a mass memory wipe; a truncated
+  corpus).
+- **Lanes:** P4.165 R-4 converge + Carina's service lines; P4.166 dogfood #156
+  (88 `with_both_conns` sites by class — a neutral refusal, one entity gate,
+  the fail-soft pool) + #157; P4.167 carriers (the rider `cb88a3840` re-ported
+  with TWELVE `JsonSchema` columns, H-3, H-4, the NDJSON reader's lines);
+  P4.168 the memory row schema + fallback reads; P4.169 Pascal V8 key order +
+  cheap LLM + zod twins + inventory effects (builds contract C2); P4.170
+  wardrobe server smalls + the web-edge "body before load" class; P4.171
+  scenarios / vault / store / host / lock smalls; P4.172 DQS off (census
+  first); P4.173 SPA + e2e (the mock LLM's tool-calling arm); P4.174 harness
+  test-craft (zero src).
+- **Unifier order:** P4.172 → P4.168 → P4.166 → P4.167 → P4.171 → P4.169 →
+  P4.170 → P4.165 → P4.173 → P4.174. Contracts C1 (`DbError::
+  RowSchemaRefusal`), C2 (`chat_settings::find_by_user_id_or_none`), C3
+  (`PatchOrigin`). The oracle baseline does NOT move.
+- **Left out (§R.11):** the 53-commit catch-up (next round, the vault-key
+  erasure writers first); the `js_truthy` DRY pass (30 copies); the CLI
+  `memories` family; the drafted CLAUDE.md "document-store names" rule
+  (D274-d — the human's); every v4 filing candidate (recorded, not filed).
+
+**NEXT after this round unifies:** the owed dogfood pass (both earlier queues
++ this round's 💸 rows), then the 53-commit drift catch-up.
+
+
 ## The `322a5488e` Inventory + Log + interrupts + custom-tool-grammar + bug-255 drift catch-up round (P4.D324 → {P4.D325 ∥ P4.D326 ∥ P4.D327 ∥ P4.D328 ∥ P4.D329 ∥ P4.D331 ∥ P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥ P4.D336 ∥ P4.D338 ∥ P4.D339) — UNIFIED 2026-10-27 (ordered 2026-10-20)
 
 **UNIFIED on main (2026-10-27). ALL SEVENTEEN LANES LANDED, and the oracle
@@ -7199,7 +7245,9 @@ PIN REQUIRED at `322a5488e`. Round record: `status-log.md`.
 1. **The owed dogfood pass — BOTH queues** (the `e8e17b2d9` round's and this
    round's §S.8), on a Friday copy with the UNION build (record the copy's
    vintage first; every ensure an INFO or a NO-OP).
-2. **The follow-ups smalls round:** the ready rider branch
+2. ✅ **ORDERED 2026-10-27 as the `322a5488e` follow-ups smalls round
+   (P4.165–P4.174; the section above; the R-4 ruling made — (A)).** Was:
+   **The follow-ups smalls round:** the ready rider branch
    `claude/import-chat-record-columns-f49fb0` first; ⚖ **the R-4
    Brahma-stop RULING ITEM** — the human rules IN the round (2026-10-27), so
    `/setupphase` writes it as a ruling item with both options laid out, not

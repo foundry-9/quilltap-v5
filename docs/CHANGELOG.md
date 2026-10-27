@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
+
+_Docs-only change._
+
+Wrote the ten work orders for the follow-ups smalls round that five unifications carried forward. The round is pinned at the baseline `322a5488e` and absorbs no drift. The lanes are: P4.165, the R-4 Brahma-stop convergence plus Carina's service log lines; P4.166, dogfood #156 (88 `with_both_conns` sites, fixed by class) and #157; P4.167, the carriers (the `cb88a3840` rider re-ported with twelve columns, plus two rulings); P4.168, memory row-schema validation and fallback reads; P4.169, Pascal V8 key order, cheap-LLM and zod twins, and inventory effects; P4.170, wardrobe server smalls and the web-edge gate order; P4.171, scenarios, vault, store, host and lock smalls; P4.172, turning DQS off after an SQL census; P4.173, SPA and e2e smalls (a mock-LLM tool-calling arm); P4.174, harness rows only.
+
+The human ruled four items at planning, all converging on v4: R-4, `OFFSET_OCCURRED_AT_ROW_SCHEMA`, P4.D294 item 19, and P4.D273's carried-file metadata. The five read-only surveys were committed under `work-orders/surveys/2026-10-27-setupphase-followups-*.md`. Also: `phase-4.md` gains the ORDERED section, dogfood #156/#157 and P4.D335's R-4 are marked ordered, and the drift ledger records v4 `b892227eb` (docs only; 53 commits past the baseline).
+
 #### 2026-10-27 — docs(porting): drift check — 1 new v4 commit (`b09ff5c86` feature-spec docs cleanup; 52 past the `322a5488e` baseline)
 
 _Docs-only change._
