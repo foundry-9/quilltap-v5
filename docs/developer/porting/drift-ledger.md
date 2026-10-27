@@ -298,7 +298,8 @@ probe verifies against._
     round's §S.8), on a Friday copy with the UNION build.
   - The follow-ups smalls round (the ready rider branch
     `claude/import-chat-record-columns-f49fb0` first; this round's OPEN
-    review items; the R-4 Brahma-stop ruling; the carried lists —
+    review items; the R-4 Brahma-stop RULING ITEM, ruled by the human
+    in-round; the carried lists —
     `phase-4.md`'s NEXT).
   - **The 51-commit catch-up** (`/driftcheck` first), at a later pin
     (the afternoon's 5 add: bug 269 on the NanoGPT image dialect, prose

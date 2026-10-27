@@ -1095,12 +1095,13 @@ records THERE. Update this summary only when a phase or round completes.
   Fixed red-first beside them: the archetype picker that could never select,
   the lock-held participant guard, the Workbench's stale draft between
   gestures, 500 vs 503, the V8 JSON reason. ESCALATED: the Brahma one-shot
-  stop (contradicts R-4). Gate: sweep 753 ok of 767, every non-standing red
+  stop (contradicts R-4) — carried into the follow-ups round as a RULING
+  ITEM the human rules in-round (2026-10-27). Gate: sweep 753 ok of 767, every non-standing red
   resolved; 862 binaries / 5,688 / 15 (2 standing + 1 fixed census + 12
   env-block, green by name) / 3, zero SKIP; SPA 568 / 13,107; Playwright 448 /
   3 / 9, each red green by file. Versions: core 0.0.1336, web 0.0.246, SPA
   0.5.905. **Next: the owed dogfood pass (union build), the follow-ups smalls
-  round (the R-4 ruling first), then the 46-commit catch-up** — `phase-4.md`.
+  round (the R-4 Brahma-stop RULING ITEM, ruled there), then the 46-commit catch-up** — `phase-4.md`.
   Round record: `status-log.md`.
 - **Oracle baseline: `322a5488e` (2026-10-20, v4 main — "Fix: custom-tool
   LLM consult can narrate a verdict the table already reached (bug 257)",

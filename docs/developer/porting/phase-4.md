@@ -7191,7 +7191,8 @@ PIN REQUIRED at `322a5488e`. Round record: `status-log.md`.
   reader, the editor's per-keystroke refetches).
 - **Escalated:** R-4 is contested — v4's Carina → Brahma answer inside a
   Salon turn honours Stop (AsyncLocalStorage); v5's one-shot loop does not.
-  A ruling is owed before the follow-ups round.
+  **Carried into the follow-ups smalls round as a RULING ITEM** (the human,
+  2026-10-27: "I'll rule there") — not a pre-round blocker.
 - **Gate:** fmt / clippy (both feature sets) / release clean; the full sweep from the pin 753 ok / 9 / 1 refused / 4 non-extractable of 767 — every non-standing red resolved (two missed oracle-side carves and five oracle-side title-lint stubs lifted, two sweep-order artifacts green re-run, the SDK guard green against the pin); `cargo test --workspace` 862 binaries / 5,688 / 15 / 3 ignored, zero SKIP (the two standing, one census the unifier moved and fixed, twelve env-block collisions each green by name); Tier R ok; SPA 568 files / 13,107; Playwright 448 / 3 / 9 (17.8 m), each red green by file (the recorded `salon-regenerate-stream` intermittent 3/3, 3/3, 2/3; `salon-thinking-indicator` 1/1; `wardrobe-flow` 21/21) after the e2e round fixed one port defect (the Workbench stale draft) and the spec premises the always-rendered composer trio and the vault-only rosters moved. Versions: core 0.0.1336, host 0.0.214, web 0.0.246, SPA 0.5.905.
 
 **NEXT** (in order; the orders' status headers carry each lane's OPEN items):
@@ -7199,8 +7200,14 @@ PIN REQUIRED at `322a5488e`. Round record: `status-log.md`.
    round's §S.8), on a Friday copy with the UNION build (record the copy's
    vintage first; every ensure an INFO or a NO-OP).
 2. **The follow-ups smalls round:** the ready rider branch
-   `claude/import-chat-record-columns-f49fb0` first; the R-4 Brahma-stop
-   ruling; this round's OPEN review items (raise-hand's 404 / 400 order, the
+   `claude/import-chat-record-columns-f49fb0` first; ⚖ **the R-4
+   Brahma-stop RULING ITEM** — the human rules IN the round (2026-10-27), so
+   `/setupphase` writes it as a ruling item with both options laid out, not
+   a lane: (A) converge on v4 — thread the turn's `StopSignal` through
+   `RunBrahmaConsole` into `one_shot_loop`'s stream so Stop ends Carina's
+   Brahma answer mid-turn (overturns P4.D335's R-4); (B) keep R-4 and record
+   the divergence (Stop may settle `settled:false` on the watchdog). A lane
+   is ordered only after the ruling, and only for (A); this round's OPEN review items (raise-hand's 404 / 400 order, the
    SPA multi-character check, the librarian `null` log field, the pending
    map's insertion order, integer-like gate-key ordering in the evaluators,
    the `chat_messages` lazy-create question, the `chats_read` probe, the
