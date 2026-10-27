@@ -443,6 +443,23 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_blobs",
     ),
+    // [P4.167] the dup-store-id archive's `new-account` twin replays the same
+    // seeded legacy-disk-key `portrait.png` — the ruled placement again.
+    (
+        "restore_dup_store_id_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_dup_store_id_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_dup_store_id_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     (
         "restore_store_row_fails_new_account",
         "mountIndex",
@@ -627,6 +644,8 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
         "Project Files: The Voyage",
     ),
     ("restore_store_row_fails_new_account", "Quilltap Uploads"),
+    // [P4.167] the dup-store-id `new-account` twin's replay of the same file.
+    ("restore_dup_store_id_new_account", "Quilltap Uploads"),
     ("restore_memory_tiers_new_account", "Quilltap Uploads"), // [P4.D293] the same one `files/portrait.png` replayed into the target's
     // uploads mount by the four carrier archives' `new-account` arms.
     ("restore_legacy_vectors_new_account", "Quilltap Uploads"),
@@ -1368,7 +1387,9 @@ fn archive_for(name: &str) -> &'static str {
         "restore_two_claimants_replace" => "restore-archive-two-claimants.zip",
         // [P4.158 item 2, R-B] Lorian's vault id duplicated as a `documents`
         // row — `derive-restore-archive-dup-store-id.py`.
-        "restore_dup_store_id_replace" => "restore-archive-dup-store-id.zip",
+        "restore_dup_store_id_replace" | "restore_dup_store_id_new_account" => {
+            "restore-archive-dup-store-id.zip"
+        }
         // [P4.D273] the store claim map's arms, 22a-i, and the memory tiers.
         "restore_store_binding_replace" | "restore_store_binding_new_account" => {
             "restore-archive-store-binding.zip"
@@ -2398,15 +2419,16 @@ fn system_restore_state_equivalence() {
     // P4.D317's outfit-history arms (replace twice, new-account, the per-row
     // skips, the bad slot in both modes — the new-account one a refusal).
     // 66 + 3 = 69: P4.D327's Inventory carriers (replace, new-account, the
-    // tombstone twin).
+    // tombstone twin). 69 + 1 = 70: P4.167's `new-account` twin of the
+    // dup-store-id arm (P4.D273 Tier 2 #17).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        69,
-        "expected all sixty-nine restore cases in the oracle (ten + the #58 orphan-links arm \
+        70,
+        "expected all seventy restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2419,7 +2441,8 @@ fn system_restore_state_equivalence() {
          empty-embedding arm + P4.D273's store-binding, store-row-fails and memory-tiers \
          arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
          legacy-settings arms in both modes and the legacy-settings own / null arms \
-         + P4.D317's five outfit-history arms + P4.D327's three Inventory arms)"
+         + P4.D317's five outfit-history arms + P4.D327's three Inventory arms \
+         + P4.167's new-account dup-store-id arm)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -4583,6 +4606,15 @@ fn point_exists(dump: &Value, id: &str) -> bool {
 ///   archived one) must be present and leave v4's side — so the rest diffs
 ///   row for row. **If v4 adopts the first row, the v4 direction fires —
 ///   retire the table** (a v4-filing candidate: the human's call).
+///
+/// [P4.167 — P4.D273 Tier 2 #17] the `new-account` twin, MEASURED at
+/// `322a5488e`: the remap maps the duplicated id to ONE new id on both rows,
+/// so v4's claim map again keeps the LAST (`documents`) row — `wrong-kind`,
+/// the same warning, a fresh vault, the archived vault orphaned under a free
+/// name. Ids are minted on each side, so the entity and its archived store are
+/// RESOLVED per dump (the entity by its archived `name`, the store by its
+/// archived `createdAt` among `character` stores) and the census templates
+/// carry `{entity}` / `{store}` placeholders filled per side.
 type DupStoreEntry = (
     &'static str,
     &'static str,
@@ -4592,25 +4624,68 @@ type DupStoreEntry = (
     &'static [&'static str],
     &'static [&'static str],
 );
-const DUP_STORE_ID_FIRST_ROW: &[DupStoreEntry] = &[(
-    "restore_dup_store_id_replace",
-    "characters",
-    "a1000000-0000-4000-8000-000000000001",
-    "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
-    "The character \"Lorian\" was given a fresh, empty store because the store it pointed at \
-     is the wrong kind",
-    &[
-        r#"{"level":"warn","message":"Restored entity falls back to a fresh store","kind":"character","id":"a1000000-0000-4000-8000-000000000001","reason":"wrong-kind"}"#,
-        r#"{"level":"debug","message":"Restored document store under a free name","mountPointId":"aff3114e-ed90-4d5b-99c1-ef3fa20203fc","archived":"Lorian Character Vault","name":"Lorian Character Vault (2)"}"#,
-        r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":1,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
-    ],
-    // v5's own record of the divergence: the bound create's INFO for Lorian,
-    // and the summary counting her.
-    &[
-        r#"{"level":"info","message":"Character restored bound to its archived vault","characterId":"a1000000-0000-4000-8000-000000000001","userId":"ffffffff-ffff-ffff-ffff-ffffffffffff","mountPointId":"aff3114e-ed90-4d5b-99c1-ef3fa20203fc"}"#,
-        r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":2,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
-    ],
-)];
+const DUP_STORE_V4_CENSUS: &[&str] = &[
+    r#"{"level":"warn","message":"Restored entity falls back to a fresh store","kind":"character","id":"{entity}","reason":"wrong-kind"}"#,
+    r#"{"level":"debug","message":"Restored document store under a free name","mountPointId":"{store}","archived":"Lorian Character Vault","name":"Lorian Character Vault (2)"}"#,
+    r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":1,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
+];
+// v5's own record of the divergence: the bound create's INFO for Lorian, and
+// the summary counting her.
+const DUP_STORE_V5_CENSUS: &[&str] = &[
+    r#"{"level":"info","message":"Character restored bound to its archived vault","characterId":"{entity}","userId":"ffffffff-ffff-ffff-ffff-ffffffffffff","mountPointId":"{store}"}"#,
+    r#"{"level":"info","message":"Restored entities bound to their archived stores","characters":2,"projects":1,"groups":1,"storesCarried":5,"storesRestored":4}"#,
+];
+const DUP_STORE_WARNING: &str = "The character \"Lorian\" was given a fresh, empty store because \
+     the store it pointed at is the wrong kind";
+const DUP_STORE_ID_FIRST_ROW: &[DupStoreEntry] = &[
+    (
+        "restore_dup_store_id_replace",
+        "characters",
+        "a1000000-0000-4000-8000-000000000001",
+        "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+        DUP_STORE_WARNING,
+        DUP_STORE_V4_CENSUS,
+        DUP_STORE_V5_CENSUS,
+    ),
+    (
+        "restore_dup_store_id_new_account",
+        "characters",
+        "a1000000-0000-4000-8000-000000000001",
+        "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
+        DUP_STORE_WARNING,
+        DUP_STORE_V4_CENSUS,
+        DUP_STORE_V5_CENSUS,
+    ),
+];
+
+/// [P4.167] One side's `(entity id, archived store id)` for a
+/// `DUP_STORE_ID_FIRST_ROW` entry: the entity row carrying the archive row's
+/// `name`, and the `character` store carrying the archived store's
+/// `createdAt` (unique in the archive — the duplicated row fails 22a on both
+/// sides and never lands). On `replace` both are the archive's own ids.
+fn dup_store_side_ids(
+    dump: &Value,
+    table: &str,
+    entity_name: &str,
+    store_created: &str,
+) -> (Option<String>, Option<String>) {
+    let entity = rows_of(dump, "main", table)
+        .iter()
+        .find(|r| str_at(r, "name") == Some(entity_name))
+        .and_then(|r| str_at(r, "id"))
+        .map(str::to_string);
+    let stores: Vec<&Value> = rows_of(dump, "mountIndex", "doc_mount_points")
+        .iter()
+        .filter(|p| {
+            str_at(p, "createdAt") == Some(store_created)
+                && str_at(p, "storeType") == Some("character")
+        })
+        .collect();
+    let store = (stores.len() == 1)
+        .then(|| str_at(stores[0], "id").map(str::to_string))
+        .flatten();
+    (entity, store)
+}
 
 #[allow(clippy::too_many_arguments)]
 fn carve_dup_store_id_first_row(
@@ -4623,7 +4698,7 @@ fn carve_dup_store_id_first_row(
     summary_carve: &mut SummaryCarve,
     failures: &mut Vec<String>,
 ) -> Option<usize> {
-    let (_, table, id, archived, warning, census, v5_census) =
+    let (_, table, archive_id, archive_store, warning, census, v5_census) =
         DUP_STORE_ID_FIRST_ROW.iter().find(|(c, ..)| *c == name)?;
     let column = POINTER_COLUMNS
         .iter()
@@ -4631,22 +4706,65 @@ fn carve_dup_store_id_first_row(
         .map(|(_, c)| *c)
         .expect("a pointer column");
     let a = archive_stores(zip, temp_root);
+    // [P4.167] Resolve the entity and its archived store on EACH side (the
+    // `new-account` twin mints both).
+    let extracted = quilltap_core::services::backup::restore::parse_backup_zip(zip, temp_root)
+        .expect("parse archive for the dup-store entity");
+    let entity_name = extracted
+        .data
+        .characters
+        .iter()
+        .find(|r| str_at(r, "id") == Some(archive_id))
+        .and_then(|r| str_at(r, "name"))
+        .expect("the dup-store entity is in the archive")
+        .to_string();
+    let store_created = extracted
+        .data
+        .doc_mount_points
+        .iter()
+        .find(|p| str_at(p, "id") == Some(archive_store))
+        .and_then(|p| str_at(p, "createdAt"))
+        .expect("the dup-store archived store is in the archive")
+        .to_string();
     let got_v = serde_json::to_value(&*got).expect("dump serializes");
+    let (Some(g_id), Some(g_store)) =
+        dup_store_side_ids(&got_v, table, &entity_name, &store_created)
+    else {
+        failures.push(format!(
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v5): could not resolve {entity_name} / its archived \
+             store ({store_created})"
+        ));
+        return None;
+    };
+    let (Some(w_id), Some(w_store)) = dup_store_side_ids(want, table, &entity_name, &store_created)
+    else {
+        failures.push(format!(
+            "[{name}] DUP_STORE_ID_FIRST_ROW (v4): could not resolve {entity_name} / its archived \
+             store ({store_created})"
+        ));
+        return None;
+    };
+    let fill = |t: &str, entity: &str, store: &str| -> Value {
+        serde_json::from_str(&t.replace("{entity}", entity).replace("{store}", store))
+            .expect("census JSON")
+    };
+    let (id, archived) = (g_id.as_str(), g_store.as_str());
     let g = pointer_on(&got_v, table, column, id);
-    if g != Some(Some((*archived).to_string())) {
+    if g != Some(Some(archived.to_string())) {
         failures.push(format!(
             "[{name}] DUP_STORE_ID_FIRST_ROW (v5): {table} {id} points at {g:?}, but its FIRST \
              archived row binds it to {archived}"
         ));
     }
     let mut carve: BTreeMap<String, String> = BTreeMap::new();
+    let (id, archived) = (w_id.as_str(), w_store.as_str());
     match pointer_on(want, table, column, id) {
-        Some(Some(w)) if w == *archived => failures.push(format!(
+        Some(Some(w)) if w == archived => failures.push(format!(
             "[{name}] DUP_STORE_ID_FIRST_ROW (v4): {table} {id} now keeps {archived} — v4 judges \
              the FIRST row; retire the table"
         )),
         Some(Some(w)) if point_exists(want, &w) && !a.point_ids.contains(&w) => {
-            carve.insert(w, (*archived).to_string());
+            carve.insert(w, archived.to_string());
         }
         other => failures.push(format!(
             "[{name}] DUP_STORE_ID_FIRST_ROW (v4): {table} {id} points at {other:?} — not a \
@@ -4668,16 +4786,12 @@ fn carve_dup_store_id_first_row(
         ));
     }
     summary_carve.drop_v4_warnings.push((*warning).to_string());
-    summary_carve.drop_v4_census.extend(
-        census
-            .iter()
-            .map(|r| serde_json::from_str(r).expect("census JSON")),
-    );
-    summary_carve.drop_v5_census.extend(
-        v5_census
-            .iter()
-            .map(|r| serde_json::from_str(r).expect("census JSON")),
-    );
+    summary_carve
+        .drop_v4_census
+        .extend(census.iter().map(|r| fill(r, &w_id, &w_store)));
+    summary_carve
+        .drop_v5_census
+        .extend(v5_census.iter().map(|r| fill(r, &g_id, &g_store)));
     let outcome = carve_fresh_stores(want, &carve, &a.link_ids, &[]);
     println!(
         "  carve {name} (DUP_STORE_ID_FIRST_ROW): {} fresh store(s), {} row(s) carved, {} \
@@ -4747,6 +4861,13 @@ enum HoldingSide {
 /// carved from its dump but still counted by its plan)`.
 const RULED_RECONCILE_CONSEQUENCES: &[(&str, HoldingSide, &str, i64)] = &[
     ("restore_dup_store_id_replace", HoldingSide::V4, "Lorian", 1),
+    // [P4.167] the `new-account` twin: the same ruled divergence (measured).
+    (
+        "restore_dup_store_id_new_account",
+        HoldingSide::V4,
+        "Lorian",
+        1,
+    ),
     ("restore_store_binding_replace", HoldingSide::V5, "Riya", 0),
     (
         "restore_store_binding_new_account",

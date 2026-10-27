@@ -622,6 +622,14 @@ const RESTORE_CASES: Array<{
   // on both sides and refuses the duplicate on its primary key. Built by
   // `fixtures/derive-restore-archive-dup-store-id.py`.
   { name: 'restore_dup_store_id_replace', archive: 'restore-archive-dup-store-id.zip' },
+  // [P4.167 — P4.D273 Tier 2 #17] the same archive in `new-account` mode:
+  // every id remapped, so the duplicated store id remaps to ONE new id and the
+  // claim map's first-vs-last row is judged on the remapped rows.
+  {
+    name: 'restore_dup_store_id_new_account',
+    archive: 'restore-archive-dup-store-id.zip',
+    mode: 'new-account',
+  },
 
   // ── P4.D273: v4 `ed8b15b50` (bug 185) — the store claim map's arms ────────
   //

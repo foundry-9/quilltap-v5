@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — test(restore): the dup-store-id arm in new-account mode — the ruled first-row divergence measured in both modes
+
+_No crate versions bumped._
+
+Adds `restore_dup_store_id_new_account`, the `new-account` twin of the dup-store-id restore arm (P4.D273 Tier 2 #17). Measured at `322a5488e`: the remap gives both duplicated rows the same new id, so v4's claim map again keeps the last (`documents`) row. That leads to the same `wrong-kind` warning, a fresh vault, and the archived vault orphaned under a free name. The ruled divergence `DUP_STORE_ID_FIRST_ROW` (P4.D273 R-A) therefore holds in both modes. Its carve now resolves the entity (by its archived name) and the archived store (by its archived `createdAt`) separately on each side, and fills the census templates per side. The new case also joins the ruled-placement, Uploads-rollup and reconcile-consequence tables, like the other `new-account` arms. Harness and oracle only: 70 restore cases.
+
 #### 2026-10-27 — fix(restore): a carried file keeps the archive row's mimeType and size and needs no bytes on disk, as v4's carried arm does (H-4, P-1)
 
 _Versions: core 0.0.1339._

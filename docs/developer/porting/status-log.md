@@ -193098,3 +193098,23 @@ would refuse) — no archive carries one.
   (~30 s); then `QT_ORACLE_SYSTEM_RESTORE=… cargo test -p quilltap-harness
   --test system_restore_state -- --nocapture`.
 
+### Unit 4 — D273-17: `restore_dup_store_id_new_account`
+
+Harness + oracle only. `system-restore.test.ts` gains
+`restore_dup_store_id_new_account` (the existing
+`restore-archive-dup-store-id.zip`, `mode: 'new-account'`). **Measured at the
+pin:** v4 binds the LAST row in `new-account` too (the remap maps the
+duplicated id to ONE new id on both rows) — `wrong-kind` warning, a fresh
+vault, the archived vault orphaned and renamed by the reconcile — so
+`DUP_STORE_ID_FIRST_ROW` (P4.D273 R-A, RULED) holds in BOTH modes; v5 binds
+the first row in both. The carve was literal-id-keyed; it now resolves the
+entity (by the archive row's `name`) and its archived store (by the archived
+`createdAt` among `character` stores — unique; the duplicated row fails 22a
+on both sides) PER SIDE, and the census templates carry `{entity}` /
+`{store}` placeholders filled per side (the `replace` arm resolves to the
+literal ids, unchanged). The case also joins the ruled-placement table (the
+seeded `portrait.png` replay), the Uploads-rollup table and
+`RULED_RECONCILE_CONSEQUENCES` (V4, Lorian, 1). 69 → 70 cases; both carves
+fire (1 fresh store, 31 rows each). No v5 source change, so no red-first
+(a NEW measurement of an existing ruled divergence).
+
