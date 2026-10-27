@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): record the P4.D340 lane and mark the order LANE COMPLETE
+
+_Docs-only change._
+
+The status log gains the P4.D340 lane record: the red-first mutation proofs, the families and their carves until the union, the measured reachability of v4's fail-closed arms, how a refusal surfaces at each layer, the argument-only lines in sibling files, the handoffs, the deferred Tier 2 items, and the two code bodies the unifier pastes when the sibling contracts land. The work order's status header reads LANE COMPLETE.
+
 #### 2026-10-26 — feat(inventory): the title lint at the eight Inventory mutations (P4.D340)
 
 _Versions: core 0.0.1326._

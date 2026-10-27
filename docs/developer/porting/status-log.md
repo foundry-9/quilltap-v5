@@ -191762,3 +191762,242 @@ Session started in the app's worktree `kind-gates-c649d0` (branch `claude/kind-g
 
 As the order's three rows: a full backup → `replace` restore keeping the Inventory whole (22f-quater silent); a `new-account` restore of a backup with pictured objects (`Repointed Inventory pictures … planned=N fixed=N`, the dialog shows the picture, 💸 one turn for the Inspector's carried section); a `.qtap` round trip (the imported chat's `equippedInventory` keyed by the imported character, `pendingOutfitNotifications` untouched, the flag kept). R-13 is predicted live: an imported object does NOT show its picture (the pointer names the bundle's file id).
 
+
+## P4.D340 — the Inventory TITLE LINT: the protected sets, the document-write door, the four store hooks with the `linted` scope, and the gate-key census (lane `claude/p4.d340-inventory-title-lint-fcf5dc`, pin `322a5488e`, 2026-10-26)
+
+Session started in the app's worktree `vigorous-williamson-fcf5dc` (branch `claude/vigorous-williamson-fcf5dc` at `main` `914096110`, no commits of its own) and switched `-c` onto `claude/p4.d340-inventory-title-lint-fcf5dc` at **`INVENTORY` = `c065d7e2f`** (confirmed against P4.D324's lane-branch status header, `19f67712b`). Pin worktree `/tmp/qt-v4-pin-p4d340-322a5488e` (`rev-parse` `322a5488e7bd…`, `package.json` `4.11.0-dev.53`; `npm ci --offline`: openai 7.34.0, `@xterm/headless` 6.0.0). Warm `target/` cloned from main's (`cp -cR`).
+
+**§R.2 probe (an observation):** v4 `main` clean on `main`; `log a0905454b..main` NOT empty — **v4 moved: 14 commits `9faed0c7e` … `85c002822` observed at 2026-10-26 22:45 CDT**; `bugfix` unmoved. The pin is unaffected (the 2026-10-26 ruling: carry out as ordered); the lane continued.
+
+### Red-first
+
+On the `INVENTORY` tip the lint did not exist: both NEW families and every in-crate pin failed to COMPILE (the fns absent — the compile-gated red the order names), and the keystone family's lint arms could not be written (v4 ran with the `withoutTitleLint` stub). Seven mutations of the landed code, each run against `inventory_title_lint_equivalence` from the pin — every one KILLED:
+
+| mutation | rows that went red |
+|---|---|
+| `entering` without `\|\| name_changed` | `lint-third-door`, `lint-name-change-same-title` |
+| the unread check skipped | `lint-fail-closed-dangling-group`, `lint-fail-closed-census-unread`, `lint-pool-unread-mount`, `lint-pool-unread-unknown-mount`, `lint-unread-masks-kind` |
+| kind names from `reachable()` instead of `by_id` | `lint-kind-from-archived` |
+| `"and with"` → `"and"` | `msg-2`, `msg-3` |
+| `store_label` quoting the bare id | `lint-pool-unread-unknown-mount` (row ADDED for this mutation) |
+| `char::is_whitespace` in `normalize_title` | `norm-9` (U+FEFF), `norm-13` (U+0085), `norm-16` |
+| `\p{M}` stripped BEFORE NFKD | `lint-crafted-diacritics` (the order's "a precomposed row") |
+
+Not mutation-proven on the branch (carved — the rows exist and hold v4's answers): `unique_tools` unsorted (`lint-two-tools-sorted`), rows written on a refused write (structurally impossible in `lint_inventory_title` — the refusal returns before the leaving rows).
+
+### What landed
+
+- **`inventory/lint_scope.rs`** (NEW): `TitleLintScope<'a> { Linted, Unlinted { main }, NeverClaimed }` + `is_linted` (R-1 / R-2); `is_tool_definition_path` (ASCII `i`, leading slashes only), `is_title_lint_folder` (both ends trimmed, Unicode `to_lowercase`), `is_title_lint_path`.
+- **`inventory/title_lint.rs`** (NEW): `normalize_title`, `TitleLintDoor`, `TitleLintRequest`, `TitleLintRow` (v4 key order; `to_value`), `TitleLintVerdict`, `TitleLintOptions { pool, context, census }` (R-12 — `census: Option<&dyn Fn() -> Result<ToolGateKeyCensus, String>>`), `lint_inventory_title(main, mount, location, request, opts) -> Result<TitleLintVerdict, InventoryRefusal>`, `write_title_lint_rows(verdict, item_id, scope, mount_point_id)`; every helper private, in v4's order. Lines on the default target (the keystone's mutations use it too); JSON fields through `…Json`; `reachableObjects` / `gateKeys` render `null` when there is no pool / census.
+- **`inventory/title_lint_documents.rs`** (NEW): `InventoryDocumentChange`, `PendingTitleLintRows { nothing(), write() }`, `lint_inventory_document_change(mount, change, linted)`.
+- **`pascal/tool_gate_keys.rs`** (NEW): `ToolGateKeyUse` / `ToolGateKeyUnread` / `ToolGateKeyCensus` (`Serialize`, camelCase, v4's order), `GateKeyClause`, `GateKeySubject`, `collect_tool_gate_keys(mount)` — infallible; target `quilltap::pascal` (the roster's).
+- **`db/database_store.rs`**: the private `lint_inventory_change`; the four hooks take `linted: TitleLintScope<'_>` LAST, lint at v4's positions, write rows after the change lands; `delete_database_document` SPLIT (absent → `Ok(false)` with no lint) and now answers `StoreError`; `StoreError::TitleLint(InventoryRefusal)` + `From` + `into_db_error()`.
+- **`db/inventory_writes.rs`**: `with_inventory_writes_linted` (R-9); the inventory folder rename runs inside it.
+- **`inventory/item_mutations.rs`**: the eight calls (the keystone's comments replaced), two private helpers (`create_request`, `write_rows`), the module header.
+- **Every hook caller** (compile-driven, measured on this tree): `Unlinted { main }` — `api/characters.rs` ×2, `api/mount_files.rs` ×1 (blob delete) + the folder-move route (now a `db.write` with `ws.main()`), `documents/mod.rs` ×4 (`write_database` / `write_database_checked` gain `main`), `generators/optimizer.rs`, `services/commonplace_digest_vault_bridge.rs` ×2, `services/mount_index/{general_state ×2, store_file, folder_ops (move_folder gains main)}.rs`, `subprompts/storage.rs` ×3, `tools/doc_edit/{shared (write_file_with_mtime_check gains main FIRST), file_management ×3, markdown ×2, text ×3}.rs`; `NeverClaimed` (R-2 — 12 sites, the census test pins each file's count and a path shape): `post_office/mailbox.rs` ×3 (`Mail/*.md`), `db/scenarios.rs` ×2 + `scenarios/location.rs` ×4 (`Scenarios/*.md`), `services/aesthetics.rs` ×2 (the two aesthetic files), `db/vault_wardrobe_public.rs` ×1 (the wardrobe folder rename — `Wardrobe/` is never a lint folder; the order planned `Unlinted { main }`, but the fn holds only the mount); `Linted`: the inventory folder rename (through the wrapper). The `item_folder_ops::rename_folder_in` signature gains `linted` LAST.
+- **The `StoreError` matches** (R-6, compile-driven): `db/item_folder_ops.rs`, `db/scenarios.rs`, `documents/mod.rs`, `post_office/mailbox.rs`, `services/commonplace_digest_vault_bridge.rs`, `services/mount_index/{folder_ops, general_state, store_file}.rs`, `tools/doc_edit/shared.rs`; `subprompts/storage.rs` / `scenarios/location.rs` covered by their existing `From` arms. 10 files (the order's 30-site / 10-file measurement held in files).
+- **In-crate pins:** `lint_scope` (the eight v4 rows + the edge rows; the `title_lint_scope_never_claimed_census`), `title_lint` (normalization, JS whitespace, marks after NFKD, row key order), `database_store` ×5 (a refused write leaves the store byte-equal; unclaimed + `Linted` writes never lint; an absent delete never lints; move / move-folder lint a claimed path; **rows only after the write lands** — a trigger refuses the content row AFTER the lint: the census line, never the row; the same write landing: `gate unverifiable: Tools/broken.tool.json in store "Test Store"`, `alert=true`), and the R-8 surface mappings ×4.
+
+### Families
+
+| family | result |
+|---|---|
+| `inventory_title_lint_equivalence` (NEW) | GREEN — 70 `path-*`, 65 `norm-*`, 12 `msg-*` exact; **53 ops compared** (`lint-*` / `doc-*` / `store-*`: outcome bytes, every `[InventoryTitleLint]` / `[ToolGateKeys]` line, the `[InventoryPool]` tags, the mount delta); **13 carved**, each pinned to the branch stand-in |
+| `tool_gate_keys_equivalence` (NEW) | GREEN — 4 ops compared (census bytes + the DEBUG); **8 carved**, each pinned (no key counted) |
+| `inventory_keystone_tier2_equivalence` (grown + mask LIFTED) | GREEN — **137 ops / 1,063 owned v4 lines** (122 → 137: the fifteen `title-lint` ops; the lint's lines now compared on every keystone row, v4 running WITH its lint) |
+
+The order's `inventory_item_mutations_equivalence` is, at `INVENTORY`, the keystone's ONE family `inventory_keystone_tier2_equivalence` (P4.D324's recorded departure); the lint arms ride it as a `title-lint` family at the END of `inventory-keystone.json`. The keystone's mask was the `withoutTitleLint` require-cache stub in `cases/inventory-keystone-tier2.ts` + the `[InventoryTitleLint]` exclusion in the Rust `owned()` / `v5_lines`; both removed (`[ToolGateKeys]` added to the owned lines). **No keystone row went red when the mask lifted.**
+
+**The carves (`UNTIL_UNION_S10`)**: `lint-crafted-create`, `lint-crafted-rename`, `lint-crafted-diacritics`, `lint-naming-tape`, `lint-two-objects-shadow`, `lint-two-tools-sorted`, `lint-leaving-dark`, `lint-leaving-redirected`, `lint-archive-dark`, `lint-delete-dark`, `lint-leaving-unverifiable-mount` — each asserts v5's branch answer is `TITLE_CHECK_UNAVAILABLE` naming `the gate key "<ref>"` (`not_available: resolve_inventory_ref (P4.D328, S10) is not on this branch`) or a `gate unverifiable` row. **(`UNTIL_UNION_S9_C3_C4`)**: `doc-keyed-naming`, `doc-keyed-tool-delete` (the title-lint family) and `tgk-keyed-pair`, `tgk-both-clauses-both-subjects`, `tgk-listed-gone-on-open`, `tgk-unparseable-and-schema`, `tgk-any-of-groups`, `tgk-integer-like-key`, `tgk-two-stores-ordering`, `tgk-duplicate-name-not-unread` — each asserts the branch census counted no key. MEASURED: on the branch a definition whose gate carries only `inventory` fails the branch parser (a gate must test metadata or progress there), so it lands in the library's errors and the stand-in counts it UNREAD — an entering title anywhere on such an instance would fail closed until the union.
+
+### The R-7 reachability measurements
+
+| v4 arm | verdict | evidence |
+|---|---|---|
+| `title-lint-documents.ts:136-143` "its prior state could not be read" | **NEGATIVE — NOT PORTED** | `findByMountPointAndPath` is a `withRawDb(null)` fallback; v4's own test mocks it to reject. v5's prior read is the existing `find_by_mount_point_and_path_or_none` home: a failed read logs `Error finding document by mount point and path` and the change is judged with no prior. A deliberate departure from the order's "ported faithfully" — there is no injection seam in v4 either, so the arm would be dead code here. |
+| `:156-164` "its contents could not be listed" | NEGATIVE on real reads; PORTED | `findManyByMountPointsInFolder` is a fallback; v5's `_opts_or_empty` propagates ONLY under the strict-repository scope, where the refusal fires. |
+| `title-lint.ts:219-224` a thrown census | NEGATIVE on real reads; PORTED via the injected census | `lint-census-throws`, `lint-census-throws-leaving` |
+| `pool.unreadMounts` (a tier read that fails) | NEGATIVE on real reads; PORTED via an injected pool | `readTier` → `readMountInventory` → `scanInventoryFolder` → `findManyByMountPointsInFolder` (fallback). `lint-pool-unread-mount`, `lint-pool-unread-unknown-mount`, `lint-unread-masks-kind` push into a loaded pool's `unreadMounts` on both sides. |
+| a thrown pool load (`the character inventory "…"`) | NEGATIVE on real reads; ported, NOT differentially driven | v5's `load_pool_for_location` has no failing read on a real pair and no injection seam; the message assembly mirrors v4's line. Recorded. |
+| "listed but not found on open" (census) | **REACHABLE** through the real store | a link row whose document row is gone (`tgk-listed-gone-on-open`) — carved (S9's `unread`). |
+| the doc layer's census `[{error}]` | NEGATIVE | `collectToolGateKeys` never throws through real reads. |
+
+### The R-8 surfaces table (measured at the pin)
+
+| surface | v4 at the pin | v5 |
+|---|---|---|
+| (a) the Scriptorium file route (`files/[...path]`) | `handleFileOpError`: not a `FileOpError` / `DatabaseStoreError` → ERROR `[Mount Points v1] Error write file` + 500 `Failed to write file` | `store_file` maps `StoreError::TitleLint` → `MountFileError::Other` → the route's catch-all 500 `Failed to write file` (pinned at the mapping) |
+| (b) the doc tools | the handler's / `doc-edit-handler.ts`'s catch: `Error: <message>` (ERROR `Unexpected error in doc-edit tool`) | `store_error_message(TitleLint)` = the refusal's message (pinned) |
+| (c) Document Mode | `operator-doc-http.ts`: ERROR + 500 `Failed to write document: <message>` (rename / delete alike) | `DocError::Store(<message>)` → the existing `Failed to … document: <message>` 500 (pinned) |
+| (d) the store-file upload | rethrows (`store-file.ts:240-242`) → the route's 500 | the same `store_file` arm as (a) |
+| (e) the folder-move route | `folder-ops.ts:94` rethrows → `handleFileOpError` → 500 `Failed to move folder` | `folder_ops::store_err(TitleLint)` → `Other` → `map_file_or_store` → 500 `Failed to move folder` (pinned) |
+
+Route-level differential rows (Tier 2 item 2's jest surfaces case) are DEFERRED — the pins are at the mapping layer.
+
+### Argument-only lines in siblings' files (for the §S.5 union)
+
+`tools/doc_edit/{shared.rs (the fn's new first param + the call), file_management.rs ×4, markdown.rs ×2, text.rs ×3}` (P4.D338); `post_office/mailbox.rs:324,414,436` + the `store_to_db` arm (P4.D335 — a different region from `MailAlertsVia::TurnYield`); `documents/mod.rs` (the two `write_database*` params, their callers, the `store_err` arm, the move / delete calls); `db/scenarios.rs`, `scenarios/location.rs`; `db/item_folder_ops.rs` (`rename_folder_in`'s `linted` param + the call + the `store_error` arm — P4.D324's file); `db/vault_wardrobe_public.rs:629` (the wardrobe rename's `NeverClaimed`). Any NEW hook caller a sibling adds is a `cargo build` red on the union the unifier closes by adding the scope (`Unlinted { main }` where `main` is in scope).
+
+### HANDOFFs
+
+- **HANDOFF → P4.D339 (§S.5 wire 12):** `help/inventory.md`'s "A title may not borrow a name" section (`7263105c6`, +19) — its claims this lane makes true: both refusal grounds; the comparison ("ignores capitals, extra spaces and accents, and nothing else; apostrophes count" — `normalize_title`); the `gate key naming` exception; the leaving notes (`gate dark` / `redirected` / `unverifiable` / `key moved`); the document-tool and Scriptorium coverage (the four hooks); "an item with no title is never refused" (`lint-no-title-unchecked`). The vendor lane byte-compares.
+- **HANDOFF → the unifier (§S.5):** paste the two bodies below; lift `CARVED` and every `carve` in `tool-gate-keys.json`; re-run both families + the keystone family from the pin.
+- **HANDOFF → P4.D328 (§S.5 re-run):** its `inventory_create` / `inventory_update` / `inventory_archive` / `pick_up_items` (titled) rows regenerated at the pin lint on v4's side; on the union they lint on v5's too. The titled pick-up (`equip.rs` → `instantiate` with an own title) needs no hunk; the keystone family has no titled pick-up op, so it is recorded for P4.D328's `inventory_pick_up` rows (Tier 1 item 4's last bullet).
+- **HANDOFF → P4.D332:** `edit_custom_tool`'s save path — if it reaches `write_database_document`, it now writes ONE census-only `[InventoryTitleLint] Census` DEBUG per `Tools/*.tool.json` save (as v4 does) and needs a scope argument on the union.
+- No keystone signature change was needed beyond the argument lines above; `errors.rs` / `pool.rs` untouched.
+
+### Deferred (loud)
+
+- **Tier 2 item 1 — the scratch union preview: NOT RUN.** P4.D328, P4.D329 and P4.D333 are LANE COMPLETE, but each carries its own fenced stand-ins of the others' contracts (P4.D329's `p4d329_c2_standins`, its `ToolGate` before P4.D333's enum); a faithful preview is the §S.5 wiring itself. Recorded instead: the §S.5 bodies below, written against the siblings' LANDED spellings (their hand-over notes).
+- **Tier 2 item 2 — `cases/inventory-title-lint-surfaces.test.ts`: NOT RUN** (the R-8 table is measured from the pin's source and pinned at the mapping layer in Rust).
+- **Tier 2 item 3 — the V8 key-order helper:** MEASURED at the pin — v4's census lists `"42"` before `"lamp"` (`tgk-integer-like-key`); whether P4.D329's record keeps authored order is a union measurement (C1's `inventory::types::v8_key_order` exists if a helper is needed).
+- Tier 3 items 1–5 as the order records them (the stand-ins; the unreachable arms above; `NeverClaimed`; the Scriptorium's generic 500 — a v4 filing candidate for §S.7; `AsyncLocalStorage`'s cross-await reach).
+
+### The §S.5 bodies (verbatim — the unifier pastes these and deletes the fences)
+
+**R-4 — `pascal/tool_gate_keys.rs`, `collect_tool_gate_keys`** (replace the
+`LANE-REMOVE(P4.D340 → §S.5): S9 / C3 / C4` block AND delete
+`stand_in_stores_consulted` with its fence). Names as LANDED: S9 = P4.D328's
+`d2b6e7456` (`CustomToolLibrary { entries, errors, unread, stores_consulted }`,
+`CustomToolUnread { mount_point_id, mount_name, definition_path, reason }`,
+`CustomToolLoadError.stage: Option<CustomToolLoadStage>`); C3 = P4.D329's
+`e123e0735` (`inventory: Option<Vec<(String, InventoryStateComparator)>>`,
+`inventory_count: Option<Vec<(String, GateInventoryCountComparator)>>` on the
+gate group); C4 = P4.D333's `ToolGate::gate_groups()`.
+
+```rust
+    let mut keys: Vec<ToolGateKeyUse> = Vec::new();
+    for entry in &library.entries {
+        let def = &entry.definition;
+        for (clause, gate) in [
+            (GateKeyClause::AvailableWhen, &def.available_when),
+            (GateKeyClause::WithheldWhen, &def.withheld_when),
+        ] {
+            let Some(gate) = gate else { continue };
+            // Every group of an any-of. `inventoryAggregate` keys name a scope
+            // and a field, never an object, so no title can shadow one: not
+            // counted.
+            for group in gate.gate_groups() {
+                let subjects: [(GateKeySubject, Vec<&str>); 2] = [
+                    (
+                        GateKeySubject::Inventory,
+                        group.inventory.iter().flatten().map(|(k, _)| k.as_str()).collect(),
+                    ),
+                    (
+                        GateKeySubject::InventoryCount,
+                        group.inventory_count.iter().flatten().map(|(k, _)| k.as_str()).collect(),
+                    ),
+                ];
+                for (subject, refs) in subjects {
+                    // `Object.keys` order (integer-like keys first) — ONLY if
+                    // the record keeps authored order (Tier 2 item 3: measure
+                    // with `tgk-integer-like-key`; C1 has `v8_key_order`).
+                    for reference in refs {
+                        keys.push(ToolGateKeyUse {
+                            reference: reference.to_string(),
+                            tool_name: def.name.clone(),
+                            clause,
+                            subject,
+                            mount_name: entry.mount_name.clone(),
+                            definition_path: entry.definition_path.clone(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    let mut unread: Vec<ToolGateKeyUnread> = library
+        .unread
+        .iter()
+        .map(|u| ToolGateKeyUnread {
+            mount_name: u.mount_name.clone(),
+            definition_path: u.definition_path.clone(),
+            reason: u.reason.clone(),
+        })
+        .collect();
+    unread.extend(
+        library
+            .errors
+            .iter()
+            .filter(|e| matches!(e.stage, Some(CustomToolLoadStage::Read | CustomToolLoadStage::Json)))
+            .map(|e| ToolGateKeyUnread {
+                mount_name: e.mount_name.clone(),
+                definition_path: e.definition_path.clone(),
+                reason: e.reason.clone(),
+            }),
+    );
+    let stores_consulted = library.stores_consulted.clone();
+```
+
+**R-3 — `inventory/title_lint.rs`** (replace the whole `LANE-REMOVE(P4.D340 →
+§S.5): S10` block — `PoolView`, `GateKeyHit`, `resolved_with`,
+`gate_key_hits`, `unresolved_key` — and the two `Err(reason) =>` arms at the
+call sites, whose fences are marked). C2 as LANDED (P4.D328 `def80f13c`):
+`ResolvedInventoryPool { items, owns: Box<dyn Fn(&str) -> bool + Send + Sync> }`
+(the `owns` box is `'static`: capture OWNED ids), `InventoryRefMatch { item,
+equipped, own }`, `ResolveInventoryRefOptions::default()` (archetypes and
+archived EXCLUDED — v4's default).
+
+```rust
+use std::collections::HashSet;
+use super::refs::{resolve_inventory_ref, InventoryRefMatch, ResolveInventoryRefOptions, ResolvedInventoryPool};
+
+/// v4 `resolvedWith(pool, itemId, replacement)`.
+fn resolved_with(pool: &InventoryPool, item_id: &str, replacement: Option<&Side>) -> ResolvedInventoryPool {
+    let items = pool
+        .resolved()
+        .into_iter()
+        .filter_map(|mut item| {
+            if item.id() != item_id {
+                return Some(item);
+            }
+            let r = replacement.filter(|r| r.reachable)?;
+            item.set("title", if r.title.is_empty() { Value::Null } else { json!(r.title) });
+            item.set("name", json!(r.name));
+            Some(item)
+        })
+        .collect();
+    let own: HashSet<String> = pool.own.iter().map(|r| r.id().to_string()).collect();
+    ResolvedInventoryPool { items, owns: Box::new(move |id| own.contains(id)) }
+}
+
+fn gate_key_hits(reference: &str, pool: &ResolvedInventoryPool) -> Vec<InventoryRefMatch> {
+    resolve_inventory_ref(reference, pool, &HashSet::new(), ResolveInventoryRefOptions::default())
+}
+```
+
+…and at the two call sites `let hits = gate_key_hits(reference, &others);` /
+`let hits = gate_key_hits(reference, &resolved_with(pool, item_id, after));`
+(no `match`); `describe_hit` takes `&InventoryRefMatch`; `leaving_rows`'
+`others` filter reads `h.item.id()`. Then lift `CARVED` in
+`inventory_title_lint_equivalence.rs` and every `carve` in
+`tool-gate-keys.json` (the oracle rows already hold v4's answers).
+
+### Gate
+
+`cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean with and without `--features quilltap-core/native-transport`; `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with this lane's env block (`QT_ORACLE_INV_TITLE_LINT`, `QT_ORACLE_TOOL_GATE_KEYS`, `QT_FIXTURE_ITL_MAIN` / `_MOUNT`, `QT_ORACLE_INV_KEYSTONE`, `QT_FIXTURE_INV_MAIN` / `_MOUNT`, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, Node 24 on `PATH`): **839 binaries / 5,509 passed / 7 failed / 3 ignored, zero SKIP**. The seven: `public_schemas_vendor_guard` + `qtap_schema_embed_guard` (STANDING — P4.D333 / P4.D327 re-vendor); `doc_mount_fallback_sites_census` ×3 (this lane's — the four new fallback-read sites, `converted` 91 → 95, and the census stand-in's `find_enabled_for_docedit` site; classified and green by name); `no_wardrobe_lane_remove_markers_left` + `no_memory_lane_remove_markers_left` (this lane's markers named neither earlier round — every P4.D340 marker now names v4 `7263105c6`, and both guards accept an `INVENTORY_ROUND_SHAS` list in a fenced P4.D340 region; green by name). **HANDOFF → the unifier:** fold `INVENTORY_ROUND_SHAS` into one `322a5488e`-round marker census (P4.D329's markers are spelled `LANE-REMOVE (P4.D329)` with a space, which the guards' `LANE-REMOVE(` match does not see). `recipe_sweep.py --self-test` exits 0; `title_lint_scope_never_claimed_census` green.
+
+**The sweep (announced; from the pin, ONE run, 17 families):** 15 ok — `inventory_title_lint_equivalence`, `tool_gate_keys_equivalence`, `inventory_keystone_tier2_equivalence`, `mount_case_moves_equivalence`, `state_cascade_equivalence`, `mail_carina_tools_equivalence`, `documents_routes_equivalence`, `documents_rename_target_equivalence`, `wardrobe_folder_writes_tier2_equivalence`, `wardrobe_folders_equivalence`, `inventory_folders_equivalence`, `inventory_item_image_generation_tier3_equivalence`, `chats_inventory_tier2_equivalence`, `scenarios_routes_equivalence`, `subprompts_routes_equivalence`. Two red, neither this lane's: `characters_arrays_tier2_equivalence` (the scenario read-back ORDER — v4 `1d0a31132`, P4.D338's; standing since `INVENTORY`) and `doc_text_equivalence` (`uri: qtap://self/…` vs v4's `qtap://Rosalind%20Character%20Vault/…` — bug 256's URI producers, P4.D338's §R.7 by-design flip; no file of this lane's touches the producers).
+
+### The recipes (canonical in the headers; lane runs staged under `/tmp/p4d340/`)
+
+```
+N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+cd ~/source/quilltap-server          # (the 322a5488e pin)
+QT_FIXTURE_OUT=/tmp/qt-itl-main.db QT_FIXTURE_MOUNT_OUT=/tmp/qt-itl-mount.db \
+  $N/npx tsx $V5W/harness/oracle/fixtures/build-inventory-title-lint-fixture.ts
+LOG_LEVEL=debug QT_FIXTURE_ITL_MAIN=/tmp/qt-itl-main.db QT_FIXTURE_ITL_MOUNT=/tmp/qt-itl-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/inventory-title-lint.ts > /tmp/oracle-inventory-title-lint.ndjson
+LOG_LEVEL=debug QT_FIXTURE_ITL_MAIN=/tmp/qt-itl-main.db QT_FIXTURE_ITL_MOUNT=/tmp/qt-itl-mount.db \
+  $N/node --import tsx $V5W/harness/oracle/cases/tool-gate-keys.ts > /tmp/oracle-tool-gate-keys.ndjson
+```
+
+Run with `QT_ORACLE_INV_TITLE_LINT` / `QT_ORACLE_TOOL_GATE_KEYS` + the two fixture vars. Markers (> 0): `"op":"path-` 70, `friday's yellow tape measure` 3, `a title is not accepted unchecked` 12, `[InventoryTitleLint] Census` 60, `Document change linted` 15. The keystone family rides its own header (unchanged); its oracle MUST be regenerated (v4 now lints). The title-lint pair is consumed by nobody else; a change to its builder invalidates BOTH new oracles. No committed fixture moved; `inventory-keystone.json` grew by APPEND only (15 ops).
+
+### 💸 for the dogfood pass
+
+The order's eight rows (§ 💸), unchanged — every one needs the union build (until §S.5, every keyed row fails closed on this branch, and an `inventory`-only gate definition fails the branch parser and makes every entering title refuse as unchecked).
+
+### Versions at close
+
+core **0.0.1326** (from `INVENTORY`'s 0.0.1324: +1 the lint + hooks, +1 the mutation calls); host / web / cli / tauri / SPA unchanged; harness frozen 0.0.1110.
