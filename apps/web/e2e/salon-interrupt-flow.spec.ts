@@ -46,11 +46,11 @@ import {
  *
  * **GATED beats (A)/(B)** need P4.D335 (`chatStopTurn` / `chatRaiseHand`, the
  * `handAnswered` / `stopped` / `yielded` frames). ACTIVATE-AT-UNIFY (§S.9, the
- * `P4D279_SERVER_LANDED` precedent): the unifier flips the constant to `true`.
- * Once the server lands, (F)'s premise (a refused dispatch) is gone — the
- * unifier may park (F) as `fixme`; (A) supersedes it.
+ * `P4D279_SERVER_LANDED` precedent): flipped `true` at the `322a5488e`
+ * unification. With the server landed, (F)'s premise (a refused dispatch) is
+ * gone, so (F) skips itself; (A) supersedes it.
  */
-const P4D335_SERVER_LANDED = false;
+const P4D335_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D335’s chatStopTurn / chatRaiseHand variants and the handAnswered / stopped / yielded frames (wired at unification)';
 

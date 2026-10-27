@@ -37,14 +37,13 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * **GATED beats** (h)–(m) need a sibling's code: the schema parse (Save and the
  * library round trip, the bench's gate evaluation), the Inventory server wires
  * (the mock bag, the dry `→ inventory` / `→ log` lines) or the Inventory
- * reference picker. NAMED CONSTANTS, `false` until the unifier flips them at
- * §S.9 (R-V), redeclared here because the Playwright config does not compile
- * `src/` — the same names as `src/testing/p4d334-gates.ts`.
+ * reference picker. NAMED CONSTANTS, flipped `true` at the `322a5488e`
+ * unification (§S.9, R-V; the SPA's own gate module was deleted then).
  */
-const P4D333_SPA_LANDED = false;
-const P4D329_SERVER_LANDED = false;
-const P4D331_SERVER_LANDED = false;
-const P4D330_SPA_LANDED = false;
+const P4D333_SPA_LANDED = true;
+const P4D329_SERVER_LANDED = true;
+const P4D331_SERVER_LANDED = true;
+const P4D330_SPA_LANDED = true;
 const P4D333_REASON = 'awaits P4.D333’s schema twin (the parse behind Save, the library and the bench’s gate) — wired at unification';
 const P4D329_REASON = 'awaits P4.D329’s `inventory` body on customToolPreview and the dry `inventory` effect — wired at unification';
 const P4D331_REASON = 'awaits P4.D331’s dry `{ index, log }` effect — wired at unification';

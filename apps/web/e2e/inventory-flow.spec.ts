@@ -39,18 +39,19 @@ import { openSidebarSection } from './support/sidebar';
  * on a project made here (`projectCreate`); (c) the `/photos` album select's
  * `My Photos` option and the roll-up blurb.
  *
- * **GATED beats** — ACTIVATE-AT-UNIFY (§S.9, R-V): the unifier flips each
- * constant once its lane is on the union. NAMED constants, never a capability
- * probe. Each gated beat calls `test.skip(…)` first thing.
+ * **GATED beats** — flipped `true` at the `322a5488e` unification (§S.9, R-V).
+ * NAMED constants, never a capability probe. Each gated beat calls
+ * `test.skip(…)` first thing. Beat (g) stays skipped on its own premise: the
+ * shared mock LLM answers text only, so no `inventory_pick_up` turn can be posed.
  */
 // ACTIVATE-AT-UNIFY: P4.D324's `INVENTORY` — the inventory module, the columns, the pool.
-const P4D324_SERVER_LANDED = false;
+const P4D324_SERVER_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D325's routes — the `inventory*` / `chatInventory*` dispatch family (C7).
-const P4D325_SERVER_LANDED = false;
+const P4D325_SERVER_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D328's nine tools + the turn container (the Salon `inventory_pick_up` row).
-const P4D328_SERVER_LANDED = false;
+const P4D328_SERVER_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D338's photos half — `photoGalleryAlbums` + `photoGalleryList.album` (C9).
-const P4D338_SERVER_LANDED = false;
+const P4D338_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits the Inventory server lanes — P4.D324’s module, P4.D325’s `inventory*` / `chatInventory*` verbs, P4.D328’s tools — wired at unification';
 const PHOTOS_GATE_REASON = 'awaits P4.D338’s `photoGalleryAlbums` and the list request’s `album` key — wired at unification';
