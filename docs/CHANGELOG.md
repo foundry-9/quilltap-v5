@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(inventory): the title lint at the eight Inventory mutations (P4.D340)
+
+_Versions: core 0.0.1326._
+
+Create, instantiate (an own title only), update, clear overrides, archive / restore, delete, duplicate and copy-to-folder now run the title lint at v4's positions: the verdict before the write, its rows after the write lands; a transfer (create with a preserved identity) is not linted. A refusal is the lint's own line, never `[InventoryMutations] Refused`. The keystone family now runs v4 with its lint and compares the lint's lines (the `withoutTitleLint` stub is gone), and grows fifteen lint ops.
+
 #### 2026-10-26 — feat(inventory): the title lint — the protected sets, the document-write door, and the four store hooks (P4.D340)
 
 _Versions: core 0.0.1325._

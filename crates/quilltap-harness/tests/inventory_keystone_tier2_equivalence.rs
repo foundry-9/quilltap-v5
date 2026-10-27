@@ -14,10 +14,11 @@
 //!   - the DELTA: per table (`doc_mount_documents` / `_files` /
 //!     `_file_links` / `_folders` / `_blobs`, main `files`, `chats`), the rows
 //!     that differ from the fixture's, whole, and the fixture ids now gone;
-//!   - the OWNED LINES: every `[Inventory…]` line (bar the title lint's and
-//!     the change-effects' — P4.D340's and P4.D328's), the inventory
-//!     repository lines and the roster check, rendered as v5's capture rig
-//!     renders them, field order included;
+//!   - the OWNED LINES: every `[Inventory…]` line (bar the change-effects' —
+//!     P4.D328's) — the title lint's `[InventoryTitleLint]` lines and its
+//!     `[ToolGateKeys]` census included since P4.D340 lifted the mask — the
+//!     inventory repository lines and the roster check, rendered as v5's
+//!     capture rig renders them, field order included;
 //!   - the realtime publishes (`Realtime publish queued`, as `{topic, id}`).
 //!
 //! NORMALISATION (both sides, identically): a UUID or an ISO timestamp the
@@ -36,8 +37,8 @@
 //!   QT_FIXTURE_INV_MAIN=/tmp/qt-inv-main.db QT_FIXTURE_INV_MOUNT=/tmp/qt-inv-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/inventory-keystone-tier2.ts \
 //!     > /tmp/oracle-inv-keystone.ndjson
-//! (The case runs v4 WITHOUT its title lint — `withoutTitleLint`, R-7: the
-//! keystone ports the mutations without the lint calls; the lint is P4.D340's.)
+//! (v4 runs WITH its title lint — P4.D340 lifted the `withoutTitleLint` stub;
+//! the lint arms are the `title-lint` family's ops.)
 //! Run:
 //!   QT_ORACLE_INV_KEYSTONE=/tmp/oracle-inv-keystone.ndjson \
 //!   QT_FIXTURE_INV_MAIN=/tmp/qt-inv-main.db QT_FIXTURE_INV_MOUNT=/tmp/qt-inv-mount.db \
@@ -132,9 +133,8 @@ fn spec_path() -> PathBuf {
 }
 
 fn owned(message: &str) -> bool {
-    (message.starts_with("[Inventory")
-        && !message.starts_with("[InventoryTitleLint]")
-        && !message.starts_with("[InventoryEffects]"))
+    (message.starts_with("[Inventory") && !message.starts_with("[InventoryEffects]"))
+        || message.starts_with("[ToolGateKeys]")
         || DB_OWNED.contains(&message)
 }
 
@@ -467,8 +467,8 @@ fn v5_lines(captured: &[String]) -> (Vec<String>, Vec<Value>) {
             continue;
         }
         let message_owned = rest.starts_with("[Inventory")
-            && !rest.starts_with("[InventoryTitleLint]")
             && !rest.starts_with("[InventoryEffects]")
+            || rest.starts_with("[ToolGateKeys]")
             || DB_OWNED
                 .iter()
                 .any(|m| rest == *m || rest.starts_with(&format!("{m} ")));

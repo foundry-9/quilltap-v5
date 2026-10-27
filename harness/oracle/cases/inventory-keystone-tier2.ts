@@ -25,10 +25,10 @@
  *     $N/node --import tsx $V5W/harness/oracle/cases/inventory-keystone-tier2.ts \
  *     > /tmp/oracle-inv-keystone.ndjson
  *
- * v4 runs WITHOUT its title lint ({@link withoutTitleLint} — R-7: the keystone
- * ports the mutations without the lint calls; the lint is P4.D340's): the
- * lint's pool reads, census lines and refusals are not the keystone's to
- * match.
+ * v4 runs WITH its title lint (P4.D340 lifted the keystone's `withoutTitleLint`
+ * stub): every mutation lints on both sides, and the family compares the
+ * lint's lines and refusals. P4.D340's lint arms are the `title-lint` family's
+ * ops at the END of `inventory-keystone.json`.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -36,7 +36,6 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -87,42 +86,6 @@ async function dumpAll(rawMain: Json, rawMount: Json): Promise<Record<string, Ar
   return out;
 }
 
-/**
- * Run v4 without its Inventory title lint — `lib/inventory/title-lint.ts` and
- * the document-write layer `lib/inventory/title-lint-documents.ts`. tsx
- * compiles v4 to CommonJS, so every `import` of a module is a `require` that
- * hits `require.cache`: each lint module's cache entry is replaced, BEFORE any
- * module that imports it loads, by its real exports with the call-site entry
- * points overridden — `lintInventoryTitle` answers a clean verdict (`{ rows:
- * [] }`: no pool read, no census, no refusal), `writeTitleLintRows` writes
- * nothing, the database store's `lintInventoryDocumentChange` answers a no-op
- * finisher. Checked: each override must be what a fresh `require` returns.
- */
-function withoutTitleLint(): void {
-  const req = createRequire(fileURLToPath(import.meta.url));
-  const overrides: Record<string, Record<string, unknown>> = {
-    '@/lib/inventory/title-lint': {
-      lintInventoryTitle: async () => ({ rows: [] }),
-      writeTitleLintRows: () => undefined,
-    },
-    '@/lib/inventory/title-lint-documents': {
-      lintInventoryDocumentChange: async () => () => undefined,
-    },
-  };
-  for (const [specifier, stub] of Object.entries(overrides)) {
-    const path = req.resolve(specifier);
-    const real = req(specifier) as Record<string, unknown>;
-    const entry = req.cache[path];
-    if (!entry) throw new Error(`no require.cache entry for ${specifier}`);
-    entry.exports = { ...real, ...stub };
-    for (const name of Object.keys(stub)) {
-      if ((req(specifier) as Record<string, unknown>)[name] !== stub[name]) {
-        throw new Error(`the ${specifier} override did not take`);
-      }
-    }
-  }
-}
-
 async function runChild(index: number): Promise<void> {
   const op = spec.ops[index];
   const scratch = mkdtempSync(join(tmpdir(), 'qt-inv-keystone-op-'));
@@ -156,7 +119,6 @@ async function runChild(index: number): Promise<void> {
     } as never;
   }
 
-  withoutTitleLint();
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   await initializeDatabase();
   const { getRepositories } = await import('@/lib/repositories/factory');

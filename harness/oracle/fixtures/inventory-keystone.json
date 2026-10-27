@@ -2004,6 +2004,195 @@
       "kind": "resetDefaults",
       "chatId": "b3000000-0000-4000-8000-000000000001",
       "characterId": "c1000000-0000-4000-8000-000000000001"
+    },
+    {
+      "name": "lint-create-kind-shadow",
+      "family": "title-lint",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "knife",
+        "title": "Coin"
+      }
+    },
+    {
+      "name": "lint-create-own-name",
+      "family": "title-lint",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "lantern",
+        "title": "Lantern"
+      }
+    },
+    {
+      "name": "lint-create-passes",
+      "family": "title-lint",
+      "kind": "create",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "name": "knife",
+        "title": "Pocket Knife"
+      }
+    },
+    {
+      "name": "lint-update-third-door",
+      "family": "title-lint",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "name": "old lantern"
+      }
+    },
+    {
+      "name": "lint-update-retitle-shadow",
+      "family": "title-lint",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "title": "COIN"
+      }
+    },
+    {
+      "name": "lint-update-description-only",
+      "family": "title-lint",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000",
+      "body": {
+        "description": "Shiny."
+      }
+    },
+    {
+      "name": "lint-instantiate-own-title",
+      "family": "title-lint",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000",
+        "overrides": {
+          "title": "Sword"
+        }
+      }
+    },
+    {
+      "name": "lint-instantiate-inherited-title",
+      "family": "title-lint",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000"
+      }
+    },
+    {
+      "name": "lint-instantiate-blank-title",
+      "family": "title-lint",
+      "kind": "instantiate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "body": {
+        "archetypeId": "a0000001-0000-4000-8000-000000000000",
+        "overrides": {
+          "title": "   "
+        }
+      }
+    },
+    {
+      "name": "lint-clear-title-override",
+      "family": "title-lint",
+      "kind": "clearOverrides",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "fields": [
+        "title"
+      ]
+    },
+    {
+      "name": "lint-archive-noop",
+      "family": "title-lint",
+      "kind": "setArchived",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000014-0000-4000-8000-000000000000",
+      "archived": true
+    },
+    {
+      "name": "lint-archive-leaving",
+      "family": "title-lint",
+      "kind": "setArchived",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "archived": true
+    },
+    {
+      "name": "lint-delete-census",
+      "family": "title-lint",
+      "kind": "delete",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000017-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "lint-duplicate-copy-title",
+      "family": "title-lint",
+      "kind": "duplicate",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000010-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "lint-copy-items",
+      "family": "title-lint",
+      "kind": "copyToFolder",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemIds": [
+        "a0000010-0000-4000-8000-000000000000",
+        "a0000017-0000-4000-8000-000000000000"
+      ],
+      "folder": "Copies"
     }
   ]
 }

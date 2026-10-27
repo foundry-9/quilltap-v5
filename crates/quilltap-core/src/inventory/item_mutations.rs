@@ -19,10 +19,11 @@
 //!     instantiate stay allowed.
 //!
 //! v4 also runs every create, edit, archive, restore, delete and copy through
-//! the title lint (`title-lint.ts`). The lint is P4.D340's (R-7): each of
-//! v4's EIGHT call sites is marked below with a `P4.D340 lint seam` comment
-//! at v4's position, where that lane inserts the verdict and its
-//! `write_title_lint_rows` call; until it lands, no title is linted.
+//! the title lint (`title_lint`, P4.D340), at v4's EIGHT call sites: the
+//! verdict before the write, its rows after the write lands. A lint refusal
+//! is NOT a `refuse()` — it writes `[InventoryTitleLint] Title rejected` /
+//! `… refused: protected set incomplete`, never `[InventoryMutations]
+//! Refused`.
 //!
 //! Every mutation logs at `debug` (`[InventoryMutations] <op>`); refusals at
 //! `info` (`[InventoryMutations] Refused`) with the code.
@@ -39,6 +40,10 @@ use super::location::InventoryLocation;
 use super::pool::{load_pool_for_location, InventoryPool, LoadPoolContext};
 use super::resolve::{resolve_item, with_inventory_defaults};
 use super::svg::sanitize_inventory_svg;
+use super::title_lint::{
+    lint_inventory_title, write_title_lint_rows, TitleLintDoor, TitleLintOptions, TitleLintRequest,
+    TitleLintVerdict,
+};
 use super::types::{
     inventory_shape_issues, js_truthy, InventoryFields, InventoryKind, InventoryRecord,
     InventoryScope, ResolvedInventoryItem, INVENTORY_INHERITABLE_FIELDS,
@@ -252,6 +257,20 @@ fn archetype_details(archetype_id: &str) -> Map<String, Value> {
 }
 
 /// Borrow the caller's pool or load the location's own.
+/// `{ door: 'create', before: null, after: record }`.
+fn create_request(record: &InventoryRecord) -> TitleLintRequest<'_> {
+    TitleLintRequest {
+        door: TitleLintDoor::Create,
+        before: None,
+        after: Some(record),
+    }
+}
+
+/// `writeTitleLintRows(verdict, itemId, location)`.
+fn write_rows(verdict: &TitleLintVerdict, item_id: &str, location: &InventoryLocation) {
+    write_title_lint_rows(verdict, item_id, location.scope, &location.mount_point_id);
+}
+
 fn pool_or_load<'p>(
     main: &Connection,
     mount: &Connection,
@@ -375,9 +394,25 @@ pub fn create_inventory_item(
         None => String::new(),
     };
     record.set("folder", json!(resolved_folder));
-    // P4.D340 lint seam: door=create — v4 item-mutations.ts:170-172 (`{ pool }`,
-    // skipped when `preserve`; the rows written after the create, :174).
+    // A transfer is a move, not a create: no lint (`opts.preserve`).
+    let verdict = if preserve.is_some() {
+        None
+    } else {
+        Some(lint_inventory_title(
+            main,
+            mount,
+            location,
+            create_request(&record),
+            TitleLintOptions {
+                pool,
+                ..Default::default()
+            },
+        )?)
+    };
     let stored = location.create(main, mount, &record)?;
+    if let Some(verdict) = &verdict {
+        write_rows(verdict, stored.id(), location);
+    }
     log_op!("Created object", location;
         itemId = %stored.id(),
         kind = stored.kind().as_str(),
@@ -486,10 +521,30 @@ pub fn instantiate(
         record.insert("fileStem".into(), json!(stem));
     }
     let record = InventoryRecord(record);
-    // P4.D340 lint seam: door=create — v4 item-mutations.ts:226-230 (only for
-    // a non-blank `overrides.title` — an inherited title was linted on the
-    // archetype; `{ pool }`).
+    // Only a title of the instance's own is new; an inherited one was linted
+    // on the archetype.
+    let own_title = overrides
+        .get("title")
+        .and_then(Value::as_str)
+        .is_some_and(|t| !crate::jsstr::js_trim(t).is_empty());
+    let verdict = if own_title {
+        Some(lint_inventory_title(
+            main,
+            mount,
+            location,
+            create_request(&record),
+            TitleLintOptions {
+                pool: Some(pool),
+                ..Default::default()
+            },
+        )?)
+    } else {
+        None
+    };
     let stored = location.create(main, mount, &record)?;
+    if let Some(verdict) = &verdict {
+        write_rows(verdict, stored.id(), location);
+    }
     let item = resolve_item(&stored, |id| {
         if id == archetype_id {
             Some(&archetype)
@@ -657,10 +712,29 @@ pub fn update_inventory_item(
         }
     }
 
-    // P4.D340 lint seam: door=update — v4 item-mutations.ts:295-300 (`{ context }`;
-    // the rows written when the update found the record, :302).
+    let mut after = current.clone();
+    for (k, v) in &patch {
+        after.set(k, v.clone());
+    }
+    let verdict = lint_inventory_title(
+        main,
+        mount,
+        location,
+        TitleLintRequest {
+            door: TitleLintDoor::Update,
+            before: Some(current),
+            after: Some(&after),
+        },
+        TitleLintOptions {
+            context,
+            ..Default::default()
+        },
+    )?;
     let fields: Vec<String> = patch.keys().cloned().collect();
     let updated = location.update(main, mount, current.id(), patch, &[])?;
+    if updated.is_some() {
+        write_rows(&verdict, current.id(), location);
+    }
     log_op!("Updated object", location;
         itemId = %current.id(),
         fieldsJson = %json_text(&fields),
@@ -693,10 +767,27 @@ pub fn clear_overrides(
             meta,
         ));
     }
-    // P4.D340 lint seam: door=update — v4 item-mutations.ts:316-318 (`after` =
-    // `current` minus the fields: clearing a title override hands the instance
-    // its archetype's title, an entering title like any other; rows at :320).
+    // Clearing a title override hands the instance its archetype's title: an
+    // entering title like any other.
+    let mut after = current.clone();
+    for field in fields {
+        after.remove(field);
+    }
+    let verdict = lint_inventory_title(
+        main,
+        mount,
+        location,
+        TitleLintRequest {
+            door: TitleLintDoor::Update,
+            before: Some(current),
+            after: Some(&after),
+        },
+        TitleLintOptions::default(),
+    )?;
     let updated = location.update(main, mount, current.id(), Map::new(), fields)?;
+    if updated.is_some() {
+        write_rows(&verdict, current.id(), location);
+    }
     log_op!("Cleared overrides", location;
         itemId = %current.id(),
         fieldsJson = %json_text(&fields),
@@ -733,10 +824,28 @@ pub fn set_inventory_item_archived(
         "archivedAt".into(),
         stamp.clone().map_or(Value::Null, Value::String),
     );
-    // P4.D340 lint seam: door=archive — v4 item-mutations.ts:331-334 (archiving
-    // takes a title out of the pool — the bell; restoring brings it back — the
-    // lint; rows at :336).
+    // Archiving takes a title out of the pool (the bell); restoring brings it
+    // back (the lint).
+    let mut after = current.clone();
+    after.set(
+        "archivedAt",
+        stamp.clone().map_or(Value::Null, Value::String),
+    );
+    let verdict = lint_inventory_title(
+        main,
+        mount,
+        location,
+        TitleLintRequest {
+            door: TitleLintDoor::Archive,
+            before: Some(current),
+            after: Some(&after),
+        },
+        TitleLintOptions::default(),
+    )?;
     let item = location.update(main, mount, current.id(), patch, &[])?;
+    if item.is_some() {
+        write_rows(&verdict, current.id(), location);
+    }
     log_op!("Archive state changed", location;
         itemId = %current.id(),
         archivedAt = stamp.as_deref().unwrap_or("null"),
@@ -983,8 +1092,17 @@ pub fn delete_inventory_item(
         }
     }
 
-    // P4.D340 lint seam: door=delete — v4 item-mutations.ts:465 (`after: null`;
-    // the rows written when something was deleted, :472).
+    let verdict = lint_inventory_title(
+        main,
+        mount,
+        location,
+        TitleLintRequest {
+            door: TitleLintDoor::Delete,
+            before: Some(current),
+            after: None,
+        },
+        TitleLintOptions::default(),
+    )?;
     let id = current.id().to_string();
     let deleted = location.delete(main, mount, std::slice::from_ref(&id), |remaining| {
         remaining
@@ -1006,6 +1124,7 @@ pub fn delete_inventory_item(
             .collect()
     })?;
     if !deleted.is_empty() {
+        write_rows(&verdict, &id, location);
         super::item_images::cleanup_inventory_item_images(
             main,
             mount,
@@ -1095,8 +1214,18 @@ pub fn duplicate_inventory_item(
     // `current.folder ?? ''`.
     let folder = current.str_of("folder").unwrap_or("").to_string();
     let copy = copy_record(current, &folder, Some(&title));
-    // P4.D340 lint seam: door=create — v4 item-mutations.ts:515-517 (`{ pool }`).
+    let verdict = lint_inventory_title(
+        main,
+        mount,
+        location,
+        create_request(&copy),
+        TitleLintOptions {
+            pool: Some(&pool),
+            ..Default::default()
+        },
+    )?;
     let stored = location.create(main, mount, &copy)?;
+    write_rows(&verdict, stored.id(), location);
     log_op!("Duplicated object", location;
         itemId = %current.id(),
         copyId = %stored.id(),
@@ -1174,10 +1303,21 @@ pub fn copy_inventory_items_to_folder(
     )?;
     let mut copies = Vec::new();
     for source in sources {
+        // A copy keeps its source's title: a second object answering to it,
+        // linted as it enters — against the ONE pool read before the loop.
         let copy = copy_record(source, &target, None);
-        // P4.D340 lint seam: door=create — v4 item-mutations.ts:554-556 (per
-        // source, `{ pool }`; rows after each create).
+        let verdict = lint_inventory_title(
+            main,
+            mount,
+            location,
+            create_request(&copy),
+            TitleLintOptions {
+                pool: Some(&pool),
+                ..Default::default()
+            },
+        )?;
         copies.push(location.create(main, mount, &copy)?);
+        write_rows(&verdict, copy.id(), location);
     }
     log_op!("Copied objects to folder", location;
         folder = %target,
