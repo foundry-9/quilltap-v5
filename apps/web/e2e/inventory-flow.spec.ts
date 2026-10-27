@@ -65,6 +65,8 @@ const INV_DATA_DIR = resolve(INV_INSTANCE_DIR, 'data');
 const INV_SERVER_LOG = resolve(ARTIFACTS_DIR, 'inventory-server.log');
 
 const SOLO_VOYAGE_CHAT_ID = 'c1000000-0000-4000-8000-000000000001';
+/** Aria on the `characters-main.db` pair (the `workbench-wardrobe-picker-flow` constant). */
+const ARIA_ID = 'a1000000-0000-4000-8000-000000000001';
 
 let server: ChildProcess | undefined;
 let mock: MockLlm | undefined;
@@ -245,8 +247,12 @@ test.describe('P4.D330 — the Inventory SPA, the /photos album selector and the
     await page.getByRole('button', { name: 'Move', exact: true }).click();
     await expect(page.getByText('"Brass Compass" now sits in "Instruments"')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('inventory-folder-row').filter({ hasText: 'Instruments' })).toContainText('1 object');
+    // Leave select mode: v4 keeps it on after a move (it is keyed on the
+    // container, `InventoryBrowser.tsx:82-90`), and a row's kebab is disabled
+    // while it is on (`inventory-item-row.tsx:173`, `disabled={!!selection}`).
+    await page.getByTestId('inventory-select-bar').getByRole('button', { name: 'Cancel' }).click();
 
-    await page.getByTestId('inventory-folder-row').filter({ hasText: 'Instruments' }).getByRole('button', { name: 'Instruments' }).click();
+    await page.getByTestId('inventory-folder-row').filter({ hasText: 'Instruments' }).getByRole('button', { name: 'Instruments', exact: true }).click();
     await row.getByRole('button', { name: 'More actions' }).click();
     await page.getByRole('menuitem', { name: 'Archive' }).click();
     await expect(page.getByText('"Brass Compass" is put away')).toBeVisible({ timeout: 15_000 });
@@ -278,16 +284,26 @@ test.describe('P4.D330 — the Inventory SPA, the /photos album selector and the
     page,
   }) => {
     test.skip(!P4D324_SERVER_LANDED || !P4D325_SERVER_LANDED, GATE_REASON);
+    // The beat's own object, loose in Aria's vault. Beat (d)'s Brass Compass is
+    // no use here: it ends filed under "Instruments" (not listed at the root)
+    // and archived, and v4's row offers no Equip on an archived object
+    // (`inventory-item-row.tsx:156`, `!item.archivedAt`).
+    const planted = (await dispatch({
+      type: 'inventoryCreate',
+      container: { scope: 'character', id: ARIA_ID },
+      body: { name: 'Pocket Sextant' },
+    })) as { type?: string };
+    expect(planted.type, 'the Pocket Sextant plant').toBe('inventory');
     await page.goto(`/salon/${SOLO_VOYAGE_CHAT_ID}`);
     await maybeUnlock(page);
     await openSidebarSection(page, 'Participants');
     await page.getByRole('button', { name: "Open Aria's inventory" }).click();
     const pane = page.getByTestId('inventory-carrying-now');
     await expect(pane.getByText('Carrying now · Aria in this chat')).toBeVisible({ timeout: 15_000 });
-    const row = page.getByTestId('inventory-item-row').filter({ hasText: 'Brass Compass' });
+    const row = page.getByTestId('inventory-item-row').filter({ hasText: 'Pocket Sextant' });
     await row.getByRole('button', { name: 'Equip', exact: true }).click();
     await expect(row.locator('.qt-badge', { hasText: 'Equipped' })).toBeVisible({ timeout: 15_000 });
-    await expect(pane.getByRole('list', { name: 'Carried objects' })).toContainText('Brass Compass');
+    await expect(pane.getByRole('list', { name: 'Carried objects' })).toContainText('Pocket Sextant');
     await pane.getByRole('list', { name: 'Carried objects' }).getByRole('button', { name: 'Unequip' }).click();
     await expect(pane.getByText('Empty-handed. Equip something from the list, or take it up here.')).toBeVisible({
       timeout: 15_000,
