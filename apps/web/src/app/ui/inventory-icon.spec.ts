@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 import { DEFAULT_TAB_META } from '../workspace/core/tab-meta';
 import { Icon, type IconName } from './icon';
@@ -11,15 +11,33 @@ import { Icon, type IconName } from './icon';
  *
  *  1. `inventory` is a registered icon name — here a type-level `satisfies`
  *     plus the rendered `data-icon` hook the `_icons.css` mask rules key on.
- *  2. the default stylesheet carries the inventory mask rule — the row is
- *     P4.D336's file (`_icons.css`, a HANDOFF); and a vitest spec here cannot
- *     read a stylesheet or any file (no `?raw`, no `node:fs` — the standing
- *     `spa-spec-cannot-read-source` limit). SKIPPED with that reason; the
- *     unifier checks the row by `grep` at §S.5 (10). The SVG's bytes are
- *     likewise checked by `cmp` against the pin, in the lane record.
- *  3. the Madman's Box manifest overrides it — P4.D339's file; same limit.
+ *  2. the default stylesheet carries the inventory mask rule
+ *     (`src/styles/qt-components/_icons.css`).
+ *  3. the Madman's Box manifest overrides it (`public/themes/madmans-box/theme.json`).
+ *
+ * Cases 2 and 3 read files through `node:fs`, loaded at RUN time (vitest runs
+ * in Node) through a non-literal specifier the browser-platform bundler leaves
+ * alone — the `pascal/raw-gate-reads.census.spec.ts` mechanism.
  *  4. the Inventory workspace tab wears it rather than Pascal's `dice`.
  */
+
+/** The slice of `node:fs` this spec reads. */
+interface NodeFs {
+  readFileSync(path: string, encoding: 'utf8'): string;
+}
+
+let fs: NodeFs;
+
+beforeAll(async () => {
+  const specifier = 'node:fs';
+  fs = (await import(/* @vite-ignore */ specifier)) as NodeFs;
+});
+
+/** A path under `apps/web`, from the runner's working directory. */
+function webPath(rel: string): string {
+  const cwd = (globalThis as unknown as { process: { cwd(): string } }).process.cwd();
+  return `${cwd.replace(/\\/g, '/')}/${rel}`;
+}
 
 @Component({
   imports: [Icon],
@@ -38,12 +56,16 @@ describe('inventory icon', () => {
     TestBed.resetTestingModule();
   });
 
-  it.skip('has a mask rule in the default stylesheet (HANDOFF: P4.D336 owns _icons.css; specs cannot read files)', () => {
-    // [data-icon="inventory"] { --_qt-icon-mask: url("/images/icons/inventory.svg"); --_qt-icon-bg: none; }
+  it('has a mask rule in the default stylesheet', () => {
+    const css = fs.readFileSync(webPath('src/styles/qt-components/_icons.css'), 'utf8');
+    expect(css).toMatch(/\[data-icon="inventory"\][^\n]*url\("\/images\/icons\/inventory\.svg"\)/);
   });
 
-  it.skip('is overridden by the Madman’s Box bundle manifest (P4.D339 owns theme.json; specs cannot read files)', () => {
-    // "inventory": "icons/inventory.svg"
+  it('is overridden by the Madman’s Box bundle manifest', () => {
+    const manifest = JSON.parse(fs.readFileSync(webPath('public/themes/madmans-box/theme.json'), 'utf8')) as {
+      icons?: Record<string, string>;
+    };
+    expect(manifest.icons?.['inventory']).toBe('icons/inventory.svg');
   });
 
   it('is the Inventory workspace tab icon', () => {

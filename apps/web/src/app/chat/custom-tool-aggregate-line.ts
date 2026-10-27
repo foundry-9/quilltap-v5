@@ -23,9 +23,9 @@ export function inventoryAggregateKeys(refs: CustomToolReferences | undefined): 
  * running character's whole bag, and says so. One paragraph, the keys as
  * `<code>` joined by `, `; NOTHING when the list is empty.
  *
- * P4.D330's `qt-custom-tool-inventory-lines` renders the reads paragraph and the
- * three gesture lines; v4 puts THIS paragraph between them, which the unifier
- * arranges (`HANDOFF:`, R-9). The `custom-tool-wardrobe-lines.ts` precedent.
+ * `qt-custom-tool-inventory-lines` mounts it between the reads paragraph and the
+ * three gesture lines, as v4 does (R-9). The `custom-tool-wardrobe-lines.ts`
+ * precedent.
  */
 @Component({
   selector: 'qt-custom-tool-aggregate-line',

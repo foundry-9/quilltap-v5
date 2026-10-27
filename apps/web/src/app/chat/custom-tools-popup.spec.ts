@@ -689,9 +689,7 @@ describe('CustomToolRunDialog — the reference panel', () => {
     );
   });
 
-  // The reads paragraph and the three gesture lines are P4.D330's component; the order
-  // (reads → aggregate → gestures, as v4) is the unifier's R-9 handoff, so this row is
-  // red until that lands and gated on the sibling.
+  // v4's order (`CustomToolRunDialog.tsx:949-954`): reads → aggregate → gestures (R-9).
   it('opens the panel for a tool that only reads the inventory, and keeps v4’s order', async () => {
     const fixture = await mount(
       stub({

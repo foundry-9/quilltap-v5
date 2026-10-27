@@ -7640,7 +7640,8 @@ export interface CustomToolLibraryEntry {
   description: string;
   disabled: boolean;
   defaultVisibility: 'public' | 'whisper';
-  rollForm: 'range' | 'dice';
+  /** P4.D329: `'inventory'` for a whole-roll `$inventory` (v4 `lib/pascal/workbench.ts:41`; server `pascal/workbench.rs`). */
+  rollForm: 'range' | 'dice' | 'inventory';
   /** §B — true when the definition declares an `llm` consult block. */
   llm: boolean;
   /** How many trigger phrases the tool listens for (0 = none) (v4 `362426c8f`). */

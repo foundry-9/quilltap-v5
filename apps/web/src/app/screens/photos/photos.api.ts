@@ -16,23 +16,17 @@ import { apiUrl } from '../../core/api-url';
 import type { CoreClient } from '../../core/core-client';
 import type {
   CharacterPhotoRemoveRequest,
-  CoreRequest,
   PhotoAlbumKind,
   PhotoAlbumOption,
+  PhotoGalleryAlbumsRequest,
+  PhotoGalleryAlbumsResult,
   PhotoGalleryEntryRemoveRequest,
   PhotoGalleryListRequest,
 } from '../../core/core-contract';
 
 // === P4.D330: the album selector (v4 `680b71044`) ===
-// STAND-IN for P4.D338's core-contract fence — the unifier deletes these two
-// types and imports them (§S.9). C9: `photoGalleryAlbums {}` → `{ albums }`,
-// and `photoGalleryList` gains `album` (a mount point id).
-/** STAND-IN — P4.D338's `photoGalleryAlbums` request. */
-export interface PhotoGalleryAlbumsRequestStandIn {
-  type: 'photoGalleryAlbums';
-}
-/** STAND-IN — P4.D338's `PhotoGalleryListRequest.album`. */
-export type PhotoGalleryListRequestStandIn = PhotoGalleryListRequest & { album?: string };
+// C9 (P4.D338's contract fence): `photoGalleryAlbums {}` → `{ albums }`, and
+// `photoGalleryList` carries `album` (a mount point id).
 
 /** v4 `PhotosView.tsx:76` — the selector value for the operator's own roll-up. */
 export const MY_PHOTOS = '';
@@ -46,9 +40,9 @@ export const ALBUM_GROUP_LABELS: Record<PhotoAlbumKind, string> = {
 };
 
 /** v4 `GET /api/v1/photos?action=albums` — the albums the selector offers. */
-export async function fetchAlbums(core: CoreClient): Promise<{ albums: PhotoAlbumOption[] }> {
-  const request: PhotoGalleryAlbumsRequestStandIn = { type: 'photoGalleryAlbums' };
-  const data = await core.dispatchData(request as unknown as CoreRequest);
+export async function fetchAlbums(core: CoreClient): Promise<PhotoGalleryAlbumsResult> {
+  const request: PhotoGalleryAlbumsRequest = { type: 'photoGalleryAlbums' };
+  const data = await core.dispatchData(request);
   return { albums: (data['albums'] as PhotoAlbumOption[] | undefined) ?? [] };
 }
 
@@ -130,7 +124,7 @@ export async function fetchGallery(
 ): Promise<ListResponse> {
   // v4 `buildListParams` (`680b71044`, `:92-99`): `album` first and only when
   // set, then `q` only when the TRIMMED query is non-empty, `limit`, `offset`.
-  const request: PhotoGalleryListRequestStandIn = { type: 'photoGalleryList' };
+  const request: PhotoGalleryListRequest = { type: 'photoGalleryList' };
   if (opts.album) {
     request.album = opts.album;
   }
@@ -140,7 +134,7 @@ export async function fetchGallery(
   }
   request.limit = PAGE_SIZE;
   request.offset = opts.offset;
-  const data = await core.dispatchData(request as CoreRequest);
+  const data = await core.dispatchData(request);
   return data as unknown as ListResponse;
 }
 

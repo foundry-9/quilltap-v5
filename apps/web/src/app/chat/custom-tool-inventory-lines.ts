@@ -1,5 +1,7 @@
+import { NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
 
+import { CustomToolAggregateLine } from './custom-tool-aggregate-line';
 import type { CustomToolReferences } from './custom-tools.api';
 
 /** One inventory sentence of the run dialog's reference panel. */
@@ -24,8 +26,8 @@ export const INVENTORY_LINE_TAIL = '. Only when you run it as a character — a 
  * reads sentence comes first, then equipping, unequipping and picking up, each
  * its own promise; a list with nothing in it gets no sentence. An older server
  * sends no keys, which reads as no lines. (v4's `inventoryAggregates`
- * sentence rides `a53024d3c`'s key, which is not this lane's — P4.D334's
- * popup mounts it beside these.)
+ * sentence rides `a53024d3c`'s key; the component below places it between
+ * the reads sentence and the gestures, as v4 does.)
  */
 export function inventoryReferenceLines(refs: CustomToolReferences | undefined): InventoryReferenceLine[] {
   const lines: InventoryReferenceLine[] = [
@@ -42,17 +44,17 @@ export function inventoryReferenceLines(refs: CustomToolReferences | undefined):
  * popup's writes-paragraph idiom (the values as `<code>`, joined by `, `).
  * Renders NOTHING when every list is empty or `references` is undefined.
  *
- * Standalone so it is proven alone: the custom-tool popup (`custom-tools-
- * popup.ts`, P4.D334's file this round) mounts it — `HANDOFF: P4.D334` with
- * three edits: the import, `|| inventoryLines().length > 0` on the reference
- * panel's `@if`, and `<qt-custom-tool-inventory-lines
- * [references]="tool.references" />` after the wardrobe lines.
+ * v4's order (`CustomToolRunDialog.tsx:949-954`, R-9): the reads paragraph,
+ * then the aggregate paragraph (`qt-custom-tool-aggregate-line`, which renders
+ * nothing without keys), then the three gesture lines. The custom-tool popup
+ * (`custom-tools-popup.ts`) mounts this after the wardrobe lines.
  */
 @Component({
   selector: 'qt-custom-tool-inventory-lines',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgTemplateOutlet, CustomToolAggregateLine],
   template: `
-    @for (line of lines(); track line.key) {
+    <ng-template #sentence let-line>
       <p class="text-xs qt-text-secondary mt-4 leading-relaxed">
         {{ line.lead }}
         @for (value of line.values; track value; let i = $index) {
@@ -61,6 +63,13 @@ export function inventoryReferenceLines(refs: CustomToolReferences | undefined):
           >
         }{{ line.tail }}
       </p>
+    </ng-template>
+    @for (line of reads(); track line.key) {
+      <ng-container *ngTemplateOutlet="sentence; context: { $implicit: line }" />
+    }
+    <qt-custom-tool-aggregate-line [references]="references()" />
+    @for (line of gestures(); track line.key) {
+      <ng-container *ngTemplateOutlet="sentence; context: { $implicit: line }" />
     }
   `,
 })
@@ -68,4 +77,6 @@ export class CustomToolInventoryLines {
   readonly references = input<CustomToolReferences | undefined>();
 
   protected readonly lines = computed(() => inventoryReferenceLines(this.references()));
+  protected readonly reads = computed(() => this.lines().filter((line) => line.key === 'inventoryReads'));
+  protected readonly gestures = computed(() => this.lines().filter((line) => line.key !== 'inventoryReads'));
 }

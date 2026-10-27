@@ -109,6 +109,7 @@ import {
   type Res,
 } from './zod-shim';
 import { MAX_EFFECT_EXPRESSION_LENGTH, parseExpression } from './expressions';
+import { parseAggregateKey } from './inventory-aggregate';
 import { scanPlaceholders as scanPlaceholdersInText, splitInventoryReference } from './placeholders';
 import { zodLenMaxOk, zodLenMinOk } from './zod-length';
 // The slot enum is IMPORTED from the wardrobe registry, never minted here: it
@@ -1496,37 +1497,12 @@ const inventoryKey: KeyReason = (key) => {
   return messages.length > 0 ? messages : null;
 };
 
-/** The scopes an aggregate key may name (v4 `AGGREGATE_SCOPES`, `inventory-aggregate.ts`). */
-const AGGREGATE_SCOPES = ['equipped', 'owned', 'reachable'] as const;
-
-/**
- * The VALIDATION half of v4 `parseAggregateKey` (`a53024d3c`,
- * `lib/pascal/inventory-aggregate.ts`) — `<scope>.<field>`, its three refusal
- * sentences byte for byte. Private on purpose: the SPA has no aggregate
- * evaluator yet, and the module that owns the grammar (with the parsed half)
- * is a sibling lane's to land; this re-points there when it does.
- */
-function aggregateKeyReason(key: string): string | null {
-  const dot = key.indexOf('.');
-  if (dot <= 0) {
-    return `"${key}" must be <scope>.<field>, where the scope is ${AGGREGATE_SCOPES.join(', ')}`;
-  }
-  const scope = key.slice(0, dot);
-  if (!(AGGREGATE_SCOPES as readonly string[]).includes(scope)) {
-    return `"${scope}" is not a scope; use ${AGGREGATE_SCOPES.join(', ')}`;
-  }
-  const rest = key.slice(dot + 1);
-  if (rest === 'count' || rest === 'names' || rest === 'titles') return null;
-  // A `metadata.` field is valid whenever it names something (a trailing fold
-  // word, when present, only changes WHAT it reads — never whether it parses).
-  if (rest.startsWith('metadata.') && rest.length > 'metadata.'.length) return null;
-  return `"${rest}" is not a field; use count, names, titles, or metadata.<key> (optionally ending .min, .max, .sum or .count)`;
-}
-
 /** v4 `AggregateKeySchema` — `z.string().superRefine(…parseAggregateKey…)`. */
 const aggregateKey: KeyReason = (key) => {
-  const reason = aggregateKeyReason(key);
-  return reason === null ? null : [reason];
+  // The ONE grammar (R-2): `inventory-aggregate.ts` owns `<scope>.<field>` and
+  // its three refusal sentences, for the schema, the validator and the evaluator.
+  const parsed = parseAggregateKey(key);
+  return parsed.ok ? null : [parsed.reason];
 };
 
 /**

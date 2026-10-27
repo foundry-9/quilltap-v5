@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input } from '@angular/co
 /**
  * The theme-replaceable icon set (v4 `components/ui/icons/icon-registry.ts`).
  * Rendered as a CSS `mask-image` of `/images/icons/<name>.svg` tinted by
- * `currentColor` (except `brand`, a full-colour background image). The 86-name
+ * `currentColor` (except `brand`, a full-colour background image). The 88-name
  * registry is a public contract for theme overrides.
  */
 export type IconName =
@@ -36,8 +36,8 @@ export type IconName =
   | 'wrench' | 'code' | 'cpu' | 'database' | 'layers' | 'zap' | 'swap'
   | 'log-out' | 'settings' | 'themes' | 'wardrobe' | 'help' | 'brahma-console'
   | 'sun' | 'moon' | 'monitor' | 'brand'
-  // The Inventory's buttons and tab (v4 `e27fb6b34`); its `_icons.css` mask row is
-  // P4.D336's file (the P4.D330 lane record carries the exact line).
+  // The Inventory's buttons and tab (v4 `e27fb6b34`); its `_icons.css` mask row
+  // sits after `dice`, as v4's does.
   | 'inventory';
 
 /**

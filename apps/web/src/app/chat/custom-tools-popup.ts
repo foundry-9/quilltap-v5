@@ -24,7 +24,7 @@ import {
   type ParameterFormValues,
 } from './custom-tool-params-form';
 import { CustomToolPresets } from './custom-tool-presets';
-import { CustomToolAggregateLine, inventoryAggregateKeys } from './custom-tool-aggregate-line';
+import { inventoryAggregateKeys } from './custom-tool-aggregate-line';
 import { CustomToolWardrobeLines, wardrobeReferenceLines } from './custom-tool-wardrobe-lines';
 import { CustomToolInventoryLines, inventoryReferenceLines } from './custom-tool-inventory-lines';
 import {
@@ -96,7 +96,6 @@ interface ReferenceRow {
     CustomToolPresets,
     CustomToolWardrobeLines,
     CustomToolInventoryLines,
-    CustomToolAggregateLine,
   ],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
@@ -283,13 +282,11 @@ interface ReferenceRow {
 
                   <qt-custom-tool-wardrobe-lines [references]="tool.references" />
                   <!--
-                    The Inventory (v4 e1872c94f, a53024d3c). Rendered here as the
-                    sibling's reads + gesture lines, then the aggregate paragraph; v4
-                    puts the aggregate paragraph BETWEEN the reads and the gesture
-                    lines (HANDOFF: the unifier, P4.D334 R-9).
+                    The Inventory (v4 e1872c94f, a53024d3c): the reads paragraph, the
+                    aggregate paragraph, then the gesture lines — v4's order
+                    (CustomToolRunDialog.tsx:949-954), arranged inside the component.
                   -->
                   <qt-custom-tool-inventory-lines [references]="tool.references" />
-                  <qt-custom-tool-aggregate-line [references]="tool.references" />
                 </details>
               }
             </div>
@@ -884,8 +881,8 @@ export class CustomToolsPopup {
    * The Inventory sentences' presence terms (v4 `CustomToolRunDialog.tsx:948-966`):
    * what the tool reads of the bag, which aggregate keys it tests, and what its
    * inventory effects may hand over or take away. The paragraphs themselves
-   * render through `qt-custom-tool-inventory-lines` (P4.D330's) and
-   * `qt-custom-tool-aggregate-line`.
+   * render through `qt-custom-tool-inventory-lines`, which places the
+   * aggregate paragraph between the reads and the gestures (R-9).
    */
   protected readonly readsInventory = computed<string[]>(
     () => this.selectedTool()?.references?.inventoryReads ?? [],
