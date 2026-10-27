@@ -24,6 +24,12 @@ export interface PtySessionMeta {
   exitedAt?: string | null;
   exitCode?: number | null;
   transcriptPath?: string | null;
+  /**
+   * The session's geometry — spawn-time, then the last resize; null on a row
+   * recorded before v4 stored it (bug 255, v4 `a6292f169`).
+   */
+  cols?: number | null;
+  rows?: number | null;
 }
 
 /** Client-to-server WebSocket message (Rust `WsClientMessage`). */

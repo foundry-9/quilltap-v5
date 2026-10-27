@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(terminal): the session geometry on the REST meta and the SPA's protocol type (P4.D337 unit 4)
+
+_Versions: web 0.0.244, SPA 0.5.882._
+
+`GET /api/v1/terminals?chatId=` and an exited session's `GET /api/v1/terminals/{id}` now carry `cols` / `rows` after `transcriptPath`, as v4's meta does: an integer, or `null` for a session recorded before v4 stored it. The live branch, the spawn reply and the WebSocket `meta` frame already carried them through `PtySessionMeta` (unit 3); the Tauri channel forwards the same frame by serde with no source change, so `quilltap-tauri` is not bumped. The SPA's `PtySessionMeta` gains the two optional fields; the pane reads neither. A `terminal_routes` unit test pins the key order.
+
 #### 2026-10-26 — feat(terminal): terminal_read and Ariel render through the screen model (P4.D337 unit 3)
 
 _Versions: core 0.0.1327, host 0.0.214._

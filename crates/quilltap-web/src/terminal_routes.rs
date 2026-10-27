@@ -71,6 +71,10 @@ fn row_to_meta_json(row: &TerminalSessionRow) -> Value {
         "exitedAt": row.exited_at,
         "exitCode": row.exit_code,
         "transcriptPath": row.transcript_path,
+        // The geometry (bug 255) — `null` on a row recorded before v4 stored
+        // it; an integer otherwise, whichever column shape holds it.
+        "cols": row.cols,
+        "rows": row.rows,
     })
 }
 
@@ -443,4 +447,38 @@ async fn handle_ws(
         }
     }
     manager.unsubscribe(&id, sub.id);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn row(cols: Option<i64>, rows: Option<i64>) -> TerminalSessionRow {
+        TerminalSessionRow {
+            id: "s1".into(),
+            chat_id: "c1".into(),
+            label: None,
+            shell: "/bin/sh".into(),
+            cwd: "/".into(),
+            started_at: "2026-01-01T00:00:00.000Z".into(),
+            exited_at: None,
+            exit_code: None,
+            transcript_path: None,
+            cols,
+            rows,
+        }
+    }
+
+    /// v4's `PtySessionMeta` key order, the geometry after `transcriptPath`
+    /// (P4.D337) — `null` when absent, never skipped.
+    #[test]
+    fn row_meta_carries_the_geometry_in_v4s_key_order() {
+        assert_eq!(
+            serde_json::to_string(&row_to_meta_json(&row(Some(120), Some(40)))).unwrap(),
+            r#"{"id":"s1","chatId":"c1","label":null,"shell":"/bin/sh","cwd":"/","startedAt":"2026-01-01T00:00:00.000Z","exitedAt":null,"exitCode":null,"transcriptPath":null,"cols":120,"rows":40}"#
+        );
+        assert!(serde_json::to_string(&row_to_meta_json(&row(None, None)))
+            .unwrap()
+            .ends_with(r#""transcriptPath":null,"cols":null,"rows":null}"#));
+    }
 }
