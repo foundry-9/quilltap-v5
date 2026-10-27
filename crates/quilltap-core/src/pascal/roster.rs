@@ -383,10 +383,14 @@ pub fn validate_tool_definition_text(
     let parsed_json: Value = match serde_json::from_str(raw) {
         Ok(v) => v,
         Err(e) => {
+            // v4 quotes V8's `JSON.parse` message; serde's is the fallback
+            // only where V8 would have accepted what serde refused (the
+            // twin's recorded divergence).
+            let message = crate::jsstr::v8_json_parse_message(raw).unwrap_or_else(|| e.to_string());
             return ToolDefinitionValidation::Invalid {
                 stage: ToolDefinitionStage::Json,
-                reason: format!("is not valid JSON: {e}"),
-            }
+                reason: format!("is not valid JSON: {message}"),
+            };
         }
     };
 
