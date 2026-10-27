@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — feat(core): contract C2 — the chat-settings fallback home `find_by_user_id_or_none` (P4.169)
+
+_Versions:_ quilltap-core 0.0.1337.
+
+Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._

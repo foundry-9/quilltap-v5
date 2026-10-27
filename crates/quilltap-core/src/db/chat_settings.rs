@@ -1712,35 +1712,50 @@ pub fn find_by_user_id(
     Ok(row)
 }
 
+/// Contract C2 (the `322a5488e` follow-ups round, P4.169): v4's
+/// `chatSettings.findByUserId` as its callers see it — `safeQuery(…, 'Error
+/// finding chat settings by user ID', {userId}, null)`
+/// (`chat-settings.repository.ts:39-46`). A FAILED read logs v4's ERROR
+/// (`collection` injected first by `safeQuery`'s `enrichedContext`, then
+/// `userId`, then the error's bare message) and answers `None`; it never
+/// throws. The ONE home for the shape — before it, three call sites carried
+/// inline copies and two read silently (`.ok().flatten()`).
+pub fn find_by_user_id_or_none(conn: &Connection, user_id: &str) -> Option<serde_json::Value> {
+    find_by_user_id(conn, user_id).unwrap_or_else(|error| {
+        log_find_by_user_id_failure(user_id, &error);
+        None
+    })
+}
+
+/// The ONE emitter of `Error finding chat settings by user ID`. `pub` for the
+/// callers that check a pool connection out first (`db.read_main(…)`): v4's
+/// `getCollection()` runs INSIDE the same `safeQuery`, so a checkout failure
+/// logs this same line once — such a caller routes its outer `Err` here.
+pub fn log_find_by_user_id_failure(user_id: &str, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chat_settings",
+        userId = %user_id,
+        error = %crate::db::fallback::error_text(error),
+        "Error finding chat settings by user ID"
+    );
+}
+
 /// C1 §12 (P4.D255): whether a wardrobe tool's create / update should queue a
 /// picture — `wardrobeImageSettings.generateFromTools` on the user's settings
-/// row, read through [`find_by_user_id`] (v4 `chatSettings.findByUserId(
+/// row, read through [`find_by_user_id_or_none`] (v4 `chatSettings.findByUserId(
 /// userId)?.wardrobeImageSettings?.generateFromTools`). `false` when the row,
-/// the bag or the key is absent, and when the read fails — v4's
-/// `findByUserId` is a FALLBACK `safeQuery` (`chat-settings.repository.ts:
-/// 39-46`) that logs `Error finding chat settings by user ID` before its
-/// `null` (the `f5e953a3f` unification's §3 finding: the first cut swallowed
-/// the error silently).
+/// the bag or the key is absent, and when the read fails (the fallback logs
+/// v4's line first — the `f5e953a3f` unification's §3 finding: the first cut
+/// swallowed the error silently).
 pub fn wardrobe_tool_images_enabled(main: &Connection, user_id: &str) -> bool {
-    let row = match find_by_user_id(main, user_id) {
-        Ok(row) => row,
-        Err(e) => {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "chat_settings",
-                userId = %user_id,
-                error = %crate::db::fallback::error_text(&e),
-                "Error finding chat settings by user ID"
-            );
-            None
-        }
-    };
-    row.and_then(|row| {
-        row.get("wardrobeImageSettings")
-            .and_then(|w| w.get("generateFromTools"))
-            .and_then(serde_json::Value::as_bool)
-    })
-    .unwrap_or(false)
+    find_by_user_id_or_none(main, user_id)
+        .and_then(|row| {
+            row.get("wardrobeImageSettings")
+                .and_then(|w| w.get("generateFromTools"))
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(false)
 }
 
 /// One user's scheduler-relevant chat-settings slice — the JSON-object columns the
@@ -2709,6 +2724,23 @@ mod tests {
                  collection=chat_settings userId=u1 error="
             ),
             "{lines:#?}"
+        );
+    }
+
+    /// Contract C2: the fallback home logs v4's ERROR whole — `collection`
+    /// first, `userId`, then the driver's BARE sentence (no `sqlite error:`
+    /// prefix) — and answers `None`.
+    #[test]
+    fn find_by_user_id_or_none_logs_v4s_line_and_answers_none() {
+        let conn = Connection::open_in_memory().unwrap();
+        let (row, lines) =
+            crate::test_support::captured_with(|| find_by_user_id_or_none(&conn, "u1"));
+        assert!(row.is_none());
+        assert_eq!(
+            lines,
+            vec!["ERROR quilltap::db Error finding chat settings by user ID \
+                 collection=chat_settings userId=u1 error=no such table: chat_settings"
+                .to_string()]
         );
     }
 
