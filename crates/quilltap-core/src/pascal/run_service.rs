@@ -309,8 +309,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         params.pending_wardrobe_history,
         // === P4.D329: the inventory pass's two inputs ===
         inventory.clone(),
-        // LANE-REMOVE (P4.D329): params.pending_inventory_announcements once P4.D328 lands
-        None,
+        params.pending_inventory_announcements,
     )
     .await;
 

@@ -224,10 +224,8 @@ fn describe_invalid(path: &str, stage: ToolDefinitionStage, reason: &str) -> Str
 /// Read through discovery itself, so "clash" means what the roster means by it —
 /// including a file that discovery has already set aside as a duplicate.
 ///
-/// v4 filters `stage === 'duplicate' && name !== undefined`; v5's
-/// `CustomToolLoadError` carries no `stage` and sets `name` ONLY on the
-/// duplicate entry, so `name.is_some()` is the same predicate. The tier is a
-/// label only (v4 passes `'global'`).
+/// v4 filters `stage === 'duplicate' && name !== undefined`, and so does this.
+/// The tier is a label only (v4 passes `'global'`).
 fn find_same_store_clash(
     mount: &Connection,
     mount_point_id: &str,

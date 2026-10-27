@@ -822,6 +822,9 @@ pub fn unequip_items_holding_lock(
     character_id: &str,
     ids: &[String],
 ) -> Result<GestureOutcome<UnequipResult>, InventoryError> {
+    // v4 `unequipItems` asserts the seat before any read; a lock-held caller
+    // (a Pascal effect) must get the same refusal (§3 review, the union).
+    assert_participant(chat, character_id)?;
     let fresh = fresh_chat(main, chat);
     let pool = pool_for(main, mount, &fresh, character_id)?;
     let current = read_equipped_set(
@@ -937,6 +940,8 @@ pub fn pick_up_items_holding_lock(
     ctx: &InventoryChangeContext<'_>,
     opts: &PickUpOptions,
 ) -> Result<GestureOutcome<PickUpResult>, InventoryError> {
+    // v4 `pickUpItems` asserts the seat first (as above).
+    assert_participant(chat, character_id)?;
     let equip = opts.equip;
     let fresh = fresh_chat(main, chat);
     let pool = pool_for(main, mount, &fresh, character_id)?;

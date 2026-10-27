@@ -82,7 +82,10 @@
 //!   clamps to `cols >= 2`, `rows >= 1` (`MINIMUM_COLS` / `MINIMUM_ROWS`,
 //!   measured in the pin's bundle) and does not throw. v5's `resize` takes
 //!   `u16`s, applies the same clamp, and cannot fail — the line has no v5
-//!   home (pinned NEGATIVE by the module test `resize_never_fails`).
+//!   home (pinned NEGATIVE by the module test `resize_never_fails`). v5 ALSO
+//!   clamps ABOVE (`MAXIMUM_COLS` / `MAXIMUM_ROWS`, a ruled divergence with
+//!   its own WARN): vt100 preallocates every cell, so an unbounded size from
+//!   a client or a stored row would abort the process.
 //!
 //! ## What vt100 does differently on the way in — normalised in `write`
 //!
@@ -155,6 +158,17 @@ pub const SCREEN_SCROLLBACK_LINES: usize = 5000;
 /// `resize` alike.
 const MINIMUM_COLS: u16 = 2;
 const MINIMUM_ROWS: u16 = 1;
+
+/// A ceiling v4 does not have (a RULED divergence, the `322a5488e` union's §3
+/// review): vt100 allocates every cell of every row — scrollback included — up
+/// front, so a client-chosen 65535 × 65535 (a WebSocket resize, a spawn body,
+/// a corrupt stored size replayed by `terminal_read`) asks for ~137 GB and
+/// aborts the process, where v4's xterm throws a `RangeError` its
+/// `try / catch` survives. Clamped here, the worst screen is
+/// 500 × (200 + [`SCREEN_SCROLLBACK_LINES`]) cells (~83 MB) — far past any
+/// real window.
+const MAXIMUM_COLS: u16 = 500;
+const MAXIMUM_ROWS: u16 = 200;
 
 /// Which xterm buffer a rendering came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -870,8 +884,18 @@ pub struct TerminalScreen {
 }
 
 fn clamp_size(cols: u16, rows: u16) -> (NonZeroU16, NonZeroU16) {
-    let cols = NonZeroU16::new(cols.max(MINIMUM_COLS)).unwrap_or(NonZeroU16::MIN);
-    let rows = NonZeroU16::new(rows.max(MINIMUM_ROWS)).unwrap_or(NonZeroU16::MIN);
+    if cols > MAXIMUM_COLS || rows > MAXIMUM_ROWS {
+        tracing::warn!(
+            target: "quilltap::terminal",
+            cols,
+            rows,
+            max_cols = MAXIMUM_COLS,
+            max_rows = MAXIMUM_ROWS,
+            "[Terminal] Clamped an oversized screen size"
+        );
+    }
+    let cols = NonZeroU16::new(cols.clamp(MINIMUM_COLS, MAXIMUM_COLS)).unwrap_or(NonZeroU16::MIN);
+    let rows = NonZeroU16::new(rows.clamp(MINIMUM_ROWS, MAXIMUM_ROWS)).unwrap_or(NonZeroU16::MIN);
     (cols, rows)
 }
 
@@ -1222,6 +1246,24 @@ pub fn render_transcript(raw: &str, cols: u16, rows: u16) -> ScreenRendering {
 
 #[cfg(test)]
 mod tests {
+
+    /// §3 review (the union): a client-chosen 65535 × 65535 must not
+    /// preallocate the grid — it clamps to the ceiling, both at construction
+    /// and on resize.
+    #[test]
+    fn an_oversized_size_is_clamped_not_allocated() {
+        assert_eq!(
+            clamp_size(u16::MAX, u16::MAX),
+            (
+                NonZeroU16::new(MAXIMUM_COLS).unwrap(),
+                NonZeroU16::new(MAXIMUM_ROWS).unwrap()
+            )
+        );
+        let mut screen = TerminalScreen::new(u16::MAX, u16::MAX);
+        screen.resize(u16::MAX, 1);
+        screen.write("still alive");
+    }
+
     use super::*;
 
     const ESC: &str = "\u{1b}";
@@ -1353,7 +1395,8 @@ mod tests {
     }
 
     /// The `[TerminalScreen] Failed to resize emulator` WARN has no v5 home:
-    /// every `u16` pair resizes, clamped as xterm clamps.
+    /// every `u16` pair resizes, clamped as xterm clamps below and to the
+    /// ruled ceiling above (`MAXIMUM_COLS` / `MAXIMUM_ROWS`).
     #[test]
     fn resize_never_fails() {
         let mut s = TerminalScreen::new(0, 0);
@@ -1361,7 +1404,10 @@ mod tests {
         for (c, r) in [(0, 0), (1, 1), (u16::MAX, 1), (3, 500), (80, 24)] {
             s.write("abc\r\n");
             s.resize(c, r);
-            assert_eq!((s.cols(), s.rows()), (c.max(2), r.max(1)));
+            assert_eq!(
+                (s.cols(), s.rows()),
+                (c.clamp(2, MAXIMUM_COLS), r.clamp(1, MAXIMUM_ROWS))
+            );
             let _ = s.render();
         }
     }

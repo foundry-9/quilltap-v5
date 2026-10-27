@@ -14,7 +14,6 @@
 use serde_json::{json, Map, Value};
 
 use crate::api::zod_issues::ZodIssue;
-// === LANE-REMOVE (P4.D329): C2 import ===
 use super::inventory_subjects::INVENTORY_STATE_VALUES;
 use std::collections::HashSet;
 

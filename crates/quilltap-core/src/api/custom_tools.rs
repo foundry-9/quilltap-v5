@@ -35,7 +35,6 @@ use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::jsstr::js_trim;
 use crate::pascal::bench_wardrobe::resolve_bench_wardrobe;
-// === LANE-REMOVE (P4.D329): C2 import ===
 use crate::pascal::custom_tool_types::{
     display_title, Visibility, MAX_LLM_OUTPUT_CEILING, MAX_LLM_OUTPUT_LENGTH,
 };
