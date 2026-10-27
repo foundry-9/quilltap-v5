@@ -63,6 +63,7 @@ use crate::services::native_tool_loop::ToolCallDetector;
 use crate::services::pseudo_tool::TextBlockEnabledToolOptions;
 use crate::services::tool_build::{build_tools, BuildToolsExtras, BuildToolsInput, DocToolsMode};
 use crate::services::tool_execution::{StatusContext, ToolExecutionContext};
+use crate::services::turn_control::StopSignal;
 
 use prompt_text::{BRAHMA_BASE_BRIEF, BRAHMA_SQL_PROMPT};
 
@@ -158,6 +159,7 @@ fn fail(detail: impl Into<String>) -> BrahmaConsoleResult {
         ok: false,
         answer: String::new(),
         detail: Some(detail.into()),
+        threw: false,
     }
 }
 
@@ -169,11 +171,17 @@ fn fail(detail: impl Into<String>) -> BrahmaConsoleResult {
 /// [`run_one_shot_tool_loop`] (shared with the Scenario Builder); this function
 /// supplies the Brahma profile, slate, prompt and scope, and maps the loop's
 /// result onto the unchanged [`BrahmaConsoleResult`].
+///
+/// `stop` is the Salon turn's stop when the consult runs inside one (P4.165):
+/// it reaches the loop's STREAM only ([`RunOneShotToolLoopOptions::stop`]) —
+/// never the loop's `signal`, which v4 leaves unset — so a stop leaves the
+/// loop's own arms to decide the answer.
 pub async fn run_brahma_query<STR, TR, TD>(
     deps: &BrahmaQueryDeps<'_, STR, TR, TD>,
     user_id: &str,
     chat_id: &str,
     question: &str,
+    stop: Option<&StopSignal>,
 ) -> BrahmaConsoleResult
 where
     STR: StreamingCompletionProvider,
@@ -344,6 +352,7 @@ where
             }),
             on_reasoning: None,
             log_label: Some("Brahma one-shot"),
+            stop,
         },
     )
     .await;
@@ -353,13 +362,18 @@ where
             ok: true,
             answer,
             detail: None,
+            threw: false,
         },
         Ok(OneShotLoopResult::Failed { detail }) => fail(detail),
         // v4's `for await` propagates a mid-stream throw out of `runBrahmaQuery`
         // to the caller (`answerAsBrahma`'s own try/catch, which never persists
         // and converts it to `{ok: false, error: {kind: 'llm-failed', ...}}`) —
-        // mapped onto this engine's "never throws" idiom.
-        Err(e) => fail(e.message),
+        // mapped onto this engine's "never throws" idiom. `threw` keeps the
+        // difference, so `answer_as_brahma` logs v4's catch line (P4.165).
+        Err(e) => BrahmaConsoleResult {
+            threw: true,
+            ..fail(e.message)
+        },
     }
 }
 
@@ -413,6 +427,7 @@ where
         user_id: &str,
         chat_id: &str,
         question: &str,
+        stop: Option<&StopSignal>,
     ) -> impl Future<Output = BrahmaConsoleResult> + Send {
         let deps = BrahmaQueryDeps {
             db: &self.db,
@@ -421,7 +436,7 @@ where
             tool_detector: &self.tool_detector,
             model_supports_native_tools: self.model_supports_native_tools,
         };
-        async move { run_brahma_query(&deps, user_id, chat_id, question).await }
+        async move { run_brahma_query(&deps, user_id, chat_id, question, stop).await }
     }
 }
 

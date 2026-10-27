@@ -69,7 +69,7 @@ use crate::services::tool_build::{build_tools, BuildToolsInput};
 use crate::services::tool_execution::{
     create_tool_context, process_tool_calls, StatusContext, ToolRunner,
 };
-use crate::services::turn_control::TurnControlHandle;
+use crate::services::turn_control::{StopSignal, TurnControlHandle};
 
 pub use crate::services::carina_runner::writer::build_carina_message;
 
@@ -105,6 +105,11 @@ pub struct BrahmaConsoleResult {
     pub answer: String,
     /// `'no-profile'` or a short failure summary (only when `!ok`).
     pub detail: Option<String>,
+    /// v4's `runBrahmaQuery` THREW (a mid-stream provider error out of the
+    /// loop's `for await`) rather than returning `{ ok: false }` — the one
+    /// failure v4's `answerAsBrahma` catch logs as `[Carina] Brahma query
+    /// failed` before converting it (P4.165). `detail` carries the message.
+    pub threw: bool,
 }
 
 /// The Brahma one-shot console — v4 `lib/services/brahma-console/one-shot.service`.
@@ -112,12 +117,19 @@ pub struct BrahmaConsoleResult {
 /// scope for W4.5 (tracked as W4.5b), so it is injected; the gate + sentinel-id
 /// post path ARE ported. Async, generic-consumed (no boxing, the future stays
 /// `Send`) — the [`EmbeddingProvider`]/[`ToolRunner`] precedent.
+///
+/// `stop` is the operator's stop for the Salon turn the consult runs inside
+/// (P4.165 — the human's ruling H-1, 2026-10-27, overturning P4.D335's R-4):
+/// v4's `runBrahmaQuery` takes none, but its one-shot stream reads
+/// `currentTurnStopSignal()` off the turn's `AsyncLocalStorage` store, so an
+/// in-turn consult ends at the stop. `None` off the Salon spine.
 pub trait RunBrahmaConsole {
     fn run(
         &self,
         user_id: &str,
         chat_id: &str,
         question: &str,
+        stop: Option<&StopSignal>,
     ) -> impl Future<Output = BrahmaConsoleResult> + Send;
 }
 
@@ -135,12 +147,14 @@ impl RunBrahmaConsole for UnavailableBrahmaConsole {
         _user_id: &str,
         _chat_id: &str,
         _question: &str,
+        _stop: Option<&StopSignal>,
     ) -> impl Future<Output = BrahmaConsoleResult> + Send {
         async {
             BrahmaConsoleResult {
                 ok: false,
                 answer: String::new(),
                 detail: Some("Brahma console unavailable".to_string()),
+                threw: false,
             }
         }
     }
@@ -185,7 +199,10 @@ where
     /// The operator's turn-control handle when this consultation runs inside a
     /// registered Salon send (the `ask_carina` TOOL — P4.D335; v4's Carina
     /// call inherits `currentTurnStopSignal()` from the funnel). `None` off the
-    /// Salon spine.
+    /// Salon spine. The ONE source of the stop for a Brahma consult too
+    /// (P4.165): [`answer_as_brahma`] hands its stop half to the console, so
+    /// both in-turn entrances (the finalizer's markup and the `ask_carina`
+    /// tool) inherit it with no spine edit.
     pub turn_control: Option<&'a TurnControlHandle>,
 }
 
@@ -332,9 +349,22 @@ where
             return answer_as_brahma(deps, opts).await;
         }
         // An unauthorized asker falls through to not-found — Brahma stays invisible.
+        tracing::info!(
+            target: "quilltap::carina",
+            context = "carina",
+            chatId = %chat_id,
+            "[Carina] Brahma requested by an unauthorized asker; treating as not-found"
+        );
     }
 
     let Some(answerer) = answerer else {
+        tracing::info!(
+            target: "quilltap::carina",
+            context = "carina",
+            chatId = %chat_id,
+            characterName = %opts.character_name,
+            "[Carina] No reachable answerer found"
+        );
         return CarinaResult::Err {
             error: CarinaError {
                 kind: CarinaErrorKind::NotFound,
@@ -358,6 +388,13 @@ where
 
     // 2. Resolve the connection profile (custom chain) + API key.
     let Some(connection_profile) = resolve_carina_profile(db, &user_id, &answerer) else {
+        tracing::info!(
+            target: "quilltap::carina",
+            context = "carina",
+            chatId = %chat_id,
+            answererId = %answerer_id,
+            "[Carina] No connection profile resolvable"
+        );
         return CarinaResult::Err {
             error: CarinaError {
                 kind: CarinaErrorKind::NoProfile,
@@ -761,6 +798,14 @@ where
         if let Some(raw) = &raw_response {
             let pending = deps.tool_detector.detect(raw, &provider);
             if !pending.is_empty() {
+                tracing::debug!(
+                    target: "quilltap::carina",
+                    context = "carina",
+                    chatId = %chat_id,
+                    answererId = %answerer_id,
+                    iterations = iterations,
+                    "[Carina] Tool-iteration budget exhausted; forcing a final text answer"
+                );
                 let next =
                     run_stream(deps.streaming, &stream_ctx, &current_messages, &[], false).await;
                 answer = next.0;
@@ -793,10 +838,14 @@ where
         Some(p) => p,
         None => return llm_failed("failed to persist answer".to_string()),
     };
+    // v4 wraps `onPosted` in a try/catch logging `[Carina] Live answer emit
+    // failed; answer stands` — v5's `EventSink::emit` cannot fail, so that WARN
+    // has no v5 home (recorded, P4.165).
     emit_carina_answer(deps.sink, &posted);
 
     // 8. Form the answerer's SELF memories from this exchange, off the hot path.
-    let _ = super::queue_service::enqueue_carina_memory_extraction(
+    //    A failure to enqueue never undoes a posted answer.
+    if let Err(error) = super::queue_service::enqueue_carina_memory_extraction(
         db,
         &user_id,
         &chat_id,
@@ -804,7 +853,29 @@ where
         &answerer_id,
         &profile_id,
     )
-    .await;
+    .await
+    {
+        tracing::warn!(
+            target: "quilltap::carina",
+            context = "carina",
+            chatId = %chat_id,
+            answererId = %answerer_id,
+            error = %crate::db::fallback::error_text(&error),
+            "[Carina] Failed to enqueue memory extraction; answer stands"
+        );
+    }
+
+    // v4 `carina.service.ts:824-831` — `answerLength` is JS `.length` (UTF-16).
+    tracing::info!(
+        target: "quilltap::carina",
+        context = "carina",
+        chatId = %chat_id,
+        answererId = %answerer_id,
+        whisper = opts.whisper,
+        toolIterations = iterations,
+        answerLength = final_answer.encode_utf16().count(),
+        "[Carina] Query answered"
+    );
 
     CarinaResult::Ok {
         answer: final_answer,
@@ -831,10 +902,23 @@ where
     SNK: EventSink,
     BRA: RunBrahmaConsole,
 {
+    // P4.165: the turn's stop reaches the one-shot stream (v4's ALS store).
+    let stop = deps.turn_control.map(TurnControlHandle::stop_signal);
     let result = deps
         .brahma
-        .run(&opts.user_id, &opts.chat_id, &opts.question)
+        .run(&opts.user_id, &opts.chat_id, &opts.question, stop.as_ref())
         .await;
+    if result.threw {
+        // v4's `answerAsBrahma` catch: a throw out of `runBrahmaQuery` (a
+        // mid-stream provider error propagating out of the loop's `for await`).
+        tracing::error!(
+            target: "quilltap::carina",
+            context = "carina",
+            chatId = %opts.chat_id,
+            error = %result.detail.as_deref().unwrap_or_default(),
+            "[Carina] Brahma query failed"
+        );
+    }
     if !result.ok {
         if result.detail.as_deref() == Some("no-profile") {
             return CarinaResult::Err {
@@ -879,7 +963,20 @@ where
             }
         }
     };
+    // v4 wraps `onPosted` in a try/catch logging `[Carina] Live Brahma answer
+    // emit failed; answer stands` — v5's `EventSink::emit` cannot fail, so that
+    // WARN has no v5 home (recorded, P4.165).
     emit_carina_answer(deps.sink, &posted);
+
+    // v4 `carina.service.ts:398-403` — `answerLength` is JS `.length` (UTF-16).
+    tracing::info!(
+        target: "quilltap::carina",
+        context = "carina",
+        chatId = %opts.chat_id,
+        whisper = opts.whisper,
+        answerLength = result.answer.encode_utf16().count(),
+        "[Carina] Brahma Console answered"
+    );
 
     CarinaResult::Ok {
         answer: result.answer,

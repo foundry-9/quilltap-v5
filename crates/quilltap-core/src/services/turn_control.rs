@@ -30,7 +30,10 @@
 //!   - **No `AsyncLocalStorage` twin.** v4 makes the handle the ambient store
 //!     of the stream; v5 threads it EXPLICITLY — `OrchestratorDeps.turn_control`
 //!     → `FinalizeOptions.turn_stopped` / the tool-loop opts / the recovery
-//!     opts / the watchdog's [`StopSignal`] (the default core build has no
+//!     opts / the watchdog's [`StopSignal`] — and (P4.165, overturning
+//!     P4.D335's R-4) `CarinaQueryDeps.turn_control` → `RunBrahmaConsole::run`
+//!     → `run_brahma_query` → `RunOneShotToolLoopOptions.stop`, so an in-turn
+//!     Brahma consult's stream ends at the stop as v4's does (the default core build has no
 //!     `tokio::task_local!` — `activity_registry.rs` records why). A stream
 //!     consumer added later without the handle is caught by the wrap census
 //!     (`stream_watchdog_wrap_census`), not by a type.

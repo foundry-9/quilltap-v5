@@ -742,6 +742,19 @@
         ]
       },
       "_comment": "P4.D324: question, progressions, inventory — the three-part join with BOTH separators."
+    },
+    {
+      "name": "no_profile",
+      "characterName": "Alice",
+      "question": "Can you hear me?",
+      "whisper": false,
+      "askerParticipantId": "00000000-0000-4000-8000-707061750000",
+      "operatorInitiated": false,
+      "streams": [],
+      "expectPost": false,
+      "brahma": false,
+      "hideProfiles": true,
+      "_comment": "P4.165 (N-1): every profile moved off the user for this case only, so the answerer's chain resolves nothing — v4's `[Carina] No connection profile resolvable` INFO and the no-profile result."
     }
   ],
   "standingInstructions": {

@@ -2840,6 +2840,114 @@
      "participantId": "d3350801-0000-4000-8000-00000000d335"
     }
    ]
+  },
+  {
+   "id": "d1650001-0000-4000-8000-00000000d165",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d1650010-0000-4000-8000-00000000d165",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d1650011-0000-4000-8000-00000000d165",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d1650019-0000-4000-8000-00000000d165",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d1650010-0000-4000-8000-00000000d165"
+    }
+   ]
+  },
+  {
+   "id": "d1650002-0000-4000-8000-00000000d165",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d1650020-0000-4000-8000-00000000d165",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d1650021-0000-4000-8000-00000000d165",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d1650029-0000-4000-8000-00000000d165",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d1650020-0000-4000-8000-00000000d165"
+    }
+   ]
+  },
+  {
+   "id": "d1650003-0000-4000-8000-00000000d165",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d1650030-0000-4000-8000-00000000d165",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d1650031-0000-4000-8000-00000000d165",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d1650039-0000-4000-8000-00000000d165",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d1650030-0000-4000-8000-00000000d165"
+    }
+   ]
+  },
+  {
+   "id": "d1650004-0000-4000-8000-00000000d165",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "d1650040-0000-4000-8000-00000000d165",
+     "character": "c1000001-0000-4000-8000-000000000011",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "d1650041-0000-4000-8000-00000000d165",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "d1650049-0000-4000-8000-00000000d165",
+     "role": "ASSISTANT",
+     "content": "The evening's conversation is under way.",
+     "participantId": "d1650040-0000-4000-8000-00000000d165"
+    }
+   ]
   }
  ],
  "calls": [
@@ -4012,6 +4120,54 @@
    "cheapLLMSettings": false,
    "summaryCheck": false,
    "respondingParticipant": "d3350800-0000-4000-8000-00000000d335"
+  },
+  {
+   "name": "interrupt_stop_mid_brahma_markup",
+   "kind": "chain",
+   "chatId": "d1650001-0000-4000-8000-00000000d165",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_mid_brahma_markup",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d1650010-0000-4000-8000-00000000d165",
+   "defaultProfile": "cb110001-0000-4000-8000-000000000c11"
+  },
+  {
+   "name": "interrupt_stop_mid_brahma_before_first_chunk",
+   "kind": "chain",
+   "chatId": "d1650002-0000-4000-8000-00000000d165",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_mid_brahma_before_first_chunk",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d1650020-0000-4000-8000-00000000d165",
+   "defaultProfile": "cb110001-0000-4000-8000-000000000c11"
+  },
+  {
+   "name": "interrupt_stop_mid_brahma_between_tool_turns",
+   "kind": "chain",
+   "chatId": "d1650003-0000-4000-8000-00000000d165",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "interrupt_stop_mid_brahma_between_tool_turns",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d1650030-0000-4000-8000-00000000d165",
+   "defaultProfile": "cb110001-0000-4000-8000-000000000c11"
+  },
+  {
+   "name": "carina_brahma_stream_error",
+   "kind": "chain",
+   "chatId": "d1650004-0000-4000-8000-00000000d165",
+   "content": "",
+   "continueMode": true,
+   "streamLabel": "carina_brahma_stream_error",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "respondingParticipant": "d1650040-0000-4000-8000-00000000d165",
+   "defaultProfile": "cb110001-0000-4000-8000-000000000c11"
   }
  ],
  "streams": {
@@ -6090,6 +6246,159 @@
      }
     }
    ]
+  ],
+  "interrupt_stop_mid_brahma_markup": [
+   [
+    {
+     "content": "Let me check.\n@Brahma: How many chats?"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 9,
+      "totalTokens": 39
+     }
+    }
+   ],
+   [
+    {
+     "content": "There are"
+    },
+    {
+     "latch": "stop"
+    },
+    {
+     "content": " never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 50,
+      "completionTokens": 4,
+      "totalTokens": 54
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_mid_brahma_before_first_chunk": [
+   [
+    {
+     "content": "Let me check.\n@Brahma: How many chats?"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 9,
+      "totalTokens": 39
+     }
+    }
+   ],
+   [
+    {
+     "latch": "stop"
+    },
+    {
+     "content": " never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 50,
+      "completionTokens": 4,
+      "totalTokens": 54
+     }
+    }
+   ]
+  ],
+  "interrupt_stop_mid_brahma_between_tool_turns": [
+   [
+    {
+     "content": "Let me check.\n@Brahma: How many chats?"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 9,
+      "totalTokens": 39
+     }
+    }
+   ],
+   [
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 50,
+      "completionTokens": 6,
+      "totalTokens": 56
+     },
+     "rawResponse": {
+      "marker": "brahma_stop_sql",
+      "content": [
+       {
+        "type": "tool_use",
+        "id": "bss-0001",
+        "name": "run_sql",
+        "input": {
+         "database": "main",
+         "sql": "SELECT 1 AS one"
+        }
+       }
+      ],
+      "tool_calls": [
+       {
+        "id": "bss-0001",
+        "type": "function",
+        "function": {
+         "name": "run_sql",
+         "arguments": "{\"database\":\"main\",\"sql\":\"SELECT 1 AS one\"}"
+        }
+       }
+      ]
+     }
+    },
+    {
+     "latch": "stop"
+    }
+   ],
+   [
+    {
+     "content": "never heard"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 60,
+      "completionTokens": 2,
+      "totalTokens": 62
+     }
+    }
+   ]
+  ],
+  "carina_brahma_stream_error": [
+   [
+    {
+     "content": "Let me check.\n@Brahma: How many chats?"
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 30,
+      "completionTokens": 9,
+      "totalTokens": 39
+     }
+    }
+   ],
+   [
+    {
+     "content": "Half a"
+    },
+    {
+     "error": "socket hang up"
+    }
+   ]
   ]
  },
  "detection": {
@@ -6219,6 +6528,16 @@
      ]
     },
     "callId": "inv-0005"
+   }
+  ],
+  "brahma_stop_sql": [
+   {
+    "name": "run_sql",
+    "arguments": {
+     "database": "main",
+     "sql": "SELECT 1 AS one"
+    },
+    "callId": "bss-0001"
    }
   ]
  },

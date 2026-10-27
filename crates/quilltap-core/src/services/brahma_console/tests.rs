@@ -332,7 +332,7 @@ async fn no_profile_sentinel_and_never_throws() {
         tool_detector: &detector,
         model_supports_native_tools: true,
     };
-    let r = run_brahma_query(&deps, "u1", "c1", "hi").await;
+    let r = run_brahma_query(&deps, "u1", "c1", "hi", None).await;
     assert!(!r.ok);
     assert_eq!(r.detail.as_deref(), Some("no-profile"));
 }
@@ -379,7 +379,7 @@ async fn loop_bound_forces_a_final_answer_at_the_operator_cap() {
         tool_detector: &detector,
         model_supports_native_tools: true,
     };
-    let r = run_brahma_query(&deps, "u1", "c1", "count things").await;
+    let r = run_brahma_query(&deps, "u1", "c1", "count things", None).await;
     assert!(r.ok, "expected ok, got {r:?}");
     assert_eq!(r.answer, "FINAL ANSWER");
     // All CAP scripted streams consumed — the loop ran to the operator-set cap.
@@ -412,7 +412,7 @@ async fn dup_guard_forces_a_final_after_repeated_calls() {
         tool_detector: &detector,
         model_supports_native_tools: true,
     };
-    let r = run_brahma_query(&deps, "u1", "c1", "loop please").await;
+    let r = run_brahma_query(&deps, "u1", "c1", "loop please", None).await;
     assert!(r.ok, "expected ok, got {r:?}");
     assert_eq!(r.answer, "STOPPED");
     assert_eq!(streaming.remaining(), 0);
@@ -452,8 +452,246 @@ async fn stale_guard_forces_a_final_when_results_repeat() {
         tool_detector: &detector,
         model_supports_native_tools: true,
     };
-    let r = run_brahma_query(&deps, "u1", "c1", "same thing").await;
+    let r = run_brahma_query(&deps, "u1", "c1", "same thing", None).await;
     assert!(r.ok, "expected ok, got {r:?}");
     assert_eq!(r.answer, "HALTED");
     assert_eq!(streaming.remaining(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// P4.165 — the operator's stop inside a Salon turn (the human's ruling H-1,
+// 2026-10-27, overturning P4.D335's R-4). v4's one-shot stream reads the
+// turn's `currentTurnStopSignal()` through its AsyncLocalStorage store; v5
+// threads it as `run_brahma_query`'s `stop`. The differential
+// (`orchestrator_tier3`'s three `interrupt_stop_mid_brahma_*` cases) proves the
+// whole turn against v4; these pin the console's own arms over a real
+// llm-logs partition.
+// ---------------------------------------------------------------------------
+
+/// A provisioned instance (so the llm-logs partition exists) with one OLLAMA
+/// default profile for `u1` (OLLAMA needs no key).
+async fn provisioned_db_with_default_profile() -> (tempfile::TempDir, Db) {
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("data");
+    std::fs::create_dir_all(&data).unwrap();
+    crate::services::provisioning::provision_fresh_instance(&data, PEPPER)
+        .expect("provision an instance with an llm-logs partition");
+    let db = Db::open(
+        crate::db::runtime::DbPaths {
+            main: data.join("quilltap.db"),
+            mount_index: None,
+            llm_logs: Some(data.join("quilltap-llm-logs.db")),
+        },
+        PEPPER,
+    )
+    .unwrap();
+    db.write(|ws| {
+        ws.main().connection().execute(
+            "INSERT INTO connection_profiles \
+               (id, userId, name, provider, modelName, isDefault, createdAt, updatedAt) \
+             VALUES ('p1', 'u1', 'Default', 'OLLAMA', 'llama3', 1, \
+                     '2020-01-01T00:00:00.000Z', '2020-01-01T00:00:00.000Z')",
+            [],
+        )?;
+        Ok::<(), crate::db::DbError>(())
+    })
+    .await
+    .unwrap();
+    (dir, db)
+}
+
+fn llm_log_rows(db: &Db) -> i64 {
+    db.read_llm_logs(|c| Ok(c.query_row("SELECT COUNT(*) FROM llm_logs", [], |r| r.get(0))?))
+        .unwrap()
+}
+
+/// Each call yields its scripted chunks and then HOLDS the channel open — a
+/// provider still generating — until the test drops the provider.
+struct HangingStream {
+    queue: Mutex<VecDeque<Vec<StreamChunkResult>>>,
+    held: Mutex<Vec<tokio::sync::mpsc::Sender<StreamChunkResult>>>,
+}
+impl StreamingCompletionProvider for HangingStream {
+    fn stream_message(
+        &self,
+        _provider: &str,
+        _base_url: Option<&str>,
+        _params: &StreamParams,
+    ) -> impl Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send {
+        let seq = self.queue.lock().unwrap().pop_front().unwrap_or_default();
+        let (tx, rx) = tokio::sync::mpsc::channel(seq.len().max(1) + 1);
+        for item in seq {
+            tx.try_send(item).unwrap();
+        }
+        self.held.lock().unwrap().push(tx);
+        async move { rx }
+    }
+}
+
+/// A stop signal for a registered turn on `chat`, already stopped (the settle
+/// wait is cut short — nothing here settles the turn).
+async fn stopped_signal(
+    chat: &str,
+) -> (
+    crate::services::turn_control::TurnControlRegistration,
+    StopSignal,
+) {
+    let registration = crate::services::turn_control::register_active_turn(chat);
+    let signal = registration.handle().stop_signal();
+    crate::services::turn_control::stop_active_turns(
+        chat,
+        Some(std::time::Duration::from_millis(1)),
+    )
+    .await;
+    assert!(signal.stopped());
+    (registration, signal)
+}
+
+#[tokio::test]
+async fn a_stop_mid_stream_keeps_the_partial_and_logs_no_llm_logs_row() {
+    let (_dir, db) = provisioned_db_with_default_profile().await;
+    // The positive control first: the same rig, no stop, a `done` — ONE row.
+    let control = ScriptedStream::new(vec![text_stream("There are three.")]);
+    let runner = CannedToolRunner::new();
+    let detector = crate::services::native_tool_loop::NoToolCallDetector;
+    let control_deps = BrahmaQueryDeps {
+        db: &db,
+        streaming: &control,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        model_supports_native_tools: true,
+    };
+    let r = run_brahma_query(&control_deps, "u1", "p4165-control", "count", None).await;
+    assert!(r.ok, "{:?}", r.detail);
+    assert_eq!(
+        llm_log_rows(&db),
+        1,
+        "the rig logs a leg that reached `done`"
+    );
+
+    // A partial, then the provider keeps generating — the operator stops.
+    let hanging = HangingStream {
+        queue: Mutex::new(vec![vec![Ok(StreamChunk::content("There are"))]].into()),
+        held: Mutex::new(Vec::new()),
+    };
+    let hanging_deps = BrahmaQueryDeps {
+        db: &db,
+        streaming: &hanging,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        model_supports_native_tools: true,
+    };
+    let chat = "p4165-mid-stream";
+    let registration = crate::services::turn_control::register_active_turn(chat);
+    let signal = registration.handle().stop_signal();
+    let stopper = async {
+        // Let the consumer take the partial, then stop.
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        crate::services::turn_control::stop_active_turns(
+            chat,
+            Some(std::time::Duration::from_millis(1)),
+        )
+        .await;
+    };
+    let (r, _) = tokio::join!(
+        run_brahma_query(&hanging_deps, "u1", chat, "count", Some(&signal)),
+        stopper
+    );
+    drop(registration);
+    // v4's loop (no `signal` of its own) takes the partial as the answer.
+    assert!(r.ok, "{:?}", r.detail);
+    assert_eq!(r.answer, "There are");
+    assert!(!r.threw);
+    // v4's funnel logs only as `done` passes — the stopped leg wrote nothing.
+    assert_eq!(llm_log_rows(&db), 1, "no llm_logs row for the stopped leg");
+}
+
+#[tokio::test]
+async fn a_stop_before_the_first_chunk_is_an_empty_response() {
+    let (_dir, db) = provisioned_db_with_default_profile().await;
+    let hanging = HangingStream {
+        queue: Mutex::new(vec![vec![Ok(StreamChunk::content("never heard"))]].into()),
+        held: Mutex::new(Vec::new()),
+    };
+    let runner = CannedToolRunner::new();
+    let detector = crate::services::native_tool_loop::NoToolCallDetector;
+    let deps = BrahmaQueryDeps {
+        db: &db,
+        streaming: &hanging,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        model_supports_native_tools: true,
+    };
+    let chat = "p4165-before-first";
+    let (_registration, signal) = stopped_signal(chat).await;
+    let r = run_brahma_query(&deps, "u1", chat, "count", Some(&signal)).await;
+    // The stop wins even a buffered chunk (v4's settled stop promise), so
+    // nothing streamed: v4's `{ ok: false, detail: 'empty response' }`.
+    assert!(!r.ok);
+    assert_eq!(r.detail.as_deref(), Some("empty response"));
+    assert!(!r.threw);
+    assert_eq!(llm_log_rows(&db), 0);
+}
+
+#[test]
+fn the_stop_info_bag_carries_no_character_or_message_id() {
+    crate::test_support::global_capture::install();
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let (_dir, db) = rt.block_on(provisioned_db_with_default_profile());
+    let hanging = HangingStream {
+        queue: Mutex::new(vec![vec![]].into()),
+        held: Mutex::new(Vec::new()),
+    };
+    let runner = CannedToolRunner::new();
+    let detector = crate::services::native_tool_loop::NoToolCallDetector;
+    let deps = BrahmaQueryDeps {
+        db: &db,
+        streaming: &hanging,
+        tool_runner: &runner,
+        tool_detector: &detector,
+        model_supports_native_tools: true,
+    };
+    let chat = "p4165-info-bag";
+    let (_r, lines) = rt.block_on(async {
+        let (_registration, signal) = stopped_signal(chat).await;
+        crate::test_support::global_capture::capture_async(run_brahma_query(
+            &deps,
+            "u1",
+            chat,
+            "count",
+            Some(&signal),
+        ))
+        .await
+    });
+    let stop_lines: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.contains("[LLMStream] Abandoned a provider stream at the operator's stop"))
+        .collect();
+    assert_eq!(
+        stop_lines.len(),
+        1,
+        "ONE INFO for the stopped leg: {lines:#?}"
+    );
+    let line = stop_lines[0];
+    // v4's bag: `{context:'streaming.service', userId, chatId}` spread first,
+    // then provider, modelName, chunksReceived, elapsedMs — `characterId` and
+    // `messageId` are undefined on a one-shot call and JSON drops them.
+    assert!(line.starts_with("INFO quilltap::llm_stream "), "{line}");
+    assert!(line.contains("context=streaming.service"), "{line}");
+    assert!(
+        line.contains("user_id=u1") && line.contains(&format!("chat_id={chat}")),
+        "{line}"
+    );
+    assert!(
+        line.contains("provider=OLLAMA") && line.contains("model_name=llama3"),
+        "{line}"
+    );
+    assert!(line.contains("chunks_received=0"), "{line}");
+    assert!(
+        !line.contains("character_id") && !line.contains("message_id"),
+        "{line}"
+    );
 }

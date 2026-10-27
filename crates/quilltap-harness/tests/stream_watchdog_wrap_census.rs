@@ -37,12 +37,21 @@
 //!
 //! **The operator's stop (P4.D335, v4 `2b5e8ee24`).** v4 hands the stop to its
 //! ONE funnel (`streamMessage`'s `abortSignal: currentTurnStopSignal()`), so
-//! every Salon-side call inherits it and the greeting / help chat / Brahma /
-//! swipe calls get `undefined`. v5's twin is a column: the SEVEN Salon-side
-//! wrap sites (`STOP_SITES`) call `watch_stream_with_stop(…)`, the five others
-//! keep `watch_stream(…)`. As with the wrap itself, a canned differential
-//! pre-pushes and closes its channel, so only this census sees which sites
-//! carry the stop.
+//! every Salon-side call inherits it and the greeting / help chat / standalone
+//! Brahma console / swipe calls get `undefined`. v5's twin is a column: the
+//! EIGHT Salon-side wrap sites (`STOP_SITES`) call `watch_stream_with_stop(…)`,
+//! the four others keep `watch_stream(…)`. As with the wrap itself, a canned
+//! differential pre-pushes and closes its channel, so only this census sees
+//! which sites carry the stop.
+//!
+//! **P4.165 (the human's ruling H-1, 2026-10-27 — overturning P4.D335's R-4).**
+//! The one-shot loop joined the stop sites: a Carina markup or `ask_carina`
+//! consult that reaches Brahma INSIDE a Salon turn runs `runBrahmaQuery` →
+//! `runOneShotToolLoop` → `streamMessage` under the turn's
+//! `AsyncLocalStorage` store, so v4's funnel hands it the turn's stop. v5
+//! threads it explicitly (`CarinaQueryDeps.turn_control` →
+//! `RunBrahmaConsole::run` → `run_brahma_query` →
+//! `RunOneShotToolLoopOptions.stop`); the Scenario Builder passes `None`.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test stream_watchdog_wrap_census
@@ -123,10 +132,14 @@ const CENSUS: &[(&str, usize, usize, usize, &str)] = &[
         // The count is unchanged: one call, one wrap, in a different file.
         "services/agent_loop/one_shot_loop.rs",
         1,
-        1,
         0,
+        1,
         "the one-shot loop's `run_stream` — v4 agent-loop/one-shot-loop.ts:219 \
-         (the Brahma one-shot's stream until `d1c06cd9d`; the Scenario Builder's too)",
+         (the Brahma one-shot's stream until `d1c06cd9d`; the Scenario Builder's too). \
+         P4.165 (H-1, overturning P4.D335 R-4): it carries the stop — v4 \
+         streaming.service.ts:458 `abortSignal: currentTurnStopSignal()`, which an \
+         in-turn Brahma consult inherits through the turn's AsyncLocalStorage; \
+         `None` off the Salon spine (the Scenario Builder)",
     ),
     (
         "services/brahma_console/orchestrator.rs",
@@ -168,10 +181,12 @@ const WRAP: &str = "watch_stream(";
 const STOP_WRAP: &str = "watch_stream_with_stop(";
 
 /// P4.D335 (v4 `2b5e8ee24`): the files whose wraps carry the operator's stop —
-/// the SEVEN Salon-side wrap sites (v4's ONE `abortSignal:
-/// currentTurnStopSignal()` in the `streamMessage` funnel). The five other
-/// consumers (greeting, help chat, the one-shot loop, Brahma, the swipe) must
-/// NOT: v4's `currentTurnStopSignal()` is `undefined` there.
+/// the EIGHT Salon-side wrap sites (v4's ONE `abortSignal:
+/// currentTurnStopSignal()` in the `streamMessage` funnel). The four other
+/// consumers (greeting, help chat, the standalone Brahma console, the swipe)
+/// must NOT: v4's `currentTurnStopSignal()` is `undefined` there. The one-shot
+/// loop is a stop site since P4.165 (an in-turn Brahma consult inherits the
+/// turn's store).
 const STOP_SITES: &[&str] = &[
     "services/primary_stream.rs",
     "services/provider_failover.rs",
@@ -179,6 +194,7 @@ const STOP_SITES: &[&str] = &[
     "services/native_tool_loop.rs",
     "services/text_tool_loop.rs",
     "services/carina_query.rs",
+    "services/agent_loop/one_shot_loop.rs",
 ];
 
 /// The file with every `#[cfg(test)]` item removed by brace balance.
@@ -291,8 +307,8 @@ fn every_production_stream_message_call_wears_the_watchdog() {
                 if stop_wraps != *want_stop_wraps {
                     failures.push(format!(
                         "{rel}: {stop_wraps} production `{STOP_WRAP}` call(s), census \
-                         says {want_stop_wraps} ({why}). P4.D335: the seven Salon-side \
-                         wraps carry the operator's stop; the five others must not."
+                         says {want_stop_wraps} ({why}). P4.D335 / P4.165: the eight Salon-side \
+                         wraps carry the operator's stop; the four others must not."
                     ));
                 }
                 if STOP_SITES.contains(&rel.as_str()) != (*want_stop_wraps > 0) {
@@ -323,8 +339,8 @@ fn every_production_stream_message_call_wears_the_watchdog() {
     );
     let stop_total: usize = CENSUS.iter().map(|row| row.3).sum();
     assert_eq!(
-        stop_total, 7,
-        "P4.D335: exactly the SEVEN Salon-side wrap sites carry the operator's stop"
+        stop_total, 8,
+        "P4.D335 / P4.165: exactly the EIGHT Salon-side wrap sites carry the operator's stop"
     );
     eprintln!(
         "OK stream-watchdog wrap census: {} production consumer file(s)",

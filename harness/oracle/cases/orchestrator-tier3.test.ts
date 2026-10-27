@@ -139,6 +139,11 @@ interface CallSpec {
    *  opt-out the hold predicate consults. `undefined` on every other call, so
    *  the key is absent exactly as it is in production. */
   neverPauseForUser?: boolean;
+  /** P4.165: a connection-profile id made the user's DEFAULT for this call
+   *  only. Brahma's one-shot resolves `findDefault(userId)` and the corpus
+   *  seeds no default, so a Brahma consult would otherwise answer `no-profile`.
+   *  A raw `isDefault` flip (no `updatedAt` touched), undone after the call. */
+  defaultProfile?: string;
   /**
    * P4.87: this case's ordered `Math.random()` pin. Absent → `[0]`, which is
    * byte-identical to the file-wide frozen zero every pre-rotation row was
@@ -784,6 +789,32 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.165: Carina's Brahma lines (`carina.service.ts:390,398,414`), at
+  // every level, off the `Logger` prototype — message + context verbatim.
+  const CARINA_BRAHMA_MESSAGES = new Set([
+    '[Carina] Brahma Console answered',
+    '[Carina] Live Brahma answer emit failed; answer stands',
+    '[Carina] Brahma query failed',
+  ]);
+  let carinaLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['info', 'warn', 'error'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (CARINA_BRAHMA_MESSAGES.has(message)) {
+          carinaLines.push({ level, message, context: context ?? null });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+  }
+
   // P4.114: the Salon's `Injected tool change notification` INFO
   // (`orchestrator.service.ts:1329`), recorded off the `Logger` prototype
   // (singleton and children alike, before the level check) — the
@@ -1010,6 +1041,9 @@ async function main(): Promise<void> {
         { id: item.id, createdAt: item.createdAt, updatedAt: item.createdAt } as never,
       );
     }
+    if (call.defaultProfile) {
+      await rawQuery('UPDATE connection_profiles SET "isDefault" = 1 WHERE id = ?', [call.defaultProfile]);
+    }
     // P4.D328: the call's in-case Inventory objects.
     for (const o of call.inventoryObjects ?? []) {
       const { resolveInventoryLocation } = await import('@/lib/inventory/location');
@@ -1046,6 +1080,8 @@ async function main(): Promise<void> {
     const stops = await Promise.all(interruptStops);
     lines.push(JSON.stringify({ kind: 'interrupts', call: call.name, raises: interruptRaises, stops }));
     lines.push(JSON.stringify({ kind: 'interruptLog', call: call.name, lines: interruptLines }));
+    lines.push(JSON.stringify({ kind: 'carinaLog', call: call.name, lines: carinaLines }));
+    carinaLines = [];
     interruptRaises = [];
     interruptStops = [];
     interruptLines = [];
@@ -1072,6 +1108,9 @@ async function main(): Promise<void> {
     }
     lines.push(JSON.stringify({ kind: 'mail', call: call.name, unalerted, lines: mailLines }));
     mailLines = [];
+    if (call.defaultProfile) {
+      await rawQuery('UPDATE connection_profiles SET "isDefault" = 0 WHERE id = ?', [call.defaultProfile]);
+    }
     // P4.D328: an Inventory call's room in INSERTION order (the dump carries
     // no rowid) — the turn's Pascal line lands AFTER the saved turn (v4
     // `102a23648`'s `finally`).

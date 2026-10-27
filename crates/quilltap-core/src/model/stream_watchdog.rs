@@ -51,12 +51,16 @@
 //! flowing until the pump's next send fails (`streaming_provider.rs`).
 //!
 //! v4's funnel carries the stop at ONE site (`streamMessage`'s
-//! `abortSignal: currentTurnStopSignal()`); v5 has no funnel, so the SEVEN
-//! Salon-side wrap sites call [`watch_stream_with_stop`] and the five others
-//! (greeting, help chat, one-shot loop, Brahma, swipe — v4's
-//! `currentTurnStopSignal()` is `undefined` there) keep [`watch_stream`]. A
-//! canned differential pre-pushes and closes its channel, so only
-//! `stream_watchdog_wrap_census` can see which sites carry the stop.
+//! `abortSignal: currentTurnStopSignal()`); v5 has no funnel, so the EIGHT
+//! Salon-side wrap sites call [`watch_stream_with_stop`] and the four others
+//! (greeting, help chat, the standalone Brahma console, swipe — v4's
+//! `currentTurnStopSignal()` is `undefined` there) keep [`watch_stream`]. The
+//! one-shot loop is a stop site since P4.165 (the human's ruling H-1,
+//! overturning P4.D335's R-4): a Brahma consult INSIDE a Salon turn inherits
+//! the turn's `AsyncLocalStorage` store in v4, so its stream ends at the stop;
+//! the Scenario Builder hands it `None`. A canned differential pre-pushes and
+//! closes its channel, so only `stream_watchdog_wrap_census` can see which
+//! sites carry the stop.
 //!
 //! ## Where the budget starts — one sentence v4 does not need
 //!

@@ -370,6 +370,32 @@ P4.170 (the `322a5488e` follow-ups smalls round), the wardrobe-tool half.
 
 Red-first on unported main against the pin's oracle: 7 divergence keys (the key-order op's lines, both `null` ops' outputs and lines, the read-back, and one picture-scenario line). All 66 ops are green after the change.
 
+#### 2026-10-27 — feat(carina): Stop ends an in-turn Brahma consult, as v4 does (P4.165, R-4 overturned) + Carina's service log lines
+
+_Versions: core 0.0.1337._
+
+The human ruled on 2026-10-27 to converge on v4, overturning P4.D335's R-4. When the operator presses Stop during a Salon turn whose Carina markup (or `ask_carina` call) is being answered by Brahma, Brahma's one-shot stream now ends at the stop. v4 does this through the turn's `AsyncLocalStorage`, which `runBrahmaQuery` → `streamMessage` inherits. v5 threads the stop explicitly: `CarinaQueryDeps.turn_control` → `RunBrahmaConsole::run(…, stop)` → `run_brahma_query(…, stop)` → `RunOneShotToolLoopOptions.stop` → `watch_stream_with_stop`. The loop's own `signal` stays unset (v4 passes none), so the loop's arms decide the answer: a partial answer is posted, a stop before the first chunk is `empty response` (Prospero's card), and a stop between tool turns gets the bug-47 salvage. `chat_stop_turn` now answers `settled: true` without the 15 s wait. The Scenario Builder passes `None`. The standalone console, the greeting, the help chat, the swipe and the enclave are unchanged (all signal-less in v4).
+
+The one-shot loop's `llm_logs` gate is now v4's done-only rule (`error.is_none() && saw_done`), so a stopped leg writes no row. Before the change, a measurement found that no committed `brahma_console_tier3` / `scenario_builder_tier3` sequence closes without `done` except through an `error` chunk (3 of 95).
+
+`stream_watchdog_wrap_census`: the one-shot loop row goes from `(1, 1, 0)` to `(1, 0, 1)`; it joins `STOP_SITES`, and the stop total is now 8. The watchdog and turn-control module docs are corrected to match.
+
+Carina's service lines are ported at their v5 homes with v4's keys in order:
+- the three Brahma lines: INFO `Brahma Console answered`, and ERROR `Brahma query failed` (a new `BrahmaConsoleResult.threw` keeps a thrown loop error distinct from an ordinary failure);
+- INFO `Brahma requested by an unauthorized asker`, `No reachable answerer found`, `No connection profile resolvable`, `Query answered`;
+- DEBUG `Tool-iteration budget exhausted`;
+- WARN `Failed to enqueue memory extraction`.
+
+The two "live emit failed" WARNs have no v5 home (`EventSink::emit` cannot fail).
+
+Differential: four new `orchestrator_tier3` cases (`interrupt_stop_mid_brahma_markup` / `_before_first_chunk` / `_between_tool_turns`, `carina_brahma_stream_error`), run through v4's real turn registry, `handleStopTurn`, funnel, watchdog and one-shot loop. Supporting changes:
+- a per-call `defaultProfile` plant;
+- the spine's real Prospero poster in the harness;
+- a `carinaLog` capture in both the orchestrator and `carina_query_tier3` oracles;
+- a new `carina_query_tier3` `no_profile` case.
+
+Three in-crate rows in `brahma_console/tests.rs`.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._

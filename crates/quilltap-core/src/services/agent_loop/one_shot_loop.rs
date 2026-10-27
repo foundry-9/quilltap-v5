@@ -42,6 +42,15 @@
 //!   CHUNK mid-stream — v4 breaks its `for await` on the next chunk, so per
 //!   chunk is v4's granularity. A stalled provider is the watchdog's business,
 //!   not the abort's.
+//! - **The operator's stop** (P4.165 — the human's ruling H-1, 2026-10-27,
+//!   overturning P4.D335's R-4) is a SEPARATE seam,
+//!   [`RunOneShotToolLoopOptions::stop`]: v4's loop never sees it — its
+//!   `streamMessage` funnel reads `currentTurnStopSignal()` off the turn's
+//!   `AsyncLocalStorage` store, so a Brahma consult running INSIDE a Salon turn
+//!   (Carina markup, `ask_carina`) has its stream ended quietly at the stop,
+//!   and the loop's own arms then decide the answer (the partial text, `empty
+//!   response`, the bug-47 salvage). It only quiets the stream; `signal` stays
+//!   the caller's abort.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -51,7 +60,7 @@ use crate::db::runtime::Db;
 use crate::jsstr::js_trim;
 use crate::message_formatter::normalize_content_block_format;
 use crate::model::stream::{StreamParams, StreamUsage, StreamingCompletionProvider};
-use crate::model::stream_watchdog::{watch_stream, StallBudgets, StallWatchdogContext};
+use crate::model::stream_watchdog::{watch_stream_with_stop, StallBudgets, StallWatchdogContext};
 use crate::services::agent_mode::{
     build_agent_mode_instructions, build_force_final_message,
     extract_submit_final_response_from_text,
@@ -72,6 +81,7 @@ use crate::services::tool_call_threading::{
 use crate::services::tool_execution::{
     process_tool_calls, StatusContext, ToolCall, ToolExecutionContext, ToolRunner,
 };
+use crate::services::turn_control::StopSignal;
 use crate::tools::pseudo_tool_support::ToolMode;
 
 /// The `buildTools` result the loop consumes (v4 `BuiltTools { tools,
@@ -177,6 +187,13 @@ pub struct RunOneShotToolLoopOptions<'a, S: EventSink> {
     /// A short label for log lines (e.g. `Brahma one-shot`). `None` →
     /// [`DEFAULT_LOG_LABEL`].
     pub log_label: Option<&'a str>,
+    /// The operator's stop for the Salon turn this loop runs inside (P4.165 —
+    /// v4's ambient `currentTurnStopSignal()` at `streaming.service.ts:458`,
+    /// which an in-turn Brahma consult inherits through the turn's
+    /// `AsyncLocalStorage`). It ends a stream quietly at the stop — NOT the
+    /// loop: v4 passes the loop no `signal`, so the partial / empty / salvage
+    /// arms run as ever. `None` off the Salon spine (the Scenario Builder).
+    pub stop: Option<&'a StopSignal>,
 }
 
 // ===========================================================================
@@ -309,6 +326,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     watchdog_user_id: &str,
     watchdog_chat_id: &str,
     signal: Option<&AtomicBool>,
+    stop: Option<&StopSignal>,
     on_reasoning: &mut Option<&mut (dyn FnMut(&str) + Send)>,
 ) -> RunStreamResult {
     // v4 `streaming.service.ts:382` — `const startTime = Date.now()`, captured
@@ -342,8 +360,10 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
     // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
     // consumers). v4's one-shot calls pass `userId` + `chatId` only — neither a
-    // `messageId` nor a `characterId` to carry.
-    let mut rx = watch_stream(
+    // `messageId` nor a `characterId` to carry. P4.165: the funnel also hands
+    // the watchdog the turn's stop (v4 `streaming.service.ts:458`), so a stop
+    // ends this stream quietly with v4's one INFO.
+    let mut rx = watch_stream_with_stop(
         streaming
             .stream_message_keyed(provider, base_url, api_key, &params)
             .await,
@@ -354,6 +374,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
             None,
             None,
         ),
+        stop,
     );
     // The loop's turn state (v4's `for await` body).
     let mut answer = String::new();
@@ -369,7 +390,6 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     let mut log_cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
     let mut log_raw_provider_usage: Option<Value> = None;
     let mut saw_done = false;
-    let mut aborted = false;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
@@ -399,7 +419,6 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                 // The loop side. "Leaving the for-await closes the provider
                 // stream where the SDK allows."
                 if is_aborted(signal) {
-                    aborted = true;
                     break;
                 }
                 // Reasoning is request-local continuation state for providers
@@ -437,8 +456,14 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     }
     // v4 logs the call as the terminal chunk passes through the generator (a
     // thrown stream logs nothing; a consumer that broke off BEFORE the terminal
-    // chunk was produced never let the generator reach its log).
-    if error.is_none() && (!aborted || saw_done) {
+    // chunk was produced never let the generator reach its log). P4.165: so
+    // the rule is v4's done-ONLY one — a stream the operator's stop abandoned
+    // never passed a `done` and writes no row (`streaming.service.ts:487-528`).
+    // Measured before the change: no committed `brahma_console_tier3` /
+    // `scenario_builder_tier3` sequence closes without `done` except through an
+    // `error` chunk (3 of 95), so the old `!aborted` disjunct logged nothing
+    // the corpus reached.
+    if error.is_none() && saw_done {
         if let Some(l) = log {
             let ctx = crate::services::primary_stream::StreamLogCtx {
                 db: l.db,
@@ -506,6 +531,7 @@ where
         status_context,
         mut on_reasoning,
         log_label,
+        stop,
     } = opts;
     let log_label = log_label.unwrap_or(DEFAULT_LOG_LABEL);
     let row_log_type = log_type.unwrap_or(log_type::CHAT_MESSAGE);
@@ -594,6 +620,7 @@ where
             user_id,
             chat_id,
             signal,
+            stop,
             &mut on_reasoning,
         )
         .await;

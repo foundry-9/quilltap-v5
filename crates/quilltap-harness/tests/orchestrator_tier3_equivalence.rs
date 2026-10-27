@@ -142,7 +142,6 @@ use quilltap_core::model::stream::{
 };
 use quilltap_core::services::build_context::RealBuildContextSeams;
 use quilltap_core::services::carina_query::{CarinaQueryDeps, RealCarinaQuery};
-use quilltap_core::services::carina_runner::ClosureProspero;
 use quilltap_core::services::chat_events::RecordingSink;
 use quilltap_core::services::cheap_llm_exec::{CheapLlmLogConfig, CheapLlmTaskExecutor};
 use quilltap_core::services::llm_logging::LogContext;
@@ -220,6 +219,11 @@ struct CallW {
     /// opt-out the hold predicate consults.
     #[serde(default)]
     never_pause_for_user: bool,
+    /// P4.165: a connection-profile id made the user's DEFAULT for this call
+    /// only (the oracle's raw `isDefault` flip, undone after the call) — the
+    /// Brahma one-shot resolves `findDefault(userId)` and the corpus seeds none.
+    #[serde(default)]
+    default_profile: Option<String>,
     /// P4.87: this case's ordered `Math.random()` pin, mirroring the oracle's
     /// per-case `pinned.reset(call.draws ?? [0])`. Absent → `[0]`, which is the
     /// frozen zero every pre-rotation row was written against.
@@ -1639,6 +1643,8 @@ fn orchestrator_tier3_matches_oracle() {
     // P4.D335: the interrupts v4's provider fired, and the interrupt lines.
     let mut want_interrupts: HashMap<String, Value> = HashMap::new();
     let mut want_interrupt_log: HashMap<String, Vec<Value>> = HashMap::new();
+    // P4.165: Carina's three Brahma lines, per call.
+    let mut want_carina_log: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
     // filtered event comparison drops the frame; the requires-gate arms compare
     // its message against `process_message`'s `Err`).
@@ -1787,6 +1793,15 @@ fn orchestrator_tier3_matches_oracle() {
                     .cloned()
                     .expect("interruptLog carries `lines`");
                 want_interrupt_log.insert(parsed.call.clone().unwrap(), lines);
+            }
+            "carinaLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("carinaLog carries `lines`");
+                want_carina_log.insert(parsed.call.clone().unwrap(), lines);
             }
             other => panic!("unknown oracle line kind: {other}"),
         }
@@ -1997,6 +2012,26 @@ fn orchestrator_tier3_matches_oracle() {
         // P4.D335: the send's turn-control registration (dropped once the chain
         // and the post-cycle render are done — v4's `runWithTurnControl` span).
         let turn_registration = turn_control::register_active_turn(&call.chat_id);
+        // P4.165: the handle the spine hands Carina's markup engine
+        // (`spine.rs` `RealCarinaQuery { turn_control: Some(&turn_handle) }`),
+        // so a Brahma consult inside the turn hears the operator's stop.
+        let turn_handle = turn_registration.handle();
+        let set_default_profile = |flag: i64| {
+            if let Some(id) = call.default_profile.clone() {
+                rt.block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE connection_profiles SET \"isDefault\" = ?1 WHERE id = ?2",
+                            rusqlite::params![flag, id],
+                        )
+                        .map(|_| ())
+                        .map_err(quilltap_core::db::DbError::from)
+                }))
+                .unwrap_or_else(|e| panic!("{}: flip the default profile: {e}", call.name));
+            }
+        };
+        set_default_profile(1);
         *streaming.current_chat.lock().unwrap() = call.chat_id.clone();
         // P4.D291: the call's in-case letter, through the REAL mailbox.
         let letter_at: Option<(String, String)> = call.letter.as_ref().map(|l| {
@@ -2128,9 +2163,14 @@ fn orchestrator_tier3_matches_oracle() {
             // Diff-irrelevant: carina's system prompt is fixed before its tool build.
             model_supports_native_tools: true,
             now_ms: spec.frozen_now_ms as f64,
-            turn_control: None,
+            turn_control: Some(&turn_handle),
         });
-        let mut prospero = ClosureProspero(|_a| Ok(()));
+        // P4.165: the spine's REAL Prospero-carina-error poster (v4's
+        // un-mocked `postProsperoCarinaError`) — a Brahma consult the stop
+        // ended before its first chunk answers `empty response`, and v4 posts
+        // that card. (Before P4.165 no corpus markup consult ever failed, so a
+        // no-op closure stood here.)
+        let mut prospero = quilltap_host::spine::ThreadedProspero { db: db.clone() };
         let mut rng_bytes = quilltap_core::tools::rng::FixedBytes::new(call.rng_bytes.clone());
         let orchestrator_seams = HarnessOrchestratorSeams {
             cheap_llm_settings: call.cheap_llm_settings,
@@ -2426,6 +2466,7 @@ fn orchestrator_tier3_matches_oracle() {
             .expect("discard the letter");
             got_unalerted.insert(call.name.clone(), Value::Array(paths));
         }
+        set_default_profile(0);
         // P4.D335: the send settles; the stop actions it fired mid-stream resolve.
         drop(turn_registration);
         let stop_handles: Vec<tokio::task::JoinHandle<Option<Value>>> = streaming
@@ -2875,6 +2916,51 @@ fn orchestrator_tier3_matches_oracle() {
             .collect();
         assert_eq!(got_lines, want_lines, "{}: the interrupt lines", call.name);
         interrupt_lines_seen += want_lines.len();
+
+        // P4.165: Carina's Brahma lines — v4's bag VERBATIM (Carina's lines
+        // carry v4's own camelCase keys), the target dropped. A silence leg
+        // for every call that never reaches Brahma.
+        let want_carina: Vec<String> = want_carina_log
+            .get(&call.name)
+            .unwrap_or_else(|| panic!("{}: no `carinaLog` oracle row — regenerate", call.name))
+            .iter()
+            .map(|l| {
+                let mut line = format!(
+                    "{} {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    let v = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    line.push_str(&format!(" {k}={v}"));
+                }
+                line
+            })
+            .collect();
+        const CARINA_TAGS: [&str; 3] = [
+            "[Carina] Brahma Console answered",
+            "[Carina] Live Brahma answer emit failed; answer stands",
+            "[Carina] Brahma query failed",
+        ];
+        let got_carina: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| CARINA_TAGS.iter().any(|t| l.contains(t)))
+            .map(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let level = parts.next().unwrap_or_default();
+                let _target = parts.next();
+                format!("{level} {}", parts.next().unwrap_or_default())
+            })
+            .collect();
+        assert_eq!(
+            got_carina, want_carina,
+            "{}: Carina's Brahma lines",
+            call.name
+        );
     }
     if ran("interrupt_yield_bare") {
         assert!(

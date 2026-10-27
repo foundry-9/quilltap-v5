@@ -772,7 +772,8 @@ async fn brahma_console_tier3_matches_oracle() {
             tool_detector: &detector,
             model_supports_native_tools: true,
         };
-        let result = run_brahma_query(&deps, &case.user_id, &spec.chat_id, &case.question).await;
+        let result =
+            run_brahma_query(&deps, &case.user_id, &spec.chat_id, &case.question, None).await;
 
         let got = result_to_json(&result);
         let want = oracle_results
@@ -920,6 +921,7 @@ async fn brahma_console_tier3_matches_oracle() {
                 }),
                 on_reasoning: Some(&mut on_reasoning),
                 log_label: lc.log_label.as_deref(),
+                stop: None,
             },
         )
         .await;

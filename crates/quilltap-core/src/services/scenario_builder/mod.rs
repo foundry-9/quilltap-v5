@@ -478,6 +478,8 @@ where
                 }),
                 on_reasoning: Some(&mut on_reasoning),
                 log_label: Some(SCENARIO_BUILDER_LOG_LABEL),
+                // No Salon turn: v4's `currentTurnStopSignal()` is undefined here.
+                stop: None,
             },
         )
         .await

@@ -132,6 +132,10 @@ struct CaseW {
     /// the chat from the database).
     #[serde(default)]
     equipped_inventory: Option<Value>,
+    /// P4.165 (N-1): every connection profile moved off the user for this case
+    /// only (the oracle's raw `userId` swap, restored after).
+    #[serde(default)]
+    hide_profiles: bool,
 }
 
 #[derive(Deserialize, Clone)]
@@ -330,11 +334,13 @@ impl RunBrahmaConsole for CannedBrahma {
         _user_id: &str,
         _chat_id: &str,
         _question: &str,
+        _stop: Option<&quilltap_core::services::turn_control::StopSignal>,
     ) -> impl Future<Output = BrahmaConsoleResult> + Send {
         let r = BrahmaConsoleResult {
             ok: self.ok,
             answer: self.answer.clone(),
             detail: self.detail.clone(),
+            threw: false,
         };
         async move { r }
     }
@@ -529,6 +535,8 @@ async fn carina_query_tier3_matches_oracle() {
     let mut oracle_streams: Vec<CannedStreamW> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_access: HashMap<String, Value> = HashMap::new();
+    // P4.165 (N-1): Carina's reachable service lines, per case.
+    let mut oracle_carina_log: HashMap<String, Value> = HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -550,6 +558,10 @@ async fn carina_query_tier3_matches_oracle() {
             }
             Some("accessLog") => {
                 oracle_access.insert(v["call"].as_str().unwrap().to_string(), v["lines"].clone());
+            }
+            Some("carinaLog") => {
+                oracle_carina_log
+                    .insert(v["call"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             other => panic!("unknown oracle row kind {other:?}"),
         }
@@ -630,6 +642,7 @@ async fn carina_query_tier3_matches_oracle() {
     // cannot go vacuous the day an answerer stops carrying progressions.
     let mut cases_reporting_progressions = 0usize;
     let mut access_lines_seen = 0usize;
+    let mut carina_lines_seen = 0usize;
 
     for case in &spec.cases {
         // P4.D324: the case's Inventory objects + the chat row's carried map,
@@ -673,6 +686,20 @@ async fn carina_query_tier3_matches_oracle() {
             .await
             .unwrap_or_else(|e| panic!("{}: carried-map plant failed: {e}", case.name));
         }
+        let swap_profiles = |from: String, to: String| {
+            db.write(move |ws| {
+                ws.main().connection().execute(
+                    "UPDATE \"connection_profiles\" SET \"userId\" = ?1 WHERE \"userId\" = ?2",
+                    rusqlite::params![to, from],
+                )?;
+                Ok(())
+            })
+        };
+        if case.hide_profiles {
+            swap_profiles(spec.user_id.clone(), "p4165-elsewhere".to_string())
+                .await
+                .unwrap_or_else(|e| panic!("{}: hide the profiles: {e}", case.name));
+        }
         let sink = RecordingSink::new();
         let calls_before = streaming.seen_len();
         let deps = CarinaQueryDeps {
@@ -701,6 +728,11 @@ async fn carina_query_tier3_matches_oracle() {
             run_carina_query(&deps, &opts),
         )
         .await;
+        if case.hide_profiles {
+            swap_profiles("p4165-elsewhere".to_string(), spec.user_id.clone())
+                .await
+                .unwrap_or_else(|e| panic!("{}: restore the profiles: {e}", case.name));
+        }
         // P4.D268: the delivery stamp (count = delivered entries, not results).
         let want_access = p4d268_access_lines(
             oracle_access
@@ -714,6 +746,21 @@ async fn carina_query_tier3_matches_oracle() {
             case.name
         );
         access_lines_seen += want_access.len();
+        // P4.165 (N-1): Carina's lines — level, message, and v4's context keys
+        // IN ORDER (Carina's lines carry v4's own camelCase keys); the target
+        // dropped. A silence leg for every case that reaches none of them.
+        let want_carina = carina_log_lines(
+            oracle_carina_log
+                .get(&case.name)
+                .unwrap_or_else(|| panic!("{}: no carinaLog — regenerate the oracle", case.name)),
+        );
+        assert_eq!(
+            got_carina_log_lines(&captured),
+            want_carina,
+            "{}: Carina's service lines",
+            case.name
+        );
+        carina_lines_seen += want_carina.len();
 
         // Result diff.
         let mut got = carina_result_to_json(&result);
@@ -792,6 +839,11 @@ async fn carina_query_tier3_matches_oracle() {
         "no case put a progressions report on the user message — the placement \
          arms are vacuous (did the forced call stop firing?)"
     );
+    // P4.165 (N-1): the Carina-lines comparand is non-vacuous.
+    assert!(
+        carina_lines_seen >= 5,
+        "the Carina corpus logged too few of Carina's service lines ({carina_lines_seen})"
+    );
     // P4.D268: the stamp comparand is non-vacuous.
     assert!(
         access_lines_seen >= 1,
@@ -869,5 +921,53 @@ fn p4d268_got_access_lines(lines: &[String]) -> Vec<String> {
         .iter()
         .filter(|l| l.contains("[Recall] Stamping delivered memories accessed"))
         .cloned()
+        .collect()
+}
+
+/// P4.165 (N-1): the Carina service lines the oracle captures.
+const CARINA_LINES: [&str; 7] = [
+    "[Carina] Brahma requested by an unauthorized asker; treating as not-found",
+    "[Carina] No reachable answerer found",
+    "[Carina] No connection profile resolvable",
+    "[Carina] Tool-iteration budget exhausted; forcing a final text answer",
+    "[Carina] Query answered",
+    "[Carina] Brahma Console answered",
+    "[Carina] Memory recall failed; answering without it",
+];
+
+/// v4's captured lines as `"<LEVEL> <message> k=v …"`, context keys in v4's order.
+fn carina_log_lines(want: &Value) -> Vec<String> {
+    want.as_array()
+        .unwrap_or_else(|| panic!("carinaLog is not a list — regenerate the oracle: {want}"))
+        .iter()
+        .map(|l| {
+            let mut line = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["context"].as_object().into_iter().flatten() {
+                let v = match v {
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                line.push_str(&format!(" {k}={v}"));
+            }
+            line
+        })
+        .collect()
+}
+
+/// v5's captured lines in the same shape (the target dropped).
+fn got_carina_log_lines(captured: &[String]) -> Vec<String> {
+    captured
+        .iter()
+        .filter(|l| CARINA_LINES.iter().any(|m| l.contains(m)))
+        .map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap_or_default();
+            let _target = parts.next();
+            format!("{level} {}", parts.next().unwrap_or_default())
+        })
         .collect()
 }

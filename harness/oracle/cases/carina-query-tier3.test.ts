@@ -102,6 +102,10 @@ interface CaseSpec {
   /** P4.D324: the chat ROW's `equippedInventory` for the case (Carina reads
    *  the chat from the database). */
   equippedInventory?: Record<string, string[]>;
+  /** P4.165 (N-1): move every connection profile off the user for this case
+   *  only (a raw `userId` swap, restored after) — the answerer's chain then
+   *  resolves nothing and v4 logs `[Carina] No connection profile resolvable`. */
+  hideProfiles?: boolean;
 }
 interface Spec {
   testPepperBase64: string;
@@ -310,6 +314,29 @@ async function main(): Promise<void> {
     }
     return p4d268PriorDebug.call(p4d268Logger, message, fields);
   };
+  // P4.165 (N-1): Carina's own service lines — the reachable ones, at every
+  // level, off the singleton `carina.service.ts` logs through. Message +
+  // context verbatim, in emission order.
+  const CARINA_LINES = new Set([
+    '[Carina] Brahma requested by an unauthorized asker; treating as not-found',
+    '[Carina] No reachable answerer found',
+    '[Carina] No connection profile resolvable',
+    '[Carina] Tool-iteration budget exhausted; forcing a final text answer',
+    '[Carina] Query answered',
+    '[Carina] Brahma Console answered',
+    '[Carina] Memory recall failed; answering without it',
+  ]);
+  let carinaLog: Array<{ level: string; message: string; context: unknown }> = [];
+  for (const level of ['debug', 'info', 'warn', 'error'] as const) {
+    const target = p4d268Logger as unknown as Record<string, (...a: unknown[]) => unknown>;
+    const prior = target[level];
+    target[level] = (message: string, context?: unknown, ...rest: unknown[]) => {
+      if (CARINA_LINES.has(message)) {
+        carinaLog.push(JSON.parse(JSON.stringify({ level, message, context: context ?? null })));
+      }
+      return prior.call(p4d268Logger, message, context, ...rest);
+    };
+  }
   // v4's `markMemoriesAccessed` does not await its bulk UPDATE: let it land
   // before the `bumped` dump reads the table.
   const flushAccess = async () => {
@@ -358,6 +385,13 @@ async function main(): Promise<void> {
 
     let postedEvent: unknown = null;
     accessLog = [];
+    carinaLog = [];
+    if (call.hideProfiles) {
+      await rawQuery('UPDATE "connection_profiles" SET "userId" = ? WHERE "userId" = ?', [
+        'p4165-elsewhere',
+        spec.userId,
+      ]);
+    }
     const result = await runCarinaQuery({
       userId: spec.userId,
       chatId: spec.chat.id,
@@ -371,12 +405,19 @@ async function main(): Promise<void> {
       },
     } as never);
 
+    if (call.hideProfiles) {
+      await rawQuery('UPDATE "connection_profiles" SET "userId" = ? WHERE "userId" = ?', [
+        spec.userId,
+        'p4165-elsewhere',
+      ]);
+    }
     lines.push(JSON.stringify({ kind: 'result', call: call.name, result }));
     lines.push(JSON.stringify({ kind: 'event', call: call.name, event: postedEvent }));
 
     // Let any fire-and-forget settle before the next case.
     await new Promise((resolve) => setTimeout(resolve, 20));
     lines.push(JSON.stringify({ kind: 'accessLog', call: call.name, lines: await flushAccess() }));
+    lines.push(JSON.stringify({ kind: 'carinaLog', call: call.name, lines: carinaLog }));
   }
 
   (global as { Date: DateConstructor }).Date = RealDate;
