@@ -68,7 +68,8 @@ pub struct ApplyInventoryDefaultsOptions {
 
 /// The source of the R-3 refresh — v4 `refreshAvatarForAppearance(…,
 /// 'inventory-change')`.
-pub const INVENTORY_CHANGE_AVATAR_CONTEXT: &str = "inventory-change";
+pub const INVENTORY_CHANGE_AVATAR_CONTEXT: &str =
+    crate::services::inventory_change_effects::INVENTORY_CHANGE_SOURCE_CONTEXT;
 
 fn json_text(v: &impl serde::Serialize) -> String {
     serde_json::to_string(v).unwrap_or_default()

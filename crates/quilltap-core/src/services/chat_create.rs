@@ -57,7 +57,8 @@ use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
 use crate::services::dangerous_content::provider_routing::{
-    resolve_provider_for_dangerous_content, ApiKeyResolver, RouteProfile,
+    route_profile_from_value,
+    resolve_provider_for_dangerous_content, ApiKeyResolver,
 };
 use crate::services::dangerous_content::resolver::{
     resolve_concierge_settings, ResolvedConciergePolicy,
@@ -3390,26 +3391,6 @@ struct DynResolver<'a>(&'a dyn ApiKeyResolver);
 impl ApiKeyResolver for DynResolver<'_> {
     fn resolve(&self, api_key_id: &str, user_id: &str) -> Option<String> {
         self.0.resolve(api_key_id, user_id)
-    }
-}
-
-/// Build a [`RouteProfile`] from a connection-profile Value (the private
-/// `route_profile_from_value` in `provider_routing` is not exported).
-fn route_profile_from_value(v: &Value) -> RouteProfile {
-    let s = |k: &str| {
-        v.get(k)
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string()
-    };
-    RouteProfile {
-        id: s("id"),
-        name: s("name"),
-        provider: s("provider"),
-        model_name: s("modelName"),
-        base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
-        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
-            == Some(true),
     }
 }
 
