@@ -190898,3 +190898,19 @@ The order's per-family split for readers / writes / location / pool / dependents
 **Correction to the `INVENTORY` record above:** its "zero SKIP" is true of the lane's own families only — a gate log cannot show a SKIP (cargo prints a test's stderr only on failure), and that gate's env did not set Carina's oracle, so `carina_query_tier3_equivalence` skipped there. At `INVENTORY` the Carina oracle case + spec carry the two inventory cases while the Rust side plants nothing (item 25 landed in `31693aa3e`); a sibling regenerating that family from `INVENTORY` alone sees `inventory_carried` red until it has `31693aa3e`.
 
 Ruling followed: v4 `main` moved two commits past the ledger's recorded HEAD mid-lane (`9faed0c7e` diagram lightbox, `3c9ae1fc3` release-notes docs) — recorded for `/driftcheck`; the lane worked at the pin (the 2026-10-09 ruling).
+
+- **P4.D324 rider — the pre-column inventory pin's capture (2026-10-26).**
+  P4.D328 reported `db::chats_inventory::tests::a_pre_column_table_falls_back_to_false`
+  flaky at `INVENTORY`; measured 4 of 4 red filtered to the module (the
+  sibling tests reach the same WARN with no subscriber armed, tracing caches
+  the callsite's `Interest` as never, the thread-scoped `captured_with` saw
+  `[]` — the capture-rig memory note's second trap). Every test in the module
+  now calls `global_capture::install()` first and the pin captures through
+  `global_capture::capture`: 6 of 6 green filtered, green in the full gate.
+  `store_name_reconcile`'s new pin asserts silence only (cannot false-red),
+  6 of 6 green. Gate: fmt + clippy (both feature sets) clean; `cargo test
+  --workspace` 837 binaries / 5,495 / 3 / 3 ignored — the two standing schema
+  guards (P4.D327 / P4.D333) and `provider_sdk_version_guard`, red from the
+  LIVE v4 checkout's root install moving mid-lane (`openai` 7.34.0 → 7.45.0,
+  `@openrouter/sdk` 1.4.25 → 1.5.9 — an environment move for `/driftcheck`,
+  not this lane's). Version: core 0.0.1328.

@@ -311,9 +311,15 @@ pub fn normalized_equipped_inventory_object(raw: Option<&Value>) -> Map<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::global_capture;
     use serde_json::json;
 
+    // The pre-column pin shares its callsites with the un-captured tests here,
+    // so every test installs the process-global rig first: a thread-scoped
+    // `captured_with` lost the `Interest` race (a sibling reached the WARN
+    // with no subscriber armed and tracing cached it as "never").
     fn db() -> Connection {
+        global_capture::install();
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch(
             "CREATE TABLE chats (id TEXT PRIMARY KEY, equippedInventory TEXT DEFAULT NULL);\
@@ -355,6 +361,7 @@ mod tests {
 
     #[test]
     fn normalize_shapes() {
+        global_capture::install();
         assert!(normalize_equipped_inventory(Some(&json!("junk"))).is_empty());
         assert!(normalize_equipped_inventory(Some(&json!("[]"))).is_empty());
         assert!(normalize_equipped_inventory(Some(&Value::Null)).is_empty());
@@ -366,12 +373,13 @@ mod tests {
 
     #[test]
     fn a_pre_column_table_falls_back_to_false() {
+        global_capture::install();
         let c = Connection::open_in_memory().unwrap();
         c.execute_batch(
             "CREATE TABLE chats (id TEXT PRIMARY KEY); INSERT INTO chats VALUES ('c1');",
         )
         .unwrap();
-        let (written, lines) = crate::test_support::captured_with(|| {
+        let (written, lines) = global_capture::capture(|| {
             ChatsInventoryRepository::new(&c).set_equipped_inventory("c1", "a", Some(&[]))
         });
         assert!(!written);

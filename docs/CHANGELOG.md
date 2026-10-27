@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — The pre-column inventory write pin captures through the global rig (P4.D324)
+
+_Versions: core 0.0.1328._
+
+`db::chats_inventory`'s pre-column test failed every filtered run: a sibling test in the module reached the same WARN with no subscriber armed, tracing cached the callsite as never interesting, and the thread-scoped capture saw no lines. Every test in the module now installs `global_capture` first, and the pin captures through it. Test-only.
+
 #### 2026-10-26 — P4.D324 closing gate record, formatting, and the order's Tier 2 status
 
 _No crate versions bumped._
