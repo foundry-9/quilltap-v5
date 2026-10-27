@@ -200,6 +200,19 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage main partition (P4.D324)");
     // === end P4.D324 ===
+    // === P4.D337: mirror-boot ensure ===
+    // The terminal geometry columns through the host's own ensure, after the
+    // Inventory chain as the host runs it. The vintage fixture's
+    // `terminal_sessions` predates `cols` / `rows`; every session read names
+    // both columns (`terminal_sessions::SELECT_COLS`).
+    db.write_blocking(|writers| {
+        quilltap_core::db::terminal_sessions_geometry_repair::ensure_terminal_sessions_geometry_columns(
+            writers.main().connection(),
+        )
+        .map(|_| ())
+    })
+    .expect("boot-align the vintage main partition (P4.D337)");
+    // === end P4.D337 ===
     db
 }
 

@@ -161,6 +161,9 @@ pub mod store_name_reconcile;
 pub mod table_shape;
 pub mod tags;
 pub mod terminal_sessions;
+// === P4.D337 ===
+pub mod terminal_sessions_geometry_repair;
+// === end P4.D337 ===
 pub mod text_compression;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;

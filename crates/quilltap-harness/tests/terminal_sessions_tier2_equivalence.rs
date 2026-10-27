@@ -13,6 +13,16 @@
 //! an integer-valued cell like 137 dumps back as the JSON integer 137 via
 //! js_number_to_json).
 //!
+//! P4.D337 (bug 255, the FIFTEENTH D23 move): the two geometry columns `cols` /
+//! `rows` ride the same REAL-affinity shape (the fixture builder bakes them at
+//! the pin through `ensureCollection`, so a rebuilt fixture has 13 columns). The
+//! spec grows a create WITH geometry, a create with both keys explicitly null,
+//! the PTY exit stamp (v4's `update` with `exitedAt` + `exitCode` + `cols` +
+//! `rows`; v5's `mark_session_exited` with `Some` geometry) and the reconcile
+//! stamp (v4's `update` with no geometry keys; v5's `mark_session_exited` with
+//! `None, None` — the orphan keeps its spawn-time geometry, R-4). Markers:
+//! `"cols":132`, `"cols":100`.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -28,7 +38,7 @@
 
 use std::path::{Path, PathBuf};
 
-use quilltap_core::db::terminal_sessions::{CreateOptions, TsCreate, TsUpdate};
+use quilltap_core::db::terminal_sessions::{self, CreateOptions, TsCreate, TsUpdate};
 use quilltap_core::db::Writer;
 use serde::Deserialize;
 use serde_json::Value;
@@ -50,7 +60,15 @@ enum Op {
         options: CreateOpts,
     },
     #[serde(rename = "update")]
-    Update { id: String, data: UpdateData },
+    Update {
+        id: String,
+        data: UpdateData,
+        /// P4.D337: `exit` / `reconcile` — on v4's side a plain `update`; on
+        /// v5's, the stamp the PTY exit or the reconcile pass issues
+        /// (`mark_session_exited` with `Some` / `None` geometry — R-4).
+        #[serde(default)]
+        stamp: Option<String>,
+    },
     #[serde(rename = "delete")]
     Delete { id: String },
 }
@@ -71,6 +89,10 @@ struct CreateData {
     exit_code: Option<f64>,
     #[serde(default, rename = "transcriptPath")]
     transcript_path: Option<String>,
+    #[serde(default)]
+    cols: Option<f64>,
+    #[serde(default)]
+    rows: Option<f64>,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +120,10 @@ struct UpdateData {
     exit_code: Option<f64>,
     #[serde(default, rename = "transcriptPath")]
     transcript_path: Option<String>,
+    #[serde(default)]
+    cols: Option<f64>,
+    #[serde(default)]
+    rows: Option<f64>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
 }
@@ -166,6 +192,8 @@ fn terminal_sessions_tier2_matches_oracle() {
                             exited_at: data.exited_at.clone(),
                             exit_code: data.exit_code,
                             transcript_path: data.transcript_path.clone(),
+                            cols: data.cols,
+                            rows: data.rows,
                         },
                         &CreateOptions {
                             id: options.id.clone(),
@@ -175,7 +203,37 @@ fn terminal_sessions_tier2_matches_oracle() {
                     )
                     .expect("terminal_sessions.create");
                 }
-                Op::Update { id, data } => {
+                Op::Update {
+                    id,
+                    data,
+                    stamp: Some(stamp),
+                } => {
+                    let exited_at = data.exited_at.as_deref().expect("a stamp's exitedAt");
+                    let (cols, rows) = match stamp.as_str() {
+                        "exit" => (data.cols, data.rows),
+                        "reconcile" => {
+                            assert!(data.cols.is_none() && data.rows.is_none());
+                            (None, None)
+                        }
+                        other => panic!("unknown stamp {other}"),
+                    };
+                    let found = terminal_sessions::mark_session_exited(
+                        writer.connection(),
+                        id,
+                        exited_at,
+                        data.exit_code,
+                        cols,
+                        rows,
+                        &data.updated_at,
+                    )
+                    .expect("mark_session_exited");
+                    assert!(found, "stamp target {id} not found in fixture");
+                }
+                Op::Update {
+                    id,
+                    data,
+                    stamp: None,
+                } => {
                     let found = repo
                         .update(
                             id,
@@ -187,6 +245,8 @@ fn terminal_sessions_tier2_matches_oracle() {
                                 exited_at: data.exited_at.clone(),
                                 exit_code: data.exit_code,
                                 transcript_path: data.transcript_path.clone(),
+                                cols: data.cols,
+                                rows: data.rows,
                                 updated_at: data.updated_at.clone(),
                             },
                         )

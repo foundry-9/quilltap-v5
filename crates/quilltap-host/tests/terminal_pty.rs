@@ -556,6 +556,8 @@ async fn reconcile_marks_orphans_and_spares_live_sessions() {
                         exited_at: None,
                         exit_code: None,
                         transcript_path: None,
+                        cols: None,
+                        rows: None,
                     },
                     &terminal_sessions::CreateOptions {
                         id: orphan_id,

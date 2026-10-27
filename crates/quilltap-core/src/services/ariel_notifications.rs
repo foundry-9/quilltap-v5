@@ -366,6 +366,10 @@ pub async fn reconcile_terminal_sessions_for_chat(
                     &session_id,
                     &exited_at,
                     None,
+                    // R-4: v4's reconcile patch carries no geometry keys — the
+                    // orphan keeps its spawn-time `cols` / `rows`.
+                    None,
+                    None,
                     &updated_at,
                 )
                 .map(|_| ())

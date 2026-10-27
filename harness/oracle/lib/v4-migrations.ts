@@ -130,6 +130,23 @@ export const INVENTORY_MIGRATIONS: V4MigrationRef[] = [
   { file: 'migrations/scripts/add-character-inventory-flag-v1.ts', exportName: 'addCharacterInventoryFlagMigration' },
 ];
 
+// === P4.D337 (v4 a6292f169, the FIFTEENTH D23 move) ===
+/**
+ * P4.D337 — bug 255's terminal geometry migration, registered LAST at the
+ * `322a5488e` pin (`migrations/scripts/index.ts:928`, after the Inventory
+ * pair): `terminal_sessions.cols` / `rows`, two column-gated
+ * `addColumnIfMissing` appends (`INTEGER DEFAULT NULL`, `cols` then `rows`).
+ * The file name carries `-v1`; its `dependsOn` (`add-terminal-sessions-table`)
+ * does not. v5's ensure is UNSTAMPED.
+ */
+export const TERMINAL_GEOMETRY_MIGRATIONS: V4MigrationRef[] = [
+  {
+    file: 'migrations/scripts/add-terminal-session-geometry-v1.ts',
+    exportName: 'addTerminalSessionGeometryMigration',
+  },
+];
+// === end P4.D337 ===
+
 /**
  * P4.D315 — the `e8e17b2d9` round's ONE shared fixture plant (§R.3, R-S).
  *

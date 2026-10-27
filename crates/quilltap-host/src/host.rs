@@ -2240,6 +2240,39 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
             // its column. v4's migration lines are NO-PORT.
             quilltap_core::db::inventory_columns_repair::run_inventory_columns_ensures(main)?;
             // === end P4.D324 ===
+            // === P4.D337 (v4 a6292f169, migration add-terminal-session-geometry-v1) ===
+            // `terminal_sessions.cols` / `rows` (bug 255, the FIFTEENTH D23
+            // move), re-homed from v4's migration runner like the ensures
+            // above: `terminal_read` replays an exited session's transcript
+            // at the stored geometry and the session reads name both columns,
+            // so an instance whose table predates `a6292f169` would fail its
+            // first terminal read without them. AFTER the Inventory's two —
+            // v4 registers this migration LAST (`migrations/scripts/index.ts:
+            // 926-928` at the `322a5488e` pin) — and BEFORE P4.160, which must
+            // stay last (this ensure makes no index). It ALTERs in v4's
+            // migration clause (`INTEGER DEFAULT NULL`, `cols` then `rows`,
+            // appended), no backfill — older sessions replay at 80×24. A fresh
+            // instance already has generateDDL's REAL columns and this is a
+            // no-op. UNSTAMPED: v4's `shouldRun` is column-gated, so v4 never
+            // re-runs it (the `chat_informs.permanent` class, not the tiers
+            // ping-pong). FATAL on failure, like the ensures beside it — the
+            // migration is not `resumable`. ONE boot INFO when it added
+            // anything (v4's own migration lines are NO-PORT — the module
+            // header names them); silent on a no-op boot.
+            let geometry_added =
+                quilltap_core::db::terminal_sessions_geometry_repair::ensure_terminal_sessions_geometry_columns(
+                    main,
+                )?;
+            if geometry_added > 0 {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId =
+                        quilltap_core::db::terminal_sessions_geometry_repair::GEOMETRY_MIGRATION_ID,
+                    columnsAdded = geometry_added,
+                    "Measured each terminal session's window for transcript replay"
+                );
+            }
+            // === end P4.D337 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

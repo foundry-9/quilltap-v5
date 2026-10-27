@@ -138,6 +138,15 @@ const INVENTORY_COLUMNS: [&str; 2] = [
     quilltap_core::db::inventory_columns_repair::MIGRATION_ID_INVENTORY_FLAG,
 ];
 
+// === P4.D337 (v4 a6292f169, the FIFTEENTH D23 move) ===
+/// P4.D337: bug 255's terminal geometry migration, registered LAST at the
+/// `322a5488e` pin (`TERMINAL_GEOMETRY_MIGRATIONS`) — UNSTAMPED on v5's side
+/// (the P4.D304 / P4.D324 arm): v4's `shouldRun` is column-gated, so once v5's
+/// ensure appended both columns v4 runs nothing and records nothing.
+const TERMINAL_GEOMETRY: [&str; 1] =
+    [quilltap_core::db::terminal_sessions_geometry_repair::GEOMETRY_MIGRATION_ID];
+// === end P4.D337 ===
+
 /// Run v5's span chain, then the 4.11 `chat_settings` chain, then the chat
 /// wardrobe history's, then the Inventory columns' (the host's boot order),
 /// on `path` (a caller-thread writer).
@@ -153,6 +162,12 @@ fn run_chain(path: &Path) {
     .expect("the chat wardrobe history chain");
     quilltap_core::db::inventory_columns_repair::run_inventory_columns_ensures(w.connection())
         .expect("the Inventory columns chain");
+    // === P4.D337: the terminal geometry, LAST (v4's registration order) ===
+    quilltap_core::db::terminal_sessions_geometry_repair::ensure_terminal_sessions_geometry_columns(
+        w.connection(),
+    )
+    .expect("the terminal geometry ensure");
+    // === end P4.D337 ===
 }
 
 /// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
@@ -267,10 +282,11 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        18,
+        19,
         "v4 ran the twelve + the two 4.11 chat_settings migrations + the history table and \
          seed (the column is `not needed` on a table born at its final shape — P4.D315) + \
-         the Inventory's two columns (P4.D324) on the planted base"
+         the Inventory's two columns (P4.D324) + the terminal geometry (P4.D337) on the \
+         planted base"
     );
     let build_ran: Vec<&str> = build[0]["ran"]
         .as_array()
@@ -292,6 +308,18 @@ fn no_migration_reruns_after_the_v5_chain() {
             "v4's build stamped {id}"
         );
     }
+    // === P4.D337: v4's build RAN and stamped the geometry migration ===
+    for id in TERMINAL_GEOMETRY {
+        assert!(
+            build_ran.contains(&id),
+            "v4's build ran {id}: {build_ran:?}"
+        );
+        assert!(
+            v4_ledger.iter().any(|(i, _)| i == id),
+            "v4's build stamped {id}"
+        );
+    }
+    // === end P4.D337 ===
     let row_of = |mode: &str| -> &Value {
         v4.iter()
             .find(|r| r["mode"] == mode)
@@ -399,6 +427,16 @@ fn no_migration_reruns_after_the_v5_chain() {
                     failures.push(format!("{mode}: a ledger row for the unstamped {id}"));
                 }
             }
+            // === P4.D337 (`UNSTAMPED_COLUMN_ENSURES`): the geometry id the same ===
+            for id in TERMINAL_GEOMETRY {
+                if ledger_by_id(&row["before"]["ledger"])
+                    .iter()
+                    .any(|(i, _)| i == id)
+                {
+                    failures.push(format!("{mode}: a ledger row for the unstamped {id}"));
+                }
+            }
+            // === end P4.D337 ===
         }
         match mode {
             "planted" => {

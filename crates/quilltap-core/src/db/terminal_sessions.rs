@@ -37,6 +37,18 @@
 //!     renders it — so an integer exit code round-trips byte-for-byte. `None` →
 //!     SQL NULL.
 //!
+//!   - **two nullable geometry columns** (`cols`, `rows` — P4.D337, bug 255,
+//!     the FIFTEENTH D23 move), `z.number().int().nullable().optional()`
+//!     exactly like `exitCode`, so REAL-affinity on a FRESH instance
+//!     (generateDDL's `"cols" REAL,` / `"rows" REAL,` in schema order). An
+//!     instance v4's migration (or v5's boot ensure,
+//!     [`super::terminal_sessions_geometry_repair`]) widened carries the
+//!     APPENDED `INTEGER DEFAULT NULL` shape instead. Both are bound as
+//!     `Option<f64>` (the same bind lands as REAL `80.0` on the first and
+//!     INTEGER `80` on the second) and read back as `Option<i64>` — a stored
+//!     `80` reads `Some(80)` on either, which is what the REST wire and the
+//!     transcript replay want (v4's wire carries `80`, never `80.0`).
+//!
 //! Determinism: the tier-2 case pins the id and timestamps (CreateOptions on
 //! create; an explicit `updatedAt` in the update patch), so the persisted rows
 //! match v4's byte-for-byte with no normalization — the pinned form
@@ -80,10 +92,16 @@ pub struct TerminalSessionRow {
     pub exit_code: Option<i64>,
     /// `None` = SQL NULL.
     pub transcript_path: Option<String>,
+    /// The terminal's geometry — spawn-time, then the final size on exit
+    /// (P4.D337). `None` = SQL NULL (a session recorded before v4 stored it).
+    pub cols: Option<i64>,
+    pub rows: Option<i64>,
 }
 
+// The geometry columns are appended LAST (`row.get(9)` / `(10)`) — the
+// positional-marshal append rule.
 const SELECT_COLS: &str = "id, chatId, label, shell, cwd, startedAt, exitedAt, \
-                           exitCode, transcriptPath";
+                           exitCode, transcriptPath, cols, rows";
 
 fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<TerminalSessionRow> {
     Ok(TerminalSessionRow {
@@ -101,6 +119,10 @@ fn row_from(row: &rusqlite::Row<'_>) -> rusqlite::Result<TerminalSessionRow> {
         exit_code: row.get::<_, Option<f64>>(7)?.map(|f| f as i64),
         exited_at: row.get(6)?,
         transcript_path: row.get(8)?,
+        // REAL on a fresh instance, INTEGER on a migrated one — read as `f64`
+        // and collapsed like `exitCode` (a stored geometry is always integral).
+        cols: row.get::<_, Option<f64>>(9)?.map(|f| f as i64),
+        rows: row.get::<_, Option<f64>>(10)?.map(|f| f as i64),
     })
 }
 
@@ -168,6 +190,9 @@ pub struct TsCreate {
     pub exit_code: Option<f64>,
     /// `None` => SQL NULL.
     pub transcript_path: Option<String>,
+    /// REAL-affinity on a fresh instance (int, no `.max()`); `None` => SQL NULL.
+    pub cols: Option<f64>,
+    pub rows: Option<f64>,
 }
 
 /// Pinned id + timestamps (v4's `CreateOptions`).
@@ -192,6 +217,9 @@ pub struct TsUpdate {
     /// Re-bound as `f64` (REAL affinity) when provided.
     pub exit_code: Option<f64>,
     pub transcript_path: Option<String>,
+    /// Re-bound as `f64` when provided (P4.D337).
+    pub cols: Option<f64>,
+    pub rows: Option<f64>,
     pub updated_at: String,
 }
 
@@ -213,8 +241,8 @@ impl<'c> TerminalSessionsRepository<'c> {
         self.conn.execute(
             "INSERT INTO terminal_sessions \
                (id, chatId, label, shell, cwd, startedAt, exitedAt, exitCode, \
-                transcriptPath, createdAt, updatedAt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                transcriptPath, createdAt, updatedAt, cols, rows) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 opts.id,
                 data.chat_id,
@@ -227,6 +255,8 @@ impl<'c> TerminalSessionsRepository<'c> {
                 data.transcript_path,
                 opts.created_at,
                 opts.updated_at,
+                data.cols,
+                data.rows,
             ],
         )?;
         Ok(())
@@ -284,6 +314,14 @@ impl<'c> TerminalSessionsRepository<'c> {
             assignments.push(format!("transcriptPath = ?{}", values.len() + 1));
             values.push(Box::new(transcript_path.clone()));
         }
+        if let Some(cols) = patch.cols {
+            assignments.push(format!("cols = ?{}", values.len() + 1));
+            values.push(Box::new(cols));
+        }
+        if let Some(rows) = patch.rows {
+            assignments.push(format!("rows = ?{}", values.len() + 1));
+            values.push(Box::new(rows));
+        }
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));
 
@@ -324,11 +362,20 @@ impl<'c> TerminalSessionsRepository<'c> {
 /// so the caller mints and passes `updated_at` (`clock::now_iso`). `exit_code`
 /// is bound as `Option<f64>` (the REAL-affinity column; `None` → SQL NULL).
 /// Returns `Ok(false)` when no row matched (v4's find-first "not found → null").
+///
+/// P4.D337 (R-4): `cols` / `rows` are the geometry the PTY exit stamp writes
+/// (v4 `pty-manager.ts:381-386` — `cols: session.meta.cols, rows:
+/// session.meta.rows`, the final size). A `None` LEAVES the column untouched:
+/// v4's reconcile patch (`reconcile.ts:28`) carries no geometry keys, so an
+/// orphan keeps its spawn-time geometry. (`exit_code`'s `None` keeps its
+/// explicit-NULL meaning.)
 pub fn mark_session_exited(
     conn: &Connection,
     id: &str,
     exited_at: &str,
     exit_code: Option<f64>,
+    cols: Option<f64>,
+    rows: Option<f64>,
     updated_at: &str,
 ) -> Result<bool, DbError> {
     // v4 `_update` first `findById`s — a missing row is a no-op returning null.
@@ -347,11 +394,29 @@ pub fn mark_session_exited(
         return Ok(false);
     }
 
-    let affected = conn.execute(
-        "UPDATE terminal_sessions SET exitedAt = ?1, exitCode = ?2, updatedAt = ?3 \
-         WHERE id = ?4",
-        params![exited_at, exit_code, updated_at, id],
-    )?;
+    let mut assignments: Vec<String> = Vec::new();
+    let mut values: Vec<Box<dyn ToSql>> = Vec::new();
+    let mut set = |column: &str, value: Box<dyn ToSql>| {
+        values.push(value);
+        assignments.push(format!("{column} = ?{}", values.len()));
+    };
+    set("exitedAt", Box::new(exited_at.to_string()));
+    set("exitCode", Box::new(exit_code));
+    if let Some(cols) = cols {
+        set("cols", Box::new(cols));
+    }
+    if let Some(rows) = rows {
+        set("rows", Box::new(rows));
+    }
+    set("updatedAt", Box::new(updated_at.to_string()));
+    values.push(Box::new(id.to_string()));
+    let sql = format!(
+        "UPDATE terminal_sessions SET {} WHERE id = ?{}",
+        assignments.join(", "),
+        values.len()
+    );
+    let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
+    let affected = conn.execute(&sql, params_refs.as_slice())?;
     Ok(affected > 0)
 }
 

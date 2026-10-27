@@ -518,6 +518,8 @@ impl TerminalManager {
                 exited_at: None,
                 exit_code: None,
                 transcript_path: meta.transcript_path.clone(),
+                cols: None,
+                rows: None,
             };
             let row_id = id.clone();
             let db_result = self
@@ -652,6 +654,8 @@ impl TerminalManager {
                         &sid,
                         &exited_at,
                         code.map(|c| c as f64),
+                        None,
+                        None,
                         &updated_at,
                     )
                     .map(|_| ())

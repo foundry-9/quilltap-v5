@@ -60,6 +60,9 @@ import {
   CHAT_WARDROBE_HISTORY_MIGRATIONS,
   INVENTORY_MIGRATIONS,
   P4D288_SPAN_MIGRATIONS,
+  // === P4.D337 ===
+  TERMINAL_GEOMETRY_MIGRATIONS,
+  // === end P4.D337 ===
 } from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
@@ -77,6 +80,9 @@ const TOUCHED = [
   'vector_indices',
   // P4.D315: the boot-created history table (absent on the planted base).
   'chat_wardrobe_history',
+  // === P4.D337: the geometry columns (stripped from the planted base) ===
+  'terminal_sessions',
+  // === end P4.D337 ===
 ];
 
 const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -145,12 +151,16 @@ async function runTwelve(path: string): Promise<string[]> {
   // registration order — both unstamped on v5's side, R-B); P4.D315: then the
   // chat wardrobe history's three (table → tool-name column → seed — v5 stamps
   // the table and the seed as v4's runner would, R-C); P4.D324: then the
-  // Inventory's two columns (both unstamped on v5's side).
+  // Inventory's two columns (both unstamped on v5's side); P4.D337: then the
+  // terminal geometry (registered LAST at the pin; unstamped on v5's side).
   for (const ref of [
     ...P4D288_SPAN_MIGRATIONS,
     ...CHAT_SETTINGS_4_11_MIGRATIONS,
     ...CHAT_WARDROBE_HISTORY_MIGRATIONS,
     ...INVENTORY_MIGRATIONS,
+    // === P4.D337 ===
+    ...TERMINAL_GEOMETRY_MIGRATIONS,
+    // === end P4.D337 ===
   ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
   }
@@ -201,6 +211,9 @@ function buildPlanted(path: string): void {
       s = strip(s, [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`, `  "equippedInventory" TEXT,\n`]);
     }
     if (s.startsWith('CREATE TABLE "characters" (')) s = strip(s, [`  "canManageInventory" INTEGER,\n`]);
+    // === P4.D337: the terminal geometry taken back too (pre-a6292f169) ===
+    if (s.startsWith('CREATE TABLE "terminal_sessions" (')) s = strip(s, [`  "cols" REAL,\n`, `  "rows" REAL,\n`]);
+    // === end P4.D337 ===
     if (s.startsWith('CREATE TABLE "tfidf_vocabularies" (')) s = strip(s, [`  "textShapeVersion" REAL DEFAULT 0,\n`]);
     // P4.D304: the 4.11 chat_settings toggles taken back too.
     if (s.startsWith('CREATE TABLE "chat_settings" (')) {

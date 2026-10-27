@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(terminal): terminal_sessions geometry columns and their boot ensure (P4.D337 unit 2)
+
+_Versions: core 0.0.1326, host 0.0.213._
+
+The FIFTEENTH D23 move (v4 `a6292f169`, bug 255) reaches an existing instance: new `db::terminal_sessions_geometry_repair` appends `terminal_sessions.cols` / `rows` with v4's migration clause (`INTEGER DEFAULT NULL`, `cols` then `rows`). It runs in the host's boot chain after the Inventory ensures and before the index-family backfill, plus the vintage mirror-boot. The ensure is column-gated, unstamped and fatal; the host logs ONE INFO when it added anything. A fresh instance already carries generateDDL's `REAL` columns from the round's re-dump. `db::terminal_sessions` carries the two columns on create, update, every read, and `mark_session_exited`, where a `None` geometry leaves the columns untouched (v4's reconcile carries no geometry). The reconcile pass passes `None`.
+
+New family `terminal_sessions_geometry_ensure_equivalence` runs v4's real migration through the narrowed runner in five shapes. It covers storage class after a write (`integer` on the migrated shape, `real` on the fresh one) and pins `UNSTAMPED_COLUMN_ENSURES` both ways. `terminal_sessions_tier2` grew three geometry ops plus the exit and reconcile stamps. `zero_migrations_rerun` carries the migration last (v4 runs it on the planted base and never after v5's chain). New host test `host_boot_p4d337_terminal_geometry`.
+
 #### 2026-10-26 — feat(terminal): a server-side terminal screen model over vt100 for bug 255 (P4.D337 unit 1)
 
 _Versions: core 0.0.1325._
