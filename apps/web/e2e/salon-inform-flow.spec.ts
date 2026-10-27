@@ -338,7 +338,8 @@ test.describe('P4.D206 — Inform, the word out of character', () => {
           { timeout: 30_000 },
         )
         .toBe(true);
-      await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible({
+      // The turn is over when Stop greys (it is always rendered — `b8362beb5`).
+      await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({
         timeout: 15_000,
       });
 

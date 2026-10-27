@@ -428,7 +428,8 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // message never posts. (Deterministic enough to fail in isolation on main
     // too, which is how P4.9E2B's gate found it; the beat is about RENDERING,
     // so waiting costs it nothing.)
-    await expect(page.locator('.qt-chat-stop-button')).toHaveCount(0, { timeout: 30_000 });
+    // v4 `b8362beb5`: Stop is always rendered — idle means disabled.
+    await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({ timeout: 30_000 });
 
     await composerEditor(page).click();
     await page.keyboard.type('He slid $50 across the table, then another $20, as $x^2$ glowed on the board.');

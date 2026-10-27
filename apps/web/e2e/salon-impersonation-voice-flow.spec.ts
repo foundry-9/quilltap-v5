@@ -181,7 +181,9 @@ async function pinTitle(chatId: string, title: string): Promise<void> {
 
 /** The chain is settled when no Stop button stands in for Send. */
 async function waitForFloor(page: Page): Promise<void> {
-  await expect(page.locator('.qt-chat-stop-button')).toHaveCount(0, { timeout: 45_000 });
+  // v4 `b8362beb5`: Send / raise-hand / Stop are ALWAYS rendered, greyed when
+  // idle — the floor is free when Stop is disabled, not when it is gone.
+  await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({ timeout: 45_000 });
 }
 
 /**
@@ -416,7 +418,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
         { timeout: 15_000 },
       );
       await waitForFloor(page);
-      await expect(page.locator('.qt-chat-composer-send')).toHaveAttribute(
+      await expect(page.locator('button.qt-chat-composer-send[aria-label="Send message"]')).toHaveAttribute(
         'title',
         `Opens your draft for review — send it as written or have ${name} restate it`,
       );
@@ -500,7 +502,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await expect(page.locator('.qt-chat-attachment-chip')).toBeVisible({ timeout: 20_000 });
 
       await waitForFloor(page);
-      await page.locator('.qt-chat-composer-send').click();
+      await page.locator('button.qt-chat-composer-send[aria-label="Send message"]').click();
       // No dialog, and the message goes out as an ordinary send: the newest row
       // carries the attachment (a row COUNT is not an instrument here — the
       // list is virtualized).

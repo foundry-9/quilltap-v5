@@ -339,7 +339,9 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await stopButton(page).click();
     const infos = page.locator('[role="toast-container"] .qt-toast-info');
     await expect(infos.filter({ hasText: STOP_TOAST })).toHaveCount(1, { timeout: 15_000 });
-    await expect(page.getByText('Auto-responses are paused')).toHaveCount(0);
+    // ONE toast: the stop's, never the pause toast beside it (the sidebar's own
+    // "Auto-responses are paused — …" banner is the room's paused state, not a toast).
+    await expect(infos.filter({ hasText: 'Auto-responses are paused' })).toHaveCount(0);
     // The partial bubble persists after the refetch; the full reply does not.
     await expect(page.getByText('Splendid weather').first()).toBeVisible();
     await expect(page.getByText(SLOW_REPLY)).toHaveCount(0);

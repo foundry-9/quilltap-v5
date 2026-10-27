@@ -84,8 +84,9 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
     await expect(page.locator('.qt-chat-message-assistant').last()).toBeVisible({
       timeout: 30_000,
     });
-    // The turn is over when the composer is open again.
-    await expect(page.locator('button[aria-label="Send message"]')).toBeVisible({
+    // The turn is over when Stop greys again (v4 `b8362beb5`: Send, raise a
+    // hand and Stop are always rendered — visibility says nothing).
+    await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({
       timeout: 30_000,
     });
   }
@@ -179,7 +180,7 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
     //    while a turn runs is refused, so the counter would stay at 2/2 (the
     //    first full-suite run). Wait for the turn to be over — the composer
     //    open again — exactly as `sendAndSettle` does.
-    await expect(page.locator('button[aria-label="Send message"]')).toBeVisible({
+    await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({
       timeout: 30_000,
     });
     await regenerateButton(page).click();
