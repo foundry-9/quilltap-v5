@@ -133,18 +133,7 @@ function applyMocks(spec: Spec): void {
       },
     };
   });
-  // The title lint is P4.D340's — the keystone's mutations run without it.
-  jest.doMock('@/lib/inventory/title-lint', () => ({
-    __esModule: true,
-    ...jest.requireActual('@/lib/inventory/title-lint'),
-    lintInventoryTitle: async () => ({ rows: [] }),
-    writeTitleLintRows: () => undefined,
-  }));
-  jest.doMock('@/lib/inventory/title-lint-documents', () => ({
-    __esModule: true,
-    ...jest.requireActual('@/lib/inventory/title-lint-documents'),
-    lintInventoryDocumentChange: async () => () => undefined,
-  }));
+  // The Inventory title lint runs on both sides since the union (P4.D340 landed).
 }
 
 async function respond(r: unknown): Promise<{ status: number; body: unknown }> {

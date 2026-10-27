@@ -18,8 +18,8 @@
  * step added, as parsed JSON), and `logs` (every line, off the `Logger`
  * prototype before the level check).
  *
- * The title lint is stubbed out exactly as `inventory-keystone-tier2.ts` does
- * (P4.D340's to port).
+ * v4's real title lint runs, as on the v5 side (the lane's stub lifted at the
+ * union, P4.D340 landed).
  *
  * Run (Node 24, from the worktree pinned at `322a5488e`), AFTER building the
  * keystone pair:
@@ -37,7 +37,6 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -65,27 +64,6 @@ const fixtureMain = process.env.QT_FIXTURE_INV_MAIN;
 const fixtureMount = process.env.QT_FIXTURE_INV_MOUNT;
 if (!fixtureMain || !fixtureMount || !existsSync(fixtureMain) || !existsSync(fixtureMount)) {
   throw new Error('QT_FIXTURE_INV_MAIN / QT_FIXTURE_INV_MOUNT must point at the keystone pair');
-}
-
-/** `inventory-keystone-tier2.ts`'s lint stub, verbatim in effect. */
-function withoutTitleLint(): void {
-  const req = createRequire(fileURLToPath(import.meta.url));
-  const overrides: Record<string, Record<string, unknown>> = {
-    '@/lib/inventory/title-lint': {
-      lintInventoryTitle: async () => ({ rows: [] }),
-      writeTitleLintRows: () => undefined,
-    },
-    '@/lib/inventory/title-lint-documents': {
-      lintInventoryDocumentChange: async () => () => undefined,
-    },
-  };
-  for (const [specifier, stub] of Object.entries(overrides)) {
-    const path = req.resolve(specifier);
-    const real = req(specifier) as Record<string, unknown>;
-    const entry = req.cache[path];
-    if (!entry) throw new Error(`no require.cache entry for ${specifier}`);
-    entry.exports = { ...real, ...stub };
-  }
 }
 
 function tableExists(raw: Json, table: string): boolean {
@@ -123,7 +101,7 @@ async function runChild(index: number): Promise<void> {
     } as never;
   }
 
-  withoutTitleLint();
+  // The Inventory title lint runs on both sides since the union (P4.D340 landed).
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   await initializeDatabase();
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');

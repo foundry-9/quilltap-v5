@@ -24,9 +24,8 @@
  * thrown error as `{name, message, code?, status?, details?}`.
  *
  * `avatarGenerationEnabled` is off on every chat (the fixture's default), so
- * the avatar refresh is a no-op both sides; v4's job host is held off. v4 runs
- * WITHOUT its title lint (`withoutTitleLint` — P4.D340's; the tools' create /
- * update reach it through the keystone's mutations).
+ * the avatar refresh is a no-op both sides; v4's job host is held off. v4's
+ * real title lint runs (the lane's stub lifted at the union, P4.D340 landed).
  *
  * Run (Node 24, from the v4 checkout), AFTER building the pair:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -41,7 +40,6 @@ import { dirname, join } from 'node:path';
 import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
-import { createRequire } from 'node:module';
 
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 
@@ -100,32 +98,6 @@ function dumpAll(rawMain: Json, rawMount: Json): Record<string, Array<Record<str
   return out;
 }
 
-/** v4 without its Inventory title lint (the keystone case's idiom — P4.D340's lint). */
-function withoutTitleLint(): void {
-  const req = createRequire(fileURLToPath(import.meta.url));
-  const overrides: Record<string, Record<string, unknown>> = {
-    '@/lib/inventory/title-lint': {
-      lintInventoryTitle: async () => ({ rows: [] }),
-      writeTitleLintRows: () => undefined,
-    },
-    '@/lib/inventory/title-lint-documents': {
-      lintInventoryDocumentChange: async () => () => undefined,
-    },
-  };
-  for (const [specifier, stub] of Object.entries(overrides)) {
-    const path = req.resolve(specifier);
-    const real = req(specifier) as Record<string, unknown>;
-    const entry = req.cache[path];
-    if (!entry) throw new Error(`no require.cache entry for ${specifier}`);
-    entry.exports = { ...real, ...stub };
-    for (const name of Object.keys(stub)) {
-      if ((req(specifier) as Record<string, unknown>)[name] !== stub[name]) {
-        throw new Error(`the ${specifier} override did not take`);
-      }
-    }
-  }
-}
-
 function errorJson(e: Json): Json {
   return {
     name: e?.name ?? 'Error',
@@ -165,7 +137,7 @@ async function runChild(kind: string, index: number): Promise<void> {
     } as never;
   }
 
-  withoutTitleLint();
+  // The Inventory title lint runs on both sides since the union (P4.D340 landed).
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   await initializeDatabase();
   const { getRepositories } = await import('@/lib/repositories/factory');

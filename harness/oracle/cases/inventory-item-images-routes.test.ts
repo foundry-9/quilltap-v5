@@ -109,17 +109,7 @@ function applyMocks(spec: Spec): void {
       },
     };
   });
-  jest.doMock('@/lib/inventory/title-lint', () => ({
-    __esModule: true,
-    ...jest.requireActual('@/lib/inventory/title-lint'),
-    lintInventoryTitle: async () => ({ rows: [] }),
-    writeTitleLintRows: () => undefined,
-  }));
-  jest.doMock('@/lib/inventory/title-lint-documents', () => ({
-    __esModule: true,
-    ...jest.requireActual('@/lib/inventory/title-lint-documents'),
-    lintInventoryDocumentChange: async () => () => undefined,
-  }));
+  // The Inventory title lint runs on both sides since the union (P4.D340 landed).
 }
 
 async function resolveRefs(v: unknown): Promise<unknown> {
