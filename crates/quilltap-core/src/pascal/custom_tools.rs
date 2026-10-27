@@ -28,20 +28,20 @@ use super::custom_tool_types::{
     is_inventory_ref_value, CustomToolInventoryGesture, InventoryEffectAction, InventoryRef,
     InventoryStateOperand,
 };
+use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
+use super::expressions::{evaluate_expression, parse_expression};
 use super::inventory_aggregate::{describe_aggregate_value, inventory_aggregate_holds};
 use super::inventory_subjects::{
     inventory_count_holds, inventory_state_holds, resolve_inventory_value,
     ResolvedInventoryCountTest, ResolvedInventoryStateTest,
 };
-use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
-use super::expressions::{evaluate_expression, parse_expression};
 use super::js_value::{json_stringify, number_to_string, to_js_string, to_number};
 use super::metadata_match::{js_primitive, metadata_comparator_holds};
-use crate::inventory::refs::InventoryContext;
 use super::placeholders::InventoryPlaceholderField;
 use super::placeholders::{
     classify_placeholder, OutcomeField, PlaceholderRef, PLACEHOLDER_PATTERN,
 };
+use crate::inventory::refs::InventoryContext;
 use crate::jsstr::{self, js_trim};
 
 /// A run that could not be completed. Never becomes a fabricated outcome.
@@ -1691,7 +1691,6 @@ impl ResolvedEffect {
     pub fn is_applicable_inventory(&self) -> bool {
         matches!(self, ResolvedEffect::Inventory { .. })
     }
-
 
     /// True for a resolved effect that would write a line to the log (v4
     /// `isApplicableLogEffect`, P4.D331).

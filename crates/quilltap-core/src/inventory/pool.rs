@@ -25,8 +25,8 @@
 //! does. v4's `Promise.all` of the four tier reads is order-free; they run
 //! sequentially here in v4's listed order (own, group, project, general).
 
-use std::sync::{Mutex, OnceLock};
 use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 
 use rusqlite::Connection;
 use serde_json::Value;

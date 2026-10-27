@@ -33,6 +33,7 @@ use super::types::{ErrorKind, Response};
 use crate::chat_predicates::{is_participant_present, ParticipantStatus};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, chats_read, DbError};
+use crate::inventory::refs::InventoryContext;
 use crate::jsstr::js_trim;
 use crate::pascal::bench_wardrobe::resolve_bench_wardrobe;
 use crate::pascal::custom_tool_types::{
@@ -43,7 +44,6 @@ use crate::pascal::custom_tools::{
     LlmInvokeResult, LlmInvoker, LlmSubject,
 };
 use crate::pascal::llm_consult::{ConsultRunner, CustomToolConsultContext, SeamConsultInvoker};
-use crate::inventory::refs::InventoryContext;
 use crate::pascal::roster::{
     resolve_custom_tool_roster, CustomToolRoster, DiscoveredCustomTool, RosterContext,
 };

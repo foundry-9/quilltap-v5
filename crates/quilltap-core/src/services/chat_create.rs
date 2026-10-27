@@ -57,8 +57,7 @@ use crate::services::dangerous_content::manual_flip::{
     apply_concierge_flip, RealConciergeAnnouncer,
 };
 use crate::services::dangerous_content::provider_routing::{
-    route_profile_from_value,
-    resolve_provider_for_dangerous_content, ApiKeyResolver,
+    resolve_provider_for_dangerous_content, route_profile_from_value, ApiKeyResolver,
 };
 use crate::services::dangerous_content::resolver::{
     resolve_concierge_settings, ResolvedConciergePolicy,

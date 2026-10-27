@@ -52,14 +52,14 @@ use quilltap_core::pascal::custom_tool_types::{
 };
 use quilltap_core::pascal::custom_tools::{ResolvedEffect, ResolvedValue, ResolvedWardrobeGesture};
 // P4.D329: the third pass.
+use quilltap_core::inventory::refs::InventoryContext;
 use quilltap_core::pascal::custom_tool_types::InventoryEffectAction;
 use quilltap_core::pascal::custom_tools::ResolvedInventoryGesture;
-use quilltap_core::inventory::refs::InventoryContext;
-use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::pascal::side_effects::{
     differential::plan_run_logged, AppliedEffect, ApplyCustomToolEffectsParams, EffectTier,
 };
 use quilltap_core::pascal::wardrobe_effects::IndexedAppliedEffect;
+use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::state::cascade::{GroupCandidate, GroupTier, StateCascadeResult};
 use quilltap_core::state::paths::PathKey;
 use serde_json::{json, Map, Value};

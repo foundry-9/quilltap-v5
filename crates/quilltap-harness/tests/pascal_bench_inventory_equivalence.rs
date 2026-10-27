@@ -19,10 +19,10 @@
 //!   QT_ORACLE_PASCAL_BENCH_INVENTORY=/tmp/oracle-pascal-bench-inventory.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_bench_inventory_equivalence
 
+use quilltap_core::inventory::refs::{AggregateScope, InventoryContext};
 use quilltap_core::pascal::bench_inventory::{
     mock_inventory_context, parse_mock_inventory, MockInventoryRow,
 };
-use quilltap_core::inventory::refs::{AggregateScope, InventoryContext};
 use serde_json::{json, Map, Value};
 
 /// A parsed row in v4's shape order (`ref`, `state`, `count?`, `metadata?`).

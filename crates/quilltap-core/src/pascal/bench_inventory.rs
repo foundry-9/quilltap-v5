@@ -13,8 +13,8 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::api::zod_issues::ZodIssue;
 use super::inventory_subjects::INVENTORY_STATE_VALUES;
+use crate::api::zod_issues::ZodIssue;
 use std::collections::HashSet;
 
 use crate::inventory::refs::{
@@ -309,7 +309,10 @@ impl MockInventoryContext {
 }
 
 /// One scope's objects over the rows (v4's `scopeObjects` on the mock).
-fn scope_objects_of_rows(by_ref: &[(String, MockEntry)], scope: AggregateScope) -> Vec<AggregateObject> {
+fn scope_objects_of_rows(
+    by_ref: &[(String, MockEntry)],
+    scope: AggregateScope,
+) -> Vec<AggregateObject> {
     let mut objects = Vec::new();
     for (_, entry) in by_ref {
         if !in_scope(scope, entry.state) {

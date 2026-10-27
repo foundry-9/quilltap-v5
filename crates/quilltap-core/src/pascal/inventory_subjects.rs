@@ -26,8 +26,8 @@ use serde_json::Value;
 
 use super::custom_tool_types::{InventoryRef, StateRefFallback, ToolGate};
 use super::metadata_match::ResolvedValue;
-use crate::inventory::refs::{InventoryContext, InventoryState};
 use super::placeholders::{split_inventory_reference, InventoryPlaceholderField};
+use crate::inventory::refs::{InventoryContext, InventoryState};
 
 /// v4 `INVENTORY_STATE_VALUES` — the four states, as the schema's enum spells
 /// them.

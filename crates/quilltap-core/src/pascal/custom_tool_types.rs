@@ -1486,14 +1486,24 @@ struct EffectParts {
 impl EffectParts {
     /// The parsed type, when the effect is exactly one of its kinds.
     fn complete(&self) -> Option<CustomToolEffect> {
-        let body = match (&self.target, &self.value, &self.wardrobe, &self.inventory, &self.log) {
+        let body = match (
+            &self.target,
+            &self.value,
+            &self.wardrobe,
+            &self.inventory,
+            &self.log,
+        ) {
             (Some(target), Some(value), None, None, None) => CustomToolEffectBody::Write {
                 target: target.clone(),
                 value: value.clone(),
             },
-            (None, None, Some(gesture), None, None) => CustomToolEffectBody::Wardrobe(gesture.clone()),
+            (None, None, Some(gesture), None, None) => {
+                CustomToolEffectBody::Wardrobe(gesture.clone())
+            }
             // === P4.D329: the inventory gesture ===
-            (None, None, None, Some(gesture), None) => CustomToolEffectBody::Inventory(gesture.clone()),
+            (None, None, None, Some(gesture), None) => {
+                CustomToolEffectBody::Inventory(gesture.clone())
+            }
             // === P4.D331: the log line ===
             (None, None, None, None, Some(line)) => CustomToolEffectBody::Log(line.clone()),
             _ => return None,
@@ -4324,10 +4334,23 @@ fn validate_gates(tool: &QtapCustomTool, issues: &mut Vec<Issue>) {
         for (g, group) in gate.gate_groups().iter().enumerate() {
             let base = group_path(&[clause.to_string()], gate.is_any_of(), g);
             let keys = [
-                ("inventory", group.inventory.iter().flatten().map(|(k, _)| k).collect::<Vec<_>>()),
+                (
+                    "inventory",
+                    group
+                        .inventory
+                        .iter()
+                        .flatten()
+                        .map(|(k, _)| k)
+                        .collect::<Vec<_>>(),
+                ),
                 (
                     "inventoryCount",
-                    group.inventory_count.iter().flatten().map(|(k, _)| k).collect::<Vec<_>>(),
+                    group
+                        .inventory_count
+                        .iter()
+                        .flatten()
+                        .map(|(k, _)| k)
+                        .collect::<Vec<_>>(),
                 ),
             ];
             for (subject, keys) in keys {

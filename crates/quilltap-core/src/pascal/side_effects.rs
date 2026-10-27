@@ -79,14 +79,14 @@ use super::custom_tools::ResolvedInventoryGesture;
 use super::inventory_effects::{
     apply_inventory_effects, finish_inventory_effects, ApplyInventoryEffectsParams,
 };
-use crate::inventory::equip::InventoryChange;
-use crate::inventory::refs::InventoryContext;
-use crate::services::inventory_change_effects::PendingInventoryAnnouncements;
 use crate::clock::iso_from_unix_ms;
 use crate::db::runtime::WriterSet;
+use crate::inventory::equip::InventoryChange;
+use crate::inventory::refs::InventoryContext;
 use crate::progressions::{
     infer_increment, join_issues, parse_iso_instant, parse_progression, PROGRESSIONS_METADATA_KEY,
 };
+use crate::services::inventory_change_effects::PendingInventoryAnnouncements;
 use crate::state::cascade::StateCascadeResult;
 use crate::state::paths::{get_at_path, set_at_path, PathKey};
 
@@ -336,9 +336,12 @@ pub fn apply_custom_tool_effects(
         }
     };
 
-    (merge_applied(writes, changes, carried, logged), changed, tail)
+    (
+        merge_applied(writes, changes, carried, logged),
+        changed,
+        tail,
+    )
 }
-
 
 // === P4.D329 ===
 /// v4 `effects.filter(isApplicableInventoryEffect)`, each with its index.
