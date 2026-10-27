@@ -77,12 +77,6 @@ const PINNED_MESSAGES: [&str; 11] = [
     "Custom tool inventory effects applied",
 ];
 
-/// P4.D329 (17 (j)): the row whose gesture needs a REAL bag (v4's
-/// `loadInventoryContext`; on this branch C2's stand-in refuses, so the
-/// `pick_up` lands nothing and no Inventory line posts). MEASURED. A carved row
-/// that turns GREEN fails the run (lift it).
-const RED_UNTIL_UNION: &[&str] = &["inventory-pick-up-posted-now"];
-
 #[derive(serde::Deserialize)]
 struct Spec {
     #[serde(rename = "testPepperBase64")]
@@ -180,10 +174,49 @@ fn v5_rows(db: &Db) -> Vec<Value> {
 
 /// The pinned projection of one row, its minted id + `createdAt` replaced by
 /// placeholders. `pascalMeta` / `targetParticipantIds` stay the stored TEXT.
+/// The ids a `pick_up` MINTS (`next.created: true` → `next.item.id`), in
+/// order of first appearance across the rows' `pascalMeta` effects. Each side
+/// mints its own random UUID, so these — and only these — are masked
+/// positionally (`<minted#n>`); every fixture id is compared verbatim.
+fn minted_ids(rows: &[Value]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for r in rows {
+        let Some(meta) = r
+            .get("pascalMeta")
+            .and_then(Value::as_str)
+            .and_then(|m| serde_json::from_str::<Value>(m).ok())
+        else {
+            continue;
+        };
+        for e in meta["effects"].as_array().into_iter().flatten() {
+            if e["next"]["created"] == json!(true) {
+                if let Some(id) = e["next"]["item"]["id"].as_str() {
+                    if !out.iter().any(|o| o == id) {
+                        out.push(id.to_string());
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
 fn project(rows: &[Value]) -> Vec<Value> {
+    let minted = minted_ids(rows);
+    let mask = |v: Value| -> Value {
+        match v {
+            Value::String(mut s) => {
+                for (n, id) in minted.iter().enumerate() {
+                    s = s.replace(id.as_str(), &format!("<minted#{n}>"));
+                }
+                Value::String(s)
+            }
+            other => other,
+        }
+    };
     rows.iter()
         .map(|r| {
-            let get = |k: &str| r.get(k).cloned().unwrap_or(Value::Null);
+            let get = |k: &str| mask(r.get(k).cloned().unwrap_or(Value::Null));
             json!({
                 "role": get("role"),
                 "content": get("content"),
@@ -268,8 +301,6 @@ fn trigger_runner_matches_oracle() {
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
 
-        let carved = RED_UNTIL_UNION.contains(&name);
-        let failures_before = failures.len();
         let mut check = |what: &str, got: Value, wanted: Value| {
             if got != wanted {
                 eprintln!("MISMATCH case '{name}' {what}\n  left: {got}\n right: {wanted}");
@@ -320,13 +351,6 @@ fn trigger_runner_matches_oracle() {
             .any(|l| l.contains("Triggered custom tool ran but its announcement did not land"))
         {
             unposted_rows += 1;
-        }
-        if carved {
-            assert!(
-                failures.len() > failures_before,
-                "RED_UNTIL_UNION case '{name}' turned GREEN (P4.D328's loader landed?) — lift it"
-            );
-            failures.truncate(failures_before);
         }
     }
 

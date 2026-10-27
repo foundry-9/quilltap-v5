@@ -25,12 +25,9 @@
 //! side (`<minted#n>`, by first appearance) — everything the keystone spec
 //! names is compared verbatim.
 //!
-//! **RED BY DESIGN on this branch (R-1):** the bag loader is P4.D328's, so
-//! every step that reaches the load takes the stand-in's refusal (`skipped —
-//! the inventory could not be read`). Those steps are named by
-//! [`RED_UNTIL_UNION`] — the run FAILS if one turns green (lift it then) — and
-//! the steps that never reach the load (no gestures, nobody rolled) must be
-//! green now. GREEN at the union.
+//! The bag is loaded through P4.D328's real loader (v4's
+//! `loadInventoryContext`), so every step compares WHOLE — those that reach
+//! the load and those that return before it (no gestures, nobody rolled).
 //!
 //! The in-write lines run on the WRITER thread, which neither `captured_with`
 //! nor `global_capture` sees (memory note `capture-rig-writer-thread`) — so
@@ -41,10 +38,11 @@
 //! `stopped — could not be re-read`) needs a plant that throws on the SECOND
 //! pool read only; it is `inventory_effects.rs`'s rig test.
 //!
-//! Generate the fixture + oracle (Node 24, from the worktree pinned at
-//! `322a5488e`):
+//! Generate the fixture + oracle (Node 24, from the v4 checkout pinned at the
+//! oracle baseline — the sweep's `--v4`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
-//!   cd /tmp/qt-v4-pin-p4d329-322a5488e
+//!   mkdir -p /tmp/p4d329
+//!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/p4d329/qt-pie-main.db QT_FIXTURE_MOUNT_OUT=/tmp/p4d329/qt-pie-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-inventory-mutations-fixture.ts
 //!   QT_FIXTURE_INV_MAIN=/tmp/p4d329/qt-pie-main.db QT_FIXTURE_INV_MOUNT=/tmp/p4d329/qt-pie-mount.db \
@@ -64,45 +62,21 @@ use quilltap_core::pascal::custom_tool_types::{InventoryEffectAction, OutcomeSta
 use quilltap_core::pascal::custom_tools::{
     CustomToolRunResult, ResolvedEffect, ResolvedInventoryGesture, RollForm,
 };
-use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::pascal::side_effects::apply_effects_for_run;
+use quilltap_core::services::inventory_change_effects::PendingInventoryAnnouncements;
 use quilltap_core::test_support::CaptureLayer;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-/// The steps that reach the bag load — RED until P4.D328's loader lands.
-/// MEASURED: every step but the two that return before the load.
-const RED_UNTIL_UNION: &[&str] = &[
-    "no-such-chat",
-    "pick-up-general-archetype",
-    "pick-up-equip-false",
-    "pick-up-project-archetype-on-roster",
-    "pick-up-project-archetype-off-roster",
-    "pick-up-names-no-archetype",
-    "equip-absent-reference",
-    "equip-unresolvable-beside-resolvable",
-    "equip-then-unequip-sees-the-first",
-    "unequip-nothing-to-unequip",
-    "cap-breach-skips-then-next-lands",
-    "kit-equip-then-unequip-by-name",
-    "equip-by-archetype-title-picks-the-instance",
-    "unequip-by-kind-name",
-    "joined-turn-nets-one-entry",
-    "posted-now-three-lines",
-    "wren-in-the-inn",
-    "pick-up-breaches-the-cap",
-];
-
 const MODULE_CONTEXT: &str = "pascal.inventory-effects";
 /// The messages whose lines are this unit's (each carries the module's context).
-const MODULE_MESSAGES: [&str; 7] = [
+const MODULE_MESSAGES: [&str; 6] = [
     "Custom tool: no rolling character, inventory effects skipped",
     "Custom tool inventory effects skipped — the inventory could not be read",
     "Custom tool inventory effects skipped — no such chat",
     "Custom tool inventory effect not applied",
     "Custom tool inventory effects stopped — the inventory could not be re-read",
     "Custom tool inventory effects applied",
-    "Custom tool inventory change could not be announced",
 ];
 
 #[derive(Deserialize)]
@@ -301,6 +275,59 @@ impl Masker<'_> {
     }
 }
 
+/// The two legitimately nondeterministic shapes a MINTING step leaves, once
+/// the ids are masked:
+///
+/// - the carried set is stored SORTED by code unit (v4 `setEquippedInventory`,
+///   v5 `set_equipped_inventory`), so a minted id's POSITION follows its random
+///   value — each side mints its own. An array of strings holding a
+///   `<minted#n>` is compared as sorted (the fixture ids' order is the same
+///   sort on both sides, so nothing else is lost);
+/// - a created document's `createdAt` / `updatedAt` are the write's wall
+///   clock — masked to `<iso>`.
+fn settle_minted(text: &str) -> String {
+    fn walk(v: &mut Value) {
+        match v {
+            Value::Array(a) => {
+                a.iter_mut().for_each(walk);
+                let minted = a
+                    .iter()
+                    .any(|x| x.as_str().is_some_and(|s| s.starts_with("<minted#")));
+                if minted && a.iter().all(Value::is_string) {
+                    a.sort_by(|x, y| x.as_str().cmp(&y.as_str()));
+                }
+            }
+            Value::Object(o) => o.values_mut().for_each(walk),
+            // The `equippedInventory` cell is JSON TEXT (a string holding the
+            // map): settle inside it too.
+            Value::String(s) if s.contains("<minted#") => {
+                if let Ok(mut inner) = serde_json::from_str::<Value>(s) {
+                    if inner.is_object() || inner.is_array() {
+                        walk(&mut inner);
+                        *s = inner.to_string();
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    static ISO: OnceLock<regex::Regex> = OnceLock::new();
+    let iso = ISO
+        .get_or_init(|| regex::Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z").unwrap());
+    let text = if text.contains("<minted#") {
+        iso.replace_all(text, "<iso>").into_owned()
+    } else {
+        text.to_string()
+    };
+    match serde_json::from_str::<Value>(&text) {
+        Ok(mut v) => {
+            walk(&mut v);
+            v.to_string()
+        }
+        Err(_) => text,
+    }
+}
+
 fn is_uuid(b: &[u8]) -> bool {
     b.iter().enumerate().all(|(i, c)| match i {
         8 | 13 | 18 | 23 => *c == b'-',
@@ -354,6 +381,48 @@ fn dump_messages(db: &Db, chat_id: &str) -> Value {
         Ok(Value::Array(rows))
     })
     .expect("dump chat_messages")
+}
+
+/// The keystone builder never posts a message, so its main DB has no
+/// `chat_messages` table. v4's repository creates it LAZILY on the first
+/// insert (`CREATE TABLE IF NOT EXISTS`), which is how the oracle's posted-now
+/// lines land; v5 never creates a MAIN table lazily — every provisioned or
+/// v4-written instance that has chats carries it. So the v5 copy gets the
+/// table v4's first insert would make, from the committed fresh-schema dump
+/// (table + indexes), and only when it is absent.
+fn ensure_chat_messages(main: &Path, pepper: &str) {
+    let schema: Value = serde_json::from_str(include_str!(
+        "../../quilltap-core/src/services/provisioning/fresh_schema.json"
+    ))
+    .expect("fresh_schema.json");
+    let writer = quilltap_core::db::Writer::open_writable(main, pepper).expect("open main");
+    let conn = writer.connection();
+    let exists: bool = conn
+        .query_row(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'chat_messages'",
+            [],
+            |_| Ok(true),
+        )
+        .unwrap_or(false);
+    if exists {
+        return;
+    }
+    let ddl: Vec<&str> = schema["main"]
+        .as_array()
+        .expect("main DDL")
+        .iter()
+        .filter_map(Value::as_str)
+        .filter(|sql| {
+            sql.starts_with("CREATE TABLE \"chat_messages\" (")
+                || ((sql.starts_with("CREATE INDEX ") || sql.starts_with("CREATE UNIQUE INDEX "))
+                    && (sql.contains(" ON \"chat_messages\" (")
+                        || sql.contains(" ON chat_messages (")))
+        })
+        .collect();
+    assert!(!ddl.is_empty(), "no chat_messages DDL in fresh_schema.json");
+    for sql in ddl {
+        conn.execute_batch(sql).expect("create chat_messages");
+    }
 }
 
 fn link_ids(db: &Db) -> HashSet<String> {
@@ -467,7 +536,6 @@ fn pascal_inventory_effects_match_oracle() {
         .unwrap();
 
     let mut failed: Vec<String> = Vec::new();
-    let mut red_green: Vec<String> = Vec::new();
     let mut report: Vec<String> = Vec::new();
     let (mut landed_steps, mut module_lines) = (0usize, 0usize);
     for (step, want) in spec.steps.iter().zip(&oracle) {
@@ -480,6 +548,7 @@ fn pascal_inventory_effects_match_oracle() {
         let mount = scratch.path().join("mount.db");
         std::fs::copy(&fx_main, &main).expect("copy main");
         std::fs::copy(&fx_mount, &mount).expect("copy mount");
+        ensure_chat_messages(&main, &pepper);
         let db = Db::open(
             DbPaths {
                 main,
@@ -525,7 +594,10 @@ fn pascal_inventory_effects_match_oracle() {
         };
         let mut diffs: Vec<String> = Vec::new();
         let mut check = |what: &str, got: String, expected: String| {
-            let (g, w) = (got_mask.text(&got), want_mask.text(&expected));
+            let (g, w) = (
+                settle_minted(&got_mask.text(&got)),
+                settle_minted(&want_mask.text(&expected)),
+            );
             if g != w {
                 diffs.push(format!("{what}\n    v5: {g}\n    v4: {w}"));
             }
@@ -581,14 +653,9 @@ fn pascal_inventory_effects_match_oracle() {
         module_lines += want_lines.len();
         check("lines", format!("{got_lines:?}"), format!("{want_lines:?}"));
 
-        let red = RED_UNTIL_UNION.contains(&step.name.as_str());
-        match (diffs.is_empty(), red) {
-            (false, false) => {
-                failed.push(step.name.clone());
-                report.push(format!("step {}:\n  {}", step.name, diffs.join("\n  ")));
-            }
-            (true, true) => red_green.push(step.name.clone()),
-            _ => {}
+        if !diffs.is_empty() {
+            failed.push(step.name.clone());
+            report.push(format!("step {}:\n  {}", step.name, diffs.join("\n  ")));
         }
         drop(db);
     }
@@ -597,10 +664,6 @@ fn pascal_inventory_effects_match_oracle() {
         eprintln!("{r}");
     }
     assert!(failed.is_empty(), "steps differ from v4: {failed:?}");
-    assert!(
-        red_green.is_empty(),
-        "RED_UNTIL_UNION steps turned GREEN (P4.D328's loader landed?) — lift them: {red_green:?}"
-    );
     assert!(spec.steps.len() >= 20, "the step matrix looks short");
     assert!(
         landed_steps >= 12,
@@ -611,9 +674,7 @@ fn pascal_inventory_effects_match_oracle() {
         "only {module_lines} module lines compared"
     );
     eprintln!(
-        "OK: pascal inventory effects — {} steps ({} green now, {} red until the union).",
-        spec.steps.len(),
-        spec.steps.len() - RED_UNTIL_UNION.len(),
-        RED_UNTIL_UNION.len()
+        "OK: pascal inventory effects — {} steps, every one compared whole.",
+        spec.steps.len()
     );
 }

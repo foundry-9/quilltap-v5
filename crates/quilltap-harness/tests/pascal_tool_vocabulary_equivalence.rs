@@ -26,31 +26,6 @@ use quilltap_core::pascal::tool_vocabulary::{collect_tool_vocabulary, is_empty_v
 use serde::Deserialize;
 use serde_json::Value;
 
-/// P4.D333: the vocabulary keys the Inventory grammar lane (P4.D329) owns.
-/// v4 at the pin emits them on every row; this branch's Rust side has none
-/// yet, so they are dropped from v4's serialized object BY NAME (in place, key
-/// order kept) before the byte compare — loudly, once per run. Lifted by the
-/// unifier once P4.D329 lands (§S.5 (1)). `inventoryAggregates` is NOT here:
-/// P4.D333 emits it (always `[]` on this branch).
-const RESIDUE_KEYS_UNTIL_UNION: &[&str] = &["inventoryReads", "equips", "unequips", "picksUp"];
-
-/// v4's serialized vocabulary with [`RESIDUE_KEYS_UNTIL_UNION`] removed, and
-/// whether any was there to remove.
-fn mask_residue_keys(v4: &str) -> (String, bool) {
-    let mut object: serde_json::Map<String, Value> =
-        serde_json::from_str(v4).expect("v4's vocabulary is a JSON object");
-    let mut masked = false;
-    for key in RESIDUE_KEYS_UNTIL_UNION {
-        // `shift_remove`, never `remove`: the latter swaps the last key into
-        // the hole and the byte compare would see an order v4 never wrote.
-        masked |= object.shift_remove(*key).is_some();
-    }
-    (
-        serde_json::to_string(&object).expect("re-serializes"),
-        masked,
-    )
-}
-
 #[derive(Deserialize)]
 struct Row {
     id: String,
@@ -61,28 +36,6 @@ struct Row {
     /// The SERIALIZED vocabulary: every key, in v4's declaration order.
     vocabulary: String,
     empty: bool,
-}
-
-/// P4.D331 (R-H / §R.7): the `322a5488e` pin's vocabulary carries five keys
-/// the round's SIBLING lanes add (P4.D329's inventory reads / equips /
-/// unequips / picks-up, P4.D333's always-present `inventoryAggregates`). On
-/// this branch they are carved from v4's object by name — each must still be
-/// PRESENT there (a stale carve is red) — and the unifier lifts the list.
-const SIBLING_KEYS_UNTIL_UNION: &[&str] = &[
-    "inventoryReads",
-    "inventoryAggregates",
-    "equips",
-    "unequips",
-    "picksUp",
-];
-
-fn without_sibling_keys(vocabulary: &str) -> String {
-    let mut v: Value = serde_json::from_str(vocabulary).expect("an oracle vocabulary");
-    let obj = v.as_object_mut().expect("a vocabulary object");
-    for key in SIBLING_KEYS_UNTIL_UNION {
-        assert!(obj.remove(*key).is_some(), "stale sibling carve: {key}");
-    }
-    serde_json::to_string(&v).unwrap()
 }
 
 #[test]
@@ -106,7 +59,6 @@ fn pascal_tool_vocabulary_matches_oracle() {
     let mut seen_empty_vocabulary = false;
     let mut seen_multi_entry_list = false;
     let mut seen_multi_entry_progress = false;
-    let mut masked_rows = 0usize;
     let mut anyof_rows = 0usize;
     let mut brief_rows = 0usize;
 
@@ -119,10 +71,8 @@ fn pascal_tool_vocabulary_matches_oracle() {
 
         let vocabulary = collect_tool_vocabulary(&tool);
         let got = serde_json::to_string(&vocabulary).expect("a vocabulary serializes");
-        let (want, masked) = mask_residue_keys(&row.vocabulary);
-        masked_rows += usize::from(masked);
         assert_eq!(
-            got, want,
+            got, row.vocabulary,
             "case '{}': vocabulary differs (key order and presence included)",
             row.id
         );
@@ -181,11 +131,6 @@ fn pascal_tool_vocabulary_matches_oracle() {
     }
 
     assert!(count > 0, "oracle file looks empty");
-    if masked_rows > 0 {
-        eprintln!(
-            "RESIDUE (P4.D329, until union): {RESIDUE_KEYS_UNTIL_UNION:?} masked from v4's object on {masked_rows} of {count} rows"
-        );
-    }
     assert!(
         anyof_rows >= 3 && brief_rows >= 2,
         "the any-of / brief rows went missing ({anyof_rows} any-of, {brief_rows} brief)"

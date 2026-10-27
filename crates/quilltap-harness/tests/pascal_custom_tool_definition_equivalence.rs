@@ -40,46 +40,6 @@ use serde_json::{Map, Value};
 mod recorded_inventory;
 use recorded_inventory::RowBag;
 
-/// P4.D329: the rows of THIS lane's lane-private regen at the `322a5488e` pin
-/// that are P4.D333's to turn green (any-of, the `invalid_key` arm, the list
-/// rule) — MEASURED, not predicted. Pre-existing rows: the `invalid_key` arm's
-/// key sentences (`param-name-not-identifier` … `gate-progress-bad-key`), the
-/// gate's group-OR-array union (every gate rejection renders `availableWhen:
-/// <path>` at the pin), the effect `when`'s group-or-array union
-/// (`effect-when-*`), and the list rule (`withheld-key-holds-array-offers`).
-/// This lane's rows: the seven gate rejections, carved for the same union. On
-/// the union with P4.D333 every one is green; a carved row that turns green
-/// here fails the run.
-const P4D329_RESIDUE_P4D333: &[&str] = &[
-    "param-name-not-identifier",
-    "params-key-not-identifier",
-    "metadata-empty-string-key",
-    "gate-param-operand",
-    "gate-state-operand",
-    "gate-contains-param-operand",
-    "gate-empty-string-key",
-    "gate-ordering-string-operand",
-    "gate-ordering-boolean-operand",
-    "gate-contains-number-operand",
-    "gate-eq-object-operand",
-    "effect-when-unknown-outcome-state",
-    "effect-when-outcome-not-an-object",
-    "when-progress-bad-key-0",
-    "when-progress-bad-key-1",
-    "when-progress-bad-key-2",
-    "when-progress-bad-key-3",
-    "when-progress-bad-key-4",
-    "gate-progress-bad-key",
-    "withheld-key-holds-array-offers",
-    "inventory-gate-param-refused",
-    "inventory-gate-count-param-refused",
-    "aggregate-gate-param-refused",
-    "aggregate-gate-bad-key",
-    "inventory-gate-shape-order",
-    "inventory-gate-record-not-object",
-    "inventory-operand-in-gate-refused",
-];
-
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum Row {
@@ -128,86 +88,11 @@ enum Row {
     },
 }
 
-/// P4.D333 (R-F): the rows of the ONE shared corpus regeneration that this
-/// branch cannot answer because a SIBLING lane owns the grammar they exercise —
-/// the Inventory grammar (P4.D329: the `$inventory` operand / roll arms, the
-/// `inventory` / `inventoryCount` / `inventoryAggregate` subjects) and the Log
-/// (P4.D331: the `log` effect, the four-kind effect sentences). Each id is
-/// carved LOUDLY: the row still runs, a red one is reported by name and
-/// skipped, and a carved row that comes back GREEN fails the run so the carve
-/// cannot outlive its reason. The unifier lifts this list once P4.D329 and
-/// P4.D331 have merged (§S.5 (4)).
-///
-/// Measured at the pin on this branch (P4.D333): eight PRE-EXISTING rows whose
-/// sentence grows by the `$inventory` operand / roll branch (P4.D329), and four
-/// whose effect-kind sentence now names four kinds (P4.D329 + P4.D331).
-const RESIDUE_UNTIL_UNION: &[&str] = &[
-    // P4.D329 — `InventoryRefSchema` joins every operand and roll union.
-    "string-compared-with-value",
-    "roll-wrong-type",
-    "roll-null",
-    "roll-range-and-dice-both-broken",
-    "contains-number-substring",
-    "state-missing-fallback",
-    "state-array-fallback",
-    "state-not-quite-a-ref",
-    // P4.D329 + P4.D331 — the four-kind effect sentences.
-    "effects-both-halves",
-    "effects-target-and-wardrobe",
-    "effects-empty-object",
-    "effects-when-only",
-];
-
 #[derive(Deserialize)]
 struct TitleInput {
     name: String,
     title: Option<String>,
 }
-
-/// P4.D331: the sibling-owned rows the pin's grammar moves (see the carve
-/// at the foot of the test). Measured on this branch at `322a5488e`.
-const SIBLING_RESIDUE_UNTIL_UNION: &[&str] = &[
-    // A gate row (P4.D333's metadata list rule, `a53024d3c`).
-    "withheld-key-holds-array-offers",
-    "contains-bare-value",
-    "contains-number-substring",
-    "effect-when-empty",
-    "effect-when-outcome-not-an-object",
-    "effect-when-progress-empty-record",
-    "effect-when-unknown-outcome-state",
-    "gate-contains-number-operand",
-    "gate-contains-param-operand",
-    "gate-empty-metadata",
-    "gate-empty-string-key",
-    "gate-eq-object-operand",
-    "gate-missing-metadata",
-    "gate-ordering-boolean-operand",
-    "gate-ordering-string-operand",
-    "gate-param-operand",
-    "gate-progress-bad-key",
-    "gate-progress-empty-record",
-    "gate-state-operand",
-    "metadata-empty-object",
-    "metadata-empty-string-key",
-    "param-name-not-identifier",
-    "params-key-not-identifier",
-    "roll-null",
-    "roll-range-and-dice-both-broken",
-    "roll-wrong-type",
-    "state-array-fallback",
-    "state-missing-fallback",
-    "state-not-quite-a-ref",
-    "string-compared-with-value",
-    "unknown-key-inside-when",
-    "when-empty-params",
-    "when-progress-bad-key-0",
-    "when-progress-bad-key-1",
-    "when-progress-bad-key-2",
-    "when-progress-bad-key-3",
-    "when-progress-bad-key-4",
-    "when-progress-empty-record",
-    "when-tests-nothing",
-];
 
 #[test]
 fn pascal_custom_tool_definition_matches_oracle() {
@@ -234,10 +119,9 @@ fn pascal_custom_tool_definition_matches_oracle() {
     let mut defs_writing_progress = 0usize;
     let mut defs_testing_progress = 0usize;
     // P4.D305: a definition row's mismatch is RECORDED and the walk continues,
-    // so one red row (a sibling lane's residue at a shared pin) cannot hide
-    // every row after it; the family still fails, naming each row.
+    // so one red row cannot hide every row after it; the family still fails,
+    // naming each row.
     let mut failed_rows: Vec<String> = Vec::new();
-    let mut gate_residue_seen: Vec<String> = Vec::new();
     let mut defs_with_triggers = 0usize;
     let mut gates_with_bag = 0usize;
     let mut defs_with_wardrobe_effects = 0usize;
@@ -246,8 +130,6 @@ fn pascal_custom_tool_definition_matches_oracle() {
     let mut anyof_rows = 0usize;
     let mut gates_with_held_group = 0usize;
     let mut defs_with_brief = 0usize;
-    let mut residue_seen: Vec<String> = Vec::new();
-    let mut residue_green: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<Row>(line).unwrap() {
             Row::Title { id, input, out } => {
@@ -335,14 +217,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
                         }
                     }
                 }));
-                if RESIDUE_UNTIL_UNION.contains(&row_id.as_str()) {
-                    residue_seen.push(row_id.clone());
-                    if walked.is_err() {
-                        eprintln!("RESIDUE (sibling-owned, until union): definition row '{row_id}' differs — carved");
-                    } else {
-                        residue_green.push(row_id.clone());
-                    }
-                } else if walked.is_err() {
+                if walked.is_err() {
                     failed_rows.push(row_id.clone());
                 }
                 if row_id.starts_with("anyof-") {
@@ -363,18 +238,8 @@ fn pascal_custom_tool_definition_matches_oracle() {
                     .unwrap_or_else(|e| panic!("gate case '{id}': oracle input is not JSON: {e}"));
                 let tool = match safe_parse(&raw) {
                     Ok(tool) => tool,
-                    Err(e) if RESIDUE_UNTIL_UNION.contains(&id.as_str()) => {
-                        eprintln!("RESIDUE (sibling-owned, until union): gate row '{id}' does not load ({}) — carved", format_definition_issues(&e));
-                        residue_seen.push(id.clone());
-                        gates += 1;
-                        continue;
-                    }
                     Err(e) => panic!("gate case '{id}': definition does not load: {e:?}"),
                 };
-                if RESIDUE_UNTIL_UNION.contains(&id.as_str()) {
-                    residue_seen.push(id.clone());
-                    residue_green.push(id.clone());
-                }
                 if id.starts_with("anyof-") {
                     anyof_rows += 1;
                 }
@@ -382,7 +247,7 @@ fn pascal_custom_tool_definition_matches_oracle() {
                 assert_eq!(has_tool_gate(&tool), has_gate, "hasToolGate '{id}'");
 
                 // P4.D329: a verdict mismatch is RECORDED (as the definition
-                // rows are) so the residue carve can name it.
+                // rows are) so every red row is named.
                 let bag = RowBag::from_row(inventory.as_ref());
                 let row_id = id.clone();
                 let walked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -445,29 +310,10 @@ fn pascal_custom_tool_definition_matches_oracle() {
         }
     }
 
-    // P4.D329: the sibling-owned residue, both ways — a carved row that turns
-    // GREEN fails the run (lift it then).
-    let residue_green: Vec<&str> = P4D329_RESIDUE_P4D333
-        .iter()
-        .copied()
-        .filter(|id| !failed_rows.iter().any(|f| f == id))
-        .collect();
-    failed_rows.retain(|id| !P4D329_RESIDUE_P4D333.contains(&id.as_str()));
     assert!(
         failed_rows.is_empty(),
         "{} definition row(s) differ from the oracle: {failed_rows:?}",
         failed_rows.len()
-    );
-    // The carve cannot grow silently or outlive its reason: every carved id
-    // must be present in the corpus, and none may have turned green.
-    assert_eq!(
-        residue_seen.len(),
-        RESIDUE_UNTIL_UNION.len(),
-        "RESIDUE_UNTIL_UNION names ids the corpus lacks (saw {residue_seen:?})"
-    );
-    assert!(
-        residue_green.is_empty(),
-        "carved rows now MATCH the oracle — lift them from RESIDUE_UNTIL_UNION: {residue_green:?}"
     );
     assert!(
         anyof_rows >= 30,
@@ -480,10 +326,6 @@ fn pascal_custom_tool_definition_matches_oracle() {
     assert!(
         defs_with_brief >= 6,
         "only {defs_with_brief} accepted definitions carry an outcome `brief` — the floor is 6"
-    );
-    assert!(
-        residue_green.is_empty(),
-        "P4D329_RESIDUE_P4D333 rows turned GREEN — lift them: {residue_green:?}"
     );
     assert!(
         gates_with_bag >= 20,

@@ -138,36 +138,6 @@ struct Case {
     plant: Option<&'static [&'static str]>,
 }
 
-/// P4.D329: the mirror rows that need a REAL bag (v4's `loadInventoryContext`;
-/// on this branch C2's stand-in refuses, so every gate on `inventory`
-/// declines and every read takes the refusal). MEASURED. A carved row that
-/// turns GREEN fails the run (lift it).
-const RED_UNTIL_UNION: &[&str] = &[
-    "measure-twice-carrier-runs",
-    "measure-twice-probe-kind-name",
-    "measure-twice-probe-title-twin",
-    "measure-twice-probe-walkie",
-    "measure-twice-probe-spyglass-withheld",
-    "inventory-read-message-door",
-    "inventory-read-default-door",
-    "inventory-read-prompt-door",
-    "inventory-read-none-named",
-];
-
-/// Regenerated at the pin `322a5488e`, the rows whose `Available:` list v4's
-/// vault-only custom tools moved (a vault's tools are its own character's
-/// only) — P4.D332's to port; green at the union. MEASURED: the five
-/// pre-existing rows plus the two mirror rows whose answer is a refusal.
-const P4D332_RESIDUE: &[&str] = &[
-    "unknown-tool",
-    "gate-available-missing-key-unrunnable",
-    "gate-available-empty-sheet-unrunnable",
-    "gate-withheld-when-holds-unrunnable",
-    "progress-gate-running-span-unrunnable",
-    "measure-twice-other-instance-withheld",
-    "measure-twice-nobody-withheld",
-];
-
 /// P4.D305: the log lines this family pins (the oracle's `PINNED_MESSAGES`).
 const PINNED_MESSAGES: [&str; 6] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
@@ -891,12 +861,12 @@ fn run_custom_handler_matches_oracle() {
     let mut saw_progress_write = false;
     let mut saw_progress_create = false;
     let mut logged_rows = 0usize;
-    let (mut failed, mut red_green): (Vec<&str>, Vec<&str>) = (Vec::new(), Vec::new());
+    let mut failed: Vec<&str> = Vec::new();
     // P4.D333: the bug-257 tool plants applied, and the table-first lines pinned.
     let mut plants_applied = 0usize;
     let mut table_first_lines = 0usize;
     // P4.D329: the oracle's inventory lines across the mirror rows (each is
-    // compared on its row; a carved row stops at its first difference).
+    // compared on its row; a differing row stops at its first difference).
     let inventory_lines_in_oracle: usize = oracle
         .iter()
         .filter(|(n, _)| n.starts_with("measure-twice-") || n.starts_with("inventory-read-"))
@@ -908,7 +878,7 @@ fn run_custom_handler_matches_oracle() {
         .sum();
     for case in &cases {
         // The coverage floors read the ORACLE row only, so they are taken
-        // before the compare (a carved row still counts toward them).
+        // before the compare (a differing row still counts toward them).
         {
             let want = oracle
                 .get(case.name)
@@ -1173,19 +1143,12 @@ fn run_custom_handler_matches_oracle() {
             });
         }
         checked += 1;
-        let red = RED_UNTIL_UNION.contains(&case.name) || P4D332_RESIDUE.contains(&case.name);
-        match (walked.is_ok(), red) {
-            (false, false) => failed.push(case.name),
-            (true, true) => red_green.push(case.name),
-            _ => {}
+        if walked.is_err() {
+            failed.push(case.name);
         }
     }
 
     assert!(failed.is_empty(), "cases differ from v4: {failed:?}");
-    assert!(
-        red_green.is_empty(),
-        "carved cases turned GREEN (P4.D328's loader / P4.D332's roster landed?) — lift them: {red_green:?}"
-    );
     assert!(
         inventory_lines_in_oracle >= 20,
         "only {inventory_lines_in_oracle} inventory lines in the mirror rows"

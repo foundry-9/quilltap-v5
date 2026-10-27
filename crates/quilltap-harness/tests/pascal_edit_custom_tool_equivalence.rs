@@ -24,11 +24,10 @@
 //! (they carry the stage, not the text).
 //!
 //! `schema-examples-validate`: v4's own test asserts both worked examples pass
-//! `validateToolDefinitionText`. At the pin that holds; on this branch v5's
-//! grammar twin lacks the pin's any-of / inventory / log vocabulary until
-//! P4.D329 / P4.D331 / P4.D333 land, so the RANGE specimen is expected RED here
-//! and GREEN on the union; the DICE specimen is GREEN. Both verdicts are
-//! reported by name below (R-2): nothing is carved.
+//! `validateToolDefinitionText`. v5's grammar twin carries the pin's any-of /
+//! inventory / log vocabulary (P4.D329 / P4.D331 / P4.D333), so BOTH the RANGE
+//! and the DICE specimen must validate. Both verdicts are reported by name
+//! below (R-2): nothing is carved.
 //!
 //! Generate the oracle (Node 24; mirror to /tmp — jest ignores `.claude/`): the
 //! recipe is in `harness/oracle/cases/pascal-edit-custom-tool.test.ts`.
@@ -659,11 +658,10 @@ fn the_executor_arm_shapes_the_tool_result_like_v4() {
 }
 
 /// v4's `returns the published JSON Schema and specimens that pass the runtime
-/// validator` (R-2): the Rust twin of its second assertion. RED for the range
-/// specimen on this lane's own branch (the grammar twins are P4.D329 / P4.D331 /
-/// P4.D333's) and GREEN on the union; the dice specimen is GREEN. Both verdicts
-/// are PRINTED by name and BOTH asserted: the range red is the union
-/// obligation (§S.5 wire 9), carved nowhere.
+/// validator` (R-2): the Rust twin of its second assertion. Both specimens —
+/// the range one exercising the grammar twins P4.D329 / P4.D331 / P4.D333 own
+/// (§S.5 wire 9) — must be GREEN. Both verdicts are PRINTED by name and BOTH
+/// asserted, carved nowhere.
 #[test]
 fn schema_examples_validate() {
     let verdict = |label: &str, text: &str| -> bool {
@@ -683,7 +681,7 @@ fn schema_examples_validate() {
     };
     let range = verdict("range", CUSTOM_TOOL_SPEC_JSON);
     let dice = verdict("dice", CUSTOM_TOOL_SPEC_DICE_JSON);
-    // Nothing is carved (R-2): the RANGE red is the union obligation's tripwire.
+    // Nothing is carved (R-2).
     assert!(
         dice,
         "the dice specimen must validate against the runtime validator"
@@ -691,7 +689,7 @@ fn schema_examples_validate() {
     assert!(
         range,
         "schema-examples-validate[range]: the pin's CUSTOM_TOOL_SPEC.json does not validate \
-         against v5's grammar twin — EXPECTED RED on this lane's own branch (R-2 / R-E): it flips \
-         green when P4.D329 / P4.D331 / P4.D333 land (§S.5 wire 9)"
+         against v5's grammar twin (the any-of / inventory / log vocabulary of P4.D329 / \
+         P4.D331 / P4.D333 — §S.5 wire 9)"
     );
 }

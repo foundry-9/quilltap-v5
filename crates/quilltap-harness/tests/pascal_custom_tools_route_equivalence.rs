@@ -527,33 +527,7 @@ async fn custom_tools_route_matches_oracle() {
         .lines()
         .filter(|l| !l.trim().is_empty())
     {
-        let mut v: Value = serde_json::from_str(line).unwrap();
-        // P4.D332 carve — lifted at §S.5 (the vocabulary union): at `322a5488e`
-        // every listed tool's `references` carries five Inventory keys
-        // (`inventoryReads`, `inventoryAggregates`, `equips`, `unequips`,
-        // `picksUp`) that P4.D329 / P4.D333 port. Removed from the ORACLE side BY
-        // NAME; every other byte of the listing is compared.
-        // `get_mut`, never `v["body"]["tools"]`: IndexMut would INSERT a `null`
-        // `tools` into the run rows' bodies and redden them.
-        if let Some(tools) = v
-            .get_mut("body")
-            .and_then(|b| b.get_mut("tools"))
-            .and_then(Value::as_array_mut)
-        {
-            for t in tools {
-                if let Some(refs) = t.get_mut("references").and_then(Value::as_object_mut) {
-                    for key in [
-                        "inventoryReads",
-                        "inventoryAggregates",
-                        "equips",
-                        "unequips",
-                        "picksUp",
-                    ] {
-                        refs.remove(key);
-                    }
-                }
-            }
-        }
+        let v: Value = serde_json::from_str(line).unwrap();
         oracle.insert(v["name"].as_str().unwrap().to_string(), v);
     }
 
@@ -922,8 +896,7 @@ async fn custom_tools_route_matches_oracle() {
     let mut saw_progress_write = false;
     let mut saw_unnamed_seat_wrote_nothing = false;
     // P4.D305: a case's mismatch is RECORDED and the walk continues, so one
-    // red case (a sibling lane's residue at the shared pin — P4.D306's tool
-    // vocabulary on the `list` rows) cannot hide every case after it. The
+    // red case cannot hide every case after it. The
     // family still fails, naming each case and comparand.
     let mut failures: Vec<String> = Vec::new();
     macro_rules! soft_eq {

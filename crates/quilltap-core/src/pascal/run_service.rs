@@ -41,10 +41,10 @@ use super::roster::DiscoveredCustomTool;
 use super::side_effects::{apply_effects_for_run, AppliedEffect};
 // === P4.D329: the rolling character's bag ===
 use super::tool_vocabulary::collect_tool_vocabulary;
-use crate::inventory::context::load_inventory_context;
-use crate::inventory::refs::InventoryContext;
 use crate::db::runtime::Db;
 use crate::db::DbError;
+use crate::inventory::context::load_inventory_context;
+use crate::inventory::refs::InventoryContext;
 use crate::jsstr::js_trim;
 use crate::progressions::flatten_progressions;
 use crate::services::pascal_writer::{
@@ -819,8 +819,11 @@ mod tests {
 #[cfg(test)]
 mod inventory_read_tests {
     //! P4.D329 (R-15): `load_run_inventory`'s capture pins, each with its
-    //! silence leg. On this branch the loader is C2's stand-in, so the WARN's
-    //! `error` field is CARVED by name — the line, and every other field, pinned.
+    //! silence leg. The loader is the real `load_inventory_context` (v4's
+    //! `loadInventoryContext`), whose reads are v4's fallbacks: on a fresh
+    //! instance (no such character, no such chat) it loads an empty bag
+    //! SILENTLY. The WARN arm is a read that fails outright — a degraded mount
+    //! index — and is pinned whole.
     use super::*;
     use crate::test_support::global_capture;
     use serde_json::json;
@@ -829,6 +832,11 @@ mod inventory_read_tests {
     const CHAR: &str = "a1000000-0000-4000-8000-00000000000a";
 
     fn db() -> (Db, tempfile::TempDir) {
+        open(true)
+    }
+
+    /// A fresh instance, its mount index attached or not (degraded).
+    fn open(with_mount: bool) -> (Db, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let data = dir.path().join("data");
         std::fs::create_dir_all(&data).unwrap();
@@ -836,7 +844,7 @@ mod inventory_read_tests {
         let db = Db::open(
             crate::db::runtime::DbPaths {
                 main: data.join("quilltap.db"),
-                mount_index: Some(data.join("quilltap-mount-index.db")),
+                mount_index: with_mount.then(|| data.join("quilltap-mount-index.db")),
                 llm_logs: None,
             },
             PEPPER,
@@ -898,9 +906,11 @@ mod inventory_read_tests {
     #[test]
     fn every_door_reads_the_bag() {
         let (db, _dir) = db();
+        let (degraded, _ddir) = open(false);
         // A message placeholder, a parameter default, a consult prompt, a
-        // gesture and an aggregate: each names the bag, so each reads it (and,
-        // on this branch, takes the stand-in's refusal).
+        // gesture and an aggregate: each names the bag, so each reads it — a
+        // bag on a readable instance (silently: v4's fallback reads), the
+        // WARN when the read itself fails.
         for extra in [
             json!({ "outcomes": [{ "when": true, "message": "{{inventory.sword.title}}", "state": "info" }] }),
             json!({ "parameters": { "b": { "type": "number", "default": { "$inventory": "sword.metadata.bonus", "fallback": 0 } } } }),
@@ -908,16 +918,18 @@ mod inventory_read_tests {
             json!({ "effects": [{ "inventory": { "action": "unequip", "items": ["cloak"] } }] }),
             json!({ "availableWhen": { "inventoryAggregate": { "owned.count": { "gte": 1 } } } }),
         ] {
-            let (bag, lines) = read(&db, &definition(extra.clone()), Some(CHAR));
+            let d = definition(extra.clone());
+            let (bag, lines) = read(&db, &d, Some(CHAR));
+            assert!(bag, "{extra}");
+            assert!(lines.is_empty(), "{extra}: {lines:?}");
+
+            let (bag, lines) = read(&degraded, &d, Some(CHAR));
             assert!(!bag, "{extra}");
-            assert_eq!(lines.len(), 1, "{extra}: {lines:?}");
-            let line = &lines[0];
-            let carved = &line[..line.find(" error=").expect("the refusal rides `error`")];
             assert_eq!(
-                carved,
-                format!(
-                    "WARN quilltap::pascal Custom tool run: the rolling character's inventory could not be read; inventory tests decline context=pascal.run-service chatId=chat-1 characterId={CHAR} tool=probe"
-                ),
+                lines,
+                vec![format!(
+                    "WARN quilltap::pascal Custom tool run: the rolling character's inventory could not be read; inventory tests decline context=pascal.run-service chatId=chat-1 characterId={CHAR} tool=probe error=partition not available: mountIndex"
+                )],
                 "{extra}"
             );
         }

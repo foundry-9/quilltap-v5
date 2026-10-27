@@ -12,9 +12,7 @@
 //! decline reasons a test hands its hook as a list.
 //!
 //! The LIST-valued `holds` rows compare entry by entry through the shared
-//! table's list rule — P4.D333's (`metadata_match.rs`). On a branch without it
-//! they decline; they are named by [`LIST_RULE_RESIDUE`], which fails the run
-//! if a carved row turns green (lift it then).
+//! table's list rule — P4.D333's (`metadata_match.rs`).
 //!
 //! Generate the oracle output (Node 24 `~/.nvm/versions/node/v24.13.1/bin`):
 //!   cd ~/source/quilltap-server
@@ -41,31 +39,6 @@ use serde_json::{json, Map, Value};
 
 mod recorded_inventory;
 use recorded_inventory::RowBag;
-
-/// The list-valued `holds` rows with a bag (every one: an un-folded
-/// `metadata.<key>` is a list even over one string entry) — they decline on a
-/// branch without P4.D333's per-entry list rule (`metadata_match.rs`), or
-/// decline for the old reason (`the key holds an array…` where the pin says
-/// `fold it`), and are green on the union. A carved row that turns GREEN fails
-/// the run. MEASURED: exactly the 16 `list: true` rows whose bag is not null.
-const LIST_RULE_RESIDUE: &[&str] = &[
-    "holds-real-names-neq-kit",
-    "holds-mock-list-eq",
-    "holds-empty-names-eq",
-    "holds-empty-names-neq",
-    "holds-empty-names-ncontains",
-    "holds-s8-equipped-string",
-    "holds-s8-equipped-string-stowed",
-    "holds-s8-owned-string-stowed",
-    "holds-s8-owned-string-shelf",
-    "holds-s8-reachable-string-shelf",
-    "holds-s8-equipped-list",
-    "holds-s8-reachable-list-shelf",
-    "holds-s8-names-exact",
-    "holds-s8-names-not-prefix",
-    "holds-s8-names-not-case",
-    "holds-list-ordering-declines",
-];
 
 /// `-0`-safe number encoding, the oracle's `enc`.
 fn enc_number(n: f64) -> String {
@@ -164,7 +137,6 @@ fn pascal_inventory_aggregate_matches_oracle() {
     let (mut parses, mut values, mut holds) = (0usize, 0usize, 0usize);
     let (mut recorded_rows, mut mock_rows, mut declined_rows) = (0usize, 0usize, 0usize);
     let mut failed: Vec<String> = Vec::new();
-    let mut residue_green: Vec<String> = Vec::new();
 
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
@@ -240,11 +212,8 @@ fn pascal_inventory_aggregate_matches_oracle() {
                 other => panic!("unknown row kind '{other}'"),
             }
         }));
-        let residue = LIST_RULE_RESIDUE.contains(&id.as_str());
-        match (walked.is_ok(), residue) {
-            (false, false) => failed.push(id.clone()),
-            (true, true) => residue_green.push(id.clone()),
-            _ => {}
+        if walked.is_err() {
+            failed.push(id.clone());
         }
         match row["kind"].as_str().unwrap() {
             "parse" => parses += 1,
@@ -266,10 +235,6 @@ fn pascal_inventory_aggregate_matches_oracle() {
 
     assert!(failed.is_empty(), "rows differ from v4: {failed:?}");
     assert!(
-        residue_green.is_empty(),
-        "LIST_RULE_RESIDUE rows turned GREEN (P4.D333's list rule landed?) — lift them: {residue_green:?}"
-    );
-    assert!(
         parses >= 25 && values >= 20 && holds >= 40,
         "oracle looked short: {parses} parse / {values} value / {holds} holds rows"
     );
@@ -280,7 +245,6 @@ fn pascal_inventory_aggregate_matches_oracle() {
     assert!(mock_rows >= 4, "only {mock_rows} rows read the bench's bag");
     assert!(declined_rows >= 8, "only {declined_rows} rows declined");
     eprintln!(
-        "OK: pascal inventoryAggregate matched oracle ({parses} parse, {values} value, {holds} holds; residue {} by name).",
-        LIST_RULE_RESIDUE.len()
+        "OK: pascal inventoryAggregate matched oracle ({parses} parse, {values} value, {holds} holds)."
     );
 }

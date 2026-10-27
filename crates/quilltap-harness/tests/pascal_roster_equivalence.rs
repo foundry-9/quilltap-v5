@@ -158,15 +158,8 @@ fn assert_roster_eq(got: &Value, want: &Value, id: &str) {
     }
 }
 
-/// P4.D333: the cases a regen at v4 `322a5488e` moves for a SIBLING lane's
-/// reason, carved by id until the union. `full-precedence-chain` is
-/// P4.D332's (`cfa0cba29` retires the `participant` tier, so v4 deals `b`
-/// from `group`); a carved case that turns green fails the run.
-const RESIDUE_UNTIL_UNION: &[&str] = &["full-precedence-chain"];
-
 #[test]
 fn pascal_roster_matches_oracle() {
-    let mut residue_seen = 0usize;
     let mut withheld_lines_compared = 0usize;
     let mut anyof_withheld_lines = 0usize;
     let path = match std::env::var("QT_ORACLE_PASCAL_DISCOVERY") {
@@ -375,17 +368,7 @@ fn pascal_roster_matches_oracle() {
         }
 
         let got = serialize(&roster);
-        if RESIDUE_UNTIL_UNION.contains(&id.as_str()) {
-            let walked = std::panic::catch_unwind(|| assert_roster_eq(&got, &row["output"], &id));
-            assert!(
-                walked.is_err(),
-                "case '{id}' now MATCHES the oracle — lift it from RESIDUE_UNTIL_UNION"
-            );
-            eprintln!("RESIDUE (P4.D332, until union): roster case '{id}' differs — carved");
-            residue_seen += 1;
-        } else {
-            assert_roster_eq(&got, &row["output"], &id);
-        }
+        assert_roster_eq(&got, &row["output"], &id);
         assert_eq!(
             json!(mounts_read.iter().collect::<Vec<_>>()),
             row["mountsRead"],
@@ -461,11 +444,6 @@ fn pascal_roster_matches_oracle() {
     assert!(
         saw_bag_lines >= 3,
         "only {saw_bag_lines} scenarios logged a bag line"
-    );
-    assert_eq!(
-        residue_seen,
-        RESIDUE_UNTIL_UNION.len(),
-        "a carved case went missing"
     );
     assert!(
         withheld_lines_compared >= 10 && anyof_withheld_lines >= 2,

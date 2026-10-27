@@ -52,16 +52,21 @@ use super::custom_tool_types::InventoryEffectAction;
 use super::side_effects::AppliedEffect;
 use super::wardrobe_effects::IndexedAppliedEffect;
 use crate::db::runtime::Db;
+use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
 use crate::inventory::equip::{
     equip_items_holding_lock, pick_up_items_holding_lock, unequip_items_holding_lock, EquipChat,
     EquipOptions, InventoryChange, InventoryChangeContext, InventoryChangeProvenance,
     PickUpOptions,
 };
+use crate::inventory::refs::{
+    pick_for_gesture, resolve_inventory_ref, Gesture, InventoryContext, ResolveInventoryRefOptions,
+    ResolvedInventoryPool,
+};
 use crate::inventory::resolve::inventory_label;
 use crate::inventory::types::{InventoryFields, InventoryKind, ResolvedInventoryItem};
-use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
-use crate::services::inventory_change_effects::{notify_inventory_changed, PendingInventoryAnnouncements};
-use crate::inventory::refs::{pick_for_gesture, Gesture, resolve_inventory_ref, InventoryContext, ResolveInventoryRefOptions, ResolvedInventoryPool};
+use crate::services::inventory_change_effects::{
+    notify_inventory_changed, PendingInventoryAnnouncements,
+};
 
 pub use super::custom_tools::ResolvedInventoryGesture;
 
@@ -586,9 +591,11 @@ mod tests {
     //! The applier's capture pins (R-12), each with its silence leg, over a
     //! real provisioned `Db` (the pass runs on the caller thread here — the
     //! seam's writer-thread lines are `pascal_inventory_effects_equivalence`'s).
-    //! On this branch the bag loader is C2's stand-in, so the refusal's `error`
-    //! field is CARVED by name; the line's presence and every other field are
-    //! pinned.
+    //! The bag loader is the real `load_inventory_context` (v4's
+    //! `loadInventoryContext`), whose reads are v4's fallbacks: on a fresh
+    //! instance it loads an empty context, and the missing chat is v4's
+    //! `no such chat` arm. The `could not be read` arm is a degraded mount
+    //! index (the read itself fails).
     use super::*;
     use crate::pascal::custom_tools::ResolvedInventoryGesture;
     use crate::test_support::global_capture;
@@ -656,30 +663,6 @@ mod tests {
         (outcome, lines)
     }
 
-    /// Drop one field (`name=value`, up to the next ` <ident>=` or the end).
-    fn carve(line: &str, name: &str) -> String {
-        let key = format!(" {name}=");
-        let Some(start) = line.find(&key) else {
-            return line.to_string();
-        };
-        let after = &line[start + key.len()..];
-        let mut end = after.len();
-        let mut search = 0;
-        while let Some(off) = after[search..].find(' ') {
-            let cand = &after[search + off + 1..];
-            let ident = cand
-                .bytes()
-                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
-                .count();
-            if ident > 0 && cand[ident..].starts_with('=') {
-                end = search + off;
-                break;
-            }
-            search += off + 1;
-        }
-        format!("{}{}", &line[..start], &after[end..])
-    }
-
     #[test]
     fn no_gestures_is_silent() {
         let (db, _dir) = db();
@@ -707,22 +690,19 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_bag_warns_and_lands_nothing() {
+    fn a_missing_chat_warns_no_such_chat() {
+        // v4: the context loads (its reads are fallbacks), then
+        // `repos.chats.findById` answers null — `skipped — no such chat`.
         let (db, _dir) = db();
         let g = equip(&["coin"]);
         let (out, lines) = apply(&db, true, Some(CHAR), &[(0, &g)]);
         assert!(out.applied.is_empty() && out.changes.is_empty() && !out.finished);
-        assert_eq!(lines.len(), 1, "{lines:?}");
-        assert!(
-            lines[0].contains(" error="),
-            "the refusal rides `error`: {}",
-            lines[0]
-        );
         assert_eq!(
-            carve(&lines[0], "error"),
-            format!(
-                "WARN quilltap::pascal Custom tool inventory effects skipped — the inventory could not be read context=pascal.inventory-effects chatId=chat-1 tool=satchel characterId={CHAR}"
-            )
+            lines,
+            vec![
+                "WARN quilltap::pascal Custom tool inventory effects skipped — no such chat context=pascal.inventory-effects chatId=chat-1 tool=satchel"
+                    .to_string()
+            ]
         );
     }
 

@@ -18,8 +18,9 @@
 //! paths, hence the /tmp mirror):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
 //!   TMPO=/tmp/qt-pascal-exec-oracle
-//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases"
+//!   rm -rf "$TMPO"; mkdir -p "$TMPO/cases" "$TMPO/lib"
 //!   cp "$V5W/harness/oracle/cases/pascal-custom-tools-execution.test.ts" "$TMPO/cases/"
+//!   cp "$V5W/harness/oracle/lib/recorded-inventory.ts" "$TMPO/lib/"
 //!   cd ~/source/quilltap-server
 //!   QT_ORACLE_OUT=/tmp/oracle-pascal-execution.ndjson \
 //!     $N/npx jest --silent --watchman=false --testTimeout=120000 \
@@ -276,18 +277,6 @@ fn tool_of(row: &Value, id: &str) -> quilltap_core::pascal::custom_tool_types::Q
     })
 }
 
-/// P4.D329: the list-valued `inventoryAggregate` rows — they compare entry by
-/// entry through P4.D333's list rule (`metadata_match.rs`) and decline on a
-/// branch without it (the two `titles` rows decline where v4 holds; the miss
-/// row logs the old `the key holds an array` decline v4 no longer logs).
-/// MEASURED: exactly these three. A carved row that turns GREEN fails the run
-/// (lift it).
-const LIST_RULE_RESIDUE: &[&str] = &[
-    "inv-agg-titles-param",
-    "inv-agg-titles-param-miss",
-    "inv-agg-owned-titles",
-];
-
 #[test]
 fn pascal_custom_tools_execution_matches_oracle() {
     // The consult seam made `execute_custom_tool` async; everything else in this
@@ -312,7 +301,6 @@ fn pascal_custom_tools_execution_matches_oracle() {
     let mut coverage = std::collections::BTreeMap::<String, usize>::new();
 
     let mut failed: Vec<String> = Vec::new();
-    let mut residue_green: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).unwrap();
         let kind = row["kind"].as_str().unwrap().to_string();
@@ -617,11 +605,8 @@ fn pascal_custom_tools_execution_matches_oracle() {
                 false
             }
         }));
-        let residue = LIST_RULE_RESIDUE.contains(&id.as_str());
-        match (&walked, residue) {
-            (Err(_), false) => failed.push(id.clone()),
-            (Ok(_), true) => residue_green.push(id.clone()),
-            _ => {}
+        if walked.is_err() {
+            failed.push(id.clone());
         }
         if walked.unwrap_or(false) {
             *coverage.entry("inventoryLines".to_string()).or_default() += 1;
@@ -656,10 +641,6 @@ fn pascal_custom_tools_execution_matches_oracle() {
     }
 
     assert!(failed.is_empty(), "rows differ from v4: {failed:?}");
-    assert!(
-        residue_green.is_empty(),
-        "LIST_RULE_RESIDUE rows turned GREEN (P4.D333's list rule landed?) — lift them: {residue_green:?}"
-    );
     assert!(!counts.is_empty(), "oracle file looks empty");
     for key in [
         "renderTemplate:progress",
