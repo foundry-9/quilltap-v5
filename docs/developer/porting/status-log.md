@@ -192001,3 +192001,105 @@ The order's eight rows (§ 💸), unchanged — every one needs the union build 
 ### Versions at close
 
 core **0.0.1326** (from `INVENTORY`'s 0.0.1324: +1 the lint + hooks, +1 the mutation calls); host / web / cli / tauri / SPA unchanged; harness frozen 0.0.1110.
+
+
+## P4.D337 — bug 255: Ariel reads full-screen programs — `terminal_screen` over `vt100` 0.18.1, the FIFTEENTH D23 move's boot ensure, `terminal_read` rendered, the host's per-session screen + serialised summaries, the geometry wire (lane `claude/p4.d337-bug-255-terminal-vt100-e8f2f5`, pin `322a5488e`, 2026-10-26)
+
+Session started in the app's worktree `ecstatic-cohen-e8f2f5` (branch `claude/ecstatic-cohen-e8f2f5` at `main` `914096110`, no commits) and switched `-c` onto `claude/p4.d337-bug-255-terminal-vt100-e8f2f5` at `INVENTORY` = `c065d7e2f` (confirmed against P4.D324's lane-branch status header `19f67712b` and the shared notes' `p4.d324-INVENTORY.md`). No pre-start from `main`, so no rebase. Pin worktree `/tmp/qt-v4-pin-p4d337-322a5488e` (`rev-parse` `322a5488e7bd…`; `package.json` `4.11.0-dev.53`; the three symlink classes, then `rm node_modules && npm ci --offline` → `openai` 7.34.0, `@xterm/headless` **6.0.0**). Bug 255's files did not move after `a6292f169` (`git diff a6292f169 322a5488e -- lib/terminal lib/tools/terminal-read-tool.ts lib/tools/handlers/terminal-handler.ts lib/services/ariel-notifications lib/schemas/terminal.types.ts migrations/scripts/add-terminal-session-geometry-v1.ts` EMPTY).
+
+**R-C's YES, recorded:** the human, in the `/setupphase` session, 2026-10-21 — "Approved: vt100 0.18.1 for P4.D337 and regress for P4.D331's regexp() unit." `vt100 = "0.18.1"` in `crates/quilltap-core/Cargo.toml`. The lock gained exactly `vt100` 0.18.1, `vte` 0.15.0, `unicode-width` 0.2.2 (`itoa` was already present). `quilltap-sqlite3mc-sys` recompiled once in this fresh worktree — the path-crate mtime effect every new worktree pays, NOT a lock move (its entry is unchanged in `Cargo.lock`).
+
+**§2 probe (an observation, §R.2), 2026-10-26 22:45 CDT:** branch `main`, tree clean; `git log a0905454b..main` = **14 NEW commits** (`9faed0c7e` … `85c002822`, incl. `85c002822` "Fix terminal Kill ignored by bash; deleted chats leave shells running (#119)" — a terminal-adjacent fix past the pin); `bugfix` unmoved at `489b228b6`. Recorded, the lane continued on the pin; nothing past `322a5488e` was ported.
+
+### Commits
+
+- `53ee8d589` unit 1 — `terminal_screen` over `vt100` 0.18.1 + `terminal_screen_equivalence` (core 0.0.1325).
+- `b55111390` unit 2 — the geometry columns, `terminal_sessions_geometry_repair`, the host block, the mirror-boot, zero-rerun, the ensure family, `host_boot_p4d337_terminal_geometry` (core 0.0.1326, host 0.0.213).
+- `a0e41bd1f` unit 3 — `terminal_read` rendered (the `TerminalReadSource` seam), the catalog row, the host driver (screen, `ariel_pending`, the serialised flush, resize, geometry, `render_screen`), Ariel's `kind` + heading, `PtySessionMeta.cols/rows`, the log lines, the tools / Ariel / definitions families grown (core 0.0.1327, host 0.0.214).
+- `b4227d01b` unit 4 — the REST meta's `cols` / `rows`, the SPA's protocol type (web 0.0.244, SPA 0.5.882).
+- (close) the lane record + the order's status header (docs only).
+
+### Red-first (item 1)
+
+- **The NEW tier-1 family** `terminal_screen_equivalence` — mutation runs, each red: (a) `translate_to_string(false)` without blank padding → 41 mismatched outputs; (b) the join guard without `y > from` → **GREEN, an EQUIVALENT mutant measured**: inside `readLines` `out` is empty exactly when `y == from` (every iteration pushes or appends), so `y > from` is redundant beside `out.length > 0`; the behaviour was inverted instead (both first-row guards dropped) → 4 mismatches, led by `edge-wrapped-first-row`; (c) the marker registered AFTER the null decision → 1 (`edge-n-marker-on-blank-window`); (d) the trailing-blank trim by Rust `str::trim` → first GREEN (a corpus gap: the JS and Rust whitespace sets differ only in U+FEFF / U+0085 and no row reached a blank last line through them) → row `edge-blank-run-js-whitespace` added (a wrapped run of spaces carrying a combined U+FEFF) → 2 mismatches.
+- **The NEW tier-2 family** `terminal_sessions_geometry_ensure_equivalence` — `GEOMETRY_DECL = "INTEGER"` red on shape (a); the column order `rows` then `cols` red on shape (a).
+- **From the pin against the `INVENTORY` tip (unported):** `terminal_sessions_tier2` RED on the row dump (the geometry cells); `terminal_tools` RED at case 0 (`tail-default-live` — the strip vs the emulator: 10 lines vs v4's 4); `tool_definitions` RED (first on `runCustom` — a sibling's row; then `terminal_read`); `ariel_writers_tier3` RED at `chat_messages` row 0 `content` (the standing cell, R-10); `zero_migrations_rerun` (oracle half first, v5's ensure call removed) RED — `planted: v4 re-ran ["add-terminal-session-geometry-v1"] after v5's chain` (and both `HISTORY_STAMP_RED_FIRST` / `STAMP_RULE_RED_FIRST` saw the extra id).
+
+### What vt100 does differently from xterm 6.0.0 — MEASURED by the corpus (69 cases)
+
+The survey's §6.2 list predicted most rows equal. The corpus measured six behaviour classes where vt100 differs; each is reproduced in `TerminalScreen::write`'s input normaliser and pinned GREEN:
+
+1. **Character widths — the big one.** xterm.js's default Unicode version is **6** (`UnicodeV6.wcwidth`): every emoji measured (⏺ 😀 ⭐ ☕ ⚡ 🔥) is ONE cell there; vt100 sizes by `unicode-width` 0.2 (most of those are two) and drops U+FFFD (`unhandled_char`). A character whose two widths differ is fed to vt100 as a private stand-in of xterm's width (Plane-16 PUA width 1, unassigned Plane-3 width 2, VS-supplement width 0 — each slot probed on vt100 itself) and mapped back on read; U+FE0F is always stood in for (vt100 widens a cell on it). The xterm table (129 BMP + 13 astral combining ranges) is copied from the pin's bundle.
+2. **C1 controls and 7-bit `ESC D` / `ESC E`** — xterm executes them; vt100 drops C1 and ignores both escapes.
+3. **A wide character at the right edge** — xterm wraps and flags the continuation; vt100 (tmux's rule) flags the wrap only when the last cell has content.
+4. **`?47` / `?1047` / `?1049` h / l** — xterm carries the cursor across the switch and no-ops a repeat entry; vt100 homes the cursor and re-clears on every `?1049h`.
+5. **`ED 0/1/2` disposes the summary marker** on a reset line (`_resetBufferLine` → `clearMarkers`).
+6. **xterm's circular buffer reads `getLine(length)` as line 0 when full** — the last line's `continues` then reads line 0's wrap flag (`edge-wrapped-first-row` renders `"Z    "`); reproduced.
+
+Plus a vt100 trap the corpus would not show directly: viewing scrollback (`set_scrollback`) GROWS trimmed rows and `Row::grow` clears their wrap flag — so the scrollback's wrap flags are read from `write_contents_formatted_basic(Full)` over the untouched screen (a `\n` separates exactly the non-wrapped rows) and the cells from a clone.
+
+**Named both-ways divergence tables** (`terminal_screen_equivalence::DIVERGENCES`): `SCREEN_RESIZE_NO_REFLOW` (R-D, ruled — `resize-reflow-narrow`, `resize-reflow-wide`); `SCREEN_ERASE_UNLINKS_CONTINUATION` (MEASURED — xterm clears `isWrapped` on an erase from column 0, `EL 0` at the margin / `EL 2`; vt100 keeps its flag on the row above and has no setter — `edge-el-clears-continuation`, `edge-el2-clears-continuation`); `SCREEN_MARKER_LINE_SPLICE` (MEASURED — xterm moves the marker on `IL` / `DL` / region scrolls; `edge-marker-insert-line`[1]; the `DL` row happens to match). Recorded, no row: `HTS` tab stops; a C1 control inside an OSC / DCS string; vt100's ~18-byte combining cap; the stale circular-slot read after `ESC[3J` on a once-full buffer. ICH / DCH inside a wrapped line and a readline-style long command MATCH (rows kept).
+
+### Families (all from the lane pin, lane-private paths under `/tmp/p4d337/`)
+
+| family | tier | result |
+|---|---|---|
+| `terminal_screen_equivalence` (NEW) | 1 | GREEN — 69 cases, every output byte-equal; 5 rows in `DIVERGENCES` both ways |
+| `terminal_sessions_geometry_ensure_equivalence` (NEW) | 2 | GREEN — modes a–e |
+| `terminal_sessions_tier2` (grown) | 2 | GREEN — 6 rows incl. geometry + the exit / reconcile stamps |
+| `terminal_tools` (grown) | 2 | GREEN — 15 reads byte-exact + 13 captured v4 log lines |
+| `tool_definitions` (row regenerated) | 1 | GREEN — 63 tools + canonical (`SIBLING_CATALOG_ENTRIES_UNTIL_UNION`: `runCustom` P4.D329, `runSql` P4.D331) |
+| `ariel_writers_tier3` (grown) | 3 | ONE red cell — the standing R-10 cell (below), unmasked |
+| `zero_migrations_rerun` | 2 | GREEN — 19 ensures |
+| `restore_vintage_state` | — | GREEN 10/10 |
+| `provisioning_equivalence` / `maintenance_ops_tier2` / `cli_differential` | — | GREEN (3 / 1 / 1) |
+
+**Workspace gate** (`CARGO_INCREMENTAL=0`, the lane env block): **840 binaries / 5,521 passed / 3 failed / 3 ignored.** The three reds: `ariel_writers_tier3` (the standing cell), `public_schemas_vendor_guard` and `qtap_schema_embed_guard` (the pin's `public/schemas/*.json` moved — P4.D339's re-vendor, §R.3's expected sibling reds). fmt clean; clippy clean under both feature sets; Playwright `e2e/terminal-flow.spec.ts` by file 2/2 (debug bins; a first run under load average ~40 timed out in global-setup's 30 s server wait, the re-run at load ~3 green); SPA lint / 531 files 11,268 tests / build clean.
+
+### R-10 — `ariel_writers_tier3`'s red cells, by name
+
+The family now collects EVERY red cell (it used to stop at the first) and decodes compressed-TEXT cells. Exactly ONE red cell: `chat_messages row 0 content (bytes only)` — the compressed bytes differ, the decoded text is equal. That is the standing compressed-text cell, red at the `INVENTORY` tip before this lane. Every new `kind` row (4 posted screen summaries, the whitespace-only skip, the >16 K elide, the explicit `output`), the 14 captured DEBUG lines, and the reconcile orphan's `cols 120 / rows 40` kept through the pass (R-4, asserted both sides) are GREEN. The standing cell is NOT masked.
+
+### R-11 — Tauri
+
+No line under `crates/quilltap-tauri/src` changed (`terminal_ipc.rs` forwards `WsServerMessage` by serde) → `quilltap-tauri` NOT bumped; `cargo check -p quilltap-tauri --tests` clean.
+
+### R-12 — the test-DDL twins, measured
+
+- `crates/quilltap-host/tests/terminal_pty.rs:52` — WIDENED. Measured first: every `spawn` failed its DB insert (`no such column: cols`) and `spawn_or_skip!` turned that into a silent SKIP — 13 tests "passed" in 0.03 s with stdout captured. After the widening: 13 passed in 1.13 s, zero SKIP (`--nocapture`).
+- `crates/quilltap-core/src/services/scheduled_maintenance.rs:722` (test module) — WIDENED (measured: `cleanup_reaps_only_closed_old_sessions` → `no such column: cols` through `find_closed_before`).
+- `crates/quilltap-host/tests/host_cadence.rs:32`, `crates/quilltap-tauri/tests/common/mod.rs:134`, `crates/quilltap-web/tests/common/mod.rs:138, 189, 237, 274` — LEFT: each is a host / served-boot fixture that runs the boot ensure before any terminal row is written, so the geometry columns arrive at boot; measured green in the gate (`host_cadence` 5/5, `terminal_ws` 1/1, `terminal_ws_origin` 1/1, the tauri and web suites wholly green).
+
+### R-6 — kept names
+
+The trait is `TerminalReadSource` (method `read` → `TerminalReadSnapshot { rendering, raw }`), `EmptyTerminalRead` the default; the host struct stays `PtyScrollbackSource` and the builder stays `BuiltInToolRunner::with_scrollback` — `spine.rs` compiles unchanged (no edit; P4.D335's file).
+
+### Log lines (§R.5), each with a capture pin and its silence leg
+
+- `Terminal read executed` (core, DEBUG, `module = "terminal-tool-handler"`) — compared field for field against v4's CAPTURED line per read case (`terminal-tools.ts` splices the logger's transports): 13 lines; the two refused reads log nothing on either side.
+- `[ArielNotification] Posting terminal-output announcement` / `… Skipping empty terminal-output announcement` (core, DEBUG) — never ported before; compared against v4's 14 captured lines in `ariel_writers_tier3`.
+- `[PTY] Ariel summary taken` (host, DEBUG, `module = "pty-manager"`) — `terminal_pty::the_summary_taken_line_and_its_silence` (process-wide capture; a kick with nothing pending logs no second line).
+- `Failed to read transcript file` (host seam, WARN) — `terminal_pty::the_transcript_read_warn_and_its_silence`, with Node's `fs` text (`ENOENT: no such file or directory, open '<path>'` — measured from v4's captured line); a readable transcript logs nothing.
+- The geometry ensure's v5-worded boot INFO `Measured each terminal session's window for transcript replay` `migrationId columnsAdded` — `host_boot_p4d337_terminal_geometry` (ONE line, `columnsAdded=2`, none of v4's four migration lines; silent second boot; silent fresh `setup`).
+- NEGATIVE pins (no v5 home): `[TerminalScreen] Failed to resize emulator` — xterm 6.0.0's `resize` returns on `NaN` and otherwise clamps `cols >= 2` / `rows >= 1` (`MINIMUM_COLS` / `MINIMUM_ROWS`, measured in the pin's bundle) and cannot throw for a number (`terminal_screen::tests::resize_never_fails`); `[PTY] Failed to render terminal summary` — `take_summary` cannot fail.
+
+### HANDOFF: P4.D339 (byte-compare at §S.5 (12))
+
+- `help/ariel.md` (v4 `a6292f169`, +4 lines): the two new paragraphs after "Think of them as spectators in the control room…" — "What they read is the screen itself, not a heap of control characters. …" and "Ariel's periodic dispatches to the chat follow the same rule. …". The behaviour they describe ships here (items 9 / 13 / 15).
+- `docs/v4/developer/DDL.md` (v4 `a6292f169`, +4 lines): the two `terminal_sessions` DDL lines `"cols" INTEGER DEFAULT NULL,` / `"rows" INTEGER DEFAULT NULL,` and the two column-table rows. That is v4's hand-written prose, vendored as is; the FRESH generateDDL truth is `REAL` (P4.D324's re-dump) and the `INTEGER DEFAULT NULL` shape is the migration's.
+
+### NO-PORT (by name)
+
+v4's migration INFO `Added geometry columns to terminal_sessions`, ERROR `Failed to add geometry columns to terminal_sessions`, result message `Added cols and rows columns to terminal_sessions`, the `migrations_state` row, `database-utils`' DEBUG `Adding column`, and `prettify.ts:164`'s label (R-1, the module header names each); `screen.test.ts` as a file (its ten cases ARE the corpus); the jest snapshot `tool-definitions-snapshot.test.ts.snap:2084` (v5's `data.rs` row is its twin); v4's `[PTY] Resized` DEBUG / `[PTY] Failed to resize PTY` WARN (predate the span).
+
+### Tier 3 — recorded
+
+24 `SCREEN_RESIZE_NO_REFLOW` (above). 25 v4's async parse + `settle()` — no twin (vt100 is synchronous). 26 the migration lines — NO-PORT. 27 the jest snapshot — NO-PORT. 28 a real Claude-Code transcript — 💸, not supplied. 29 no new e2e — port 4351 / mock 45349 unused. 30 the final flush's `chat-update` nudge reaches subscribers in v5 (v4's posts after `subscribers.clear()`) — pre-existing, not reordered. 31 the lone-surrogate cut of `rawScrollback` — the helper's lossy class; the corpus keeps BMP text at the cut. 32 the standing compressed-text cell (R-10).
+
+### 💸 for the next `/dogfood`
+
+The order's list verbatim in substance: the copy's vintage first (`PRAGMA table_info("terminal_sessions")`, the ledger row, `count(cols)`); the first v5 boot (ONE INFO on a pre-`a6292f169` copy, silence on a v4-migrated one); Ariel reading `vim` / `htop` / `less` / Claude Code (`buffer: alternate`, the `Screen:` sentence — 💸 one model turn); the idle dispatches (a `Screen of session …` message, no second on an unchanged screen, then a `Terminal output …` dispatch after quitting); resize-then-exit replay at the last geometry, an old session at 80×24; the REST wire's `cols` / `rows`. New from this lane: **emoji-heavy Claude Code screens** — compare a `terminal_read` against the pane for column alignment (the Unicode 6 width class).
+
+### Versions at close
+
+core 0.0.1327, host 0.0.214, web 0.0.244, SPA 0.5.882; tauri 0.0.9 and cli 0.0.34 unchanged; harness frozen 0.0.1110.

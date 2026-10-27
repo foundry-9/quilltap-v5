@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-27 — docs(porting): P4.D337 lane record and LANE COMPLETE status
+
+_Docs only._
+
+The lane record for bug 255 (Ariel reads full-screen programs through `vt100`) is appended to `status-log.md`, and the work order's status header reads LANE COMPLETE.
+
 #### 2026-10-26 — feat(terminal): the session geometry on the REST meta and the SPA's protocol type (P4.D337 unit 4)
 
 _Versions: web 0.0.244, SPA 0.5.882._
