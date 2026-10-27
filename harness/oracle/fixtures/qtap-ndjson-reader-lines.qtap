@@ -1,0 +1,17 @@
+{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"format":"quilltap-export","version":"1.0","exportType":"characters","createdAt":"2026-10-27T00:00:00.000Z","appVersion":"4.11.0-dev.53","settings":{"includeMemories":false,"scope":"all","selectedIds":[]},"counts":{}}}
+{"kind":"__envelope__","format":"qtap-ndjson","version":1,"manifest":{"exportType":"chats"}}
+5
+null
+"a string record"
+true
+false
+[1,2]
+{"kind":"character","data":{"id":"c1000000-0000-4000-8000-0000000000a1","name":"Present"}}
+{"kind":"wardrobe_item","characterId":"c1000000-0000-4000-8000-0000000000a1","data":{"id":"w1","title":"Kept"}}
+{"kind":"wardrobe_item","characterId":"c1000000-0000-4000-8000-0000000000ff","data":{"id":"w2","title":"Orphan"}}
+{"kind":"character_plugin_data","characterId":"c1000000-0000-4000-8000-0000000000ff","pluginName":"p","data":{"x":1}}
+{"kind":"chat_message","chatId":"c2000000-0000-4000-8000-0000000000ff","data":{"id":"m1"}}
+{"kind":"mystery_kind","data":{}}
+{"kind":5}
+{}
+{"kind":"__footer__","counts":{"characters":1}}

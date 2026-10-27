@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — fix(import): the .qtap NDJSON reader logs v4's skip lines and counts an array record as an unknown kind (P4.D317 #30)
+
+_Versions: core 0.0.1342._
+
+The `.qtap` NDJSON reader now logs v4's lines (`quilltap-import-stream.ts:175-492` at `322a5488e`). These are WARNs for a non-object record, a second envelope, an orphaned `wardrobe_item`, `character_plugin_data` or `chat_message`, and each unknown kind (`String(kind)`), plus the INFO with the unknown-kind count after the envelope and truncation checks. The reader also handles an array record the way v4 does: JS treats an array as an object, so it passes v4's non-object guard and its `undefined` kind is counted as unknown. v5 used to skip it as a non-object. New family `qtap_ndjson_reader_lines_equivalence` runs v4's real `readNdjsonLines` and `assembleExportFromStream` over a hand-built committed bundle (`qtap-ndjson-reader-lines.qtap`) and compares all fourteen lines in order. Red first on unported main: 0 of 14 lines.
+
 #### 2026-10-27 — perf(chats): cache the equippedInventory column answer per connection instead of probing on every read (156.d)
 
 _Versions: core 0.0.1341._

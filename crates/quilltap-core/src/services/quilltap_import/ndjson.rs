@@ -225,10 +225,24 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
 
     let mut blob_accumulators: Vec<(String, BlobAccumulator)> = Vec::new();
 
+    // P4.167 (P4.D317 Tier 3 #30): v4's reader lines (`quilltap-import-stream.
+    // ts:175-492` at `322a5488e`) — capture-pinned by
+    // `qtap_ndjson_reader_lines_equivalence` over the hand-built
+    // `qtap-ndjson-reader-lines.qtap`.
+    let mut unknown_kind_count = 0usize;
+    let empty = Map::new();
+
     for raw in records {
-        let Some(record) = raw.as_object() else {
-            // v4: "Skipping non-object NDJSON record".
-            continue;
+        // v4 `if (!raw || typeof raw !== 'object')`: an ARRAY is an object to
+        // JS, so it passes this guard with an `undefined` kind and lands in the
+        // unknown-kind arm below; every other non-object is skipped here.
+        let record = match raw {
+            Value::Object(record) => record,
+            Value::Array(_) => &empty,
+            _ => {
+                tracing::warn!("Skipping non-object NDJSON record");
+                continue;
+            }
         };
         let kind = record.get("kind").and_then(Value::as_str).unwrap_or("");
         let data = || record.get("data").cloned().unwrap_or(Value::Null);
@@ -236,7 +250,7 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
         match kind {
             "__envelope__" => {
                 if manifest.is_some() {
-                    // v4: "Second envelope line ignored — only the first is used".
+                    tracing::warn!("Second envelope line ignored — only the first is used");
                     continue;
                 }
                 let format = record.get("format").and_then(Value::as_str);
@@ -284,7 +298,13 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 let Some(slot) = characters.iter_mut().find(|(k, _)| k == parent_id) else {
-                    continue; // v4 warns + skips
+                    tracing::warn!(
+                        characterId = record
+                            .get("characterId")
+                            .map(|v| tracing::field::display(js_string(Some(v)))),
+                        "wardrobe_item record with unknown parent character — skipping"
+                    );
+                    continue;
                 };
                 slot.1
                     .entry("wardrobeItems")
@@ -308,6 +328,12 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     .unwrap_or_default()
                     .to_string();
                 let Some(slot) = characters.iter_mut().find(|(k, _)| k == parent_id) else {
+                    tracing::warn!(
+                        characterId = record
+                            .get("characterId")
+                            .map(|v| tracing::field::display(js_string(Some(v)))),
+                        "character_plugin_data with unknown parent character — skipping"
+                    );
                     continue;
                 };
                 slot.1
@@ -336,6 +362,12 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
                     .and_then(Value::as_str)
                     .unwrap_or_default();
                 let Some(slot) = chats.iter_mut().find(|(k, _)| k == parent_id) else {
+                    tracing::warn!(
+                        chatId = record
+                            .get("chatId")
+                            .map(|v| tracing::field::display(js_string(Some(v)))),
+                        "chat_message with unknown parent chat — skipping"
+                    );
                     continue;
                 };
                 if let Some(arr) = slot.1.get_mut("messages").and_then(Value::as_array_mut) {
@@ -626,8 +658,14 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             // character has landed." (Before this arm a v4-written chats
             // bundle's history fell through to the silent skip below.)
             "wardrobe_history" => wardrobe_history.push(data()),
-            // Unknown kind — v4 warns and skips.
-            _ => {}
+            // Unknown kind — v4 counts, warns with `String(kind)` and skips.
+            _ => {
+                unknown_kind_count += 1;
+                tracing::warn!(
+                    kind = %js_string(record.get("kind")),
+                    "Unknown NDJSON record kind — skipping"
+                );
+            }
         }
     }
 
@@ -688,6 +726,14 @@ pub fn assemble_export_from_stream(records: &[Value]) -> Result<QuilltapExport, 
             file_blob_accumulators.len(),
             Value::Array(pending)
         ));
+    }
+
+    // v4 `:489-493` — after the envelope and truncation checks.
+    if unknown_kind_count > 0 {
+        tracing::info!(
+            count = unknown_kind_count,
+            "Some NDJSON records were skipped due to unknown kind"
+        );
     }
 
     // Stitch wardrobe/plugin data back into the export shape (v4 :330-337 —

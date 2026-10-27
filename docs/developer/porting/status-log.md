@@ -193158,3 +193158,38 @@ SELECT sites (`run`, `run_dropping_invalid_rows`,
 non-inventory refusal still surfaces); `chats_read` tests 8/0;
 `salon_reads_equivalence` re-run from the pin (ran, green).
 
+### Unit 7 — D317-30: the NDJSON reader's lines
+
+`services/quilltap_import/ndjson.rs`: v4's six WARNs + one INFO
+(`quilltap-import-stream.ts:175-492` at `322a5488e` — re-counted at the pin:
+six WARN sites + the INFO; no DEBUG): `Skipping non-object NDJSON record`;
+`Second envelope line ignored — only the first is used`; the three orphan
+WARNs with `{characterId}` / `{characterId}` / `{chatId}` (the raw value,
+omitted when absent); `Unknown NDJSON record kind — skipping {kind:
+String(kind)}`; and, after the envelope and truncation checks, `Some NDJSON
+records were skipped due to unknown kind {count}`. Behaviour fix found by the
+measurement: an ARRAY record is an object to JS, so v4's `typeof raw !==
+'object'` guard passes it and its `undefined` kind is an UNKNOWN kind
+(counted, `kind: "undefined"`) — v5 had skipped it as a non-object. The stale
+"v4 warns and skips" comments are replaced.
+
+- NEW family `qtap_ndjson_reader_lines_equivalence` + oracle
+  `harness/oracle/cases/qtap-ndjson-reader-lines.ts` (tsx; v4's REAL
+  `readNdjsonLines` + `assembleExportFromStream`, lines through a
+  `Logger.prototype` spy) over the NEW committed hand-built fixture
+  `harness/oracle/fixtures/qtap-ndjson-reader-lines.qtap` (17 lines: two
+  envelopes, five non-objects, an array, a kept + an orphaned wardrobe item,
+  orphaned plugin data + message, three unknown kinds, a footer). Fourteen
+  lines compared IN ORDER (level, message, context keys in order) + the
+  reassembled shape. Capture-pinned: all seven messages, by that test.
+  `recipe_sweep.py --show` extracts the recipe.
+- **Red-first on unported main: 0 of 14 lines** (v5 logged nothing). Green.
+- Unmeasured edges, recorded: a non-scalar `kind` (`{}` → v4 `[object
+  Object]`, v5 its JSON) and an orphan whose parent id is a non-string (v4's
+  `Map.get` of the raw value) — no bundle writer emits either.
+- Regen: `cd "$PIN" && LOG_LEVEL=error npx tsx
+  $V5W/harness/oracle/cases/qtap-ndjson-reader-lines.ts >
+  /tmp/p4.167/oracle-qtap-ndjson-reader-lines.ndjson`; then
+  `QT_ORACLE_QTAP_NDJSON_READER_LINES=… cargo test -p quilltap-harness --test
+  qtap_ndjson_reader_lines_equivalence -- --nocapture`.
+
