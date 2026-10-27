@@ -57,6 +57,13 @@ regress = { version = "=0.12.0", features = ["utf16"] }
 # canonical decomposition JS's NFD uses.
 unicode-normalization = "0.1"
 
+# The server-side terminal emulator behind `terminal_screen` (bug 255 — v4
+# reads PTY output through `@xterm/headless` 6.0.0). APPROVED by the human
+# 2026-10-21 ("Approved: vt100 0.18.1 for P4.D337 ..."); xterm's text model
+# (`translateToString`, the wrap join, the summary marker) is reproduced over
+# its cells and proven by `terminal_screen_equivalence`.
+vt100 = "0.18.1"
+
 # Crypto for the .dbkey FILE wrapper only, matching lib/startup/pepper-crypto.ts:
 #   AES-256-GCM cipher, PBKDF2-HMAC-<digest> key derivation.
 aes-gcm = "0.10"          # AES-256-GCM (AEAD)

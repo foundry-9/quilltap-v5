@@ -1,0 +1,1174 @@
+{
+  "$note": "P4.D337 tier-1 corpus for v4 lib/terminal/screen.ts (bug 255) vs quilltap_core::terminal_screen. ESC is written \\u001b. Steps: {write}, {resize:[cols,rows]}, {render:true}, {takeSummary:true}, {transcript:{raw,cols,rows}}, {synth:{kind:'alt-repaint',frames,seed,every,cols,rows}} — the synth step is EXPANDED by the oracle and echoed in its NDJSON `input`, so the Rust side replays the oracle's own bytes and never regenerates them. Cases prefixed `v4-` are v4's ten screen.test.ts cases verbatim (every render / takeSummary output emitted). Cases in the Rust test's SCREEN_RESIZE_NO_REFLOW table are the ruled divergence (R-D).",
+  "cases": [
+    {
+      "name": "v4-plain-shell",
+      "cols": 40,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "$ echo hi\r\nhi\r\n$ "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "v4-scrolled-off",
+      "cols": 40,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "one\r\ntwo\r\nthree\r\nfour\r\nfive"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "v4-cursor-addressing-bug255",
+      "cols": 40,
+      "rows": 6,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2J"
+        },
+        {
+          "write": "\u001b[1;1HHello\u001b[1Cworld"
+        },
+        {
+          "write": "\u001b[3;3H\u001b[38;5;174m⏺\u001b[39m Fixing it."
+        },
+        {
+          "write": "\u001b[5;1Hstale\u001b[5;1H\u001b[Kfresh"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "v4-soft-wrap-join",
+      "cols": 10,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "abcdefghijKLMNO\r\nnext"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "v4-follows-resize",
+      "cols": 80,
+      "rows": 24,
+      "steps": [
+        {
+          "resize": [
+            100,
+            30
+          ]
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "v4-summary-since-previous",
+      "cols": 40,
+      "rows": 10,
+      "steps": [
+        {
+          "write": "$ ls\r\na.txt\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "pwd\r\n/tmp\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "v4-summary-null-when-nothing-new",
+      "cols": 40,
+      "rows": 10,
+      "steps": [
+        {
+          "write": "$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "v4-summary-screen-skip-unchanged",
+      "cols": 40,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2JClaude\u001b[2;1H> prompt"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[?25l\u001b[?25h"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[2;3Hdone  "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "v4-summary-leaves-alternate",
+      "cols": 40,
+      "rows": 6,
+      "steps": [
+        {
+          "write": "$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "claude\r\n\u001b[?1049h\u001b[HTUI\u001b[?1049l$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "v4-render-transcript",
+      "cols": 80,
+      "rows": 24,
+      "steps": [
+        {
+          "transcript": {
+            "raw": "\u001b[?1049h\u001b[H\u001b[2Jtop\u001b[3;2Hbottom",
+            "cols": 20,
+            "rows": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "synth-claude-code-alt-repaint",
+      "cols": 80,
+      "rows": 24,
+      "steps": [
+        {
+          "write": "$ claude\r\n"
+        },
+        {
+          "synth": {
+            "kind": "alt-repaint",
+            "frames": 2900,
+            "seed": 255,
+            "every": 97,
+            "cols": 80,
+            "rows": 24
+          }
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[?2026l\u001b[?1049l\u001b[?25h$ "
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-a-wide-char-at-row-edge",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "abcdefghi字xyz\r\nnext"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2J123456789字\u001b[3;1Hz"
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-b-exact-fill-then-crlf",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "0123456789\r\nnext\r\n0123456789"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "X"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-c-clear-scrollback-3j",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a\r\nb\r\nc\r\nd\r\ne\r\nf"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[3J"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\r\ng\r\nh"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-d-1049-twice",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ x\r\n\u001b[?1049hfirst\u001b[?1049hsecond"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[?1049l"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-e-47-no-save",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ y\r\n\u001b[?47h\u001b[Halt47"
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[?47l"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-f-scroll-region-delete-line",
+      "cols": 20,
+      "rows": 6,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2Jr1\r\nr2\r\nr3\r\nr4\r\nr5\r\nr6\u001b[2;5r\u001b[3;1H\u001b[M"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[5;1H\r\nnew"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-g-tab-stops",
+      "cols": 40,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a\tb\tc\r\n1234567\tx\r\n12345678\ty"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-h-bel-osc-title",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "\u001b]0;title here\u0007ok\u0007 done\u001b]2;t2\u001b\\"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-i-sync-output-2026",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "\u001b[?2026h\u001b[?1049h\u001b[Hsync\u001b[?2026l"
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-k-lone-cr-overwrite",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "progress 10%\rprogress 100%\r\nok\rOK"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-l-backspace-no-erase",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "abc\b\bX\r\nq\b \b"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-m-combining-mark",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "café ok\r\nñ"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-n-marker-disposed",
+      "cols": 20,
+      "rows": 3,
+      "scrollback": 4,
+      "steps": [
+        {
+          "write": "l1\r\nl2\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "cmd\r\no1\r\no2\r\no3\r\no4\r\no5\r\no6\r\no7\r\n$ "
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "x\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-n-marker-survives-at-edge",
+      "cols": 20,
+      "rows": 3,
+      "scrollback": 4,
+      "steps": [
+        {
+          "write": "l1\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "a\r\nb\r\nc\r\nd\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-n-marker-on-blank-window",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\r\n\r\n   "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\r\nlater"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-o-replacement-char",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "��tail\r\nok"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-p-clear-normal-with-scrollback",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "s1\r\ns2\r\ns3\r\ns4\r\ns5\r\n$ clear\r\n"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[H\u001b[2J\u001b[3J$ "
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "ls\r\nfile\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-q-resize-clamp",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "resize": [
+            1,
+            1
+          ]
+        },
+        {
+          "render": true
+        },
+        {
+          "resize": [
+            0,
+            0
+          ]
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "ab"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-r-lf-without-cr",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "a\nb\nc"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-s-cjk-at-wrapped-edge",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "abcdefghi字ok\r\n$ "
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[?1049h\u001b[H字字字字字字\r\nend"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-trailing-written-spaces",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "pad   \r\n\u001b[5C\r\n   \r\nz   "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-trim-js-whitespace",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "a﻿\r\nb\r\n \r\n　"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[?1049h\u001b[H﻿\u001b[2;1H"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-wrapped-first-row",
+      "cols": 5,
+      "rows": 3,
+      "scrollback": 0,
+      "steps": [
+        {
+          "write": "abcdefghijklmno\r\nZ"
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-reverse-index-top",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2Jone\r\ntwo\u001b[H\u001bMtop"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-ris-mid-stream",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "before\r\nmore\r\n"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001bcafter"
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-osc8-hyperlink-bracketed-paste",
+      "cols": 30,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "\u001b]8;;https://example.com\u0007link\u001b]8;;\u0007 \u001b[?2004hpaste\u001b[?2004l"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-scroll-region-less",
+      "cols": 20,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[H\u001b[2Jl1\r\nl2\r\nl3\r\nl4\r\n:\u001b[1;4r\u001b[4;1H\nl5\u001b[r\u001b[5;1H:"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-erase-in-line-variants",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "abcdefgh\u001b[4G\u001b[1Kx\r\nabcdefgh\u001b[4G\u001b[0K\r\nabcdefgh\u001b[4G\u001b[2K"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-insert-delete-chars",
+      "cols": 12,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "abcdef\u001b[3G\u001b[2@XY\r\nabcdef\u001b[2G\u001b[2P"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-erase-chars-ech",
+      "cols": 12,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "abcdef\u001b[2G\u001b[2X\r\nzz"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-emoji-wide",
+      "cols": 12,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a😀b\r\n✔ ok\r\n⭐x"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-transcript-normal-softwrap",
+      "cols": 80,
+      "rows": 24,
+      "steps": [
+        {
+          "transcript": {
+            "raw": "$ cat long\r\n0123456789abcdefghijKLMNOPQRST\r\n$ ",
+            "cols": 12,
+            "rows": 3
+          }
+        }
+      ]
+    },
+    {
+      "name": "edge-transcript-mid-sequence",
+      "cols": 80,
+      "rows": 24,
+      "steps": [
+        {
+          "transcript": {
+            "raw": "5;1Hhalf\u001b[2;1Hrow2\u001b[?1049l$ ",
+            "cols": 20,
+            "rows": 4
+          }
+        }
+      ]
+    },
+    {
+      "name": "edge-width-record-glyph",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a⏺b\u001b[1;4HX"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-width-emoji",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a😀b\u001b[1;4HX"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-width-star",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a⭐b\u001b[1;4HX"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-width-sparkle",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a✻b\u001b[1;4HX\r\nc✔d\u001b[2;4HY"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-width-cjk",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a字b\u001b[1;4HX"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-width-misc",
+      "cols": 30,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "a☕b\u001b[1;4HX\r\nc⚡d\u001b[2;4HY\r\ne🔥f\u001b[3;4HZ"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-c1-controls",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "abc\r\nqx"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-fffd-mid",
+      "cols": 20,
+      "rows": 3,
+      "steps": [
+        {
+          "write": "x�y�"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-47-cursor-carry",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ y\r\n\u001b[?47h\u001b[Halt\u001b[?47lZ"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-1049-no-home",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ x\r\n\u001b[?1049hfirst"
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\u001b[?1049lafter"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-1049-reenter-keeps-cursor",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "\u001b[?1049h\u001b[2;3Habc\u001b[?1049l$ \u001b[?1049hX"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-ed0-disposes-marker",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "a\r\nb\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[1;1H\u001b[Jtop\r\nnew"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-ed1-disposes-marker",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "a\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\r\nb\r\nc\u001b[1J\u001b[3;1Hz"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-ed2-in-alt-keeps-marker",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "a\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[?1049h\u001b[2J\u001b[?1049lls\r\nout\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-el-clears-continuation",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "0123456789abc\r\u001b[Kxyz\r\n$ "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-el2-clears-continuation",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "0123456789abc\u001b[2K\rxyz\r\n$ "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-marker-insert-line",
+      "cols": 20,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "a\r\nb\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[1;1H\u001b[Lins\u001b[4;1Hmore"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-marker-delete-line",
+      "cols": 20,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "a\r\nb\r\n$ "
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\u001b[1;1H\u001b[M\u001b[3;1Hmore"
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-full-buffer-last-line-pad",
+      "cols": 5,
+      "rows": 2,
+      "scrollback": 2,
+      "steps": [
+        {
+          "write": "abcdefghij\r\nk\r\nl\r\n$ "
+        },
+        {
+          "render": true
+        },
+        {
+          "write": "\r\n0123456789"
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-dch-in-wrapped-line",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ 0123456789abc\u001b[1;5H\u001b[P\r\n\r\n$ "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-ich-in-wrapped-line",
+      "cols": 10,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "$ 0123456789abc\u001b[1;5H\u001b[@X\r\n\r\n$ "
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "edge-readline-long-command",
+      "cols": 10,
+      "rows": 5,
+      "steps": [
+        {
+          "write": "$ echo abcdefghijklm"
+        },
+        {
+          "takeSummary": true
+        },
+        {
+          "write": "\r\nabcdefghijklm\r\n$ "
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "edge-blank-run-js-whitespace",
+      "cols": 5,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "x\r\n  ﻿    "
+        },
+        {
+          "render": true
+        },
+        {
+          "takeSummary": true
+        }
+      ]
+    },
+    {
+      "name": "resize-reflow-narrow",
+      "cols": 80,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "012345678901234567890123456789012345678901234567890123456789\r\n$ "
+        },
+        {
+          "resize": [
+            40,
+            4
+          ]
+        },
+        {
+          "render": true
+        }
+      ]
+    },
+    {
+      "name": "resize-reflow-wide",
+      "cols": 20,
+      "rows": 4,
+      "steps": [
+        {
+          "write": "0123456789012345678901234\r\n$ "
+        },
+        {
+          "resize": [
+            40,
+            4
+          ]
+        },
+        {
+          "render": true
+        }
+      ]
+    }
+  ]
+}

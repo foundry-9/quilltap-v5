@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — feat(terminal): a server-side terminal screen model over vt100 for bug 255 (P4.D337 unit 1)
+
+_Versions: core 0.0.1325._
+
+New `quilltap_core::terminal_screen`, a port of v4's `lib/terminal/screen.ts` (bug 255): `TerminalScreen` over the `vt100` 0.18.1 crate (approved 2026-10-21), with `render`, `take_summary`, `resize`, `render_transcript` and `SCREEN_SCROLLBACK_LINES`. It reproduces xterm's text model: `translateToString` over cells, the wrap join, and the summary marker with its disposal rule. Scrollback wrap flags are read from vt100's basic capture, because viewing scrollback clears them. Input is normalised where vt100 differs from xterm 6.0.0: Unicode 6 widths through private stand-ins (xterm counts emoji as one cell), U+FFFD, C1 controls and `ESC D`/`ESC E`, a wide character at the right edge, the alternate-screen switch's cursor carry, and `ED` disposing the marker.
+
+New tier-1 family `terminal_screen_equivalence` over v4's real `screen.ts`: 69 cases, including v4's ten `screen.test.ts` cases and a 2,900-frame synthetic Claude-Code stream; every output is compared byte for byte. Three divergences are named both-ways tables: `SCREEN_RESIZE_NO_REFLOW` (ruled), plus `SCREEN_ERASE_UNLINKS_CONTINUATION` and `SCREEN_MARKER_LINE_SPLICE` (both measured).
+
 #### 2026-10-27 — docs(porting): record the P4.D340 lane and mark the order LANE COMPLETE
 
 _Docs-only change._

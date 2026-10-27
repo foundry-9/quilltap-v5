@@ -271,6 +271,7 @@ pub mod tag_style;
 pub mod template_prompt_hint;
 pub mod templates;
 pub mod terminal_clean;
+pub mod terminal_screen;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 pub mod tfidf;
