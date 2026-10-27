@@ -303,6 +303,14 @@ async function main(): Promise<void> {
     }
   }
 
+  // v4 creates `chat_messages` and `background_jobs` lazily; force both so the
+  // Rust side's operator-gesture Pascal post can INSERT (every provisioned v5
+  // instance has both — the tools builder's idiom). Without them v4's post
+  // created the table and v5's failed, and the `chat_equip*__dump` rows read
+  // `messages: 1` vs `null`.
+  await repos.chats.getMessageCount(spec.chats[0].id);
+  await repos.backgroundJobs.findByUserId(userId, 'PENDING');
+
   // Zed's tombstone, AFTER his vault was seeded.
   for (const c of Object.values(spec.characters)) {
     if (c.archived) {

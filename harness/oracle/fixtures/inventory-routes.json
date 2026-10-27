@@ -1209,6 +1209,21 @@
       "dump": true
     },
     {
+      "name": "char_clear_override_metadata",
+      "_why": "char_clear_override now pins v4's real title lint refusing it (clearing the title hands the instance its archetype's 'Lantern', which shadows its own kind name 'lantern'); this sibling keeps the original intent: a clear-override that writes, with the store dumped after.",
+      "kind": "itemPut",
+      "scope": "character",
+      "id": "c1000000-0000-4000-8000-000000000001",
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "action": "clear-override",
+      "body": {
+        "fields": [
+          "metadata"
+        ]
+      },
+      "dump": true
+    },
+    {
       "name": "char_clear_override_empty",
       "kind": "itemPut",
       "scope": "character",
