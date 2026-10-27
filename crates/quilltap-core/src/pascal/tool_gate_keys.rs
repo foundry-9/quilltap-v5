@@ -95,11 +95,21 @@ pub fn collect_tool_gate_keys(mount: &Connection) -> ToolGateKeyCensus {
                 for (subject, refs) in [
                     (
                         GateKeySubject::Inventory,
-                        object_keys(group.inventory.iter().flatten().map(|(r, _)| r)),
+                        group
+                            .inventory
+                            .iter()
+                            .flatten()
+                            .map(|(r, _)| r)
+                            .collect::<Vec<_>>(),
                     ),
                     (
                         GateKeySubject::InventoryCount,
-                        object_keys(group.inventory_count.iter().flatten().map(|(r, _)| r)),
+                        group
+                            .inventory_count
+                            .iter()
+                            .flatten()
+                            .map(|(r, _)| r)
+                            .collect::<Vec<_>>(),
                     ),
                 ] {
                     for reference in refs {
@@ -169,48 +179,5 @@ pub fn collect_tool_gate_keys(mount: &Connection) -> ToolGateKeyCensus {
         keys,
         unread,
         stores_consulted,
-    }
-}
-
-/// v4 walks `Object.keys(group[subject])`, and V8 orders an object's own keys
-/// canonical array indices FIRST (ascending), then the rest in insertion
-/// order (ES `OrdinaryOwnPropertyKeys`). The parsed group keeps the authored
-/// order, so a key like `"42"` written after `"lamp"` must be moved ahead of
-/// it here or the census order (the contract) diverges.
-fn object_keys<'a>(authored: impl Iterator<Item = &'a String>) -> Vec<&'a String> {
-    let mut indices: Vec<(u32, &String)> = Vec::new();
-    let mut rest: Vec<&String> = Vec::new();
-    for key in authored {
-        match array_index(key) {
-            Some(n) => indices.push((n, key)),
-            None => rest.push(key),
-        }
-    }
-    indices.sort_by_key(|(n, _)| *n);
-    indices.into_iter().map(|(_, k)| k).chain(rest).collect()
-}
-
-/// A JS canonical array index: the decimal string of a `u32` below `2^32 - 1`,
-/// no sign, no leading zero (`"0"` excepted).
-fn array_index(key: &str) -> Option<u32> {
-    let n: u32 = key.parse().ok()?;
-    (n != u32::MAX && key == n.to_string()).then_some(n)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::object_keys;
-
-    #[test]
-    fn object_keys_puts_array_indices_first_ascending() {
-        let authored: Vec<String> = ["lamp", "42", "07", "3", "+1", "4294967295", "zed"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let got: Vec<&str> = object_keys(authored.iter())
-            .into_iter()
-            .map(String::as_str)
-            .collect();
-        assert_eq!(got, ["3", "42", "lamp", "07", "+1", "4294967295", "zed"]);
     }
 }

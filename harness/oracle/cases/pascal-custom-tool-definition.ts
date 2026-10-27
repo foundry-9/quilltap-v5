@@ -1128,6 +1128,16 @@ const rawCorpus: Array<[string, string]> = [
   ['raw-negative-zero-operand', '{"name":"probe","description":"A probe.","outcomes":[{"when":{"gte":-0.0},"message":"-","state":"info"},{"when":true,"message":"-","state":"info"}]}'],
   // Escapes and non-ASCII in a message, which the template renderer later sees.
   ['raw-unicode-message', '{"name":"probe","description":"A probe.","outcomes":[{"when":true,"message":"the caf\\u00e9 \\ud83c\\udfb2 \\"quoted\\"","state":"info"}]}'],
+  // P4.169 (I-2): integer-like keys AUTHORED after ordinary ones. `JSON.parse`
+  // yields them first, ascending (ES `OrdinaryOwnPropertyKeys`), so v4's
+  // `z.record` walk, the parsed data, the issue order and `collectUnknownKeys`
+  // all see `0, 2, 10, lamp`; a TS literal cannot express the authored order.
+  ['raw-v8-order-gate-metadata', '{"name":"probe","description":"A probe.","outcomes":[{"when":true,"message":"-","state":"info"}],"availableWhen":{"metadata":{"lamp":{"eq":1},"10":{"eq":2},"2":{"eq":3},"0":{"eq":4}}}}'],
+  ['raw-v8-order-gate-anyof-inventory', '{"name":"probe","description":"A probe.","outcomes":[{"when":true,"message":"-","state":"info"}],"withheldWhen":[{"inventory":{"lantern":{"eq":"carried"},"42":{"eq":"equipped"},"7":{"neq":"absent"}}},{"inventoryCount":{"zed":{"gte":1},"3":{"lt":2}},"progress":{"cannon.complete":{"eq":true}}}]}'],
+  ['raw-v8-order-when-metadata-inventory', '{"name":"probe","description":"A probe.","outcomes":[{"when":{"metadata":{"zed":{"eq":1},"7":{"eq":2}},"inventory":{"lantern":{"eq":"carried"},"42":{"eq":"equipped"}}},"message":"-","state":"info"},{"when":true,"message":"fallback","state":"info"}]}'],
+  ['raw-v8-order-when-params-invalid-keys', '{"name":"probe","description":"A probe.","parameters":{"lamp":{"type":"number","default":1}},"outcomes":[{"when":{"params":{"lamp":{"eq":1},"10":{"eq":2},"2":{"eq":3}}},"message":"-","state":"info"},{"when":true,"message":"fallback","state":"info"}]}'],
+  ['raw-v8-order-parameters-invalid-keys', '{"name":"probe","description":"A probe.","parameters":{"lamp":{"type":"number","default":1},"10":{"type":"number"},"2":{"type":"string"}},"outcomes":[{"when":true,"message":"-","state":"info"}]}'],
+  ['raw-v8-order-unknown-top-level-keys', '{"name":"probe","zeta":1,"9":true,"description":"A probe.","1":false,"outcomes":[{"when":true,"message":"-","state":"info"}]}'],
 ];
 
 function emitDefinition(id: string, text: string): void {

@@ -1085,45 +1085,7 @@ pub fn parse_inventory_transfer_body(input: &Value) -> Result<Map<String, Value>
 // `JSON.stringify(out, null, 2)` a file is written with
 // ============================================================================
 
-/// A canonical array index (`0` … `2^32 - 2`, no leading zero) — the keys V8
-/// orders FIRST, ascending, in every object (ES `OrdinaryOwnPropertyKeys`).
-fn is_array_index(key: &str) -> bool {
-    if key.is_empty() || (key.len() > 1 && key.starts_with('0')) {
-        return false;
-    }
-    key.bytes().all(|b| b.is_ascii_digit()) && key.parse::<u64>().is_ok_and(|n| n < u32::MAX as u64)
-}
-
-/// Re-key every object of a parsed value in V8's own-property order: array
-/// indices first (ascending), then the rest in insertion order. serde keeps
-/// pure insertion order; `JSON.parse` does not.
-pub fn v8_key_order(v: Value) -> Value {
-    match v {
-        Value::Object(o) => {
-            let mut indices: Vec<(u64, String, Value)> = Vec::new();
-            let mut rest: Vec<(String, Value)> = Vec::new();
-            for (k, val) in o {
-                let val = v8_key_order(val);
-                if is_array_index(&k) {
-                    indices.push((k.parse().unwrap_or(0), k, val));
-                } else {
-                    rest.push((k, val));
-                }
-            }
-            indices.sort_by_key(|(n, _, _)| *n);
-            let mut out = Map::new();
-            for (_, k, val) in indices {
-                out.insert(k, val);
-            }
-            for (k, val) in rest {
-                out.insert(k, val);
-            }
-            Value::Object(out)
-        }
-        Value::Array(a) => Value::Array(a.into_iter().map(v8_key_order).collect()),
-        other => other,
-    }
-}
+pub use crate::pascal::js_value::v8_key_order;
 
 /// V8 `JSON.parse(text)`: serde's parse (a duplicate key keeps the LAST value
 /// at its FIRST position, as V8 does; `__proto__` is a plain key), every
@@ -1179,7 +1141,7 @@ fn write_pretty(v: &Value, depth: usize, out: &mut String) {
             // whatever order they were set in.
             let mut entries: Vec<(&String, &Value)> = o.iter().collect();
             entries.sort_by_key(|(k, _)| {
-                if is_array_index(k) {
+                if crate::pascal::js_value::array_index(k).is_some() {
                     (0u8, k.parse::<u64>().unwrap_or(0))
                 } else {
                     (1u8, 0)

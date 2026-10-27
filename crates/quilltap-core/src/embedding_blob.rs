@@ -353,21 +353,6 @@ pub const EMBEDDING_DIM_SQL: &str = "CASE
   ELSE length(embedding) / 4
 END";
 
-/// True when `key` is a JS *canonical array index*: the decimal string of a
-/// `u32` in `[0, 2^32 - 2]`, with no leading zeros (`"0"` excepted) and no sign.
-/// These are exactly the property keys that `Object.values` iterates first, in
-/// ascending numeric order, ahead of all other (string) keys.
-fn array_index(key: &str) -> Option<u32> {
-    let n: u32 = key.parse().ok()?;
-    // ToString(ToUint32(key)) === key rejects leading zeros, '+1', etc.;
-    // 2^32 - 1 is excluded (it is `length`, never an index).
-    if n != u32::MAX && key == n.to_string() {
-        Some(n)
-    } else {
-        None
-    }
-}
-
 /// Recover an embedding persisted as legacy JSON text (before the Float32-BLOB
 /// format). Two historical shapes exist, both yielding the dense vector in
 /// index order:
@@ -383,9 +368,10 @@ fn array_index(key: &str) -> Option<u32> {
 ///
 /// Residual seam: the legacy writer only ever produced numeric arrays / purely
 /// integer-keyed objects. A non-numeric element (outside that domain) yields
-/// `None` here rather than v4's blind pass-through, and the relative order of
-/// any *non*-index object keys follows `serde_json`'s key order rather than JS
-/// insertion order — neither case occurs in real legacy data.
+/// `None` here rather than v4's blind pass-through (a case that does not occur
+/// in real legacy data). Non-index keys follow their insertion order, as
+/// `Object.values` does (`preserve_order` keeps it; the shared V8 order since
+/// P4.169 — the first cut sorted them by code unit).
 pub fn parse_legacy_embedding_text(value: &str) -> Option<Vec<f64>> {
     let parsed: serde_json::Value = serde_json::from_str(value).ok()?;
     match parsed {
@@ -394,12 +380,7 @@ pub fn parse_legacy_embedding_text(value: &str) -> Option<Vec<f64>> {
             // JS `Object.values`: array-index keys first, ascending numerically;
             // then any other keys. Real legacy objects are purely index-keyed.
             let mut keys: Vec<&String> = map.keys().collect();
-            keys.sort_by(|a, b| match (array_index(a), array_index(b)) {
-                (Some(ia), Some(ib)) => ia.cmp(&ib),
-                (Some(_), None) => std::cmp::Ordering::Less,
-                (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.cmp(b),
-            });
+            crate::pascal::js_value::sort_v8_own_keys(&mut keys, |k| k.as_str());
             keys.iter().map(|k| map[*k].as_f64()).collect()
         }
         // null, number, string, boolean → JS `undefined`.

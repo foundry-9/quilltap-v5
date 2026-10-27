@@ -374,7 +374,12 @@ fn pascal_custom_tools_execution_matches_oracle() {
                                 "case '{id}': v5 resolved, v4 threw: {}",
                                 row["error"]
                             );
-                            assert_eq!(params_to_json(&params), row["out"], "resolveParams '{id}'");
+                            // Bytes, not `Value ==` (order-blind under `preserve_order`).
+                            assert_eq!(
+                                serde_json::to_string(&params_to_json(&params)).unwrap(),
+                                serde_json::to_string(&row["out"]).unwrap(),
+                                "resolveParams '{id}'"
+                            );
                         }
                         Err(e) => {
                             assert_eq!(
@@ -500,7 +505,13 @@ fn pascal_custom_tools_execution_matches_oracle() {
                                 "case '{id}': v5 ran, v4 threw: {}",
                                 row["error"]
                             );
-                            assert_eq!(result_to_json(&r), row["out"], "executeCustomTool '{id}'");
+                            // Bytes, not `Value ==` (order-blind under `preserve_order`):
+                            // `metadataTested`'s key order is v4's contract (P4.169).
+                            assert_eq!(
+                                serde_json::to_string(&result_to_json(&r)).unwrap(),
+                                serde_json::to_string(&row["out"]).unwrap(),
+                                "executeCustomTool '{id}'"
+                            );
                         }
                         Err(e) => {
                             assert_eq!(

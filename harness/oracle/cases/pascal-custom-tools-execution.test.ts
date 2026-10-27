@@ -1935,6 +1935,23 @@ describe('executeCustomTool', () => {
         {},
         { metadata: { a: 0, b: 2, c: 3 } },
       ],
+      // P4.169 (I-2): v4 builds metadataTested as an OBJECT across the groups,
+      // so an integer-like key a LATER group tested enumerates FIRST (V8's
+      // own-key order) — ahead of the earlier group's `lamp`.
+      [
+        'anyof-metadata-tested-v8-key-order-across-groups',
+        {
+          name: 'sift',
+          description: 'd',
+          roll: { min: 1, max: 1 },
+          outcomes: [
+            { when: [{ metadata: { lamp: { eq: 'lit' }, '10': { eq: 1 } } }, { metadata: { '2': { eq: 2 }, zed: { eq: 3 } } }], message: 'won', state: 'success' },
+            { when: true, message: 'lost', state: 'failure' },
+          ],
+        },
+        {},
+        { metadata: { lamp: 'dark', '10': 1, '2': 2, zed: 3 } },
+      ],
 
       // ---- P4.D333 (v4 `322a5488e`, bug 257): the two run orders ------------
       // v4's own `scanner()`: no row tests the consult, so the table is dealt

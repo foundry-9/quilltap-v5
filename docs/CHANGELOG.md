@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(pascal): integer-like custom-tool keys iterate in V8 `Object.keys` order from ONE parse-time chokepoint (P4.169)
+
+_Versions:_ quilltap-core 0.0.1339.
+
+A custom-tool definition is now re-keyed in V8 `Object.keys` order once, at `safe_parse`'s input. Integer-like keys come first, ascending, as `JSON.parse` yields them, so gate and `when` records, `parameters`, the issue order and the parsed data all match v4 for a file authored `{"lamp":…,"10":…,"2":…}`. `collect_unknown_keys` and `collect_metadata_tested` order their output the same way; the second is built as an object across every any-of group, as v4 builds it. The four canonical-array-index helpers are folded onto one home in `pascal/js_value.rs` (`array_index`, `sort_v8_own_keys`, `v8_key_order`). `tool_gate_keys`'s census-local reorder is retired, and `parse_legacy_embedding_text`'s non-index keys now keep insertion order (the first cut sorted them by code unit). Red-first: six new raw-bytes definition rows (6 red, then green) and one cross-group `metadataTested` execution row (1 red, then green). The execution family now byte-compares `executeCustomTool` and `resolveParams` results; before this, `Value ==` was blind to key order.
+
 #### 2026-10-27 — refactor(core): the extraction context reads chat settings through C2's fallback home (P4.169)
 
 _Versions:_ quilltap-core 0.0.1338.

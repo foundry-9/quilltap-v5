@@ -3929,7 +3929,20 @@ fn parse_outcome(input: Option<&Value>) -> Res<CustomToolOutcome> {
 pub type DefinitionIssues = Vec<Issue>;
 
 /// v4 `QtapCustomToolSchema.safeParse`.
+///
+/// v4's input is always a `JSON.parse` result (the roster's file read, the
+/// Workbench / bench bodies, a `.qtap` import, `edit_custom_tool`'s merge),
+/// and `JSON.parse` yields integer-like keys FIRST, ascending (ES
+/// `OrdinaryOwnPropertyKeys`) — so `z.record` walks, every evaluator's
+/// `Object.entries(group.metadata ?? {})`, the issue order and the
+/// model-visible `parameters` all see V8's order. serde keeps the authored
+/// order, so the input is re-keyed ONCE here and every reader of the parsed
+/// definition inherits it (P4.169, I-2; ruling R-A — never per evaluator).
 pub fn safe_parse(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
+    safe_parse_v8_ordered(&super::js_value::v8_key_order(raw.clone()))
+}
+
+fn safe_parse_v8_ordered(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues> {
     let obj = match raw {
         Value::Object(o) => o,
         other => return Err(vec![Issue::hard(invalid_type("object", Some(other)))]),
@@ -5406,13 +5419,21 @@ const KNOWN_TOP_LEVEL_KEYS: [&str; 17] = [
 /// Report top-level keys this build doesn't understand, so discovery can log
 /// them. They are tolerated, not rejected: `persist` is a planned v2 key, and an
 /// older build must not choke on a newer file.
+///
+/// v4 walks `Object.keys` of a `JSON.parse` result, so the report lists
+/// integer-like keys first, ascending (P4.169, I-2 — the same V8 order
+/// [`safe_parse`] applies at its input).
 pub fn collect_unknown_keys(raw: &Value) -> Vec<String> {
     match raw {
-        Value::Object(o) => o
-            .keys()
-            .filter(|k| !KNOWN_TOP_LEVEL_KEYS.contains(&k.as_str()))
-            .cloned()
-            .collect(),
+        Value::Object(o) => {
+            let mut keys: Vec<String> = o
+                .keys()
+                .filter(|k| !KNOWN_TOP_LEVEL_KEYS.contains(&k.as_str()))
+                .cloned()
+                .collect();
+            super::js_value::sort_v8_own_keys(&mut keys, String::as_str);
+            keys
+        }
         _ => Vec::new(),
     }
 }

@@ -181,20 +181,9 @@ fn pretty_at(v: &Value, depth: usize) -> String {
             let inner = "  ".repeat(depth + 1);
             let outer = "  ".repeat(depth);
             let mut entries: Vec<(&String, &Value)> = o.iter().collect();
-            // Stable: indices ascend, everything else keeps insertion order.
-            let index_of = |k: &str| -> Option<u32> {
-                let canonical = k == "0" || (!k.starts_with('0') && !k.is_empty());
-                if !canonical || !k.bytes().all(|b| b.is_ascii_digit()) {
-                    return None;
-                }
-                k.parse::<u32>().ok().filter(|n| *n != u32::MAX)
-            };
-            let (mut indexed, rest): (Vec<_>, Vec<_>) =
-                entries.drain(..).partition(|(k, _)| index_of(k).is_some());
-            indexed.sort_by_key(|(k, _)| index_of(k));
-            let parts: Vec<String> = indexed
+            sort_v8_own_keys(&mut entries, |(k, _)| k.as_str());
+            let parts: Vec<String> = entries
                 .into_iter()
-                .chain(rest)
                 .map(|(k, val)| {
                     format!(
                         "{inner}{}: {}",
@@ -372,8 +361,76 @@ fn round_scaled_signed(a: f64, f: i32) -> u128 {
     }
 }
 
+// ============================================================================
+// V8's own-property key order — the ONE home (P4.169, I-2)
+// ============================================================================
+
+/// A JS *canonical array index*: the decimal string of a `u32` in
+/// `[0, 2^32 - 2]`, no sign, no leading zero (`"0"` excepted) —
+/// `ToString(ToUint32(key)) === key`, with `2^32 - 1` excluded (it is
+/// `length`, never an index). These are exactly the keys V8 enumerates FIRST,
+/// ascending, in every object (ES `OrdinaryOwnPropertyKeys`). The one copy
+/// since P4.169 folded the four (`embedding_blob`, `tool_gate_keys`,
+/// `inventory::types`, and `json_stringify_pretty`'s inline closure).
+pub fn array_index(key: &str) -> Option<u32> {
+    let n: u32 = key.parse().ok()?;
+    (n != u32::MAX && key == n.to_string()).then_some(n)
+}
+
+/// Order entries as V8 enumerates an object's own keys: canonical array
+/// indices first (ascending), every other key after them in its existing
+/// (insertion) order. Stable, so an already-V8-ordered slice is unchanged.
+pub fn sort_v8_own_keys<T>(entries: &mut [T], key: impl Fn(&T) -> &str) {
+    entries.sort_by_key(|e| match array_index(key(e)) {
+        Some(n) => (0u8, n),
+        None => (1u8, 0),
+    });
+}
+
+/// Re-key every object of a value in V8's own-property order. serde keeps
+/// pure insertion order; `JSON.parse` does not — so a value that stands in
+/// for a `JSON.parse` result goes through here ONCE, at its input, and every
+/// later walk inherits V8's order (P4.169 ruling R-A).
+pub fn v8_key_order(v: Value) -> Value {
+    match v {
+        Value::Object(o) => {
+            let mut entries: Vec<(String, Value)> = o
+                .into_iter()
+                .map(|(k, val)| (k, v8_key_order(val)))
+                .collect();
+            sort_v8_own_keys(&mut entries, |(k, _)| k.as_str());
+            Value::Object(entries.into_iter().collect())
+        }
+        Value::Array(a) => Value::Array(a.into_iter().map(v8_key_order).collect()),
+        other => other,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// V8 `Object.keys` (the census pin `tool_gate_keys` carried until
+    /// P4.169 moved the order to the parse): indices first ascending; `07`,
+    /// `+1` and `2^32 - 1` are not indices and keep their insertion order.
+    #[test]
+    fn sort_v8_own_keys_puts_array_indices_first_ascending() {
+        let mut keys = ["lamp", "42", "07", "3", "+1", "4294967295", "zed", "0"];
+        super::sort_v8_own_keys(&mut keys, |k| k);
+        assert_eq!(
+            keys,
+            ["0", "3", "42", "lamp", "07", "+1", "4294967295", "zed"]
+        );
+    }
+
+    #[test]
+    fn v8_key_order_rekeys_nested_objects() {
+        let v: Value =
+            serde_json::from_str(r#"{"b":{"10":1,"x":2,"2":3},"1":[{"z":0,"5":0}]}"#).unwrap();
+        assert_eq!(
+            serde_json::to_string(&super::v8_key_order(v)).unwrap(),
+            r#"{"1":[{"5":0,"z":0}],"b":{"2":3,"10":1,"x":2}}"#
+        );
+    }
     use super::*;
     use serde_json::json;
 

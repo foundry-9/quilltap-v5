@@ -1112,6 +1112,11 @@ pub fn collect_metadata_tested(
     if tested.is_empty() {
         None
     } else {
+        // v4 builds this as an OBJECT across every group, so its keys
+        // enumerate in V8 order even ACROSS groups (each group's own keys
+        // already are, from the parse): a later group's `"2"` lands ahead of
+        // an earlier group's `"lamp"` (P4.169, I-2).
+        super::js_value::sort_v8_own_keys(&mut tested, |(k, _)| k.as_str());
         Some(tested)
     }
 }
