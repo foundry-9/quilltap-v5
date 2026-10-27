@@ -67,6 +67,14 @@ const USER_TABLES = ['characters', 'chats', 'tags', 'groups', 'projects', 'files
 
 const SLOW_REPLY = 'Splendid weather for it, though one does hope the kettle stays warm throughout';
 const YIELD_REPLY = '[YIELD]';
+/**
+ * (A)'s and (B)'s first speaker say words no earlier beat persisted: (D) and
+ * (G) leave SLOW_REPLY in the Group Expedition transcript, so a claim about
+ * "this turn's prose" made with SLOW_REPLY matched their bubbles (measured:
+ * four finished SLOW_REPLY bubbles before (A) sends).
+ */
+const STOP_REPLY = 'Barometer falling briskly, so perhaps we ought to batten every hatch before the squall';
+const HAND_REPLY = 'Quite so, and the cartographer insists the ridge lies northward past the old mill';
 const STOP_TOAST = 'Stopped. The floor is yours, and the room is paused.';
 const HAND_TITLE_REST = 'Raise your hand (while someone is speaking)';
 const STOP_TITLE_REST = 'Stop (while someone is speaking)';
@@ -97,10 +105,25 @@ function startSequencedMock(port: number): Promise<Server> {
       res.writeHead(404).end();
       return;
     }
-    req.on('data', () => {});
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+    });
     req.on('end', () => {
-      const reply = plan.replies[Math.min(plan.calls, plan.replies.length - 1)] ?? SLOW_REPLY;
-      plan.calls += 1;
+      // The plan sequences the STREAMED calls — the characters' turns. The
+      // server's cheap-LLM work (the danger classifier, memory keywords, the
+      // title check) rides the same profile and is not streamed; counting it
+      // shifted the plan, so the FIRST speaker drew `[YIELD]` (measured).
+      let streamed = false;
+      try {
+        streamed = (JSON.parse(body) as { stream?: boolean }).stream === true;
+      } catch {
+        // not JSON — not a turn
+      }
+      const reply = streamed
+        ? (plan.replies[Math.min(plan.calls, plan.replies.length - 1)] ?? SLOW_REPLY)
+        : SLOW_REPLY;
+      if (streamed) plan.calls += 1;
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -330,12 +353,14 @@ test.describe('P4.D336 — raise a hand / stop', () => {
 
   test('(A) Stop mid-stream keeps the prose, pauses the room, one toast', async ({ page }) => {
     test.skip(!P4D335_SERVER_LANDED, GATE_REASON);
-    plan.replies = [SLOW_REPLY];
+    plan.replies = [STOP_REPLY];
     plan.delayMs = 350;
+    plan.calls = 0;
     await openChat(page, groupChatId);
     await send(page, 'Pray continue.');
     await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
-    await expect(page.getByText('Splendid weather').first()).toBeVisible({ timeout: 15_000 });
+    // Stop only once this turn's prose is streaming.
+    await expect(page.getByText('Barometer falling').first()).toBeVisible({ timeout: 15_000 });
     await stopButton(page).click();
     const infos = page.locator('[role="toast-container"] .qt-toast-info');
     await expect(infos.filter({ hasText: STOP_TOAST })).toHaveCount(1, { timeout: 15_000 });
@@ -343,27 +368,54 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     // "Auto-responses are paused — …" banner is the room's paused state, not a toast).
     await expect(infos.filter({ hasText: 'Auto-responses are paused' })).toHaveCount(0);
     // The partial bubble persists after the refetch; the full reply does not.
-    await expect(page.getByText('Splendid weather').first()).toBeVisible();
-    await expect(page.getByText(SLOW_REPLY)).toHaveCount(0);
+    await expect(stopButton(page)).toBeDisabled({ timeout: 15_000 });
+    await expect(page.getByText('Barometer falling')).toHaveCount(1);
+    await expect(page.getByText(STOP_REPLY)).toHaveCount(0);
+    // …and on the server: exactly one row, partial.
+    expect(await persistedCount(groupChatId, 'Barometer falling')).toBe(1);
+    expect(await persistedCount(groupChatId, STOP_REPLY)).toBe(0);
   });
 
   test('(B) a raised hand is answered [YIELD] by the next speaker', async ({ page }) => {
     test.skip(!P4D335_SERVER_LANDED, GATE_REASON);
-    plan.replies = [SLOW_REPLY, YIELD_REPLY];
+    plan.replies = [HAND_REPLY, YIELD_REPLY];
     plan.delayMs = 350;
     plan.calls = 0;
+    // (A)'s Stop paused the room, and a message sent into a paused room is
+    // recorded and answered by nobody (v4 bug 137) — resume it, as the
+    // sidebar's Resume does.
+    const resumed = await dispatchRaw({ type: 'chatUpdate', chatId: groupChatId, chat: { isPaused: false } });
+    expect(resumed.type, 'resume the room (A) paused').not.toBe('error');
     await openChat(page, groupChatId);
     await send(page, 'Who speaks next?');
     await expect(hand(page)).toBeEnabled({ timeout: 15_000 });
+    // Raise the hand once the FIRST speaker is already streaming, so it is the
+    // NEXT speaker who is asked (v4 takes the hand when a turn is built,
+    // orchestrator.service.ts:665).
+    await expect(page.getByText('Quite so').first()).toBeVisible({ timeout: 15_000 });
     await hand(page).click();
     await expect(hand(page)).toHaveAttribute('aria-pressed', 'true');
     await expect(hand(page)).toHaveClass(/qt-chat-interrupt-button-raised/);
     await expect(hand(page)).toHaveAttribute('title', HAND_TITLE_UP);
-    await expect(page.getByText('yields the floor to').first()).toBeVisible({ timeout: 60_000 });
+    // The Host's note is an announcement chip, collapsed by default as in v4
+    // (`AnnouncementChip.tsx`); its words show once it is expanded.
+    const note = page.getByRole('button', { name: 'Expand The Host turn yield message' });
+    await expect(note).toBeVisible({ timeout: 60_000 });
+    await note.click();
+    await expect(page.getByText('yields the floor to').first()).toBeVisible();
+    // A bare yield persists nothing but the Host's note (v4 handleTurnYield).
+    await expect(page.locator('.qt-chat-messages-list').getByText(YIELD_REPLY, { exact: true })).toHaveCount(0);
     await expect(hand(page)).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByText('carried on regardless')).toHaveCount(0);
   });
 });
+
+/** How many persisted messages in the chat carry `text` — read from the server, not a half-rendered list. */
+async function persistedCount(chatId: string, text: string): Promise<number> {
+  const res = await dispatchRaw({ type: 'chatTranscript', chatId });
+  const messages = ((res.data as { messages?: { content?: string }[] } | undefined)?.messages ?? []);
+  return messages.filter((m) => typeof m.content === 'string' && m.content.includes(text)).length;
+}
 
 function hand(page: Page) {
   return page.locator('.qt-chat-composer-actions .qt-chat-interrupt-button');
