@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-26 — test(core): the tool inventory's count pins move to 44 / 48 (P4.D331)
+
+core 0.0.1332
+
+`every_schema_key_resolves` pinned the schema map at 41 and `BUILT_IN_TOOLS` at 45; the three Log tools add a row and a schema-map entry each, so the pins are now 44 and 48. The workspace gate caught the stale pin.
+
 #### 2026-10-26 — test(harness): log_tools reads its own llm-logs fixture variable (P4.D331)
 
 _No crate versions bumped._

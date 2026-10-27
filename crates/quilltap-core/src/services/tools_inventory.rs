@@ -438,17 +438,18 @@ mod tests {
                 "schema-map id {id} did not resolve in the definitions catalog"
             );
         }
-        // 50 / 54 since P4.D328 (v4 `e1872c94f`): the nine `inventory_*`
-        // rows, each with a schema-map entry (41 + 9, 45 + 9).
+        // 53 / 57 at the `322a5488e` union: P4.D328's nine `inventory_*` rows
+        // (v4 `e1872c94f`) and P4.D331's three `log_*` rows (v4 `e4a60ad9e`),
+        // each with a schema-map entry (41 + 12, 45 + 12).
         // 41 / 45 since P4.D316 (v4 `ebb480edd`): + `wardrobe_rollback` +
         // `wardrobe_history`, both with schema-map entries (39 + 2, 43 + 2).
         // 39 / 43 since P4.D234 (v4 `39bc98ffc` + `12c336fad`): `list_email`
         // renamed `list_mail`, `read_mail` + `discard_mail` added (37 + 2,
         // 41 + 2).
-        assert_eq!(SCHEMA_KEYS.len(), 50);
+        assert_eq!(SCHEMA_KEYS.len(), 53);
         // 41 since P4.D108 added the describe_image row (v4 a14a1811, bug 92);
         // like the other photo tools it has NO schema-map entry, so
         // SCHEMA_KEYS stays at 37.
-        assert_eq!(BUILT_IN_TOOLS.len(), 54);
+        assert_eq!(BUILT_IN_TOOLS.len(), 57);
     }
 }
