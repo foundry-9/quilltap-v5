@@ -15,9 +15,13 @@
 //! and the captured lines (the loops' own, the location's folder WARN, and
 //! `ensureOfficialStore`'s four).
 //!
-//! Build the fixture (see `scenario_location_equivalence`'s header), then:
+//! Build the fixture + oracle (Node 24, from the v4 checkout or the round's
+//! pin worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
+//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
+//!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
+//!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-scenario-location-fixture.ts
 //!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
 //!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/startup-scenarios.ts \

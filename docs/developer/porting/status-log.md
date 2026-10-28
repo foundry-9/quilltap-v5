@@ -193375,3 +193375,8 @@ Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.cla
 - **D274-a:** `reconcile_vault_names_after_concurrent_deletes`' failure match split into `(Err(e), _)` → `doc_mount_points` and `(Ok(_), Err(e))` → `characters` over one `fail_each`; the re-read dropped. Unit-only (unreachable through v4's oracle): `store_name_reconcile::tests::a_failed_read_names_its_collection_without_re_reading` — a store list with a Zod-dropped row and a `characters` read that THROWS (a VIRTUAL `json('not json')` column added after the row); two deleted ids → exactly 2 `Data validation failed collection=doc_mount_points` lines and the first skip WARN naming `characters`. **Red-first:** the old re-read reinstated → 3 vs 2. Green.
 - **D331-T3-35:** a comment beside `"schema"` in `quilltap-cli/src/db_cmd.rs`'s `DB_VERBS` naming v4's `DB_DOMAINS.logs` row `'Log entries': ['log_entries']` (`e4a60ad9e`). No behaviour; Tier R re-run at the gate.
 
+
+### Unit 10 — the new family's self-contained recipe header
+
+`startup_scenarios_equivalence`'s header now builds the scenario-location pair itself (the sweep driver runs only a family's own header). Swept: ok.
+
