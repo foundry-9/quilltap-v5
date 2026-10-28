@@ -14,7 +14,10 @@
  *     missing id), the tier factories (project wardrobe list, General
  *     wardrobe list/create, project inventory create, project scenarios list);
  *   - C3 creates (project, character);
- *   - C.11 the transfers GET (its catch arm);
+ *   - C.11 the transfers GET (its catch arm), and over a vault-less plant
+ *     (the users branch: the vault-less filter, naming, `localeCompare`);
+ *   - the §3 follow-up: the character prompt / scenario DELETEs, whose
+ *     `findById` sits inside the handler's own try (its 500, not the 503);
  *   - `guard` — the guard sentence `requireMountIndexDb()` throws (the C4 job
  *     text) and #157's `Failed to log LLM call` on a GARBAGE llm-logs file.
  *
@@ -47,7 +50,15 @@ const KAPPA = 'a3000000-0000-4000-8000-000000000003';
 const MISSING_PROJECT = 'a3000000-0000-4000-8000-0000000000ff';
 const GAMMA = 'a2000000-0000-4000-8000-000000000001';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
+const BRAM = 'a1000000-0000-4000-8000-000000000002';
 const CLEO = 'a1000000-0000-4000-8000-000000000003';
+const DIANA = 'a1000000-0000-4000-8000-000000000004';
+const EDDA = 'a1000000-0000-4000-8000-000000000005';
+const OTHER_USER = 'e1000000-0000-4000-8000-0000000000ff';
+/** Ids no character carries — the degraded `findById` throws before either
+ *  is looked up. */
+const PROMPT = 'a4000000-0000-4000-8000-000000000001';
+const SCENARIO = 'a5000000-0000-4000-8000-000000000001';
 const MISSING_CHARACTER = 'a1000000-0000-4000-8000-0000000000ff';
 const CHAT_A = 'c1000000-0000-4000-8000-000000000001';
 const CHAT_B = 'c1000000-0000-4000-8000-000000000002';
@@ -312,6 +323,12 @@ async function main(): Promise<void> {
   const H = 'http://localhost/api/v1';
   const p = (id: string) => ({ params: Promise.resolve({ id }) });
   const VAULTLESS = `UPDATE characters SET characterDocumentMountPointId = NULL WHERE id = '${CLEO}'`;
+  const TRANSFERS_VAULTLESS = [
+    `UPDATE characters SET characterDocumentMountPointId = NULL WHERE id IN ('${BRAM}', '${CLEO}', '${DIANA}', '${EDDA}');`,
+    `UPDATE characters SET name = 'diana' WHERE id = '${DIANA}';`,
+    `UPDATE characters SET name = '' WHERE id = '${EDDA}';`,
+    `UPDATE characters SET userId = '${OTHER_USER}' WHERE id = '${BRAM}';`,
+  ].join('\n');
   // 156.a — one recorded outfit for Aria in Chat A: v4's table DDL
   // (`chat-wardrobe-history-ddl.ts`, byte-for-byte) and one row whose slots
   // name an item the degraded pool cannot hold.
@@ -432,6 +449,25 @@ async function main(): Promise<void> {
       call: async () =>
         (await loadRoute('@/app/api/v1/characters/[id]/prompts/route')).POST(
           mockRequest('POST', `${H}/characters/${ARIA}/prompts`, { name: 'Terse', content: 'Be brief.' }),
+          p(ARIA),
+        ),
+    },
+    // §3 (P4.166 follow-up): the two sub-resource deletes whose `findById`
+    // sits INSIDE the handler's try — v4's own catch answers, not the
+    // middleware's 503.
+    {
+      name: 'character_prompt_delete',
+      call: async () =>
+        (await loadRoute('@/app/api/v1/characters/[id]/prompts/[promptId]/route')).DELETE(
+          mockRequest('DELETE', `${H}/characters/${ARIA}/prompts/${PROMPT}`),
+          { params: Promise.resolve({ id: ARIA, promptId: PROMPT }) },
+        ),
+    },
+    {
+      name: 'character_scenario_delete',
+      call: async () =>
+        (await loadRoute('@/app/api/v1/characters/[id]/scenarios/route')).DELETE(
+          mockRequest('DELETE', `${H}/characters/${ARIA}/scenarios?scenarioId=${SCENARIO}`),
           p(ARIA),
         ),
     },
@@ -601,6 +637,16 @@ async function main(): Promise<void> {
     // --- C.11 ---
     {
       name: 'transfers_destinations',
+      call: async () =>
+        (await loadRoute('@/app/api/v1/wardrobe/transfers/route')).GET(mockRequest('GET', `${H}/wardrobe/transfers`)),
+    },
+    // The degraded GET's USERS branch: three vault-less characters of the
+    // user (one lower-cased — `localeCompare`, not code-unit order — and one
+    // with an empty name — the `'Unnamed user'` fallback) plus a vault-less
+    // character of ANOTHER user (filtered out by `findByUserId`).
+    {
+      name: 'transfers_destinations_vaultless',
+      plant: TRANSFERS_VAULTLESS,
       call: async () =>
         (await loadRoute('@/app/api/v1/wardrobe/transfers/route')).GET(mockRequest('GET', `${H}/wardrobe/transfers`)),
     },

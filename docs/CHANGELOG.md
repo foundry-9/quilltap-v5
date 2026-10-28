@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(degraded-mount): the prompt and scenario deletes answer v4's catch; the unclaimed rows are asserted both ways; one destinations helper
+
+_Versions: core 0.0.1375._
+
+§3 review fixes (P4.166).
+
+- The character prompt delete and scenario delete answer v4's own catch on a degraded vault — ERROR `[Characters v1] Error deleting character system prompt {characterId, promptId}` / `[Characters v1] Error removing character scenario` and 500 `Failed to delete character prompt` / `Failed to remove character scenario` — instead of the middleware's 503 (v4's `findById` sits inside each handler's try, the shape `project_delete` already had). Two new rows in `degraded_mount_routes_equivalence`, red on the old code.
+- The family's two unclaimed rows are asserted both ways instead of skipped: `character_delete` (v4 200, v5 500) and `chat_merge_vaultless` (v4 merges) each print a `DIVERGENCE:` line and trip on a move; every carved name must exist in the oracle.
+- The degraded transfer-destinations arm shares one naming/sort helper with `enumerate_destinations` (`wardrobe_transfers::destinations_body`), logs v4's `[WardrobeTransfers v1] Failed to list destinations` on a read failure, and is measured by a new vault-less row (`localeCompare` order, the `Unnamed user` fallback, another user's character excluded). The family is 35 rows.
+
 #### 2026-10-28 — fix(restore,lock): a carried file row is validated whole before it is written; a numeric lock heartbeat ages as v4's `new Date` does
 
 _Versions: core 0.0.1374, host 0.0.217._

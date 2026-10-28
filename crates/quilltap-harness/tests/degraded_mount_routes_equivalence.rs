@@ -50,6 +50,10 @@ const CHAT_A: &str = "c1000000-0000-4000-8000-000000000001";
 const TAG: &str = "aa000000-0000-4000-8000-000000000001";
 /// The item the planted history row names — no pool can hold it.
 const STALE_ITEM: &str = "ab000000-0000-4000-8000-000000000001";
+/// Ids no character carries — the degraded `findById` throws before either is
+/// looked up (the oracle's `PROMPT` / `SCENARIO`).
+const PROMPT: &str = "a4000000-0000-4000-8000-000000000001";
+const SCENARIO: &str = "a5000000-0000-4000-8000-000000000001";
 
 /// The workbench family's `gated` definition (`workbench-route-cases.json`),
 /// as the oracle sends it.
@@ -96,7 +100,20 @@ const READS_BEFORE_THROW_UNCLAIMED: &[&str] = &[
     "character_wardrobe_create",
     "character_inventory_create",
     "transfers_destinations",
+    "transfers_destinations_vaultless",
 ];
+
+/// Every carve names a row the oracle emits — a typo (or a renamed row) must
+/// not silently widen what the family leaves unclaimed.
+fn assert_carves_name_rows(rows: &[Value]) {
+    for name in UNCLAIMED_ROWS.iter().chain(READS_BEFORE_THROW_UNCLAIMED) {
+        assert!(
+            rows.iter()
+                .any(|r| r["kind"] == "route" && r["name"] == *name),
+            "carve names {name}, which the oracle does not emit"
+        );
+    }
+}
 
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-web/tests/fixtures")
@@ -119,8 +136,8 @@ fn rows() -> Option<Vec<Value>> {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("row"))
         .collect();
-    // 30 route rows + 2 guard rows: a truncated regen must not pass vacuously.
-    assert_eq!(rows.len(), 32, "oracle row count");
+    // 33 route rows + 2 guard rows: a truncated regen must not pass vacuously.
+    assert_eq!(rows.len(), 35, "oracle row count");
     Some(rows)
 }
 
@@ -362,6 +379,18 @@ async fn drive(row: &Value, pepper: &str, user_id: &str) -> (Response, Vec<Strin
             characters::character_prompt_create(&db, user_id, ARIA, "Terse", "Be brief.", false)
                 .await,
         ),
+        "character_prompt_delete" => (
+            format!("DELETE /api/v1/characters/{ARIA}/prompts/{PROMPT}"),
+            characters::character_prompt_delete(&db, user_id, ARIA, PROMPT).await,
+        ),
+        "character_scenario_delete" => (
+            format!("DELETE /api/v1/characters/{ARIA}/scenarios"),
+            characters::character_scenario_delete(&db, user_id, ARIA, SCENARIO).await,
+        ),
+        "character_delete" => (
+            format!("DELETE /api/v1/characters/{ARIA}"),
+            characters::character_delete(&db, user_id, ARIA, false, false).await,
+        ),
         "project_delete" => (
             format!("DELETE /api/v1/projects/{KAPPA}"),
             projects::project_delete(&db, KAPPA).await,
@@ -510,7 +539,7 @@ async fn drive(row: &Value, pepper: &str, user_id: &str) -> (Response, Vec<Strin
                 ),
             )
         }
-        "transfers_destinations" => (
+        "transfers_destinations" | "transfers_destinations_vaultless" => (
             "GET /api/v1/wardrobe/transfers".to_string(),
             wardrobe::wardrobe_transfer_destinations(&db, user_id),
         ),
@@ -531,10 +560,12 @@ async fn degraded_mount_routes_match_oracle() {
     let spec = spec();
     let pepper = spec["testPepperBase64"].as_str().unwrap().to_string();
     let user_id = spec["userId"].as_str().unwrap().to_string();
+    assert_carves_name_rows(&rows);
     let mut failures = Vec::new();
     for row in rows.iter().filter(|r| r["kind"] == "route") {
         let name = row["name"].as_str().unwrap();
         if UNCLAIMED_ROWS.contains(&name) {
+            // Asserted both ways in `unclaimed_rows_hold_their_recorded_divergence`.
             continue;
         }
         let (r, captured) = drive(row, &pepper, &user_id).await;
@@ -564,6 +595,58 @@ async fn degraded_mount_routes_match_oracle() {
         "{} row(s) diverge:\n  {}",
         failures.len(),
         failures.join("\n  ")
+    );
+}
+
+/// The [`UNCLAIMED_ROWS`] are recorded divergences, not blind spots: each is
+/// asserted BOTH ways, so a v5 convergence or a v4 move flips this red and the
+/// carve has to be re-ruled.
+#[tokio::test]
+async fn unclaimed_rows_hold_their_recorded_divergence() {
+    let _serial = SERIAL.lock().await;
+    let _ = lines();
+    let Some(rows) = rows() else { return };
+    assert_carves_name_rows(&rows);
+    let spec = spec();
+    let pepper = spec["testPepperBase64"].as_str().unwrap().to_string();
+    let user_id = spec["userId"].as_str().unwrap().to_string();
+    let row = |name: &str| rows.iter().find(|r| r["name"] == name).unwrap();
+
+    // character_delete: v4's vault clean-up is fail-soft — 200; v5's delete
+    // needs the partition — the 500.
+    let delete = row("character_delete");
+    assert_eq!(
+        delete["status"], 200,
+        "v4's degraded character delete moved"
+    );
+    assert_eq!(delete["body"]["success"], true);
+    let (r, _) = drive(delete, &pepper, &user_id).await;
+    assert_eq!(
+        status_of(&r),
+        500,
+        "v5's degraded character delete moved: {}",
+        body_of(&r)
+    );
+    eprintln!(
+        "DIVERGENCE: character_delete — v4 200 {}, v5 500 {}",
+        delete["body"],
+        body_of(&r)
+    );
+
+    // chat_merge_vaultless: v4 completes the merge (a vault-less arrival
+    // compiled, dressed from an empty pool); v5 has no driver for it (its
+    // per-character read drops the character, and none of v4's `[ChatMerge]`
+    // INFO lines are ported — the Tier-3 deferral).
+    let merge = row("chat_merge_vaultless");
+    assert_eq!(merge["status"], 200, "v4's degraded vault-less merge moved");
+    assert_eq!(
+        merge["body"]["merge"]["mergedCharacterIds"],
+        json!([CLEO]),
+        "v4's degraded vault-less merge moved"
+    );
+    eprintln!(
+        "DIVERGENCE: chat_merge_vaultless — v4 200 merges {}; v5 unclaimed (no driver)",
+        merge["body"]["merge"]["mergedCharacterIds"]
     );
 }
 

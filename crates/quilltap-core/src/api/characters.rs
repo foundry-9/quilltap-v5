@@ -2499,7 +2499,23 @@ pub async fn character_prompt_delete(
         }
     })
     .await;
-    success_or(out)
+    match out {
+        Ok(Ok(())) => Response::Character(json!({ "success": true })),
+        Ok(Err(r)) => r,
+        // v4 `prompts/[promptId]/route.ts:97-134`: the handler's own try wraps
+        // the `findById` too, so a broken store (and a degraded mount index —
+        // a vaulted character's keystone unreadable) is its 500 with this
+        // ERROR, not the middleware's 503 (P4.166 §3, measured).
+        Err(e) => {
+            tracing::error!(
+                characterId = %character_id,
+                promptId = %prompt_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Characters v1] Error deleting character system prompt"
+            );
+            internal("Failed to delete character prompt")
+        }
+    }
 }
 
 /// The `set-default-prompt` verb (contract-shared with the SPA; v4 reaches it via
@@ -2627,7 +2643,17 @@ pub async fn character_scenario_delete(
     match out {
         Ok(Ok(())) => Response::Character(json!({ "message": "Scenario removed" })),
         Ok(Err(r)) => r,
-        Err(e) => db_error_response(e),
+        // v4 `scenarios/route.ts:137-160`: the `findById` sits inside the
+        // handler's try, so a broken store (and a degraded mount index) is
+        // its 500 with this ERROR — an EMPTY context, the Error as winston's
+        // error argument — not the middleware's 503 (P4.166 §3, measured).
+        Err(e) => {
+            tracing::error!(
+                error = %crate::db::fallback::error_text(&e),
+                "[Characters v1] Error removing character scenario"
+            );
+            internal("Failed to remove character scenario")
+        }
     }
 }
 

@@ -211,40 +211,50 @@ pub fn enumerate_destinations(
         .find_all()
         .map_err(|e| TransferError::Internal(format!("{e:?}")))?;
     let characters = characters_read::find_by_user_id(main, mount, user_id)?;
+    Ok(destinations_body(&projects, &groups, &characters))
+}
 
-    let name_list = |rows: &[Value], fallback: &str| -> Vec<Value> {
-        let mut named: Vec<(String, String)> = rows
-            .iter()
-            .map(|r| {
-                let id = r
-                    .get("id")
-                    .and_then(Value::as_str)
-                    .unwrap_or_default()
-                    .to_string();
-                let name = r
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .filter(|s| !s.is_empty())
-                    .unwrap_or(fallback)
-                    .to_string();
-                (id, name)
-            })
-            .collect();
-        named.sort_by(|a, b| locale_compare(&a.1, &b.1));
-        named
-            .into_iter()
-            .map(|(id, name)| json!({ "id": id, "name": name }))
-            .collect()
-    };
-
-    Ok(json!({
+/// v4 GET's success body over the three lists it read — ONE naming / sorting
+/// rule for both the sound enumeration and the degraded-mount arm
+/// (`api::wardrobe`, P4.166): each entity as `{ id, name }` where a falsy name
+/// falls back to v4's placeholder (`project.name || 'Untitled project'`), the
+/// list sorted by `name.localeCompare`.
+pub fn destinations_body(projects: &[Value], groups: &[Value], users: &[Value]) -> Value {
+    json!({
         "destinations": {
             "general": { "available": true, "label": "Quilltap General" },
-            "projects": name_list(&projects, "Untitled project"),
-            "groups": name_list(&groups, "Untitled group"),
-            "users": name_list(&characters, "Unnamed user"),
+            "projects": name_list(projects, "Untitled project"),
+            "groups": name_list(groups, "Untitled group"),
+            "users": name_list(users, "Unnamed user"),
         }
-    }))
+    })
+}
+
+/// `rows.map(r => ({ id: r.id, name: r.name || fallback })).sort((a, b) =>
+/// a.name.localeCompare(b.name))`.
+fn name_list(rows: &[Value], fallback: &str) -> Vec<Value> {
+    let mut named: Vec<(String, String)> = rows
+        .iter()
+        .map(|r| {
+            let id = r
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
+            let name = r
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(fallback)
+                .to_string();
+            (id, name)
+        })
+        .collect();
+    named.sort_by(|a, b| locale_compare(&a.1, &b.1));
+    named
+        .into_iter()
+        .map(|(id, name)| json!({ "id": id, "name": name }))
+        .collect()
 }
 
 // ── POST: move / copy ────────────────────────────────────────────────────────
