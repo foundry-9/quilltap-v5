@@ -145,6 +145,58 @@ fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
     (db, scratch)
 }
 
+/// P4.171 plants — byte-identical twins of `photos-routes.test.ts`'s
+/// `emptyAlbumPlant` / `nullStoreTypePlant`, run on this case's copy of the
+/// mount index before it opens.
+const P4171_EMPTY_ALBUM: &str = "71710000-0000-4000-8000-000000000001";
+const P4171_NULL_STORE: &str = "71710000-0000-4000-8000-000000000003";
+const P4171_NULL_LINK: &str = "71710000-0000-4000-8000-000000000002";
+fn empty_album_plant(m: &Meta) -> String {
+    format!(
+        "CREATE TEMP TABLE p171 AS SELECT * FROM doc_mount_points WHERE id = '{}';\
+         UPDATE p171 SET id = '{P4171_EMPTY_ALBUM}', name = 'P4.171 Empty Album', storeType = 'documents';\
+         INSERT INTO doc_mount_points SELECT * FROM p171; DROP TABLE p171;",
+        m.uploads_mp
+    )
+}
+fn null_store_type_plant(m: &Meta) -> String {
+    format!(
+        "CREATE TEMP TABLE p171 AS SELECT * FROM doc_mount_points WHERE id = '{}';\
+         UPDATE p171 SET id = '{P4171_NULL_STORE}', name = 'P4.171 Null Store Type', storeType = NULL;\
+         INSERT INTO doc_mount_points SELECT * FROM p171; DROP TABLE p171;\
+         CREATE TEMP TABLE p171l AS SELECT * FROM doc_mount_file_links WHERE id = '{}';\
+         UPDATE p171l SET id = '{P4171_NULL_LINK}', mountPointId = '{P4171_NULL_STORE}';\
+         INSERT INTO doc_mount_file_links SELECT * FROM p171l; DROP TABLE p171l;",
+        m.uploads_mp, m.link_ids["A"][0]
+    )
+}
+
+/// [`fresh_db`] with `plant` run on the mount-index copy before it opens.
+fn fresh_db_planted(tag: &str, plant: &str) -> (Db, tempfile::TempDir) {
+    let scratch = tempfile::Builder::new()
+        .prefix(&format!("qt-photos-{tag}-"))
+        .tempdir()
+        .expect("tempdir");
+    let main = scratch.path().join("main.db");
+    let mount = scratch.path().join("mount.db");
+    std::fs::copy(fixtures_dir().join("photos-main.db"), &main).unwrap();
+    std::fs::copy(fixtures_dir().join("photos-mount.db"), &mount).unwrap();
+    {
+        let w = quilltap_core::db::Writer::open_writable(&mount, TEST_PEPPER).expect("open mount");
+        w.connection().execute_batch(plant).expect("plant");
+    }
+    let db = Db::open(
+        DbPaths {
+            main,
+            mount_index: Some(mount),
+            llm_logs: None,
+        },
+        TEST_PEPPER,
+    )
+    .expect("open db");
+    (db, scratch)
+}
+
 /// The canned model boundary — the same table the oracle's
 /// `generateEmbeddingForUser` stub reads, keyed by query TEXT. An unregistered
 /// query is an ERROR, not a zero vector: a silent default would let a case that
@@ -721,6 +773,41 @@ async fn photos_routes_equivalence() {
     ] {
         let before = provider.calls.load(std::sync::atomic::Ordering::SeqCst);
         let (resp, lines) = list(&db, &provider, user, album, q, tag, limit, None);
+        check(&oracle, name, &resp, &mut failed);
+        check_lines(&oracle, name, &lines, &mut failed);
+        if let Some(want) = oracle[name].get("embedCalls").and_then(Value::as_u64) {
+            let got = provider.calls.load(std::sync::atomic::Ordering::SeqCst) - before;
+            if got as u64 != want {
+                eprintln!("[{name}] EMBED CALLS: got {got} want {want}");
+                failed.push(format!("{name}_embed_calls"));
+            }
+        }
+    }
+
+    // ── P4.171 planted rows (D338-T3-24, D338-22) — each on its own copy ──
+    for (name, plant, album, q) in [
+        (
+            "list_album_no_photos_with_query",
+            empty_album_plant(&meta),
+            Some(P4171_EMPTY_ALBUM),
+            Some("nonesuchquery"),
+        ),
+        (
+            "list_null_store_type",
+            null_store_type_plant(&meta),
+            None,
+            None,
+        ),
+        (
+            "list_null_store_type_album",
+            null_store_type_plant(&meta),
+            Some(P4171_NULL_STORE),
+            None,
+        ),
+    ] {
+        let (pdb, _pscratch) = fresh_db_planted(name, &plant);
+        let before = provider.calls.load(std::sync::atomic::Ordering::SeqCst);
+        let (resp, lines) = list(&pdb, &provider, user, album, q, None, None, None);
         check(&oracle, name, &resp, &mut failed);
         check_lines(&oracle, name, &lines, &mut failed);
         if let Some(want) = oracle[name].get("embedCalls").and_then(Value::as_u64) {

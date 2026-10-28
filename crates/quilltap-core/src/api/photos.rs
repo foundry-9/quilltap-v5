@@ -33,8 +33,9 @@ use crate::model::embedding::{EmbeddingCallOptions, EmbeddingProvider};
 use crate::photos::photo_album_options::list_all_photo_album_options;
 use crate::photos::save_image_to_album::FileBytesStore;
 use crate::photos::user_gallery_service::{
-    get_user_gallery_entry, list_user_gallery, needs_query_embedding, remove_from_user_gallery,
-    resolve_album_mount_points, save_to_user_gallery, UserGalleryError,
+    empty_gallery_page, gallery_has_photo_links, get_user_gallery_entry, list_user_gallery,
+    needs_query_embedding, remove_from_user_gallery, resolve_album_mount_points,
+    save_to_user_gallery, UserGalleryError,
 };
 
 use super::mount_files::mount_conn;
@@ -181,6 +182,15 @@ pub async fn photo_gallery_list<P: EmbeddingProvider + Sync>(
     );
 
     let embedding = if needs_query_embedding(q.as_deref()) {
+        // v4 returns the empty page BEFORE it embeds the query
+        // (`user-gallery-service.ts:325-327`): an empty gallery spends no
+        // embedding call and cannot fail on a broken provider (P4.171
+        // D338-T3-24).
+        match db.read_mount_index(|conn| Ok(gallery_has_photo_links(conn, &mounts))) {
+            Ok(false) => return Response::PhotoGallery(empty_gallery_page()),
+            Ok(true) => {}
+            Err(e) => return list_failure(user_id, &e.to_string()),
+        }
         let query = q.clone().expect("needs_query_embedding implies Some");
         let Some(provider) = provider else {
             return Response::error(

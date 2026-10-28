@@ -22,7 +22,7 @@
  *     `*_bytes` cases emit those bytes so the Rust canned `FileBytesStore`
  *     replays them exactly and the computed sha256 agrees.
  *
- * ── CASE COVERAGE (43) ───────────────────────────────────────────────────────
+ * ── CASE COVERAGE (46) ───────────────────────────────────────────────────────
  *   - the ROUTE envelope cases (list / entry / save / delete) — v4's
  *     `successResponse` is the RAW payload and `created` is RAW at 201;
  *   - list: default order (dedup collapse + the linkSummary counts), the three
@@ -71,6 +71,15 @@
  * `relativePath` and the SOURCE sha256); the stored row's D19 `imageFacts`
  * (`../lib/blob-image-facts`) are the image comparand — never the WebP bytes,
  * never the sha's value.
+ *
+ * ── P4.171: TWO PLANTED MEASUREMENTS ────────────────────────────────────────
+ * `list_album_no_photos_with_query` (D338-T3-24): an album holding no photo,
+ * searched with a query the canned embedder has no vector for — v4 answers
+ * the empty page BEFORE embedding (`embedCalls` 0). `list_null_store_type` /
+ * `_album` (D338-22): an enabled store whose `storeType` is NULL, holding a
+ * copy of sha A's Uploads link — what v4's `findEnabled` / `findById` do with
+ * it. Each plants on the case's own copy (`emptyAlbumPlant` /
+ * `nullStoreTypePlant`, mirrored byte-for-byte by the Rust family).
  *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
@@ -357,6 +366,43 @@ async function realPngImageFacts(m: Meta): Promise<unknown> {
   return blobImageFacts(rows, realPng(), sharpMeasure(sharp));
 }
 
+/**
+ * P4.171 plants — run on the case's own copy through the raw mount-index
+ * handle; `photos_routes_equivalence` runs the SAME SQL (byte-identical
+ * builders) on its copy before opening it.
+ *
+ * - `emptyAlbumPlant` (D338-T3-24): an enabled documents store with no link —
+ *   an album holding no photo.
+ * - `nullStoreTypePlant` (D338-22): an enabled store whose `storeType` is NULL,
+ *   holding a copy of sha A's Uploads link — does v4's `findEnabled` keep it?
+ */
+const P4171_EMPTY_ALBUM = '71710000-0000-4000-8000-000000000001';
+const P4171_NULL_STORE = '71710000-0000-4000-8000-000000000003';
+const P4171_NULL_LINK = '71710000-0000-4000-8000-000000000002';
+function emptyAlbumPlant(m: Meta): string {
+  return (
+    `CREATE TEMP TABLE p171 AS SELECT * FROM doc_mount_points WHERE id = '${m.uploadsMp}';` +
+    `UPDATE p171 SET id = '${P4171_EMPTY_ALBUM}', name = 'P4.171 Empty Album', storeType = 'documents';` +
+    'INSERT INTO doc_mount_points SELECT * FROM p171; DROP TABLE p171;'
+  );
+}
+function nullStoreTypePlant(m: Meta): string {
+  return (
+    `CREATE TEMP TABLE p171 AS SELECT * FROM doc_mount_points WHERE id = '${m.uploadsMp}';` +
+    `UPDATE p171 SET id = '${P4171_NULL_STORE}', name = 'P4.171 Null Store Type', storeType = NULL;` +
+    'INSERT INTO doc_mount_points SELECT * FROM p171; DROP TABLE p171;' +
+    `CREATE TEMP TABLE p171l AS SELECT * FROM doc_mount_file_links WHERE id = '${m.linkIds.A[0]}';` +
+    `UPDATE p171l SET id = '${P4171_NULL_LINK}', mountPointId = '${P4171_NULL_STORE}';` +
+    'INSERT INTO doc_mount_file_links SELECT * FROM p171l; DROP TABLE p171l;'
+  );
+}
+async function plantMount(sql: string): Promise<void> {
+  const { getRawMountIndexDatabase } = await import(
+    '@/lib/database/backends/sqlite/mount-index-client'
+  );
+  (getRawMountIndexDatabase() as unknown as { exec: (q: string) => void }).exec(sql);
+}
+
 function buildCases(): CaseSpec[] {
   return [
     // ── The stored bytes the Rust canned FileBytesStore must replay ──
@@ -421,6 +467,35 @@ function buildCases(): CaseSpec[] {
     },
     { name: 'list_album_vault_query', run: (_s, m) => listRoute(`?album=${m.ariaVault}&q=dawn%20flight`) },
     { name: 'list_album_tag', run: (_s, m) => listRoute(`?album=${m.ariaVault}&tag=lantern`) },
+    // P4.171 (D338-T3-24): an album holding no photo answers the empty page
+    // BEFORE the query is embedded — `nonesuchquery` has no canned vector, so
+    // an embedding would 500; v4 spends none (embedCalls 0).
+    {
+      name: 'list_album_no_photos_with_query',
+      run: async (_s, m) => {
+        await plantMount(emptyAlbumPlant(m));
+        return {
+          ...(await listRoute(`?album=${P4171_EMPTY_ALBUM}&q=nonesuchquery`)),
+          embedCalls,
+        };
+      },
+    },
+    // P4.171 (D338-22): a NULL `storeType` store with a photo link, listed
+    // whole and as an album (the measurement: does v4 keep or drop it?).
+    {
+      name: 'list_null_store_type',
+      run: async (_s, m) => {
+        await plantMount(nullStoreTypePlant(m));
+        return listRoute('');
+      },
+    },
+    {
+      name: 'list_null_store_type_album',
+      run: async (_s, m) => {
+        await plantMount(nullStoreTypePlant(m));
+        return listRoute(`?album=${P4171_NULL_STORE}`);
+      },
+    },
     { name: 'albums', run: () => listRoute('?action=albums') },
     { name: 'albums_ignores_album', run: () => listRoute('?action=albums&album=x&limit=abc') },
 

@@ -177,6 +177,42 @@ pub fn needs_query_embedding(query: Option<&str>) -> bool {
     query.is_some_and(|q| !js_trim(q).is_empty())
 }
 
+/// Step 1 of v4 `listUserGallery` (`user-gallery-service.ts:313-324`): every
+/// link under `photos/` in the album's stores, in v4's walk order (store order,
+/// then each store's rowid order).
+fn collect_photo_links(
+    mount: &Connection,
+    mounts: &[GalleryMount],
+) -> Vec<(crate::db::doc_mount_file_links::LinkRow, String)> {
+    let links_repo = DocMountFileLinksRepository::new(mount);
+    let mut all_photo_links = Vec::new();
+    for mp in mounts {
+        // v4 `user-gallery-service.ts:282`: the fallback joined read (P4.142,
+        // G1).
+        for link in links_repo.find_by_mount_point_id_or_empty(&mp.id) {
+            if is_photos_relative_path(Some(&link.relative_path)) {
+                all_photo_links.push((link, mp.id.clone()));
+            }
+        }
+    }
+    all_photo_links
+}
+
+/// v4's early return when the album holds no photo
+/// (`user-gallery-service.ts:325-327`).
+pub fn empty_gallery_page() -> Value {
+    json!({ "entries": [], "total": 0, "hasMore": false })
+}
+
+/// Whether the album's stores hold any `photos/` link — v4's
+/// `allPhotoLinks.length === 0` test, which v4 makes BEFORE it embeds a query.
+/// `api::photos` asks it first, because v5 embeds ahead of
+/// [`list_user_gallery`] (the provider call is async): an empty gallery
+/// answers the empty page without spending an embedding (P4.171 D338-T3-24).
+pub fn gallery_has_photo_links(mount: &Connection, mounts: &[GalleryMount]) -> bool {
+    !collect_photo_links(mount, mounts).is_empty()
+}
+
 /// v4 `listUserGallery` — every `photos/` link across every enabled mount point,
 /// deduped by sha256, most-recent first (or ranked by semantic similarity when a
 /// query is supplied).
@@ -209,20 +245,10 @@ pub fn list_user_gallery(
     //    v4's `findEnabled()` is `findByFilter({enabled: true})` — no ORDER BY,
     //    so both sides walk rowid order; the same holds for `findByMountPointId`.
     //    That shared order is what makes the dedup tie-break below deterministic.
-    let links_repo = DocMountFileLinksRepository::new(mount);
-    let mut all_photo_links: Vec<(crate::db::doc_mount_file_links::LinkRow, String)> = Vec::new();
-    for mp in mounts {
-        // v4 `user-gallery-service.ts:282`: the fallback joined read (P4.142,
-        // G1).
-        for link in links_repo.find_by_mount_point_id_or_empty(&mp.id) {
-            if is_photos_relative_path(Some(&link.relative_path)) {
-                all_photo_links.push((link, mp.id.clone()));
-            }
-        }
-    }
+    let all_photo_links = collect_photo_links(mount, mounts);
 
     if all_photo_links.is_empty() {
-        return Ok(json!({ "entries": [], "total": 0, "hasMore": false }));
+        return Ok(empty_gallery_page());
     }
 
     // 2. Dedupe by sha256. For each unique image, keep the most recently created
