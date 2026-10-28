@@ -20,16 +20,14 @@
 //! runs BEFORE the store files exist, so the overlay-applying `update()` would
 //! throw `Unavailable` on its closing re-read.
 //!
-//! ## Scope
+//! ## Lines
 //!
-//! `create()` always provisions fresh (it nulls any incoming FK), so the tier-2
-//! differentials exercise **step 3** end-to-end (plus step 1's existence guard via
-//! re-ensure idempotency). **Step 2 (adopt a hand-linked store)** is the
-//! startup-heal heuristic (`pickPrimary*Store`) and is NOT ported here — it needs
-//! a richer `doc_mount_points` read (name/mountType/storeType) and lands with the
-//! startup-backfill slice; the corpora never have a pre-existing link, so nothing
-//! in the verified path depends on it. A tracked deferral, not a stub on a
-//! reachable path.
+//! v4's four lines, with the entity's label (`project` / `group`) and its
+//! id key (`projectId` / `groupId`): the WARN `ensure<Label>OfficialStore:
+//! <label> not found`, the INFO `<Label> officialMountPointId points to a
+//! missing mount point; will heal`, the INFO `Adopted existing linked store as
+//! <label> official`, the INFO `Created <label>-official document store`
+//! (P4.171 — D273-21 / C-9, pinned by `scenario_location_equivalence`).
 
 use std::collections::HashSet;
 
@@ -41,7 +39,7 @@ use super::doc_mount_points::{
 use super::document_store_overlay::StoreEntity;
 use super::store_backed::StoreBackedRepository;
 use super::DbError;
-use crate::jsstr::js_trim;
+use crate::jsstr::{js_trim, utf16_truncate};
 
 /// Returns `desired` if absent from `taken`, else the first of `desired (2)`,
 /// `desired (3)`, … that is absent — v4 `nextUniqueMountPointName`. Numbering
@@ -79,10 +77,32 @@ pub struct EnsureResult {
     pub created: bool,
 }
 
+/// One of v4's provisioning lines, keyed by the entity's own id key
+/// (`projectId` / `groupId` — v4's `config.entityIdLogKey`). A tracing field
+/// name is static, so the key is chosen by matching the entity label.
+macro_rules! entity_line {
+    ($lvl:ident, $label:expr, $id:expr, $msg:expr $(, $k:ident = $v:expr)*) => {
+        if $label == "project" {
+            tracing::$lvl!(projectId = %$id $(, $k = %$v)*, "{}", $msg)
+        } else {
+            tracing::$lvl!(groupId = %$id $(, $k = %$v)*, "{}", $msg)
+        }
+    };
+}
+
+/// v4's capitalised entity noun (`config.entityLabelCapitalized`).
+fn capitalized(label: &str) -> String {
+    let mut c = label.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
 /// Find or create the entity's canonical official document store and persist the
 /// FK on the slim row (v4 `ensureOfficialStore`). Returns `None` when the slim
-/// row does not exist. See the module header for the resolution order + the
-/// step-2 deferral.
+/// row does not exist. See the module header for the resolution order and the
+/// lines.
 pub fn ensure_official_store<E: StoreEntity>(
     main: &Connection,
     mount: &Connection,
@@ -90,15 +110,27 @@ pub fn ensure_official_store<E: StoreEntity>(
     entity_name: &str,
 ) -> Result<Option<EnsureResult>, DbError> {
     let repo = StoreBackedRepository::<E>::new(main, mount);
+    let label = E::entity_label();
 
     // Read the RAW slim row (never the overlay-applied read — the store files may
     // not exist yet). We need only existence + the current FK.
     let Some(row) = repo.find_by_id_raw(entity_id)? else {
+        entity_line!(
+            warn,
+            label,
+            entity_id,
+            format!(
+                "ensure{}OfficialStore: {label} not found",
+                capitalized(label)
+            )
+        );
         return Ok(None);
     };
+    // v4 `if (entity.officialMountPointId)` — truthy, so an empty FK is no FK.
     let current_fk = row
         .get("officialMountPointId")
         .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
         .map(str::to_string);
 
     let points = DocMountPointsRepository::new(mount);
@@ -111,23 +143,68 @@ pub fn ensure_official_store<E: StoreEntity>(
                 created: false,
             }));
         }
-        // A stale FK falls through to (re)provisioning.
+        entity_line!(
+            info,
+            label,
+            entity_id,
+            format!(
+                "{} officialMountPointId points to a missing mount point; will heal",
+                capitalized(label)
+            ),
+            staleMountPointId = fk
+        );
     }
 
-    // 2. Adopt a hand-linked store — deferred (see module header). The adopt
-    //    branch would consult `E::find_store_links` here; the corpora never have a
-    //    pre-existing link, so the create branch is always taken.
-
-    // 3. Mint a fresh `<prefix><name>` store, link it, set the FK.
-    let trimmed = {
-        let n = entity_name.trim();
-        if n.is_empty() {
-            "Untitled"
-        } else {
-            n
+    // 2. Adopt an existing linked store if one matches: a database-backed
+    //    `documents` store (`storeType ?? 'documents'`), preferring one whose
+    //    name carries the entity's own prefix (v4 `isOwnStoreName` —
+    //    `name.startsWith(prefix)`), else the first eligible in link order.
+    //    Raw FK write — must not re-read the store overlay: on the create path
+    //    the adopted store may have no properties.json yet, and the
+    //    overlay-applying `update()` would throw `Unavailable`.
+    let links = E::find_store_links(mount, entity_id)?;
+    if !links.is_empty() {
+        let mut eligible = Vec::new();
+        for link in &links {
+            if let Some(s) = points.find_store_naming_by_id(link)? {
+                if s.mount_type == "database"
+                    && s.store_type.as_deref().unwrap_or("documents") == "documents"
+                {
+                    eligible.push(s);
+                }
+            }
         }
+        let adoptable = eligible
+            .iter()
+            .find(|s| s.name.starts_with(E::store_name_prefix()))
+            .or_else(|| eligible.first());
+        if let Some(adoptable) = adoptable {
+            repo.set_official_mount_point_id(entity_id, &adoptable.id)?;
+            entity_line!(
+                info,
+                label,
+                entity_id,
+                format!("Adopted existing linked store as {label} official"),
+                mountPointId = adoptable.id,
+                storeName = adoptable.name
+            );
+            return Ok(Some(EnsureResult {
+                mount_point_id: adoptable.id.clone(),
+                created: false,
+            }));
+        }
+    }
+
+    // 3. Mint a fresh `<prefix><name>` store, link it, set the FK. v4's
+    //    `(entityName || 'Untitled').trim()`: only an EMPTY name is falsy, so a
+    //    whitespace-only name trims to the bare prefix; then `.slice(0, 200)`
+    //    over UTF-16 units.
+    let named = if entity_name.is_empty() {
+        "Untitled"
+    } else {
+        js_trim(entity_name)
     };
-    let desired = truncate_chars(&format!("{}{trimmed}", E::store_name_prefix()), 200);
+    let desired = utf16_truncate(&format!("{}{named}", E::store_name_prefix()), 200);
     let taken: HashSet<String> = points.find_all_names()?.into_iter().collect();
     let final_name = next_unique_mount_point_name(&taken, &desired);
 
@@ -135,7 +212,7 @@ pub fn ensure_official_store<E: StoreEntity>(
     let mount_point_id = uuid::Uuid::new_v4().to_string();
     points.create(
         &DmpCreate {
-            name: final_name,
+            name: final_name.clone(),
             base_path: String::new(),
             mount_type: "database".into(),
             store_type: "documents".into(),
@@ -165,6 +242,15 @@ pub fn ensure_official_store<E: StoreEntity>(
 
     E::link_store(mount, entity_id, &mount_point_id)?;
     repo.set_official_mount_point_id(entity_id, &mount_point_id)?;
+
+    entity_line!(
+        info,
+        label,
+        entity_id,
+        format!("Created {label}-official document store"),
+        mountPointId = mount_point_id,
+        storeName = final_name
+    );
 
     Ok(Some(EnsureResult {
         mount_point_id,
@@ -212,14 +298,6 @@ pub fn ensure_owner_official_store(
             ensure_official_store::<super::groups::GroupEntity>(main, mount, owner_id, owner_name)
         }
     }
-}
-
-/// `String.prototype.slice(0, n)` over UTF-16 code units would be the exact v4
-/// match; the store names are ASCII (the prefix + a user name), so a char-count
-/// truncation suffices and the corpus stays within ASCII. (Documented alongside
-/// the UTF-16 `plainTextLength` seam.)
-fn truncate_chars(s: &str, n: usize) -> String {
-    s.chars().take(n).collect()
 }
 
 #[cfg(test)]

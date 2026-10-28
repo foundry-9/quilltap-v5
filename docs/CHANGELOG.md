@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — feat(stores): ensureOfficialStore step 2, its four lines, and v4's name rule (P4.171 C-9 / D273-21)
+
+_Versions: core 0.0.1338._
+
+`ensure_official_store` is now complete against v4's `ensureOfficialStore`. Step 2 adopts a store that is still linked to the entity: a database-backed `documents` store (`storeType ?? 'documents'`), preferring one whose name carries the entity's own prefix, else the first eligible in link order. It does a raw FK write. v4's four lines are logged with the entity's own id key (`projectId` / `groupId`): the not-found WARN, the stale-pointer heal INFO, the adopt INFO, and the create INFO. The minted name follows v4's `(name || 'Untitled').trim().slice(0, 200)`: a whitespace-only name mints the bare prefix, and the cut is over UTF-16 units. An empty FK counts as no FK, matching v4's truthiness. The scenario-location fixture gains seven planted owners, and its case gains an `ensureOwner` op over v4's real `ensureOwnerOfficialStore`.
+
 #### 2026-10-27 — fix(vault): the character scenario parser's two skip WARNs (P4.171 C-7)
 
 _Versions: core 0.0.1337._

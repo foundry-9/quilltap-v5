@@ -16,6 +16,11 @@
 //! v4 class for the location's own errors, by message otherwise), the
 //! `doc_mount_points` count, which mounts hold a `Scenarios/` folder row, and
 //! the captured scenario lines L1–L15 (`LEVEL message k=v`, arrays as `kJson`).
+//! P4.171 (C-9 / D273-21) adds `ensureOfficialStore`'s step 2 (adopt a linked
+//! store — own-name preference, first eligible, after a stale-FK heal, the
+//! group variant), its four lines, and the `(name || 'Untitled').trim()` name
+//! rule, through the location and through v4's REAL `ensureOwnerOfficialStore`
+//! (the `ensureOwner` op).
 //! Excerpts are compared in UTF-16 units under `EXCERPT_LONE_SURROGATE` (R-AA).
 //!
 //! Build the fixture + oracle (Node 24, from the v4 checkout or the round's
@@ -39,6 +44,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::chats::ScenarioRef;
+use quilltap_core::db::ensure_official_store::{ensure_owner_official_store, StoreOwnerKind};
 use quilltap_core::db::scenarios::ParsedScenario;
 use quilltap_core::db::Writer;
 use quilltap_core::scenarios::everywhere::list_scenarios_everywhere;
@@ -83,6 +89,15 @@ const PINNED_MESSAGES: &[&str] = &[
     "Scenarios: multiple isDefault: true entries",
     "Scenarios: built list",
     "Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate",
+    // P4.171 (D273-21 / C-9): `ensureOfficialStore`'s four lines.
+    "ensureProjectOfficialStore: project not found",
+    "ensureGroupOfficialStore: group not found",
+    "Project officialMountPointId points to a missing mount point; will heal",
+    "Group officialMountPointId points to a missing mount point; will heal",
+    "Adopted existing linked store as project official",
+    "Adopted existing linked store as group official",
+    "Created project-official document store",
+    "Created group-official document store",
 ];
 
 /// Ruled divergence `EXCERPT_LONE_SURROGATE` (R-AA) over the catalogue: the
@@ -92,7 +107,7 @@ const PINNED_MESSAGES: &[&str] = &[
 const EXCERPT_LONE_SURROGATE: &[&str] = &["Scenarios/long.md"];
 
 /// Ops the corpus must carry (a truncated oracle must not pass).
-const MIN_ROWS: usize = 85;
+const MIN_ROWS: usize = 94;
 
 struct Env<'a> {
     main: &'a Connection,
@@ -398,6 +413,27 @@ fn run_op(op: &Value, env: &Env<'_>, ruled_seen: &mut Vec<String>) -> Value {
             Ok(sources) => everywhere_shape(sources, env, ruled_seen),
             Err(e) => json!({ "threw": { "name": "<other>", "message": e.to_string() } }),
         },
+        "ensureOwner" => {
+            let kind = match op["kind"].as_str().unwrap() {
+                "project" => StoreOwnerKind::Project,
+                "group" => StoreOwnerKind::Group,
+                other => panic!("kind {other}"),
+            };
+            match ensure_owner_official_store(
+                main,
+                mount,
+                kind,
+                &env.ids[op["id"].as_str().unwrap()],
+                op["ownerName"].as_str().unwrap(),
+            ) {
+                Ok(None) => Value::Null,
+                Ok(Some(r)) => json!({
+                    "mountPointId": env.remap(&r.mount_point_id),
+                    "created": r.created,
+                }),
+                Err(e) => json!({ "threw": { "name": "<other>", "message": e.to_string() } }),
+            }
+        }
         "breakFolders" => {
             mount
                 .execute_batch("DROP TABLE doc_mount_folders")

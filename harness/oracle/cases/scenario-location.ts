@@ -60,6 +60,15 @@ const PINNED_MESSAGES = [
   'Scenarios: multiple isDefault: true entries',
   'Scenarios: built list',
   'Failed to demote a previously-default scenario; alphabetical tiebreaker will compensate',
+  // P4.171 (D273-21 / C-9): `ensureOfficialStore`'s four lines.
+  'ensureProjectOfficialStore: project not found',
+  'ensureGroupOfficialStore: group not found',
+  'Project officialMountPointId points to a missing mount point; will heal',
+  'Group officialMountPointId points to a missing mount point; will heal',
+  'Adopted existing linked store as project official',
+  'Adopted existing linked store as group official',
+  'Created project-official document store',
+  'Created group-official document store',
 ];
 
 /** One op of the replayed list. `scope`/`id` use the spec's id KEYS
@@ -77,6 +86,7 @@ type Op =
   | { op: 'delete'; scope: string; id: string | null; path: string }
   | { op: 'setDefault'; scope: string; id: string | null; path: string | null }
   | { op: 'everywhere'; includeArchived: boolean }
+  | { op: 'ensureOwner'; kind: 'project' | 'group'; id: string; ownerName: string }
   | { op: 'breakFolders' };
 
 const OPS: Array<{ name: string } & Op> = [
@@ -168,6 +178,18 @@ const OPS: Array<{ name: string } & Op> = [
   { name: 'ensure_provisions_bare_project', op: 'resolve', scope: 'project', id: 'bare', ensure: true },
   { name: 'ensure_heals_folder', op: 'resolve', scope: 'project', id: 'betaLower', ensure: true },
   { name: 'ensure_unnamed_group_dropped', op: 'resolve', scope: 'group', id: 'unnamedGroup', ensure: true },
+  // P4.171 (C-9 / D273-21): `ensureOfficialStore`'s step 2 and its lines —
+  // through the location (ensure) and through v4's REAL
+  // `ensureOwnerOfficialStore` directly.
+  { name: 'ensure_adopts_own_named_linked_store', op: 'resolve', scope: 'project', id: 'adopt', ensure: true },
+  { name: 'ensure_again_is_step_one', op: 'ensureOwner', kind: 'project', id: 'adopt', ownerName: 'Adopt' },
+  { name: 'ensure_adopts_first_eligible', op: 'ensureOwner', kind: 'project', id: 'adoptFirst', ownerName: 'Adopt First' },
+  { name: 'ensure_heals_stale_fk_then_adopts', op: 'ensureOwner', kind: 'project', id: 'stale', ownerName: 'Stale' },
+  { name: 'ensure_whitespace_name_bare_prefix', op: 'ensureOwner', kind: 'project', id: 'ws', ownerName: '   ' },
+  { name: 'ensure_empty_name_untitled', op: 'ensureOwner', kind: 'project', id: 'wsEmpty', ownerName: '' },
+  { name: 'ensure_group_adopts_linked', op: 'ensureOwner', kind: 'group', id: 'gAdopt', ownerName: 'Adopting Guild' },
+  { name: 'ensure_missing_project_warns', op: 'ensureOwner', kind: 'project', id: 'missing', ownerName: 'Ghost' },
+  { name: 'ensure_missing_group_warns', op: 'ensureOwner', kind: 'group', id: 'missingGroup', ownerName: 'Ghost' },
   { name: 'everywhere_after_writes', op: 'everywhere', includeArchived: false },
   // a broken folder table: the heal WARNs then RETHROWS; a probe is untouched
   { name: 'break_folders', op: 'breakFolders' },
@@ -229,6 +251,7 @@ async function main(): Promise<void> {
   const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
   const loc = await import('@/lib/scenarios/location');
   const { listScenariosEverywhere } = await import('@/lib/scenarios/everywhere');
+  const { ensureOwnerOfficialStore } = await import('@/lib/mount-index/ensure-owner-store');
 
   await initializeDatabase();
   const repos = getRepositories();
@@ -360,6 +383,11 @@ async function main(): Promise<void> {
               return { ...rest, excerptUnits: units(excerpt), updatedAt: ts(updatedAt) };
             }),
           }));
+          break;
+        }
+        case 'ensureOwner': {
+          const r = await ensureOwnerOfficialStore(o.kind, ID[o.id], o.ownerName);
+          result = r === null ? null : { mountPointId: remap(r.mountPointId), created: r.created };
           break;
         }
         case 'breakFolders':

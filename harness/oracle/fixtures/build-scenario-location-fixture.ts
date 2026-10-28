@@ -34,7 +34,19 @@
  *                   every raw read drops it.
  *       BARE      — its `officialMountPointId` nulled and its store UNLINKED
  *                   (raw): a probe finds nothing; `ensure` MINTS a store (v4's
- *                   step 3 — v5 defers step 2's adoption of a linked store).
+ *                   step 3).
+ *     P4.171 (C-9 / D273-21 — `ensureOfficialStore` step 2 and its lines):
+ *       ADOPT     — FK nulled; linked to ADOPT NOTES (a plain documents store)
+ *                   BEFORE its own `Project Files: Adopt` store: step 2 adopts
+ *                   the OWN-named one (the `isOwnStoreName` preference).
+ *       ADOPTFIRST — FK nulled, own store UNLINKED; linked to CHARSTORE (a
+ *                   `character` store — ineligible) then PLAIN NOTES: step 2
+ *                   adopts the first ELIGIBLE store.
+ *       STALE     — FK pointed at a mount id that does not exist, own link
+ *                   kept: the heal INFO, then step 2 adopts its own store.
+ *       WS / WSEMPTY — FK nulled and unlinked: `ensure` with a whitespace-only
+ *                   name mints the bare prefix; with '' it mints `Untitled`.
+ *     Groups: GADOPT — FK nulled, link kept: the group variant of step 2.
  *   - Groups: GUILD (healed `Scenarios/`, one file); UNNAMED (name '' — raw).
  *   - General: a database store + its `instance_settings` pointer, healed
  *     `Scenarios/` with two files (one default).
@@ -215,6 +227,11 @@ async function main(): Promise<void> {
   const betaUpperMp = await mkProject(ID.betaUpper, 'Beta');
   await mkProject(ID.nameless, 'Nameless');
   await mkProject(ID.bare, 'Bare');
+  await mkProject(ID.adopt, 'Adopt');
+  const adoptFirstMp = await mkProject(ID.adoptFirst, 'Adopt First');
+  await mkProject(ID.stale, 'Stale');
+  await mkProject(ID.ws, 'Whitespace');
+  await mkProject(ID.wsEmpty, 'Empty Name');
 
   const heal = async (scope: 'general' | 'project' | 'group', id: string | null) => {
     const location = await resolveScenarioLocation(scope, id, repos, spec.userId, { ensure: true });
@@ -255,6 +272,7 @@ async function main(): Promise<void> {
   };
   const guildMp = await mkGroup(ID.guild, 'Guild');
   await mkGroup(ID.unnamedGroup, 'Unnamed');
+  await mkGroup(ID.gAdopt, 'Adopting Guild');
   await heal('group', ID.guild);
   await writeDatabaseDocument(guildMp, 'Scenarios/g.md', file('Guild Hall', 'The guild hall at noon.'));
   maindb.prepare('UPDATE "groups" SET "name" = ? WHERE "id" = ?').run('', ID.unnamedGroup);
@@ -295,6 +313,57 @@ async function main(): Promise<void> {
   await writeDatabaseDocument(ID.linked, 'Scenarios/x.md', file('Linked', 'A scene in a linked store.'));
   await mkStore(ID.arbitrary, 'Loose Papers');
   await writeDatabaseDocument(ID.arbitrary, 'Scenarios/y.md', file('Loose', 'A scene in an arbitrary store.'));
+
+  // P4.171 (C-9): the step-2 plants (raw, after every create — see the header).
+  const nullFk = (table: 'projects' | 'groups', id: string) =>
+    maindb.prepare(`UPDATE "${table}" SET "officialMountPointId" = NULL WHERE "id" = ?`).run(id);
+  const ownLinkOf = (id: string) =>
+    (midb.prepare('SELECT "mountPointId" AS m FROM "project_doc_mount_links" WHERE "projectId" = ?').get(id) as { m: string }).m;
+  const unlinkAll = (id: string) =>
+    midb.prepare('DELETE FROM "project_doc_mount_links" WHERE "projectId" = ?').run(id);
+  await mkStore(ID.adoptNotes, 'Adopt Notes');
+  await mkStore(ID.plainNotes, 'Plain Notes');
+  await repos.docMountPoints.create(
+    {
+      name: 'A Character Vault',
+      basePath: '',
+      mountType: 'database',
+      storeType: 'character',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: ID.charStore, createdAt: TS, updatedAt: TS },
+  );
+  // ADOPT: the non-own store first in link order, then its own again.
+  const adoptOwn = ownLinkOf(ID.adopt);
+  nullFk('projects', ID.adopt);
+  unlinkAll(ID.adopt);
+  await repos.projectDocMountLinks.link(ID.adopt, ID.adoptNotes);
+  await repos.projectDocMountLinks.link(ID.adopt, adoptOwn);
+  // ADOPTFIRST: own store unlinked; an ineligible store, then an eligible one.
+  nullFk('projects', ID.adoptFirst);
+  unlinkAll(ID.adoptFirst);
+  await repos.projectDocMountLinks.link(ID.adoptFirst, ID.charStore);
+  await repos.projectDocMountLinks.link(ID.adoptFirst, ID.plainNotes);
+  if (!adoptFirstMp) throw new Error('adoptFirst store');
+  // STALE: the FK names a mount that does not exist; its own link stays.
+  maindb.prepare('UPDATE "projects" SET "officialMountPointId" = ? WHERE "id" = ?').run(ID.staleMp, ID.stale);
+  // WS / WSEMPTY: nothing to adopt — `ensure` mints.
+  for (const id of [ID.ws, ID.wsEmpty]) {
+    nullFk('projects', id);
+    unlinkAll(id);
+  }
+  // GADOPT: the group variant of step 2.
+  nullFk('groups', ID.gAdopt);
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
