@@ -25,8 +25,9 @@
 //! Scoping (LR-2): the wardrobe round's census
 //! (`no_wardrobe_lane_remove_markers_left`) counts only markers naming
 //! `7a8d6dacc` / `9ecebf986` / `4a38222e6`; this one counts only markers
-//! naming one of the twenty shas below. A marker naming NEITHER set fails
-//! BOTH censuses' format tests, so it cannot hide.
+//! naming one of the twenty shas below. A marker naming neither set passes
+//! both format tests if it names SOME hex sha (P4.174's `names_some_v4_commit`);
+//! the round-agnostic `no_lane_remove_markers_left` census is what refuses it.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test no_memory_lane_remove_markers_left

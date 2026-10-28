@@ -25,8 +25,9 @@
 //! memory lanes write markers of their own, counted by
 //! `no_memory_lane_remove_markers_left`. This census counts only markers
 //! naming the wardrobe round's commits (`7a8d6dacc` / `9ecebf986` /
-//! `4a38222e6`); a marker naming neither set fails both censuses' format
-//! tests, so it cannot hide.
+//! `4a38222e6`); a marker naming neither set but SOME hex sha passes both
+//! format tests — the round-agnostic `no_lane_remove_markers_left` census is
+//! what refuses it.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test no_wardrobe_lane_remove_markers_left

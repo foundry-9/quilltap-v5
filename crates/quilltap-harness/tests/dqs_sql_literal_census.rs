@@ -101,7 +101,12 @@ const PROSE_TOKENS: &[(&str, &str)] = &[
     ("crates/quilltap-cli/src/db_cmd.rs", "UPDATE ..."),
 ];
 
-/// Upper-case words that make a literal SQL for this census.
+/// Upper-case words that make a literal SQL for this census. Case-SENSITIVE on
+/// purpose: v5's SQL is written upper-case, and a case-insensitive match was
+/// measured at the `322a5488e` follow-ups unification to flag ~30 prompt-prose
+/// literals ("from", "select" in English) — a lower-case SQL literal is the
+/// recorded blind spot, the full workspace gate (DQS off on every connection)
+/// its backstop.
 const SQL_WORDS: &[&str] = &[
     "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "WHERE", "FROM", "PRAGMA",
 ];

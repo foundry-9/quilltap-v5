@@ -837,40 +837,6 @@ fn rust_line_parser_handles_spaced_values() {
     assert!(rust_line("INFO quilltap_core::x Background job enqueued jobId=1").is_none());
 }
 
-/// P4.D282 — the orchestrator half: the end-of-turn drain is the effects
-/// module's `flush_pending_wardrobe_announcements` (v4 `orchestrator.service
-/// .ts` imports it from `outfit-change-effects.ts` at `9ecebf986`), so every
-/// per-turn announcement logs the module's DEBUG / WARN with `context:
-/// 'orchestrator-turn-end'` — the matrix's `flush` steps above. A source
-/// census, not behaviour: the orchestrator calls the module once, and the old
-/// Aurora-side drain (a bare `let _ =` per character, no lines) is gone.
-#[test]
-fn the_orchestrator_drains_the_turn_through_the_effects_module() {
-    let src = |rel: &str| {
-        let p = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../quilltap-core/src")
-            .join(rel);
-        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("read {}: {e}", p.display()))
-    };
-    let orchestrator = src("services/orchestrator.rs");
-    assert_eq!(
-        orchestrator
-            .matches("outfit_change_effects::flush_pending_wardrobe_announcements(")
-            .count(),
-        1,
-        "the orchestrator drains through the effects module exactly once"
-    );
-    assert!(
-        !orchestrator.contains("aurora_notifications::flush_pending_wardrobe_announcements"),
-        "the old Aurora-side drain is not called"
-    );
-    assert!(
-        !src("services/aurora_notifications.rs")
-            .contains("fn flush_pending_wardrobe_announcements"),
-        "the Aurora-side drain is folded into the effects module"
-    );
-}
-
 /// P4.D316 — v4's outfit-history fence 4 ("no turn creates the announcement
 /// set by hand", `outfit-history-fence.test.ts`): the per-turn containers are
 /// minted ONLY by `new_wardrobe_turn_containers` — a set minted by hand would

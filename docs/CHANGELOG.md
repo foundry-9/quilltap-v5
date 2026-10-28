@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — test(harness): one round-agnostic LANE-REMOVE census; the retired drain census deleted; the DQS census's case rule recorded
+
+_No crate versions bumped._
+
+§3 review fixes (P4.174, P4.172). NEW `no_lane_remove_markers_left`: one round-agnostic census that fails on any `LANE-REMOVE\s*(` marker in any shipped crate's `src/`, in any comment form. P4.174's `names_some_v4_commit` let a marker naming any hex word (even a v5 sha) pass both scoped censuses, and their exact `LANE-REMOVE(` match missed a spaced form; the two headers' "cannot hide" claim is corrected. Mutation-checked with a planted spaced marker naming a v5 sha. The orchestrator source census in `outfit_change_effects_tier3_equivalence` is deleted, as P4.174's order said (the turn-level pin in `orchestrator_tier3_equivalence` replaces it; its comment had claimed the retirement). The DQS census documents its measured case-sensitive limit: a case-insensitive match flagged about 30 prompt-prose literals.
+
 #### 2026-10-28 — fix(core,web): Zod length checks ToNumber a non-array length; the enabled store readers validate storeType; three log smalls
 
 _Versions: core 0.0.1376, web 0.0.251._
