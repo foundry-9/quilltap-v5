@@ -1218,12 +1218,13 @@ mod library_reshape_tests {
         conn.execute_batch(
             "CREATE TABLE doc_mount_points (
                id TEXT PRIMARY KEY, name TEXT, enabled INTEGER, mountType TEXT,
-               basePath TEXT, excludePatterns TEXT, includePatterns TEXT,
-               conversionStatus TEXT);",
+               storeType TEXT, basePath TEXT, excludePatterns TEXT,
+               includePatterns TEXT, conversionStatus TEXT);",
         )
         .unwrap();
         conn.execute(
-            "INSERT INTO doc_mount_points VALUES
+            "INSERT INTO doc_mount_points (id, name, enabled, mountType, basePath,
+               excludePatterns, includePatterns, conversionStatus) VALUES
                ('mp-b', 'Beta', 1, 'filesystem', ?1, '[]', '[]', 'idle'),
                ('mp-a', 'Alpha', 1, 'filesystem', '', '[]', '[]', 'idle'),
                ('mp-c', 'Off', 0, 'filesystem', ?1, '[]', '[]', 'idle')",

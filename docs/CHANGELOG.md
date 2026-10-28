@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — test(core): the store-reader unit fixtures carry `storeType`
+
+_Versions: core 0.0.1378._
+
+The workspace gate found three unit tests red: two `database_store` title-lint tests and one `pascal::roster` library test. They planted `doc_mount_points` without a `storeType` column. Once the enabled store reader selected that column, the read failed, fell back and listed no stores. Every real schema has the column, so the fixtures now carry it. All three tests are green.
+
 #### 2026-10-28 — test(spa): the shared custom-tool definition corpus re-copied from the sweep's pin regen (710 -> 716 rows)
 
 _No crate versions bumped._

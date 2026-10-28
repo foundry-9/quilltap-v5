@@ -875,7 +875,8 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE doc_mount_points (
-               id TEXT PRIMARY KEY, name TEXT, mountType TEXT, basePath TEXT DEFAULT '',
+               id TEXT PRIMARY KEY, name TEXT, mountType TEXT, storeType TEXT,
+               basePath TEXT DEFAULT '',
                excludePatterns TEXT DEFAULT '[]', includePatterns TEXT DEFAULT '[]',
                enabled INTEGER DEFAULT 1, conversionStatus TEXT DEFAULT 'idle',
                createdAt TEXT, updatedAt TEXT);
