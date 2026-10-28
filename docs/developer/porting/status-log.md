@@ -193390,3 +193390,37 @@ Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.cla
 
 Both tests re-ran green by name against regenerated oracles. The rest of the gate log was green: 858 binaries, 5,706 passed, 2 failed (the two above), 3 ignored, zero SKIP. That includes Tier R `cli_differential`, `host_lock_ordering`, `host_cadence`, and the spelling, fallback-home and help-tree guards.
 
+
+### P4.171 — LANE COMPLETE (2026-10-28)
+
+- **Branch:** `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, in worktree `.claude/worktrees/p4.171`. The session started there, on `main` @ `6c7ea4410`, and never moved.
+- **Pin:** `/tmp/qt-v4-pin-p4171-322a5488e`, made with `npm ci --offline`; openai 7.34.0, zod 4.6.7 and @xterm/headless 6.0.0 verified. The §2 probe was an observation: v4 was at `d64b25e96`, and no re-pin was done.
+- **LANDED:** C-9 / D273-21, C-19 (both loops), C-8, C-7, C-6, C-10, B1-5, C-11, D338-librarian, D338-T3-24, D338-22, C-12, D274-a, D331-T3-35.
+- **OPEN (Tier 3, by name):** v4's PHASE 3.4a `backfillProjectStores` and 3.4b's `backfill-group-stores`.
+  - Their populate step writes the four store files from v4's WIDE `_findAll` row, a read v5's raw finders do not carry.
+  - This is recorded in `services/startup_scenarios.rs`'s module doc.
+  - v4's restore never runs the 3.4 / 3.4b loops, so no mirror-boot entry was added.
+- **HANDOFFs:** none. `system_restore_state` re-ran green: the restore census filters by `RESTORE_TS_MESSAGES`, and `ensureOfficialStore`'s new INFOs fall outside it.
+- **Files touched outside the ownership table (forced by signatures or pins):**
+  - `scenarios/everywhere.rs` (the `parse_scenario_for_scope` signature)
+  - `services/chat_scenario.rs` (`v4_error_text` deleted)
+  - `in_scene_voiced_tier3_equivalence.rs`, `chat_delete_equivalence.rs`, `vault_frontmatter_parsers_equivalence.rs`
+  - `doc_mount_fallback_sites_census.rs` (one row re-homed)
+- **Fixtures changed:** the scenario-location builder and `scenario-location.json` (eleven new owner ids). The readers of that pair are `scenario_location`, `startup_scenarios` (new, on its own `/tmp/qt-startup-scenarios-*.db` copy), and `chat_scenario_routes` / `scenarios_routes` (re-swept green). `photos_routes` gained three planted rows.
+- **Residual divergences (recorded):**
+  - a pid that is not a u32;
+  - Node and Rust word IO error text differently;
+  - no `Lock heartbeat started/stopped` lines;
+  - the CLI write-lock skips history entries it cannot type.
+- **Gate:**
+  - fmt and clippy (both feature sets) clean.
+  - Sweep: 15/15 ok.
+  - `cargo test --workspace`: 858 binaries, 5,706 passed, 2 failed, 3 ignored, zero SKIP. Both reds were caused by this lane (a shared-fixture rebuild, and a census row) and were fixed in `7e205ef17`; both re-ran green by name.
+  - Tier R `cli_differential` ran for 345 s, green.
+  - SPA: `npm ci` and `npm run build` both exit 0. This lane touches no SPA code.
+- **Versions at close:** core 0.0.1344, host 0.0.216, cli 0.0.35. Unchanged: web 0.0.246, harness 0.0.1110 (frozen).
+- 💸 **Dogfood rows:**
+  - The union build's first boot on the Friday copy should log v4's 3.4 / 3.4b totals and the adopt/created INFOs.
+  - A stale instance lock should be claimed with v4's WARN.
+  - `/photos?q=` on an empty album should make no embedding call.
+
