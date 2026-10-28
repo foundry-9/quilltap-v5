@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): record v4 issue #120 (the chat-settings row leak F-1 converged onto)
+
+_No crate versions bumped._
+
+Filed foundry-9/quilltap-server#120: a `chat_settings` row that fails validation reads as absent, so every load and save mints a new row. v5 matches this behavior (Faithful) and moves when v4 fixes it. Recorded in `phase-4.md` and the F-1 status-log record.
+
 #### 2026-10-28 — fix(core): F-1 converged — a refused settings row reads as absent, and the GET mints a fresh row as v4 does
 
 _Versions: core 0.0.1379._

@@ -193877,7 +193877,7 @@ core 0.0.1378, host 0.0.217, web 0.0.251, cli 0.0.35, tauri 0.0.9, SPA 0.5.907; 
 
 The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) as **(A) converge on v4**.
 
-- **v4 at the pin:** `updateForUser` asks `findByUserId` whether settings exist. That is `findOneByFilter`, an un-ordered `findOne … LIMIT 1` with schema validation, under a fallback `safeQuery`. A refused first row reads as `null`, the create branch mints a second row, and `create`'s return is the answer. The refused row keeps sorting first, so every load mints another row: v4's own row leak, a filing candidate (ask first).
+- **v4 at the pin:** `updateForUser` asks `findByUserId` whether settings exist. That is `findOneByFilter`, an un-ordered `findOne … LIMIT 1` with schema validation, under a fallback `safeQuery`. A refused first row reads as `null`, the create branch mints a second row, and `create`'s return is the answer. The refused row keeps sorting first, so every load mints another row: v4's own row leak, filed as foundry-9/quilltap-server#120 (Faithful — v5 moves when v4 does).
 - **v5 before:** `update_for_user`'s existence check was a raw `SELECT id`. It found the refused row and updated it; the re-read by user dropped it again, giving 500 `chat settings write failed to persist` on every load.
 - **v5 now:**
   - `update_for_user_returning_id` checks existence through `find_by_user_id_or_none`, the validating read on v4's fallback line, and returns the written id.

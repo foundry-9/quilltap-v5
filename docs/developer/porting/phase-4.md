@@ -7231,7 +7231,8 @@ UNPROCESSED, and the regen rule stays PIN REQUIRED. Round record:
    branch mints and answers a fresh row; the GET / PUT re-read the written
    row by id. The carve `REFUSED_CHEAP_LLM_ROW_GET` is retired (the three
    rows compare whole). v5 now shares v4's row leak — the refused row sorts
-   first, so every load mints another — a v4 filing candidate (ask first).
+   first, so every load mints another — filed upstream as v4 #120
+   (Faithful; v5 moves when v4 fixes it).
 3. **A follow-ups smalls order** covering:
    - P4.165's Carina FINDING: `run_stream`'s `Err(_) => break`, where v4
      answers `[Carina] Query failed` / `llm-failed`;
