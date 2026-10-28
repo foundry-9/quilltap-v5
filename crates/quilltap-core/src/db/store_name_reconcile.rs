@@ -271,22 +271,16 @@ pub fn reconcile_vault_names_after_concurrent_deletes(
     let characters = fallback::find_all_logged_strict("characters", || read_vault_owner_rows(main));
     let (stores, characters) = match (stores, characters) {
         (Ok(s), Ok(c)) => (s, c),
-        (Err(e), _) | (_, Err(e)) => {
-            // The first reconcile's read lines are the ones just logged (its
-            // skip WARN names the first failed read); the rest re-read (and
-            // re-fail) on their own, as v4's each do.
-            let collection = if read_store_name_rows(mount_conn).is_err() {
-                "doc_mount_points"
-            } else {
-                "characters"
-            };
-            for (i, id) in character_ids.iter().enumerate() {
-                if i == 0 {
-                    read_failed(trigger, collection, &e);
-                } else {
-                    reconcile_vault_names_or_warn(main, mount, trigger, id);
-                }
-            }
+        // The first reconcile's read lines are the ones just logged (its skip
+        // WARN names the first failed read — known from WHICH read failed,
+        // never a second read, P4.171 D274-a); the rest re-read (and re-fail)
+        // on their own, as v4's each do.
+        (Err(e), _) => {
+            fail_each(main, mount, trigger, "doc_mount_points", &e, character_ids);
+            return;
+        }
+        (Ok(_), Err(e)) => {
+            fail_each(main, mount, trigger, "characters", &e, character_ids);
             return;
         }
     };
@@ -327,6 +321,26 @@ pub fn reconcile_vault_names_after_concurrent_deletes(
             );
         }
         publish_realtime(RealtimeTopic::MountPoints, None);
+    }
+}
+
+/// [`reconcile_vault_names_after_concurrent_deletes`]' read-failure arm: the
+/// first deleted character's reconcile is the read just logged (its skip WARN
+/// naming `collection`); every later one runs whole, as v4's each does.
+fn fail_each(
+    main: &Connection,
+    mount: Option<&Connection>,
+    trigger: &str,
+    collection: &str,
+    error: &DbError,
+    character_ids: &[String],
+) {
+    for (i, id) in character_ids.iter().enumerate() {
+        if i == 0 {
+            read_failed(trigger, collection, error);
+        } else {
+            reconcile_vault_names_or_warn(main, mount, trigger, id);
+        }
     }
 }
 
@@ -896,6 +910,49 @@ mod tests {
         assert_eq!(rows.len(), 1, "{lines:#?}");
         assert_eq!(rows[0].id, CHAR);
         assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    /// P4.171 (D274-a): a failed `characters` read over a store list that
+    /// DROPS a row — the first reconcile is the logged read (one pair of
+    /// drop lines, then the skip WARN naming `characters`), the second runs
+    /// whole (one more pair). The old arm re-read the stores to learn which
+    /// read failed, logging a third pair.
+    #[test]
+    fn a_failed_read_names_its_collection_without_re_reading() {
+        let (main, mount) = pair();
+        store(&mount, "not-a-uuid", "Dropped Store", "documents");
+        main.execute(
+            "INSERT INTO characters (id, userId, name, characterDocumentMountPointId, createdAt, updatedAt) \
+             VALUES (?1, ?2, 'Tester', NULL, ?3, ?3)",
+            params![CHAR, USER, T],
+        )
+        .unwrap();
+        // Added AFTER the row, so only the read evaluates it (and throws).
+        main.execute_batch(
+            "ALTER TABLE characters ADD COLUMN bad TEXT GENERATED ALWAYS AS (json('not json')) VIRTUAL",
+        )
+        .unwrap();
+        let ids = vec![CHAR.to_string(), LIVE.to_string()];
+        let ((), lines) = crate::test_support::captured_with(|| {
+            reconcile_vault_names_after_concurrent_deletes(&main, Some(&mount), &ids)
+        });
+        let drops = lines
+            .iter()
+            .filter(|l| l.contains("Data validation failed collection=doc_mount_points"))
+            .count();
+        assert_eq!(drops, 2, "one store read per reconcile: {lines:#?}");
+        let skips: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains("Store-name reconcile skipped: a store or character read failed")
+            })
+            .collect();
+        assert_eq!(skips.len(), 2, "{lines:#?}");
+        assert!(
+            skips[0].contains("collection=characters"),
+            "the failed read is named: {}",
+            skips[0]
+        );
     }
 
     /// No mount index: v4's skip WARN, nothing read.

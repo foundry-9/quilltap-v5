@@ -24,6 +24,10 @@ const DB_HELP: &str = include_str!("help/db_help.txt");
 /// v4 `db-commands.js` `VERBS` — the high-level verb set. All recognized;
 /// `characters` (P4.D66) and `optimize` (P4.D259) ship, the rest exit loud.
 const DB_VERBS: &[&str] = &[
+    // Not yet shipped. When it ships, v4's no-arg `schema` groups tables by
+    // `db-commands.js`'s `DB_DOMAINS` (`322a5488e`), whose `logs` domain
+    // carries the Log's row `'Log entries': ['log_entries']` (`e4a60ad9e`)
+    // beside `'LLM logs': ['llm_logs']` (P4.D331 Tier 3 item 35).
     "schema",
     "find",
     "chats",

@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — fix(stores): the reconcile's failure arm names the failed read without re-reading; the CLI db schema domain-row comment (P4.171 D274-a / D331-T3-35)
+
+_Versions: core 0.0.1344, cli 0.0.35._
+
+The store-name reconcile's read-failure arm after concurrent character deletes now knows which read failed from the match itself. Previously it read the stores a second time, which re-logged every row-drop line. It is split into a `doc_mount_points` arm and a `characters` arm over one `fail_each` helper. Also a comment in the CLI's `db` verb table records v4's `'Log entries': ['log_entries']` domain row for when `db schema` ships.
+
 #### 2026-10-27 — refactor(qtap): fold the private decodeURIComponent onto the one V8 twin (P4.171 C-12)
 
 _Versions: core 0.0.1343._
