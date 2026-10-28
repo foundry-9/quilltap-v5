@@ -60,7 +60,6 @@ use serde_json::{json, Map, Value};
 use crate::api::types::{ErrorKind, Response};
 use crate::db::chats::{ChatUpdate, ScenarioRef, ScenarioSource};
 use crate::db::runtime::Db;
-use crate::db::vault_read_overlay::VaultUnavailable;
 use crate::db::{characters_read, chats_read, DbError};
 use crate::scenario_text::{combine_scenario_text, recover_preset_body};
 use crate::scenarios::location::{lookup_scenario_ref, ScenarioRefLookup};
@@ -76,29 +75,6 @@ use crate::services::scenario_selection::{
 
 /// v4's `logTag` for this route.
 const LOG_TAG: &str = "[Chats v1]";
-
-/// The `error` field of L28 / L31 as v4 renders it: `error.message`. A
-/// character whose vault cannot be read is v4's `CharacterVaultUnavailableError`
-/// — its message is ported as [`VaultUnavailable::message`]; v5's
-/// `characters_read::find_by_id` carries the same id + mount on
-/// `DbError::StoreUnavailable` but a v5 sentence in its `message`, so the
-/// lines render v4's from the structured fields. (HANDOFF recorded by P4.D295:
-/// that read's own message is the root fix, outside this file.)
-fn v4_error_text(error: &DbError) -> String {
-    match error {
-        DbError::StoreUnavailable {
-            entity_label: "character",
-            id,
-            mount_point_id: Some(mount_id),
-            ..
-        } => VaultUnavailable {
-            character_id: id.clone(),
-            mount_id: mount_id.clone(),
-        }
-        .message(),
-        other => crate::db::fallback::error_text(other),
-    }
-}
 
 /// v4's Zod arm (`lib/api/middleware/context.ts` → `validationError`): a schema
 /// rejection is a 400 whose body is `{error: 'Validation error', details: […]}`.
@@ -116,8 +92,10 @@ pub struct SetScenarioBody {
     pub scenario: Option<Value>,
     /// v4 `scenarioRef: ScenarioRefSchema.nullish()` (`545e299bb`).
     pub scenario_ref: Option<Value>,
-    /// v4 `reload: z.boolean().optional()` (`545e299bb`) — NOT nullable.
-    pub reload: Option<Value>,
+    /// v4 `reload: z.boolean().optional()` (`545e299bb`) — NOT nullable:
+    /// three-state (`None` absent, `Some(None)` an explicit `null`, which the
+    /// floor refuses — P4.171 C-11).
+    pub reload: Option<Option<Value>>,
     pub scenario_id: Option<Value>,
     pub project_scenario_path: Option<Value>,
     pub group_scenario_path: Option<Value>,
@@ -206,7 +184,7 @@ fn validate(body: &SetScenarioBody) -> Result<ValidatedScenarioBody, Response> {
         Ok(ValidatedScenarioBody {
             scenario: zod_string(&body.scenario, None)?,
             scenario_ref: zod_scenario_ref(&body.scenario_ref)?,
-            reload: zod_optional_bool(&body.reload)?,
+            reload: zod_optional_bool(&body.reload.clone().map(|r| r.unwrap_or(Value::Null)))?,
             scenario_id: zod_uuid(&body.scenario_id)?,
             project_scenario_path: zod_string(&body.project_scenario_path, Some(500))?,
             group_scenario_path: zod_string(&body.group_scenario_path, Some(500))?,
@@ -275,7 +253,7 @@ fn find_character_owning_scenario(
                 tracing::debug!(
                     chatId = chat_id,
                     characterId = character_id,
-                    error = %v4_error_text(&error),
+                    error = %crate::db::fallback::error_text(&error),
                     "{LOG_TAG} Skipping character while resolving scenarioId"
                 );
             }
@@ -488,7 +466,7 @@ pub async fn chat_set_scenario(
         if let Err(error) = compile_all_stacks(db, updated_chat).await {
             tracing::warn!(
                 chatId = chat_id,
-                error = %v4_error_text(&error),
+                error = %crate::db::fallback::error_text(&error),
                 "{LOG_TAG} Failed to recompile identity stacks after scenario change"
             );
         }
@@ -804,15 +782,15 @@ mod tests {
     fn reload_null_refuses_and_a_null_ref_is_absent() {
         let refused = |body: SetScenarioBody| validate(&body).is_err();
         assert!(refused(SetScenarioBody {
-            reload: Some(Value::Null),
+            reload: Some(None),
             ..Default::default()
         }));
         assert!(refused(SetScenarioBody {
-            reload: Some(json!("yes")),
+            reload: Some(Some(json!("yes"))),
             ..Default::default()
         }));
         assert!(!refused(SetScenarioBody {
-            reload: Some(json!(true)),
+            reload: Some(Some(json!(true))),
             scenario_ref: Some(Value::Null),
             ..Default::default()
         }));

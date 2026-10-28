@@ -930,6 +930,27 @@ fn chat_delete_log_lines() {
         has(&lines, "Failed to resolve character vault store"),
         "v4 warns when a participant's vault cannot be resolved: {lines:#?}"
     );
+    // P4.171 B1-5: v4's keys in v4's order — `context`, `characterId`, and
+    // `error` = the `CharacterVaultUnavailableError` message the dangling
+    // pointer throws (the digest bridge's ONE rendering, byte-compared with
+    // v4 by `commonplace_digest_vault_bridge_tier2_equivalence`).
+    let warn = line_with(&lines, "Failed to resolve character vault store");
+    let fields = warn
+        .split_once("Failed to resolve character vault store ")
+        .map(|(_, f)| f)
+        .unwrap_or_else(|| panic!("no fields: {warn}"));
+    let rest = fields
+        .strip_prefix("context=file-storage.character-vault-bridge characterId=")
+        .unwrap_or_else(|| panic!("v4's context then characterId: {warn}"));
+    let (character_id, error) = rest
+        .split_once(" error=")
+        .unwrap_or_else(|| panic!("then v4's error: {warn}"));
+    assert!(
+        error.starts_with(&format!(
+            "Character {character_id} has no usable vault (characterDocumentMountPointId="
+        )) && error.ends_with("): properties.json missing"),
+        "the error is v4's CharacterVaultUnavailableError message: {warn}"
+    );
 }
 
 /// **P4.85 item 1 — v4's `[Chats v1] Impersonation stopped`.** The `?action=

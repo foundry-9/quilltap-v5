@@ -3815,8 +3815,13 @@ pub enum Request {
         // arm body that passes them into `SetScenarioBody` lands with P4.D295.
         #[serde(default)]
         scenario_ref: Option<serde_json::Value>,
-        #[serde(default)]
-        reload: Option<serde_json::Value>,
+        /// v4 `reload: z.boolean().optional()` — NOT nullable, so an explicit
+        /// `null` must reach the floor as PRESENT (`Some(None)`) and 400,
+        /// never collapse into absent (P4.171 C-11, retiring
+        /// `RELOAD_NULL_DECODES_ABSENT`). Three-state through the house
+        /// decoder, so every edge that decodes a `Request` agrees.
+        #[serde(default, deserialize_with = "crate::db::serde_tristate::double_option")]
+        reload: Option<Option<serde_json::Value>>,
     },
     /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).
     #[serde(rename_all = "camelCase")]

@@ -157,17 +157,10 @@ const WRITING_CASES: &[&str] = &[
     "verb_notes_only_change",
 ];
 
-/// [P4.D295] **`RELOAD_NULL_DECODES_ABSENT`** — a recorded divergence, pinned
-/// both ways. v4's `reload: z.boolean().optional()` is NOT nullable, so
-/// `reload: null` is its flat `Validation error` 400 and nothing is written. The
-/// `KEYSTONE` C2 field (`api/types.rs` — P4.D288's, frozen) is
-/// `#[serde(default)] reload: Option<serde_json::Value>`, and serde decodes a
-/// JSON `null` into an `Option` as `None` — indistinguishable from absent — so
-/// v5's floor (which refuses `Some(Null)`, unit-pinned in `chat_scenario`) never
-/// sees it: v5 answers 200 and WRITES. Flagged to the human (a C2 shape change
-/// is a STOP-and-flag, §R.14). Asserted: v4 400 `Validation error`; v5 200 — a
-/// v5 that starts refusing trips this table (retire it then).
-const RELOAD_NULL_DECODES_ABSENT: &[&str] = &["verb_reload_null_refuses"];
+// [P4.171 C-11] `RELOAD_NULL_DECODES_ABSENT` RETIRED: `reload` decodes
+// three-state through the house `double_option`, so `reload: null` reaches the
+// floor as present-null and answers v4's flat `Validation error` 400 with
+// nothing written — `verb_reload_null_refuses` is an ordinary strict row now.
 
 /// [P4.D295] The scenario lines a row logs — the v4 case captures the same set.
 const LINE_PREFIXES: &[&str] = &[
@@ -1435,20 +1428,7 @@ fn chat_scenario_routes_match_oracle() {
             )),
         ),
     ];
-    let mut ruled_outcomes: Vec<(String, u16)> = Vec::new();
     for (name, chat_id, body, dump, plant) in &recipe_cases {
-        if RELOAD_NULL_DECODES_ABSENT.contains(name) {
-            let (db, _scratch) = fresh_db(&spec, name);
-            let r = rt.block_on(chat_set_scenario(
-                &db,
-                chat_id,
-                decode(chat_id, body),
-                &spec.user_id,
-            ));
-            let _ = take_lines();
-            ruled_outcomes.push((name.to_string(), status_body(&r).0));
-            continue;
-        }
         let (db, _scratch) = fresh_db(&spec, name);
         if let Some((cid, text, source, notes)) = plant {
             plant_recipe(&db, cid, text.as_deref(), source.clone(), *notes);
@@ -1591,19 +1571,6 @@ fn chat_scenario_routes_match_oracle() {
             other => status_body(other),
         };
         check(name, status, body_out, None, take_lines());
-    }
-
-    // RELOAD_NULL_DECODES_ABSENT, both ways (see the table).
-    for (name, status) in ruled_outcomes {
-        let want = &oracle[&name];
-        driven.insert(name.clone());
-        if want["status"] != 400 || want["body"]["error"] != "Validation error" || status != 200 {
-            eprintln!(
-                "[{name}] RELOAD_NULL_DECODES_ABSENT no longer holds (v4 {} / v5 {status}) — retire the table",
-                want["status"]
-            );
-            failed.push(format!("{name}_ruled"));
-        }
     }
 
     // Coverage by SHAPE: the oracle's names and the driven names must agree.

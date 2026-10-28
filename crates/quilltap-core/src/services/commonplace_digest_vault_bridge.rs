@@ -238,26 +238,10 @@ fn holder_vault_mount_id(db: &Db, character_id: &str) -> Option<String> {
         Ok(found) => found,
         Err(e) => {
             // The overlay's absent-keystone refusal carries v4's
-            // `CharacterVaultUnavailableError` structurally; render ITS message
-            // (the api layer's `StoreUnavailable` sentence is v5's own).
-            let error = match &e {
-                DbError::StoreUnavailable {
-                    entity_label: "character",
-                    id,
-                    mount_point_id: Some(mount_id),
-                    ..
-                } => crate::db::vault_read_overlay::VaultUnavailable {
-                    character_id: id.clone(),
-                    mount_id: mount_id.clone(),
-                }
-                .message(),
-                other => crate::db::fallback::error_text(other),
-            };
-            tracing::warn!(
-                context = "file-storage.character-vault-bridge",
-                characterId = %character_id,
-                error = %error,
-                "Failed to resolve character vault store"
+            // `CharacterVaultUnavailableError` message (P4.171 C-10).
+            warn_failed_to_resolve_character_vault(
+                character_id,
+                &crate::db::fallback::error_text(&e),
             );
             None
         }
@@ -497,6 +481,19 @@ pub async fn write_commonplace_digests_to_vault(
         ),
     }
     result
+}
+
+/// v4's `character-vault-bridge.ts:74-81` catch — `Failed to resolve character
+/// vault store {context, characterId, error}`, `error` being the thrown
+/// error's message. The ONE rendering both vault bridges (this digest one and
+/// `conversation_summary_vault_bridge`) log through (P4.171 B1-5).
+pub(crate) fn warn_failed_to_resolve_character_vault(character_id: &str, error: &str) {
+    tracing::warn!(
+        context = "file-storage.character-vault-bridge",
+        characterId = %character_id,
+        error = %error,
+        "Failed to resolve character vault store"
+    );
 }
 
 #[cfg(test)]

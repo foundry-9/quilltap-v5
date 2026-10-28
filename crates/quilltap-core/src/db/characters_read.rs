@@ -285,15 +285,14 @@ pub fn find_by_id(
         Err(OverlayOneError::Db(e)) => Err(e),
         // The absent-keystone read refusal survives structurally (P4.23), so
         // the api layer answers v4's contextful 503 (v4's middleware maps
-        // `CharacterVaultUnavailableError` the same way) instead of a 500.
+        // `CharacterVaultUnavailableError` the same way) instead of a 500. Its
+        // `message` is v4's `CharacterVaultUnavailableError.message` (P4.171
+        // C-10), so every line that renders the error says what v4's says.
         Err(OverlayOneError::Unavailable(u)) => Err(DbError::StoreUnavailable {
             entity_label: "character",
             id: u.character_id.clone(),
             mount_point_id: Some(u.mount_id.clone()),
-            message: format!(
-                "applyDocumentStoreOverlayOne: vault unavailable for character {} (mount {})",
-                u.character_id, u.mount_id
-            ),
+            message: u.message(),
         }),
     }
 }

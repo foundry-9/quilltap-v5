@@ -264,10 +264,10 @@ async fn resolve_vault_mount_id(db: &Db, character_id: &str) -> Option<String> {
     // `Failed to resolve character vault store` and answers null. v5 reads
     // the pointer raw (so the sweep can look at exactly that character), which
     // made this arm SILENT until the §3 unification review — the mount row is
-    // checked here and the same warn emitted. The `error` text is v5's own
-    // (v4's is the thrown error's message; a live-error field, pinned by the
-    // line's presence, not its bytes), and v4's `context:` key is omitted per
-    // the crate's tracing-target convention.
+    // checked here and the same warn emitted, through the digest bridge's ONE
+    // rendering (P4.171 B1-5): v4's `context`, `characterId`, and `error` =
+    // the message v4's dangling pointer throws (no store → no `properties.json`
+    // → `CharacterVaultUnavailableError`).
     let mount_owned = mount_id.clone();
     // Mount-point rows live in the MOUNT-INDEX partition (v4 `docMountPoints`).
     let mount_known = db
@@ -276,10 +276,13 @@ async fn resolve_vault_mount_id(db: &Db, character_id: &str) -> Option<String> {
         })
         .unwrap_or(false);
     if !mount_known {
-        tracing::warn!(
-            character_id = %character_id,
-            error = %format!("vault unavailable for character {character_id} (mount {mount_id})"),
-            "Failed to resolve character vault store"
+        crate::services::commonplace_digest_vault_bridge::warn_failed_to_resolve_character_vault(
+            character_id,
+            &crate::db::vault_read_overlay::VaultUnavailable {
+                character_id: character_id.to_string(),
+                mount_id,
+            }
+            .message(),
         );
         return None;
     }

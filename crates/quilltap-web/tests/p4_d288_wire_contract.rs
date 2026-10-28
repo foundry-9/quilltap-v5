@@ -142,9 +142,24 @@ fn the_new_variants_decode_from_camel_case() {
                 scenario_ref,
                 Some(json!({"mountPointId":"m1","path":"Scenarios/a.md"}))
             );
-            assert_eq!(reload, Some(json!(true)));
+            assert_eq!(reload, Some(Some(json!(true))));
         }
         other => panic!("chatSetScenario decoded to {other:?}"),
+    }
+    // P4.171 C-11: `reload` is three-state — an explicit `null` decodes
+    // PRESENT (`Some(None)`, which the floor refuses as v4's 400), distinct
+    // from an absent key (`None`).
+    for (body, want) in [
+        (
+            json!({"type":"chatSetScenario","chatId":"c1","reload":null}),
+            Some(None),
+        ),
+        (json!({"type":"chatSetScenario","chatId":"c1"}), None),
+    ] {
+        match decode(body) {
+            Request::ChatSetScenario { reload, .. } => assert_eq!(reload, want),
+            other => panic!("chatSetScenario decoded to {other:?}"),
+        }
     }
     assert_eq!(
         decode(json!({"type":"memoryGenerateEmbeddings","characterId":"c1","batchSize":7})),

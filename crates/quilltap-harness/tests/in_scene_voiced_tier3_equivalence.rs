@@ -1267,9 +1267,11 @@ fn the_warn_lines_render_their_error_unquoted() {
         warn.contains("characterId=a1000000-0000-4000-8000-000000000003"),
         "the BROKEN bystander, not the rehearsing seat: {warn}"
     );
-    // Display, not Debug: `error=applyDocumentStoreOverlayOne: …`, never quoted.
+    // Display, not Debug: `error=Character … has no usable vault …` (v4's
+    // `CharacterVaultUnavailableError.message` since P4.171 C-10), never quoted.
     assert!(
-        warn.contains("error=applyDocumentStoreOverlayOne") && !warn.contains("error=\""),
+        warn.contains("error=Character a1000000-0000-4000-8000-000000000003 has no usable vault")
+            && !warn.contains("error=\""),
         "the error field must render UNQUOTED (`%e`, not `?e`): {warn}"
     );
     // And the debug bag the composer emits, with v4's twelve keys.
