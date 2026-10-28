@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(memories): an invalidation during a frozen-archive compute is no longer overwritten by its insert; the candidate 400 carries details
+
+_Versions: core 0.0.1373._
+
+§3 review fix (P4.168). The frozen archive's lock-free compute let an invalidation that landed mid-compute be overwritten by the compute's insert, so a turn running beside a memory retire or maintenance completion could cache the pre-invalidation archive until the next invalidation or generation bump. v4 cannot interleave there: its compute awaits only synchronous better-sqlite3 reads. The cache now keeps a per-character and a global invalidation epoch; lookup captures it and insert is skipped if it moved. NEW test `an_invalidation_during_the_compute_is_not_overwritten` (red against the old insert). The lock-release probe retries `try_lock` so another module's brief invalidation cannot flake it. The manual memory create's candidate-schema 400 now carries v4's `details`.
+
 #### 2026-10-28 — fix(unify): land the `322a5488e` follow-ups round's HANDOFFs — C2 on v4's inner line, the selection twin deleted, C1's 400, the memory homes in db::fallback, D274-c
 
 _Versions: core 0.0.1372._

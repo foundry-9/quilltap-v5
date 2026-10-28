@@ -113,6 +113,11 @@ struct CacheEntry {
 #[derive(Default)]
 pub(crate) struct FrozenArchiveCache {
     entries: Vec<(String, CacheEntry)>,
+    /// Bumped by every [`Self::clear`] — with `character_epochs`, the stamp a
+    /// lock-free compute checks before it caches (see [`get_or_compute_global`]).
+    clear_epoch: u64,
+    /// Bumped per character by every [`Self::invalidate_character`].
+    character_epochs: std::collections::HashMap<String, u64>,
 }
 
 /// v4 `cacheKey(characterId, chatId)`.
@@ -246,13 +251,30 @@ impl FrozenArchiveCache {
     /// v4 `invalidateFrozenArchive`'s body: drop every chat's entry for the
     /// character; returns how many were dropped.
     pub(crate) fn invalidate_character(&mut self, character_id: &str) -> usize {
+        *self
+            .character_epochs
+            .entry(character_id.to_string())
+            .or_default() += 1;
         let before = self.entries.len();
         self.entries.retain(|(_, e)| e.character_id != character_id);
         before - self.entries.len()
     }
 
+    /// The invalidation stamp for `character_id`: changes whenever an
+    /// invalidation that would drop its entries runs.
+    fn epoch(&self, character_id: &str) -> (u64, u64) {
+        (
+            self.clear_epoch,
+            self.character_epochs
+                .get(character_id)
+                .copied()
+                .unwrap_or(0),
+        )
+    }
+
     /// v4 `invalidateAllFrozenArchives`'s body; returns how many were dropped.
     pub(crate) fn clear(&mut self) -> usize {
+        self.clear_epoch += 1;
         let dropped = self.entries.len();
         self.entries.clear();
         dropped
@@ -308,11 +330,18 @@ pub fn get_or_compute_frozen_archive(
 /// The global cache's get-or-compute with the lock held ONLY for the lookup
 /// and the insert, never across `compute`'s DB reads (P4.168, B1-2 — it was
 /// held for the whole call, serializing every turn's archive compute
-/// process-wide). v4's cache interleaves freely (`archive.ts:104-115`: `get`,
-/// `await computeFrozenArchive(…)`, `set`), so two turns may both miss and
-/// both compute, the later `set` winning — and an invalidation landing
-/// mid-compute can be overwritten by that compute's insert; both windows are
-/// v4's own, kept.
+/// process-wide). Two turns may both miss and both compute, the later insert
+/// winning (harmless: the same key, the same inputs).
+///
+/// An invalidation landing MID-compute must not be overwritten by that
+/// compute's insert (the §3 review of the `322a5488e` follow-ups unification):
+/// v4's `get` → `await computeFrozenArchive(…)` → `set` (`archive.ts:104-115`)
+/// awaits only synchronous better-sqlite3 reads, so an invalidation — a
+/// separate event-loop task — cannot land between them, while v5's compute
+/// runs unlocked on a pool thread beside the job runner. The lookup captures
+/// the character's invalidation stamp; the insert is skipped if it moved, so
+/// the stale archive is answered to this turn only and the next turn
+/// recomputes, as in v4.
 fn get_or_compute_global(
     character_id: &str,
     chat_id: &str,
@@ -323,19 +352,26 @@ fn get_or_compute_global(
 ) -> Result<Vec<Value>, DbError> {
     let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
     let present = normalize_present(character_id, present_character_ids);
-    let hit = cache().lookup(character_id, chat_id, compaction_generation, size, &present);
+    let (hit, epoch) = {
+        let mut c = cache();
+        let hit = c.lookup(character_id, chat_id, compaction_generation, size, &present);
+        (hit, c.epoch(character_id))
+    };
     if let Some(hit) = hit {
         return Ok(hit);
     }
     let memories = compute(size, &present)?;
-    cache().insert(
-        character_id,
-        chat_id,
-        compaction_generation,
-        size,
-        &present,
-        memories.clone(),
-    );
+    let mut c = cache();
+    if c.epoch(character_id) == epoch {
+        c.insert(
+            character_id,
+            chat_id,
+            compaction_generation,
+            size,
+            &present,
+            memories.clone(),
+        );
+    }
     Ok(memories)
 }
 
@@ -983,7 +1019,16 @@ mod tests {
         // `WouldBlock` (the assertion fails) where a blocking `lock` would
         // deadlock the binary on a regression.
         let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], |_, _| {
-            let free = matches!(cache_mutex().try_lock(), Ok(_));
+            // Retried: another module's test in this binary may hold the lock
+            // for an instant (its own invalidation); a regression holds it for
+            // the whole compute, so every attempt fails.
+            let free = (0..50).any(|_| {
+                let ok = matches!(cache_mutex().try_lock(), Ok(_));
+                if !ok {
+                    std::thread::sleep(std::time::Duration::from_millis(2));
+                }
+                ok
+            });
             Ok(vec![memory(if free { "free" } else { "held" }, 0.5)])
         })
         .expect("the compute succeeds");
@@ -996,6 +1041,39 @@ mod tests {
             "the compute is cached"
         );
         invalidate_frozen_archive("fa-lock-char");
+    }
+
+    /// An invalidation landing while the compute runs (a job completing beside
+    /// the turn) is not overwritten by the compute's insert: the stale result
+    /// answers this call only, and the next call recomputes. Same for the
+    /// all-archives sweep.
+    #[test]
+    fn an_invalidation_during_the_compute_is_not_overwritten() {
+        let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+        let got = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], |_, _| {
+            invalidate_frozen_archive("fa-race-char");
+            Ok(vec![memory("stale", 0.5)])
+        })
+        .unwrap();
+        assert_eq!(got[0]["id"], "stale", "this call is answered its compute");
+        assert!(
+            !global_has("fa-race-char", "chat-1"),
+            "the pre-invalidation archive must not be cached"
+        );
+        let fresh = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], |_, _| {
+            Ok(vec![memory("fresh", 0.5)])
+        })
+        .unwrap();
+        assert_eq!(fresh[0]["id"], "fresh", "the next call recomputes");
+        assert!(global_has("fa-race-char", "chat-1"));
+
+        invalidate_frozen_archive("fa-race-char");
+        get_or_compute_global("fa-race-all", "chat-1", 0, None, &[], |_, _| {
+            invalidate_all_frozen_archives();
+            Ok(vec![memory("stale", 0.5)])
+        })
+        .unwrap();
+        assert!(!global_has("fa-race-all", "chat-1"), "the sweep wins too");
     }
 
     #[test]

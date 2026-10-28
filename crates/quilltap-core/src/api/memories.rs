@@ -906,7 +906,13 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
                 issues = issues.len(),
                 "[Memories API] Manual memory refused by the candidate schema"
             );
-            return bad_request("Validation error");
+            // v4 `validationError(parsedCandidate.error)` (`route.ts:576-583`):
+            // the issues ride as `details`, as on the create's own 400.
+            let mut resp = bad_request("Validation error");
+            if let Response::Error(e) = &mut resp {
+                e.details = Some(Box::new(super::zod_issues::zod_issue_details(&issues)));
+            }
+            return resp;
         }
     };
     // "A hand-written memory never folds into an extracted row (it is inserted
