@@ -170,7 +170,9 @@ fn json_syntax_error(body: &str, e: &serde_json::Error) -> String {
 /// P4.170 F.7: an outfit action's unparsable body on an EXISTING chat — v4's
 /// catch logs `logger.error(message, { chatId }, error)` (the throw is the
 /// logger's error argument, the file envelope's `error`) and answers
-/// `serverError(answer)` (`outfit.ts:287-292`, `:409-414`).
+/// `serverError(answer)` (`outfit.ts:287-292`, `:409-414`). Regenerate-avatar's
+/// catch is the same shape (`regenerate-avatar.ts:86-92`: `{chatId, error:
+/// message}` + the Error) — added at the `322a5488e` follow-ups unification.
 fn malformed_outfit_body(
     chat_id: &str,
     body: &str,
@@ -184,6 +186,11 @@ fn malformed_outfit_body(
             chatId = %chat_id,
             error = %error,
             "[Chats v1] Error equipping wardrobe slot"
+        ),
+        "[Chats v1] Failed to trigger avatar regeneration" => tracing::error!(
+            chatId = %chat_id,
+            error = %error,
+            "[Chats v1] Failed to trigger avatar regeneration"
         ),
         _ => tracing::error!(
             chatId = %chat_id,
@@ -902,10 +909,21 @@ pub async fn chat_action_post(
         }
         // === end P4.D325 ===
         "regenerate-avatar" => {
-            let body = match parse_body(&body, "Failed to queue avatar regeneration") {
+            let body = match serde_json::from_str::<Value>(&body) {
                 Ok(v) => v,
                 // P-12: `handlePost`'s chat 404 first.
-                Err(r) => return chat_first(&state, &chat_id).await.unwrap_or(*r),
+                Err(e) => {
+                    if let Some(r) = chat_first(&state, &chat_id).await {
+                        return r;
+                    }
+                    return malformed_outfit_body(
+                        &chat_id,
+                        &body,
+                        &e,
+                        "[Chats v1] Failed to trigger avatar regeneration",
+                        "Failed to queue avatar regeneration",
+                    );
+                }
             };
             CoreRequest::ChatRegenerateAvatar { chat_id, body }
         }

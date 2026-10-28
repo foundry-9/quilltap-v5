@@ -726,17 +726,12 @@ fn failure(error: impl Into<String>, tool: Option<&str>) -> RunCustomToolOutput 
 
 /// v4's `logger.warn('run_custom validation failed', { context, userId,
 /// input })` (`run-custom-handler.ts:104-106`): `input` is whatever the model
-/// sent — an object or array rides the file layer's `…Json` name (§R.5), a
-/// string as itself, any other scalar as its JSON text.
+/// sent — a string as itself, anything else on the file layer's `…Json` name
+/// (§R.5), so a number stays a number in the envelope rather than becoming
+/// its Display text (the §3 review of the `322a5488e` follow-ups
+/// unification).
 fn warn_validation_failed(user_id: &str, input: &Value) {
     match input {
-        Value::Object(_) | Value::Array(_) => tracing::warn!(
-            target: "quilltap::pascal",
-            context = HANDLER_CONTEXT,
-            userId = user_id,
-            inputJson = %serde_json::to_string(input).unwrap_or_default(),
-            "run_custom validation failed",
-        ),
         Value::String(s) => tracing::warn!(
             target: "quilltap::pascal",
             context = HANDLER_CONTEXT,
@@ -744,11 +739,11 @@ fn warn_validation_failed(user_id: &str, input: &Value) {
             input = s.as_str(),
             "run_custom validation failed",
         ),
-        other => tracing::warn!(
+        _ => tracing::warn!(
             target: "quilltap::pascal",
             context = HANDLER_CONTEXT,
             userId = user_id,
-            input = %crate::pascal::js_value::json_stringify(other),
+            inputJson = %serde_json::to_string(input).unwrap_or_default(),
             "run_custom validation failed",
         ),
     }

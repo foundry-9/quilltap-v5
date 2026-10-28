@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(core,web): Zod length checks ToNumber a non-array length; the enabled store readers validate storeType; three log smalls
+
+_Versions: core 0.0.1376, web 0.0.251._
+
+§3 review fixes (P4.169, P4.170).
+
+- Zod 4.6.7's length checks past `invalid_type` compare a non-array's `length` with JS relationals (`checks.js:274`, `:299`), so the shared `zod_length_checks_past_invalid_type` now ToNumbers it: `"500"` is 500, a non-numeric value is NaN and fails both bounds, `null` is 0. Before, only a numeric `length` was checked, so `{"length":"500"}` produced one issue where v4 produces two. Unit rows added.
+- The enabled mount-point readers validate `storeType` as well as `mountType`, in schema order, before dropping a refused row (v4 validates the whole row; a `storeType='bogus'` store had stayed in global search). The other schema columns stay a recorded residue. `photo_album_options_equivalence` gains `malformed_store_type_row` and `malformed_store_both_enums_row`, red on the old reader.
+- `run_custom validation failed` logs any non-string input on `inputJson`, so a number stays a number in the file envelope.
+- Regenerate-avatar's unparsable body on an existing chat logs v4's `[Chats v1] Failed to trigger avatar regeneration {chatId}` with the error before its 500 (`regenerate-avatar.ts:86-92`), like the other outfit actions.
+- Two misplaced doc comments in `tools/executor.rs` and `db/doc_mount_points.rs` are back on their items; a clippy nit in the frozen-archive test.
+
 #### 2026-10-28 — fix(degraded-mount): the prompt and scenario deletes answer v4's catch; the unclaimed rows are asserted both ways; one destinations helper
 
 _Versions: core 0.0.1375._

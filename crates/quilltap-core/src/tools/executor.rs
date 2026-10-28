@@ -2282,7 +2282,6 @@ impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
 // ToolResult builders (v4's dispatch-row shape)
 // ===========================================================================
 
-/// A success [`ToolResult`] (`result` present, `error`/`message` absent).
 /// The stage a wardrobe / inventory handler stashed, ONLY when its write
 /// reported success (P4.170 C.1). v4 runs the handler and its effects inside
 /// one `await` chain (`tool-executor.ts:775-807`): a write that throws never
@@ -2307,6 +2306,7 @@ fn staged_after_write<S>(
     stage.ok_or_else(|| Box::new(written))
 }
 
+/// A success [`ToolResult`] (`result` present, `error`/`message` absent).
 fn ok(tool_name: &str, result: Value) -> ToolResult {
     ToolResult {
         tool_name: tool_name.to_string(),

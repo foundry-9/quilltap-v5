@@ -19,7 +19,8 @@
 //! or a v5 one — trips it). (`ENABLED_STORE_ZOD_DROP` — `malformed_store_row`
 //! — CONVERGED by P4.170, ruling P-8: v5's enabled readers now validate
 //! `mountType` per row and drop the bad one after v4's two lines, so that row
-//! compares whole.)
+//! compares whole; the `322a5488e` follow-ups unification added `storeType`
+//! — `malformed_store_type_row`, `malformed_store_both_enums_row`.)
 //!   - `RAW_CHARACTER_ZOD_DROP` (`archived_with_empty_vault_pointer`): v4's
 //!     `characters.findAllRaw()` Zod-drops a row whose
 //!     `characterDocumentMountPointId` is `''` (not a uuid) — on BOTH of its

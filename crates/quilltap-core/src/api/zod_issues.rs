@@ -698,11 +698,24 @@ pub fn zod_length_checks_past_invalid_type(
             }
         }
         Value::Object(o) => {
-            if let Some(len) = o.get("length").and_then(Value::as_f64) {
-                if let Some(n) = min.filter(|n| len < *n as f64) {
+            // Zod 4.6.7's `_whenHasLength` runs whenever `val.length !==
+            // undefined`, and its comparisons are JS relationals, which
+            // coerce: `"500"` reads as 500, a non-numeric value as NaN — which
+            // fails `>=` and `<=` alike — and `null` as 0 (`checks.js:17-20`,
+            // `:274`).
+            if let Some(raw) = o.get("length") {
+                let len = crate::pascal::js_value::to_number(raw);
+                // `partial_cmp` keeps JS's NaN rule explicit: an incomparable
+                // length fails the bound.
+                use std::cmp::Ordering::{Equal, Greater, Less};
+                if let Some(n) =
+                    min.filter(|n| !matches!(len.partial_cmp(&(*n as f64)), Some(Greater | Equal)))
+                {
                     out.push(ZodIssue::too_small_unknown(json!(n), path.to_vec()));
                 }
-                if let Some(n) = max.filter(|n| len > *n as f64) {
+                if let Some(n) =
+                    max.filter(|n| !matches!(len.partial_cmp(&(*n as f64)), Some(Less | Equal)))
+                {
                     out.push(ZodIssue::too_big_unknown(json!(n), path.to_vec()));
                 }
             }
@@ -2231,6 +2244,45 @@ pub fn zod_log_entry_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssu
 
 #[cfg(test)]
 mod tests {
+    /// Zod 4.6.7's length checks compare a non-array's `length` with JS
+    /// relationals (`checks.js:274`, `:299`), so it is ToNumber'd: `"500"` is
+    /// 500, a non-numeric value is NaN (fails both bounds), `null` is 0 —
+    /// measured shapes from the §3 review of the `322a5488e` follow-ups
+    /// unification.
+    #[test]
+    fn a_non_numeric_length_is_coerced_as_js_compares_it() {
+        let codes = |v: Value| -> Vec<String> {
+            super::zod_length_checks_past_invalid_type(&v, Some(1), Some(12), &[])
+                .iter()
+                .map(|i| {
+                    serde_json::to_value(i).unwrap()["code"]
+                        .as_str()
+                        .unwrap()
+                        .to_string()
+                })
+                .collect()
+        };
+        assert_eq!(codes(serde_json::json!({"length": "500"})), ["too_big"]);
+        assert_eq!(
+            codes(serde_json::json!({"length": "5"})),
+            Vec::<String>::new()
+        );
+        assert_eq!(
+            codes(serde_json::json!({"length": "abc"})),
+            ["too_small", "too_big"]
+        );
+        assert_eq!(
+            codes(serde_json::json!({"length": {}})),
+            ["too_small", "too_big"]
+        );
+        assert_eq!(codes(serde_json::json!({"length": null})), ["too_small"]);
+        assert_eq!(codes(serde_json::json!({"length": 13})), ["too_big"]);
+        assert_eq!(
+            codes(serde_json::json!({"other": 13})),
+            Vec::<String>::new()
+        );
+    }
+
     /// P4.124: v4 `GroupSchema` — each shape the order named, both edges (the
     /// messages themselves are `repository_zod_messages_equivalence`'s, over
     /// v4's real schema).

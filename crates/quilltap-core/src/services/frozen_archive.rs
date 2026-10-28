@@ -1023,7 +1023,7 @@ mod tests {
             // for an instant (its own invalidation); a regression holds it for
             // the whole compute, so every attempt fails.
             let free = (0..50).any(|_| {
-                let ok = matches!(cache_mutex().try_lock(), Ok(_));
+                let ok = cache_mutex().try_lock().is_ok();
                 if !ok {
                     std::thread::sleep(std::time::Duration::from_millis(2));
                 }

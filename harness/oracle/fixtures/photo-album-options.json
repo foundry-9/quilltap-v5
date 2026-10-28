@@ -99,6 +99,16 @@
       "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-00000000000a', 'Odd Shelf', basePath, 'bogus', storeType, includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
     },
     {
+      "name": "malformed_store_type_row",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-00000000000b', 'Odd Cabinet', basePath, mountType, 'bogus', includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
+      "name": "malformed_store_both_enums_row",
+      "main": [],
+      "mount": ["INSERT INTO doc_mount_points SELECT 'aa000000-0000-4000-8000-00000000000c', 'Odd Chest', basePath, 'bogus', 'bogus', includePatterns, excludePatterns, 1, lastScannedAt, scanStatus, lastScanError, conversionStatus, conversionError, 0, 0, 0, createdAt, updatedAt FROM doc_mount_points WHERE id = '4d5e6f70-0001-4000-8000-000000000001'"]
+    },
+    {
       "name": "archived_with_empty_vault_pointer",
       "main": ["UPDATE characters SET characterDocumentMountPointId = '' WHERE id = '1a2b3c4d-0002-4000-8000-000000000002'"],
       "mount": []

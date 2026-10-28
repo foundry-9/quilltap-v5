@@ -744,23 +744,28 @@ impl<'c> DocMountPointsRepository<'c> {
     /// URI producers' ambiguity precompute (needs each `name`).
     pub fn find_enabled_for_docedit(&self) -> Result<Vec<DmpRow>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, enabled, mountType, basePath FROM doc_mount_points WHERE enabled = 1",
+            "SELECT id, name, enabled, mountType, basePath, storeType FROM doc_mount_points \
+             WHERE enabled = 1",
         )?;
         let rows = stmt
             .query_map([], |row| {
-                Ok(DmpRow {
-                    id: row.get::<_, String>(0)?,
-                    name: row.get::<_, String>(1)?,
-                    enabled: row.get::<_, i64>(2)? != 0,
-                    mount_type: row.get::<_, String>(3)?,
-                    base_path: row.get::<_, String>(4)?,
-                })
+                Ok((
+                    DmpRow {
+                        id: row.get::<_, String>(0)?,
+                        name: row.get::<_, String>(1)?,
+                        enabled: row.get::<_, i64>(2)? != 0,
+                        mount_type: row.get::<_, String>(3)?,
+                        base_path: row.get::<_, String>(4)?,
+                    },
+                    row.get::<_, Option<String>>(5)?,
+                ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         // v4's `findByFilter` drops a row its schema refuses (P4.170 D.3).
         Ok(rows
             .into_iter()
-            .filter(|r| enabled_row_validates(&r.mount_type))
+            .filter(|(r, store_type)| enabled_row_validates(&r.mount_type, store_type.as_deref()))
+            .map(|(r, _)| r)
             .collect())
     }
 
@@ -802,7 +807,9 @@ impl<'c> DocMountPointsRepository<'c> {
         // v4's `findByFilter` drops a row its schema refuses (P4.170 D.3).
         Ok(rows
             .into_iter()
-            .filter(|(_, mount_type)| enabled_row_validates(mount_type))
+            .filter(|(row, mount_type)| {
+                enabled_row_validates(mount_type, row.store_type.as_deref())
+            })
             .map(|(row, _)| row)
             .collect())
     }
@@ -816,26 +823,41 @@ impl<'c> DocMountPointsRepository<'c> {
     }
 }
 
-/// The full-JSON column list every route read selects (schema field order).
 /// v4 `DocMountPointSchema.mountType` (`mount-index.types.ts:25`).
 const MOUNT_TYPES: [&str; 3] = ["filesystem", "obsidian", "database"];
+
+/// v4 `DocMountPointSchema.storeType` (`mount-index.types.ts:29`).
+const STORE_TYPES: [&str; 2] = ["documents", "character"];
 
 /// P4.170 D.3 (ruling P-8 — `ENABLED_STORE_ZOD_DROP` converged): v4's
 /// `findEnabled` is `findByFilter({enabled: true})`, which runs EVERY row
 /// through `validateSafe` (`base.repository.ts:130-157`) and DROPS one the
 /// schema refuses — after `validate`'s ERROR `Data validation failed
-/// {collection, error}` and `validateSafe`'s WARN `Safe validation failed
 /// {collection, error}`, both carrying the ZodError's message. The two
-/// enabled readers select `mountType`, the one schema-constrained column they
-/// read that a stored row can carry out of range (a hand-planted `bogus`).
-fn enabled_row_validates(mount_type: &str) -> bool {
-    if MOUNT_TYPES.contains(&mount_type) {
+/// enabled readers check the two enum columns a stored row can carry out of
+/// range (a hand-planted `bogus`), in schema order: `mountType`, then
+/// `storeType` (a NULL `storeType` passes — the measured NULL-store row,
+/// P4.171 D338-22). The other schema columns (`scanStatus`,
+/// `conversionStatus`, the id's RFC shape, `name` min(1), the timestamps) are
+/// NOT checked here — a recorded residue (the §3 review of the `322a5488e`
+/// follow-ups unification added `storeType`).
+fn enabled_row_validates(mount_type: &str, store_type: Option<&str>) -> bool {
+    let mut issues = Vec::new();
+    if !MOUNT_TYPES.contains(&mount_type) {
+        issues.push(crate::api::zod_issues::ZodIssue::invalid_value(
+            &MOUNT_TYPES,
+            vec![serde_json::Value::String("mountType".into())],
+        ));
+    }
+    if store_type.is_some_and(|t| !STORE_TYPES.contains(&t)) {
+        issues.push(crate::api::zod_issues::ZodIssue::invalid_value(
+            &STORE_TYPES,
+            vec![serde_json::Value::String("storeType".into())],
+        ));
+    }
+    if issues.is_empty() {
         return true;
     }
-    let issues = [crate::api::zod_issues::ZodIssue::invalid_value(
-        &MOUNT_TYPES,
-        vec![serde_json::Value::String("mountType".into())],
-    )];
     let error = crate::api::zod_issues::zod_error_message(&issues);
     tracing::error!(
         target: "quilltap::db",
@@ -852,6 +874,7 @@ fn enabled_row_validates(mount_type: &str) -> bool {
     false
 }
 
+/// The full-JSON column list every route read selects (schema field order).
 const DMP_FULL_COLUMNS: &str = "id, name, basePath, mountType, storeType, includePatterns, \
      excludePatterns, enabled, lastScannedAt, scanStatus, lastScanError, conversionStatus, \
      conversionError, fileCount, chunkCount, totalSizeBytes, createdAt, updatedAt";
