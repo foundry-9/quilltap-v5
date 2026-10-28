@@ -123,9 +123,12 @@ fn librarian_uri(scope: LibrarianScope, mount_point: Option<&str>, path: &str) -
                 format_doc_store_uri(mp, "", path, false, None, None)
             }
             _ => {
+                // v4 `mountPoint ?? null`: JSON `null` for none, the string as
+                // given — carried under the `…Json` convention so the file
+                // record holds a JSON `null`, not the string "null" (P4.171).
                 tracing::debug!(
                     context = "librarian-notifications",
-                    mountPoint = mount_point.unwrap_or("null"),
+                    mountPointJson = %serde_json::to_string(&mount_point).expect("serializes"),
                     path = %path,
                     "[LibrarianNotification] No store name for an announced path; printing the bare path"
                 );

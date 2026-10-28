@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — fix(librarian): the bare-path DEBUG logs mountPoint as v4's JSON null (P4.171 D338-librarian)
+
+_Versions: core 0.0.1341._
+
+The Librarian's bare-path DEBUG, `[LibrarianNotification] No store name for an announced path; printing the bare path`, now records `mountPoint` as v4's `mountPoint ?? null`. Previously a missing store was logged as the string "null"; it is now carried under the `…Json` convention, so the file record holds JSON `null`, and `""`, `self`, and `SELF` are logged as given. `post_office_librarian` captures the line per open case (`open_lines`) and gains the `ds-empty` and `ds-self-upper` cases.
+
 #### 2026-10-27 — fix(scenarios): v4's vault-unavailable message at its source, one vault-bridge WARN, reload: null refused (P4.171 C-10 / B1-5 / C-11)
 
 _Versions: core 0.0.1340._

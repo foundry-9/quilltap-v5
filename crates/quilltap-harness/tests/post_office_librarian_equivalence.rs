@@ -7,10 +7,17 @@
 //! The `post*` chat_messages rows are covered by a central combined tier-3 the
 //! parent owns; this proves only the pure builders.
 //!
-//! Generate (Node 24, from the v4 checkout):
+//! P4.171 (D338-librarian): `open_lines` rows compare the bare-path DEBUG
+//! `[LibrarianNotification] No store name for an announced path; printing the
+//! bare path` per open case — `mountPoint` as v4's `mountPoint ?? null`
+//! (JSON `null` for none, the string as given), carried on v5's side as
+//! `mountPointJson` (the `…Json` convention).
+//!
+//! Generate (Node 24, from the v4 checkout; `LOG_LEVEL=debug` — the logger
+//! reads it at load):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
-//!   $N/npx tsx $V5/harness/oracle/cases/post-office-librarian.ts \
+//!   LOG_LEVEL=debug $N/npx tsx $V5/harness/oracle/cases/post-office-librarian.ts \
 //!       > /tmp/oracle-po-librarian.ndjson
 //! Run:
 //!   QT_ORACLE_PO_LIBRARIAN=/tmp/oracle-po-librarian.ndjson \
@@ -87,6 +94,8 @@ fn open_case(id: &str) -> LibrarianOpenAnnouncement {
         "ds-self" => ("document_store", Some("self"), false, open_kind("user")),
         "ds-nomount" => ("document_store", None, false, open_kind("user")),
         "ds-reserved-name" => ("document_store", Some("Project"), false, open_kind("user")),
+        "ds-empty" => ("document_store", Some(""), false, open_kind("user")),
+        "ds-self-upper" => ("document_store", Some("SELF"), false, open_kind("user")),
         other => panic!("unknown open case {other}"),
     };
     LibrarianOpenAnnouncement {
@@ -318,6 +327,22 @@ fn rust_value(kind: &str, id: &str) -> Value {
         }
         "open_content" => s(lib::build_open_content(&open_case(id))),
         "open_opaque" => s(lib::build_open_opaque_content(&open_case(id))),
+        "open_lines" => {
+            let (_, lines) = quilltap_core::test_support::captured_with(|| {
+                lib::build_open_content(&open_case(id))
+            });
+            Value::Array(
+                lines
+                    .iter()
+                    .filter_map(|l| {
+                        let (level, rest) = l.split_once(' ')?;
+                        let (_target, rest) = rest.split_once(' ')?;
+                        rest.starts_with("[LibrarianNotification]")
+                            .then(|| Value::String(format!("{level} {rest}")))
+                    })
+                    .collect(),
+            )
+        }
         "rename_content" => s(lib::build_rename_content(&rename_case(id))),
         "rename_opaque" => s(lib::build_rename_opaque_content(&rename_case(id))),
         "save_content" => s(lib::build_save_content(&save_diff(id))),
@@ -436,6 +461,25 @@ fn post_office_librarian_matches_oracle() {
         let id = row["id"].as_str().unwrap();
         let want = &row["value"];
         let got = rust_value(kind, id);
+        // v4's `mountPoint` (a JSON value) is v5's `mountPointJson` — the
+        // key name is the fix (a plain `mountPoint` field wrote the STRING
+        // "null" into the file record), so the expectation is renamed, never
+        // v5's line.
+        let want = &match (kind, want) {
+            ("open_lines", Value::Array(lines)) => Value::Array(
+                lines
+                    .iter()
+                    .map(|l| {
+                        Value::String(l.as_str().unwrap().replacen(
+                            " mountPoint=",
+                            " mountPointJson=",
+                            1,
+                        ))
+                    })
+                    .collect(),
+            ),
+            _ => want.clone(),
+        };
         assert_eq!(&got, want, "librarian builder {kind}/{id} diverges");
         count += 1;
     }

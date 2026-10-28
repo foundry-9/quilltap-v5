@@ -46,6 +46,25 @@ import {
   SUMMARY_CONTENT_PREFIX,
   SUMMARY_OPAQUE_CONTENT_PREFIX,
 } from '@/lib/services/librarian-notifications/writer';
+import { logger } from '@/lib/logger';
+
+// P4.171 (D338-librarian): the bare-path DEBUG `librarianUri` logs, captured
+// per open case (`open_lines`) by splicing `logger.transports` — `LEVEL
+// message k=v`, `mountPoint` rendered as JSON (v4's `mountPoint ?? null`), the
+// rest as strings. Needs `LOG_LEVEL=debug` (the logger reads it at load).
+let captured: string[] = [];
+const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+internal.transports.splice(0, internal.transports.length, {
+  write: (d: unknown) => {
+    const data = d as { level: string; message: string; context?: Record<string, unknown> };
+    if (!data.message.startsWith('[LibrarianNotification]')) return;
+    const { service: _s, environment: _e, ...fields } = data.context ?? {};
+    const rendered = Object.entries(fields)
+      .map(([k, v]) => (k === 'mountPoint' ? ` ${k}=${JSON.stringify(v)}` : ` ${k}=${String(v)}`))
+      .join('');
+    captured.push(`${data.level.toUpperCase()} ${data.message}${rendered}`);
+  },
+});
 
 type Scope = 'project' | 'document_store' | 'general';
 const CHAT = 'chat-1';
@@ -67,6 +86,8 @@ const openCases: Array<{ id: string; scope: Scope; mountPoint: string | null; is
   { id: 'ds-self', scope: 'document_store', mountPoint: 'self', isNew: false, origin: { kind: 'opened-by-user' } },
   { id: 'ds-nomount', scope: 'document_store', mountPoint: null, isNew: false, origin: { kind: 'opened-by-user' } },
   { id: 'ds-reserved-name', scope: 'document_store', mountPoint: 'Project', isNew: false, origin: { kind: 'opened-by-user' } },
+  { id: 'ds-empty', scope: 'document_store', mountPoint: '', isNew: false, origin: { kind: 'opened-by-user' } },
+  { id: 'ds-self-upper', scope: 'document_store', mountPoint: 'SELF', isNew: false, origin: { kind: 'opened-by-user' } },
 ];
 const openTitle = 'The Grand Ledger';
 const openPath = 'Notes/a b.md';
@@ -152,7 +173,9 @@ function main(): void {
 
   for (const c of openCases) {
     const p: any = { chatId: CHAT, displayTitle: openTitle, filePath: openPath, scope: c.scope, mountPoint: c.mountPoint, isNew: c.isNew, origin: c.origin };
+    captured = [];
     emit('open_content', c.id, buildOpenContent(p));
+    emit('open_lines', c.id, captured);
     emit('open_opaque', c.id, buildOpenOpaqueContent(p));
   }
 

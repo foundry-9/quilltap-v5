@@ -193348,3 +193348,10 @@ Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.cla
 - **Differential:** `chat_scenario_routes_equivalence` regenerated at the pin (92 rows): **3 passed**, `verb_reload_null_refuses` body OK. **Red-first:** on unported main the retired table recorded v5 200 + a write where v4 400s (the table's own assertion). `chat_delete` 4/4, `in_scene_voiced` 6/6, `p4_d288` + `tri_state` 3 + 11, core lib 3,958/0.
 - **Regen (chat-scenario):** stage `/tmp/p4171/cs-oracle/{cases,fixtures}` per the case header; `cd $PIN && QT_FIXTURE_CS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/chat-scenario-main.db QT_FIXTURE_CS_MOUNT=…/chat-scenario-mount.db QT_ORACLE_OUT=/tmp/p4171/oracle-cs.ndjson TZ=UTC npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots /tmp/p4171/cs-oracle/cases -- "chat-scenario-routes\.test\.ts$"`.
 
+
+### Unit 6 — D338-librarian: the bare-path DEBUG's `mountPoint` as v4's JSON `null`
+
+- `librarian_uri`'s DEBUG carries `mountPointJson = serde_json::to_string(&mount_point)` — `null` for none, the string as given (v4 `writer.ts:219-225`, `mountPoint ?? null`); the file envelope re-parses it into `context.mountPoint` (the `…Json` convention).
+- **Differential:** `post_office_librarian_equivalence` + `post-office-librarian.ts` — v4's lines captured by splicing `logger.transports` (`LOG_LEVEL=debug` — the logger reads it at load), one `open_lines` row per open case; +2 cases (`ds-empty`, `ds-self-upper`); v4's `mountPoint=` expectation is renamed to v5's `mountPointJson=` (the key IS the fix). **Red-first:** unported `librarian_notifications.rs` → FAILED. Green: 109 rows.
+- **Regen:** `cd /tmp/qt-v4-pin-p4171-322a5488e && LOG_LEVEL=debug npx tsx $V5W/harness/oracle/cases/post-office-librarian.ts > /tmp/p4171/oracle-lib.ndjson`.
+
