@@ -75,6 +75,10 @@ const TRANSFER_ERROR_SHAPES_P4D328: &[&str] = &[];
 /// keeps `actions/inventory.ts`'s own order: parse, then the chat) answers the
 /// Zod 400. The standing recorded gate-ORDER divergence
 /// (`wardrobe_routes.rs`'s `chat_action_post`); both ways.
+/// P4.170 (ruling P-12): the HTTP edge now probes the chat before a core
+/// refusal answers (`refused_after_chat_probe`), so over HTTP the row
+/// CONVERGES and compares whole; the carve holds for the direct-core driver
+/// only, whose dispatch keeps the handler's parse-then-chat order.
 const CHAT_GATE_ORDER: &[&str] = &["chat_equip_zod_before_chat"];
 
 #[derive(Deserialize, Clone)]
@@ -794,7 +798,7 @@ fn compare(
 ) {
     let want_status = want["status"].as_u64().unwrap() as u16;
     let (got_status, got_body) = got;
-    if CHAT_GATE_ORDER.contains(&name) {
+    if driver != "http" && CHAT_GATE_ORDER.contains(&name) {
         if !(want_status == 404 && *got_status == 400) {
             eprintln!("[{driver}:{name}] CHAT_GATE_ORDER no longer holds: v4 {want_status} v5 {got_status}");
             failed.push(format!("{driver}:{name}"));

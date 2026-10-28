@@ -306,6 +306,12 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — fix(web): the chat-first probe reads the chat as `handlePost` does, not through the enriched chat GET (P4.170)
+
+_Versions: web 0.0.250._
+
+The lane's sweep caught nine red `inventory_routes_equivalence` HTTP rows. The workspace gate had skipped them because the oracle env var was unset. `chat_first` had probed with `ChatGet`, which is v4's whole enriched `handleGetChat` (participant vaults, the terminal reconcile). On the inventory pair it answered `500 Failed to fetch chat` where v4's `handlePost` bare `chats.findById` succeeds, so the core's own 409 / 400 refusals never surfaced. The probe is now `ChatInformsList`, whose first read is that same fallback `find_by_id`; the rest is read-only and fail-soft. The recorded `CHAT_GATE_ORDER` carve (`chat_equip_zod_before_chat`) converges over HTTP and now holds only for the direct-core driver. Green: inventory 169 cases on both drivers, the REST interrupt pair, wardrobe routes, the web lib, the census.
+
 #### 2026-10-27 — test(p4.170): the route-construction census counts the two new probes
 
 _Versions: web 0.0.249._

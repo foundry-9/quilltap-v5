@@ -143,11 +143,17 @@ async fn probe_refusal(state: &SharedState, probe: CoreRequest) -> Option<AxumRe
     }
 }
 
-/// [`probe_refusal`] for a chat POST action: the chat's 404 first.
+/// [`probe_refusal`] for a chat POST action: the chat's 404 first. The probe
+/// is `ChatInformsList`, whose first read is exactly `handlePost`'s
+/// `chats.findById` — the FALLBACK read (`find_by_id_or_none`: a missing row
+/// or a failed read is the 404 `Chat not found`) — and whose rest is
+/// read-only and fail-soft. Never `ChatGet`: that is v4's whole enriched
+/// `handleGetChat` (participant vaults, the terminal reconcile), which can
+/// answer `Failed to fetch chat` where `handlePost`'s bare lookup succeeds.
 async fn chat_first(state: &SharedState, chat_id: &str) -> Option<AxumResponse> {
     probe_refusal(
         state,
-        CoreRequest::ChatGet {
+        CoreRequest::ChatInformsList {
             chat_id: chat_id.to_string(),
         },
     )
