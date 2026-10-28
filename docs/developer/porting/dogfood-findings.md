@@ -641,6 +641,38 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the `322a5488e` follow-ups smalls unification (2026-10-28): the owed dogfood pass's queue for P4.165–P4.174
+
+The pass owed after the `322a5488e` Inventory round (its §S.8 queue and the
+`e8e17b2d9` queue below) now carries this round too. Run it on the UNION build
+(core 0.0.1377) against a Friday copy, recording the copy's vintage first. The
+baseline did not move, so the copy rule is unchanged. Each lane's own 💸 rows
+are in its lane record (`status-log.md`). The unification adds:
+
+- **⚖ F-1, probe first:** read Friday's stored `chat_settings.cheapLLMSettings`
+  and test `userDefinedProfileId` / `defaultCheapProfileId` with `zod_uuid_ok`
+  (RFC version/variant nibbles). If either fails, `GET /settings/chat` answers
+  500 on EVERY load (`REFUSED_CHEAP_LLM_ROW_GET`), where v4 creates a second
+  row each load. That decides how urgent the F-1 ruling is. Record the ids'
+  shape, never their values.
+- **DQS off on real data (P4.172):** the copy boots and the Salon, Settings,
+  Almanack, a backup and a `.qtap` export all read. A `no such column` on a
+  double-quoted literal anywhere is a finding.
+- **💸 R-4 converged (P4.165):** Stop during Carina's Brahma answer inside a
+  Salon turn ends the answer mid-stream and keeps the partial (one model
+  call).
+- **The degraded mount index (P4.166), on a planted clone:** an entity-first
+  route answers the neutral refusal, a General-tier route still answers, the
+  pool fails soft at both C2 sites, and the character prompt / scenario
+  deletes answer v4's 500 + ERROR.
+- **The restore carriers (P4.167 H-4):** a backup carrying a file row whose
+  `mimeType` is `null` restores with ONE ZodError warning naming the file,
+  and nothing is written for it.
+- **The instance lock (P4.171 C-6):** a foreign host's fresh epoch-ms
+  `lastHeartbeat` REFUSES the boot (plant it on a clone).
+- **The save-image dialog (P4.173):** a failed album read shows only the
+  `Failed to load photo albums` alert.
+
 ### From the P4.174 harness lane (2026-10-27): one help-text divergence candidate
 
 - **`help/the-log.md`'s "One quirk" describes v4's job-child buffering; v5 has no child.**

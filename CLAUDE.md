@@ -1109,6 +1109,49 @@ records THERE. Update this summary only when a phase or round completes.
   0.5.905. **Next: the owed dogfood pass (union build), the follow-ups smalls
   round (the R-4 Brahma-stop RULING ITEM, ruled there), then the 46-commit catch-up** — `phase-4.md`.
   Round record: `status-log.md`.
+- **The `322a5488e` follow-ups smalls round (P4.165 ∥ … ∥ P4.174): UNIFIED
+  on main (2026-10-28) — ALL TEN LANES LANDED; the oracle baseline STAYS
+  `322a5488e`; v4 moved to `3c818c856` mid-round, and the ledger's §3 holds 61
+  rows past the pin, UNPROCESSED, PIN REQUIRED.**
+  - **Landed:**
+    - R-4 overturned: Stop ends Carina's in-turn Brahma consult (P4.165).
+    - Dogfood #156 / #157 fixed: degraded-mount refusals by entity class
+      (P4.166).
+    - The carrier record columns and the restore's carried metadata (P4.167).
+    - `MemorySchema` refusals as a 400 (P4.168).
+    - The Pascal / cheap-LLM / Zod / Inventory-effects smalls (P4.169).
+    - The wardrobe and web-edge smalls (P4.170).
+    - The scenarios / vault / store / lock smalls (P4.171).
+    - DQS off at every chokepoint (P4.172).
+    - The SPA / e2e and harness smalls (P4.173, P4.174).
+  - **The §3 review (five readers + the unifier):** the defect that would have
+    shipped was P4.168's frozen-archive cache. Moved off its lock, it let a
+    mid-compute invalidation be overwritten, so turns read a stale archive.
+    It is fixed with an invalidation epoch.
+    - Two BLOCKING union handoffs, both fixed: C1's missing 400, and C2
+      logging v4's never-fired OUTER line.
+    - About a dozen should-fixes, all fixed. They include a restore writing a
+      file row v4 refuses, a numeric foreign lock heartbeat read as "never",
+      and LANE-REMOVE guards that a lane had LOOSENED.
+    - ⚖ **F-1 ESCALATED:** `GET /settings/chat` answers 500 on every load
+      for a refused `cheapLLMSettings` bag, where v4 mints a row per load.
+  - **Gate:**
+    - fmt / clippy / release: clean.
+    - Sweep: 760 ok / 8 / 1 / 6 of 775. Every non-standing red is a union
+      red, fixed.
+    - `cargo test --workspace`: 871 binaries / 5,739 / 17 / 3, zero SKIP.
+      The 17 are the standing reds, the env-block reds (green by name) and
+      three fixture reds (fixed).
+    - SPA: 568 / 13,121.
+    - Playwright: 446 / 8 / 8, each red green by file.
+  - **Versions:** core 0.0.1378, host 0.0.217, web 0.0.251, cli 0.0.35, SPA
+    0.5.907.
+  - **Next:**
+    1. The owed dogfood pass, with the F-1 probe first.
+    2. The F-1 ruling.
+    3. A follow-ups order: the Carina FINDING plus the residues.
+    4. The 61-commit catch-up.
+  - Details: `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `322a5488e` (2026-10-20, v4 main — "Fix: custom-tool
   LLM consult can narrate a verdict the table already reached (bug 257)",
   `4.11.0-dev.53`), adopted at the `322a5488e` round's unification

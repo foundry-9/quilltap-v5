@@ -193767,3 +193767,108 @@ Branch `claude/p4.174-harness-test-craft-6c7ea4`, cut from main `6c7ea4410`. ZER
 
 **Gate closed (P4.174, follow-up run):** `QT_V4_CHECKOUT=QT_V4_ROOT=<pin> CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with the lane's env block, full log in a lane-private file: exit 0, **863 binaries, 5,706 passed, 0 failed, 3 ignored**. The earlier stall on the two Brahma binaries did not recur (it was shared-machine load under the first run, not a lane-caused red). Every touched family ran with its oracle env set (confirmed RUN by name in the earlier targeted pass). `recipe_sweep.py --self-test` not run.
 
+
+## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — UNIFICATION record (2026-10-28)
+
+**UNIFIED on `main` (fast-forward from `unify/322a5488e-followups`). ALL TEN LANES LANDED; the oracle baseline STAYS `322a5488e` (a smalls round — no drift absorbed); v4 moved during the round, so the ledger's §3 now holds SIXTY-ONE commits past the pin, UNPROCESSED, PIN REQUIRED.**
+
+### The probe and the pin
+
+- The ledger's §2 probe FAILED at unify start: v4 `main` had moved seven commits past the ledger's check (the WCAG / accessibility work, to `3c818c856`). The seven rows were appended to §3 UNPROCESSED and §1 rewritten (61 commits past the pin, PIN REQUIRED). This does not block the unification; the pin rule governs every regen below.
+- The pin `/tmp/qt-v4-pin-unify-322a5488e` (`322a5488e`, `4.11.0-dev.53`) was reused from the previous unification, with its own `npm ci --offline` root `node_modules`. `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin.
+
+### The picks
+
+The ten lanes were cherry-picked onto `unify/322a5488e-followups` in dependency order: P4.172 → P4.168 → P4.166 → P4.167 → P4.171 → P4.169 → P4.170 → P4.165 → P4.173 → P4.174. Version files, locks, CHANGELOG, status-log and the order headers were unioned mechanically. There were no source-level conflicts beyond the predicted shared-home ones, which were resolved in the HANDOFF commit below.
+
+### The HANDOFFs and wires (`fe19d3877`)
+
+- **C1:** `db_error_response` now maps `DbError::RowSchemaRefusal` to v4's 400 `{error: "Validation error", details}`. The memories route's hand-built copy now uses it. Before this, every `db_error_response` caller answered 500 for a `MemorySchema` refusal.
+- **C2:** `chat_settings::find_by_user_id_or_none` logs v4's INNER line through `db::fallback::find_one_by_filter_or_none("chat_settings", …)`, not the outer `Error finding chat settings by user ID`. In fallback mode v4's outer `safeQuery` never fires; only `findOneByFilter`'s `Error finding entity by filter {collection}` does. The order's prose had dictated the outer text, and both unit tests asserted that hand-written literal. The tests and `extraction_context_degrade`'s assertion are corrected, and P4.170's lane-local copy is folded onto the home.
+- **The memory fallback homes** were moved into `db::fallback`: `strict_outer_fallback` is deleted and the six messages joined `HOME_MESSAGES`. The memories route's local Zod length twin is deleted and calls `zod_length_checks_past_invalid_type`.
+- **D274-c** (P4.167 → P4.171) is landed. The `workspace-core.spec.ts` baseline comment (P4.174 → P4.173) is corrected.
+
+### §3 — the review (five parallel readers + the unifier)
+
+**TWO BLOCKING union handoffs (C1, C2 above), ONE lane defect that would have shipped, about a dozen should-fixes — all fixed with tests; ONE item ESCALATED for a ruling.**
+
+- **Would have shipped (P4.168):** the frozen-archive cache was moved off its lock across the compute. The doc called the resulting window "v4's own", but nobody measured it. v4's `get → await computeFrozenArchive → set` only awaits synchronous better-sqlite3 reads (microtasks), so an invalidation cannot land between them. In v5, a memory retire or a maintenance completion that invalidated mid-compute was OVERWRITTEN by the compute's insert. Every later turn was then served the stale archive, retired rows included, until the next invalidation. Fixed with an invalidation epoch: `lookup` captures it and `insert` skips the store if it moved. The red-first test invalidates from inside the compute (`60b1b4940`).
+- **Should-fixes, fixed:**
+  - The memory candidate 400 now carries `details` (`60b1b4940`).
+  - The restore's carried-file arm wrote an archive row v4 refuses: a `null` / absent `mimeType` was written as `""`, behind a size-only hand check. The row is now validated WHOLE through `zod_file_entry_issues`, with v4's one ZodError WARN (`c406a71b6`).
+  - A numeric `lastHeartbeat` in a foreign host's lock read as "never", so v5 claimed a live lock. It now ages as v4's `new Date(v)` does (`c406a71b6`).
+  - The prompt and scenario deletes on a degraded mount answered 503 where v4's own catch answers 500. They now answer the catch, with two degraded rows (`8df92a6e1`).
+  - The degraded family's two unclaimed rows were skipped SILENTLY. They are now asserted both ways, with every carve name validated against the oracle (`8df92a6e1`).
+  - `degraded_transfer_destinations` duplicated the destinations rule and swallowed v4's ERROR. It is now one helper (`8df92a6e1`).
+  - `zod_length_checks_past_invalid_type` skipped a non-numeric `length`. Zod 4.6.7 coerces with a JS relational, so it now applies ToNumber (`12b68fc0a`).
+  - The enabled store readers did not validate `storeType`. They now check it in schema order (`12b68fc0a`).
+  - Three log smalls (`12b68fc0a`).
+  - On a failed album read, the save-image dialog showed v4's alert AND the empty-album sentence. v4 shows only the alert, and the spec had pinned the divergence as v4's (`404582084`).
+  - The F.9 whisper beat could pass with no post-rollback whisper. It now waits for a strictly newer whisper (`404582084`).
+  - P4.174's LANE-REMOVE guards were WEAKER than before: any hex word now counted as "a v4 commit", and `LANE-REMOVE (` with a space still escaped. They are replaced by ONE round-agnostic census over `LANE-REMOVE\s*\(` (`e9bbe8511`).
+  - P4.174's "the drain census is retired" claim was false. That census is now deleted (`e9bbe8511`).
+  - The DQS census's case-sensitive keyword rule is recorded. A case-insensitive match was measured to flag ~30 prose literals (`e9bbe8511`).
+- **ESCALATED (F-1, P4.169):** `GET /settings/chat` with a stored `cheapLLMSettings` bag that v4's schema refuses (e.g. a non-RFC profile id) now answers 500 on EVERY load. The row drops, the GET's create arm finds it by raw id, and the validating re-read drops it again. v4 creates and answers a second row on every load instead. Neither behaviour is right, and the choice is the human's. The settings family carries the carve `REFUSED_CHEAP_LLM_ROW_GET`. A dogfood row probes Friday's stored ids with `zod_uuid_ok` before the ruling.
+- **Recorded OPEN (notes):**
+  - Carina's `run_stream` `Err(_) => break`: P4.165's FINDING; v4 throws into `[Carina] Query failed` / `llm-failed`.
+  - A v5-only `[Carina] Standing instructions applied` DEBUG.
+  - Two `error =` fields at Carina sites.
+  - The 50 ms timing in P4.165's stop test.
+  - The stand-in mount connection is writable, not `query_only`.
+  - Hard-coded DEBUG counts are measured in one shape only.
+  - The scenario handlers' degraded insertion is extrapolated from one row.
+  - `api/salon.rs`'s chat-PUT project gate is a second copy of the entity gate.
+  - The strict batch loader is missing v4's outer line (unreachable today).
+  - The frozen-archive lock-release test can race same-binary invalidations.
+  - B1-1's tier test cannot fail without a clock seam.
+  - B1-4's under-floor half is not mutation-proven.
+  - Beat (g)'s one-shot mock tool call.
+  - The census's lower-case-SQL blind spot.
+  - P4.169's lane record mislabels three units.
+- **Verified correct by the readers:**
+  - P4.172's DQS-off chokepoints and its zero-hit census.
+  - H-2's single check.
+  - C-1's `validateSafe` drop.
+  - The B5/B6 strict pins (two-sided).
+  - The neutral refusal + `with_both_conns_for` + the fail-soft pool.
+  - The `equippedInventory` cache.
+  - The startup scenario heals.
+  - P4.165's stop threading.
+  - P4.170's P-12 probe class.
+
+### The union reds
+
+- **The sweep's five (`e2c14690d`):**
+  - `chats_inventory_tier2`: a cached chat SELECT prepared before a column DROP fails at its first step. `chats_read::with_select` flushes and retries once on the vanished `equippedInventory` column. The red-first unit test runs DROP COLUMN under three cached statements.
+  - `pascal_run_custom_handler` / `pascal_custom_tools_route`: a calendar time bomb. The oracle froze `Date.now` only when a case set `nowMs`, while the fixture spans are anchored to `PASCAL_NOW_MS`. Every case is now frozen.
+  - `memory_maintenance_routes`: a millisecond-straddle comparand (v4 stamps `scheduledAt` before `createdAt`). The comparand is now the delay in whole seconds on both sides.
+  - `characters_arrays_tier2`: P4.171's ported scenario WARN met a "recorded absent" row. v4 logs it twice (its closing overlay re-reads) and v5 once. This is now a recorded COUNT divergence, `(2, 1)`, asserted both ways.
+- **The SPA corpus (`d28c2999a`):** `pascal-custom-tool-definition.oracle.ndjson` was re-copied from the sweep's pin regen (710 → 716 rows).
+- **The workspace gate's three (`913129e1c`):** `database_store`'s two title-lint unit tests and `pascal::roster`'s library test planted `doc_mount_points` WITHOUT a `storeType` column. Once `12b68fc0a`'s reader selected it, the reader failed, fell back and read no stores. Every real schema carries the column, so the fixtures were the defect; they gained it, and all three tests are green.
+
+### The gate
+
+- fmt / clippy (`--workspace --all-targets -D warnings`, plain AND `--features quilltap-core/native-transport`) / release build: clean.
+- **The full sweep from the pin:** 760 ok / 8 run_failed / 1 refused (`backup_uuid_remap`, by design) / 6 non-extractable of 775. The eight:
+  - the two standing (`ariel_writers_tier3`, `search_replace`);
+  - `provider_sdk_version_guard`, which read the LIVE checkout's `node_modules`; it is green against the pin;
+  - the five union reds above, fixed and each green BY NAME.
+- **`cargo test --workspace --no-fail-fast`** with the harvested env block: **871 binaries / 5,739 passed / 17 failed / 3 ignored, zero SKIP.** The seventeen:
+  - the two standing;
+  - `backup_uuid_remap`'s absent oracle (the refused family);
+  - `recall_probe_fixture`'s absent oracle (a non-extractable recipe);
+  - the three fixture reds above, fixed (3/3);
+  - TEN env-block collisions on shared `QT_FIXTURE_*` names, each green BY NAME through the sweep driver (10/10): `doc_mount_files_tier2`, `inventory_title_lint`, `mail_carina_tools`, `search_tools`, `state_cascade`, `state_routes`, `state_sql_tools`, `tiered_mount_pool`, `vault_read_overlay`, `wardrobe_folder_writes_tier2`.
+- **SPA:** `npm run lint` clean; `npm test` 568 files / 13,121 passed; `npm run build` clean.
+- **Playwright (full suite, fresh build + release bins):** **446 passed / 8 failed / 8 skipped (19.3 m).** The eight reds are the recorded Salon-streaming timing cluster: `salon-regenerate-stream-flow`, `salon-roleplay-template-flow` ×2, `salon-scroll`, `salon-streaming-avatar-flow` ×2, `salon-thinking-indicator`, `salon-transcript-subscribed-read`. Each file was re-run BY FILE alone, one at a time, and all were green: `salon-regenerate-stream-flow` 3/3, `salon-roleplay-template-flow` 2/2, `salon-scroll` 1/1, `salon-streaming-avatar-flow` 2/2, `salon-thinking-indicator` 1/1, `salon-transcript-subscribed-read` 2/2.
+
+### Versions
+
+core 0.0.1378, host 0.0.217, web 0.0.251, cli 0.0.35, tauri 0.0.9, SPA 0.5.907; harness frozen 0.0.1110.
+
+### Next
+
+1. The owed dogfood pass on the union build: this round's queue (`dogfood-findings.md`'s 2026-10-28 standing note — the F-1 probe FIRST) plus the owed `322a5488e` queue.
+2. The F-1 ruling.
+3. The P4.165 Carina FINDING and the recorded residues, as a follow-ups order.
+4. The 61-commit drift catch-up, including the WCAG lanes. Re-probe first.

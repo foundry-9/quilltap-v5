@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): the `322a5488e` follow-ups smalls round UNIFIED
+
+_No crate versions bumped._
+
+The ten lanes P4.165–P4.174 are unified on main. The oracle baseline stays at `322a5488e`. The wires and HANDOFFs landed: C1's 400, C2 on v4's inner line, the memory fallback homes, and D274-c. The §3 review fixed one stale-archive race, two blocking union handoffs and about a dozen should-fixes; F-1 is escalated for a ruling. Six union reds were fixed.
+
+Gate:
+- fmt, clippy and the release build: clean.
+- Sweep: 760 ok of 775.
+- Workspace: 871 binaries, 5,739 passed, every red classified.
+- SPA: 13,121 tests.
+- Playwright: 446 / 8 / 8, with every red green by file.
+
+Final versions: core 0.0.1378, host 0.0.217, web 0.0.251, cli 0.0.35, tauri 0.0.9, SPA 0.5.907. The ten order headers, the drift ledger (61 rows UNPROCESSED), `phase-4.md`, CLAUDE.md and the dogfood standing note are updated.
+
 #### 2026-10-28 — test(core): the store-reader unit fixtures carry `storeType`
 
 _Versions: core 0.0.1378._

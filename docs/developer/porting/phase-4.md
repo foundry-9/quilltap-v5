@@ -7151,6 +7151,97 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — UNIFIED 2026-10-28 (ordered 2026-10-27)
+
+**UNIFIED on main (2026-10-28). ALL TEN LANES LANDED; the oracle baseline
+STAYS `322a5488e`.** This was a smalls round, so no drift was absorbed. v4
+moved during the round: the WCAG / accessibility commits took it to
+`3c818c856`. The ledger's §3 now holds SIXTY-ONE rows past the pin, all
+UNPROCESSED, and the regen rule stays PIN REQUIRED. Round record:
+`status-log.md`. Each order's status header lists its OPEN remainder.
+- **Landed:**
+  - R-4 overturned (A): Stop ends Carina's in-turn Brahma consult (P4.165).
+  - Dogfood #156 / #157: a degraded mount index refuses by entity class, not
+    with a blanket 500 (P4.166).
+  - The carriers' record columns, the export skip, and the restore's carried
+    metadata on v4's row (P4.167).
+  - `MemorySchema` refusals as C1's 400, the memory fallback reads, and the
+    Memories API smalls (P4.168).
+  - The Pascal V8 key order, the cheap-LLM schema, the Zod twins, and the
+    Inventory effects on arrival / reset (P4.169).
+  - The wardrobe server smalls and the web-edge gate-order class (P4.170).
+  - The scenarios / vault / store / host-lock smalls (P4.171).
+  - DQS OFF at every connection chokepoint, with a census (P4.172).
+  - The SPA / e2e smalls (P4.173).
+  - The harness / test-craft smalls (P4.174).
+- **The §3 review (five readers + the unifier), led by the defect that would
+  have shipped:** P4.168 moved the frozen-archive cache off its lock across
+  the compute. An invalidation landing mid-compute (a retire, a maintenance
+  completion) was then overwritten by the insert, so later turns were served
+  a stale archive. v4's window cannot open, because its awaits are
+  microtasks. Fixed with an invalidation epoch.
+  - **Union handoffs, BLOCKING and fixed:**
+    - C1: `RowSchemaRefusal` answered 500 where v4 answers 400.
+    - C2: the new `chat_settings` home logged v4's OUTER line, which v4 never
+      fires in fallback mode; the order's prose had dictated it.
+  - **Should-fixes, all fixed:**
+    - The restore wrote a carried file row v4 refuses (`mimeType` null → `""`).
+    - A numeric foreign lock heartbeat was read as "never", so v5 claimed a
+      live lock.
+    - Two degraded deletes answered 503 where v4's catch answers 500.
+    - Unclaimed oracle rows were skipped silently.
+    - Zod length checks did not apply ToNumber.
+    - `storeType` was unvalidated.
+    - The save-image dialog's doubled empty sentence.
+    - A whisper beat that could pass vacuously.
+    - P4.174's LANE-REMOVE guards had been LOOSENED; now one round-agnostic
+      census.
+    - A false "retired" claim.
+  - **Escalated:** ⚖ **F-1**. Since P4.169, `GET /settings/chat` answers 500 on
+    EVERY load when the stored `cheapLLMSettings` bag fails v4's schema (e.g. a
+    non-RFC profile id). v4 instead mints a second row on every load. This
+    needs a ruling; see NEXT.
+- **Union reds, all fixed:**
+  - A cached chat SELECT stepped past a column DROP; it now re-prepares once.
+  - The Pascal oracles' conditional `Date.now` freeze (a calendar time bomb).
+  - A millisecond-straddle job-delay comparand.
+  - A ported WARN meeting a "recorded absent" row; now a two-sided count
+    divergence.
+  - Three unit fixtures without `storeType`.
+- **Gate:**
+  - fmt / clippy (both feature sets) / release: clean.
+  - Sweep from the pin: 760 ok / 8 / 1 refused / 6 non-extractable of 775.
+    The 8 are 2 standing, 1 live-checkout SDK artifact, and 5 union reds,
+    each fixed.
+  - `cargo test --workspace`: 871 binaries / 5,739 / 17 / 3 ignored, zero
+    SKIP. Every non-standing red is fixed or green by name.
+  - SPA: 568 files / 13,121.
+  - Playwright: 446 / 8 / 8; every red is in the recorded Salon-streaming
+    cluster, re-run by file.
+
+**NEXT** (in order):
+1. **The owed dogfood pass — BOTH queues** (the `322a5488e` round's and this
+   round's — `dogfood-findings.md`'s 2026-10-28 standing note), on a Friday
+   copy with the union build. **Probe F-1 FIRST:** run Friday's stored
+   `cheapLLMSettings` ids through `zod_uuid_ok`. A refused id means the
+   Settings page is 500 on the copy.
+2. ⚖ **The F-1 ruling** (the human). The two options:
+   - (A) converge on v4: the GET mints and answers a fresh row;
+   - (B) keep a lenient read of the refused bag and record the divergence.
+
+   The settings family carries the carve `REFUSED_CHEAP_LLM_ROW_GET` until
+   the ruling is made.
+3. **A follow-ups smalls order** covering:
+   - P4.165's Carina FINDING: `run_stream`'s `Err(_) => break`, where v4
+     answers `[Carina] Query failed` / `llm-failed`;
+   - the review's recorded notes (status-log round record);
+   - each order header's OPEN Tier-3 items: P4.166's 156.c merge and the
+     character delete, P4.170's eleven, P4.171's two store backfills, and
+     P4.167's D273-23 / `js_truthy`.
+4. **The 61-commit drift catch-up**, including the WCAG lanes. Re-probe
+   first: the v4 checkout was dirty at the last check.
+
+
 ## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — ORDERED 2026-10-27
 
 **ORDERED 2026-10-27 — NEXT item 2 of the `322a5488e` unification, carried
