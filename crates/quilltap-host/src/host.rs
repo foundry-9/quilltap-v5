@@ -1176,6 +1176,21 @@ impl EngineAssembler for HostAssembler {
     }
 }
 
+/// v4's `instrumentation.ts:809-819` WARN (L37) for a failed phase-3.4c
+/// General heal — `Error ensuring general scenarios folder, continuing startup
+/// {context, error}` with the bare driver message. Extracted (P4.171 C-8,
+/// P4.D295 HANDOFF (1)) so `host_startup_scenario_heals` can capture it right
+/// after the location's own L2 over a real failing ensure, proving the order
+/// L2 → L37 without a fault-injection switch in production.
+pub fn warn_general_scenarios_failure(e: &quilltap_core::db::DbError) {
+    tracing::warn!(
+        target: "quilltap::boot",
+        context = "instrumentation.register",
+        error = %quilltap_core::db::fallback::error_text(e),
+        "Error ensuring general scenarios folder, continuing startup",
+    );
+}
+
 /// P4.9I2A / P4.D222 — v4's PHASE 3.66: the help reconcile over the EMBEDDED
 /// help tree (`files_store::embedded_help_source_files`, the same table the
 /// `EMBEDDING_REINDEX_ALL` handler reads), through a [`HelpDocReconcileGate`]
@@ -1958,6 +1973,26 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                     mount_index,
                     builtin_mounts::LazyRepairFailures::LogAndContinue,
                 )?);
+                // === P4.171 (C-19): v4's PHASE 3.4 / 3.4b scenario heals ===
+                // Every project, then every group: find / adopt / create the
+                // official store and heal `Scenarios/` (groups also
+                // `Knowledge/`), with v4's per-owner WARN and `complete`
+                // counts. Both loops catch per owner and never throw, so v4's
+                // `Error ensuring … scenario infrastructure, continuing
+                // startup` arm has no reachable twin. v4's restore never runs
+                // them (measured at the pin), so `restore_vintage_state`'s
+                // mirror-boot list does not grow. ⚠ v4's 3.4a / 3.4b store
+                // BACKFILLS (`backfill{Project,Group}Stores`) are NOT ported —
+                // see `services/startup_scenarios.rs`.
+                quilltap_core::services::startup_scenarios::ensure_project_scenarios_for_all_projects(
+                    main,
+                    mount_index,
+                );
+                quilltap_core::services::startup_scenarios::ensure_group_scenarios_for_all_groups(
+                    main,
+                    mount_index,
+                );
+                // === end P4.171 ===
                 // v4's phase 3.4c. Since P4.D295 the ensure is the scenario
                 // location's `resolve_scenario_location(General, None,
                 // ensure)`: a folder failure logs the location's own line
@@ -1966,12 +2001,7 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                 // and THIS arm is v4's `instrumentation.ts:809-819` WARN (L37)
                 // for it and for anything else — L2 then L37, in that order.
                 if let Err(e) = builtin_mounts::ensure_general_scenarios_folder(main, mount_index) {
-                    tracing::warn!(
-                        target: "quilltap::boot",
-                        context = "instrumentation.register",
-                        error = %quilltap_core::db::fallback::error_text(&e),
-                        "Error ensuring general scenarios folder, continuing startup",
-                    );
+                    warn_general_scenarios_failure(&e);
                 }
                 // === end P4.134 ===
                 // Companion (v4 instrumentation.ts Phase 3 tail, `f48f34dc`):

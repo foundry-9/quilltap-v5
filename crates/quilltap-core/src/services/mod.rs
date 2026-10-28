@@ -190,6 +190,7 @@ pub mod scriptorium_render;
 pub mod scriptorium_status;
 pub mod sillytavern;
 pub mod speaker_names;
+pub mod startup_scenarios;
 pub mod story_background_job;
 pub mod suparna_mail;
 pub mod suparna_notifications;

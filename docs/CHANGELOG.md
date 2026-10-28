@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — feat(boot): v4's PHASE 3.4 / 3.4b scenario heals; the General heal's L2 → L37 capture row (P4.171 C-19 / C-8)
+
+_Versions: core 0.0.1339, host 0.0.215._
+
+v4's PHASE 3.4 / 3.4b scenario heals now run at boot. `services::startup_scenarios` ports `ensureProjectScenariosForAllProjects` and `ensureGroupScenariosForAllGroups`: each walks the owners' raw rows and resolves the owner's scenario location with `ensure`, which finds, adopts, or creates the official store and heals `Scenarios/`; groups also get `Knowledge/`. The per-owner failure WARN and the `{total, provisioned, healed, failed}` complete line match v4's. The host runs both in v4's phase order, ahead of the General heal. v4's restore never runs them, so the restore mirror-boot list is unchanged. The two store backfills (3.4a / the first half of 3.4b) stay unported and are recorded. The General heal's WARN (L37) is extracted as `warn_general_scenarios_failure`, so a host test can capture L2 then L37 over a real failing folder write. New: the `startup_scenarios_equivalence` family over the scenario-location pair, and `host_startup_scenario_heals`.
+
 #### 2026-10-27 — feat(stores): ensureOfficialStore step 2, its four lines, and v4's name rule (P4.171 C-9 / D273-21)
 
 _Versions: core 0.0.1338._

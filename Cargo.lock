@@ -3949,7 +3949,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-core"
-version = "0.0.1350"
+version = "0.0.1351"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -4018,7 +4018,7 @@ dependencies = [
 
 [[package]]
 name = "quilltap-host"
-version = "0.0.214"
+version = "0.0.215"
 dependencies = [
  "base64 0.22.1",
  "image",
