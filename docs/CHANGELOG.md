@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): drift check — four v4 commits past `3c818c856` recorded
+
+_Docs-only change._
+
+`/driftcheck` found v4 main at `3b8b6f42b` (`4.11.0-dev.111`), four commits past the last recorded HEAD and 65 past the `322a5488e` baseline. All four are recorded in the drift ledger as UNPROCESSED: the checklist-14 docs commit plus About credits (`a4945d8d9`), the mount-chunk embedding arm that now retries on an unopened mount index (`82a2f6536`), the Docker persistent-target guard on deconvert and sync with the Docker folder-picker and CLI defaults (`faeae2b71`), and the chat-settings PUT's `coreWhisper` write and unknown-key 400 (`3b8b6f42b`). No migration, schema move or dependency move. The checkout is clean, `bugfix` is unchanged, and the regen rule stays PIN REQUIRED.
+
 #### 2026-10-28 — docs(porting): record v4 issue #120 (the chat-settings row leak F-1 converged onto)
 
 _No crate versions bumped._
