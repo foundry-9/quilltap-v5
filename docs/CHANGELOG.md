@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — test: the cheap-LLM DEBUG keys and the crafter census follow F-1 (P4.169)
+
+_quilltap-core 0.0.1347._
+
+The workspace gate turned up two tests the lane's own units had left stale, and both are fixed. `the_uncensored_cheap_selection_logs_v4s_two_lines` now asserts the camelCase keys F-4 adopted (`routeDirect`, `conciergeSource`, `profileId`). `concierge_legacy_settings_census` no longer requires `db/chat_settings.rs` to name `imagePromptProfileId`. Since F-1, the repository strips that retired key through v4's `CheapLLMSettingsSchema` shape rebuild, which drops every unknown key the way Zod does. The unit test `cheap_llm_settings_read_in_v4s_shape_order` pins the strip.
+
 #### 2026-10-27 — docs(harness): the L8 corpus note states P4.D310's measurement (P4.169)
 
 _Harness corpus note only; no crate version bumped._

@@ -190,8 +190,12 @@ fn the_cheap_llm_crafter_is_named_only_by_the_mapper_the_refusal_and_the_strip()
              `conciergeSettings.imagePromptProfileId` since v4 `3b463d6b1`: {near:?}"
         );
     }
-    // The three sanctioned sites are all present (the comparand bites).
-    for f in [SETTINGS_PUT, MAPPER, SETTINGS_REPO] {
+    // The two naming sites are present (the comparand bites). The
+    // repository no longer NAMES the key: since P4.169 (F-1) its read is
+    // v4's `CheapLLMSettingsSchema` shape rebuild, which strips every
+    // unknown key the way Zod does — the crafter's strip is pinned by
+    // `db::chat_settings`'s `cheap_llm_settings_read_in_v4s_shape_order`.
+    for f in [SETTINGS_PUT, MAPPER] {
         assert!(
             near.contains_key(f),
             "{f} no longer handles the retired crafter: {near:?}"

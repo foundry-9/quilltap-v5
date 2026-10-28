@@ -668,7 +668,7 @@ mod tests {
             lines[0]
         );
         assert!(
-            lines[0].contains(not_applicable) && lines[0].contains("route_direct=false"),
+            lines[0].contains(not_applicable) && lines[0].contains("routeDirect=false"),
             "{}",
             lines[0]
         );
@@ -683,7 +683,7 @@ mod tests {
         });
         assert_eq!(out.model_name, "gpt-4o-mini");
         assert!(
-            lines[0].contains(not_applicable) && lines[0].contains("concierge_source=global"),
+            lines[0].contains(not_applicable) && lines[0].contains("conciergeSource=global"),
             "{lines:#?}"
         );
         // The direct route takes the desk — the configured line, and no other.
@@ -698,7 +698,7 @@ mod tests {
         assert_eq!(out.model_name, "dolphin");
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
-            lines[0].contains(configured) && lines[0].contains("profile_id=desk"),
+            lines[0].contains(configured) && lines[0].contains("profileId=desk"),
             "{}",
             lines[0]
         );
