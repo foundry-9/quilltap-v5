@@ -193525,3 +193525,64 @@ The cheap-llm-selection case needs `LOG_LEVEL=debug`, which its header now carri
 
 core 0.0.1347 (0.0.1336 → 0.0.1347 over eleven bumps); harness frozen 0.0.1110. No other crate was touched.
 
+
+
+## P4.170 — the wardrobe server smalls + the web-edge gate-order class (lane `claude/p4.170-wardrobe-server-smalls-6c7ea44`, pin `322a5488e`, 2026-10-27) — LANE RECORD
+
+### Start, probe, pin
+- Started in the main checkout at `6c7ea4410` (clean `main`); the lane moved to the worktree `.claude/worktrees/p4.170` on `claude/p4.170-wardrobe-server-smalls-6c7ea44`, cut from `6c7ea4410`, warm from main's `target/` (`cp -cR`).
+- §2 probe (an OBSERVATION, §R.2), 2026-10-27 16:05 CDT: v4 `main` `b892227eb` (no new commit past the ledger), `bugfix` `489b228b6`. The tree was dirty in `help/salon-host-introductions.md` only (not `lib/`/`app/`/`packages/`/`plugins/`). Recorded; the lane continued.
+- Pin `/tmp/qt-v4-pin-p4170-322a5488e`: `rev-parse` `322a5488e7bd…`, `package.json` `4.11.0-dev.53`, root `node_modules` replaced by `npm ci --offline` (openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0). Every oracle below was regenerated there, in its own invocation, into `/tmp/p4170/`.
+
+### Landed (Tier 1)
+- **C.1**: `staged_after_write` is shared by `run_wardrobe_tool` / `run_inventory_tool` (`tools/executor.rs`); a failed `written` drops the stage. Measured unreachable today (`wardrobe_write`'s closure always answers `ok`; `Db::write` errs after the closure only as `WriterGone`), so the red-first is the unit test `a_failed_write_drops_its_stashed_stage` (red with the guard removed).
+- **C.4**: `write_character_vault_managed_fields(…, character_id, …)` — the folder projections' scope is `character.id` (caller `db/character_vault.rs:386`, unowned by any lane — a forced one-line caller edit; harness `vault_character_write_equivalence` passes the op's `id`). The stale-delete WARN is unreachable in v5 (`delete_database_document` fails soft through `delete_with_gc_or_false`), so no observable red; the WARN's missing `docId` stays recorded.
+- **C3 / P-7**: `PatchOrigin { Route, Tool }` + `update_item_with_origin` (`services/wardrobe_item_mutations.rs`); `tools/wardrobe_update.rs` passes `Tool`. **HANDOFF(P4.166):** `api/wardrobe_route_factory.rs:1449` calls `update_item_with_origin(main, mount, &location, &current, &patch, lookup.as_ref(), PatchOrigin::Route)`; then delete the Route-default `update_item` wrapper (its only other caller, `item_mutations_tier2_equivalence`, already passes `PatchOrigin::Route` explicitly). Until then the wrapper already orders Route, so the route family converges on this branch too.
+- **P-12 class** (I-1 / C.10 / F.8): the web edge probes before its own body refusals. Members named and fixed: `raise-hand` (non-object), `equip`, `wardrobe-rollback`, `inventory-equip` / `-unequip` / `-reset-defaults`, `regenerate-avatar`, `inform`, `cancel-inform` (the two inform verbs refuse IN CORE, whose Zod parse precedes its chat read as v4's `handleInform`'s does — so every non-404 core refusal on a chat POST is re-checked against the chat: `refused_after_chat_probe`), and the General item PUT (`WardrobeItemGet` probe). The chat probe is `ChatInformsList`, whose first read is exactly `handlePost`'s fallback `chats.findById`. The first cut probed `ChatGet` (v4's whole enriched `handleGetChat`), which answered `500 Failed to fetch chat` on the inventory pair; the sweep caught it (`63aaddc51`). `inventory_routes_equivalence`'s `CHAT_GATE_ORDER` row (`chat_equip_zod_before_chat`) CONVERGES over HTTP; the carve now holds for the direct-core driver only. **Recorded, not changed:** the `dispatch_required_action` gate (`Action parameter required` / `Unknown action` before the chat lookup) — the standing recorded gate-ORDER divergence pinned in `query_param_semantics_equivalence` (not this lane's family). `inventory_routes::item_put` already probed. The wardrobe / inventory collection POSTs parse first in v4 too (`// Parse before resolving`) — not members. No per-tier item PUT edge exists besides General (project / group / character item edges are R-F dispatch-only) → **C.14 CLOSED** by measurement.
+- **P-10**: `unwrap_to_http`'s error arm → `inventory_routes::rendered`; inventory test inverted (`a_details_bearing_409_stays_409_in_both_renderers`), module docs updated.
+- **D.3 / P-8**: `enabled_row_validates` in `db/doc_mount_points.rs` (both enabled readers); `ENABLED_STORE_ZOD_DROP` carve + string-replace retired in `photo_album_options_equivalence` (carves 3 → 2).
+- **B.2**: start INFO + `EquippedSlotsSchema` WARN (`equipped_slots_issues`), JS-truthy gate; `job_id` from `job.id` (no `job_runner.rs` hunk needed). NEW family `wardrobe_announcement_job_tier3_equivalence` + `harness/oracle/cases/wardrobe-announcement-job.ts` + `fixtures/wardrobe-announcement-job.json` (ten cumulative cases).
+- **C2**: lane-local `find_by_user_id_or_none` in `services/wardrobe_item_image_generation.rs`, marked `// HANDOFF(P4.169): fold onto chat_settings::find_by_user_id_or_none`. **Contract note for P4.169 / the unifier:** C2 names a `ChatSettings` return type that does not exist at the pin (`chat_settings::find_by_user_id` answers `Option<serde_json::Value>`); the copy answers `Option<Value>`.
+
+### Landed (Tier 2)
+- **C.2** (58 → 66 ops; 5 ordered + a P-7 discriminator + two C.9 rows), **C.9** (every key, both tools — v4 marks none `.nullable()`; wider than the recorded `generate_image`), **C.10**, **C.14** (closed), **F.7** (line pinned against v4's captured rows in `wardrobe_routes::p4170_f7_tests`), **F.8**, **D.1** (`messageJson` at the three doors; gallery keys camelCase; `code` / `attributionRole` as v4's strings; pins updated in `chat_gallery_equivalence` and `wardrobe_item_images_tier2_equivalence`).
+
+### Commits
+`83f16d482` (tools: null refusals, PatchOrigin, the stage guard) · `8e656b035` (web: the P-12 class, F.7, P-10) · `5c63d5045` (core: B.2, D.3, C2, D.1) · `ad58e0d53` (the restored REST test, clippy) · `a701f95c7` (the route-construction census +2) · `63aaddc51` (the chat probe via `ChatInformsList`; the carve scoped).
+
+### Red-first (on unported `main` `6c7ea4410`)
+wardrobe_tools: 7 divergence keys. chat_interrupt_rest_routes: 3 of 3 tests red (the nine P-12 rows, the item PUT's 500, the missing F.7 line). photo_album_options: 2 keys (`malformed_store_row` albums and lines). The announcement family: 13 keys. C.1: the unit test (red with the guard removed). C.4: no observable red (see above).
+
+### Gate
+- fmt clean; clippy `-D warnings` clean on both feature sets (`quilltap-web` re-clippied after the last two commits).
+- `cargo test --workspace` (`CARGO_INCREMENTAL=0`, at `ad58e0d53`): 863 binaries / 5,707 passed / 1 failed / 3 ignored. The one red was `tri_state_edges_share_the_decoder`'s construction census, which this lane caused (two new probes). Fixed in `a701f95c7` and green by name.
+- **⚠ Gotcha:** the gate SKIPs every oracle-env family. The sweep below is what caught the probe defect, so read the sweep, not the gate, for the touched families.
+- Sweep (one at a time, queued behind P4.169's sweep PID), from the pin, eleven touched families: 10 ok, plus `inventory_routes_equivalence` run_failed. Its 9 HTTP rows were red from the `ChatGet` probe; fixed in `63aaddc51` and re-run by name against the lane-private oracle copy (169 cases, both drivers): green. Also green after the fix: the web lib (109), `chat_interrupt_rest_routes` (2), `wardrobe_routes_equivalence` (5), the census (11).
+- SPA: `npm ci` + `npm run build` liveness OK. `apps/web` is untouched.
+
+### Versions at close
+core 0.0.1339 (from 0.0.1336), web 0.0.250 (from 0.0.246); harness frozen 0.0.1110; host / cli / tauri / SPA unchanged.
+
+### Deferred (loud — each with its measurement)
+- **B.3** (toggle-avatar outer catch): measured at the pin — `chats.findById` is a FALLBACK (`Error finding entity by ID`, then `serverError('Chat not found')`, no outer ERROR); `chats.update` → `_update` rethrows into the outer catch's `[Chats v1] Error toggling avatar generation {chatId, context}` + `Failed to toggle avatar generation`. Not landed: needs a write-failing plant through `chat_cast_routes_equivalence` (time).
+- **B.4, B.6, B.7, B.11**: not started (harness rows / builder params; B.11 would need the almanack pair grown — Tier 3 by the order).
+- **B.8**: every one of the 38 snake_case `[StoryBackground]` keys sits in `services/story_background_job.rs` (P4.166's file) → **HANDOFF(P4.166)**, Tier 3 here as the order prescribes.
+- **C.7**: measured — v4's `findByUserId` is a fallback (so a settings-read failure is `not-enabled` on BOTH sides: already converged); the arm that answers `failed` in v4 is `imageProfiles.findDefault`, a RETHROW `safeQuery` caught by `maybeQueueWardrobeToolImage`'s try. v5's `resolve_wardrobe_image_profile` returns `Option` and swallows that, answering `no-image-profile`. The fix needs the shared resolver (`services/image_profile_resolution.rs`, not named by the survey) to surface `Err` — not landed.
+- **C.8, C.12, D.2, D.4, F.1 (P-9), F.6, G.1**: not started. **The announcement job's degraded arm**: Tier 3 (P4.166's fail-soft pool).
+
+### 💸 for the dogfood pass
+- A wardrobe tool call whose vault write is made to fail on a clone → the tool reports the failure.
+- `?action=raise-hand` with body `[]` on a deleted chat → 404; the same for `?action=inform` with `[]`, and `equip` / `wardrobe-rollback` with `{not json` (on a live chat: the 500 plus the ERROR line in `combined.log`).
+- An item update from the editor and from the tool → `[ItemMutations]` `fields` in each caller's order (the editor's after the §S.1(b) HANDOFF lands).
+- An Aurora outfit announcement after a quiet wardrobe change → `[WardrobeAnnouncement] Starting announcement` with the job id.
+
+### Oracle regen recipes (lane-private paths; committed headers stay canonical)
+- wardrobe-tools: the family header's two steps with `QT_WT_TOOLS_CORPUS=1`, outputs `/tmp/p4170/qt-wt-{main,mount}.db` + `/tmp/p4170/oracle-wardrobe-tools.ndjson`.
+- wardrobe-announcement-job: the .ts header (the same seed pair; `QT_FIXTURE_WT_MAIN/MOUNT` + the case → `/tmp/p4170/oracle-wardrobe-announcement-job.ndjson`).
+- salon-skip: the .ts header's jest mirror (`/tmp/p4170/qt-salon-skip-oracle`, `--testTimeout=180000`) → `/tmp/p4170/oracle-salon-skip.ndjson`; consumed by `salon_skip_equivalence` (unchanged rows), `chat_interrupt_rest_routes` and `wardrobe_routes`' unit pin.
+- wardrobe-routes: the .ts header's jest mirror → `/tmp/p4170/oracle-wardrobe-routes.ndjson` (171 rows); consumed by `wardrobe_routes_equivalence` and `chat_interrupt_rest_routes`.
+- photo-album-options: the family header (builder + jest) → `/tmp/p4170/oracle-photo-album-options.ndjson`.
+
+### Fixtures changed
+- `harness/oracle/fixtures/wardrobe-tools.json` (ops appended at the END — prior indices kept; the builder's DB output is unchanged, so `wardrobe_wear_commit_tier2` and the avatar trigger's fixtures stay byte-identical); `wardrobe-routes.json` (one case inserted before `rb_malformed_json`); NEW `wardrobe-announcement-job.json`. No committed real-DB pair rebuilt.
+

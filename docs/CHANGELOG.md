@@ -306,6 +306,12 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — docs(porting): P4.170 lane record and status header (LANE COMPLETE)
+
+_Docs only._
+
+The order's status header is set to LANE COMPLETE on `claude/p4.170-wardrobe-server-smalls-6c7ea44`, with the landed / OPEN / HANDOFF lists. The lane record (commits, red-first counts, gate, sweep, deferrals with measurements, regen recipes, fixtures) is appended to `status-log.md`.
+
 #### 2026-10-27 — fix(web): the chat-first probe reads the chat as `handlePost` does, not through the enriched chat GET (P4.170)
 
 _Versions: web 0.0.250._
