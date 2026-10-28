@@ -289,7 +289,13 @@ pub fn get_cheap_llm_provider(
             if let Some(p) = available_profiles.iter().find(|p| p.id == user_id) {
                 return selection_from_profile(p, false);
             }
-            // Profile not found — v4 warns and falls through.
+            // Profile not found — fall through to the next strategy.
+            tracing::warn!(
+                target: "quilltap::cheap_llm",
+                context = "getCheapLLMProvider",
+                userDefinedProfileId = %user_id,
+                "[CheapLLM] USER_DEFINED profile not found, falling through"
+            );
         }
     }
 
@@ -325,6 +331,16 @@ pub fn get_cheap_llm_provider(
     // `undefined` (and fail downstream) — surfaced here as an empty model name.
     let cheap_model = get_cheapest_model(&current_profile.provider, registry_cheapest_for_current)
         .unwrap_or_default();
+    // v4 logs JS `undefined` (the key dropped) for an out-of-vocabulary
+    // provider; `Option` renders the same absence.
+    tracing::warn!(
+        target: "quilltap::cheap_llm",
+        context = "getCheapLLMProvider",
+        provider = %current_profile.provider,
+        cheapModel = (!cheap_model.is_empty()).then_some(cheap_model.as_str()),
+        currentProfileModel = %current_profile.model_name,
+        "[CheapLLM] Using FALLBACK to cheapest model for current provider"
+    );
     // The current profile, but on its provider's cheapest model (v4's
     // `{ ...selectionFromProfile(currentProfile), modelName: cheapModel }`).
     // `is_local` is provider-derived rather than the old hard `false`; this
@@ -334,6 +350,122 @@ pub fn get_cheap_llm_provider(
         model_name: cheap_model,
         ..selection_from_profile(current_profile, false)
     }
+}
+
+// ===========================================================================
+// The selection over a user's loaded profile set (v4 `cheap-llm-user-selection.ts`)
+// ===========================================================================
+
+/// Build a [`CheapLlmProfile`] from a connection-profile net-read value (v4
+/// treats a connection profile as a cheap-LLM profile candidate).
+pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
+    CheapLlmProfile {
+        id: v
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        provider: v
+            .get("provider")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        model_name: v
+            .get("modelName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
+        is_cheap: v.get("isCheap").and_then(Value::as_bool) == Some(true),
+        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
+            == Some(true),
+        parameters: v.get("parameters").cloned(),
+        max_tokens: v.get("maxTokens").and_then(Value::as_f64),
+        max_context: v.get("maxContext").and_then(Value::as_f64),
+        model_class: v
+            .get("modelClass")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    }
+}
+
+/// v4's `CheapLLMConfig` from a chat-settings `cheapLLMSettings` sub-object (or the
+/// defaults when absent).
+pub(crate) fn cheap_llm_config_from_settings(cheap: Option<&Value>) -> CheapLlmConfig {
+    match cheap {
+        Some(c) => CheapLlmConfig {
+            strategy: c
+                .get("strategy")
+                .and_then(Value::as_str)
+                .unwrap_or("PROVIDER_CHEAPEST")
+                .to_string(),
+            user_defined_profile_id: c
+                .get("userDefinedProfileId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            default_cheap_profile_id: c
+                .get("defaultCheapProfileId")
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            fallback_to_local: c
+                .get("fallbackToLocal")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        },
+        // v4 `DEFAULT_CHEAP_LLM_CONFIG`.
+        None => CheapLlmConfig {
+            strategy: "PROVIDER_CHEAPEST".to_string(),
+            user_defined_profile_id: None,
+            default_cheap_profile_id: None,
+            fallback_to_local: false,
+        },
+    }
+}
+
+/// v4 `selectCheapLLMFromProfiles` (`cheap-llm-user-selection.ts:46-66`): run
+/// the cheap-LLM ladder over an already-loaded profile set, on the
+/// default-flagged profile (else the first); `None` when there are no profiles.
+/// Ollama availability is not probed (`ollamaAvailable = false`), and the
+/// registry default is not consulted (`None`), matching every caller. Logs v4's
+/// two DEBUGs. The ONE home since P4.169 (B1-6): `tools::generate_image`'s
+/// private twin is deleted onto it, and `services::image_job_common`'s copy is
+/// the unifier's (§S.1(d)).
+pub fn select_cheap_llm_from_profiles(
+    all_profiles: &[Value],
+    cheap_settings: Option<&Value>,
+) -> Option<CheapLlmSelection> {
+    let profiles: Vec<CheapLlmProfile> = all_profiles
+        .iter()
+        .map(cheap_llm_profile_from_value)
+        .collect();
+    // v4 `allProfiles.find(p => p.isDefault) || allProfiles[0]` — `profiles[i]`
+    // corresponds 1:1 to `all_profiles[i]`, so zip to find the default.
+    let default_index = all_profiles
+        .iter()
+        .position(|v| v.get("isDefault").and_then(Value::as_bool) == Some(true))
+        .unwrap_or(0);
+    let Some(default_profile) = profiles.get(default_index) else {
+        tracing::debug!(
+            target: "quilltap::cheap_llm",
+            context = "selectCheapLLMFromProfiles",
+            "[CheapLLM] No connection profiles to select a cheap LLM from"
+        );
+        return None;
+    };
+    let config = cheap_llm_config_from_settings(cheap_settings);
+    let selection = get_cheap_llm_provider(default_profile, &config, &profiles, false, None);
+    tracing::debug!(
+        target: "quilltap::cheap_llm",
+        context = "selectCheapLLMFromProfiles",
+        defaultProfileId = %default_profile.id,
+        provider = %selection.provider,
+        // v4 logs `undefined` (the key dropped) for an out-of-vocabulary
+        // provider's fallback; `Option` renders the same absence.
+        modelName = (!selection.model_name.is_empty()).then_some(selection.model_name.as_str()),
+        connectionProfileId = selection.connection_profile_id.as_deref(),
+        "[CheapLLM] Selected cheap LLM for user profile set"
+    );
+    Some(selection)
 }
 
 /// v4 `resolveUncensoredCheapLLMSelection` (`3b463d6b1`, #76): for a chat the
@@ -352,11 +484,12 @@ pub fn resolve_uncensored_cheap_llm_selection(
     let policy = match concierge_policy {
         Some(p) if is_dangerous_chat && p.route_direct => p,
         _ => {
+            // v4's camelCase keys (P4.169 — the first cut logged snake_case).
             tracing::debug!(
                 target: "quilltap::cheap_llm",
-                is_dangerous_chat,
-                concierge_source = concierge_policy.map(|p| p.source.as_str()),
-                route_direct = concierge_policy.is_some_and(|p| p.route_direct),
+                isDangerousChat = is_dangerous_chat,
+                conciergeSource = concierge_policy.map(|p| p.source.as_str()),
+                routeDirect = concierge_policy.is_some_and(|p| p.route_direct),
                 "[CheapLLM] Uncensored cheap LLM selection not applicable; using standard selection"
             );
             return standard_selection;
@@ -377,7 +510,7 @@ pub fn resolve_uncensored_cheap_llm_selection(
         if let Some(p) = available_profiles.iter().find(|p| p.id == profile_id) {
             tracing::debug!(
                 target: "quilltap::cheap_llm",
-                profile_id = %p.id,
+                profileId = %p.id,
                 "[CheapLLM] Using configured uncensored text profile for cheap LLM"
             );
             return uncensored_selection(p);

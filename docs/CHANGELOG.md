@@ -199,6 +199,18 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): the cheap-LLM selection logs v4's four `[CheapLLM]` lines from ONE `select_cheap_llm_from_profiles` (P4.169)
+
+_Versions:_ quilltap-core 0.0.1341.
+
+`cheap_llm::select_cheap_llm_from_profiles` is now the one port of v4's `selectCheapLLMFromProfiles`. It logs v4's two DEBUGs, `[CheapLLM] No connection profiles to select a cheap LLM from` and `[CheapLLM] Selected cheap LLM for user profile set`. `get_cheap_llm_provider` gains v4's two WARNs: `[CheapLLM] USER_DEFINED profile not found, falling through` and `[CheapLLM] Using FALLBACK to cheapest model for current provider`.
+
+`tools/generate_image.rs`'s private twin of the builder, and its two config and profile readers, are deleted onto `cheap_llm.rs`. The uncensored-selection DEBUGs now log v4's camelCase keys (`isDangerousChat`, `conciergeSource`, `routeDirect`, `profileId`); the first cut logged them in snake_case.
+
+`cheap_llm_selection_equivalence` captures every row's lines on both sides and gains a five-row `fromProfiles` section. Red-first: 15 rows red before the change, then green.
+
+HANDOFF(P4.166 / unifier §S.1(d)): `services/image_job_common.rs`'s `build_cheap_llm_selection`, `cheap_llm_config_from_settings` and `cheap_llm_profile_from_value` should be deleted onto the `crate::cheap_llm` versions.
+
 #### 2026-10-27 — fix(core): `cheapLLMSettings` reads in v4's Zod shape order through ONE parser; a refused bag drops the row (P4.169)
 
 _Versions:_ quilltap-core 0.0.1340.

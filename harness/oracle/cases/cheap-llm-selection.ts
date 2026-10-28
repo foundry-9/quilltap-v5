@@ -39,10 +39,19 @@
  * every priority-5 fallback resolves through the legacy map — which is what the
  * Rust side reproduces by passing `registry_cheapest_for_current: None`.
  *
+ * ## The `[CheapLLM]` lines (P4.169, B1-6)
+ *
+ * Every row carries `lines`: v4's logger lines the call emitted, captured by
+ * splicing the singleton logger's transports (`service` / `environment`
+ * dropped). `LOG_LEVEL=debug` must be set in the ENVIRONMENT — the logger
+ * reads it when `cheap-llm.ts` loads, before this module's body runs. The
+ * `fromProfiles` section drives `selectCheapLLMFromProfiles` (the loaded-set
+ * prologue v5 had duplicated, with neither DEBUG).
+ *
  * Run from inside the server checkout (Node 24
  * `~/.nvm/versions/node/v24.13.1/bin`):
  *   cd ~/source/quilltap-server
- *   TZ=UTC npx tsx \
+ *   LOG_LEVEL=debug TZ=UTC npx tsx \
  *     <V5W>/harness/oracle/cases/cheap-llm-selection.ts \
  *     > /tmp/oracle-cheap-llm-selection.ndjson
  */
@@ -51,7 +60,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { logger } from '@/lib/logger';
+import { selectCheapLLMFromProfiles } from '@/lib/llm/cheap-llm-user-selection';
 import {
+  buildCheapLLMConfig,
   getCheapLLMProvider,
   resolveUncensoredCheapLLMSelection,
   selectionFromProfile,
@@ -83,6 +95,12 @@ interface Corpus {
     available: string[];
     ollamaAvailable: boolean;
   }>;
+  fromProfiles: Array<{
+    name: string;
+    profiles: string[];
+    defaultKey: string | null;
+    cheapLLMSettings: Record<string, unknown> | null;
+  }>;
   uncensored: Array<{
     name: string;
     standard: string;
@@ -111,11 +129,33 @@ function profile(key: string): ConnectionProfile {
  * omitted key and an explicit null cannot be told apart by JSON alone — the
  * Rust side compares the same normalization.
  */
+if (process.env.LOG_LEVEL !== 'debug') {
+  throw new Error('run with LOG_LEVEL=debug in the environment (see header)');
+}
+type Line = { level: string; message: string; fields: Record<string, unknown> };
+let lines: Line[] = [];
+const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+internal.transports.splice(0, internal.transports.length, {
+  write: (d: unknown) => {
+    const data = d as { level: string; message: string; context?: Record<string, unknown> };
+    if (!data.message.startsWith('[CheapLLM]')) return;
+    const { service: _s, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+    lines.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+  },
+});
+/** The lines logged since the last call, then reset. */
+function takeLines(): Line[] {
+  const out = lines;
+  lines = [];
+  return out;
+}
+
 function emit(name: string, kind: string, selection: CheapLLMSelection): void {
   process.stdout.write(
     JSON.stringify({
       name,
       kind,
+      lines: takeLines(),
       provider: selection.provider,
       modelName: selection.modelName,
       baseUrl: selection.baseUrl ?? null,
@@ -147,6 +187,21 @@ for (const c of corpus.ladder) {
       c.ollamaAvailable,
     ),
   );
+}
+
+for (const c of corpus.fromProfiles) {
+  const all = c.profiles.map(k => ({ ...profile(k), isDefault: k === c.defaultKey }));
+  const picked = selectCheapLLMFromProfiles(
+    all as unknown as ConnectionProfile[],
+    buildCheapLLMConfig({ cheapLLMSettings: c.cheapLLMSettings as never }),
+  );
+  if (picked === null) {
+    process.stdout.write(
+      JSON.stringify({ name: c.name, kind: 'fromProfiles', lines: takeLines(), selection: null }) + '\n',
+    );
+  } else {
+    emit(c.name, 'fromProfiles', picked.selection);
+  }
 }
 
 for (const c of corpus.uncensored) {

@@ -1,5 +1,5 @@
 {
-  "$note": "P4.D155 \u2014 the cheap-LLM SELECTION corpus (v4 `0506517d3` correction (a)). Read by BOTH sides: harness/oracle/cases/cheap-llm-selection.ts drives v4's real lib/llm/cheap-llm.ts over it, crates/quilltap-harness/tests/cheap_llm_selection_equivalence.rs drives quilltap_core::cheap_llm. Keeping the corpus in one JSON file rather than transcribing it twice is what makes the profile shapes (parameters bags, maxContext, blank base URLs) comparable at all.",
+  "$note": "P4.D155 — the cheap-LLM SELECTION corpus (v4 `0506517d3` correction (a)). Read by BOTH sides: harness/oracle/cases/cheap-llm-selection.ts drives v4's real lib/llm/cheap-llm.ts over it, crates/quilltap-harness/tests/cheap_llm_selection_equivalence.rs drives quilltap_core::cheap_llm. Keeping the corpus in one JSON file rather than transcribing it twice is what makes the profile shapes (parameters bags, maxContext, blank base URLs) comparable at all.",
   "profiles": {
     "openaiPlain": {
       "id": "p-openai-plain",
@@ -117,7 +117,7 @@
       "maxContext": null
     }
   },
-  "$fromProfileNote": "selectionFromProfile directly \u2014 the shape every other rung is now built from.",
+  "$fromProfileNote": "selectionFromProfile directly — the shape every other rung is now built from.",
   "fromProfile": [
     {
       "name": "from_openai_plain_nofallback",
@@ -165,7 +165,7 @@
       "localBaseUrlFallback": false
     }
   ],
-  "$ladderNote": "getCheapLLMProvider \u2014 one case per rung, with the two priority-5 branches carrying provider params on the CURRENT profile so their absence pre-fix is visible.",
+  "$ladderNote": "getCheapLLMProvider — one case per rung, with the two priority-5 branches carrying provider params on the CURRENT profile so their absence pre-fix is visible.",
   "ladder": [
     {
       "name": "p1_global_default",
@@ -299,7 +299,7 @@
       "ollamaAvailable": false
     }
   ],
-  "$uncensoredNote": "resolveUncensoredCheapLLMSelection \u2014 both picks take localBaseUrlFallback, so an OLLAMA uncensored profile with a blank base URL gets localhost AND is local. v4 `3b463d6b1` (#76): the gate is the Concierge policy's routeDirect \u2014 resolved here from the row's stored `concierge` settings WITH its `chat` (a null `concierge` passes NO policy, v4's `undefined`); only an on-duty Unmoderated chat routes direct.",
+  "$uncensoredNote": "resolveUncensoredCheapLLMSelection — both picks take localBaseUrlFallback, so an OLLAMA uncensored profile with a blank base URL gets localhost AND is local. v4 `3b463d6b1` (#76): the gate is the Concierge policy's routeDirect — resolved here from the row's stored `concierge` settings WITH its `chat` (a null `concierge` passes NO policy, v4's `undefined`); only an on-duty Unmoderated chat routes direct.",
   "uncensored": [
     {
       "name": "unc_off_returns_standard",
@@ -431,6 +431,68 @@
       "available": [
         "openaiPlain"
       ]
+    }
+  ],
+  "$fromProfilesNote": "P4.169 (B1-6): v4 `selectCheapLLMFromProfiles` over a loaded profile set — the default-flagged profile (`defaultKey`; else the first), the config through v4's `buildCheapLLMConfig({cheapLLMSettings})`, and the two `[CheapLLM]` DEBUGs plus the ladder's two WARNs captured per row.",
+  "fromProfiles": [
+    {
+      "name": "sp_no_profiles",
+      "profiles": [],
+      "defaultKey": null,
+      "cheapLLMSettings": null
+    },
+    {
+      "name": "sp_first_profile_fallback",
+      "profiles": [
+        "openaiPlain",
+        "deepseekParams"
+      ],
+      "defaultKey": null,
+      "cheapLLMSettings": null
+    },
+    {
+      "name": "sp_flagged_default_user_defined_missing",
+      "profiles": [
+        "openaiPlain",
+        "deepseekParams"
+      ],
+      "defaultKey": "deepseekParams",
+      "cheapLLMSettings": {
+        "strategy": "USER_DEFINED",
+        "userDefinedProfileId": "p-nobody",
+        "fallbackToLocal": true,
+        "embeddingProvider": "OPENAI",
+        "allowCheapFallback": false
+      }
+    },
+    {
+      "name": "sp_cheap_profile_wins",
+      "profiles": [
+        "openaiPlain",
+        "openaiCheap"
+      ],
+      "defaultKey": "openaiPlain",
+      "cheapLLMSettings": {
+        "strategy": "PROVIDER_CHEAPEST",
+        "fallbackToLocal": true,
+        "embeddingProvider": "OPENAI",
+        "allowCheapFallback": false
+      }
+    },
+    {
+      "name": "sp_user_defined_found",
+      "profiles": [
+        "openaiPlain",
+        "ollamaOwnUrl"
+      ],
+      "defaultKey": null,
+      "cheapLLMSettings": {
+        "strategy": "USER_DEFINED",
+        "userDefinedProfileId": "p-ollama-own",
+        "fallbackToLocal": false,
+        "embeddingProvider": "OPENAI",
+        "allowCheapFallback": false
+      }
     }
   ]
 }

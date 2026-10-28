@@ -30,9 +30,17 @@
 //! the divergence `get_cheap_llm_provider`'s own comment records. The reader
 //! below defaults an absent `modelName` to `""` for exactly that row.
 //!
+//! **The `[CheapLLM]` lines (P4.169, B1-6).** Every row carries v4's logger
+//! lines; v5's are captured around the same call (`global_capture`) and
+//! compared as `LEVEL message k=v …` in order — the ladder's two WARNs and
+//! `selectCheapLLMFromProfiles`'s two DEBUGs, which the first port never
+//! logged. The `fromProfiles` section drives the loaded-set prologue
+//! (`cheap_llm::select_cheap_llm_from_profiles`) over corpus profiles with an
+//! `isDefault` flag and a stored `cheapLLMSettings` bag.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout):
 //!   cd ~/source/quilltap-server
-//!   TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
+//!   LOG_LEVEL=debug TZ=UTC ~/.nvm/versions/node/v24.13.1/bin/npx tsx \
 //!     <V5W>/harness/oracle/cases/cheap-llm-selection.ts \
 //!     > /tmp/oracle-cheap-llm-selection.ndjson
 //! Run:
@@ -43,15 +51,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use quilltap_core::cheap_llm::{
-    get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, selection_from_profile,
-    CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
+    get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, select_cheap_llm_from_profiles,
+    selection_from_profile, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
 use quilltap_core::services::cheap_llm_exec::{cheap_llm_deadline_for, CheapLlmLatencyClass};
 use quilltap_core::services::dangerous_content::resolver::resolve_stored_concierge_settings;
-use serde::Deserialize;
+use quilltap_core::test_support::global_capture;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct CorpusProfile {
     id: String,
@@ -112,6 +121,16 @@ struct LadderCase {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct FromProfilesCase {
+    name: String,
+    profiles: Vec<String>,
+    default_key: Option<String>,
+    #[serde(rename = "cheapLLMSettings")]
+    cheap_llm_settings: Option<Value>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UncensoredCase {
     name: String,
     standard: String,
@@ -128,7 +147,46 @@ struct Corpus {
     profiles: HashMap<String, CorpusProfile>,
     from_profile: Vec<FromProfileCase>,
     ladder: Vec<LadderCase>,
+    from_profiles: Vec<FromProfilesCase>,
     uncensored: Vec<UncensoredCase>,
+}
+
+/// v4's captured line as `LEVEL message k=v …` (string fields bare, anything
+/// else as JSON).
+fn want_lines(lines: &Value) -> Vec<String> {
+    lines
+        .as_array()
+        .map(|a| a.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .map(|l| {
+            let mut out = format!(
+                "{} {}",
+                l["level"].as_str().unwrap().to_uppercase(),
+                l["message"].as_str().unwrap()
+            );
+            for (k, v) in l["fields"].as_object().unwrap() {
+                match v {
+                    Value::String(s) => out.push_str(&format!(" {k}={s}")),
+                    other => out.push_str(&format!(" {k}={other}")),
+                }
+            }
+            out
+        })
+        .collect()
+}
+
+/// v5's captured line minus its target.
+fn got_lines(lines: Vec<String>) -> Vec<String> {
+    lines
+        .into_iter()
+        .map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next().unwrap().to_string();
+            let _target = parts.next();
+            format!("{level} {}", parts.next().unwrap_or_default())
+        })
+        .collect()
 }
 
 fn corpus_path() -> PathBuf {
@@ -156,6 +214,11 @@ fn row(name: &str, kind: &str, s: &CheapLlmSelection) -> Value {
 /// header for `modelName` — only the out-of-vocabulary priority-5 row hits it.
 fn normalize_oracle(mut v: Value) -> Value {
     let o = v.as_object_mut().expect("oracle row is an object");
+    let lines = want_lines(&o["lines"]);
+    o.insert("lines".into(), json!(lines));
+    if o.contains_key("selection") {
+        return v; // `selectCheapLLMFromProfiles` answered null
+    }
     o.entry("modelName").or_insert_with(|| json!(""));
     o.entry("baseUrl").or_insert(Value::Null);
     o.entry("profileParameters").or_insert(Value::Null);
@@ -195,7 +258,12 @@ fn cheap_llm_selection_matches_oracle() {
 
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
-    let mut check = |got: Value| {
+    global_capture::install();
+    let mut check = |got: Value, lines: Vec<String>| {
+        let mut got = got;
+        got.as_object_mut()
+            .unwrap()
+            .insert("lines".into(), json!(got_lines(lines)));
         let name = got["name"].as_str().unwrap().to_string();
         match oracle.get(&name) {
             None => failed.push(format!("{name}: no oracle row")),
@@ -205,8 +273,10 @@ fn cheap_llm_selection_matches_oracle() {
     };
 
     for c in &corpus.from_profile {
-        let s = selection_from_profile(&profile(&c.profile), c.local_base_url_fallback);
-        check(row(&c.name, "fromProfile", &s));
+        let (s, lines) = global_capture::capture(|| {
+            selection_from_profile(&profile(&c.profile), c.local_base_url_fallback)
+        });
+        check(row(&c.name, "fromProfile", &s), lines);
         ran += 1;
     }
 
@@ -219,14 +289,34 @@ fn cheap_llm_selection_matches_oracle() {
             fallback_to_local: c.config.fallback_to_local,
         };
         // `None` = the empty plugin registry the oracle also runs under.
-        let s = get_cheap_llm_provider(
-            &profile(&c.current),
-            &config,
-            &available,
-            c.ollama_available,
-            None,
-        );
-        check(row(&c.name, "ladder", &s));
+        let current = profile(&c.current);
+        let (s, lines) = global_capture::capture(|| {
+            get_cheap_llm_provider(&current, &config, &available, c.ollama_available, None)
+        });
+        check(row(&c.name, "ladder", &s), lines);
+        ran += 1;
+    }
+
+    for c in &corpus.from_profiles {
+        let all: Vec<Value> = c
+            .profiles
+            .iter()
+            .map(|k| {
+                let mut v = serde_json::to_value(corpus.profiles.get(k).unwrap()).unwrap();
+                v["isDefault"] = json!(c.default_key.as_deref() == Some(k.as_str()));
+                v
+            })
+            .collect();
+        let (s, lines) = global_capture::capture(|| {
+            select_cheap_llm_from_profiles(&all, c.cheap_llm_settings.as_ref())
+        });
+        match s {
+            Some(s) => check(row(&c.name, "fromProfiles", &s), lines),
+            None => check(
+                json!({"name": c.name, "kind": "fromProfiles", "selection": null}),
+                lines,
+            ),
+        }
         ran += 1;
     }
 
@@ -237,13 +327,15 @@ fn cheap_llm_selection_matches_oracle() {
             .concierge
             .as_ref()
             .map(|stored| resolve_stored_concierge_settings(Some(stored), c.chat.as_ref()));
-        let s = resolve_uncensored_cheap_llm_selection(
-            standard,
-            c.is_dangerous_chat,
-            policy.as_ref(),
-            &available,
-        );
-        check(row(&c.name, "uncensored", &s));
+        let (s, lines) = global_capture::capture(|| {
+            resolve_uncensored_cheap_llm_selection(
+                standard,
+                c.is_dangerous_chat,
+                policy.as_ref(),
+                &available,
+            )
+        });
+        check(row(&c.name, "uncensored", &s), lines);
         ran += 1;
     }
 
@@ -252,7 +344,7 @@ fn cheap_llm_selection_matches_oracle() {
         oracle.len(),
         "corpus and oracle disagree on the row count — regenerate the oracle"
     );
-    assert!(ran >= 29, "coverage floor: {ran} rows");
+    assert!(ran >= 34, "coverage floor: {ran} rows");
     assert!(
         failed.is_empty(),
         "cheap-LLM selection mismatches:\n{}",

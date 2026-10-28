@@ -55,8 +55,7 @@ use std::borrow::Cow;
 use serde_json::{Map, Value};
 
 use crate::cheap_llm::{
-    get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmConfig,
-    CheapLlmProfile, CheapLlmSelection,
+    resolve_uncensored_cheap_llm_selection, CheapLlmProfile, CheapLlmSelection,
 };
 use crate::db::doc_mount_file_links::{DocMountFileLinksRepository, LinkBlobInput};
 use crate::db::runtime::Db;
@@ -1489,100 +1488,11 @@ fn resolve_unique_relative_path(
 // The cheap-LLM selection (v4's repeated `getCheapLLMProvider` block)
 // ===========================================================================
 
-/// Build a [`CheapLlmProfile`] from a connection-profile net-read value (v4
-/// treats a connection profile as a cheap-LLM profile candidate).
-pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
-    CheapLlmProfile {
-        id: v
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        provider: v
-            .get("provider")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        model_name: v
-            .get("modelName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
-        is_cheap: v.get("isCheap").and_then(Value::as_bool) == Some(true),
-        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
-            == Some(true),
-        parameters: v.get("parameters").cloned(),
-        max_tokens: v.get("maxTokens").and_then(Value::as_f64),
-        max_context: v.get("maxContext").and_then(Value::as_f64),
-        model_class: v
-            .get("modelClass")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    }
-}
-
-/// v4's `CheapLLMConfig` from a chat-settings `cheapLLMSettings` sub-object (or the
-/// defaults when absent).
-fn cheap_llm_config_from_settings(cheap: Option<&Value>) -> CheapLlmConfig {
-    match cheap {
-        Some(c) => CheapLlmConfig {
-            strategy: c
-                .get("strategy")
-                .and_then(Value::as_str)
-                .unwrap_or("PROVIDER_CHEAPEST")
-                .to_string(),
-            user_defined_profile_id: c
-                .get("userDefinedProfileId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            default_cheap_profile_id: c
-                .get("defaultCheapProfileId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            fallback_to_local: c
-                .get("fallbackToLocal")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-        },
-        // v4 `DEFAULT_CHEAP_LLM_CONFIG`.
-        None => CheapLlmConfig {
-            strategy: "PROVIDER_CHEAPEST".to_string(),
-            user_defined_profile_id: None,
-            default_cheap_profile_id: None,
-            fallback_to_local: false,
-        },
-    }
-}
-
-/// v4's repeated selection block: build the cheap-LLM selection from
-/// `allProfiles` (default profile → `getCheapLLMProvider`), `None` when there are
-/// no profiles. `registry_cheapest` is the injected registry default (unused by
-/// the corpus's non-fallback paths).
-fn build_cheap_llm_selection(
-    all_profiles: &[Value],
-    cheap_settings: Option<&Value>,
-) -> Option<CheapLlmSelection> {
-    let profiles: Vec<CheapLlmProfile> = all_profiles
-        .iter()
-        .map(cheap_llm_profile_from_value)
-        .collect();
-    // v4 `allProfiles.find(p => p.isDefault) || allProfiles[0]` — `profiles[i]`
-    // corresponds 1:1 to `all_profiles[i]`, so zip to find the default.
-    let default_index = all_profiles
-        .iter()
-        .position(|v| v.get("isDefault").and_then(Value::as_bool) == Some(true))
-        .unwrap_or(0);
-    let default_profile = profiles.get(default_index)?;
-    let config = cheap_llm_config_from_settings(cheap_settings);
-    Some(get_cheap_llm_provider(
-        default_profile,
-        &config,
-        &profiles,
-        false,
-        None,
-    ))
-}
+// The three helpers live in `crate::cheap_llm` since P4.169 (B1-6 — this
+// file's twin of the selection builder is deleted onto
+// `cheap_llm::select_cheap_llm_from_profiles`); the profile reader stays
+// reachable at its old path for `services::cheap_llm_fallback`.
+pub(crate) use crate::cheap_llm::cheap_llm_profile_from_value;
 
 /// Split a POSIX path's basename into `(stem, ext)` where `ext` includes the dot
 /// (or is empty). Matches `path.posix.extname` / the stem-without-ext split.
@@ -1907,7 +1817,7 @@ where
         && (concierge_policy.pre_screen.scan_image_prompts
             || concierge_policy.pre_screen.scan_image_generation)
     {
-        build_cheap_llm_selection(&db_ctx.all_profiles, cheap_settings)
+        crate::cheap_llm::select_cheap_llm_from_profiles(&db_ctx.all_profiles, cheap_settings)
     } else {
         None
     };
@@ -2006,7 +1916,7 @@ where
         // Build the appearance cheap-LLM selection (standard, then uncensored
         // upgrade for a dangerous chat).
         let mut appearance_selection = cheap_llm_selection.clone().or_else(|| {
-            build_cheap_llm_selection(
+            crate::cheap_llm::select_cheap_llm_from_profiles(
                 &db_ctx.all_profiles,
                 db_ctx
                     .chat_settings
@@ -2455,7 +2365,8 @@ where
             .chat_settings
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"));
-        selection = build_cheap_llm_selection(&db_ctx.all_profiles, cheap_settings);
+        selection =
+            crate::cheap_llm::select_cheap_llm_from_profiles(&db_ctx.all_profiles, cheap_settings);
     }
     let Some(selection) = selection else {
         return original_prompt.to_string();
