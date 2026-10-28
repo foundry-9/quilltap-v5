@@ -654,7 +654,10 @@ are in its lane record (`status-log.md`). The unification adds:
   (RFC version/variant nibbles). If either fails, `GET /settings/chat` answers
   500 on EVERY load (`REFUSED_CHEAP_LLM_ROW_GET`), where v4 creates a second
   row each load. That decides how urgent the F-1 ruling is. Record the ids'
-  shape, never their values.
+  shape, never their values. **F-1 RULED CONVERGE + LANDED (2026-10-28, core
+  0.0.1379):** a refused id now means the Settings page loads, but every load
+  mints a `chat_settings` row as v4 does — count the user's rows before and
+  after two loads, and report whether Friday is affected.
 - **DQS off on real data (P4.172):** the copy boots and the Salon, Settings,
   Almanack, a backup and a `.qtap` export all read. A `no such column` on a
   double-quoted literal anywhere is a finding.

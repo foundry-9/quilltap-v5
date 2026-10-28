@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(core): F-1 converged — a refused settings row reads as absent, and the GET mints a fresh row as v4 does
+
+_Versions: core 0.0.1379._
+
+The human ruled F-1 as converge on v4. Before this, `update_for_user` checked existence with a raw `SELECT id`. On a refused `cheapLLMSettings` bag it updated the refused row, and the re-read dropped it again, so `GET /settings/chat` answered 500 on every load. Existence now goes through the validating read (`find_by_user_id_or_none`, v4's `findByUserId`), so the create branch mints and answers a fresh row. Like v4, it mints again on every load while the refused row sorts first. The GET and PUT re-read the written row by id through a new `find_by_id`, which shares the one validating body.
+
+`settings_routes_equivalence`'s carve `REFUSED_CHEAP_LLM_ROW_GET` is retired; its three rows compare whole, green from the `322a5488e` pin. A new core unit pins the mint on each call.
+
 #### 2026-10-28 — docs(porting): the `322a5488e` follow-ups smalls round UNIFIED
 
 _No crate versions bumped._

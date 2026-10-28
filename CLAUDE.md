@@ -1133,8 +1133,10 @@ records THERE. Update this summary only when a phase or round completes.
     - About a dozen should-fixes, all fixed. They include a restore writing a
       file row v4 refuses, a numeric foreign lock heartbeat read as "never",
       and LANE-REMOVE guards that a lane had LOOSENED.
-    - ⚖ **F-1 ESCALATED:** `GET /settings/chat` answers 500 on every load
-      for a refused `cheapLLMSettings` bag, where v4 mints a row per load.
+    - ⚖ **F-1 ESCALATED, then RULED CONVERGE (2026-10-28):** `GET
+      /settings/chat` answered 500 on every load for a refused
+      `cheapLLMSettings` bag; it now mints and answers a row per load, as
+      v4 does.
   - **Gate:**
     - fmt / clippy / release: clean.
     - Sweep: 760 ok / 8 / 1 / 6 of 775. Every non-standing red is a union
@@ -1148,9 +1150,8 @@ records THERE. Update this summary only when a phase or round completes.
     0.5.907.
   - **Next:**
     1. The owed dogfood pass, with the F-1 probe first.
-    2. The F-1 ruling.
-    3. A follow-ups order: the Carina FINDING plus the residues.
-    4. The 61-commit catch-up.
+    2. A follow-ups order: the Carina FINDING plus the residues.
+    3. The 61-commit catch-up.
   - Details: `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `322a5488e` (2026-10-20, v4 main — "Fix: custom-tool
   LLM consult can narrate a verdict the table already reached (bug 257)",

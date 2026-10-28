@@ -57,13 +57,6 @@ use serde_json::Value;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
-/// The three planted refusals (see the carve in the main loop).
-const REFUSED_CHEAP_LLM_ROW_GET: [&str; 3] = [
-    "s_get_cheap_llm_bad_strategy",
-    "s_get_cheap_llm_bad_uuid",
-    "s_get_cheap_llm_non_object",
-];
-
 fn env_or_skip(key: &str) -> Option<String> {
     match std::env::var(key) {
         Ok(v) => Some(v),
@@ -595,31 +588,11 @@ fn settings_routes_match_v4() {
         normalize(&mut got_body, &known, &uuid_re, &ts_re);
         normalize(&mut oracle_body, &known, &uuid_re, &ts_re);
 
-        // REFUSED_CHEAP_LLM_ROW_GET (P4.169, a RECORDED divergence of the
-        // standing voice-mode class at `db::chat_settings::find_by_user_id`):
-        // a stored `cheapLLMSettings` the schema refuses DROPS the row on both
-        // sides (measured — ruling R-B; the repository arm is pinned in
-        // core). v4's GET then CREATES a second row for the user and answers
-        // it (a fresh id); v5's create finds the existing row by a raw
-        // `SELECT id`, updates it, and the validating re-read drops it again
-        // — 500. Only a hand-planted cell reaches it (both sides validate
-        // every write). Pinned both ways so either side moving flips it.
-        if REFUSED_CHEAP_LLM_ROW_GET.contains(&name.as_str()) {
-            assert_eq!(
-                oracle_body["id"], "<newid>",
-                "[{name}] v4 answers a NEW row"
-            );
-            assert_eq!(
-                got_body,
-                serde_json::json!({"error": "chat settings write failed to persist"}),
-                "[{name}] v5's recorded 500"
-            );
-            assert_eq!(got_status, 500, "[{name}]");
-            n += 1;
-            cheap_llm_read_cases += 1;
-            continue;
-        }
-
+        // A stored `cheapLLMSettings` the schema refuses (the
+        // `s_get_cheap_llm_bad_*` / `_non_object` rows) drops the row on both
+        // sides; the GET's create arm then mints and answers a SECOND row —
+        // F-1, ruled CONVERGE 2026-10-28 (it was the carve
+        // `REFUSED_CHEAP_LLM_ROW_GET`, v5 answering 500). Compared whole below.
         if !is_ack {
             assert_eq!(
                 oracle_body, got_body,

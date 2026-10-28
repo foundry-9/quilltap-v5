@@ -7225,12 +7225,13 @@ UNPROCESSED, and the regen rule stays PIN REQUIRED. Round record:
    copy with the union build. **Probe F-1 FIRST:** run Friday's stored
    `cheapLLMSettings` ids through `zod_uuid_ok`. A refused id means the
    Settings page is 500 on the copy.
-2. ⚖ **The F-1 ruling** (the human). The two options:
-   - (A) converge on v4: the GET mints and answers a fresh row;
-   - (B) keep a lenient read of the refused bag and record the divergence.
-
-   The settings family carries the carve `REFUSED_CHEAP_LLM_ROW_GET` until
-   the ruling is made.
+2. ⚖ **The F-1 ruling — MADE 2026-10-28: (A) CONVERGE on v4, LANDED.**
+   `update_for_user` checks existence through the validating read (v4's
+   `findByUserId`), so a refused first row reads as absent and the create
+   branch mints and answers a fresh row; the GET / PUT re-read the written
+   row by id. The carve `REFUSED_CHEAP_LLM_ROW_GET` is retired (the three
+   rows compare whole). v5 now shares v4's row leak — the refused row sorts
+   first, so every load mints another — a v4 filing candidate (ask first).
 3. **A follow-ups smalls order** covering:
    - P4.165's Carina FINDING: `run_stream`'s `Err(_) => break`, where v4
      answers `[Carina] Query failed` / `llm-failed`;

@@ -315,19 +315,22 @@ pub async fn chat_settings_get(db: &Db, user_id: &str) -> Response {
     // No row → create the default row (v4 `updateForUser(userId, defaults)`).
     let now = crate::clock::now_iso();
     let uid = user_id.to_string();
-    let created = db
-        .write(move |w| chat_settings::update_for_user(w.main().connection(), &uid, &[], &now))
+    let written = db
+        .write(move |w| {
+            chat_settings::update_for_user_returning_id(w.main().connection(), &uid, &[], &now)
+        })
         .await;
-    if let Err(e) = created {
-        return internal(e);
+    match written {
+        Ok((id, created)) => read_settings_response(db, id, created),
+        Err(e) => internal(e),
     }
-    read_settings_response(db, user_id, true)
 }
 
-/// Re-read the settings row and (for a create) reproduce v4's create-RETURN shape.
-fn read_settings_response(db: &Db, user_id: &str, created: bool) -> Response {
-    let uid = user_id.to_string();
-    match db.read_main(move |conn| chat_settings::find_by_user_id(conn, &uid)) {
+/// Re-read the row the write returned — by its id, as v4 answers what
+/// `create` / `update` return — and (for a create) reproduce v4's create-RETURN
+/// shape.
+fn read_settings_response(db: &Db, id: String, created: bool) -> Response {
+    match db.read_main(move |conn| chat_settings::find_by_id(conn, &id)) {
         Ok(Some(mut settings)) => {
             if created {
                 chat_settings::patch_create_return_shape(&mut settings);
@@ -385,16 +388,20 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
 
     let now = crate::clock::now_iso();
     let uid = user_id.to_string();
-    let created = db
+    let written = db
         .write(move |w| {
-            chat_settings::update_for_user(w.main().connection(), &uid, &assignments, &now)
+            chat_settings::update_for_user_returning_id(
+                w.main().connection(),
+                &uid,
+                &assignments,
+                &now,
+            )
         })
         .await;
-    let created = match created {
-        Ok(c) => c,
-        Err(e) => return internal(e),
-    };
-    read_settings_response(db, user_id, created)
+    match written {
+        Ok((id, created)) => read_settings_response(db, id, created),
+        Err(e) => internal(e),
+    }
 }
 
 /// v4 `findRetiredConciergeKeys(body)` (`3b463d6b1`, #76) — the keys a PUT may

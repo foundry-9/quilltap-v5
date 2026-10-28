@@ -1438,6 +1438,28 @@ pub fn find_by_user_id(
     conn: &Connection,
     user_id: &str,
 ) -> Result<Option<serde_json::Value>, DbError> {
+    find_one_where(conn, "userId", user_id)
+}
+
+/// The settings row with this `id`, through the same validating read as
+/// [`find_by_user_id`]. Its one use is re-reading the row a write just made or
+/// updated (v4's `create` / `update` return that row, not a fresh
+/// `findByUserId`): when the user's FIRST row is one the schema refuses, a
+/// by-user re-read would drop it again and lose the row v4 answers (F-1).
+pub(crate) fn find_by_id(
+    conn: &Connection,
+    id: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
+    find_one_where(conn, "id", id)
+}
+
+/// The one validating row read behind [`find_by_user_id`] and [`find_by_id`];
+/// `key_col` is a literal column name, never caller input.
+fn find_one_where(
+    conn: &Connection,
+    key_col: &'static str,
+    key: &str,
+) -> Result<Option<serde_json::Value>, DbError> {
     use serde_json::{Map, Value};
 
     // A JSON-object column: parse the stored text (schema-ordered, so key order
@@ -1528,8 +1550,8 @@ pub fn find_by_user_id(
     let mut cheap_llm_issues = Vec::new();
     let row = conn
         .query_row(
-            &format!("SELECT {cols} FROM chat_settings WHERE userId = ?1 LIMIT 1"),
-            params![user_id],
+            &format!("SELECT {cols} FROM chat_settings WHERE {key_col} = ?1 LIMIT 1"),
+            params![key],
             |r| {
                 // Build in schema field order (the ChatSettingsSchema declaration
                 // order), matching v4's post-parse `JSON.stringify` key order.
@@ -1763,10 +1785,10 @@ pub fn find_by_user_id(
     // `safeQuery`, `Error finding entity by filter` with the same bytes, and
     // answer `null` — the row is DROPPED, not defaulted (measured at the
     // `07b8f0209` pin, P4.D251). v5 does the same here; the GET then runs
-    // v4's "no row" arm (recorded divergence: v4's `updateForUser` re-reads
-    // through the same validating read and CREATES a second row; v5's
-    // existence check is a raw `SELECT id`, so it answers 500 — a state no
-    // writer on either side can produce, pinned at the repository level only).
+    // v4's "no row" arm, and [`update_for_user`] checks existence through
+    // this same validating read, so — as in v4 — it CREATES a second row
+    // and answers it (F-1, ruled CONVERGE 2026-10-28: while the refused row
+    // sorts first, every load mints another, exactly as v4 does).
     if let Some(row) = row {
         // Schema order: the voice mode, then `wardrobeImageSettings` (P4.D255
         // — the second column a stored value v4's schema refuses can reach:
@@ -1965,29 +1987,32 @@ fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> 
 /// assignments overriding the matching columns, minting `id` + `createdAt` ==
 /// `updatedAt` == `now` (v4's create-branch `createdAt == updatedAt`).
 ///
+/// "Exists" means what v4's `const existing = await this.findByUserId(userId)`
+/// means: the VALIDATING read, through its fallback. A row the schema refuses
+/// (a hand-planted or legacy `cheapLLMSettings` / voice mode / wardrobe bag)
+/// reads as absent, so the create branch mints a SECOND row for the user and
+/// the response is that row (F-1, ruled CONVERGE 2026-10-28; before it, a raw
+/// `SELECT id` found the refused row, updated it, and the re-read dropped it
+/// again — a 500 on every load).
+///
 /// Runs on the writer connection (both the existence check and the write in one
-/// closure). The caller re-reads [`find_by_user_id`] for the response. Returns
-/// `true` when it created a new row (v4's `updateForUser` create branch) — the
-/// caller uses this to reproduce the create-RETURN shape, which keeps the explicit
-/// `defaultRoleplayTemplateId: null` the default bag carries (the re-read omits it).
-pub fn update_for_user(
+/// closure). Returns the written row's id and `true` when it created a new row
+/// (v4's `updateForUser` create branch). The caller re-reads that id with
+/// [`find_by_id`] for the response — v4 answers the row `create` / `update`
+/// returns, not a fresh `findByUserId` — and uses the flag to reproduce the
+/// create-RETURN shape, which keeps the explicit `defaultRoleplayTemplateId:
+/// null` the default bag carries (the re-read omits it).
+pub fn update_for_user_returning_id(
     conn: &Connection,
     user_id: &str,
     assignments: &[(&str, SettingsColVal)],
     now: &str,
-) -> Result<bool, DbError> {
-    // Existing row?
-    let existing_id: Option<String> = conn
-        .query_row(
-            "SELECT id FROM chat_settings WHERE userId = ?1 LIMIT 1",
-            params![user_id],
-            |r| r.get::<_, String>(0),
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
+) -> Result<(String, bool), DbError> {
+    let existing_id: Option<String> = find_by_user_id_or_none(conn, user_id).and_then(|row| {
+        row.get("id")
+            .and_then(serde_json::Value::as_str)
+            .map(String::from)
+    });
 
     if let Some(id) = existing_id {
         // Update branch: partial SET of the assignments + updatedAt.
@@ -2000,7 +2025,7 @@ pub fn update_for_user(
         set_clauses.push(format!("updatedAt = ?{}", binds.len() + 1));
         binds.push(Box::new(now.to_string()));
         let id_idx = binds.len() + 1;
-        binds.push(Box::new(id));
+        binds.push(Box::new(id.clone()));
         let sql = format!(
             "UPDATE chat_settings SET {} WHERE id = ?{}",
             set_clauses.join(", "),
@@ -2008,7 +2033,7 @@ pub fn update_for_user(
         );
         let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
         conn.execute(&sql, refs.as_slice())?;
-        return Ok(false);
+        return Ok((id, false));
     }
 
     // Create branch: full default row, assignments override, minted id + now/now.
@@ -2020,7 +2045,7 @@ pub fn update_for_user(
     }
     let id = uuid::Uuid::new_v4().to_string();
     let mut col_names: Vec<String> = vec!["id".to_string(), "userId".to_string()];
-    let mut binds: Vec<Box<dyn ToSql>> = vec![Box::new(id), Box::new(user_id.to_string())];
+    let mut binds: Vec<Box<dyn ToSql>> = vec![Box::new(id.clone()), Box::new(user_id.to_string())];
     for (col, val) in &columns {
         col_names.push(col.clone());
         binds.push(Box::new(val.clone()));
@@ -2042,7 +2067,18 @@ pub fn update_for_user(
         .zip(binds.iter().map(|b| b.as_ref()))
         .collect();
     crate::db::tolerant_insert(conn, "chat_settings", &pairs)?;
-    Ok(true)
+    Ok((id, true))
+}
+
+/// [`update_for_user_returning_id`] for the callers that only need to know
+/// whether it created the row.
+pub fn update_for_user(
+    conn: &Connection,
+    user_id: &str,
+    assignments: &[(&str, SettingsColVal)],
+    now: &str,
+) -> Result<bool, DbError> {
+    update_for_user_returning_id(conn, user_id, assignments, now).map(|(_, created)| created)
 }
 
 /// Reproduce v4's `updateForUser` create-RETURN shape from a [`find_by_user_id`]
@@ -2285,6 +2321,66 @@ mod tests {
             })
             .unwrap()
             .to_string()
+    }
+
+    /// F-1 (ruled CONVERGE 2026-10-28): a user whose FIRST settings row holds a
+    /// `cheapLLMSettings` bag the schema refuses has no settings as far as
+    /// v4's `updateForUser` can tell — its `findByUserId` drops the row, so
+    /// the create branch mints a SECOND row and answers it (v4's `findOne` is
+    /// an un-ordered `LIMIT 1`, so the refused row keeps sorting first and
+    /// every call mints another). Before the ruling v5's raw `SELECT id`
+    /// found the refused row, updated it, and the GET's re-read dropped it —
+    /// a 500 on every load.
+    #[test]
+    fn update_for_user_mints_a_new_row_past_a_refused_first_row() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
+        let (first, created) =
+            update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:00.000Z").unwrap();
+        assert!(created);
+        conn.execute(
+            "UPDATE chat_settings SET cheapLLMSettings = \
+             '{\"strategy\":\"USER_DEFINED\",\"userDefinedProfileId\":\"not-a-uuid\"}'",
+            [],
+        )
+        .unwrap();
+        assert!(find_by_user_id(&conn, "u1").unwrap().is_none());
+
+        let (second, created) =
+            update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:01.000Z").unwrap();
+        assert!(
+            created,
+            "the refused row reads as absent: the create branch"
+        );
+        assert_ne!(second, first);
+        let row = find_by_id(&conn, &second)
+            .unwrap()
+            .expect("the minted row reads");
+        assert_eq!(row["userId"], "u1");
+        assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+
+        // The refused row still sorts first, so the next call mints again.
+        let (third, created) =
+            update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:02.000Z").unwrap();
+        assert!(created);
+        assert!(third != first && third != second);
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM chat_settings WHERE userId = 'u1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 3);
+        // The refused row itself is never touched.
+        let stamp: String = conn
+            .query_row(
+                "SELECT updatedAt FROM chat_settings WHERE id = ?1",
+                [&first],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stamp, "2026-10-28T00:00:00.000Z");
     }
 
     /// P4.D304 (v4 4.11 `362426c8f`): `customToolTriggers` is the FIRST
