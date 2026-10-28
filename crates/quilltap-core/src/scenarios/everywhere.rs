@@ -206,7 +206,14 @@ pub fn list_scenarios_everywhere(
                 .unwrap_or_default();
             let listed = build_scenario_list(
                 docs,
-                |d| parse_scenario_for_scope(owner.scope, d, owner.default_scenario_id.as_deref()),
+                |d| {
+                    parse_scenario_for_scope(
+                        owner.scope,
+                        d,
+                        owner.id.as_deref(),
+                        owner.default_scenario_id.as_deref(),
+                    )
+                },
                 include_archived,
                 &ScenarioListLogContext {
                     scope: owner.scope.as_str().to_string(),

@@ -193298,3 +193298,15 @@ These are docs-only commits. Every regen ran in the pin
 - A streamed `.qtap` with junk lines: the reader's WARN lines and the
   unknown-kind INFO appear in the log.
 
+
+
+## P4.171 — scenarios / vault / store / host / lock smalls (lane, `322a5488e` follow-ups smalls round)
+
+Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.claude/worktrees/p4.171`, cut from main `6c7ea4410` (the session started on main's checkout; the lane moved into the new worktree before any edit). Pin `/tmp/qt-v4-pin-p4171-322a5488e` (HEAD `322a5488e7bd…`, `4.11.0-dev.53`; after `npm ci --offline`: openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0). §2 probe at lane start (2026-10-27 20:32 CDT), an OBSERVATION: v4 `main` on `main`, tree clean, **v4 moved: `d64b25e96` ("Docs: pronoun fix for Host mention in help") observed past the recorded `b892227eb`**; `bugfix` at `489b228b6`, unchanged. Nothing newer than the pin is ported.
+
+### Unit 1 — C-7: the vault scenario parser's two skip WARNs
+
+- `parse_scenario_file(doc, character_id)` WARNs `Scenarios/*.md file has no title; skipping` / `Scenarios/*.md body is empty; skipping` `{characterId, mountPointId, relativePath}` (v4 `parsers.ts:640-645`, `:658-663`). Callers: `parse_scenario_files_sorted` (read overlay — `character.id`, v4 `read-overlay.ts:304`), `parse_scenario_for_scope` (gains `character_id: Option<&str>`, v4's `characterId ?? ''`; the location passes its id, `scenarios/everywhere.rs` passes `owner.id` — a signature-forced edit in an un-tabled file). `vault_entry_names` (no v4 counterpart — the restore backfill) uses `parse_scenario_file_unlogged`, so v5 adds no line v4 lacks.
+- Differential: `vault_frontmatter_parsers_equivalence` (v4's REAL `parseScenarioFile`, lines captured by splicing `logger.transports`): every scenario row now compares `lines`; +2 rows (`s-filename-ws`, `s-body-ws-fm`), floor 26 → 28. **Red-first:** unported main, 5 of 15 scenario rows red (first: `s-filename-empty`, `left: []`). Green: 28/28.
+- Regen: `cd /tmp/qt-v4-pin-p4171-322a5488e && npx tsx $V5W/harness/oracle/cases/vault-frontmatter-parsers.ts > /tmp/p4171/oracle-vfp.ndjson` (Node 24.13.1).
+

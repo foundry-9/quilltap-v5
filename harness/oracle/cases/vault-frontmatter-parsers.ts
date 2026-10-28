@@ -9,6 +9,11 @@
  * body slice + trimStart, the `# heading` / filename title fallbacks, the
  * UTF-16 `.trim().slice(0, n)` caps, and the stableUuidFromString ids.
  *
+ * P4.171 (C-7): every scenario row also carries the lines v4's parser logged
+ * for it — the two `Scenarios/*.md … skipping` WARNs (`parsers.ts:640,658`),
+ * captured by splicing `logger.transports` and rendered `LEVEL message k=v`
+ * (context keys in v4's order, `service` / `environment` dropped).
+ *
  * Run from the v4 server checkout:
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-frontmatter-parsers.ts \
@@ -19,6 +24,18 @@ import {
   parsePromptFile,
   parseScenarioFile,
 } from '@/lib/database/repositories/vault-overlay/parsers';
+import { logger } from '@/lib/logger';
+
+let captured: string[] = [];
+const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+internal.transports.splice(0, internal.transports.length, {
+  write: (d: unknown) => {
+    const data = d as { level: string; message: string; context?: Record<string, unknown> };
+    const { service: _s, environment: _e, ...fields } = data.context ?? {};
+    const rendered = Object.entries(fields).map(([k, v]) => ` ${k}=${String(v)}`).join('');
+    captured.push(`${data.level.toUpperCase()} ${data.message}${rendered}`);
+  },
+});
 
 type Doc = {
   content: string;
@@ -31,7 +48,7 @@ type Doc = {
 
 type Row =
   | { kind: 'prompt'; id: string; doc: Doc; out: unknown }
-  | { kind: 'scenario'; id: string; doc: Doc; out: unknown };
+  | { kind: 'scenario'; id: string; doc: Doc; out: unknown; lines: string[] };
 
 const rows: Row[] = [];
 const CID = 'char-1';
@@ -48,7 +65,9 @@ function promptCase(id: string, content: string, rp = `Prompts/${id}.md`) {
 }
 function scenarioCase(id: string, content: string, fileName = `${id}.md`) {
   const d = doc(content, `Scenarios/${fileName}`, fileName);
-  rows.push({ kind: 'scenario', id, doc: d, out: parseScenarioFile(d as never, CID) ?? null });
+  captured = [];
+  const out = parseScenarioFile(d as never, CID) ?? null;
+  rows.push({ kind: 'scenario', id, doc: d, out, lines: captured });
 }
 
 // ── parsePromptFile ──────────────────────────────────────────────────────────
@@ -80,6 +99,10 @@ scenarioCase('s-empty-body-heading', '# Title\n');
 scenarioCase('s-fm-and-heading', '---\nname: FMName\n---\n# Inner Heading\n\nbody');
 scenarioCase('s-no-ext-filename', 'plain body', 'plain');
 scenarioCase('s-multibyte', '# Café Tïtle\n\nBödy');
+// P4.171 (C-7): the two skip WARNs' remaining shapes — a whitespace-only
+// filename (no title) and a whitespace-only body under a frontmatter name.
+scenarioCase('s-filename-ws', 'Body text', '   .md');
+scenarioCase('s-body-ws-fm', '---\nname: Q\n---\n \n\t\n');
 
 for (const row of rows) {
   process.stdout.write(JSON.stringify(row) + '\n');

@@ -32,10 +32,10 @@ use super::DbError;
 use crate::scenarios::sort::{sort_scenarios, SortableScenario};
 use crate::vault_overlay::{
     is_wardrobe_item_document_path, markdown_to_nullable, parse_legacy_wardrobe_json,
-    parse_prompt_file, parse_scenario_file, parse_vault_metadata, parse_vault_physical_prompts,
-    parse_vault_properties, parse_wardrobe_item_file, resolve_and_check_component_items,
-    slugify_wardrobe_title, stable_uuid_from_string, CharacterScenario, CharacterSystemPrompt,
-    VaultDoc, WardrobeItemFromFile,
+    parse_prompt_file, parse_scenario_file, parse_scenario_file_unlogged, parse_vault_metadata,
+    parse_vault_physical_prompts, parse_vault_properties, parse_wardrobe_item_file,
+    resolve_and_check_component_items, slugify_wardrobe_title, stable_uuid_from_string,
+    CharacterScenario, CharacterSystemPrompt, VaultDoc, WardrobeItemFromFile,
 };
 
 /// The nine single-file overlay paths (v4 `SINGLE_FILE_OVERLAY_PATHS`), in order.
@@ -193,7 +193,7 @@ pub fn vault_entry_names(
         let scenarios = repo
             .find_many_by_mount_points_in_folder_or_empty(&ids, SCENARIOS_FOLDER, ".md")?
             .iter()
-            .filter_map(|d| parse_scenario_file(&vault_doc(d)))
+            .filter_map(|d| parse_scenario_file_unlogged(&vault_doc(d)).ok())
             .map(|s| s.title)
             .collect();
         Ok((prompts, scenarios))
@@ -217,10 +217,13 @@ fn opt_to_value(o: Option<String>) -> Value {
 /// way a vault's scenario array is built — every doc parsed (unparseable ones
 /// dropped), then ordered by `sortScenarios` on the scenario's title, then the
 /// FILE name without `.md` (NOT the relative path), then the relative path.
-fn parse_scenario_files_sorted(docs: &[&VaultFolderDoc]) -> Vec<CharacterScenario> {
+fn parse_scenario_files_sorted(
+    docs: &[&VaultFolderDoc],
+    character_id: &str,
+) -> Vec<CharacterScenario> {
     let parsed: Vec<(&VaultFolderDoc, CharacterScenario)> = docs
         .iter()
-        .filter_map(|&d| parse_scenario_file(&vault_doc(d)).map(|s| (d, s)))
+        .filter_map(|&d| parse_scenario_file(&vault_doc(d), character_id).map(|s| (d, s)))
         .collect();
     sort_scenarios(parsed, |(d, s)| SortableScenario {
         title: s.title.clone(),
@@ -420,7 +423,10 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
     // `character.scenarios` and therefore its "first scenario" agree with every
     // picker (`read-overlay.ts:300-305`).
     let scenario_docs = maps.scenarios(&mount_id);
-    let scenarios = parse_scenario_files_sorted(&scenario_docs);
+    let scenarios = parse_scenario_files_sorted(
+        &scenario_docs,
+        obj.get("id").and_then(Value::as_str).unwrap_or(""),
+    );
     out.insert(
         "scenarios".into(),
         serde_json::to_value(&scenarios).expect("serialize scenarios"),

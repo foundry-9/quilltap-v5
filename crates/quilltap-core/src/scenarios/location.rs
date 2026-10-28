@@ -195,26 +195,31 @@ fn strip_md_suffix(name: &str) -> String {
 
 /// v4 `parseScenarioForScope(scope, doc, { characterId, defaultScenarioId })`
 /// (`location.ts:166-189`): a store scope parses with `parseScenarioDoc`; a
-/// character file with the vault parser, mapped to a [`ParsedScenario`] in
+/// character file with the vault parser (`characterId ?? ''` names the owner on
+/// its skip WARNs — P4.171 C-7), mapped to a [`ParsedScenario`] in
 /// v4's key order, `isDefault` / `rawIsDefault` both
 /// `!!defaultScenarioId && parsed.id === defaultScenarioId` (the default is a
 /// COLUMN, not frontmatter).
 pub fn parse_scenario_for_scope(
     scope: ScenarioScope,
     doc: &VaultFolderDoc,
+    character_id: Option<&str>,
     default_scenario_id: Option<&str>,
 ) -> Option<ParsedScenario> {
     if scope != ScenarioScope::Character {
         return parse_scenario_doc(doc);
     }
-    let parsed = parse_scenario_file(&VaultDoc {
-        content: &doc.content,
-        mount_point_id: &doc.mount_point_id,
-        relative_path: &doc.relative_path,
-        file_name: &doc.file_name,
-        created_at: &doc.created_at,
-        updated_at: &doc.updated_at,
-    })?;
+    let parsed = parse_scenario_file(
+        &VaultDoc {
+            content: &doc.content,
+            mount_point_id: &doc.mount_point_id,
+            relative_path: &doc.relative_path,
+            file_name: &doc.file_name,
+            created_at: &doc.created_at,
+            updated_at: &doc.updated_at,
+        },
+        character_id.unwrap_or(""),
+    )?;
     let is_default = default_scenario_id.is_some_and(|d| !d.is_empty() && parsed.id == d);
     Some(ParsedScenario {
         path: doc.relative_path.clone(),
@@ -362,6 +367,7 @@ impl ScenarioLocation {
             ScenarioLocation::Character(c) => parse_scenario_for_scope(
                 ScenarioScope::Character,
                 doc,
+                Some(&c.id),
                 c.default_scenario_id.as_deref(),
             ),
         }

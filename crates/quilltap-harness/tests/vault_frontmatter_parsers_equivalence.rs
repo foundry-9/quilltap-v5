@@ -9,6 +9,10 @@
 //! and the `stableUuidFromString` ids — over a corpus that includes multibyte
 //! content to cover the UTF-16 body offset.
 //!
+//! P4.171 (C-7): each scenario row also compares the lines the parser logged —
+//! v4's two `Scenarios/*.md … skipping` WARNs (`parsers.ts:640,658`), level,
+//! message and `characterId` / `mountPointId` / `relativePath` in v4's order.
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/vault-frontmatter-parsers.ts \
@@ -17,6 +21,7 @@
 //!   QT_ORACLE_VAULT_FRONTMATTER_PARSERS=/tmp/oracle-vault-frontmatter-parsers.ndjson \
 //!     cargo test -p quilltap-harness --test vault_frontmatter_parsers_equivalence
 
+use quilltap_core::test_support::captured_with;
 use quilltap_core::vault_overlay::{parse_prompt_file, parse_scenario_file, VaultDoc};
 use serde::Deserialize;
 use serde_json::Value;
@@ -42,7 +47,12 @@ enum Row {
     #[serde(rename = "prompt")]
     Prompt { id: String, doc: Doc, out: Value },
     #[serde(rename = "scenario")]
-    Scenario { id: String, doc: Doc, out: Value },
+    Scenario {
+        id: String,
+        doc: Doc,
+        out: Value,
+        lines: Vec<String>,
+    },
 }
 
 fn as_doc(d: &Doc) -> VaultDoc<'_> {
@@ -55,6 +65,9 @@ fn as_doc(d: &Doc) -> VaultDoc<'_> {
         updated_at: &d.updated_at,
     }
 }
+
+/// The characterId the oracle passes (`CID`).
+const CID: &str = "char-1";
 
 #[test]
 fn frontmatter_parsers_match_oracle() {
@@ -80,15 +93,31 @@ fn frontmatter_parsers_match_oracle() {
                     .unwrap_or(Value::Null);
                 assert_eq!(got, out, "[{id}] parse_prompt_file");
             }
-            Row::Scenario { id, doc, out } => {
-                let got = parse_scenario_file(&as_doc(&doc))
+            Row::Scenario {
+                id,
+                doc,
+                out,
+                lines,
+            } => {
+                let (got, logged) = captured_with(|| parse_scenario_file(&as_doc(&doc), CID));
+                let got = got
                     .map(|s| serde_json::to_value(s).unwrap())
                     .unwrap_or(Value::Null);
                 assert_eq!(got, out, "[{id}] parse_scenario_file");
+                // `LEVEL target message k=v` → v4's `LEVEL message k=v`.
+                let logged: Vec<String> = logged
+                    .iter()
+                    .map(|l| {
+                        let (level, rest) = l.split_once(' ').unwrap();
+                        let (_target, rest) = rest.split_once(' ').unwrap();
+                        format!("{level} {rest}")
+                    })
+                    .collect();
+                assert_eq!(logged, lines, "[{id}] parse_scenario_file lines");
             }
         }
         n += 1;
     }
-    assert!(n >= 26, "expected the full corpus, saw {n} rows");
+    assert!(n >= 28, "expected the full corpus, saw {n} rows");
     eprintln!("OK: vault frontmatter parsers matched oracle on {n} cases.");
 }

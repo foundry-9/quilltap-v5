@@ -979,8 +979,44 @@ pub fn parse_prompt_file(doc: &VaultDoc) -> Option<CharacterSystemPrompt> {
 /// Parse a `Scenarios/*.md` file (v4 `parseScenarioFile`). Title resolution:
 /// frontmatter `name` → first `# heading` → filename-without-`.md`. A non-empty
 /// frontmatter `description` (capped at 500) is carried when present. `None`
-/// (skip) when there is no usable title or the body is empty.
-pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
+/// (skip) when there is no usable title or the body is empty — each skip WARNs
+/// with v4's line and `{characterId, mountPointId, relativePath}`
+/// (`parsers.ts:640-645`, `:658-663`; P4.171 C-7), which is why the owning
+/// character's id is threaded in.
+pub fn parse_scenario_file(doc: &VaultDoc, character_id: &str) -> Option<CharacterScenario> {
+    match parse_scenario_file_unlogged(doc) {
+        Ok(s) => Some(s),
+        Err(skip) => {
+            match skip {
+                ScenarioFileSkip::NoTitle => tracing::warn!(
+                    characterId = %character_id,
+                    mountPointId = %doc.mount_point_id,
+                    relativePath = %doc.relative_path,
+                    "Scenarios/*.md file has no title; skipping"
+                ),
+                ScenarioFileSkip::EmptyBody => tracing::warn!(
+                    characterId = %character_id,
+                    mountPointId = %doc.mount_point_id,
+                    relativePath = %doc.relative_path,
+                    "Scenarios/*.md body is empty; skipping"
+                ),
+            }
+            None
+        }
+    }
+}
+
+/// Why [`parse_scenario_file_unlogged`] skipped a file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScenarioFileSkip {
+    NoTitle,
+    EmptyBody,
+}
+
+/// [`parse_scenario_file`] without its skip WARNs — for a v5-only reader with
+/// no v4 counterpart to log (the restore backfill's
+/// `vault_read_overlay::vault_entry_names`), where v4 emits no line.
+pub fn parse_scenario_file_unlogged(doc: &VaultDoc) -> Result<CharacterScenario, ScenarioFileSkip> {
     let content = doc.content;
     let fm = crate::markdown::parse_frontmatter(content);
 
@@ -1031,7 +1067,7 @@ pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
             let fname = strip_md_ext(doc.file_name);
             let t = crate::jsstr::utf16_truncate(crate::jsstr::js_trim(&fname), 200);
             if t.is_empty() {
-                return None; // no usable title → skip
+                return Err(ScenarioFileSkip::NoTitle);
             }
             t
         }
@@ -1043,10 +1079,10 @@ pub fn parse_scenario_file(doc: &VaultDoc) -> Option<CharacterScenario> {
         None => crate::jsstr::js_trim(after).to_string(),
     };
     if body.is_empty() {
-        return None; // empty body → skip
+        return Err(ScenarioFileSkip::EmptyBody);
     }
 
-    Some(CharacterScenario {
+    Ok(CharacterScenario {
         id: stable_uuid_from_string(&format!(
             "scenario:{}:{}",
             doc.mount_point_id, doc.relative_path
