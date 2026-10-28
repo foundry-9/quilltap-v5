@@ -594,7 +594,12 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // body, no tri-state). Its sibling `raise-hand` carries the `raised`
     // tri-state and goes through `request_envelope`, as this census requires.
     // Union (P4.D325 + P4.D335): 25 + 4 + 1 = 30.
-    ("wardrobe_routes.rs", 30),
+    // P4.170 (F.8 / C.10): 30 → 32 — v4's chat-first and item-first
+    // ordering: `chat_first` probes `ChatGet { chat_id }` before a refused
+    // body or a core refusal answers, and the item PUT probes
+    // `WardrobeItemGet { item_id }` before its body parse (typed-only, no
+    // tri-state).
+    ("wardrobe_routes.rs", 32),
 ];
 
 #[test]
@@ -631,8 +636,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 150,
-        "150 = 149 + P4.D338's one (`photos_routes.rs`'s `PhotoAlbumsList`, the \
+        total, 152,
+        "152 = 150 + P4.170's two (`wardrobe_routes.rs`'s chat-first `ChatGet` probe and \
+         the item PUT's item-first `WardrobeItemGet` probe, v4's handler ordering). \
+         150 = 149 + P4.D338's one (`photos_routes.rs`'s `PhotoAlbumsList`, the \
          `?action=albums` GET, v4 `680b71044`). \
          149 = 148 + P4.D335's one (`wardrobe_routes.rs`'s `ChatStopTurn`, the chat POST's \
          `?action=stop-turn`, v4 `2b5e8ee24`). \

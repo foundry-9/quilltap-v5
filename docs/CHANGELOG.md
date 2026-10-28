@@ -306,6 +306,12 @@ _Versions:_ quilltap-core 0.0.1337.
 
 Added contract C2's home, `chat_settings::find_by_user_id_or_none`: v4's fallback `chatSettings.findByUserId`, which logs `Error finding chat settings by user ID {collection, userId, error}` with the bare driver message and answers `None` on a failed read. `log_find_by_user_id_failure` is the one emitter of that line, for callers that check a pool connection out first. `wardrobe_tool_images_enabled` now reads through the home. P4.170 calls it from the item-picture job, and the unifier swaps `api/wardrobe.rs`'s preview-avatar read onto it (§S.1(a)).
 
+#### 2026-10-27 — test(p4.170): the route-construction census counts the two new probes
+
+_Versions: web 0.0.249._
+
+The workspace gate's one red. `tri_state_edges_share_the_decoder` counts every hand-built `Request` construction in `*_routes.rs`. P4.170 adds two typed-only ones in `wardrobe_routes.rs`: the chat-first `ChatGet` probe (`chat_first`) and the item PUT's item-first `WardrobeItemGet` probe. Recorded: per-file 30 → 32, total 150 → 152. Green.
+
 #### 2026-10-27 — fix(p4.170): restore the REST interrupt test a test move deleted; clippy's boxed `Err` and test-module order
 
 _Versions: core 0.0.1339, web 0.0.248._
