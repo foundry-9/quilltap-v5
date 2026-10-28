@@ -1404,6 +1404,31 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(newest).toContainText('History Cravat');
     const count = await entries.count();
 
+    // F.9 (P4.173) baseline: every equip enqueues an announcement job, and the
+    // whisper describes the outfit equipped WHEN THE JOB RUNS — so the set_all
+    // above whispers brogues-only on its own. Before the rollback, wait for the
+    // cravat flush's whisper to have landed and record every whisper id seen;
+    // the post-rollback check then demands a STRICTLY NEWER one, so neither the
+    // set_all whisper nor a still-pending cravat one can pass it.
+    const ariaWhispers = async (): Promise<Array<{ id: string; content: string }>> => {
+      const transcript = await dispatch(page, { type: 'chatTranscript', chatId });
+      const messages = (transcript['messages'] ?? []) as Array<{ id?: string; content?: string }>;
+      return messages
+        .map((m) => ({ id: m.id ?? '', content: m.content ?? '' }))
+        .filter((m) => /Aurora marks an alteration to Aria/.test(m.content));
+    };
+    let whispersBefore: Array<{ id: string; content: string }> = [];
+    await expect(async () => {
+      whispersBefore = await ariaWhispers();
+      expect(whispersBefore.length, "Aurora has whispered about Aria's attire").toBeGreaterThan(0);
+      expect(
+        whispersBefore[whispersBefore.length - 1].content,
+        'the newest whisper before the rollback is the cravat flush',
+      ).toContain('History Cravat');
+    }).toPass({ timeout: 90_000, intervals: [2_000, 3_000, 5_000] });
+    const seenIds = new Set(whispersBefore.map((w) => w.id));
+    expect(seenIds.has(''), 'every whisper carries an id').toBe(false);
+
     // The brogues-only entry (the set_all above) — Wear again.
     const earlier = entries.filter({ hasText: 'History Brogues' }).filter({ hasNotText: 'History Cravat' }).first();
     const index = await entryIndex(earlier);
@@ -1416,20 +1441,18 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await expect(entries).toHaveCount(count);
     await page.getByRole('button', { name: 'Done' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });
-    // F.9 (P4.173): Aurora's `outfit-change` whisper lands in the chat after the
-    // debounced announcement job runs; the NEWEST one describes the brogues-only
-    // outfit the rollback returned to (the cravat is gone from it). A bounded
-    // poll of the transcript read the Salon itself subscribes to.
+    // F.9 (P4.173): the rollback's own `outfit-change` whisper lands after its
+    // debounced announcement job runs — a whisper NOT in the pre-rollback set,
+    // the newest, describing the brogues-only outfit (the cravat gone). A
+    // bounded poll of the transcript read the Salon itself subscribes to.
     await expect(async () => {
-      const transcript = await dispatch(page, { type: 'chatTranscript', chatId });
-      const messages = (transcript['messages'] ?? []) as Array<{ content?: string }>;
-      const whispers = messages
-        .map((m) => m.content ?? '')
-        .filter((c) => /Aurora marks an alteration to Aria/.test(c));
-      expect(whispers.length, "Aurora has whispered about Aria's attire").toBeGreaterThan(0);
+      const whispers = await ariaWhispers();
+      const fresh = whispers.filter((w) => !seenIds.has(w.id));
+      expect(fresh.length, 'a whisper newer than the rollback baseline').toBeGreaterThan(0);
       const newest = whispers[whispers.length - 1];
-      expect(newest, 'the newest Aurora outfit-change whisper').toContain('History Brogues');
-      expect(newest).not.toContain('History Cravat');
+      expect(seenIds.has(newest.id), 'the newest whisper post-dates the rollback').toBe(false);
+      expect(newest.content, 'the post-rollback Aurora outfit-change whisper').toContain('History Brogues');
+      expect(newest.content).not.toContain('History Cravat');
     }).toPass({ timeout: 90_000, intervals: [2_000, 3_000, 5_000] });
   });
 

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(spa): the save-image dialog shows only the alert on a failed album read; the F.9 whisper beat waits for a post-rollback whisper
+
+_Versions: SPA 0.5.907._
+
+§3 review fixes (P4.173). The save-image dialog no longer shows the empty-album sentence beside a failed album read; v4 shows only the `Failed to load photo albums` alert (`SaveImageDialog.tsx` `:138-151`, `:215-216`, `:302`). The spec asserts the sentence is absent on a failure (red before the template change). The F.9 wardrobe-history beat now waits for the cravat whisper and records the existing whispers before *Wear again*, then requires a strictly newer whisper naming the brogues and not the cravat, so the `set_all` whisper can no longer satisfy it.
+
 #### 2026-10-28 — fix(memories): an invalidation during a frozen-archive compute is no longer overwritten by its insert; the candidate 400 carries details
 
 _Versions: core 0.0.1373._

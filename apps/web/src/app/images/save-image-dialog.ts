@@ -82,7 +82,9 @@ export type SaveImageTarget =
  * for the wardrobe door — each under its own TanStack key). v4's
  * `Failed to load photo albums (<status>)` line is rendered WITHOUT the status
  * (the dispatch error carries none — `ALBUM_LOAD_STATUS_ABSENT`, P4.173 R-A),
- * beside the empty sentence, as v4 does. And (R-C) v5's `qt-modal` renders in place with no
+ * ALONE: v4's failed fetch leaves `albums` null, so `groupedAlbums` is null and
+ * neither the empty sentence nor the select renders (`SaveImageDialog.tsx`
+ * :138-151, :215-216, :302 at `322a5488e`). And (R-C) v5's `qt-modal` renders in place with no
  * Escape, so this dialog ports v4 `BaseModal`'s two behaviours LOCALLY for all
  * three doors: it reparents its own host to `document.body` (so it paints
  * above a body-portalled full-screen viewer, and escapes the item editor's
@@ -146,6 +148,8 @@ export type SaveImageTarget =
           <label for="save-image-album" class="qt-label mb-2 block">Album</label>
           @if (albumsQuery.isPending()) {
             <div class="text-sm opacity-70">Loading albums…</div>
+          } @else if (albumsQuery.isError()) {
+            <!-- v4: a failed read leaves groupedAlbums null — no empty sentence, no select; only the alert. -->
           } @else if (groupedAlbums().length === 0) {
             <div class="text-sm opacity-70">
               {{

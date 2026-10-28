@@ -104,7 +104,10 @@ describe('SaveImageDialog', () => {
     expect(fixture.nativeElement.textContent).not.toContain('No document stores are available.');
   });
 
-  it('a failed album read shows v4’s sentence without the status, beside the empty sentence (ALBUM_LOAD_STATUS_ABSENT)', async () => {
+  // v4 `SaveImageDialog.tsx` at `322a5488e`: a failed fetch leaves `albums`
+  // null (:138-151), so `groupedAlbums` is null (:215-216) and neither the empty
+  // sentence (:302) nor the select renders — only the alert.
+  it('a failed album read shows v4’s sentence without the status, and NOT the empty sentence (ALBUM_LOAD_STATUS_ABSENT)', async () => {
     const client = {
       dispatchData: (async () => {
         throw new Error('boom');
@@ -113,7 +116,8 @@ describe('SaveImageDialog', () => {
     const fixture = await render(client);
     const alert = fixture.nativeElement.querySelector('[role="alert"]') as HTMLElement;
     expect(alert.textContent?.trim()).toBe('Failed to load photo albums');
-    expect(fixture.nativeElement.textContent).toContain('No photo albums are available for this chat.');
+    expect(fixture.nativeElement.textContent).not.toContain('No photo albums are available for this chat.');
+    expect(fixture.nativeElement.querySelector('#save-image-album')).toBeNull();
   });
 
   it('saves via messageSaveImage with the default album and trimmed caption (the message door)', async () => {
