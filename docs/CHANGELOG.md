@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): drift check — v4 fixed #120, recorded as a convergence row
+
+_Docs-only change._
+
+`/driftcheck` found one new v4 commit past `3b8b6f42b`: `7789ebed6` (`4.11.0-dev.112`), v4's fix for #120, the chat-settings row leak this port filed. `findByUserId` now reads newest first and repairs a refused row's top-level fields to their defaults instead of dropping the row, and the repair is written back on the next update. The drift ledger records it as a CONVERGENCE row: the F-1 pins in `settings_routes_equivalence` will trip by design at a post-fix pin. The baseline is still `322a5488e`, 66 commits behind, and the regen rule stays PIN REQUIRED.
+
 #### 2026-10-28 — docs(porting): drift check — four v4 commits past `3c818c856` recorded
 
 _Docs-only change._
