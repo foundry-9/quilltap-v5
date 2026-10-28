@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — docs(porting): the P4.169 lane record — LANE COMPLETE
+
+_Docs only; no crate version bumped._
+
+Set the P4.169 order's status to LANE COMPLETE and appended the lane record to `status-log.md`. The record covers twelve commits with their red-first counts, the R-B and keystone-timing measurements, five HANDOFFs, the deferred `regalia` / `history_dresser` rebuild, the gate (862 binaries / 5,704 passed, zero SKIP), and the dogfood rows.
+
 #### 2026-10-27 — test: the cheap-LLM DEBUG keys and the crafter census follow F-1 (P4.169)
 
 _quilltap-core 0.0.1347._

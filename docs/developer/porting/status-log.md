@@ -193424,3 +193424,104 @@ Both tests re-ran green by name against regenerated oracles. The rest of the gat
   - A stale instance lock should be claimed with v4's WARN.
   - `/photos?q=` on an empty album should make no embedding call.
 
+
+
+## P4.169 — lane record (2026-10-27): the Pascal + validation + effects smalls — LANE COMPLETE
+
+**Branch** `claude/p4.169-pascal-cheapllm-zod-inventory-6c7ea44`, worktree `.claude/worktrees/p4.169`, cut from `main` `6c7ea4410` (the session started in that worktree, on its base; no move). **Pin:** `/tmp/qt-v4-pin-p4169-322a5488e`, detached at `322a5488e`, `npm ci --offline`. Verified there: openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0. The §2 probe was taken as an observation (§R.2): v4 HEAD sat past the baseline as recorded, and the lane never re-pinned.
+
+### Commits (in order)
+
+| # | Commit | Unit | Red-first |
+|---|---|---|---|
+| 1 | `aad86b4ac` | **Contract C2**, committed alone. `db::chat_settings::find_by_user_id_or_none(conn, user_id) -> Option<Value>` plus `log_find_by_user_id_failure(user_id, &DbError)` (v4's ERROR `Error finding chat settings by user ID`, `collection=chat_settings userId error`). This is the binding signature P4.170 calls. | unit capture pin |
+| 2 | `26978a236` | B.5 fold: the extraction context reads chat settings through C2. A failed `read_main` logs the same line and answers `None`. | `extraction_*` by name |
+| 3 | `e9dfb6802` | **I-2**: integer-like custom-tool keys iterate in V8 `Object.keys` order through ONE home, `pascal::js_value` (`array_index`, `sort_v8_own_keys`, `v8_key_order`). The parse-time chokepoint is `custom_tool_types::safe_parse`; `collect_unknown_keys` and `collect_metadata_tested` sort the same way. Folded: `inventory/types.rs` (now a re-export), `embedding_blob.rs`, `tool_gate_keys.rs`. | definition corpus **6 red** (`raw-v8-order-*`); execution **1 red** (`anyof-metadata-tested-v8-key-order-across-groups`) |
+| 4 | `f0c584b4b` | **F-1 + B1-6**: `cheapLLMSettings` reads through ONE `zod_parse_cheap_llm_settings`. It rebuilds the bag in v4's shape order, fills the defaults, strips unknown keys, and falls back to the `.default()` literal for a NULL / empty / unparseable / JSON-`null` cell. A refused bag drops the row. | `settings_routes_equivalence` red at `s_put_existing` once its compares became byte compares |
+| 5 | `c5044bff7` | **F-4**: the cheap-LLM selection logs v4's four `[CheapLLM]` lines (two DEBUG, two WARN) from ONE `cheap_llm::select_cheap_llm_from_profiles`. `generate_image.rs`'s twin is deleted. The uncensored DEBUG keys are camelCase. | cheap-llm-selection **15 red** |
+| 6 | `86d8e405d` | **F-2**: Zod 4.6.7's length check past an array `invalid_type`, through ONE `api::zod_issues::zod_length_checks_past_invalid_type`. Three twins use it: `chat_create` subprompt ids, `memory_candidate` string arrays, the scenario-builder uuid arrays. | scenario schema **3 red**; memory-candidate red from its first new row; chat-create red at `sp_string_over_cap_400` |
+| 7 | `25c3dd86f` | **F-3**: `run_custom` logs v4's two WARNs, `run_custom validation failed` and `run_custom named an unknown tool`. Both are capture-pinned in the handler family (`PINNED_MESSAGES` now 8). | handler **11 rows red** |
+| 8 | `f595d7fac` | **D324-T3-33**: the identity resolver's `users` read goes through `db::fallback::find_by_id_or_none`, so v4's `Error finding entity by ID` ERROR is logged and the default follows. | unit red |
+| 9 | `c398ffc45` | **I-4**: pending Inventory announcements are an `indexmap::IndexMap` (insertion order = JS `Map`) and drain in first-record order; the R-6 sort is deleted. Adds the `indexmap = "2"` dependency to core. | `inventory_tools` **1 red** (the R-6 key sort restored) |
+| 10 | `46f24c05c` | Arrival and reset-to-defaults now fire `notify_inventory_changed`, which gives v4's `[InventoryEffects]` DEBUG and the avatar refresh through the effects path. The ad-hoc `INVENTORY_CHANGE_AVATAR_CONTEXT` is deleted. | keystone **2 ops red** (applyDefaults, resetDefaults) |
+| 11 | `5d6c2bf63` | **F-6**: the L8 corpus note in `turn-orchestrator-tier2.json` now states P4.D310's measurement. | docs only |
+| 12 | `bdf55067f` | Gate catch: two tests that this lane's own units had left stale (the F-4 camelCase keys; the crafter census after F-1). Both fixed and green by name. | the gate |
+
+### Measurements
+
+- **R-B, measured at the pin.**
+  - A NULL, unparseable or JSON-`null` cheap-LLM cell reads as the default literal, and the row is kept.
+  - A bad `strategy` enum, a non-UUID id, or a non-object bag drops the row. v4's GET then creates a NEW row.
+  - The last case is carved as `REFUSED_CHEAP_LLM_ROW_GET` (bad_strategy / bad_uuid / non_object): v4 answers a new row (`<newid>`), and v5 answers 500 `chat settings write failed to persist`. This is a both-ways carve with recorded bytes.
+- **D340-keyorder, measured beyond the census.** Every reader consumes the PARSED definition, so the parse-time fix (commit 3) covers every surface. No second site needed a change.
+- **The keystone effects timing.** v4 awaits `notifyInventoryChanged` inside the lock; v5 runs it after the write closure (the single-writer model). For `EFFECTS_OPS` (applyDefaults, resetDefaults) the family moves the effects lines to the op's end on both sides: the carve `EFFECTS_AFTER_THE_WRITE`. Every other op filters `DEBUG [InventoryEffects]` on both sides. A global lift of that filter gave 15 reds, so it is scoped to `EFFECTS_OPS`.
+- **The census census.** `concierge_legacy_settings_census` no longer requires `db/chat_settings.rs` to NAME `imagePromptProfileId`. The generic shape-rebuild strip replaces the named strip, and `cheap_llm_settings_read_in_v4s_shape_order` pins it.
+
+### Outside strict ownership (recorded)
+
+- `services/outfit_change_effects.rs`: ONE token. Its third container in the constructor is now `Default::default()`, forced by the `PendingInventoryMap` type. The R-3 drain is untouched.
+- `crates/quilltap-harness/tests/concierge_legacy_settings_census.rs`: no order owns it. It guards this lane's `chat_settings.rs` and had to follow F-1 (commit 12).
+
+### HANDOFFs
+
+- `HANDOFF(P4.166)`: the headshoulders read folds onto C2.
+- `HANDOFF(P4.166 / §S.1(d))`: delete `services/image_job_common.rs`'s three cheap-LLM functions (its `build_cheap_llm_selection` twin) and point them at `crate::cheap_llm` (`select_cheap_llm_from_profiles`, `cheap_llm_profile_from_value`, `cheap_llm_config_from_settings`).
+- `HANDOFF(P4.168)`: `api/memories.rs`'s `entities` check adopts `zod_length_checks_past_invalid_type(v, None, Some(MEMORY_ENTITY_CAP), &path)`. This is F-2's fourth twin.
+- `HANDOFF(P4.173 / unifier)`: copy the regenerated definition oracle (716 rows, `QT_ORACLE_PASCAL_DEFINITION`) into `apps/web/src/testing/fixtures/pascal-custom-tool-definition.oracle.ndjson`. Verified locally with `npm test` at 784 / 784 against the copy; the copy was then restored, because that fixture is not this lane's.
+- `HANDOFF(§S.1(a))`: `api/wardrobe.rs`'s preview-avatar read moves onto C2.
+
+### Deferrals (loud)
+
+- **Tier 2 item 5: DEFERRED.** This is the `regalia` handler pair together with F.4's `history_dresser` rebuild. Measured:
+  - the pair carries no wardrobe items;
+  - none of the handler, route or trigger-runner families dumps `chat_wardrobe_history`, so F.4's settle-row assertions have nothing to read;
+  - the precedent for adding a definition is an in-place widen through an extender, not the order's "ONE rebuild", which drifts the pair's vintage (memory note `rebuilt-fixture-pair-vintage`).
+
+  This needs a planner ruling on the rebuild-vs-extend shape, plus the dump wiring, before it can land.
+- **Tier 3 item 7** (P4.D310 item 14 / P4.D314 item 11): recorded and not taken. Their sites (`refusal.rs` and the others) belong to other owners.
+- **Recordable, not touched.**
+  - `model/sdk_response_shape.rs:106` holds a fifth `array_index` helper (usize, a different contract).
+  - The empty-roster unknown-tool `run_custom` row is uncovered, because no fixture character has an empty roster.
+
+### Fixtures changed (committed)
+
+- `chat-create-capstone.json`: `sp_string_over_cap_400` and `sp_string_at_cap_400`.
+- `inventory-tools.json`: the case `two-characters-drain-in-first-record-order`.
+- `cheap-llm-selection.json`: line capture and a 5-row `fromProfiles` section.
+- `turn-orchestrator-tier2.json`: the L8 note only.
+
+The in-case corpora grew in `pascal-custom-tool-definition.ts`, `pascal-custom-tools-execution`, `settings-routes.test.ts` (`plantCheapLlmSettings` + 9 `cheap_llm_read` rows), `memory-candidate.ts` (+5; parse guard 56), `scenario-build-request-schema.ts` (+4), `inventory-refs.ts` (`rec-b-before-a-insertion-order`; EXPECTED_ROWS 87), and the run-custom handler case (+2). No fixture pair was rebuilt. Invalidated for siblings: the SPA's copied definition oracle (see the P4.173 HANDOFF above). Nothing else reads these corpora.
+
+### Regen recipes
+
+No new recipe was authored. Every family regenerates from its own recipe header through the sweep driver, from the pin:
+
+```bash
+/opt/homebrew/bin/python3.13 harness/tools/recipe_sweep.py --v5w ~/source/quilltap-v5/.claude/worktrees/p4.169 --v4 /tmp/qt-v4-pin-p4169-322a5488e --force --families "$(cat families.txt)"
+```
+
+The cheap-llm-selection case needs `LOG_LEVEL=debug`, which its header now carries.
+
+### Gate (on the final tree)
+
+- **Static checks:** `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets -- -D warnings` clean, both with and without `--features quilltap-core/native-transport`. `recipe_sweep --self-test` rc 0.
+- **The sweep from the pin:** 87 families, **85 ok / 1 refused / 1 run_failed**.
+  - The refused family is the standing `backup_uuid_remap_equivalence` (`refused_repo_write`).
+  - The run_failed family is `extraction_context_degrade`, a sweep-order artifact: the shared `/tmp` fixture did not exist yet. It is green by name.
+- **`cargo test --workspace --no-fail-fast`** with the lane's env block: **862 binaries / 5,704 passed / 2 failed / 3 ignored, zero SKIP.** The two reds were this lane's stale tests (commit 12), both green by name after the fix (4 / 4 and 3 / 3).
+  - The §R.9 guards ran by name: `spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard`, `qtap_schema_embed_guard`, `public_schemas_vendor_guard`, `help_tree_equivalence`.
+- **SPA:**
+  - The liveness check `npm run build` passed (rc 0).
+  - The definition-oracle copy was checked with `npm test` against the copy: 784 / 784, then restored.
+
+### 💸 Dogfood rows
+
+- On the Friday copy, create a custom tool whose gate keys are `{"10":…, "2":…}`. The Workbench's metadata-tested list should order them `2, 10`, as v4 does.
+- Make Inventory changes for two characters in one turn. They should announce in the order they happened.
+- Run `run_custom` with an unknown tool name. The WARN should appear in `combined.log`.
+- Use a stored `cheapLLMSettings` bag with keys out of order plus a retired `imagePromptProfileId`. The settings GET should answer the bag in shape order with the key gone.
+
+### Versions at close
+
+core 0.0.1347 (0.0.1336 → 0.0.1347 over eleven bumps); harness frozen 0.0.1110. No other crate was touched.
+
