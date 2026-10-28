@@ -536,14 +536,10 @@ pub fn find_by_id_dropping_invalid(conn: &Connection, id: &str) -> Result<Option
                     error = %error,
                     "Data validation failed"
                 );
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "chats",
-                    id = %id,
-                    error = %error,
-                    "Error finding entity by ID"
-                );
-                return Ok(None);
+                // The second line through the ONE home (`fallback_home_guard`).
+                return Ok(super::fallback::find_by_id_or_none("chats", id, || {
+                    Err::<Option<Value>, _>(DbError::Internal(error))
+                }));
             }
             Err(e) => return Err(e.into()),
         }

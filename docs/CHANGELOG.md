@@ -72,6 +72,12 @@ Measured fail-soft arms: the General wardrobe and inventory lists (200 with no i
 
 #157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
 
+#### 2026-10-27 — fix(chats): the export skip's find-by-id line goes through the one fallback home
+
+_quilltap-core 0.0.1343_
+
+The `.qtap` export / preview skip of an unreadable chat row (H-3, this lane's second commit) logged its `Error finding entity by ID` line directly from `db/chats_read.rs`. The full workspace gate's `fallback_home_guard` caught it: that v4 repository fallback line has one emitter, `db::fallback`. The line now goes through `fallback::find_by_id_or_none`, with the same bytes (`DbError::Internal` displays the error text unchanged), so no behaviour changes. `fallback_home_guard`, `system_export_equivalence` (71 cases), `salon_reads_equivalence` and the `chats_read` units are green.
+
 #### 2026-10-27 — test(restore): the 22f-bis wardrobe folder arms through a derived pre-cutover archive (P4.D284 banked)
 
 _No crate versions bumped._

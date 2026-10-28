@@ -193212,3 +193212,89 @@ no source change, so no red-first (the banked row lands as a pin).
 `cargo fmt` of unit 7's new test file — unit 7 had been committed after
 clippy without a fresh `fmt`.)
 
+### Unit 9 — the gate's catch: the export skip's line through the one home
+
+The full workspace gate found one red the lane caused: `fallback_home_guard`
+(`db/chats_read.rs: "Error finding entity by ID"`). Unit 2's
+`find_by_id_dropping_invalid` emitted v4's `_findById` line directly, but that
+repository fallback line has ONE emitter, `db::fallback`. It now goes through
+`fallback::find_by_id_or_none("chats", id, || Err(DbError::Internal(error)))`.
+`Internal` displays its text unchanged and the plain twin adds no
+`strictFailures`, so the bytes are identical. Re-run by name: the guard 2/2,
+`system_export_equivalence` 71 OK (both `*_scenario_text` cases),
+`salon_reads_equivalence`, `chats_read` units 8/8. core 0.0.1343.
+
+### HANDOFF and deferrals
+
+- **HANDOFF(P4.171): D274-c — `doc_mount_point_issues`' nullable
+  `lastScanError` / `conversionError`** (`db/store_name_reconcile.rs`, P4.171's
+  file; D274-c is not in P4.171's order, so this lane did NOT edit it). v4
+  `mount-index.types.ts` types both `z.string().nullable().optional()`; v5's
+  `string_issues(bag, "lastScanError", false, false, …)` (`:562`) and
+  `"conversionError"` (`:569`) refuse an explicit `null`. Holds today only
+  because `read_bags` omits NULL cells through `hydrate`. Fix: give
+  `string_issues` a `nullable: bool` like `uuid_issues`'s (`:436`), add `None
+  | Some(Value::Null) if nullable => {}`, pass `true` at both sites, and add a
+  unit row with an explicit `Value::Null` bag (both keys → no issue; a number
+  → `invalid_type expected string`). Unit-only. The unifier lands it at §S.1.
+- **DEFERRED (Tier 3 #10): D273-23**, a restore onto a DEGRADED mount index
+  (v4's 22a `findAll` would throw). Not measured. A both-sides measurement
+  needs a degraded-clone restore rig for `system_restore_state`, and the
+  degraded-mount refusal text belongs to P4.166 (`with_both_conns`, dogfood
+  #156) — measuring before that lane lands would measure a text the union
+  changes. Carry it to the follow-ups round after this one, as one
+  degraded-clone `system_restore_state` row run on the union.
+- **DEFERRED (Tier 3 #11): the `js_truthy` DRY pass** (§R.11 — 30 copies across
+  every lane's files; a later solo lane).
+- **Recorded, not ported:** the repository-level `JsonSchema` twin (v4 checks in
+  `_create`, so every create path refuses; v5 checks at the import site only).
+  Also unmeasured edges: a carried row's non-string `mimeType`; a non-scalar
+  NDJSON `kind`; a non-string orphan parent id.
+
+### v4 moved during the lane (an observation, §R.2)
+
+At 17:22 CDT v4 `main` stood at `d64b25e96` ("Docs: pronoun fix for Host
+mention in help"), past the `b09ff5c86` the ledger records; it was unmoved at
+lane close, with a clean tree in `lib/` / `app/` / `packages/` / `plugins/`.
+These are docs-only commits. Every regen ran in the pin
+`/tmp/qt-v4-pin-p4167-322a5488e`, so the lane continued. Recorded for
+`/driftcheck`; not touched from the lane.
+
+### Gate (2026-10-27, lane close)
+
+- `cargo fmt --all --check` OK. `cargo clippy --workspace --all-targets -D
+  warnings` clean, with and without `--features
+  quilltap-core/native-transport` (re-run on the final tree after unit 9).
+- `recipe_sweep.py --self-test` OK. The SPA is untouched; `npm ci` + `npm run
+  build` OK (needed for the tauri crate's clippy).
+- `cargo test --workspace --no-fail-fast` (all five lane oracles + salon-reads
+  set, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): **857 binaries / 5,704
+  passed / 2 failed / 3 ignored.**
+  - `fallback_home_guard`: the lane's own red, fixed in unit 9, green by name.
+  - `quilltap-host terminal_pty::scrollback_source_live_then_transcript`: a
+    PTY timing intermittent in a file this lane never touched (the rendered
+    echo line raced the marker). Re-run by file three times: 2 green, 1 red.
+    Not lane-caused; recorded for the unifier.
+- Lane families RAN, not SKIP (checked by name): `system_import_state` (92
+  cases), `system_export_equivalence` (71), `system_restore_state` (71),
+  `qtap_ndjson_reader_lines_equivalence` (14 lines), `salon_reads_equivalence`.
+- **Versions at close:** core 0.0.1343 (from 0.0.1336 at lane start, one bump
+  per source commit); harness frozen at 0.0.1110; host / web / cli / SPA
+  unchanged.
+
+### 💸 Dogfood rows owed (on the union, a Friday copy)
+
+- A `.qtap` export of an instance with a chat whose `scenarioSource` cell is
+  planted as non-object TEXT: the export / preview SKIP that chat with v4's two
+  ERROR lines, and the rest export.
+- Import a hand-edited `.qtap` chat with `sceneState: "x"`: refused with the
+  Zod `expected record` bytes. A preserved-ids import with a numeric memory id
+  is refused too.
+- A `replace` restore of a full backup whose carried files have NO bytes on
+  disk in the target: the rows keep the archive's `mimeType` / `size`, and a
+  carried row without `size` is refused with the Zod line.
+- A `new-account` restore of an archive with duplicate store ids (ruled
+  `DUP_STORE_ID_FIRST_ROW`, both modes).
+- A streamed `.qtap` with junk lines: the reader's WARN lines and the
+  unknown-kind INFO appear in the log.
+
