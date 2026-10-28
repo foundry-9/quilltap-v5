@@ -66,11 +66,6 @@ pub struct ApplyInventoryDefaultsOptions {
     pub source_chat_id: Option<String>,
 }
 
-/// The source of the R-3 refresh — v4 `refreshAvatarForAppearance(…,
-/// 'inventory-change')`.
-pub const INVENTORY_CHANGE_AVATAR_CONTEXT: &str =
-    crate::services::inventory_change_effects::INVENTORY_CHANGE_SOURCE_CONTEXT;
-
 fn json_text(v: &impl serde::Serialize) -> String {
     serde_json::to_string(v).unwrap_or_default()
 }
@@ -282,9 +277,14 @@ pub fn apply_inventory_defaults_holding_lock(
 }
 
 /// Run the R-3 after-effect for each character whose arrival carried
-/// something: v4's `notifyInventoryChanged` with `announce: false` refreshes
-/// the per-chat avatar (`'inventory-change'`). The DEBUG `[InventoryEffects]`
-/// line around it is P4.D328's.
+/// something, through the effects path v4's arrival takes: `equipDefaults` →
+/// `equipItemsHoldingLock(…, { provenance: 'operator', announce: false })` →
+/// `notifyInventoryChanged` (`equip.ts:380` → `equip-effects.ts:114-160`),
+/// which posts nothing (`announce: false`), refreshes the per-chat avatar
+/// (`'inventory-change'`) and logs the DEBUG `[InventoryEffects] Inventory
+/// change effects fired`. v4's reset-to-defaults goes through the same
+/// `equipDefaults`. (P4.169, D324-T3-33 — the first cut called the refresh
+/// directly and never logged the line.)
 pub async fn refresh_avatars_after_arrival(
     db: &Db,
     user_id: &str,
@@ -293,12 +293,18 @@ pub async fn refresh_avatars_after_arrival(
 ) {
     for (character_id, change) in changes {
         if !change.is_empty() {
-            crate::services::outfit_change_effects::refresh_avatar_for_outfit(
+            crate::services::inventory_change_effects::notify_inventory_changed(
                 db,
-                user_id,
                 chat_id,
                 character_id,
-                INVENTORY_CHANGE_AVATAR_CONTEXT,
+                change,
+                &crate::inventory::equip::InventoryChangeContext {
+                    user_id,
+                    provenance: crate::inventory::equip::InventoryChangeProvenance::Operator,
+                    announce: false,
+                    pending: None,
+                },
+                None,
             )
             .await;
         }

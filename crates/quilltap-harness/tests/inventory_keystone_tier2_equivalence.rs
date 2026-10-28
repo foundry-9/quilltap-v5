@@ -52,10 +52,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use quilltap_core::db::fallback::error_text;
+use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::db::Writer;
 use quilltap_core::inventory::apply_defaults::{
-    apply_inventory_defaults_holding_lock, reset_inventory_to_defaults_holding_lock,
-    ApplyInventoryDefaultsOptions, InventoryArrivalSource,
+    apply_inventory_defaults_holding_lock, refresh_avatars_after_arrival,
+    reset_inventory_to_defaults_holding_lock, ApplyInventoryDefaultsOptions,
+    InventoryArrivalSource,
 };
 use quilltap_core::inventory::dependents::{
     find_dependents, find_kits_stranded_by_move, find_records_anywhere,
@@ -63,7 +65,7 @@ use quilltap_core::inventory::dependents::{
 use quilltap_core::inventory::equip::{
     assert_participant, drop_carried_everywhere, equip_items_holding_lock,
     pick_up_items_holding_lock, unequip_items_holding_lock, EquipChat, EquipOptions,
-    InventoryChangeContext, InventoryChangeProvenance, PickUpOptions,
+    InventoryChange, InventoryChangeContext, InventoryChangeProvenance, PickUpOptions,
 };
 use quilltap_core::inventory::equipped_set::read_equipped_set;
 use quilltap_core::inventory::errors::{InventoryError, InventoryRefusal, InventoryRefusalCode};
@@ -132,8 +134,11 @@ fn spec_path() -> PathBuf {
         .join("../../harness/oracle/fixtures/inventory-keystone.json")
 }
 
+// P4.169 (D324-T3-33): `[InventoryEffects]` lines are OWNED too — the
+// arrival / reset now go through `notify_inventory_changed` as v4's do, so
+// `Inventory change effects fired` is compared rather than filtered.
 fn owned(message: &str) -> bool {
-    (message.starts_with("[Inventory") && !message.starts_with("[InventoryEffects]"))
+    message.starts_with("[Inventory")
         || message.starts_with("[ToolGateKeys]")
         || DB_OWNED.contains(&message)
 }
@@ -467,7 +472,6 @@ fn v5_lines(captured: &[String]) -> (Vec<String>, Vec<Value>) {
             continue;
         }
         let message_owned = rest.starts_with("[Inventory")
-            && !rest.starts_with("[InventoryEffects]")
             || rest.starts_with("[ToolGateKeys]")
             || DB_OWNED
                 .iter()
@@ -545,6 +549,30 @@ struct Ops<'a> {
     mount: &'a rusqlite::Connection,
     user_id: &'a str,
     webp: &'a [String],
+    /// P4.169 (D324-T3-33): an arrival / reset's changes, carried out of the
+    /// write so the REAL after-effect (`refresh_avatars_after_arrival` →
+    /// `notify_inventory_changed`) runs after it, as production runs it.
+    arrival_changes: std::cell::RefCell<Vec<(String, InventoryChange)>>,
+}
+
+/// The ops whose `[InventoryEffects]` line this family compares: the
+/// arrival and the reset run v4's effects path (`equipDefaults` →
+/// `notifyInventoryChanged`) and v5's after-effect. Every other op is driven
+/// below the notify layer (`*_holding_lock`), so its effects line stays
+/// filtered on both sides.
+const EFFECTS_OPS: [&str; 2] = ["applyDefaults", "resetDefaults"];
+
+/// EFFECTS_AFTER_THE_WRITE (P4.169, a recorded single-writer ordering
+/// class — R-3's): v4 awaits `notifyInventoryChanged` INSIDE the chat's
+/// inventory lock, so its effects line precedes `[InventoryArrival] Applied
+/// arrival defaults` / `Reset to defaults`; v5's after-effect is async work
+/// that cannot run inside the writer's closure, so it follows the write. The
+/// lines are compared with every effects line moved to the op's end on BOTH
+/// sides (their own order kept) — any other difference still shows.
+fn effects_after_the_write(lines: Vec<String>) -> Vec<String> {
+    let is_effects = |l: &String| l.starts_with("DEBUG [InventoryEffects] ");
+    let (effects, rest): (Vec<String>, Vec<String>) = lines.into_iter().partition(is_effects);
+    rest.into_iter().chain(effects).collect()
 }
 
 fn scope_of(at: &Value) -> InventoryScope {
@@ -1015,7 +1043,7 @@ impl Ops<'_> {
                     "merge" => InventoryArrivalSource::Merge,
                     _ => InventoryArrivalSource::ChatStart,
                 };
-                apply_inventory_defaults_holding_lock(
+                let changes = apply_inventory_defaults_holding_lock(
                     main,
                     mount,
                     &s("chatId"),
@@ -1026,17 +1054,23 @@ impl Ops<'_> {
                         source_chat_id: op["sourceChatId"].as_str().map(str::to_string),
                     },
                 );
+                self.arrival_changes.borrow_mut().extend(changes);
                 "null".to_string()
             }
             "resetDefaults" => {
                 let chat = EquipChat::from_chat_row(&self.chat_row(&s("chatId"))?);
-                let (ids, _) = reset_inventory_to_defaults_holding_lock(
+                let (ids, change) = reset_inventory_to_defaults_holding_lock(
                     main,
                     mount,
                     &chat,
                     &s("characterId"),
                     self.user_id,
                 )?;
+                if let Some(change) = change {
+                    self.arrival_changes
+                        .borrow_mut()
+                        .push((s("characterId"), change));
+                }
                 to_text(&ids)
             }
             other_kind => panic!("unknown op kind {other_kind}"),
@@ -1154,12 +1188,41 @@ fn inventory_keystone_tier2_matches_oracle() {
             mount,
             user_id,
             webp: &webp,
+            arrival_changes: Default::default(),
         };
-        let (outcome, captured) = captured_with(|| match ops_runner.run(op) {
+        let (outcome, mut captured) = captured_with(|| match ops_runner.run(op) {
             Ok(text) => json!({ "result": text }),
             Err(e) => json!({ "error": error_json(&e) }),
         });
         disarm_realtime_bus_for_current_thread();
+        // P4.169 (D324-T3-33): the arrival / reset's after-effect, through the
+        // production path (`notify_inventory_changed`, `announce: false`).
+        let arrival_changes = ops_runner.arrival_changes.take();
+        if !arrival_changes.is_empty() {
+            let db = Db::open(
+                DbPaths {
+                    main: main_path.clone(),
+                    mount_index: Some(mount_path.clone()),
+                    llm_logs: None,
+                },
+                pepper,
+            )
+            .unwrap();
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            let chat_id = op["chatId"].as_str().unwrap().to_string();
+            let ((), effects) = captured_with(|| {
+                rt.block_on(refresh_avatars_after_arrival(
+                    &db,
+                    user_id,
+                    &chat_id,
+                    &arrival_changes,
+                ))
+            });
+            captured.extend(effects);
+        }
         let after = dump_all(main, mount);
         let got_delta = delta(&before, &after);
 
@@ -1173,6 +1236,18 @@ fn inventory_keystone_tier2_matches_oracle() {
             canonical_read_runs(want_lines),
             canonical_read_runs(got_lines),
         );
+        let effects_op = EFFECTS_OPS.contains(&op["kind"].as_str().unwrap_or_default());
+        let effects = |lines: Vec<String>| -> Vec<String> {
+            if effects_op {
+                effects_after_the_write(lines)
+            } else {
+                lines
+                    .into_iter()
+                    .filter(|l| !l.starts_with("DEBUG [InventoryEffects] "))
+                    .collect()
+            }
+        };
+        let (want_lines, got_lines) = (effects(want_lines), effects(got_lines));
         lines_compared += want_lines.len();
         let g = Norm::new(&known).op(&outcome.to_string(), &got_delta, &got_lines);
         let w = Norm::new(&known).op(&want_outcome.to_string(), &want["delta"], &want_lines);

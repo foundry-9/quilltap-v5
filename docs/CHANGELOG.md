@@ -199,6 +199,16 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): arrival and reset-to-defaults fire the Inventory effects path and its DEBUG (P4.169)
+
+_Versions:_ quilltap-core 0.0.1346.
+
+Arrival defaults and reset-to-defaults now run their avatar refresh through `notify_inventory_changed` with `announce: false` and `operator` provenance, the path v4's `equipDefaults` takes. They now log v4's DEBUG `[InventoryEffects] Inventory change effects fired`; the first cut called the refresh directly. `notify_inventory_changed` calls `refresh_avatar_for_appearance`, the name v4 uses there (D328-T3-7), and the unused `INVENTORY_CHANGE_AVATAR_CONTEXT` is deleted.
+
+`inventory_keystone_tier2_equivalence` runs the real after-effect for its arrival and reset ops and compares their effects lines; every other op is still driven below the notify layer and stays filtered. Red-first: 2 ops red, then green.
+
+Recorded ordering class `EFFECTS_AFTER_THE_WRITE` (R-3's single-writer class): v4 awaits the notify inside the inventory lock, ahead of the `Applied arrival defaults` / `Reset to defaults` DEBUG, while v5's async after-effect follows the write. It is compared with the effects lines moved to the op's end on both sides.
+
 #### 2026-10-27 — fix(core): the turn's pending Inventory announcements drain in first-record order (P4.169)
 
 _Versions:_ quilltap-core 0.0.1345.

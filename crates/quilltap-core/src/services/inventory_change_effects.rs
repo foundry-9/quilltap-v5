@@ -51,7 +51,7 @@ use crate::db::runtime::Db;
 use crate::inventory::resolve::inventory_label;
 use crate::inventory::types::{InventoryFields, ResolvedInventoryItem};
 use crate::jsstr::{is_js_ws, js_trim};
-use crate::services::outfit_change_effects::refresh_avatar_for_outfit;
+use crate::services::outfit_change_effects::{refresh_avatar_for_appearance, AvatarRefreshWho};
 use crate::services::pascal_writer::post_pascal_inventory_change;
 
 pub use crate::inventory::equip::{
@@ -66,9 +66,7 @@ pub use crate::inventory::equip::{
 pub type PendingInventoryAnnouncements = Arc<Mutex<PendingInventoryMap>>;
 
 /// The `source_context` the avatar refresh carries (v4
-/// `refreshAvatarForAppearance(…, 'inventory-change')`). R-5: the refresh is
-/// the EXISTING `refresh_avatar_for_outfit` — v4's rename to
-/// `refreshAvatarForAppearance` (an alias kept) is P4.D326's.
+/// `refreshAvatarForAppearance(…, 'inventory-change')`).
 pub const INVENTORY_CHANGE_SOURCE_CONTEXT: &str = "inventory-change";
 
 /// The `context` field of every line here.
@@ -398,11 +396,16 @@ pub async fn notify_inventory_changed(
             }
         }
     }
-    refresh_avatar_for_outfit(
+    // v4 `refreshAvatarForAppearance(…, 'inventory-change')` — the name v4
+    // calls here (`equip-effects.ts:150`); the outfit alias is the wardrobe's
+    // (P4.169, D328-T3-7).
+    refresh_avatar_for_appearance(
         db,
-        ctx.user_id,
-        chat_id,
-        character_id,
+        &AvatarRefreshWho {
+            user_id: ctx.user_id,
+            chat_id,
+            character_id,
+        },
         INVENTORY_CHANGE_SOURCE_CONTEXT,
     )
     .await;
