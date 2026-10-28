@@ -139,8 +139,11 @@ struct Case {
 }
 
 /// P4.D305: the log lines this family pins (the oracle's `PINNED_MESSAGES`).
-const PINNED_MESSAGES: [&str; 6] = [
+const PINNED_MESSAGES: [&str; 8] = [
     "Custom tool run: state cascade unavailable, defaulting to {}",
+    // P4.169 (F-4): the two WARNs the first port never logged.
+    "run_custom validation failed",
+    "run_custom named an unknown tool",
     "Custom tool run refused",
     "Custom tool dealt",
     "Custom tool run failed",
@@ -503,6 +506,24 @@ fn run_custom_handler_matches_oracle() {
             character_id: Some(CHAR_A),
             vault: Some(meta.vault_a.clone()),
             input: json!({ "notTool": 1 }),
+            profile: false,
+            plant: None,
+        },
+        // P4.169 (F-4): the validation WARN's `input` over a string and a
+        // non-string `tool`.
+        Case {
+            name: "validation-fail-string-input",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!("coin"),
+            profile: false,
+            plant: None,
+        },
+        Case {
+            name: "validation-fail-tool-number",
+            character_id: Some(CHAR_A),
+            vault: Some(meta.vault_a.clone()),
+            input: json!({ "tool": 5 }),
             profile: false,
             plant: None,
         },

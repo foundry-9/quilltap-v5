@@ -199,6 +199,14 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): `run_custom` logs v4's two WARNs — validation failed and an unknown tool (P4.169)
+
+_Versions:_ quilltap-core 0.0.1343.
+
+`run_custom` now logs v4's two WARNs: `run_custom validation failed {context, userId, input}` for an invalid input, and `run_custom named an unknown tool {context, chatId, tool, available}` for a name the roster lacks. `input` and `available` ride the file layer's `…Json` names; a string input logs as itself. Both lines are pinned in `pascal_run_custom_handler_equivalence`, which gains two input-shape rows. Red-first: the 11 rows that carry either line were red, then green.
+
+Not covered: an empty-roster unknown-tool row. No fixture character has an empty roster.
+
 #### 2026-10-27 — fix(core): three Zod twins report 4.6.7's length check past an array `invalid_type` through ONE helper (P4.169)
 
 _Versions:_ quilltap-core 0.0.1342.

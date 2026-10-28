@@ -724,6 +724,36 @@ fn failure(error: impl Into<String>, tool: Option<&str>) -> RunCustomToolOutput 
     }
 }
 
+/// v4's `logger.warn('run_custom validation failed', { context, userId,
+/// input })` (`run-custom-handler.ts:104-106`): `input` is whatever the model
+/// sent — an object or array rides the file layer's `…Json` name (§R.5), a
+/// string as itself, any other scalar as its JSON text.
+fn warn_validation_failed(user_id: &str, input: &Value) {
+    match input {
+        Value::Object(_) | Value::Array(_) => tracing::warn!(
+            target: "quilltap::pascal",
+            context = HANDLER_CONTEXT,
+            userId = user_id,
+            inputJson = %serde_json::to_string(input).unwrap_or_default(),
+            "run_custom validation failed",
+        ),
+        Value::String(s) => tracing::warn!(
+            target: "quilltap::pascal",
+            context = HANDLER_CONTEXT,
+            userId = user_id,
+            input = s.as_str(),
+            "run_custom validation failed",
+        ),
+        other => tracing::warn!(
+            target: "quilltap::pascal",
+            context = HANDLER_CONTEXT,
+            userId = user_id,
+            input = %crate::pascal::js_value::json_stringify(other),
+            "run_custom validation failed",
+        ),
+    }
+}
+
 /// Post the Prospero error bubble for a failed run and return the model's result
 /// (v4 `reportFailure`). Pascal only ever announces genuine outcomes, so a
 /// failure is Prospero's to report — there is no Pascal message for a roll that
@@ -828,6 +858,7 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
     llm_invoke: Option<&dyn LlmInvoker>,
 ) -> (RunCustomToolOutput, Option<PostedPascalMessage>) {
     let Some(parsed) = validate_run_custom_input(input) else {
+        warn_validation_failed(&ctx.user_id, input);
         return (
             failure(
                 "Invalid input: `tool` must be the name of an available custom tool.",
@@ -913,6 +944,16 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
         // definition this character's fact sheet is not offered. Either way this
         // is not worth an error bubble in the transcript — tell the model.
         let available: Vec<&str> = roster.tools.iter().map(|(k, _)| k.as_str()).collect();
+        tracing::warn!(
+            target: "quilltap::pascal",
+            context = HANDLER_CONTEXT,
+            chatId = ctx.chat_id.as_str(),
+            tool = tool_name.as_str(),
+            // v4 logs the roster's key list as an array (the file layer's
+            // `…Json` rule, §R.5).
+            availableJson = %serde_json::to_string(&available).unwrap_or_default(),
+            "run_custom named an unknown tool",
+        );
         let msg = if available.is_empty() {
             format!("No custom tool named \"{tool_name}\". This scene has none.")
         } else {

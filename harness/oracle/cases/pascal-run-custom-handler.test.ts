@@ -145,6 +145,9 @@ function inventoryLine(message: string): 'whole' | 'tag' | null {
 
 const PINNED_MESSAGES = new Set([
   'Custom tool run: state cascade unavailable, defaulting to {}',
+  // P4.169 (F-4): the handler's two WARNs.
+  'run_custom validation failed',
+  'run_custom named an unknown tool',
   'Custom tool run refused',
   'Custom tool dealt',
   'Custom tool run failed',
@@ -543,6 +546,9 @@ async function main(): Promise<void> {
     { name: 'public-override', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'whispered', private: false } },
     { name: 'unknown-tool', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'nonexistent' } },
     { name: 'validation-fail', characterId: CHAR_A, vaultKey: 'vaultA', input: { notTool: 1 } },
+    // P4.169 (F-4): the validation WARN's `input` over a string and a non-string `tool`.
+    { name: 'validation-fail-string-input', characterId: CHAR_A, vaultKey: 'vaultA', input: 'coin' },
+    { name: 'validation-fail-tool-number', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 5 } },
     { name: 'run-error', characterId: CHAR_A, vaultKey: 'vaultA', input: { tool: 'coin', parameters: { bad: 1 } } },
     // The 616930db consult, end to end. The fixture carries no connection
     // profiles, so BOTH sides take the invoker's `no connection profiles are
