@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — test(spa): the shared custom-tool definition corpus re-copied from the sweep's pin regen (710 -> 716 rows)
+
+_No crate versions bumped._
+
+The full sweep's `pascal_custom_tool_definition` regen from the pin added the round's six cases to the corpus the SPA grammar twin reads. The SPA Pascal specs pass on it: 22 files / 2,448 tests.
+
 #### 2026-10-28 — fix(unify): the sweep's five union reds — a cached chat read survives a vanished column, the Pascal oracles freeze every case, the job delay in whole seconds, the scenario WARN's count divergence recorded
 
 _Versions: core 0.0.1377._
