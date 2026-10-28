@@ -28,8 +28,15 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-27 ~15:10 CDT, by `/driftcheck` run as `/setupphase`
-  started on main (`f10f6ac4c`) — the §2 probe FAILED on ONE new `main`
+- **Checked:** 2026-10-28, by `/driftcheck` run as `/unify` started for the
+  `322a5488e` follow-ups smalls round, on main (`6c7ea4410`) — the §2 probe
+  FAILED on ONE new `main` commit past the recorded `b892227eb`: `d64b25e96`
+  (a help-page pronoun fix, classified from its hunk). Fetched first; local
+  equals `origin` on all three branches (`main` = `d64b25e96`, `bugfix` =
+  `489b228b6`, `release` = `2432b9057`); `gh issue list -R
+  foundry-9/quilltap-server --label bug --state all` returns NO issues.
+  - **Before that:** 2026-10-27 ~15:10 CDT, by `/driftcheck` run as `/setupphase`
+    started on main (`f10f6ac4c`) — the §2 probe FAILED on ONE new `main`
   commit past the recorded `86cc25482` (the first probe also caught the
   checkout mid-commit, its tree staged-dirty; the re-probe seconds later was
   CLEAN). Fetched first; local equals `origin` on all three branches
@@ -61,10 +68,10 @@ probe verifies against._
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `b892227eb`** ("Docs: 4.11.0 release notes
-  corrections, part 3", 2026-10-27 15:12, no stamp — the last stamp is
-  `b09ff5c86`'s `4.11.0-dev.98`; recorded by `/setupphase`'s pre-commit
-  re-probe, docs only) — **FIFTY-THREE commits past the baseline**, ALL
+- **v4 `main` HEAD at check: `d64b25e96`** ("Docs: pronoun fix for Host
+  mention in help", 2026-10-27 16:24, no stamp — the last stamp is
+  `b09ff5c86`'s `4.11.0-dev.98`; docs only) — **FIFTY-FOUR commits past the
+  baseline**, ALL
   UNPROCESSED in §3, two merges among them (`5e18ede6a`, `744596158`):
   - **The 32 of 2026-10-26** (`6fd2d5ffb` … `a0905454b`):
     - *Memory:* `6fd2d5ffb` the importance rubric (PORT, prompt text);
@@ -154,6 +161,10 @@ probe verifies against._
     help/docs re-vendor lane.
   - **And `b892227eb`** (NO-PORT? — `docs/releases/4.11.0.md` only; seen by
     `/setupphase`'s pre-commit re-probe).
+  - **And `d64b25e96`** (2026-10-28 probe — PORT, help text only:
+    `help/salon-host-introductions.md` calls the Host "he" / "his" in two
+    sentences where it said "she" / "her"; v5 vendors that page verbatim,
+    so it re-vendors with the catch-up's help/docs lane; no code).
   - **No CONVERGENCE** in the 53: bugs 258–269 were all found by v4 itself;
     v5 status `Owed` (269: `Not assessed`) in every row.
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
@@ -163,10 +174,10 @@ probe verifies against._
   branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
   **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
   BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `b892227eb`.
-  HEAD is fifty-three commits past the baseline, so it poisons a regen by
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `d64b25e96`.
+  HEAD is fifty-four commits past the baseline, so it poisons a regen by
   DRIFT.
-- **Verdict: DRIFT PENDING — 53 commits (§3), all UNPROCESSED.**
+- **Verdict: DRIFT PENDING — 54 commits (§3), all UNPROCESSED.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -434,6 +445,7 @@ passes the commit.
 | `86cc25482` | 2026-10-27 | Fix: legible dialogue in user messages; Rains user text; Great Estate sidebar | **PORT (SPA CSS + two bundled theme packs); NO server, NO behaviour** (classified 2026-10-27 from the hunks; 12 files +113 / −9; `dev.97`; parent `dd200c695`). `_chat.css` NEW rule `.qt-chat-message-user .qt-chat-message-content .qt-chat-dialogue { --qt-rp-fg: var(--qt-rp-user-dialogue-color, var(--qt-chat-user-fg)) }` (a NEW theme hook `--qt-rp-user-dialogue-color`); `themes/bundled/rains/styles.css` `--qt-chat-user-fg` `hsl(40 6% 98%)` → `hsl(var(--text-000))`; `great-estate/styles.css` +31 (light-mode left-sidebar icons / labels in cream); both `theme.json` version bumps; `theme-storybook` 1.0.88 (+55, the dialogue / narration / monologue / OOC chip family — NO-PORT). **v5 intersection:** `apps/web/src/styles/qt-components/_chat.css` (`.qt-chat-dialogue` at `:1948`) and `apps/web/public/themes/{rains,great-estate}` — one SPA small with `cce44e098`. | UNPROCESSED |
 | `b09ff5c86` | 2026-10-27 | Docs: feature-spec cleanup; split composer # references into its own spec | **NO-PORT? (docs only)** (classified 2026-10-27 from the hunks; 19 files +149 / −830; `dev.98`; parent `86cc25482`). DELETES `docs/developer/features/{comfy_ui_local_image,roleplay-block-narration,usage-tracking}.md`; MOVES `composer-typeahead.md` (its Phase 3 cut out) and `svar-bridge-spike-findings.md` to `complete/`; NEW `composer-document-references.md` (the unbuilt composer `#` references — a proposal, nothing shipped); edits ROADMAP, `complete/{capabilities-report-update,composer-emoji,composer-slash-commands,nanogpt-lora}.md`, `svar-file-manager-implementation-plan.md`, README, `.claude/commands/update-documentation.md`, CHANGELOG. The ONE source hunk is a doc-path comment in `components/chat/lexical/typeahead/types.ts`. **v5 intersection:** no code; the `docs/v4/developer/features/` mirror (P4.D339's 502) — six mirrored paths deleted / moved and two `complete/` pages edited; ride the catch-up's help/docs re-vendor. | UNPROCESSED |
 | `b892227eb` | 2026-10-27 | Docs: 4.11.0 release notes corrections, part 3 | **NO-PORT? (docs only)** (classified 2026-10-27 from the hunks, recorded by `/setupphase` after the orders were written; ONE file, `docs/releases/4.11.0.md` +23 / −7; no stamp; parent `b09ff5c86`). **v5 intersection:** no code; `docs/v4/releases/` re-vendors `4.11.0.md` at the catch-up (with `4a25f7eab` / `505a524fa`'s earlier edits to the same page). | UNPROCESSED |
+| `d64b25e96` | 2026-10-27 | Docs: pronoun fix for Host mention in help | **PORT (help text only)** (classified 2026-10-28 from the hunk; ONE file, `help/salon-host-introductions.md` +2 / −2; no stamp; parent `b892227eb`). Two sentences change the Host's pronouns from "she" / "her" to "he" / "his". **v5 intersection:** v5 vendors `help/salon-host-introductions.md` verbatim (embedded in the binary; P4.D339's `help/` 135) — re-vendor with the catch-up's help/docs lane; no code, no prompt text. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

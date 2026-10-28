@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): drift check — 1 new v4 commit (`d64b25e96` help-page pronoun fix; 54 past the `322a5488e` baseline)
+
+_Docs-only change._
+
+Recorded v4 `d64b25e96` in the drift ledger. It changes the Host's pronouns in two sentences of `help/salon-host-introductions.md`, a page v5 vendors verbatim, so it re-vendors with the catch-up's help/docs lane. No code changes. The regen rule stays PIN REQUIRED at `322a5488e`.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._
