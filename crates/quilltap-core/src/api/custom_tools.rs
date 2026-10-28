@@ -1101,6 +1101,46 @@ fn resolve_metadata(
         })
     });
 
+    // P4.166 (156.b, R-10): a DEGRADED mount index is v4's fallback overlay —
+    // its file reads answer `[]` — so a vaulted seat reads its keystone
+    // missing (the 422 below) and a vault-less one hydrates from the raw row
+    // alone; never the 500 the unavailable partition used to answer.
+    let hydrated = match hydrated {
+        Err(degraded @ crate::db::DbError::PartitionUnavailable(_)) => {
+            db.read_main(|main| {
+                let raw = characters_read::find_by_id_raw(main, &character_id)?;
+                let mount_id = raw
+                    .as_ref()
+                    .and_then(|r| r.get("characterDocumentMountPointId"))
+                    .and_then(Value::as_str)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string);
+                Ok(match mount_id {
+                    Some(mount_id) => {
+                        // v4's `loadVaultFileMaps`: the nine single files +
+                        // the Prompts / Scenarios folders, one quiet DEBUG each.
+                        for _ in
+                            0..crate::db::vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS.len() + 2
+                        {
+                            crate::db::fallback::log_mount_index_unavailable(
+                                "doc_mount_documents",
+                                &degraded,
+                            );
+                        }
+                        Err(crate::db::vault_read_overlay::OverlayOneError::Unavailable(
+                            crate::db::vault_read_overlay::VaultUnavailable {
+                                character_id: character_id.clone(),
+                                mount_id,
+                            },
+                        ))
+                    }
+                    None => Ok(raw),
+                })
+            })
+        }
+        other => other,
+    };
+
     match hydrated {
         Err(e) => Err(internal(e)),
         Ok(Err(crate::db::vault_read_overlay::OverlayOneError::Db(e))) => Err(internal(e)),

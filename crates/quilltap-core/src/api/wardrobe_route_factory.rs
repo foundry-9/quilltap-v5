@@ -61,7 +61,9 @@ use crate::db::wardrobe_location::{
 };
 use crate::db::wardrobe_read::read_shared_tiers;
 use crate::db::DbError;
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{
+    tier_entity, with_both_conns, with_both_conns_maybe_for, EntityRef,
+};
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
 use crate::services::wardrobe_folder_filing::{
     file_items_to_folder, FileItemsToFolderRequest, FolderComponentMode, FolderFilingAction,
@@ -88,6 +90,17 @@ use crate::wardrobe_instructions::{
 };
 
 use super::types::{db_error_response, ErrorKind, Response};
+
+/// P4.166 (dogfood #156): the tier's entity gate — see
+/// [`tier_entity`].
+fn store_entity(scope: WardrobeScope, id: Option<&str>) -> Option<EntityRef> {
+    let project_or_group = match scope {
+        WardrobeScope::Project => Some(true),
+        WardrobeScope::Group => Some(false),
+        WardrobeScope::Character | WardrobeScope::General => None,
+    };
+    tier_entity(project_or_group, id)
+}
 
 /// v4 `WardrobeRouteConfig` — the tier, and its log prefix (the `logIdKey`
 /// follows from the tier; [`tier_line!`]).
@@ -729,21 +742,58 @@ pub async fn list_store_items(
     include_archived: bool,
 ) -> Response {
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    match with_both_conns(db, move |main, mount| {
-        list_in(
-            main,
-            mount,
-            &cfg,
-            id.as_deref(),
-            &uid,
-            false,
-            include_archived,
-        )
-    })
+    match with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            list_in(
+                main,
+                mount,
+                &cfg,
+                id.as_deref(),
+                &uid,
+                false,
+                include_archived,
+            )
+        },
+    )
     .await
     {
         Ok(Ok(listed)) => listed_response(&cfg, listed),
         Ok(Err(r)) => r,
+        // P4.166 (dogfood #156, ruling R-A — measured): on a DEGRADED mount
+        // index v4's General list still resolves its location (the pointer
+        // lives in `instance_settings`; the folder ensure fails soft), then
+        // reads the folder through the fallback overlay — 200 with no items.
+        Err(DbError::PartitionUnavailable(_)) if cfg.scope == WardrobeScope::General => {
+            match db.read_main(crate::db::instance_settings::get_general_mount_point_id) {
+                Ok(Some(mount_point_id)) => {
+                    // The folder's two fallback reads (its documents, the
+                    // legacy JSON), one quiet DEBUG apiece.
+                    let degraded = DbError::PartitionUnavailable(
+                        crate::write_partition::WriteDbTarget::MountIndex,
+                    );
+                    for _ in 0..2 {
+                        crate::db::fallback::log_mount_index_unavailable(
+                            "doc_mount_documents",
+                            &degraded,
+                        );
+                    }
+                    tier_line!(debug, cfg, "null", "Listed wardrobe items";
+                        mountPointId = mount_point_id.as_str(),
+                        count = 0usize,
+                        context = "wardrobe",
+                    );
+                    cfg.wrap(json!({
+                        "mountPointId": mount_point_id,
+                        "wardrobeItems": [],
+                    }))
+                }
+                // An unprovisioned General has nothing in it yet (`list_in`).
+                Ok(None) => cfg.wrap(json!({ "wardrobeItems": [] })),
+                Err(e) => db_error_response(e),
+            }
+        }
         Err(e) => db_error_response(e),
     }
 }
@@ -819,9 +869,11 @@ pub async fn instructions_get_store(
     user_id: &str,
 ) -> Response {
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    match with_both_conns(db, move |main, mount| {
-        instructions_get_in(main, mount, &cfg, id.as_deref(), &uid)
-    })
+    match with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| instructions_get_in(main, mount, &cfg, id.as_deref(), &uid),
+    )
     .await
     {
         Ok(Ok((location, instructions))) => {
@@ -848,31 +900,35 @@ pub async fn instructions_set(
     };
     let (cleared, echo) = super::wardrobe::instructions_echo(instructions.as_deref());
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
-        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
-            Ok(l) => l,
-            Err(r) => {
-                if cleared && cfg.scope == WardrobeScope::General {
-                    return Ok(Err(cfg.wrap(json!({ "instructions": null }))));
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
+                Ok(l) => l,
+                Err(r) => {
+                    if cleared && cfg.scope == WardrobeScope::General {
+                        return Ok(Err(cfg.wrap(json!({ "instructions": null }))));
+                    }
+                    return Ok(Err(r));
                 }
-                return Ok(Err(r));
-            }
-        };
-        let mount_point_id = match location.writable_mount_point_id(main) {
-            Ok(mp) => mp,
-            Err(WardrobeLocationError::CharacterArchived { .. }) => {
-                return Ok(Err(Response::error(
-                    ErrorKind::Conflict,
-                    "Character is archived; dressing instructions cannot be edited",
-                )))
-            }
-            Err(WardrobeLocationError::Db(e)) => return Err(e),
-            Err(_) => return Ok(Err(internal_server_error())),
-        };
-        let links = DocMountFileLinksRepository::new(mount);
-        write_wardrobe_instructions_file(&links, &mount_point_id, instructions.as_deref())?;
-        Ok(Ok((location, mount_point_id)))
-    })
+            };
+            let mount_point_id = match location.writable_mount_point_id(main) {
+                Ok(mp) => mp,
+                Err(WardrobeLocationError::CharacterArchived { .. }) => {
+                    return Ok(Err(Response::error(
+                        ErrorKind::Conflict,
+                        "Character is archived; dressing instructions cannot be edited",
+                    )))
+                }
+                Err(WardrobeLocationError::Db(e)) => return Err(e),
+                Err(_) => return Ok(Err(internal_server_error())),
+            };
+            let links = DocMountFileLinksRepository::new(mount);
+            write_wardrobe_instructions_file(&links, &mount_point_id, instructions.as_deref())?;
+            Ok(Ok((location, mount_point_id)))
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, mount_point_id))) => {
@@ -976,16 +1032,20 @@ async fn folder_write<T: Send + 'static, E: WriteRefusal>(
     op: impl FnOnce(&Connection, &Connection, &WardrobeLocation) -> Result<T, E> + Send + 'static,
 ) -> Result<Result<(WardrobeLocation, T), Response>, DbError> {
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    with_both_conns(db, move |main, mount| {
-        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
-            Ok(l) => l,
-            Err(r) => return Ok(Err(r)),
-        };
-        match op(main, mount, &location) {
-            Ok(v) => Ok(Ok((location, v))),
-            Err(e) => Ok(Err(e.into_response())),
-        }
-    })
+    with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
+                Ok(l) => l,
+                Err(r) => return Ok(Err(r)),
+            };
+            match op(main, mount, &location) {
+                Ok(v) => Ok(Ok((location, v))),
+                Err(e) => Ok(Err(e.into_response())),
+            }
+        },
+    )
     .await
 }
 
@@ -1248,36 +1308,40 @@ pub async fn create(
         folder: fields.folder,
     };
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
-        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
-            Ok(l) => l,
-            Err(r) => return Ok(Err(r)),
-        };
-        let has_components = create_body
-            .component_item_ids
-            .as_ref()
-            .is_some_and(|c| !c.is_empty());
-        let lookup = if has_components {
-            Some(component_lookup_for(main, mount, &location, &[])?)
-        } else {
-            None
-        };
-        let stored = match create_item(
-            main,
-            mount,
-            &location,
-            &create_body,
-            CreateItemOptions {
-                lookup: lookup.as_ref(),
-                preserve: None,
-            },
-        ) {
-            Ok(s) => s,
-            Err(e) => return Ok(Err(write_error_response(e))),
-        };
-        let echo = serialize_one(main, item_create_value(&stored), &location.origin);
-        Ok(Ok((location, stored, echo)))
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, true)? {
+                Ok(l) => l,
+                Err(r) => return Ok(Err(r)),
+            };
+            let has_components = create_body
+                .component_item_ids
+                .as_ref()
+                .is_some_and(|c| !c.is_empty());
+            let lookup = if has_components {
+                Some(component_lookup_for(main, mount, &location, &[])?)
+            } else {
+                None
+            };
+            let stored = match create_item(
+                main,
+                mount,
+                &location,
+                &create_body,
+                CreateItemOptions {
+                    lookup: lookup.as_ref(),
+                    preserve: None,
+                },
+            ) {
+                Ok(s) => s,
+                Err(e) => return Ok(Err(write_error_response(e))),
+            };
+            let echo = serialize_one(main, item_create_value(&stored), &location.origin);
+            Ok(Ok((location, stored, echo)))
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, stored, echo))) => {
@@ -1402,58 +1466,64 @@ pub async fn item_update(
         user_id.to_string(),
         item_id.to_string(),
     );
-    let out = with_both_conns(db, move |main, mount| {
-        let (location, current) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-            Ok(found) => found,
-            Err(r) => return Ok(Err(r)),
-        };
-        let Ok(fields) = parse_item_fields(&body, true) else {
-            return Ok(Err(validation_error()));
-        };
-        match image_choice_error(
-            main,
-            &current.id,
-            fields.image_file_id.as_ref().and_then(|o| o.as_deref()),
-        ) {
-            Ok(None) => {}
-            Ok(Some(message)) => return Ok(Err(bad_request(message))),
-            Err(_) => return Ok(Err(internal_server_error())),
-        }
-        // Only a composite whose composition is being edited needs its parts.
-        let composite = !fields
-            .component_item_ids
-            .as_deref()
-            .unwrap_or(&current.component_item_ids)
-            .is_empty();
-        let touches_composition = fields.component_item_ids.is_some() || fields.types.is_some();
-        let lookup = if composite && touches_composition {
-            Some(component_lookup_for(main, mount, &location, &[])?)
-        } else {
-            None
-        };
-        let archived = fields.archived;
-        let patch = ItemPatch {
-            title: fields.title,
-            types: fields.types,
-            component_item_ids: fields.component_item_ids,
-            description: fields.description,
-            image_prompt: fields.image_prompt,
-            appropriateness: fields.appropriateness,
-            is_default: fields.is_default,
-            replace: fields.replace,
-            image_file_id: fields.image_file_id,
-            migrated_from_clothing_record_id: None,
-            folder: fields.folder,
-            archived,
-        };
-        let item = match update_item(main, mount, &location, &current, &patch, lookup.as_ref()) {
-            Ok(Some(item)) => item,
-            Ok(None) => return Ok(Err(not_found(cfg.item_label()))),
-            Err(e) => return Ok(Err(write_error_response(e))),
-        };
-        let echo = serialize_one(main, item_read_value(&item), &location.origin);
-        Ok(Ok((location, item, archived, echo)))
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let (location, current) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)?
+            {
+                Ok(found) => found,
+                Err(r) => return Ok(Err(r)),
+            };
+            let Ok(fields) = parse_item_fields(&body, true) else {
+                return Ok(Err(validation_error()));
+            };
+            match image_choice_error(
+                main,
+                &current.id,
+                fields.image_file_id.as_ref().and_then(|o| o.as_deref()),
+            ) {
+                Ok(None) => {}
+                Ok(Some(message)) => return Ok(Err(bad_request(message))),
+                Err(_) => return Ok(Err(internal_server_error())),
+            }
+            // Only a composite whose composition is being edited needs its parts.
+            let composite = !fields
+                .component_item_ids
+                .as_deref()
+                .unwrap_or(&current.component_item_ids)
+                .is_empty();
+            let touches_composition = fields.component_item_ids.is_some() || fields.types.is_some();
+            let lookup = if composite && touches_composition {
+                Some(component_lookup_for(main, mount, &location, &[])?)
+            } else {
+                None
+            };
+            let archived = fields.archived;
+            let patch = ItemPatch {
+                title: fields.title,
+                types: fields.types,
+                component_item_ids: fields.component_item_ids,
+                description: fields.description,
+                image_prompt: fields.image_prompt,
+                appropriateness: fields.appropriateness,
+                is_default: fields.is_default,
+                replace: fields.replace,
+                image_file_id: fields.image_file_id,
+                migrated_from_clothing_record_id: None,
+                folder: fields.folder,
+                archived,
+            };
+            let item = match update_item(main, mount, &location, &current, &patch, lookup.as_ref())
+            {
+                Ok(Some(item)) => item,
+                Ok(None) => return Ok(Err(not_found(cfg.item_label()))),
+                Err(e) => return Ok(Err(write_error_response(e))),
+            };
+            let echo = serialize_one(main, item_read_value(&item), &location.origin);
+            Ok(Ok((location, item, archived, echo)))
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, item, archived, echo))) => {
@@ -1505,7 +1575,7 @@ pub async fn item_delete(
         user_id.to_string(),
         item_id.to_string(),
     );
-    let cleaned = with_both_conns(db, {
+    let cleaned = with_both_conns_maybe_for(db, store_entity(cfg.scope, id.as_deref()), {
         let iid = iid.clone();
         move |main, mount| {
             let (location, _) = match find_item(main, mount, &cfg, id.as_deref(), &uid, &iid)? {

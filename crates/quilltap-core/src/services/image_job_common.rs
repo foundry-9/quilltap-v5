@@ -20,6 +20,7 @@ use crate::cheap_llm::{
     get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
 };
 use crate::db::runtime::Db;
+use crate::db::DbError;
 use crate::image_gen::image_attempt::{
     make_logged_image_attempt, ImageAttemptParams, LoggedImageAttemptOptions, PrebuiltImageParams,
 };
@@ -442,22 +443,227 @@ pub(crate) fn owned_field(v: &Value, key: &str) -> Option<String> {
 
 /// Read a Connection instance for both DBs and run a closure needing both (via a
 /// serialized write on the writer thread — the established dual-read pattern).
-pub(crate) async fn with_both_conns<T, F>(db: &Db, f: F) -> Result<T, crate::db::DbError>
+///
+/// P4.166 (dogfood #156): a DEGRADED (or absent) mount index refuses with the
+/// neutral [`DbError::PartitionUnavailable`]`(MountIndex)` — whose text through
+/// [`crate::db::fallback::error_text`] is v4's guard sentence `Mount index
+/// database is in degraded mode` (`mount-index-guard.ts:20`), the error every
+/// v4 mount write throws — and the api edge answers it with v4's middleware
+/// 500 `Internal server error` ([`crate::api::types::db_error_response`]). It
+/// had refused with an `Internal` naming the image job, which every one of the
+/// 88 callers then answered as a 500 carrying that sentence. An entity-first
+/// route uses [`with_both_conns_for`] instead.
+///
+/// [`DbError::PartitionUnavailable`]: crate::db::DbError::PartitionUnavailable
+pub(crate) async fn with_both_conns<T, F>(db: &Db, f: F) -> Result<T, DbError>
 where
     T: Send + 'static,
-    F: FnOnce(&Connection, &Connection) -> Result<T, crate::db::DbError> + Send + 'static,
+    F: FnOnce(&Connection, &Connection) -> Result<T, DbError> + Send + 'static,
 {
     db.write(move |writers| {
         let mount = writers
             .mount_index()
-            .ok_or_else(|| {
-                crate::db::DbError::Internal(
-                    "image job requires the mount-index database".to_string(),
-                )
-            })?
+            .ok_or(DbError::PartitionUnavailable(
+                crate::write_partition::WriteDbTarget::MountIndex,
+            ))?
             .connection();
         let main = writers.main().connection();
         f(main, mount)
+    })
+    .await
+}
+
+/// [`with_both_conns`] for a caller whose ONLY mount-index use is a FAIL-SOFT
+/// read (P4.166, survey class C2 — the equip / rollback routes' wearable pool):
+/// `f` gets `None` on a degraded partition and answers as v4's fallback reads
+/// would (`crate::wearable_pool::load_wearable_pool_degraded`), instead of the
+/// neutral refusal.
+pub(crate) async fn with_main_and_mount_if_open<T, F>(db: &Db, f: F) -> Result<T, DbError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Connection, Option<&Connection>) -> Result<T, DbError> + Send + 'static,
+{
+    db.write(move |writers| {
+        let mount = writers.mount_index().map(|w| w.connection());
+        f(writers.main().connection(), mount)
+    })
+    .await
+}
+
+/// The store-backed entity an entity-first route loads before anything else
+/// (P4.166, dogfood #156) — the id is the PATH id, read from main's slim row.
+#[derive(Debug, Clone)]
+pub(crate) enum EntityRef {
+    Project(String),
+    Group(String),
+    Character(String),
+}
+
+impl EntityRef {
+    fn label(&self) -> &'static str {
+        match self {
+            EntityRef::Project(_) => "project",
+            EntityRef::Group(_) => "group",
+            EntityRef::Character(_) => "character",
+        }
+    }
+
+    fn id(&self) -> &str {
+        match self {
+            EntityRef::Project(id) | EntityRef::Group(id) | EntityRef::Character(id) => id,
+        }
+    }
+
+    /// The slim row's store pointer: `Some(pointer)` when the row exists
+    /// (`pointer` its `officialMountPointId` / `characterDocumentMountPointId`,
+    /// `None` when NULL), `None` when it does not.
+    fn store_pointer(&self, main: &Connection) -> Result<Option<Option<String>>, DbError> {
+        let sql = match self {
+            EntityRef::Project(_) => {
+                r#"SELECT "officialMountPointId" FROM "projects" WHERE "id" = ?1"#
+            }
+            EntityRef::Group(_) => r#"SELECT "officialMountPointId" FROM "groups" WHERE "id" = ?1"#,
+            EntityRef::Character(_) => {
+                r#"SELECT "characterDocumentMountPointId" FROM "characters" WHERE "id" = ?1"#
+            }
+        };
+        match main.query_row(sql, [self.id()], |r| r.get::<_, Option<String>>(0)) {
+            // An empty pointer names no store (v4's `linkedMountId` reads it
+            // falsy).
+            Ok(pointer) => Ok(Some(pointer.filter(|p| !p.is_empty()))),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// How many `doc_mount_documents` reads v4's overlay makes for this entity
+    /// before it sees the keystone missing — each one `withRawDb`'s quiet
+    /// DEBUG on a degraded partition (measured through v4's REAL routes:
+    /// `loadStoreFiles` reads the four overlay files; the vault overlay's
+    /// `loadVaultFileMaps` the nine single files + the Prompts / Scenarios
+    /// folders).
+    fn overlay_reads(&self) -> usize {
+        match self {
+            EntityRef::Project(_) | EntityRef::Group(_) => {
+                crate::db::document_store_overlay::ALL_OVERLAY_PATHS.len()
+            }
+            EntityRef::Character(_) => {
+                crate::db::vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS.len() + 2
+            }
+        }
+    }
+}
+
+/// The tier factories' entity: a project / group tier resolves its owner
+/// through the overlay first (`findById` — v4's 503 on a degraded mount, as
+/// measured on the project wardrobe list / inventory create and the group
+/// wardrobe create); the character tier resolves its vault from the RAW row
+/// and General reads `instance_settings`, so neither has an entity gate (a
+/// mount write there is the neutral refusal — v4's 500, measured on the
+/// character wardrobe create).
+pub(crate) fn tier_entity(project_or_group: Option<bool>, id: Option<&str>) -> Option<EntityRef> {
+    let id = id?.to_string();
+    match project_or_group? {
+        true => Some(EntityRef::Project(id)),
+        false => Some(EntityRef::Group(id)),
+    }
+}
+
+/// [`with_both_conns_for`] when the route has an entity gate, else
+/// [`with_both_conns`] (the tier factories, [`tier_entity`]).
+pub(crate) async fn with_both_conns_maybe_for<T, F>(
+    db: &Db,
+    entity: Option<EntityRef>,
+    f: F,
+) -> Result<T, DbError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Connection, &Connection) -> Result<T, DbError> + Send + 'static,
+{
+    match entity {
+        Some(entity) => with_both_conns_for(db, entity, f).await,
+        None => with_both_conns(db, f).await,
+    }
+}
+
+/// [`with_both_conns`] for an ENTITY-FIRST route (P4.166, dogfood #156 —
+/// survey class C1): the route's first act in v4 is `repos.<entity>.findById`,
+/// whose overlay reads are FALLBACK reads, so on a degraded mount index the
+/// keystone reads as missing and the route answers v4's contextful 503
+/// (`Project` / `Group document store unavailable`, `Character vault
+/// unavailable` — `lib/api/middleware/context.ts:176-205`) instead of reaching
+/// any mount write. With the mount writer present this IS `with_both_conns`.
+/// Degraded:
+///
+/// - a store-backed entity (a project / group row — v4's overlay refuses even
+///   a NULL pointer — or a character whose raw row names a vault) →
+///   [`DbError::StoreUnavailable`] after v4's per-read DEBUG
+///   ([`crate::db::fallback::log_mount_index_unavailable`], the chat PUT
+///   gate's shape in `api/salon.rs`);
+/// - an ABSENT row, or a VAULT-LESS character (ruling R-B: only a raw row with
+///   `characterDocumentMountPointId` raises `CharacterVaultUnavailableError`)
+///   → `f` runs over an EMPTY in-memory connection standing in for the
+///   degraded partition: every swapped site reads main's row first, so an
+///   absent row answers its own not-found and a vault-less character proceeds
+///   as v4's does (measured: a vault-less favorite is v4's 200). A statement
+///   that does reach the stand-in finds no table — v4's mount guard throw —
+///   and answers the neutral refusal, as [`with_both_conns`] does.
+pub(crate) async fn with_both_conns_for<T, F>(
+    db: &Db,
+    entity: EntityRef,
+    f: F,
+) -> Result<T, DbError>
+where
+    T: Send + 'static,
+    F: FnOnce(&Connection, &Connection) -> Result<T, DbError> + Send + 'static,
+{
+    db.write(move |writers| {
+        let main = writers.main().connection();
+        if let Some(mount) = writers.mount_index() {
+            return f(main, mount.connection());
+        }
+        let degraded =
+            DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex);
+        let pointer = entity.store_pointer(main)?;
+        let store_backed = match (&entity, &pointer) {
+            (_, None) => false,
+            (EntityRef::Character(_), Some(vault)) => vault.is_some(),
+            (_, Some(_)) => true,
+        };
+        if store_backed {
+            let mount_point_id = pointer.flatten();
+            // v4's overlay reads its files only when the row names a store;
+            // a NULL pointer refuses before any read.
+            if mount_point_id.is_some() {
+                for _ in 0..entity.overlay_reads() {
+                    crate::db::fallback::log_mount_index_unavailable(
+                        "doc_mount_documents",
+                        &degraded,
+                    );
+                }
+            }
+            let detail = match (&entity, &mount_point_id) {
+                (_, Some(_)) => "properties.json missing".to_string(),
+                (EntityRef::Character(_), None) => {
+                    "characterDocumentMountPointId is null".to_string()
+                }
+                (_, None) => "officialMountPointId is null".to_string(),
+            };
+            return Err(
+                crate::db::document_store_overlay::OverlayError::Unavailable {
+                    entity_label: entity.label(),
+                    id: entity.id().to_string(),
+                    mount_point_id,
+                    detail,
+                }
+                .into_db(),
+            );
+        }
+        let stand_in = Connection::open_in_memory()?;
+        f(main, &stand_in).map_err(|e| match e {
+            DbError::Sqlite(ref s) if s.to_string().contains("no such table") => degraded,
+            other => other,
+        })
     })
     .await
 }
@@ -813,5 +1019,173 @@ mod tests {
             "{}",
             hit[0]
         );
+    }
+}
+
+/// P4.166 (dogfood #156) — the degraded-mount gates. The route-level answers
+/// are differential (`degraded_mount_routes_equivalence`); these pin the
+/// gates' own arms over a main partition with no mount-index writer.
+#[cfg(test)]
+mod degraded_gate_tests {
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::db::Writer;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A main partition holding one row per arm, and NO mount index.
+    fn degraded_db(dir: &std::path::Path) -> Db {
+        let main = dir.join("main.db");
+        {
+            let w = Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    r#"CREATE TABLE "projects" ("id" TEXT PRIMARY KEY, "officialMountPointId" TEXT);
+                       CREATE TABLE "groups" ("id" TEXT PRIMARY KEY, "officialMountPointId" TEXT);
+                       CREATE TABLE "characters" ("id" TEXT PRIMARY KEY, "characterDocumentMountPointId" TEXT);
+                       INSERT INTO "projects" VALUES ('p1', 'mp-p1'), ('p-null', NULL);
+                       INSERT INTO "groups" VALUES ('g1', 'mp-g1');
+                       INSERT INTO "characters" VALUES ('c-vault', 'mp-c'), ('c-bare', NULL), ('c-empty', '');"#,
+                )
+                .unwrap();
+        }
+        Db::open(
+            DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    fn store_refusal(e: DbError) -> (&'static str, String, Option<String>, String) {
+        match e {
+            DbError::StoreUnavailable {
+                entity_label,
+                id,
+                mount_point_id,
+                message,
+            } => (entity_label, id, mount_point_id, message),
+            other => panic!("expected StoreUnavailable, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_neutral_refusal_reads_v4s_guard_sentence() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = degraded_db(dir.path());
+        let e = with_both_conns(&db, |_, _| Ok(())).await.unwrap_err();
+        assert!(matches!(
+            e,
+            DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex)
+        ));
+        assert_eq!(
+            crate::db::fallback::error_text(&e),
+            "Mount index database is in degraded mode"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_store_backed_entity_refuses_as_v4s_overlay() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = degraded_db(dir.path());
+        let ran = |_: &Connection, _: &Connection| -> Result<(), DbError> {
+            panic!("the closure must not run for a store-backed entity")
+        };
+        let (label, id, mp, message) = store_refusal(
+            with_both_conns_for(&db, EntityRef::Project("p1".into()), ran)
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(
+            (label, id.as_str(), mp.as_deref()),
+            ("project", "p1", Some("mp-p1"))
+        );
+        assert_eq!(
+            message,
+            "Project p1 has no usable document store (officialMountPointId=mp-p1): properties.json missing"
+        );
+        // A NULL pointer refuses too (v4's overlay), with v4's detail.
+        let (_, _, mp, message) = store_refusal(
+            with_both_conns_for(&db, EntityRef::Project("p-null".into()), ran)
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(mp, None);
+        assert!(
+            message.ends_with("officialMountPointId is null"),
+            "{message}"
+        );
+        let (label, ..) = store_refusal(
+            with_both_conns_for(&db, EntityRef::Group("g1".into()), ran)
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(label, "group");
+        let (label, id, mp, message) = store_refusal(
+            with_both_conns_for(&db, EntityRef::Character("c-vault".into()), ran)
+                .await
+                .unwrap_err(),
+        );
+        assert_eq!(
+            (label, id.as_str(), mp.as_deref()),
+            ("character", "c-vault", Some("mp-c"))
+        );
+        assert_eq!(
+            message,
+            "Character c-vault has no usable vault (characterDocumentMountPointId=mp-c): properties.json missing"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_absent_or_vault_less_entity_runs_over_the_stand_in() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = degraded_db(dir.path());
+        for entity in [
+            EntityRef::Project("missing".into()),
+            EntityRef::Character("missing".into()),
+            EntityRef::Character("c-bare".into()),
+            // An empty pointer names no vault (v4 reads it falsy).
+            EntityRef::Character("c-empty".into()),
+        ] {
+            let label = format!("{entity:?}");
+            let main_rows = with_both_conns_for(&db, entity, |main, _| {
+                Ok(
+                    main.query_row(r#"SELECT COUNT(*) FROM "characters""#, [], |r| {
+                        r.get::<_, i64>(0)
+                    })?,
+                )
+            })
+            .await
+            .unwrap_or_else(|e| panic!("{label}: {e:?}"));
+            assert_eq!(main_rows, 3, "{label}: main is the real partition");
+        }
+        // A statement that reaches the stand-in is v4's guard throw: the
+        // neutral refusal.
+        let e = with_both_conns_for(&db, EntityRef::Character("c-bare".into()), |_, mount| {
+            Ok(
+                mount.query_row(r#"SELECT COUNT(*) FROM "doc_mount_documents""#, [], |r| {
+                    r.get::<_, i64>(0)
+                })?,
+            )
+        })
+        .await
+        .unwrap_err();
+        assert_eq!(
+            crate::db::fallback::error_text(&e),
+            "Mount index database is in degraded mode"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fail_soft_reader_sees_no_mount() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = degraded_db(dir.path());
+        let saw = with_main_and_mount_if_open(&db, |_, mount| Ok(mount.is_none()))
+            .await
+            .unwrap();
+        assert!(saw);
     }
 }

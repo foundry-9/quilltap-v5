@@ -26,7 +26,7 @@ use crate::services::character_enrichment::enrich_with_default_image;
 use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{with_both_conns, with_both_conns_for, EntityRef};
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
@@ -569,7 +569,7 @@ enum ProjectUpdateOutcome {
 
 pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response {
     let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(ProjectUpdateOutcome::NotFound);
@@ -630,7 +630,7 @@ pub async fn project_update(db: &Db, project_id: &str, patch: Value) -> Response
 /// links are filtered at read time). The official store is orphaned.
 pub async fn project_delete(db: &Db, project_id: &str) -> Response {
     let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(false);
@@ -662,7 +662,17 @@ pub async fn project_delete(db: &Db, project_id: &str) -> Response {
             Response::Project(json!({ "success": true }))
         }
         Ok(false) => not_found("Project"),
-        Err(e) => db_error_response(e),
+        // v4 `project-crud.ts:152-154`: the handler's own catch wraps the
+        // `findById` too, so a broken store (and a degraded mount index —
+        // P4.166, measured) is its 500, not the middleware's 503.
+        Err(e) => {
+            tracing::error!(
+                projectId = %project_id,
+                error = %crate::db::fallback::error_text(&e),
+                "[Projects v1] Error deleting project"
+            );
+            internal("Failed to delete project")
+        }
     }
 }
 
@@ -742,7 +752,7 @@ fn uuid_gate(field: &str, value: &str) -> Option<Response> {
 pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str) -> Response {
     let pid = project_id.to_string();
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(Err(not_found("Project")));
@@ -796,7 +806,7 @@ pub async fn project_character_add(db: &Db, project_id: &str, character_id: &str
 pub async fn project_character_remove(db: &Db, project_id: &str, character_id: &str) -> Response {
     let pid = project_id.to_string();
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(Err(not_found("Project")));
@@ -958,7 +968,7 @@ pub fn project_chat_list(
 pub async fn project_chat_add(db: &Db, project_id: &str, chat_id: &str) -> Response {
     let pid = project_id.to_string();
     let cid = chat_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
@@ -996,7 +1006,7 @@ pub async fn project_chat_add(db: &Db, project_id: &str, chat_id: &str) -> Respo
 pub async fn project_chat_remove(db: &Db, project_id: &str, chat_id: &str) -> Response {
     let pid = project_id.to_string();
     let cid = chat_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
@@ -1051,7 +1061,7 @@ pub fn project_state_get(db: &Db, project_id: &str) -> Response {
 pub async fn project_state_set(db: &Db, project_id: &str, state: Value) -> Response {
     let pid = project_id.to_string();
     let state_clone = state.clone();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(None);
@@ -1076,7 +1086,7 @@ pub async fn project_state_set(db: &Db, project_id: &str, state: Value) -> Respo
 /// v4 reset-state: `{ success, previousState }`.
 pub async fn project_state_reset(db: &Db, project_id: &str) -> Response {
     let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(None);
@@ -1112,7 +1122,7 @@ pub async fn project_tool_settings_update(
     let pid = project_id.to_string();
     let dt = disabled_tools.clone();
     let dtg = disabled_tool_groups.clone();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(false);
@@ -1293,7 +1303,7 @@ pub async fn project_aesthetic_set(
     // v4 `aesthetic.ts:65`'s `content.trim().length` — JS trim, UTF-16 units.
     let trimmed_len = crate::jsstr::utf16_len(crate::jsstr::js_trim(&content));
     let pid = project_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         let Some(project) = repo.find_by_id(&pid).map_err(overlay_to_db)? else {
             return Ok(Err(not_found("Project")));
@@ -1360,7 +1370,7 @@ pub fn project_mount_point_list(db: &Db, project_id: &str) -> Response {
 pub async fn project_mount_point_link(db: &Db, project_id: &str, mount_point_id: &str) -> Response {
     let pid = project_id.to_string();
     let mp_id = mount_point_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
@@ -1399,7 +1409,7 @@ pub async fn project_mount_point_unlink(
 ) -> Response {
     let pid = project_id.to_string();
     let mp_id = mount_point_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
@@ -1813,7 +1823,7 @@ pub fn project_file_list(db: &Db, project_id: &str) -> Response {
 pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Response {
     let pid = project_id.to_string();
     let fid = file_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));
@@ -1856,7 +1866,7 @@ pub async fn project_file_add(db: &Db, project_id: &str, file_id: &str) -> Respo
 pub async fn project_file_remove(db: &Db, project_id: &str, file_id: &str) -> Response {
     let pid = project_id.to_string();
     let fid = file_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Project(pid.clone()), move |main, mount| {
         let repo = ProjectsRepository::new(main, mount);
         if repo.find_by_id(&pid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Project")));

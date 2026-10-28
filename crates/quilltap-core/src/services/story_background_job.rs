@@ -301,7 +301,7 @@ where
         Ok(out)
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::db::fallback::error_text(&e))?;
 
     // Scene state freshness gate (<=5 messages).
     let message_count = chat
@@ -458,7 +458,7 @@ where
         build_appearance_inputs(main, mount, &chat_id_inputs, &chars_for_inputs)
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::db::fallback::error_text(&e))?;
 
     // Uncensored cheap selection (from the Concierge desk's
     // `imagePromptProfileId` — v4 `3b463d6b1` moved it out of `cheapLLMSettings`).

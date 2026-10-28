@@ -36,7 +36,7 @@ use crate::services::character_enrichment;
 use crate::services::dangerous_content::chat_override::{
     get_concierge_provenance, get_concierge_reason, get_concierge_state,
 };
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{with_both_conns, with_both_conns_for, EntityRef};
 use crate::services::scriptorium_status::derive_scriptorium_status;
 
 use super::types::{db_error_response, ErrorKind, Response};
@@ -921,7 +921,7 @@ fn merge_update_echo(mut pre: Value, patch: &[(&str, Value)]) -> Value {
 /// pre-update character `setFavorite`→`update` returns).
 pub async fn character_favorite(db: &Db, _user_id: &str, character_id: &str) -> Response {
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
             None => return Ok(Err(not_found("Character"))),
@@ -937,6 +937,18 @@ pub async fn character_favorite(db: &Db, _user_id: &str, character_id: &str) -> 
         )))
     })
     .await;
+    if let Ok(Ok(character)) = &out {
+        // v4 `post.ts:160-163` (P4.166 — measured on the degraded row, never
+        // ported): after the write, the UPDATED row's value.
+        tracing::info!(
+            characterId = character_id,
+            isFavorite = character
+                .get("isFavorite")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            "[Characters v1] Favorite toggled"
+        );
+    }
     merged_character_response(out)
 }
 
@@ -947,7 +959,7 @@ pub async fn character_toggle_controlled_by(
     character_id: &str,
 ) -> Response {
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
             None => return Ok(Err(not_found("Character"))),
@@ -971,7 +983,7 @@ pub async fn character_toggle_controlled_by(
 /// `{ character }`.
 pub async fn character_toggle_carina(db: &Db, _user_id: &str, character_id: &str) -> Response {
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
             None => return Ok(Err(not_found("Character"))),
@@ -1011,7 +1023,7 @@ pub async fn character_set_default_partner(
 ) -> Response {
     let cid = character_id.to_string();
     let partner_id = partner_id.map(str::to_string);
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         // Ownership gate (v4 `findById(id)` first).
         if characters_read::find_by_id(main, mount, &cid)?.is_none() {
             return Ok(Err(not_found("Character")));
@@ -1064,7 +1076,7 @@ pub async fn character_avatar(
 ) -> Response {
     let cid = character_id.to_string();
     let image_id = image_id.map(str::to_string);
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         // Ownership gate + the pre-update read the merged echo is built from.
         let pre = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
@@ -1130,7 +1142,7 @@ pub async fn character_add_tag(
 ) -> Response {
     let cid = character_id.to_string();
     let tid = tag_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
             None => return Ok(Err(not_found("Character"))),
@@ -1179,7 +1191,7 @@ pub async fn character_remove_tag(
 ) -> Response {
     let cid = character_id.to_string();
     let tid = tag_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match characters_read::find_by_id(main, mount, &cid)? {
             Some(c) => c,
             None => return Ok(Err(not_found("Character"))),
@@ -2409,7 +2421,7 @@ pub async fn character_prompt_create(
         name.to_string(),
         content.to_string(),
     );
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2437,7 +2449,7 @@ pub async fn character_prompt_update(
 ) -> Response {
     let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
     let (name, content) = (name.map(str::to_string), content.map(str::to_string));
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match require_character_owned(main, mount, &cid)? {
             Ok(c) => c,
             Err(r) => return Ok(Err(r)),
@@ -2472,7 +2484,7 @@ pub async fn character_prompt_delete(
     prompt_id: &str,
 ) -> Response {
     let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         let character = match require_character_owned(main, mount, &cid)? {
             Ok(c) => c,
             Err(r) => return Ok(Err(r)),
@@ -2500,7 +2512,7 @@ pub async fn character_prompt_set_default(
     prompt_id: &str,
 ) -> Response {
     let (cid, pid) = (character_id.to_string(), prompt_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2536,7 +2548,7 @@ pub async fn character_scenario_create(
         title.to_string(),
         content.to_string(),
     );
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2569,7 +2581,7 @@ pub async fn character_scenario_update(
     };
     let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
     let (title, content) = (title.map(str::to_string), content.map(str::to_string));
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2601,7 +2613,7 @@ pub async fn character_scenario_delete(
     scenario_id: &str,
 ) -> Response {
     let (cid, sid) = (character_id.to_string(), scenario_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2629,7 +2641,7 @@ pub async fn character_plugin_data_upsert(
     data: Value,
 ) -> Response {
     let (cid, plugin) = (character_id.to_string(), plugin_name.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }
@@ -2661,7 +2673,7 @@ pub async fn character_plugin_data_delete(
     plugin_name: &str,
 ) -> Response {
     let (cid, plugin) = (character_id.to_string(), plugin_name.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Character(cid.clone()), move |main, mount| {
         if let Err(r) = require_character_owned(main, mount, &cid)? {
             return Ok(Err(r));
         }

@@ -62,6 +62,16 @@ The paginated memory list now treats `limit=0` as 50, as v4's `parseInt(limit) |
 
 Tests: `memories_routes_equivalence` gains three rows (`create_offset_occurred_at_embedding_failed_502`, `create_offset_occurred_at_fold`, `list_limit_zero`); the oracle case records the repository's ERROR lines as `repoLogs`; the new `memory_row_schema_refusal_lines` binary pins the three writer-thread lines and the 400's `details` bytes against v4. Unit seeds with legacy ids (`m-1`, `char-a`) plant through a test-only `plant_unvalidated`.
 
+#### 2026-10-27 — fix(core): P4.166 — a degraded mount index answers what v4 answers (dogfood #156 / #157, C.11)
+
+_Versions: core 0.0.1337._
+
+Dogfood #156, fixed by class. `with_both_conns` now refuses a degraded mount index with the neutral `PartitionUnavailable(MountIndex)`. Its text through `fallback::error_text` is v4's guard sentence, `Mount index database is in degraded mode`, and `db_error_response` answers it as v4's middleware 500 `Internal server error`. Before, every one of the 88 callers answered 500 `image job requires the mount-index database`. A new entity gate, `with_both_conns_for(db, EntityRef, f)`, replaces it at 38 entity-first sites (projects 14, groups 8, characters 16) and, for the project and group tiers only, at the 13 tier-factory sites (wardrobe 7, inventory 6). It answers v4's contextful 503 with the overlay's quiet DEBUGs for a store-backed row. An absent row or a vault-less character runs against an empty stand-in connection, so a vault-less favorite succeeds, as it does in v4.
+
+Measured fail-soft arms: the General wardrobe and inventory lists (200 with no items), the wardrobe-history GET (156.a; 200 with every slot missing), the equip and rollback routes over an empty wearable pool (C2), the Workbench seat (156.b; 422 for a vaulted character, 200 for a vault-less one), the transfers GET (200 with only vault-less characters), and the scenarios handlers' own catch (500 `Failed to list project scenarios` with v4's ERROR). Project delete now answers v4's own catch (500 `Failed to delete project` with its ERROR). The `[Characters v1] Favorite toggled` INFO is ported. The C4 jobs fail with the guard sentence.
+
+#157: `Failed to log LLM call` carries v4's `{userId, type, provider, model, error}`, with `error` as the message string through `errorJson`. C.11: both `[WardrobeTransfers v1]` catch ERRORs are ported. All of this is pinned by the new `degraded_mount_routes_equivalence` family over v4's real routes on a degraded clone.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._

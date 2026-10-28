@@ -76,7 +76,7 @@ use crate::inventory::types::{
     parse_inventory_folder_path_body, parse_rename_inventory_folder_body,
     parse_update_inventory_body, InventoryFields, InventoryRecord, InventoryScope,
 };
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{tier_entity, with_both_conns_maybe_for, EntityRef};
 
 use super::types::{db_error_response, ErrorKind, InventoryContainer, Response};
 use super::zod_issues::ZodIssue;
@@ -102,6 +102,18 @@ impl InventoryRouteConfig {
             InventoryScope::General => "Quilltap General",
         }
     }
+}
+
+/// P4.166 (dogfood #156): the tier's entity gate — see [`tier_entity`] (the
+/// project inventory create measured at v4's 503; the character tier at the
+/// neutral 500).
+fn store_entity(scope: InventoryScope, id: Option<&str>) -> Option<EntityRef> {
+    let project_or_group = match scope {
+        InventoryScope::Project => Some(true),
+        InventoryScope::Group => Some(false),
+        InventoryScope::Character | InventoryScope::General => None,
+    };
+    tier_entity(project_or_group, id)
 }
 
 /// The tier's factory config for a wire scope (the four route files' configs:
@@ -524,6 +536,37 @@ fn list(
             Response::Inventory(json!({ "mountPointId": location.mount_point_id, "items": items }))
         }
         Ok(Err(r)) => r,
+        // P4.166 (dogfood #156, measured): on a DEGRADED mount index v4's
+        // General list still resolves its location (the pointer lives in
+        // `instance_settings`) and reads the folder through the fallback
+        // overlay — 200 with no items, as the General wardrobe list.
+        Err(DbError::PartitionUnavailable(_)) if cfg.scope == InventoryScope::General => {
+            match db.read_main(crate::db::instance_settings::get_general_mount_point_id) {
+                Ok(Some(mount_point_id)) => {
+                    // The folder's two fallback reads (its documents, the
+                    // legacy JSON), one quiet DEBUG apiece.
+                    let degraded = DbError::PartitionUnavailable(
+                        crate::write_partition::WriteDbTarget::MountIndex,
+                    );
+                    for _ in 0..2 {
+                        crate::db::fallback::log_mount_index_unavailable(
+                            "doc_mount_documents",
+                            &degraded,
+                        );
+                    }
+                    tier_line!(debug, cfg, "null", "Listed inventory";
+                        mountPointId = mount_point_id.as_str(),
+                        count = 0usize,
+                        shared = shared,
+                        includeArchived = include_archived,
+                        context = "inventory",
+                    );
+                    Response::Inventory(json!({ "mountPointId": mount_point_id, "items": [] }))
+                }
+                Ok(None) => Response::Inventory(json!({ "mountPointId": null, "items": [] })),
+                Err(e) => escaped(e),
+            }
+        }
         Err(e) => escaped(e),
     }
 }
@@ -610,16 +653,20 @@ async fn collection_write<T: Send + 'static>(
         + 'static,
 ) -> Response2<(InventoryLocation, T)> {
     let uid = user_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
-            Ok(l) => l,
-            Err(r) => return Ok(Err(Fail::from(r))),
-        };
-        match op(main, mount, &location) {
-            Ok(v) => Ok(Ok((location, v))),
-            Err(e) => Ok(Err(Fail::Refused(e))),
-        }
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, ensure)? {
+                Ok(l) => l,
+                Err(r) => return Ok(Err(Fail::from(r))),
+            };
+            match op(main, mount, &location) {
+                Ok(v) => Ok(Ok((location, v))),
+                Err(e) => Ok(Err(Fail::Refused(e))),
+            }
+        },
+    )
     .await;
     match out {
         Ok(r) => r.map_err(Fail::answer),
@@ -932,25 +979,30 @@ async fn duplicate(
         return not_found("Inventory object");
     };
     let uid = user_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
-        let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, false)? {
-            Ok(l) => l,
-            Err(r) => return Ok(Err(Fail::from(r))),
-        };
-        let Some(current) = location.find_item(mount, &item_id)? else {
-            return Ok(Err(Fail::from(not_found("Inventory object"))));
-        };
-        let made = (|| -> Result<(InventoryRecord, Value), InventoryError> {
-            let record = duplicate_inventory_item(main, mount, &location, &current)?;
-            let pool = load_pool_for_location(main, mount, &location, LoadPoolContext::default())?;
-            let item = serialize(&pool, &location, &record);
-            Ok((record, item))
-        })();
-        Ok(match made {
-            Ok((record, item)) => Ok((location, current, record, item)),
-            Err(e) => Err(Fail::Refused(e)),
-        })
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let location = match resolve_location(main, mount, &cfg, id.as_deref(), &uid, false)? {
+                Ok(l) => l,
+                Err(r) => return Ok(Err(Fail::from(r))),
+            };
+            let Some(current) = location.find_item(mount, &item_id)? else {
+                return Ok(Err(Fail::from(not_found("Inventory object"))));
+            };
+            let made = (|| -> Result<(InventoryRecord, Value), InventoryError> {
+                let record = duplicate_inventory_item(main, mount, &location, &current)?;
+                let pool =
+                    load_pool_for_location(main, mount, &location, LoadPoolContext::default())?;
+                let item = serialize(&pool, &location, &record);
+                Ok((record, item))
+            })();
+            Ok(match made {
+                Ok((record, item)) => Ok((location, current, record, item)),
+                Err(e) => Err(Fail::Refused(e)),
+            })
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, current, record, item))) => {
@@ -1130,7 +1182,7 @@ async fn item_update(
     body: Value,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_maybe_for(db, store_entity(cfg.scope, id.as_deref()), move |main, mount| {
         let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
             Ok(found) => found,
             Err(r) => return Ok(Err(Fail::from(r))),
@@ -1195,35 +1247,40 @@ async fn item_clear_override(
     body: Value,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
-        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-            Ok(found) => found,
-            Err(r) => return Ok(Fail::from(r)),
-        };
-        let body = match parse_clear_inventory_override_body(&body) {
-            Ok(b) => b,
-            Err(issues) => return Ok(Fail::from(validation_error(&issues))),
-        };
-        let fields: Vec<String> = body
-            .get("fields")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(Value::as_str)
-                    .map(str::to_string)
-                    .collect()
-            })
-            .unwrap_or_default();
-        match clear_overrides(main, mount, &location, &current, &fields) {
-            Ok(record) => Ok(Fail::from(respond_with(
-                main,
-                mount,
-                &location,
-                record.as_ref(),
-            )?)),
-            Err(e) => Ok(Fail::Refused(e)),
-        }
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let (location, current) =
+                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+                    Ok(found) => found,
+                    Err(r) => return Ok(Fail::from(r)),
+                };
+            let body = match parse_clear_inventory_override_body(&body) {
+                Ok(b) => b,
+                Err(issues) => return Ok(Fail::from(validation_error(&issues))),
+            };
+            let fields: Vec<String> = body
+                .get("fields")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default();
+            match clear_overrides(main, mount, &location, &current, &fields) {
+                Ok(record) => Ok(Fail::from(respond_with(
+                    main,
+                    mount,
+                    &location,
+                    record.as_ref(),
+                )?)),
+                Err(e) => Ok(Fail::Refused(e)),
+            }
+        },
+    )
     .await;
     match out {
         Ok(f) => f.answer(),
@@ -1240,19 +1297,24 @@ async fn item_detach(
     item_id: &str,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
-        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-            Ok(found) => found,
-            Err(r) => return Ok(Err(Fail::from(r))),
-        };
-        match detach(main, mount, &location, &current, None) {
-            Ok(record) => {
-                let response = respond_with(main, mount, &location, record.as_ref())?;
-                Ok(Ok((location, current, response)))
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let (location, current) =
+                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+                    Ok(found) => found,
+                    Err(r) => return Ok(Err(Fail::from(r))),
+                };
+            match detach(main, mount, &location, &current, None) {
+                Ok(record) => {
+                    let response = respond_with(main, mount, &location, record.as_ref())?;
+                    Ok(Ok((location, current, response)))
+                }
+                Err(e) => Ok(Err(Fail::Refused(e))),
             }
-            Err(e) => Ok(Err(Fail::Refused(e))),
-        }
-    })
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, current, response))) => {
@@ -1277,17 +1339,22 @@ async fn item_delete(
     force: bool,
 ) -> Response {
     let (uid, iid) = (user_id.to_string(), item_id.to_string());
-    let out = with_both_conns(db, move |main, mount| {
-        let (location, current) = match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
-            Ok(found) => found,
-            Err(r) => return Ok(Err(Fail::from(r))),
-        };
-        match delete_inventory_item(main, mount, &location, &current, force) {
-            Ok(result) if !result.deleted => Ok(Err(Fail::from(not_found("Inventory object")))),
-            Ok(result) => Ok(Ok((location, current, result.detached))),
-            Err(e) => Ok(Err(Fail::Refused(e))),
-        }
-    })
+    let out = with_both_conns_maybe_for(
+        db,
+        store_entity(cfg.scope, id.as_deref()),
+        move |main, mount| {
+            let (location, current) =
+                match find_record(main, mount, &cfg, id.as_deref(), &uid, &iid)? {
+                    Ok(found) => found,
+                    Err(r) => return Ok(Err(Fail::from(r))),
+                };
+            match delete_inventory_item(main, mount, &location, &current, force) {
+                Ok(result) if !result.deleted => Ok(Err(Fail::from(not_found("Inventory object")))),
+                Ok(result) => Ok(Ok((location, current, result.detached))),
+                Err(e) => Ok(Err(Fail::Refused(e))),
+            }
+        },
+    )
     .await;
     match out {
         Ok(Ok((location, current, detached))) => {

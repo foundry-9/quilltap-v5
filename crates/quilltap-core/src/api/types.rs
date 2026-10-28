@@ -5762,6 +5762,13 @@ pub struct UnavailableEntity {
 /// `Response` (P4.23): the structured store-unavailable refusal answers v4's
 /// deliberate contextful 503; everything else stays the plain internal error
 /// (`internal(e)`'s exact behavior).
+///
+/// P4.166 (dogfood #156): a DEGRADED mount index
+/// ([`crate::db::DbError::PartitionUnavailable`]`(MountIndex)`, the neutral
+/// refusal `with_both_conns` answers) is the error every v4 mount write throws
+/// (`Mount index database is in degraded mode`), which no route catches — v4's
+/// middleware answers it 500 `Internal server error` (`context.ts:206-207`).
+/// The body is that sentence, not the raw error.
 pub(crate) fn db_error_response(e: crate::db::DbError) -> Response {
     match e {
         crate::db::DbError::StoreUnavailable {
@@ -5770,6 +5777,9 @@ pub(crate) fn db_error_response(e: crate::db::DbError) -> Response {
             mount_point_id,
             ..
         } => Response::store_unavailable_at_mount(entity_label, &id, mount_point_id.as_deref()),
+        crate::db::DbError::PartitionUnavailable(
+            crate::write_partition::WriteDbTarget::MountIndex,
+        ) => Response::error(ErrorKind::Internal, "Internal server error"),
         other => Response::error(ErrorKind::Internal, other.to_string()),
     }
 }

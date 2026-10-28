@@ -27,7 +27,7 @@ use crate::db::group_doc_mount_links::GroupDocMountLinksRepository;
 use crate::db::groups::{GroupCreateInput, GroupCreateOptions, GroupProperties, GroupsRepository};
 use crate::db::runtime::Db;
 use crate::db::{characters_read, DbError};
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{with_both_conns, with_both_conns_for, EntityRef};
 
 use super::scenarios as scenarios_api;
 use super::types::{db_error_response, ErrorKind, Response};
@@ -449,7 +449,7 @@ enum GroupUpdateOutcome {
 /// pinned by the `update_missing_group_invalid_body_404` arm.
 pub async fn group_update(db: &Db, group_id: &str, patch: Value) -> Response {
     let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(GroupUpdateOutcome::NotFound);
@@ -477,7 +477,7 @@ pub async fn group_update(db: &Db, group_id: &str, patch: Value) -> Response {
 /// → delete the group row (the OFFICIAL store is orphaned). Body `{ success: true }`.
 pub async fn group_delete(db: &Db, group_id: &str) -> Response {
     let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(false);
@@ -505,7 +505,7 @@ pub async fn group_delete(db: &Db, group_id: &str) -> Response {
 pub async fn group_member_add(db: &Db, group_id: &str, character_id: &str) -> Response {
     let gid = group_id.to_string();
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Group")));
@@ -536,7 +536,7 @@ pub async fn group_member_add(db: &Db, group_id: &str, character_id: &str) -> Re
 pub async fn group_member_remove(db: &Db, group_id: &str, character_id: &str) -> Response {
     let gid = group_id.to_string();
     let cid = character_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(false);
@@ -588,7 +588,7 @@ pub fn group_mount_point_list(db: &Db, group_id: &str) -> Response {
 pub async fn group_mount_point_link(db: &Db, group_id: &str, mount_point_id: &str) -> Response {
     let gid = group_id.to_string();
     let mp_id = mount_point_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Group")));
@@ -615,7 +615,7 @@ pub async fn group_mount_point_link(db: &Db, group_id: &str, mount_point_id: &st
 pub async fn group_mount_point_unlink(db: &Db, group_id: &str, mount_point_id: &str) -> Response {
     let gid = group_id.to_string();
     let mp_id = mount_point_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(Err(not_found("Group")));
@@ -912,7 +912,7 @@ pub async fn group_state_set(db: &Db, group_id: &str, state: Value) -> Response 
     }
     let gid = group_id.to_string();
     let state_clone = state.clone();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         if repo.find_by_id(&gid).map_err(overlay_to_db)?.is_none() {
             return Ok(None);
@@ -942,7 +942,7 @@ pub async fn group_state_set(db: &Db, group_id: &str, state: Value) -> Response 
 /// then replace with `{}`. Body `{ success, previousState }`.
 pub async fn group_state_reset(db: &Db, group_id: &str) -> Response {
     let gid = group_id.to_string();
-    let out = with_both_conns(db, move |main, mount| {
+    let out = with_both_conns_for(db, EntityRef::Group(gid.clone()), move |main, mount| {
         let repo = GroupsRepository::new(main, mount);
         let Some(group) = repo.find_by_id(&gid).map_err(overlay_to_db)? else {
             return Ok(None);

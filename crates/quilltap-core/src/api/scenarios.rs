@@ -46,7 +46,7 @@ use crate::db::runtime::Db;
 use crate::db::scenarios::{
     resolve_scenario_path, ListScenariosResult, ScenarioPathResolution, SCENARIOS_FOLDER,
 };
-use crate::db::{groups, projects};
+use crate::db::{groups, projects, DbError};
 use crate::jsstr::{zod_len_max_ok, zod_len_min_ok};
 use crate::scenarios::everywhere::list_scenarios_everywhere;
 use crate::scenarios::location::{
@@ -54,7 +54,7 @@ use crate::scenarios::location::{
     ScenarioLocationError, ScenarioRefLookup, ScenarioScope, StoreScenarioLocation,
     UpdateScenarioInput,
 };
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::{with_both_conns, with_main_and_mount_if_open};
 
 use super::types::{ErrorKind, Response};
 
@@ -417,15 +417,30 @@ fn ensure_location(
 
 /// Run one handler body on the writer and wrap its success in the family's
 /// envelope.
+///
+/// P4.166 (dogfood #156): `f` gets `None` for a DEGRADED mount index and
+/// refuses it where its location resolve would first touch the store
+/// ([`degraded`]) — so the refusal lands in the handler's own catch, as v4's
+/// guard throw does (measured: the project list's `Failed to list project
+/// scenarios` ERROR + 500), not the bare 500 it used to answer.
 async fn run<F>(db: &Db, cfg: ScenarioRouteConfig, f: F) -> Response
 where
-    F: FnOnce(&Connection, &Connection) -> Result<Value, Response> + Send + 'static,
+    F: FnOnce(&Connection, Option<&Connection>) -> Result<Value, Response> + Send + 'static,
 {
-    match with_both_conns(db, move |main, mount| Ok(f(main, mount))).await {
+    match with_main_and_mount_if_open(db, move |main, mount| Ok(f(main, mount))).await {
         Ok(Ok(body)) => (cfg.wrap)(body),
         Ok(Err(r)) => r,
         Err(e) => internal(e),
     }
+}
+
+/// The degraded partition as a handler's location step sees it: v4's mount
+/// guard throws `Mount index database is in degraded mode` from the first
+/// store read, into the handler's catch.
+fn degraded(mount: Option<&Connection>) -> Result<&Connection, ScenarioLocationError> {
+    mount.ok_or_else(|| {
+        DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex).into()
+    })
 }
 
 /// v4 the factory's item GET (`:122-146`).
@@ -442,6 +457,7 @@ pub async fn item_get(
     };
     run(db, cfg, move |main, mount| {
         let attempt = (|| -> Step<Value> {
+            let mount = degraded(mount)?;
             let location =
                 match load_location(main, mount, &cfg, owner_id.as_deref(), &user_id, false)? {
                     Ok(l) => l,
@@ -478,6 +494,7 @@ pub async fn item_update(
     };
     run(db, cfg, move |main, mount| {
         let attempt = (|| -> Step<Value> {
+            let mount = degraded(mount)?;
             let location = match load_location(main, mount, &cfg, owner_id.as_deref(), &user_id, true)? {
                 Ok(l) => l,
                 Err(r) => return Ok(Err(r)),
@@ -533,6 +550,7 @@ pub async fn item_rename(
                 Ok(p) => p,
                 Err(r) => return Ok(Err(r)),
             };
+            let mount = degraded(mount)?;
             let location = match load_location(main, mount, &cfg, owner_id.as_deref(), &user_id, true)? {
                 Ok(l) => l,
                 Err(r) => return Ok(Err(r)),
@@ -578,6 +596,7 @@ pub async fn item_delete(
     };
     run(db, cfg, move |main, mount| {
         let attempt = (|| -> Step<Value> {
+            let mount = degraded(mount)?;
             let location = match load_location(main, mount, &cfg, owner_id.as_deref(), &user_id, true)? {
                 Ok(l) => l,
                 Err(r) => return Ok(Err(r)),
@@ -612,6 +631,7 @@ pub async fn collection_list(
 ) -> Response {
     run(db, cfg, move |main, mount| {
         let attempt = (|| -> Step<Value> {
+            let mount = degraded(mount)?;
             let location =
                 match ensure_location(main, mount, &cfg, owner_id.as_deref(), &user_id, false)? {
                     Ok(l) => l,
@@ -654,6 +674,7 @@ pub async fn collection_create(
                 return Ok(Err(invalid_body(issues)));
             }
             let fields = extract_fields(&bag);
+            let mount = degraded(mount)?;
             let location = match ensure_location(main, mount, &cfg, owner_id.as_deref(), &user_id, true)? {
                 Ok(l) => l,
                 Err(r) => return Ok(Err(r)),

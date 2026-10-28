@@ -129,10 +129,79 @@ pub fn wardrobe_transfer_destinations(db: &Db, user_id: &str) -> Response {
             main, mount, &uid,
         ))
     });
-    match out {
-        Ok(Ok(v)) => Response::Wardrobe(v),
-        // v4 catches → serverError with this exact message.
-        Ok(Err(_)) | Err(_) => internal("Failed to load transfer destinations"),
+    let failure = match out {
+        Ok(Ok(v)) => return Response::Wardrobe(v),
+        // P4.166 (dogfood #156): a DEGRADED mount index is not v4's catch —
+        // its three list reads are fallback overlays that DROP every entity
+        // whose store they cannot read, so every project and group falls away
+        // and only a vault-less character survives (measured: 200 with empty
+        // lists on a degraded clone).
+        Err(crate::db::DbError::PartitionUnavailable(_)) => {
+            return degraded_transfer_destinations(db, user_id)
+        }
+        Ok(Err(e)) => transfer_error_text(&e),
+        Err(e) => crate::db::fallback::error_text(&e),
+    };
+    // v4 `transfers/route.ts:203-206` (P4.166, survey C.11): the catch's ERROR
+    // (the Error as winston's error argument), then this exact message.
+    tracing::error!(
+        userId = user_id,
+        error = %failure,
+        "[WardrobeTransfers v1] Failed to list destinations"
+    );
+    internal("Failed to load transfer destinations")
+}
+
+/// [`wardrobe_transfer_destinations`] on a DEGRADED mount index (P4.166):
+/// General stays available, every store-backed project / group drops, and the
+/// user's characters are the VAULT-LESS ones (v4's overlay drops a vaulted
+/// character whose keystone it cannot read) — named and sorted as the sound
+/// enumeration names and sorts them.
+fn degraded_transfer_destinations(db: &Db, user_id: &str) -> Response {
+    let characters = db.read_main(crate::db::characters_read::find_all_raw);
+    let Ok(characters) = characters else {
+        return internal("Failed to load transfer destinations");
+    };
+    let mut users: Vec<(String, String)> = characters
+        .iter()
+        .filter(|c| c.get("userId").and_then(Value::as_str) == Some(user_id))
+        .filter(|c| {
+            c.get("characterDocumentMountPointId")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+        })
+        .map(|c| {
+            let id = c.get("id").and_then(Value::as_str).unwrap_or_default();
+            let name = c
+                .get("name")
+                .and_then(Value::as_str)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Unnamed user");
+            (id.to_string(), name.to_string())
+        })
+        .collect();
+    users.sort_by(|a, b| crate::collation::locale_compare(&a.1, &b.1));
+    Response::Wardrobe(json!({
+        "destinations": {
+            "general": { "available": true, "label": "Quilltap General" },
+            "projects": [],
+            "groups": [],
+            "users": users
+                .into_iter()
+                .map(|(id, name)| json!({ "id": id, "name": name }))
+                .collect::<Vec<_>>(),
+        }
+    }))
+}
+
+/// A [`TransferError`]'s text for the catch's ERROR line.
+fn transfer_error_text(e: &TransferError) -> String {
+    match e {
+        TransferError::NotFound => "Wardrobe item not found".to_string(),
+        TransferError::BadRequest(m)
+        | TransferError::Conflict(m)
+        | TransferError::Server(m)
+        | TransferError::Internal(m) => m.clone(),
     }
 }
 
@@ -462,10 +531,19 @@ pub async fn wardrobe_transfer_apply_with_codec(
         Ok(Err(TransferError::Conflict(m))) => Response::error(ErrorKind::Conflict, m),
         // v4's explicit serverError arms — the message IS the wire payload.
         Ok(Err(TransferError::Server(m))) => internal(m),
-        // v4's catch → serverError with this exact message.
-        Ok(Err(TransferError::Internal(_))) => internal("Failed to transfer wardrobe item"),
-        Err(e) => internal(e),
+        // v4's catch → its ERROR (P4.166, survey C.11 — `transfers/route.ts:
+        // 424`, no context keys, the Error as winston's error argument) and
+        // serverError with this exact message. A failure before the transfer
+        // ran (a degraded mount index among them) is the same catch in v4.
+        Ok(Err(TransferError::Internal(m))) => transfer_failed(&m),
+        Err(e) => transfer_failed(&crate::db::fallback::error_text(&e)),
     }
+}
+
+/// v4's POST catch (`transfers/route.ts:424-425`).
+fn transfer_failed(error: &str) -> Response {
+    tracing::error!(error = %error, "[WardrobeTransfers v1] Failed to transfer item");
+    internal("Failed to transfer wardrobe item")
 }
 
 // ===========================================================================

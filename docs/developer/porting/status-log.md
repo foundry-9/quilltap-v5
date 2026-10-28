@@ -192765,3 +192765,213 @@ Branch `claude/p4.172-dqs-off-census-6c7ea44`, cut from main `6c7ea4410` into th
 
 core 0.0.1340; harness frozen 0.0.1110; host / web / cli / tauri / SPA unchanged.
 
+
+## P4.166 — dogfood #156 (degraded mount index, by class) + #157 + C.11 (lane `claude/p4.166-degraded-mount-index-6c7ea4`, pin `322a5488e`, 2026-10-27) — LANE RECORD
+
+### Venue, probe and pin
+
+- Session started in the main checkout (`6c7ea4410`, `main`); work moved to the
+  spaceless worktree `.claude/worktrees/p4.166`, branch
+  `claude/p4.166-degraded-mount-index-6c7ea4`, cut from `main` at `6c7ea4410`,
+  `target/` started warm (`cp -cR`).
+- §2 probe (§R.2 — an OBSERVATION): v4 `main` = `b892227eb` (one docs commit
+  past the ledger's `b09ff5c86`, as the orders' commit recorded), `bugfix`
+  unmoved at `489b228b6`, tree dirty in `help/salon-host-introductions.md`
+  only (docs). **v4 moved: `b892227eb` observed at 2026-10-27 16:06 CDT** —
+  recorded, the lane continued on its pin.
+- Pin `/tmp/qt-v4-pin-p4166-322a5488e` at `322a5488e7bd…`, `package.json`
+  `4.11.0-dev.53`; the three symlink classes + `npm ci --offline` (openai
+  7.34.0, zod 4.6.7, @xterm/headless 6.0.0 verified).
+
+### The method — ONE new family on a degraded clone
+
+`harness/oracle/cases/degraded-mount-routes.test.ts` (jest, v4's REAL route
+handlers) + `crates/quilltap-harness/tests/degraded_mount_routes_equivalence.rs`.
+Each row copies the committed groups-projects MAIN partition and writes
+GARBAGE (`this is not a database`) as the mount index, so v4's client boots it
+degraded (`__quilltapMountIndexDegraded`) and v5's `Db::open` leaves the
+partition `Degraded` (P4.159's plant). Every logger call is recorded off
+`Logger.prototype` (DEBUG included). A row's plant SQL is echoed into its
+NDJSON row and replayed byte-for-byte on the Rust side. The Rust side runs the
+api fns behind each route under a PROCESS-GLOBAL capture (the writer-thread
+trap) with its tests serialized on one mutex, renders v4's wire body (the
+edge's `unavailable_wire_body` / `validation_wire_body` riders), and calls
+`CoreError::log_store_unavailable(route)` as the web edge does. 30 route rows
++ 2 guard rows (`requireMountIndexDb()`'s sentence; #157).
+
+**The compared line set** (both sides, in order): the overlay's quiet
+`Dedicated database unavailable` DEBUG, the context-middleware 503 ERROR, and
+every `[Projects v1]` / `[Groups v1]` / `[Characters v1]` / `[Chats v1]` /
+`[WearablePool]` / `[WardrobeTransfers v1]` / `Failed to log LLM call` line.
+Outside it, recorded as v4 residue this family does not claim: v4's
+repository fallback ERRORs (`Error finding entities by filter
+{collection: doc_mount_folders | doc_mount_points | project_doc_mount_links |
+group_character_members}`, `Error creating entity`, `Failed to create or find
+folder segment`, `[SharedWardrobe] Failed to ensure Wardrobe folder`), the
+middleware's `Unhandled route error` (v5 logs no such line anywhere),
+`getOverlaidWardrobeItems` ERRORs, and the list drops' `Dropping … from list`
+lines on the transfers GET.
+
+### Red-first (§R.6)
+
+On unported `main` (source reverted, the then-21-route-row oracle): **36
+divergences across all 20 claimed rows** — every one 500 `image job requires
+the mount-index database` (19) or v5's catch (`Failed to load transfer
+destinations`, 1), plus 16 line divergences (no middleware ERROR, no quiet
+DEBUGs). Log: `/tmp/p4166/logs/red1.log` (scratch, not committed).
+
+### What v4 answers — MEASURED (the survey's class table was wrong in places)
+
+| Row | v4 at the pin | Note |
+|---|---|---|
+| project add-chat / group update / group addMember / character favorite, add-tag, prompt create / project wardrobe list / group wardrobe create / project inventory create | **503** `<…> unavailable` + middleware ERROR, preceded by 4 (project/group) or 11 (character: 9 single files + 2 folders) quiet DEBUGs | survey C1 — confirmed |
+| project add-chat / character favorite on a MISSING id | 404 | the gate's absent arm |
+| character favorite, VAULT-LESS | **200** + INFO `[Characters v1] Favorite toggled` | R-B's premise ("proceeds to the C3 500") was wrong for this site: no mount write at all |
+| character update (raw-row first) | 500 `Internal server error` (two quiet reads first) | NOT a 503 — kept on the neutral refusal |
+| character delete (raw-row first) | **200** success (vault clean-up fail-soft) | v5 500 — Tier-3 deferral below |
+| project delete | 500 `Failed to delete project` + `[Projects v1] Error deleting project {projectId}` (error = the unavailable message) | the handler's own catch wraps `findById` |
+| character wardrobe create / character inventory create | 500 `Internal server error` | the character tier resolves its vault from the RAW row — NOT a 503; no gate |
+| General wardrobe list / General inventory list (R-A) | **200** `{mountPointId: <general>, wardrobeItems / items: []}` | the pointer is in `instance_settings`; the folder ensure fails soft |
+| General wardrobe create (R-A) | 500 `Internal server error` | the survey's predicted `Quilltap General store is not provisioned yet` does NOT fire |
+| project scenarios list | 500 `Failed to list project scenarios` + `[Projects v1] Failed to list project scenarios {projectId}` (error = the guard sentence) | the handler's own catch |
+| project / character create (C3) | 500 `Internal server error` | confirmed |
+| transfers GET (C.11's GET) | **200** — General only, every project / group / vaulted character DROPPED by the list overlays | the GET's catch is not reached on a degraded mount |
+| wardrobe-history GET (156.a) | 200, every recorded slot `{title:null, missing:true}`; `[WearablePool] Loaded` all zeros; **NO `[WearablePool]` WARN** | the survey's WARN claim was wrong — every tier is a quiet fallback |
+| equip `wear` (C2) | 404 `Wardrobe item not found` + INFO `Refused to put on … reason=not_found` | confirmed |
+| rollback (C2) | 200, the stale item skipped | confirmed |
+| Workbench audit, seated (156.b) | 422 v4's vault message (11 quiet DEBUGs) / vault-less 200 | confirmed |
+| merge, vault-less arrival (156.c) | v4 COMPLETES the merge: compile, outfit from an empty pool, arrival defaults (`[InventoryArrival] Applied arrival defaults`), INFO `[ChatMerge] Merged character into chat` — **no** compile WARN / outfit ERROR / arrival WARN | the survey's three lines never fire |
+| #157 | ERROR `Error creating entity`, ERROR `Error creating LLM log`, then ERROR `Failed to log LLM call {userId, type, provider, model, error: 'LLM logs database is in degraded mode'}` | the first two are v4's repository lines (v5's llm-logs repo logs neither — residue) |
+
+### The port
+
+- **The neutral refusal** (`services/image_job_common.rs::with_both_conns`):
+  `DbError::PartitionUnavailable(MountIndex)`; `api/types.rs::db_error_response`
+  maps it to 500 `Internal server error` (C3 / C4 / C5 text, one edit).
+- **The entity gate** `with_both_conns_for(db, EntityRef::{Project|Group|Character}(id), f)`:
+  mount present → `with_both_conns`; degraded → main's slim pointer; a
+  store-backed row → the per-read DEBUGs + `OverlayError::Unavailable.into_db()`
+  (v4's message bytes, an empty pointer read falsy as `linkedMountId` does);
+  an absent row / vault-less character → `f` over an EMPTY in-memory stand-in
+  (a statement reaching it → `no such table` → the neutral refusal). Swapped at
+  **38** entity-first sites (projects 14, groups 8 — not `group_scenarios_union`,
+  character-first; characters 16 — not the raw-row-first `depiction_guidelines_update`,
+  `update`, `delete`, nor the two gallery-service sites). `with_both_conns_maybe_for`
+  + `tier_entity`: the **13** tier-factory sites gate the PROJECT / GROUP
+  tiers only (wardrobe 7, inventory 6; character + General stay neutral, as
+  measured). **34** call sites stay on the neutral refusal (creates, raw-row
+  character sites, jobs, transfers apply, preview-avatar, `scenario_everywhere`
+  / `scenario_read_by_ref`, the second `item_delete` write, `with_carrying`).
+- **Fail-soft** `with_main_and_mount_if_open` + `wearable_pool::load_wearable_pool_degraded(main, character_id)`
+  (an empty pool; two quiet reads per tier v4 still reaches — General if
+  provisioned, the vault if the raw row names one; the all-zero `Loaded`
+  DEBUG): the equip + rollback routes (C2) and the history GET (156.a).
+  Scenarios `run` passes the optional mount; each of its six handlers refuses
+  it at its first store touch (`degraded(mount)?`, through `From<DbError>` →
+  the guard sentence) so v4's catch line + 500 follow.
+- **156.b** `api/custom_tools.rs::resolve_metadata`: `PartitionUnavailable` →
+  the raw row; vaulted → 11 DEBUGs + `OverlayOneError::Unavailable` (the
+  existing 422 arm); vault-less → the raw row.
+- **General lists** (R-A): `list_store_items` / the inventory `list` answer
+  200 `{mountPointId, …: []}` + two quiet DEBUGs + the tier's `Listed` DEBUG.
+- **Project delete**: v4's catch (ERROR + 500 `Failed to delete project`) for
+  every failure — which also converges a pre-existing divergence (a broken
+  store on a SOUND partition answered 503).
+- **Transfers GET**: the degraded arm (General + vault-less characters, sorted
+  by `locale_compare`); **C.11** both catch ERRORs (`Failed to list
+  destinations {userId}` + error; `Failed to transfer item` + error), and the
+  POST's `Err(e) => internal(e)` arm now IS v4's catch.
+- **#157** `services/llm_logging.rs`: `userId`, `type`, `provider`, `model`,
+  `errorJson` (= `error_text`, ruling R-C).
+- **`[Characters v1] Favorite toggled`** ported (v4 `post.ts:160-163`).
+- **C4 jobs**: the seven post-`with_both_conns` `map_err(e.to_string())` sites
+  in the story-background / avatar / head-and-shoulders jobs read
+  `fallback::error_text` (the guard sentence).
+
+### Pins
+
+- `degraded_mount_routes_equivalence::degraded_mount_routes_match_oracle` —
+  28 claimed route rows, status + body + compared lines.
+  `READS_BEFORE_THROW_UNCLAIMED` (character update, General / character
+  wardrobe create, character inventory create, transfers GET): their DEBUG-level
+  read lines only (v4 reads before its write throws; v5 refuses first — same
+  status and body). `UNCLAIMED_ROWS`: `character_delete`, `chat_merge_vaultless`.
+- `…::failed_llm_log_line_is_v4s` — #157's one line (keys IN ORDER, the
+  guard sentence via `errorJson`).
+- `…::guard_sentence_is_v4s` — the C4 / neutral text against
+  `requireMountIndexDb()`'s throw.
+- `quilltap-core` `services::image_job_common::degraded_gate_tests` (4) — the
+  gates' own arms.
+- C.11's two ERROR lines are NOT capture-pinned against v4: the GET catch is
+  unreachable on the degraded clone (the list reads are fallbacks), and the
+  POST's v4 error text for a non-degraded failure is v5's Debug-formatted
+  `TransferError::Internal` (a recorded divergence of the error VALUE, not
+  the message / keys).
+
+### Deferrals — loud, Tier 3
+
+1. **156.c — the merge on a degraded mount.** v4 completes a vault-less
+   arrival (measured above); v5's per-character read
+   (`read_mount_index(find_by_id)`) DROPS the character on the unavailable
+   partition, and v5 logs NONE of v4's `[ChatMerge]` INFO lines
+   (`Merged character into chat`, `Merge complete`) even on a sound one. A
+   degraded-aware read + the three steps over `Option<mount>` + the INFO
+   lines is an M-size `chat_merge.rs` unit — next smalls round.
+2. **Character delete** on a degraded mount: v4 200 (fail-soft vault
+   clean-up); v5 500. Same next round.
+3. **The announcement job's degraded arm** (P4.170's file, the order's item 7):
+   measured only that v4's rollback ENQUEUES `WARDROBE_OUTFIT_ANNOUNCEMENT` on
+   a degraded mount; the job's own degraded run was not measured.
+4. **Missing `[Characters v1]` INFO lines** (found, pre-existing, not
+   degraded-specific): v5 logs none of `Avatar updated`, `Tag added`, `Tag
+   removed`, `ControlledBy toggled`, `Default partner updated` (v4 `post.ts`).
+5. **Unmeasured C1 sites** kept on the neutral refusal: `character_photo_remove`
+   / `_save_by_id` (gallery service), `group_scenarios_union`,
+   `character_depiction_guidelines_update`, `scenario_everywhere`,
+   `scenario_read_by_ref`, the General scenarios family, preview-avatar,
+   transfers POST on a degraded mount.
+6. **Tier 2 item 6** (degraded rows in each touched routes family): landed as
+   ONE cross-family family instead; §S.2 must re-run
+   `degraded_mount_routes_equivalence` on the union.
+
+### HANDOFFs
+
+- `HANDOFF(P4.168)` — C1's variant is not on this branch, so no stub was
+  written. In `api/types.rs::db_error_response`, add the arm
+  `crate::db::DbError::RowSchemaRefusal { issues, .. } => Response::validation_error(issues),`
+  (400 `{"error":"Validation error","details":<issues>}`; adjust to the bytes
+  P4.168 measured if they differ).
+- `HANDOFF(unifier)` — `api/salon.rs`'s chat-PUT project gate hand-rolls the
+  degraded refusal this lane's `with_both_conns_for` now owns. It could fold
+  onto `EntityRef::Project` + the shared detail. `salon.rs` is outside this
+  lane's table.
+
+### 💸 dogfood rows
+
+The order's list (LUC Ranch add-chat 503, Friday's history 200 with every slot
+missing, Salon equip 404, a Workbench seated preview 422, a story-background
+job FAILED with the guard sentence; a garbage llm-logs file → `Failed to log
+LLM call` with `userId/type/provider/model/error`), plus: the General wardrobe
+dialog opening empty (not erroring), the transfer dialog listing General only.
+
+### The gate
+
+- `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings`
+  clean, with and without `--features quilltap-core/native-transport`.
+- The sweep from the pin (`/tmp/qt-v4-pin-p4166-322a5488e`), 15 families
+  (`degraded_mount_routes`, `degraded_sibling_open`, the projects / groups /
+  group-wardrobe / scenarios / inventory / wardrobe routes,
+  `characters_mutations`, `pascal_workbench_route`,
+  `chat_wardrobe_history_tier2`, `wardrobe_transfers_tier2`, the avatar /
+  story-background / headshoulders tier-3 jobs): **15 ok, 0 SKIP**. No
+  committed file changed. `recipe_sweep --self-test`: 0 failures.
+- `cargo test --workspace --no-fail-fast` with
+  `QT_ORACLE_DEGRADED_MOUNT_ROUTES` set: **863 binaries / 5,710 passed /
+  0 failed / 3 ignored**. `degraded_mount_routes_match_oracle`,
+  `guard_sentence_is_v4s` and `failed_llm_log_line_is_v4s` RAN (ok by name).
+- SPA: `npm ci` + `npm run build` exit 0. No `apps/web` source was touched.
+- The session started in the app's p4.166 worktree on
+  `claude/p4.166-degraded-mount-index-6c7ea4`, based on main `6c7ea4410`. It
+  never moved.
+- Versions: core 0.0.1337 (harness frozen 0.0.1110).
+

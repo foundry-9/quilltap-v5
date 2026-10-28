@@ -476,6 +476,61 @@ pub fn load_wearable_pool(
     pool
 }
 
+/// [`load_wearable_pool`] on a DEGRADED mount index (P4.166, dogfood #156 /
+/// 156.a): every tier v4 reads is a fallback read there — the character's
+/// vault wardrobe, the group members, the project links, the shared tiers each
+/// answer empty without throwing (measured through v4's REAL `?action=
+/// wardrobe-history` on a degraded clone: no `[WearablePool]` WARN, every
+/// count and both mount counts `0`) — so the pool is EMPTY and every slot id a
+/// caller resolves against it reads missing. Same DEBUG as the sound load.
+pub fn load_wearable_pool_degraded(main: &Connection, character_id: &str) -> WearablePool {
+    // The two tiers v4 still REACHES: the shared General tier (its pointer is
+    // in `instance_settings`) and the character's own vault (its pointer on
+    // the raw row) — each a folder read + a `wardrobe.json` read through the
+    // fallback overlay, one quiet DEBUG apiece (measured: four for a vaulted
+    // character under a provisioned General). The group / project tiers
+    // resolve no mount at all on a degraded partition.
+    let degraded = DbError::PartitionUnavailable(crate::write_partition::WriteDbTarget::MountIndex);
+    let general = instance_settings::get_general_mount_point_id(main)
+        .ok()
+        .flatten()
+        .is_some();
+    let vaulted = crate::db::characters_read::find_by_id_raw_or_none(main, character_id)
+        .and_then(|c| {
+            c.get("characterDocumentMountPointId")
+                .and_then(Value::as_str)
+                .map(|p| !p.is_empty())
+        })
+        .unwrap_or(false);
+    for _ in 0..(usize::from(general) + usize::from(vaulted)) * 2 {
+        crate::db::fallback::log_mount_index_unavailable("doc_mount_documents", &degraded);
+    }
+    let pool = build_wearable_pool(
+        character_id,
+        WardrobeTierMounts {
+            group_mount_point_ids: Vec::new(),
+            project_mount_point_ids: Vec::new(),
+        },
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    );
+    tracing::debug!(
+        characterId = %character_id,
+        ownCount = 0,
+        groupCount = 0,
+        projectCount = 0,
+        generalCount = 0,
+        reachable = pool.reachable(),
+        groupMountCount = 0,
+        projectMountCount = 0,
+        context = "wardrobe",
+        "[WearablePool] Loaded wearable pool"
+    );
+    pool
+}
+
 /// v4 `componentGraph(pool, rootIds)` — every item reachable from a set of
 /// root ids, transitively through `componentItemIds`: a pure BFS over the pool
 /// that tolerates cycles and unknowns. Discovery order (v4's `Map` insertion

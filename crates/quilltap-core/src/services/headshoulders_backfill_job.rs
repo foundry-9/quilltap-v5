@@ -85,7 +85,7 @@ use crate::cheap_llm::CheapLlmSelection;
 use crate::clock::iso_from_unix_ms;
 use crate::db::background_jobs::BackgroundJob;
 use crate::db::runtime::Db;
-use crate::db::{characters_read, connection_profiles, DbError};
+use crate::db::{characters_read, connection_profiles};
 use crate::generators::wizard::{build_context_prompt, generate_field_for_caller};
 use crate::generators::wizard_prompts::HEAD_AND_SHOULDERS_PHYSICAL_PROMPT;
 use crate::jsstr::js_trim;
@@ -182,7 +182,7 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
         characters_read::find_by_id(main, mount, &cid)
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::db::fallback::error_text(&e))?;
 
     let Some(character) = character else {
         tracing::info!(
@@ -307,7 +307,7 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
             .map(|_| ())
     })
     .await
-    .map_err(|e: DbError| e.to_string())?;
+    .map_err(|e| crate::db::fallback::error_text(&e))?;
 
     tracing::info!(
         context = CONTEXT,

@@ -301,8 +301,10 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
     let now = crate::clock::now_iso();
 
     // Kept for the failure trace below — `data` moves into the writer closure.
+    let user_id_for_trace = params.user_id.clone();
     let log_type_for_trace = params.log_type.clone();
     let provider_for_trace = params.provider.clone();
+    let model_for_trace = params.model_name.clone();
 
     let data = LlCreate {
         user_id: params.user_id,
@@ -348,12 +350,24 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
         // commonest cause is an llm-logs partition that predates v4's
         // `add-llm-logs-profile-columns-v1` migration, which v4 cannot write
         // either (open the instance once with v4 4.9).
+        //
+        // P4.166 (dogfood #157): v4's keys and order — `{userId, type,
+        // provider, model, error}` (`llm-logging.service.ts:238-244`) — with
+        // `error` the MESSAGE string (`fallback::error_text`: a degraded
+        // partition reads v4's guard sentence `LLM logs database is in
+        // degraded mode`, not `partition not available: llmLogs`). v4 passes
+        // it as a CONTEXT string, so it rides `errorJson` (ruling R-C) and the
+        // file layer lands it at `context.error`, not the envelope's error
+        // object.
         Err(error) => {
             tracing::error!(
                 target: "quilltap::llm_logging",
-                log_type = %log_type_for_trace,
+                userId = %user_id_for_trace,
+                r#type = %log_type_for_trace,
                 provider = %provider_for_trace,
-                error = %error,
+                model = %model_for_trace,
+                errorJson = %serde_json::to_string(&crate::db::fallback::error_text(&error))
+                    .unwrap_or_default(),
                 "Failed to log LLM call",
             );
             None

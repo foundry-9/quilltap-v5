@@ -88,7 +88,7 @@ use crate::db::chats_outfits::ChatOutfitsRepository;
 use crate::db::runtime::Db;
 use crate::db::wardrobe_wear_stats::{EquipSource, WornBundle};
 use crate::services::avatar_generation::AvatarGenerationParams;
-use crate::services::image_job_common::with_both_conns;
+use crate::services::image_job_common::with_main_and_mount_if_open;
 use crate::services::outfit_change_effects::{notify_wardrobe_changed, OutfitChangeContext};
 use crate::services::outfit_displacement::apply_displacement;
 use crate::services::resolve_equipped::resolve_equipped_outfit_for_character;
@@ -101,7 +101,8 @@ use crate::wear_ops::{
 };
 use crate::wearable::{newly_worn_archived_items, wear_refusal};
 use crate::wearable_pool::{
-    load_cast_pools, load_wearable_pool, LoadWearablePoolOptions, WearablePool,
+    load_cast_pools, load_wearable_pool, load_wearable_pool_degraded, LoadWearablePoolOptions,
+    WearablePool,
 };
 
 use super::types::{ErrorKind, Response};
@@ -300,8 +301,11 @@ pub fn chat_wardrobe_history_get(db: &Db, chat_id: &str, character_id: Option<&s
         if rows.is_empty() {
             return Ok(None);
         }
-        db.read_mount_index(|mount| {
-            let pool = load_wearable_pool(
+        // P4.166 (156.a): a DEGRADED mount index reads every tier empty, as
+        // v4's fallback reads do — 200 with every recorded slot missing, not
+        // the 500 the unavailable partition used to answer.
+        let pool = match db.read_mount_index(|mount| {
+            Ok(load_wearable_pool(
                 main,
                 mount,
                 character_id,
@@ -311,7 +315,15 @@ pub fn chat_wardrobe_history_get(db: &Db, chat_id: &str, character_id: Option<&s
                     chat_id: Some(chat_id),
                     ..Default::default()
                 },
-            );
+            ))
+        }) {
+            Ok(pool) => pool,
+            Err(crate::db::DbError::PartitionUnavailable(_)) => {
+                load_wearable_pool_degraded(main, character_id)
+            }
+            Err(e) => return Err(e),
+        };
+        {
             let mut names: std::collections::HashMap<String, Option<String>> =
                 std::collections::HashMap::new();
             let mut name_of = |id: &str| -> Option<String> {
@@ -356,7 +368,7 @@ pub fn chat_wardrobe_history_get(db: &Db, chat_id: &str, character_id: Option<&s
             }
             let current_index = rows.iter().find(|r| r.is_current).map(|r| r.entry_index);
             Ok(Some((current_index, entries)))
-        })
+        }
     });
     match out {
         Ok(found) => {
@@ -1007,19 +1019,25 @@ async fn put_on_or_fit(
     cid: String,
     parsed: EquipBody,
 ) -> Result<EquipOutcome, crate::db::DbError> {
-    with_both_conns(db, move |main, mount| {
+    // P4.166 (C2): the pool is the closure's only mount use, and v4 reads it
+    // fail-soft — a degraded mount index is an EMPTY pool (the not-found
+    // refusal), never the neutral 500.
+    with_main_and_mount_if_open(db, move |main, mount| {
         let slot = parsed.slot.as_deref();
-        let pool = load_wearable_pool(
-            main,
-            mount,
-            &parsed.character_id,
-            None,
-            LoadWearablePoolOptions {
-                operator: true,
-                chat_id: Some(&cid),
-                ..LoadWearablePoolOptions::default()
-            },
-        );
+        let pool = match mount {
+            Some(mount) => load_wearable_pool(
+                main,
+                mount,
+                &parsed.character_id,
+                None,
+                LoadWearablePoolOptions {
+                    operator: true,
+                    chat_id: Some(&cid),
+                    ..LoadWearablePoolOptions::default()
+                },
+            ),
+            None => load_wearable_pool_degraded(main, &parsed.character_id),
+        };
         if parsed.mode == "set_all" {
             let slots_value = parsed.slots.as_ref().expect("schema-guaranteed");
             return set_all(
@@ -1195,18 +1213,22 @@ pub async fn chat_wardrobe_rollback(
         parsed.character_id.clone(),
         parsed.index,
     );
-    let outcome = with_both_conns(db, move |main, mount| {
-        let pool = load_wearable_pool(
-            main,
-            mount,
-            &character_id,
-            None,
-            LoadWearablePoolOptions {
-                operator: true,
-                chat_id: Some(&cid),
-                ..LoadWearablePoolOptions::default()
-            },
-        );
+    // P4.166 (C2): the pool fail-soft, as the equip route's.
+    let outcome = with_main_and_mount_if_open(db, move |main, mount| {
+        let pool = match mount {
+            Some(mount) => load_wearable_pool(
+                main,
+                mount,
+                &character_id,
+                None,
+                LoadWearablePoolOptions {
+                    operator: true,
+                    chat_id: Some(&cid),
+                    ..LoadWearablePoolOptions::default()
+                },
+            ),
+            None => load_wearable_pool_degraded(main, &character_id),
+        };
         // v4 `outfit.ts:383-389` awaits `loadWearablePool` as its own
         // statement and evaluates `operatorWardrobeProvenance(chat)` while
         // building the rollback's input — so the pool's `Loaded wearable

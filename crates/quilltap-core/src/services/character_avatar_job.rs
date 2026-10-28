@@ -216,7 +216,7 @@ where
         crate::db::characters_read::find_by_id(main, mount, &cid)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| crate::db::fallback::error_text(&e))?
     .ok_or_else(|| format!("Character not found: {}", payload.character_id))?;
     let character_name = common::str_field(&character, "name")
         .unwrap_or("")
@@ -384,7 +384,7 @@ where
             ))
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| crate::db::fallback::error_text(&e))?;
 
         if let Some(cached) = cached {
             bind_avatar_to_chat(
@@ -928,7 +928,7 @@ async fn bind_avatar_to_chat(
             .map(|_| ())
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| crate::db::fallback::error_text(&e))?;
 
     Ok(())
 }
