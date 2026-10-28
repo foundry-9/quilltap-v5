@@ -199,6 +199,19 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): three Zod twins report 4.6.7's length check past an array `invalid_type` through ONE helper (P4.169)
+
+_Versions:_ quilltap-core 0.0.1342.
+
+Three Zod twins (`selectedSubpromptIds`, the memory candidate's capped string arrays, and the scenario builder's `characterIds` / `groupIds`) now report Zod 4.6.7's array length check after the array's own `invalid_type`. It still runs on any input with a `.length`. A string past the cap adds a string-origin `too_big` (`Too big: expected string to have <=N characters`), and an object with a numeric `length` adds an `unknown`-origin one. The shared helper is `api::zod_issues::zod_length_checks_past_invalid_type`.
+
+Red-first:
+- the chat-create capstone: `sp_string_over_cap_400` red, then green;
+- memory-candidate: red at the first new row, then green;
+- the scenario-builder request schema: 3 rows red, then green.
+
+HANDOFF(P4.168): `api/memories.rs`'s `entities` `invalid_type` arm should adopt the helper.
+
 #### 2026-10-27 — fix(core): the cheap-LLM selection logs v4's four `[CheapLLM]` lines from ONE `select_cheap_llm_from_profiles` (P4.169)
 
 _Versions:_ quilltap-core 0.0.1341.

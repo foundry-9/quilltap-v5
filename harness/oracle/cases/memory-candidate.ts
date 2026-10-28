@@ -244,6 +244,16 @@ const PARSES: Array<[string, unknown, ResolvedCandidateTime?]> = [
   ['keywords a string', { ...BASE, keywords: 'tea' }],
   ['mixed keywords + tags', { ...BASE, keywords: ['a', 1, null], tags: [true] }],
   ['entities null', { ...BASE, entities: null }],
+  // P4.169 (F-2, `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`): zod 4.6.7 runs the
+  // array's `.max` on any input with a `.length` even after `invalid_type` —
+  // a string past the cap adds a string-origin `too_big`; one at the cap, an
+  // object carrying a numeric `length`, and a cap-less field (`keywords`) do
+  // not / do as measured.
+  ['entities a 13-character string', { ...BASE, entities: 'abcdefghijklm' }],
+  ['entities a 12-character string', { ...BASE, entities: 'abcdefghijkl' }],
+  ['entities an astral 13-code-point string', { ...BASE, entities: '\u{1F600}'.repeat(13) }],
+  ['entities an object with length 13', { ...BASE, entities: { length: 13 } }],
+  ['keywords a long string (no cap)', { ...BASE, keywords: 'x'.repeat(40) }],
   ['targeting missing', (() => { const { targeting: _t, ...rest } = BASE; return rest; })()],
   ['targeting an array', { ...BASE, targeting: [] }],
   ['targeting bad axes', { ...BASE, targeting: { temporal: 'x', scope: 1 } }],

@@ -568,6 +568,16 @@ fn string_array(
         Some(Value::Array(items)) => items,
         got => {
             issues.push(ZodIssue::invalid_type("array", vec![key(k)], got));
+            // Zod 4.6.7 still runs the array's `.max` on any input with a
+            // `.length` (P4.169 F-2).
+            if let Some(got) = got {
+                issues.extend(crate::api::zod_issues::zod_length_checks_past_invalid_type(
+                    got,
+                    None,
+                    cap,
+                    &[key(k)],
+                ));
+            }
             return None;
         }
     };

@@ -624,6 +624,14 @@ fn check_opt_subprompt_ids(v: Option<&Value>, at: &[Value], issues: &mut Vec<Cre
     let Some(v) = v else { return };
     let Some(list) = v.as_array() else {
         issues.push(ZodIssue::invalid_type("array", at.to_vec(), Some(v)));
+        // Zod 4.6.7 still runs the array's `.max` on any input with a
+        // `.length` (P4.169 F-2).
+        issues.extend(crate::api::zod_issues::zod_length_checks_past_invalid_type(
+            v,
+            None,
+            Some(crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS),
+            at,
+        ));
         return;
     };
     if list.len() > crate::services::chat_participants::SELECTED_SUBPROMPT_IDS_MAX_ITEMS {

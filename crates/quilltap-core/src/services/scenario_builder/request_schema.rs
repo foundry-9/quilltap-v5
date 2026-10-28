@@ -268,6 +268,17 @@ fn uuid_array_field(
                 vec![key(name)],
                 Some(other),
             ));
+            // Zod 4.6.7 still runs the array's `.max(32)` on any input with a
+            // `.length` (P4.169 F-2) — a long string reaches the wire's
+            // `details` as a string-origin `too_big`.
+            for issue in crate::api::zod_issues::zod_length_checks_past_invalid_type(
+                other,
+                None,
+                Some(32),
+                &[key(name)],
+            ) {
+                issues.push(issue);
+            }
             None
         }
     }

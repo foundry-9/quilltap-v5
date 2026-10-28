@@ -670,6 +670,48 @@ impl ZodIssue {
     }
 }
 
+/// Zod ≥ 4.6's array length checks past the array's own `invalid_type`
+/// (`ZOD_STRING_LENGTH_PAST_INVALID_TYPE`, P4.169 F-2): `$ZodCheckMinLength` /
+/// `MaxLength` carry a `when` of `val.length !== undefined`, so after the
+/// array check fails they STILL run on any input that has a `.length` —
+/// measured at zod 4.6.7. A string is measured by code points and reports
+/// origin `string` (`Too big: expected string to have <=N characters`); an
+/// object carrying a numeric `length` reports origin `unknown`. `.min` runs
+/// before `.max` (declaration order). A `null`, number or boolean has no
+/// `.length` and runs neither. The caller pushes its `invalid_type` FIRST and
+/// then these; the Pascal twin with authored messages lives in
+/// `pascal::custom_tool_types`.
+pub fn zod_length_checks_past_invalid_type(
+    v: &Value,
+    min: Option<usize>,
+    max: Option<usize>,
+    path: &[Value],
+) -> Vec<ZodIssue> {
+    let mut out = Vec::new();
+    match v {
+        Value::String(s) => {
+            if let Some(n) = min.filter(|n| !crate::jsstr::zod_len_min_ok(s, *n)) {
+                out.push(ZodIssue::too_small_string(json!(n), path.to_vec()));
+            }
+            if let Some(n) = max.filter(|n| !crate::jsstr::zod_len_max_ok(s, *n)) {
+                out.push(ZodIssue::too_big_string(json!(n), path.to_vec()));
+            }
+        }
+        Value::Object(o) => {
+            if let Some(len) = o.get("length").and_then(Value::as_f64) {
+                if let Some(n) = min.filter(|n| len < *n as f64) {
+                    out.push(ZodIssue::too_small_unknown(json!(n), path.to_vec()));
+                }
+                if let Some(n) = max.filter(|n| len > *n as f64) {
+                    out.push(ZodIssue::too_big_unknown(json!(n), path.to_vec()));
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
 /// v4 zod's own `uuid()` source pattern, verbatim — it is a VALUE in the issue
 /// body (stringified with the surrounding slashes), so it is transcribed, not
 /// re-derived. Note the RFC nibbles: version `1-8`, variant `89abAB`, with the

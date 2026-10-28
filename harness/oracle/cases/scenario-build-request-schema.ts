@@ -138,6 +138,13 @@ add('project-wrong-type', withKey('projectId', {}));
 // --- characterIds: z.array(UUIDSchema).max(32).default([]) --------------------
 add('cast-null', withKey('characterIds', null));
 add('cast-string', withKey('characterIds', 'x'));
+// P4.169 (F-2): past `invalid_type`, zod 4.6.7 still runs `.max(32)` on a
+// value with a `.length` — a 33-character string reaches `details` as a
+// string-origin `too_big`; an object with `length: 40` as origin `unknown`.
+add('cast-string-33', withKey('characterIds', 'x'.repeat(33)));
+add('cast-string-32', withKey('characterIds', 'x'.repeat(32)));
+add('cast-object-length-40', withKey('characterIds', { length: 40 }));
+add('groups-string-33', withKey('groupIds', 'g'.repeat(33)));
 add('cast-empty', withKey('characterIds', []));
 add('cast-bad-entry', withKey('characterIds', [C1, 'nope', 5]));
 add('cast-duplicates-kept', withKey('characterIds', [C1, C1]));

@@ -94,6 +94,16 @@ mod common;
 ///   `25b8fab6a` unification, pinned by `pascal_custom_tool_definition_
 ///   equivalence`). v4 uses no `.length(n)` / `.size(n)` / `Map` / `Set` size
 ///   cap on a v5-transcribed schema (grep in the P4.D311 lane record).
+/// - **The string-input half (`ZOD_STRING_LENGTH_PAST_INVALID_TYPE`, P4.169
+///   F-2):** the four hand twins stopped at the array's `invalid_type`, but
+///   4.6.7's length checks still run on any input with a `.length` — a string
+///   past the cap adds a string-origin `too_big`, an object with a numeric
+///   `length` an `unknown`-origin one. ONE helper,
+///   `api::zod_issues::zod_length_checks_past_invalid_type`, now serves
+///   `check_opt_subprompt_ids`, `string_array` and `uuid_array_field` (rows in
+///   `chat_create_capstone`, `memory_candidate` and
+///   `scenario_build_request_schema`); `api/memories.rs`'s `entities` twin is
+///   P4.168's to adopt (a HANDOFF).
 /// - **Regression ring:** every Zod-text family re-run from the pin through
 ///   the sweep driver (the lane record lists them) — no red attributable to
 ///   zod.
