@@ -57,6 +57,13 @@ use serde_json::Value;
 
 const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 
+/// The three planted refusals (see the carve in the main loop).
+const REFUSED_CHEAP_LLM_ROW_GET: [&str; 3] = [
+    "s_get_cheap_llm_bad_strategy",
+    "s_get_cheap_llm_bad_uuid",
+    "s_get_cheap_llm_non_object",
+];
+
 fn env_or_skip(key: &str) -> Option<String> {
     match std::env::var(key) {
         Ok(v) => Some(v),
@@ -340,6 +347,7 @@ fn settings_routes_match_v4() {
     let mut impersonation_voice_cases = 0;
     let mut custom_tool_triggers_cases = 0;
     let mut composer_slash_commands_cases = 0;
+    let mut cheap_llm_read_cases = 0;
     let mut settings_zod_cases = 0;
     let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
@@ -526,6 +534,25 @@ fn settings_routes_match_v4() {
             );
         }
 
+        // P4.169 (F-1): the `cheapLLMSettings` plant — a stored bag in a
+        // non-schema order, missing defaults, an unknown key, or a value the
+        // schema refuses (the row drops). `{value: null}` plants NULL.
+        if let Some(plant) = req.get("plantCheapLlmSettings").filter(|p| !p.is_null()) {
+            let value = plant["value"].as_str().map(str::to_string);
+            let n = rt
+                .block_on(db.write(move |w| {
+                    w.main()
+                        .connection()
+                        .execute(
+                            "UPDATE chat_settings SET \"cheapLLMSettings\" = ?1",
+                            [&value],
+                        )
+                        .map_err(Into::into)
+                }))
+                .expect("plant cheapLLMSettings");
+            assert!(n >= 1, "[{name}] the cheap-LLM plant must land on a row");
+        }
+
         // P4.139: the corrupt-key plant (the oracle applies the same UPDATE on
         // its work copy) — a BLOB `key_value` both sides' marshals refuse.
         if let Some(key_id) = req["corruptApiKey"].as_str().map(str::to_string) {
@@ -568,37 +595,49 @@ fn settings_routes_match_v4() {
         normalize(&mut got_body, &known, &uuid_re, &ts_re);
         normalize(&mut oracle_body, &known, &uuid_re, &ts_re);
 
+        // REFUSED_CHEAP_LLM_ROW_GET (P4.169, a RECORDED divergence of the
+        // standing voice-mode class at `db::chat_settings::find_by_user_id`):
+        // a stored `cheapLLMSettings` the schema refuses DROPS the row on both
+        // sides (measured — ruling R-B; the repository arm is pinned in
+        // core). v4's GET then CREATES a second row for the user and answers
+        // it (a fresh id); v5's create finds the existing row by a raw
+        // `SELECT id`, updates it, and the validating re-read drops it again
+        // — 500. Only a hand-planted cell reaches it (both sides validate
+        // every write). Pinned both ways so either side moving flips it.
+        if REFUSED_CHEAP_LLM_ROW_GET.contains(&name.as_str()) {
+            assert_eq!(
+                oracle_body["id"], "<newid>",
+                "[{name}] v4 answers a NEW row"
+            );
+            assert_eq!(
+                got_body,
+                serde_json::json!({"error": "chat settings write failed to persist"}),
+                "[{name}] v5's recorded 500"
+            );
+            assert_eq!(got_status, 500, "[{name}]");
+            n += 1;
+            cheap_llm_read_cases += 1;
+            continue;
+        }
+
         if !is_ack {
             assert_eq!(
                 oracle_body, got_body,
                 "[{name}] response body mismatch\noracle: {oracle_body}\ngot:    {got_body}"
             );
         }
-        // P4.D304's two families pin the chat-settings row's TOP-LEVEL key
-        // order too (`customToolTriggers` right after `customTools`,
-        // `composerSlashCommands` right after `composerUnicode` — v4's schema
-        // order): `serde_json::Value` equality ignores key order under
-        // `preserve_order` (the `25b8fab6a` unification's §3 review catch:
-        // P4.D304's Tier 1 item 8 asked for it and no row did it). TOP-LEVEL
-        // only: a whole-body byte compare also measured a PRE-EXISTING nested
-        // divergence — v4 re-parses `cheapLLMSettings` into its schema order
-        // (`…, embeddingProvider, allowCheapFallback`) while v5 returns the
-        // stored bag's order (`…, allowCheapFallback, embeddingProvider` on a
-        // defaults-seeded row) — recorded for the follow-ups round
-        // (`CHEAP_LLM_KEY_ORDER`, status-log), not this round's columns.
-        let byte_family = matches!(
-            row["family"].as_str(),
-            Some("custom_tool_triggers" | "composer_slash_commands")
-        );
-        let top_keys = |v: &Value| -> Vec<String> {
-            v.as_object()
-                .map(|o| o.keys().cloned().collect())
-                .unwrap_or_default()
-        };
-        if byte_family && !is_ack {
+        // Every non-ack body is compared as BYTES, key order included:
+        // `serde_json::Value` equality ignores key order under
+        // `preserve_order` (the `25b8fab6a` unification's §3 catch, which
+        // first pinned the TOP-LEVEL keys of P4.D304's two families). The
+        // nested divergence that kept the compare top-level-only —
+        // `CHEAP_LLM_KEY_ORDER`, v4 re-parsing `cheapLLMSettings` into its
+        // schema order where v5 kept the stored bag's — converged at P4.169
+        // (F-1), so the whole body is byte-compared for every family.
+        if !is_ack {
             assert_eq!(
-                top_keys(&oracle_body),
-                top_keys(&got_body),
+                serde_json::to_string(&oracle_body).unwrap(),
+                serde_json::to_string(&got_body).unwrap(),
                 "[{name}] response body KEY ORDER mismatch"
             );
         }
@@ -623,13 +662,11 @@ fn settings_routes_match_v4() {
                 oracle_after, got_after,
                 "[{name}] after-refetch mismatch\noracle: {oracle_after}\ngot:    {got_after}"
             );
-            if byte_family {
-                assert_eq!(
-                    top_keys(&oracle_after),
-                    top_keys(&got_after),
-                    "[{name}] after-refetch KEY ORDER mismatch"
-                );
-            }
+            assert_eq!(
+                serde_json::to_string(&oracle_after).unwrap(),
+                serde_json::to_string(&got_after).unwrap(),
+                "[{name}] after-refetch KEY ORDER mismatch"
+            );
         }
         n += 1;
         if row["family"].as_str() == Some("data_retention") {
@@ -652,6 +689,9 @@ fn settings_routes_match_v4() {
         }
         if row["family"].as_str() == Some("composer_slash_commands") {
             composer_slash_commands_cases += 1;
+        }
+        if row["family"].as_str() == Some("cheap_llm_read") {
+            cheap_llm_read_cases += 1;
         }
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
@@ -728,6 +768,11 @@ fn settings_routes_match_v4() {
     assert!(
         composer_slash_commands_cases >= 5,
         "expected >= 5 composer_slash_commands cases, got {composer_slash_commands_cases} — regenerate the oracle"
+    );
+    // P4.169 (F-1): the planted `cheapLLMSettings` reads.
+    assert!(
+        cheap_llm_read_cases >= 9,
+        "expected >= 9 cheap_llm_read cases, got {cheap_llm_read_cases} — regenerate the oracle"
     );
     // P4.47 (A): the three sibling Zod arms
     // (`answerConfirmationSettings` / `cheapLLMSettings` /

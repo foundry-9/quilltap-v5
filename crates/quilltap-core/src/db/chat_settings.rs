@@ -136,20 +136,9 @@ pub struct CheapLlmSettings {
     /// a parse, so every bag v4 writes carries it and every bag v4 READS gains
     /// it — including a pre-4.9 bag that predates the key. `#[serde(default)]`
     /// reproduces the write half; the read half is
-    /// [`default_cheap_llm_keys`].
+    /// [`zod_parse_cheap_llm_settings`].
     #[serde(default)]
     pub allow_cheap_fallback: bool,
-}
-
-/// v4 `3b463d6b1` (#76) moved `cheapLLMSettings.imagePromptProfileId` into
-/// `conciergeSettings` and deleted it from `CheapLLMSettingsSchema`; the
-/// migration leaves the stored key where it was, and v4's read strips it as an
-/// unknown key. Remove it the same way (the rest of the bag keeps its order).
-fn strip_retired_cheap_llm_keys(mut bag: serde_json::Value) -> serde_json::Value {
-    if let Some(o) = bag.as_object_mut() {
-        o.shift_remove("imagePromptProfileId");
-    }
-    bag
 }
 
 /// A stored `conciergeSettings` cell as v4's hydrate + `ConciergeSettingsSchema`
@@ -166,18 +155,114 @@ pub fn read_concierge_settings_cell(cell: Option<String>) -> serde_json::Value {
     }
 }
 
-/// Fill the Zod `.default()`s a stored `cheapLLMSettings` bag can predate, so a
-/// migration-vintage instance reads the way v4's `.parse()` makes it read. Only
-/// `allowCheapFallback` needs this today (v4 `65f5021c8`); the older keys were
-/// present from the column's first write. Insertion order is v4's schema order —
-/// the key goes LAST, where Zod puts it.
-fn default_cheap_llm_keys(mut bag: serde_json::Value) -> serde_json::Value {
-    if let Some(o) = bag.as_object_mut() {
-        if !o.contains_key("allowCheapFallback") {
-            o.insert("allowCheapFallback".into(), serde_json::Value::Bool(false));
-        }
+/// `ChatSettingsSchema.cheapLLMSettings`'s `.default({…})` LITERAL, in its
+/// own key order (`allowCheapFallback` BEFORE `embeddingProvider`): Zod 4's
+/// `.default()` returns the literal as-is for an `undefined` input without
+/// re-parsing it, so a NULL or unparseable cell reads in THIS order (measured
+/// at the `322a5488e` pin, P4.169 — `s_get_cheap_llm_null_cell`).
+const CHEAP_LLM_SETTINGS_DEFAULT_JSON: &str = r#"{"strategy":"PROVIDER_CHEAPEST","fallbackToLocal":true,"allowCheapFallback":false,"embeddingProvider":"OPENAI"}"#;
+
+const CHEAP_LLM_STRATEGIES: [&str; 3] = ["USER_DEFINED", "PROVIDER_CHEAPEST", "LOCAL_FIRST"];
+const EMBEDDING_PROVIDERS: [&str; 3] = ["SAME_PROVIDER", "OPENAI", "LOCAL"];
+
+/// v4 `CheapLLMSettingsSchema.parse` over a stored bag (`settings.types.ts:
+/// 49-72`), as the repository's whole-row validate runs it. Zod's output is
+/// REBUILT in shape order — `strategy` (default `PROVIDER_CHEAPEST`),
+/// `userDefinedProfileId` / `defaultCheapProfileId` only when present (an
+/// explicit `null` kept), `fallbackToLocal` (`true`), `embeddingProvider`
+/// (`OPENAI`), `allowCheapFallback` (`false`, v4 `65f5021c8`) — and unknown
+/// keys are STRIPPED (which is how v4 `3b463d6b1` retired
+/// `imagePromptProfileId`: the migration left the stored key, the read drops
+/// it). A value the schema refuses yields its issues (path prefixed
+/// `cheapLLMSettings`), and the caller DROPS the row as v4's fallback read
+/// does — measured at the pin (ruling R-B): a bad `strategy`, a non-UUID id
+/// or a non-object bag makes v4 answer the GET's no-row arm. The one home
+/// since P4.169 (F-1) — the first cut kept the stored bag's order and only
+/// appended `allowCheapFallback`.
+pub fn zod_parse_cheap_llm_settings(
+    bag: &serde_json::Value,
+) -> (serde_json::Value, Vec<crate::api::zod_issues::ZodIssue>) {
+    use crate::api::zod_issues::{zod_uuid_ok, ZodIssue};
+    use serde_json::{json, Map, Value};
+
+    type Bag = Map<String, Value>;
+    let at = |key: &str| vec![json!("cheapLLMSettings"), json!(key)];
+    let Some(o) = bag.as_object() else {
+        let path = vec![json!("cheapLLMSettings")];
+        return (
+            bag.clone(),
+            vec![ZodIssue::invalid_type("object", path, Some(bag))],
+        );
+    };
+    // `z.enum([...]).default(d)`: `undefined` → the default; any other
+    // non-member (a `null`, a number, an unknown string) → `invalid_value`.
+    let enum_field =
+        |out: &mut Bag, issues: &mut Vec<ZodIssue>, key: &str, values: &[&str], d: &str| match o
+            .get(key)
+        {
+            None => drop(out.insert(key.into(), json!(d))),
+            Some(Value::String(v)) if values.contains(&v.as_str()) => {
+                drop(out.insert(key.into(), json!(v)))
+            }
+            Some(_) => issues.push(ZodIssue::invalid_value(values, at(key))),
+        };
+    // `z.boolean().default(d)`.
+    let bool_field =
+        |out: &mut Bag, issues: &mut Vec<ZodIssue>, key: &str, d: bool| match o.get(key) {
+            None => drop(out.insert(key.into(), json!(d))),
+            Some(Value::Bool(b)) => drop(out.insert(key.into(), json!(b))),
+            Some(other) => issues.push(ZodIssue::invalid_type("boolean", at(key), Some(other))),
+        };
+    // `UUIDSchema.nullable().optional()`: absent stays absent, `null` kept.
+    let id_field = |out: &mut Bag, issues: &mut Vec<ZodIssue>, key: &str| match o.get(key) {
+        None => {}
+        Some(Value::Null) => drop(out.insert(key.into(), Value::Null)),
+        Some(Value::String(v)) if zod_uuid_ok(v) => drop(out.insert(key.into(), json!(v))),
+        Some(Value::String(_)) => issues.push(ZodIssue::invalid_uuid(at(key))),
+        Some(other) => issues.push(ZodIssue::invalid_type("string", at(key), Some(other))),
+    };
+
+    let (mut out, mut issues) = (Bag::new(), Vec::new());
+    enum_field(
+        &mut out,
+        &mut issues,
+        "strategy",
+        &CHEAP_LLM_STRATEGIES,
+        "PROVIDER_CHEAPEST",
+    );
+    id_field(&mut out, &mut issues, "userDefinedProfileId");
+    id_field(&mut out, &mut issues, "defaultCheapProfileId");
+    bool_field(&mut out, &mut issues, "fallbackToLocal", true);
+    enum_field(
+        &mut out,
+        &mut issues,
+        "embeddingProvider",
+        &EMBEDDING_PROVIDERS,
+        "OPENAI",
+    );
+    bool_field(&mut out, &mut issues, "allowCheapFallback", false);
+    (Value::Object(out), issues)
+}
+
+/// A stored `cheapLLMSettings` cell as v4's hydrate + parse reads it: a NULL /
+/// empty / unparseable / JSON-`null` cell is `undefined` to the schema, so the column's
+/// `.default({…})` literal answers as-is; anything else goes through
+/// [`zod_parse_cheap_llm_settings`].
+pub fn read_cheap_llm_settings_cell(
+    cell: Option<String>,
+) -> (serde_json::Value, Vec<crate::api::zod_issues::ZodIssue>) {
+    let default =
+        || serde_json::from_str(CHEAP_LLM_SETTINGS_DEFAULT_JSON).unwrap_or(serde_json::Value::Null);
+    match cell {
+        Some(text) if !text.is_empty() => match serde_json::from_str::<serde_json::Value>(&text) {
+            // The JSON text `null` hydrates as absent too (measured at the
+            // pin: `s_get_cheap_llm_json_null` keeps the row and reads the
+            // default literal).
+            Ok(serde_json::Value::Null) | Err(_) => (default(), Vec::new()),
+            Ok(v) => zod_parse_cheap_llm_settings(&v),
+        },
+        _ => (default(), Vec::new()),
     }
-    bag
 }
 
 /// `ThemePreferenceSchema` (themes/types.ts L532). `activeThemeId` is
@@ -1437,6 +1522,10 @@ pub fn find_by_user_id(
             "updatedAt",
         ],
     )?;
+    // `cheapLLMSettings`'s refusals, carried out of the row closure; they sort
+    // FIRST in the whole-row validate (the column precedes the voice mode and
+    // `wardrobeImageSettings` in `ChatSettingsSchema`'s shape).
+    let mut cheap_llm_issues = Vec::new();
     let row = conn
         .query_row(
             &format!("SELECT {cols} FROM chat_settings WHERE userId = ?1 LIMIT 1"),
@@ -1459,12 +1548,9 @@ pub fn find_by_user_id(
                     "tagStyles".into(),
                     parse_json(r.get::<_, Option<String>>(4)?),
                 );
-                obj.insert(
-                    "cheapLLMSettings".into(),
-                    strip_retired_cheap_llm_keys(default_cheap_llm_keys(parse_json(
-                        r.get::<_, Option<String>>(5)?,
-                    ))),
-                );
+                let (cheap, issues) = read_cheap_llm_settings_cell(r.get::<_, Option<String>>(5)?);
+                obj.insert("cheapLLMSettings".into(), cheap);
+                cheap_llm_issues = issues;
                 put_opt(
                     &mut obj,
                     "imageDescriptionProfileId",
@@ -1666,7 +1752,10 @@ pub fn find_by_user_id(
             other => Err(other),
         })?;
     // v4 `findOneByFilter` → `validate` (`ChatSettingsSchema.parse`) on the
-    // hydrated row. The ONE column v5 can store a value v4's schema refuses is
+    // hydrated row. A stored `cheapLLMSettings` bag the schema refuses (a bad
+    // enum, a non-UUID id, a non-object — P4.169, measured at the
+    // `322a5488e` pin) drops the row the same way. Otherwise the column v5
+    // can store a value v4's schema refuses is
     // the voice mode (every other enum/JSON column is parsed at the write, and
     // the booleans/numbers read through fixed coercions): a stored string
     // outside `off` / `ask` / `always` makes v4 log `Data validation failed`
@@ -1682,7 +1771,7 @@ pub fn find_by_user_id(
         // Schema order: the voice mode, then `wardrobeImageSettings` (P4.D255
         // — the second column a stored value v4's schema refuses can reach:
         // a hand-planted bag; the PUT arm parses before it writes).
-        let mut issues = Vec::new();
+        let mut issues = cheap_llm_issues;
         if let Some(mode) = row.get("impersonationVoiceMode").and_then(Value::as_str) {
             if ImpersonationVoiceMode::parse(mode).is_none() {
                 issues.push(crate::api::zod_issues::ZodIssue::invalid_value(
@@ -1987,27 +2076,25 @@ pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
 mod tests {
     use super::*;
 
-    /// v4 `65f5021c8` appended `allowCheapFallback: z.boolean().default(false)`
-    /// to `CheapLLMSettingsSchema`; a `.default()` is always present after a
-    /// parse, so a pre-4.9 three-key bag reads back FOUR-keyed with the new key
-    /// LAST (P4.D140's out-of-mandate fix — pinned locally so the cross-family
-    /// mutation proofs are not its only guard).
+    /// F-1 (P4.169): v4's `CheapLLMSettingsSchema.parse` rebuilds the bag in
+    /// SHAPE order whatever the stored order — a pre-4.9 three-key bag gains
+    /// `allowCheapFallback` LAST, a seed-order bag (`allowCheapFallback` before
+    /// `embeddingProvider`) is reordered, unknown keys (the retired
+    /// `imagePromptProfileId` among them) are dropped, an explicit `null` id is
+    /// kept — and the write half's typed struct still emits the key last.
     #[test]
-    fn a_pre_4_9_cheap_llm_bag_reads_back_with_allow_cheap_fallback_last() {
-        let stored = serde_json::json!({
-            "strategy": "user-defined",
+    fn cheap_llm_settings_read_in_v4s_shape_order() {
+        let keys = |v: &serde_json::Value| -> Vec<String> {
+            v.as_object().unwrap().keys().cloned().collect()
+        };
+        let (pre_4_9, issues) = zod_parse_cheap_llm_settings(&serde_json::json!({
+            "strategy": "USER_DEFINED",
             "fallbackToLocal": true,
-            "embeddingProvider": "local"
-        });
-        let read = default_cheap_llm_keys(stored);
-        let keys: Vec<&str> = read
-            .as_object()
-            .unwrap()
-            .keys()
-            .map(String::as_str)
-            .collect();
+            "embeddingProvider": "LOCAL"
+        }));
+        assert!(issues.is_empty());
         assert_eq!(
-            keys,
+            keys(&pre_4_9),
             [
                 "strategy",
                 "fallbackToLocal",
@@ -2015,26 +2102,67 @@ mod tests {
                 "allowCheapFallback"
             ]
         );
-        assert_eq!(read["allowCheapFallback"], serde_json::Value::Bool(false));
-        // A bag that already carries the key is untouched — value AND position.
-        let four = serde_json::json!({"allowCheapFallback": true, "strategy": "auto"});
-        assert_eq!(default_cheap_llm_keys(four.clone()), four);
-        // The write half: the typed struct fills the field from a three-key bag.
+        assert_eq!(
+            pre_4_9["allowCheapFallback"],
+            serde_json::Value::Bool(false)
+        );
+        let (reordered, issues) = zod_parse_cheap_llm_settings(&serde_json::json!({
+            "allowCheapFallback": true,
+            "imagePromptProfileId": "x",
+            "embeddingProvider": "OPENAI",
+            "userDefinedProfileId": null,
+            "strategy": "PROVIDER_CHEAPEST"
+        }));
+        assert!(issues.is_empty());
+        assert_eq!(
+            serde_json::to_string(&reordered).unwrap(),
+            r#"{"strategy":"PROVIDER_CHEAPEST","userDefinedProfileId":null,"fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":true}"#
+        );
+        // A NULL / unparseable cell is `undefined` to the schema: the
+        // column default's LITERAL, in its own order.
+        for cell in [
+            None,
+            Some(String::new()),
+            Some("not json".to_string()),
+            Some("null".to_string()),
+        ] {
+            let (read, issues) = read_cheap_llm_settings_cell(cell);
+            assert!(issues.is_empty());
+            assert_eq!(read.to_string(), CHEAP_LLM_SETTINGS_DEFAULT_JSON);
+        }
+        // Refusals carry Zod's issue at the field's path (R-B, measured: v4
+        // drops the row).
+        let (_, issues) = zod_parse_cheap_llm_settings(&serde_json::json!({
+            "strategy": "BOGUS",
+            "userDefinedProfileId": "not-a-uuid",
+            "fallbackToLocal": "yes"
+        }));
+        let paths: Vec<String> = issues
+            .iter()
+            .map(|i| serde_json::to_string(i.path()).unwrap())
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                r#"["cheapLLMSettings","strategy"]"#,
+                r#"["cheapLLMSettings","userDefinedProfileId"]"#,
+                r#"["cheapLLMSettings","fallbackToLocal"]"#
+            ]
+        );
+        let (_, issues) = zod_parse_cheap_llm_settings(&serde_json::json!(5));
+        assert_eq!(issues.len(), 1);
+        // The write half: the typed struct fills the field from a three-key
+        // bag and emits it last.
         let typed: CheapLlmSettings = serde_json::from_value(serde_json::json!({
-            "strategy": "auto",
+            "strategy": "USER_DEFINED",
             "fallbackToLocal": false,
-            "embeddingProvider": "local"
+            "embeddingProvider": "LOCAL"
         }))
         .unwrap();
         assert!(!typed.allow_cheap_fallback);
         let written = serde_json::to_value(&typed).unwrap();
         assert_eq!(
-            written
-                .as_object()
-                .unwrap()
-                .keys()
-                .next_back()
-                .map(String::as_str),
+            keys(&written).last().map(String::as_str),
             Some("allowCheapFallback")
         );
     }
@@ -2246,6 +2374,7 @@ mod tests {
             "autoLockSettings",
         ];
         for (row_ix, user) in ["u1", "u2"].iter().enumerate() {
+            let emb = ["LOCAL", "SAME_PROVIDER"][row_ix];
             let mut cols: Vec<(String, rusqlite::types::Value)> = vec![
                 ("id".into(), format!("id-{user}").into()),
                 ("userId".into(), user.to_string().into()),
@@ -2254,7 +2383,7 @@ mod tests {
                 (
                     "cheapLLMSettings".into(),
                     format!(
-                        "{{\"strategy\":\"USER_DEFINED\",\"fallbackToLocal\":false,\"allowCheapFallback\":true,\"embeddingProvider\":\"emb-{user}\"}}"
+                        "{{\"strategy\":\"USER_DEFINED\",\"fallbackToLocal\":false,\"allowCheapFallback\":true,\"embeddingProvider\":\"{emb}\"}}"
                     )
                     .into(),
                 ),
@@ -2304,9 +2433,10 @@ mod tests {
             assert_eq!(row["userId"], *user);
             assert_eq!(row["avatarDisplayMode"], "NEVER");
             assert_eq!(row["avatarDisplayStyle"], "RECTANGULAR");
+            // A per-user enum member (the schema refuses anything else).
             assert_eq!(
                 row["cheapLLMSettings"]["embeddingProvider"],
-                format!("emb-{user}")
+                ["LOCAL", "SAME_PROVIDER"][row_ix]
             );
             assert_eq!(row["imageDescriptionProfileId"], format!("idp-{user}"));
             assert_eq!(row["defaultRoleplayTemplateId"], format!("rtp-{user}"));
@@ -2701,6 +2831,31 @@ mod tests {
                 format!("ERROR quilltap::db Data validation failed collection=chat_settings error={zod}"),
                 format!("ERROR quilltap::db Error finding entity by filter collection=chat_settings error={zod}"),
             ],
+            "{lines:#?}"
+        );
+
+        // P4.169 (F-1, ruling R-B — measured at the `322a5488e` pin: v4's GET
+        // answers its no-row arm): a stored `cheapLLMSettings` the schema
+        // refuses drops the row too, its issue FIRST (the column precedes
+        // the voice mode in `ChatSettingsSchema`'s shape).
+        conn.execute(
+            "UPDATE chat_settings SET cheapLLMSettings = '{\"strategy\":\"BOGUS\"}' WHERE id = 's1'",
+            [],
+        )
+        .unwrap();
+        let (got, lines) =
+            crate::test_support::captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        assert!(got.is_none(), "v4 drops the row it cannot validate");
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        let cheap_at = lines[0]
+            .find("\"cheapLLMSettings\"")
+            .expect("the cheap issue");
+        let voice_at = lines[0]
+            .find("\"impersonationVoiceMode\"")
+            .expect("the voice issue");
+        assert!(cheap_at < voice_at, "{lines:#?}");
+        assert!(
+            lines[0].contains("Invalid option: expected one of \\\"USER_DEFINED\\\"|\\\"PROVIDER_CHEAPEST\\\"|\\\"LOCAL_FIRST\\\""),
             "{lines:#?}"
         );
     }

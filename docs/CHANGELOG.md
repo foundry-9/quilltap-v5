@@ -199,6 +199,20 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): `cheapLLMSettings` reads in v4's Zod shape order through ONE parser; a refused bag drops the row (P4.169)
+
+_Versions:_ quilltap-core 0.0.1340.
+
+The stored `cheapLLMSettings` bag is now read the way v4's `CheapLLMSettingsSchema.parse` reads it, through ONE `zod_parse_cheap_llm_settings`. The bag is rebuilt in shape order with defaults filled. The two optional ids appear only when present, and an explicit `null` is kept. Unknown keys are dropped, which subsumes the retired `imagePromptProfileId` strip.
+
+These shapes were measured at the pin and are now matched (ruling R-B):
+- A NULL, empty, unparseable or JSON-`null` cell reads the column's `.default({…})` literal in its own key order.
+- A bad enum, a non-UUID id or a non-object bag drops the row, with the issue first in the row's `Data validation failed` line.
+
+`settings_routes_equivalence` now byte-compares every non-ack body and after-refetch, where it had compared only two families' top-level keys. It also gains nine planted `cheap_llm_read` rows. Red-first: unported main failed at the first PUT row on the nested key order.
+
+Recorded divergence `REFUSED_CHEAP_LLM_ROW_GET` (the standing voice-mode class): v4's GET over a refused row creates and answers a second row, where v5 answers 500. Only a hand-planted cell reaches it, and it is pinned both ways.
+
 #### 2026-10-27 — fix(pascal): integer-like custom-tool keys iterate in V8 `Object.keys` order from ONE parse-time chokepoint (P4.169)
 
 _Versions:_ quilltap-core 0.0.1339.

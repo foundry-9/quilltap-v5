@@ -105,6 +105,12 @@ interface CaseSpec {
    *  shapes that reach the read path (v4's migration default, the repository
    *  seed, a NULL cell). The Rust harness plants identically. */
   plantWardrobeImageSettings?: { value: string | null };
+  /** P4.169 (F-1): set EVERY `chat_settings` row's `cheapLLMSettings` cell on
+   *  the case's work copy before the case runs (a raw UPDATE; `{ value: null }`
+   *  plants SQL NULL) — a stored bag in a non-schema key order, with an
+   *  unknown key, missing defaults, or a value the schema refuses. The Rust
+   *  harness plants identically. */
+  plantCheapLlmSettings?: { value: string | null };
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -221,6 +227,12 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         c.plantWardrobeImageSettings.value,
       ]);
     }
+    if (c.plantCheapLlmSettings !== undefined) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      await rawQuery('UPDATE chat_settings SET "cheapLLMSettings" = ?', [
+        c.plantCheapLlmSettings.value,
+      ]);
+    }
     if (c.corruptApiKey !== undefined) {
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?", [
@@ -305,6 +317,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         corruptApiKey: c.corruptApiKey ?? null,
         plantVoiceMode: c.plantVoiceMode ?? null,
         plantWardrobeImageSettings: c.plantWardrobeImageSettings ?? null,
+        plantCheapLlmSettings: c.plantCheapLlmSettings ?? null,
         recorded: c.recorded ?? false,
       },
       status,
@@ -779,6 +792,96 @@ describe('settings-routes oracle', () => {
       method: 'GET',
       url: 'http://x/api/v1/settings/chat',
       plantWardrobeImageSettings: { value: null },
+    },
+    {
+      // P4.169 (F-1): a stored bag in NON-schema order, an unknown key, a null id: v4 re-parses into shape order.
+      name: 's_get_cheap_llm_stored_order',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '{"allowCheapFallback":true,"embeddingProvider":"LOCAL","extraKey":1,"strategy":"USER_DEFINED","fallbackToLocal":false,"userDefinedProfileId":null,"imagePromptProfileId":"x"}' },
+    },
+    {
+      // P4.169 (F-1): the repository seed order (allowCheapFallback before embeddingProvider).
+      name: 's_get_cheap_llm_defaults_seed_order',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '{"strategy":"PROVIDER_CHEAPEST","fallbackToLocal":true,"allowCheapFallback":false,"embeddingProvider":"OPENAI"}' },
+    },
+    {
+      // P4.169 (F-1): an empty bag: every default filled.
+      name: 's_get_cheap_llm_empty_bag',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '{}' },
+    },
+    {
+      // P4.169 (F-1): SQL NULL: the column default.
+      name: 's_get_cheap_llm_null_cell',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: null },
+    },
+    {
+      // P4.169 (F-1): R-B: a strategy outside the enum.
+      name: 's_get_cheap_llm_bad_strategy',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}' },
+    },
+    {
+      // P4.169 (F-1): an optional id that is not a UUID.
+      name: 's_get_cheap_llm_bad_uuid',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '{"strategy":"USER_DEFINED","userDefinedProfileId":"not-a-uuid"}' },
+    },
+    {
+      // P4.169 (F-1): a stored JSON scalar.
+      name: 's_get_cheap_llm_non_object',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: '5' },
+    },
+    {
+      // P4.169 (F-1): the JSON text `null` — a parsed null is not `undefined`, so the default does not fire.
+      name: 's_get_cheap_llm_json_null',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: 'null' },
+    },
+    {
+      // P4.169 (F-1): an unparseable cell.
+      name: 's_get_cheap_llm_unparseable',
+      family: 'cheap_llm_read',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      plantCheapLlmSettings: { value: 'not json' },
     },
     {
       // GET over v4's ONE-key migration default.
