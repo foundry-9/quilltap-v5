@@ -609,13 +609,20 @@ pub fn classify_lock_status(lock_path: &Path, now_ms: i64) -> LockStatus {
     if !lock_path.exists() {
         return LockStatus::Absent;
     }
-    let Some(lock) = read_lock_file(lock_path) else {
+    let Some((lock, raw)) = read_lock_file_raw(lock_path) else {
         return LockStatus::Corrupt;
     };
-    classify_lock_content(&lock, now_ms)
+    classify_lock_content(&lock, &raw, now_ms)
 }
 
-fn classify_lock_content(lock: &LockFileContent, now_ms: i64) -> LockStatus {
+/// `raw` is the parsed record the typed view came from: the heartbeat age is
+/// computed over its RAW `lastHeartbeat` ([`heartbeat_age_ms`]), as the
+/// launcher's `getLockStatus` (`lock-helpers.js:95-97`) computes it.
+fn classify_lock_content(
+    lock: &LockFileContent,
+    raw: &Map<String, Value>,
+    now_ms: i64,
+) -> LockStatus {
     let same_host = lock.hostname == hostname();
     if same_host {
         if !is_pid_alive(lock.pid) {
@@ -628,16 +635,14 @@ fn classify_lock_content(lock: &LockFileContent, now_ms: i64) -> LockStatus {
         };
     }
     let is_container = lock.environment.is_container();
-    let heartbeat_age_ms = iso_to_ms(&lock.last_heartbeat)
-        .map(|hb| now_ms - hb)
-        .unwrap_or(i64::MAX);
-    if is_container && heartbeat_age_ms < HEARTBEAT_FRESH_MS {
+    let heartbeat_age_ms = heartbeat_age_ms(raw.get("lastHeartbeat"), now_ms);
+    if is_container && heartbeat_age_ms < HEARTBEAT_FRESH_MS as f64 {
         return LockStatus::Active {
             reason: format!(
                 "held by {} instance on {} (heartbeat {}s ago)",
                 lock.environment.as_str(),
                 lock.hostname,
-                (heartbeat_age_ms as f64 / 1000.0).round() as i64
+                js_num(js_round(heartbeat_age_ms / 1000.0))
             ),
         };
     }
@@ -676,16 +681,78 @@ fn js_num(x: f64) -> String {
     quilltap_core::jsnum::to_fixed(x, 0)
 }
 
-/// `Date.now() - new Date(lastHeartbeat).getTime()`, with v4's
-/// `lastHeartbeat ? … : Infinity` guard and V8's `NaN` for an unparseable
-/// stamp. Kept in `f64` so both non-finite values survive into the messages.
-fn heartbeat_age_ms(existing: &LockFileContent, now_ms: i64) -> f64 {
-    if existing.last_heartbeat.is_empty() {
+/// `existing.lastHeartbeat ? Date.now() - new Date(existing.lastHeartbeat)
+/// .getTime() : Infinity` (v4 `instance-lock.ts:683-685`, the launcher's
+/// `lock-helpers.js:95-97`) over the RAW parsed value (P4.171 C-6 follow-up).
+/// v4 never type-checks `lastHeartbeat`, so the lenient typed view's `""` for
+/// a non-string cannot stand in for it: a numeric epoch-ms heartbeat is
+/// truthy and gives a REAL age — a fresh one makes v4 REFUSE a foreign-host
+/// lock, where reading it as "never" would claim it and put two hosts on one
+/// database. A falsy value (absent, `null`, `false`, `0`, `""`) is
+/// `Infinity`; a value `new Date` cannot place is `NaN`, which compares
+/// false against the freshness window, so v4 CLAIMS (and prints `NaN`).
+/// Kept in `f64` so both non-finite values survive into the messages.
+fn heartbeat_age_ms(last_heartbeat: Option<&Value>, now_ms: i64) -> f64 {
+    let Some(v) = last_heartbeat.filter(|v| js_truthy(v)) else {
         return f64::INFINITY;
+    };
+    now_ms as f64 - js_new_date_time(v)
+}
+
+/// JS truthiness of a parsed JSON value (no `NaN` / `undefined` in JSON).
+fn js_truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().is_some_and(|x| x != 0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(_) | Value::Object(_) => true,
     }
-    match iso_to_ms(&existing.last_heartbeat) {
-        Some(hb) => (now_ms - hb) as f64,
-        None => f64::NAN,
+}
+
+/// `new Date(v).getTime()` for a parsed JSON value (ECMA-262 §21.4.2.1):
+/// `ToPrimitive(v)` — an array or object becomes its string form — then a
+/// string goes through `Date.parse` (V8's own parser, the ruled
+/// `ZONELESS_PARSE_AS_UTC` for a zoneless stamp) and anything else through
+/// `ToNumber` + `TimeClip` (non-finite or beyond ±8.64e15 → `NaN`, else
+/// truncated toward zero). `NaN` for what it cannot place.
+fn js_new_date_time(v: &Value) -> f64 {
+    let time_clip = |x: f64| {
+        if !x.is_finite() || x.abs() > 8.64e15 {
+            f64::NAN
+        } else {
+            x.trunc() + 0.0
+        }
+    };
+    match v {
+        Value::Number(n) => time_clip(n.as_f64().unwrap_or(f64::NAN)),
+        Value::Bool(b) => time_clip(if *b { 1.0 } else { 0.0 }),
+        Value::Null => time_clip(0.0),
+        other => {
+            quilltap_core::episodic::event_time_ms(Some(&js_to_string(other))).unwrap_or(f64::NAN)
+        }
+    }
+}
+
+/// JS `String(v)` for a parsed JSON value: `Array.prototype.join(',')` for an
+/// array (a nested `null` joins as `""`), `[object Object]` for an object.
+fn js_to_string(v: &Value) -> String {
+    match v {
+        Value::Null => "null".to_string(),
+        Value::Bool(b) => b.to_string(),
+        Value::Number(n) => {
+            quilltap_core::pascal::js_value::number_to_string(n.as_f64().unwrap_or(f64::NAN))
+        }
+        Value::String(s) => s.clone(),
+        Value::Array(items) => items
+            .iter()
+            .map(|i| match i {
+                Value::Null => String::new(),
+                other => js_to_string(other),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+        Value::Object(_) => "[object Object]".to_string(),
     }
 }
 
@@ -712,16 +779,21 @@ fn foreign_fresh_conflict_message(
 }
 
 /// v4's foreign-host stale-claim reason (bug 126), the twin of the sentence
-/// above. Pinned the same way.
-fn foreign_stale_claim_reason(existing: &LockFileContent, heartbeat_age_ms: f64) -> String {
+/// above. Pinned the same way. `last_heartbeat` is the RAW parsed value —
+/// v4's `${existing.lastHeartbeat || 'never'}`, so a non-string heartbeat
+/// prints as JS prints it.
+fn foreign_stale_claim_reason(
+    existing: &LockFileContent,
+    last_heartbeat: Option<&Value>,
+    heartbeat_age_ms: f64,
+) -> String {
     format!(
         "Lock from {} ({}) has no recent heartbeat (last: {}, age: {}s)",
         existing.hostname,
         existing.environment.as_str(),
-        if existing.last_heartbeat.is_empty() {
-            "never"
-        } else {
-            existing.last_heartbeat.as_str()
+        match last_heartbeat.filter(|v| js_truthy(v)) {
+            Some(v) => js_to_string(v),
+            None => "never".to_string(),
         },
         js_num(js_round(heartbeat_age_ms / 1000.0)),
     )
@@ -926,7 +998,7 @@ pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), 
     // - Stale or missing heartbeat → holder is gone, claim it
     if !same_host {
         let now_ms = iso_to_ms(&now_iso()).unwrap_or(0);
-        let age_ms = heartbeat_age_ms(&existing, now_ms);
+        let age_ms = heartbeat_age_ms(raw.get("lastHeartbeat"), now_ms);
 
         if age_ms < HEARTBEAT_FRESH_MS as f64 {
             let message = foreign_fresh_conflict_message(&existing, age_ms, &our_host);
@@ -937,7 +1009,7 @@ pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), 
             })));
         }
 
-        let stale_reason = foreign_stale_claim_reason(&existing, age_ms);
+        let stale_reason = foreign_stale_claim_reason(&existing, raw.get("lastHeartbeat"), age_ms);
         return claim_stale_lock(lock_path, raw, stale_reason, port);
     }
 
@@ -1133,7 +1205,7 @@ pub fn classify_lock_status_probed(lock_path: &Path, now_ms: i64) -> LockStatus 
     if !lock_path.exists() {
         return LockStatus::Absent;
     }
-    let Some(lock) = read_lock_file(lock_path) else {
+    let Some((lock, raw)) = read_lock_file_raw(lock_path) else {
         return LockStatus::Corrupt;
     };
     let same_host = lock.hostname == hostname();
@@ -1145,7 +1217,7 @@ pub fn classify_lock_status_probed(lock_path: &Path, now_ms: i64) -> LockStatus 
             ),
         };
     }
-    classify_lock_content(&lock, now_ms)
+    classify_lock_content(&lock, &raw, now_ms)
 }
 
 /// The CLI write-lock refusal/failure (v4 `acquireWriteLock`'s thrown Error).
@@ -1641,18 +1713,88 @@ mod tests {
         let mut existing = build_lock_content(None);
         existing.hostname = "elsewhere-host".to_string();
         existing.environment = EnvironmentType::Docker;
-        existing.last_heartbeat = "2020-01-01T00:00:00.000Z".to_string();
+        let iso = Value::from("2020-01-01T00:00:00.000Z");
         assert_eq!(
-            foreign_stale_claim_reason(&existing, 601_400.0),
+            foreign_stale_claim_reason(&existing, Some(&iso), 601_400.0),
             "Lock from elsewhere-host (docker) has no recent heartbeat \
              (last: 2020-01-01T00:00:00.000Z, age: 601s)"
         );
-        existing.last_heartbeat = String::new();
+        for falsy in [
+            None,
+            Some(Value::from("")),
+            Some(Value::from(0)),
+            Some(Value::Null),
+        ] {
+            assert_eq!(
+                foreign_stale_claim_reason(&existing, falsy.as_ref(), f64::INFINITY),
+                "Lock from elsewhere-host (docker) has no recent heartbeat \
+                 (last: never, age: Infinitys)"
+            );
+        }
         assert_eq!(
-            foreign_stale_claim_reason(&existing, f64::INFINITY),
+            foreign_stale_claim_reason(&existing, Some(&serde_json::json!({})), f64::NAN),
             "Lock from elsewhere-host (docker) has no recent heartbeat \
-             (last: never, age: Infinitys)"
+             (last: [object Object], age: NaNs)"
         );
+    }
+
+    /// P4.171 C-6 follow-up: v4's `lastHeartbeat ? Date.now() - new
+    /// Date(lastHeartbeat).getTime() : Infinity` over the RAW value — a
+    /// numeric epoch-ms heartbeat is a real age (a fresh one refuses), a falsy
+    /// one `Infinity`, one `new Date` cannot place `NaN` (Node 24:
+    /// `new Date({}).getTime()` → NaN, `new Date([2020]).getTime()` →
+    /// `Date.parse("2020")`, `new Date(true).getTime()` → 1).
+    #[test]
+    fn heartbeat_age_is_v4s_over_the_raw_value() {
+        let now = 1_767_225_600_000_i64; // 2026-01-01T00:00:00.000Z
+        let age = |v: Value| heartbeat_age_ms(Some(&v), now);
+        assert_eq!(age(Value::from(now - 5_000)), 5_000.0);
+        assert_eq!(age(Value::from((now - 5_000) as f64 + 0.9)), 5_000.0);
+        assert_eq!(age(Value::from("2025-12-31T23:59:55.000Z")), 5_000.0);
+        assert_eq!(age(Value::from(true)), (now - 1) as f64);
+        assert_eq!(
+            age(serde_json::json!([2020])),
+            (now - 1_577_836_800_000) as f64
+        );
+        for falsy in [
+            Value::Null,
+            Value::from(false),
+            Value::from(0),
+            Value::from(""),
+        ] {
+            assert_eq!(age(falsy), f64::INFINITY);
+        }
+        assert_eq!(heartbeat_age_ms(None, now), f64::INFINITY);
+        assert!(age(serde_json::json!({})).is_nan());
+        assert!(age(Value::from("not a date")).is_nan());
+        assert!(age(Value::from(9e15)).is_nan());
+    }
+
+    /// The acquire arm a numeric heartbeat used to take wrongly: a FOREIGN
+    /// lock whose fresh heartbeat is epoch ms is REFUSED (v4 throws), never
+    /// claimed as "never".
+    #[test]
+    fn foreign_host_fresh_numeric_heartbeat_refuses() {
+        let (path, _scratch) = temp_lock_path();
+        let now_ms = iso_to_ms(&now_iso()).unwrap();
+        let mut raw = serde_json::to_value(build_lock_content(None)).unwrap();
+        raw["hostname"] = Value::from("elsewhere-host");
+        raw["lastHeartbeat"] = Value::from(now_ms - 2_000);
+        let before = format!("{}\n", serde_json::to_string_pretty(&raw).unwrap());
+        std::fs::write(&path, &before).unwrap();
+        match acquire_instance_lock(&path, None) {
+            Err(LockError::Conflict(e)) => assert!(
+                e.message.contains("(last heartbeat 2s ago)"),
+                "{}",
+                e.message
+            ),
+            other => panic!("a fresh numeric foreign heartbeat must refuse: {other:?}"),
+        }
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
+        assert!(matches!(
+            classify_lock_status(&path, now_ms),
+            LockStatus::Stale { .. }
+        ));
     }
 
     #[test]

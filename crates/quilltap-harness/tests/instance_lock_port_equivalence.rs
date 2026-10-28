@@ -42,6 +42,11 @@
 //! `Lock heartbeat started` / `stopped` DEBUGs are not compared — v5's host
 //! drives the heartbeat, outside `acquire_instance_lock`.
 //!
+//! The C-6 follow-up (the §3 review) adds four foreign-host rows over a
+//! NON-STRING `lastHeartbeat` (`"__NOW_MS__"` → this side's `Date.now()`): a
+//! fresh epoch-ms number v4 REFUSES — RED before the fix, when v5's lenient
+//! view read it as "never" and CLAIMED the lock — then `0`, `{}` and `true`.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — or the pinned
 //! worktree; a `tsx` script):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -315,8 +320,15 @@ fn instance_lock_port_equivalence() {
                 other => panic!("{name}: plant pid {other}"),
             };
             let template = plant["template"].as_str().unwrap();
+            // `"__NOW_MS__"` (P4.171 C-6 follow-up): a numeric epoch-ms
+            // heartbeat stamped at plant time on each side.
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis();
             let text = template
                 .replacen("\"__PID__\"", &pid.to_string(), 1)
+                .replacen("\"__NOW_MS__\"", &now_ms.to_string(), 1)
                 .replace("__HOST__", &host);
             std::fs::write(&path, text).unwrap();
         }

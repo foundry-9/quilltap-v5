@@ -66,7 +66,8 @@ const MODULE = 'database:instance-lock';
 /** A plant: the standard v4 key order, `port` / extras spliced where named. */
 function plantTemplate(opts: {
   host?: string;
-  lastHeartbeat?: string;
+  /** Any JSON value — v4 never type-checks it; `'__NOW_MS__'` → `Date.now()`. */
+  lastHeartbeat?: unknown;
   port?: unknown;
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
@@ -78,7 +79,7 @@ function plantTemplate(opts: {
   obj.pid = '__PID__';
   obj.hostname = opts.host ?? '__HOST__';
   obj.startedAt = '2026-01-02T03:04:05.000Z';
-  obj.lastHeartbeat = opts.lastHeartbeat ?? '2026-01-02T03:04:05.000Z';
+  obj.lastHeartbeat = 'lastHeartbeat' in opts ? opts.lastHeartbeat : '2026-01-02T03:04:05.000Z';
   obj.environment = 'local';
   obj.processTitle = 'node';
   obj.processArgv0 = '/usr/bin/node';
@@ -152,6 +153,29 @@ function specs(): Spec[] {
     },
     actions: ['acquire'],
   });
+
+  // P4.171 (C-6) follow-up: a foreign lock's NON-STRING `lastHeartbeat` —
+  // v4 (`instance-lock.ts:683-685`) takes `existing.lastHeartbeat ? Date.now()
+  // - new Date(existing.lastHeartbeat).getTime() : Infinity` over the raw
+  // value, so a fresh epoch-ms number REFUSES (two hosts must never open one
+  // DB); a falsy `0` is `Infinity` (`last: never`); `{}` is a `NaN` age
+  // (claimed, `last: [object Object]`); `true` is `new Date(1)` (claimed).
+  for (const [label, hb, threw] of [
+    ['fresh numeric', '__NOW_MS__', true],
+    ['numeric zero', 0, false],
+    ['object', {}, false],
+    ['boolean true', true, false],
+  ] as Array<[string, unknown, boolean]>) {
+    out.push({
+      name: `${threw ? 'refused' : 'claim'} foreign ${label} heartbeat / valid PORT`,
+      port: '3007',
+      plant: {
+        pid: 'dead',
+        template: plantTemplate({ host: 'elsewhere-host', lastHeartbeat: hb, port: 3001 }),
+      },
+      actions: ['acquire'],
+    });
+  }
 
   // P4.171 (C-6): v4's lenient read — a stale claim of a lock missing fields
   // v4 never checks (the WARN drops `undefined` ones), an unknown environment,
@@ -325,6 +349,7 @@ async function main(): Promise<void> {
         const pid = spec.plant.pid === 'dead' ? deadPid() : process.pid;
         const text = spec.plant.template
           .replace('"__PID__"', String(pid))
+          .replace('"__NOW_MS__"', String(Date.now()))
           .split('__HOST__')
           .join(osHostname());
         fs.writeFileSync(lockPath, text);

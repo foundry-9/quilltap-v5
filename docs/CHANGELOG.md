@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(restore,lock): a carried file row is validated whole before it is written; a numeric lock heartbeat ages as v4's `new Date` does
+
+_Versions: core 0.0.1374, host 0.0.217._
+
+§3 review fixes (P4.167 H-4, P4.171 C-6).
+
+- A restore's carried file is validated whole before it is written, as v4's `repos.files.create` validates the archive row against `FileEntrySchema` (`restore.ts:796-806`). The new `carried_file_entity` builds what v4 validates (the legacy keys stripped, the blob's `sha256` when truthy, the target's `storageKey`, `userId`, id and timestamps); `zod_file_entry_issues` refuses it through `log_refused_create`, and the file becomes one ZodError warning listing every bad field in schema order. Before, a `null` `mimeType` was written as `""` and only `size` was checked. `system_restore_state` gains two carried rows (`mimeType: null`; `mimeType: null` + `size: "13"`), red on the old code; the store-binding archive was re-derived.
+- The instance lock computes the heartbeat age over the RAW `lastHeartbeat` with v4's truthiness and `new Date(v)` semantics (`instance-lock.ts:683-685`). A fresh numeric epoch-ms heartbeat on a foreign host now REFUSES, where the lenient read had treated it as "never" and claimed the lock — two hosts on one database. `instance_lock_port_equivalence` gains four foreign-host rows (a fresh number, `0`, `{}`, `true`) under a `__NOW_MS__` placeholder; red with the old `lock.rs`. The CLI's lock-status classifier uses the same age.
+
 #### 2026-10-28 — fix(spa): the save-image dialog shows only the alert on a failed album read; the F.9 whisper beat waits for a post-rollback whisper
 
 _Versions: SPA 0.5.907._

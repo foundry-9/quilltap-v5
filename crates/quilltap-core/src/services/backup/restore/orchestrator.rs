@@ -3378,35 +3378,81 @@ fn restore_one_file(
 /// storageKey}` — so the row keeps the archive's `mimeType` and `size`; only
 /// the hash (bug 117 — the archived blob's own, falling back to the archive's
 /// `files.sha256` when the blob carries none) and the rebuilt storage key come
-/// from the store. An archive row without a numeric `size` is refused by v4's
-/// `FileEntrySchema` (`z.number()`) with the two repository ERRORs and the
-/// ZodError as the per-file warning (measured on
-/// `restore_store_binding_*`'s `chart-no-size.bin`).
+/// from the store. v4's `repos.files.create` (`user-scoped.ts:88` →
+/// `base.repository.ts:350-368`) validates the WHOLE entity —
+/// `{...fileData, sha256?, storageKey, userId, id, createdAt, updatedAt}` —
+/// against `FileEntrySchema`, so an archive row v4 refuses (a non-numeric
+/// `size`, a `null` `mimeType`, a short hash, an unknown `source` …) is
+/// skipped with the two repository ERRORs and the ZodError — every bad field,
+/// in schema order — as the per-file warning (measured on
+/// `restore_store_binding_*`'s `chart-no-size.bin` and
+/// `system_restore_state`'s carried-row cases). The row written is the
+/// validated entity, never a `""` stand-in for a field v4 refuses.
 fn restore_carried_file(
     main: &Connection,
     target_user_id: &str,
     file: &Value,
     carried: &CarriedBlob,
 ) -> Result<(), DbError> {
-    let Some(size) = file.get("size").and_then(Value::as_f64) else {
-        let issue = crate::api::zod_issues::ZodIssue::invalid_type(
-            "number",
-            vec![Value::String("size".into())],
-            file.get("size"),
-        );
-        let zod = crate::api::zod_issues::zod_error_message(&[issue]);
+    let entity = carried_file_entity(target_user_id, file, carried);
+    let issues = crate::api::zod_issues::zod_file_entry_issues(&entity);
+    if !issues.is_empty() {
+        let zod = crate::api::zod_issues::zod_error_message(&issues);
         crate::db::fallback::log_refused_create("files", &zod);
         return Err(DbError::Internal(zod));
-    };
+    }
+    let validated = Value::Object(entity);
     write_restored_file_row(
         main,
         target_user_id,
-        file,
+        &validated,
         carried.storage_key.clone(),
-        s(file, "mimeType"),
-        size,
-        carried.sha256.clone().unwrap_or_else(|| s(file, "sha256")),
+        s(&validated, "mimeType"),
+        validated
+            .get("size")
+            .and_then(Value::as_f64)
+            .unwrap_or_default(),
+        s(&validated, "sha256"),
     )
+}
+
+/// The entity v4's carried arm hands `files.create` and `_create` validates
+/// (`restore.ts:798-806` + `user-scoped.ts:88` + `base.repository.ts:356-363`):
+/// `stripLegacyFileRowFields` drops `userId` / `createdAt` / `updatedAt` /
+/// `storageKey` and the legacy `s3Key` / `s3Bucket` / `mountPointId`; the
+/// carried blob's hash replaces the archive's only when it is truthy; then the
+/// rebuilt `storageKey`, the target `userId`, the id (`options.id || mint`)
+/// and the two fresh timestamps.
+fn carried_file_entity(
+    target_user_id: &str,
+    file: &Value,
+    carried: &CarriedBlob,
+) -> serde_json::Map<String, Value> {
+    let mut entity = file.as_object().cloned().unwrap_or_default();
+    for k in [
+        "userId",
+        "createdAt",
+        "updatedAt",
+        "storageKey",
+        "s3Key",
+        "s3Bucket",
+        "mountPointId",
+    ] {
+        entity.shift_remove(k);
+    }
+    if let Some(sha) = carried.sha256.as_ref().filter(|h| !h.is_empty()) {
+        entity.insert("sha256".into(), Value::String(sha.clone()));
+    }
+    entity.insert(
+        "storageKey".into(),
+        Value::String(carried.storage_key.clone()),
+    );
+    entity.insert("userId".into(), Value::String(target_user_id.to_string()));
+    entity.insert("id".into(), Value::String(id_of(file)));
+    let at = now();
+    entity.insert("createdAt".into(), Value::String(at.clone()));
+    entity.insert("updatedAt".into(), Value::String(at));
+    entity
 }
 
 /// The `files` row both arms write: the archive row's own fields with the

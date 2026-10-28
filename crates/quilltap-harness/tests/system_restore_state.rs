@@ -2300,7 +2300,14 @@ fn system_restore_state_equivalence() {
 
         // [P4.167 H-4 / P-1] the carried rows' archive-row mime / size, from
         // the RAW dumps.
-        assert_carried_archive_row_meta(name, &got_state, want_state, &mut failures);
+        assert_carried_archive_row_meta(
+            name,
+            &summary,
+            &case["summary"],
+            &got_state,
+            want_state,
+            &mut failures,
+        );
 
         // [P4.D158] v4 `2edd823c0`'s four bag-key arms, within-tree.
         assert_bag_keys_survive(name, &got_state, &mut failures);
@@ -3630,9 +3637,16 @@ fn assert_wardrobe_folder_arms_live(
 /// blob's; `chart-no-bytes.bin`, whose bytes the archive does not carry under
 /// `files/`, still restores (v4 never reads the disk on that arm); and
 /// `chart-no-size.bin` (no `size`) is refused by v4's `FileEntrySchema` on
-/// both sides.
+/// both sides. The §3 review's H-4 rows: v4's `files.create` validates the
+/// WHOLE entity, so `chart-null-mime.bin` (`mimeType: null`) is refused —
+/// never written with a `""` mime — and `chart-bad-both.bin` (`mimeType:
+/// null`, `size: "13"`) is refused with ONE ZodError carrying BOTH issues in
+/// schema order (`mimeType` before `size`). Red before the fix: v5 wrote the
+/// first with `mimeType ""` and refused the second on `size` alone.
 fn assert_carried_archive_row_meta(
     name: &str,
+    got_summary: &RestoreSummary,
+    want_summary: &Value,
     got: &BTreeMap<String, BTreeMap<String, Vec<Value>>>,
     want: &Value,
     failures: &mut Vec<String>,
@@ -3677,11 +3691,54 @@ fn assert_carried_archive_row_meta(
         }
     }
     for (side, rows) in [("v5", &v5), ("v4", &v4)] {
-        if rows.contains_key("chart-no-size.bin") {
-            failures.push(format!(
-                "[{name}] H-4 ({side}): chart-no-size.bin (no `size`) restored — \
-                 v4's FileEntrySchema refuses it"
-            ));
+        for refused in [
+            "chart-no-size.bin",
+            "chart-null-mime.bin",
+            "chart-bad-both.bin",
+        ] {
+            if rows.contains_key(refused) {
+                failures.push(format!(
+                    "[{name}] H-4 ({side}): {refused} restored — v4's FileEntrySchema \
+                     refuses it"
+                ));
+            }
+        }
+    }
+    let path_of = |k: &str| format!("\"path\": [\n      \"{k}\"\n    ]");
+    let got_warn = json!(got_summary.warnings);
+    for (side, warnings) in [("v5", &got_warn), ("v4", &want_summary["warnings"])] {
+        let of = |file: &str| -> Vec<String> {
+            let head = format!("Failed to restore file \"{file}\": [");
+            warnings
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .filter(|w| w.starts_with(&head))
+                        .map(str::to_string)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        // (file, the paths its ONE ZodError lists, in order)
+        for (file, paths) in [
+            ("chart-null-mime.bin", &["mimeType"][..]),
+            ("chart-bad-both.bin", &["mimeType", "size"][..]),
+        ] {
+            let hits = of(file);
+            let ok = hits.len() == 1 && {
+                let w = &hits[0];
+                let at: Vec<Option<usize>> = paths.iter().map(|p| w.find(&path_of(p))).collect();
+                w.matches("\"code\":").count() == paths.len()
+                    && at.iter().all(Option::is_some)
+                    && at.windows(2).all(|p| p[0] < p[1])
+            };
+            if !ok {
+                failures.push(format!(
+                    "[{name}] H-4 ({side}): {file} must be skipped with ONE ZodError listing \
+                     {paths:?} in schema order — got {hits:?}"
+                ));
+            }
         }
     }
 }

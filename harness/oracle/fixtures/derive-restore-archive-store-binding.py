@@ -31,8 +31,14 @@ Mutations, each one arm:
   are NOT planted under `files/`: v4's carried arm never reads the disk. The
   second also has NO `size` (measured: how the archive row's absent size
   decodes).
+- **carried rows v4's `FileEntrySchema` refuses WHOLE (the H-4 §3 review)** —
+  `chart-null-mime.bin` (`mimeType: null`) and `chart-bad-both.bin`
+  (`mimeType: null` AND `size: "13"`): v4's `files.create` validates the
+  whole entity, so each is skipped with ONE ZodError listing every bad field
+  in schema order (`mimeType` before `size`); neither is written with a `""`
+  stand-in.
 
-The manifest's `files` count moves by four; every other byte is kept.
+The manifest's `files` count moves by six; every other byte is kept.
 `restore-archive.zip` is md5-checked unchanged before and after.
 
 Usage (from the v5 repo root):
@@ -141,7 +147,22 @@ def plan(zin, root):
         storageKey=f"mount-blob:{RIYA_VAULT}:{BLOB}",
     )
     del no_size["size"]
-    files += [carried, loose, no_bytes, no_size]
+    null_mime = dict(carried)
+    null_mime.update(
+        id="f0000006-0000-4000-8000-000000000001",
+        originalFilename="chart-null-mime.bin",
+        mimeType=None,
+        storageKey=f"mount-blob:{RIYA_VAULT}:{BLOB}",
+    )
+    bad_both = dict(carried)
+    bad_both.update(
+        id="f0000007-0000-4000-8000-000000000001",
+        originalFilename="chart-bad-both.bin",
+        mimeType=None,
+        size="13",
+        storageKey=f"mount-blob:{LORIAN_VAULT}:{BLOB}",
+    )
+    files += [carried, loose, no_bytes, no_size, null_mime, bad_both]
     return {
         "doc-mount-points": points,
         "characters": characters,
