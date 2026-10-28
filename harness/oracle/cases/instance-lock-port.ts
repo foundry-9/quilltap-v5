@@ -31,6 +31,11 @@
  * as v4's `log()` merges it; a `pid` field masked; winston's dropped
  * `undefined` fields dropped here too).
  *
+ * P4.171 (C-6) adds rows for v4's lenient `readLockFile` (a lock missing
+ * `processArgv0`, an unknown or absent `environment` / `startedAt`, a `pid`
+ * that is not a number, text that is not JSON, a JSON `null`) and records an
+ * action that THROWS as `threw: true` (the file and lines still compared).
+ *
  * Run (Node 24, from the v4 checkout or a PINNED worktree — a `tsx` script):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
@@ -65,6 +70,9 @@ function plantTemplate(opts: {
   port?: unknown;
   before?: Record<string, unknown>;
   after?: Record<string, unknown>;
+  /** P4.171: keys deleted after the build; `environment` overridden. */
+  omit?: string[];
+  environment?: unknown;
 }): string {
   const obj: Record<string, unknown> = { ...(opts.before ?? {}) };
   obj.pid = '__PID__';
@@ -85,6 +93,8 @@ function plantTemplate(opts: {
     },
   ];
   Object.assign(obj, opts.after ?? {});
+  if ('environment' in opts) obj.environment = opts.environment;
+  for (const k of opts.omit ?? []) delete obj[k];
   return JSON.stringify(obj, null, 2) + '\n';
 }
 
@@ -143,6 +153,38 @@ function specs(): Spec[] {
     actions: ['acquire'],
   });
 
+  // P4.171 (C-6): v4's lenient read — a stale claim of a lock missing fields
+  // v4 never checks (the WARN drops `undefined` ones), an unknown environment,
+  // and the two refusals (the invalid-structure WARN, the unreadable DEBUG),
+  // each of which ends in v4's EEXIST re-read throw.
+  for (const [label, template] of [
+    ['missing processArgv0', plantTemplate({ omit: ['processArgv0'] })],
+    ['missing environment + startedAt', plantTemplate({ omit: ['environment', 'startedAt'] })],
+    ['unknown environment', plantTemplate({ environment: 'kubernetes' })],
+    ['numeric environment', plantTemplate({ environment: 7 })],
+  ] as Array<[string, string]>) {
+    out.push({
+      name: `claim ${label} / valid PORT`,
+      port: '3007',
+      plant: { pid: 'dead', template },
+      actions: ['acquire', 'heartbeat'],
+    });
+  }
+  for (const [label, template] of [
+    ['pid string', plantTemplate({}).replace('"__PID__"', '"12"')],
+    ['history missing', plantTemplate({ omit: ['history'] })],
+    ['an array', '[1, 2]\n'],
+    ['not json', '{ "pid": 12,\n'],
+    ['json null', 'null\n'],
+  ] as Array<[string, string]>) {
+    out.push({
+      name: `refused ${label}`,
+      port: '3007',
+      plant: { pid: 'dead', template },
+      actions: ['acquire'],
+    });
+  }
+
   // Re-entrant (same PID, same host) — `port` is never touched.
   for (const [label, template] of [
     ['malformed port + unknown keys', plantTemplate({ port: 'abc', before: EXTRAS_BEFORE, after: EXTRAS_AFTER })],
@@ -175,7 +217,16 @@ const MASKED_TOP = new Set([
 ]);
 
 function maskLock(text: string): string {
-  const parsed = JSON.parse(text) as Record<string, unknown>;
+  // P4.171: a refused plant stays on disk as written — text that is not JSON
+  // is recorded raw, a JSON value that is not an object compactly.
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return `RAW:${text}`;
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return JSON.stringify(value);
+  const parsed = value as Record<string, unknown>;
   const masked: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(parsed)) {
     if (MASKED_TOP.has(k)) {
@@ -279,11 +330,16 @@ async function main(): Promise<void> {
         fs.writeFileSync(lockPath, text);
       }
 
-      const actions: Array<{ action: string; masked: string | null; lines: Line[] }> = [];
+      const actions: Array<{ action: string; masked: string | null; lines: Line[]; threw?: boolean }> = [];
       for (const action of spec.actions) {
         sink = [];
+        let threw = false;
         if (action === 'acquire') {
-          lock.acquireInstanceLock(lockPath);
+          try {
+            lock.acquireInstanceLock(lockPath);
+          } catch {
+            threw = true;
+          }
         } else {
           if (!tick) throw new Error(`${spec.name}: no heartbeat registered`);
           (tick as () => void)();
@@ -291,7 +347,7 @@ async function main(): Promise<void> {
         const lines = sink;
         sink = null;
         const masked = fs.existsSync(lockPath) ? maskLock(fs.readFileSync(lockPath, 'utf8')) : null;
-        actions.push({ action, masked, lines });
+        actions.push({ action, masked, lines, ...(threw && { threw: true }) });
       }
       lock.stopLockHeartbeat();
 

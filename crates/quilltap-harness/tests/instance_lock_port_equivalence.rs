@@ -33,6 +33,15 @@
 //! with a port, every claim row, and every row planting a malformed `port` or
 //! unknown keys were RED.
 //!
+//! P4.171 (C-6) widens the compared lines to EVERY one v5 ports (the
+//! `OWNED` list: the two read lines, the three acquire lines, the re-entrant
+//! DEBUG, the heartbeat / lost / released / not-owned lines carrying the
+//! `module` binding), masks `lockPath`, `stalePid` and `lastHeartbeat` on both
+//! sides, reads v5's `errorJson` back as v4's `error`, and adds the lenient-read
+//! rows: an action v4 THROWS on must fail on v5 too (`threw`). v4's
+//! `Lock heartbeat started` / `stopped` DEBUGs are not compared — v5's host
+//! drives the heartbeat, outside `acquire_instance_lock`.
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — or the pinned
 //! worktree; a `tsx` script):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -52,11 +61,36 @@ use std::sync::{Arc, Mutex};
 use quilltap_host::lock::{acquire_instance_lock, heartbeat_tick, hostname};
 use serde_json::{Map, Value};
 
-/// The two lines this lane ports.
-const OWNED: [&str; 2] = [
+/// The `database:instance-lock` lines v5 ports (P4.D299's two, P4.171's rest).
+const OWNED: [&str; 12] = [
     "Building instance lock content",
     "Recorded listening port on instance lock",
+    "Lock file has invalid structure, treating as corrupt",
+    "Could not read lock file, treating as absent",
+    "Instance lock acquired",
+    "Stale instance lock detected, claiming",
+    "Instance lock acquired after stale claim",
+    "Instance lock re-acquired (same PID)",
+    "Lock heartbeat updated",
+    "Instance lock file disappeared — another process may claim the database. Shutting down.",
+    "Instance lock lost — another process has taken over the database. Shutting down.",
+    "Lock file not owned by this process, skipping release",
 ];
+
+/// Fields whose values differ by construction on the two sides (each side's
+/// own scratch path, its own dead child's PID, its own clock).
+const MASKED_FIELDS: [&str; 4] = ["pid", "lockPath", "stalePid", "lastHeartbeat"];
+
+/// One line field as compared: the per-side values masked, and the claim's
+/// `reason` (`PID <dead pid> is no longer running`) with its digit runs
+/// masked as the file's history `detail` is.
+fn mask_field(k: &str, v: Value) -> Value {
+    match (k, v) {
+        (k, _) if MASKED_FIELDS.contains(&k) => Value::from("<m>"),
+        ("reason", Value::String(s)) => Value::from(mask_digits(&s)),
+        (_, v) => v,
+    }
+}
 
 /// One captured line: `(level, message, fields in order)`.
 type Line = (String, String, Vec<(String, Value)>);
@@ -124,14 +158,18 @@ fn owned_v5(lines: &[Line]) -> Vec<Value> {
         .map(|(level, message, fields)| {
             let mut obj = Map::new();
             for (k, v) in fields {
-                obj.insert(
-                    k.clone(),
-                    if k == "pid" {
-                        Value::from("<m>")
-                    } else {
-                        v.clone()
-                    },
-                );
+                // The `…Json` convention (§R.5): v5's `<k>Json` is v4's `<k>`
+                // JSON-encoded (`errorJson` a string, `staleEnvironmentJson` a
+                // non-string value).
+                let (k, v) = match (k.strip_suffix("Json"), v) {
+                    (Some(stem), Value::String(raw)) if !stem.is_empty() => (
+                        stem.to_string(),
+                        serde_json::from_str(raw).unwrap_or_else(|_| v.clone()),
+                    ),
+                    _ => (k.clone(), v.clone()),
+                };
+                let v = mask_field(&k, v);
+                obj.insert(k, v);
             }
             serde_json::json!({ "level": level, "message": message, "fields": obj })
         })
@@ -148,8 +186,15 @@ fn owned_v4(lines: &[Value]) -> Vec<Value> {
             for (k, v) in l["fields"].as_object().unwrap() {
                 on |= k == "module";
                 if on {
-                    obj.insert(k.clone(), v.clone());
+                    obj.insert(k.clone(), mask_field(k, v.clone()));
                 }
+            }
+            // v4's `Instance lock acquired` passes `environment` at the call
+            // site (`{lockPath, pid, environment}`), but the merged object keeps
+            // the logger's BASE `environment` key's slot (before `module`) —
+            // so the call's value is read there and put back in call order.
+            if l["message"] == "Instance lock acquired" {
+                obj.insert("environment".into(), l["fields"]["environment"].clone());
             }
             serde_json::json!({ "level": l["level"], "message": l["message"], "fields": obj })
         })
@@ -187,7 +232,13 @@ fn mask_digits(s: &str) -> String {
 
 /// The oracle's `maskLock`, over the file's own key order.
 fn mask_lock(text: &str) -> String {
-    let parsed: Map<String, Value> = serde_json::from_str(text).expect("lock JSON");
+    // P4.171: a refused plant stays as written (the oracle's `RAW:` / compact
+    // non-object arms).
+    let parsed: Map<String, Value> = match serde_json::from_str::<Value>(text) {
+        Err(_) => return format!("RAW:{text}"),
+        Ok(Value::Object(m)) => m,
+        Ok(other) => return serde_json::to_string(&other).unwrap(),
+    };
     let mut masked = Map::new();
     for (k, v) in parsed {
         if MASKED_TOP.contains(&k.as_str()) {
@@ -284,9 +335,17 @@ fn instance_lock_port_equivalence() {
                 }
                 other => panic!("{label}: unknown action {other}"),
             });
-            if let Err(e) = outcome {
-                failures.push(format!("[{label}] v5 failed: {e}"));
-                continue;
+            let v4_threw = action["threw"].as_bool().unwrap_or(false);
+            match (&outcome, v4_threw) {
+                (Err(e), false) => {
+                    failures.push(format!("[{label}] v5 failed: {e}"));
+                    continue;
+                }
+                (Ok(()), true) => {
+                    failures.push(format!("[{label}] v4 threw, v5 succeeded"));
+                    continue;
+                }
+                _ => {}
             }
 
             // The file: masked key order + values, and v4's pretty shape.
@@ -302,7 +361,7 @@ fn instance_lock_port_equivalence() {
                     "[{label}] lock file differs\n  v4: {want}\n  v5: {got}"
                 ));
             }
-            if !raw.is_empty() {
+            if !raw.is_empty() && !v4_threw {
                 let reparsed: Value = serde_json::from_str(&raw).unwrap();
                 let pretty = format!("{}\n", serde_json::to_string_pretty(&reparsed).unwrap());
                 if pretty != raw {
@@ -310,7 +369,7 @@ fn instance_lock_port_equivalence() {
                 }
             }
 
-            // The two owned lines.
+            // The owned lines.
             let v4_lines = owned_v4(action["lines"].as_array().unwrap());
             let v5_lines = owned_v5(&lines);
             let (a, b) = (

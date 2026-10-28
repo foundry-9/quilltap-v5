@@ -102,15 +102,33 @@ pub struct LockHistoryEntry {
 }
 
 /// v4 `LockFileContent` (field order = v4's `buildLockContent`).
+///
+/// The READ is lenient as v4's `readLockFile` is (P4.171 C-6): v4 checks only
+/// `pid` (a number), `hostname` (a string) and `history` (an array) — the
+/// shape gate [`read_lock_file_raw`] applies first, with v4's WARN — so every
+/// other field defaults when missing or mistyped (a string field reads `""`, an
+/// absent `environment` reads as an empty [`EnvironmentType::Other`], which
+/// like every unrecognized value is neither `docker` nor `electron`), and a
+/// history entry v5 cannot type is skipped rather than failing the whole
+/// lock. Every REWRITE still edits the raw map (R-L1), so what this view
+/// defaults or skips is never written back.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LockFileContent {
     pub pid: u32,
     pub hostname: String,
+    #[serde(default, deserialize_with = "lenient_string")]
     pub started_at: String,
+    #[serde(default, deserialize_with = "lenient_string")]
     pub last_heartbeat: String,
+    #[serde(
+        default = "unknown_environment",
+        deserialize_with = "lenient_environment"
+    )]
     pub environment: EnvironmentType,
+    #[serde(default, deserialize_with = "lenient_string")]
     pub process_title: String,
+    #[serde(default, deserialize_with = "lenient_string")]
     pub process_argv0: String,
     /// v4 bug 239 (`93c5af6ad`): the HTTP port the server listens on, so the
     /// CLI tools that talk to a running server can find it from an instance
@@ -126,7 +144,43 @@ pub struct LockFileContent {
         skip_serializing_if = "Option::is_none"
     )]
     pub port: Option<u16>,
+    #[serde(deserialize_with = "lenient_history")]
     pub history: Vec<LockHistoryEntry>,
+}
+
+/// A string field of the lenient view: the string, or `""` for any other JSON
+/// value (v4 never type-checks it).
+fn lenient_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::String(s) => s,
+        _ => String::new(),
+    })
+}
+
+/// An `environment` that is absent or not a string: an empty
+/// [`EnvironmentType::Other`] — v4 compares it with `'docker'` / `'electron'`
+/// and nothing else, so anything unrecognized behaves as this does.
+fn unknown_environment() -> EnvironmentType {
+    EnvironmentType::Other(String::new())
+}
+
+fn lenient_environment<'de, D: Deserializer<'de>>(d: D) -> Result<EnvironmentType, D::Error> {
+    Ok(match Value::deserialize(d)? {
+        Value::String(s) => {
+            serde_json::from_value(Value::String(s)).map_err(serde::de::Error::custom)?
+        }
+        _ => unknown_environment(),
+    })
+}
+
+/// v4 checks only `Array.isArray(history)`; an entry v5 cannot type is skipped
+/// (the raw map keeps it for every rewrite).
+fn lenient_history<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<LockHistoryEntry>, D::Error> {
+    let entries = Vec::<Value>::deserialize(d)?;
+    Ok(entries
+        .into_iter()
+        .filter_map(|e| serde_json::from_value(e).ok())
+        .collect())
 }
 
 /// The lock's port, by v4's ONE lenient predicate (`resolveServerPort`,
@@ -443,11 +497,61 @@ pub fn read_lock_file(lock_path: &Path) -> Option<LockFileContent> {
 
 /// [`read_lock_file`] plus the parsed map the rewrites edit (R-L1): ONE read
 /// of the file, the typed view deciding, the raw map written back.
+///
+/// v4's two lines (P4.171 C-6): a missing file is silent (`ENOENT`); any other
+/// read failure, or text that is not JSON, is the DEBUG `Could not read lock
+/// file, treating as absent {lockPath, error}` (`error` = V8's `JSON.parse`
+/// message for unparseable text); a parsed value failing the shape gate —
+/// `pid` a number, `hostname` a string, `history` an array — is the WARN `Lock
+/// file has invalid structure, treating as corrupt {lockPath}`.
 fn read_lock_file_raw(lock_path: &Path) -> Option<(LockFileContent, Map<String, Value>)> {
-    let text = std::fs::read_to_string(lock_path).ok()?;
-    let Ok(Value::Object(raw)) = serde_json::from_str::<Value>(&text) else {
-        return None;
+    let could_not_read = |error: String| {
+        tracing::debug!(
+            module = "database:instance-lock",
+            lockPath = %lock_path.display(),
+            errorJson = %serde_json::to_string(&error).expect("a string serializes"),
+            "Could not read lock file, treating as absent"
+        );
     };
+    let text = match std::fs::read_to_string(lock_path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => {
+            could_not_read(e.to_string());
+            return None;
+        }
+    };
+    let parsed = match serde_json::from_str::<Value>(&text) {
+        Ok(v) => v,
+        Err(e) => {
+            could_not_read(
+                quilltap_core::jsstr::v8_json_parse_message(&text).unwrap_or_else(|| e.to_string()),
+            );
+            return None;
+        }
+    };
+    // v4 reads `parsed.pid` first: on a JSON `null` that THROWS (caught as the
+    // DEBUG arm); on any other non-object the three typeofs fail (the WARN).
+    if parsed.is_null() {
+        could_not_read("Cannot read properties of null (reading 'pid')".to_string());
+        return None;
+    }
+    let shape_ok = parsed.get("pid").is_some_and(Value::is_number)
+        && parsed.get("hostname").is_some_and(Value::is_string)
+        && parsed.get("history").is_some_and(Value::is_array);
+    let raw = match parsed {
+        Value::Object(raw) if shape_ok => raw,
+        _ => {
+            tracing::warn!(
+                module = "database:instance-lock",
+                lockPath = %lock_path.display(),
+                "Lock file has invalid structure, treating as corrupt"
+            );
+            return None;
+        }
+    };
+    // Past v4's gate the only refusal left is a `pid` number v5 cannot hold
+    // as a `u32` (negative, fractional, huge) — v4 would go on to probe it.
     let typed = serde_json::from_value(Value::Object(raw.clone())).ok()?;
     Some((typed, raw))
 }
@@ -633,6 +737,32 @@ fn claim_stale_lock(
     reason: String,
     port: Option<u16>,
 ) -> Result<(), LockError> {
+    // v4's WARN, from the lock as read: `existing.environment` /
+    // `existing.startedAt` are whatever the file holds — dropped when absent
+    // (winston drops `undefined`), a string as itself, any other JSON value
+    // under the `…Json` convention so the file record keeps v4's JSON type.
+    let stale_string = |key: &str| {
+        raw.get(key)
+            .and_then(Value::as_str)
+            .map(tracing::field::display)
+    };
+    let stale_json = |key: &str| {
+        raw.get(key)
+            .filter(|v| !v.is_string())
+            .map(|v| tracing::field::display(v.to_string()))
+    };
+    tracing::warn!(
+        module = "database:instance-lock",
+        lockPath = %lock_path.display(),
+        stalePid = raw.get("pid").and_then(|v| v.as_u64()),
+        staleHostname = stale_string("hostname"),
+        staleEnvironment = stale_string("environment"),
+        staleEnvironmentJson = stale_json("environment"),
+        staleStartedAt = stale_string("startedAt"),
+        staleStartedAtJson = stale_json("startedAt"),
+        reason = %reason,
+        "Stale instance lock detected, claiming"
+    );
     add_raw_history_entry(&mut raw, LockEvent::StaleDetected, Some(reason));
 
     let (pid, host, title, argv0) = our_identity();
@@ -657,6 +787,12 @@ fn claim_stale_lock(
 
     write_lock_file(lock_path, &raw)?;
     remember_owner(lock_path, pid, &host, &started_at);
+    tracing::info!(
+        module = "database:instance-lock",
+        lockPath = %lock_path.display(),
+        pid,
+        "Instance lock acquired after stale claim"
+    );
     Ok(())
 }
 
@@ -710,6 +846,13 @@ pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), 
                 f.write_all(format!("{json}\n").as_bytes())
                     .map_err(|e| LockError::Io(format!("write lock: {e}")))?;
                 remember_lock_owner(lock_path, &content);
+                tracing::info!(
+                    module = "database:instance-lock",
+                    lockPath = %lock_path.display(),
+                    pid = content.pid,
+                    environment = %content.environment.as_str(),
+                    "Instance lock acquired"
+                );
                 return Ok(());
             }
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -751,6 +894,12 @@ pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), 
         set_raw(&mut raw, "processArgv0", argv0);
         write_lock_file(lock_path, &raw)?;
         remember_owner(lock_path, existing.pid, &existing.hostname, &started_at);
+        tracing::debug!(
+            module = "database:instance-lock",
+            lockPath = %lock_path.display(),
+            pid = our_pid,
+            "Instance lock re-acquired (same PID)"
+        );
         return Ok(());
     }
 
@@ -824,6 +973,7 @@ pub fn acquire_instance_lock(lock_path: &Path, port: Option<u16>) -> Result<(), 
 pub fn heartbeat_tick(lock_path: &Path) -> bool {
     let Some((content, mut raw)) = read_lock_file_raw(lock_path) else {
         tracing::error!(
+            module = "database:instance-lock",
             lockPath = %lock_path.display(),
             "Instance lock file disappeared — another process may claim the database. Shutting down."
         );
@@ -833,6 +983,7 @@ pub fn heartbeat_tick(lock_path: &Path) -> bool {
         // Hostname is logged for diagnostics but is NOT part of the test.
         let (pid, host, _, _) = our_identity();
         tracing::error!(
+            module = "database:instance-lock",
             lockPath = %lock_path.display(),
             lockPid = content.pid,
             lockHostname = %content.hostname,
@@ -854,6 +1005,7 @@ pub fn heartbeat_tick(lock_path: &Path) -> bool {
     let _ = write_lock_file(lock_path, &raw);
     remember_owner(lock_path, content.pid, &host, &content.started_at);
     tracing::debug!(
+        module = "database:instance-lock",
         lockPath = %lock_path.display(),
         lastHeartbeat = %last_heartbeat,
         "Lock heartbeat updated"
@@ -874,6 +1026,7 @@ pub fn release_instance_lock(lock_path: &Path) {
     let (pid, host, _, _) = our_identity();
     if !is_still_our_lock(lock_path, &existing) {
         tracing::warn!(
+            module = "database:instance-lock",
             lockPath = %lock_path.display(),
             lockPid = existing.pid,
             lockHostname = %existing.hostname,
@@ -897,6 +1050,7 @@ pub fn release_instance_lock(lock_path: &Path) {
     let _ = std::fs::remove_file(lock_path);
     forget_lock_owner(lock_path);
     tracing::info!(
+        module = "database:instance-lock",
         lockPath = %lock_path.display(),
         pid,
         "Instance lock released"

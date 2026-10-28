@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — fix(lock): the instance lock's lenient read and v4's lock lines (P4.171 C-6)
+
+_Versions: host 0.0.216._
+
+The instance lock's read is lenient as v4's `readLockFile` is. Only `pid` (a number), `hostname` (a string), and `history` (an array) are checked, with v4's WARN `Lock file has invalid structure, treating as corrupt`. Every other field defaults, `environment` stays an open string-backed value, and a history entry v5 cannot type is skipped; rewrites still edit the raw map. A read failure or unparseable text is v4's DEBUG `Could not read lock file, treating as absent`, carrying V8's `JSON.parse` message. The acquire path gains v4's three lines in order: `Instance lock acquired`, `Stale instance lock detected, claiming` (a non-string environment or startedAt is carried under the `…Json` convention), and `Instance lock acquired after stale claim`. It also gains the re-entrant DEBUG. The heartbeat, lost, not-owned, and released lines now carry `module = database:instance-lock`. The `instance_lock_port` family compares every ported line and gains nine lenient-read rows.
+
 #### 2026-10-27 — feat(boot): v4's PHASE 3.4 / 3.4b scenario heals; the General heal's L2 → L37 capture row (P4.171 C-19 / C-8)
 
 _Versions: core 0.0.1339, host 0.0.215._
