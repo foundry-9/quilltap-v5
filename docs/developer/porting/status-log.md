@@ -193363,3 +193363,9 @@ Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.cla
 - **Differential:** `photos_routes_equivalence` + `photos-routes.test.ts` — three planted rows (`list_album_no_photos_with_query` with `embedCalls`, `list_null_store_type`, `list_null_store_type_album`), each planting on its own copy through byte-identical SQL builders (`emptyAlbumPlant` / `nullStoreTypePlant` ↔ `empty_album_plant` / `null_store_type_plant`; the Rust side plants before `Db::open`). 43 → 46 cases (64 oracle rows). **Red-first:** unported `api/photos.rs` → `list_album_no_photos_with_query` LINES MISMATCH + EMBED CALLS got 1 want 0. Green: ok.
 - **Regen:** stage `/tmp/p4171/photos-oracle` per the case header; `cd $PIN && QT_FIXTURE_PHOTOS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/photos-main.db QT_FIXTURE_PHOTOS_MOUNT=…/photos-mount.db QT_ORACLE_OUT=/tmp/p4171/oracle-photos.ndjson npx jest --silent --watchman=false --testTimeout=180000 --roots "$PWD" --roots /tmp/p4171/photos-oracle/cases -- photos-routes`.
 
+
+### Unit 8 — C-12: the `qtap://` decoder folded onto the one V8 `decodeURIComponent` twin
+
+- `safe_decode` calls `crate::scenarios::decode_uri::js_decode_uri_component`; the private `decode_uri_component` deleted; `decode_uri.rs`'s module doc updated (the L-6 fold done).
+- **Proof first** (a scratch test, removed before commit): the two decoders agreed on every `%XX` and `%XX%XX` input (incl. surrounded), every 3-byte run over 11 lead bytes × `0x70..=0xC5`², each with six 4th-byte variants, and ten literal edge strings — **146,892+ inputs, zero differences.** Unit-only per the order: `qtap_uri::tests::surrogates_and_overlongs_are_malformed` (`%ED%A0%80`, `%C0%AF` → `Malformed` with v4's message; `%F0%9F%8E%AD` decodes); `cargo test -p quilltap-core --lib qtap_uri` green.
+

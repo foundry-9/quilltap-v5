@@ -126,6 +126,12 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-27 — refactor(qtap): fold the private decodeURIComponent onto the one V8 twin (P4.171 C-12)
+
+_Versions: core 0.0.1343._
+
+`doc_edit/qtap_uri.rs`'s private `decode_uri_component` is folded onto the one V8 `decodeURIComponent` twin, `scenarios::decode_uri::js_decode_uri_component`, and a malformed escape still maps to `Malformed percent-encoding in qtap:// URI segment`. Before the fold, an exhaustive comparison found the two identical: every one- and two-escape input plus sampled three- and four-byte runs, 146,892+ inputs. A new unit test pins a lone surrogate and an overlong as malformed.
+
 #### 2026-10-27 — fix(photos): an empty gallery answers before the query is embedded; the NULL-storeType store measured and pinned (P4.171 D338-T3-24 / D338-22)
 
 _Versions: core 0.0.1342._

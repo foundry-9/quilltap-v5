@@ -17,9 +17,9 @@
 //! nothing past `U+10FFFF`). Unlike `decodeURI`, the reserved set (`/`, `?`,
 //! `#`, …) IS decoded — `%2F` becomes `/`. Literal characters pass through.
 //!
-//! `doc_edit/qtap_uri.rs` carries a private twin of this decoder; folding it
-//! onto this one is recorded for a later lane (L-6 — a file this lane does not
-//! own), not done here.
+//! `doc_edit/qtap_uri.rs`'s `qtap://` segment decode uses this one too: its
+//! private twin was folded here by P4.171 (C-12, the L-6 fold), after an
+//! exhaustive comparison found the two identical.
 //!
 //! Pinned tier-1 against V8 by `scenario_pure_equivalence`.
 

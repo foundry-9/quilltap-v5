@@ -135,72 +135,16 @@ fn encode_uri_component(s: &str) -> String {
     out
 }
 
-/// Reproduce JavaScript's `decodeURIComponent` throw/accept behaviour. Decodes
-/// `%XX` runs as UTF-8 byte sequences (validating continuation bytes + the
-/// resulting code point exactly as V8's `Decode`); literal characters pass
-/// through. Returns `Err(())` on any malformed escape or invalid UTF-8 run —
-/// the caller turns that into a [`QtapUriErrorCode::Malformed`].
-fn decode_uri_component(component: &str) -> Result<String, ()> {
-    let bytes = component.as_bytes();
-    let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
-    let mut i = 0usize;
-    // Read one `%XX` byte starting at index `at` ('%' at `at`); returns (byte,
-    // next_index). Needs bytes[at+1] and bytes[at+2] to exist and be hex digits.
-    let read_pct = |at: usize| -> Result<(u8, usize), ()> {
-        if at + 3 > bytes.len() {
-            return Err(());
-        }
-        let h1 = (bytes[at + 1] as char).to_digit(16).ok_or(())?;
-        let h2 = (bytes[at + 2] as char).to_digit(16).ok_or(())?;
-        Ok(((h1 * 16 + h2) as u8, at + 3))
-    };
-    while i < bytes.len() {
-        let c = bytes[i];
-        if c != b'%' {
-            out.push(c);
-            i += 1;
-            continue;
-        }
-        // First escaped byte.
-        let (b0, mut next) = read_pct(i)?;
-        if b0 < 0x80 {
-            out.push(b0);
-            i = next;
-            continue;
-        }
-        // Multi-byte lead: count leading 1-bits to get the sequence length (2..=4).
-        let n = match b0 {
-            0xC0..=0xDF => 2,
-            0xE0..=0xEF => 3,
-            0xF0..=0xF7 => 4,
-            _ => return Err(()), // 0x80..=0xBF lone continuation, or 0xF8+ invalid lead
-        };
-        let mut seq = vec![b0];
-        for _ in 1..n {
-            if next >= bytes.len() || bytes[next] != b'%' {
-                return Err(());
-            }
-            let (bx, after) = read_pct(next)?;
-            if !(0x80..=0xBF).contains(&bx) {
-                return Err(());
-            }
-            seq.push(bx);
-            next = after;
-        }
-        // Validate the assembled sequence is a legal UTF-8 code point.
-        match std::str::from_utf8(&seq) {
-            Ok(s) if s.chars().count() == 1 => out.extend_from_slice(&seq),
-            _ => return Err(()),
-        }
-        i = next;
-    }
-    String::from_utf8(out).map_err(|_| ())
-}
-
 /// v4 `safeDecode`: decode one component, mapping a malformed escape to a
 /// [`QtapUriError`] with the component embedded (byte-exact message).
+///
+/// The decode is the ONE `decodeURIComponent` twin,
+/// [`crate::scenarios::decode_uri::js_decode_uri_component`] (V8's `Decode`).
+/// This module's private copy was folded onto it by P4.171 (C-12), after an
+/// exhaustive comparison — every one- and two-escape input plus sampled three-
+/// and four-byte runs, 146,892+ inputs — found the two identical.
 fn safe_decode(component: &str) -> Result<String, QtapUriError> {
-    decode_uri_component(component).map_err(|_| QtapUriError {
+    crate::scenarios::decode_uri::js_decode_uri_component(component).map_err(|_| QtapUriError {
         message: format!("Malformed percent-encoding in qtap:// URI segment: \"{component}\""),
         code: QtapUriErrorCode::Malformed,
     })
@@ -626,5 +570,24 @@ mod tests {
             parse_qtap_uri("qtap://self/a%2").unwrap_err().code,
             QtapUriErrorCode::Malformed
         );
+    }
+
+    /// P4.171 (C-12): the folded decoder is V8's `Decode` — a lone surrogate
+    /// (`%ED%A0%80`, U+D800) and an overlong (`%C0%AF`) are malformed, with
+    /// v4's message naming the raw segment; a valid four-byte run decodes.
+    #[test]
+    fn surrogates_and_overlongs_are_malformed() {
+        for (uri, segment) in [
+            ("qtap://self/a%ED%A0%80.md", "a%ED%A0%80.md"),
+            ("qtap://self/a%C0%AF.md", "a%C0%AF.md"),
+        ] {
+            let err = parse_qtap_uri(uri).unwrap_err();
+            assert_eq!(err.code, QtapUriErrorCode::Malformed, "{uri}");
+            assert_eq!(
+                err.message,
+                format!("Malformed percent-encoding in qtap:// URI segment: \"{segment}\""),
+            );
+        }
+        assert!(parse_qtap_uri("qtap://self/%F0%9F%8E%AD.md").is_ok());
     }
 }
