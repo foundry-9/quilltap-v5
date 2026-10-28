@@ -54,6 +54,14 @@
    "identity": "Wren tends the automaton garden.",
    "description": "A patient gardener of gears.",
    "pronouns": { "subject": "they", "object": "them", "possessive": "their" }
+  },
+  {
+   "id": "cc000000-0000-4000-8000-0000000000c1",
+   "name": "Sorrel",
+   "controlledBy": "llm",
+   "identity": "Sorrel keeps the observatory's project ledger.",
+   "description": "A meticulous archivist of instruments.",
+   "pronouns": { "subject": "he", "object": "him", "possessive": "his" }
   }
  ],
  "seedMemories": [
@@ -67,6 +75,13 @@
     0.87, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.4930517, 0.0, 0.0, 0.0, 0.0
    ],
    "createdAt": "seed"
+  }
+ ],
+ "projects": [
+  {
+   "id": "7a000000-0000-4000-8000-00000000f001",
+   "name": "The Barometer Ledger",
+   "description": "A running record of the workshop's instrument calibrations."
   }
  ],
  "chats": [
@@ -105,9 +120,23 @@
    "participants": [
     { "id": "9a000000-0000-4000-8000-0000000000f1", "characterId": "bb000000-0000-4000-8000-0000000000b1", "controlledBy": "llm" }
    ]
+  },
+  {
+   "id": "1c000000-0000-4000-8000-00000000c0a7",
+   "projectId": "7a000000-0000-4000-8000-00000000f001",
+   "participants": [
+    { "id": "9a000000-0000-4000-8000-0000000000a7", "characterId": "cc000000-0000-4000-8000-0000000000c1", "controlledBy": "llm" }
+   ]
   }
  ],
  "carinaMessages": [
+  {
+   "id": "3a000000-0000-4000-8000-00000000aa07",
+   "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+   "answererId": "cc000000-0000-4000-8000-0000000000c1",
+   "question": "What did you file for the project today?",
+   "answer": "I recorded the barometer drift for the ledger."
+  },
   {
    "id": "3a000000-0000-4000-8000-00000000aa01",
    "chatId": "1c000000-0000-4000-8000-00000000c0a1",
@@ -138,6 +167,7 @@
   }
  ],
  "cannedEmbeddings": {
+  "barometer drift\n\nSorrel recorded the barometer drift for the ledger.": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
   "noon barometer calibration\n\nI calibrated the barometer at noon.": [
    0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
   ],
@@ -146,6 +176,12 @@
   ]
  },
  "completionRules": [
+  {
+   "pass": "self",
+   "namePrefix": "Sorrel",
+   "response": "[{\"content\": \"Sorrel recorded the barometer drift for the ledger.\", \"summary\": \"barometer drift\", \"keywords\": [\"barometer\", \"ledger\"], \"importance\": 0.6, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+   "usage": { "promptTokens": 150, "completionTokens": 26, "totalTokens": 176 }
+  },
   {
    "pass": "self",
    "namePrefix": "Vesper",
@@ -195,6 +231,12 @@
    "chatId": "1c000000-0000-4000-8000-00000000c0f6",
    "carinaMessageId": "3a000000-0000-4000-8000-00000000ff06",
    "answererId": "bb000000-0000-4000-8000-0000000000b1"
+  },
+  {
+   "name": "project_chat",
+   "chatId": "1c000000-0000-4000-8000-00000000c0a7",
+   "carinaMessageId": "3a000000-0000-4000-8000-00000000aa07",
+   "answererId": "cc000000-0000-4000-8000-0000000000c1"
   }
  ]
 }

@@ -73,6 +73,8 @@ interface ParticipantSeed {
 }
 interface ChatSpec {
   id: string;
+  /** P4.174 (C-13): the chat sits in this project (bug 222: its name + description reach the prompt and the stored rows' `projectId`). */
+  projectId?: string;
   participants: ParticipantSeed[];
 }
 interface CarinaMessage {
@@ -94,6 +96,7 @@ interface Spec {
   connectionProfiles: ProfileSpec[];
   characters: CharSpec[];
   seedMemories: SeedMemory[];
+  projects?: Array<{ id: string; name: string; description: string }>;
   chats: ChatSpec[];
   carinaMessages: CarinaMessage[];
 }
@@ -253,6 +256,15 @@ async function main(): Promise<void> {
     );
   }
 
+  // P4.174 (C-13): the projects the corpus chats sit in (v4's REAL create — the
+  // store-backed overlay writes the project's `properties.json`).
+  for (const pr of spec.projects ?? []) {
+    await repos.projects.create(
+      { name: pr.name, description: pr.description, userId: spec.userId } as never,
+      { id: pr.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never
+    );
+  }
+
   // Chats (each with one CHARACTER participant; pinned id + timestamps).
   for (const chat of spec.chats) {
     const participants = chat.participants.map((p) => ({
@@ -267,6 +279,7 @@ async function main(): Promise<void> {
       {
         userId: spec.userId,
         title: `Fixture ${chat.id}`,
+        projectId: chat.projectId ?? undefined,
         participants,
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }

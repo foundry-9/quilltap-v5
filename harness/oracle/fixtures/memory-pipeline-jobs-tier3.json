@@ -30,6 +30,14 @@
       "modelName": "gpt-4o-mini",
       "isCheap": true,
       "isDangerousCompatible": false
+    },
+    {
+      "id": "e0000000-0000-4000-8000-0000000000c2",
+      "name": "Uncensored Desk",
+      "provider": "OPENAI",
+      "modelName": "gpt-4o-uncensored",
+      "isCheap": false,
+      "isDangerousCompatible": true
     }
   ],
   "characters": [
@@ -152,6 +160,17 @@
         { "id": "e7000001-0000-4000-8000-000000000001", "role": "USER", "content": "A very short chat.", "participantId": null, "createdAt": "2023-06-07T10:00:00.000Z" },
         { "id": "e7000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "Indeed it is.", "participantId": "a7000001-0000-4000-8000-000000000001", "createdAt": "2023-06-07T10:00:05.000Z" }
       ]
+    },
+    {
+      "id": "d1000008-0000-4000-8000-000000000008",
+      "conciergeMode": "unmoderated",
+      "participants": [
+        { "id": "a8000001-0000-4000-8000-000000000001", "characterId": "cb000000-0000-4000-8000-00000000000b", "controlledBy": "llm" }
+      ],
+      "messages": [
+        { "id": "e8000001-0000-4000-8000-000000000001", "role": "USER", "content": "Bram, what did the lamp-lighter say?", "participantId": null, "createdAt": "2023-06-08T10:00:00.000Z" },
+        { "id": "e8000002-0000-4000-8000-000000000002", "role": "ASSISTANT", "content": "Nothing I would repeat in company.", "participantId": "a8000001-0000-4000-8000-000000000001", "createdAt": "2023-06-08T10:00:05.000Z" }
+      ]
     }
   ],
   "completionRules": [
@@ -176,8 +195,9 @@
     {
       "kind": "other",
       "namePrefix": "",
-      "response": "[]",
-      "usage": { "promptTokens": 150, "completionTokens": 2, "totalTokens": 152 }
+      "response": "[{\"subjectIndex\": 1, \"content\": \"They keep the workshop ledger in a locked drawer.\", \"summary\": \"a locked ledger drawer\", \"keywords\": [\"ledger\"], \"importance\": 0.75, \"temporal\": \"present\", \"scope\": \"narrow\", \"context\": \"information\"}, {\"subjectIndex\": 1, \"content\": \"They hummed a tune while tidying the bench.\", \"summary\": \"a hummed tune\", \"keywords\": [\"tune\"], \"importance\": 0.5, \"temporal\": \"moment\", \"scope\": \"narrow\", \"context\": \"information\"}]",
+      "comment": "P4.174 (B1-4): the hybrid per-turn OTHER floor is 0.75 — the first draft sits EXACTLY on it (kept, `>=`), the second under it (floored, the `Hybrid floor …` DEBUG). A `>` mutation of the floor drops the first row.",
+      "usage": { "promptTokens": 150, "completionTokens": 60, "totalTokens": 210 }
     },
     {
       "kind": "fold",
@@ -200,6 +220,7 @@
     { "name": "me_multi", "chatId": "d1000002-0000-4000-8000-000000000002", "turnOpenerMessageId": "e2000001-0000-4000-8000-000000000001" },
     { "name": "me_user_controlled", "chatId": "d1000003-0000-4000-8000-000000000003", "turnOpenerMessageId": "e3000001-0000-4000-8000-000000000001" },
     { "name": "me_autonomous", "chatId": "d1000004-0000-4000-8000-000000000004", "turnOpenerMessageId": null, "extractionAnchorMessageId": "e4000001-0000-4000-8000-000000000001" },
+    { "name": "me_unmoderated_route", "chatId": "d1000008-0000-4000-8000-000000000008", "turnOpenerMessageId": "e8000001-0000-4000-8000-000000000001" },
     { "name": "me_missing_chat", "chatId": "d1ffffff-0000-4000-8000-0000000000ff", "turnOpenerMessageId": null },
     { "name": "me_empty_slices", "chatId": "d1000005-0000-4000-8000-000000000005", "turnOpenerMessageId": "e5000001-0000-4000-8000-000000000001" }
   ],

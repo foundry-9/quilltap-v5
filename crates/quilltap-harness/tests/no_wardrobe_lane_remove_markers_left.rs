@@ -62,11 +62,19 @@ const MEMORY_ROUND_SHAS: [&str; 20] = [
     "83334b9a5",
 ];
 
-// === P4.D340: the `322a5488e` round's markers name the v4 commit their lane
-// absorbs (P4.D340's: `7263105c6`, the title lint). No census of that round's
-// markers exists yet; the unifier folds this list into one at §S.5. ===
-const INVENTORY_ROUND_SHAS: [&str; 1] = ["7263105c6"];
-// === end P4.D340 ===
+/// A marker belonging to NEITHER round this census (and its twin) scopes must
+/// still name SOME v4 commit — a 9..=40-digit lowercase-hex word — so a later
+/// round's marker (the `322a5488e` round's, `7263105c6`) cannot hide behind
+/// the format test without naming the commit it absorbs. One rule, no
+/// per-round constant to keep in step (P4.174 / D340-shas).
+fn names_some_v4_commit(text: &str) -> bool {
+    text.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| {
+        (9..=40).contains(&w.len())
+            && w.bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            && w.bytes().any(|b| b.is_ascii_digit())
+    })
+}
 
 fn names_wardrobe_sha(text: &str) -> bool {
     WARDROBE_SHAS.iter().any(|sha| text.contains(sha))
@@ -145,7 +153,7 @@ fn every_lane_remove_marker_names_a_lane_and_the_v4_commit() {
         if !names_wardrobe_sha(&text) {
             assert!(
                 MEMORY_ROUND_SHAS.iter().any(|sha| text.contains(sha))
-                    || INVENTORY_ROUND_SHAS.iter().any(|sha| text.contains(sha)),
+                    || names_some_v4_commit(&text),
                 "{file}:{line}: a LANE-REMOVE marker names neither the wardrobe round's commits \
                  nor the memory round's — it would hide from both censuses: {text}"
             );

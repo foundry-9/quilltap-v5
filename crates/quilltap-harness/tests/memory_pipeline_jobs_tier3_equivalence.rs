@@ -384,7 +384,8 @@ fn normalize_all(dumps: &mut [Value]) {
 /// shape: a codec change that converges trips it (retire the pin), and a
 /// corpus change that moves the count trips it (re-measure, confirm every
 /// moved row still decodes identically, update the number).
-const STORED_BYTE_DIVERGENCES: usize = 10;
+// P4.174 (C-14): 10 → 11 — `me_unmoderated_route` adds one extraction row, decoded text identical.
+const STORED_BYTE_DIVERGENCES: usize = 11;
 
 /// A dumped cell holding a compressed text BLOB arrives as hex (the shared
 /// dump's convention, both sides). Decode it to the text it stores.
@@ -736,6 +737,30 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
         })
         .collect();
 
+    // P4.174 (B1-4): the corpus's OTHER response carries a draft at EXACTLY the
+    // hybrid floor (0.75 — kept, v4's `d.importance >= floor`) and one under it
+    // (0.5 — floored). Non-vacuity: v4's memories hold the first and never the
+    // second; the row compare below then pins v5's boundary (a `>` would drop
+    // the 0.75 row on v5's side and diverge here).
+    {
+        let memories = want[TABLES.iter().position(|t| t.table == "memories").unwrap()]["rows"]
+            .as_array()
+            .unwrap();
+        let has = |needle: &str| {
+            memories
+                .iter()
+                .any(|r| r["content"].as_str().is_some_and(|c| c.contains(needle)))
+        };
+        assert!(
+            has("locked drawer"),
+            "v4 must KEEP the draft sitting exactly on the hybrid floor"
+        );
+        assert!(
+            !has("hummed a tune"),
+            "v4 must floor the 0.5 draft (hybrid per-turn OTHER floor 0.75)"
+        );
+    }
+
     normalize_all(&mut got);
     normalize_all(&mut want);
 
@@ -794,6 +819,18 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
     assert!(
         !want_llm_logs.is_empty(),
         "the oracle logged no llm_logs rows — the comparand would measure nothing"
+    );
+    // P4.174 (C-14): the Unmoderated chat (`me_unmoderated_route`) takes v4's
+    // uncensored route — its extraction call is sent to, and logged against,
+    // the dangerous-compatible desk profile (`…c2`), not the cheap one. The
+    // row compare below pins v5's `connectionProfileId` / `modelName` to v4's;
+    // this keeps it non-vacuous.
+    assert!(
+        want_llm_logs.iter().any(|r| {
+            r["connectionProfileId"] == "e0000000-0000-4000-8000-0000000000c2"
+                && r["modelName"] == "gpt-4o-uncensored"
+        }),
+        "the oracle logged no extraction call against the uncensored desk profile"
     );
     let got_pairs = decode_llm_log_rows(got_llm_logs);
     let want_pairs = decode_llm_log_rows(want_llm_logs);

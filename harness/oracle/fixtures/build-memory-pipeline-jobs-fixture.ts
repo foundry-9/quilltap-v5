@@ -58,6 +58,8 @@ interface MessageSeed {
 interface ChatSpec {
   id: string;
   chatType?: string;
+  /** P4.174 (C-14): a chat in the Unmoderated Concierge state — extraction takes the uncensored route. */
+  conciergeMode?: string;
   participants: Array<{ id: string; characterId: string; controlledBy: string }>;
   messages: MessageSeed[];
 }
@@ -212,6 +214,7 @@ async function main(): Promise<void> {
         userId: spec.userId,
         title: `Fixture ${chat.id}`,
         chatType: chat.chatType ?? undefined,
+        conciergeMode: chat.conciergeMode ?? undefined,
         participants,
       } as never,
       { id: chat.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp }

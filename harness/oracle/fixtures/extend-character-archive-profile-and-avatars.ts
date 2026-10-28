@@ -49,9 +49,13 @@
  * (`uuid-normalizer-blinds-fixture-baked-ids`) instead of being tokenized
  * alongside the ids the operations mint.
  *
- * ⚠ This family's ONLY consumers are `character_archive_tier2_equivalence` and
- * its oracle case, so extending it obliges regenerating exactly that one
- * oracle. Run this AFTER `build-character-archive-fixture.ts` and
+ * ⚠ The committed pair has THREE consumers, all obliged by this extension:
+ * `character_archive_tier2_equivalence` (+ its oracle case),
+ * `archive_reencrypt_tier2_equivalence` (+ `archive-reencrypt-tier2.test.ts`,
+ * whose `sweep_real_bundle` case archives Sable), and `quilltap-web`'s
+ * `change_passphrase_archive_sweep` (archives Sable over the wire) — see
+ * `extend-character-archive-inventory.ts`. Run this AFTER
+ * `build-character-archive-fixture.ts` and
  * `extend-character-archive-twice-linked-blob.ts` — it extends, never creates.
  *
  * Regenerate (Node 24, from the v4 checkout at the round baseline) — the

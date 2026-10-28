@@ -70,7 +70,9 @@
     {"id": "img-configured-is-the-original-excluded", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a2", "originalApiKey": "IMGKEY_UNC_A", "concierge": {"enabled": true, "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"}},
     {"id": "img-configured-keyless-now-warns", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "concierge": {"enabled": true, "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a4"}},
     {"id": "img-configured-not-owned-now-warns", "user": "B", "originalProfileId": "e0000000-0000-4000-8000-0000000000b1", "originalApiKey": "IMGKEY_ORIG_B", "concierge": {"enabled": true, "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"}},
-    {"id": "img-locked-chat", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "concierge": {"enabled": true, "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"}, "chat": {"conciergeMode": "locked"}}
+    {"id": "img-locked-chat", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a1", "originalApiKey": "IMGKEY_ORIG_A", "concierge": {"enabled": true, "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"}, "chat": {"conciergeMode": "locked"}},
+    {"id": "img-own-compatible-stays-put", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a3", "originalApiKey": "IMGKEY_COMPAT_A", "concierge": {"enabled": true}},
+    {"id": "img-own-compatible-locked-policy-first", "user": "A", "originalProfileId": "e0000000-0000-4000-8000-0000000000a3", "originalApiKey": "IMGKEY_COMPAT_A", "concierge": {"enabled": true}, "chat": {"conciergeMode": "locked"}}
   ],
   "rerouteCases": [
     {"id": "reroute-off", "user": "A", "currentProfileId": "e0000000-0000-4000-8000-0000000000a1", "mode": "OFF", "uncensoredImageProfileId": "e0000000-0000-4000-8000-0000000000a2"},

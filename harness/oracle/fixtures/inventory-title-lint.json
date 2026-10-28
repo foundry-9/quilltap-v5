@@ -2386,13 +2386,25 @@
    "tools": false
   },
   {
-   "name": "doc-keyed-naming",
+   "name": "doc-keyed-title-already-carried-refused",
    "kind": "doc",
    "change": {
     "kind": "write",
     "mountPointId": "{{mp:friday}}",
     "relativePath": "Inventory/tape.json",
     "content": "{\n  \"id\": \"88888888-8888-4888-8888-888888888888\",\n  \"kind\": \"item\",\n  \"name\": \"tape measure\",\n  \"title\": \"Friday's Yellow Tape Measure\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
+   },
+   "steps": [],
+   "tools": true
+  },
+  {
+   "name": "doc-keyed-naming",
+   "kind": "doc",
+   "change": {
+    "kind": "write",
+    "mountPointId": "{{mp:friday}}",
+    "relativePath": "Inventory/compass.json",
+    "content": "{\n  \"id\": \"99999999-9999-4999-8999-999999999999\",\n  \"kind\": \"item\",\n  \"name\": \"compass\",\n  \"title\": \"Friday's Brass Compass\",\n  \"createdAt\": \"2026-10-01T00:00:00.000Z\",\n  \"updatedAt\": \"2026-10-01T00:00:00.000Z\"\n}\n"
    },
    "steps": [],
    "tools": true

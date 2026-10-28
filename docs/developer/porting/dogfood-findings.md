@@ -641,6 +641,19 @@ catch, since every fixture is built fresh.
 
 ## Standing notes for the next orders
 
+### From the P4.174 harness lane (2026-10-27): one help-text divergence candidate
+
+- **`help/the-log.md`'s "One quirk" describes v4's job-child buffering; v5 has no child.**
+  The vendored page says a line written during an autonomous-room turn is
+  not committed until the turn's work lands, so a `log_read` / `log_grep` later
+  in that same turn will not see it. That is v4's forked job child buffering
+  its writes over IPC. v5 has no child (`CHILD_BUFFER_VISIBILITY`, in
+  `log_tools_equivalence`): a same-turn `log_read` sees a Pascal `log` effect
+  at once. The vendored page stays as v4 wrote it (the help tree is
+  byte-compared); this is a help-text divergence candidate for the human, and
+  a v4 filing candidate only if v4 changes the page. Source: P4.D331 Tier 3
+  item 28.
+
 ### From the `e8e17b2d9` unification (2026-10-19): the owed dogfood pass's queue, the review's checks, and the v4 filing candidates
 
 1. **The copy rule.** A v5 at the `e8e17b2d9` baseline reads, writes and

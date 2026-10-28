@@ -405,6 +405,29 @@ async fn carina_memory_extraction_tier3_matches_oracle() {
         })
         .collect();
 
+    // P4.174 (C-13, bug 222): the `project_chat` case's stored row carries the
+    // project's id (v4 threads `ctx.project.id` to every candidate), and the
+    // project's description reached the prompt (the canned key the oracle
+    // answered) — non-vacuity for the row compare below. (`pass: 'carina'` is
+    // admission provenance with no stored column: it reaches only log lines,
+    // not a compared table — recorded as a deferral in the lane record.)
+    {
+        let memories = want[TABLES.iter().position(|t| t.table == "memories").unwrap()]["rows"]
+            .as_array()
+            .unwrap();
+        assert!(
+            memories
+                .iter()
+                .any(|r| r["projectId"] == "7a000000-0000-4000-8000-00000000f001"
+                    && r["content"].as_str().is_some_and(|c| c.contains("Sorrel"))),
+            "v4 stores the project chat's memory with the chat's projectId"
+        );
+        assert!(
+            oracle_text.contains("A running record of the workshop's instrument calibrations."),
+            "the project's description must reach the extraction prompt"
+        );
+    }
+
     normalize_all(&mut got);
     normalize_all(&mut want);
 

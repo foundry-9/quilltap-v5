@@ -193734,3 +193734,34 @@ The memory list shows no Source link; Stop in a two-character room pauses as v4 
 
 SPA 0.5.905 → 0.5.906; core 0.0.1336, host 0.0.214, web 0.0.246, cli 0.0.34, tauri 0.0.9 unchanged; harness frozen 0.0.1110.
 
+
+
+## P4.174 — harness / test-craft smalls (lane record, 2026-10-27)
+
+Branch `claude/p4.174-harness-test-craft-6c7ea4`, cut from main `6c7ea4410`. ZERO production source: the only `crates/*/src` hunk is the `#[cfg(test)]` module in `services/recall/select.rs` (granted). No crate version bumped (test-only; a core bump would re-mint every harness binary) — the unifier decides. Pin `/tmp/qt-v4-pin-p4.174-322a5488e` at `322a5488e` (openai 7.34.0, zod 4.6.7, @xterm/headless 6.0.0). §2 probe: observation only — v4 `main` moved past `b892227eb` (`d64b25e96`, docs); continued per §R.2.
+
+**Landed**
+- **C-3** NEW `recall_probe_fixture_equivalence` + `cases/recall-probe-fixture.test.ts`: v4's real `searchRecall` over v4's own probe set (read at the pin at run time, SKIP when `QT_V4_ROOT` unset); ids remapped order-preserving to RFC UUIDs, 64-d vectors as Float32 blobs on a provisioned scratch DB. 9 turns, 125 candidates at 1e-12, gold-at-head 24 = v4's fixture total. MEASURED: the probe world's stand-in index uses a normalising cosine, the real store a plain dot (vectors are unit only to ~4e-7), so the oracle's index ranks with v4's REAL `cosineSimilarity`. Red-able: a perturbed oracle score fails. The trace is not compared (candidates only) — recorded.
+- **C-4** `select.rs` tests `never_expands_a_text_search` + a vector control; dropping the `strategy == Vector` conjunct turns the text test RED (mutation run, restored).
+- **B1-4** the survey named the wrong files; the hybrid floor runs in `memory_pipeline_jobs_tier3`. The corpus' OTHER response now carries drafts at exactly 0.75 (kept) and 0.5 (floored); non-vacuity asserts on v4's memories. Mutation `>= → >` in `extraction/rate_limit.rs` is RED (memories rows diverge), restored.
+- **B.1** `orchestrator_tier3`: new oracle row `turnEndLog` (v4's `Wardrobe outfit announcement scheduled` DEBUG), compared per call (silent on non-wardrobe cases, fires ≥ 2). Family green.
+- **D340-shas** both fenced `INVENTORY_ROUND_SHAS` constants replaced by one shared rule (`names_some_v4_commit`: a marker outside the two scoped rounds must name some 9–40-digit hex v4 commit).
+- **D330-meta** `workspace-core.ts` derives `_meta.baseline` (`git rev-parse --short HEAD`); regenerated from the pin: the fixture diff is exactly one line (`e646f58b` → `322a5488e`). HANDOFF(P4.173): `workspace-core.spec.ts:13` comment still says `e646f58b`.
+- **D340-name** `doc-keyed-naming` renamed `doc-keyed-title-already-carried-refused`; a true accepting `doc-keyed-naming` twin added (fresh title). `inventory_title_lint_equivalence` green on a regenerated oracle.
+- **G.5** archive extender sentence now names THREE consumers.
+- **C-13** Carina corpus: project "The Barometer Ledger" + a project chat answered by a new character Sorrel (own rule/embedding — the same answer from Vesper dedups into the first row); asserts the stored row's `projectId` and the description in the prompt. The "pair" is built per run (no committed .db), so only the spec + builder changed; the only consumers are the builder, the oracle case and `carina_memory_extraction_tier3`.
+- **C-14** `memory_pipeline_jobs_tier3`: third profile (dangerous-compatible) + an Unmoderated chat (`me_unmoderated_route`); v4 routes its extraction to `gpt-4o-uncensored` / profile `…c2`, v5 matches. `STORED_BYTE_DIVERGENCES` 10 → 11 (decoded text identical). The turn-grain `llm_logs` row set was already compared whole (every `me_*` case is turn-grain).
+- **D326-T2-1** `danger-routing.json`: `img-own-compatible-stays-put` + `img-own-compatible-locked-policy-first`; the oracle holds 2 `already uncensored` DEBUGs (the desk leg `img-configured-is-the-original-excluded` was already pinned — confirmed). `danger_routing_equivalence` green.
+- **C-17** census (subagent, read-only, v4 pin vs v5, ~25 readers: self digests, frozen archive, Commonplace mirror, consolidation bucketing, `subjectOf`, fold bucket key, recall prefix/subject, inter-character filters, participant boost, hydrate filter, optimizer, first-message context, admission content key, insert): **no v5-only difference**; unread/unverified: the `plan.interCharacterSubjects` builder (`context-manager.ts:1398`) and the memories API routes. No code.
+- **D331-T3-28** standing note in `dogfood-findings.md` (`help/the-log.md` "One quirk" vs `CHILD_BUFFER_VISIBILITY`).
+
+**NOT landed — deferred loudly**
+- **D325-notdone** (Inventory item-images `direct` generate 201/422/502 rows + the save-to-store INFO / `Generate body is not valid JSON` DEBUG): needs an image profile planted on the IIIR pair, a provider seam below `generateInventoryItemImage` on v4's side and a scripted image seam on the served v5 host — not started.
+- **D340-T2-2** `inventory-title-lint-surfaces.test.ts` (v4's real route + doc-tool handlers with the census stubbed): not started.
+- **`pass: 'carina'` provenance** (C-13): admission provenance with no stored column — reaches only log lines, not a compared table; needs a log-capture row.
+- **D313-16** (Tier 3, a `src` deletion): not this lane's.
+
+**Oracle recipes** (all from the pin, Node 24): recall-probe — header of `recall_probe_fixture_equivalence.rs` (env `QT_ORACLE_RECALL_PROBE`, `QT_V4_ROOT`); pipeline-jobs — `QT_ORACLE_MPJ`, `QT_FIXTURE_MPJ_MAIN/MOUNT` (rebuild the fixture first: it gained a profile, a chat field and a chat); carina — `QT_ORACLE_CARINA_MEM`, fixtures rebuilt from the changed spec; danger — `QT_ORACLE_DANGER_ROUTING`, `QT_FIXTURE_ROUTING` rebuilt; title-lint — rebuilt fixture + oracle; orchestrator — oracle regenerated (new `turnEndLog` rows). Other families reading `memory-pipeline-jobs-tier3.json` / the Carina spec: none (grepped).
+
+**Gate (P4.174):** `cargo fmt --all --check` clean; `cargo clippy --workspace --all-targets -- -D warnings` clean on both feature sets; the touched families and the §R.9(6) guards re-run by name WITH the oracle env set and confirmed RUN (16 harness binaries, all ok: recall-probe, pipeline-jobs, carina, danger-routing, title-lint, orchestrator, both LANE-REMOVE censuses, spelling / fallback-home / builtin-prompt-templates / provider-sdk / zod / qtap-schema / public-schemas / help-tree). **NOT done:** the full `cargo test --workspace` — it stalled at 0% CPU on `brahma_console_tier3_equivalence` and `brahma_orchestrator_tier3_equivalence` (killed by PID; unrelated files, P4.165 owns that area) under the shared-machine load, so it was stopped; the unifier's union gate covers it. `recipe_sweep.py --self-test` not run.
+

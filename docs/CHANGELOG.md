@@ -420,6 +420,12 @@ _No crate versions bumped._
 
 The e2e mock LLM gains an opt-in `toolCall` option: the first streamed completion answers one streamed `tool_calls` delta, and the tool loop's follow-up (it carries a `role: 'tool'` message) gets the plain reply. Off by default, so no existing spec moves. `inventory-flow` beat (g) now runs a real `inventory_pick_up` turn on its own `Marlinspike` archetype and asserts inside the assistant message holding that turn's reply, so it can no longer pass on beat (i)'s planted row. New `toast-stacking-flow` (a save toast over the open Inventory dialog is the topmost element at its centre). The Wardrobe Pictures walk gains the group plate (`Group · <name>`). `wardrobe-flow`'s history beat now waits for Aurora's newest `outfit-change` whisper and checks it names the brogues and not the cravat; its unlock wait tolerates a loaded machine. `salon-image-detail-flow` unlocks the shared server itself so it runs by file instead of skipping. `workspace-help-ask-flow`'s fifth beat stays deferred (recorded in its header).
 
+#### 2026-10-27 — test(harness): P4.174 recall-probe family, hybrid-floor / Unmoderated / project rows, turn-end drain pin, title-lint and LANE-REMOVE guards
+
+_No crate versions bumped._
+
+Harness-only lane (no production source). Adds the recall-probe equivalence family over v4's own probe set, a text-search expansion test in `select.rs`, the hybrid OTHER floor boundary row, an Unmoderated-chat extraction row, a Carina project-chat row, the turn-end wardrobe drain DEBUG pinned at turn level, own-compatible image rows, a single LANE-REMOVE format guard, a derived workspace-core baseline, and the title-lint row rename plus an accepting twin. Two Tier 2 items are deferred and recorded.
+
 #### 2026-10-27 — docs(porting): order the `322a5488e` follow-ups smalls round — ten lanes (P4.165–P4.174), four human rulings, five survey records
 
 _Docs-only change._

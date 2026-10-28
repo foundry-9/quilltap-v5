@@ -845,6 +845,10 @@ async function main(): Promise<void> {
     'Consumed informs on preserved partial response',
   ]);
   let informConsumeLines: Array<Record<string, unknown>> = [];
+  // P4.174 (B.1): the turn-end wardrobe drain's DEBUG (`outfit-change-effects.ts`
+  // `scheduleWardrobeAnnouncement`, `context: 'orchestrator-turn-end'`) — v5's
+  // `flush_pending_wardrobe_announcements` at the end of `process_message`.
+  let turnEndLines: Array<Record<string, unknown>> = [];
   // P4.D291: the deferred mail flip's DEBUG (bug 227), per call.
   let mailLines: Array<Record<string, unknown>> = [];
   {
@@ -858,6 +862,9 @@ async function main(): Promise<void> {
     ) {
       if (INFORM_CONSUME_MESSAGES.has(message)) {
         informConsumeLines.push({ level: 'debug', message, context: context ?? null });
+      }
+      if (message === 'Wardrobe outfit announcement scheduled') {
+        turnEndLines.push({ level: 'debug', message, context: context ?? null });
       }
       // v4 `01f508d4e` renamed the DEBUG from the bare function name.
       if (message === 'Mail alerts marked delivered') {
@@ -1090,12 +1097,14 @@ async function main(): Promise<void> {
     lines.push(
       JSON.stringify({ kind: 'informConsumeLog', call: call.name, lines: informConsumeLines }),
     );
+    lines.push(JSON.stringify({ kind: 'turnEndLog', call: call.name, lines: turnEndLines }));
     // P4.133: the keys this call's streams carried, in order (every leg: the
     // primary, its retries, the tool loops, a failover or reroute, a Carina or
     // Brahma consult, every chained turn).
     lines.push(JSON.stringify({ kind: 'streamKeys', call: call.name, keys: currentStreamKeys }));
     toolChangeLines = [];
     informConsumeLines = [];
+    turnEndLines = [];
 
     // Let the fire-and-forget background triggers settle before the next call.
     await new Promise((resolve) => setTimeout(resolve, 200));

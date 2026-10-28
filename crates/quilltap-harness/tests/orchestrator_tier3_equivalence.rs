@@ -1632,6 +1632,7 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_tool_change: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.162: v4's two `Consumed informs …` DEBUG lines per case.
     let mut want_inform_consume: HashMap<String, Vec<Value>> = HashMap::new();
+    let mut want_turn_end: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.D291: per call, the letters left unalerted + v4's flip DEBUGs.
     let mut want_mail: HashMap<String, (Value, Vec<Value>)> = HashMap::new();
     let mut got_unalerted: HashMap<String, Value> = HashMap::new();
@@ -1746,6 +1747,15 @@ fn orchestrator_tier3_matches_oracle() {
                     .cloned()
                     .expect("informConsumeLog carries `lines`");
                 want_inform_consume.insert(parsed.call.clone().unwrap(), lines);
+            }
+            "turnEndLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("turnEndLog carries `lines`");
+                want_turn_end.insert(parsed.call.clone().unwrap(), lines);
             }
             "streamKeys" => {
                 let keys = parsed
@@ -3207,6 +3217,52 @@ fn orchestrator_tier3_matches_oracle() {
         tool_change_fired,
         usize::from(ran("tool_settings_changed")),
         "exactly one corpus case (tool_settings_changed) fires the tool-change INFO"
+    );
+
+    // --- P4.174 (B.1): the turn-end wardrobe drain's DEBUG, at TURN level ---
+    // v4 `outfit-change-effects.ts` `scheduleWardrobeAnnouncement` logs
+    // `logger.debug('Wardrobe outfit announcement scheduled', {context:
+    // 'orchestrator-turn-end', chatId, characterId})` once per character the
+    // turn's wardrobe tools touched, from `flushPendingWardrobeAnnouncements`
+    // at the end of the turn (`orchestrator.service.ts:1406`). The module's own
+    // family pins the line's bytes on a direct flush; THIS pins that the turn
+    // actually drains — it fires for the two wardrobe turns and is SILENT on
+    // every other case (the source census that stood in for it is retired).
+    assert_eq!(
+        want_turn_end.len(),
+        spec.calls.len(),
+        "every case must record its turnEndLog row (regenerate from THIS tree's oracle case)"
+    );
+    let mut turn_end_fired = 0usize;
+    for call in &spec.calls {
+        let message = "Wardrobe outfit announcement scheduled";
+        let want: Vec<String> = want_turn_end[&call.name]
+            .iter()
+            .map(|l| {
+                let mut line = format!("DEBUG {message}");
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    line.push_str(&format!(" {k}={}", v.as_str().unwrap_or_default()));
+                }
+                line
+            })
+            .collect();
+        // The line without its tracing target: level, message, fields in order.
+        let got: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| l.contains(message))
+            .map(|l| {
+                let level = l.split(' ').next().unwrap_or_default();
+                let at = l.find(message).unwrap();
+                format!("{level} {}", &l[at..])
+            })
+            .collect();
+        assert_eq!(got, want, "{}: the turn-end drain DEBUG line(s)", call.name);
+        turn_end_fired += want.len();
+    }
+    assert!(
+        turn_end_fired >= 2,
+        "the corpus's wardrobe turns must fire the drain (fired {turn_end_fired})"
     );
 
     // --- P4.81 item 4: the chain-stop log lines, pinned per case ---

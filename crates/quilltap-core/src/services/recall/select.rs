@@ -142,3 +142,106 @@ pub fn select(
 ) -> Vec<RecallCandidate> {
     select_ranked(scored, neighbours, opts, trace, label).candidates
 }
+
+#[cfg(test)]
+mod tests {
+    //! v4 `recall-stages.test.ts` `select` block — the two legs the harness
+    //! families do not pin: expansion runs for a VECTOR search and never for a
+    //! TEXT one (`it('never expands a text search')`, P4.174 / C-4).
+    use super::*;
+    use crate::services::recall::context::RecallContextInput;
+    use crate::services::recall::score::WindowMode;
+    use crate::services::recall::types::RecallAdjustment;
+    use serde_json::json;
+
+    const NOW: f64 = 1_789_063_200_000.0;
+
+    fn row(id: &str, embedding: Option<[f64; 2]>, related: &[&str]) -> Value {
+        let mut m = json!({
+            "id": id,
+            "importance": 0.5,
+            "reinforcedImportance": 0.5,
+            "reinforcementCount": 1,
+            "relatedMemoryIds": related,
+            "createdAt": "2026-09-01T00:00:00.000Z",
+            "occurredAt": null,
+        });
+        if let Some([a, b]) = embedding {
+            m["embedding"] = json!({"0": a, "1": b});
+        }
+        m
+    }
+
+    fn scored(strategy: RecallStrategy) -> Scored {
+        Scored {
+            strategy,
+            ranked: vec![RecallCandidate {
+                memory: row("seed", None, &["nb"]),
+                score: 0.6,
+                used_embedding: strategy == RecallStrategy::Vector,
+                salience: 0.5,
+                // What `rank_for_recall` stamps on a seed: the blend after
+                // its multiplier, which the merge sorts on.
+                recall_adjustment: Some(RecallAdjustment {
+                    multiplier: 1.0,
+                    fired: Vec::new(),
+                    blended_before: 0.6,
+                    blended_after: 0.6,
+                }),
+            }],
+            context: Some(RecallContextInput {
+                expand_related: true,
+                now_ms: Some(NOW),
+                ..Default::default()
+            }),
+            best_cosine: 0.6,
+            out_of_window: Vec::new(),
+            window_mode: WindowMode::None,
+        }
+    }
+
+    fn expanded(trace: &RecallTrace) -> f64 {
+        trace
+            .iter()
+            .find(|t| t.stage == RecallStage::Select)
+            .and_then(|t| t.detail.get("expanded"))
+            .and_then(Value::as_f64)
+            .expect("the select trace entry")
+    }
+
+    fn run(strategy: RecallStrategy) -> (Vec<String>, f64) {
+        let neighbour = row("nb", Some([0.1, 0.995]), &[]);
+        let q = [1.0_f32, 0.0];
+        let mut trace: RecallTrace = Vec::new();
+        let out = select(
+            &scored(strategy),
+            &[neighbour],
+            &SelectOptions {
+                limit: 5,
+                head_size: None,
+                query_embedding: Some(&q),
+                now_ms: NOW,
+            },
+            &mut trace,
+            None,
+        );
+        (
+            out.iter().map(|c| c.id().to_string()).collect(),
+            expanded(&trace),
+        )
+    }
+
+    #[test]
+    fn expands_a_vector_search_by_association() {
+        let (ids, expanded) = run(RecallStrategy::Vector);
+        assert_eq!(ids, ["seed", "nb"]);
+        assert_eq!(expanded, 1.0);
+    }
+
+    #[test]
+    fn never_expands_a_text_search() {
+        let (ids, expanded) = run(RecallStrategy::Text);
+        assert_eq!(ids, ["seed"]);
+        assert_eq!(expanded, 0.0);
+    }
+}
