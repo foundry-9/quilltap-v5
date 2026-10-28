@@ -192683,3 +192683,85 @@ Branch `claude/p4.172-dqs-off-census-6c7ea44`, cut from main `6c7ea4410` into th
 - **Regen recipe (`cursor_bundle_equivalence`):** `cd $PIN; for S in migration fresh absent; do QT_CURSOR_BUNDLE_SHAPE=$S QT_FIXTURE_CURSOR_BUNDLE_DIR=/tmp/p4.172/qt-cursor-bundle npx tsx $V5W/harness/oracle/cases/cursor-bundle.ts > /tmp/p4.172/oracle-cursor-bundle-$S.ndjson; done` (21 / 14 / 4 lines), then `QT_ORACLE_CURSOR_BUNDLE_DIR=/tmp/p4.172 QT_FIXTURE_CURSOR_BUNDLE_DIR=/tmp/p4.172/qt-cursor-bundle cargo test -p quilltap-harness --test cursor_bundle_equivalence`. The census needs no oracle.
 - **Fixtures:** none changed.
 - **Versions:** core 0.0.1337, cli 0.0.35 (the cli bump is nominally P4.171's — unifier resolves), fixture-sanitizer 0.0.5; harness frozen 0.0.1110.
+
+
+## P4.168 — the memory repository + Memories API smalls (lane record, 2026-10-27)
+
+**Branch:** `claude/p4.168-memory-row-schema-6c7ea4410` (base `6c7ea4410`, main at the orders' commit). **LANE COMPLETE** — every Tier 1 and Tier 2 item landed; Tier 3 (C-18) NO ACTION, recorded.
+
+- **Start location:** the session opened in the MAIN checkout (`/Volumes/External 1/source_overflow/quilltap-v5`, on `main` at `6c7ea4410`); it moved to the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4.168` before the first edit, warm (`cp -cR` of main's `target/`).
+- **§2 probe (an observation, §R.2):** v4 main at `b892227eb`, clean in `lib/` / `app/` / `packages/` / `plugins/`; past the pin, as the ledger records. Every regen ran from the lane-unique pin worktree `/tmp/qt-v4-pin-p4.168-322a5488e` (at `322a5488e`).
+
+### Commits
+
+1. `3d424137c` — unit 1: A1 (H-2) + B1-3. core 0.0.1337.
+2. `4a0236608` — unit 2: C-1 + B1–B6. core 0.0.1338.
+3. `22006491d` — unit 3: B1-1, F-2 (the `api/memories.rs` twin), C-5, B1-2, the stale `ADMISSION_SINGLE_TERM_LINK` comment. core 0.0.1339.
+4. `06e85cbea` — unit 3 follow-up: the B1-2 pin probes with `try_lock` (a red run had hung the binary — below). core 0.0.1340.
+
+### What landed
+
+- **A1 (H-2, the human's ruling "refuse as v4 does"):** `MemoriesRepository::create` validates the row through `zod_memory_issues` BEFORE the INSERT. A refusal logs v4's THREE ERRORs in order (`Data validation failed` / `Error creating entity` / `Error creating memory`, each the `ZodError.message`), writes nothing, and returns contract C1's `DbError::RowSchemaRefusal { collection: "memories", issues }` (Display `Validation error`; `row_schema_refusal_message()` renders the pretty issues). `memory_create` answers 400 `Validation error` with `details`. The check sits AFTER the embedding call, as v4's does (an offset + a failing embedding still answers 502 — `create_offset_occurred_at_embedding_failed_502`). One check covers the manual create, every admission insert, and consolidation digests. `OFFSET_OCCURRED_AT_ROW_SCHEMA` DELETED. A test-support `plant_unvalidated` seeds legacy fixture rows the check would now refuse.
+  - **Measured — the fold arm:** v4 does NOT reach a refusal there (an offset twin absorbs; the survivor's `occurredAt` is untouched), so updates are not validated (`create_offset_occurred_at_fold`, equal both sides).
+  - **The admission arm in `admission_tier3`:** SKIPPED (optional in the order, which records the offset arm as unreachable in production admission); the shared repository check is proven through the routes family and the dedicated lines binary.
+- **B1-3:** the list's `limit=0` → 50 (v4's `|| 50`), `list_limit_zero`.
+- **C-1:** `find_by_ids` drops a row `MemorySchema` refuses, as v4's `findByFilter` `validateSafe` does — measured NOT silent: v4 logs ERROR `Data validation failed` + WARN `Safe validation failed` (the survey said silent). `FIND_BY_IDS_UNVALIDATED` RETIRED (`admission_tier3` now equal; `create_invalid_neighbour_dropped`).
+- **B1–B4 (fallback reads, each red-first through a planted failing read):** `find_by_ids` / `search_by_content` → `[]`; `find_by_id_for_character` → `None`; `count_without_embedding` → `0`; `find_distinct_chat_ids` → `[]` — each with v4's inner repository line, and inside the strict scope the method's own outer line with `strictFailures` + propagate. **A site the survey missed:** the `[id]` item routes (GET/PUT/DELETE) read `findById` FIRST — v4's `_findById` fallback — so a failed read is now 404 `Memory not found` where v5 answered 500 (`update_owner_read_fails_404`, `get_read_fails_404`). `backfill_progress_count_fails` in the config family. **B2** has no separable plant — it rides B1's home.
+- **B5:** regenerate-all's chat list STAYS STRICT — `REGENERATE_ALL_STRICT_CHAT_LIST`, pinned both ways (`fan_out_chat_list_fails_strict`: v4 queues an orphan wipe for every chat with memories; v5 logs v4's inner line and fails the job). The other two reads converge: `find_distinct_chat_ids` (`fan_out_distinct_chat_ids_fails`) and the in-flight job snapshot (`background_jobs_by_user_or_empty`, v4's `Error finding background jobs by user ID`) — **the snapshot has no reachable plant** (the enqueue writes the same table), recorded.
+- **B6:** the maintenance batch loader STAYS STRICT — `MAINTENANCE_BATCH_LOADER_STRICT`, pinned both ways (`corpus_read_fails_strict`: v4 truncates the corpus and plans from it; v5 fails the run). **Measured:** the line v4 actually logs outside the strict scope is the INNER `Error finding entities by filter`, not `Error loading memory batch` — v5 logs that one.
+- **B1-1:** `update_tier_bulk` stamps `updatedAt` per 500-row chunk; `supersededAt` / `consolidatedAt` keep the per-call stamp; doc fixed; unit pin `a_tier_move_across_the_chunk_boundary_shares_superseded_at`. **Not differentially observable** without a clock seam (both sides stamp the same millisecond in a test) — recorded.
+- **F-2 (the fourth twin, `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`):** the `entities` arm reports Zod 4.6.7's `.max` past an `invalid_type` on any input with a `.length` — a string (origin `string`) and a `{length}` object (origin `unknown`, `Too big: expected unknown to be <=N`). Every create 400 from the body parse now carries v4's `details` (the `ZodError.issues`; a partial L-1 lift), and every error-arm 400 in the family compares `details` by bytes. Rows: `create_entities_string_over_cap_400`, `create_entities_string_under_cap_400`, `create_entities_lengthy_object_400`.
+- **C-5:** `create_project_explicit_wins` — a chat in P1, an explicit `projectId: P2` (created in-case on both sides: v4 `getRepositories().projects.create`, v5 `ProjectsRepository::create` over `ensure_table_from_dump` for `projects` / `project_doc_mount_links`) → the stored row carries P2. The shared `memories-{main,mount}.db` pair is NOT grown. Green on first run (coverage, no port change).
+- **B1-2:** the frozen-archive cache locks for the lookup and for the insert only — never across the compute's DB reads, as v4's cache interleaves (a concurrent double compute is v4's behaviour too — no dedupe, recorded). The one-lock `get_or_compute_with` is now `#[cfg(test)]`.
+- **The stale comment:** `memories-routes.test.ts`'s `ADMISSION_SINGLE_TERM_LINK` note rewritten.
+- **C-18 (Tier 3):** NO ACTION, recorded (the D288 cosmetics are unreachable from v4-written rows).
+
+### Red-first counts
+
+- Unit 1: `memories_routes` 2 rows red (the offset refusal; `limit=0`); the lines binary red on the three ERRORs.
+- Unit 2: `memories_routes` 3 rows + 2 line checks red; `memory_regenerate_jobs_tier3` 2 ops / 3 divergences; `memory_maintenance_tier2` 1 run; `admission_tier3` — the retired `FIND_BY_IDS_UNVALIDATED` pin was the measured divergence.
+- Unit 3: F-2 — 8 create-400 rows red (`create_blank_after_trim`, `create_bad_offset_400`, `create_entities_over_cap_400`, the three new length rows, `create_entities_over_cap_non_string_first_400`, `create_entities_over_cap_empty_first_400`: no `details` / no length issue); B1-2 — the lock-release pin red.
+- **⚠ The B1-2 red run HUNG the test binary for ~6 h.** The first pin called `invalidate_frozen_archive` inside the compute; with the lock held that deadlocks, the 5 s `recv_timeout` reported FAILED, but the deadlocked thread kept the process-global lock so the other cache tests never finished (the run's file-restore step never ran either). Stopped by task id; the pin now probes with `cache_mutex().try_lock()` — red in 0.02 s with the lock held, green 25/25. Never a blocking re-lock inside a test of a lock's scope.
+
+### Gate (§R.9)
+
+- fmt clean; clippy `--workspace --all-targets -D warnings` clean plain AND with `--features quilltap-core/native-transport` (one dead-code red after unit 3 — the one-lock `get_or_compute_with` — fixed by `#[cfg(test)]` before the commit).
+- Every touched family re-run BY NAME through the sweep driver from the pin (`--families`, `--v4 /tmp/qt-v4-pin-p4.168-322a5488e`): **12 / 12 ok, zero SKIP** — `admission_tier3`, `consolidation_{clustering,plan,tasks}`, `memory_consolidation_routes`, `frozen_archive_tier2`, `memories_tier2`, `memory_graph_repair_tier2`, `memory_retire_tier2`, `character_rename`, `system_import_state`, `system_restore_state` (results `/tmp/p4.168/sweep-results.json`, not committed). The lane's own five (`memories_routes`, `memory_row_schema_refusal_lines`, `admission_tier3`, `memory_regenerate_jobs_tier3`, `memory_maintenance_tier2`) re-run with `--nocapture`: zero SKIP; both both-ways pins print `holds`.
+- **`QT_V4_CHECKOUT=$PIN QT_V4_ROOT=$PIN CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast`** with the lane's env block (the routes / config / admission / regenerate / maintenance oracles + fixtures under `/tmp/p4.168`): **863 binaries / 5,714 passed / 0 failed / 3 ignored.** Guards green by name: `spelling_guard`, `fallback_home_guard`, `builtin_prompt_templates_guard`, `provider_sdk_version_guard`, `zod_version_guard`, `qtap_schema_embed_guard`, `public_schemas_vendor_guard`, `help_tree_equivalence`.
+- `recipe_sweep.py --self-test`: 0 failures.
+- SPA liveness: `npm ci` + `npm run build` in `apps/web` clean.
+
+### Harness / oracle changes (regen recipes)
+
+- `memories_routes_equivalence` + `memories-routes.test.ts` (new rows above; `repoLogs` capture — `level === 'error'`, `collection === 'memories'`) and `memories-config.test.ts` (`backfill_progress_count_fails`). Regen (from the pin, own invocations): the test header's recipe, `QT_FIXTURE_MEM_MAIN/MOUNT` → `crates/quilltap-web/tests/fixtures/memories-{main,mount}.db`, `QT_ORACLE_OUT=<out>.ndjson npx jest --watchman=false --testTimeout=180000 --roots <pin> --roots <tmp mirror>/cases -- memories-routes` (then `-- memories-config`); run with `QT_ORACLE_MEMORIES_ROUTES` / `QT_ORACLE_MEMORIES_CONFIG`.
+- NEW `memory_row_schema_refusal_lines.rs` — reads the routes NDJSON (`QT_ORACLE_MEMORIES_ROUTES`); a PROCESS-GLOBAL `CaptureLayer` (the repository create logs on the WRITER thread, invisible to `global_capture`). The sweep lists it `elided_or_missing_regen` (no oracle-case header of its own — it rides the routes oracle).
+- `admission_tier3_equivalence` — `FIND_BY_IDS_UNVALIDATED` + its ruled branch, `diverged_rows`, `seeded_id_of` removed.
+- `memory_regenerate_jobs_tier3_equivalence` + `memory-regenerate-jobs-tier3.test.ts` + `fixtures/memory-regenerate-jobs-tier3.json` (two ops appended; the file has no trailing newline): `sqlBefore` / `sqlAfter` plants, three repo-message PREFIXES, the both-ways branch.
+- `memory_maintenance_tier2_equivalence` + `memory-maintenance-tier2.test.ts` + `fixtures/memory-maintenance-tier2-runs.json` (`corpus_read_fails_strict`): `exec_all`, `sqlBefore` / `sqlAfter`, a `repoSink`.
+- Fixtures changed: the two JSON corpora above only — no `.db` fixture rebuilt. Invalidated oracles: `memory_regenerate_jobs_tier3` and `memory_maintenance_tier2` (regen both); `memories_routes` / `memories_config` (regen both, which also feeds the lines binary).
+- Throwing plant used throughout: `ALTER TABLE memories DROP COLUMN embedding; ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL` (fails every read of the column on both sides); table-rename plants (`chats` → `qt_p4168_chats_held`, `memories` likewise) restored after the op.
+
+### Unowned files touched (minimal, test-only)
+
+- `crates/quilltap-core/src/test_support.rs` — `ensure_table_from_dump(conn, Partition, table)` (a pub wrapper over the crate-private `table_shape::fresh_ddl_for`).
+- `services/memory_retire.rs` + `realtime/publish_sites.rs` TEST modules — seeds through `plant_unvalidated`; two `memory_retire` tests now seed UUID ids (`find_by_ids` drops non-UUID rows after C-1).
+
+### HANDOFFs
+
+- `HANDOFF(P4.166 / unifier):` `db::fallback::error_text` gains a `RowSchemaRefusal` arm rendering the `ZodError.message` (v5's lines here render it locally).
+- `HANDOFF(P4.166 / unifier):` fold `memories_read`'s `strict_outer_fallback` (a twin of fallback.rs's private `memories_fallback`) and the six memory homes into `db::fallback` + `HOME_MESSAGES`.
+- `HANDOFF(P4.169):` fold `api/memories.rs`'s `max_length_past_invalid_type` onto the shared `zod_issues` helper.
+
+### v4 filing candidates (NOT filed — record only)
+
+- **P-4:** v4's regenerate-all, on a failed chats read, queues an orphan memory wipe for every chat with memories (`findByFilter`'s `[]` fallback read as "no chats").
+- **P-5:** v4's maintenance batch loader, on a failed page read, truncates the corpus and maintenance plans demotions from the partial set.
+
+### 💸 for the dogfood pass
+
+`POST /api/v1/memories` with `occurredAt: "2026-10-27T10:00:00+02:00"` on the Friday copy → 400 `Validation error` + `details`, no row, the three ERRORs; the memory list with `limit=0` → 50 rows; a maintenance run on a clone whose memories read is made to fail mid-corpus → the job fails with v4's inner line, nothing demoted; a GET of a memory on a clone whose memories table read fails → 404 `Memory not found`.
+
+### Versions at close
+
+core 0.0.1340; harness frozen 0.0.1110; host / web / cli / tauri / SPA unchanged.
+

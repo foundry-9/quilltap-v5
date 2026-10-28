@@ -26,6 +26,10 @@ v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that
 
 Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
 
+#### 2026-10-28 — docs(porting): P4.168 lane record + LANE COMPLETE
+
+_Docs only._
+
 #### 2026-10-27 — test(memories): the frozen-archive lock-release pin probes with `try_lock`, so a regression fails instead of hanging the binary (P4.168 unit 3 follow-up)
 
 _Versions: core 0.0.1340._
