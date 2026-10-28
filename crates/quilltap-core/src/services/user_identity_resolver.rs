@@ -196,9 +196,19 @@ pub async fn resolve_user_identity(
     }
 
     // Step 3: fall back to the user profile name (falsy → keep falling through).
+    // v4 `repos.users.findById` is `safeQuery(() => this._findById(id), 'Error
+    // finding user by ID')` over the base `_findById`, itself a FALLBACK
+    // `safeQuery(…, 'Error finding entity by ID', {id}, null)`: a failed read
+    // logs the INNER line (the inner fallback swallows, so the outer line never
+    // fires) and answers `null`, and the chain falls to step 4. Unreachable
+    // while provisioning creates `users` (v4 creates it lazily) — a fidelity
+    // port, unit-pinned (P4.169 F-3; the first cut `?`-failed the whole
+    // resolution).
     let user_name = {
-        let user_id = user_id.to_string();
-        db.read_main(move |conn| users::find_name_by_id(conn, &user_id))?
+        let uid = user_id.to_string();
+        crate::db::fallback::find_by_id_or_none("users", user_id, || {
+            db.read_main(move |conn| users::find_name_by_id(conn, &uid))
+        })
     };
     // v4 `userProfile?.name` truthy: a present, non-empty name.
     if let Some(Some(name)) = user_name {
@@ -263,6 +273,50 @@ pub fn is_user_persona_in_room(chat_type: Option<&str>, identity: &ResolvedUserI
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// F-3 (P4.169): a failed `users` read is v4's FALLBACK — the base
+    /// `_findById`'s ERROR `Error finding entity by ID {collection, id, error}`
+    /// (the outer `Error finding user by ID` never fires: the inner fallback
+    /// swallows) — and the chain falls to step 4's `"User"`. Unit-only: the
+    /// table's absence is the one reachable read error, and v4 creates it
+    /// lazily, so no oracle plant exists.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_users_read_logs_v4s_line_and_falls_to_the_default() {
+        const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: dir.path().join("quilltap.db"),
+                mount_index: Some(dir.path().join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        db.write(|w| {
+            w.main()
+                .connection()
+                .execute_batch("DROP TABLE users")
+                .map_err(Into::into)
+        })
+        .await
+        .unwrap();
+        crate::test_support::global_capture::install();
+        let (identity, lines) = crate::test_support::global_capture::capture_async(
+            resolve_user_identity(&db, "u1", &serde_json::json!({ "participants": [] }), None),
+        )
+        .await;
+        let identity = identity.unwrap();
+        assert_eq!(identity.name, "User");
+        assert_eq!(identity.source, IdentitySource::Default);
+        let errors: Vec<&String> = lines.iter().filter(|l| l.starts_with("ERROR")).collect();
+        assert_eq!(
+            errors,
+            vec!["ERROR quilltap::db Error finding entity by ID collection=users id=u1 error=no such table: users"],
+            "{lines:#?}"
+        );
+    }
 
     #[test]
     fn source_strings_match_v4() {

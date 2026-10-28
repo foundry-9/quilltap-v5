@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): the identity resolver's `users` read falls back as v4's does (P4.169)
+
+_Versions:_ quilltap-core 0.0.1344.
+
+The user-identity resolver's step-3 profile-name read is now v4's fallback `users.findById`. A failed read logs the base `_findById`'s ERROR, `Error finding entity by ID {collection, id, error}`, and the chain falls to step 4's `"User"`; the first cut failed the whole resolution. This is unit-pinned only (red, then green). The one reachable error is an absent `users` table, which v4 creates lazily and v5 provisions, so no oracle plant exists.
+
 #### 2026-10-27 — fix(core): `run_custom` logs v4's two WARNs — validation failed and an unknown tool (P4.169)
 
 _Versions:_ quilltap-core 0.0.1343.
