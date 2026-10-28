@@ -5785,6 +5785,17 @@ pub(crate) fn db_error_response(e: crate::db::DbError) -> Response {
         crate::db::DbError::PartitionUnavailable(
             crate::write_partition::WriteDbTarget::MountIndex,
         ) => Response::error(ErrorKind::Internal, "Internal server error"),
+        // Contract C1 (P4.168): a repository `MemorySchema` refusal is v4's
+        // ZodError reaching `handleRouteError` — 400 `{"error": "Validation
+        // error", "details": <issues>}` (`context.ts:166-167`,
+        // `responses.ts:108-118`).
+        crate::db::DbError::RowSchemaRefusal { issues, .. } => {
+            let mut resp = Response::error(ErrorKind::BadRequest, "Validation error");
+            if let Response::Error(e) = &mut resp {
+                e.details = Some(Box::new(issues));
+            }
+            resp
+        }
         other => Response::error(ErrorKind::Internal, other.to_string()),
     }
 }

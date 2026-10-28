@@ -28,6 +28,7 @@
 
 use serde_json::Value;
 
+use crate::cheap_llm::{cheap_llm_config_from_settings, cheap_llm_profile_from_value};
 use crate::cheap_llm::{
     get_cheap_llm_provider, resolve_uncensored_cheap_llm_selection, CheapLlmProfile,
     CheapLlmSelection,
@@ -41,9 +42,6 @@ use crate::services::cheap_llm_exec::{
 };
 use crate::services::dangerous_content::chat_override::should_use_uncensored_route;
 use crate::services::dangerous_content::resolver::resolve_concierge_settings;
-use crate::services::image_job_common::{
-    cheap_llm_config_from_settings, cheap_llm_profile_from_value,
-};
 use crate::services::llm_logging::LogContext;
 
 /// Hard ceiling on one consult, in milliseconds (v4 `CONSULT_TIMEOUT_MS`). The

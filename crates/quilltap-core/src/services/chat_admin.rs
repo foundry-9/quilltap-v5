@@ -51,6 +51,7 @@
 use serde_json::{json, Value};
 
 use crate::api::types::{ErrorKind, Response};
+use crate::cheap_llm::{cheap_llm_config_from_settings, cheap_llm_profile_from_value};
 use crate::cheap_llm::{get_cheap_llm_provider, CheapLlmProfile};
 use crate::db::chats::ChatUpdate;
 use crate::db::chats_messages::ChatEventInput;
@@ -62,9 +63,6 @@ use crate::db::{
 use crate::services::agent_mode::{global_agent_mode_settings, resolve_agent_mode_setting};
 use crate::services::auto_title::{apply_auto_title, AutoTitleExtraPatch, AutoTitleSource};
 use crate::services::context_summary::tasks::{title_chat, title_help_chat};
-use crate::services::image_job_common::{
-    cheap_llm_config_from_settings, cheap_llm_profile_from_value,
-};
 use crate::services::memory_retire::{retire_and_announce, RetireOptions, RetireReason};
 use crate::services::queue_service::{
     enqueue_chat_danger_classification, enqueue_context_summary, enqueue_conversation_render,

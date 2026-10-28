@@ -10,7 +10,7 @@
  * persistence validation was rewritten from Zod by hand, so the corpus is the
  * proof it strips/drops identically.
  *
- * Regen (from the v4 checkout at baseline `e646f58b`):
+ * Regen (from the v4 checkout at baseline `322a5488e`):
  *   cd ~/source/quilltap-server
  *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/workspace-core.ts \
  *     > <v5>/apps/web/src/app/workspace/core/__fixtures__/workspace-core-fixtures.json

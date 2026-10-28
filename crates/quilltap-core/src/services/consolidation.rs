@@ -584,7 +584,7 @@ fn resolve_model_route(db: &Db, settings: &RunSettings, user_id: &str) -> Option
         .unwrap_or_default();
     let available_profiles: Vec<CheapLlmProfile> = profiles
         .iter()
-        .map(crate::services::image_job_common::cheap_llm_profile_from_value)
+        .map(crate::cheap_llm::cheap_llm_profile_from_value)
         .collect();
 
     if let Some(configured) = &settings.connection_profile_id {
@@ -612,8 +612,7 @@ fn resolve_model_route(db: &Db, settings: &RunSettings, user_id: &str) -> Option
     let cheap_settings = chat_settings
         .as_ref()
         .and_then(|s| s.get("cheapLLMSettings"));
-    let base =
-        crate::services::image_job_common::build_cheap_llm_selection(&profiles, cheap_settings)?;
+    let base = crate::cheap_llm::select_cheap_llm_from_profiles(&profiles, cheap_settings)?;
     Some(ModelRoute {
         base,
         available_profiles,

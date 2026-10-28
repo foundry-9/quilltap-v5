@@ -202,6 +202,14 @@ const HOME_MESSAGES: &[&str] = &[
     "Failed to remove an id from equipped inventory",
     "Error finding documents in a folder by content",
     // === end P4.D324 ===
+    // === the `322a5488e` follow-ups unification — the memories repository's
+    // strict-aware homes, moved from `db/memories_read.rs` (P4.168) ===
+    "Error finding memory by ID for character",
+    "Error finding memories by IDs",
+    "Error searching memories by content",
+    "Error counting memories without embedding",
+    "Error listing distinct memory chatIds",
+    // === end the `322a5488e` follow-ups unification ===
 ];
 
 const HOME: &str = "db/fallback.rs";

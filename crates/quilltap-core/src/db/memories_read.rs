@@ -452,27 +452,6 @@ fn validate_one(row: Option<Value>) -> Result<Option<Value>, DbError> {
     Err(DbError::Internal(zod))
 }
 
-/// The memories repository's OWN fallback `safeQuery` above a base read
-/// (`safe-query.ts:51-72`): `log` (with `strictFailures` when the strict scope
-/// is active), then `Err` inside the scope, `Ok(fallback)` outside it. Above
-/// a strict-aware inner home it fires only inside the scope — outside it the
-/// inner line already fell back. The twin of `db::fallback`'s private
-/// `memories_fallback` (P4.166 owns that file this round — §S fold).
-fn strict_outer_fallback<T>(
-    fallback: T,
-    read: impl FnOnce() -> Result<T, DbError>,
-    log: impl FnOnce(&DbError, Option<bool>),
-) -> Result<T, DbError> {
-    read().or_else(|error| {
-        let strict = super::fallback::strict_repository_failures_active();
-        log(&error, strict.then_some(true));
-        if strict {
-            Err(error)
-        } else {
-            Ok(fallback)
-        }
-    })
-}
 /// The inner base `findByFilter` fallback line, ALONE — `Error finding
 /// entities by filter {collection, error, strictFailures?}` — for a read the
 /// port KEEPS STRICT where v4's fallback would act on a failed read (P-4's
@@ -556,30 +535,16 @@ pub fn find_by_id_for_character(
     character_id: &str,
     memory_id: &str,
 ) -> Result<Option<Value>, DbError> {
-    strict_outer_fallback(
-        None,
-        || {
-            super::fallback::find_one_by_filter_strict_aware("memories", || {
-                let mut v = query_memories(
-                    conn,
-                    "WHERE id = ?1 AND characterId = ?2 LIMIT 1",
-                    &[&memory_id, &character_id],
-                )?;
-                validate_one(v.pop())
-            })
-        },
-        |error, strict| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = %character_id,
-                memoryId = %memory_id,
-                error = %super::fallback::error_text(error),
-                strictFailures = strict,
-                "Error finding memory by ID for character"
-            );
-        },
-    )
+    super::fallback::memory_by_id_for_character_or_none(character_id, memory_id, || {
+        super::fallback::find_one_by_filter_strict_aware("memories", || {
+            let mut v = query_memories(
+                conn,
+                "WHERE id = ?1 AND characterId = ?2 LIMIT 1",
+                &[&memory_id, &character_id],
+            )?;
+            validate_one(v.pop())
+        })
+    })
 }
 
 pub fn find_all(conn: &Connection) -> Result<Vec<Value>, DbError> {
@@ -653,30 +618,17 @@ pub fn find_by_ids(conn: &Connection, ids: &[String]) -> Result<Vec<Value>, DbEr
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    strict_outer_fallback(
-        Vec::new(),
-        || {
-            super::fallback::find_by_filter_strict_aware("memories", || {
-                let placeholders = (1..=ids.len())
-                    .map(|i| format!("?{i}"))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let params: Vec<&dyn ToSql> = ids.iter().map(|s| s as &dyn ToSql).collect();
-                query_memories(conn, &format!("WHERE id IN ({placeholders})"), &params)
-                    .map(drop_schema_invalid)
-            })
-        },
-        |error, strict| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                count = ids.len(),
-                error = %super::fallback::error_text(error),
-                strictFailures = strict,
-                "Error finding memories by IDs"
-            );
-        },
-    )
+    super::fallback::memories_by_ids_or_empty(ids.len(), || {
+        super::fallback::find_by_filter_strict_aware("memories", || {
+            let placeholders = (1..=ids.len())
+                .map(|i| format!("?{i}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let params: Vec<&dyn ToSql> = ids.iter().map(|s| s as &dyn ToSql).collect();
+            query_memories(conn, &format!("WHERE id IN ({placeholders})"), &params)
+                .map(drop_schema_invalid)
+        })
+    })
 }
 
 /// Options for [`find_by_character_id_paginated`] (v4's `options` bag; `sort_by`
@@ -814,30 +766,16 @@ pub fn search_by_content(
     // `Error finding entities by filter`; inside the strict scope the outer
     // `Error searching memories by content {collection, characterId,
     // queryLength, error, strictFailures}` fires too and the `Err` propagates.
-    strict_outer_fallback(
-        Vec::new(),
-        || {
-            super::fallback::find_by_filter_strict_aware("memories", || {
-                query_memories(
-                    conn,
-                    "WHERE characterId = ?1 AND ((content LIKE ?2) OR (summary LIKE ?2))",
-                    &[&character_id, &pat],
-                )
-                .map(drop_schema_invalid)
-            })
-        },
-        |error, strict| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = %character_id,
-                queryLength = utf16_len(query),
-                error = %super::fallback::error_text(error),
-                strictFailures = strict,
-                "Error searching memories by content"
-            );
-        },
-    )
+    super::fallback::memories_content_search_or_empty(character_id, utf16_len(query), || {
+        super::fallback::find_by_filter_strict_aware("memories", || {
+            query_memories(
+                conn,
+                "WHERE characterId = ?1 AND ((content LIKE ?2) OR (summary LIKE ?2))",
+                &[&character_id, &pat],
+            )
+            .map(drop_schema_invalid)
+        })
+    })
 }
 
 /// `findByImportance` — `{ characterId, importance: { $gte } }`; out-of-range
@@ -1328,25 +1266,12 @@ pub fn count_without_embedding(
     conn: &Connection,
     character_id: Option<&str>,
 ) -> Result<i64, DbError> {
-    strict_outer_fallback(
-        0,
-        || {
-            super::fallback::count_strict_aware("memories", || match character_id {
-                Some(c) => query_count(conn, "WHERE characterId = ?1 AND embedding IS NULL", &[&c]),
-                None => query_count(conn, "WHERE embedding IS NULL", &[]),
-            })
-        },
-        |error, strict| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                characterId = character_id,
-                error = %super::fallback::error_text(error),
-                strictFailures = strict,
-                "Error counting memories without embedding"
-            );
-        },
-    )
+    super::fallback::memories_without_embedding_count_or_zero(character_id, || {
+        super::fallback::count_strict_aware("memories", || match character_id {
+            Some(c) => query_count(conn, "WHERE characterId = ?1 AND embedding IS NULL", &[&c]),
+            None => query_count(conn, "WHERE embedding IS NULL", &[]),
+        })
+    })
 }
 
 /// `findIdsWithoutEmbedding` — `{ id, characterId }` of rows missing an
@@ -1512,32 +1437,20 @@ pub fn find_distinct_character_ids(conn: &Connection) -> Vec<String> {
 /// the `Err` propagates. (v4's backend `Raw query failed` line is v4-only —
 /// P4.113's recorded class.)
 pub fn find_distinct_chat_ids(conn: &Connection) -> Result<Vec<String>, DbError> {
-    strict_outer_fallback(
-        Vec::new(),
-        || {
-            let mut stmt =
-                conn.prepare("SELECT DISTINCT chatId FROM memories WHERE chatId IS NOT NULL")?;
-            let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
-            let mut out = Vec::new();
-            for r in rows {
-                if let Some(s) = r? {
-                    if !s.is_empty() {
-                        out.push(s);
-                    }
+    super::fallback::memory_chat_ids_or_empty(|| {
+        let mut stmt =
+            conn.prepare("SELECT DISTINCT chatId FROM memories WHERE chatId IS NOT NULL")?;
+        let rows = stmt.query_map([], |r| r.get::<_, Option<String>>(0))?;
+        let mut out = Vec::new();
+        for r in rows {
+            if let Some(s) = r? {
+                if !s.is_empty() {
+                    out.push(s);
                 }
             }
-            Ok(out)
-        },
-        |error, strict| {
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "memories",
-                error = %super::fallback::error_text(error),
-                strictFailures = strict,
-                "Error listing distinct memory chatIds"
-            );
-        },
-    )
+        }
+        Ok(out)
+    })
 }
 
 // === P4.D288 (C1-3): the index-store reads ===

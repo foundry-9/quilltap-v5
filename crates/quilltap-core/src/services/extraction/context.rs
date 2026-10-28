@@ -411,8 +411,8 @@ pub fn build_extraction_context(
     // refreshMemoryTimeZone])` — every one a read that DEGRADES (L-17,
     // measured through v4's real build at the pin: a throwing `chat_settings`
     // / `connection_profiles` / `characters` / `chats` read never fails it):
-    // `chatSettings.findByUserId` logs `Error finding chat settings by user ID`
-    // and answers `null`, `connections.findByUserId` is `findByFilter`'s `[]`.
+    // `chatSettings.findByUserId` logs its inner `findOneByFilter` line
+    // (`Error finding entity by filter`) and answers `null`, `connections.findByUserId` is `findByFilter`'s `[]`.
     let uid = user_id.to_string();
     // Contract C2's home logs a failed read; a failed pool checkout routes
     // through the same emitter (v4's `getCollection()` runs inside the one
@@ -420,7 +420,7 @@ pub fn build_extraction_context(
     let chat_settings_row = db
         .read_main(move |c| Ok(chat_settings::find_by_user_id_or_none(c, &uid)))
         .unwrap_or_else(|error| {
-            chat_settings::log_find_by_user_id_failure(user_id, &error);
+            chat_settings::log_find_by_user_id_failure(&error);
             None
         });
     let uid = user_id.to_string();

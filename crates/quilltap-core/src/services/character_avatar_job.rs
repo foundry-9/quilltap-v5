@@ -507,7 +507,7 @@ where
         // Build the cheap-LLM selection for classification. v4 wraps
         // `resolveCheapLLMSelectionForUser` in a try/catch and WARNS on a throw
         // (`:237`), leaving `cheapLLMSelection` null so the classification is
-        // skipped. v5's `build_cheap_llm_selection` is infallible, so the only
+        // skipped. v5's `select_cheap_llm_from_profiles` is infallible, so the only
         // thing that can fail here is the profiles READ — which is the same
         // failure wearing Rust's clothes, and it used to be swallowed whole by
         // `unwrap_or_default()`. A successful read that simply finds no eligible
@@ -529,7 +529,9 @@ where
         let cheap_settings = chat_settings
             .as_ref()
             .and_then(|cs| cs.get("cheapLLMSettings"));
-        if let Some(selection) = common::build_cheap_llm_selection(&all_profiles, cheap_settings) {
+        if let Some(selection) =
+            crate::cheap_llm::select_cheap_llm_from_profiles(&all_profiles, cheap_settings)
+        {
             // classify_content never throws (safe_fallback on error).
             let classification = classify_content(
                 db,
@@ -1421,7 +1423,7 @@ mod log_line_tests {
                     }],
                 }))
                 .expect("chat create shape");
-            // A cheap-LLM candidate: `build_cheap_llm_selection` answers `None`
+            // A cheap-LLM candidate: `select_cheap_llm_from_profiles` answers `None`
             // on an empty list, and then the Concierge pre-scan never runs at
             // all. Raw INSERT of exactly the NOT NULL columns — every other one
             // has a DDL default, which is also what v4's `insertOne` relies on.
@@ -1497,7 +1499,7 @@ mod log_line_tests {
                 },
             )?;
             // The plant for v4 `:237`: the profiles READ itself fails. v5's
-            // `build_cheap_llm_selection` is infallible, so this is the only
+            // `select_cheap_llm_from_profiles` is infallible, so this is the only
             // thing under it that can go wrong — and it used to be swallowed.
             if break_connection_profiles {
                 main.execute("DROP TABLE connection_profiles", [])?;

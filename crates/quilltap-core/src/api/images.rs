@@ -1775,12 +1775,14 @@ async fn run_images_generate(
             }
             Ok(all_profiles) => {
                 // v4 builds the selection from the DEFAULT profile (or the
-                // first) — `build_cheap_llm_selection` is `None` only when the
-                // user has no profiles at all, which is v4's `if (defaultProfile)`.
-                let selection = crate::services::image_job_common::build_cheap_llm_selection(
+                // first) inline, with no `[CheapLLM]` line of its own —
+                // `select_on_default_profile` is `None` only when the user has
+                // no profiles at all, which is v4's `if (defaultProfile)`.
+                let selection = crate::cheap_llm::select_on_default_profile(
                     &all_profiles,
                     concierge.cheap_settings.as_ref(),
-                );
+                )
+                .map(|(_, selection)| selection);
                 if let Some(selection) = selection {
                     let classification = seams
                         .classifier

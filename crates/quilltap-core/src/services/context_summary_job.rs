@@ -115,7 +115,7 @@ where
         .read_main(move |c| connection_profiles::find_by_user_id(c, &uid))
         .map_err(|e| format!("{e:?}"))?
         .iter()
-        .map(crate::services::image_job_common::cheap_llm_profile_from_value)
+        .map(crate::cheap_llm::cheap_llm_profile_from_value)
         .collect();
 
     // v4's `generateContextSummary` resolves the Concierge policy internally
@@ -128,9 +128,7 @@ where
     let options = GenerateSummaryOptions {
         user_id: user_id.to_string(),
         chat_id: payload.chat_id.clone(),
-        connection_profile: crate::services::image_job_common::cheap_llm_profile_from_value(
-            &connection_profile,
-        ),
+        connection_profile: crate::cheap_llm::cheap_llm_profile_from_value(&connection_profile),
         cheap_llm_settings: cheap_settings_from(&chat_settings),
         available_profiles,
         force_regenerate: payload.force_regenerate,

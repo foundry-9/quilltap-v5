@@ -110,11 +110,10 @@ pub fn resolve_extraction_route(
     chat_settings: Option<&Value>,
     available_profiles: &[Value],
 ) -> ExtractionRoute {
-    let profile =
-        crate::services::image_job_common::cheap_llm_profile_from_value(connection_profile);
+    let profile = crate::cheap_llm::cheap_llm_profile_from_value(connection_profile);
     let available: Vec<CheapLlmProfile> = available_profiles
         .iter()
-        .map(crate::services::image_job_common::cheap_llm_profile_from_value)
+        .map(crate::cheap_llm::cheap_llm_profile_from_value)
         .collect();
     let base = get_cheap_llm_provider(
         &profile,

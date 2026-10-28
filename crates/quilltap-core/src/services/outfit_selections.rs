@@ -60,7 +60,6 @@ use crate::services::cheap_llm_exec::CheapLlmTaskOptions;
 use crate::services::creation_progress::{
     CreationProgressEmitter, LogLevel, OutfitPreviewEntry, OutfitPreviewSlots,
 };
-use crate::services::image_job_common::build_cheap_llm_selection;
 use crate::services::resolve_equipped::resolve_equipped_outfit_for_character;
 use crate::services::wardrobe_wear_commit::{commit_equipped_outfit, CommitEquippedOutfitInput};
 use crate::slot_ops::{
@@ -968,7 +967,7 @@ pub async fn choose_llm_outfit<
         return LlmChooseOutcome::NotAttempted;
     }
     let selection: Option<CheapLlmSelection> =
-        build_cheap_llm_selection(all_profiles, cheap_settings);
+        crate::cheap_llm::select_cheap_llm_from_profiles(all_profiles, cheap_settings);
     let Some(selection) = selection else {
         return LlmChooseOutcome::NotAttempted;
     };

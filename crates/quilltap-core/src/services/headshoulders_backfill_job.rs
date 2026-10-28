@@ -91,7 +91,7 @@ use crate::generators::wizard_prompts::HEAD_AND_SHOULDERS_PHYSICAL_PROMPT;
 use crate::jsstr::js_trim;
 use crate::model::completion::CompletionProvider;
 use crate::services::api_key_service::get_api_key_for_cheap_llm_selection;
-use crate::services::image_job_common::{build_cheap_llm_selection, with_both_conns};
+use crate::services::image_job_common::with_both_conns;
 use crate::services::job_runner::{JobFuture, JobHandler, JobOutcome};
 
 /// v4's `CONTEXT` (`character-headshoulders-backfill.ts:38`) — byte-exact,
@@ -220,24 +220,22 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
     // module header measures, v4's selection cannot fail.
     // v4's `repos.chatSettings.findByUserId` is FALLBACK-mode `safeQuery(…,
     // null)` (`chat-settings.repository.ts:38-45`): a failing read logs
-    // `Error finding chat settings by user ID` and yields `null`, so
+    // its inner `Error finding entity by filter` and yields `null`, so
     // `buildCheapLLMConfig(undefined)` is the default config and the job
     // PROCEEDS. Only the connections read below throws (base `findByFilter`).
     // The §3 unification review caught this arm failing the job instead —
     // the P4.48 `safeQuery` class.
     let uid = user_id.to_string();
-    let chat_settings =
-        match db.read_main(move |conn| crate::db::chat_settings::find_by_user_id(conn, &uid)) {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!(
-                    user_id = %user_id,
-                    error = %e,
-                    "Error finding chat settings by user ID"
-                );
-                None
-            }
-        };
+    let chat_settings = db
+        .read_main(move |conn| {
+            Ok(crate::db::chat_settings::find_by_user_id_or_none(
+                conn, &uid,
+            ))
+        })
+        .unwrap_or_else(|e| {
+            crate::db::chat_settings::log_find_by_user_id_failure(&e);
+            None
+        });
     let uid = user_id.to_string();
     let all_profiles = db
         .read_main(move |conn| connection_profiles::find_by_user_id(conn, &uid))
@@ -246,7 +244,9 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
     let cheap_settings = chat_settings
         .as_ref()
         .and_then(|cs| cs.get("cheapLLMSettings"));
-    let Some(selection) = build_cheap_llm_selection(&all_profiles, cheap_settings) else {
+    let Some(selection) =
+        crate::cheap_llm::select_cheap_llm_from_profiles(&all_profiles, cheap_settings)
+    else {
         tracing::warn!(
             context = CONTEXT,
             job_id = %job_id,

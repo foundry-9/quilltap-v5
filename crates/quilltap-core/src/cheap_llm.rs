@@ -422,29 +422,47 @@ pub(crate) fn cheap_llm_config_from_settings(cheap: Option<&Value>) -> CheapLlmC
     }
 }
 
+/// The ladder on the default-flagged profile (else the first) — v4's
+/// `allProfiles.find(p => p.isDefault) || allProfiles[0]` then
+/// `getCheapLLMProvider(defaultProfile, config, allProfiles, false)`, with no
+/// line of its own. [`select_cheap_llm_from_profiles`] wraps it with v4's two
+/// DEBUGs; v4's images route inlines the same block WITHOUT them
+/// (`app/api/v1/images/route.ts:270-283`), so `api::images` calls this
+/// directly. `None` when there are no profiles.
+pub(crate) fn select_on_default_profile(
+    all_profiles: &[Value],
+    cheap_settings: Option<&Value>,
+) -> Option<(CheapLlmProfile, CheapLlmSelection)> {
+    let profiles: Vec<CheapLlmProfile> = all_profiles
+        .iter()
+        .map(cheap_llm_profile_from_value)
+        .collect();
+    // `profiles[i]` corresponds 1:1 to `all_profiles[i]`.
+    let default_index = all_profiles
+        .iter()
+        .position(|v| v.get("isDefault").and_then(Value::as_bool) == Some(true))
+        .unwrap_or(0);
+    let default_profile = profiles.get(default_index)?.clone();
+    let config = cheap_llm_config_from_settings(cheap_settings);
+    let selection = get_cheap_llm_provider(&default_profile, &config, &profiles, false, None);
+    Some((default_profile, selection))
+}
+
 /// v4 `selectCheapLLMFromProfiles` (`cheap-llm-user-selection.ts:46-66`): run
 /// the cheap-LLM ladder over an already-loaded profile set, on the
 /// default-flagged profile (else the first); `None` when there are no profiles.
 /// Ollama availability is not probed (`ollamaAvailable = false`), and the
 /// registry default is not consulted (`None`), matching every caller. Logs v4's
 /// two DEBUGs. The ONE home since P4.169 (B1-6): `tools::generate_image`'s
-/// private twin is deleted onto it, and `services::image_job_common`'s copy is
-/// the unifier's (§S.1(d)).
+/// private twin is deleted onto it, and so (at the unification, §S.1(d)) is
+/// `services::image_job_common`'s copy.
 pub fn select_cheap_llm_from_profiles(
     all_profiles: &[Value],
     cheap_settings: Option<&Value>,
 ) -> Option<CheapLlmSelection> {
-    let profiles: Vec<CheapLlmProfile> = all_profiles
-        .iter()
-        .map(cheap_llm_profile_from_value)
-        .collect();
-    // v4 `allProfiles.find(p => p.isDefault) || allProfiles[0]` — `profiles[i]`
-    // corresponds 1:1 to `all_profiles[i]`, so zip to find the default.
-    let default_index = all_profiles
-        .iter()
-        .position(|v| v.get("isDefault").and_then(Value::as_bool) == Some(true))
-        .unwrap_or(0);
-    let Some(default_profile) = profiles.get(default_index) else {
+    let Some((default_profile, selection)) =
+        select_on_default_profile(all_profiles, cheap_settings)
+    else {
         tracing::debug!(
             target: "quilltap::cheap_llm",
             context = "selectCheapLLMFromProfiles",
@@ -452,8 +470,6 @@ pub fn select_cheap_llm_from_profiles(
         );
         return None;
     };
-    let config = cheap_llm_config_from_settings(cheap_settings);
-    let selection = get_cheap_llm_provider(default_profile, &config, &profiles, false, None);
     tracing::debug!(
         target: "quilltap::cheap_llm",
         context = "selectCheapLLMFromProfiles",

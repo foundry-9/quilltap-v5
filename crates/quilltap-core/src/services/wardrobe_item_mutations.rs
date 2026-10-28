@@ -429,31 +429,6 @@ fn patch_keys(
     keys
 }
 
-/// [`update_item_with_origin`] for the item routes' patch
-/// ([`PatchOrigin::Route`]).
-// HANDOFF(P4.166): `api/wardrobe_route_factory.rs`'s update call passes
-// `PatchOrigin::Route` to `update_item_with_origin` (§S.1(b), contract C3);
-// this wrapper — kept only so the factory compiles untouched on the P4.170
-// branch — is then deleted.
-pub fn update_item(
-    main: &Connection,
-    mount: &Connection,
-    location: &WardrobeLocation,
-    current: &WardrobeItem,
-    patch: &ItemPatch,
-    lookup: Option<&ComponentLookup>,
-) -> Result<Option<WardrobeItem>, WardrobeLocationError> {
-    update_item_with_origin(
-        main,
-        mount,
-        location,
-        current,
-        patch,
-        lookup,
-        PatchOrigin::Route,
-    )
-}
-
 /// v4 `updateItem(location, current, patch, { lookup })` — patch `current` at
 /// its location. A composite's `types` are recomputed whenever its components
 /// or designated slots change, widening over the slots it already claimed

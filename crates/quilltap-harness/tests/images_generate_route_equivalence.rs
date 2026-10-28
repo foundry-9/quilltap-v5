@@ -19,7 +19,7 @@
 //!   settings}`. The `CheapLLMSelection` is otherwise invisible: the route
 //!   builds it from `allProfiles` + `cheapLLMSettings` and hands it straight to
 //!   the classifier, so recording it is the only way to pin
-//!   `build_cheap_llm_selection` on this path. An EMPTY array is the comparand
+//!   `select_on_default_profile` on this path. An EMPTY array is the comparand
 //!   of the two gate conjuncts (`preScreen.enabled`, `scanImagePrompts`) — this
 //!   line must not START with a shell keyword: `recipe_sweep.py` read the
 //!   previous `for …` wording as a run line (the P4.34 SHELL_START class);

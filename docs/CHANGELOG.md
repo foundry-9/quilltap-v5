@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(unify): land the `322a5488e` follow-ups round's HANDOFFs — C2 on v4's inner line, the selection twin deleted, C1's 400, the memory homes in db::fallback, D274-c
+
+_Versions: core 0.0.1372._
+
+Landed the round's recorded HANDOFFs on the union of the `322a5488e` follow-ups smalls round (§S.1).
+
+- Contract C2: P4.170's lane-local `find_by_user_id_or_none` copy, the preview-avatar read in `api/wardrobe.rs` (§S.1(a)), and the head-and-shoulders backfill read now go through `chat_settings::find_by_user_id_or_none`. The §3 review found the home logged v4's OUTER `Error finding chat settings by user ID`, which v4 never emits outside a strict scope: the inner `findOneByFilter` fallback logs `Error finding entity by filter {collection: chat_settings, error}` and answers `null` first. The home now logs that inner line. The unit tests and `extraction_context_degrade` follow.
+- §S.1(b): the item route passes `PatchOrigin::Route` to `update_item_with_origin`; the wrapper is gone.
+- §S.1(d): `image_job_common`'s three cheap-LLM functions are deleted. The avatar, story-background, head-and-shoulders, consolidation and outfit callers use `cheap_llm::select_cheap_llm_from_profiles`, as v4's do, so they now log its two `[CheapLLM]` DEBUGs. The images route uses the new quiet `select_on_default_profile`, because v4 inlines that ladder there.
+- Contract C1: `db_error_response` answers a `RowSchemaRefusal` with v4's 400 `{"error":"Validation error","details":…}`; the memory create uses it. `db::fallback::error_text` renders the refusal as its ZodError message.
+- P4.168's five strict-aware memory fallback homes moved from `memories_read.rs` into `db::fallback` (one function each over `memories_fallback`; the twin is deleted), and their messages joined `fallback_home_guard`'s list. The memories API's length rule now uses the shared `zod_length_checks_past_invalid_type`.
+- D274-c (P4.167 → P4.171): `doc_mount_points`' `lastScanError` / `conversionError` accept an explicit `null`, as v4's `.nullable().optional()` does, with a unit row.
+- The orchestrator's `user_message_carina` note records P4.165's stop handle; the workspace-core spec names the `322a5488e` regen baseline.
+
 #### 2026-10-28 — docs(porting): drift check — 1 new v4 commit (`d64b25e96` help-page pronoun fix; 54 past the `322a5488e` baseline)
 
 _Docs-only change._

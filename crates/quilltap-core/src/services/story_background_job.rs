@@ -324,7 +324,7 @@ where
         .as_ref()
         .and_then(|cs| cs.get("cheapLLMSettings"));
     let Some(mut cheap_selection) =
-        common::build_cheap_llm_selection(&all_profiles, cheap_settings)
+        crate::cheap_llm::select_cheap_llm_from_profiles(&all_profiles, cheap_settings)
     else {
         // No connection profiles — WARN+RETURN.
         return Ok(());
@@ -426,7 +426,7 @@ where
     if is_dangerous_chat {
         let profiles: Vec<crate::cheap_llm::CheapLlmProfile> = all_profiles
             .iter()
-            .map(common::cheap_llm_profile_from_value)
+            .map(crate::cheap_llm::cheap_llm_profile_from_value)
             .collect();
         cheap_selection = resolve_uncensored_cheap_llm_selection(
             cheap_selection,

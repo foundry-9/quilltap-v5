@@ -900,9 +900,16 @@ async fn run_wardrobe_preview_avatar(
     // over; there is no Locked state to honour and nothing to announce.
     let uid_for_settings = user_id.to_string();
     let chat_settings = db
-        .read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid_for_settings))
-        .ok()
-        .flatten();
+        .read_main(move |c| {
+            Ok(crate::db::chat_settings::find_by_user_id_or_none(
+                c,
+                &uid_for_settings,
+            ))
+        })
+        .unwrap_or_else(|e| {
+            crate::db::chat_settings::log_find_by_user_id_failure(&e);
+            None
+        });
     let concierge_policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(
         chat_settings.as_ref(),
         None,

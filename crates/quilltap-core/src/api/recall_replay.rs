@@ -16,13 +16,11 @@ use std::sync::Arc;
 
 use serde_json::Value;
 
+use crate::cheap_llm::{cheap_llm_config_from_settings, cheap_llm_profile_from_value};
 use crate::cheap_llm::{get_cheap_llm_provider, CheapLlmProfile, CheapLlmSelection};
 use crate::db::runtime::Db;
 use crate::db::{chat_settings, chats_read, connection_profiles};
 use crate::recall_tuning::{validate_recall_replay_signals, validate_recall_tuning_input};
-use crate::services::image_job_common::{
-    cheap_llm_config_from_settings, cheap_llm_profile_from_value,
-};
 use crate::services::recall_replay::RunRecallReplayInput;
 
 /// The route's `[Chats v1]` lines' target.

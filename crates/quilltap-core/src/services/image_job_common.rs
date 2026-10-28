@@ -16,9 +16,6 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
-use crate::cheap_llm::{
-    get_cheap_llm_provider, CheapLlmConfig, CheapLlmProfile, CheapLlmSelection,
-};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::image_gen::image_attempt::{
@@ -57,95 +54,6 @@ fn job_overrides() -> ImageGenOverrides {
 
 /// v4 `buildImageGenParams`'s `fallbackModel` default.
 const DEFAULT_IMAGE_MODEL: &str = "dall-e-3";
-
-/// v4 `cheapLLMProfile` field extraction from a connection-profile `Value`.
-pub(crate) fn cheap_llm_profile_from_value(v: &Value) -> CheapLlmProfile {
-    CheapLlmProfile {
-        id: v
-            .get("id")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        provider: v
-            .get("provider")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        model_name: v
-            .get("modelName")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_string(),
-        base_url: v.get("baseUrl").and_then(Value::as_str).map(str::to_string),
-        is_cheap: v.get("isCheap").and_then(Value::as_bool) == Some(true),
-        is_dangerous_compatible: v.get("isDangerousCompatible").and_then(Value::as_bool)
-            == Some(true),
-        parameters: v.get("parameters").cloned(),
-        max_tokens: v.get("maxTokens").and_then(Value::as_f64),
-        max_context: v.get("maxContext").and_then(Value::as_f64),
-        model_class: v
-            .get("modelClass")
-            .and_then(Value::as_str)
-            .map(str::to_string),
-    }
-}
-
-/// v4's `CheapLLMConfig` from a chat-settings `cheapLLMSettings` sub-object (or the
-/// `DEFAULT_CHEAP_LLM_CONFIG` defaults when absent).
-pub(crate) fn cheap_llm_config_from_settings(cheap: Option<&Value>) -> CheapLlmConfig {
-    match cheap {
-        Some(c) => CheapLlmConfig {
-            strategy: c
-                .get("strategy")
-                .and_then(Value::as_str)
-                .unwrap_or("PROVIDER_CHEAPEST")
-                .to_string(),
-            user_defined_profile_id: c
-                .get("userDefinedProfileId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            default_cheap_profile_id: c
-                .get("defaultCheapProfileId")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            fallback_to_local: c
-                .get("fallbackToLocal")
-                .and_then(Value::as_bool)
-                .unwrap_or(false),
-        },
-        None => CheapLlmConfig {
-            strategy: "PROVIDER_CHEAPEST".to_string(),
-            user_defined_profile_id: None,
-            default_cheap_profile_id: None,
-            fallback_to_local: false,
-        },
-    }
-}
-
-/// v4's repeated selection block: build the cheap-LLM selection from `allProfiles`
-/// (default profile → `getCheapLLMProvider`), `None` when there are no profiles.
-pub(crate) fn build_cheap_llm_selection(
-    all_profiles: &[Value],
-    cheap_settings: Option<&Value>,
-) -> Option<CheapLlmSelection> {
-    let profiles: Vec<CheapLlmProfile> = all_profiles
-        .iter()
-        .map(cheap_llm_profile_from_value)
-        .collect();
-    let default_index = all_profiles
-        .iter()
-        .position(|v| v.get("isDefault").and_then(Value::as_bool) == Some(true))
-        .unwrap_or(0);
-    let default_profile = profiles.get(default_index)?;
-    let config = cheap_llm_config_from_settings(cheap_settings);
-    Some(get_cheap_llm_provider(
-        default_profile,
-        &config,
-        &profiles,
-        false,
-        None,
-    ))
-}
 
 /// Node `Buffer.from(s, 'base64')`: decode standard/URL-safe base64, ignoring any
 /// non-alphabet character (whitespace) and tolerating missing padding.

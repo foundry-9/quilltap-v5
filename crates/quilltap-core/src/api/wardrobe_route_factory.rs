@@ -76,8 +76,8 @@ use crate::services::wardrobe_item_images::primitives::{
     cleanup_item_images, ItemImageCleanupMeta,
 };
 use crate::services::wardrobe_item_mutations::{
-    component_lookup_for, create_item, update_item, CreateItemOptions, ItemPatch,
-    WardrobeCreateBody,
+    component_lookup_for, create_item, update_item_with_origin, CreateItemOptions, ItemPatch,
+    PatchOrigin, WardrobeCreateBody,
 };
 use crate::services::wardrobe_item_route_steps::{
     image_choice_error, log_cleanup_equipped_refs, parse_image_file_id, run_cleanup_equipped_refs,
@@ -1514,8 +1514,15 @@ pub async fn item_update(
                 folder: fields.folder,
                 archived,
             };
-            let item = match update_item(main, mount, &location, &current, &patch, lookup.as_ref())
-            {
+            let item = match update_item_with_origin(
+                main,
+                mount,
+                &location,
+                &current,
+                &patch,
+                lookup.as_ref(),
+                PatchOrigin::Route,
+            ) {
                 Ok(Some(item)) => item,
                 Ok(None) => return Ok(Err(not_found(cfg.item_label()))),
                 Err(e) => return Ok(Err(write_error_response(e))),

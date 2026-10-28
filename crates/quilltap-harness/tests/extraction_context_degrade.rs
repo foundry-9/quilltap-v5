@@ -140,7 +140,8 @@ async fn the_context_build_degrades_on_failed_reads() {
     assert!(
         lines
             .iter()
-            .any(|l| l.contains("Error finding chat settings by user ID")),
+            .any(|l| l.contains("Error finding entity by filter")
+                && l.contains("collection=chat_settings")),
         "the chat-settings read degrades with v4's line; got:\n{}",
         lines.join("\n")
     );

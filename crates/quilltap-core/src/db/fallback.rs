@@ -54,6 +54,11 @@ pub fn error_text(error: &DbError) -> String {
                 .map(str::to_string)
                 .unwrap_or_else(|| error.to_string())
         }
+        // Contract C1: v4's `error.message` for a ZodError is the pretty
+        // JSON of its issues, not the route's `Validation error`.
+        DbError::RowSchemaRefusal { .. } => error
+            .row_schema_refusal_message()
+            .unwrap_or_else(|| error.to_string()),
         other => other.to_string(),
     }
 }
@@ -1539,6 +1544,106 @@ fn memories_fallback<T>(
         }
     })
 }
+
+// === the `322a5488e` follow-ups unification (§S.1, P4.168's HANDOFF) — the
+// memories repository's own strict-aware fallback homes, moved here from
+// `db/memories_read.rs` (which carried a twin of [`memories_fallback`]) ===
+
+/// v4 `findByIdForCharacter` (`memories.repository.ts`): ERROR `Error finding
+/// memory by ID for character {collection, characterId, memoryId, error,
+/// strictFailures?}`, fallback `None`.
+pub fn memory_by_id_for_character_or_none<T>(
+    character_id: &str,
+    memory_id: &str,
+    read: impl FnOnce() -> Result<Option<T>, DbError>,
+) -> Result<Option<T>, DbError> {
+    memories_fallback(None, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            memoryId = %memory_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding memory by ID for character"
+        );
+    })
+}
+
+/// v4 `findByIds`: ERROR `Error finding memories by IDs {collection, count,
+/// error, strictFailures?}`, fallback `[]`.
+pub fn memories_by_ids_or_empty<T>(
+    count: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            count = count,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding memories by IDs"
+        );
+    })
+}
+
+/// v4 `searchByContent` (`:298-322`): ERROR `Error searching memories by
+/// content {collection, characterId, queryLength, error, strictFailures?}`,
+/// fallback `[]`.
+pub fn memories_content_search_or_empty<T>(
+    character_id: &str,
+    query_length: usize,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            queryLength = query_length,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error searching memories by content"
+        );
+    })
+}
+
+/// v4 `countWithoutEmbedding` (`:1482-1494`): ERROR `Error counting memories
+/// without embedding {collection, characterId?, error, strictFailures?}`,
+/// fallback `0` (`characterId` OMITTED when absent — v4's `undefined`).
+pub fn memories_without_embedding_count_or_zero(
+    character_id: Option<&str>,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = character_id,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting memories without embedding"
+        );
+    })
+}
+
+/// v4 `findDistinctChatIds` (`:1754-1768`): ERROR `Error listing distinct
+/// memory chatIds {collection, error, strictFailures?}`, fallback `[]`.
+pub fn memory_chat_ids_or_empty(
+    read: impl FnOnce() -> Result<Vec<String>, DbError>,
+) -> Result<Vec<String>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error listing distinct memory chatIds"
+        );
+    })
+}
+// === end the `322a5488e` follow-ups unification ===
 
 /// v4 `findMostImportant` (`:361-389`): ERROR `Error finding most important
 /// memories {collection, characterId, limit, error}`, fallback `[]`.

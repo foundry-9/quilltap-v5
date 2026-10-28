@@ -52,6 +52,9 @@
 //!   `runCarinaMarkupQuery` after persisting the paused user message). The pause
 //!   path omits it for the same reason and its corpus cases use non-`@Name`
 //!   content — wiring it on only one path would be an asymmetric divergence.
+//!   P4.165: once wired, this path inherits the operator's stop for free —
+//!   pass the send's `turn_control` handle into `CarinaQueryDeps.turn_control`,
+//!   the ONE source `answer_as_brahma` reads.
 //! * **Agent mode** (W4.4, real): the cascade resolver runs on the spine
 //!   (`resolve_agent_mode_setting` over chat / project / character / global
 //!   settings). The corpus's `agent_mode_on` chat opts in at the Chat level, so

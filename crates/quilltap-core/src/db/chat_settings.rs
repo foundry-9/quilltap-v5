@@ -1802,32 +1802,31 @@ pub fn find_by_user_id(
 }
 
 /// Contract C2 (the `322a5488e` follow-ups round, P4.169): v4's
-/// `chatSettings.findByUserId` as its callers see it — `safeQuery(…, 'Error
-/// finding chat settings by user ID', {userId}, null)`
-/// (`chat-settings.repository.ts:39-46`). A FAILED read logs v4's ERROR
-/// (`collection` injected first by `safeQuery`'s `enrichedContext`, then
-/// `userId`, then the error's bare message) and answers `None`; it never
-/// throws. The ONE home for the shape — before it, three call sites carried
-/// inline copies and two read silently (`.ok().flatten()`).
+/// `chatSettings.findByUserId` as its callers see it — `safeQuery(() =>
+/// this.findOneByFilter({userId}), 'Error finding chat settings by user ID',
+/// {userId}, null)` (`chat-settings.repository.ts:39-46`). The INNER
+/// `findOneByFilter` is itself a fallback `safeQuery` (`base.repository.ts:
+/// 303-314`, `getCollection()` inside it), so a FAILED read logs only ITS
+/// line — `Error finding entity by filter {collection: chat_settings, error}`
+/// — and answers `null`; the outer line fires only inside the strict scope,
+/// which no C2 caller runs in. (The §3 review of the `322a5488e` follow-ups
+/// unification caught the first cut logging the OUTER line, which v4 never
+/// emits here.) The ONE home for the shape — before it, three call sites
+/// carried inline copies and two read silently (`.ok().flatten()`).
 pub fn find_by_user_id_or_none(conn: &Connection, user_id: &str) -> Option<serde_json::Value> {
-    find_by_user_id(conn, user_id).unwrap_or_else(|error| {
-        log_find_by_user_id_failure(user_id, &error);
-        None
+    crate::db::fallback::find_one_by_filter_or_none("chat_settings", || {
+        find_by_user_id(conn, user_id)
     })
 }
 
-/// The ONE emitter of `Error finding chat settings by user ID`. `pub` for the
-/// callers that check a pool connection out first (`db.read_main(…)`): v4's
-/// `getCollection()` runs INSIDE the same `safeQuery`, so a checkout failure
-/// logs this same line once — such a caller routes its outer `Err` here.
-pub fn log_find_by_user_id_failure(user_id: &str, error: &DbError) {
-    tracing::error!(
-        target: "quilltap::db",
-        collection = "chat_settings",
-        userId = %user_id,
-        error = %crate::db::fallback::error_text(error),
-        "Error finding chat settings by user ID"
-    );
+/// The same failure line for the callers that check a pool connection out
+/// first (`db.read_main(…)`): v4's `getCollection()` runs INSIDE the inner
+/// `findOneByFilter` `safeQuery`, so a checkout failure logs that one line
+/// too — such a caller routes its outer `Err` here.
+pub fn log_find_by_user_id_failure(error: &DbError) {
+    let _ = crate::db::fallback::find_one_by_filter_or_none::<()>("chat_settings", || {
+        Err(DbError::Internal(crate::db::fallback::error_text(error)))
+    });
 }
 
 /// C1 §12 (P4.D255): whether a wardrobe tool's create / update should queue a
@@ -2875,16 +2874,17 @@ mod tests {
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
             lines[0].starts_with(
-                "ERROR quilltap::db Error finding chat settings by user ID \
-                 collection=chat_settings userId=u1 error="
+                "ERROR quilltap::db Error finding entity by filter \
+                 collection=chat_settings error="
             ),
             "{lines:#?}"
         );
     }
 
-    /// Contract C2: the fallback home logs v4's ERROR whole — `collection`
-    /// first, `userId`, then the driver's BARE sentence (no `sqlite error:`
-    /// prefix) — and answers `None`.
+    /// Contract C2: the fallback home logs v4's INNER `findOneByFilter`
+    /// ERROR whole — `collection`, then the driver's BARE sentence (no
+    /// `sqlite error:` prefix) — and answers `None`; the outer `Error finding
+    /// chat settings by user ID` is never logged outside the strict scope.
     #[test]
     fn find_by_user_id_or_none_logs_v4s_line_and_answers_none() {
         let conn = Connection::open_in_memory().unwrap();
@@ -2893,8 +2893,8 @@ mod tests {
         assert!(row.is_none());
         assert_eq!(
             lines,
-            vec!["ERROR quilltap::db Error finding chat settings by user ID \
-                 collection=chat_settings userId=u1 error=no such table: chat_settings"
+            vec!["ERROR quilltap::db Error finding entity by filter \
+                 collection=chat_settings error=no such table: chat_settings"
                 .to_string()]
         );
     }

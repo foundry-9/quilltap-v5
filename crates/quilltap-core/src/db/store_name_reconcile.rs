@@ -484,10 +484,13 @@ fn string_issues(
     k: &str,
     required: bool,
     min1: bool,
+    nullable: bool,
     issues: &mut Vec<ZodIssue>,
 ) {
     match bag.get(k) {
         None if !required => {}
+        // `.nullable()` (D274-c): an explicit `null` passes.
+        Some(Value::Null) if nullable => {}
         Some(Value::String(s)) => {
             if min1 && crate::jsstr::utf16_len(s) < 1 {
                 issues.push(ZodIssue::too_small_string(json!(1), vec![key(k)]));
@@ -554,8 +557,8 @@ fn int_issues(bag: &Map<String, Value>, k: &str, issues: &mut Vec<ZodIssue>) {
 fn doc_mount_point_issues(bag: &Map<String, Value>) -> Vec<ZodIssue> {
     let mut issues = Vec::new();
     uuid_issues(bag, "id", false, &mut issues);
-    string_issues(bag, "name", true, true, &mut issues);
-    string_issues(bag, "basePath", false, false, &mut issues);
+    string_issues(bag, "name", true, true, false, &mut issues);
+    string_issues(bag, "basePath", false, false, false, &mut issues);
     enum_issues(
         bag,
         "mountType",
@@ -573,14 +576,16 @@ fn doc_mount_point_issues(bag: &Map<String, Value>) -> Vec<ZodIssue> {
         &["idle", "scanning", "error"],
         &mut issues,
     );
-    string_issues(bag, "lastScanError", false, false, &mut issues);
+    // v4 `z.string().nullable().optional()` (`mount-index.types.ts:35`).
+    string_issues(bag, "lastScanError", false, false, true, &mut issues);
     enum_issues(
         bag,
         "conversionStatus",
         &["idle", "converting", "deconverting", "error"],
         &mut issues,
     );
-    string_issues(bag, "conversionError", false, false, &mut issues);
+    // v4 `z.string().nullable().optional()` (`mount-index.types.ts:41`).
+    string_issues(bag, "conversionError", false, false, true, &mut issues);
     int_issues(bag, "fileCount", &mut issues);
     int_issues(bag, "chunkCount", &mut issues);
     int_issues(bag, "totalSizeBytes", &mut issues);
@@ -687,7 +692,7 @@ fn vault_owner_issues(bag: &Map<String, Value>) -> Vec<ZodIssue> {
     let mut issues = Vec::new();
     uuid_issues(bag, "id", false, &mut issues);
     uuid_issues(bag, "userId", false, &mut issues);
-    string_issues(bag, "name", true, false, &mut issues);
+    string_issues(bag, "name", true, false, false, &mut issues);
     uuid_issues(bag, "characterDocumentMountPointId", true, &mut issues);
     timestamp_issues(bag, "createdAt", false, &mut issues);
     timestamp_issues(bag, "updatedAt", false, &mut issues);
@@ -776,6 +781,45 @@ mod tests {
     const CHAR: &str = "6c000000-0000-4000-8000-000000000001";
     const ORPHAN: &str = "5a000000-0000-4000-8000-000000000001";
     const LIVE: &str = "5a000000-0000-4000-8000-000000000002";
+
+    /// D274-c (P4.167's HANDOFF, landed at the `322a5488e` follow-ups
+    /// unification): v4 types `lastScanError` / `conversionError`
+    /// `z.string().nullable().optional()`, so an explicit `null` passes and a
+    /// number is `invalid_type expected string`.
+    #[test]
+    fn the_two_error_columns_are_nullable_strings() {
+        let base = || {
+            serde_json::json!({
+                "id": LIVE, "name": "Store", "createdAt": T, "updatedAt": T,
+            })
+            .as_object()
+            .unwrap()
+            .clone()
+        };
+        let mut nulls = base();
+        nulls.insert("lastScanError".into(), Value::Null);
+        nulls.insert("conversionError".into(), Value::Null);
+        assert!(
+            doc_mount_point_issues(&nulls).is_empty(),
+            "{:?}",
+            doc_mount_point_issues(&nulls)
+        );
+        for k in ["lastScanError", "conversionError"] {
+            let mut bad = base();
+            bad.insert(k.into(), serde_json::json!(5));
+            let issues = doc_mount_point_issues(&bad);
+            assert_eq!(
+                serde_json::to_value(&issues).unwrap(),
+                serde_json::to_value(vec![ZodIssue::invalid_type(
+                    "string",
+                    vec![key(k)],
+                    Some(&serde_json::json!(5)),
+                )])
+                .unwrap(),
+                "{k}"
+            );
+        }
+    }
 
     /// The plan's columns only; every other `DocMountPointSchema` field defaults.
     fn pair() -> (Connection, Connection) {

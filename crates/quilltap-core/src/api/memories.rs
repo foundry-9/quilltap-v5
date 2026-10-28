@@ -592,39 +592,6 @@ fn array_of(
     }
 }
 
-/// Zod ≥ 4.6's array `.max(n)` past the array's own `invalid_type` (P4.168,
-/// F-2 — `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`): the length check carries a
-/// `when` (`val.length !== undefined`), so it runs on ANY input with a
-/// `.length` — a STRING measured by Zod's string rule (`Too big: expected
-/// string to have <=12 characters`), an object with a numeric `length` key as
-/// origin `unknown` (`Too big: expected unknown to be <=12`). `null` / numbers
-/// / booleans carry no length. The `api/memories.rs` twin of
-/// `pascal/custom_tool_types.rs`'s `length_checks_past_invalid_type` (Zod's
-/// default sentences) — HANDOFF(P4.169): fold onto the shared `api/zod_issues`
-/// helper P4.169 lifts for the other three twins.
-fn max_length_past_invalid_type(v: &Value, max: usize, path: Vec<Value>) -> Vec<ZodIssue> {
-    match v {
-        Value::String(s) if !crate::jsstr::zod_len_max_ok(s, max) => {
-            vec![ZodIssue::too_big_string(json!(max), path)]
-        }
-        Value::Object(o)
-            if o.get("length")
-                .and_then(Value::as_f64)
-                .is_some_and(|n| n > max as f64) =>
-        {
-            vec![ZodIssue::TooBig {
-                origin: "unknown",
-                code: "too_big",
-                maximum: json!(max),
-                inclusive: true,
-                path,
-                message: format!("Too big: expected unknown to be <={max}"),
-            }]
-        }
-        _ => Vec::new(),
-    }
-}
-
 /// v4 `createMemorySchema.safeParse(body)` — Zod-faithful over the dispatch
 /// bag: the issues in schema order (the `parse_search_bag` shape; since
 /// P4.168 they ride the 400 as v4's `details`), unknown keys
@@ -748,10 +715,11 @@ fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
             // array's own `invalid_type`, Zod 4.6.7 still runs `.max(12)` on
             // any input with a `.length`.
             if let Some(v) = other.filter(|v| !v.is_array()) {
-                issues.extend(max_length_past_invalid_type(
+                issues.extend(super::zod_issues::zod_length_checks_past_invalid_type(
                     v,
-                    crate::memory_candidate::MEMORY_ENTITY_CAP,
-                    vec![zod_key("entities")],
+                    None,
+                    Some(crate::memory_candidate::MEMORY_ENTITY_CAP),
+                    &[zod_key("entities")],
                 ));
             }
             parsed
@@ -979,13 +947,7 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
         // answers 400 `{"error": "Validation error", "details": issues}`
         // (`context.ts:166-167`, `responses.ts:108-118`). AFTER the embedding
         // call: an offset with a failing embedding answers the 502 above.
-        Err(DbError::RowSchemaRefusal { issues, .. }) => {
-            let mut resp = bad_request("Validation error");
-            if let Response::Error(e) = &mut resp {
-                e.details = Some(Box::new(issues));
-            }
-            return resp;
-        }
+        Err(e @ DbError::RowSchemaRefusal { .. }) => return super::types::db_error_response(e),
         Err(e) => return internal(e),
     };
 
