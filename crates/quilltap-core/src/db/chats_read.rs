@@ -138,6 +138,33 @@ fn prepare_select<'c>(
     }
 }
 
+/// Run `f` over [`prepare_select`]'s statement, retrying ONCE through a fresh
+/// prepare when the cached full statement fails for the missing column. A
+/// cached statement is re-prepared by SQLite at its first step after a schema
+/// change, so a column that VANISHED on this connection (a `DROP COLUMN` —
+/// only the `chats_inventory_tier2` corpus does that; v4 reads `SELECT *` and
+/// never fails on it) surfaces at the step, not at the prepare the NULL-form
+/// fallback watches. Flushing the cache sends the retry through that fallback
+/// (the unification of the `322a5488e` follow-ups round — 156.d's "a column
+/// can only appear, never vanish" premise was false on that corpus).
+fn with_select<T>(
+    conn: &Connection,
+    tail: &str,
+    f: impl Fn(&mut rusqlite::CachedStatement<'_>) -> Result<T, DbError>,
+) -> Result<T, DbError> {
+    let attempt = || -> Result<T, DbError> {
+        let mut stmt = prepare_select(conn, tail)?;
+        f(&mut stmt)
+    };
+    match attempt() {
+        Err(DbError::Sqlite(e)) if e.to_string().contains("no such column: equippedInventory") => {
+            conn.flush_prepared_statement_cache();
+            attempt()
+        }
+        other => other,
+    }
+}
+
 /// Insert a nullable-optional TEXT/UUID/enum value: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
     if let Some(s) = v {
@@ -477,13 +504,14 @@ fn run(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let mut stmt = prepare_select(conn, tail)?;
-    let rows = stmt.query_map(params, marshal_row)?;
-    let mut out = Vec::new();
-    for r in rows {
-        out.push(r?);
-    }
-    Ok(out)
+    with_select(conn, tail, |stmt| {
+        let rows = stmt.query_map(params, marshal_row)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r?);
+        }
+        Ok(out)
+    })
 }
 
 // ============================================================================
@@ -519,32 +547,33 @@ pub fn find_by_id_or_none(conn: &Connection, id: &str) -> Option<Value> {
 /// strict-export ruling stands for a broken database; only this ONE class
 /// converges.
 pub fn find_by_id_dropping_invalid(conn: &Connection, id: &str) -> Result<Option<Value>, DbError> {
-    let mut stmt = prepare_select(conn, "WHERE id = ?1")?;
-    let mut rows = stmt.query([id])?;
-    let mut found = None;
-    while let Some(row) = rows.next()? {
-        match marshal_row(row) {
-            Ok(v) => found = Some(v),
-            Err(
-                e @ (rusqlite::Error::InvalidColumnType(..)
-                | rusqlite::Error::FromSqlConversionFailure(..)),
-            ) => {
-                let error = dropped_row_error_text(&e);
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "chats",
-                    error = %error,
-                    "Data validation failed"
-                );
-                // The second line through the ONE home (`fallback_home_guard`).
-                return Ok(super::fallback::find_by_id_or_none("chats", id, || {
-                    Err::<Option<Value>, _>(DbError::Internal(error))
-                }));
+    with_select(conn, "WHERE id = ?1", |stmt| {
+        let mut rows = stmt.query([id])?;
+        let mut found = None;
+        while let Some(row) = rows.next()? {
+            match marshal_row(row) {
+                Ok(v) => found = Some(v),
+                Err(
+                    e @ (rusqlite::Error::InvalidColumnType(..)
+                    | rusqlite::Error::FromSqlConversionFailure(..)),
+                ) => {
+                    let error = dropped_row_error_text(&e);
+                    tracing::error!(
+                        target: "quilltap::db",
+                        collection = "chats",
+                        error = %error,
+                        "Data validation failed"
+                    );
+                    // The second line through the ONE home (`fallback_home_guard`).
+                    return Ok(super::fallback::find_by_id_or_none("chats", id, || {
+                        Err::<Option<Value>, _>(DbError::Internal(error))
+                    }));
+                }
+                Err(e) => return Err(e.into()),
             }
-            Err(e) => return Err(e.into()),
         }
-    }
-    Ok(found)
+        Ok(found)
+    })
 }
 
 /// Find all chats (v4 `findAll`). v4's `_findAll` runs the same per-row
@@ -578,34 +607,35 @@ fn run_dropping_invalid_rows(
     tail: &str,
     params: &[&dyn rusqlite::ToSql],
 ) -> Result<Vec<Value>, DbError> {
-    let mut stmt = prepare_select(conn, tail)?;
-    let mut rows = stmt.query(params)?;
-    let mut out = Vec::new();
-    while let Some(row) = rows.next()? {
-        match marshal_row(row) {
-            Ok(v) => out.push(v),
-            Err(
-                e @ (rusqlite::Error::InvalidColumnType(..)
-                | rusqlite::Error::FromSqlConversionFailure(..)),
-            ) => {
-                let error = dropped_row_error_text(&e);
-                tracing::error!(
-                    target: "quilltap::db",
-                    collection = "chats",
-                    error = %error,
-                    "Data validation failed"
-                );
-                tracing::warn!(
-                    target: "quilltap::db",
-                    collection = "chats",
-                    error = %error,
-                    "Safe validation failed"
-                );
+    with_select(conn, tail, |stmt| {
+        let mut rows = stmt.query(params)?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next()? {
+            match marshal_row(row) {
+                Ok(v) => out.push(v),
+                Err(
+                    e @ (rusqlite::Error::InvalidColumnType(..)
+                    | rusqlite::Error::FromSqlConversionFailure(..)),
+                ) => {
+                    let error = dropped_row_error_text(&e);
+                    tracing::error!(
+                        target: "quilltap::db",
+                        collection = "chats",
+                        error = %error,
+                        "Data validation failed"
+                    );
+                    tracing::warn!(
+                        target: "quilltap::db",
+                        collection = "chats",
+                        error = %error,
+                        "Safe validation failed"
+                    );
+                }
+                Err(e) => return Err(e.into()),
             }
-            Err(e) => return Err(e.into()),
         }
-    }
-    Ok(out)
+        Ok(out)
+    })
 }
 
 /// Find chats that include a character as a participant (v4 `findByCharacterId` —
@@ -1115,5 +1145,26 @@ mod inventory_column_probe_tests {
         assert_eq!(stmt.column_names().last(), Some(&"equippedInventory"));
         // A refusal that is NOT the inventory column still surfaces.
         assert!(prepare_select(&with, "WHERE nope = 1").is_err());
+    }
+
+    /// The unification of the `322a5488e` follow-ups round: a column that
+    /// VANISHES on a connection whose full statement is cached (the
+    /// `chats_inventory_tier2` corpus's `DROP COLUMN`) fails at the cached
+    /// statement's first step; [`with_select`] retries through the `NULL`
+    /// form instead of answering the error (which `find_by_id_or_none` would
+    /// log as v4's `Error finding entity by ID` where v4 logs nothing).
+    #[test]
+    fn a_vanished_column_reads_through_the_null_form() {
+        let conn = conn_with("inventory");
+        // Cache all three full statements (the step re-prepares with or
+        // without a row, so an empty table proves the arm).
+        assert!(find_by_id(&conn, "c1").unwrap().is_none());
+        assert!(find_by_id_dropping_invalid(&conn, "c1").unwrap().is_none());
+        assert!(find_all(&conn).unwrap().is_empty());
+        conn.execute_batch("ALTER TABLE chats DROP COLUMN \"equippedInventory\"")
+            .unwrap();
+        assert!(find_by_id(&conn, "c1").unwrap().is_none());
+        assert!(find_by_id_dropping_invalid(&conn, "c1").unwrap().is_none());
+        assert!(find_all(&conn).unwrap().is_empty());
     }
 }

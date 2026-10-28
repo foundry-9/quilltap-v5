@@ -211,7 +211,12 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtures: { mai
         status: r.status,
         payload: r.payload,
         maxAttempts: r.maxAttempts,
-        scheduledDelayMs: Date.parse(r.scheduledAt as string) - Date.parse(r.createdAt as string),
+        // Whole seconds, not ms: v4's enqueue stamps `scheduledAt` with its own
+        // `new Date()` BEFORE the repository stamps `createdAt`, so an immediate
+        // job reads -1 ms whenever a millisecond tick lands between the two —
+        // a timing coin the Rust side (one clock read) never flips (the
+        // `322a5488e` follow-ups unification). `+ 0` folds a -0 into 0.
+        scheduledDelayS: Math.round((Date.parse(r.scheduledAt as string) - Date.parse(r.createdAt as string)) / 1000) + 0,
       }));
     }
     if (c.action === 'maintenance-config') {

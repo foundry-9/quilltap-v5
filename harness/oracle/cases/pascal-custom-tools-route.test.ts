@@ -71,8 +71,8 @@ interface CaseSpec {
    * P4.D169: freeze the manual run's ONE clock reading for this case, to the
    * same instant the Rust side takes from the recorded row. Required for any
    * case that gates on, renders or writes a progression — a derived field is a
-   * function of the clock. Omitted on every clock-independent case, so their
-   * recorded bytes stay exactly where they were.
+   * function of the clock. Omitted, the case runs at `PASCAL_NOW_MS` — the same default the Rust
+   * side takes (no case reads the wall clock).
    */
   nowMs?: number;
 }
@@ -334,7 +334,15 @@ async function runCase(
     let response: { status: number; json: () => Promise<unknown> };
     // P4.D169: see `CaseSpec.nowMs`.
     const realNow = Date.now;
-    if (c.nowMs !== undefined) Date.now = () => c.nowMs as number;
+    // Every case runs at a frozen instant — `c.nowMs`, else the shared
+    // `PASCAL_NOW_MS` the Rust side defaults to. A "clock-independent" case
+    // left on the wall clock was not: the roster's withheld set depends on
+    // the fixture's `gestation` span, which ENDS at PASCAL_NOW_MS + 60 days
+    // (2026-10-28T12:00Z), so v4 began listing `gestating` as available that
+    // day (a calendar time bomb caught at the `322a5488e` follow-ups
+    // unification).
+    const frozenNow = c.nowMs ?? PASCAL_NOW_MS;
+    Date.now = () => frozenNow;
     try {
       if (c.method === 'GET') {
         const { GET } = await import('@/app/api/v1/chats/[id]/custom-tools/route');

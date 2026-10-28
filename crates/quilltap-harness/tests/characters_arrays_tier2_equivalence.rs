@@ -291,15 +291,18 @@ fn add_scenario_record(
     })
 }
 
-/// [P4.113] v4 WARN lines this port does NOT emit, recorded (not ported):
-/// the vault-overlay parser's `Scenarios/*.md body is empty; skipping`
-/// (`vault-overlay/parsers.ts:541`), which v4 logs on each read of the
-/// whitespace-body scenario the "Blank Page" op plants — `vault_overlay.rs`
-/// ports none of `parsers.ts`'s eleven WARNs (named in P4.113's lane record for
-/// the unifier). Pinned both ways: v4 must still log it exactly `count` times on
-/// that op (else VANISHED), v5 never (else WRONG SHAPE — retire the row).
-const RECORDED_ABSENT_WARNS: &[(&str, &str, usize)] =
-    &[("Scenarios/*.md body is empty; skipping", "Blank Page", 2)];
+/// [P4.113 → the `322a5488e` follow-ups unification] the vault-overlay
+/// parser's `Scenarios/*.md body is empty; skipping` (`vault-overlay/parsers.ts`),
+/// which v4 logs on each overlay read of the whitespace-body scenario the "Blank
+/// Page" op plants. P4.171 (C-7) PORTED the line, so v5 now logs it too — but
+/// once where v4 logs it twice: v4's `characters.update` ends with
+/// `applyDocumentStoreOverlayOne(result)`, a closing overlay re-read that
+/// `vault_character_update::update_character` deliberately leaves to the read
+/// overlay (a READ concern, no DB mutation). The second line is that re-read.
+/// Pinned both ways as `(message, op title, v4 count, v5 count)`: either count
+/// moving is a red (VANISHED / moved, or the re-read ported — retire the row).
+const RECORDED_COUNT_DIVERGENT_WARNS: &[(&str, &str, usize, usize)] =
+    &[("Scenarios/*.md body is empty; skipping", "Blank Page", 2, 1)];
 
 /// One captured `WARN <target> <message> k=v…` line as `{ message, characterId }`.
 fn warn_record(line: &str) -> Value {
@@ -317,7 +320,7 @@ fn warn_record(line: &str) -> Value {
 
 /// [P4.113] v4's `addToSubArray` miss arm: `Character not found: Error adding
 /// scenario` `{ characterId }` on the absent-character op, and NO other WARN on
-/// any `addScenario` op bar [`RECORDED_ABSENT_WARNS`]. Per op, in order.
+/// any `addScenario` op bar [`RECORDED_COUNT_DIVERGENT_WARNS`]. Per op, in order.
 fn assert_scenario_warns(got: &[Value], oracle: &Value) {
     let want = oracle["addScenarioWarns"]
         .as_array()
@@ -328,32 +331,31 @@ fn assert_scenario_warns(got: &[Value], oracle: &Value) {
         "addScenario op count: rust vs oracle"
     );
     let mut not_found = 0usize;
-    let mut recorded_seen = vec![0usize; RECORDED_ABSENT_WARNS.len()];
+    let mut v4_seen = vec![0usize; RECORDED_COUNT_DIVERGENT_WARNS.len()];
+    let mut v5_seen = vec![0usize; RECORDED_COUNT_DIVERGENT_WARNS.len()];
     let mut reds: Vec<String> = Vec::new();
+    let recorded = |l: &Value| {
+        RECORDED_COUNT_DIVERGENT_WARNS
+            .iter()
+            .position(|(m, _, _, _)| l["message"].as_str() == Some(m))
+    };
     for (g, w) in got.iter().zip(want) {
         let op = &w["opIndex"];
         let mut w_warns: Vec<Value> = Vec::new();
         for wl in w["warns"].as_array().unwrap() {
-            match RECORDED_ABSENT_WARNS
-                .iter()
-                .position(|(m, _, _)| wl["message"].as_str() == Some(m))
-            {
-                Some(i) => recorded_seen[i] += 1,
+            match recorded(wl) {
+                Some(i) => v4_seen[i] += 1,
                 None => w_warns.push(wl.clone()),
             }
         }
-        let g_warns = g["warns"].as_array().unwrap();
-        for gl in g_warns {
-            if RECORDED_ABSENT_WARNS
-                .iter()
-                .any(|(m, _, _)| gl["message"].as_str() == Some(m))
-            {
-                reds.push(format!(
-                    "op {op}: v5 now logs {gl} — WRONG SHAPE for a recorded-absent line; retire it"
-                ));
+        let mut g_warns: Vec<Value> = Vec::new();
+        for gl in g["warns"].as_array().unwrap() {
+            match recorded(gl) {
+                Some(i) => v5_seen[i] += 1,
+                None => g_warns.push(gl.clone()),
             }
         }
-        if g_warns != &w_warns {
+        if g_warns != w_warns {
             reds.push(format!(
                 "op {op}: WARN lines — v4 {w_warns:?} v5 {g_warns:?}"
             ));
@@ -363,11 +365,11 @@ fn assert_scenario_warns(got: &[Value], oracle: &Value) {
             .filter(|l| l["message"] == "Character not found: Error adding scenario")
             .count();
     }
-    for (i, (m, _, n)) in RECORDED_ABSENT_WARNS.iter().enumerate() {
-        if recorded_seen[i] != *n {
+    for (i, (m, _, v4_n, v5_n)) in RECORDED_COUNT_DIVERGENT_WARNS.iter().enumerate() {
+        if (v4_seen[i], v5_seen[i]) != (*v4_n, *v5_n) {
             reds.push(format!(
-                "v4 logged `{m}` {} time(s), recorded {n} — VANISHED or moved",
-                recorded_seen[i]
+                "`{m}`: v4 logged {} time(s), v5 {} — recorded {v4_n} / {v5_n}; VANISHED, moved, or the closing re-read ported (retire the row)",
+                v4_seen[i], v5_seen[i]
             ));
         }
     }

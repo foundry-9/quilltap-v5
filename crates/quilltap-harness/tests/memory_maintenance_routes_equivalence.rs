@@ -283,8 +283,12 @@ fn jobs(db: &Db) -> Value {
                 "status": r.get::<_, String>(3)?,
                 "payload": r.get::<_, String>(4)?,
                 "maxAttempts": r.get::<_, f64>(5)?,
-                "scheduledDelayMs": quilltap_core::clock::iso_to_ms(&scheduled).unwrap()
-                    - quilltap_core::clock::iso_to_ms(&created).unwrap(),
+                // Whole seconds — see the oracle's `scheduledDelayS` (v4's two
+                // clock reads straddle a millisecond tick at random).
+                "scheduledDelayS": ((quilltap_core::clock::iso_to_ms(&scheduled).unwrap()
+                    - quilltap_core::clock::iso_to_ms(&created).unwrap()) as f64
+                    / 1000.0)
+                    .round() as i64,
             }))
         })?;
         Ok(Value::Array(rows.collect::<Result<Vec<_>, _>>()?))

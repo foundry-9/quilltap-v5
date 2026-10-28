@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — fix(unify): the sweep's five union reds — a cached chat read survives a vanished column, the Pascal oracles freeze every case, the job delay in whole seconds, the scenario WARN's count divergence recorded
+
+_Versions: core 0.0.1377._
+
+The full sweep from the pin found five union reds. Each is now green by name.
+
+- `chats_inventory_tier2`: P4.167's 156.d cached the full chat SELECT per connection on the premise that a column "can only appear, never vanish". The corpus's `DROP COLUMN` made the cached statement fail at its first step, so `find_by_id_or_none` logged v4's `Error finding entity by ID` where v4 logs nothing. NEW `with_select` retries once through a flushed cache and the NULL form. Red-first: `a_vanished_column_reads_through_the_null_form`.
+- `pascal_run_custom_handler` / `pascal_custom_tools_route`: a calendar time bomb. The fixture's running `gestation` span ends at `PASCAL_NOW_MS + 60 d` = 2026-10-28T12:00Z. The Rust side runs every case at `PASCAL_NOW_MS`, but both oracles froze `Date.now` only for cases with `nowMs`, so v4 began listing `gestating` as available. Every oracle case now runs at `c.nowMs ?? PASCAL_NOW_MS`.
+- `memory_maintenance_routes`: v4's enqueue stamps `scheduledAt` before the repository stamps `createdAt`, so the ms delay read -1 or 0 by chance. Both sides now compare whole seconds (`scheduledDelayS`).
+- `characters_arrays_tier2`: P4.171 C-7 ported `Scenarios/*.md body is empty; skipping`, which tripped the recorded-absent row as designed. v4 still logs it twice and v5 once: v4's `characters.update` ends with a closing overlay re-read that `update_character` leaves to the read overlay. Re-recorded as `RECORDED_COUNT_DIVERGENT_WARNS` (v4 2 / v5 1), pinned both ways.
+
 #### 2026-10-28 — test(harness): one round-agnostic LANE-REMOVE census; the retired drain census deleted; the DQS census's case rule recorded
 
 _No crate versions bumped._
