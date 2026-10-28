@@ -497,9 +497,10 @@ fn run_json(success: bool, result: &Value, error: &Option<String>) -> String {
 }
 
 fn pending_json(pending: &PendingInventoryAnnouncements) -> String {
+    // Insertion order on both sides (v4's `Map`, v5's `IndexMap` — P4.169 I-4
+    // converged R-6, which had re-sorted both sides by key).
     let map = pending.lock().unwrap();
-    let mut entries: Vec<(&String, _)> = map.iter().collect();
-    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let entries: Vec<(&String, _)> = map.iter().collect();
     serde_json::to_string(&entries).unwrap()
 }
 
@@ -514,9 +515,8 @@ fn want_step(step: &Value) -> String {
         step["run"].as_str().unwrap()
     );
     if let Some(p) = step.get("pending").and_then(Value::as_str) {
-        // v4's Map in insertion order; v5's in key order (R-6) — re-sorted.
-        let mut entries: Vec<Value> = serde_json::from_str::<Vec<Value>>(p).unwrap();
-        entries.sort_by(|a, b| a[0].as_str().cmp(&b[0].as_str()));
+        // v4's Map in insertion order — v5's too since P4.169 (I-4).
+        let entries: Vec<Value> = serde_json::from_str::<Vec<Value>>(p).unwrap();
         out.push_str(&format!(
             " pending={}",
             serde_json::to_string(&entries).unwrap()
@@ -541,7 +541,7 @@ fn run_case_steps(
         if let Some(turn) = step.get("flush").and_then(Value::as_str) {
             let pending = turns
                 .entry(turn.to_string())
-                .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())))
+                .or_insert_with(|| Arc::new(Mutex::new(Default::default())))
                 .clone();
             rt.block_on(flush_pending_inventory_announcements(Some(&pending), db));
             out.push(format!("flush {turn}"));
@@ -553,7 +553,7 @@ fn run_case_steps(
         let turn = step.get("turn").and_then(Value::as_str).map(|t| {
             turns
                 .entry(t.to_string())
-                .or_insert_with(|| Arc::new(Mutex::new(HashMap::new())))
+                .or_insert_with(|| Arc::new(Mutex::new(Default::default())))
                 .clone()
         });
         let stage = run_inventory_tool_handler(

@@ -35,13 +35,14 @@
 //!
 //! ## Ordering
 //!
-//! v4 iterates its `Map` in insertion order; v5's `HashMap` is unordered, so
-//! the flush drains in KEY order (`chatId:characterId`). Each entry's post and
-//! refresh are independent and keyed per character, so the rows and jobs are
-//! the same; only the order of two characters' lines in one turn can differ —
-//! a recorded-only class (R-6).
+//! v4 iterates its `Map` in insertion order, and so does v5: the pending map
+//! is an [`indexmap::IndexMap`] ([`PendingInventoryMap`]), entries are only
+//! inserted or edited in place mid-turn, and the flush drains in FIRST-record
+//! order — two characters' lines in one turn post in the order their changes
+//! happened, and the drain DEBUG's `provenances` follows it (P4.169 I-4; the
+//! first cut drained in key order, R-6). The wardrobe turn set's sorted drain
+//! in `outfit_change_effects` is the same class, recorded there (R-3).
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
@@ -55,14 +56,14 @@ use crate::services::pascal_writer::post_pascal_inventory_change;
 
 pub use crate::inventory::equip::{
     InventoryChange, InventoryChangeContext, InventoryChangeProvenance, InventoryGive,
-    PendingInventoryChange,
+    PendingInventoryChange, PendingInventoryMap,
 };
 
 /// The turn's pending Inventory changes, keyed `chatId:characterId` (v4's
 /// optional `pendingInventoryAnnouncements?: Map<string,
 /// PendingInventoryChange>`), shared by reference through every tool call
 /// and Pascal run of one turn.
-pub type PendingInventoryAnnouncements = Arc<Mutex<HashMap<String, PendingInventoryChange>>>;
+pub type PendingInventoryAnnouncements = Arc<Mutex<PendingInventoryMap>>;
 
 /// The `source_context` the avatar refresh carries (v4
 /// `refreshAvatarForAppearance(…, 'inventory-change')`). R-5: the refresh is
@@ -223,7 +224,7 @@ pub fn pending_inventory_key(chat_id: &str, character_id: &str) -> String {
 /// removes the object from `pickedUp` (picked up and set down in one turn
 /// announces nothing), else joins the unequipped list; `pickedUp` joins once.
 pub fn record_pending_inventory_change(
-    pending: &mut HashMap<String, PendingInventoryChange>,
+    pending: &mut PendingInventoryMap,
     who: PendingWho<'_>,
     change: &InventoryChange,
     provenance: InventoryChangeProvenance,
@@ -277,7 +278,7 @@ pub fn record_pending_inventory_change(
 /// given away this turn (v4 `strikeFromPendingInventoryChange`). An unknown
 /// key is a no-op.
 pub fn strike_from_pending_inventory_change(
-    pending: &mut HashMap<String, PendingInventoryChange>,
+    pending: &mut PendingInventoryMap,
     key: &str,
     item_id: &str,
 ) {
@@ -439,15 +440,14 @@ pub async fn flush_pending_inventory_announcements(
     let Some(pending) = context else {
         return;
     };
-    let mut entries: Vec<(String, PendingInventoryChange)> = {
+    let entries: Vec<(String, PendingInventoryChange)> = {
         let mut map = pending.lock().unwrap_or_else(|e| e.into_inner());
         if map.is_empty() {
             return;
         }
-        map.drain().collect()
+        // First-record order, as v4's `Array.from(pending.values())`.
+        std::mem::take(&mut *map).into_iter().collect()
     };
-    // R-6: v4's Map is insertion-ordered; drain in key order.
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
     for (_, entry) in &entries {
         let change = InventoryChange {
             equipped: entry.equipped.clone(),

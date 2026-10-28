@@ -71,7 +71,7 @@ pub fn new_wardrobe_turn_containers() -> (
     (
         Arc::new(Mutex::new(HashSet::new())),
         Arc::new(Mutex::new(HashMap::new())),
-        Arc::new(Mutex::new(HashMap::new())),
+        Arc::new(Mutex::new(Default::default())),
     )
 }
 

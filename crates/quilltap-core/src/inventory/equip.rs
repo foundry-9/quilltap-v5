@@ -47,7 +47,7 @@
 //! the tools' turn) calls directly. The re-entrancy hazard has no v5 twin
 //! (a closure cannot `await` another write).
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -108,6 +108,12 @@ pub struct PendingInventoryChange {
     pub provenances: Vec<InventoryChangeProvenance>,
 }
 
+/// The turn's pending Inventory changes, keyed `chatId:characterId` — an
+/// INSERTION-ordered map, as v4's `Map` is (P4.169 I-4): the flush posts in
+/// first-record order. Entries are only inserted or edited in place mid-turn
+/// (v4 never deletes one before the drain), so no removal can reorder it.
+pub type PendingInventoryMap = indexmap::IndexMap<String, PendingInventoryChange>;
+
 /// Who is changing what a character carries, and the turn's pending set if
 /// there is one (v4 `InventoryChangeContext`; `pending` keyed
 /// `chatId:characterId`).
@@ -117,7 +123,7 @@ pub struct InventoryChangeContext<'a> {
     pub provenance: InventoryChangeProvenance,
     /// Post Pascal's line for this gesture. False at arrival.
     pub announce: bool,
-    pub pending: Option<&'a mut HashMap<String, PendingInventoryChange>>,
+    pub pending: Option<&'a mut PendingInventoryMap>,
 }
 
 /// A give: the object handed over and the receiver's name.

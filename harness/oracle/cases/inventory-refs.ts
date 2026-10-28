@@ -343,6 +343,12 @@ recordRow('rec-two-characters-keyed-apart', [
   { who: WHO, change: { equipped: [L], unequipped: [] }, provenance: 'character' },
   { who: WHO_B, change: { equipped: [C], unequipped: [] }, provenance: 'operator' },
 ]);
+// P4.169 (I-4): the later key recorded FIRST — v4's Map keeps insertion
+// order, so `char-b` comes out ahead of `char-a`.
+recordRow('rec-b-before-a-insertion-order', [
+  { who: WHO_B, change: { equipped: [C], unequipped: [] }, provenance: 'pascal' },
+  { who: WHO, change: { equipped: [L], unequipped: [] }, provenance: 'character' },
+]);
 recordRow('rec-empty-change-still-makes-entry', [{ who: WHO, change: { equipped: [], unequipped: [] }, provenance: 'character' }]);
 const struck: Step[] = [
   { who: WHO, change: { equipped: [L, B], unequipped: [C], pickedUp: [B] }, provenance: 'character' },

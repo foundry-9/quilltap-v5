@@ -1804,6 +1804,32 @@
       ]
     },
     {
+      "name": "two-characters-drain-in-first-record-order",
+      "steps": [
+        {
+          "tool": "inventory_pick_up",
+          "chatId": "b1000000-0000-4000-8000-000000000001",
+          "characterId": "c2000000-0000-4000-8000-000000000002",
+          "args": {
+            "ref": "torch"
+          },
+          "turn": "t"
+        },
+        {
+          "tool": "inventory_pick_up",
+          "chatId": "b1000000-0000-4000-8000-000000000001",
+          "characterId": "c1000000-0000-4000-8000-000000000001",
+          "args": {
+            "ref": "magic bow"
+          },
+          "turn": "t"
+        },
+        {
+          "flush": "t"
+        }
+      ]
+    },
+    {
       "name": "pickup-cap-before-write",
       "steps": [
         {

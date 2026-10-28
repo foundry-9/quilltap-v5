@@ -564,7 +564,7 @@ fn pascal_inventory_effects_match_oracle() {
         let character_id = step.character.as_ref().map(|c| spec.characters[c].clone());
         let pending: Option<PendingInventoryAnnouncements> = step
             .with_pending
-            .then(|| Arc::new(Mutex::new(HashMap::new())));
+            .then(|| Arc::new(Mutex::new(Default::default())));
         let result = run_result(&spec.tool_name, &step.gestures);
 
         logs.lock().unwrap().clear();

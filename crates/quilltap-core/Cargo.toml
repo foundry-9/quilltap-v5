@@ -1,6 +1,6 @@
 [package]
 name = "quilltap-core"
-version = "0.0.1364"
+version = "0.0.1365"
 edition = "2021"
 publish = false
 
@@ -38,6 +38,10 @@ serde = { version = "1", features = ["derive"] }
 # equippedOutfit / sillyTavernData / state / tagStyles / …) — the locked decision
 # closing the open-JSON multi-key key-order seam.
 serde_json = { version = "1", features = ["preserve_order"] }
+# Insertion-ordered maps where v4 iterates a JS `Map` (P4.169 I-4: the turn's
+# pending Inventory announcements drain in first-record order). Already in the
+# lock through `serde_json/preserve_order` — no new crate.
+indexmap = "2"
 
 # Regex engine for the ported name-matching / detail-extraction heuristics.
 # Used only where v4 uses a RegExp; JS-vs-Rust fidelity is handled per call site

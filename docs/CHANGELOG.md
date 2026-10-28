@@ -199,6 +199,14 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — fix(core): the turn's pending Inventory announcements drain in first-record order (P4.169)
+
+_Versions:_ quilltap-core 0.0.1345.
+
+The turn's pending Inventory announcements now drain in first-record order, as v4's `Map` does. The map is an `IndexMap` (`inventory::equip::PendingInventoryMap`, with `indexmap` a direct dependency already in the lock — ruling R-C), and the flush's key sort is gone. Two characters' Pascal lines in one turn now post in the order their changes happened, and the drain DEBUG's `provenances` follows that order (R-6 converged). `outfit_change_effects`'s constructor takes `Default::default()`; its sorted wardrobe-set drain is the same class (R-3) and stays as recorded.
+
+`inventory_refs` and `inventory_tools` now compare the pending map in v4's insertion order; until now both sides were re-sorted by key. Each family gains a later-key-first row. Red-first: re-inserting the key sort turns the new two-character `inventory_tools` case red.
+
 #### 2026-10-27 — fix(core): the identity resolver's `users` read falls back as v4's does (P4.169)
 
 _Versions:_ quilltap-core 0.0.1344.
