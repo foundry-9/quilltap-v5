@@ -126,6 +126,13 @@ _Versions: core 0.0.1337._
 
 A `.qtap` import now refuses a chat whose `JsonSchema` columns hold something other than an object, matching v4's `ChatMetadataSchema` at `322a5488e`. There are twelve such columns, and the issues come out in schema declaration order: `sillyTavernMetadata` first (ahead of the `scenarioSource` issues), then `pendingOutfitNotifications`, `state` (`null` refused) and `compressionCache`, then the Concierge enums, then `sceneState`, `equippedOutfit`, `equippedInventory`, `characterAvatars`, `compiledIdentityStacks`, `courierCheckpoints`, `commonplaceSceneCache` and `commonplaceRecallHistory`. The ZodError bytes match v4's. This re-ports the `cb88a3840` rider by hand. The rider had nine columns at `25b8fab6a` and missed `sillyTavernMetadata`, `equippedInventory` and `commonplaceRecallHistory`. Differential: `system_import_state`'s two new arms `execute_chat_record_columns{,_preserve}` (91 cases), regenerated from the pin. Red first on unported main: 8 differences. Also adds the unit test `chat_record_column_tests`.
 
+#### 2026-10-28 — P4.171 gate fix: startup_scenarios gets its own fixture; census re-homes the moved gallery read
+
+_Versions: unchanged (harness-only; harness frozen)._
+
+- `startup_scenarios_equivalence` builds its own fixture pair (`QT_FIXTURE_SS_*`, `/tmp/qt-startup-scenarios-*.db`). It no longer rebuilds the shared scenario-location pair, which re-minted the mount ids that `scenario_location`'s oracle had recorded.
+- `doc_mount_fallback_sites_census` classifies the gallery's fallback read at `collect_photo_links`, where Unit 7 moved it.
+
 #### 2026-10-27 — test(harness): startup_scenarios' recipe header builds its own fixture (P4.171)
 
 _No crate versions bumped._

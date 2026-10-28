@@ -695,7 +695,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/photos/save_image_to_album.rs", "find_existing_photos_link_by_sha", "find_by_mount_point_id", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
     ("quilltap-core/src/photos/save_image_to_album.rs", "resolve_unique_relative_path", "find_by_mount_point_and_path", "other-repo"),
-    ("quilltap-core/src/photos/user_gallery_service.rs", "list_user_gallery", "find_by_mount_point_id_or_empty", "converted"),
+    ("quilltap-core/src/photos/user_gallery_service.rs", "collect_photo_links", "find_by_mount_point_id_or_empty", "converted"), // P4.171 (moved from list_user_gallery)
     ("quilltap-core/src/photos/user_gallery_service.rs", "remove_from_user_gallery", "delete_with_gc", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/scenarios/everywhere.rs", "list_scenarios_everywhere", "find_many_by_mount_points_in_folder_or_empty", "converted"),
     ("quilltap-core/src/scenarios/location.rs", "folder_docs", "find_many_by_mount_points_in_folder_or_empty", "converted"),

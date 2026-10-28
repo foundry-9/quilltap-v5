@@ -193380,3 +193380,13 @@ Branch `claude/p4.171-scenarios-vault-store-host-lock-6c7ea4410`, worktree `.cla
 
 `startup_scenarios_equivalence`'s header now builds the scenario-location pair itself (the sweep driver runs only a family's own header). Swept: ok.
 
+
+### P4.171 gate fix — two reds, both caused by this lane, both fixed
+
+1. **`scenario_location_matches_oracle`: 179 mismatches.** This was a sweep-order artifact of Unit 3. `startup_scenarios`' recipe rebuilt the SHARED `/tmp/qt-scenario-location-*.db` pair after `scenario_location`'s oracle had been generated, which re-minted every mount id.
+   - Fixed structurally: the startup family now reads `QT_FIXTURE_SS_MAIN` / `QT_FIXTURE_SS_MOUNT` over its own `/tmp/qt-startup-scenarios-*.db` pair, built by the same builder.
+2. **`every_document_store_read_site_is_classified`.** Unit 7 moved the gallery's `find_by_mount_point_id_or_empty` call from `list_user_gallery` into `collect_photo_links`.
+   - The row now points at `collect_photo_links`. Its class is unchanged (`converted`).
+
+Both tests re-ran green by name against regenerated oracles. The rest of the gate log was green: 858 binaries, 5,706 passed, 2 failed (the two above), 3 ignored, zero SKIP. That includes Tier R `cli_differential`, `host_lock_ordering`, `host_cadence`, and the spelling, fallback-home and help-tree guards.
+

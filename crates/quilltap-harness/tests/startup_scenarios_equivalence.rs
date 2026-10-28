@@ -19,17 +19,17 @@
 //! pin worktree):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
-//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
-//!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
+//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-startup-scenarios-main.db \
+//!   QT_FIXTURE_SL_MOUNT=/tmp/qt-startup-scenarios-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/fixtures/build-scenario-location-fixture.ts
-//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
-//!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
+//!   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SS_MAIN=/tmp/qt-startup-scenarios-main.db \
+//!   QT_FIXTURE_SS_MOUNT=/tmp/qt-startup-scenarios-mount.db \
 //!     $N/node --import tsx $V5W/harness/oracle/cases/startup-scenarios.ts \
 //!     > /tmp/oracle-startup-scenarios.ndjson
 //! Run:
 //!   QT_ORACLE_STARTUP_SCENARIOS=/tmp/oracle-startup-scenarios.ndjson \
-//!   QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
-//!   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
+//!   QT_FIXTURE_SS_MAIN=/tmp/qt-startup-scenarios-main.db \
+//!   QT_FIXTURE_SS_MOUNT=/tmp/qt-startup-scenarios-mount.db \
 //!     cargo test -p quilltap-harness --test startup_scenarios_equivalence
 
 use std::collections::HashSet;
@@ -138,10 +138,10 @@ fn startup_scenarios_match_oracle() {
         return;
     };
     let (Some(main_fixture), Some(mount_fixture)) = (
-        std::env::var("QT_FIXTURE_SL_MAIN").ok(),
-        std::env::var("QT_FIXTURE_SL_MOUNT").ok(),
+        std::env::var("QT_FIXTURE_SS_MAIN").ok(),
+        std::env::var("QT_FIXTURE_SS_MOUNT").ok(),
     ) else {
-        eprintln!("SKIP: set QT_FIXTURE_SL_MAIN / QT_FIXTURE_SL_MOUNT (see header).");
+        eprintln!("SKIP: set QT_FIXTURE_SS_MAIN / QT_FIXTURE_SS_MOUNT (see header).");
         return;
     };
     let spec: Spec =

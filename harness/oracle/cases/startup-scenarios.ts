@@ -19,8 +19,8 @@
  * Run (Node 24, from the round's pin), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
- *   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SL_MAIN=/tmp/qt-scenario-location-main.db \
- *   QT_FIXTURE_SL_MOUNT=/tmp/qt-scenario-location-mount.db \
+ *   LANG=en_US.UTF-8 TZ=UTC QT_FIXTURE_SS_MAIN=/tmp/qt-startup-scenarios-main.db \
+ *   QT_FIXTURE_SS_MOUNT=/tmp/qt-startup-scenarios-mount.db \
  *     $N/node --import tsx $V5W/harness/oracle/cases/startup-scenarios.ts \
  *     > /tmp/oracle-startup-scenarios.ndjson
  */
@@ -65,10 +65,10 @@ const OPS: Op[] = [
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(readFileSync(join(here, '..', 'fixtures', 'scenario-location.json'), 'utf8')) as Spec;
-  const mainFixture = process.env.QT_FIXTURE_SL_MAIN;
-  const mountFixture = process.env.QT_FIXTURE_SL_MOUNT;
+  const mainFixture = process.env.QT_FIXTURE_SS_MAIN;
+  const mountFixture = process.env.QT_FIXTURE_SS_MOUNT;
   if (!mainFixture || !existsSync(mainFixture) || !mountFixture || !existsSync(mountFixture)) {
-    throw new Error('QT_FIXTURE_SL_MAIN and QT_FIXTURE_SL_MOUNT must point at the built fixture .db files');
+    throw new Error('QT_FIXTURE_SS_MAIN and QT_FIXTURE_SS_MOUNT must point at the built fixture .db files');
   }
   const scratch = mkdtempSync(join(tmpdir(), 'qt-ss-oracle-'));
   process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
