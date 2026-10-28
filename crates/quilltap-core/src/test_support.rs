@@ -278,6 +278,31 @@ pub fn ensure_embedding_status_table(conn: &rusqlite::Connection) {
     }
 }
 
+/// P4.168 (C-5): a table from v4's own DDL dump on a fixture COPY of
+/// `partition`, only when no table of the name exists — the twin of v4's lazy
+/// `getCollection` create on the oracle's per-case copy (the memories pair
+/// predates `projects` / `project_doc_mount_links`). The generic sibling of
+/// [`ensure_embedding_status_table`].
+pub fn ensure_table_from_dump(
+    conn: &rusqlite::Connection,
+    partition: crate::db::table_shape::Partition,
+    table: &str,
+) {
+    let taken: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name = ?1",
+            [table],
+            |r| r.get(0),
+        )
+        .expect("sqlite_master");
+    if taken > 0 {
+        return;
+    }
+    for sql in crate::db::table_shape::fresh_ddl_for(partition, table) {
+        conn.execute_batch(&sql).expect("DDL from the dump");
+    }
+}
+
 pub fn ensure_memory_tiers_columns(conn: &rusqlite::Connection) {
     crate::db::memory_tiers_repair::ensure_memory_tiers(conn)
         .expect("ensure the memory-tiers columns on a test fixture");

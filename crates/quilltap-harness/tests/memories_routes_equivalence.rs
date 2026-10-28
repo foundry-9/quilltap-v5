@@ -431,6 +431,9 @@ const P4168_EMBEDDING_READ_FAILS_PLANT: &[&str] = &[
     "ALTER TABLE memories ADD COLUMN embedding BLOB GENERATED ALWAYS AS (json('not json')) VIRTUAL",
 ];
 
+/// P4.168 (C-5): the project an explicit-`projectId` create names.
+const P4168_EXPLICIT_PROJECT: &str = "b7000000-0000-4000-8000-000000000002";
+
 /// P4.168 (C-1): the fixture's `a1` carries a non-UUID tag.
 const P4168_INVALID_A1_PLANT: &[&str] = &[
     "UPDATE memories SET tags = '[\"not-a-uuid\"]' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'",
@@ -2044,6 +2047,14 @@ fn memories_routes_match_oracle() {
                 Some(CHAT_PROJECT_PLANT),
                 true,
             ),
+            // P4.168 (C-5): the chat in P1, an explicit P2 (created in-case
+            // below) — the stored row carries P2.
+            (
+                "create_project_explicit_wins",
+                with(json!({ "chatId": CHAT_SALON, "projectId": P4168_EXPLICIT_PROJECT })),
+                Some(CHAT_PROJECT_PLANT),
+                true,
+            ),
             (
                 "create_missing_project_404",
                 with(json!({ "projectId": MISSING })),
@@ -2156,6 +2167,25 @@ fn memories_routes_match_oracle() {
                 None,
                 true,
             ),
+            // P4.168 (F-2): the array's `.max(12)` past its `invalid_type`.
+            (
+                "create_entities_string_over_cap_400",
+                with(json!({ "entities": "x".repeat(13) })),
+                None,
+                true,
+            ),
+            (
+                "create_entities_string_under_cap_400",
+                with(json!({ "entities": "harbor" })),
+                None,
+                true,
+            ),
+            (
+                "create_entities_lengthy_object_400",
+                with(json!({ "entities": { "length": 13 } })),
+                None,
+                true,
+            ),
             // P4.D311 — zod 4.6.7's `capSize`: past the cap, ONLY the array's
             // `too_big`; no element issue first.
             (
@@ -2183,6 +2213,40 @@ fn memories_routes_match_oracle() {
             let db = fresh_db(&spec, &format!("{name}-d298"));
             if let Some(sql) = plant_sql {
                 plant(&rt, &db, sql);
+            }
+            if name == "create_project_explicit_wins" {
+                // The twin of the oracle's in-case `projects.create` (its
+                // official store with it) — the shared pair is not grown.
+                rt.block_on(db.write(|w| {
+                    // The pair predates `projects`; v4's repository creates it
+                    // lazily on the oracle's copy (`getCollection`) — the
+                    // table from v4's own DDL dump here.
+                    use quilltap_core::db::table_shape::Partition;
+                    use quilltap_core::test_support::ensure_table_from_dump;
+                    ensure_table_from_dump(w.main().connection(), Partition::Main, "projects");
+                    let mount = w.mount_index().expect("mount index").connection();
+                    ensure_table_from_dump(mount, Partition::MountIndex, "project_doc_mount_links");
+                    quilltap_core::db::projects::ProjectsRepository::new(
+                        w.main().connection(),
+                        mount,
+                    )
+                    .create(
+                        &quilltap_core::db::projects::ProjectCreateInput {
+                            name: "P4.168 Explicit Harbor".to_string(),
+                            description: None,
+                            instructions: None,
+                            state: json!({}),
+                            properties: json!({}),
+                        },
+                        &quilltap_core::db::projects::ProjectCreateOptions {
+                            id: Some(P4168_EXPLICIT_PROJECT.to_string()),
+                            ..Default::default()
+                        },
+                    )
+                    .map(|_| ())
+                    .map_err(|e| quilltap_core::db::DbError::Internal(e.to_string()))
+                }))
+                .expect("create the explicit project");
             }
             let count = |db: &Db| {
                 db.read_main(|c| {
@@ -2230,6 +2294,21 @@ fn memories_routes_match_oracle() {
                     }
                     if rec["body"]["error"].as_str() != Some(e.message.as_str()) {
                         bad.push(format!("error {:?} vs {}", e.message, rec["body"]["error"]));
+                    }
+                    // P4.168 (F-2): a 400's `details` by BYTES — the Zod
+                    // refusal's issues and the repository's row-schema
+                    // refusal (v4 `validationError`'s body).
+                    if want_status == 400 {
+                        let got_d = e
+                            .details
+                            .as_deref()
+                            .map(|d| serde_json::to_string(d).unwrap());
+                        let want_d = rec["body"]
+                            .get("details")
+                            .map(|d| serde_json::to_string(d).unwrap());
+                        if got_d != want_d {
+                            bad.push(format!("details:\n  v5 {got_d:?}\n  v4 {want_d:?}"));
+                        }
                     }
                 }
                 other => {

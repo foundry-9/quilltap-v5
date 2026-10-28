@@ -26,6 +26,12 @@ v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that
 
 Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
 
+#### 2026-10-27 — fix(memories): per-chunk `updatedAt` on tier moves, Zod's length issue past `invalid_type` on `entities`, the 400's `details`, and the frozen-archive cache lock released across its compute (P4.168 unit 3)
+
+_Versions: core 0.0.1339._
+
+`update_tier_bulk` now stamps `updatedAt` once per 500-row chunk, as v4's `updateTierBulk` re-stamps per chunk; `supersededAt` / `consolidatedAt` keep the one per-call stamp. The memory create's `entities` arm reports the length issue Zod 4.6.7 runs past an `invalid_type` on any input with a `.length` (a string, origin `string`; a `{length}` object, origin `unknown`), and every create 400 from the body parse now carries v4's `details` (the `ZodError.issues`). The frozen-archive cache no longer holds its process-global lock across the archive's DB reads: it locks for the lookup and for the insert only, as v4's cache interleaves (a concurrent double compute is v4's behaviour too). Tests: `memories_routes_equivalence` gains three `entities` length rows and `create_project_explicit_wins` (a chat in one project, an explicit `projectId` naming a second, planted in-case on both sides — the stored row carries the explicit project), and every error-arm 400 now compares `details` by bytes; unit pins for the chunk-boundary stamps and the lock release. The stale `ADMISSION_SINGLE_TERM_LINK` comment in the routes oracle is corrected.
+
 #### 2026-10-27 — fix(memories): v4's validateSafe + repository fallbacks on the memory reads; regenerate-all's chat list and the maintenance batch loader kept strict (P4.168 unit 2)
 
 _Versions: core 0.0.1338._

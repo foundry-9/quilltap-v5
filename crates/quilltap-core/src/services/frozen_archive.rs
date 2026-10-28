@@ -142,8 +142,11 @@ impl FrozenArchiveCache {
 
     /// v4 `getOrComputeFrozenArchive`'s cache half. `compute` receives the
     /// normalized present ids and is called only on a miss; an `Err` is
-    /// propagated and NOT cached.
-    pub(crate) fn get_or_compute_with(
+    /// propagated and NOT cached. [`Self::lookup`] then [`Self::insert`] — the
+    /// global path takes the lock for each separately (P4.168, B1-2), so this
+    /// one-lock composition serves the cache-local unit tests only.
+    #[cfg(test)]
+    fn get_or_compute_with(
         &mut self,
         character_id: &str,
         chat_id: &str,
@@ -154,35 +157,73 @@ impl FrozenArchiveCache {
     ) -> Result<Vec<Value>, DbError> {
         let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
         let present = normalize_present(character_id, present_character_ids);
-        let presence = present.join(",");
-        let key = cache_key(character_id, chat_id);
-
-        if let Some(idx) = self.position(&key) {
-            let cached = &self.entries[idx].1;
-            if cached.generation == compaction_generation
-                && cached.size == size
-                && cached.presence == presence
-            {
-                // Refresh recency.
-                let entry = self.entries.remove(idx);
-                let memories = entry.1.memories.clone();
-                self.entries.push(entry);
-                return Ok(memories);
-            }
+        if let Some(hit) = self.lookup(character_id, chat_id, compaction_generation, size, &present)
+        {
+            return Ok(hit);
         }
-
         let memories = compute(size, &present)?;
+        self.insert(
+            character_id,
+            chat_id,
+            compaction_generation,
+            size,
+            &present,
+            memories.clone(),
+        );
+        Ok(memories)
+    }
+
+    /// v4's `cache.get(key)` + the validity check (`archive.ts:104-111`): a
+    /// hit at the same generation / size / presence refreshes recency and
+    /// answers the cached rows. `present` is already normalized.
+    fn lookup(
+        &mut self,
+        character_id: &str,
+        chat_id: &str,
+        compaction_generation: i64,
+        size: usize,
+        present: &[String],
+    ) -> Option<Vec<Value>> {
+        let idx = self.position(&cache_key(character_id, chat_id))?;
+        let cached = &self.entries[idx].1;
+        if cached.generation != compaction_generation
+            || cached.size != size
+            || cached.presence != present.join(",")
+        {
+            return None;
+        }
+        // Refresh recency.
+        let entry = self.entries.remove(idx);
+        let memories = entry.1.memories.clone();
+        self.entries.push(entry);
+        Some(memories)
+    }
+
+    /// v4's `cache.set(key, …)` after the compute (`archive.ts:115`): replace
+    /// the key's entry, trim to [`FROZEN_ARCHIVE_CACHE_MAX_ENTRIES`] (least
+    /// recent first), and log the DEBUG.
+    fn insert(
+        &mut self,
+        character_id: &str,
+        chat_id: &str,
+        compaction_generation: i64,
+        size: usize,
+        present: &[String],
+        memories: Vec<Value>,
+    ) {
+        let key = cache_key(character_id, chat_id);
         if let Some(idx) = self.position(&key) {
             self.entries.remove(idx);
         }
+        let returned = memories.len();
         self.entries.push((
             key,
             CacheEntry {
                 character_id: character_id.to_string(),
                 generation: compaction_generation,
                 size,
-                presence,
-                memories: memories.clone(),
+                presence: present.join(","),
+                memories,
             },
         ));
         while self.entries.len() > FROZEN_ARCHIVE_CACHE_MAX_ENTRIES {
@@ -196,11 +237,10 @@ impl FrozenArchiveCache {
             compactionGeneration = compaction_generation,
             size = size as u64,
             presentCharacters = present.len() as u64,
-            returned = memories.len() as u64,
+            returned = returned as u64,
             cacheEntries = self.entries.len() as u64,
             "[FrozenArchive] Computed archive"
         );
-        Ok(memories)
     }
 
     /// v4 `invalidateFrozenArchive`'s body: drop every chat's entry for the
@@ -254,7 +294,7 @@ pub fn get_or_compute_frozen_archive(
         let present = normalize_present(character_id, present_character_ids);
         return compute_frozen_archive(db, character_id, size, &present, now_ms, Some(exclude));
     }
-    cache().get_or_compute_with(
+    get_or_compute_global(
         character_id,
         chat_id,
         compaction_generation,
@@ -262,6 +302,40 @@ pub fn get_or_compute_frozen_archive(
         present_character_ids,
         |size, present| compute_frozen_archive(db, character_id, size, present, now_ms, None),
     )
+}
+
+/// The global cache's get-or-compute with the lock held ONLY for the lookup
+/// and the insert, never across `compute`'s DB reads (P4.168, B1-2 — it was
+/// held for the whole call, serializing every turn's archive compute
+/// process-wide). v4's cache interleaves freely (`archive.ts:104-115`: `get`,
+/// `await computeFrozenArchive(…)`, `set`), so two turns may both miss and
+/// both compute, the later `set` winning — and an invalidation landing
+/// mid-compute can be overwritten by that compute's insert; both windows are
+/// v4's own, kept.
+fn get_or_compute_global(
+    character_id: &str,
+    chat_id: &str,
+    compaction_generation: i64,
+    size: Option<usize>,
+    present_character_ids: &[String],
+    compute: impl FnOnce(usize, &[String]) -> Result<Vec<Value>, DbError>,
+) -> Result<Vec<Value>, DbError> {
+    let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
+    let present = normalize_present(character_id, present_character_ids);
+    let hit = cache().lookup(character_id, chat_id, compaction_generation, size, &present);
+    if let Some(hit) = hit {
+        return Ok(hit);
+    }
+    let memories = compute(size, &present)?;
+    cache().insert(
+        character_id,
+        chat_id,
+        compaction_generation,
+        size,
+        &present,
+        memories.clone(),
+    );
+    Ok(memories)
 }
 
 /// Drop every chat's cached archive for a character (v4
@@ -895,6 +969,34 @@ mod tests {
         cache()
             .position(&cache_key(character_id, chat_id))
             .is_some()
+    }
+
+    /// P4.168 (B1-2): the global get-or-compute holds no lock across the
+    /// compute — a compute that itself reaches the cache (here an
+    /// invalidation, as a concurrent turn's would) completes instead of
+    /// deadlocking on the process-global `Mutex`.
+    #[test]
+    fn the_global_compute_runs_outside_the_cache_lock() {
+        let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], |_, _| {
+                invalidate_frozen_archive("fa-lock-other");
+                Ok(vec![memory("computed", 0.5)])
+            });
+            let _ = tx.send(got.map(|m| m.len()));
+        });
+        let done = rx.recv_timeout(std::time::Duration::from_secs(5));
+        assert_eq!(
+            done.ok().map(|r| r.ok()),
+            Some(Some(1)),
+            "the compute must not run under the cache lock"
+        );
+        assert!(
+            global_has("fa-lock-char", "chat-1"),
+            "the compute is cached"
+        );
+        invalidate_frozen_archive("fa-lock-char");
     }
 
     #[test]

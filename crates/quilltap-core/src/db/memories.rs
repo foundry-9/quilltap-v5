@@ -919,10 +919,12 @@ impl<'c> MemoriesRepository<'c> {
     /// Per `chunk_array(ids, SQLITE_VARIABLE_CHUNK_SIZE)` one `UPDATE memories
     /// SET tier = ?[, supersededById = ?][, supersededAt = ?][, consolidatedAt = ?],
     /// updatedAt = ?
-    /// WHERE characterId = ? AND id IN (…)` (ONE `updatedAt` for the call — v4's
-    /// base `updateMany` re-stamps it per chunk, a sub-millisecond difference
-    /// the differentials normalize); a stray id of another character is never
-    /// touched. DEBUG `Moved memories between tiers {characterId, tier,
+    /// WHERE characterId = ? AND id IN (…)` per chunk — `updatedAt` minted PER
+    /// CHUNK as v4's base `updateMany` re-stamps it (`$set: {...update,
+    /// updatedAt: this.getCurrentTimestamp()}`, `base.repository.ts:526-540`;
+    /// P4.168 B1-1 — it was one stamp per call), while `supersededAt` keeps the
+    /// call's ONE `now` (v4's outer `now`); a stray id of another character is
+    /// never touched. DEBUG `Moved memories between tiers {characterId, tier,
     /// requested, changed, supersededById}` — `supersededById` PRESENT only for
     /// `Some(Some(_))` (v4's `extra.supersededById ?? undefined` omits it for
     /// both a demotion and a promotion's `null`). A failure logs TWO ERRORs
@@ -952,6 +954,8 @@ impl<'c> MemoriesRepository<'c> {
                 .map(|v| v.as_deref().filter(|d| !d.is_empty()).map(|_| now.as_str()));
             let mut changed = 0i64;
             for chunk in chunk_array(ids, SQLITE_VARIABLE_CHUNK_SIZE) {
+                // v4's `updateMany` stamps each chunk afresh (B1-1).
+                let chunk_now = now_iso();
                 let mut sets = vec!["tier = ?"];
                 let mut p: Vec<&dyn ToSql> = vec![&tier];
                 if let Some(v) = &extra.superseded_by_id {
@@ -967,7 +971,7 @@ impl<'c> MemoriesRepository<'c> {
                     p.push(v);
                 }
                 sets.push("updatedAt = ?");
-                p.push(&now);
+                p.push(&chunk_now);
                 p.push(&character_id);
                 for id in chunk {
                     p.push(id);
@@ -1680,6 +1684,47 @@ mod tests {
         assert_eq!(repo.bulk_delete_unsafe("charA", &ids).unwrap(), 2);
         assert_eq!(related_of(&w, "mA1"), None);
         assert_eq!(related_of(&w, "mA2"), None);
+    }
+
+    /// P4.168 (B1-1): a tier move across the chunk boundary stamps ONE
+    /// `supersededAt` (the call's `now`) on every row, and each chunk's
+    /// `updatedAt` is minted at or after it (v4's per-chunk `updateMany`
+    /// stamp). The sub-millisecond per-chunk difference itself is not
+    /// observable without a clock seam; the differentials normalize it.
+    #[test]
+    fn a_tier_move_across_the_chunk_boundary_shares_superseded_at() {
+        let (_dir, w) = seed(&[("mA1", "charA", &[]), ("mA2", "charA", &[])]);
+        let repo = w.memories();
+        let mut ids: Vec<String> = (0..2_000).map(|i| format!("ghost-{i}")).collect();
+        ids[SQLITE_VARIABLE_CHUNK_SIZE - 1] = "mA1".to_string();
+        ids[SQLITE_VARIABLE_CHUNK_SIZE] = "mA2".to_string();
+        let extra = TierExtra {
+            superseded_by_id: Some(Some("d1".to_string())),
+            consolidated_at: None,
+        };
+        assert_eq!(
+            repo.update_tier_bulk("charA", &ids, "cold", extra).unwrap(),
+            2
+        );
+        let stamps: Vec<(String, String)> = ["mA1", "mA2"]
+            .iter()
+            .map(|id| {
+                w.connection()
+                    .query_row(
+                        "SELECT supersededAt, updatedAt FROM memories WHERE id = ?1",
+                        [id],
+                        |r| Ok((r.get(0)?, r.get(1)?)),
+                    )
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(stamps[0].0, stamps[1].0, "one supersededAt for the call");
+        for (superseded_at, updated_at) in &stamps {
+            assert!(
+                updated_at >= superseded_at,
+                "{updated_at} < {superseded_at}"
+            );
+        }
     }
 
     // -----------------------------------------------------------------------

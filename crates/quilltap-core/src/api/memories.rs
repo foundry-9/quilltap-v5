@@ -592,9 +592,42 @@ fn array_of(
     }
 }
 
+/// Zod ≥ 4.6's array `.max(n)` past the array's own `invalid_type` (P4.168,
+/// F-2 — `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`): the length check carries a
+/// `when` (`val.length !== undefined`), so it runs on ANY input with a
+/// `.length` — a STRING measured by Zod's string rule (`Too big: expected
+/// string to have <=12 characters`), an object with a numeric `length` key as
+/// origin `unknown` (`Too big: expected unknown to be <=12`). `null` / numbers
+/// / booleans carry no length. The `api/memories.rs` twin of
+/// `pascal/custom_tool_types.rs`'s `length_checks_past_invalid_type` (Zod's
+/// default sentences) — HANDOFF(P4.169): fold onto the shared `api/zod_issues`
+/// helper P4.169 lifts for the other three twins.
+fn max_length_past_invalid_type(v: &Value, max: usize, path: Vec<Value>) -> Vec<ZodIssue> {
+    match v {
+        Value::String(s) if !crate::jsstr::zod_len_max_ok(s, max) => {
+            vec![ZodIssue::too_big_string(json!(max), path)]
+        }
+        Value::Object(o)
+            if o.get("length")
+                .and_then(Value::as_f64)
+                .is_some_and(|n| n > max as f64) =>
+        {
+            vec![ZodIssue::TooBig {
+                origin: "unknown",
+                code: "too_big",
+                maximum: json!(max),
+                inclusive: true,
+                path,
+                message: format!("Too big: expected unknown to be <={max}"),
+            }]
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// v4 `createMemorySchema.safeParse(body)` — Zod-faithful over the dispatch
-/// bag: the issues in schema order (the `parse_search_bag` shape; L-1 keeps the
-/// house envelope, so the switch to v4's `details` is one line), unknown keys
+/// bag: the issues in schema order (the `parse_search_bag` shape; since
+/// P4.168 they ride the 400 as v4's `details`), unknown keys
 /// — `source` and `skipGate` among them (bug 218) — stripped.
 fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
     let Some(obj) = bag.as_object() else {
@@ -698,18 +731,31 @@ fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
             ));
             None
         }
-        _ => array_of(obj, "entities", &mut issues, |v, path, issues| match v {
-            Value::String(s) => {
-                if s.is_empty() {
-                    issues.push(ZodIssue::too_small_string(json!(1), path));
+        other => {
+            let parsed = array_of(obj, "entities", &mut issues, |v, path, issues| match v {
+                Value::String(s) => {
+                    if s.is_empty() {
+                        issues.push(ZodIssue::too_small_string(json!(1), path));
+                    }
+                    Some(s.clone())
                 }
-                Some(s.clone())
+                other => {
+                    issues.push(ZodIssue::invalid_type("string", path, Some(other)));
+                    None
+                }
+            });
+            // P4.168 (F-2, `ZOD_STRING_LENGTH_PAST_INVALID_TYPE`): past the
+            // array's own `invalid_type`, Zod 4.6.7 still runs `.max(12)` on
+            // any input with a `.length`.
+            if let Some(v) = other.filter(|v| !v.is_array()) {
+                issues.extend(max_length_past_invalid_type(
+                    v,
+                    crate::memory_candidate::MEMORY_ENTITY_CAP,
+                    vec![zod_key("entities")],
+                ));
             }
-            other => {
-                issues.push(ZodIssue::invalid_type("string", path, Some(other)));
-                None
-            }
-        }),
+            parsed
+        }
     };
     if !issues.is_empty() {
         return Err(issues);
@@ -793,7 +839,16 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
 ) -> Response {
     let data = match parse_create_bag(&bag) {
         Ok(d) => d,
-        Err(_issues) => return bad_request("Validation error"),
+        // P4.168 (F-2): v4's `validationError(parsed.error)` — the issues ride
+        // as `details` (L-1 lifted for the create's Zod refusal, so the wire
+        // carries what v4's does).
+        Err(issues) => {
+            let mut resp = bad_request("Validation error");
+            if let Response::Error(e) = &mut resp {
+                e.details = Some(Box::new(super::zod_issues::zod_issue_details(&issues)));
+            }
+            return resp;
+        }
     };
     // v4 `route.ts:517-523`: the client's `source` / `skipGate` are stripped by
     // Zod; their presence is narrated. An absent value is omitted (§R.5) —

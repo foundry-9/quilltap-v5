@@ -428,6 +428,10 @@ const P4168_INVALID_A1_PLANT = [
   `UPDATE memories SET tags = '["not-a-uuid"]' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'`,
 ];
 
+/** P4.168 (C-5): the project an explicit-`projectId` create names (created
+ *  in-case; the chat's own project is `b7…01`). */
+const P4168_EXPLICIT_PROJECT = 'b7000000-0000-4000-8000-000000000002';
+
 /** The chat the derived-project create names carries a project id. */
 const P4D298_CHAT_PROJECT_PLANT = [
   "UPDATE chats SET projectId = 'b7000000-0000-4000-8000-000000000001' WHERE id = 'c1000000-0000-4000-8000-000000000001'",
@@ -841,10 +845,12 @@ async function main(): Promise<void> {
           content: '\u00a0  The lamp oil sits under the third stair. \n',
           summary: '\ufeffLamp oil under the third stair.\u0085',
         }),
-        // MEASURED divergence witness (admission / the BUILTIN vector — not this
-        // lane's code): the one vocabulary term this text shares with `f1` is
-        // "kept"; v4's admission scores every neighbour 0 and inserts, v5's
-        // links `f1`. The Rust side pins it as `ADMISSION_SINGLE_TERM_LINK`.
+        // The one vocabulary term this text shares with `f1` is "kept". Once
+        // pinned as `ADMISSION_SINGLE_TERM_LINK` (v4 `insert`, v5
+        // `insert-linked`) — a measurement over v4's process-singleton index
+        // cache another case's copy had loaded; reloaded per case (above), v4
+        // links `f1` too (the `83334b9a5` unification), and the row compares
+        // like every create.
         create('create_plain_lamp_text', {
           characterId: MNEMO,
           content: 'The lamp oil is kept under the third stair.',
@@ -857,6 +863,28 @@ async function main(): Promise<void> {
           {},
           P4D298_CHAT_PROJECT_PLANT,
         ),
+        // P4.168 (C-5): an explicit `projectId` wins over the chat's. The chat
+        // sits in P1 (the derived-project plant); P2 is created in-case through
+        // v4's REAL projects repository (its official store with it), so the
+        // shared fixture pair is not grown.
+        {
+          name: 'create_project_explicit_wins',
+          run: async () => {
+            await plantSql(P4D298_CHAT_PROJECT_PLANT);
+            const { getRepositories } = await import('@/lib/repositories/factory');
+            await getRepositories().projects.create({ name: 'P4.168 Explicit Harbor' } as never, {
+              id: P4168_EXPLICIT_PROJECT,
+            });
+            const before = ((await dumpAllMemories()) as unknown[]).length;
+            const out = await respond(
+              await (await loadRoute('@/app/api/v1/memories/route')).POST(
+                mockRequest(B, { ...base, chatId: CHAT_SALON, projectId: P4168_EXPLICIT_PROJECT }),
+              ),
+            );
+            const after = ((await dumpAllMemories()) as unknown[]).length;
+            return { ...out, tables: { rowsBefore: before, rowsAfter: after } };
+          },
+        },
         create('create_missing_project_404', { ...base, projectId: MISSING }),
         create('create_missing_chat_404', { ...base, chatId: MISSING }),
         create('create_missing_character_first_404', { ...base, characterId: MISSING, chatId: MISSING }),
@@ -924,6 +952,11 @@ async function main(): Promise<void> {
           ...base,
           entities: [7, ...Array.from({ length: 12 }, (_, i) => `entity-${i}`)],
         }),
+        // P4.168 (F-2): Zod 4.6.7 runs the array's `.max(12)` past its own
+        // `invalid_type` on anything with a `.length`.
+        create('create_entities_string_over_cap_400', { ...base, entities: 'x'.repeat(13) }),
+        create('create_entities_string_under_cap_400', { ...base, entities: 'harbor' }),
+        create('create_entities_lengthy_object_400', { ...base, entities: { length: 13 } }),
         create('create_entities_over_cap_empty_first_400', {
           ...base,
           entities: ['', ...Array.from({ length: 12 }, (_, i) => `entity-${i}`)],
