@@ -259,12 +259,13 @@ impl FrozenArchiveCache {
     }
 }
 
-fn cache() -> std::sync::MutexGuard<'static, FrozenArchiveCache> {
+fn cache_mutex() -> &'static Mutex<FrozenArchiveCache> {
     static CACHE: OnceLock<Mutex<FrozenArchiveCache>> = OnceLock::new();
-    CACHE
-        .get_or_init(|| Mutex::new(FrozenArchiveCache::default()))
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
+    CACHE.get_or_init(|| Mutex::new(FrozenArchiveCache::default()))
+}
+
+fn cache() -> std::sync::MutexGuard<'static, FrozenArchiveCache> {
+    cache_mutex().lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 /// Look up (or compute and cache) the frozen memory archive for a character in
@@ -978,18 +979,16 @@ mod tests {
     #[test]
     fn the_global_compute_runs_outside_the_cache_lock() {
         let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
-        let (tx, rx) = std::sync::mpsc::channel();
-        std::thread::spawn(move || {
-            let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], |_, _| {
-                invalidate_frozen_archive("fa-lock-other");
-                Ok(vec![memory("computed", 0.5)])
-            });
-            let _ = tx.send(got.map(|m| m.len()));
-        });
-        let done = rx.recv_timeout(std::time::Duration::from_secs(5));
+        // Probe with `try_lock` from inside the compute: a held lock answers
+        // `WouldBlock` (the assertion fails) where a blocking `lock` would
+        // deadlock the binary on a regression.
+        let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], |_, _| {
+            let free = matches!(cache_mutex().try_lock(), Ok(_));
+            Ok(vec![memory(if free { "free" } else { "held" }, 0.5)])
+        })
+        .expect("the compute succeeds");
         assert_eq!(
-            done.ok().map(|r| r.ok()),
-            Some(Some(1)),
+            got[0]["id"], "free",
             "the compute must not run under the cache lock"
         );
         assert!(

@@ -26,6 +26,12 @@ v4's SQLite driver is compiled with `SQLITE_DQS=0`, so a double-quoted name that
 
 Before flipping the setting, a census checked every SQL literal and found none that relied on the fallback. NEW harness `dqs_sql_literal_census` keeps it that way. It scans the production zone of every workspace crate (1,220 SQL literals, 1,309 quoted tokens) and requires every double-quoted token to be a declared identifier, a `{placeholder}`, or a reviewed entry with a stated reason. A planted rule self-test and a mutation proof back it. `cursor_bundle_equivalence` retires its `DQS_QUOTED_IDENTIFIER_FALLBACK` both-ways table: its four rows now compare strict against the oracle at pin `322a5488e`, `error` text included (red-first: 6 failures on unported source). Unit rows prove the refusal on each chokepoint: the writer and pool on all three partitions for DML and DDL, the CLI's two modes, and the sanitizer's two opens.
 
+#### 2026-10-27 — test(memories): the frozen-archive lock-release pin probes with `try_lock`, so a regression fails instead of hanging the binary (P4.168 unit 3 follow-up)
+
+_Versions: core 0.0.1340._
+
+Unit 3's pin for B1-2 called `invalidate_frozen_archive` from inside the compute, which deadlocks on the process-global cache lock whenever that lock is held across the compute. The test reported FAILED after its 5 s timeout, but the deadlocked thread kept the global lock, so the other cache tests (and the test binary) never finished: a red run hung for six hours. The pin now probes the lock with `try_lock` from inside the compute, and the global cache mutex is reachable through a new `cache_mutex()` accessor (`cache()` locks through it; no behaviour change). Red-first: holding the lock across the compute fails the pin in 0.02 s.
+
 #### 2026-10-27 — fix(memories): per-chunk `updatedAt` on tier moves, Zod's length issue past `invalid_type` on `entities`, the 400's `details`, and the frozen-archive cache lock released across its compute (P4.168 unit 3)
 
 _Versions: core 0.0.1339._
