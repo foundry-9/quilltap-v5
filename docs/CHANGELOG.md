@@ -199,6 +199,12 @@ _Versions: core 0.0.1337._
 
 The character vault parser (`vault_overlay::parse_scenario_file`) now logs v4's two skip WARNs, `Scenarios/*.md file has no title; skipping` and `Scenarios/*.md body is empty; skipping`, with `{characterId, mountPointId, relativePath}` (`parsers.ts:640,658`). The owning character's id is threaded from the read overlay, the scenario location, and the everywhere catalogue (`characterId ?? ''`, as v4's `parseScenarioForScope`). The restore backfill's `vault_entry_names`, which has no v4 counterpart, uses the new unlogged twin. The `vault_frontmatter_parsers` family now compares the captured lines per scenario row; two new rows were added (a whitespace-only filename and a whitespace-only body).
 
+#### 2026-10-27 — docs(harness): the L8 corpus note states P4.D310's measurement (P4.169)
+
+_Harness corpus note only; no crate version bumped._
+
+Rewrote the corpus note on `turn-orchestrator-tier2.json`'s L8 row. It now states P4.D310's measurement: v4's selector answers `user_turn` with the participant and name for a lone user-controlled seat. The old note described the retired "oddity" as if it were v4's behaviour. The note is not echoed into the oracle output, so `turn_orchestrator_tier2_equivalence` stays green; it was re-run from a fixture and oracle regenerated at the pin.
+
 #### 2026-10-27 — fix(core): arrival and reset-to-defaults fire the Inventory effects path and its DEBUG (P4.169)
 
 _Versions:_ quilltap-core 0.0.1346.

@@ -1001,7 +1001,7 @@
    "nowMs": 1000,
    "chainStartTimeMs": 0,
    "random01": 0.5,
-   "note": "L8: a lone USER-controlled seat that spoke last -> the early return precedes the user-driven-seat arm (user_turn WITHOUT participantId/characterName) -- a v4 oddity, not the persona-less bug-249 case"
+   "note": "L8: a lone USER-controlled seat that spoke last -> user_turn WITH its participantId + characterName (v4's selector answers the user-driven seat; P4.D310 measured R-5's supposed oddity away) -- not the persona-less bug-249 case"
   },
   {
    "kind": "shouldChainNext",
