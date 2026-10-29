@@ -7226,6 +7226,8 @@ carriers-smalls,wcag-spa,vendor-deps}.md`.
   P4.D355 → P4.D357 → P4.D344 → P4.D346 → P4.D352 → P4.D353 → P4.D359 →
   P4.D360 → P4.D358. The oracle baseline MOVES to `236c04e35` at the
   unification.
+- **✅ APPROVED AS PLANNED by the human (2026-10-29, at the hand-off) — lanes
+  not yet started.** The items were:
 - **⚖ Rulings for the human (§R.11), the pre-round one FIRST:** the npm
   cache lacks 44 of the pin's tarballs (the live checkout skipped the
   pin's versions) — ONE online `npm ci` in a pin worktree before any lane

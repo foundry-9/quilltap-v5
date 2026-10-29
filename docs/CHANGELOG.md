@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-29 — docs(porting): the `236c04e35` round's rulings approved as planned; lanes not yet started
+
+_Docs-only change._
+
+The human approved the round's planner rulings at the hand-off (the one-time online `npm ci` in a pin worktree before lane start, the `236c04e35` pin, diagrams option A, the three SPA convergences, the axe dev dependency). The §R.11 line of all twenty orders records it identically (the round block stays byte-identical), and the phase plan's ORDERED section carries the note. No lane has been started.
+
 #### 2026-10-29 — docs(porting): order the `236c04e35` 4.11.0 catch-up round — twenty lanes, five stacking commits, nine surveys
 
 _Docs-only change._
