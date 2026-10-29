@@ -28,7 +28,28 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-28 (~17:00 CDT), by `/driftcheck` on v5 main
+- **Checked:** 2026-10-28 (~19:40 CDT), by `/driftcheck` on v5 main
+  (`56b1ecdda`), right after **v4 RELEASED 4.11.0**: the §2 probe FAILED on
+  THREE new `main` commits past the recorded `7789ebed6` AND a moved
+  `bugfix` / `release`. Fetched first (tags too); local equals `origin` on
+  all three branches. **Measured by CONTENT, the release changes NO code:**
+  `git diff 7789ebed6 1ca45c171` is 5 files +6 / −6 — the version stamps
+  (`package.json`, `package-lock.json`, the README badge), the CHANGELOG
+  heading and `docs/releases/4.11.0.md`'s `draft: false`; `7789ebed6..main`
+  adds only the `4.12.0-dev.0` stamps; `main` vs `bugfix` is the
+  `4.11.1-bugfix.0` stamps alone. So **4.11.0's code = `7789ebed6`'s
+  tree**. ⚠ **The release TOPOLOGY CHANGED:** `release: 4.11.0`
+  (`1ca45c171`) has the previous release `2432b9057` as its only parent
+  (the squash, as at 4.10.0 — hence its 900+-file stat against that
+  parent, which is the whole 4.10 → 4.11 span, not new work), but this time
+  `merge: 4.11.0 back into main` (`9e01ebd25`, parents `7789ebed6` +
+  `1ca45c171`) makes the release an ANCESTOR of `main`. `bugfix:
+  started 4.11.0 bug branch` (`73b334af3`) has the OLD bug-branch start
+  `489b228b6` as its parent, so `git log 489b228b6..bugfix` shows only
+  itself — the content rule (§4 step 2) still governs. `gh issue list …
+  --label bug --state all` returns only #120 (CLOSED). Tags: `4.11.0`,
+  `rel/4.11.0`, `4.12.0-dev`.
+  - **Before that:** 2026-10-28 (~17:00 CDT), by `/driftcheck` on v5 main
   (`9cca785fc`): the §2 probe FAILED on ONE new `main` commit past the
   recorded `3b8b6f42b` — **`7789ebed6` (`4.11.0-dev.112`), v4's fix for
   this port's own filing #120 (`Fixes #120`; the issue is now CLOSED) — a
@@ -111,11 +132,18 @@ probe verifies against._
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `7789ebed6`** ("Fix: chat settings with an
-  invalid stored value minted a new row on every load", 2026-10-28 16:44,
-  `4.11.0-dev.112`) — **SIXTY-SIX commits past the baseline**, ALL
-  UNPROCESSED in §3; the regen rule stays **PIN REQUIRED at `322a5488e`**.
-  (The previous checks' HEADs follow.)
+- **v4 `main` HEAD at check: `236c04e35`** ("dev: started 4.12.0
+  development", 2026-10-28 19:30, `4.12.0-dev.0`) — **SIXTY-NINE commits
+  past the baseline** (64 first-parent; the release squash and the merge
+  among them), ALL UNPROCESSED in §3; the regen rule stays **PIN REQUIRED
+  at `322a5488e`**. The three release commits are code-neutral (§3), so the
+  code drift is exactly `322a5488e..7789ebed6`, and **a catch-up round may
+  pin at the `4.11.0` tag (`1ca45c171`) with code identical to
+  `7789ebed6`** — a released, nameable baseline. (The previous checks'
+  HEADs follow.)
+- **Previously: v4 `main` HEAD at check: `7789ebed6`** ("Fix: chat settings
+  with an invalid stored value minted a new row on every load", 2026-10-28
+  16:44, `4.11.0-dev.112`) — sixty-six commits past the baseline.
 - **Previously: v4 `main` HEAD at check: `3b8b6f42b`** ("Fix: Core whisper
   settings never saved; two settings cards left the UI stale", 2026-10-28
   15:46, `4.11.0-dev.111`) — sixty-five commits past the baseline.
@@ -225,15 +253,18 @@ probe verifies against._
   - **Three "Refactor" / "Merge" subjects are NOT neutral** (§5.3):
     `0276d10d9`, `a8214b253`, `bdd09b75b`; and `6588972d5`'s "nothing new is
     stored" is FALSE.
-- **v4 `bugfix` tip at check:** `489b228b6` ("bugfix: started 4.10.0 bug
-  branch", 2026-10-14) — `489b228b6..bugfix` EMPTY (local and `origin`).
-  **`release` tip:** `2432b9057` (`release: 4.10.0`), unchanged. Re-probe
-  BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `7789ebed6`
+- **v4 `bugfix` tip at check:** `73b334af3` ("bugfix: started 4.11.0 bug
+  branch", 2026-10-28 19:30, `4.11.1-bugfix.0`; parent `489b228b6`) — its
+  tree is `release` + the bugfix stamps (README, `package.json`,
+  `package-lock.json`): NO unabsorbed content. The §2 probe's bugfix base is
+  now `73b334af3`. **`release` tip:** `1ca45c171` (`release: 4.11.0`, tag
+  `4.11.0`; was `2432b9057`). Re-probe BOTH branches every time.
+- **Checkout at check:** branch **`main`**, tree **CLEAN** at `236c04e35`
   (only the human's two `claude/*` worktree branches beside it). HEAD is
-  sixty-six commits past the baseline, so it poisons a regen by DRIFT.
-- **Verdict: DRIFT PENDING — 66 commits (§3), all UNPROCESSED — ONE a
-  CONVERGENCE (`7789ebed6`, #120).**
+  sixty-nine commits past the baseline, so it poisons a regen by DRIFT.
+- **Verdict: DRIFT PENDING — 69 commits (§3), all UNPROCESSED — ONE a
+  CONVERGENCE (`7789ebed6`, #120); the three newest (the 4.11.0 release)
+  NO-PORT? stamps only.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -514,6 +545,9 @@ passes the commit.
 | `faeae2b71` | 2026-10-28 | Fix: Docker recreate lockout, ephemeral deconvert targets, in-container CLI, folder picker, image build | **PORT-NEW (persistent-target guard) + PORT (browse default, CLI base dir, help) + NO-PORT (start script, Next/tsconfig build)** (classified 2026-10-28 from the hunks; 23 files +805 / −23; `dev.110`). (1) **PORT-NEW** `lib/mount-index/persistent-target.ts`: under Docker only (`isDockerEnvironment()`), read `/proc/self/mountinfo`, resolve the target through its nearest existing ancestor (symlinks followed), take the longest containing mount, and refuse a target on `/` or an ephemeral fs type (`overlay`, `tmpfs`, `devtmpfs`, `proc`, `sysfs`, `devpts`, `mqueue`, `cgroup`, `cgroup2`) with v4's operator message; fails OPEN (WARN) when the table can't be read or no mount contains it. Called from `validateDeconvertTarget` (throws `EphemeralTargetError`, WARN `Refusing write to a path inside the container layer`) and from `runSync` BEFORE the plan — dry runs too — as `SyncRefusedError(message, 'TARGET_NOT_PERSISTENT')`. (2) **PORT** `browse-directory`: the default path is `getBaseDataDir()` under Docker, else `os.homedir()`, plus a new DEBUG line. (3) **PORT (CLI)** `packages/quilltap/lib/platform-paths.js`: inside a container (`DOCKER_CONTAINER=true` or `/.dockerenv`, deliberately WITHOUT the server's `/app` heuristic) the default base dir is `/app/quilltap`; `db-helpers` / `theme-commands` / `lock-helpers` route through it. (4) help: `cli-sync.md`, `data-directory.md`, `mount-points.md`. (5) NO-PORT: `scripts/start-quilltap-docker.ts` (`docker stop -t 30` before `rm -f`), `next.config.js` + NEW `tsconfig.build.json`, `docs/developer/docker-test-plan.md`, a `.claude` command. | **v5 intersection:** the deconvert / sync engine (`services/mount_index/sync/`, `api/mount_points.rs`, `quilltap-cli` `sync_cmd.rs` — P4 mount-sync rounds) gains the guard + a new refusal code; `api/system.rs` `browse_directory` (defaults to `home_dir()` today) gains the Docker branch via `quilltap-host::env::is_docker_environment` / `paths.rs`; `quilltap-cli/src/resolve.rs` default data dir (no container branch today) — Tier R; v5's own Docker packaging (P4.10) is where the guard can bite. `help/` ×3 re-vendor. The recreate-lockout half is v4-script-only (v5's `quilltap-web` already releases the lock on SIGTERM — dogfood #153). | UNPROCESSED |
 | `3b8b6f42b` | 2026-10-28 | Fix: Core whisper settings never saved; two settings cards left the UI stale | **PORT (chat-settings PUT: a new write arm + an unknown-key 400) + PORT? (two SPA cache writes)** (classified 2026-10-28 from the hunks; 9 files +130 / −8; `dev.111`). `app/api/v1/settings/chat/route.ts`: (a) `coreWhisper` is now destructured and written through `CoreWhisperSettingsSchema.parse` (a present value; DEBUG `[Settings v1] Core whisper settings updated`); (b) a NEW `ACCEPTED_KEYS` allow-list of 34 top-level keys — any other key → WARN `[Settings v1] Rejected a PUT carrying unknown settings keys` + 400 `Invalid settings: unknown key[s] <k, …>`, checked AFTER the retired-Concierge-keys 400 and BEFORE validation. ⚠ (b) changes the PUT for EVERY client: a body that used to carry a stray / read-back key (e.g. a whole GET row echoed back) now 400s. SPA: `AutoLockSettingsCard` and `useRoleplayTemplates` write the PUT response into the `settings.chat` query. No issue cited; not #120. | **v5 HAS the pre-fix shape:** `api/settings.rs` has the retired-Concierge 400 (`find_retired_concierge_keys`) but NO `coreWhisper` arm and NO unknown-key refusal — while the SPA's `templates-tab.ts` carries a Core whisper section and `core_whisper.rs` reads the bag, so v5 likely shares v4's silent no-op save (measure). Port: the write arm + the allow-list (same order, same lines, plural text) on BOTH transports, and a census that every v5 SPA `chatSettingsUpdate` caller sends only accepted keys. SPA: check `auto-lock-settings-card.ts` (invalidates only the unlock key today) and `roleplay-templates-card.ts` for the stale-cache shape. Adjacent to F-1 (P4.165–P4.174's `GET /settings/chat` convergence, issue #120). | UNPROCESSED |
 | `7789ebed6` | 2026-10-28 | Fix: chat settings with an invalid stored value minted a new row on every load | **CONVERGENCE (#120 — this port's F-1 filing, `Fixes #120`, issue CLOSED) — a PORT on the chat-settings repository** (classified 2026-10-28 from the hunks; 7 files +354 / −113; prod ONE file, `lib/database/repositories/chat-settings.repository.ts`; `dev.112`; parent `3b8b6f42b`). (1) `findByUserId`: was `findOneByFilter({ userId })` (an un-ordered `LIMIT 1`, validated → a refused row read as `null`); now `find({ userId }, { sort: { updatedAt: -1 } })`, DEBUG `Multiple chat settings rows for user; reading newest valid` when > 1, returns the FIRST row that `safeParse`s, else the first row `hydrateTolerantly` repairs, else `null`. (2) `findById` (which `_update` calls) is tolerant too — so `updateForUser`'s update arm `$set`s the WHOLE validated merge and WRITES THE REPAIR BACK (the commit's claim holds — via `base.repository` `_update`, not a hunk in this file). (3) NEW `hydrateTolerantly`: the refused fields are the DISTINCT top-level `issue.path[0]`s; an empty path or an identity field (`id` / `userId` / `createdAt` / `updatedAt`) → ERROR `Chat settings row refused on an identity field; cannot repair` + `null`; otherwise each refused field becomes its `defaultChatSettings` value WHOLE (a nested refusal resets the whole object), else `null` when the field's schema accepts `null`, else the key is DELETED; a re-parse failing → ERROR `Chat settings row could not be repaired` + `null`; success → WARN `Chat settings row held refused values; read them as defaults` (`chatSettingsId`, `userId`, `refusedFields`) — on EVERY read until a write lands. (4) The create arm's inline defaults moved verbatim into NEW `defaultChatSettings(userId)` (no value changed). `findAll` and the other readers are UNCHANGED. Rows already duplicated by the bug are left in place (the newest valid one wins). | **v5 intersection — the pins trip BY DESIGN at a post-fix pin (§5.4; measure v4's actual output first):** v5's F-1 convergence `93064d8e0` (core 0.0.1379, ruled CONVERGE 2026-10-28, recorded Faithful in `59bca2d8c` — "v5 moves when v4 fixes it") made `db/chat_settings.rs` `find_by_user_id_or_none` / `find_by_id` drop a refused row and the GET mint a fresh one; `settings_routes_equivalence`'s three `s_get_cheap_llm_bad_*` / `_non_object` rows compare that whole (v4 will now answer the EXISTING id with `cheapLLMSettings` defaulted, and write it back on PUT). Also on the read: P4.169's R-B repository arm (`chat_settings_tier2_equivalence`, `repository_zod_messages_equivalence`), the standing voice-mode class (an unknown `impersonationVoiceMode` now REPAIRS to `'off'` rather than dropping the row), and the ~10 harness families that read settings through `find_by_user_id` (salon reads, cheap-LLM fallback, extraction degrade, the tier-3 jobs) — census them for a planted refused cell. Port: the newest-first order + first-valid scan, the tolerant repair with its three lines and the nullable / delete arms, the write-back through `update_for_user`, `default_chat_settings` as ONE source shared with create. ⚠ The repair is per TOP-LEVEL field — copy v4's `path[0]` grain, not a finer one. | UNPROCESSED |
+| `1ca45c171` | 2026-10-28 | release: 4.11.0 | **NO-PORT? — version stamps + release-notes flag, VERIFIED BY CONTENT** (classified 2026-10-28; tag `4.11.0` / `rel/4.11.0`; sole parent `2432b9057`, the 4.10.0 release — so its stat against that parent is the whole 4.10 → 4.11 squash, ~900 files, NOT new work). Content vs `7789ebed6`: 5 files +6 / −6 — `package.json` / `package-lock.json` `4.11.0`, the README badge, the CHANGELOG `### 4.11.0` heading, `docs/releases/4.11.0.md` `draft: false`. The release's code IS `7789ebed6`'s. | **v5 intersection:** none; `docs/v4/CHANGELOG.md` + `releases/4.11.0.md` re-vendor only. A catch-up may pin at this tag (code-identical to `7789ebed6`). | UNPROCESSED |
+| `9e01ebd25` | 2026-10-28 | merge: 4.11.0 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `7789ebed6` + `1ca45c171`; first-parent diff = the release stamps above). NEW topology: from 4.11.0 on, the release commit is an ANCESTOR of `main`. | none | UNPROCESSED |
+| `236c04e35` | 2026-10-28 | dev: started 4.12.0 development | **NO-PORT? — version stamps, VERIFIED** (4 files +6 / −4: `4.12.0-dev.0` in `package.json` / `package-lock.json` / README, a `### 4.12-dev` CHANGELOG heading). | none | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

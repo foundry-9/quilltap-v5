@@ -1162,9 +1162,10 @@ records THERE. Update this summary only when a phase or round completes.
   and by `/unify` at baseline moves; the other porting commands run the
   ledger's §2 freshness probe instead of re-deriving drift, and lanes never
   write it. **Never restate the drift count here — read the ledger's §1.**
-  **v4 released 4.10.0 on 2026-10-14 (`release: 4.10.0` = `2432b9057`; the
-  `4.10.0` bug branch started at `489b228b6`) and now stamps `4.11.0-dev` —
-  re-probe BOTH branches every time; bugfix is measured by CONTENT.** The
+  **v4 released 4.11.0 on 2026-10-28 (`release: 4.11.0` = `1ca45c171`, code
+  identical to `7789ebed6`, now merged back INTO main; the `4.11.0` bug
+  branch started at `73b334af3`) and now stamps `4.12.0-dev` — re-probe
+  BOTH branches every time; bugfix is measured by CONTENT.** The
   sweep driver remains the sanctioned per-family regen path — never run two
   sweeps concurrently; it needs Python ≥ 3.12
   (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since

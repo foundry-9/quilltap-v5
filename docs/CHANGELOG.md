@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-28 — docs(porting): drift check — v4 released 4.11.0 (stamps only past `7789ebed6`)
+
+_Docs-only change._
+
+`/driftcheck` after v4's 4.11.0 release: `release: 4.11.0` (`1ca45c171`), `merge: 4.11.0 back into main` and `dev: started 4.12.0 development` change only version stamps and release-note flags against `7789ebed6`. The new bug branch `73b334af3` adds only its own stamps. The drift ledger records the three as NO-PORT? rows, the new branch tips, and the new topology: the release is now an ancestor of `main`. 4.11.0's code is `7789ebed6`'s, so a catch-up can pin at the `4.11.0` tag. v4 is now 69 commits past the `322a5488e` baseline, and the regen rule stays PIN REQUIRED. CLAUDE.md's release note is updated to 4.11.0.
+
 #### 2026-10-28 — docs(porting): drift check — v4 fixed #120, recorded as a convergence row
 
 _Docs-only change._
