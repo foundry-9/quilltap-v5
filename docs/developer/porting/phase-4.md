@@ -7151,6 +7151,106 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {{P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356} ∥ {P4.D350 → P4.D349} ∥ {P4.D354 → P4.D355} ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D357 ∥ P4.D358 ∥ P4.D359 ∥ P4.D360) — ORDERED 2026-10-29
+
+**ORDERED 2026-10-29 — NEXT item 4 of the `322a5488e` follow-ups smalls
+unification (the 61-commit catch-up, grown to 69 rows by the time it was
+planned).** Baseline `322a5488e`. **The round is PINNED at v4 `236c04e35`**
+("dev: started 4.12.0 development", `package.json` `4.12.0-dev.0`,
+2026-10-28 19:30 −0500) — the code of v4's 4.11.0 release (`1ca45c171` /
+`7789ebed6`; the three commits between are version stamps), chosen over
+v4 HEAD at planning (`bf7a457f6`) because the two newer code commits carry
+an unruled driver move (`8832cfd20` — `better-sqlite3-multiple-ciphers` 13:
+SQLite3MC 2.4.0 / SQLite 3.53.4 against v5's vendored 2.3.5 / 3.53.2) and
+the iCloud-placeholder scan fix (`bf7a457f6`); both, and the live
+checkout's uncommitted chokidar removal, go to the NEXT round with the
+amalgamation ruling. The `/setupphase` probe FAILED (two commits + a dirty
+tree) → `/driftcheck` first (`f6cdceedd`). It absorbs the SIXTY-NINE ledger
+§3 rows `6fd2d5ffb..236c04e35`: the memory programme (the importance rubric,
+the group inner circle, keystone memories — the SEVENTEENTH D23 move), bug
+258 (whisper chains), Storyteller mode + declared tool effects (the
+EIGHTEENTH + NINETEENTH moves — `storyteller_rounds`, the chat / message
+columns, `llm_logs.storytellerRoundId`), every Salon LLM call logged,
+operator intervention in Pascal tools (the TWENTIETH move) + spans + the
+re-ask fix, keepOrder, the Novel template (the TWENTY-FIRST move + the
+`narrationDelimiters` seed rewrite), wardrobe pronoun guidance, the floating
+Brahma Console, the picture cue, bug 259, bugs 260 / 261 (doc tools read
+uploads), `self_inventory` holdings, the referent ledger + closing echo +
+absent-character name chips, `humanoid`, the composer punctuation lint +
+prose mode, the Inventory chokepoints refactor, the Salon turn-pipeline and
+context-manager refactors (bugs 262–265), diagrams (iteration 1 + the
+lightbox), the 4.11 dead-code sweep, the Log in backups, pdfjs-dist 6.4 +
+bug 266, terminal bugs 267 / 268, bug 269 (NanoGPT sizes), the legibility
+and WCAG passes (four commits), the About credits, the mount-chunk
+embedding race, the Docker persistent-target guard, the chat-settings PUT
+(`coreWhisper` + unknown keys), the #120 CONVERGENCE, and the 4.11.0
+release trio. Nine read-only surveys measured every hunk at the pin against
+v5 `f6cdceedd` and were committed as `work-orders/surveys/2026-10-29-
+setupphase-{keystone-memory,storyteller-effects,pascal-intervention,
+context-spine,vault-keys-inventory,composer-templates-diagrams,files-
+carriers-smalls,wcag-spa,vendor-deps}.md`.
+
+- **The split:** twenty lanes by FILE OWNERSHIP with FIVE named stacking
+  commits. `KEYSTONE` (P4.D341 — the ONE `fresh_schema.json` re-dump for
+  moves 17–21, `migration_indexes.json`, the five boot ensures UNSTAMPED
+  incl. the seed rewrite, the key-order and export-schema dumps, every
+  new column's plumbing, keystone memories server) → `CONTEXT` (P4.D347 —
+  bugs 259 / 263 / 264 / 265, the referent ledger, the off-scene changes,
+  `absent-mentions`) → `SPINE` (P4.D348 — bug 258 + `waitForEarlierTurns`,
+  bug 262 + the pipeline refactor's observable shifts, every LLM call
+  logged) → P4.D343 (Storyteller server + declared tool effects) ∥ P4.D345
+  (intervention server); P4.D342 (rubric + inner circle + keystone recall
+  placement), P4.D351 (Novel template server) and P4.D356 (server smalls:
+  the chat-settings PUT arms, the #120 convergence, bug 269) off
+  `KEYSTONE`; `CATALOG` (P4.D350's first commit — the ONE tool-catalog
+  regen; then the Inventory refactor + picture cue + `self_inventory`) →
+  P4.D349 (the three vault-key erasure writers + the diagram prompt note);
+  `FILES` (P4.D354 — bugs 260 / 261 + the boot backfill, the chunk guard,
+  the persistent-target guard, pdfjs) → P4.D355 (the Log carrier + terminal
+  bugs 267 / 268 + the `terminal_sessions` cascade); from `main`: P4.D344
+  (Storyteller SPA), P4.D346 (intervention SPA), P4.D352 (composer lint +
+  prose mode + Novel template SPA), P4.D353 (diagrams SPA), P4.D357 (WCAG
+  tokens / CSS / all 18 theme-pack files), P4.D358 (WCAG semantics +
+  names + skip link + announcer + the toast role), P4.D359 (SPA riders:
+  the floating console, name chips, keystone UI, About credits, the three
+  vault-key SPA halves), P4.D360 (vendor: `help/` 137, `docs/v4/` 518, the
+  NO-PORT record, the guards).
+- **Contracts C1–C16** are in every order's round block (the keystone
+  surface, the Storyteller wire W1, `InterventionWire`, the turn-side S1 /
+  S2 / `TurnStopReach`, the `absent-mentions` wire, the vault wire, the
+  template + settings wire, the WCAG rules R1–R12, the files contracts,
+  `LibraryEntryKeys`, `RealtimeTopicAppend`, `CssIndexImports`, the
+  Inspector `FILTER_GROUPS`, the SPA gate rule).
+- **Unifier order (§S.1):** P4.D341 → P4.D350 → P4.D349 → P4.D347 →
+  P4.D348 → P4.D343 → P4.D345 → P4.D342 → P4.D351 → P4.D356 → P4.D354 →
+  P4.D355 → P4.D357 → P4.D344 → P4.D346 → P4.D352 → P4.D353 → P4.D359 →
+  P4.D360 → P4.D358. The oracle baseline MOVES to `236c04e35` at the
+  unification.
+- **⚖ Rulings for the human (§R.11), the pre-round one FIRST:** the npm
+  cache lacks 44 of the pin's tarballs (the live checkout skipped the
+  pin's versions) — ONE online `npm ci` in a pin worktree before any lane
+  starts, else `npm ci --offline` fails at the pin; the pin itself; R-B the
+  four diagram client deps (`mermaid`, `@hpcc-js/wasm-graphviz`,
+  `svg2roughjs`, `dompurify` — option A, port whole); R-C no new PDF crate
+  (the seam's spec updated; the backfill skips pdf / docx under the refusing
+  seam); the three SPA convergences (`qt-modal` Escape, the toast colours,
+  a scoped `FloatingDialog` primitive); `@axe-core/playwright` as a dev
+  dep; the five ensures UNSTAMPED and `storyteller_rounds` created on a
+  pre-round instance with the migration's DDL + both indexes; the
+  Storyteller board without drag (no new dependency); the Inventory
+  publish shape; the amalgamation bump deferred to the NEXT round.
+- **Left out (§R.11 R-Z):** `8832cfd20` + `bf7a457f6` + the chokidar
+  removal (the next catch-up, with the amalgamation ruling); the P4.165
+  Carina FINDING + the recorded residues (a follow-ups order); the owed
+  dogfood pass (UNION build, after this round unifies — the LIVE-DATA
+  rule bites); the CLI `memories` family (R-P); every v4 filing candidate.
+
+**NEXT after this round unifies:** the owed dogfood pass (the union build on
+a Friday copy — the first boot's eight column ensures + one table + the
+`narrationDelimiters` rewrite measured first), then the `8832cfd20` /
+`bf7a457f6` catch-up with the amalgamation ruling, then the follow-ups
+order.
+
 ## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — UNIFIED 2026-10-28 (ordered 2026-10-27)
 
 **UNIFIED on main (2026-10-28). ALL TEN LANES LANDED; the oracle baseline

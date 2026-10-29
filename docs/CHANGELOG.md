@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-29 — docs(porting): order the `236c04e35` 4.11.0 catch-up round — twenty lanes, five stacking commits, nine surveys
+
+_Docs-only change._
+
+`/setupphase` writes the drift catch-up round for the sixty-nine v4 commits between the `322a5488e` baseline and v4's 4.11.0 code (`236c04e35`): twenty work orders `p4.d341` … `p4.d360` under `docs/developer/porting/work-orders/`, each carrying the identical round block (§R / §S / sixteen shared contracts / the ownership table), plus the nine planning surveys under `work-orders/surveys/2026-10-29-setupphase-*.md`. The round pins at `236c04e35` rather than v4 HEAD because the two newer code commits carry an unruled SQLite build move; those two, the chokidar removal and the amalgamation ruling go to the next round. The drift ledger's §3 rows are marked `ORDERED(…)` and §1 records the pin; `phase-4.md` gains the round's ORDERED section with the lane split, the unifier order, the rulings owed to the human (the npm-cache gap first) and what was left out.
+
 #### 2026-10-29 — docs(porting): drift check — v4's SQLCipher-driver move to v13 (SQLite3MC 2.4.0) and the iCloud-placeholder scan fix
 
 _Docs-only change._
