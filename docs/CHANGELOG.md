@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## October 2026
 
+#### 2026-10-29 — docs(porting): drift check — v4's SQLCipher-driver move to v13 (SQLite3MC 2.4.0) and the iCloud-placeholder scan fix
+
+_Docs-only change._
+
+`/driftcheck` run as `/setupphase` started: the §2 probe failed on two new v4 `main` commits and a dirty tree. `8832cfd20` moves v4's SQLCipher driver to `better-sqlite3-multiple-ciphers` 13.0.3, which bundles SQLite3MC 2.4.0 on SQLite 3.53.4 where v5's `quilltap-sqlite3mc-sys` vendors 2.3.5 on 3.53.2 (the build flags are byte-identical between the two driver versions; no migration, no on-disk change). The ledger records it as a dependency move with a ruling owed on v5's vendored amalgamation, one new server INFO line, and no v5 analog for the CLI's retired ABI heal. `bf7a457f6` makes the mount scanner leave iCloud-evicted placeholders unread (a new `in-cloud` outcome and `filesInCloud` count, on the wire too), splits the boot scan around the startup gate, and moves the mount watcher onto `fs.watch`; the scanner and scan-handler halves are PORT on ported surfaces, the boot-scan split and the watcher land on surfaces v5 has never had. The v4 checkout was dirty and being edited at probe time (the chokidar removal in progress), recorded in §1. v4 is now 71 commits past the `322a5488e` baseline; the regen rule stays PIN REQUIRED, with the pin's own `npm ci --offline` now also deciding which SQLite the real-DB oracles run on.
+
 #### 2026-10-28 — docs(porting): drift check — v4 released 4.11.0 (stamps only past `7789ebed6`)
 
 _Docs-only change._

@@ -28,7 +28,42 @@ probe verifies against._
   P4.D337 ∥ P4.D340} ∥ P4.D330 ∥ P4.D332 ∥ P4.D333 ∥ P4.D334 ∥ P4.D335 ∥
   P4.D336 ∥ P4.D338 ∥ P4.D339. CLAUDE.md's Status bullet for the round and
   its "Oracle baseline" bullet both name `322a5488e`.
-- **Checked:** 2026-10-28 (~19:40 CDT), by `/driftcheck` on v5 main
+- **Checked:** 2026-10-29 (~07:55 CDT), by `/driftcheck` run as `/setupphase`
+  started on v5 main (`ae990e375`): the §2 probe FAILED on TWO new `main`
+  commits past the recorded `236c04e35` AND a DIRTY tree. Fetched first (tags
+  too); local equals `origin` on all three branches (`main` = `bf7a457f6`,
+  `bugfix` = `73b334af3`, `release` = `1ca45c171`); `gh issue list …
+  --label bug --state all` still returns only #120 (CLOSED); neither commit
+  cites `Fixes #N` — NO convergence. Both classified directly from their
+  hunks (§3): **`8832cfd20` the SQLCipher-driver move to
+  `better-sqlite3-multiple-ciphers` 13.0.3** — a DEPENDENCY MOVE that
+  changes the SQLite build v4 runs on (**SQLite3MC 2.3.5 / SQLite 3.53.2 →
+  SQLite3MC 2.4.0 / SQLite 3.53.4**, measured from the installed driver's
+  `sqlite3mc_version` markers; the `deps/defines.gypi` build flags are
+  BYTE-IDENTICAL between 12.11.1 and 13.0.3, measured from the npm-cached
+  v12 tarball — STAT4 / `DQS=0` / `USE_URI=0` unchanged), NO migration, NO
+  D23 move, "v12 and v13 databases interoperate" (v4's claim; the cipher
+  default is still sqleet), one new server INFO line, the CLI's ABI heal
+  retired (NO v5 analog, measured 2026-10 for `85813ddd2`'s class); and
+  **`bf7a457f6` the iCloud-placeholder scan fix + the boot-scan split + the
+  mount watcher on `fs.watch`** — PORT on the ported scanner and the
+  `?action=scan` handler (a NEW `filesInCloud` count on the wire), NO-PORT
+  for the boot-scan split and the watcher, which v5 has NEVER had (the
+  standing "chokidar-equivalent watcher (host cadence)" deferral; no
+  `scanAllMountPoints` analog in `quilltap-host`). ⚠ **The checkout is
+  DIRTY and being edited AT PROBE TIME** (file mtimes 07:49–07:55, the
+  probe at 07:55): the chokidar REMOVAL in progress — `lib/file-storage/
+  watcher.ts` (the instance `files/` watcher moved onto recursive
+  `fs.watch`, a pending-unlink cancel on a sha-matched move), `lib/mount-
+  index/watcher.ts` (the polling backend rewritten as a 2 s walker, no
+  chokidar), `package.json` / `package-lock.json` (chokidar dropped),
+  `app/about/AboutView.tsx` (the credits line), a comment in the mount-
+  points route, two tests + a NEW `watcher-native.test.ts` under `__tests__/
+  unit/lib/file-storage/`, and the CHANGELOG entry. Both watchers are
+  NO-COUNTERPART in v5, so the eventual commit is a NO-PORT? row plus the
+  `docs/v4/` + About-credits mirror lines — re-probe before the next round
+  pins.
+  - **Before that:** 2026-10-28 (~19:40 CDT), by `/driftcheck` on v5 main
   (`56b1ecdda`), right after **v4 RELEASED 4.11.0**: the §2 probe FAILED on
   THREE new `main` commits past the recorded `7789ebed6` AND a moved
   `bugfix` / `release`. Fetched first (tags too); local equals `origin` on
@@ -132,11 +167,25 @@ probe verifies against._
     (`322a5488e`, seven rows); 2026-10-19 late evening (`e27fb6b34`) and
     morning (`a6292f169`); 2026-10-18 evening and morning; and the earlier
     checks the §6 bullets record.
-- **v4 `main` HEAD at check: `236c04e35`** ("dev: started 4.12.0
-  development", 2026-10-28 19:30, `4.12.0-dev.0`) — **SIXTY-NINE commits
-  past the baseline** (64 first-parent; the release squash and the merge
-  among them), ALL UNPROCESSED in §3; the regen rule stays **PIN REQUIRED
-  at `322a5488e`**. The three release commits are code-neutral (§3), so the
+- **v4 `main` HEAD at check: `bf7a457f6`** ("Fix: filesystem stores faulted
+  in iCloud files, held the startup screen, and leaked a descriptor per
+  file", 2026-10-29 01:21, `4.12.0-dev.2`; the tree's `package.json` already
+  stamps `4.12.0-dev.3` uncommitted) — **SEVENTY-ONE commits past the
+  baseline** (66 first-parent; the release squash and the merge among
+  them), ALL UNPROCESSED in §3; the regen rule stays **PIN REQUIRED at
+  `322a5488e`**. ⚠ **The dependency picture moved under the pin:** the live
+  root `node_modules` now holds `better-sqlite3-multiple-ciphers` 13.0.3
+  (SQLite3MC 2.4.0 / SQLite 3.53.4, prebuilt, no compile) where the pin's
+  lockfile wants 12.11.1 (2.3.5 / 3.53.2) — so the pin's own `npm ci
+  --offline` rebuild is REQUIRED (it was before; now it also decides which
+  SQLite the real-DB jest oracles run on), and `packages/quilltap/
+  node_modules` + the plugin dirs must be checked against the lockfile diff
+  too (the CLI package's driver moved in the same commit). The 12.11.1
+  tarball is still in the npm cache (`npm pack … --offline` worked
+  2026-10-29).
+- **Previously: v4 `main` HEAD at check: `236c04e35`** ("dev: started 4.12.0
+  development", 2026-10-28 19:30, `4.12.0-dev.0`) — sixty-nine commits past
+  the baseline. The three release commits are code-neutral (§3), so the
   code drift is exactly `322a5488e..7789ebed6`, and **a catch-up round may
   pin at the `4.11.0` tag (`1ca45c171`) with code identical to
   `7789ebed6`** — a released, nameable baseline. (The previous checks'
@@ -259,12 +308,19 @@ probe verifies against._
   `package-lock.json`): NO unabsorbed content. The §2 probe's bugfix base is
   now `73b334af3`. **`release` tip:** `1ca45c171` (`release: 4.11.0`, tag
   `4.11.0`; was `2432b9057`). Re-probe BOTH branches every time.
-- **Checkout at check:** branch **`main`**, tree **CLEAN** at `236c04e35`
-  (only the human's two `claude/*` worktree branches beside it). HEAD is
-  sixty-nine commits past the baseline, so it poisons a regen by DRIFT.
-- **Verdict: DRIFT PENDING — 69 commits (§3), all UNPROCESSED — ONE a
-  CONVERGENCE (`7789ebed6`, #120); the three newest (the 4.11.0 release)
-  NO-PORT? stamps only.**
+- **Checkout at check:** branch **`main`**, tree **DIRTY** at `bf7a457f6` —
+  9 modified (`lib/file-storage/watcher.ts`, `lib/mount-index/watcher.ts`,
+  `app/api/v1/mount-points/[id]/route.ts`, `app/about/AboutView.tsx`,
+  `package.json`, `package-lock.json`, `docs/CHANGELOG.md`, two tests) + 1
+  untracked test — the chokidar removal IN PROGRESS, being edited as the
+  probe ran (the human's two `claude/*` worktree branches beside it). HEAD
+  is seventy-one commits past the baseline, so it poisons a regen by DRIFT
+  and by DIRT (`lib/` edits).
+- **Verdict: DRIFT PENDING — 71 commits (§3), all UNPROCESSED — ONE a
+  CONVERGENCE (`7789ebed6`, #120); the 4.11.0 release trio NO-PORT? stamps
+  only; the two newest a DEPENDENCY MOVE that changes v4's SQLite build
+  (`8832cfd20`, a RULING owed on v5's vendored amalgamation) and a PORT on
+  the ported scanner (`bf7a457f6`); the checkout DIRTY mid-edit.**
 - **Regen rule: PIN REQUIRED at `322a5488e`** (§5.1). The live root
   `node_modules` is at HEAD's tree (`plugin-types` 2.9.0 + the four diagram
   deps; `openai` 7.45.0 once the human installs past `026222176`), so the
@@ -328,6 +384,21 @@ probe verifies against._
   plugin wire fix, client CSS / themes and docs). Non-corrupting: a v5
   NanoGPT image job against a Qwen Image 3 profile still 400s (bug 269
   lives in v5).
+- **Past `236c04e35` — NO schema / migration / vault hazard, ONE
+  build-level fact and ONE scan-behaviour divergence:** `8832cfd20` moves
+  v4 onto SQLite3MC **2.4.0** / SQLite **3.53.4** (v5 links 2.3.5 / 3.53.2;
+  the cipher default is sqleet on both; v4 states "v12 and v13 databases
+  interoperate" and ships NO migration — a v5 at 2.3.5 opening a file v4
+  wrote under 2.4.0 is the ordinary SQLite forward-compat case, NOT
+  measured here; the first v5 open of a post-`8832cfd20` Friday copy is the
+  measurement). `bf7a457f6`: a v4-HEAD scan of a filesystem store LEAVES an
+  iCloud-evicted placeholder unread (`in-cloud`, its index row kept); a v5
+  scan HASHES it — which makes iCloud download it — and, when the download
+  does not complete in time, may index it as modified or empty. Non-
+  corrupting for the DB, but a v5 `?action=scan` on a store inside an
+  iCloud-synced folder faults every evicted file in (the exact failure v4
+  fixed); the Friday copy's stores live outside iCloud's eviction set, so
+  the dogfood walk is unaffected unless a store is pointed at `~/Documents`.
 - **The standing rule holds: no v5 build against live Friday.** Dogfood a
   COPY, and do not round-trip v4-written characters through v5 writes while
   comparing with v4.
@@ -548,6 +619,8 @@ passes the commit.
 | `1ca45c171` | 2026-10-28 | release: 4.11.0 | **NO-PORT? — version stamps + release-notes flag, VERIFIED BY CONTENT** (classified 2026-10-28; tag `4.11.0` / `rel/4.11.0`; sole parent `2432b9057`, the 4.10.0 release — so its stat against that parent is the whole 4.10 → 4.11 squash, ~900 files, NOT new work). Content vs `7789ebed6`: 5 files +6 / −6 — `package.json` / `package-lock.json` `4.11.0`, the README badge, the CHANGELOG `### 4.11.0` heading, `docs/releases/4.11.0.md` `draft: false`. The release's code IS `7789ebed6`'s. | **v5 intersection:** none; `docs/v4/CHANGELOG.md` + `releases/4.11.0.md` re-vendor only. A catch-up may pin at this tag (code-identical to `7789ebed6`). | UNPROCESSED |
 | `9e01ebd25` | 2026-10-28 | merge: 4.11.0 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `7789ebed6` + `1ca45c171`; first-parent diff = the release stamps above). NEW topology: from 4.11.0 on, the release commit is an ANCESTOR of `main`. | none | UNPROCESSED |
 | `236c04e35` | 2026-10-28 | dev: started 4.12.0 development | **NO-PORT? — version stamps, VERIFIED** (4 files +6 / −4: `4.12.0-dev.0` in `package.json` / `package-lock.json` / README, a `### 4.12-dev` CHANGELOG heading). | none | UNPROCESSED |
+| `8832cfd20` | 2026-10-28 | deps: SQLCipher driver to better-sqlite3-multiple-ciphers 13 | **DEPENDENCY MOVE + PORT? (one server INFO line) + NO-PORT (CLI / Docker / CI / jest / docs)** (classified 2026-10-29 from the hunks; 24 files +1,492 / −1,776; `4.12.0-dev.1`; tag `4.12.0-dev.1`). **The driver:** root `better-sqlite3` alias `npm:better-sqlite3-multiple-ciphers@^12.11.1` → `^13.0.3` and `packages/quilltap`'s `^12.11.1` → `^13.0.3`; `allowScripts` DENIES the driver's install script (prebuilt Node-API binaries for 8 targets — darwin / linux / linuxmusl / win32 × x64 / arm64 — nothing compiles; Linux glibc ≥ 2.35). **MEASURED from the installed 13.0.3 tree: SQLite3MC `2.4.0` on SQLite `3.53.4`** (v5's `quilltap-sqlite3mc-sys` vendors **2.3.5 / 3.53.2**, the 12.11.1 pair). The `deps/defines.gypi` build flags are BYTE-IDENTICAL between 12.11.1 (npm-cache tarball) and 13.0.3 — `SQLITE_ENABLE_STAT4`, `SQLITE_DQS=0`, `SQLITE_USE_URI=0`, `THREADSAFE=2` etc. unchanged, so the two standing build-difference notes (STAT4 / DQS) stand as they are. NO migration, NO D23 move; v4's commit asserts v12 / v13 files interoperate, and the hunks make no on-disk change (the cipher default stays sqleet; no `cipher=` pragma appears). **Server hunk (the only `lib/` change):** `lib/database/backends/sqlite/client.ts` — after `SQLite database connection established`, a NEW `logDriverVersions(db)`: INFO `SQLCipher driver loaded` `{ driverVersion: <better-sqlite3/package.json version ?? 'unknown'>, sqliteVersion: <select sqlite_version()> ?? 'unknown' }`, DEBUG `Could not read SQLCipher driver versions { error }` on throw; "Parent process only" per its docblock. **CLI (`packages/quilltap/lib/native-modules.js` 238 lines, `bin/quilltap.js`):** `ensureDatabaseNativeModule()` LOADS the prebuild and classifies a failure (`unsupported-platform` / `glibc-too-old` / `load-failed`, with v4's sentences) instead of `readCompiledAbi` + `rebuildNativePackage`; `jest.global-setup.js` loses its ABI heal; `native-rebuild.test.js` DELETED, `native-driver-check.test.js` NEW. **Infra:** Dockerfile / Dockerfile.ci prune the driver to the image's arch; `release.yml` + `build-standalone-tarball.mjs` + `build-push-docker.ts` comments / steps; README glibc floor; v4 CLAUDE.md rule against v13-only driver API (`db.explain()`, `Statement.prototype.toString()`) until the Electron shell ships v13. **Docs:** `docs/CHANGELOG.md` SPLIT — 984 lines of 4.x history moved to a NEW `docs/CHANGELOG_V4.md`; NEW `docs/developer/features/complete/better-sqlite3-multiple-ciphers-v13.md` + `better-sqlite3-multiple-ciphers-v13-shell-notes.md`; ROADMAP line; `dependency-upgrade-safe-batch.md` touched. | **v5 intersection — a RULING owed (the cipher crate):** `crates/quilltap-sqlite3mc-sys/` vendors the **2.3.5** amalgamation "matching what v4 bundles" (CLAUDE.md's standing rule names 2.3.5 / 3.53.2 and `commit.md` §2 names 2.3.5) — v4 now bundles **2.4.0 / 3.53.4**. The crate's own rule says bump its pinned version ONLY when the vendored source changes — this is that case if the human rules to follow v4 (one ~4-min amalgamation recompile on every lane's cold target, then cached; `scripts/cargo-sweep.sh` keeps it). Alternative ruling: HOLD at 2.3.5 and record the pair as a ruled build difference beside STAT4 / DQS (`sqlite-stat4-build-difference`, `sqlite-dqs-build-difference`). Either way CLAUDE.md's cipher paragraph + `commit.md` §2 + `build.rs`'s "use a 2.3.x release to match … @12.11.1" docblock need the new numbers. **The INFO line:** v5's `db/runtime.rs` emits the three `… database connection established` lines (P4.159's boot-hardness family pins them byte-for-byte in `host_boot_hardness`); v4's new line names a Node DRIVER v5 does not have — PORT? as a v5-shaped line (`driverVersion` would be the sys crate / amalgamation version) or NO-PORT; the boot-line census + `host_boot_hardness` carry it either way. **CLI:** NO v5 analog (the 2026-10 `85813ddd2` finding stands: v5 links the amalgamation statically; `quilltap db` reaches core directly; Tier R's `npx quilltap` oracle bytes unchanged for every ported subcommand). **Docker (P4.10):** v5's image never installs the Node driver — NO-PORT. **Pins:** `provider_sdk_version_guard` reads SDK versions only (`openai` / `@openrouter/sdk`), so it does NOT trip on the driver; the real-DB jest oracles (`requireActual` of the cipher driver through the `packages/quilltap/node_modules` symlink, §5.1) will run on 13.0.3 / SQLite 3.53.4 at HEAD's tree and on 12.11.1 only under the pin's own `npm ci --offline` — a sweep from the pin MUST rebuild all three symlink classes. **Mirror:** `docs/v4/CHANGELOG.md` + NEW `docs/v4/CHANGELOG_V4.md` + the two specs + ROADMAP, for the catch-up's help/docs lane. | UNPROCESSED |
+| `bf7a457f6` | 2026-10-29 | Fix: filesystem stores faulted in iCloud files, held the startup screen, and leaked a descriptor per file | **PORT (the scanner: `in-cloud` + `filesInCloud` + `emptyScanResult` + ONE new INFO line; the `?action=scan` handler's log key and wire key) + PORT-NEW (the pure `lib/files/cloud-placeholder.ts` pair) + NO-PORT (the boot-scan split, the startup-gate text, the `fs.watch` watcher — surfaces v5 has NEVER had) + help** (classified 2026-10-29 from the hunks; 18 files +1,012 / −117; `4.12.0-dev.2`; found LIVE on the human's V4test instance — a store on an iCloud-synced `~/Documents`, 23,615 of 24,153 files evicted). **Scanner (`lib/mount-index/scanner.ts`):** `ScanResult` gains `filesInCloud: number` (between `filesDeleted` and `chunksCreated`); NEW exported `emptyScanResult(mountPointId, errors = [])` replaces the three hand-built zero results (scanner + scan-runner ×2); `ProcessFileOutcome` gains `{ status: 'in-cloud' }`; `processMountFile` now `fs.stat`s BEFORE `computeSha256` (the stat MOVED up from after the sha/unchanged check — so an unsupported type still returns before any stat, and `in-cloud` returns before any read; the later `const stat` line is deleted) and returns `in-cloud` when `isEvictedCloudPlaceholder(stat)`; `scanMountPoint`'s switch counts `filesInCloud++` and `continue`s (the path IS added to `seenPaths` first, so the row survives the stale sweep); the completion INFO gains `filesInCloud`; a NEW INFO after it, only when `filesInCloud > 0`: `Left cloud-evicted files unread; they are indexed once downloaded` `{ mountPointId, name, filesInCloud }`; `walkDirectory` becomes EXPORTED (for the watcher). **`lib/files/cloud-placeholder.ts` (NEW, pure):** `STAT_BLOCK_BYTES = 512`, `AllocationStat = { size, blocks }`, `isNotFullyMaterialized(stat)` = `size > 0 && blocks * 512 < size` (MOVED out of `lib/startup/materialize-cloud-files.ts`, which now imports it), `isEvictedCloudPlaceholder(stat, platform = process.platform)` = `(darwin | win32) && size > 0 && blocks === 0`. **Scan runner (`scan-runner.ts`):** `scanAllMountPoints(options: { only?: 'database' | 'filesystem'; reportStartupProgress?: boolean = true })` filters `findEnabled()` by `mountType === 'database'`, makes every `startupProgress` call optional-chained, adds `only` to both INFO lines (`'all'` when omitted) + `totalInCloud` to the completion line, and a DEBUG `No enabled mount points to scan { only }` on the empty case. **Boot (`instrumentation.ts` PHASE 3.3):** `mountScanSettled = scanAllMountPoints({ only: 'database' })` inside the gate; then, NOT awaited by the gate, `.then(() => scanAllMountPoints({ only: 'filesystem', reportStartupProgress: false }))` with a WARN `Filesystem document store scan failed`; `startup-state.ts` docblocks only. **Route (`[id]/route.ts` `handleScan`):** the `Mount point scan completed`-class INFO gains `filesInCloud: scanResult.filesInCloud` (between `filesDeleted` and `chunksCreated`); the response is the whole `scanResult`, so the wire JSON gains the key. **Watcher (`lib/mount-index/watcher.ts`):** filesystem stores watch through Node's recursive `fs.watch` (one FSEvents stream per store) with `handleNativeEvent` resolving each debounced path against the disk (file → index; gone → unlink, + `removeIndexedBeneath` after a rename when the path has no file type; directory arrived by rename → `walkDirectory` + index each), `pendingRenames` per watcher, `in-cloud` → DEBUG `Mount watcher left a cloud-evicted file unread`; `QUILLTAP_WATCHER_POLLING=1` keeps chokidar polling (now ignoring non-indexable files) and is the fallback when `fs.watch` throws (WARN `Native recursive watch unavailable, falling back to polling`). **Help:** `help/mount-points.md` +10 / −2 — a NEW `#### Files Resting in the Cloud` section, the "startup sweep … runs *after* the house has opened its doors" paragraph, the polling paragraph reworded. Tests: `scan-runner.test.ts` +86 (the `only` trio + the two progress rows), NEW `cloud-placeholder.test.ts`, `scanner-cloud-placeholder.test.ts`, `watcher-native.test.ts`. | **v5 intersection — PORT on the ported scanner:** `crates/quilltap-core/src/services/mount_index/scanner.rs` (`ScanResult` → `to_json` key order; `ProcessFileOutcome`; `process_mount_file`'s stat-before-hash + `In-cloud`; `scan_mount_point`'s count + the INFO line; `empty_scan_result`); `api/mount_files.rs::mount_scan` (the `Request::MountScan` handler — the route INFO's `filesInCloud` key + the wire `scanResult` gaining the key — a SHARED CONTRACT with the SPA's `scriptorium.api.ts` scan-result type, P4.6-series Scriptorium); the mount-index tier-2 families that compare scan results / logs (`danger_scan_tier2_equivalence`, `doc_mount_*_tier2_equivalence`, `mount_link_groups_equivalence`, `doc_mount_fallback_sites_census` — the census counts `process_mount_file` sites); `apps/web/src/app/screens/scriptorium/scriptorium.api.ts:69` (`filesDeleted` … add `filesInCloud`) + whichever Scriptorium toast renders the scan summary. **PORT-NEW:** the two pure predicates as a tier-1 exact family (a `cloud_placeholder` module under `services/mount_index/` or `files/`; v5 has no `materialize-cloud-files` boot step — `grep` finds no analog in `quilltap-host`). ⚠ **`blocks` on Windows:** v4 relies on libuv reporting allocation size; Rust's `std::os::unix::fs::MetadataExt::blocks` is unix-only — the Windows arm needs its own reading (or a ruled `false` until Tauri-Windows), record it. **NO-PORT, by standing deferral:** v5 has NO boot-time `scanAllMountPoints` (the host's boot runs only the PHASE 3.3b orphan reaper; `grep scan_all_mount_points crates/` = 0), NO startup-progress gate, and NO mount watcher (`phase-4.md`'s "chokidar-equivalent fs watcher INCLUDING the db-store-event emitter chain (host cadence)" deferral, named since P4.6p/P4.6v) — so the `only` / `reportStartupProgress` options, the two-pass boot, the watcher's `handleNativeEvent` and polling fallback have no v5 home; record them in the deferral's ledger, do not stub them. **Help:** `help/mount-points.md` re-vendors (the `p4.9i2` bank; v5 serves `help/` from the binary). **Dogfood:** a Friday-copy store on a local (non-iCloud) folder scans identically before and after; the `in-cloud` arm is provable only with a planted dataless file (macOS `blocks === 0` needs a real evicted placeholder — `brctl evict`) or by the pure family. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 
