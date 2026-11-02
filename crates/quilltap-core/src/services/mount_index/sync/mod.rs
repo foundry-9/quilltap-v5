@@ -52,6 +52,9 @@ use self::types::{
 };
 use self::walk_disk::walk_disk;
 use self::walk_store::walk_store;
+use super::persistent_target::{
+    check_persistent_target, MountInfoSource, PersistentTargetCheck, ProcMountInfo,
+};
 use crate::clock::now_iso;
 use crate::db::DbError;
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
@@ -95,6 +98,9 @@ pub enum SyncRefusalCode {
     ConversionInProgress,
     ScanInProgress,
     CharacterArchived,
+    /// v4 `TARGET_NOT_PERSISTENT` (`faeae2b71`): under Docker, a target whose
+    /// containing mount is the container's own layer.
+    TargetNotPersistent,
 }
 
 impl SyncRefusalCode {
@@ -105,10 +111,11 @@ impl SyncRefusalCode {
             Self::ConversionInProgress => "CONVERSION_IN_PROGRESS",
             Self::ScanInProgress => "SCAN_IN_PROGRESS",
             Self::CharacterArchived => "CHARACTER_ARCHIVED",
+            Self::TargetNotPersistent => "TARGET_NOT_PERSISTENT",
         }
     }
 
-    /// v4's route maps the three "busy" codes to 409 and the other two to 400.
+    /// v4's route maps the three "busy" codes to 409 and the other three to 400.
     pub fn is_conflict(self) -> bool {
         matches!(
             self,
@@ -162,8 +169,15 @@ fn in_flight() -> &'static Mutex<HashSet<String>> {
 /// The one impure input the engine takes besides the connection: the host's
 /// WebP encoder, handed to the blob writer so a synced image normalizes exactly
 /// as any other store write does.
+///
+/// `mount_info` and `is_docker` feed the persistent-target check (contract
+/// C7): `None` reads `/proc/self/mountinfo` and v4's server Docker probe
+/// (`services::data_dir::is_docker_environment` — P4.D354 R-4). The harness
+/// injects both so the refusal is testable off Linux.
 pub struct SyncDeps<'a> {
     pub transcoder: Option<&'a dyn WebpTranscoder>,
+    pub mount_info: Option<&'a dyn MountInfoSource>,
+    pub is_docker: Option<bool>,
 }
 
 /// v4 `syncMountPoint(mountPoint, options)`.
@@ -296,6 +310,25 @@ fn run_sync(
     // SERVER's cwd, which is v4's behaviour too.
     let target_path = node_resolve(&options.target_path);
     let mut warnings: Vec<String> = Vec::new();
+
+    // A mirror written into the container's own layer looks fine until the
+    // container is recreated, and a to-store pass from it would then read an
+    // empty directory as "everything was deleted". Refused in dry runs too, so
+    // the plan says so before anything is attempted.
+    let is_docker = deps.is_docker.unwrap_or_else(|| {
+        crate::services::data_dir::is_docker_environment(
+            &crate::services::data_dir::DataDirEnv::from_process(),
+        )
+    });
+    let source: &dyn MountInfoSource = deps.mount_info.unwrap_or(&ProcMountInfo);
+    if let PersistentTargetCheck::Ephemeral { message, .. } =
+        check_persistent_target(&target_path.to_string_lossy(), is_docker, source)
+    {
+        return Err(SyncError::Refused(SyncRefusedError {
+            message,
+            code: SyncRefusalCode::TargetNotPersistent,
+        }));
+    }
 
     // `--dry-run` changes nothing on either side, and that includes not
     // conjuring the directory: an operator planning a sync against a path they

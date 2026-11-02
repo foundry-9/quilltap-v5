@@ -936,6 +936,8 @@ pub async fn mount_point_sync(
                 &options,
                 &crate::services::mount_index::sync::SyncDeps {
                     transcoder: Some(transcoder),
+                    mount_info: None,
+                    is_docker: None,
                 },
             ))
         })

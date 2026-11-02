@@ -30,7 +30,7 @@
 //! fallback, never v4's real `pdf-parse` (it cannot run under this jest
 //! invocation — measured, recorded in the P4.151 lane record).
 //!
-//! P4.157 R-F: the PDF arm's v4 lines (`pdf-parse found no text, using native
+//! P4.157 R-F: the PDF arm's v4 lines (`PDF reader found no text, using native
 //! fallback extraction {size}`, `Extracted PDF content {size, chars}`, the
 //! catch's `Error extracting PDF content`) are captured UN-filtered on both
 //! sides (`pdfLines`, `common::pdf_lines_from_capture`) and the row's OUTCOME

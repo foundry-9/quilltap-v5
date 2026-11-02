@@ -20,16 +20,17 @@
  *     the Rust side as v5's named non-port, P4.D253 Tier 3 item 10).
  *   - `@/lib/file-storage/manager` — `downloadFile` resolves the case's bytes
  *     (`bytesBase64`, or `repeat`), or REJECTS for `missing: true`.
- *   - `pdf-parse` — the 2.x class (`PDFParse` → `{ getText, destroy }`), mocked
- *     at its RESOLVED path from the checkout (a bare specifier does not resolve
- *     from this /tmp-staged case; `images-routes.test.ts`'s `node-fetch`
- *     precedent). `getText` resolves `{ text }` from the case's `pdfParse.text`,
- *     rejects a `ReferenceError` for `pdfParse.throw`, and rejects for an absent
- *     script. `parserCalls` counts the constructor so a mock that never fired
- *     is visible in the NDJSON.
+ *   - `@/lib/mount-index/converters/pdf-converter` — `convertPdfBufferToText`
+ *     (P4.D354, v4 `026222176`: the extractor's one PDF reader since v4 dropped
+ *     `pdf-parse`) answers the case's `pdfConverter.text`, `''` for
+ *     `pdfConverter.throw` (the real reader swallows every failure) and for an
+ *     empty buffer, and throws for an absent script. `converterCalls` counts
+ *     the calls so a mock that never fired is visible in the NDJSON. The real
+ *     reader's two WARNs therefore never fire: `converterLines` is empty on
+ *     every row.
  *
  * Emits one NDJSON line per case: `{ name, result, lines, converterLines,
- * parserCalls }` (`result` is v4's `ExtractedContent` through JSON — absent
+ * converterCalls }` (`result` is v4's `ExtractedContent` through JSON — absent
  * keys stay absent).
  *
  * At the baseline `52d6e7ecd` the PDF arm still called `require('pdf-parse')`
@@ -66,7 +67,7 @@ interface CaseSpec {
   bytesBase64?: string;
   repeat?: { unitBase64: string; count: number };
   missing?: boolean;
-  pdfParse?: { text?: string; throw?: string };
+  pdfConverter?: { text?: string; throw?: string };
 }
 
 interface LogLine {
@@ -98,7 +99,7 @@ async function main(): Promise<void> {
   let current: CaseSpec | null = null;
   let lines: LogLine[] = [];
   let converterLines: LogLine[] = [];
-  let parserCalls = 0;
+  let converterCalls = 0;
 
   const recorder = (
     sink: () => LogLine[],
@@ -146,26 +147,24 @@ async function main(): Promise<void> {
       },
     },
   }));
-  const pdfParsePath = require.resolve('pdf-parse', { paths: [process.cwd()] });
-  const pdfParseMock = () => ({
+  // P4.D354 (v4 `026222176`): the extractor no longer imports `pdf-parse`; it
+  // reads through `convertPdfBufferToText`, the one PDF text reader, which
+  // answers '' on ANY failure. Mock that seam (the P4.D253 shape of
+  // `character-wizard-tier3.test.ts`): an empty buffer is the real reader's
+  // own '' (`PDF buffer is empty`), a `throw` script is "the reader swallowed
+  // its error and answered ''", and an absent script is a corpus bug.
+  jest.doMock('@/lib/mount-index/converters/pdf-converter', () => ({
     __esModule: true,
-    PDFParse: function PDFParse() {
-      parserCalls += 1;
-      return {
-        getText: async () => {
-          const script = current!.pdfParse;
-          if (script?.throw !== undefined) throw new ReferenceError(script.throw);
-          if (script?.text !== undefined) return { text: script.text, total: 1 };
-          throw new Error(`case ${current!.name} reached pdf-parse with no script`);
-        },
-        destroy: async () => undefined,
-      };
+    convertPdfBufferToText: async (buf: Buffer) => {
+      converterCalls += 1;
+      if (buf.length === 0) return '';
+      const script = current!.pdfConverter;
+      if (script?.text !== undefined) return script.text;
+      if (script?.throw !== undefined) return '';
+      throw new Error(`case ${current!.name} reached the converter with no script`);
     },
-  });
-  jest.doMock(pdfParsePath, pdfParseMock);
-  // The bare specifier too, for a jest resolver that keys the dynamic import
-  // under the package name rather than the resolved file.
-  jest.doMock('pdf-parse', pdfParseMock, { virtual: true });
+    convertPdfToText: async () => '',
+  }));
 
   const { extractFileContent } = require('@/lib/services/file-content-extractor') as {
     extractFileContent: (f: unknown) => Promise<unknown>;
@@ -176,14 +175,14 @@ async function main(): Promise<void> {
     current = c;
     lines = [];
     converterLines = [];
-    parserCalls = 0;
+    converterCalls = 0;
     const file = {
       id: `file-${c.name}`,
       userId: 'user-1',
       ...c.file,
     };
     const result = await extractFileContent(file);
-    out.push(JSON.stringify({ name: c.name, result, lines, converterLines, parserCalls }));
+    out.push(JSON.stringify({ name: c.name, result, lines, converterLines, converterCalls }));
   }
   current = null;
 

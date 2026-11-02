@@ -470,7 +470,7 @@ pub const V4_DEFAULT_CHECKOUT: &str = "$HOME/source/quilltap-server";
 /// `:204`) — P4.157 R-F: the generator families compare them UN-filtered and
 /// count rows by the OUTCOME they imply, never by the converter script.
 pub const PDF_MESSAGES: &[&str] = &[
-    "pdf-parse found no text, using native fallback extraction",
+    "PDF reader found no text, using native fallback extraction",
     "Extracted PDF content",
     "Error extracting PDF content",
 ];

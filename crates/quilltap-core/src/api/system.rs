@@ -4,7 +4,8 @@
 //! unlock requirement — the handler never touches the vault, it reads the host
 //! filesystem directly, the way the two other fs-touching mount services do).
 //!
-//! v4 semantics, verbatim: absent/empty `path` → the process home directory;
+//! v4 semantics, verbatim: absent/empty `path` → the process home directory
+//! (the instance root under Docker — `faeae2b71`, [`browse_default_dir`]);
 //! `path.resolve`/normalize; `fs.stat` failure → 400 `"Path does not exist:
 //! <resolved>"`; not-a-directory → 400 `"Path is not a directory: <resolved>"`;
 //! `fs.readdir` failure → a SUCCESS envelope with `directories: []` +
@@ -73,12 +74,20 @@ pub fn system_home(db: &Db, user_id: &str, fallback_name: Option<&str>) -> Respo
 
 /// v4 `GET /api/v1/system/browse-directory[?path=…]` — list a directory's
 /// immediate subdirectories for the picker.
-pub fn browse_directory(requested_path: Option<&str>) -> Response {
-    // `searchParams.get('path') || os.homedir()` — absent OR empty → home.
-    let requested = match requested_path {
-        Some(p) if !p.is_empty() => p.to_string(),
-        _ => home_dir(),
-    };
+///
+/// `default_dir` is what an absent or empty `path` lists — the caller passes
+/// [`browse_default_dir`] (v4 `faeae2b71`: the instance root under Docker,
+/// else the home directory).
+pub fn browse_directory(requested_path: Option<&str>, default_dir: &str) -> Response {
+    // `searchParams.get('path') || defaultPath` — absent OR empty → the default.
+    let given = requested_path.filter(|p| !p.is_empty());
+    let requested = given.map_or_else(|| default_dir.to_string(), str::to_string);
+    tracing::debug!(
+        target: "quilltap::system",
+        requestedPath = %requested,
+        usedDefault = given.is_none(),
+        "[Browse Directory] Listing directory"
+    );
 
     // `path.resolve(requestedPath)`.
     let resolved = resolve_path(&requested);
@@ -147,6 +156,19 @@ pub fn browse_directory(requested_path: Option<&str>) -> Response {
         "parent": parent,
         "directories": dirs_json,
     }))
+}
+
+/// v4's `isDockerEnvironment() ? getBaseDataDir() : os.homedir()`: in the
+/// Docker image the user has no home directory, and the only paths worth
+/// picking are under the instance bind (or path-identical store binds), so
+/// start there. `getBaseDataDir()` IS the instance root — `CoreConfig.base_dir`
+/// (P4.D354 R-5); the probe is v4's SERVER one, with its `/app` heuristic.
+pub fn browse_default_dir(env: &crate::services::data_dir::DataDirEnv, base_dir: &Path) -> String {
+    if crate::services::data_dir::is_docker_environment(env) {
+        base_dir.to_string_lossy().into_owned()
+    } else {
+        home_dir()
+    }
 }
 
 /// The process home directory (Node `os.homedir()` on POSIX resolves `$HOME`).
@@ -306,6 +328,54 @@ mod tests {
     use super::*;
     use serde_json::Value;
 
+    /// P4.D354 (v4 `faeae2b71`): the instance root under Docker, else home.
+    #[test]
+    fn the_browse_default_is_the_instance_root_under_docker_else_home() {
+        use crate::services::data_dir::DataDirEnv;
+        let base = Path::new("/app/quilltap");
+        let docker = DataDirEnv {
+            docker_container: Some("true".to_string()),
+            ..DataDirEnv::default()
+        };
+        assert_eq!(browse_default_dir(&docker, base), "/app/quilltap");
+        // v4's SERVER probe keeps the `/app` heuristic (R-4).
+        let app_dir = DataDirEnv {
+            app_is_dir: true,
+            ..DataDirEnv::default()
+        };
+        assert_eq!(browse_default_dir(&app_dir, base), "/app/quilltap");
+        assert_eq!(browse_default_dir(&DataDirEnv::default(), base), home_dir());
+    }
+
+    /// v4's new DEBUG fires before the stat, with `usedDefault` true for an
+    /// absent AND an empty `path` (`!searchParams.get('path')`).
+    #[test]
+    fn the_listing_debug_line_names_the_path_and_whether_it_defaulted() {
+        use crate::test_support::global_capture;
+        global_capture::install();
+        let lines = |requested: Option<&str>| {
+            global_capture::capture(|| {
+                browse_directory(requested, "/definitely/not/a/real/default/qtd354")
+            })
+            .1
+        };
+        let want_default = vec![
+            "DEBUG quilltap::system [Browse Directory] Listing directory \
+             requestedPath=/definitely/not/a/real/default/qtd354 usedDefault=true"
+                .to_string(),
+        ];
+        assert_eq!(lines(None), want_default);
+        assert_eq!(lines(Some("")), want_default);
+        assert_eq!(
+            lines(Some("/definitely/not/a/real/path/qtd354")),
+            vec![
+                "DEBUG quilltap::system [Browse Directory] Listing directory \
+                 requestedPath=/definitely/not/a/real/path/qtd354 usedDefault=false"
+                    .to_string()
+            ]
+        );
+    }
+
     /// P4.159 (dogfood #150, the `None`-arm census): the image-aesthetics PUT
     /// over a mount index that is not open. v4's DELETE arm (empty content —
     /// `writeStoreFile` → `deleteDatabaseDocument`, `aesthetic.ts:111-121`,
@@ -399,7 +469,7 @@ mod tests {
 
     #[test]
     fn nonexistent_path_is_bad_request() {
-        let resp = browse_directory(Some("/definitely/not/a/real/path/qt6z"));
+        let resp = browse_directory(Some("/definitely/not/a/real/path/qt6z"), &home_dir());
         match resp {
             Response::Error(e) => {
                 assert_eq!(e.kind, ErrorKind::BadRequest);
@@ -413,7 +483,7 @@ mod tests {
     fn file_not_directory_is_bad_request() {
         // This source file is not a directory.
         let this = format!("{}/src/api/system.rs", env!("CARGO_MANIFEST_DIR"));
-        let resp = browse_directory(Some(&this));
+        let resp = browse_directory(Some(&this), &home_dir());
         match resp {
             Response::Error(e) => {
                 assert_eq!(e.kind, ErrorKind::BadRequest);
@@ -428,7 +498,7 @@ mod tests {
         // The `os.homedir()` default arm is machine-dependent (un-fixturable in
         // the differential) — assert the resolved `path` equals the resolved home.
         let home = resolve_path(&home_dir());
-        match browse_directory(None) {
+        match browse_directory(None, &home_dir()) {
             Response::System(v) => {
                 assert_eq!(v["path"], Value::String(home));
                 // The home dir exists and is a directory → not the error arm.

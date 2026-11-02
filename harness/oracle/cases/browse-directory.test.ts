@@ -119,6 +119,33 @@ async function main(): Promise<void> {
       JSON.stringify({ name: c.name, status, body: sentinelize(body, treeRoot) }),
     );
   }
+  // P4.D354 (v4 `faeae2b71`): the default when no `path` is given (or `""`,
+  // which is falsy too) is the instance root under Docker, else the home dir.
+  // Under Docker v4's `getBaseDataDir()` IGNORES `QUILLTAP_DATA_DIR` and
+  // answers `/app/quilltap` (`lib/paths.ts:225-231`, measured), which does not
+  // exist on a dev Mac — so both rows answer the route's not-found 400 for THAT
+  // path, proving the default's selection (v5 passes `CoreConfig.base_dir`,
+  // `/app/quilltap` in a container). `/.dockerenv` must not exist here.
+  if (fs.existsSync('/.dockerenv') || fs.existsSync('/app/quilltap')) {
+    throw new Error('the Docker default rows assume no /.dockerenv and no /app/quilltap');
+  }
+  const savedDocker = process.env.DOCKER_CONTAINER;
+  process.env.DOCKER_CONTAINER = 'true';
+  try {
+    for (const [name, url] of [
+      ['docker-default-no-path', B],
+      ['docker-default-empty-path', `${B}?path=`],
+    ] as const) {
+      jest.resetModules();
+      applyMocks();
+      const route = await loadRoute();
+      const { status, body } = await respond(await route.GET(mockRequest(url)));
+      outLines.push(JSON.stringify({ name, status, body }));
+    }
+  } finally {
+    if (savedDocker === undefined) delete process.env.DOCKER_CONTAINER;
+    else process.env.DOCKER_CONTAINER = savedDocker;
+  }
   fs.writeFileSync(outPath, outLines.join('\n') + '\n');
   process.stderr.write(`browse-directory oracle wrote ${outPath} (${outLines.length} cases)\n`);
 }

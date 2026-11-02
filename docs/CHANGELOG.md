@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — The rest of P4.D354 Tier 1: persistent sync targets, the container browse and CLI defaults, the mount-chunk guard, the PDF reader WARN
+
+_Versions: core 0.0.1381, cli 0.0.36._
+
+Ports three more v4 changes at the `236c04e35` pin: `faeae2b71`, `82a2f6536` and `026222176`.
+
+- **Persistent sync targets (contract C7).** The new `services::mount_index::persistent_target` reads the mount table through a `MountInfoSource` seam (`/proc/self/mountinfo` by default). Under Docker, `run_sync` refuses a target in the container's own layer with the new `SyncRefusalCode::TargetNotPersistent` (400 `TARGET_NOT_PERSISTENT`). The check runs before the dry-run branch, so dry runs refuse too. `SyncDeps` gains `mount_info` and `is_docker` (both `None` in production). `assert_persistent_target` lands for the future deconvert order and has no production caller.
+- **Directory browser default.** `browse_directory` takes the default directory from `browse_default_dir`: the instance root (`CoreConfig.base_dir`) under Docker, the home directory otherwise. It logs v4's `[Browse Directory] Listing directory` DEBUG.
+- **CLI container default.** Inside a container (`DOCKER_CONTAINER=true` or `/.dockerenv`), the CLI's default data directory is `/app/quilltap/data`.
+- **Mount-chunk guard.** A MOUNT_CHUNK embedding job over a degraded or absent mount index now fails the job with v4's `requireMountIndexDb` text, so the runner retries. Before, it marked a live chunk FAILED for good.
+- **PDF reader WARN.** The empty-PDF WARN now reads `PDF reader found no text, using native fallback extraction`.
+- **Differentials.**
+  - The `file-content-extractor` oracle mocks `convertPdfBufferToText`; its `pdf-parse` import is dead at the pin.
+  - New `persistent_target_equivalence` (106 rows).
+  - New rows: `sync_engine` (a refusal through an injected mount table), `mount_sync_action` (the 400), `browse_directory` (two Docker rows), `embedding_generate_jobs` (the degraded-mount-index row).
+  - Tier R gains a `db lock-status in container` row.
+
 #### 2026-11-02 — FILES: uploads become readable, greppable and searchable; doc_list_files' real glob (P4.D354 Tier 1, v4 bugs 260 / 261)
 
 _Versions: core 0.0.1380, host 0.0.218._

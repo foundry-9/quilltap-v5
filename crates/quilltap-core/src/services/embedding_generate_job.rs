@@ -945,10 +945,28 @@ async fn mount_chunk_branch<E: EmbeddingProvider>(
 ) -> Result<(), String> {
     let pid = payload.profile_id.clone().unwrap_or_default();
     let eid = payload.entity_id.clone();
+    // v4 `82a2f6536` (`requireMountIndexDb()`): `findById` answers null on a
+    // read failure as well as on absence. With the mount index unopened or
+    // degraded, "not found" would mark a live chunk FAILED, which no reconcile
+    // retries; throw instead so the job is retried. The `Err` is the branch's
+    // failure channel: the runner's `JobOutcome::Failed` arm
+    // (`job_runner.rs`) → `BackgroundJobsRepository::mark_failed`, which
+    // re-queues with backoff until `maxAttempts` (P4.D354 R-7). No WARN and
+    // no `mark_failed` of the chunk — v4 throws before both.
+    match db.partition_state(crate::db::table_shape::Partition::MountIndex) {
+        crate::db::runtime::PartitionState::Open => {}
+        crate::db::runtime::PartitionState::Degraded => {
+            return Err("Mount index database is in degraded mode".to_string());
+        }
+        crate::db::runtime::PartitionState::Absent => {
+            return Err("Mount index database not initialized".to_string());
+        }
+    }
     // v4 `embedding-generate.ts:570`: `findById`, the fallback `_findById` (its
-    // `getCollection()` inside the same `safeQuery`) — a failed read logs `Error
-    // finding entity by ID` and is `null`, so it takes the WARN + `markAsFailed`
-    // arm below; it no longer fails the JOB (a retry) as v5's `?` did (P4.142).
+    // `getCollection()` inside the same `safeQuery`) — a failed read on an
+    // OPEN mount index logs `Error finding entity by ID` and is `null`, so it
+    // still takes the WARN + `markAsFailed` arm below, as v4's `safeQuery`
+    // does; it no longer fails the JOB (a retry) as v5's `?` did (P4.142).
     let chunk =
         crate::db::fallback::find_by_id_or_none("doc_mount_chunks", &payload.entity_id, || {
             db.read_mount_index(move |conn| {
@@ -1117,6 +1135,93 @@ mod chunk_fallback_tests {
             })
             .unwrap();
         assert_eq!(status, "FAILED");
+    }
+
+    /// Provision `dir`, let `prep` damage it, then open with `mount_index` and
+    /// run the branch.
+    fn guarded(
+        dir: &std::path::Path,
+        prep: impl FnOnce(&std::path::Path),
+        mount_index: Option<std::path::PathBuf>,
+    ) -> (Db, Result<(), String>, Vec<String>) {
+        crate::services::provisioning::provision_fresh_instance(dir, PEPPER).unwrap();
+        prep(dir);
+        let db = Db::open(
+            DbPaths {
+                main: dir.join("quilltap.db"),
+                mount_index,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let payload = EmbeddingGeneratePayload {
+            entity_type: Some("MOUNT_CHUNK".into()),
+            entity_id: "chunk-1".into(),
+            character_id: None,
+            profile_id: Some("prof-1".into()),
+            chat_id: None,
+        };
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let provider = crate::model::embedding::NoEmbeddingProvider;
+        let (got, lines) = crate::test_support::captured_with(|| {
+            rt.block_on(mount_chunk_branch(&db, &provider, "u-1", &payload))
+        });
+        (db, got, lines)
+    }
+
+    fn status_rows(db: &Db) -> i64 {
+        db.read_main(|c| {
+            Ok(c.query_row(
+                "SELECT COUNT(*) FROM embedding_status WHERE entityId = 'chunk-1'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap()
+    }
+
+    /// P4.D354 (v4 `82a2f6536`, R-7): a DEGRADED mount index fails the JOB
+    /// with `requireMountIndexDb`'s first text — before the read, so no WARN,
+    /// no `embedding_status` row, and the runner retries.
+    #[test]
+    fn a_degraded_mount_index_fails_the_job_instead_of_the_chunk() {
+        let dir = tempfile::tempdir().unwrap();
+        let mount = dir.path().join("quilltap-mount-index.db");
+        let (db, got, lines) = guarded(
+            dir.path(),
+            |d| std::fs::write(d.join("quilltap-mount-index.db"), vec![0x5Au8; 4608]).unwrap(),
+            Some(mount),
+        );
+        assert_eq!(
+            db.partition_state(crate::db::table_shape::Partition::MountIndex),
+            crate::db::runtime::PartitionState::Degraded
+        );
+        assert_eq!(
+            got,
+            Err("Mount index database is in degraded mode".to_string())
+        );
+        assert!(
+            !lines.iter().any(|l| l.contains("Mount chunk not found")),
+            "v4 throws before the WARN: {lines:?}"
+        );
+        assert_eq!(status_rows(&db), 0, "no markAsFailed of a live chunk");
+    }
+
+    /// And an ABSENT one (no file) answers the second text.
+    #[test]
+    fn an_absent_mount_index_fails_the_job_as_not_initialized() {
+        let dir = tempfile::tempdir().unwrap();
+        let (db, got, lines) = guarded(dir.path(), |_| {}, None);
+        assert_eq!(got, Err("Mount index database not initialized".to_string()));
+        assert!(
+            !lines.iter().any(|l| l.contains("Mount chunk not found")),
+            "{lines:?}"
+        );
+        assert_eq!(status_rows(&db), 0);
     }
 }
 

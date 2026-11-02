@@ -193929,6 +193929,55 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - **`almanack_tier2_equivalence`**: RED on `customToolIntervention` (the keystone / P4.D345) and on `persisted_after_generate`. In the latter both sides now EXTRACT the diagnostics `.md` (a pre-existing gap converged). What remains is the drifted text plus `chunkCount` 5 vs 0: v4's oracle dumps before its un-awaited reindex lands, while v5's is synchronous. **FINDING for the unifier:** the almanack oracle needs a drain (not this lane's file).
 - **Census + gate.** `doc_mount_fallback_sites_census` gains ONE row, `read_database_blob_text` → `find_by_mount_point_and_path` as `other-repo` (the blob repo's link read; other-repo 19 → 20). Gate: fmt / both clippy passes clean; `cargo test --workspace` 867 `test result: ok`. Its reds are the census (fixed above, then green by name) and pin drift owned by other lanes: `cli_differential`'s three completion templates; the custom-tool / public-schema / `.qtap` schema embed guards; `provider_sdk_version_guard`. All of them read the pin, where v4 moved those files past `322a5488e`. None touches this lane's code.
 
+### P4.D354 — the rest of Tier 1 (2026-11-02): persistent targets, browse / CLI container defaults, the mount-chunk guard, the PDF reader WARN
+
+- **C7.** NEW `services/mount_index/persistent_target.rs`. `SyncRefusalCode::TargetNotPersistent` (`TARGET_NOT_PERSISTENT`, not a conflict → 400; the `is_conflict` doc now reads "the other three").
+  - The `run_sync` check sits between `node_resolve` and the dry-run branch, so dry runs refuse too (v4's comment carried).
+  - **C7 EXTENSION (additive, flagged for the unifier):** `SyncDeps` carries `is_docker: Option<bool>` beside `mount_info`. `None` reads v4's server probe (`data_dir::is_docker_environment`, R-4), so the harness can inject `true` off Linux. Production (`api/mount_points.rs`) passes `None` / `None`.
+  - **Tests.** 14 unit tests (v4's 11 `it`s on `DOCKER_DESKTOP_MOUNTINFO`, plus not-docker silence, an unreadable table, a symlinked dir and the deconvert WARN). `persistent_target_equivalence`: 106 rows (parse 4 / find 56 / check 46). `sync_engine_equivalence` gains `a_docker_target_in_the_container_layer_is_refused_even_on_a_dry_run` (overlay → refused, target not created; not docker → runs; a `\040`-escaped bind → runs). It uses its own store id: the in-flight set is process-global, and sharing `CHUNK_MOUNT_ID` made the two tests refuse each other `SYNC_IN_PROGRESS`.
+  - `mount_sync_action_equivalence`: + the `TARGET_NOT_PERSISTENT` 400 row, built from the port's own `ephemeral_target_message`; corpus 36 → 37.
+  - Mutation: forcing `is_docker` false → the run test RED.
+  - The deconvert guard has no reachable home (P4.6y), so it is pinned by its unit test only (Tier 3 item 27).
+- **Browse default (R-5).** `browse_directory(path, default_dir)` + `browse_default_dir(env, base_dir)`, with the ONE `engine.rs` line.
+  - New DEBUG `[Browse Directory] Listing directory {requestedPath, usedDefault}`, pinned both ways (`usedDefault` true for an absent AND an empty `path`).
+  - `browse_directory_equivalence`: + `docker-default-no-path` / `docker-default-empty-path`. v4's `getBaseDataDir()` ignores `QUILLTAP_DATA_DIR` under Docker and answers `/app/quilltap`, which does not exist here; both sides answer `400 Path does not exist: /app/quilltap`. 7 cases.
+  - Mutation: the docker arm forced off → the docker row RED.
+- **CLI (R-6).** `resolve.rs`: `DOCKER_BASE_DIR`, `is_docker_container()` (no `/app` heuristic), and the branch after the `QUILLTAP_DATA_DIR` arm. 4 unit tests under an `ENV_LOCK`.
+  - Tier R: `db lock-status in container` (`DOCKER_CONTAINER=true`; the fixture registry's `defaultInstance` is null, so no registered default wins). It asserts `/app/quilltap/data` appears in BOTH outputs, and that the host has no `/.dockerenv` and no `/app/quilltap`.
+  - `cli_differential`: 423 cases. The same five pin-drift reds as before (completion bash / zsh / fish, recall-replay help / no chat), not this lane's.
+  - `grep "Application Support" crates/quilltap-cli/src` finds the one platform arm, so no second site.
+- **Mount-chunk guard (R-7).** `mount_chunk_branch` checks `partition_state(MountIndex)` before the read: Degraded → `Mount index database is in degraded mode`; Absent → `Mount index database not initialized`; `Err(String)`.
+  - Retry path: `job_runner.rs` `JobOutcome::Failed` → `BackgroundJobsRepository::mark_failed` (`db/background_jobs.rs:527`), FAILED with backoff, DEAD at `maxAttempts`.
+  - The P4.142 comment was re-scoped (an OPEN index's read failure still takes the WARN arm).
+  - Two unit tests: a garbage sibling → Degraded; no path → Absent. Neither emits the WARN or writes an `embedding_status` row.
+  - `embedding_generate_jobs_equivalence`: + the `degradedMountIndex` row. v4 closes its mount-index client and runs a LIVE chunk's job; v5 opens the main copy with no sibling. Both: `Mount index database not initialized`, the status row unchanged.
+    - Mutant (guard removed): `{error: null, statusUnchanged: false}` vs v4's, RED.
+    - The row is asserted BEFORE the processed-sequence check, because the family is otherwise RED from pin drift: at the pin v4's MEMORY arm reads a `keystone` column the committed fixture lacks (`no such column: keystone`; 26 vs 30 processed). That is the keystone's (P4.D341) fixture move, not this lane's.
+- **PDF reader WARN (`026222176`).** `pdf-parse found no text` → `PDF reader found no text, using native fallback extraction` at the eleven sites. Census `grep -rn 'pdf-parse found no text' crates harness apps` = 0.
+  - `file-content-extractor.test.ts` re-aimed: `@/lib/mount-index/converters/pdf-converter` doMocked (an empty buffer → `''`, the real reader's own arm; a `throw` → `''`; no script → throw). The 12 corpus `pdfParse` keys → `pdfConverter`; `parserCalls` → `converterCalls`.
+  - `converterLines` is now empty on every row, pinned by `the_mocked_converter_fired_on_every_pdf_row_and_logged_nothing` (13 PDF calls).
+  - Family GREEN (3/3). `character_wizard_tier3_equivalence` GREEN. `common_helpers_selftest` GREEN.
+  - `ai_import_tier3_equivalence`: RED ONLY on `V4_APP_VERSION` (`4.12.0-dev.0` vs `4.11.0-dev.53`), P4.D360's constant at `:126`, left alone as the order says.
+- **C4 gated catalog test.** `the_catalog_describes_the_glob_rules_once_p4d350_lands` passes on the OLD bytes and is RED with `P4D350_CATALOG_LANDED` set until P4.D350's `CATALOG` lands. The unifier flips it at §S.9.
+- **Tier 2.**
+  - Item 20 (the `**/` grid) and item 21 (`background_jobs` compared in the backfill family) landed with FILES.
+  - Item 22: v5's call-site comment already carries v4's `store-file.ts` why verbatim.
+  - **Item 19 OPEN (deferred loudly).** The backfill family has no planted worklist-failure row. The WARN `Failed to list unextracted blobs` and its silence leg are pinned by `the_worklist_read_warns_and_answers_empty_on_failure_and_is_silent_otherwise` (a unit test), not differentially.
+  - Item 23 (the censuses) is re-run in this commit's gate.
+- **Regens from the pin, recipes hand-copied, outputs under `/tmp/p4d354/`:** `mount_sync_action`, `sync_engine`, `browse_directory`, `embedding_generate_jobs`, `file_content_extractor`, `character_wizard_tier3`, `ai_import_tier3`.
+- **Plugin-SDK pin ruling (human, 2026-11-02): AFFECTED.** `character_wizard_tier3` and `ai_import_tier3` load providers through `plugins/dist`, and this lane's pin had symlinked live v4's plugin `node_modules`.
+  - The symlinks were replaced by `.claude/pin-plugin-sdks.sh <PIN>`, which installs the floor versions: openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1.
+  - Both families were re-run from the fixed pin. The results did not change: `character_wizard_tier3` GREEN; `ai_import_tier3` RED only on `V4_APP_VERSION`.
+- **Gate:** fmt clean, and clippy (both feature sets) clean.
+  - `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, with the lane's oracle env): 874 binaries / 5,800 / 6 / 3 ignored, zero SKIP.
+  - Every lane family ran GREEN by name, including `doc_mount_fallback_sites_census` (item 23).
+  - The six reds are all pin or live-checkout drift that other lanes own, none in this lane's surfaces:
+    - `cli_differential`: the five pin-drift cases.
+    - `ai_import_tier3`: `V4_APP_VERSION`, owned by P4.D360.
+    - `custom_tool_schema_embed_guard`, `public_schemas_vendor_guard`, `qtap_schema_embed_guard`: v4's schemas at the pin, owned by P4.D360's vendoring.
+    - `provider_sdk_version_guard`: the pin's ROOT openai 7.45.0 and openrouter 1.5.9 against the recorded 7.34.0 / 1.4.25.
+  - `embedding_generate_jobs` is RED only on the keystone drift recorded above (run by name).
+
 ## P4.D349 — the three vault keys (`humanoid`, `canDrawDiagrams` / `diagramStyle`, `pronounGuidance`)
 
 Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-keys-8ab640`; worktree `.claude/worktrees/p4d349`). The session started on `main`'s checkout and moved to the new worktree cut from `8ab640259` before the first edit. The writers were NOT pre-started from `main`: the branch was cut from `CATALOG` directly, so no mid-lane rebase happened.

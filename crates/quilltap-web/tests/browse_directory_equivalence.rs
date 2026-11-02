@@ -13,8 +13,9 @@
 
 use std::path::PathBuf;
 
-use quilltap_core::api::system::browse_directory;
+use quilltap_core::api::system::{browse_default_dir, browse_directory};
 use quilltap_core::api::types::{ErrorKind, Response};
+use quilltap_core::services::data_dir::DataDirEnv;
 use serde_json::{json, Value};
 
 const SENTINEL: &str = "<BASE>";
@@ -108,7 +109,7 @@ fn browse_directory_matches_oracle() {
         let want = oracle
             .get(*name)
             .unwrap_or_else(|| panic!("no oracle row {name}"));
-        let (status, body) = to_status_body(browse_directory(Some(p)));
+        let (status, body) = to_status_body(browse_directory(Some(p), "/unused-default"));
         let got = json!({ "name": name, "status": status, "body": sentinelize(&body, &root) });
         assert_eq!(
             norm(&got),
@@ -118,7 +119,35 @@ fn browse_directory_matches_oracle() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 5, "expected 5 cases");
+    // P4.D354 (v4 `faeae2b71`): no `path` (or `""`) under Docker lists the
+    // instance root. v4's `getBaseDataDir()` answers `/app/quilltap` there
+    // (it ignores `QUILLTAP_DATA_DIR` under Docker); v5 passes
+    // `CoreConfig.base_dir`, which is `/app/quilltap` in the container. Neither
+    // exists on a dev machine, so both rows are the not-found 400 for THAT
+    // path — the default's selection is what they prove.
+    let docker = DataDirEnv {
+        docker_container: Some("true".to_string()),
+        ..DataDirEnv::default()
+    };
+    let default_dir = browse_default_dir(&docker, std::path::Path::new("/app/quilltap"));
+    for (name, requested) in [
+        ("docker-default-no-path", None),
+        ("docker-default-empty-path", Some("")),
+    ] {
+        let want = oracle
+            .get(name)
+            .unwrap_or_else(|| panic!("no oracle row {name} — regenerate the oracle"));
+        let (status, body) = to_status_body(browse_directory(requested, &default_dir));
+        let got = json!({ "name": name, "status": status, "body": body });
+        assert_eq!(
+            norm(&got),
+            norm(want),
+            "case {name}\n{}",
+            diff(&norm(&got), &norm(want))
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 7, "expected 7 cases");
     eprintln!("OK: browse-directory matched oracle ({checked} cases).");
 }
 

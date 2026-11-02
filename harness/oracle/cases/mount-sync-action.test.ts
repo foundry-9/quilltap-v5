@@ -215,6 +215,20 @@ const REFUSALS: Array<{ id: string; make: () => unknown }> = [
   },
   { id: 'SCAN_IN_PROGRESS', make: () => new SyncRefusedError('scanning', 'SCAN_IN_PROGRESS') },
   {
+    // P4.D354 (v4 `faeae2b71`): a target inside the container's own layer —
+    // NOT one of the three busy codes, so the ladder's 400 with the
+    // operator message (v4 `persistent-target.ts`'s bytes).
+    id: 'TARGET_NOT_PERSISTENT',
+    make: () =>
+      new SyncRefusedError(
+        "The path '/tmp/qt-sync-out' is inside the container itself, not on a bind mount, so " +
+          'anything written there is lost when the container is recreated. Choose a path under ' +
+          'the data directory (/app/quilltap) or under a store that is bind-mounted from the host ' +
+          "(see 'quilltap docs docker-mounts').",
+        'TARGET_NOT_PERSISTENT',
+      ),
+  },
+  {
     // A code the ladder has never heard of falls to the `badRequest` arm, not
     // the 500 — the `SyncRefusedError` test comes first.
     id: 'an-unknown-refusal-code',

@@ -30,9 +30,25 @@ fn home_dir_string() -> String {
     std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
 }
 
+/// v4 `DOCKER_BASE_DIR` (`packages/quilltap/lib/platform-paths.js`,
+/// `faeae2b71`): the instance root inside the official container.
+pub const DOCKER_BASE_DIR: &str = "/app/quilltap";
+
+/// v4 `isDockerContainer()` (`platform-paths.js`): `DOCKER_CONTAINER ===
+/// 'true'` or `/.dockerenv` exists (a throw → `false`). Deliberately WITHOUT
+/// the server's `/app`-directory heuristic, "which misfires on hosts that
+/// happen to have /app" — the CLI's probe and the server's are two probes with
+/// two owners, as in v4 (P4.D354 R-6; the server's lives in
+/// `quilltap-core::services::data_dir` / `quilltap-host::env`).
+pub fn is_docker_container() -> bool {
+    std::env::var("DOCKER_CONTAINER").as_deref() == Ok("true") || Path::new("/.dockerenv").exists()
+}
+
 /// v4 `resolveDataDir(overrideDir)` — note the `~` expansion does NOT
 /// `path.resolve` (a relative override stays relative), and every branch
-/// appends `/data` via `path.join`.
+/// appends `/data` via `path.join`. Order (v4 `db-helpers.js:11-22`): the
+/// override → `QUILLTAP_DATA_DIR` → `getDefaultBaseDir()`, which inside a
+/// container is [`DOCKER_BASE_DIR`] (`faeae2b71`) before the per-OS default.
 pub fn resolve_data_dir(override_dir: &str) -> String {
     if !override_dir.is_empty() {
         let resolved = if let Some(rest) = override_dir.strip_prefix('~') {
@@ -46,6 +62,9 @@ pub fn resolve_data_dir(override_dir: &str) -> String {
         if !env.is_empty() {
             return node_join(&env, "data");
         }
+    }
+    if is_docker_container() {
+        return node_join(DOCKER_BASE_DIR, "data");
     }
     let home = home_dir_string();
     #[cfg(target_os = "macos")]
@@ -661,5 +680,89 @@ mod tests {
             t.note.as_deref(),
             Some("Using port 3005 from the instA instance lock")
         );
+    }
+}
+
+#[cfg(test)]
+mod container_default_tests {
+    //! v4 `packages/quilltap/lib/__tests__/platform-paths.test.js:26-58` (P4.D354,
+    //! `faeae2b71`): inside a container the default data dir is
+    //! `/app/quilltap/data`; `QUILLTAP_DATA_DIR` and an explicit override still
+    //! win; outside, the per-OS dir. The env is process-global, so every test
+    //! here holds [`ENV_LOCK`] and restores what it changed.
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_env<T>(docker: Option<&str>, data_dir: Option<&str>, f: impl FnOnce() -> T) -> T {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let saved = (
+            std::env::var_os("DOCKER_CONTAINER"),
+            std::env::var_os("QUILLTAP_DATA_DIR"),
+        );
+        let set = |k: &str, v: Option<&str>| match v {
+            Some(v) => std::env::set_var(k, v),
+            None => std::env::remove_var(k),
+        };
+        set("DOCKER_CONTAINER", docker);
+        set("QUILLTAP_DATA_DIR", data_dir);
+        let out = f();
+        match saved.0 {
+            Some(v) => std::env::set_var("DOCKER_CONTAINER", v),
+            None => std::env::remove_var("DOCKER_CONTAINER"),
+        }
+        match saved.1 {
+            Some(v) => std::env::set_var("QUILLTAP_DATA_DIR", v),
+            None => std::env::remove_var("QUILLTAP_DATA_DIR"),
+        }
+        out
+    }
+
+    fn assume_no_dockerenv() {
+        assert!(
+            !Path::new("/.dockerenv").exists(),
+            "these rows assume a host without /.dockerenv"
+        );
+    }
+
+    #[test]
+    fn docker_container_true_defaults_to_the_container_data_dir() {
+        assume_no_dockerenv();
+        assert_eq!(
+            with_env(Some("true"), None, || resolve_data_dir("")),
+            "/app/quilltap/data"
+        );
+        assert!(with_env(Some("true"), None, is_docker_container));
+    }
+
+    #[test]
+    fn quilltap_data_dir_still_wins_inside_a_container() {
+        assert_eq!(
+            with_env(Some("true"), Some("/srv/qt"), || resolve_data_dir("")),
+            "/srv/qt/data"
+        );
+    }
+
+    #[test]
+    fn an_explicit_override_still_wins_inside_a_container() {
+        assert_eq!(
+            with_env(Some("true"), Some("/srv/qt"), || resolve_data_dir("/mnt/x")),
+            "/mnt/x/data"
+        );
+    }
+
+    #[test]
+    fn outside_a_container_the_per_os_dir() {
+        assume_no_dockerenv();
+        let got = with_env(None, None, || resolve_data_dir(""));
+        assert_ne!(got, "/app/quilltap/data");
+        #[cfg(target_os = "macos")]
+        assert!(
+            got.ends_with("/Library/Application Support/Quilltap/data"),
+            "{got}"
+        );
+        // Only the exact string `true` counts (no `/app` heuristic either).
+        assert!(!with_env(Some("1"), None, is_docker_container));
     }
 }

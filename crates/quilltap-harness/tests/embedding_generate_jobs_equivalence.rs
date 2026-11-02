@@ -92,7 +92,7 @@ use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
 };
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -131,6 +131,7 @@ struct RouteCaseW {
 struct Spec {
     test_pepper_base64: String,
     user_id: String,
+    profile_id: String,
     help_doc_plants: HelpDocPlantsW,
     failing_texts: Vec<FailingTextW>,
     route_cases: Vec<RouteCaseW>,
@@ -350,6 +351,7 @@ async fn embedding_generate_jobs_match_oracle() {
     let mut oracle_routes: Vec<(String, u16, Value)> = Vec::new();
     let mut oracle_tables: HashMap<String, Value> = HashMap::new();
     let mut oracle_calls: HashMap<String, u64> = HashMap::new();
+    let mut oracle_degraded: Option<Value> = None;
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -390,6 +392,7 @@ async fn embedding_generate_jobs_match_oracle() {
             Some("table") => {
                 oracle_tables.insert(v["table"].as_str().unwrap().to_string(), v);
             }
+            Some("degradedMountIndex") => oracle_degraded = Some(v),
             other => panic!("unknown oracle row kind {other:?}"),
         }
     }
@@ -603,6 +606,69 @@ async fn embedding_generate_jobs_match_oracle() {
             outcome: outcome_str,
             error,
         });
+    }
+
+    // P4.D354 (v4 `82a2f6536`) — the mount-chunk guard, over the post-drain
+    // state (checked BEFORE the sequence asserts: it reads only this chunk's
+    // status row, so a drifted MEMORY arm cannot mask it) with the mount index NOT opened (v4 closes its client; v5 opens
+    // the same main copy with no sibling: `PartitionState::Absent`). A LIVE
+    // chunk's job fails with `requireMountIndexDb`'s text and its status row
+    // is untouched (no `markAsFailed`) — v5's pre-guard fallback read took the
+    // WARN + FAILED arm instead.
+    {
+        let want = oracle_degraded
+            .take()
+            .expect("oracle missing the degradedMountIndex row — regenerate");
+        let chunk_id = want["chunkId"].as_str().expect("chunkId").to_string();
+        let status_rows = |db: &Db| {
+            let id = chunk_id.clone();
+            db.read_main(move |conn| {
+                dump_table_json_conn(conn, "embedding_status", "id").map(|v| {
+                    v["rows"]
+                        .as_array()
+                        .cloned()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|r| r["entityId"] == id.as_str())
+                        .collect::<Vec<_>>()
+                })
+            })
+            .unwrap()
+        };
+        let before = status_rows(&db);
+        let main_only = Db::open(
+            DbPaths {
+                main: work_main.clone(),
+                mount_index: None,
+                llm_logs: None,
+            },
+            &spec.test_pepper_base64,
+        )
+        .expect("open the main copy with no mount index");
+        let payload = EmbeddingGeneratePayload::from_json(&serde_json::json!({
+            "entityType": "MOUNT_CHUNK",
+            "entityId": chunk_id,
+            "profileId": spec.profile_id,
+        }));
+        let ctx = quilltap_core::services::embedding_generate_job::EmbeddingGenerateContext {
+            job_id: "eg-degraded-mount-index",
+            host_zone_fallback: "UTC",
+            now_ms: quilltap_core::clock::now_unix_ms() as f64,
+        };
+        let got = handle_embedding_generate(&main_only, &embedding, &spec.user_id, &payload, ctx)
+            .await
+            .err();
+        let unchanged = status_rows(&main_only) == before;
+        drop(main_only);
+        assert_eq!(
+            json!({ "error": got, "statusUnchanged": unchanged }),
+            json!({ "error": want["error"], "statusUnchanged": want["statusUnchanged"] }),
+            "the degraded-mount-index row diverges"
+        );
+        assert_eq!(
+            want["error"], "Mount index database not initialized",
+            "the oracle's premise moved: v4 no longer guards the mount-chunk read"
+        );
     }
 
     assert_eq!(

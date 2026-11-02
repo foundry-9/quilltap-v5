@@ -338,7 +338,7 @@ fn extract_pdf_content(buffer: &[u8]) -> ExtractedContent {
         tracing::warn!(
             target: "quilltap::file_content_extractor",
             size = buffer.len(),
-            "pdf-parse found no text, using native fallback extraction"
+            "PDF reader found no text, using native fallback extraction"
         );
         content = extract_pdf_text_fallback(buffer);
     }
@@ -496,7 +496,7 @@ mod tests {
         global_capture::capture(|| extract_pdf_content(bytes))
     }
 
-    const WARN: &str = "WARN quilltap::file_content_extractor pdf-parse found no text, using native fallback extraction";
+    const WARN: &str = "WARN quilltap::file_content_extractor PDF reader found no text, using native fallback extraction";
     const DEBUG: &str = "DEBUG quilltap::file_content_extractor Extracted PDF content";
 
     #[test]

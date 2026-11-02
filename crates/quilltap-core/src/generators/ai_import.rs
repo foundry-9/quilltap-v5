@@ -1013,7 +1013,7 @@ pub fn restamp_structural_fields(data: &mut Value, now: &str) -> i64 {
 // * The PDF arm (`generators::file_content::extract_pdf_content`) is no
 //   longer v5-only (v4 `a434c715b`, bug 177): both sides read through the
 //   converter seam first and announce the regex fallback with v4's WARN
-//   `pdf-parse found no text, using native fallback extraction` `{ size }`.
+//   `PDF reader found no text, using native fallback extraction` `{ size }`.
 //   The one divergence is the seam's — v5's production extractor refuses
 //   (P4.6y), so where pdf-parse would find text v5 runs the fallback — named
 //   and pinned by `file_content_extractor_equivalence`.

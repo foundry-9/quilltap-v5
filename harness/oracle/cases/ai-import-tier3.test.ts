@@ -125,7 +125,7 @@ function unfreezeClock(): void {
  * content (no text found)`), `error` (the catch), or `null` (no PDF reached).
  */
 const PDF_MESSAGES = [
-  'pdf-parse found no text, using native fallback extraction',
+  'PDF reader found no text, using native fallback extraction',
   'Extracted PDF content',
   'Error extracting PDF content',
 ];

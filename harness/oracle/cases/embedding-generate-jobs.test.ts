@@ -317,7 +317,43 @@ async function main(): Promise<void> {
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('help_doc_chunks', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...dumpMountTable('doc_mount_chunks', 'id') }));
 
+  // P4.D354 (v4 `82a2f6536`) — the mount-chunk guard. With the mount index
+  // closed (`getRawMountIndexDatabase()` null), a MOUNT_CHUNK job for a LIVE
+  // chunk throws `requireMountIndexDb`'s text BEFORE the read: no WARN, no
+  // `markAsFailed`, so the chunk's status row is untouched and the job retries.
+  const midb = getRawMountIndexDatabase();
+  if (!midb) throw new Error('mount-index DB handle unavailable');
+  const degradedChunkId = (
+    midb.prepare('SELECT id FROM doc_mount_chunks ORDER BY id LIMIT 1').get() as { id: string }
+  ).id;
   closeMountIndexSQLiteClient();
+  const statusRows = async () =>
+    JSON.stringify(
+      await rawQuery(
+        'SELECT * FROM embedding_status WHERE "entityId" = ? ORDER BY id',
+        [degradedChunkId]
+      )
+    );
+  const statusBefore = await statusRows();
+  let degradedError: string | null = null;
+  try {
+    await handleEmbeddingGenerate({
+      id: 'eg-degraded-mount-index',
+      userId: spec.userId,
+      payload: { entityType: 'MOUNT_CHUNK', entityId: degradedChunkId, profileId: spec.profileId },
+    } as never);
+  } catch (e) {
+    degradedError = e instanceof Error ? e.message : String(e);
+  }
+  lines.push(
+    JSON.stringify({
+      kind: 'degradedMountIndex',
+      chunkId: degradedChunkId,
+      error: degradedError,
+      statusUnchanged: (await statusRows()) === statusBefore,
+    })
+  );
+
   await closeDatabase();
 
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

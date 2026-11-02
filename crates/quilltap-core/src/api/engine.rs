@@ -4540,7 +4540,7 @@ impl CoreEngine {
             // The DirectoryPicker's host-fs browser. No DB access (v4's
             // `createContextHandler` never touches the vault), so no readiness gate.
             Request::SystemBrowseDirectory { path } => {
-                super::system::browse_directory(path.as_deref())
+                super::system::browse_directory(path.as_deref(), &super::system::browse_default_dir(&crate::services::data_dir::DataDirEnv::from_process(), &self.inner.config.base_dir))
             } // === end P4.6z ===
             // === P4.6au: the home dashboard ===
             // v4's route passes `fallbackName: ctx.user.name ?? null` (the

@@ -161,7 +161,7 @@ fn pdf_lines_parse_a_spaced_error_value() {
 #[test]
 fn pdf_lines_parse_the_posed_shapes_unchanged() {
     let lines = vec![
-        "WARN quilltap::file_content_extractor pdf-parse found no text, using \
+        "WARN quilltap::file_content_extractor PDF reader found no text, using \
          native fallback extraction size=812"
             .to_string(),
         "DEBUG quilltap::file_content_extractor Extracted PDF content size=812 chars=40"
@@ -175,7 +175,7 @@ fn pdf_lines_parse_the_posed_shapes_unchanged() {
         vec![
             json!({
                 "level": "warn",
-                "message": "pdf-parse found no text, using native fallback extraction",
+                "message": "PDF reader found no text, using native fallback extraction",
                 "context": {"size": 812},
             }),
             json!({

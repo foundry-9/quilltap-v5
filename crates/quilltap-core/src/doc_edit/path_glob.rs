@@ -263,6 +263,32 @@ mod tests {
         assert!(!m("📁/*.md", "📂/notes.md"));
     }
 
+    /// Contract C4 (P4.D354 item 8): the `doc_list_files` `pattern` description
+    /// gains v4's sentence through P4.D350's `CATALOG` regen — this lane never
+    /// edits `data.rs`. Without `P4D350_CATALOG_LANDED` the test records the
+    /// OLD bytes and passes; the unifier sets it at §S.9 and the NEW sentence
+    /// must then be there.
+    #[test]
+    fn the_catalog_describes_the_glob_rules_once_p4d350_lands() {
+        const OLD: &str = r#""pattern":{"type":"string","description":"Optional: glob pattern to filter results (e.g., \"*.md\", \"*.{ts,tsx}\", \"src/**/*.js\")."}"#;
+        const NEW: &str = r#"A pattern with no \"/\" matches file names in any folder; \"**/\" spans any number of folders, including none. Case-insensitive."#;
+        let def = crate::tools::definitions::TOOL_DEFINITIONS
+            .iter()
+            .find(|d| d.name == "doc_list_files")
+            .expect("doc_list_files in the catalog");
+        if std::env::var_os("P4D350_CATALOG_LANDED").is_some() {
+            assert!(
+                def.json.contains(NEW),
+                "the catalog lacks v4's glob sentence"
+            );
+        } else {
+            assert!(
+                def.json.contains(OLD),
+                "the pre-P4.D350 catalog bytes moved"
+            );
+        }
+    }
+
     #[test]
     fn the_source_generator_matches_v4s_bytes() {
         assert_eq!(

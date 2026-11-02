@@ -82,6 +82,11 @@ const MOUNT_ID: &str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 /// two tests simply must not name the same store.
 const CHUNK_MOUNT_ID: &str = "bbbbbbbb-cccc-4ddd-8eee-ffffffffffff";
 
+/// A THIRD store id for [`a_docker_target_in_the_container_layer_is_refused_even_on_a_dry_run`]:
+/// the in-flight set is process-global, so two tests syncing one id at once
+/// refuse each other with `SYNC_IN_PROGRESS`.
+const PERSISTENCE_MOUNT_ID: &str = "cccccccc-dddd-4eee-8fff-000000000000";
+
 fn corpus_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../harness/oracle/fixtures/sync-engine-scenarios.json")
@@ -509,7 +514,11 @@ fn sync_engine_matches_oracle() {
                         &main,
                         &mount,
                         &options,
-                        &SyncDeps { transcoder: None },
+                        &SyncDeps {
+                            transcoder: None,
+                            mount_info: None,
+                            is_docker: Some(false),
+                        },
                     ) {
                         Ok(report) => {
                             let mut v =
@@ -797,7 +806,11 @@ fn the_sync_issues_no_chunk_sql_of_its_own() {
         &main,
         &mount,
         &SyncOptions::with_defaults(dir.path().to_string_lossy().into_owned()),
-        &SyncDeps { transcoder: None },
+        &SyncDeps {
+            transcoder: None,
+            mount_info: None,
+            is_docker: Some(false),
+        },
     )
     .expect("the sync runs");
     assert_eq!(report.summary.failed, 0, "{:?}", report.actions);
@@ -826,4 +839,101 @@ fn the_sync_issues_no_chunk_sql_of_its_own() {
         "the blob has chunk rows — the sync is writing chunks of its own, which v4's \
          `apply-store.ts` never does (it re-indexes only documents and pdf/docx)"
     );
+}
+
+/// P4.D354 (v4 `faeae2b71`, contract C7): under Docker, a target whose
+/// containing mount is the container's own layer is refused BEFORE the dry-run
+/// branch (so a dry run refuses too and the directory is never conjured), and
+/// a target on a bind mount runs. The mount table comes through the
+/// `MountInfoSource` seam, so this runs off Linux.
+#[test]
+fn a_docker_target_in_the_container_layer_is_refused_even_on_a_dry_run() {
+    use quilltap_core::services::mount_index::persistent_target::{
+        ephemeral_target_message, MountInfoSource,
+    };
+    use quilltap_core::services::mount_index::sync::SyncRefusalCode;
+
+    struct Table(String);
+    impl MountInfoSource for Table {
+        fn read_mount_info(&self) -> std::io::Result<String> {
+            Ok(self.0.clone())
+        }
+    }
+
+    let conn = open_store_for(PERSISTENCE_MOUNT_ID);
+    let main = open_main(None);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let canonical = std::fs::canonicalize(dir.path()).unwrap();
+    let target = canonical.join("not-yet");
+    let mount = SyncMountPoint {
+        id: PERSISTENCE_MOUNT_ID.to_string(),
+        name: "Lore".to_string(),
+        mount_type: "database".to_string(),
+        base_path: String::new(),
+        store_type: "documents".to_string(),
+        scan_status: "idle".to_string(),
+        conversion_status: "idle".to_string(),
+        exclude_patterns: vec![],
+    };
+    let mut options = SyncOptions::with_defaults(target.to_string_lossy().into_owned());
+    options.dry_run = true;
+
+    let overlay = Table("22 1 0:21 / / rw,relatime - overlay overlay rw\n".to_string());
+    let refused = sync_mount_point(
+        &conn,
+        &main,
+        &mount,
+        &options,
+        &SyncDeps {
+            transcoder: None,
+            mount_info: Some(&overlay),
+            is_docker: Some(true),
+        },
+    );
+    match refused {
+        Err(SyncError::Refused(e)) => {
+            assert_eq!(e.code, SyncRefusalCode::TargetNotPersistent);
+            assert_eq!(e.code.as_str(), "TARGET_NOT_PERSISTENT");
+            assert!(!e.code.is_conflict(), "v4's route answers 400, not 409");
+            assert_eq!(
+                e.message,
+                ephemeral_target_message(&target.to_string_lossy())
+            );
+        }
+        other => panic!("expected the TARGET_NOT_PERSISTENT refusal, got {other:?}"),
+    }
+    assert!(!target.exists(), "a refused run must not create the target");
+
+    // The same run outside Docker never reads the table.
+    let ran = sync_mount_point(
+        &conn,
+        &main,
+        &mount,
+        &options,
+        &SyncDeps {
+            transcoder: None,
+            mount_info: Some(&overlay),
+            is_docker: Some(false),
+        },
+    );
+    assert!(ran.is_ok(), "outside Docker the check passes: {ran:?}");
+
+    // A bind mount over the target's parent: persistent, so the dry run runs.
+    let bind = Table(format!(
+        "22 1 0:21 / / rw,relatime - overlay overlay rw\n\
+         40 22 0:50 /host {} rw,relatime - virtiofs mount0 rw\n",
+        canonical.to_string_lossy().replace(' ', "\\040"),
+    ));
+    let ran = sync_mount_point(
+        &conn,
+        &main,
+        &mount,
+        &options,
+        &SyncDeps {
+            transcoder: None,
+            mount_info: Some(&bind),
+            is_docker: Some(true),
+        },
+    );
+    assert!(ran.is_ok(), "a bind-mounted target runs: {ran:?}");
 }

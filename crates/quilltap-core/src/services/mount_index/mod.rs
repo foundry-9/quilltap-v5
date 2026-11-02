@@ -20,6 +20,7 @@ pub mod link_groups;
 pub mod list;
 pub mod normalize_blob_image;
 pub mod path_utils;
+pub mod persistent_target;
 pub mod read_file;
 pub mod refresh;
 pub mod reindex;

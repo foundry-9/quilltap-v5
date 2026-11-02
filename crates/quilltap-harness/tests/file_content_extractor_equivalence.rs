@@ -20,10 +20,12 @@
 //! the no-storage-key and failed-download refusals, and thirteen PDF rows. The
 //! storage read answers the case's bytes on both sides (v4's mocked
 //! `downloadFile`; a [`CaseBackend`] here), and the converter seam is SCRIPTED
-//! identically from the case's `pdfParse` field: v4's mocked `PDFParse.getText`
-//! resolves the text or throws; v5's [`ScriptedTextExtractor`] answers the text,
-//! or `''` for a throw (v4's `convertPdfBufferToText` swallows every throw into
-//! `''`). Compared per case, exactly:
+//! identically from the case's `pdfConverter` field: v4's mocked
+//! `convertPdfBufferToText` (P4.D354 — v4 `026222176` dropped `pdf-parse`, so
+//! the oracle mocks the one reader itself) answers the text, or `''` for a
+//! `throw` script (the real reader swallows every failure) and for an empty
+//! buffer; v5's [`ScriptedTextExtractor`] answers the same. Compared per case,
+//! exactly:
 //!
 //! - `result` — v4's `ExtractedContent` through `JSON.stringify` against v5's
 //!   serialized struct (absent keys stay absent on both sides);
@@ -50,8 +52,10 @@
 //! - **The converter's own WARNs** (`PDF buffer is empty`, `Failed to extract
 //!   text from PDF buffer`, under `MountIndex:PdfConverter`) are v4's and not
 //!   v5's — the seam does not reproduce the converter (P4.D253 Tier 3 item
-//!   10). The oracle records them in `converterLines`; this family pins exactly
-//!   which rows carry them, so a future extractor port knows its list.
+//!   10). Since P4.D354 the oracle mocks the converter itself, so
+//!   `converterLines` is empty on every row (pinned), and `converterCalls`
+//!   proves the mock fired on every downloaded PDF. The reader's assembly
+//!   rules and lines are recorded as the seam's SPEC in `converters.rs`.
 //!
 //! Generate the oracle output (Node 24, from the v4 checkout — the jest case's
 //! own header carries the staged-mirror steps):
@@ -144,7 +148,7 @@ struct Case {
     repeat: Option<Repeat>,
     #[serde(default)]
     missing: bool,
-    pdf_parse: Option<PdfScript>,
+    pdf_converter: Option<PdfScript>,
 }
 
 fn b64(s: &str) -> Vec<u8> {
@@ -188,7 +192,7 @@ impl Case {
     /// The scripted converter answer: v4's `convertPdfBufferToText` returns
     /// `getText().text` (untrimmed), or `''` on a throw / an empty buffer.
     fn scripted_text(&self) -> String {
-        match &self.pdf_parse {
+        match &self.pdf_converter {
             // `getText` threw: the converter's catch answers `''`.
             Some(PdfScript { throw: Some(_), .. }) => String::new(),
             // An empty buffer never reaches the parser (`PDF buffer is empty`).
@@ -446,7 +450,7 @@ fn production_seam_diverges_only_where_pdf_parse_finds_text() {
                 case.name
             );
             let mut expected_lines = vec![format!(
-                "WARN {TARGET} pdf-parse found no text, using native fallback extraction size={}",
+                "WARN {TARGET} PDF reader found no text, using native fallback extraction size={}",
                 case.bytes().len()
             )];
             if let Some(text) = scrape {
@@ -474,32 +478,27 @@ fn production_seam_diverges_only_where_pdf_parse_finds_text() {
 }
 
 #[test]
-fn converter_warns_are_v4_only_on_exactly_the_named_rows() {
+fn the_mocked_converter_fired_on_every_pdf_row_and_logged_nothing() {
     let Some(rows) = load_oracle() else { return };
     let corpus = load_corpus();
     for case in &corpus.cases {
         let row = oracle_row(&rows, &case.name);
-        let messages: Vec<&str> = row["converterLines"]
-            .as_array()
-            .expect("converterLines")
-            .iter()
-            .map(|l| l["message"].as_str().expect("message"))
-            .collect();
-        let expected: &[&str] = match case.name.as_str() {
-            "pdf_throw_then_fallback" | "pdf_fallback_mixed_dedup" => {
-                &["Failed to extract text from PDF buffer"]
-            }
-            "pdf_empty_buffer" => &["PDF buffer is empty"],
-            _ => &[],
-        };
-        assert_eq!(messages, expected, "{}: v4's converter WARNs", case.name);
-        // The mocked parser fired on every PDF row with bytes — a mock that never
-        // fired would have run the REAL pdf-parse over the corpus's junk.
-        let is_pdf = case.file.mime_type == "application/pdf";
-        let want_calls = u64::from(is_pdf && !case.bytes().is_empty());
+        // P4.D354 (v4 `026222176`): the oracle mocks `convertPdfBufferToText`
+        // itself, so the real reader's two WARNs (`Failed to extract text from
+        // PDF buffer`, `PDF buffer is empty` — v5's named non-port) never fire.
         assert_eq!(
-            row["parserCalls"], want_calls,
-            "{}: parser calls",
+            row["converterLines"],
+            serde_json::json!([]),
+            "{}: v4's converter lines",
+            case.name
+        );
+        // The mocked converter fired on every PDF row whose bytes downloaded —
+        // a mock that never fired would have run the REAL reader.
+        let is_pdf = case.file.mime_type == "application/pdf";
+        let want_calls = u64::from(is_pdf && !case.missing);
+        assert_eq!(
+            row["converterCalls"], want_calls,
+            "{}: converter calls",
             case.name
         );
     }

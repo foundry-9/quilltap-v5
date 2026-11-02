@@ -2858,6 +2858,39 @@ fn cli_differential() {
         CaseOpts::default(),
     );
 
+    // P4.D354 (v4 `faeae2b71`): inside a container (`DOCKER_CONTAINER=true`)
+    // with no `--data-dir`, no `QUILLTAP_DATA_DIR` (`run_bin` removes it) and
+    // no registered default (the fixture registry's `defaultInstance` is
+    // null), both CLIs default to `/app/quilltap/data`. Equal output alone
+    // could be vacuous, so the path must appear in BOTH.
+    assert!(
+        !Path::new("/.dockerenv").exists() && !Path::new("/app/quilltap").exists(),
+        "the container row assumes a host with no /.dockerenv and no /app/quilltap"
+    );
+    {
+        let args = vec!["db".to_string(), "--lock-status".to_string()];
+        let opts = || CaseOpts {
+            envs: vec![("DOCKER_CONTAINER", "true".to_string())],
+            ..Default::default()
+        };
+        ctx.case_with("db lock-status in container", &args, opts());
+        ctx.reset_live(&opts());
+        let v4 = ctx.run_v4(&args, &opts());
+        ctx.reset_live(&opts());
+        let v5 = ctx.run_v5(&args, &opts());
+        for (side, out) in [("v4", &v4), ("v5", &v5)] {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            assert!(
+                text.contains("/app/quilltap/data"),
+                "{side} does not name the container default:\n{text}"
+            );
+        }
+    }
+
     // Corrupt lock.
     let corrupt_pre = |live: &Path| {
         std::fs::write(live.join("instA/data/quilltap.lock"), "{ not json").unwrap();

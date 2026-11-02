@@ -19,7 +19,7 @@
 //!   - `store` — the lookup's 404, and the ordering that puts the body parse
 //!     FIRST (a bad body on a missing store is a 400, not a 404).
 //!   - `refusal` — each error the engine can raise, mapped through the ladder.
-//!     The three "busy" codes are 409s; `NOT_DATABASE_BACKED`,
+//!     The three "busy" codes are 409s; `NOT_DATABASE_BACKED`, `TARGET_NOT_PERSISTENT`,
 //!     `CHARACTER_ARCHIVED` and an unrecognized code are 400s; `ENOENT` gets its
 //!     own Docker sentence; everything else is a 500.
 //!
@@ -231,12 +231,21 @@ fn mount_sync_action_matches_oracle() {
                         message: "scanning".to_string(),
                         code: SyncRefusalCode::ScanInProgress,
                     }),
+                    // P4.D354 (v4 `faeae2b71`): the message is the PORT's own
+                    // bytes, so the row also pins `ephemeral_target_message`.
+                    "TARGET_NOT_PERSISTENT" => SyncError::Refused(SyncRefusedError {
+                        message:
+                            quilltap_core::services::mount_index::persistent_target::ephemeral_target_message(
+                                "/tmp/qt-sync-out",
+                            ),
+                        code: SyncRefusalCode::TargetNotPersistent,
+                    }),
                     // v5's refusal codes are a closed enum, so v4's
                     // "a code the ladder has never heard of" has no v5
                     // counterpart to construct — the arm is unreachable by
                     // construction rather than unported. What it PROVES on v4's
                     // side is that the `SyncRefusedError` test precedes the
-                    // ENOENT and 500 arms, which the five above already pin, so
+                    // ENOENT and 500 arms, which the six above already pin, so
                     // the row is asserted as v4's status alone.
                     "an-unknown-refusal-code" => {
                         if want_status != 400 {
@@ -276,8 +285,8 @@ fn mount_sync_action_matches_oracle() {
         mismatches.join("\n  ")
     );
     assert_eq!(
-        n, 36,
-        "expected the full corpus (36 rows), saw {n} — stale oracle?"
+        n, 37,
+        "expected the full corpus (37 rows — P4.D354 added TARGET_NOT_PERSISTENT), saw {n} — stale oracle?"
     );
     for kind in ["schema", "store", "refusal"] {
         assert!(
