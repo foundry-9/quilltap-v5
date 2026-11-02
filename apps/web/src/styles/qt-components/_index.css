@@ -36,6 +36,7 @@
 @import "./_layout.css";       /* Navbar, sidebar, page containers */
 @import "./_chat.css";         /* Chat messages, composer, participants */
 @import "./_roleplay.css";     /* Roleplay-template chips + add-on flourishes */
+@import "./_storyteller.css";  /* Storyteller turn-mode control + bidding board */
 @import "./_content.css";      /* Badges, avatars, code blocks */
 @import "./_toast.css";        /* The notification stack (v4 lib/toast.tsx) */
 @import "./_typography.css";   /* Semantic typography classes */

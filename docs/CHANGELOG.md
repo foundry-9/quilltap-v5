@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the storyteller board — bids, selection, run / let lie, the folded summary
+
+_Versions: SPA 0.5.909._
+
+P4.D344 Tier 1 items 4, 5 and 11. The board above the composer (v4 `components/chat/StorytellerBoard.tsx` at `236c04e35`): the round query with the 60 s offline poll, the summary line's five texts, the open board's header, cards, tier badges, plan / status / Destroy warning / raised-tier / `Tools:` / `Talkativeness` lines, `Ask anyway`, `Select all`, the destroy-exclusive selection rule, `Run in order` / `All at once` / `Let it lie` with v4's enablement, and the selection reset on a new round id. The pure helpers (`arrangeBids`, `withBid`, `statusLine`, `cardClass`, `ordinal`, `summaryText`, `turnModeOf`, the selection rules) live in `storyteller-board.pure.ts`, whose spec transcribes v4's four `arrangeBids` cases by name. Tier 1 ships no arrangement (ruling R-L: no drag dependency), so `keepOrder` is false and v4's drag hint is omitted. `_storyteller.css` is a byte copy of the pin's sheet (`cmp` identical), imported after `_roleplay.css` as in v4.
+
 #### 2026-11-02 — feat(spa): the Storyteller wire W1 — contract types, the round key, the ninth realtime topic
 
 _Versions: SPA 0.5.908._
