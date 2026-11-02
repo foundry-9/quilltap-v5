@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): every form control named with v4's bytes, a static accessible-name census in lint, the skip link, the reply announcer, and an optional axe sweep
+
+_Versions: SPA 0.5.910._
+
+P4.D358 (v4 `eed72d60c`, `10e09b7c3`, `68340008b`, `dff76ebef`). The accessible-name sweep names every control in the files this lane owns with v4's strings: `<label for>` / `id` pairs with per-instance ids, headings linked by `aria-labelledby`, and v4's `aria-label` bytes. Controls v4 never named get a visible or `sr-only` label rather than an invented string. The model selector gains an `id` input and the `Toggle model list` chevron. New `scripts/check-a11y-names.mjs` (with `--self-test`) runs in `npm run lint` and `npm test` and fails on any unnamed input, select, textarea, role widget, dialog, or icon-only button. Its allowlist names only sibling-owned files whose fixes travel as handoffs; on main it counted 143 offenders in 76 files, and none remain outside the allowlist. The shell gains v4's `Skip to content` link and a focusable `<main id="main-content">`. New `chat/reply-announcer.ts` speaks a new reply (`<name> replied: …`, 300 characters); the Salon mount is a handoff to P4.D344. Document Mode announces `Saved` / `AI editing...` and names its title and source fields. The participant card says `Unmoderated chat.` and labels both talkativeness sliders, and the markdown field's frame is a named `role="group"`. In the terminal, F6 / Shift+F6 step focus out. The store title, file rows, gallery tiles and Document Mode title activate on Enter and Space. The inline copy-id button gets a 24 px target, and the LLM-logs card gets the `Storyteller Bid` label (P4.D344's handoff). Adds the dev dependency `@axe-core/playwright` 4.14.0 (`axe-core` 4.14.0), run by an optional `a11y` Playwright project (`e2e/a11y/axe-sweep.spec.ts`, diffed against `known-violations.json`) that the default e2e run skips.
+
 #### 2026-11-02 — fix(spa): dialogs announce as v4's — `qtDialogFocus`, `qt-modal`'s `closeOnEscape`, and every hand-rolled overlay named by its title
 
 _Versions: SPA 0.5.909._

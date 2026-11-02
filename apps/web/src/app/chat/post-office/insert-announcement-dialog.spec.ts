@@ -490,7 +490,8 @@ describe('InsertAnnouncementDialog (v4 components/chat/InsertAnnouncementDialog.
 
     it('renders no audience section when there are no candidates', async () => {
       const fixture = await mount(stub({}));
-      expect(fixture.nativeElement.querySelector('[role="group"]')).toBeNull();
+      // (The markdown field's frame is a role="group" too since P4.D358 — v4 68340008b.)
+      expect(fixture.nativeElement.querySelector('[role="group"]:not(qt-markdown-field)')).toBeNull();
     });
 
     it('shows every candidate with a (you) tag and a status tag when present', async () => {

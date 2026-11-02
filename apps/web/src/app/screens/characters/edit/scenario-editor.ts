@@ -87,6 +87,7 @@ import { newScenario } from './character-form';
             <div class="qt-card">
               <div class="flex items-center gap-2 mb-2">
                 <input
+                  aria-label="Scenario title"
                   type="text"
                   class="qt-input flex-1"
                   placeholder="Scenario title"

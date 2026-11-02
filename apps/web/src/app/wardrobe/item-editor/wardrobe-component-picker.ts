@@ -71,6 +71,7 @@ import type { CandidateGroup, CandidateItem } from './types';
 
       <input
         type="search"
+        aria-label="Search items to add as components"
         [value]="componentSearch()"
         (input)="componentSearchChange.emit($any($event.target).value)"
         (blur)="componentsBlur.emit()"

@@ -251,7 +251,9 @@ describe('MarkdownField — the source-mode toggle', () => {
     const fixture = await render('body');
     await toggleSource(fixture);
     const ta = sourceArea(fixture)!;
-    expect(ta.getAttribute('aria-label')).toBe('Editor (markdown source)');
+    // v4 (:225): `ariaLabel ? `${ariaLabel} (markdown source)` : 'Markdown source'` —
+    // with no caller label (v4's default, since P4.D358 / 68340008b).
+    expect(ta.getAttribute('aria-label')).toBe('Markdown source');
     expect(ta.getAttribute('spellcheck')).toBe('false');
   });
 
@@ -328,5 +330,42 @@ describe('MarkdownField — the source-mode toggle', () => {
     button(fixture, 'h1').click();
     fixture.detectChanges();
     expect(sourceArea(fixture)!.value).toBe('# # title');
+  });
+});
+
+/** P4.D358 — v4 `68340008b` `MarkdownLexicalEditor.tsx`: the frame and the editable's names. */
+@Component({
+  imports: [MarkdownField],
+  template: `<qt-markdown-field [value]="''" [ariaLabel]="label()" />`,
+})
+class LabelHost {
+  readonly label = signal<string | undefined>(undefined);
+}
+
+describe('MarkdownField — the frame is a named group (v4 68340008b)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function renderLabel(label: string | undefined) {
+    TestBed.configureTestingModule({ imports: [LabelHost] });
+    const fixture = TestBed.createComponent(LabelHost);
+    fixture.componentInstance.label.set(label);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  }
+
+  it('without a caller label: the frame is role="group" with NO name, the editable reads "Markdown editor"', async () => {
+    const el = await renderLabel(undefined);
+    const frame = el.querySelector('qt-markdown-field')!;
+    expect(frame.getAttribute('role')).toBe('group');
+    expect(frame.hasAttribute('aria-label')).toBe(false);
+    expect(el.querySelector('qt-rich-editor [aria-label="Markdown editor"]')).not.toBeNull();
+  });
+
+  it('with a caller label: the frame AND the editable carry it', async () => {
+    const el = await renderLabel('Personality');
+    expect(el.querySelector('qt-markdown-field')!.getAttribute('aria-label')).toBe('Personality');
+    expect(el.querySelector('qt-rich-editor [aria-label="Personality"]')).not.toBeNull();
   });
 });

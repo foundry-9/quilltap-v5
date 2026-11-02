@@ -146,7 +146,7 @@ function scenarioRecordKey(fixture: ComponentFixture<NewChatForm>): unknown {
   const field = fixture.debugElement
     .queryAll(By.directive(MarkdownField))
     .map((d) => d.componentInstance as MarkdownField)
-    .find((f) => ['Starting scenario', 'Additional scenario notes'].includes(f.ariaLabel()));
+    .find((f) => ['Starting scenario', 'Additional scenario notes'].includes(f.ariaLabel() ?? ''));
   if (!field) throw new Error('the scenario editor is not rendered');
   return field.recordKey();
 }

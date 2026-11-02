@@ -56,6 +56,7 @@ const DESKTOP_MIN_WIDTH = 768;
           (keydown)="onInputKeydown($event)"
           (focus)="onFocus()"
           placeholder="Search... (⌘K)"
+          aria-label="Search"
           class="qt-input w-48 lg:w-64 pl-9 pr-3 py-1.5 focus:border-transparent transition-all"
         />
       </div>

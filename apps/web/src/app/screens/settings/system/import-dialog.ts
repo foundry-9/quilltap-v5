@@ -41,6 +41,9 @@ interface PreviewEntity {
   detail?: string;
 }
 
+/** One label/control id prefix per instance — v4's `useId()` (P4.D358 C9 R4). */
+let nextImportDialogId = 0;
+
 /**
  * The Import Data dialog (v4 `components/tools/import-dialog.tsx` +
  * `hooks/useImportData.ts`): a 5-step wizard — drag/drop a `.qtap`, preview,
@@ -62,7 +65,8 @@ interface PreviewEntity {
       @switch (step()) {
         @case ('file') {
           <div class="space-y-4">
-            <p class="qt-text-small qt-text-secondary">Select a Quilltap export file (.qtap) to import.</p>
+            <!-- v4 ImportFileStep.tsx's file input is unnamed; the caption names it (P4.D358 C9 R4). -->
+            <label class="block qt-text-small qt-text-secondary" [for]="fieldId + '-file'">Select a Quilltap export file (.qtap) to import.</label>
             <div
               class="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors"
               [class]="
@@ -78,6 +82,7 @@ interface PreviewEntity {
             >
               <input
                 #fileInput
+                [id]="fieldId + '-file'"
                 type="file"
                 accept=".qtap,.json"
                 class="hidden"
@@ -304,6 +309,7 @@ interface PreviewEntity {
   `,
 })
 export class ImportDialog {
+  protected readonly fieldId = `qt-import-${++nextImportDialogId}`;
   readonly close = output<void>();
 
   protected readonly strategies: { value: ConflictStrategy; label: string }[] = [

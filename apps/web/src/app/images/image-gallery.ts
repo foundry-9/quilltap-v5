@@ -6,6 +6,7 @@ import { Icon } from '../ui/icon';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
 import { ToastService } from '../ui/toast.service';
 import type { ImageData } from './images.api';
+import { activateOnKey } from '../ui/activate-on-key';
 
 /**
  * The generic image tile grid — a port of v4
@@ -53,7 +54,15 @@ import type { ImageData } from './images.api';
             }} {{ onSelectImage() ? 'cursor-pointer' : '' }}"
             (click)="onSelectImage()?.(image)"
           >
-            <div class="aspect-square relative qt-bg-muted">
+            <!-- v4 image-gallery (dff76ebef): a selectable, present tile is a toggle
+                 button; otherwise the attributes are ABSENT. -->
+            <div
+              class="aspect-square relative qt-bg-muted"
+              [attr.role]="selectable(image) ? 'button' : null"
+              [attr.tabindex]="selectable(image) ? 0 : null"
+              [attr.aria-pressed]="selectable(image) ? selectedImageId() === image.id : null"
+              (keydown)="selectable(image) && activateOnKey($event)"
+            >
               @if (missingImages().has(image.id)) {
                 <qt-deleted-image-placeholder
                   [imageId]="image.id"
@@ -111,6 +120,8 @@ import type { ImageData } from './images.api';
   `,
 })
 export class ImageGallery {
+  protected readonly activateOnKey = activateOnKey;
+
   private readonly toasts = inject(ToastService);
 
   readonly images = input.required<ImageData[]>();
@@ -126,6 +137,11 @@ export class ImageGallery {
   readonly reloadImages = output<void>();
 
   protected readonly missingImages = signal<ReadonlySet<string>>(new Set());
+
+  /** v4's conditional spread: a tile is a button only when selectable AND present. */
+  protected selectable(image: ImageData): boolean {
+    return !!this.onSelectImage() && !this.missingImages().has(image.id);
+  }
 
   protected srcFor(image: ImageData): string {
     const raw = image.url || (image.filepath.startsWith('/') ? image.filepath : `/${image.filepath}`);

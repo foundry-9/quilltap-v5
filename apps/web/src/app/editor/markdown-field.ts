@@ -74,7 +74,10 @@ import { applySourceFormat } from './source-transforms';
   selector: 'qt-markdown-field',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RichEditor, FormattingToolbar],
-  host: { class: 'qt-markdown-field' },
+  // v4 `68340008b`: the frame is `role="group"` named by the caller's raw
+  // `ariaLabel` (absent when none is passed); the editable area defaults to
+  // `Markdown editor`.
+  host: { class: 'qt-markdown-field', role: 'group', '[attr.aria-label]': 'ariaLabel()' },
   template: `
     <qt-formatting-toolbar
       [disabled]="disabled()"
@@ -104,7 +107,7 @@ import { applySourceFormat } from './source-transforms';
         [value]="sourceText()"
         [placeholder]="placeholder()"
         [disabled]="disabled()"
-        [ariaLabel]="ariaLabel()"
+        [ariaLabel]="ariaLabel() ?? 'Markdown editor'"
         (contentChange)="onEditorContentChange($event)"
         (imagePaste)="imagePaste.emit($event)"
       />
@@ -115,7 +118,7 @@ export class MarkdownField {
   readonly value = input('');
   readonly placeholder = input('');
   readonly disabled = input(false);
-  readonly ariaLabel = input('Editor');
+  readonly ariaLabel = input<string | undefined>(undefined);
   /** v4 `remountKey` — re-init the editor when the bound record changes. */
   readonly recordKey = input<string | number | null>(null);
   /**

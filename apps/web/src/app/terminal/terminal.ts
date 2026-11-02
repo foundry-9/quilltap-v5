@@ -15,6 +15,7 @@ import {
 import { Terminal as XTermTerminal, type ITheme } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 
+import { DIALOG_FOCUSABLE } from '../ui/dialog-focus';
 import {
   TerminalSessionService,
   type ExitInfo,
@@ -115,6 +116,10 @@ export class Terminal implements OnInit, AfterViewInit {
     term.loadAddon(fitAddon);
 
     term.open(el);
+    // The shell needs Tab, so xterm keeps it — which would trap a keyboard
+    // user inside the terminal (WCAG 2.1.2). F6 / Shift+F6, the browser's
+    // own "next pane" key, steps focus out to the next / previous control.
+    term.attachCustomKeyEventHandler(f6EscapeHatch(el));
     try {
       fitAddon.fit();
     } catch {
@@ -189,6 +194,41 @@ type ExitableTerm = Pick<XTermTerminal, 'write' | 'textarea'>;
  * Exported for the spec: v5's unit env (vitest + jsdom, no canvas) cannot stand
  * up a real xterm instance, so the spec drives this with a fake term.
  */
+/**
+ * Move keyboard focus to the first focusable control after (direction 1) or
+ * before (direction -1) `container`, skipping everything inside it — xterm's
+ * own hidden textarea included. v4 `Terminal.tsx:240-250` (`10e09b7c3`), over
+ * the ONE shared selector `DIALOG_FOCUSABLE` (v4 keeps a second copy of it
+ * here; `FOCUSABLE_ONE_CONSTANT`, P4.D358).
+ */
+/**
+ * xterm's custom key handler for {@link moveFocusOutOf}: F6 / Shift+F6 leave
+ * the terminal; every other key goes to the shell (`true`).
+ */
+export function f6EscapeHatch(container: HTMLElement): (event: KeyboardEvent) => boolean {
+  return (event: KeyboardEvent) => {
+    if (event.key !== 'F6' || event.type !== 'keydown') return true;
+    event.preventDefault();
+    moveFocusOutOf(container, event.shiftKey ? -1 : 1);
+    return false;
+  };
+}
+
+export function moveFocusOutOf(container: HTMLElement | null, direction: 1 | -1): void {
+  if (!container) return;
+  const all = Array.from(document.querySelectorAll<HTMLElement>(DIALOG_FOCUSABLE)).filter(
+    (el) => !container.contains(el) && el.offsetParent !== null,
+  );
+  const target =
+    direction === 1
+      ? all.find((el) => container.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)
+      : [...all]
+          .reverse()
+          .find((el) => container.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+  if (target) target.focus();
+  else (document.activeElement as HTMLElement | null)?.blur();
+}
+
 export function applySessionExit(term: ExitableTerm, info: ExitInfo | null): void {
   const line = info?.signal
     ? `\r\n[session ended — signal ${info.signal}]\r\n`

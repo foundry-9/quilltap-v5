@@ -379,6 +379,7 @@ const MODEL_SUGGESTIONS: Record<string, string[]> = {
               </datalist>
             } @else if (fetchedModels().length > 0) {
               <qt-model-selector
+                [id]="'qt-pf-model'"
                 [models]="fetchedModels()"
                 [value]="form().modelName"
                 placeholder="Select or search a model"

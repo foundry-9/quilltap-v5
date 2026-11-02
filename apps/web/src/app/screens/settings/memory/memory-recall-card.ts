@@ -33,6 +33,9 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
   },
 ];
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `memory-recall-card.tsx` `${id}-scope-policy`). */
+let nextMemoryRecallCardId = 0;
+
 /**
  * The Recall Relevance card (v4 `components/tools/memory-recall-card.tsx`): the
  * cross-project scope policy (`down-weight` | `exclude`), the expand-related
@@ -55,8 +58,9 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
         </p>
 
         <div>
-          <label class="qt-text-label block mb-2">Cross-project memories:</label>
+          <label class="qt-text-label block mb-2" [for]="fieldId + '-scope-policy'">Cross-project memories:</label>
           <select
+            [id]="fieldId + '-scope-policy'"
             class="qt-select w-full"
             [disabled]="saving()"
             (change)="onScopePolicyChange($any($event.target).value)"
@@ -125,6 +129,7 @@ const SCOPE_POLICY_OPTIONS: ReadonlyArray<{
   `,
 })
 export class MemoryRecallCard {
+  protected readonly fieldId = `qt-memory-recall-${++nextMemoryRecallCardId}`;
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

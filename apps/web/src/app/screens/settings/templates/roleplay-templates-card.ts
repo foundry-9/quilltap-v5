@@ -11,6 +11,9 @@ import { TemplateFormModal } from './template-form-modal';
 import { TemplatePreviewModal } from './template-preview-modal';
 import { deleteRoleplayTemplate, fetchRoleplayTemplates, templateKeys } from './templates.api';
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `roleplay-templates/index.tsx` `${id}-default-template`). */
+let nextRoleplayTemplatesCardId = 0;
+
 /**
  * The Roleplay Templates manager (v4 `components/settings/roleplay-templates/
  * index.tsx`): the global Default Template selector, the read-only Built-in
@@ -52,9 +55,10 @@ import { deleteRoleplayTemplate, fetchRoleplayTemplates, templateKeys } from './
           This template will be applied to all new chats by default. You can override it
           per-character or per-chat.
         </p>
-        <label class="block qt-text-label mb-1">Template for New Chats</label>
+        <label class="block qt-text-label mb-1" [for]="fieldId + '-default-template'">Template for New Chats</label>
         <div class="flex items-center gap-3">
           <select
+            [id]="fieldId + '-default-template'"
             class="qt-select max-w-md"
             [disabled]="defaultSaving()"
             (change)="onDefaultChange($any($event.target).value)"
@@ -215,6 +219,7 @@ import { deleteRoleplayTemplate, fetchRoleplayTemplates, templateKeys } from './
   `,
 })
 export class RoleplayTemplatesCard {
+  protected readonly fieldId = `qt-rp-templates-${++nextRoleplayTemplatesCardId}`;
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
 

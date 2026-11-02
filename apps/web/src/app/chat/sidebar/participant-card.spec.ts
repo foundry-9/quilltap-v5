@@ -545,3 +545,42 @@ describe('ParticipantCard — Stop button (moved to the composer)', () => {
     expect((fixture.componentInstance as unknown as { stopStreaming?: unknown }).stopStreaming).toBeUndefined();
   });
 });
+
+describe('ParticipantCard — accessible names (P4.D358, WCAG 1.4.1 / 1.3.1)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('says "Unmoderated chat." in words as the card root’s first child iff the chat is dangerous', () => {
+    const danger = mount({ isDangerousChat: true });
+    const root = danger.nativeElement.querySelector('.participant-card') as HTMLElement;
+    const first = root.firstElementChild as HTMLElement;
+    expect(first.tagName).toBe('SPAN');
+    expect(first.classList.contains('sr-only')).toBe(true);
+    expect(first.textContent?.trim()).toBe('Unmoderated chat.');
+
+    const safe = mount({ isDangerousChat: false });
+    const spans = [...safe.nativeElement.querySelectorAll('span.sr-only')] as HTMLElement[];
+    expect(spans.some((s) => s.textContent?.includes('Unmoderated chat.'))).toBe(false);
+  });
+
+  it('names each Talkativeness range by a <label for>, and the live one carries no aria-label', () => {
+    const labelled = (fixture: ComponentFixture<ParticipantCard>): HTMLInputElement => {
+      const label = ([...fixture.nativeElement.querySelectorAll('label')] as HTMLLabelElement[]).find(
+        (l) => l.textContent?.trim() === 'Talkativeness',
+      )!;
+      expect(label).toBeTruthy();
+      const forId = label.getAttribute('for')!;
+      expect(forId).toBeTruthy();
+      const target = fixture.nativeElement.querySelector(`[id="${forId}"]`) as HTMLInputElement;
+      expect(target).toBeTruthy();
+      expect(target.type).toBe('range');
+      return target;
+    };
+
+    const live = labelled(mount());
+    expect(live.disabled).toBe(false);
+    expect(live.hasAttribute('aria-label')).toBe(false);
+
+    const na = labelled(mount({ isUserParticipant: true }));
+    expect(na.disabled).toBe(true);
+  });
+});

@@ -73,6 +73,9 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
     { value: 'LOCAL', label: 'Local', description: 'Use local Ollama embeddings' },
   ];
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `CheapLLMSettings.tsx` `${id}-user-profile` / `-default-profile`). */
+let nextCheapLlmCardId = 0;
+
 /**
  * The Cheap LLM card (v4 `chat-settings/CheapLLMSettings.tsx`): the strategy
  * radios, the user-defined + global-default profile selectors, the fallback
@@ -116,8 +119,9 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
         <!-- User-defined profile -->
         @if (cheap().strategy === 'USER_DEFINED') {
           <div>
-            <label class="block qt-text-label mb-2">Select Cheap LLM Profile</label>
+            <label class="block qt-text-label mb-2" [for]="fieldId + '-user-profile'">Select Cheap LLM Profile</label>
             <select
+              [id]="fieldId + '-user-profile'"
               class="qt-select"
               [disabled]="saving() || profilesQuery.isPending()"
               (change)="update({ userDefinedProfileId: $any($event.target).value || null })"
@@ -141,13 +145,14 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
 
         <!-- Global default override -->
         <div>
-          <label class="block qt-text-label mb-2"
+          <label class="block qt-text-label mb-2" [for]="fieldId + '-default-profile'"
             >Global Default Cheap LLM (Optional Override)</label
           >
           <p class="qt-text-xs mb-2">
             If set, this profile will always be used regardless of strategy
           </p>
           <select
+            [id]="fieldId + '-default-profile'"
             class="qt-select"
             [disabled]="saving() || profilesQuery.isPending()"
             (change)="update({ defaultCheapProfileId: $any($event.target).value || null })"
@@ -231,6 +236,7 @@ const EMBEDDING_PROVIDERS: Array<{ value: EmbeddingProvider; label: string; desc
   `,
 })
 export class CheapLlmCard {
+  protected readonly fieldId = `qt-cheap-llm-${++nextCheapLlmCardId}`;
   private readonly core = inject(CoreClient);
   private readonly queryClient = injectQueryClient();
 

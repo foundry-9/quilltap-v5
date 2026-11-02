@@ -13,6 +13,9 @@ import { ModelSelector } from '../../../../ui/model-selector';
 import { fetchModels } from '../wizard-api';
 import { WizardStore } from '../wizard-state';
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `ModelSelectionStep.tsx:242` `${id}-cheap-provider`). */
+let nextModelSelectionStepId = 0;
+
 /** Wizard step 3 — pick the chat + cheap models (v4 `steps/ModelSelectionStep.tsx`). */
 @Component({
   selector: 'qt-wizard-model-step',
@@ -137,8 +140,9 @@ import { WizardStore } from '../wizard-state';
         @if (store.cheapConfig().strategy === 'USER_DEFINED') {
           <div class="ml-6 space-y-4 border-l-2 qt-border-default pl-4">
             <div>
-              <label class="qt-text-label block mb-1.5">Provider</label>
+              <label class="qt-text-label block mb-1.5" [for]="fieldId + '-cheap-provider'">Provider</label>
               <select
+                [id]="fieldId + '-cheap-provider'"
                 class="qt-input w-full"
                 (change)="store.setCheapConfig({ provider: $any($event.target).value, model: '' })"
               >
@@ -171,6 +175,7 @@ import { WizardStore } from '../wizard-state';
   `,
 })
 export class ModelSelectionStep implements OnInit {
+  protected readonly fieldId = `qt-model-selection-${++nextModelSelectionStepId}`;
   protected readonly store = inject(WizardStore);
   private readonly core = inject(CoreClient);
 

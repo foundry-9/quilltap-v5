@@ -253,3 +253,22 @@ describe('FileManager — reads', () => {
     );
   });
 });
+
+describe('FileManager — accessible names (P4.D358)', () => {
+  beforeEach(() => vi.stubGlobal('open', vi.fn()));
+
+  it('inside a sub-folder the ".." up button is named "Up one folder"', async () => {
+    const { fixture } = await mount(ALL, {
+      files: [{ relativePath: 'Drafts/idea.md', fileSizeBytes: 2, lastModified: null }],
+      folders: ['Drafts'],
+    });
+    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="Up one folder"]')).toBeNull();
+    byTestId(fixture, 'fm-folder-row')!.querySelector('button')!.click();
+    fixture.detectChanges();
+    const up = (fixture.nativeElement as HTMLElement).querySelector(
+      'button[aria-label="Up one folder"]',
+    ) as HTMLButtonElement;
+    expect(up).toBeTruthy();
+    expect(up.textContent).toContain('..');
+  });
+});

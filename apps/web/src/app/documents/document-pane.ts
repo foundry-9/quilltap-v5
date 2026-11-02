@@ -35,6 +35,7 @@ import {
 } from './frontmatter';
 import { documentPaneUri } from './qtap-uri';
 import { ToastService } from '../ui/toast.service';
+import { activateOnKey } from '../ui/activate-on-key';
 
 /**
  * `qt-document-pane` — the right-side document editor (v4 `DocumentPane`): a
@@ -107,13 +108,21 @@ import { ToastService } from '../ui/toast.service';
           <input
             #titleInput
             class="qt-doc-title-input"
+            aria-label="Document title"
             [value]="editTitle()"
             (input)="editTitle.set($any($event.target).value)"
             (blur)="submitTitle()"
             (keydown)="onTitleKeyDown($event)"
           />
         } @else {
-          <span class="qt-doc-title cursor-pointer" title="Click to rename" (click)="startTitleEdit()">
+          <span
+            class="qt-doc-title cursor-pointer"
+            title="Click to rename"
+            role="button"
+            tabindex="0"
+            (keydown)="activateOnKey($event)"
+            (click)="startTitleEdit()"
+          >
             {{ document().displayTitle }}
           </span>
         }
@@ -248,7 +257,7 @@ import { ToastService } from '../ui/toast.service';
           <textarea
             #sourceArea
             class="qt-doc-editor-area w-full h-full p-4 qt-bg-input qt-text-primary font-mono text-sm resize-none outline-none"
-            [attr.aria-label]="'Document editor'"
+            [attr.aria-label]="isMarkdown() ? 'Document source' : 'Document content'"
             [value]="editorValue()"
             (input)="onEditorInput($any($event.target).value)"
             [disabled]="entry().isLLMEditing"
@@ -270,11 +279,16 @@ import { ToastService } from '../ui/toast.service';
         @if (entry().isLLMEditing) {
           <span class="qt-doc-status-item ml-auto">AI editing...</span>
         }
+        <!-- Screen readers hear each completed save and the AI starting to edit,
+             not every Unsaved/Saving flicker while typing. -->
+        <span class="sr-only" role="status" aria-live="polite">{{ liveStatus() }}</span>
       </div>
     </div>
   `,
 })
 export class DocumentPane {
+  protected readonly activateOnKey = activateOnKey;
+
   private readonly toasts = inject(ToastService);
   /**
    * Type-time dash/ellipsis substitution, the Document Mode half (v4 mounts
@@ -358,6 +372,15 @@ export class DocumentPane {
     if (this.entry().isDirty) return 'Unsaved';
     return 'Saved';
   });
+
+  /**
+   * The live status (v4 `DocumentPane.tsx:757-759`, `10e09b7c3`):
+   * `editingIndicator ?? (saveStatus.label === 'Saved' ? 'Saved' : '')`, where
+   * v5's editing indicator is the literal `AI editing...`.
+   */
+  protected readonly liveStatus = computed(() =>
+    this.entry().isLLMEditing ? 'AI editing...' : this.saveLabel() === 'Saved' ? 'Saved' : '',
+  );
   protected readonly saveDotClass = computed(() =>
     this.entry().isSaving || this.entry().isDirty ? 'qt-doc-status-saving' : 'qt-doc-status-saved',
   );

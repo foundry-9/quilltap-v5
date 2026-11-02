@@ -9,6 +9,9 @@ import { getPronounPreset, PRONOUN_PRESETS } from './character-form';
 import { ScenarioEditor } from './scenario-editor';
 import { TagChipEditor } from './tag-chip-editor';
 
+/** Per-instance prefix for the label ids (v4 `CharacterBasicInfo.tsx` `useId()`). */
+let nextCharDetailsId = 0;
+
 /**
  * The Details tab (v4 `app/aurora/[id]/edit/components/CharacterBasicInfo.tsx`):
  * the system-transparency / Carina / Core-whisper toggles, name, aliases,
@@ -147,6 +150,7 @@ import { TagChipEditor } from './tag-chip-editor';
               <button
                 type="button"
                 class="ml-1 qt-text-secondary hover:text-foreground"
+                [attr.aria-label]="'Remove alias ' + alias"
                 (click)="removeAlias(i)"
               >
                 &times;
@@ -155,6 +159,7 @@ import { TagChipEditor } from './tag-chip-editor';
           }
         </div>
         <input
+          aria-label="Add alias"
           type="text"
           class="qt-input"
           placeholder="Type an alias and press Enter"
@@ -166,11 +171,12 @@ import { TagChipEditor } from './tag-chip-editor';
 
       <!-- Pronouns -->
       <div>
-        <label class="block qt-label mb-2">Pronouns (Optional)</label>
+        <label [for]="fieldId + '-f0'" class="block qt-label mb-2">Pronouns (Optional)</label>
         <p class="text-xs qt-text-secondary mb-2">
           The character&apos;s pronouns, included in system prompts so the LLM uses them correctly.
         </p>
         <select
+          [id]="fieldId + '-f0'"
           class="qt-select"
           [value]="pronounPreset()"
           (change)="onPronounPresetChange($any($event.target).value)"
@@ -182,8 +188,9 @@ import { TagChipEditor } from './tag-chip-editor';
         @if (form().pronouns && pronounPreset() === 'Custom') {
           <div class="mt-2 grid grid-cols-3 gap-2">
             <div>
-              <label class="block text-xs qt-text-secondary mb-1">Subject</label>
+              <label [for]="fieldId + '-f1'" class="block text-xs qt-text-secondary mb-1">Subject</label>
               <input
+                [id]="fieldId + '-f1'"
                 type="text"
                 class="qt-input"
                 placeholder="e.g., they"
@@ -192,8 +199,9 @@ import { TagChipEditor } from './tag-chip-editor';
               />
             </div>
             <div>
-              <label class="block text-xs qt-text-secondary mb-1">Object</label>
+              <label [for]="fieldId + '-f2'" class="block text-xs qt-text-secondary mb-1">Object</label>
               <input
+                [id]="fieldId + '-f2'"
                 type="text"
                 class="qt-input"
                 placeholder="e.g., them"
@@ -202,8 +210,9 @@ import { TagChipEditor } from './tag-chip-editor';
               />
             </div>
             <div>
-              <label class="block text-xs qt-text-secondary mb-1">Possessive</label>
+              <label [for]="fieldId + '-f3'" class="block text-xs qt-text-secondary mb-1">Possessive</label>
               <input
+                [id]="fieldId + '-f3'"
                 type="text"
                 class="qt-input"
                 placeholder="e.g., their"
@@ -320,6 +329,8 @@ import { TagChipEditor } from './tag-chip-editor';
   `,
 })
 export class CharacterDetailsTab {
+  protected readonly fieldId = `qt-char-details-${++nextCharDetailsId}`;
+
   readonly form = input.required<CharacterFormData>();
   readonly fieldChange = output<CharacterFormData>();
 

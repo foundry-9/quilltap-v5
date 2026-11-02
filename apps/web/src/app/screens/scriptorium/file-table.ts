@@ -23,6 +23,7 @@ import {
   uploadMountFile,
 } from './scriptorium.api';
 import type { DocumentStoreBlob, DocumentStoreFile } from './scriptorium.api';
+import { activateOnKey } from '../../ui/activate-on-key';
 
 type SortField =
   | 'fileName'
@@ -101,6 +102,7 @@ const SORT_COLUMNS: [SortField, string][] = [
           </div>
           <div class="ml-auto flex items-center gap-2">
             <input
+              aria-label="Filter files"
               type="text"
               placeholder="Filter files..."
               [(ngModel)]="filter"
@@ -169,7 +171,15 @@ const SORT_COLUMNS: [SortField, string][] = [
                     (click)="toggleExpand(file)"
                   >
                     <td class="px-4 py-3">
-                      <div class="font-medium text-foreground truncate max-w-xs" [title]="file.relativePath">
+                      <!-- v4 FileTable (dff76ebef): the name is the row's keyboard handle. -->
+                      <div
+                        class="font-medium text-foreground truncate max-w-xs"
+                        [title]="file.relativePath"
+                        role="button"
+                        tabindex="0"
+                        [attr.aria-expanded]="expandedId() === file.id"
+                        (keydown)="activateOnKey($event)"
+                      >
                         {{ file.fileName }}
                       </div>
                       <div class="text-xs qt-text-secondary truncate max-w-xs" [title]="file.relativePath">
@@ -237,6 +247,8 @@ const SORT_COLUMNS: [SortField, string][] = [
   `,
 })
 export class FileTable {
+  protected readonly activateOnKey = activateOnKey;
+
   private readonly router = inject(Router);
   /** Hosted ⇒ open the Workbench as a tab (v4's preferred redirectToWorkspaceTab). */
   private readonly workspace = inject(WORKSPACE_HANDLE, { optional: true });

@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { formatBytes } from '../../ui/format-bytes';
 import { Icon } from '../../ui/icon';
 import type { DocumentStore } from './scriptorium.api';
+import { activateOnKey } from '../../ui/activate-on-key';
 
 /**
  * A document-store card (v4 `DocumentStoreCard.tsx`): name + path, the badge row
@@ -27,7 +28,11 @@ import type { DocumentStore } from './scriptorium.api';
             <qt-icon name="database" class="w-5 h-5 qt-text-secondary" />
           </div>
           <div class="min-w-0">
-            <h2 class="qt-section-title truncate">{{ store().name }}</h2>
+            <!-- v4 DocumentStoreCard (dff76ebef): the name is the keyboard handle; a real
+                 click bubbles to the card's (click), exactly as a pointer's does. -->
+            <h2 class="qt-section-title truncate">
+              <span role="button" tabindex="0" (keydown)="activateOnKey($event)">{{ store().name }}</span>
+            </h2>
             <p class="qt-text-small truncate" [title]="store().basePath || 'Database-backed — no path'">
               @if (store().basePath) {
                 {{ store().basePath }}
@@ -179,6 +184,8 @@ import type { DocumentStore } from './scriptorium.api';
   `,
 })
 export class StoreCard {
+  protected readonly activateOnKey = activateOnKey;
+
   readonly store = input.required<DocumentStore>();
   /** True while THIS card's scan request is in flight (the view's scanningIds set). */
   readonly scanning = input(false);

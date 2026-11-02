@@ -24,5 +24,10 @@ export default defineConfig({
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // P4.D358: the axe sweep (e2e/a11y/) runs only under its own optional project
+  // (`npx playwright test --project=a11y`); the default `npm run e2e` set is unchanged.
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] }, testIgnore: '**/a11y/**' },
+    { name: 'a11y', testMatch: '**/a11y/*.spec.ts', use: { ...devices['Desktop Chrome'] } },
+  ],
 });

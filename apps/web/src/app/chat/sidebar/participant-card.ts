@@ -67,12 +67,19 @@ export interface ConnectionProfileOption {
  * (the chat-send spine, via {@link WhisperDialog}), and the wardrobe dialog (the
  * global `WardrobeDialogService`).
  */
+/** One talkativeness label target per card instance — v4's `useId()` (the `subprompt-picker.ts` idiom). */
+let nextTalkId = 0;
+
 @Component({
   selector: 'qt-participant-card',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Avatar, Icon, ProviderModelBadge, SubpromptPicker],
   template: `
     <div [class]="cardClass() + ' participant-card'">
+      <!-- The danger tint is colour only; say it in words too (WCAG 1.4.1). -->
+      @if (isDangerousChat()) {
+        <span class="sr-only">Unmoderated chat.</span>
+      }
       <!-- Position badge — every active participant with a position (v4 :277). -->
       @if (turnPosition() != null && turnPosition()! > 0) {
         <div [class]="'qt-participant-position-badge ' + positionBadgeClass()" data-testid="position-badge">
@@ -261,16 +268,16 @@ export interface ConnectionProfileOption {
           @if (!isUserParticipant()) {
             <div class="mt-2">
               <div class="flex items-center justify-between qt-text-xs mb-1">
-                <span>Talkativeness</span>
+                <label [for]="talkId + '-active'">Talkativeness</label>
                 <span>{{ talkativenessPercent() }}%</span>
               </div>
               <input
+                [id]="talkId + '-active'"
                 type="range"
                 min="0.1"
                 max="1"
                 step="0.1"
                 class="qt-range w-full"
-                [attr.aria-label]="'Talkativeness for ' + name()"
                 [value]="localTalkativeness()"
                 (input)="onTalkativenessInput($any($event.target).value)"
               />
@@ -278,10 +285,11 @@ export interface ConnectionProfileOption {
           } @else {
             <div class="mt-2 opacity-50">
               <div class="flex items-center justify-between qt-text-xs mb-1">
-                <span>Talkativeness</span>
+                <label [for]="talkId + '-na'">Talkativeness</label>
                 <span>N/A</span>
               </div>
               <input
+                [id]="talkId + '-na'"
                 type="range"
                 min="0.1"
                 max="1"
@@ -410,6 +418,9 @@ export interface ConnectionProfileOption {
   `,
 })
 export class ParticipantCard {
+  /** v4 `const talkId = useId()` (`ParticipantCard.tsx:160`) — the sidebar renders several cards. */
+  protected readonly talkId = `qt-participant-talk-${++nextTalkId}`;
+
   private readonly wardrobeDialog = inject(WardrobeDialogService);
   private readonly inventoryDialog = inject(InventoryDialogService);
 

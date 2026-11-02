@@ -20,6 +20,7 @@ import type { BrowseDirectoryResult } from '../../core/core-contract';
     <div>
       <div class="flex gap-2">
         <input
+          aria-label="Directory path"
           type="text"
           [attr.name]="name()"
           [ngModel]="value()"

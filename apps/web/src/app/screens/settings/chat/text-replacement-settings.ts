@@ -123,6 +123,7 @@ const isBoundaryChar = (ch: string): boolean => TRIGGER_CHARS.has(ch);
                 <input
                   type="text"
                   class="qt-input"
+                  aria-label="Replace this text"
                   maxlength="100"
                   [value]="rule.fromText"
                   [disabled]="busy()"
@@ -132,6 +133,7 @@ const isBoundaryChar = (ch: string): boolean => TRIGGER_CHARS.has(ch);
                 <input
                   type="text"
                   class="qt-input"
+                  aria-label="With this text"
                   maxlength="1000"
                   [value]="rule.toText"
                   [disabled]="busy()"

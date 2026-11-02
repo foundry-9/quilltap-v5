@@ -17,6 +17,9 @@ const DEFAULT_AUTO_LOCK: AutoLockConfig = { enabled: false, idleMinutes: 15 };
 /** The unlock-state query key — a card-local read of the passphrase gate. */
 const unlockStateKey = ['unlockState'] as const;
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `AutoLockSettingsCard.tsx:158` `${id}-minutes`). */
+let nextAutoLockSettingsCardId = 0;
+
 /**
  * The Auto-Lock card (v4 `components/settings/AutoLockSettingsCard.tsx`):
  * configure the idle timer that locks Quilltap. It is only functional when a
@@ -64,8 +67,9 @@ const unlockStateKey = ['unlockState'] as const;
 
         @if (config().enabled) {
           <div class="flex items-center gap-2">
-            <label class="qt-text-small">Lock after</label>
+            <label class="qt-text-small" [for]="fieldId + '-minutes'">Lock after</label>
             <input
+              [id]="fieldId + '-minutes'"
               type="number"
               min="1"
               class="qt-input w-20 p-1 text-center"
@@ -90,6 +94,7 @@ const unlockStateKey = ['unlockState'] as const;
   `,
 })
 export class AutoLockSettingsCard extends ChatSettingsCard {
+  protected readonly fieldId = `qt-auto-lock-${++nextAutoLockSettingsCardId}`;
   private readonly coreClient = inject(CoreClient);
   private readonly qc = injectQueryClient();
   private readonly signals = inject(SystemSettingsSignals);

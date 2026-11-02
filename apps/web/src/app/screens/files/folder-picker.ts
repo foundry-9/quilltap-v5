@@ -78,6 +78,7 @@ interface FolderPathOnly {
         <select
           #folderSelect
           id="move-folder"
+          aria-label="Folder"
           class="qt-select flex-1"
           [attr.data-qt-value]="value()"
           [disabled]="disabled() || loading()"
@@ -110,6 +111,7 @@ interface FolderPathOnly {
         <div class="flex gap-2">
           <input
             type="text"
+            aria-label="New folder path"
             class="qt-input flex-1"
             placeholder="/path/to/folder/"
             [value]="newFolderInput()"

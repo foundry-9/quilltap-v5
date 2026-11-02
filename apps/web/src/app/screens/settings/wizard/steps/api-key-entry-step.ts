@@ -15,6 +15,9 @@ interface FormState {
   apiKeyId: string | null;
 }
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `ApiKeyEntryStep.tsx:171` `${id}-key-${provider.id}`, `:194` `-baseurl-`). */
+let nextApiKeyEntryStepId = 0;
+
 /** Wizard step 2 — enter + validate keys (v4 `steps/ApiKeyEntryStep.tsx`). */
 @Component({
   selector: 'qt-wizard-apikey-step',
@@ -47,10 +50,11 @@ interface FormState {
             <div class="space-y-4">
               @if (p.configRequirements.requiresApiKey) {
                 <div>
-                  <label class="qt-text-label block mb-1.5">{{
+                  <label class="qt-text-label block mb-1.5" [for]="fieldId + '-key-' + p.id">{{
                     p.configRequirements.apiKeyLabel || 'API Key'
                   }}</label>
                   <input
+                    [id]="fieldId + '-key-' + p.id"
                     type="password"
                     class="qt-input w-full"
                     placeholder="Enter your API key"
@@ -64,10 +68,11 @@ interface FormState {
               }
               @if (p.configRequirements.requiresBaseUrl) {
                 <div>
-                  <label class="qt-text-label block mb-1.5">{{
+                  <label class="qt-text-label block mb-1.5" [for]="fieldId + '-baseurl-' + p.id">{{
                     p.configRequirements.baseUrlLabel || 'Base URL'
                   }}</label>
                   <input
+                    [id]="fieldId + '-baseurl-' + p.id"
                     type="text"
                     class="qt-input w-full"
                     [placeholder]="p.configRequirements.baseUrlPlaceholder || 'https://...'"
@@ -122,6 +127,7 @@ interface FormState {
   `,
 })
 export class ApiKeyEntryStep {
+  protected readonly fieldId = `qt-api-key-entry-${++nextApiKeyEntryStepId}`;
   protected readonly store = inject(WizardStore);
   private readonly core = inject(CoreClient);
 

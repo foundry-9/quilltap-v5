@@ -67,6 +67,7 @@ import { isInFloatingLayer } from '../ui/floating-layer';
               <input
                 #searchInput
                 type="search"
+                aria-label="Search outfits"
                 [value]="search()"
                 (input)="search.set($any($event.target).value)"
                 placeholder="Search outfits…"

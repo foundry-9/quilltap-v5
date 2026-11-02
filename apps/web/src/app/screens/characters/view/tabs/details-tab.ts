@@ -175,11 +175,14 @@ interface DetailField {
           <!--
             dogfood-#6: the options are dynamic (otherUserControlled() — a computed
             over the async userControlledCharacters input), so bind the selection
-            per-option with [selected] rather than [value] on the <select>. A
+            per-option with [selected] rather than [value] on the select element. A
             [value] evaluated before the options render leaves the native control
             blank (the P4.6aa select-audit; this closes the standing finding-#6 audit).
           -->
-          <select class="qt-select" (change)="reverseUserSelection.set($any($event.target).value)">
+          <select
+            aria-label="User-controlled character"
+            class="qt-select"
+            (change)="reverseUserSelection.set($any($event.target).value)">
             @for (char of otherUserControlled(); track char.id) {
               <option [value]="char.id" [selected]="char.id === reverseUserSelection()">
                 {{ char.name }}{{ char.title ? ' - ' + char.title : '' }}

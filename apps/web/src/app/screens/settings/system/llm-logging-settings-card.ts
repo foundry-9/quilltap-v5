@@ -94,6 +94,7 @@ const DEFAULT_LLM_LOGGING: LlmLoggingBag = { enabled: true, verboseMode: false, 
               <div class="flex items-center gap-2 ml-4">
                 <input
                   type="number"
+                  aria-label="Log retention in days"
                   min="0"
                   max="365"
                   class="w-20 px-2 py-1 border qt-border-default rounded text-center"

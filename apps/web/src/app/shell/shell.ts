@@ -111,6 +111,9 @@ const NAV_ITEMS: NavItem[] = [
   ],
   template: `
     <div class="qt-app-layout">
+      <!-- v4 app-layout.tsx:113 (10e09b7c3): the first Tab stop skips the rail.
+           The qt-skip-link rule is P4.D357's (_interactive.css). -->
+      <a href="#main-content" class="qt-skip-link">Skip to content</a>
       <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
         <div class="qt-left-sidebar-content">
           <nav class="qt-collapsed-nav" aria-label="Quick navigation">
@@ -196,7 +199,7 @@ const NAV_ITEMS: NavItem[] = [
       </aside>
 
       <div class="qt-app-main">
-        <main class="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <main id="main-content" tabindex="-1" class="flex flex-col flex-1 min-h-0 overflow-hidden focus:outline-none">
           <!-- The top page toolbar (v4 app-layout.tsx:113 — inside <main>,
                above the scroller). The autonomous badges RELOCATED here from
                the sidebar-footer stopgap, which is retired (P4.9P). -->

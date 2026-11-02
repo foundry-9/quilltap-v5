@@ -130,6 +130,9 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
   }
 }
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `ImageProfileForm.tsx` `${id}-name` …, `ImageProfileParameters.tsx` `${id}-size`). */
+let nextImageProfileModalId = 0;
+
 @Component({
   selector: 'qt-image-profile-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -142,8 +145,9 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
 
       <div class="space-y-4">
         <div>
-          <label class="block qt-text-label mb-1">Profile Name</label>
+          <label class="block qt-text-label mb-1" [for]="fieldId + '-name'">Profile Name</label>
           <input
+            [id]="fieldId + '-name'"
             type="text"
             class="qt-input"
             placeholder="e.g., DALL-E 3 HD"
@@ -153,9 +157,10 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
         </div>
 
         <div>
-          <label class="block qt-text-label mb-1">Provider</label>
+          <label class="block qt-text-label mb-1" [for]="fieldId + '-provider'">Provider</label>
           <select
             #providerSelect
+            [id]="fieldId + '-provider'"
             class="qt-select"
             [disabled]="providersQuery.isPending()"
             [attr.data-qt-value]="provider()"
@@ -168,9 +173,10 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
         </div>
 
         <div>
-          <label class="block qt-text-label mb-1">API Key</label>
+          <label class="block qt-text-label mb-1" [for]="fieldId + '-apikey'">API Key</label>
           <div class="flex gap-2">
             <select
+              [id]="fieldId + '-apikey'"
               class="qt-select flex-1"
               [value]="apiKeyId()"
               (change)="apiKeyId.set($any($event.target).value)"
@@ -194,10 +200,11 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
         </div>
 
         <div>
-          <label class="block qt-text-label mb-1">Model</label>
+          <label class="block qt-text-label mb-1" [for]="fieldId + '-model'">Model</label>
           <div class="flex gap-2">
             <select
               #modelSelect
+              [id]="fieldId + '-model'"
               class="qt-select flex-1"
               [disabled]="isFetchingModels()"
               [attr.data-qt-value]="modelName()"
@@ -246,9 +253,10 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
           <div class="space-y-4 border-t qt-border-default pt-4">
             <h3 class="text-sm qt-text-primary">Image Parameters (Optional)</h3>
             <div>
-              <label class="block qt-text-label mb-1">Default Size</label>
+              <label class="block qt-text-label mb-1" [for]="fieldId + '-size'">Default Size</label>
               <select
                 #sizeSelect
+                [id]="fieldId + '-size'"
                 class="qt-select"
                 [attr.data-qt-value]="sizeValue()"
                 (change)="setSize($any($event.target).value)"
@@ -262,8 +270,10 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
           </div>
         } @else {
           <div>
-            <label class="block qt-text-label mb-1">Parameters (JSON)</label>
+            <!-- V5_ONLY_CONTROL: no v4 twin; a v5 slug (P4.D358 C9 R4). -->
+            <label class="block qt-text-label mb-1" [for]="fieldId + '-parameters'">Parameters (JSON)</label>
             <textarea
+              [id]="fieldId + '-parameters'"
               class="qt-input font-mono"
               rows="4"
               placeholder="{}"
@@ -318,6 +328,7 @@ function parseParametersObject(text: string): Record<string, unknown> | null {
   `,
 })
 export class ImageProfileModal implements OnInit {
+  protected readonly fieldId = `qt-image-profile-${++nextImageProfileModalId}`;
   private readonly core = inject(CoreClient);
 
   readonly profile = input<ImageProfileDto | null>(null);

@@ -179,8 +179,12 @@ describe('NewCharacter', () => {
     };
     for (const [label, minHeight] of Object.entries(expected)) {
       // aria-label lands on ProseMirror's content div; the height is bound on
-      // the qt-rich-editor element wrapping it.
-      const content = fixture.nativeElement.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+      // the qt-rich-editor element wrapping it. (The qt-markdown-field frame
+      // carries the same label as its role="group" name since P4.D358 — v4
+      // 68340008b — so the query is scoped inside the editor.)
+      const content = fixture.nativeElement.querySelector(
+        `qt-rich-editor [aria-label="${label}"]`,
+      ) as HTMLElement;
       expect(content, label).not.toBeNull();
       const editor = content.closest('qt-rich-editor') as HTMLElement;
       expect(editor.style.minHeight, label).toBe(minHeight);

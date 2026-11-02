@@ -250,7 +250,7 @@ export function buildCreateCharacterBag(form: NewCharacterFormData): Record<stri
           </label>
           <!--
             dogfood-#6: options come from an async query; bind per-option with
-            [selected], not [value] on the <select> (a [value] set before the
+            [selected], not [value] on the select element (a [value] set before the
             options render leaves the control blank — P4.6aa select-audit rider).
           -->
           <select

@@ -49,6 +49,7 @@ const SEARCH_DEBOUNCE_MS = 300;
           <input
             type="text"
             placeholder="Search conversations..."
+            aria-label="Search conversations"
             class="qt-input pl-10"
             [value]="searchInput()"
             (input)="onSearch($any($event.target).value)"

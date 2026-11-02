@@ -85,6 +85,7 @@ type Scope = 'all' | 'selected';
                   type="text"
                   class="w-full px-3 py-2 border qt-border-default rounded-lg bg-background text-foreground"
                   placeholder="Search entities..."
+                  aria-label="Search entities..."
                   [value]="searchQuery()"
                   (input)="searchQuery.set($any($event.target).value)"
                 />

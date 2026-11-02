@@ -185,10 +185,17 @@ import {
             tool.unavailableReason || 'This tool is not available in the current context'
           "
         >
-          <input type="checkbox" class="qt-checkbox mt-0.5 cursor-not-allowed" disabled />
+          <!-- v4 :522-524 id={checkboxId} with no label; the name caption
+               becomes its <label for> (P4.D358 C9 R4). -->
+          <input
+            type="checkbox"
+            class="qt-checkbox mt-0.5 cursor-not-allowed"
+            [id]="'tool-toggle-' + tool.id"
+            disabled
+          />
           <div class="flex-1 min-w-0">
             <div class="flex items-center gap-2">
-              <span class="font-medium text-sm text-foreground">{{ tool.name }}</span>
+              <label [for]="'tool-toggle-' + tool.id" class="font-medium text-sm text-foreground">{{ tool.name }}</label>
               <span class="text-xs qt-text-warning">(unavailable)</span>
             </div>
             <p class="text-xs qt-text-secondary mt-0.5 line-clamp-2">{{ tool.description }}</p>

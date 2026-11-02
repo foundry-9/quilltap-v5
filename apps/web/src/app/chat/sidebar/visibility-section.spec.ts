@@ -77,8 +77,14 @@ async function render(): Promise<ComponentFixture<Host>> {
   return fixture;
 }
 
+/** The control a visible `<label for>` names (v4's caption IS the name since P4.D358). */
 function control(fixture: ComponentFixture<Host>, label: string): HTMLElement {
-  return fixture.nativeElement.querySelector(`[aria-label="${label}"]`) as HTMLElement;
+  const host = fixture.nativeElement as HTMLElement;
+  const caption = Array.from(host.querySelectorAll('label')).find(
+    (l) => l.textContent?.trim() === label,
+  );
+  const id = caption?.getAttribute('for');
+  return (id ? host.querySelector(`[id="${id}"]`) : host.querySelector(`[aria-label="${label}"]`)) as HTMLElement;
 }
 
 async function choose(
@@ -165,8 +171,8 @@ describe('VisibilitySection', () => {
 
   it('writes Aurora’s Core Whisper offering and cadence (the F3 third level)', async () => {
     const fixture = await render();
-    const offering = control(fixture, 'Core whisper offering') as HTMLSelectElement;
-    const cadence = control(fixture, 'Core whisper cadence') as HTMLSelectElement;
+    const offering = control(fixture, 'Offering') as HTMLSelectElement;
+    const cadence = control(fixture, 'Cadence') as HTMLSelectElement;
 
     expect(Array.from(cadence.options).map((o) => o.textContent?.trim())).toEqual([
       'Inherit',
@@ -195,16 +201,16 @@ describe('VisibilitySection', () => {
 
   it('writes the thinking and answer-confirmation tri-states', async () => {
     const fixture = await render();
-    await choose(fixture, control(fixture, 'Thinking visibility') as HTMLSelectElement, 'on');
-    await choose(fixture, control(fixture, 'Answer confirmation') as HTMLSelectElement, 'OFF');
+    await choose(fixture, control(fixture, 'Thinking') as HTMLSelectElement, 'on');
+    await choose(fixture, control(fixture, 'Answer Confirmation') as HTMLSelectElement, 'OFF');
     expect(sent).toEqual([
       { type: 'chatUpdate', chatId: 'chat-1', chat: { showThinking: true } },
       { type: 'chatUpdate', chatId: 'chat-1', chat: { answerConfirmationOverride: 'OFF' } },
     ]);
     // The local set keeps the choice immediately; since v4 `bd419ae9` (bug 22)
     // both columns are projected, so the refetch shows the same value.
-    expect((control(fixture, 'Thinking visibility') as HTMLSelectElement).value).toBe('on');
-    expect((control(fixture, 'Answer confirmation') as HTMLSelectElement).value).toBe('OFF');
+    expect((control(fixture, 'Thinking') as HTMLSelectElement).value).toBe('on');
+    expect((control(fixture, 'Answer Confirmation') as HTMLSelectElement).value).toBe('OFF');
   });
 
   it('seeds the thinking and answer-confirmation controls from the projected record (bug 22)', async () => {
@@ -217,8 +223,8 @@ describe('VisibilitySection', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect((control(fixture, 'Thinking visibility') as HTMLSelectElement).value).toBe('off');
-    expect((control(fixture, 'Answer confirmation') as HTMLSelectElement).value).toBe('ON');
+    expect((control(fixture, 'Thinking') as HTMLSelectElement).value).toBe('off');
+    expect((control(fixture, 'Answer Confirmation') as HTMLSelectElement).value).toBe('ON');
   });
 
   it('seeds the controls from the chat record', async () => {
@@ -236,8 +242,19 @@ describe('VisibilitySection', () => {
     fixture.detectChanges();
 
     expect(control(fixture, 'Shared Vaults').getAttribute('aria-checked')).toBe('true');
-    expect((control(fixture, 'Core whisper offering') as HTMLSelectElement).value).toBe('on');
-    expect((control(fixture, 'Core whisper cadence') as HTMLSelectElement).value).toBe('25');
+    expect((control(fixture, 'Offering') as HTMLSelectElement).value).toBe('on');
+    expect((control(fixture, 'Cadence') as HTMLSelectElement).value).toBe('25');
     expect(control(fixture, 'Turn Skipping').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('names each select by its caption through <label for> (v4 eed72d60c), not a v5 aria-label', async () => {
+    const fixture = await render();
+    for (const caption of ['Offering', 'Cadence', 'Thinking', 'Answer Confirmation']) {
+      const select = control(fixture, caption);
+      expect(select?.tagName).toBe('SELECT');
+      expect(select.getAttribute('aria-label')).toBeNull();
+      const label = (fixture.nativeElement as HTMLElement).querySelector(`label[for="${select.id}"]`);
+      expect(label?.textContent?.trim()).toBe(caption);
+    }
   });
 });

@@ -47,6 +47,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
   { value: 'TIME_ONLY', label: 'Time Only' },
 ];
 
+/** Per-instance prefix for the heading / label ids (v4 `ProfilesTab.tsx` `useId()`). */
+let nextDefaultsTabId = 0;
+
 /**
  * The Default Settings tab (v4 `components/ProfilesTab.tsx` +
  * `useCharacterView.ts`): per-control autosave (no Save button) over the
@@ -70,7 +73,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
     <div class="space-y-8">
       <!-- Connection Profile -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
-        <h2 class="qt-heading-4 text-foreground mb-2">Default Connection Profile</h2>
+        <h2 [id]="fieldId + '-f0'" class="qt-heading-4 text-foreground mb-2">Default Connection Profile</h2>
         <p class="qt-text-small mb-4">
           The default AI provider and model to use when chatting with this character. Can be
           overridden per chat.
@@ -80,6 +83,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
                list loads async, and a select-level value binding fires before
                the options exist, silently resetting to "" (finding #6). -->
           <select
+            [attr.aria-labelledby]="fieldId + '-f0'"
             class="qt-select flex-1"
             [disabled]="saving().connectionProfile"
             (change)="onConnectionProfileChange($any($event.target).value)"
@@ -123,7 +127,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
           (isUserControlled() ? 'opacity-50' : '')
         "
       >
-        <h2 class="qt-heading-4 text-foreground mb-2">Default Conversation Partner</h2>
+        <h2 [id]="fieldId + '-f1'" class="qt-heading-4 text-foreground mb-2">Default Conversation Partner</h2>
         <p class="qt-text-small mb-4">
           {{
             isUserControlled()
@@ -133,6 +137,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </p>
         <div class="flex items-center gap-3">
           <select
+            [attr.aria-labelledby]="fieldId + '-f1'"
             class="qt-select flex-1"
             [disabled]="saving().partner || isUserControlled()"
             (change)="onPartnerChange($any($event.target).value)"
@@ -161,6 +166,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <div class="flex items-center gap-3">
           <!-- [selected] per option (async options load after first render). -->
           <select
+            aria-label="Image profile"
             class="qt-select flex-1"
             [disabled]="saving().imageProfile"
             (change)="onImageProfileChange($any($event.target).value)"
@@ -181,13 +187,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <!-- Default System Prompt -->
       @if (character().systemPrompts.length > 1) {
         <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
-          <h2 class="qt-heading-4 text-foreground mb-2">Default System Prompt</h2>
+          <h2 [id]="fieldId + '-f2'" class="qt-heading-4 text-foreground mb-2">Default System Prompt</h2>
           <p class="qt-text-small mb-4">
             The system prompt to use by default when starting new chats with this character. Can be
             overridden per chat.
           </p>
           <div class="flex items-center gap-3">
             <select
+            [attr.aria-labelledby]="fieldId + '-f2'"
               class="qt-select flex-1"
               [disabled]="saving().systemPrompt"
               (change)="onDefaultSystemPromptChange($any($event.target).value)"
@@ -214,13 +221,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
       <!-- Default Scenario -->
       @if (character().scenarios.length > 1) {
         <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
-          <h2 class="qt-heading-4 text-foreground mb-2">Default Scenario</h2>
+          <h2 [id]="fieldId + '-f3'" class="qt-heading-4 text-foreground mb-2">Default Scenario</h2>
           <p class="qt-text-small mb-4">
             The scenario to pre-select by default when starting new chats with this character. Can
             be overridden per chat.
           </p>
           <div class="flex items-center gap-3">
             <select
+            [attr.aria-labelledby]="fieldId + '-f3'"
               class="qt-select flex-1"
               [disabled]="saving().scenario"
               (change)="onDefaultScenarioChange($any($event.target).value)"
@@ -246,7 +254,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
 
       <!-- Agent Mode -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
-        <h2 class="qt-heading-4 text-foreground mb-2">Agent Mode</h2>
+        <h2 [id]="fieldId + '-f4'" class="qt-heading-4 text-foreground mb-2">Agent Mode</h2>
         <p class="qt-text-small mb-4">
           Control whether agent mode is enabled by default for chats with this character. Agent mode
           allows the AI to iteratively use tools, verify results, and self-correct before delivering
@@ -254,6 +262,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </p>
         <div class="flex items-center gap-3">
           <select
+            [attr.aria-labelledby]="fieldId + '-f4'"
             class="qt-select flex-1 max-w-xs"
             [disabled]="saving().agentMode"
             [value]="triValue(character().defaultAgentModeEnabled)"
@@ -271,7 +280,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
 
       <!-- Help Tools -->
       <div class="character-section-card rounded-lg border qt-border-default qt-bg-card p-6">
-        <h2 class="qt-heading-4 text-foreground mb-2">Help Tools</h2>
+        <h2 [id]="fieldId + '-f5'" class="qt-heading-4 text-foreground mb-2">Help Tools</h2>
         <p class="qt-text-small mb-4">
           Control whether help tools are available for this character. When enabled, the character
           can search Quilltap documentation and read instance settings to assist users with
@@ -279,6 +288,7 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </p>
         <div class="flex items-center gap-3">
           <select
+            [attr.aria-labelledby]="fieldId + '-f5'"
             class="qt-select flex-1 max-w-xs"
             [disabled]="saving().helpTools"
             [value]="triValue(character().defaultHelpToolsEnabled)"
@@ -299,13 +309,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         <h2 class="qt-heading-4 text-foreground mb-2">Wardrobe</h2>
 
         <div class="mb-6">
-          <h3 class="qt-text-label mb-1">Self-Dressing</h3>
+          <h3 [id]="fieldId + '-f6'" class="qt-text-label mb-1">Self-Dressing</h3>
           <p class="qt-text-small mb-3">
             Control whether this character can change their own outfit during conversations using
             wardrobe tools.
           </p>
           <div class="flex items-center gap-3">
             <select
+            [attr.aria-labelledby]="fieldId + '-f6'"
               class="qt-select flex-1 max-w-xs"
               [disabled]="saving().canDressThemselves"
               [value]="triValue(character().canDressThemselves)"
@@ -322,13 +333,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </div>
 
         <div>
-          <h3 class="qt-text-label mb-1">Outfit Creation</h3>
+          <h3 [id]="fieldId + '-f7'" class="qt-text-label mb-1">Outfit Creation</h3>
           <p class="qt-text-small mb-3">
             Control whether this character can create new wardrobe items mid-conversation. Requires
             tool use.
           </p>
           <div class="flex items-center gap-3">
             <select
+            [attr.aria-labelledby]="fieldId + '-f7'"
               class="qt-select flex-1 max-w-xs"
               [disabled]="saving().canCreateOutfits"
               [value]="triValue(character().canCreateOutfits)"
@@ -346,13 +358,14 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
 
         <!-- Inventory Management (v4 \`e1872c94f\` ProfilesTab.tsx:378-406, P4.D330) -->
         <div class="mt-6">
-          <h3 class="qt-text-label mb-1">Inventory Management</h3>
+          <h3 [id]="fieldId + '-f8'" class="qt-text-label mb-1">Inventory Management</h3>
           <p class="qt-text-small mb-3">
             Control whether this character can see, pick up, equip, set down, make and give away the
             objects they carry, using the inventory tools. Requires tool use.
           </p>
           <div class="flex items-center gap-3">
             <select
+            [attr.aria-labelledby]="fieldId + '-f8'"
               class="qt-select flex-1 max-w-xs"
               [disabled]="saving().canManageInventory"
               [value]="triValue(character().canManageInventory)"
@@ -396,8 +409,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         </div>
         @if (timestampMode() === 'EVERY_N_MINUTES') {
           <div class="mt-3">
-            <label class="block qt-text-label mb-2">Interval (minutes)</label>
+            <label class="block qt-text-label mb-2" [for]="fieldId + '-interval'">Interval (minutes)</label>
             <input
+              [id]="fieldId + '-interval'"
               type="number"
               min="1"
               step="1"
@@ -410,8 +424,9 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
         }
         @if (timestampMode() !== 'NONE') {
           <div class="mt-3">
-            <label class="block qt-text-label mb-2">Timestamp Format</label>
+            <label class="block qt-text-label mb-2" [for]="fieldId + '-format'">Timestamp Format</label>
             <select
+              [id]="fieldId + '-format'"
               class="qt-select w-full"
               [disabled]="saving().timestampConfig"
               [value]="timestampFormat()"
@@ -431,6 +446,8 @@ const TIMESTAMP_FORMATS: Array<{ value: string; label: string }> = [
   `,
 })
 export class CharacterDefaultsTab {
+  protected readonly fieldId = `qt-defaults-${++nextDefaultsTabId}`;
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();

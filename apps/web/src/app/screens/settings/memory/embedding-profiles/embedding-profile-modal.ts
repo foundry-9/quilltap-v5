@@ -21,6 +21,9 @@ import { ErrorAlert } from '../../../../ui/error-alert';
 import { FormActions } from '../../../../ui/form-actions';
 import { Modal } from '../../../../ui/modal';
 
+/** One label/control id prefix per instance — v4's `useId()` (v4 `embedding-profiles/ProfileModal.tsx` `${id}-name` …). */
+let nextEmbeddingProfileModalId = 0;
+
 /**
  * The create / edit Embedding Profile modal (v4
  * `components/settings/embedding-profiles/ProfileModal.tsx`): Profile Name, a
@@ -53,8 +56,9 @@ import { Modal } from '../../../../ui/modal';
 
         <div class="space-y-4">
           <div>
-            <label class="qt-label mb-1">Profile Name *</label>
+            <label class="qt-label mb-1" [for]="fieldId + '-name'">Profile Name *</label>
             <input
+              [id]="fieldId + '-name'"
               type="text"
               class="qt-input"
               placeholder="My OpenAI Embeddings"
@@ -65,8 +69,8 @@ import { Modal } from '../../../../ui/modal';
           </div>
 
           <div>
-            <label class="qt-label mb-1">Provider *</label>
-            <select class="qt-select" [value]="provider()" (change)="onProviderChange($any($event.target).value)">
+            <label class="qt-label mb-1" [for]="fieldId + '-provider'">Provider *</label>
+            <select [id]="fieldId + '-provider'" class="qt-select" [value]="provider()" (change)="onProviderChange($any($event.target).value)">
               @for (p of embeddingProviders(); track p.name) {
                 <option [value]="p.name" [selected]="provider() === p.name">{{ p.displayName }}</option>
               }
@@ -78,8 +82,8 @@ import { Modal } from '../../../../ui/modal';
 
           @if (needsApiKey()) {
             <div>
-              <label class="qt-label mb-1">API Key</label>
-              <select class="qt-select" [value]="apiKeyId()" (change)="apiKeyId.set($any($event.target).value)">
+              <label class="qt-label mb-1" [for]="fieldId + '-api-key'">API Key</label>
+              <select [id]="fieldId + '-api-key'" class="qt-select" [value]="apiKeyId()" (change)="apiKeyId.set($any($event.target).value)">
                 <option value="" [selected]="apiKeyId() === ''">Select API Key...</option>
                 @for (key of filteredApiKeys(); track key.id) {
                   <option [value]="key.id" [selected]="apiKeyId() === key.id">{{ key.label }}</option>
@@ -95,8 +99,9 @@ import { Modal } from '../../../../ui/modal';
 
           @if (needsBaseUrl()) {
             <div>
-              <label class="qt-label mb-1">Base URL</label>
+              <label class="qt-label mb-1" [for]="fieldId + '-base-url'">Base URL</label>
               <input
+                [id]="fieldId + '-base-url'"
                 type="text"
                 class="qt-input"
                 placeholder="http://localhost:11434"
@@ -110,7 +115,7 @@ import { Modal } from '../../../../ui/modal';
           @if (!isBuiltin()) {
             <div>
               <div class="flex items-center justify-between mb-1">
-                <label class="qt-label">Model *</label>
+                <label class="qt-label" [for]="fieldId + '-model'">Model *</label>
                 @if (canFetchModels()) {
                   <button
                     type="button"
@@ -124,7 +129,7 @@ import { Modal } from '../../../../ui/modal';
               </div>
               @if (currentModels().length > 0) {
                 <div class="space-y-2">
-                  <select class="qt-select" [value]="modelName()" (change)="onModelSelect($any($event.target).value)">
+                  <select [id]="fieldId + '-model'" class="qt-select" [value]="modelName()" (change)="onModelSelect($any($event.target).value)">
                     <option value="" [selected]="modelName() === ''">Select a model...</option>
                     @for (model of currentModels(); track model.id) {
                       <option [value]="model.id" [selected]="modelName() === model.id">
@@ -138,6 +143,7 @@ import { Modal } from '../../../../ui/modal';
                 </div>
               } @else {
                 <input
+                  [id]="fieldId + '-model'"
                   type="text"
                   class="qt-input"
                   [placeholder]="canFetchModels() ? 'nomic-embed-text' : 'text-embedding-3-small'"
@@ -151,8 +157,9 @@ import { Modal } from '../../../../ui/modal';
             </div>
 
             <div>
-              <label class="qt-label mb-1">Dimensions (optional)</label>
+              <label class="qt-label mb-1" [for]="fieldId + '-dimensions'">Dimensions (optional)</label>
               <input
+                [id]="fieldId + '-dimensions'"
                 type="text"
                 class="qt-input"
                 placeholder="1536"
@@ -224,6 +231,7 @@ import { Modal } from '../../../../ui/modal';
   `,
 })
 export class EmbeddingProfileModal implements OnInit {
+  protected readonly fieldId = `qt-emb-profile-${++nextEmbeddingProfileModalId}`;
   private readonly core = inject(CoreClient);
 
   readonly profile = input<EmbeddingProfileDto | null>(null);

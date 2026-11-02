@@ -24,7 +24,12 @@ import { Icon } from './icon';
   imports: [Icon],
   template: `
     @if (!searchMode()) {
-      <select class="qt-select" [disabled]="disabled()" (change)="pick($any($event.target).value)">
+      <select
+        class="qt-select"
+        [attr.id]="id()"
+        [attr.aria-label]="ariaLabel()"
+        [disabled]="disabled()"
+        (change)="pick($any($event.target).value)">
         <option value="" [selected]="!value()">{{ placeholder() }}</option>
         @for (m of sortedModels(); track m) {
           <option [value]="m" [selected]="m === value()">{{ m }}</option>
@@ -36,6 +41,8 @@ import { Icon } from './icon';
           <input
             type="text"
             class="qt-input pr-8"
+            [attr.id]="id()"
+            [attr.aria-label]="ariaLabel()"
             [placeholder]="placeholder()"
             [disabled]="disabled()"
             [value]="open() ? search() : value()"
@@ -47,6 +54,8 @@ import { Icon } from './icon';
             type="button"
             class="absolute right-2 top-1/2 -translate-y-1/2 p-1 qt-hover-accent rounded"
             [disabled]="disabled()"
+            aria-label="Toggle model list"
+            [attr.aria-expanded]="open()"
             (click)="open.set(!open())"
           >
             <qt-icon
@@ -97,10 +106,15 @@ export class ModelSelector {
   readonly placeholder = input<string>('Select or search a model');
   readonly disabled = input(false);
   readonly showFetchedCount = input(false);
+  /** id for the select / search input, so a caller's `<label for>` names it (v4 `model-selector.tsx` `id`). */
+  readonly id = input<string>();
   readonly changed = output<string>();
 
   protected readonly open = signal(false);
   protected readonly search = signal('');
+
+  /** Without a caller's label, the placeholder is the field's accessible name (v4 `ariaLabel = id ? undefined : placeholder`). */
+  protected readonly ariaLabel = computed(() => (this.id() ? undefined : this.placeholder()));
 
   protected readonly sortedModels = computed(() =>
     [...this.models()].sort((a, b) => a.localeCompare(b)),

@@ -131,6 +131,7 @@ interface EntityItem {
         <div class="qt-help-entity-picker-header">
           <span>Select a {{ route()?.entityLabel || 'item' }}</span>
           <button
+            aria-label="Cancel"
             type="button"
             class="p-0.5 rounded qt-hover-accent qt-text-secondary transition-colors"
             (click)="cancel.emit()"
@@ -144,6 +145,7 @@ interface EntityItem {
             <input
               #filterInput
               type="text"
+              aria-label="Filter list"
               class="qt-help-entity-picker-filter"
               [placeholder]="'Filter ' + (route()?.entityLabel?.toLowerCase() || 'item') + 's...'"
               [value]="filter()"

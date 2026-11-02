@@ -140,6 +140,7 @@ interface DeleteSummary {
                   type="text"
                   class="qt-input"
                   placeholder="Type DELETE to confirm"
+                  aria-label="Type DELETE to confirm"
                   [value]="confirmText()"
                   (input)="onConfirmInput($event)"
                 />

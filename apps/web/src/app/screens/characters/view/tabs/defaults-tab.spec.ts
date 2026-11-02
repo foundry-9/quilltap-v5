@@ -488,4 +488,74 @@ describe('CharacterDefaultsTab (autosave contract)', () => {
     });
   });
   // === end P4.D330 ===
+  // === P4.D358 — accessible names ===
+  /**
+   * v4 `eed72d60c` (`ProfilesTab.tsx`): the nine heading-captioned selects are
+   * `aria-labelledby` their heading (`-f0` … `-f8`), the image-profile select
+   * carries `ImageProfilePicker.tsx`'s `Image profile`, and the timestamp
+   * block's controls are `<label for>`-named (`TimestampConfigCard.tsx`).
+   * Every `<select>` the tab renders resolves to a non-empty name.
+   */
+  it('names every <select> in the tab (aria-labelledby → heading text, aria-label, or <label for>)', async () => {
+    const fixture = await render(
+      stubClient(() => undefined),
+      {
+        character: character({
+          systemPrompts: [
+            { id: 'sp1', name: 'Formal', content: '', isDefault: true, createdAt: '', updatedAt: '' },
+            { id: 'sp2', name: 'Casual', content: '', isDefault: false, createdAt: '', updatedAt: '' },
+          ],
+          scenarios: [
+            { id: 'sc1', title: 'Morning', content: '', createdAt: '', updatedAt: '' },
+            { id: 'sc2', title: 'Evening', content: '', createdAt: '', updatedAt: '' },
+          ],
+          defaultTimestampConfig: {
+            mode: 'START_ONLY',
+            format: 'FRIENDLY',
+            intervalMinutes: 15,
+          } as never,
+        }),
+      },
+    );
+    const root = fixture.nativeElement as HTMLElement;
+    const nameOf = (el: HTMLElement): string => {
+      const labelledby = el.getAttribute('aria-labelledby');
+      if (labelledby) {
+        return labelledby
+          .split(/\s+/)
+          .map((id) => root.querySelector(`[id="${id}"]`)?.textContent?.trim() ?? '')
+          .join(' ')
+          .trim();
+      }
+      const label = el.getAttribute('aria-label');
+      if (label) return label.trim();
+      if (el.id) {
+        const forLabel = Array.from(root.querySelectorAll('label')).find(
+          (l) => l.htmlFor === el.id,
+        );
+        return forLabel?.textContent?.trim() ?? '';
+      }
+      return '';
+    };
+    const selects = Array.from(root.querySelectorAll('select')) as HTMLSelectElement[];
+    // connection, partner, image, system prompt, scenario, agent, help,
+    // self-dressing, outfit creation, inventory, timestamp format
+    expect(selects.length).toBe(11);
+    const names = selects.map(nameOf);
+    for (const name of names) expect(name).not.toBe('');
+    expect(names).toEqual([
+      'Default Connection Profile',
+      'Default Conversation Partner',
+      'Image profile',
+      'Default System Prompt',
+      'Default Scenario',
+      'Agent Mode',
+      'Help Tools',
+      'Self-Dressing',
+      'Outfit Creation',
+      'Inventory Management',
+      'Timestamp Format',
+    ]);
+  });
+  // === end P4.D358 ===
 });

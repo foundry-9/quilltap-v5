@@ -5,6 +5,9 @@ import { CoreClient } from '../../../core/core-client';
 import { Modal } from '../../../ui/modal';
 import { ToastService } from '../../../ui/toast.service';
 
+/** Per-instance prefix for the label ids (v4 `AuroraView.tsx` `useId()`). */
+let nextCharacterImportId = 0;
+
 /**
  * The SillyTavern import dialog (v4 `AuroraView.tsx` import form). A JSON file is
  * read client-side and dispatched as `characterImport { payload }`; a PNG posts
@@ -20,11 +23,12 @@ import { ToastService } from '../../../ui/toast.service';
   template: `
     <qt-modal title="Import from SillyTavern" maxWidth="md" (close)="close.emit()">
       <div class="mb-4">
-        <label class="mb-2 block text-sm qt-text-primary">
+        <label [for]="fieldId + '-f0'" class="mb-2 block text-sm qt-text-primary">
           Select SillyTavern character file (PNG or JSON)
         </label>
         <input
           #fileInput
+          [id]="fieldId + '-f0'"
           type="file"
           name="file"
           accept=".png,.json"
@@ -55,6 +59,8 @@ import { ToastService } from '../../../ui/toast.service';
   `,
 })
 export class CharacterImportDialog {
+  protected readonly fieldId = `qt-char-import-${++nextCharacterImportId}`;
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

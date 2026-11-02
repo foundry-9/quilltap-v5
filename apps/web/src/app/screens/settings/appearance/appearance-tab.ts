@@ -94,6 +94,7 @@ const COLOR_MODES: Array<{ value: ColorMode; label: string; icon: 'sun' | 'moon'
             type="button"
             role="switch"
             [attr.aria-checked]="showNav()"
+            aria-label="Show theme selector in navigation"
             [class]="
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ' +
               (showNav() ? 'bg-primary' : 'qt-bg-muted')

@@ -72,6 +72,7 @@ import { fetchTags, tagKeys } from '../characters.api';
               type="text"
               class="qt-input py-1 px-3"
               placeholder="Add a tag..."
+              aria-label="Add a tag"
               [value]="inputValue()"
               (input)="inputValue.set($any($event.target).value)"
               (keydown.enter)="onEnter($event)"

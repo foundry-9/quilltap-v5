@@ -16,6 +16,9 @@ interface ReplacementPairForm {
   caseSensitive: boolean;
 }
 
+/** Per-instance prefix for the label ids (v4 `RenameReplaceTab.tsx` `useId()`). */
+let nextRenameReplaceId = 0;
+
 /**
  * The Rename & Replace tab — v4 `components/characters/RenameReplaceTab.tsx`
  * (455 lines): a primary name change plus additional nickname/alias
@@ -39,8 +42,9 @@ interface ReplacementPairForm {
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
-            <label class="block qt-text-label mb-2 text-foreground">Current Name</label>
+            <label [for]="fieldId + '-current-name'" class="block qt-text-label mb-2 text-foreground">Current Name</label>
             <input
+              [id]="fieldId + '-current-name'"
               type="text"
               [value]="characterName()"
               disabled
@@ -48,8 +52,9 @@ interface ReplacementPairForm {
             />
           </div>
           <div>
-            <label class="block qt-text-label mb-2 text-foreground">New Name</label>
+            <label [for]="fieldId + '-new-name'" class="block qt-text-label mb-2 text-foreground">New Name</label>
             <input
+              [id]="fieldId + '-new-name'"
               type="text"
               placeholder="Enter new name"
               [value]="newName()"
@@ -98,8 +103,9 @@ interface ReplacementPairForm {
               <div class="flex items-start gap-3 p-3 qt-bg-muted rounded-lg">
                 <div class="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
-                    <label class="block qt-text-label-xs mb-1 qt-text-muted">Find</label>
+                    <label [for]="fieldId + '-find-' + replacement.id" class="block qt-text-label-xs mb-1 qt-text-muted">Find</label>
                     <input
+                      [id]="fieldId + '-find-' + replacement.id"
                       type="text"
                       placeholder="e.g., Snips"
                       [value]="replacement.oldValue"
@@ -108,8 +114,9 @@ interface ReplacementPairForm {
                     />
                   </div>
                   <div>
-                    <label class="block qt-text-label-xs mb-1 qt-text-muted">Replace with</label>
+                    <label [for]="fieldId + '-replace-' + replacement.id" class="block qt-text-label-xs mb-1 qt-text-muted">Replace with</label>
                     <input
+                      [id]="fieldId + '-replace-' + replacement.id"
                       type="text"
                       placeholder="e.g., Ace"
                       [value]="replacement.newValue"
@@ -264,6 +271,8 @@ interface ReplacementPairForm {
   `,
 })
 export class CharacterRenameReplaceTab {
+  protected readonly fieldId = `qt-rename-replace-${++nextRenameReplaceId}`;
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

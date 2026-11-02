@@ -26,6 +26,9 @@ interface Clipboard {
   name: string;
 }
 
+/** Per-instance prefix for the label ids (V5_ONLY_CONTROL label plumbing). */
+let nextFileManagerId = 0;
+
 /**
  * `qt-file-manager` — the reusable document-store file browser (work order
  * P4.6aa, the D18 bespoke build; the ngx-explorer spike ran GREEN on its gating
@@ -85,6 +88,7 @@ interface Clipboard {
             <span class="flex items-center gap-1">
               <input
                 #nf
+                aria-label="New folder name"
                 class="qt-input h-7 w-40 text-sm"
                 placeholder="Folder name"
                 data-testid="fm-new-folder-input"
@@ -126,8 +130,10 @@ interface Clipboard {
             <qt-icon name="upload" class="h-4 w-4" />
             Upload
           </button>
+          <label class="sr-only" [for]="fieldId + '-upload'">Upload</label>
           <input
             #fileInput
+            [id]="fieldId + '-upload'"
             type="file"
             class="hidden"
             data-testid="fm-file-input"
@@ -162,6 +168,7 @@ interface Clipboard {
             <button
               type="button"
               class="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left hover:qt-bg-muted"
+              aria-label="Up one folder"
               (click)="navigateUp()"
             >
               <qt-icon name="arrow-left" class="h-4 w-4 flex-shrink-0 qt-text-secondary" />
@@ -304,8 +311,10 @@ interface Clipboard {
         [name]="node.type === 'folder' ? 'folder' : 'file'"
         class="h-4 w-4 flex-shrink-0 qt-text-secondary"
       />
+      <label class="sr-only" [for]="fieldId + '-rename'">Rename</label>
       <input
         #rn
+        [id]="fieldId + '-rename'"
         class="qt-input h-7 min-w-0 flex-1 text-sm"
         data-testid="fm-rename-input"
         [value]="basename(node.path)"
@@ -327,6 +336,8 @@ interface Clipboard {
   `,
 })
 export class FileManager {
+  protected readonly fieldId = `qt-file-manager-${++nextFileManagerId}`;
+
   private readonly core = inject(CoreClient);
   private readonly transport = new CoreFileManagerTransport(this.core);
 

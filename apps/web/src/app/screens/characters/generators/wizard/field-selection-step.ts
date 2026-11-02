@@ -22,6 +22,9 @@ const ALL_FIELDS: GeneratableField[] = [
   'wardrobeItems',
 ];
 
+/** Per-instance prefix for the label ids (v4 `FieldSelectionStep.tsx` `useId()`). */
+let nextFieldSelectionId = 0;
+
 /**
  * Wizard step 3 — v4 `ai-wizard/steps/FieldSelectionStep.tsx` (195 lines):
  * the background textarea + the field checkbox catalogue + a live summary.
@@ -33,12 +36,13 @@ const ALL_FIELDS: GeneratableField[] = [
   template: `
     <div class="space-y-6">
       <div>
-        <h3 class="qt-heading-4 text-foreground mb-2">Background Context</h3>
+        <h3 [id]="fieldId + '-background-heading'" class="qt-heading-4 text-foreground mb-2">Background Context</h3>
         <p class="text-sm qt-text-secondary mb-3">
           Provide context about the character's world, scenario, backstory, or any details that
           should inform the generation.
         </p>
         <textarea
+          [attr.aria-labelledby]="fieldId + '-background-heading'"
           class="qt-textarea"
           rows="5"
           placeholder="Describe the world, scenario, backstory, or any context that should inform this character's creation. For example: 'A medieval fantasy world where magic is rare. This character is a blacksmith in a small village who secretly studies forbidden magic.'"
@@ -133,6 +137,8 @@ const ALL_FIELDS: GeneratableField[] = [
   `,
 })
 export class WizardFieldSelectionStep {
+  protected readonly fieldId = `qt-field-selection-${++nextFieldSelectionId}`;
+
   protected readonly wizard = inject(WizardState);
   protected readonly fields = ALL_FIELDS;
   protected readonly fieldLabels = FIELD_LABELS;

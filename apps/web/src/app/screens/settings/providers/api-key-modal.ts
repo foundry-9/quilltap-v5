@@ -54,7 +54,7 @@ interface ProviderOption {
           <label for="qt-key-provider" class="block qt-text-label mb-2">Provider *</label>
           <!--
             dogfood-#6: options come from an async query, so bind the selection
-            per-option with [selected] rather than [value] on the <select> — a
+            per-option with [selected] rather than [value] on the select — a
             [value] bound before the options render leaves the native control
             blank (P4.6aa select-audit rider).
           -->

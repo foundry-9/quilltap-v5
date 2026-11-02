@@ -78,6 +78,7 @@ export function isBlobBacked(fileType: string): boolean {
 
         <div class="flex flex-col gap-2 flex-1 min-w-[18rem]">
           <textarea
+            aria-label="File description or transcript"
             class="qt-input text-xs"
             [(ngModel)]="description"
             placeholder="Description / transcript (searchable)"

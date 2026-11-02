@@ -161,3 +161,52 @@ describe('DocumentPane', () => {
     expect(emitted).toEqual([1]);
   });
 });
+
+describe('DocumentPane — accessibility (P4.D358)', () => {
+  function live(fixture: ComponentFixture<DocumentPane>): HTMLElement {
+    const el = fixture.nativeElement.querySelector(
+      '.sr-only[role="status"][aria-live="polite"]',
+    ) as HTMLElement;
+    expect(el).toBeTruthy();
+    return el;
+  }
+
+  it('the polite live status says Saved / AI editing..., and is empty while Unsaved or Saving', () => {
+    expect(live(render(entry())).textContent?.trim()).toBe('Saved');
+    expect(live(render(entry({}, { isLLMEditing: true }))).textContent?.trim()).toBe('AI editing...');
+    expect(live(render(entry({}, { isDirty: true }))).textContent?.trim()).toBe('');
+    expect(live(render(entry({}, { isSaving: true }))).textContent?.trim()).toBe('');
+  });
+
+  it('names the title input and the textarea (content for plain text, source for markdown)', () => {
+    const plain = render(entry());
+    expect(
+      (plain.nativeElement.querySelector('textarea') as HTMLTextAreaElement).getAttribute('aria-label'),
+    ).toBe('Document content');
+    (plain.nativeElement.querySelector('.qt-doc-title') as HTMLElement).click();
+    plain.detectChanges();
+    expect(
+      (plain.nativeElement.querySelector('.qt-doc-title-input') as HTMLInputElement).getAttribute(
+        'aria-label',
+      ),
+    ).toBe('Document title');
+
+    const md = render(entry({ filePath: 'doc.md', content: '# Heading\nbody' }));
+    (md.nativeElement.querySelector('[aria-label="Show markdown source"]') as HTMLButtonElement).click();
+    md.detectChanges();
+    expect(
+      (md.nativeElement.querySelector('textarea') as HTMLTextAreaElement).getAttribute('aria-label'),
+    ).toBe('Document source');
+  });
+
+  it('the title is a keyboard button: Enter on it starts the title edit', () => {
+    const fixture = render(entry({ displayTitle: 'Old' }));
+    const span = fixture.nativeElement.querySelector('.qt-doc-title') as HTMLElement;
+    expect(span.getAttribute('role')).toBe('button');
+    expect(span.getAttribute('tabindex')).toBe('0');
+    expect(fixture.nativeElement.querySelector('.qt-doc-title-input')).toBeNull();
+    span.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.qt-doc-title-input')).not.toBeNull();
+  });
+});

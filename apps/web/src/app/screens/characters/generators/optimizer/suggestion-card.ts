@@ -6,6 +6,9 @@ import { PROMPT_FIELD_HINTS } from '../../../../ui/prompt-field-hints';
 import type { OptimizerSuggestion, SuggestionDecision } from '../detail-generators.api';
 import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
 
+/** Per-instance prefix for the label ids (v4 `SuggestionCard.tsx` `useId()`). */
+let nextSuggestionCardId = 0;
+
 /**
  * v4 `components/characters/optimizer/components/SuggestionCard.tsx` — one
  * proposed refinement, reviewable as accept / reject / edit-and-accept.
@@ -78,8 +81,9 @@ import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
         </div>
       } @else {
         <div class="flex min-h-0 flex-1 flex-col gap-2">
-          <span class="qt-caption uppercase tracking-wider">Amend the Proposed Wording</span>
+          <span [id]="fieldId + '-amend-label'" class="qt-caption uppercase tracking-wider">Amend the Proposed Wording</span>
           <textarea
+            [attr.aria-labelledby]="fieldId + '-amend-label'"
             class="qt-textarea min-h-[200px] flex-1 resize-y text-sm"
             [value]="draftValue()"
             (input)="draftValue.set($any($event.target).value)"
@@ -191,6 +195,8 @@ import { FIELD_BADGE_CLASS, FIELD_HINT_KEYS, FIELD_LABELS } from './field-meta';
   `,
 })
 export class SuggestionCard {
+  protected readonly fieldId = `qt-suggestion-${++nextSuggestionCardId}`;
+
   readonly suggestion = input.required<OptimizerSuggestion>();
   readonly decision = input<SuggestionDecision | undefined>(undefined);
   readonly editedValue = input<string | undefined>(undefined);

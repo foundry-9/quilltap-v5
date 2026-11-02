@@ -78,6 +78,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
   },
 ];
 
+/** Per-instance prefix for the label ids (v4 `TimestampConfigCard.tsx` `useId()`). */
+let nextTimestampCardId = 0;
+
 /**
  * The compact "Reality Injection Mode" timestamp card (v4
  * `TimestampConfigCard` with `compact`). Fully controlled: reads
@@ -123,8 +126,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
       @if (cfg().mode === 'EVERY_N_MINUTES') {
         <div>
-          <label class="block qt-text-label mb-2">Interval (minutes)</label>
+          <label class="block qt-text-label mb-2" [for]="fieldId + '-interval'">Interval (minutes)</label>
           <input
+            [id]="fieldId + '-interval'"
             type="number"
             min="1"
             step="1"
@@ -138,8 +142,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
       @if (cfg().mode !== 'NONE') {
         <div>
-          <label class="block qt-text-label mb-2">Timestamp Format</label>
+          <label class="block qt-text-label mb-2" [for]="fieldId + '-format'">Timestamp Format</label>
           <select
+            [id]="fieldId + '-format'"
             [ngModel]="cfg().format"
             (ngModelChange)="setFormat($event)"
             [disabled]="disabled()"
@@ -155,8 +160,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
         @if (cfg().format === 'CUSTOM') {
           <div>
-            <label class="block qt-text-label mb-2">Custom Format String</label>
+            <label class="block qt-text-label mb-2" [for]="fieldId + '-custom-format'">Custom Format String</label>
             <input
+              [id]="fieldId + '-custom-format'"
               type="text"
               [ngModel]="cfg().customFormat || ''"
               (ngModelChange)="patch({ customFormat: $event || null })"
@@ -168,9 +174,10 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
         }
 
         <div>
-          <label class="block qt-text-label mb-2">Timezone</label>
+          <label class="block qt-text-label mb-2" [for]="fieldId + '-timezone'">Timezone</label>
           <div class="flex gap-2">
             <input
+              [id]="fieldId + '-timezone'"
               type="text"
               [ngModel]="cfg().timezone || ''"
               (ngModelChange)="patch({ timezone: $event || null })"
@@ -239,8 +246,9 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
 
         @if (cfg().useFictionalTime) {
           <div>
-            <label class="block qt-text-label mb-2">Fictional Base Timestamp</label>
+            <label class="block qt-text-label mb-2" [for]="fieldId + '-fictional'">Fictional Base Timestamp</label>
             <input
+              [id]="fieldId + '-fictional'"
               type="datetime-local"
               [ngModel]="cfg().fictionalBaseTimestamp || ''"
               (ngModelChange)="patch({ fictionalBaseTimestamp: $event || null })"
@@ -261,6 +269,8 @@ const FORMATS: { value: TimestampFormat; label: string; description: string; exa
   `,
 })
 export class TimestampConfigCard {
+  protected readonly fieldId = `qt-timestamp-${++nextTimestampCardId}`;
+
   readonly value = input<TimestampConfig | null>(null);
   readonly disabled = input(false);
   readonly changed = output<TimestampConfig>();

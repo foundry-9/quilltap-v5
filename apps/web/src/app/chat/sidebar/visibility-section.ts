@@ -54,6 +54,9 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
  * All-Whispers is display-only and belongs to the Salon, so it stays an
  * input/output pair (v4 `showAllWhispers` / `onToggleAllWhispers`).
  */
+/** One label target per instance — v4 `ChatSidebar.tsx`'s `useId()` (the `subprompt-picker.ts` idiom). */
+let nextVisibilityId = 0;
+
 @Component({
   selector: 'qt-visibility-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -145,10 +148,10 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
       <div class="flex flex-col gap-2 pt-2 border-t qt-border-default">
         <span class="qt-text-secondary text-xs">Aurora&apos;s Core Whisper</span>
         <div class="flex items-center justify-between gap-2">
-          <span class="qt-text-secondary text-xs">Offering</span>
+          <label [for]="fieldId + '-core-whisper-offering'" class="qt-text-secondary text-xs">Offering</label>
           <select
+            [id]="fieldId + '-core-whisper-offering'"
             class="qt-select qt-select-sm"
-            aria-label="Core whisper offering"
             title="When does Aurora offer this chat's characters their own Core/ packet? Inherit defers to per-character and global settings."
             [value]="coreWhisperValue()"
             (change)="onCoreWhisperEnabledChange($event)"
@@ -159,10 +162,10 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
           </select>
         </div>
         <div class="flex items-center justify-between gap-2">
-          <span class="qt-text-secondary text-xs">Cadence</span>
+          <label [for]="fieldId + '-core-whisper-cadence'" class="qt-text-secondary text-xs">Cadence</label>
           <select
+            [id]="fieldId + '-core-whisper-cadence'"
             class="qt-select qt-select-sm"
-            aria-label="Core whisper cadence"
             title="Assistant turns between periodic Core whispers in this chat. Inherit defers to the global default."
             [value]="cadenceValue()"
             (change)="onCoreWhisperIntervalChange($event)"
@@ -178,10 +181,10 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
 
       <div class="flex flex-col gap-2 pt-2 border-t qt-border-default">
         <div class="flex items-center justify-between gap-2">
-          <span class="qt-text-secondary text-xs">Thinking</span>
+          <label [for]="fieldId + '-thinking'" class="qt-text-secondary text-xs">Thinking</label>
           <select
+            [id]="fieldId + '-thinking'"
             class="qt-select qt-select-sm"
-            aria-label="Thinking visibility"
             title="Show reasoning models' chain-of-thought in this chat. Inherit defers to the global default. Display-only — never sent to any model."
             [value]="thinkingValue()"
             (change)="onShowThinkingChange($event)"
@@ -195,10 +198,10 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
 
       <div class="flex flex-col gap-2 pt-2 border-t qt-border-default">
         <div class="flex items-center justify-between gap-2">
-          <span class="qt-text-secondary text-xs">Answer Confirmation</span>
+          <label [for]="fieldId + '-answer-confirmation'" class="qt-text-secondary text-xs">Answer Confirmation</label>
           <select
+            [id]="fieldId + '-answer-confirmation'"
             class="qt-select qt-select-sm"
-            aria-label="Answer confirmation"
             title="Vet this chat's looked-up answers against what the character actually knew. Inherit defers to the project, then the global default."
             [value]="answerConfirmationValue()"
             (change)="onAnswerConfirmationChange($event)"
@@ -215,6 +218,9 @@ const CORE_WHISPER_INTERVAL_OPTIONS = [
   `,
 })
 export class VisibilitySection {
+  /** v4 `eed72d60c` (`ChatSidebar.tsx:1560, :1579, :1604, :1626`): each caption is a `<label for>`. */
+  protected readonly fieldId = `qt-visibility-${++nextVisibilityId}`;
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

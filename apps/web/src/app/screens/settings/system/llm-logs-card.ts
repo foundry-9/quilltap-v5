@@ -22,6 +22,8 @@ const TYPE_LABELS: Record<string, string> = {
   // v4 `d1c06cd9d` (`llm-logs-card.tsx:45`) — a DIFFERENT label from the
   // Inspector's "Scenario"; both are v4's, carried as-is.
   SCENARIO_BUILDER: 'Scenario Builder',
+  // P4.D344 H2 (applied by P4.D358): v4 `llm-logs-card.tsx:47` at `236c04e35`.
+  STORYTELLER_BID: 'Storyteller Bid',
 };
 
 /** v4 `formatDateTime(str, {includeYear:false})` — month/day + time, no year. */

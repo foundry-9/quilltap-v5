@@ -112,9 +112,17 @@ export function isLongText(prop: SchemaProperty): boolean {
                 (change)="toggleOptional(key, $any($event.target).checked)"
               />
             }
-            <label [attr.for]="req ? 'field-' + key : 'include-' + key" class="text-sm font-medium qt-text">
-              {{ key }}@if (req) {<span class="qt-text-destructive ml-0.5">*</span>}
-            </label>
+            <!-- v4 :131 htmlFor={isRequired ? field-key : include-key}; one
+                 label per arm so each for names its control statically. -->
+            @if (req) {
+              <label [attr.for]="'field-' + key" class="text-sm font-medium qt-text">
+                {{ key }}<span class="qt-text-destructive ml-0.5">*</span>
+              </label>
+            } @else {
+              <label [attr.for]="'include-' + key" class="text-sm font-medium qt-text">
+                {{ key }}
+              </label>
+            }
           </div>
 
           @if (prop.description) {
@@ -125,6 +133,7 @@ export function isLongText(prop: SchemaProperty): boolean {
             @if (prop.type === 'string' && prop.enum) {
               <select
                 [id]="'field-' + key"
+                [attr.aria-label]="req ? null : key"
                 class="qt-select w-full text-sm"
                 [value]="text(key, prop)"
                 (change)="set(key, $any($event.target).value)"
@@ -148,6 +157,7 @@ export function isLongText(prop: SchemaProperty): boolean {
             } @else if (prop.type === 'number' || prop.type === 'integer') {
               <input
                 [id]="'field-' + key"
+                [attr.aria-label]="req ? null : key"
                 type="number"
                 class="qt-input w-full text-sm"
                 [value]="text(key, prop)"
@@ -217,6 +227,7 @@ export function isLongText(prop: SchemaProperty): boolean {
             } @else if (prop.type === 'object' || prop.type === 'array') {
               <textarea
                 [id]="'field-' + key"
+                [attr.aria-label]="req ? null : key"
                 class="qt-input w-full text-sm font-mono"
                 rows="4"
                 placeholder="Enter valid JSON..."
@@ -226,6 +237,7 @@ export function isLongText(prop: SchemaProperty): boolean {
             } @else if (longText(prop)) {
               <textarea
                 [id]="'field-' + key"
+                [attr.aria-label]="req ? null : key"
                 class="qt-input w-full text-sm"
                 rows="3"
                 [attr.maxlength]="prop.maxLength"
@@ -236,6 +248,7 @@ export function isLongText(prop: SchemaProperty): boolean {
             } @else {
               <input
                 [id]="'field-' + key"
+                [attr.aria-label]="req ? null : key"
                 type="text"
                 class="qt-input w-full text-sm"
                 [attr.maxlength]="prop.maxLength"

@@ -259,3 +259,76 @@ describe('ImageGallery — hover download (v4 af1bc479)', () => {
     expect(selected).toEqual([]);
   });
 });
+
+describe('ImageGallery — the selectable tile is a toggle button (P4.D358, v4 dff76ebef)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  async function render(inputs: Record<string, unknown>): Promise<ComponentFixture<ImageGallery>> {
+    TestBed.configureTestingModule({ imports: [ImageGallery] });
+    const fixture = TestBed.createComponent(ImageGallery);
+    for (const [key, value] of Object.entries(inputs)) fixture.componentRef.setInput(key, value);
+    fixture.detectChanges();
+    await settle(fixture);
+    return fixture;
+  }
+
+  async function settle(fixture: ComponentFixture<ImageGallery>): Promise<void> {
+    for (let i = 0; i < 3; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  function tiles(fixture: ComponentFixture<ImageGallery>): HTMLElement[] {
+    return [...fixture.nativeElement.querySelectorAll('.aspect-square')] as HTMLElement[];
+  }
+
+  const twoImages = [image({}), image({ id: 'b', filename: 'b.png', url: '/uploads/b.png' })];
+
+  it('a selectable present tile is role=button, tabindex 0, aria-pressed from selectedImageId', async () => {
+    const fixture = await render({
+      images: twoImages,
+      onSelectImage: () => {},
+      selectedImageId: 'b',
+    });
+    const [a, b] = tiles(fixture);
+    for (const t of [a, b]) {
+      expect(t.getAttribute('role')).toBe('button');
+      expect(t.getAttribute('tabindex')).toBe('0');
+    }
+    expect(a.getAttribute('aria-pressed')).toBe('false');
+    expect(b.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('a missing tile carries no role / tabindex / aria-pressed', async () => {
+    const fixture = await render({ images: twoImages, onSelectImage: () => {} });
+    (fixture.nativeElement.querySelectorAll('img')[1] as HTMLImageElement).dispatchEvent(new Event('error'));
+    await settle(fixture);
+    const missing = tiles(fixture)[1];
+    expect(missing.querySelector('qt-deleted-image-placeholder')).toBeTruthy();
+    expect(missing.hasAttribute('role')).toBe(false);
+    expect(missing.hasAttribute('tabindex')).toBe(false);
+    expect(missing.hasAttribute('aria-pressed')).toBe(false);
+    expect(tiles(fixture)[0].getAttribute('role')).toBe('button');
+  });
+
+  it('without onSelectImage the tile carries none of the button attributes', async () => {
+    const fixture = await render({ images: twoImages, selectedImageId: 'b' });
+    for (const t of tiles(fixture)) {
+      expect(t.hasAttribute('role')).toBe(false);
+      expect(t.hasAttribute('tabindex')).toBe(false);
+      expect(t.hasAttribute('aria-pressed')).toBe(false);
+    }
+  });
+
+  it('Enter on a selectable tile selects that image', async () => {
+    const selected: string[] = [];
+    const fixture = await render({
+      images: twoImages,
+      onSelectImage: (img: ImageData) => selected.push(img.id),
+    });
+    const tile = fixture.nativeElement.querySelectorAll('[role="button"]')[1] as HTMLElement;
+    tile.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    expect(selected).toEqual(['b']);
+  });
+});

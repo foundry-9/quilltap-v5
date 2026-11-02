@@ -112,6 +112,7 @@ export function boundsHint(param: CustomToolParameterSpec): string | null {
     <textarea
       #ta
       [id]="id()"
+      [attr.aria-labelledby]="labelledBy()"
       rows="1"
       [value]="value()"
       [disabled]="disabled()"
@@ -125,6 +126,12 @@ export function boundsHint(param: CustomToolParameterSpec): string | null {
 })
 export class AutoGrowTextarea {
   readonly id = input.required<string>();
+  /**
+   * The id of the host's visible `<label for>` (v4 names this textarea through
+   * that label, `CustomToolParamsForm.tsx:215`). The `for` already names it at
+   * runtime; this makes the link visible inside this template (P4.D358 C9 R4).
+   */
+  readonly labelledBy = input<string | null>(null);
   readonly value = input.required<string>();
   readonly disabled = input(false);
   readonly valueChange = output<string>();
@@ -200,7 +207,7 @@ export class AutoGrowTextarea {
         </div>
       } @else {
         <div>
-          <label [attr.for]="entry.inputId" class="flex items-baseline gap-2 mb-1.5">
+          <label [attr.for]="entry.inputId" [id]="'lbl-' + entry.inputId" class="flex items-baseline gap-2 mb-1.5">
             <span class="text-sm font-medium font-mono">{{ entry.name }}</span>
             <span class="text-xs qt-text-secondary">
               {{ entry.param.type }}{{ entry.bounds ? ' · ' + entry.bounds : '' }}
@@ -212,6 +219,7 @@ export class AutoGrowTextarea {
           @if (entry.param.type === 'string') {
             <qt-auto-grow-textarea
               [id]="entry.inputId"
+              [labelledBy]="'lbl-' + entry.inputId"
               [value]="textValue(entry.name)"
               [disabled]="disabled()"
               (valueChange)="paramChange.emit({ param: entry.name, value: $event })"

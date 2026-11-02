@@ -29,7 +29,7 @@ import { Icon } from './icon';
     } @else {
       <button
         type="button"
-        class="flex-shrink-0 inline-flex items-center justify-center qt-text-muted hover:text-foreground transition-colors"
+        class="flex-shrink-0 inline-flex items-center justify-center min-w-6 min-h-6 qt-text-muted hover:text-foreground transition-colors"
         aria-label="Copy conversation ID"
         [title]="tooltip()"
         (click)="copy()"

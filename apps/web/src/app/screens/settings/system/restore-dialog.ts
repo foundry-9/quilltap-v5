@@ -22,6 +22,9 @@ interface RestoreSummary {
   warnings?: string[];
 }
 
+/** One label/control id prefix per instance — v4's `useId()` (P4.D358 C9 R4). */
+let nextRestoreDialogId = 0;
+
 /**
  * The Restore Backup dialog (v4 `components/tools/restore/RestoreDialog.tsx` +
  * `hooks/useRestoreData.ts`): a 4-step wizard — pick a file, upload + preview,
@@ -44,7 +47,7 @@ interface RestoreSummary {
       @switch (step()) {
         @case ('source') {
           <div class="space-y-4">
-            <label class="block text-sm qt-text-primary mb-3">Select Backup File</label>
+            <label class="block text-sm qt-text-primary mb-3" [for]="fieldId + '-file'">Select Backup File</label>
             <div
               class="border-2 border-dashed qt-border-default rounded-lg p-6 text-center cursor-pointer hover:border-input transition-colors"
               (click)="fileInput.click()"
@@ -57,6 +60,7 @@ interface RestoreSummary {
               }
               <input
                 #fileInput
+                [id]="fieldId + '-file'"
                 type="file"
                 accept=".json,.zip"
                 class="hidden"
@@ -277,6 +281,7 @@ interface RestoreSummary {
   `,
 })
 export class RestoreDialog {
+  protected readonly fieldId = `qt-restore-${++nextRestoreDialogId}`;
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

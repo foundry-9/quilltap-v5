@@ -65,6 +65,7 @@ interface PickerProfile {
              [selected] per option, never [value]/[ngModel] on the select
              (the standing dogfood-#6 rule). -->
         <select
+          aria-label="Image profile"
           [disabled]="disabled()"
           (change)="onSelect($any($event.target).value)"
           class="w-full px-3 py-2 border qt-border-default qt-bg-card text-foreground rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"

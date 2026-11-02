@@ -24,6 +24,9 @@ export interface PromptFormData {
 
 export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '', isDefault: false };
 
+/** Per-instance prefix for the label ids (v4 `PromptModal.tsx` `useId()`). */
+let nextPromptModalId = 0;
+
 /**
  * Create/edit modal for one character system prompt (v4
  * `components/characters/system-prompts-editor/PromptModal.tsx`): name, the
@@ -51,8 +54,9 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
     >
       <div class="space-y-4">
         <div>
-          <label class="qt-label">Name *</label>
+          <label [for]="fieldId + '-name'" class="qt-label">Name *</label>
           <input
+            [id]="fieldId + '-name'"
             type="text"
             class="qt-input"
             placeholder="e.g., Romantic, Companion, Professional"
@@ -102,6 +106,8 @@ export const INITIAL_PROMPT_FORM_DATA: PromptFormData = { name: '', content: '',
   `,
 })
 export class PromptModal implements OnInit {
+  protected readonly fieldId = `qt-prompt-modal-${++nextPromptModalId}`;
+
   readonly editingPrompt = input<CharacterSystemPrompt | null>(null);
   /**
    * Seed a NEW prompt's form (v4's Import-Template flow, `useSystemPrompts.ts`

@@ -132,7 +132,12 @@ let previewInstanceCounter = 0;
             <button type="button" class="qt-button-secondary">Secondary</button>
             <button type="button" class="qt-button-ghost">Ghost</button>
           </div>
-          <input class="qt-input w-full" placeholder="Text input placeholder..." readonly />
+          <input
+            aria-label="Sample text input"
+            class="qt-input w-full"
+            placeholder="Text input placeholder..."
+            readonly
+          />
           <div class="flex flex-wrap gap-2">
             <span class="qt-badge-character">Character</span>
             <span class="qt-badge-chat">Chat</span>

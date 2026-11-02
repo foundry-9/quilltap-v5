@@ -10,6 +10,9 @@ import { applyProfileChange, seedSelectedCharacter, sortRoster } from './new-cha
 import { NewChatState } from './new-chat.state';
 import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-chat.types';
 
+/** Per-instance prefix for the label ids (v4 `CharacterPickerPanel.tsx` `useId()`). */
+let nextCharacterPickerId = 0;
+
 /**
  * The New-Chat character picker (v4 `components/new-chat/CharacterPickerPanel.tsx`):
  * a searchable roster on the left, the selected cast with per-character
@@ -32,6 +35,7 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
           <input
             type="text"
             placeholder="Search characters..."
+            aria-label="Search characters"
             [ngModel]="search()"
             (ngModelChange)="search.set($event)"
             class="w-full rounded-lg border qt-border-default bg-background px-4 py-2 text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
@@ -95,10 +99,13 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                       <div class="qt-text-small">{{ sc.character.title }}</div>
                     }
                     <div class="mt-3">
-                      <label class="mb-1 block text-xs font-medium qt-text-xs"
+                      <label
+                        [for]="fieldId + '-profile-' + sc.character.id"
+                        class="mb-1 block text-xs font-medium qt-text-xs"
                         >Connection Profile</label
                       >
                       <select
+                        [id]="fieldId + '-profile-' + sc.character.id"
                         [ngModel]="profileValue(sc)"
                         (ngModelChange)="onProfileChange(sc.character.id, $event)"
                         [disabled]="disabled()"
@@ -115,10 +122,13 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
                     </div>
                     @if (sc.character.systemPrompts && sc.character.systemPrompts.length > 0) {
                       <div class="mt-2">
-                        <label class="mb-1 block text-xs font-medium qt-text-xs"
+                        <label
+                          [for]="fieldId + '-prompt-' + sc.character.id"
+                          class="mb-1 block text-xs font-medium qt-text-xs"
                           >System Prompt</label
                         >
                         <select
+                          [id]="fieldId + '-prompt-' + sc.character.id"
                           [ngModel]="sc.selectedSystemPromptId || ''"
                           (ngModelChange)="onPromptChange(sc.character.id, $event)"
                           [disabled]="disabled()"
@@ -167,6 +177,8 @@ import { USER_CONTROLLED_PROFILE, type NewChatSelectedCharacter } from './new-ch
   `,
 })
 export class CharacterPickerPanel {
+  protected readonly fieldId = `qt-character-picker-${++nextCharacterPickerId}`;
+
   readonly state = input.required<NewChatState>();
   readonly disabled = input(false);
 

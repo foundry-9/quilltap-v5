@@ -1,0 +1,11 @@
+{
+  "src/app/brahma/help-composer.ts": "P4.D359",
+  "src/app/images/standalone-generate-image-dialog.ts": "P4.D359",
+  "src/app/memory/memory-list.ts": "P4.D359",
+  "src/app/screens/characters/edit/appearance-tab.ts": "P4.D359",
+  "src/app/screens/generate-image/generate-image-page.ts": "P4.D359",
+  "src/app/wardrobe/equipped-slot-row.ts": "P4.D359",
+  "src/app/wardrobe/wardrobe-control-dialog.ts": "P4.D359",
+  "src/app/screens/settings/templates/template-delimiter-editor.ts": "P4.D352",
+  "src/app/screens/settings/templates/template-form-modal.ts": "P4.D352"
+}
