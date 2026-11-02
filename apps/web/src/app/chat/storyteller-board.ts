@@ -27,6 +27,7 @@ import { chatKeys } from './chat-keys';
 import {
   arrangeBids,
   cardClass,
+  moveId,
   chosenInBoardOrder,
   ordinal,
   selectAllIds,
@@ -63,10 +64,13 @@ export interface StorytellerRunRequest {
  * "Select all" never includes it (D7).
  *
  * v5 differences, each recorded in the P4.D344 lane record:
- *  - R-L: no drag. v4 sets the running order by dragging the cards
- *    (`@dnd-kit`); v5 ships the board unarranged — the room's rotation sets the
- *    order and `keepOrder` is `false` — and OMITS v4's "Drag the cards…" hint
- *    rather than promise a gesture it does not have.
+ *  - R-L / R-1: no drag. v4 sets the running order by dragging the cards
+ *    (`@dnd-kit`); v5 reaches the same `arrangement` by each live card's
+ *    arrows (buttons, and ArrowUp/Left / ArrowDown/Right on the focused card).
+ *    Untouched, the room's rotation sets the order (`keepOrder: false`); once
+ *    arranged, the order badges, `Reset order` and `keepOrder: true` follow as
+ *    in v4. The unarranged hint is v5's own sentence — v4's promises dragging
+ *    (`BOARD_ARRANGE_HINT_WITHOUT_DRAG`).
  *  - R-5: v4 disables the buttons for `busy || running`, `running` a local flag
  *    around its awaited `onRun`. Here the Salon owns the run and its `busy()`
  *    is true for the whole of it, so `busy` alone is the running state.
@@ -122,7 +126,12 @@ export interface StorytellerRunRequest {
               @let isSelected = selected().has(bid.participantId);
               @let line = statusLineOf(bid);
               @let runPosition = runPositionOf(bid, isSelected);
-              <div [attr.class]="cardClassOf(bid, isSelected)">
+              @let movable = bid.status === 'bid' && !disabled();
+              <div
+                [attr.class]="cardClassOf(bid, isSelected)"
+                [attr.tabindex]="movable ? 0 : null"
+                (keydown)="onCardKey($event, bid)"
+              >
                 <div class="qt-storyteller-card-head">
                   @if (runPosition > 0) {
                     <span class="qt-storyteller-card-order" [title]="'Speaks ' + ordinalOf(runPosition)">{{
@@ -144,6 +153,28 @@ export interface StorytellerRunRequest {
                   }}</span>
                   @if (bid.status === 'bid' && bid.tier) {
                     <span [attr.class]="'qt-badge ' + tierBadge[bid.tier]">{{ tierLabels[bid.tier] }}</span>
+                  }
+                  @if (movable) {
+                    <!-- R-1: v4 drags the card (dnd-kit); v5 moves it by button
+                         or arrow key — the same arrangement state, no dependency. -->
+                    <button
+                      type="button"
+                      class="qt-button-ghost qt-button-sm"
+                      [attr.aria-label]="'Move ' + bid.characterName + ' earlier'"
+                      [title]="'Move ' + bid.characterName + ' earlier'"
+                      (click)="move(bid, -1)"
+                    >
+                      <qt-icon name="arrow-left" class="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      class="qt-button-ghost qt-button-sm"
+                      [attr.aria-label]="'Move ' + bid.characterName + ' later'"
+                      [title]="'Move ' + bid.characterName + ' later'"
+                      (click)="move(bid, 1)"
+                    >
+                      <qt-icon name="arrow-right" class="w-3.5 h-3.5" />
+                    </button>
                   }
                 </div>
 
@@ -190,8 +221,14 @@ export interface StorytellerRunRequest {
             }
           </div>
 
-          @if (biddable().length > 1 && arranged()) {
-            <div class="qt-storyteller-meta">Chosen bids run in the order shown.</div>
+          @if (biddable().length > 1) {
+            <div class="qt-storyteller-meta">
+              {{
+                arranged()
+                  ? 'Chosen bids run in the order shown.'
+                  : 'Use a card’s arrows to set the running order; left alone, the room’s rotation decides.'
+              }}
+            </div>
           }
 
           @if (destroyMixed()) {
@@ -266,7 +303,7 @@ export class StorytellerBoard {
   /** The ticked seats (participant ids). Per round — reset when the round changes. */
   protected readonly selected = signal<ReadonlySet<string>>(new Set());
   /** The operator's hand-set card order (participant ids); null until they arrange it. */
-  readonly arrangement = signal<string[] | null>(null);
+  protected readonly arrangement = signal<string[] | null>(null);
   protected readonly askPending = signal(false);
   protected readonly liePending = signal(false);
 
@@ -324,6 +361,29 @@ export class StorytellerBoard {
   protected avatarFor(participantId: string): string | null {
     const seat = this.participants().find((p) => p.id === participantId);
     return normalizeAvatarSrc(seat?.character?.avatarUrl) ?? null;
+  }
+
+  /**
+   * Move a card one place (v4 `handleDragEnd`'s `arrayMove` over the card ids,
+   * `:229-237`) — the keyboard / button twin of v4's drag (R-1).
+   */
+  protected move(bid: StorytellerBid, delta: -1 | 1): void {
+    const ids = this.cards().map((b) => b.participantId);
+    const from = ids.indexOf(bid.participantId);
+    const to = from + delta;
+    if (from === -1 || to < 0 || to >= ids.length) return;
+    this.arrangement.set(moveId(ids, from, to));
+  }
+
+  /** v4's `KeyboardSensor` twin: ArrowUp / ArrowLeft earlier, ArrowDown / ArrowRight later. */
+  protected onCardKey(event: KeyboardEvent, bid: StorytellerBid): void {
+    if (bid.status !== 'bid' || this.disabled()) return;
+    if (event.target !== event.currentTarget) return; // the checkbox / buttons keep their keys
+    const delta = event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? -1
+      : event.key === 'ArrowDown' || event.key === 'ArrowRight' ? 1 : 0;
+    if (delta === 0) return;
+    event.preventDefault();
+    this.move(bid, delta);
   }
 
   protected toggle(bid: StorytellerBid): void {

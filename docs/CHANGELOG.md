@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): arrange the storyteller board by buttons and arrow keys — badges, Reset order, keepOrder
+
+_Versions: SPA 0.5.913._
+
+P4.D344 Tier 2 item 15 (rulings R-L / R-1). v4 sets the storyteller board's running order by dragging the cards (`@dnd-kit`); v5 takes no drag dependency and reaches the same arrangement state by two arrow buttons on each live bid (`Move <name> earlier` / `later`) and by ArrowUp/Left and ArrowDown/Right on the focused card. Once arranged, the order badges (`Speaks first` …), `Reset order`, `Chosen bids run in the order shown.` and `keepOrder: true` follow v4. The unarranged hint is v5's own sentence, since v4's promises dragging (`BOARD_ARRANGE_HINT_WITHOUT_DRAG`; the wording is open to the human). No drag class or `aria-roledescription` is emitted.
+
 #### 2026-11-02 — feat(spa): the Salon's storyteller wiring — turn mode, the board's frames, running a selection
 
 _Versions: SPA 0.5.912._

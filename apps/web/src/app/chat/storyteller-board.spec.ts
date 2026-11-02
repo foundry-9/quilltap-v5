@@ -243,10 +243,13 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     expect(lines(cards[4])).toEqual(['Passes — tired', 'Talkativeness 0.10 · silent']);
     expect(lines(cards[5])).toEqual(['No bid — the call failed', 'Talkativeness 0.50', 'Ask anyway']);
     expect(lines(cards[6])).toEqual(['Kept quiet this round', 'Talkativeness 0.50', 'Ask anyway']);
-    // Tier 1: no arrangement, so no order badge, no Reset order, and no hint.
+    // Unarranged: no order badge, no Reset order, and v5's arrows hint
+    // (BOARD_ARRANGE_HINT_WITHOUT_DRAG — v4's promises dragging).
     expect(m.el.querySelector('.qt-storyteller-card-order')).toBeNull();
     expect([...m.el.querySelectorAll('button')].map(text)).not.toContain('Reset order');
-    expect(text(m.el.querySelector('section > .qt-storyteller-meta'))).toBe('');
+    expect(text(m.el.querySelector('section > .qt-storyteller-meta'))).toBe(
+      'Use a card’s arrows to set the running order; left alone, the room’s rotation decides.',
+    );
     expect(button(m.el, 'All at once').title).toBe(
       'Simple and Lookup bids speak at once; Act and Destroy bids follow one at a time',
     );
@@ -390,4 +393,89 @@ describe('StorytellerBoard (v4 components/chat/StorytellerBoard.tsx @ 236c04e35)
     await settle(m.fixture);
     expect(tick(m.el, 'A').checked).toBe(false);
   });
+
+  // --- Tier 2 (R-1): arrangement by buttons and keys, no drag dependency ---
+
+  const order = (el: HTMLElement) =>
+    [...el.querySelectorAll('.qt-storyteller-card-name')].map((n) => n.textContent?.trim());
+  const arrow = (el: HTMLElement, name: string, dir: 'earlier' | 'later') =>
+    el.querySelector(`button[aria-label="Move ${name} ${dir}"]`) as HTMLButtonElement | null;
+
+  it('moving a card arranges the board: badges, Reset order, the arranged hint, keepOrder true in board order', async () => {
+    const m = await mount(stub(openRound([bid('a'), bid('b'), bid('c')])));
+    expect(m.el.querySelector('.qt-storyteller-cards > div')?.getAttribute('aria-roledescription')).toBeNull();
+    await click(m, tick(m.el, 'A'));
+    await click(m, tick(m.el, 'C'));
+    await click(m, arrow(m.el, 'C', 'earlier')!);
+    await click(m, arrow(m.el, 'C', 'earlier')!);
+    expect(order(m.el)).toEqual(['C', 'A', 'B']);
+    const badges = [...m.el.querySelectorAll('.qt-storyteller-card-order')];
+    expect(badges.map((b) => [b.textContent?.trim(), b.getAttribute('title')])).toEqual([
+      ['1', 'Speaks first'],
+      ['2', 'Speaks second'],
+    ]);
+    expect(text(m.el.querySelector('section > .qt-storyteller-meta'))).toBe('Chosen bids run in the order shown.');
+    const reset = button(m.el, 'Reset order');
+    expect(reset.title).toBe("Put the cards back and let the room's rotation set the order");
+    await click(m, button(m.el, 'Run in order'));
+    expect(m.runs.at(-1)).toEqual({ roundId: 'round-1', participantIds: ['c', 'a'], order: 'sequential', keepOrder: true });
+    // No drag tokens are ever emitted.
+    expect(m.el.innerHTML).not.toContain('qt-storyteller-card-draggable');
+
+    await click(m, reset);
+    expect(order(m.el)).toEqual(['A', 'B', 'C']);
+    expect([...m.el.querySelectorAll('button')].map(text)).not.toContain('Reset order');
+    await click(m, button(m.el, 'Run in order'));
+    expect(m.runs.at(-1)).toEqual({ roundId: 'round-1', participantIds: ['a', 'c'], order: 'sequential', keepOrder: false });
+  });
+
+  it('the keyboard twin: ArrowLeft / ArrowUp earlier, ArrowRight / ArrowDown later, only on the card itself', async () => {
+    const m = await mount(stub(openRound([bid('a'), bid('b'), bid('c')])));
+    const card = (name: string) =>
+      [...m.el.querySelectorAll('.qt-storyteller-cards > div')].find(
+        (c) => c.querySelector('.qt-storyteller-card-name')?.textContent?.trim() === name,
+      ) as HTMLElement;
+    expect(card('A').getAttribute('tabindex')).toBe('0');
+    const key = async (target: HTMLElement, k: string) => {
+      target.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true }));
+      await settle(m.fixture);
+    };
+    await key(card('A'), 'ArrowRight');
+    expect(order(m.el)).toEqual(['B', 'A', 'C']);
+    await key(card('A'), 'ArrowDown');
+    expect(order(m.el)).toEqual(['B', 'C', 'A']);
+    await key(card('A'), 'ArrowUp');
+    await key(card('A'), 'ArrowLeft');
+    expect(order(m.el)).toEqual(['A', 'B', 'C']);
+    // A key on the checkbox inside stays the checkbox's.
+    await key(tick(m.el, 'A'), 'ArrowRight');
+    expect(order(m.el)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('a late bid lands last and a seat gone from the round is dropped (v4 arrangeBids, through the board)', async () => {
+    const r = openRound([bid('a'), bid('b'), bid('c')]);
+    const m = await mount(stub(r));
+    await click(m, arrow(m.el, 'C', 'earlier')!);
+    expect(order(m.el)).toEqual(['A', 'C', 'B']);
+    m.queryClient.setQueryData(chatKeys.storytellerRound('chat-1'), { round: withBid(r, bid('d')) });
+    await settle(m.fixture);
+    expect(order(m.el)).toEqual(['A', 'C', 'B', 'D']);
+    m.queryClient.setQueryData(chatKeys.storytellerRound('chat-1'), {
+      round: { ...r, bids: [bid('a'), bid('b'), bid('d')] },
+    });
+    await settle(m.fixture);
+    expect(order(m.el)).toEqual(['A', 'B', 'D']);
+  });
+
+  it('a card that is not a live bid has no arrows and no tab stop; busy hides every arrow', async () => {
+    const m = await mount(stub(openRound([bid('a'), bid('b'), bid('p', { status: 'pending' }), bid('k', { status: 'kept-quiet' })])));
+    expect(arrow(m.el, 'P', 'earlier')).toBeNull();
+    expect(arrow(m.el, 'K', 'later')).toBeNull();
+    expect(arrow(m.el, 'A', 'later')).not.toBeNull();
+    m.fixture.componentRef.setInput('busy', true);
+    await settle(m.fixture);
+    expect(m.el.querySelector('button[aria-label^="Move "]')).toBeNull();
+    expect(m.el.querySelector('.qt-storyteller-cards > div[tabindex]')).toBeNull();
+  });
 });
+
