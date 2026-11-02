@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — chore(spa): vendor v4 4.11.0 bundled theme packs
+
+_Versions: SPA 0.5.910._
+
+Brings all eighteen bundled theme-pack files under `apps/web/public/themes/` to v4's 4.11.0 bytes at `236c04e35`. Fifteen are byte copies (the six `theme.json` version bumps — art-deco 1.0.13, earl-grey 1.3.10, great-estate 1.0.10, madmans-box 1.1.9, old-school 1.0.14, rains 1.3.14 — the six `tokens.json` contrast moves, and the earl-grey / old-school / rains stylesheets). The art-deco, great-estate and madmans-box stylesheets take v4's changes on top of v5's served asset URLs and the Madman's Box thinking-glyph block; each differs from v4's file only by that adaptation. The Appearance tab's preview card shows the moved token values.
+
 #### 2026-11-02 — fix(spa): toasts converge on v4's solid status colours
 
 _Versions: SPA 0.5.909._
