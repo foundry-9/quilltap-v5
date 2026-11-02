@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — port(tools): text-block wardrobe and object blocks ask for a picture cue (v4 265b711dd)
+
+_Versions: core 0.0.1381._
+
+Text-block mode follows v4 `265b711dd`. A `[[CREATE_WARDROBE_ITEM …]]body[[/CREATE_WARDROBE_ITEM]]` body now lands in the tool's `description` (the `wardrobe_create: 'description'` row of v4's `CONTENT_PARAM_MAP`); before, it went to `content`, which the tool drops. The Create Wardrobe Item and Create an Object instruction blocks carry v4's new picture-cue line and the `cue` / `looks` examples. Verified by `pseudo_tool_parsers_equivalence` (two new rows from v4's `text-block-create-items.test.ts`; 224 rows) and `pseudo_tool_prompts_equivalence` (11 of 52 rows red before, all green after).
+
 #### 2026-11-02 — docs(porting): P4.D350 records the CATALOG stacking commit
 
 _Docs-only change._

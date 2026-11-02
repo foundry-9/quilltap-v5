@@ -270,6 +270,11 @@ tbParse('tb-inv-create-max-abc', '[[CREATE_INVENTORY_ITEM name="true" looks="shi
 tbParse('tb-inv-create-max-blank', '[[CREATE_INVENTORY_ITEM name="x" max_equipped=" " /]]');
 tbParse('tb-inv-create-max-padded', '[[CREATE_INVENTORY_ITEM name="x" max=" 7 " emoji="1" /]]');
 tbParse('tb-inv-create-description-param', '[[CREATE_INVENTORY_ITEM name="x" description="named"]]content[[/CREATE_INVENTORY_ITEM]]');
+// v4 `265b711dd` (`text-block-create-items.test.ts:18`, `:32`): a wardrobe
+// body lands in `description` (CONTENT_PARAM_MAP), `cue` → `image_prompt`; an
+// inventory body → `description`, `looks` → `image_description`.
+tbParse('tb-wardrobe-create-body', '[[CREATE_WARDROBE_ITEM title="Red Scarf" types="accessories" appropriateness="casual" cue="long crimson wool scarf, golden tassels"]]A soft crimson scarf with golden tassels[[/CREATE_WARDROBE_ITEM]]');
+tbParse('tb-inv-create-body-looks', '[[CREATE_INVENTORY_ITEM name="compass" title="The Navigator" looks="dented brass pocket compass on a short chain" equip="true"]]A brass compass that points toward home[[/CREATE_INVENTORY_ITEM]]');
 tbParse('tb-inv-update', '[[UPDATE_INVENTORY_ITEM id="x" title="The Navigator" name="compass" description="d" /]]');
 tbParse('tb-inv-update-aliases', '[[UPDATE_INVENTORY_ITEM item="y" max="2" looks="dented" /]]');
 tbParse('tb-inv-archive', '[[ARCHIVE_INVENTORY_ITEM ref="compass" archived="false" /]]');

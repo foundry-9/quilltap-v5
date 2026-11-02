@@ -263,6 +263,7 @@ fn has_param_alias_map(tool: &str) -> bool {
 fn content_param(tool: &str) -> &'static str {
     match tool {
         "inventory_create" => "description",
+        "wardrobe_create" => "description",
         "whisper" => "message",
         "generate_image" => "prompt",
         "search_web" => "query",
