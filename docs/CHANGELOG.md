@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D350 records the CATALOG stacking commit
+
+_Docs-only change._
+
+P4.D350's status header names the `CATALOG` commit (`8ab640259`), its seven moved catalog entries, the oracle NDJSON checksums and the union-family note, so P4.D349 can branch from it.
+
 #### 2026-11-02 — CATALOG: regenerate the tool catalog from v4 236c04e35 (seven entries)
 
 _Versions: core 0.0.1380._
