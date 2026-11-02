@@ -194148,3 +194148,15 @@ The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
 - Every other family regenerates through the sweep driver from the pin (`--run-all --force --v4 <pin> --v5w <spaceless worktree> --families …`), with the recipes in each test header.
 
 **Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).
+
+### P4.D341 addendum — Tier R on a fixed pin (2026-11-02)
+
+Under the human's 2026-11-02 ruling, every pin floor-installs its plugin and CLI deps offline inside the pin (`.claude/pin-plugin-sdks.sh <PIN>`, after the root `npm ci --offline`), instead of symlinking the live v4 trees. The old CLI symlink carried the deferred v13 driver, and every `cli_differential` case failed on "Rebuilding the SQLCipher binding" before any bytes were compared. So this lane's Tier R completion check was masked.
+
+I re-measured on a fresh lane pin `/tmp/qt-v4-pin-p4d341-236c04e35`. Its CLI driver is 12.11.1 (SQLite 3.53.2, cipher chacha20); the SDKs are openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1. Run on the lane branch at `b00f7a020`:
+
+`QT_V4_CHECKOUT=<pin> QT_V4_ROOT=<pin> QT_NODE=~/.nvm/versions/node/v24.13.1/bin/node cargo test -p quilltap-cli --test cli_differential`
+
+**422 cases, 2 failures.**
+- The three `completion bash|zsh|fish` rows are GREEN with no template change. `crates/quilltap-cli/src/help/completion/{bash,zsh,fish}.template` are byte-identical (`cmp`) to the pin's `packages/quilltap/lib/completion/*.template`.
+- The two reds are `[recall-replay help]` and `[recall-replay no chat]` stdout. Both are P4.D342's (the `recall-replay` help text), as P4.D360's addendum measured.
