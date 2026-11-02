@@ -143,12 +143,51 @@ pub struct VaultFile {
     pub uri: String,
 }
 
-/// v4 `SelfInventoryVaultIncludedParts` / `SelfInventoryContextIncludedParts` share
-/// the `{ character, groups }` shape for vault + vaultAccess.
+/// v4 `SelfInventoryVaultIncludedParts` (`074e1e01a`): the `vault` section's
+/// parts — `vaultAccess`'s two plus the core-file checklist.
 #[derive(Clone, Copy, Debug, Serialize)]
 pub struct VaultIncludedParts {
     pub character: bool,
     pub groups: bool,
+    #[serde(rename = "coreFiles")]
+    pub core_files: bool,
+}
+
+/// v4 `SelfInventoryVaultAccessIncludedParts` — the `{ character, groups }`
+/// shape `vaultAccess` keeps (v4 split the two at `074e1e01a`).
+#[derive(Clone, Copy, Debug, Serialize)]
+pub struct VaultAccessIncludedParts {
+    pub character: bool,
+    pub groups: bool,
+}
+
+/// One core file of a character vault (v4 `SelfInventoryCoreFile`).
+#[derive(Clone, Debug, Serialize)]
+pub struct CoreFile {
+    pub path: String,
+    pub exists: bool,
+    /// The file's size, or `null` when it does not exist (never omitted).
+    #[serde(rename = "fileSizeBytes")]
+    pub file_size_bytes: Value,
+    pub uri: String,
+    pub holds: String,
+}
+
+/// v4 `SelfInventoryVaultCoreFilesSection`.
+#[derive(Clone, Debug, Serialize)]
+#[serde(untagged)]
+pub enum VaultCoreFilesSection {
+    Available {
+        available: AvailTrue,
+        #[serde(rename = "mountPointName")]
+        mount_point_name: String,
+        files: Vec<CoreFile>,
+    },
+    Unavailable {
+        available: AvailFalse,
+        reason: String,
+        message: String,
+    },
 }
 
 /// v4 `SelfInventoryVaultCharacterSection` (available / unavailable union, tagged by
@@ -211,6 +250,8 @@ pub struct VaultSection {
     pub character: Option<VaultCharacterSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groups: Option<VaultGroupsSection>,
+    #[serde(rename = "coreFiles", skip_serializing_if = "Option::is_none")]
+    pub core_files: Option<VaultCoreFilesSection>,
 }
 
 /// v4 `SelfInventoryVaultAccessParticipant`.
@@ -288,7 +329,7 @@ pub enum VaultAccessGroupsSection {
 #[derive(Clone, Debug, Serialize)]
 pub struct VaultAccessSection {
     #[serde(rename = "includedParts")]
-    pub included_parts: VaultIncludedParts,
+    pub included_parts: VaultAccessIncludedParts,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub character: Option<VaultAccessCharacterSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -642,6 +683,8 @@ pub struct SelfInventoryOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<ContextSection>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub holdings: Option<super::self_inventory_holdings::HoldingsSection>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -694,7 +737,7 @@ fn round_percent(n: f64) -> Value {
 
 /// v4 `formatNumber(n) = n.toLocaleString('en-US')` — group thousands with `,`.
 /// All call sites pass a non-negative integer.
-fn format_number(n: i64) -> String {
+pub(crate) fn format_number(n: i64) -> String {
     let neg = n < 0;
     let digits = n.unsigned_abs().to_string();
     let mut out = String::new();
@@ -951,6 +994,94 @@ fn build_vault_character_section(
         mount_point_name: mp_name,
         mount_point_id: mp_id,
         file_count: files.len() as i64,
+        files,
+    })
+}
+
+/// The nine core files of the character's vault — the overlay's single-file
+/// paths, in its order — each with whether it exists and what belongs in it
+/// (v4 `buildVaultCoreFilesSection`, `074e1e01a`). Matched case-insensitively,
+/// as the overlay's own lookups are. DEBUG `self_inventory: core files
+/// resolved` on the available arm only.
+fn build_vault_core_files_section(
+    db: &Db,
+    env: &SelfInventoryEnv,
+    character: &Value,
+) -> Result<VaultCoreFilesSection, DbError> {
+    if env.mount_index_degraded {
+        return Ok(VaultCoreFilesSection::Unavailable {
+            available: AvailFalse,
+            reason: "mount_index_degraded".to_string(),
+            message: "Mount index database is in degraded mode.".to_string(),
+        });
+    }
+
+    let Some(mount_point_id) =
+        json_str(character, "characterDocumentMountPointId").filter(|s| !s.is_empty())
+    else {
+        return Ok(VaultCoreFilesSection::Unavailable {
+            available: AvailFalse,
+            reason: "no_vault".to_string(),
+            message: "Character has no vault mount point.".to_string(),
+        });
+    };
+
+    let Some((mp_id, mp_name)) = find_mount(db, &mount_point_id)? else {
+        return Ok(VaultCoreFilesSection::Unavailable {
+            available: AvailFalse,
+            reason: "no_vault".to_string(),
+            message: format!("Mount point {mount_point_id} not found."),
+        });
+    };
+
+    // `new Map(rows.map(r => [r.relativePath.toLowerCase(), r]))` — a later
+    // row with the same lower-cased path wins.
+    let rows = find_vault_rows(db, &mount_point_id)?;
+    let mut by_lower_path: Vec<(String, &crate::db::doc_mount_files::VaultFileRow)> = Vec::new();
+    for row in &rows {
+        let key = row.relative_path.to_lowercase();
+        match by_lower_path.iter_mut().find(|(k, _)| *k == key) {
+            Some(slot) => slot.1 = row,
+            None => by_lower_path.push((key, row)),
+        }
+    }
+
+    let files: Vec<CoreFile> = crate::generators::field_semantics::CORE_VAULT_FILE_SUMMARIES
+        .iter()
+        .map(|(core_path, holds)| {
+            let row = by_lower_path
+                .iter()
+                .find(|(k, _)| *k == core_path.to_lowercase())
+                .map(|(_, r)| *r);
+            let found_path = row
+                .map(|r| r.relative_path.clone())
+                .unwrap_or_else(|| core_path.to_string());
+            // Named, not `qtap://self/…` — see build_vault_character_section
+            // (bug 256).
+            let uri = format_doc_store_uri(&mp_name, &mp_id, &found_path, false, None, None);
+            CoreFile {
+                path: found_path,
+                exists: row.is_some(),
+                file_size_bytes: row
+                    .map(|r| js_number_to_json(r.file_size_bytes))
+                    .unwrap_or(Value::Null),
+                uri,
+                holds: holds.to_string(),
+            }
+        })
+        .collect();
+
+    tracing::debug!(
+        context = "self-inventory-handler",
+        characterId = %json_str(character, "id").unwrap_or_default(),
+        present = files.iter().filter(|f| f.exists).count(),
+        total = files.len(),
+        "self_inventory: core files resolved"
+    );
+
+    Ok(VaultCoreFilesSection::Available {
+        available: AvailTrue,
+        mount_point_name: mp_name,
         files,
     })
 }
@@ -2071,7 +2202,7 @@ fn resolve_requested_sections(args: &Value) -> Option<Vec<String>> {
         })
 }
 
-fn has_section(requested: &Option<Vec<String>>, name: &str) -> bool {
+pub(crate) fn has_section(requested: &Option<Vec<String>>, name: &str) -> bool {
     match requested {
         None => true, // all sections requested
         Some(list) => list.iter().any(|s| s == name),
@@ -2082,20 +2213,25 @@ fn resolve_vault_parts(req: &Option<Vec<String>>) -> Option<VaultIncludedParts> 
     let all = has_section(req, "vault");
     let character = all || has_section(req, "vault.character");
     let groups = all || has_section(req, "vault.groups");
-    if !character && !groups {
+    let core_files = all || has_section(req, "vault.coreFiles");
+    if !character && !groups && !core_files {
         return None;
     }
-    Some(VaultIncludedParts { character, groups })
+    Some(VaultIncludedParts {
+        character,
+        groups,
+        core_files,
+    })
 }
 
-fn resolve_vault_access_parts(req: &Option<Vec<String>>) -> Option<VaultIncludedParts> {
+fn resolve_vault_access_parts(req: &Option<Vec<String>>) -> Option<VaultAccessIncludedParts> {
     let all = has_section(req, "vaultAccess");
     let character = all || has_section(req, "vaultAccess.character");
     let groups = all || has_section(req, "vaultAccess.groups");
     if !character && !groups {
         return None;
     }
-    Some(VaultIncludedParts { character, groups })
+    Some(VaultAccessIncludedParts { character, groups })
 }
 
 fn resolve_quilltap_parts(req: &Option<Vec<String>>) -> Option<QuilltapIncludedParts> {
@@ -2150,6 +2286,10 @@ pub async fn execute_self_inventory(
     calling_participant_id: Option<&str>,
     loaded_memories: Option<&LoadedMemoriesContext>,
     args: &Value,
+    // The clock the `holdings.customTools` roster gates read (v4's
+    // `resolveCustomToolRoster` reads `Date.now()` itself; v5's roster takes it
+    // from the caller so a differential can freeze it — P4.D350 R-9).
+    now_ms: i64,
 ) -> SelfInventoryOutput {
     let requested = resolve_requested_sections(args);
 
@@ -2206,6 +2346,7 @@ pub async fn execute_self_inventory(
             included_parts: parts,
             character: None,
             groups: None,
+            core_files: None,
         };
         if parts.character {
             section.character = Some(
@@ -2225,6 +2366,17 @@ pub async fn execute_self_inventory(
                         reason: "error".to_string(),
                         message: db_err_message(&e),
                     }),
+            );
+        }
+        if parts.core_files {
+            section.core_files = Some(
+                build_vault_core_files_section(db, env, &character).unwrap_or_else(|e| {
+                    VaultCoreFilesSection::Unavailable {
+                        available: AvailFalse,
+                        reason: "error".to_string(),
+                        message: db_err_message(&e),
+                    }
+                }),
             );
         }
         result.vault = Some(section);
@@ -2361,6 +2513,14 @@ pub async fn execute_self_inventory(
         );
     }
 
+    // holdings (v4 `074e1e01a`) — after context; a failure of the whole
+    // section answers `{ includedParts }` alone (v4's `.catch`).
+    if let Some(parts) = super::self_inventory_holdings::resolve_holdings_parts(&requested) {
+        result.holdings = Some(super::self_inventory_holdings::build_holdings_section(
+            db, &character, _user_id, chat_id, project_id, now_ms, parts,
+        ));
+    }
+
     result
 }
 
@@ -2398,6 +2558,7 @@ fn empty_sections() -> SelfInventoryOutput {
         carina: None,
         quilltap: None,
         context: None,
+        holdings: None,
         error: None,
     }
 }
@@ -2504,7 +2665,50 @@ fn format_vault_section(section: &VaultSection) -> String {
     if let Some(g) = &section.groups {
         parts.push(format_vault_groups(g));
     }
+    if let Some(cf) = &section.core_files {
+        parts.push(format_vault_core_files(cf));
+    }
     parts.join("\n\n")
+}
+
+/// v4 `formatVaultCoreFiles` (`074e1e01a`).
+fn format_vault_core_files(section: &VaultCoreFilesSection) -> String {
+    let (mount_point_name, files) = match section {
+        VaultCoreFilesSection::Unavailable { message, .. } => {
+            return format!("## Core Vault Files\nUnavailable \u{2014} {message}");
+        }
+        VaultCoreFilesSection::Available {
+            mount_point_name,
+            files,
+            ..
+        } => (mount_point_name, files),
+    };
+    let present = files.iter().filter(|f| f.exists).count();
+    let mut lines = vec![
+        "## Core Vault Files".to_string(),
+        format!("{mount_point_name}: {present} of {} present", files.len()),
+    ];
+    for f in files {
+        let size = f.file_size_bytes.as_f64();
+        let state = if f.exists {
+            if size == Some(0.0) {
+                "exists, empty".to_string()
+            } else {
+                format!("exists, {}", format_bytes(size.unwrap_or(0.0)))
+            }
+        } else {
+            "MISSING".to_string()
+        };
+        lines.push(format!(
+            "- {} [{state}] \u{2014} {}\n    uri: {}",
+            f.path, f.holds, f.uri
+        ));
+    }
+    lines.push(
+        "(To fill in a missing or empty file, write it with doc_write_file at its uri.)"
+            .to_string(),
+    );
+    lines.join("\n")
 }
 
 fn format_vault_access_participant(p: &VaultAccessParticipant) -> String {
@@ -3165,6 +3369,10 @@ pub fn format_self_inventory(output: &SelfInventoryOutput) -> String {
     if let Some(ctx) = &output.context {
         lines.push(String::new());
         lines.push(format_context_section(ctx));
+    }
+    if let Some(h) = &output.holdings {
+        lines.push(String::new());
+        lines.push(super::self_inventory_holdings::format_holdings_section(h));
     }
 
     lines.join("\n")

@@ -1102,6 +1102,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             ctx.calling_participant_id.as_deref(),
             ctx.loaded_memories.as_ref(),
             &tc.arguments,
+            crate::clock::now_unix_ms(),
         )
         .await;
         let formatted = self_inventory::format_self_inventory(&out);

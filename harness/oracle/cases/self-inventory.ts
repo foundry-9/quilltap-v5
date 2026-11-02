@@ -35,6 +35,10 @@ interface CaseSpec {
   sections?: string[];
   includeAutomaticImages?: boolean;
   withLoadedMemories?: boolean;
+  /** P4.D350: raw SQL run on the main working copy before the case (both sides). */
+  plantSql?: string;
+  /** P4.D350: raw SQL run after the case, restoring the plant (both sides). */
+  restoreSql?: string;
 }
 
 interface Spec {
@@ -87,13 +91,29 @@ async function main(): Promise<void> {
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D350: debug, so the two `self_inventory:` DEBUG lines (v4 `074e1e01a`)
+  // reach the spliced transport below; every other line is dropped there.
+  process.env.LOG_LEVEL = 'debug';
   // Ensure a clean local-dev / browser host env for the quilltap section.
   process.env.NODE_ENV = 'development';
   delete process.env.QUILLTAP_ELECTRON;
   delete process.env.ELECTRON_SHELL_VERSION;
 
-  const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
+  const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
+  // P4.D350: capture the handler's own DEBUG lines (`self_inventory: …`) per
+  // case by splicing the logger's transports (memory note
+  // `v4-oracle-job-host-and-log-capture`).
+  const { logger } = await import('@/lib/logger');
+  const captured: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown> };
+      if (!data.message.startsWith('self_inventory: ')) return;
+      const { service: _s, module: _m, environment: _e, ...fields } = (data.context ?? {}) as Record<string, unknown>;
+      captured.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
+  });
   const { executeSelfInventoryTool, formatSelfInventoryResults } = await import(
     '@/lib/tools/handlers/self-inventory-handler'
   );
@@ -106,7 +126,7 @@ async function main(): Promise<void> {
     recap: spec.loadedMemories.recap,
   };
 
-  const outputs: Array<{ name: string; output: unknown; formatted: string }> = [];
+  const outputs: Array<{ name: string; output: unknown; formatted: string; logs: unknown[] }> = [];
   for (const c of spec.cases) {
     const input: Record<string, unknown> = {};
     if (c.sections) input.sections = c.sections;
@@ -123,9 +143,13 @@ async function main(): Promise<void> {
     };
     if (c.withLoadedMemories) context.loadedMemories = loadedMemoriesContext;
 
+    if (c.plantSql) await rawQuery(c.plantSql);
+    captured.length = 0;
     const output = await executeSelfInventoryTool(input, context as never);
+    const logs = captured.splice(0, captured.length);
+    if (c.restoreSql) await rawQuery(c.restoreSql);
     const formatted = formatSelfInventoryResults(output);
-    outputs.push({ name: c.name, output, formatted });
+    outputs.push({ name: c.name, output, formatted, logs });
   }
 
   await closeDatabase();

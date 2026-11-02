@@ -245,6 +245,249 @@
       "sections": [
         "carina"
       ]
+    },
+    {
+      "name": "vault_core_files_only",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "vault.coreFiles"
+      ]
+    },
+    {
+      "name": "vault_core_files_no_vault",
+      "characterId": "f0f0f0f0-6666-4666-8666-ffffffffffff",
+      "sections": [
+        "vault.coreFiles"
+      ]
+    },
+    {
+      "name": "holdings_all",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "holdings"
+      ]
+    },
+    {
+      "name": "holdings_inventory_only",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "holdings.inventory"
+      ]
+    },
+    {
+      "name": "holdings_custom_tools_off",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "holdings.customTools",
+        "holdings.wardrobe"
+      ],
+      "plantSql": "UPDATE \"chat_settings\" SET \"customTools\" = 0",
+      "restoreSql": "UPDATE \"chat_settings\" SET \"customTools\" = 1"
+    },
+    {
+      "name": "eleven_sections",
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "sections": [
+        "vault",
+        "vaultAccess",
+        "memory",
+        "loadedMemories",
+        "chats",
+        "prompt",
+        "lastTurn",
+        "carina",
+        "quilltap.version",
+        "context",
+        "holdings"
+      ],
+      "withLoadedMemories": true
+    }
+  ],
+  "_holdingsComment": "P4.D350 (v4 074e1e01a): the holdings + core-files plants. Quilltap General; two garments and one outfit made of them in Aria's vault; two Inventory objects, one kit and one archetype split across Aria's vault and General (one object carried by Aria in the chat); one custom tool in Aria's vault; Aria's manifesto.md deleted and example-dialogues.md emptied; Fenn, a character whose vault pointer is NULLed after creation; one chat_settings row (customTools on; one case turns it off for itself).",
+  "general": {
+    "mountPointId": "9e9e9e9e-0000-4000-8000-000000000041",
+    "name": "Quilltap General"
+  },
+  "chatSettingsId": "5c5c5c5c-0000-4000-8000-000000000042",
+  "inventory": [
+    {
+      "scope": "character",
+      "owner": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "record": {
+        "id": "1a1a1a1a-0000-4000-8000-000000000051",
+        "name": "lantern",
+        "title": "Brass Lantern",
+        "description": "A brass hand lantern.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "record": {
+        "id": "1a1a1a1a-0000-4000-8000-000000000052",
+        "name": "satchel kit",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "kit",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [
+          "1a1a1a1a-0000-4000-8000-000000000051"
+        ],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      }
+    },
+    {
+      "scope": "general",
+      "owner": null,
+      "record": {
+        "id": "1a1a1a1a-0000-4000-8000-000000000053",
+        "name": "magic bow",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": true,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      }
+    },
+    {
+      "scope": "general",
+      "owner": null,
+      "record": {
+        "id": "1a1a1a1a-0000-4000-8000-000000000054",
+        "name": "library map",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-01-02T03:04:05.000Z",
+        "updatedAt": "2026-01-02T03:04:05.000Z"
+      }
+    }
+  ],
+  "carried": {
+    "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+    "ids": [
+      "1a1a1a1a-0000-4000-8000-000000000051"
+    ]
+  },
+  "customTool": {
+    "path": "Tools/catalogue_check.tool.json",
+    "definition": {
+      "name": "catalogue_check",
+      "description": "Check the catalogue for a title.",
+      "roll": {
+        "min": 0.5,
+        "max": 0.5
+      },
+      "outcomes": [
+        {
+          "when": true,
+          "message": "The card is where it should be.",
+          "state": "success"
+        }
+      ]
+    }
+  },
+  "coreFilePlants": {
+    "delete": "manifesto.md",
+    "empty": "example-dialogues.md"
+  },
+  "fenn": {
+    "id": "f0f0f0f0-6666-4666-8666-ffffffffffff",
+    "name": "Fenn",
+    "description": "A cataloguer whose vault has come unlinked.",
+    "identity": "the unlinked cataloguer",
+    "canBeCarina": false
+  },
+  "wardrobe": [
+    {
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "item": {
+        "id": "2b2b2b2b-0000-4000-8000-000000000061",
+        "title": "Grey Cardigan",
+        "types": [
+          "top"
+        ],
+        "imagePrompt": "soft grey wool cardigan, horn buttons"
+      }
+    },
+    {
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "item": {
+        "id": "2b2b2b2b-0000-4000-8000-000000000062",
+        "title": "Ink-Stained Trousers",
+        "types": [
+          "bottom"
+        ]
+      }
+    },
+    {
+      "characterId": "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa",
+      "item": {
+        "id": "2b2b2b2b-0000-4000-8000-000000000063",
+        "title": "Archivist's Uniform",
+        "types": [
+          "top",
+          "bottom"
+        ],
+        "componentItemIds": [
+          "2b2b2b2b-0000-4000-8000-000000000061",
+          "2b2b2b2b-0000-4000-8000-000000000062"
+        ]
+      }
     }
   ]
 }

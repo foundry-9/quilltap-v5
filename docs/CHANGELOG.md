@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — port(tools): self_inventory's core-file checklist and holdings counts (v4 074e1e01a)
+
+_Versions: core 0.0.1384._
+
+`self_inventory` gains v4's eleventh section and a third vault part. `vault.coreFiles` lists the nine core files of the character's vault in the overlay's order, each with whether it exists, its size (`null` when missing), its named `qtap://` uri and what belongs in it (the new `CORE_VAULT_FILE_SUMMARIES`, byte-exact from v4, with a test that its keys are the overlay's nine paths); the report renders it as `## Core Vault Files`. `holdings` (and `holdings.wardrobe` / `.inventory` / `.customTools`) counts what is within reach through the same doors the tools use: wearable garments and outfits, live Inventory objects / kits / archetypes and what is carried in this chat, and the custom-tool roster's names, each by tier; custom tools switched off for the instance answer the unavailable arm without resolving a roster. The `vault` section's `includedParts` now carries `coreFiles` while `vaultAccess` keeps two keys. The roster's clock is passed in (`execute_self_inventory`'s new `now_ms`). The two DEBUG lines (`self_inventory: core files resolved`, `self_inventory: holdings resolved`) are capture-compared against v4's per case. `self_inventory_equivalence`: `full_sections` red before; 15 cases green after (6 new, over a widened fixture), compared as bytes.
+
 #### 2026-11-02 — port(inventory): the duplicate 400, one seat rule, the kit unequip arm and the pick-up vault sentence (v4 0276d10d9)
 
 _Versions: core 0.0.1383._

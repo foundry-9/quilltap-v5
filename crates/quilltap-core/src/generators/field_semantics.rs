@@ -91,6 +91,61 @@ Keep most replies roughly the size of the line they answer. Use any signature ph
 /// The properties bucket: pronouns + aliases as data, never prose. The freeform metadata fact sheet is user-authored only and deliberately NOT part of this bucket.
 pub const PROPERTIES_SEMANTICS: &str = r#"- PROPERTIES — small structured facts stored as data, not prose: PRONOUNS (subject/object/possessive, e.g. she/her/hers) and ALIASES (nicknames and alternate names others actually call the character — distinct from TITLE, which is the user's private framing). Only record pronouns and aliases the source material or established memories actually support; never invent placeholders. Note: pronouns also anchor image generation, so they must match the physical description."#;
 
+/// v4 `CORE_VAULT_FILE_SUMMARIES` (`074e1e01a`, byte-exact): the short
+/// version of what belongs in each core file of a character vault, addressed
+/// to the character who owns it (the `self_inventory` tool's `vault.coreFiles`
+/// checklist). Keyed by the overlay's own path list in its order — v4 types it
+/// `Record<(typeof SINGLE_FILE_OVERLAY_PATHS)[number], string>` so a core file
+/// added there fails to compile until it is described here; the unit test
+/// below holds the same rule.
+pub const CORE_VAULT_FILE_SUMMARIES: [(&str, &str); 9] = [
+    (
+        "properties.json",
+        "Small structured facts as JSON: pronouns, aliases (names others actually call you), title (the user's private framing of you), firstMessage (your opening line), talkativeness (0.1\u{2013}1.0), and canChooseOutfit.",
+    ),
+    (
+        "metadata.json",
+        "Your fact sheet: one flat JSON object of keys the user invents. Never put into your prompt as-is; custom tools may test its keys, and the reserved \"progressions\" key drives your progress reports.",
+    ),
+    (
+        "identity.md",
+        "Surface knowledge of you from outside: name, station, occupation, public reputation. Third person, read only by others; never inner motivation.",
+    ),
+    (
+        "description.md",
+        "What someone talking with you notices: behaviour, mannerisms, verbal habits. Third person; not physical appearance, not inner monologue.",
+    ),
+    (
+        "manifesto.md",
+        "Your axiomatic core: short, declarative truths every other file must stay consistent with. Addressed to you, in second person.",
+    ),
+    (
+        "personality.md",
+        "What you know about yourself: your inner drivers, unseen by others unless shared. Addressed to you, in second person.",
+    ),
+    (
+        "example-dialogues.md",
+        "Sample exchanges showing how you speak \u{2014} style samples for the model, not lore.",
+    ),
+    (
+        "physical-description.md",
+        "Your body with nothing removable: face, hair, eyes, skin, build, distinctive features. No clothing or accessories (those are the wardrobe). Noun phrases; also fed to image models.",
+    ),
+    (
+        "physical-prompts.json",
+        "Image-generation prompts for your appearance as JSON: headAndShoulders, short, medium, long, complete, plus a `humanoid` flag (false when you have no head, shoulders or body to draw). Terse noun phrases, no clothing.",
+    ),
+];
+
+/// The summary [`CORE_VAULT_FILE_SUMMARIES`] holds for one core path.
+pub fn core_vault_file_summary(path: &str) -> &'static str {
+    CORE_VAULT_FILE_SUMMARIES
+        .iter()
+        .find(|(p, _)| *p == path)
+        .map(|(_, s)| *s)
+        .unwrap_or_default()
+}
+
 /// v4 `PHYSICAL_DESCRIPTION_SEMANTICS` (byte-exact).
 ///
 /// The physical-description bucket: the person with nothing removable. Interpolates v4 `HAIR_PHYSICAL_DESCRIPTION_NOTE`.
@@ -148,3 +203,20 @@ pub const ALL_EXPORTS: &[(&str, &str)] = &[
     ("WARDROBE_SEMANTICS", WARDROBE_SEMANTICS),
     ("FULL_FIELD_SEMANTICS", FULL_FIELD_SEMANTICS),
 ];
+
+#[cfg(test)]
+mod core_vault_file_summary_tests {
+    /// v4's compile-time rule as a test: the nine keys are the overlay's nine
+    /// single-file paths, element for element.
+    #[test]
+    fn the_summaries_are_keyed_by_the_overlay_paths_in_order() {
+        let keys: Vec<&str> = super::CORE_VAULT_FILE_SUMMARIES
+            .iter()
+            .map(|(k, _)| *k)
+            .collect();
+        assert_eq!(
+            keys,
+            crate::db::vault_read_overlay::SINGLE_FILE_OVERLAY_PATHS.to_vec()
+        );
+    }
+}

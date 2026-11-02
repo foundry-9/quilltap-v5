@@ -42,6 +42,7 @@ pub mod run_custom;
 pub mod run_sql;
 pub mod search;
 pub mod self_inventory;
+pub mod self_inventory_holdings;
 pub mod send_mail;
 pub mod simple_json_parser;
 pub mod simple_json_prompt;

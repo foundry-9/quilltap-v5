@@ -99,6 +99,11 @@ struct CaseSpec {
     include_automatic_images: Option<bool>,
     #[serde(rename = "withLoadedMemories")]
     with_loaded_memories: Option<bool>,
+    /// P4.D350: raw SQL on the main working copy before / after the case.
+    #[serde(rename = "plantSql")]
+    plant_sql: Option<String>,
+    #[serde(rename = "restoreSql")]
+    restore_sql: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -106,7 +111,42 @@ struct OracleRow {
     name: String,
     output: Value,
     formatted: String,
+    /// P4.D350: the handler's own `self_inventory: …` DEBUG lines.
+    logs: Vec<OracleLog>,
 }
+
+#[derive(Deserialize)]
+struct OracleLog {
+    level: String,
+    message: String,
+    fields: serde_json::Map<String, Value>,
+}
+
+/// v4's line as v5's capture rig renders it after the target: the message,
+/// then each field `key=value` in v4's order (strings bare, `null` as `null`).
+fn render_v4_line(l: &OracleLog) -> String {
+    let mut out = format!("{} {}", l.level.to_uppercase(), l.message);
+    for (k, v) in &l.fields {
+        let v = match v {
+            Value::String(s) => s.clone(),
+            other => other.to_string(),
+        };
+        out.push_str(&format!(" {k}={v}"));
+    }
+    out
+}
+
+/// A v5 captured line without its target (`"<LEVEL> <target> <rest>"`).
+fn strip_target(line: &str) -> String {
+    let mut it = line.splitn(3, ' ');
+    let level = it.next().unwrap_or_default();
+    let _target = it.next();
+    format!("{level} {}", it.next().unwrap_or_default())
+}
+
+/// The frozen roster clock (v4 reads `Date.now()`; the corpus's one custom
+/// tool carries no time gate, so any fixed value answers the same).
+const NOW_MS: i64 = 1_767_323_045_000;
 
 #[tokio::test]
 async fn self_inventory_matches_oracle() {
@@ -218,8 +258,15 @@ async fn self_inventory_matches_oracle() {
         recap: Some(spec.loaded_memories.recap.clone()),
     };
 
+    quilltap_core::test_support::global_capture::install();
     for (case, oracle) in spec.cases.iter().zip(oracle_rows.iter()) {
         assert_eq!(case.name, oracle.name, "case name alignment");
+        if let Some(sql) = &case.plant_sql {
+            let sql = sql.clone();
+            db.write(move |ws| Ok(ws.main().connection().execute_batch(&sql)?))
+                .await
+                .unwrap_or_else(|e| panic!("plant: {e}"));
+        }
 
         let mut args = serde_json::Map::new();
         if let Some(sections) = &case.sections {
@@ -236,23 +283,46 @@ async fn self_inventory_matches_oracle() {
             None
         };
 
-        let out = execute_self_inventory(
-            &db,
-            &env,
-            &spec.user_id,
-            &spec.chat.id,
-            case.character_id.as_deref(),
-            Some(&spec.project.id),
-            None,
-            loaded_arg,
-            &args,
-        )
-        .await;
+        let (out, lines) =
+            quilltap_core::test_support::global_capture::capture_async(execute_self_inventory(
+                &db,
+                &env,
+                &spec.user_id,
+                &spec.chat.id,
+                case.character_id.as_deref(),
+                Some(&spec.project.id),
+                None,
+                loaded_arg,
+                &args,
+                NOW_MS,
+            ))
+            .await;
+        if let Some(sql) = &case.restore_sql {
+            let sql = sql.clone();
+            db.write(move |ws| Ok(ws.main().connection().execute_batch(&sql)?))
+                .await
+                .unwrap_or_else(|e| panic!("restore: {e}"));
+        }
 
+        // The handler's own DEBUG lines (P4.D350), each with its silence leg:
+        // a case whose arm logs nothing must log nothing here too.
+        let got_lines: Vec<String> = lines
+            .iter()
+            .filter(|l| l.contains(" self_inventory: "))
+            .map(|l| strip_target(l))
+            .collect();
+        let want_lines: Vec<String> = oracle.logs.iter().map(render_v4_line).collect();
+        assert_eq!(
+            got_lines, want_lines,
+            "case {}: self_inventory lines",
+            case.name
+        );
+
+        // BYTES, never `Value ==` (key order is the contract).
         let got_json = serde_json::to_value(&out).expect("serialize output");
         assert_eq!(
-            got_json,
-            oracle.output,
+            serde_json::to_string(&got_json).unwrap(),
+            serde_json::to_string(&oracle.output).unwrap(),
             "case {}: output JSON mismatch\n GOT: {}\n EXP: {}",
             case.name,
             serde_json::to_string_pretty(&got_json).unwrap(),

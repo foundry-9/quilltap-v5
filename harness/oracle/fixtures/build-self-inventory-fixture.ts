@@ -62,6 +62,14 @@ interface Spec {
   cass: CharacterSpec;
   dara: CharacterSpec;
   edda: CharacterSpec;
+  fenn: CharacterSpec;
+  general: { mountPointId: string; name: string };
+  chatSettingsId: string;
+  wardrobe: Array<{ characterId: string | null; item: { id: string; title: string; types: string[]; imagePrompt?: string; componentItemIds?: string[] } }>;
+  inventory: Array<{ scope: string; owner: string | null; record: Record<string, unknown> }>;
+  carried: { characterId: string; ids: string[] };
+  customTool: { path: string; definition: Record<string, unknown> };
+  coreFilePlants: { delete: string; empty: string };
   connectionProfile: { id: string; name: string; provider: string; modelName: string };
   roleplayTemplate: { id: string; name: string; systemPrompt: string };
   project: { id: string; name: string };
@@ -227,6 +235,7 @@ async function main(): Promise<void> {
   await makeChar(spec.cass);
   await makeChar(spec.dara);
   await makeChar(spec.edda);
+  await makeChar(spec.fenn);
 
   // 3. Connection profile + roleplay template.
   await repos.connections.create(
@@ -357,6 +366,86 @@ async function main(): Promise<void> {
     } as never,
     { id: spec.llmLog.id, createdAt: spec.llmLog.createdAt, updatedAt: spec.llmLog.createdAt }
   );
+
+  // 10. P4.D350 (v4 `074e1e01a`) — the holdings + core-files plants, all
+  // through v4's REAL writers.
+  //   a. Quilltap General (a database store + `instance_settings`).
+  await repos.docMountPoints.create(
+    {
+      name: spec.general.name,
+      basePath: '',
+      mountType: 'database',
+      storeType: 'documents',
+      includePatterns: [],
+      excludePatterns: [],
+      enabled: true,
+      lastScannedAt: null,
+      scanStatus: 'idle',
+      lastScanError: null,
+      conversionStatus: 'idle',
+      conversionError: null,
+      fileCount: 0,
+      chunkCount: 0,
+      totalSizeBytes: 0,
+    } as never,
+    { id: spec.general.mountPointId, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp },
+  );
+  await rawQuery('CREATE TABLE IF NOT EXISTS "instance_settings" ("key" TEXT PRIMARY KEY, "value" TEXT NOT NULL)');
+  await rawQuery('INSERT OR REPLACE INTO "instance_settings" ("key", "value") VALUES (?, ?)', [
+    'generalMountPointId',
+    spec.general.mountPointId,
+  ]);
+  //   b0. Two garments and one outfit made of them in Aria's vault (REAL
+  //       `repos.wardrobe.create`).
+  for (const w of spec.wardrobe) {
+    await repos.wardrobe.create(
+      {
+        characterId: w.characterId,
+        title: w.item.title,
+        description: null,
+        imagePrompt: w.item.imagePrompt ?? null,
+        types: w.item.types,
+        componentItemIds: w.item.componentItemIds ?? [],
+        appropriateness: null,
+        isDefault: false,
+        replace: false,
+        migratedFromClothingRecordId: null,
+        archivedAt: null,
+      } as never,
+      { id: w.item.id, createdAt: spec.seedTimestamp, updatedAt: spec.seedTimestamp } as never,
+    );
+  }
+  //   b. The Inventory objects (REAL `resolveInventoryLocation` + `create`) and
+  //      Aria's carried set (REAL `setEquippedInventory`).
+  const { resolveInventoryLocation } = await import('@/lib/inventory/location');
+  for (const o of spec.inventory) {
+    const loc = await resolveInventoryLocation(o.scope as never, o.owner, repos, spec.userId, { ensure: true });
+    if (!loc) throw new Error(`no inventory location for ${o.scope}:${o.owner}`);
+    await loc.create(o.record as never);
+  }
+  if (!(await repos.chats.setEquippedInventory(spec.chat.id, spec.carried.characterId, spec.carried.ids))) {
+    throw new Error('carried-set plant failed');
+  }
+  //   c. One custom tool in Aria's vault; her manifesto deleted and her
+  //      example dialogues emptied (REAL database-store writers).
+  const ariaRow = await repos.characters.findById(spec.aria.id);
+  const ariaVault = ariaRow?.characterDocumentMountPointId;
+  if (!ariaVault) throw new Error('Aria has no vault');
+  const { writeDatabaseDocument, deleteDatabaseDocument } = await import('@/lib/mount-index/database-store');
+  await writeDatabaseDocument(ariaVault, spec.customTool.path, JSON.stringify(spec.customTool.definition, null, 2));
+  await deleteDatabaseDocument(ariaVault, spec.coreFilePlants.delete);
+  await writeDatabaseDocument(ariaVault, spec.coreFilePlants.empty, '');
+  //   d. One chat_settings row (customTools on — the default; one case turns it
+  //      off for itself).
+  const { ChatSettingsSchema } = await import('@/lib/schemas/settings.types');
+  await ensureCollection('chat_settings', ChatSettingsSchema);
+  await repos.chatSettings.create({ userId: spec.userId } as never, {
+    id: spec.chatSettingsId,
+    createdAt: spec.seedTimestamp,
+    updatedAt: spec.seedTimestamp,
+  });
+  //   e. Fenn's vault comes unlinked (the pointer NULLed; the store stays).
+  await rawQuery('UPDATE characters SET characterDocumentMountPointId = NULL WHERE id = ?', [spec.fenn.id]);
 
   // P4.D140 (v4 `735d9408c`): the chat has NO messages, so `lastMessageAt` is
   // NULL and `chatActivityAt` must fall back to `createdAt`. Push `updatedAt`
