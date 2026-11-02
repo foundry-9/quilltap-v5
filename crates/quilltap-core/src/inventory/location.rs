@@ -121,6 +121,15 @@ fn clean_patch(p: &InventoryRecordPatch) -> InventoryRecordPatch {
     }
 }
 
+/// Tell the open dialogs that something landed (v4's `write(fn, landed)`
+/// wrapper, `0276d10d9`): every landed write through a location publishes
+/// `inventory` — create, a non-empty `update_many` (`update` rides it), a
+/// non-empty delete, and the three folder writes. The hint is a synchronous,
+/// coalescing, fire-and-forget call, safe inside a write closure.
+fn landed() {
+    crate::realtime::bus::publish_realtime(crate::realtime::types::RealtimeTopic::Inventory, None);
+}
+
 /// Build a location over a folder (v4 `inventoryLocationForMount`). Writes
 /// re-resolve a character's mount at write time so the tombstone check sees
 /// the character as it is now.
@@ -187,11 +196,9 @@ impl InventoryLocation {
         mount: &Connection,
         record: &InventoryRecord,
     ) -> Result<InventoryRecord, InventoryError> {
-        Ok(create_inventory_in_mount(
-            mount,
-            &self.writable_mount(main)?,
-            record,
-        )?)
+        let created = create_inventory_in_mount(mount, &self.writable_mount(main)?, record)?;
+        landed();
+        Ok(created)
     }
 
     /// `update_many` with one patch; `None` when the id isn't there.
@@ -230,12 +237,12 @@ impl InventoryLocation {
     ) -> Result<Vec<InventoryRecord>, InventoryError> {
         let target = self.writable_mount(main)?;
         let cleaned: Vec<InventoryRecordPatch> = patches.iter().map(clean_patch).collect();
-        Ok(update_inventory_many_in_mount(
-            mount,
-            &target,
-            &cleaned,
-            require_all,
-        )?)
+        let updated = update_inventory_many_in_mount(mount, &target, &cleaned, require_all)?;
+        // A batch that matched nothing changed nothing.
+        if !updated.is_empty() {
+            landed();
+        }
+        Ok(updated)
     }
 
     /// Delete records; `follow_on` patches the survivors in the same
@@ -248,7 +255,11 @@ impl InventoryLocation {
         follow_on: impl FnOnce(&[InventoryRecord]) -> Vec<InventoryRecordPatch>,
     ) -> Result<Vec<String>, InventoryError> {
         let target = self.writable_mount(main)?;
-        Ok(delete_inventory_in_mount(mount, &target, ids, follow_on)?)
+        let deleted = delete_inventory_in_mount(mount, &target, ids, follow_on)?;
+        if !deleted.is_empty() {
+            landed();
+        }
+        Ok(deleted)
     }
 
     /// Every folder under `Inventory/` (empty ones included), with direct
@@ -280,7 +291,9 @@ impl InventoryLocation {
         path: &str,
     ) -> Result<InventoryFolder, InventoryError> {
         let target = self.writable_mount(main)?;
-        Ok(create_inventory_folder_in_mount(mount, &target, path)?)
+        let folder = create_inventory_folder_in_mount(mount, &target, path)?;
+        landed();
+        Ok(folder)
     }
 
     pub fn rename_folder(
@@ -291,9 +304,9 @@ impl InventoryLocation {
         new_name: &str,
     ) -> Result<InventoryFolder, InventoryError> {
         let target = self.writable_mount(main)?;
-        Ok(rename_inventory_folder_in_mount(
-            mount, &target, path, new_name,
-        )?)
+        let folder = rename_inventory_folder_in_mount(mount, &target, path, new_name)?;
+        landed();
+        Ok(folder)
     }
 
     pub fn delete_folder(
@@ -303,9 +316,9 @@ impl InventoryLocation {
         path: &str,
     ) -> Result<DeletedFolder, InventoryError> {
         let target = self.writable_mount(main)?;
-        Ok(delete_inventory_folder_in_mount(
-            main, mount, &target, path,
-        )?)
+        let deleted = delete_inventory_folder_in_mount(main, mount, &target, path)?;
+        landed();
+        Ok(deleted)
     }
 
     /// The mount, checked for writing (`CharacterArchived` for an archived
@@ -523,4 +536,162 @@ pub fn group_locations_for_character(
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+#[cfg(test)]
+mod publish_tests {
+    //! P4.D350 R-1 (v4 `0276d10d9`, `chokepoints.test.ts`'s publish rows): a
+    //! landed write through a location announces `inventory` once; a batch
+    //! that matched nothing announces nothing; a folder write announces; the
+    //! one carried-set writer announces `chats/<id>`, and a drop announces
+    //! only the chats it changed. Driven over a real provisioned instance (its
+    //! Quilltap General store) with the bus armed on the writer thread.
+    use super::*;
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::realtime::publish_sites::HintCapture;
+    use serde_json::json;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const ITEM: &str = "a0000001-0000-4000-8000-0000000000aa";
+
+    fn db() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    /// Run `op` over General's location inside one write; answers its debug
+    /// text so a failure reads in the assertion.
+    async fn in_general<F>(db: &Db, op: F) -> String
+    where
+        F: FnOnce(&Connection, &Connection, &InventoryLocation) -> String + Send + 'static,
+    {
+        db.write(move |ws| {
+            let main = ws.main().connection();
+            let mount = ws.mount_index().expect("mount index").connection();
+            let loc = resolve_inventory_location(
+                main,
+                mount,
+                InventoryScope::General,
+                None,
+                "u-1",
+                ResolveInventoryLocationOptions::default(),
+            )?
+            .expect("a provisioned instance has Quilltap General");
+            Ok(op(main, mount, &loc))
+        })
+        .await
+        .unwrap()
+    }
+
+    fn inventory() -> (String, Option<String>) {
+        ("inventory".to_string(), None)
+    }
+
+    #[tokio::test]
+    async fn a_landed_location_write_announces_inventory_and_a_miss_announces_nothing() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = db();
+        cap.arm_writer_thread(&db).await;
+
+        let created = in_general(&db, |main, mount, loc| {
+            let record = InventoryRecord(
+                json!({ "id": ITEM, "name": "lantern" })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            );
+            format!(
+                "{:?}",
+                loc.create(main, mount, &record).map(|r| r.id().to_string())
+            )
+        })
+        .await;
+        assert_eq!(created, format!("Ok({ITEM:?})"));
+        assert_eq!(cap.drain_expecting(1).await, vec![inventory()]);
+
+        // A read announces nothing; an update or a delete that matched nothing
+        // changed nothing and announces nothing.
+        let missed = in_general(&db, |main, mount, loc| {
+            let read = loc.read_items(mount, true).map(|r| r.len());
+            let updated = loc
+                .update_many(
+                    main,
+                    mount,
+                    &[InventoryRecordPatch {
+                        id: "nope".into(),
+                        ..Default::default()
+                    }],
+                    false,
+                )
+                .map(|u| u.len());
+            let deleted = loc
+                .delete(main, mount, &["nope".to_string()], |_| Vec::new())
+                .map(|d| d.len());
+            format!("{read:?} {updated:?} {deleted:?}")
+        })
+        .await;
+        assert_eq!(missed, "Ok(1) Ok(0) Ok(0)");
+        assert_eq!(cap.drain().await, Vec::<(String, Option<String>)>::new());
+
+        // A folder operation announces too.
+        let folder = in_general(&db, |main, mount, loc| {
+            format!(
+                "{:?}",
+                loc.create_folder(main, mount, "Shelf").map(|f| f.path)
+            )
+        })
+        .await;
+        assert_eq!(folder, "Ok(\"Shelf\")");
+        assert_eq!(cap.drain_expecting(1).await, vec![inventory()]);
+    }
+
+    #[tokio::test]
+    async fn the_carried_set_writer_and_a_drop_announce_the_chat() {
+        let mut cap = HintCapture::start();
+        let (_dir, db) = db();
+        cap.arm_writer_thread(&db).await;
+
+        db.write(|ws| {
+            crate::inventory::equip::write_carried_set(
+                ws.main().connection(),
+                "chat-1",
+                "c-1",
+                Some(&[]),
+            );
+            Ok(())
+        })
+        .await
+        .unwrap();
+        assert_eq!(
+            cap.drain_expecting(1).await,
+            vec![("chats".to_string(), Some("chat-1".to_string()))]
+        );
+
+        // A drop that changes no chat announces nothing.
+        let changed = db
+            .write(|ws| {
+                Ok(crate::inventory::equip::drop_carried_everywhere(
+                    ws.main().connection(),
+                    "c-1",
+                    ITEM,
+                    &["chat-1".to_string()],
+                ))
+            })
+            .await
+            .unwrap();
+        assert_eq!(changed, 0);
+        assert_eq!(cap.drain().await, Vec::<(String, Option<String>)>::new());
+    }
 }

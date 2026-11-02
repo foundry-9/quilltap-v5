@@ -55,8 +55,7 @@ use crate::db::runtime::Db;
 use crate::inventory::context::{load_inventory_context, LoadedInventoryContext};
 use crate::inventory::equip::{
     equip_items_holding_lock, pick_up_items_holding_lock, unequip_items_holding_lock, EquipChat,
-    EquipOptions, InventoryChange, InventoryChangeContext, InventoryChangeProvenance,
-    PickUpOptions,
+    EquipOptions, InventoryChange, InventoryChangeProvenance, PickUpOptions,
 };
 use crate::inventory::refs::{
     pick_for_gesture, resolve_inventory_ref, Gesture, InventoryContext, ResolveInventoryRefOptions,
@@ -337,12 +336,14 @@ pub fn apply_inventory_effects(
 
     // The notify (and its pending map) is the after-commit half's; the
     // chokepoints read only who and why.
-    let change_ctx = InventoryChangeContext {
+    // === P4.D350: chokepoints ===
+    let change_ctx = crate::inventory::equip_effects::inventory_change_context(
         user_id,
-        provenance: InventoryChangeProvenance::Pascal,
-        announce: true,
-        pending: None,
-    };
+        InventoryChangeProvenance::Pascal,
+        None,
+        None,
+    );
+    // === end P4.D350 ===
     let skip = |index: usize, reason: &str, detail: &Map<String, Value>| {
         skip(chat_id, tool_name, character_id, index, reason, detail)
     };
@@ -567,12 +568,14 @@ pub async fn finish_inventory_effects(
     for change in changes {
         // v4's notify never throws; with the turn's map it nets the change
         // into the turn's entry, without one it posts now.
-        let ctx = InventoryChangeContext {
+        // === P4.D350: chokepoints ===
+        let ctx = crate::inventory::equip_effects::inventory_change_context(
             user_id,
-            provenance: InventoryChangeProvenance::Pascal,
-            announce: true,
-            pending: None,
-        };
+            InventoryChangeProvenance::Pascal,
+            None,
+            None,
+        );
+        // === end P4.D350 ===
         notify_inventory_changed(db, chat_id, character_id, change, &ctx, pending).await;
     }
     tracing::debug!(

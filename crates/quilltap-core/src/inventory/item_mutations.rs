@@ -45,15 +45,11 @@ use super::title_lint::{
     TitleLintVerdict,
 };
 use super::types::{
-    inventory_shape_issues, js_truthy, InventoryFields, InventoryKind, InventoryRecord,
-    InventoryScope, ResolvedInventoryItem, INVENTORY_INHERITABLE_FIELDS,
+    inventory_shape_issues, js_truthy, InventoryFields, InventoryKind, InventoryOrigin,
+    InventoryRecord, InventoryScope, ResolvedInventoryItem, INVENTORY_INHERITABLE_FIELDS,
 };
-use crate::db::inventory_writes::{
-    read_mount_inventory, update_inventory_many_in_mount, InventoryRecordPatch,
-};
-use crate::db::item_folder_ops::{
-    resolve_vault_folder_mount, VaultFolderMount, VaultFolderMountScope,
-};
+use crate::db::inventory_writes::InventoryRecordPatch;
+use crate::db::item_folder_ops::{resolve_vault_folder_mount, VaultFolderMount};
 
 /// The `meta` a refusal spreads into its line (v4's per-call-site object
 /// literals — tracing field names are static, so each literal shape is a
@@ -940,6 +936,45 @@ pub fn detach(
     Ok(updated)
 }
 
+/// The location a dependent lives in, addressed by its mount; a store no tier
+/// owns is written as a shared one (v4 `dependentLocation`). A character's
+/// vault resolves through the tombstone-checked mount resolver, and `None`
+/// (no linked vault any more) means the dependent cannot be written and is
+/// skipped.
+fn dependent_location(
+    main: &Connection,
+    dependent: &InventoryDependent,
+) -> Result<Option<InventoryLocation>, InventoryError> {
+    let scope = match dependent.scope {
+        MountScope::Unknown | MountScope::Project => InventoryScope::Project,
+        MountScope::Group => InventoryScope::Group,
+        MountScope::General => InventoryScope::General,
+        MountScope::Character => InventoryScope::Character,
+    };
+    let origin = InventoryOrigin {
+        scope,
+        id: dependent.owner_id.clone(),
+        name: dependent.owner_name.clone().unwrap_or_default(),
+    };
+    let mount = if scope == InventoryScope::Character {
+        match resolve_vault_folder_mount(main, dependent.owner_id.as_deref())? {
+            Some(mount) => mount,
+            None => return Ok(None),
+        }
+    } else {
+        VaultFolderMount {
+            mount_point_id: dependent.mount_point_id.clone(),
+            scope: scope.mount_scope(),
+            character_id: None,
+        }
+    };
+    Ok(Some(super::location::inventory_location_for_mount(
+        mount,
+        dependent.owner_id.as_deref(),
+        origin,
+    )))
+}
+
 /// Detach every instance of an archetype, wherever it lives — one write per
 /// mount (v4 `detachAll`). Refused (`ARCHIVED_DEPENDENTS`) when any instance
 /// lives in an archived character's vault. Answers how many were baked.
@@ -989,28 +1024,27 @@ pub fn detach_all(
             None => by_mount.push((d.mount_point_id.clone(), vec![d])),
         }
     }
-    let mut baked = 0usize;
+    // Every mount is resolved before any is written, so a dependent that
+    // cannot be reached is skipped rather than failing the bake halfway.
+    let mut targets: Vec<(String, Vec<&InventoryDependent>, InventoryLocation)> = Vec::new();
     for (mount_point_id, group) in by_mount {
-        let first = group[0];
-        // A character's vault is re-resolved so the tombstone check sees it now.
-        let target: Option<VaultFolderMount> = if first.scope == MountScope::Character {
-            resolve_vault_folder_mount(main, first.owner_id.as_deref())?
-        } else {
-            Some(VaultFolderMount {
-                mount_point_id: mount_point_id.clone(),
-                scope: match first.scope {
-                    MountScope::Unknown | MountScope::Project => VaultFolderMountScope::Project,
-                    MountScope::Group => VaultFolderMountScope::Group,
-                    MountScope::General => VaultFolderMountScope::General,
-                    MountScope::Character => VaultFolderMountScope::Character,
-                },
-                character_id: None,
-            })
-        };
-        let Some(target) = target else {
-            continue;
-        };
-        let records = read_mount_inventory(mount, &target)?;
+        match dependent_location(main, group[0])? {
+            Some(location) => targets.push((mount_point_id, group, location)),
+            None => tracing::warn!(
+                op = "detach-all",
+                mountPointId = %mount_point_id,
+                itemId = %archetype_id,
+                ownerId = group[0].owner_id.as_deref().unwrap_or("null"),
+                count = group.len(),
+                context = "inventory",
+                "[InventoryMutations] Skipped instances whose vault is no longer linked"
+            ),
+        }
+    }
+
+    let mut baked = 0usize;
+    for (mount_point_id, group, location) in targets {
+        let records = location.read_items(mount, true)?;
         let patches: Vec<InventoryRecordPatch> = group
             .iter()
             .filter_map(|d| records.iter().find(|r| r.id() == d.id))
@@ -1030,12 +1064,12 @@ pub fn detach_all(
                 }
             })
             .collect();
-        let written = update_inventory_many_in_mount(mount, &target, &patches, false)?;
+        let written = location.update_many(main, mount, &patches, false)?;
         baked += written.len();
         tracing::debug!(
             op = "detach-all",
             mountPointId = %mount_point_id,
-            scope = target.scope.as_str(),
+            scope = location.scope.as_str(),
             itemId = %archetype_id,
             count = written.len(),
             context = "inventory",

@@ -4,10 +4,11 @@
 //!
 //! Every tier's objects are `.json` files under an `Inventory/` folder in some
 //! mount (a character's vault, a group store, a project store, Quilltap
-//! General). Each mutation reads the folder's records, applies the change in
+//! General). Each mutation scans the folder ONCE, applies the change in
 //! memory and re-projects the whole folder through
 //! [`project_array_into_vault_folder`] (`.json`, recursive, `images/`
-//! excluded, sweeping only files [`is_inventory_item_document`] owns). The
+//! excluded, sweeping only the files that scan turned into records — v4
+//! `0276d10d9`'s `ownedPaths`, so a note or a broken file stays). The
 //! folder operations are the wardrobe's, through the shared
 //! [`super::item_folder_ops`] descriptor ([`InventoryTree`]).
 //!
@@ -32,7 +33,7 @@ use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::inventory_readers::{
     has_stable_inventory_item_id, inventory_file_name_for, is_inventory_item_document,
-    read_inventory_records, scan_inventory_folder,
+    read_inventory_records, scan_inventory_folder, InventoryScan,
 };
 use super::item_folder_ops::{self, DeletedFolder, FiledItem, ItemFolderTree, VaultFolderMount};
 use super::vault_wardrobe_write::{project_array_into_vault_folder, ProjectArrayOptions};
@@ -142,15 +143,26 @@ fn safe_folder(folder: Option<&str>) -> String {
 }
 
 /// Re-project the folder from an authoritative record list (v4
-/// `projectMountInventory`). A file the reader skipped as a duplicate id is
-/// not owned, so the sweep leaves it in place, and its leaf name is claimed
-/// so no projected object is written over it.
+/// `projectMountInventory`). Only the files the scan turned into records are
+/// swept; a file it skipped (a duplicate id, a note, a broken file) is not
+/// owned and stays where it is, and a duplicate's leaf name is claimed so no
+/// projected object is written over it. A writer passes the scan its records
+/// came from, so the folder is parsed once per write.
 pub fn project_mount_inventory(
     mount: &Connection,
     m: &InventoryMount,
     records: &[InventoryRecord],
+    scan: Option<&InventoryScan>,
 ) -> Result<(), DbError> {
-    let duplicates = scan_inventory_folder(mount, &m.mount_point_id)?.duplicate_paths;
+    let fresh;
+    let scan = match scan {
+        Some(scan) => scan,
+        None => {
+            fresh = scan_inventory_folder(mount, &m.mount_point_id)?;
+            &fresh
+        }
+    };
+    let duplicates = &scan.duplicate_paths;
     if !duplicates.is_empty() {
         tracing::debug!(
             target: "quilltap::db",
@@ -168,9 +180,7 @@ pub fn project_mount_inventory(
         })
         .collect();
     let leaf_refs: Vec<&str> = leaves.iter().map(String::as_str).collect();
-    let owns = |path: &str, content: Option<&str>| {
-        !duplicates.iter().any(|d| d == path) && is_inventory_item_document(path, content)
-    };
+    let owns = |path: &str, _content: Option<&str>| scan.owned_paths.iter().any(|p| p == path);
     let links = DocMountFileLinksRepository::new(mount);
     let docs = DocMountDocumentsRepository::new(mount);
     project_array_into_vault_folder(
@@ -203,14 +213,15 @@ pub fn create_inventory_in_mount(
     m: &InventoryMount,
     record: &InventoryRecord,
 ) -> Result<InventoryRecord, DbError> {
-    let mut current = read_mount_inventory(mount, m)?;
+    let scan = scan_inventory_folder(mount, &m.mount_point_id)?;
+    let mut current = scan.records.clone();
     let mut stored = record.clone();
     stored.set(
         "folder",
         Value::String(safe_folder(record.str_of("folder"))),
     );
     current.push(stored.clone());
-    project_mount_inventory(mount, m, &current)?;
+    project_mount_inventory(mount, m, &current, Some(&scan))?;
     tracing::debug!(
         target: "quilltap::db",
         scope = m.scope.as_str(),
@@ -249,7 +260,7 @@ pub fn update_inventory_many_in_mount(
     if patches.is_empty() {
         return Ok(Vec::new());
     }
-    update_many_unserialized(mount, m, patches, require_all)
+    update_many_unserialized(mount, m, patches, require_all, None)
 }
 
 fn update_many_unserialized(
@@ -257,8 +268,13 @@ fn update_many_unserialized(
     m: &InventoryMount,
     patches: &[InventoryRecordPatch],
     require_all: bool,
+    scanned: Option<InventoryScan>,
 ) -> Result<Vec<InventoryRecord>, InventoryWriteError> {
-    let current = read_mount_inventory(mount, m)?;
+    let scan = match scanned {
+        Some(scan) => scan,
+        None => scan_inventory_folder(mount, &m.mount_point_id)?,
+    };
+    let current = &scan.records;
     let index_of = |id: &str| current.iter().position(|r| r.id() == id);
     if require_all {
         let mut missing: Vec<String> = Vec::new();
@@ -271,7 +287,7 @@ fn update_many_unserialized(
             return Err(InventoryFolderError::NotInLocation(missing).into());
         }
     }
-    let mut next = current.clone();
+    let mut next = current.to_vec();
     let now = clock::now_iso();
     let mut updated: Vec<usize> = Vec::new();
     for InventoryRecordPatch { id, patch, remove } in patches {
@@ -303,7 +319,7 @@ fn update_many_unserialized(
     if updated.is_empty() {
         return Ok(Vec::new());
     }
-    project_mount_inventory(mount, m, &next)?;
+    project_mount_inventory(mount, m, &next, Some(&scan))?;
     let ids: Vec<&str> = updated.iter().map(|i| next[*i].id()).collect();
     tracing::debug!(
         target: "quilltap::db",
@@ -329,7 +345,8 @@ pub fn delete_inventory_in_mount(
     ids: &[String],
     follow_on: impl FnOnce(&[InventoryRecord]) -> Vec<InventoryRecordPatch>,
 ) -> Result<Vec<String>, DbError> {
-    let current = read_mount_inventory(mount, m)?;
+    let scan = scan_inventory_folder(mount, &m.mount_point_id)?;
+    let current = scan.records.clone();
     let doomed = |r: &InventoryRecord| ids.iter().any(|i| i == r.id());
     let deleted: Vec<String> = current
         .iter()
@@ -363,7 +380,7 @@ pub fn delete_inventory_in_mount(
             )
             .collect();
     }
-    project_mount_inventory(mount, m, &remaining)?;
+    project_mount_inventory(mount, m, &remaining, Some(&scan))?;
     tracing::debug!(
         target: "quilltap::db",
         scope = m.scope.as_str(),
@@ -381,10 +398,40 @@ pub fn delete_inventory_in_mount(
 // Folders — the shared folder operations over the Inventory's tree
 // ============================================================================
 
+thread_local! {
+    /// The scan behind the record list the tree's `read` last answered for a
+    /// mount (v4 `treeScans`, a `WeakMap` keyed by that exact array). A
+    /// folder operation reads, then reprojects or refiles from what it read,
+    /// so the write reuses the scan instead of parsing the folder again. Taken
+    /// on use; a list that is not the one read (different records) reads
+    /// afresh. Writer-thread local: every folder operation runs inside one
+    /// write closure.
+    static TREE_SCANS: std::cell::RefCell<Vec<(String, InventoryScan)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn remember_tree_scan(mount_point_id: &str, scan: InventoryScan) {
+    TREE_SCANS.with(|cell| {
+        let mut scans = cell.borrow_mut();
+        scans.retain(|(mp, _)| mp != mount_point_id);
+        scans.push((mount_point_id.to_string(), scan));
+    });
+}
+
+fn take_tree_scan(mount_point_id: &str, records: &[InventoryRecord]) -> Option<InventoryScan> {
+    TREE_SCANS.with(|cell| {
+        let mut scans = cell.borrow_mut();
+        let idx = scans.iter().position(|(mp, _)| mp == mount_point_id)?;
+        let (_, scan) = scans.remove(idx);
+        (scan.records.as_slice() == records).then_some(scan)
+    })
+}
+
 /// The Inventory's folder tree, as the shared folder operations see it (v4
 /// `INVENTORY_TREE`): `.json` objects, context `inventory`, the readers'
-/// predicates, `readMountInventory`, `projectMountInventory`, and a refile
-/// through `updateManyUnserialized` (which RE-READS the folder — v4's).
+/// predicates, a `read` that keeps its scan, a reproject that reuses it, and a
+/// refile through `updateManyUnserialized` over the scan of the list it was
+/// handed (v4 `0276d10d9` — one scan per folder write).
 pub struct InventoryTree;
 
 /// v4 `INVENTORY_TREE`.
@@ -421,7 +468,10 @@ impl ItemFolderTree for InventoryTree {
         mount: &Connection,
         m: &InventoryMount,
     ) -> Result<Vec<InventoryRecord>, DbError> {
-        read_mount_inventory(mount, m)
+        let scan = scan_inventory_folder(mount, &m.mount_point_id)?;
+        let records = scan.records.clone();
+        remember_tree_scan(&m.mount_point_id, scan);
+        Ok(records)
     }
     fn reproject(
         &self,
@@ -429,16 +479,18 @@ impl ItemFolderTree for InventoryTree {
         m: &InventoryMount,
         items: &[InventoryRecord],
     ) -> Result<(), DbError> {
-        project_mount_inventory(mount, m, items)
+        let scan = take_tree_scan(&m.mount_point_id, items);
+        project_mount_inventory(mount, m, items, scan.as_ref())
     }
     fn refile(
         &self,
         _main: &Connection,
         mount: &Connection,
         m: &InventoryMount,
-        _current: &[InventoryRecord],
+        current: &[InventoryRecord],
         patches: &[(String, String)],
     ) -> Result<(), InventoryWriteError> {
+        let scan = take_tree_scan(&m.mount_point_id, current);
         let patches: Vec<InventoryRecordPatch> = patches
             .iter()
             .map(|(id, folder)| {
@@ -451,7 +503,7 @@ impl ItemFolderTree for InventoryTree {
                 }
             })
             .collect();
-        update_many_unserialized(mount, m, &patches, false).map(|_| ())
+        update_many_unserialized(mount, m, &patches, false, scan).map(|_| ())
     }
     fn path_error(&self, message: String) -> InventoryWriteError {
         InventoryFolderError::Path(message).into()

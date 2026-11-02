@@ -28,11 +28,17 @@
 //!     `[InventoryMutations]`, `[InventoryDependents]`, `[Pascal] Inventory
 //!     change posted`, …) by TAG and LEVEL only (§R.5 — their bytes are
 //!     P4.D324's family's);
-//!   - the realtime publishes (`Realtime publish queued`), as a SORTED list:
-//!     the keystone's chokepoints publish inside the write, the handlers after
-//!     it, so across a commit the order can differ (`inventory_create` +
-//!     `equip`: v4 `inventory` then `chats`, v5 `chats` then `inventory`) — a
-//!     recorded-only class (`PUBLISH_ORDER_ACROSS_THE_COMMIT`).
+//!   - the realtime publishes (`Realtime publish queued`), as a SORTED,
+//!     DE-DUPLICATED list: since P4.D350 R-1 (v4 `0276d10d9`) the
+//!     chokepoints publish inside the write and the handlers own none, and
+//!     Pascal's posted line announces its chat from the `Db` writer thread
+//!     (`announce_transcript_change`) — so the bus is armed and a process-wide
+//!     sink listens on that thread too (the thread-scoped rig cannot see it —
+//!     memory note `capture-rig-writer-thread`). Two thread-local buses each
+//!     queue their own first hint for a key where v4's one bus coalesces, so
+//!     the comparison is the SET of keys (v4 never queues one key twice in a
+//!     case). Order across the threads is not comparable — the recorded-only
+//!     class `PUBLISH_ORDER_ACROSS_THE_COMMIT`.
 //!
 //! The two `transfers` rows drive `inventory::transfers::transfer_inventory_
 //! item` directly: an id the destination already holds (`INVALID_SHAPE`, 400,
@@ -62,7 +68,7 @@ mod common;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use quilltap_core::db::fallback::error_text;
 use quilltap_core::db::runtime::{Db, DbPaths};
@@ -82,7 +88,7 @@ use quilltap_core::services::inventory_change_effects::{
     flush_pending_inventory_announcements, PendingInventoryAnnouncements,
 };
 use quilltap_core::services::mount_index::blob_transcode::RefusingWebpTranscoder;
-use quilltap_core::test_support::captured_with;
+use quilltap_core::test_support::{captured_with, CaptureLayer};
 use quilltap_core::tools::inventory_tool_table::{
     finish_inventory_tool, run_inventory_tool_handler, InventoryHandlerCx, InventoryToolContext,
 };
@@ -367,6 +373,22 @@ impl<'k> Norm<'k> {
 // The lines, both sides
 // ---------------------------------------------------------------------------
 
+/// The process-wide sink for the events no thread-scoped capture sees — the
+/// `Db` writer thread's (P4.D350; the `log_tools_equivalence` idiom: this is
+/// a ONE-test binary).
+fn writer_thread_lines() -> &'static Arc<Mutex<Vec<String>>> {
+    static LINES: OnceLock<Arc<Mutex<Vec<String>>>> = OnceLock::new();
+    LINES.get_or_init(|| {
+        use tracing_subscriber::layer::SubscriberExt;
+        let sink = Arc::new(Mutex::new(Vec::new()));
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(CaptureLayer(sink.clone())),
+        )
+        .expect("this binary owns its global subscriber");
+        sink
+    })
+}
+
 /// v4's lines → (owned lines as the capture rig renders them, publishes).
 fn v4_lines(logs: &Value) -> (Vec<String>, Vec<String>) {
     let mut lines = Vec::new();
@@ -399,6 +421,7 @@ fn v4_lines(logs: &Value) -> (Vec<String>, Vec<String>) {
         }
     }
     publishes.sort();
+    publishes.dedup();
     (lines, publishes)
 }
 
@@ -437,6 +460,7 @@ fn v5_lines(captured: &[String]) -> (Vec<String>, Vec<String>) {
         }
     }
     publishes.sort();
+    publishes.dedup();
     (lines, publishes)
 }
 
@@ -652,6 +676,8 @@ fn inventory_tools_match_oracle() {
         );
         return;
     };
+    // Install the writer-thread sink before any callsite is reached.
+    writer_thread_lines();
     let spec_text = std::fs::read_to_string(spec_path()).unwrap();
     let spec: Value = serde_json::from_str(&spec_text).unwrap();
     let pepper = spec["testPepperBase64"].as_str().unwrap();
@@ -745,7 +771,14 @@ fn inventory_tools_match_oracle() {
 
         let (tx, _rx) = tokio::sync::broadcast::channel(256);
         let spawner: BusSpawner = Arc::new(|_fut| {});
-        arm_realtime_bus_for_current_thread(tx, spawner, || 0);
+        arm_realtime_bus_for_current_thread(tx.clone(), spawner.clone(), || 0);
+        // The writer thread's bus (a fresh `Db`, so a fresh thread per case).
+        rt.block_on(db.write(move |_| {
+            arm_realtime_bus_for_current_thread(tx, spawner, || 0);
+            Ok(())
+        }))
+        .unwrap();
+        writer_thread_lines().lock().unwrap().clear();
         let (got_steps, captured) = captured_with(|| {
             if *kind == "case" {
                 run_case_steps(
@@ -783,7 +816,13 @@ fn inventory_tools_match_oracle() {
             }]
         };
         let (want_lines, want_pub) = v4_lines(&want["logs"]);
-        let (got_lines, got_pub) = v5_lines(&captured);
+        let (got_lines, mut got_pub) = v5_lines(&captured);
+        // Only the writer thread's PUBLISHES join the comparison; its other
+        // lines are the keystone's / the post office's, outside this family.
+        let writer_lines: Vec<String> = writer_thread_lines().lock().unwrap().drain(..).collect();
+        got_pub.extend(v5_lines(&writer_lines).1);
+        got_pub.sort();
+        got_pub.dedup();
         lines_compared += want_lines.len();
         let g = Norm::new(&known).case(&got_steps, &got_delta, &got_lines);
         let w = Norm::new(&known).case(&want_steps, &want["delta"], &want_lines);

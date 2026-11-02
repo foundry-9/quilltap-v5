@@ -10,18 +10,15 @@ use serde_json::Value;
 
 use crate::inventory::context::load_inventory_context;
 use crate::inventory::equip::drop_carried_everywhere;
-use crate::inventory::errors::InventoryError;
 use crate::inventory::item_mutations::set_inventory_item_archived;
-use crate::inventory::location::{resolve_inventory_location, ResolveInventoryLocationOptions};
 use crate::inventory::refs::ResolveInventoryRefOptions;
-use crate::inventory::types::{InventoryFields, InventoryScope};
-use crate::realtime::types::RealtimeTopic;
+use crate::inventory::types::InventoryFields;
 use crate::services::inventory_change_effects::InventoryChange;
 
 use super::inventory_shared::{
-    error_message_of, format_summary, input_object, inventory_not_found_message, req_ref,
-    resolve_tool_ref, shared_inventory_item_read_only_message, summarize, InventoryObjectSummary,
-    InventoryToolLog, InventoryToolLogLevel,
+    error_message_of, format_summary, input_object, inventory_not_found_message, load_own_record,
+    req_ref, resolve_tool_ref, shared_inventory_item_read_only_message, summarize,
+    InventoryObjectSummary, InventoryToolLog, InventoryToolLogLevel,
 };
 use super::inventory_tool_table::{InventoryHandled, InventoryHandlerCx};
 
@@ -107,45 +104,30 @@ pub fn execute(
             InventoryToolLogLevel::Info,
         );
     };
-    let vault = match resolve_inventory_location(
-        cx.main,
-        cx.mount,
-        InventoryScope::Character,
-        Some(cx.character_id),
-        cx.user_id,
-        ResolveInventoryLocationOptions::default(),
-    ) {
-        Ok(v) => v,
-        Err(e) => return refused(error_message_of(&InventoryError::Db(e))),
-    };
-    let record = match &vault {
-        Some(vault) => match vault.find_item(cx.mount, m.item.id()) {
-            Ok(r) => r,
-            Err(e) => return refused(error_message_of(&InventoryError::Db(e))),
-        },
-        None => None,
-    };
-    let (Some(vault), Some(record)) = (vault, record) else {
-        return InventoryHandled::quiet(failure(inventory_not_found_message(&reference)));
+    let (vault, record) = match load_own_record(&cx, m.item.id()) {
+        Ok(Some(own)) => own,
+        Ok(None) => {
+            return InventoryHandled::quiet(failure(inventory_not_found_message(&reference)))
+        }
+        Err(e) => return refused(error_message_of(&e)),
     };
 
     let changed = match set_inventory_item_archived(cx.main, cx.mount, &vault, &record, archived) {
         Ok(outcome) => outcome.changed,
         Err(e) => return refused(error_message_of(&e)),
     };
-    let mut publishes = Vec::new();
+    // The location published `inventory`; `drop_carried_everywhere` tells
+    // every chat it changed (v4 `0276d10d9` — no handler-owned publish).
+    let publishes = Vec::new();
     let mut changes = Vec::new();
     if changed {
-        publishes.push((RealtimeTopic::Inventory, None));
-        if archived
-            && drop_carried_everywhere(
+        if archived {
+            drop_carried_everywhere(
                 cx.main,
                 cx.character_id,
                 record.id(),
                 &[cx.chat_id.to_string()],
-            ) > 0
-        {
-            publishes.push((RealtimeTopic::Chats, Some(cx.chat_id.to_string())));
+            );
         }
         if archived && m.equipped {
             changes.push((

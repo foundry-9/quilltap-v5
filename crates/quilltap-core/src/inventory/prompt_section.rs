@@ -25,8 +25,7 @@
 use rusqlite::Connection;
 use serde_json::Value;
 
-use super::equipped_set::{equipped_ids_of, read_equipped_set};
-use super::pool::{load_inventory_pool, LoadInventoryPoolOptions};
+use super::equipped_set::{equipped_ids_of, load_equipped_set};
 use super::resolve::{inventory_display_name, inventory_label};
 use super::types::{InventoryFields, InventoryKind, ResolvedInventoryItem};
 use crate::db::runtime::Db;
@@ -76,29 +75,13 @@ pub fn build_inventory_section(
     chat: &Value,
     character_id: &str,
 ) -> Option<String> {
-    let equipped = chat.get("equippedInventory");
-    if equipped_ids_of(equipped, character_id).is_empty() {
-        return None;
-    }
     let chat_id = chat.get("id").and_then(Value::as_str).unwrap_or_default();
-    let project_id = chat.get("projectId").and_then(Value::as_str);
-    match load_inventory_pool(
-        main,
-        mount,
-        LoadInventoryPoolOptions {
-            character_id,
-            chat_id: Some(chat_id),
-            project_id,
-            own_records: None,
-        },
-    ) {
-        Ok(pool) => {
-            let section = render_inventory_section(&read_equipped_set(
-                Some(chat_id),
-                equipped,
-                character_id,
-                &pool,
-            ));
+    // Nothing stored reads no pool at all (`load_equipped_set`), the common
+    // case; nothing carriable is nothing to log either (v4 `0276d10d9`).
+    match load_equipped_set(main, mount, chat, character_id) {
+        Ok(carried) if carried.is_empty() => None,
+        Ok(carried) => {
+            let section = render_inventory_section(&carried);
             tracing::debug!(
                 chatId = %chat_id,
                 characterId = %character_id,

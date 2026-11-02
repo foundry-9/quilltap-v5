@@ -17,6 +17,7 @@ pub mod apply_defaults;
 pub mod context;
 pub mod dependents;
 pub mod equip;
+pub mod equip_effects;
 pub mod equipped_set;
 pub mod errors;
 pub mod folders;

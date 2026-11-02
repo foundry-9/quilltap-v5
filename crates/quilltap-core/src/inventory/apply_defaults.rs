@@ -30,13 +30,12 @@ use rusqlite::Connection;
 
 use super::equip::{
     equip_items_holding_lock, with_chat_inventory_lock, EquipChat, EquipOptions, EquipResult,
-    GestureOutcome, InventoryChange, InventoryChangeContext, InventoryChangeProvenance,
+    GestureOutcome, InventoryChange, InventoryChangeProvenance,
 };
 use super::equipped_set::{equipped_ids_of, has_equipped_entry};
 use super::errors::InventoryError;
-use super::pool::{load_inventory_pool, LoadInventoryPoolOptions};
+use super::pool::{load_inventory_pool, InventoryPool, LoadInventoryPoolOptions};
 use super::types::InventoryFields;
-use crate::db::chats_inventory::ChatsInventoryRepository;
 use crate::db::runtime::Db;
 
 /// v4 `InventoryArrivalSource`.
@@ -82,7 +81,7 @@ fn default_ids_for(
     mount: &Connection,
     chat: &EquipChat,
     character_id: &str,
-) -> Result<Vec<String>, InventoryError> {
+) -> Result<(Vec<String>, InventoryPool), InventoryError> {
     let pool = load_inventory_pool(
         main,
         mount,
@@ -93,12 +92,13 @@ fn default_ids_for(
             own_records: None,
         },
     )?;
-    Ok(pool
+    let ids = pool
         .resolved()
         .into_iter()
         .filter(|item| item.equipped_by_default() && !item.is_archetype() && !item.is_archived())
         .map(|item| item.id().to_string())
-        .collect())
+        .collect();
+    Ok((ids, pool))
 }
 
 /// Equip a character's defaults leniently and silently; the caller holds the
@@ -111,19 +111,21 @@ fn equip_defaults(
     character_id: &str,
     user_id: &str,
 ) -> Result<Option<GestureOutcome<EquipResult>>, InventoryError> {
-    let ids = default_ids_for(main, mount, chat, character_id)?;
+    // The pool is read ONCE and handed to equip (v4 `{ lenient: true, pool }`).
+    let (ids, pool) = default_ids_for(main, mount, chat, character_id)?;
     if ids.is_empty() {
         return Ok(None);
     }
-    let ctx = InventoryChangeContext {
+    let ctx = crate::inventory::equip_effects::inventory_change_context(
         user_id,
-        provenance: InventoryChangeProvenance::Operator,
-        announce: false,
-        pending: None,
-    };
+        InventoryChangeProvenance::Operator,
+        Some(false),
+        None,
+    );
     let opts = EquipOptions {
         lenient: true,
         known: Vec::new(),
+        pool: Some(std::sync::Arc::new(pool)),
     };
     equip_items_holding_lock(main, mount, chat, character_id, &ids, &ctx, &opts).map(Some)
 }
@@ -152,12 +154,11 @@ fn arrive_under_lock(
         );
         return Ok(None);
     }
-    let repo = ChatsInventoryRepository::new(main);
     if let Some(source_chat) =
         source_chat.filter(|s| has_equipped_entry(s.equipped_inventory.as_ref(), character_id))
     {
         let ids = equipped_ids_of(source_chat.equipped_inventory.as_ref(), character_id);
-        repo.set_equipped_inventory(chat_id, character_id, Some(&ids));
+        super::equip::write_carried_set(main, chat_id, character_id, Some(&ids));
         tracing::debug!(
             op = "arrival",
             chatId = %chat_id,
@@ -174,7 +175,7 @@ fn arrive_under_lock(
     let equipped_nothing = outcome.as_ref().is_none_or(|(r, _)| r.equipped.is_empty());
     if equipped_nothing {
         // Record the arrival, so a later re-seat does not apply defaults again.
-        repo.set_equipped_inventory(chat_id, character_id, Some(&[]));
+        super::equip::write_carried_set(main, chat_id, character_id, Some(&[]));
     }
     let ids = |items: &[super::types::ResolvedInventoryItem]| -> Vec<String> {
         items.iter().map(|i| i.id().to_string()).collect()
@@ -298,12 +299,12 @@ pub async fn refresh_avatars_after_arrival(
                 chat_id,
                 character_id,
                 change,
-                &crate::inventory::equip::InventoryChangeContext {
+                &crate::inventory::equip_effects::inventory_change_context(
                     user_id,
-                    provenance: crate::inventory::equip::InventoryChangeProvenance::Operator,
-                    announce: false,
-                    pending: None,
-                },
+                    crate::inventory::equip::InventoryChangeProvenance::Operator,
+                    Some(false),
+                    None,
+                ),
                 None,
             )
             .await;
@@ -382,12 +383,11 @@ pub fn reset_inventory_to_defaults_holding_lock(
     character_id: &str,
     user_id: &str,
 ) -> Result<(Vec<String>, Option<InventoryChange>), InventoryError> {
-    let repo = ChatsInventoryRepository::new(main);
-    repo.set_equipped_inventory(&chat.id, character_id, None);
+    super::equip::write_carried_set(main, &chat.id, character_id, None);
     let fresh = chat_row(main, &chat.id).unwrap_or_else(|| chat.clone());
     let outcome = equip_defaults(main, mount, &fresh, character_id, user_id)?;
     if outcome.as_ref().is_none_or(|(r, _)| r.equipped.is_empty()) {
-        repo.set_equipped_inventory(&chat.id, character_id, Some(&[]));
+        super::equip::write_carried_set(main, &chat.id, character_id, Some(&[]));
     }
     let after = chat_row(main, &chat.id).unwrap_or(fresh);
     let equipped = equipped_ids_of(after.equipped_inventory.as_ref(), character_id);

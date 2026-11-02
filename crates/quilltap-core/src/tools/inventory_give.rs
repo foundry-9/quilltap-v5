@@ -23,13 +23,12 @@ use crate::inventory::transfers::{
 };
 use crate::inventory::types::{InventoryFields, InventoryScope};
 use crate::jsstr::js_trim;
-use crate::realtime::types::RealtimeTopic;
 use crate::services::inventory_change_effects::{InventoryChange, InventoryGive};
 
 use super::inventory_equip::{load_tool_chat, CHAT_NOT_FOUND_MESSAGE};
 use super::inventory_shared::{
-    display_name_of, error_message_of, input_object, inventory_not_found_message, req_ref,
-    req_string, resolve_tool_ref, shared_inventory_item_read_only_message, summarize,
+    display_name_of, error_message_of, input_object, inventory_not_found_message, load_own_record,
+    req_ref, req_string, resolve_tool_ref, shared_inventory_item_read_only_message, summarize,
     InventoryObjectSummary, InventoryToolLog, InventoryToolLogLevel,
 };
 use super::inventory_tool_table::{InventoryHandled, InventoryHandlerCx};
@@ -180,33 +179,23 @@ pub fn execute(
         Ok(r) => r,
         Err(error) => return refuse(error, vec![item_id]),
     };
-    let locate = |id: &str, ensure: bool| {
-        resolve_inventory_location(
-            cx.main,
-            cx.mount,
-            InventoryScope::Character,
-            Some(id),
-            cx.user_id,
-            ResolveInventoryLocationOptions { ensure },
-        )
+    // The giver's own record first, then the receiver's vault (v4
+    // `0276d10d9`'s order — a vanished record provisions nothing).
+    let (source, record) = match load_own_record(&cx, &item_id) {
+        Ok(Some(own)) => own,
+        Ok(None) => return refuse(inventory_not_found_message(&reference), vec![item_id]),
+        Err(e) => return refuse(error_message_of(&e), Vec::new()),
     };
-    let source = match locate(cx.character_id, false) {
-        Ok(s) => s,
-        Err(e) => return refuse(error_message_of(&InventoryError::Db(e)), Vec::new()),
-    };
-    let destination = match locate(&receiver.id, true) {
+    let destination = match resolve_inventory_location(
+        cx.main,
+        cx.mount,
+        InventoryScope::Character,
+        Some(&receiver.id),
+        cx.user_id,
+        ResolveInventoryLocationOptions { ensure: true },
+    ) {
         Ok(d) => d,
         Err(e) => return refuse(error_message_of(&InventoryError::Db(e)), Vec::new()),
-    };
-    let record = match &source {
-        Some(source) => match source.find_item(cx.mount, &item_id) {
-            Ok(r) => r,
-            Err(e) => return refuse(error_message_of(&InventoryError::Db(e)), Vec::new()),
-        },
-        None => None,
-    };
-    let (Some(source), Some(record)) = (source, record) else {
-        return refuse(inventory_not_found_message(&reference), vec![item_id]);
     };
     let Some(destination) = destination else {
         return refuse(
@@ -264,10 +253,8 @@ pub fn execute(
             error: None,
         },
         changes: vec![(cx.chat_id.to_string(), change)],
-        publishes: vec![
-            (RealtimeTopic::Inventory, None),
-            (RealtimeTopic::Chats, Some(cx.chat_id.to_string())),
-        ],
+        // The transfer's locations and the carried-set writers publish.
+        publishes: Vec::new(),
         log: Some((log, InventoryToolLogLevel::Debug)),
     }
 }

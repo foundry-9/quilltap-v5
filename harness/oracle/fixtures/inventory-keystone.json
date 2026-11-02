@@ -23,6 +23,12 @@
       "id": "c3000000-0000-4000-8000-000000000003",
       "name": "Zed",
       "archived": true
+    },
+    "U": {
+      "id": "c5000000-0000-4000-8000-000000000005",
+      "name": "Ulla",
+      "archived": false,
+      "unlinked": true
     }
   },
   "project": {
@@ -527,6 +533,84 @@
         "createdAt": "2026-02-01T00:00:00.000Z",
         "updatedAt": "2026-02-01T00:00:00.000Z"
       }
+    },
+    {
+      "scope": "general",
+      "owner": null,
+      "record": {
+        "id": "a0000040-0000-4000-8000-000000000000",
+        "name": "spyglass",
+        "title": null,
+        "description": "A brass spyglass.",
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": true,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": null,
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c5000000-0000-4000-8000-000000000005",
+      "record": {
+        "id": "a0000041-0000-4000-8000-000000000000",
+        "name": "spyglass",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": "a0000040-0000-4000-8000-000000000000",
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
+    },
+    {
+      "scope": "character",
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "record": {
+        "id": "a0000042-0000-4000-8000-000000000000",
+        "name": "spyglass",
+        "title": null,
+        "description": null,
+        "imageDescription": null,
+        "kind": "item",
+        "isArchetype": false,
+        "equippedByDefault": false,
+        "maxEquipped": 1,
+        "canCopy": true,
+        "emoji": null,
+        "svg": null,
+        "imageFileId": null,
+        "metadata": {},
+        "parentId": "a0000040-0000-4000-8000-000000000000",
+        "itemIds": [],
+        "folder": "",
+        "archivedAt": null,
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
     }
   ],
   "pictures": [
@@ -660,6 +744,19 @@
           "a0000012-0000-4000-8000-000000000000"
         ]
       }
+    },
+    {
+      "id": "b7000000-0000-4000-8000-000000000001",
+      "title": "The Annex",
+      "projectId": null,
+      "participants": [
+        {
+          "id": "b7100000-0000-4000-8000-000000000001",
+          "type": "CHARACTER",
+          "characterId": "c5000000-0000-4000-8000-000000000005"
+        }
+      ],
+      "equipped": null
     }
   ],
   "webp": [
@@ -1175,6 +1272,32 @@
       }
     },
     {
+      "name": "update-keeps-stray-note",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c1000000-0000-4000-8000-000000000001"
+      },
+      "itemId": "a0000012-0000-4000-8000-000000000000",
+      "body": {
+        "description": "Polished."
+      }
+    },
+    {
+      "name": "update-keeps-note-and-duplicate",
+      "family": "mutations",
+      "kind": "update",
+      "at": {
+        "scope": "character",
+        "id": "c2000000-0000-4000-8000-000000000002"
+      },
+      "itemId": "a0000022-0000-4000-8000-000000000000",
+      "body": {
+        "description": "A dented tin cup."
+      }
+    },
+    {
       "name": "clear-overrides",
       "family": "mutations",
       "kind": "clearOverrides",
@@ -1254,6 +1377,12 @@
       "family": "mutations",
       "kind": "detachAll",
       "archetypeId": "a0000004-0000-4000-8000-000000000000"
+    },
+    {
+      "name": "detach-all-unlinked-vault",
+      "family": "mutations",
+      "kind": "detachAll",
+      "archetypeId": "a0000040-0000-4000-8000-000000000000"
     },
     {
       "name": "delete-plain",
@@ -1944,6 +2073,16 @@
       ]
     },
     {
+      "name": "pick-up-no-vault",
+      "family": "equip",
+      "kind": "pickUp",
+      "chatId": "b7000000-0000-4000-8000-000000000001",
+      "characterId": "c5000000-0000-4000-8000-000000000005",
+      "archetypeIds": [
+        "a0000040-0000-4000-8000-000000000000"
+      ]
+    },
+    {
       "name": "drop-everywhere",
       "family": "equip",
       "kind": "dropEverywhere",
@@ -2193,6 +2332,23 @@
         "a0000017-0000-4000-8000-000000000000"
       ],
       "folder": "Copies"
+    }
+  ],
+  "strayFiles": [
+    {
+      "owner": "c1000000-0000-4000-8000-000000000001",
+      "path": "Inventory/notes.json",
+      "content": "{\"note\":\"not a record\"}"
+    },
+    {
+      "owner": "c2000000-0000-4000-8000-000000000002",
+      "path": "Inventory/notes.json",
+      "content": "{\"note\":\"not a record\"}"
+    },
+    {
+      "owner": "c2000000-0000-4000-8000-000000000002",
+      "path": "Inventory/cup copy.json",
+      "copyOf": "a0000022-0000-4000-8000-000000000000"
     }
   ]
 }

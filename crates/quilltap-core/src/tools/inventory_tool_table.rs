@@ -12,14 +12,18 @@
 //! v5's handlers are synchronous and run inside ONE `Db::write` closure that
 //! holds both writer connections (the keystone's chokepoints are in-write:
 //! equip / unequip / pick-up / drop / transfer, and `inventory_update`'s second
-//! context load is a second read in the SAME closure). Pascal's line, the
-//! avatar refresh and the realtime publishes cannot run in there, so each
-//! entry is two halves, composed the same way by every caller (the executor,
-//! and the differential):
+//! context load is a second read in the SAME closure). Pascal's line and the
+//! avatar refresh cannot run in there, so each entry is two halves, composed
+//! the same way by every caller (the executor, and the differential). The
+//! realtime hints are NOT among them: a publish is a synchronous, coalescing,
+//! fire-and-forget bus call, and since v4 `0276d10d9` (P4.D350 R-1) the
+//! chokepoints make it inside the write — every landed Inventory location
+//! write announces `inventory`, the one carried-set writer announces
+//! `chats/<id>` — so the handlers own none:
 //!
 //!  1. [`run_inventory_tool_handler`] — the handler, inside the write. It
 //!     answers the tool's output, the changes it made (one per gesture, each
-//!     with its chat id), the publishes it owes, and its ONE
+//!     with its chat id), the publishes it owes (none since R-1), and its ONE
 //!     `[InventoryTools]` line.
 //!  2. [`finish_inventory_tool`] — once the write has committed: the
 //!     publishes in v4's order, then `notify_inventory_changed` per change in
@@ -36,7 +40,7 @@ use crate::db::runtime::Db;
 use crate::realtime::bus::publish_realtime;
 use crate::realtime::types::RealtimeTopic;
 use crate::services::inventory_change_effects::{
-    notify_inventory_changed, InventoryChange, InventoryChangeContext, InventoryChangeProvenance,
+    notify_inventory_changed, InventoryChange, InventoryChangeProvenance,
     PendingInventoryAnnouncements,
 };
 use crate::services::mount_index::blob_transcode::WebpTranscoder;
@@ -234,12 +238,12 @@ pub async fn finish_inventory_tool(
     for (topic, id) in &publishes {
         publish_realtime(*topic, id.as_deref());
     }
-    let change_ctx = InventoryChangeContext {
-        user_id: ctx.user_id,
-        provenance: InventoryChangeProvenance::Character,
-        announce: true,
-        pending: None,
-    };
+    let change_ctx = crate::inventory::equip_effects::inventory_change_context(
+        ctx.user_id,
+        InventoryChangeProvenance::Character,
+        None,
+        None,
+    );
     for (chat_id, change) in &changes {
         notify_inventory_changed(
             db,

@@ -458,16 +458,16 @@ pub async fn flush_pending_inventory_announcements(
             picked_up: Some(entry.picked_up.clone()),
             given: None,
         };
-        let ctx = InventoryChangeContext {
-            user_id: &entry.user_id,
-            provenance: entry
+        let ctx = crate::inventory::equip_effects::inventory_change_context(
+            &entry.user_id,
+            entry
                 .provenances
                 .first()
                 .copied()
                 .unwrap_or(InventoryChangeProvenance::Character),
-            announce: true,
-            pending: None,
-        };
+            None,
+            None,
+        );
         notify_inventory_changed(db, &entry.chat_id, &entry.character_id, &change, &ctx, None)
             .await;
     }

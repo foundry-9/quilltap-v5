@@ -49,7 +49,7 @@ interface Spec {
   seedTimestamp: string;
   userId: string;
   user: Record<string, unknown>;
-  characters: Record<string, { id: string; name: string; archived: boolean }>;
+  characters: Record<string, { id: string; name: string; archived: boolean; unlinked?: boolean }>;
   project: { id: string; name: string; allowAnyCharacter: boolean; characterRoster: string[] };
   group: { id: string; name: string; memberId: string; member: string };
   generalMountPointId: string;
@@ -65,6 +65,8 @@ interface Spec {
     generationModel?: string;
   }>;
   webp: string[];
+  /** P4.D350: files planted beside the records (a note, a duplicate-id copy). */
+  strayFiles?: Array<{ owner: string; path: string; content?: string; copyOf?: string }>;
   chats: Array<{
     id: string;
     title: string;
@@ -278,10 +280,40 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.D350 (v4 `0276d10d9`): a `.json` under `Inventory/` that parses as an
+  // object but is not a record (a note), and a second file claiming one
+  // record's id (a duplicate-id copy) — the projection sweeps neither at the
+  // pin. Through v4's REAL `writeDatabaseDocument`.
+  {
+    const { writeDatabaseDocument } = await import('@/lib/mount-index/database-store');
+    for (const f of spec.strayFiles ?? []) {
+      const owner = await repos.characters.findById(f.owner);
+      const mp = owner?.characterDocumentMountPointId;
+      if (!mp) throw new Error(`no vault for stray-file owner ${f.owner}`);
+      let content = f.content;
+      if (f.copyOf) {
+        const row = midb
+          .prepare(
+            `SELECT d.content FROM doc_mount_file_links l JOIN doc_mount_documents d ON d.fileId = l.fileId
+             WHERE l.mountPointId = ? AND l.relativePath LIKE 'Inventory/%' AND d.content LIKE ?`,
+          )
+          .get(mp, `%"id": "${f.copyOf}"%`) as { content: string } | undefined;
+        if (!row) throw new Error(`no stored record ${f.copyOf} to copy`);
+        content = row.content;
+      }
+      await writeDatabaseDocument(mp, f.path, content ?? '');
+    }
+  }
+
   // Zed's tombstone, AFTER his vault was seeded.
   for (const c of Object.values(spec.characters)) {
     if (c.archived) {
       await rawQuery('UPDATE "characters" SET "archivedAt" = ? WHERE "id" = ?', ['2026-03-01T00:00:00.000Z', c.id]);
+    }
+    // P4.D350: a vault that is no longer linked — the pointer NULLed, the
+    // store and its files kept.
+    if (c.unlinked) {
+      await rawQuery('UPDATE "characters" SET "characterDocumentMountPointId" = NULL WHERE "id" = ?', [c.id]);
     }
   }
 

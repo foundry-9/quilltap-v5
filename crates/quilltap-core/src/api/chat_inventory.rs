@@ -49,12 +49,12 @@ use crate::inventory::types::{
 /// v4 `OPERATOR(userId)` — `{ userId, provenance: 'operator', announce: true }`.
 #[allow(non_snake_case)]
 pub fn OPERATOR(user_id: &str) -> InventoryChangeContext<'_> {
-    InventoryChangeContext {
+    crate::inventory::equip_effects::inventory_change_context(
         user_id,
-        provenance: InventoryChangeProvenance::Operator,
-        announce: true,
-        pending: None,
-    }
+        InventoryChangeProvenance::Operator,
+        None,
+        None,
+    )
 }
 
 /// The after-write effects of an operator gesture (v4 `notifyInventoryChanged`

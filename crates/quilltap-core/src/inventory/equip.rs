@@ -265,6 +265,10 @@ pub struct EquipOptions {
     /// Objects written by this same call that the pool may not see yet,
     /// looked up after the pool.
     pub known: Vec<ResolvedInventoryItem>,
+    /// The pool the caller already read under the lock (arrival's), so equip
+    /// plans against it instead of reading again (v4 `EquipOptions.pool`,
+    /// `0276d10d9`).
+    pub pool: Option<std::sync::Arc<InventoryPool>>,
 }
 
 /// v4 `pickUpItems`'s opts: a `title` override, and `equip` (default true).
@@ -455,6 +459,20 @@ where
     .await?
 }
 
+/// Write one character's carried set in a chat — the one place this module
+/// writes `chats.equippedInventory` — and tell the open Salon (v4
+/// `writeCarriedSet`, `0276d10d9`). `None` clears the entry. The caller holds
+/// the chat's lock.
+pub fn write_carried_set(
+    main: &Connection,
+    chat_id: &str,
+    character_id: &str,
+    ids: Option<&[String]>,
+) {
+    ChatsInventoryRepository::new(main).set_equipped_inventory(chat_id, character_id, ids);
+    publish_realtime(RealtimeTopic::Chats, Some(chat_id));
+}
+
 /// Drop one object from one character's carried set in EVERY chat that lists
 /// it — a give (the id is kept on the move, so a later give-back must not
 /// reappear as carried) or an archive (a later restore must not quietly
@@ -479,10 +497,14 @@ pub fn drop_carried_everywhere(
             chat_ids.push(id);
         }
     }
-    let changed = chat_ids
-        .iter()
-        .filter(|chat_id| repo.remove_equipped_inventory_id(chat_id, character_id, item_id))
-        .count();
+    // Each chat it changed is told (v4 `0276d10d9`).
+    let mut changed = 0usize;
+    for chat_id in &chat_ids {
+        if repo.remove_equipped_inventory_id(chat_id, character_id, item_id) {
+            changed += 1;
+            publish_realtime(RealtimeTopic::Chats, Some(chat_id));
+        }
+    }
     tracing::debug!(
         characterId = %character_id,
         itemId = %item_id,
@@ -563,7 +585,10 @@ fn equip_unserialized(
     opts: &EquipOptions,
 ) -> Result<GestureOutcome<EquipResult>, InventoryError> {
     let chat = fresh_chat(main, stale_chat);
-    let pool = pool_for(main, mount, &chat, character_id)?;
+    let pool = match &opts.pool {
+        Some(pool) => pool.clone(),
+        None => std::sync::Arc::new(pool_for(main, mount, &chat, character_id)?),
+    };
     let current = read_equipped_set(
         Some(&chat.id),
         chat.equipped_inventory.as_ref(),
@@ -691,6 +716,7 @@ fn equip_unserialized(
         if kin + 1 > subject.max_equipped() {
             if opts.lenient {
                 tracing::warn!(
+                    op = "equip",
                     chatId = %chat.id,
                     characterId = %character_id,
                     itemId = %subject.id(),
@@ -707,6 +733,7 @@ fn equip_unserialized(
             );
             tracing::info!(
                 code = error.code.as_str(),
+                op = "equip",
                 chatId = %chat.id,
                 characterId = %character_id,
                 itemId = %subject.id(),
@@ -779,8 +806,7 @@ fn equip_unserialized(
         .chain(result.equipped.iter())
         .map(|i| i.id().to_string())
         .collect();
-    ChatsInventoryRepository::new(main).set_equipped_inventory(&chat.id, character_id, Some(&next));
-    publish_realtime(RealtimeTopic::Chats, Some(&chat.id));
+    write_carried_set(main, &chat.id, character_id, Some(&next));
     tracing::debug!(
         op = "equip",
         chatId = %chat.id,
@@ -817,12 +843,12 @@ pub async fn equip_items(
     let (user_id, provenance, announce) = (ctx.user_id.to_string(), ctx.provenance, ctx.announce);
     let chat_id = chat.id.clone();
     with_chat_inventory_lock(db, &chat_id, move |main, mount| {
-        let ctx = InventoryChangeContext {
-            user_id: &user_id,
+        let ctx = super::equip_effects::inventory_change_context(
+            &user_id,
             provenance,
-            announce,
-            pending: None,
-        };
+            Some(announce),
+            None,
+        );
         equip_unserialized(main, mount, &chat, &character_id, &ids, &ctx, &opts)
     })
     .await
@@ -895,12 +921,7 @@ pub fn unequip_items_holding_lock(
             .filter(|i| !removing.contains(i.id()))
             .map(|i| i.id().to_string())
             .collect();
-        ChatsInventoryRepository::new(main).set_equipped_inventory(
-            &fresh.id,
-            character_id,
-            Some(&kept),
-        );
-        publish_realtime(RealtimeTopic::Chats, Some(&fresh.id));
+        write_carried_set(main, &fresh.id, character_id, Some(&kept));
     }
     tracing::debug!(
         op = "unequip",
@@ -992,6 +1013,7 @@ pub fn pick_up_items_holding_lock(
                 let error = InventoryRefusal::invalid_parent(message, details);
                 tracing::info!(
                     code = error.code.as_str(),
+                    op = "pick-up",
                     chatId = %fresh.id,
                     characterId = %character_id,
                     archetypeId = %id,
@@ -1066,7 +1088,8 @@ pub fn pick_up_items_holding_lock(
         )?;
         created.push(made.item);
     }
-    publish_realtime(RealtimeTopic::Inventory, None);
+    // The instances' writes announced `inventory` through the vault location
+    // (v4 `0276d10d9` dropped pick-up's own publish here).
 
     if equip && !created.is_empty() {
         let next: Vec<String> = current
@@ -1074,12 +1097,7 @@ pub fn pick_up_items_holding_lock(
             .chain(created.iter())
             .map(|i| i.id().to_string())
             .collect();
-        ChatsInventoryRepository::new(main).set_equipped_inventory(
-            &fresh.id,
-            character_id,
-            Some(&next),
-        );
-        publish_realtime(RealtimeTopic::Chats, Some(&fresh.id));
+        write_carried_set(main, &fresh.id, character_id, Some(&next));
     }
     tracing::debug!(
         op = "pick-up",
@@ -1128,12 +1146,12 @@ pub async fn pick_up_items(
     let (user_id, provenance, announce) = (ctx.user_id.to_string(), ctx.provenance, ctx.announce);
     let chat_id = chat.id.clone();
     with_chat_inventory_lock(db, &chat_id, move |main, mount| {
-        let ctx = InventoryChangeContext {
-            user_id: &user_id,
+        let ctx = super::equip_effects::inventory_change_context(
+            &user_id,
             provenance,
-            announce,
-            pending: None,
-        };
+            Some(announce),
+            None,
+        );
         pick_up_items_holding_lock(main, mount, &chat, &character_id, &ids, &ctx, &opts)
     })
     .await

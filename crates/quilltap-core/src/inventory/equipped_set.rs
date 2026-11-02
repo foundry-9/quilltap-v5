@@ -71,3 +71,32 @@ pub fn read_equipped_set(
     }
     out
 }
+
+/// What a character carries in a chat, loading their pool only when the chat
+/// stores something for them (v4 `loadEquippedSet`, `0276d10d9`) — the ONE
+/// place the "nothing stored → no pool read" shortcut is decided. `chat` is
+/// the chat row (`id`, `projectId`, `equippedInventory`). Fails as the pool
+/// read fails; the callers fail soft.
+pub fn load_equipped_set(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    chat: &Value,
+    character_id: &str,
+) -> Result<Vec<ResolvedInventoryItem>, crate::db::DbError> {
+    let equipped = chat.get("equippedInventory");
+    if equipped_ids_of(equipped, character_id).is_empty() {
+        return Ok(Vec::new());
+    }
+    let chat_id = chat.get("id").and_then(Value::as_str);
+    let pool = super::pool::load_inventory_pool(
+        main,
+        mount,
+        super::pool::LoadInventoryPoolOptions {
+            character_id,
+            chat_id: Some(chat_id.unwrap_or_default()),
+            project_id: chat.get("projectId").and_then(Value::as_str),
+            own_records: None,
+        },
+    )?;
+    Ok(read_equipped_set(chat_id, equipped, character_id, &pool))
+}

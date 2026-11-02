@@ -125,27 +125,48 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          spawned task (measured). The behavioural half is \
          `chat_wardrobe_history_tier2_equivalence`'s per-op publish comparand.",
     ),
+    // === P4.D350: the Inventory publishes in v4's places (R-1, v4 `0276d10d9`) ===
     (
         "crates/quilltap-core/src/inventory/equip.rs",
         "publish_realtime(RealtimeTopic::Chats, Some(",
-        3,
-        "P4.D324 (v4 `lib/inventory/equip.ts:369`, `:421`, `:514`, R-12): \
-         `equipItems`, `unequipItems` and `pickUpItems` each announce `chats` / the \
-         chat id once, after the carried-set write. v4 publishes after the write \
-         returns; v5's call sits inside the caller's writer closure, which is safe \
-         because the bus's trailing-edge flush runs on a spawned task (the \
-         `settle` precedent above). The behavioural half is \
-         `inventory_keystone_tier2_equivalence`'s per-op publish comparand.",
+        2,
+        "P4.D350 R-1 (v4 `lib/inventory/equip.ts` `writeCarriedSet` + \
+         `dropCarriedEverywhere`): ONE carried-set writer, `write_carried_set`, \
+         announces `chats` / the chat id on every carried-set write (equip, \
+         unequip, pick-up, arrival's copy and `[]`, reset's clear and `[]`); \
+         `drop_carried_everywhere` announces each chat it changed. (Before R-1: \
+         three inline write+publish pairs and a silent drop.) The calls sit inside \
+         the caller's writer closure, which is safe because the bus's trailing-edge \
+         flush runs on a spawned task (the `settle` precedent above). The \
+         behavioural half is `inventory_keystone_tier2_equivalence`'s per-op \
+         publish comparand.",
     ),
     (
         "crates/quilltap-core/src/inventory/equip.rs",
         "publish_realtime(RealtimeTopic::Inventory, None);",
-        1,
-        "P4.D324 (v4 `lib/inventory/equip.ts:507`, R-12): `pickUpItems` announces \
-         `inventory` collection-wide once, after the picked-up instances land at \
-         the vault root and before the set write's `chats` publish. Same closure \
-         placement and behavioural half as the row above.",
+        0,
+        "P4.D350 R-1: pick-up's own `inventory` publish is GONE at v4 `0276d10d9` \
+         — the instances' writes announce it through the vault location (the row \
+         below).",
     ),
+    (
+        "crates/quilltap-core/src/inventory/location.rs",
+        "publish_realtime(crate::realtime::types::RealtimeTopic::Inventory, None);",
+        1,
+        "P4.D350 R-1 (v4 `lib/inventory/location.ts` `write(fn, landed)`): the ONE \
+         `landed()` helper every landed location write calls — create, a non-empty \
+         `update_many` (`update` rides it), a non-empty delete, and the three folder \
+         writes. Operator REST writes reach an open Inventory dialog through it.",
+    ),
+    (
+        "crates/quilltap-core/src/inventory/location.rs",
+        "landed();",
+        6,
+        "P4.D350 R-1: the six landed-write call sites of the helper above \
+         (`create`, `update_many`, `delete`, `create_folder`, `rename_folder`, \
+         `delete_folder`).",
+    ),
+    // === end P4.D350 ===
     (
         "crates/quilltap-core/src/api/memories.rs",
         "publish_realtime",
@@ -161,60 +182,42 @@ const CENSUS: &[(&str, &str, usize, &str)] = &[
          in this file. The behavioural half is \
          `realtime::publish_sites::memory_gate_tests`.",
     ),
-    // === P4.D328: the Inventory tools' publish sites (R-17) ===
+    // === P4.D328: the Inventory tools' publish sites (R-17), as P4.D350 R-1 left them ===
     (
         "crates/quilltap-core/src/tools/inventory_tool_table.rs",
         "publish_realtime(*topic, id.as_deref());",
         1,
-        "P4.D328 (R-17): every publish an Inventory HANDLER owes runs through \
-         `finish_inventory_tool`'s ONE loop, after the write commits — never inside \
-         the handler half. The handlers name their publishes as data (the rows \
-         below); `inventory_tools_equivalence` compares them per case.",
+        "P4.D328 (R-17): `finish_inventory_tool`'s ONE loop over the publishes a \
+         HANDLER owes — none since P4.D350 R-1 (v4 `0276d10d9` removed every \
+         handler-owned publish; the chokepoints announce inside the write). The \
+         loop stays so a future handler-owned hint has one home.",
     ),
     (
         "crates/quilltap-core/src/tools/inventory_create.rs",
-        "(RealtimeTopic::Inventory, None)",
-        2,
-        "v4 `inventory-create-handler.ts`: `inventory` once on a created object — \
-         the plain create and the create-then-equip arm (whose carried set the \
-         keystone's equip chokepoint announces itself).",
+        "RealtimeTopic::",
+        0,
+        "P4.D350 R-1: no handler-owned publish (v4 `inventory-create-handler.ts` \
+         at `0276d10d9`).",
     ),
     (
         "crates/quilltap-core/src/tools/inventory_update.rs",
-        "(RealtimeTopic::Inventory, None)",
-        1,
-        "v4 `inventory-update-handler.ts`: `inventory` once, after the write.",
+        "RealtimeTopic::",
+        0,
+        "P4.D350 R-1: no handler-owned publish (v4 `inventory-update-handler.ts`).",
     ),
     (
         "crates/quilltap-core/src/tools/inventory_archive.rs",
         "RealtimeTopic::",
-        2,
-        "v4 `inventory-archive-handler.ts`: `inventory` on an archive or restore, \
-         then `chats` / the chat id when archiving struck a carried object from \
-         this chat.",
+        0,
+        "P4.D350 R-1: no handler-owned publish (v4 `inventory-archive-handler.ts`; \
+         the drop announces each chat it changed).",
     ),
     (
         "crates/quilltap-core/src/tools/inventory_give.rs",
         "RealtimeTopic::",
-        2,
-        "v4 `inventory-give-handler.ts`: `inventory` + `chats` / the chat id after \
-         the transfer and the drop.",
-    ),
-    (
-        "crates/quilltap-core/src/inventory/equip.rs",
-        "publish_realtime(RealtimeTopic::Chats, Some(",
-        3,
-        "P4.D328 Tier 2 item 2 (the keystone's chokepoints the Inventory handlers \
-         reach, censused by site here because C1 did not): `equip_items` announces \
-         the chat once; `unequip_items` once; `pick_up_items` once for the chat \
-         (its `inventory` publish is the row below).",
-    ),
-    (
-        "crates/quilltap-core/src/inventory/equip.rs",
-        "publish_realtime(RealtimeTopic::Inventory, None);",
-        1,
-        "P4.D328 Tier 2 item 2: `pick_up_items` announces `inventory` for the new \
-         instance (v4 `pickUpItems`).",
+        0,
+        "P4.D350 R-1: no handler-owned publish (v4 `inventory-give-handler.ts`; the \
+         transfer's locations and the drop announce).",
     ),
     // === end P4.D328 ===
 ];

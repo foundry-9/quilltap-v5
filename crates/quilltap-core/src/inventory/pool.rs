@@ -33,10 +33,9 @@ use serde_json::Value;
 
 use super::dependents::find_records_anywhere;
 use super::location::{general_inventory_origin, InventoryLocation};
-use super::resolve::{is_kin, resolve_item};
+use super::resolve::resolve_item;
 use super::types::{
-    InventoryFields, InventoryKind, InventoryOrigin, InventoryRecord, InventoryScope,
-    ResolvedInventoryItem,
+    InventoryFields, InventoryOrigin, InventoryRecord, InventoryScope, ResolvedInventoryItem,
 };
 use crate::db::inventory_writes::read_mount_inventory;
 use crate::db::item_folder_ops::{VaultFolderMount, VaultFolderMountScope};
@@ -283,9 +282,10 @@ fn read_tier(
 }
 
 /// The archetypes instances in the pool name that the pool itself cannot see
-/// (v4 `fetchExternalParents`), tagged with v4's lookup-only origin
-/// `{scope: 'project', id: null, name: 'Elsewhere'}` (never in `resolved()`).
-/// DEBUG `[InventoryPool] Fetched archetypes outside the pool`.
+/// (v4 `fetchExternalParents`). They only fill instances in, never join the
+/// pool, so they carry no origin (v4 `0276d10d9` dropped the lookup-only
+/// `Elsewhere` tag). DEBUG `[InventoryPool] Fetched archetypes outside the
+/// pool`.
 fn fetch_external_parents(mount: &Connection, layers: &[&[InventoryRecord]]) -> RecordMap {
     let known: HashSet<&str> = layers
         .iter()
@@ -305,13 +305,8 @@ fn fetch_external_parents(mount: &Connection, layers: &[&[InventoryRecord]]) -> 
     if missing.is_empty() {
         return out;
     }
-    let elsewhere = InventoryOrigin {
-        scope: InventoryScope::Project,
-        id: None,
-        name: "Elsewhere".to_string(),
-    };
     for (_, found) in find_records_anywhere(mount, &missing) {
-        out.set(tag(found.record, &elsewhere, Some(&found.mount_point_id)));
+        out.set(found.record);
     }
     tracing::debug!(
         wanted = missing.len(),
@@ -621,19 +616,4 @@ pub fn load_cast_inventory_pools(
         }
     }
     Ok(out)
-}
-
-/// Reachable, equippable kin of `name` in the pool, resolved (v4 `kinOf`).
-pub fn kin_of(name: &str, pool: &InventoryPool) -> Vec<ResolvedInventoryItem> {
-    let probe = InventoryRecord(
-        [("name".to_string(), Value::String(name.to_string()))]
-            .into_iter()
-            .collect(),
-    );
-    pool.resolved()
-        .into_iter()
-        .filter(|item| {
-            !item.is_archetype() && item.kind() != InventoryKind::Kit && is_kin(item, &probe)
-        })
-        .collect()
 }

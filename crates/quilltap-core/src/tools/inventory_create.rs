@@ -13,7 +13,6 @@ use crate::inventory::location::{resolve_inventory_location, ResolveInventoryLoc
 use crate::inventory::resolve::resolve_item;
 use crate::inventory::types::{parse_create_inventory_body, InventoryFields, InventoryScope};
 use crate::jsstr::js_trim;
-use crate::realtime::types::RealtimeTopic;
 
 use super::inventory_equip::{character_change_context, load_tool_chat};
 use super::inventory_shared::{
@@ -178,6 +177,7 @@ pub fn execute(
                 &EquipOptions {
                     lenient: false,
                     known: vec![item.clone()],
+                    pool: None,
                 },
             ) {
                 Ok((result, change)) => {
@@ -188,9 +188,8 @@ pub fn execute(
                     }
                 }
                 Err(e) => {
-                    let mut handled = refused(error_message_of(&e));
-                    handled.publishes = vec![(RealtimeTopic::Inventory, None)];
-                    return handled;
+                    // The create already published through the location.
+                    return refused(error_message_of(&e));
                 }
             }
         }
@@ -209,7 +208,7 @@ pub fn execute(
             error: None,
         },
         changes,
-        publishes: vec![(RealtimeTopic::Inventory, None)],
+        publishes: Vec::new(),
         log: Some((log, InventoryToolLogLevel::Debug)),
     }
 }

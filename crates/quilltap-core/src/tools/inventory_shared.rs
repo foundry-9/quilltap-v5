@@ -228,6 +228,38 @@ pub fn closed_shelf_message(
     Some(InventoryRefusal::off_roster(&[inventory_label(&first.item)]).message)
 }
 
+/// The caller's own vault and the stored record of one of its objects — what
+/// a change to an own object writes through (v4 `loadOwnRecord`,
+/// `0276d10d9`). `None` when the vault or the record is gone (moved or
+/// deleted since the context was read).
+pub fn load_own_record(
+    cx: &super::inventory_tool_table::InventoryHandlerCx<'_>,
+    item_id: &str,
+) -> Result<
+    Option<(
+        crate::inventory::location::InventoryLocation,
+        crate::inventory::types::InventoryRecord,
+    )>,
+    InventoryError,
+> {
+    let vault = crate::inventory::location::resolve_inventory_location(
+        cx.main,
+        cx.mount,
+        InventoryScope::Character,
+        Some(cx.character_id),
+        cx.user_id,
+        crate::inventory::location::ResolveInventoryLocationOptions::default(),
+    )
+    .map_err(InventoryError::Db)?;
+    let Some(vault) = vault else {
+        return Ok(None);
+    };
+    let record = vault
+        .find_item(cx.mount, item_id)
+        .map_err(InventoryError::Db)?;
+    Ok(record.map(|record| (vault, record)))
+}
+
 /// The refusal for an object that resolved to nothing (v4
 /// `inventoryNotFoundMessage`).
 pub fn inventory_not_found_message(reference: &str) -> String {

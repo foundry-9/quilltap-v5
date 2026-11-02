@@ -9,19 +9,17 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 
 use crate::inventory::context::load_inventory_context;
-use crate::inventory::errors::InventoryError;
 use crate::inventory::item_mutations::update_inventory_item;
-use crate::inventory::location::{resolve_inventory_location, ResolveInventoryLocationOptions};
 use crate::inventory::pool::LoadPoolContext;
 use crate::inventory::refs::ResolveInventoryRefOptions;
-use crate::inventory::types::{InventoryFields, InventoryScope, ResolvedInventoryItem};
+use crate::inventory::types::{InventoryFields, ResolvedInventoryItem};
 use crate::jsstr::js_trim;
-use crate::realtime::types::RealtimeTopic;
 
 use super::inventory_shared::{
-    error_message_of, format_summary, input_object, inventory_not_found_message, object_fields,
-    opt_string, req_ref, resolve_tool_ref, shared_inventory_item_read_only_message, summarize,
-    InventoryObjectFields, InventoryObjectSummary, InventoryToolLog, InventoryToolLogLevel,
+    error_message_of, format_summary, input_object, inventory_not_found_message, load_own_record,
+    object_fields, opt_string, req_ref, resolve_tool_ref, shared_inventory_item_read_only_message,
+    summarize, InventoryObjectFields, InventoryObjectSummary, InventoryToolLog,
+    InventoryToolLogLevel,
 };
 use super::inventory_tool_table::{InventoryHandled, InventoryHandlerCx};
 
@@ -125,26 +123,12 @@ pub fn execute(
             InventoryToolLogLevel::Info,
         );
     };
-    let vault = match resolve_inventory_location(
-        cx.main,
-        cx.mount,
-        InventoryScope::Character,
-        Some(cx.character_id),
-        cx.user_id,
-        ResolveInventoryLocationOptions::default(),
-    ) {
-        Ok(v) => v,
-        Err(e) => return refused(error_message_of(&InventoryError::Db(e))),
-    };
-    let record = match &vault {
-        Some(vault) => match vault.find_item(cx.mount, m.item.id()) {
-            Ok(r) => r,
-            Err(e) => return refused(error_message_of(&InventoryError::Db(e))),
-        },
-        None => None,
-    };
-    let (Some(vault), Some(record)) = (vault, record) else {
-        return InventoryHandled::quiet(failure(inventory_not_found_message(&reference)));
+    let (vault, record) = match load_own_record(&cx, m.item.id()) {
+        Ok(Some(own)) => own,
+        Ok(None) => {
+            return InventoryHandled::quiet(failure(inventory_not_found_message(&reference)))
+        }
+        Err(e) => return refused(error_message_of(&e)),
     };
 
     // The patch, in field order; `metadata` merged key by key into the
@@ -208,32 +192,13 @@ pub fn execute(
         Ok(updated) => updated,
         Err(e) => return refused(error_message_of(&e)),
     };
-    if updated.is_none() {
+    let Some(updated) = updated else {
         return InventoryHandled::quiet(failure(format!("Failed to change \"{reference}\".")));
-    }
-    // The SECOND load, in the same write; else `{ ...item, ...patch, metadata }`.
-    let after: ResolvedInventoryItem =
-        match load_inventory_context(cx.main, cx.mount, cx.character_id, Some(cx.chat_id)) {
-            Ok(again) => again
-                .pool
-                .items
-                .iter()
-                .find(|i| i.id() == record.id())
-                .cloned(),
-            Err(e) => return refused(error_message_of(&e.into())),
-        }
-        .unwrap_or_else(|| {
-            let mut merged = m.item.clone();
-            for (k, v) in &patch {
-                merged.set(k, v.clone());
-            }
-            if !patch.contains_key("metadata") {
-                if let Some(md) = m.item.get("metadata").cloned() {
-                    merged.set("metadata", md);
-                }
-            }
-            merged
-        });
+    };
+    // Resolved against the pool already in hand: the edit changed this
+    // object, not its archetype (v4 `0276d10d9` — `serverPool.resolve({
+    // ...updated, origin: vault.origin, mountPointId: vault.mountPointId })`).
+    let after: ResolvedInventoryItem = resolve_in_hand(&ctx.server_pool, &updated, &vault);
     let fields: Vec<String> = patch.keys().cloned().collect();
     let log = InventoryToolLog {
         refs: Some(vec![reference.clone()]),
@@ -249,7 +214,7 @@ pub fn execute(
             error: None,
         },
         changes: Vec::new(),
-        publishes: vec![(RealtimeTopic::Inventory, None)],
+        publishes: Vec::new(),
         log: Some((log, InventoryToolLogLevel::Debug)),
     }
 }
@@ -271,4 +236,19 @@ pub fn format(output: &InventoryUpdateToolOutput) -> String {
         output.fields.as_deref().unwrap_or_default().join(", "),
         format_summary(item)
     )
+}
+
+/// `pool.resolve({ ...updated, origin: vault.origin, mountPointId:
+/// vault.mountPointId })` — the updated record tagged with its vault (the
+/// spread keeps the record's key order; the two keys land last, or in place
+/// when the record already carries them).
+fn resolve_in_hand(
+    pool: &crate::inventory::pool::InventoryPool,
+    updated: &crate::inventory::types::InventoryRecord,
+    vault: &crate::inventory::location::InventoryLocation,
+) -> ResolvedInventoryItem {
+    let mut tagged = updated.clone();
+    tagged.set("origin", vault.origin.to_value());
+    tagged.set("mountPointId", Value::String(vault.mount_point_id.clone()));
+    pool.resolve(&tagged)
 }

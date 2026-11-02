@@ -74,12 +74,12 @@ pub fn load_tool_chat(main: &rusqlite::Connection, chat_id: &str) -> Option<Equi
 /// announced. (The turn's map rides the after-commit half — module header of
 /// `services::inventory_change_effects`.)
 pub fn character_change_context(user_id: &str) -> InventoryChangeContext<'_> {
-    InventoryChangeContext {
+    crate::inventory::equip_effects::inventory_change_context(
         user_id,
-        provenance: InventoryChangeProvenance::Character,
-        announce: true,
-        pending: None,
-    }
+        InventoryChangeProvenance::Character,
+        None,
+        None,
+    )
 }
 
 fn skip_reason_text(reason: SkipReason) -> String {

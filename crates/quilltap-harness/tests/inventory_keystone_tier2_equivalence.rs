@@ -989,6 +989,7 @@ impl Ops<'_> {
                 let opts = EquipOptions {
                     lenient: op["lenient"].as_bool().unwrap_or(false),
                     known: Vec::new(),
+                    pool: None,
                 };
                 let (result, _) = equip_items_holding_lock(
                     main,

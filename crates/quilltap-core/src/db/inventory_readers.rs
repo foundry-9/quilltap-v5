@@ -329,11 +329,20 @@ pub fn has_stable_inventory_item_id(content: Option<&str>) -> bool {
     }
 }
 
-/// The folder's records and the duplicate-id files the projection must leave
-/// alone.
+/// One read of a mount's `Inventory/` (v4 `InventoryFolderScan`): every
+/// object record, the files skipped because an earlier one claims the same
+/// id, and the paths the Inventory owns — what a projection may sweep. A
+/// writer takes all three from one scan rather than parsing the folder again.
+#[derive(Debug, Clone)]
 pub struct InventoryScan {
     pub records: Vec<InventoryRecord>,
+    /// Files that parse as objects but lose to another file claiming the
+    /// same id. The projection leaves these alone (the operator's — a copy
+    /// made in the Scriptorium, say).
     pub duplicate_paths: Vec<String>,
+    /// The files that became `records`: the only ones a projection may sweep
+    /// (v4 `0276d10d9` — a note or a broken file is no longer swept).
+    pub owned_paths: Vec<String>,
 }
 
 /// v4 `scanInventoryFolder`: every `.json` under the mount's `Inventory/` at
@@ -386,10 +395,14 @@ pub fn scan_inventory_folder(
     }
     let mut records = Vec::new();
     let mut duplicate_paths: Vec<String> = Vec::new();
+    let mut owned_paths: Vec<String> = Vec::new();
     for (path, record) in parsed {
         let kept = winner_of(&winner, record.id());
         if kept.as_deref() == Some(path.as_str()) {
             records.push(record);
+            if !owned_paths.contains(&path) {
+                owned_paths.push(path);
+            }
             continue;
         }
         tracing::warn!(
@@ -418,6 +431,7 @@ pub fn scan_inventory_folder(
     Ok(InventoryScan {
         records,
         duplicate_paths,
+        owned_paths,
     })
 }
 
@@ -428,16 +442,6 @@ pub fn read_inventory_records(
     mount_point_id: &str,
 ) -> Result<Vec<InventoryRecord>, DbError> {
     Ok(scan_inventory_folder(mount, mount_point_id)?.records)
-}
-
-/// The paths of the files in a mount's `Inventory/` that parse as objects
-/// but were skipped because an earlier file claims the same id (v4
-/// `readDuplicateInventoryPaths`).
-pub fn read_duplicate_inventory_paths(
-    mount: &rusqlite::Connection,
-    mount_point_id: &str,
-) -> Result<Vec<String>, DbError> {
-    Ok(scan_inventory_folder(mount, mount_point_id)?.duplicate_paths)
 }
 
 #[cfg(test)]
