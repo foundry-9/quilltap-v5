@@ -51,6 +51,14 @@ interface Spec {
   project: { name: string };
   vaultFiles: FileSpec[];
   projectFiles: FileSpec[];
+  /** P4.D354 (bug 260): chat uploads — BLOBS with no document at the path. */
+  uploadedBlobs: Array<{ relativePath: string; mime: string; content: string; extractText: boolean }>;
+  /**
+   * P4.D354 (R-11): a converted non-text blob. Stored unextracted, then its
+   * `extractedText` / `extractionStatus` written RAW — v5's refusing seam
+   * cannot produce the text, the plant can (both sides read the same cells).
+   */
+  convertedBlobs: Array<{ relativePath: string; mime: string; bytes: string; extractedText: string }>;
 }
 
 function detectFileType(rel: string): 'markdown' | 'txt' | 'json' | 'jsonl' {
@@ -232,6 +240,47 @@ async function main(): Promise<void> {
   };
   for (const f of spec.vaultFiles) await seedFile(v1, f);
   for (const f of spec.projectFiles) await seedFile(os1, f);
+
+  // P4.D354 (v4 `40fab1c54`): uploads through v4's REAL `storeMountFile` with
+  // the bridges' options at the pin (`extractText: true` — bug 260), and the
+  // planted converted blob (stored unextracted, then its text written raw).
+  const { storeMountFile } = await import('@/lib/mount-index/store-file');
+  const uploadOpts = {
+    treatNativeTextAsDocument: false,
+    transcodeImages: true,
+    enqueueEmbedding: false,
+    collisionStrategy: 'unique-suffix' as const,
+    assetStorage: 'database' as const,
+  };
+  for (const u of spec.uploadedBlobs) {
+    await storeMountFile({
+      mountPointId: v1,
+      relativePath: u.relativePath,
+      data: Buffer.from(u.content, 'utf8'),
+      originalMimeType: u.mime,
+      originalFileName: pathBasename(u.relativePath),
+      extractText: u.extractText,
+      ...uploadOpts,
+    });
+  }
+  for (const b of spec.convertedBlobs) {
+    await storeMountFile({
+      mountPointId: v1,
+      relativePath: b.relativePath,
+      data: Buffer.from(b.bytes, 'utf8'),
+      originalMimeType: b.mime,
+      originalFileName: pathBasename(b.relativePath),
+      extractText: false,
+      ...uploadOpts,
+    });
+    midb
+      .prepare(
+        `UPDATE doc_mount_file_links SET "extractedText" = ?, "extractedTextSha256" = ?,
+           "extractionStatus" = 'converted', "extractionError" = NULL
+         WHERE "mountPointId" = ? AND "relativePath" = ?`,
+      )
+      .run(b.extractedText, sha256OfString(b.extractedText), v1, b.relativePath);
+  }
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

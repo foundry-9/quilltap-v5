@@ -227,6 +227,78 @@ pub fn read_database_document(
     })
 }
 
+/// v4 `readDatabaseBlobText`'s answer (`database-store.ts:101-118`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DatabaseBlobText {
+    pub content: String,
+    /// `new Date(blob.updatedAt).getTime()` (the BLOB row's `updatedAt`).
+    pub mtime_ms: i64,
+    /// `blob.sizeBytes` — the stored bytes, not the text.
+    pub size: i64,
+    pub stored_mime_type: String,
+}
+
+/// v4 `readDatabaseBlobText` (`database-store.ts:101-118`, `40fab1c54`, bug
+/// 260): the readable text of a blob at a path — the `extractedText` its link
+/// carries once ingest (or the startup backfill) converted it: a PDF/DOCX's
+/// derived text, or an uploaded `.md` / `.txt` / `.json`'s own content.
+/// `None` when there is no blob there or nothing usable was extracted
+/// (`!blob?.extractedText || extractionStatus !== 'converted'`).
+pub fn read_database_blob_text(
+    conn: &Connection,
+    mount_point_id: &str,
+    relative_path: &str,
+) -> Result<Option<DatabaseBlobText>, StoreError> {
+    let rel = normalise_relative_path(relative_path)?;
+    let Some(blob) = super::doc_mount_blobs::DocMountBlobsRepository::new(conn)
+        .find_by_mount_point_and_path(mount_point_id, &rel)?
+    else {
+        return Ok(None);
+    };
+    let text = match blob.extracted_text {
+        Some(t) if !t.is_empty() => t,
+        _ => return Ok(None),
+    };
+    if blob.extraction_status.as_deref() != Some("converted") {
+        return Ok(None);
+    }
+    Ok(Some(DatabaseBlobText {
+        content: text,
+        mtime_ms: crate::episodic::js_date_parse_ms(&blob.updated_at).unwrap_or(0),
+        size: blob.size_bytes,
+        stored_mime_type: blob.stored_mime_type,
+    }))
+}
+
+/// v4 `listDatabaseBlobTexts` (`database-store.ts:120-136`, bug 260): every
+/// blob in a store whose text can be searched, as `(relativePath, content)` —
+/// extractable types (PDF, DOCX, native text) with converted text, in the
+/// repository's order. `doc_grep` reads this beside `doc_mount_documents` so
+/// an upload is found like a written document.
+pub fn list_database_blob_texts(
+    conn: &Connection,
+    mount_point_id: &str,
+) -> Result<Vec<(String, String)>, DbError> {
+    let blobs = super::doc_mount_blobs::DocMountBlobsRepository::new(conn)
+        .list_by_mount_point(mount_point_id, None)?;
+    Ok(blobs
+        .into_iter()
+        .filter_map(
+            |b| match (b.extraction_status.as_deref(), b.extracted_text) {
+                (Some("converted"), Some(text))
+                    if !text.is_empty()
+                        && crate::services::mount_index::path_utils::is_extractable_blob_path(
+                            &b.relative_path,
+                        ) =>
+                {
+                    Some((b.relative_path, text))
+                }
+                _ => None,
+            },
+        )
+        .collect())
+}
+
 // ============================================================================
 // WRITE (create or update)
 // ============================================================================

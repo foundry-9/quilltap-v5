@@ -13,6 +13,7 @@ pub mod diacritics;
 pub mod line_diff;
 pub mod markdown_parser;
 pub mod mime_registry;
+pub mod path_glob;
 pub mod path_resolver;
 pub mod qtap_uri;
 pub mod typographic_folding;

@@ -330,6 +330,38 @@ const REAL_PNG = fs.readFileSync(
   join(dirname(fileURLToPath(new URL(`file://${__filename}`).href)), '..', 'fixtures', 'photo.png'),
 );
 
+/**
+ * P4.D354 (bug 260): the direct-ingest rows. Native text is stored as a blob
+ * and extracted as its own UTF-8 text; the invalid byte proves v4's
+ * `Buffer.toString('utf-8')` replacement (U+FFFD) byte-for-byte; the empty
+ * `.md` takes the `failed` / `skipped` arm; `extractText: false` leaves the
+ * blob unextracted; the `.PDF` (upper-case extension, garbage bytes) is the
+ * REST-path `WriteFailed` shape of `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED` —
+ * v4's real reader answers `''` on it, exactly as v5's refusing seam does.
+ */
+const INGEST_ROWS: Array<{
+  name: string;
+  path: string;
+  mime: string;
+  bytes: Buffer;
+  extractText: boolean;
+}> = [
+  { name: 'ingest_native_md', path: 'uploads/CHANGELOG.md', mime: 'text/markdown',
+    bytes: Buffer.from('# Changelog\n\n## 1.0\n\nThe bees moved to the roof.\n', 'utf8'), extractText: true },
+  { name: 'ingest_native_txt', path: 'uploads/notes.txt', mime: 'text/plain',
+    bytes: Buffer.from('plain text upload\nsecond line\n', 'utf8'), extractText: true },
+  { name: 'ingest_native_json', path: 'uploads/data.json', mime: 'application/json',
+    bytes: Buffer.from('{"kind":"upload","n":3}\n', 'utf8'), extractText: true },
+  { name: 'ingest_native_invalid_utf8', path: 'uploads/bad.txt', mime: 'text/plain',
+    bytes: Buffer.from([0x6f, 0x6b, 0x20, 0xff, 0xfe, 0x20, 0xe2, 0x82, 0x0a]), extractText: true },
+  { name: 'ingest_native_empty_md', path: 'uploads/empty.md', mime: 'text/markdown',
+    bytes: Buffer.from('   \n', 'utf8'), extractText: true },
+  { name: 'ingest_native_md_no_extract', path: 'uploads/kept.md', mime: 'text/markdown',
+    bytes: Buffer.from('# Kept as a blob\n', 'utf8'), extractText: false },
+  { name: 'ingest_pdf_rest_failed', path: 'uploads/Report.PDF', mime: 'application/pdf',
+    bytes: Buffer.from('definitely not a pdf either', 'utf8'), extractText: true },
+];
+
 function cases(): CaseSpec[] {
   return [
     // ── item-route PUT (storeMountFile ingest) ──
@@ -522,6 +554,34 @@ function cases(): CaseSpec[] {
           ),
         ),
     },
+    // ── P4.D354 (v4 `40fab1c54`, bug 260): `storeMountFile` called DIRECTLY
+    // with the bridges' options (`treatNativeTextAsDocument: false`), so a
+    // native-text file is stored as a BLOB and `extractBlobText` runs on it —
+    // no HTTP route reaches this shape (the routes keep native text a
+    // document). The body is the result's identity projection.
+    ...INGEST_ROWS.map((r) => ({
+      name: r.name,
+      run: async () => {
+        const { storeMountFile } = await import('@/lib/mount-index/store-file');
+        const res = await storeMountFile({
+          mountPointId: MP_DB,
+          relativePath: r.path,
+          data: r.bytes,
+          originalMimeType: r.mime,
+          originalFileName: r.path.split('/').pop(),
+          treatNativeTextAsDocument: false,
+          transcodeImages: true,
+          extractText: r.extractText,
+          enqueueEmbedding: true,
+          collisionStrategy: 'unique-suffix',
+          assetStorage: 'database',
+        });
+        return {
+          status: 200,
+          body: { kind: res.kind, fileType: res.fileType, relativePath: res.relativePath },
+        };
+      },
+    })),
     // ── blobs list ──
     {
       name: 'blobs_list',

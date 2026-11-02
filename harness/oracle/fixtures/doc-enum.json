@@ -18,7 +18,15 @@
     { "relativePath": "root.md", "content": "root markdown file\nno special word" },
     { "relativePath": "root.txt", "content": "root text file" },
     { "relativePath": "story-backgrounds/scene.png", "content": "fake png bytes here" },
-    { "relativePath": "Notes/.DS_Store", "content": "cruft bytes" }
+    { "relativePath": "Notes/.DS_Store", "content": "cruft bytes" },
+    { "relativePath": "drafts/x.md", "content": "draft markdown\nnested once" },
+    { "relativePath": "docs/OLD-CHANGELOG.md", "content": "an older changelog" }
+  ],
+  "uploadedBlobs": [
+    { "relativePath": "CHANGELOG.md", "mime": "text/markdown", "content": "# Changelog\n\n## 1.0\n\nThe bees moved to the roof.\nA second release line.", "extractText": true }
+  ],
+  "convertedBlobs": [
+    { "relativePath": "Report.pdf", "mime": "application/pdf", "bytes": "not really a pdf", "extractedText": "Quarterly report\nRevenue rose\nThe bees approve\nEnd of report" }
   ],
   "projectFiles": [
     { "relativePath": "design.md", "content": "target in project\ndesign details" }
@@ -40,6 +48,21 @@
     { "name": "list_self", "tool": "doc_list_files", "args": { "mount_point": "self" } },
     { "name": "list_project", "tool": "doc_list_files", "args": { "scope": "project" } },
     { "name": "list_folder_notes", "tool": "doc_list_files", "args": { "mount_point": "self", "folder": "Notes" } },
-    { "name": "list_include_auto", "tool": "doc_list_files", "args": { "mount_point": "self", "includeAutomaticImages": true } }
+    { "name": "list_include_auto", "tool": "doc_list_files", "args": { "mount_point": "self", "includeAutomaticImages": true } },
+    { "name": "list_glob_root_doublestar", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "**/CHANGELOG.md" } },
+    { "name": "list_glob_bare_name_nested", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "c.md" } },
+    { "name": "list_glob_folder_star", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "drafts/*.md" } },
+    { "name": "list_glob_brace", "tool": "doc_list_files", "args": { "pattern": "*.{md,txt}" } },
+    { "name": "list_glob_negated_class", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "[!a]*.md" } },
+    { "name": "list_glob_mixed_case", "tool": "doc_list_files", "args": { "pattern": "*.MD" } },
+    { "name": "list_glob_unclosed_brace", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "{" } },
+    { "name": "list_glob_backslash", "tool": "doc_list_files", "args": { "mount_point": "self", "pattern": "Notes\\sub\\*.md" } },
+    { "name": "list_glob_doublestar_project", "tool": "doc_list_files", "args": { "scope": "project", "pattern": "**/*.md" } },
+    { "name": "read_uploaded_md_blob", "tool": "doc_read_file", "args": { "mount_point": "self", "path": "CHANGELOG.md" } },
+    { "name": "read_document_exists", "tool": "doc_read_file", "args": { "mount_point": "self", "path": "Notes/a.md" } },
+    { "name": "read_missing_path", "tool": "doc_read_file", "args": { "mount_point": "self", "path": "Notes/nothing-here.md" } },
+    { "name": "read_converted_pdf_blob", "tool": "doc_read_file", "args": { "mount_point": "self", "path": "Report.pdf" } },
+    { "name": "read_converted_pdf_blob_sliced", "tool": "doc_read_file", "args": { "mount_point": "self", "path": "Report.pdf", "offset": 2, "limit": 2 } },
+    { "name": "grep_upload_only", "tool": "doc_grep", "args": { "query": "bees" } }
   ]
 }

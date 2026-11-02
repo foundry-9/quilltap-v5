@@ -624,6 +624,7 @@ const EXPECTED: &[(&str, &str, &str, &str)] = &[
     ("quilltap-core/src/db/character_vault.rs", "ensure_character_metadata_file", "find_by_mount_point_and_path", "strict-by-ruling(write-path)"),
     ("quilltap-core/src/db/character_vault.rs", "backfill_character_vault_managed_files", "find_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "read_database_document", "find_content_and_mtime_by_mount_point_and_path_or_none", "converted"),
+    ("quilltap-core/src/db/database_store.rs", "read_database_blob_text", "find_by_mount_point_and_path", "other-repo"), // P4.D354 (bug 260: the blob repo's link read)
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_by_mount_point_and_path_or_none", "converted"),
     ("quilltap-core/src/db/database_store.rs", "write_database_document", "find_content_and_mtime_by_mount_point_and_path", "no-v4-counterpart"),
     ("quilltap-core/src/db/database_store.rs", "delete_database_document", "find_by_mount_point_and_path_or_none", "converted"), // P4.D340
@@ -947,7 +948,7 @@ const COUNTS: (
     usize,
     usize,
     usize,
-) = (95, 14, 19, 1, 13, 5, 1, 20, 5);
+) = (95, 14, 20, 1, 13, 5, 1, 20, 5);
 
 /// P4.142 §S.4 — reads HANDED to P4.144 this round, recorded as documentation:
 /// the fold-episode pass's two memory reads (then `services/fold_episode_pass.rs`

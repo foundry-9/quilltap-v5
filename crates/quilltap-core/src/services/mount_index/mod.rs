@@ -27,3 +27,4 @@ pub mod reindex_file;
 pub mod scanner;
 pub mod store_file;
 pub mod sync;
+pub mod upload_blob_text_backfill;

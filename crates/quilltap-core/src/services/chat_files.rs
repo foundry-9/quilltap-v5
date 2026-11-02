@@ -749,8 +749,8 @@ impl<CMP: CompletionProvider + Sync> crate::services::message_context::MessageCo
 use crate::db::files::{CreateOptions, FileCreate, FileFull, FilesRepository};
 use crate::files::text_detection::{detect_text_content, get_best_mime_type};
 use crate::services::file_storage::{
-    get_inherited_tags, transcode_to_webp, write_project_file_to_mount_store,
-    write_user_upload_to_mount_store, PixelCodec, TRANSCODE_WEBP_QUALITY,
+    get_inherited_tags, transcode_to_webp, write_project_file_to_mount_store_indexed,
+    write_user_upload_to_mount_store_indexed, PixelCodec, TRANSCODE_WEBP_QUALITY,
 };
 
 /// v4 `MAX_FILE_SIZE` (`chat-files-v2.ts:72`) — 10 MB (size only, no type gate).
@@ -1102,9 +1102,11 @@ fn upload_file_to_project(
     // returned an empty result nobody logged.
     let (storage_key, stored_mime, stored_size, stored_sha256, file_folder_path, file_project_id) =
         if let Some(pid) = project_id {
-            let uploaded = write_project_file_to_mount_store(
+            let uploaded = write_project_file_to_mount_store_indexed(
+                main,
                 mount,
                 codec,
+                crate::services::mount_index::converters::default_text_extractor().as_ref(),
                 pid,
                 filename,
                 data,
@@ -1121,8 +1123,16 @@ fn upload_file_to_project(
                 Some(pid.to_string()),
             )
         } else {
-            let written = write_user_upload_to_mount_store(
-                main, mount, codec, filename, data, mime_type, "chat", None,
+            let written = write_user_upload_to_mount_store_indexed(
+                main,
+                mount,
+                codec,
+                crate::services::mount_index::converters::default_text_extractor().as_ref(),
+                filename,
+                data,
+                mime_type,
+                "chat",
+                None,
             )?;
             (
                 written.storage_key(),

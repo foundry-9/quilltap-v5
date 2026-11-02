@@ -39,7 +39,7 @@ use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::services::creation_progress::CreationProgressEmitter;
 use crate::services::file_storage::{
-    delete_file, download_file, write_user_upload_to_mount_store, NotConfiguredPixelCodec,
+    delete_file, download_file, write_user_upload_to_mount_store_indexed, NotConfiguredPixelCodec,
     StorageBackend,
 };
 
@@ -285,10 +285,11 @@ pub async fn almanack_generate(
                 // v4's `writeUserUploadToMountStore` takes no description —
                 // the link row keeps its empty default; the files-row
                 // description below is the route's own (v4 route :983-1002).
-                write_user_upload_to_mount_store(
+                write_user_upload_to_mount_store_indexed(
                     writers.main().connection(),
                     mount_conn,
                     &NotConfiguredPixelCodec,
+                    crate::services::mount_index::converters::default_text_extractor().as_ref(),
                     &filename,
                     &bytes,
                     "text/markdown",

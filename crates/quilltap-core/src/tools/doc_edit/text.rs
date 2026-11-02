@@ -4,9 +4,10 @@
 //!
 //! Every write path's Librarian announcement + `triggerReindexIfNeeded` are the
 //! documented no-op seams (see [`super::shared`]); the differential oracle mocks
-//! them. The non-text blob `extractedText` read branch (a converted pdf/docx) is a
-//! tracked deferral — the corpus reads only text files, so v4's fallback error is
-//! reproduced directly.
+//! them. `doc_read_file` reads an uploaded blob's extracted text on both of v4's
+//! paths (P4.D354, bug 260): the non-text branch (a converted pdf/docx,
+//! `derivedFromBlob: true`) and the text branch's ENOENT fallback (an uploaded
+//! `.md` / `.txt` / `.json` with no document at its path).
 
 use rusqlite::Connection;
 use serde_json::{json, Map, Value};
@@ -17,11 +18,11 @@ use super::shared::{
     build_write_resolution_context, collect_peer_character_ids_for_reads,
     get_accessible_mount_points, get_character_blocked_read_paths, is_text_file,
     librarian_scope_from, published_mount_point, read_file_with_mtime, resolve_actor_origin,
-    resolve_error_message, resolve_official_project_mount, scope_from_str,
+    resolve_error_message, resolve_official_project_mount, scope_from_str, store_error_message,
     write_file_with_mtime_check, AccessibleMountPointsQuery, DocEditToolContext,
 };
 use super::DocEditToolResult;
-use crate::db::database_store::list_database_files;
+use crate::db::database_store::{self, list_database_files, ReadDoc};
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::tiered_mount_pool::resolve_group_mount_point_ids_for_character;
 use crate::doc_edit::diacritics::{
@@ -31,7 +32,10 @@ use crate::doc_edit::mime_registry::{
     detect_mime_from_extension, is_json_family, is_jsonl_mime, parse_content, serialize_content,
     validate_json, JsonlLineResult, ParseResult,
 };
-use crate::doc_edit::path_resolver::{resolve_doc_edit_path, resolve_mount_point_ref};
+use crate::doc_edit::path_glob::PathGlob;
+use crate::doc_edit::path_resolver::{
+    resolve_doc_edit_path, resolve_mount_point_ref, ResolvedPath,
+};
 use crate::doc_edit::qtap_uri::ScopedAuthority;
 use crate::doc_edit::unified_diff::generate_unified_diff;
 use crate::doc_edit::uri_producers::{uri_for_resolved_path, DocStoreUriResolver};
@@ -100,15 +104,28 @@ pub fn handle_read_file(
     assert_character_may_read(mount, &resolved, ctx)?;
     let uri = uri_for_resolved_path(mount, &resolved, None, None);
 
+    // For database-backed stores, a non-text file (pdf/docx/arbitrary binary)
+    // may still be readable if the blob has an extractedText representation.
+    // Return that derived text with derivedFromBlob=true so callers know the
+    // original bytes aren't what they're seeing. (v4 `text-handlers.ts:125-166`.)
     if !is_text_file(&resolved.relative_path) {
-        // The converted-blob `extractedText` read branch is a tracked deferral;
-        // v4's fallback (no converted blob) is this error.
+        if let (Some("database"), Some(mp)) = (
+            resolved.mount_type.as_deref(),
+            resolved.mount_point_id.as_deref(),
+        ) {
+            if let Some(blob) =
+                database_store::read_database_blob_text(mount, mp, &resolved.relative_path)
+                    .map_err(store_error_message)?
+            {
+                return Ok(derived_blob_read(&blob, &path, &uri, args));
+            }
+        }
         return Ok(DocEditToolResult::fail(format!(
             "File is not a supported text format: {path}"
         )));
     }
 
-    let doc = read_file_with_mtime(mount, &resolved)?;
+    let doc = read_text_file_or_uploaded_blob(mount, &resolved)?;
     let raw_content = doc.content;
     let mtime = doc.mtime_ms;
     let size = doc.size;
@@ -232,6 +249,127 @@ pub fn handle_read_file(
     result.insert("truncated".into(), json!(false));
 
     Ok(DocEditToolResult::ok(Value::Object(result), formatted_text))
+}
+
+/// v4 `readTextFileOrUploadedBlob` (`text-handlers.ts:78-102`, bug 260): read a
+/// text file for `doc_read_file`. In a database store a path with no document
+/// may still hold an uploaded blob — every chat upload is stored as one, `.md`
+/// and `.txt` included — so fall back to the blob's extracted text, which for
+/// native text is the file itself. ONLY on ENOENT (v5's `ENOENT:` message
+/// prefix is v4's `code === 'ENOENT'`, `shared.rs::read_file_with_mtime`) and
+/// only for a database-backed path; any other failure is rethrown unchanged.
+/// Read-only: the edit tools keep calling `read_file_with_mtime` and still see
+/// no document there.
+fn read_text_file_or_uploaded_blob(
+    mount: &Connection,
+    resolved: &ResolvedPath,
+) -> Result<ReadDoc, String> {
+    let err = match read_file_with_mtime(mount, resolved) {
+        Ok(doc) => return Ok(doc),
+        Err(e) => e,
+    };
+    if !err.starts_with("ENOENT:") {
+        return Err(err);
+    }
+    let (Some("database"), Some(mp)) = (
+        resolved.mount_type.as_deref(),
+        resolved.mount_point_id.as_deref(),
+    ) else {
+        return Err(err);
+    };
+    let Some(blob) = database_store::read_database_blob_text(mount, mp, &resolved.relative_path)
+        .map_err(store_error_message)?
+    else {
+        return Err(err);
+    };
+    tracing::debug!(
+        target: "quilltap::doc_edit",
+        mountPointId = %mp,
+        relativePath = %resolved.relative_path,
+        size = blob.size,
+        "doc_read_file: no document at path; reading the uploaded blob's text"
+    );
+    Ok(ReadDoc {
+        content: blob.content,
+        mtime_ms: blob.mtime_ms,
+        size: blob.size,
+    })
+}
+
+/// v4 `handleReadFile`'s converted-blob answer (`text-handlers.ts:132-163`):
+/// THIS branch slices `content` (the text branch does not), honours v4's
+/// JS-truthy `offset` / `limit`, and answers its own key order.
+fn derived_blob_read(
+    blob: &database_store::DatabaseBlobText,
+    path: &str,
+    uri: &str,
+    args: &Value,
+) -> DocEditToolResult {
+    // `input.offset || input.limit` — 0 / absent are falsy.
+    let offset = arg_i64(args, "offset").filter(|&o| o != 0);
+    let limit = arg_i64(args, "limit").filter(|&l| l != 0);
+    let lines: Vec<&str> = blob.content.split('\n').collect();
+    let total_lines = lines.len();
+    let (output_lines, truncated): (Vec<&str>, bool) = if offset.is_some() || limit.is_some() {
+        let start_line = offset.unwrap_or(1) - 1;
+        let end_line = match limit {
+            Some(l) => start_line + l,
+            None => total_lines as i64,
+        };
+        (
+            js_slice(&lines, start_line, end_line),
+            end_line < total_lines as i64,
+        )
+    } else {
+        (lines.clone(), false)
+    };
+    let line_start = offset.unwrap_or(1);
+    let numbered: Vec<String> = output_lines
+        .iter()
+        .enumerate()
+        .map(|(i, l)| format!("[L{}] {l}", line_start + i as i64))
+        .collect();
+    let header = format!(
+        "File: {path} (extracted text from {}, {total_lines} lines, {} original bytes)",
+        blob.stored_mime_type, blob.size
+    );
+    let trunc_msg = if truncated {
+        format!(
+            "\n[Truncated — showing lines {line_start}-{} of {total_lines}]",
+            line_start + output_lines.len() as i64 - 1
+        )
+    } else {
+        String::new()
+    };
+    let formatted_text = format!("{header}{trunc_msg}\n\n{}", numbered.join("\n"));
+    let mut result = Map::new();
+    result.insert("content".into(), json!(output_lines.join("\n")));
+    result.insert("mimeType".into(), json!(blob.stored_mime_type));
+    result.insert("path".into(), json!(path));
+    result.insert("uri".into(), json!(uri));
+    result.insert("mtime".into(), json!(blob.mtime_ms));
+    result.insert("totalLines".into(), json!(total_lines));
+    result.insert("truncated".into(), json!(truncated));
+    result.insert("derivedFromBlob".into(), json!(true));
+    DocEditToolResult::ok(Value::Object(result), formatted_text)
+}
+
+/// JS `Array.prototype.slice(start, end)` (negative indices count from the end).
+fn js_slice<'a>(items: &[&'a str], start: i64, end: i64) -> Vec<&'a str> {
+    let len = items.len() as i64;
+    let clamp = |i: i64| -> usize {
+        if i < 0 {
+            (len + i).max(0) as usize
+        } else {
+            i.min(len) as usize
+        }
+    };
+    let (s, e) = (clamp(start), clamp(end));
+    if s >= e {
+        Vec::new()
+    } else {
+        items[s..e].to_vec()
+    }
 }
 
 /// Interpret the `parse_content` JSONL result (an array of line-result objects)
@@ -822,9 +960,43 @@ pub fn handle_grep(
         let docs = docs_repo
             .find_all_by_mount_point_id(&mp.id)
             .map_err(|e| e.to_string())?;
+        // Uploads are blobs, not documents; search their extracted text too
+        // (v4 `40fab1c54`, bug 260). A path is searched once even if both
+        // somehow exist.
+        let document_paths: std::collections::HashSet<String> =
+            docs.iter().map(|(rel, _)| rel.to_lowercase()).collect();
         for (rel, content) in docs {
             if matches.len() >= max_results {
                 break;
+            }
+            if let Some(p) = &path_filter {
+                if !rel.starts_with(p) {
+                    continue;
+                }
+            }
+            if !blocked.is_empty() && blocked.contains(&rel.to_lowercase()) {
+                continue;
+            }
+            let uri = resolver.uri_for_mount(&mp.name, &mp.id, &rel);
+            grep_search_content(
+                &content,
+                &rel,
+                Some(&mp.name),
+                Some(&uri),
+                &matcher,
+                context_lines,
+                max_results,
+                &mut matches,
+            );
+        }
+        let blob_texts =
+            database_store::list_database_blob_texts(mount, &mp.id).map_err(|e| e.to_string())?;
+        for (rel, content) in blob_texts {
+            if matches.len() >= max_results {
+                break;
+            }
+            if document_paths.contains(&rel.to_lowercase()) {
+                continue;
             }
             if let Some(p) = &path_filter {
                 if !rel.starts_with(p) {
@@ -1141,7 +1313,13 @@ pub fn handle_list_files(
         )
     };
     let resolver = DocStoreUriResolver::build(mount);
-    let pattern = arg_str(args, "pattern");
+    // `pattern` is a real glob over the store-relative path (v4 `40fab1c54`,
+    // bug 261): a bare name matches in any folder, `**/` spans folders
+    // (including none). `input.pattern ? compilePathGlob(…) : null` — an empty
+    // pattern is falsy.
+    let pattern = arg_str(args, "pattern")
+        .filter(|p| !p.is_empty())
+        .map(|p| PathGlob::compile(&p));
     let include_auto = arg_bool(args, "includeAutomaticImages").unwrap_or(false);
     // v4: `const recursive = input.recursive !== false;` (only the fs walks honour it).
     let recursive = arg_bool(args, "recursive") != Some(false);
@@ -1208,7 +1386,7 @@ pub fn handle_list_files(
                     mp_scope,
                     Some(mp.name.as_str()),
                     &make_uri,
-                    pattern.as_deref(),
+                    pattern.as_ref(),
                     &blocked,
                     recursive,
                     &mut files,
@@ -1219,7 +1397,7 @@ pub fn handle_list_files(
                 list_database_files(mount, &mp.id, folder.as_deref()).map_err(|e| e.to_string())?;
             for e in entries {
                 if let Some(pat) = &pattern {
-                    if !matches_glob(&e.file_name, pat) {
+                    if !pat.matches(&e.relative_path) {
                         continue;
                     }
                 }
@@ -1261,7 +1439,7 @@ pub fn handle_list_files(
                     .map_err(|e| e.to_string())?;
                 for e in entries {
                     if let Some(pat) = &pattern {
-                        if !matches_glob(&e.file_name, pat) {
+                        if !pat.matches(&e.relative_path) {
                             continue;
                         }
                     }
@@ -1293,7 +1471,7 @@ pub fn handle_list_files(
                     "project",
                     Some(official.name.as_str()),
                     &make_uri,
-                    pattern.as_deref(),
+                    pattern.as_ref(),
                     &blocked,
                     recursive,
                     &mut files,
@@ -1311,7 +1489,7 @@ pub fn handle_list_files(
                 "project",
                 None,
                 &make_uri,
-                pattern.as_deref(),
+                pattern.as_ref(),
                 &std::collections::HashSet::new(),
                 recursive,
                 &mut files,
@@ -1332,7 +1510,7 @@ pub fn handle_list_files(
                 "general",
                 None,
                 &make_uri,
-                pattern.as_deref(),
+                pattern.as_ref(),
                 &std::collections::HashSet::new(),
                 recursive,
                 &mut files,
@@ -1397,7 +1575,7 @@ fn collect_files_walk(
     scope: &str,
     mount_point_name: Option<&str>,
     make_uri: &dyn Fn(&str) -> String,
-    pattern: Option<&str>,
+    pattern: Option<&PathGlob>,
     blocked: &std::collections::HashSet<String>,
     recursive: bool,
     files: &mut Vec<Value>,
@@ -1444,7 +1622,7 @@ fn collect_files_walk(
             }
         } else if ft.is_file() {
             if let Some(pat) = pattern {
-                if !matches_glob(&name, pat) {
+                if !pat.matches(&rel) {
                     continue;
                 }
             }
@@ -1477,18 +1655,6 @@ fn fs_walk_start(base_path: &str, folder: Option<&str>) -> (std::path::PathBuf, 
     }
 }
 
-/// v4's `matchesGlob`: `*.ext` suffix match, else exact filename match. An empty
-/// pattern matches everything.
-fn matches_glob(filename: &str, pattern: &str) -> bool {
-    if pattern.is_empty() {
-        return true;
-    }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        return filename.ends_with(suffix);
-    }
-    filename == pattern
-}
-
 /// Build a `DocFileInfo` object (v4's push shape) in schema order.
 fn file_info(
     path: &str,
@@ -1510,4 +1676,128 @@ fn file_info(
     m.insert("modified".into(), json!(modified));
     m.insert("kind".into(), json!(kind));
     Value::Object(m)
+}
+
+#[cfg(test)]
+mod uploaded_blob_read_tests {
+    //! P4.D354 (bug 260): `doc_read_file`'s ENOENT fallback onto an uploaded
+    //! blob's text — its DEBUG line, and the silence legs (a document at the
+    //! path; a non-database mount; no converted blob).
+    use super::*;
+    use crate::db::Writer;
+    use crate::doc_edit::DocEditScope;
+    use crate::inventory::lint_scope::TitleLintScope;
+    use crate::services::mount_index::blob_transcode::RefusingWebpTranscoder;
+    use crate::services::mount_index::converters::RefusingTextExtractor;
+    use crate::services::mount_index::store_file::{
+        store_mount_file, AssetStorageMode, CollisionStrategy, StoreFileInput,
+    };
+    use crate::test_support::global_capture;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const MP: &str = "c3540000-0000-4000-8000-0000000000d1";
+
+    fn instance() -> (Writer, Writer, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let mount = Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER).unwrap();
+        mount
+            .connection()
+            .execute(
+                "INSERT INTO doc_mount_points (id, name, mountType, createdAt, updatedAt) \
+                 VALUES (?1, 'Uploads', 'database', '2026-01-01T00:00:00.000Z', \
+                 '2026-01-01T00:00:00.000Z')",
+                [MP],
+            )
+            .unwrap();
+        (main, mount, dir)
+    }
+
+    fn upload(main: &Writer, mount: &Writer, path: &str, bytes: &[u8], extract: bool) {
+        let mut input = StoreFileInput::new(MP, path, bytes.to_vec());
+        input.treat_native_text_as_document = false;
+        input.extract_text = extract;
+        input.enqueue_embedding = false;
+        input.collision_strategy = CollisionStrategy::UniqueSuffix;
+        input.asset_storage = AssetStorageMode::Database;
+        store_mount_file(
+            main.connection(),
+            mount.connection(),
+            &input,
+            &RefusingTextExtractor,
+            &RefusingWebpTranscoder,
+        )
+        .unwrap();
+    }
+
+    fn resolved(rel: &str, mount_type: &str) -> ResolvedPath {
+        ResolvedPath {
+            absolute_path: String::new(),
+            scope: DocEditScope::DocumentStore,
+            mount_point_id: Some(MP.to_string()),
+            mount_point_name: Some("Uploads".to_string()),
+            mount_type: Some(mount_type.to_string()),
+            base_path: String::new(),
+            relative_path: rel.to_string(),
+        }
+    }
+
+    #[test]
+    fn an_uploaded_blob_is_read_when_no_document_is_there() {
+        global_capture::install();
+        let (main, mount, _dir) = instance();
+        upload(&main, &mount, "up/CHANGELOG.md", b"# Log\nline two", true);
+        let (doc, lines) = global_capture::capture(|| {
+            read_text_file_or_uploaded_blob(
+                mount.connection(),
+                &resolved("up/CHANGELOG.md", "database"),
+            )
+        });
+        let doc = doc.expect("the blob's text");
+        assert_eq!(doc.content, "# Log\nline two");
+        assert_eq!(doc.size, 14);
+        assert_eq!(
+            lines,
+            vec![format!(
+                "DEBUG quilltap::doc_edit doc_read_file: no document at path; reading the \
+                 uploaded blob's text mountPointId={MP} relativePath=up/CHANGELOG.md size=14"
+            )]
+        );
+    }
+
+    #[test]
+    fn the_fallback_is_silent_when_it_does_not_apply() {
+        global_capture::install();
+        let (main, mount, _dir) = instance();
+        // A document at the path: read directly, no line.
+        crate::db::database_store::write_database_document(
+            mount.connection(),
+            MP,
+            "docs/a.md",
+            "a document",
+            TitleLintScope::Unlinted {
+                main: main.connection(),
+            },
+        )
+        .unwrap();
+        let (doc, lines) = global_capture::capture(|| {
+            read_text_file_or_uploaded_blob(mount.connection(), &resolved("docs/a.md", "database"))
+        });
+        assert_eq!(doc.unwrap().content, "a document");
+        assert!(lines.is_empty(), "{lines:?}");
+
+        // An unextracted blob: the original ENOENT, no line.
+        upload(&main, &mount, "up/raw.md", b"raw", false);
+        let (doc, lines) = global_capture::capture(|| {
+            read_text_file_or_uploaded_blob(mount.connection(), &resolved("up/raw.md", "database"))
+        });
+        assert_eq!(
+            doc.unwrap_err(),
+            "ENOENT: database document not found at up/raw.md"
+        );
+        assert!(lines.is_empty(), "{lines:?}");
+    }
 }

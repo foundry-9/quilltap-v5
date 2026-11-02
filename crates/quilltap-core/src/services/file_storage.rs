@@ -53,6 +53,7 @@ use crate::db::DbError;
 // bytes. The other four are deleted; this is the canonical one. Owner of this
 // file: preserve the import (a census guards the count).
 use crate::services::mount_index::blob_transcode::normalise_blob_relative_path;
+use crate::services::mount_index::converters::DocumentTextExtractor;
 
 // ============================================================================
 // Pure key/path logic (manager.ts + project-store-bridge.ts + thumbnail-utils)
@@ -1063,7 +1064,10 @@ fn resolve_unique_relative_path(
 
 /// Input to [`store_mount_blob`] — the `StoreFileInput` subset the bridges use
 /// (`collisionStrategy: 'unique-suffix'`, `treatNativeTextAsDocument: false`,
-/// `extractText: false`, `enqueueEmbedding: false`, `assetStorage: 'database'`).
+/// `assetStorage: 'database'`). The blob write alone: since v4 `40fab1c54`
+/// (bugs 260 / 261) the bridges also pass `extractText: true` /
+/// `enqueueEmbedding: true`, which the `_indexed` bridges layer on top
+/// ([`write_user_upload_to_mount_store_indexed`]).
 pub struct StoreMountBlobInput<'a> {
     pub mount_point_id: &'a str,
     pub relative_path: &'a str,
@@ -1078,9 +1082,9 @@ pub struct StoreMountBlobInput<'a> {
 /// v4 `storeMountFile`'s database binary-blob branch (`store-file.ts:247+`)
 /// with the bridges' fixed options: transcode → extension normalise →
 /// unique-suffix collision bump → folder ensure → stale-chunk drop on an
-/// existing same-path link → `linkBlobContent`. The PDF/DOCX text extraction
-/// (`extractText`) and the reindex/embedding enqueue are out of the bridges'
-/// option set; `refreshStats` is unported (module docs).
+/// existing same-path link → `linkBlobContent`. The blob writer alone: text
+/// extraction + the reindex/embedding enqueue are the `_indexed` bridges'
+/// (P4.D354); `refreshStats` is unported here (module docs).
 pub fn store_mount_blob(
     mount: &Connection,
     codec: &dyn PixelCodec,
@@ -1204,6 +1208,14 @@ pub fn get_user_uploads_store(main: &Connection, mount: &Connection) -> Option<S
     Some(id)
 }
 
+/// **DEPRECATED (P4.D354, bugs 260 / 261) — use
+/// [`write_user_upload_to_mount_store_indexed`].** The pre-`40fab1c54` bridge:
+/// it stores the blob and stops (v4's old `extractText: false`). It stays ONE
+/// round, unchanged, for the two restore sites P4.D355 switches (HANDOFF H1);
+/// `bridge_callers_census` pins that exactly those two still call it. (Marked
+/// in prose, not `#[deprecated]`: the attribute would fail `clippy -D
+/// warnings` at P4.D355's sites, which this lane may not edit.)
+///
 /// v4 `writeUserUploadToMountStore` (`user-uploads-bridge.ts:94`) — land a
 /// project-less upload in the Quilltap Uploads mount under `<subfolder>/`.
 /// `Err` when the mount is unprovisioned (v4's throw). (The argument list
@@ -1295,6 +1307,10 @@ pub fn get_project_document_store(mount: &Connection, project_id: &str) -> Optio
     crate::db::project_store_naming::pick_primary_project_store(&stores).map(|s| s.id.clone())
 }
 
+/// **DEPRECATED (P4.D354, bugs 260 / 261) — use
+/// [`write_project_file_to_mount_store_indexed`]** (see
+/// [`write_user_upload_to_mount_store`]'s note; the same one-round residue).
+///
 /// v4 `writeProjectFileToMountStore` (`project-store-bridge.ts:127`). `Err`
 /// when the project has no linked database-backed store (v4's throw). (Flat
 /// v4-input-bag argument list, the image_job_storage precedent.)
@@ -1335,6 +1351,115 @@ pub fn write_project_file_to_mount_store(
             transcode_images: true,
         },
     )
+}
+
+/// v4 `writeUserUploadToMountStore` at `40fab1c54` (`user-uploads-bridge.ts:
+/// 107-121`: `extractText: true`, `enqueueEmbedding: true` — bugs 260 / 261).
+/// Contract C1: the blob write ([`write_user_upload_to_mount_store`]'s body)
+/// then [`index_stored_upload`] — every chat upload (`.md`, `.txt`, `.json`
+/// included) becomes readable, greppable and searchable. `Err` when the
+/// Uploads mount is unprovisioned (v4's throw).
+#[allow(clippy::too_many_arguments)]
+pub fn write_user_upload_to_mount_store_indexed(
+    main: &Connection,
+    mount: &Connection,
+    codec: &dyn PixelCodec,
+    extractor: &dyn DocumentTextExtractor,
+    filename: &str,
+    content: &[u8],
+    content_type: &str,
+    subfolder: &str,
+    description: Option<&str>,
+) -> Result<StoredBlob, DbError> {
+    let stored = write_user_upload_to_mount_store(
+        main,
+        mount,
+        codec,
+        filename,
+        content,
+        content_type,
+        subfolder,
+        description,
+    )?;
+    index_stored_upload(main, mount, extractor, &stored, content);
+    Ok(stored)
+}
+
+/// v4 `writeProjectFileToMountStore` at `40fab1c54` (`project-store-bridge.ts:
+/// 144-158`: `extractText: true`, `enqueueEmbedding: true`). Contract C1 —
+/// the project twin GAINS `main` (the embedding enqueue writes
+/// `background_jobs`). `Err` when the project has no linked database-backed
+/// store (v4's throw).
+#[allow(clippy::too_many_arguments)]
+pub fn write_project_file_to_mount_store_indexed(
+    main: &Connection,
+    mount: &Connection,
+    codec: &dyn PixelCodec,
+    extractor: &dyn DocumentTextExtractor,
+    project_id: &str,
+    filename: &str,
+    content: &[u8],
+    content_type: &str,
+    folder_path: Option<&str>,
+    description: Option<&str>,
+) -> Result<StoredBlob, DbError> {
+    let stored = write_project_file_to_mount_store(
+        mount,
+        codec,
+        project_id,
+        filename,
+        content,
+        content_type,
+        folder_path,
+        description,
+    )?;
+    index_stored_upload(main, mount, extractor, &stored, content);
+    Ok(stored)
+}
+
+/// `storeMountFile`'s tail for a bridge upload (`store-file.ts:423-446`):
+/// `extractBlobText` over the ORIGINAL bytes, then — when text was stored —
+/// the ONE refresh tail ([`refresh_now`]: `reindexSingleFile` →
+/// `enqueueEmbeddingJobsForMountPoint` → `refreshStats`, best-effort). Under
+/// the refusing seam a PDF / DOCX upload is LEFT unextracted (R-1,
+/// `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED`). With nothing extracted the bridge
+/// stays the blob write alone: v4's `else refreshStats` is the module's
+/// standing unported column (module docs), so an image / binary upload is
+/// byte-identical to the pre-round bridge.
+///
+/// [`refresh_now`]: crate::services::mount_index::refresh::refresh_now
+fn index_stored_upload(
+    main: &Connection,
+    mount: &Connection,
+    extractor: &dyn DocumentTextExtractor,
+    stored: &StoredBlob,
+    original: &[u8],
+) {
+    use crate::services::mount_index::store_file::{
+        extract_blob_text, ExtractBlobTextArgs, RefusedConverterPolicy,
+    };
+    let extracted = extract_blob_text(
+        mount,
+        &ExtractBlobTextArgs {
+            blob_id: &stored.blob_id,
+            link_id: &stored.link_id,
+            relative_path: &stored.relative_path,
+            data: original,
+            mount_point_id: &stored.mount_point_id,
+        },
+        extractor,
+        RefusedConverterPolicy::LeaveUnextracted,
+    );
+    if extracted {
+        crate::services::mount_index::refresh::refresh_now(
+            main,
+            mount,
+            &stored.mount_point_id,
+            &stored.relative_path,
+            "",
+            extractor,
+        );
+    }
 }
 
 /// The production [`crate::services::image_job_common::ProjectImageUpload`] —
@@ -1378,9 +1503,13 @@ impl crate::services::image_job_common::ProjectImageUpload for RealProjectImageU
                         )
                     })?
                     .connection();
-                write_project_file_to_mount_store(
+                let main = ws.main().connection();
+                let extractor = crate::services::mount_index::converters::default_text_extractor();
+                write_project_file_to_mount_store_indexed(
+                    main,
                     mount,
                     codec.as_ref(),
+                    extractor.as_ref(),
                     &project_id,
                     &filename,
                     &content_vec,
@@ -1628,10 +1757,12 @@ pub fn create_file_conns(
     let file_id = uuid::Uuid::new_v4().to_string();
 
     // Project-less by construction — the images/ subfolder of Quilltap Uploads.
-    let written = write_user_upload_to_mount_store(
+    let extractor = crate::services::mount_index::converters::default_text_extractor();
+    let written = write_user_upload_to_mount_store_indexed(
         main,
         mount,
         codec,
+        extractor.as_ref(),
         &original_filename,
         &buffer,
         &mime_type,
@@ -2413,5 +2544,153 @@ mod tests {
             "{err}"
         );
         assert!(!err.contains("fs-seam"), "{err}");
+    }
+}
+
+/// P4.D354 (bugs 260 / 261, contract C1): the upload-bridge caller census.
+/// Every production call site of the four bridge functions, by file and
+/// function, counted by a source scan. The two DEPRECATED callers are the
+/// restore sites P4.D355 switches (HANDOFF H1); this goes RED when it does —
+/// the signal to delete the deprecated pair (the unifier or the next round).
+/// The `_indexed` bridges' own delegation to the deprecated pair is counted
+/// under `services/file_storage.rs`.
+#[cfg(test)]
+mod bridge_callers_census {
+    use std::collections::BTreeMap;
+    use std::path::Path;
+
+    const FNS: [&str; 4] = [
+        "write_user_upload_to_mount_store(",
+        "write_project_file_to_mount_store(",
+        "write_user_upload_to_mount_store_indexed(",
+        "write_project_file_to_mount_store_indexed(",
+    ];
+
+    fn scan(dir: &Path, root: &Path, out: &mut BTreeMap<(String, String), usize>) {
+        for entry in std::fs::read_dir(dir).expect("read src dir") {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                scan(&path, root, out);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let rel = path
+                .strip_prefix(root)
+                .expect("under src")
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = std::fs::read_to_string(&path).expect("read source");
+            // Production code only: stop at the file's first test module.
+            let prod = text.split("#[cfg(test)]").next().unwrap_or("");
+            for line in prod.lines() {
+                let t = line.trim_start();
+                if t.starts_with("//") || t.starts_with("pub fn ") || t.starts_with("fn ") {
+                    continue;
+                }
+                for f in FNS {
+                    let mut rest = line;
+                    while let Some(at) = rest.find(f) {
+                        // `write_user_upload_to_mount_store(` must not be the
+                        // tail of a longer identifier.
+                        let before = &rest[..at];
+                        let boundary = before
+                            .chars()
+                            .last()
+                            .map(|c| !(c.is_alphanumeric() || c == '_'))
+                            .unwrap_or(true);
+                        if boundary {
+                            *out.entry((rel.clone(), f.trim_end_matches('(').to_string()))
+                                .or_insert(0) += 1;
+                        }
+                        rest = &rest[at + f.len()..];
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_upload_bridge_callers_are_the_nine_sites_two_deprecated() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut got = BTreeMap::new();
+        scan(&root, &root, &mut got);
+        let want: BTreeMap<(String, String), usize> = [
+            (
+                "api/almanack.rs",
+                "write_user_upload_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "api/files.rs",
+                "write_project_file_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "api/files.rs",
+                "write_user_upload_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "services/chat_files.rs",
+                "write_project_file_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "services/chat_files.rs",
+                "write_user_upload_to_mount_store_indexed",
+                1,
+            ),
+            // The `_indexed` bridges delegate the blob write (one each), plus
+            // the project-image upload (v4 `images-v2.ts`) and the images
+            // `createFile` path — the two callers the planning survey missed.
+            (
+                "services/file_storage.rs",
+                "write_project_file_to_mount_store",
+                1,
+            ),
+            (
+                "services/file_storage.rs",
+                "write_user_upload_to_mount_store",
+                1,
+            ),
+            (
+                "services/file_storage.rs",
+                "write_project_file_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "services/file_storage.rs",
+                "write_user_upload_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "services/quilltap_import/files.rs",
+                "write_project_file_to_mount_store_indexed",
+                1,
+            ),
+            (
+                "services/quilltap_import/files.rs",
+                "write_user_upload_to_mount_store_indexed",
+                1,
+            ),
+            // HANDOFF H1 — P4.D355 switches these two; the census then reads
+            // zero deprecated callers outside the delegation above.
+            (
+                "services/backup/restore/orchestrator.rs",
+                "write_project_file_to_mount_store",
+                1,
+            ),
+            (
+                "services/backup/restore/orchestrator.rs",
+                "write_user_upload_to_mount_store",
+                1,
+            ),
+        ]
+        .into_iter()
+        .map(|(f, n, c)| ((f.to_string(), n.to_string()), c))
+        .collect();
+        assert_eq!(got, want);
     }
 }

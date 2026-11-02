@@ -160,6 +160,47 @@ fn intro_mtime_ms(db: &Db) -> i64 {
     quilltap_core::clock::iso_to_ms(&iso).unwrap_or(0)
 }
 
+/// P4.D354 (bug 260): v4's `storeMountFile` with the upload bridges' options
+/// (`treatNativeTextAsDocument: false`, `collisionStrategy: 'unique-suffix'`,
+/// `assetStorage: 'database'`), called directly — the routes never reach a
+/// native-text BLOB. The body is the result's identity projection.
+fn ingest_direct(
+    db: &Db,
+    rt: &tokio::runtime::Runtime,
+    path: &'static str,
+    mime: &'static str,
+    bytes: Vec<u8>,
+    extract_text: bool,
+) -> Response {
+    use quilltap_core::services::mount_index::store_file as sf;
+    let out = rt.block_on(db.write(move |ws| {
+        let mount = ws.mount_index().expect("mount index").connection();
+        let main = ws.main().connection();
+        let mut input = sf::StoreFileInput::new(MP_DB, path, bytes);
+        input.original_mime_type = Some(mime.to_string());
+        input.original_file_name = Some(path.rsplit('/').next().unwrap().to_string());
+        input.treat_native_text_as_document = false;
+        input.extract_text = extract_text;
+        input.collision_strategy = sf::CollisionStrategy::UniqueSuffix;
+        input.asset_storage = sf::AssetStorageMode::Database;
+        let extractor = quilltap_core::services::mount_index::converters::default_text_extractor();
+        let webp = quilltap_host::HostImageCodec;
+        Ok(sf::store_mount_file(
+            main,
+            mount,
+            &input,
+            extractor.as_ref(),
+            &webp,
+        ))
+    }));
+    let r = out.expect("write").expect("store_mount_file");
+    Response::MountFile(json!({
+        "kind": r.kind,
+        "fileType": r.file_type,
+        "relativePath": r.relative_path,
+    }))
+}
+
 #[test]
 fn mount_write_matches_oracle() {
     let Some(oracle) = load_oracle("QT_ORACLE_MOUNT_WRITE") else {
@@ -462,6 +503,107 @@ fn mount_write_matches_oracle() {
                 ))
             }),
         ),
+        // P4.D354 (v4 `40fab1c54`, bug 260): `store_mount_file` DIRECT with the
+        // bridges' options — native text stored as a blob and extracted as
+        // its own UTF-8 text (see `INGEST_ROWS`).
+        (
+            "ingest_native_md",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/CHANGELOG.md",
+                    "text/markdown",
+                    b"# Changelog\n\n## 1.0\n\nThe bees moved to the roof.\n".to_vec(),
+                    true,
+                )
+            }),
+        ),
+        (
+            "ingest_native_txt",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/notes.txt",
+                    "text/plain",
+                    b"plain text upload\nsecond line\n".to_vec(),
+                    true,
+                )
+            }),
+        ),
+        (
+            "ingest_native_json",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/data.json",
+                    "application/json",
+                    b"{\"kind\":\"upload\",\"n\":3}\n".to_vec(),
+                    true,
+                )
+            }),
+        ),
+        (
+            "ingest_native_invalid_utf8",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/bad.txt",
+                    "text/plain",
+                    vec![0x6f, 0x6b, 0x20, 0xff, 0xfe, 0x20, 0xe2, 0x82, 0x0a],
+                    true,
+                )
+            }),
+        ),
+        (
+            "ingest_native_empty_md",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/empty.md",
+                    "text/markdown",
+                    b"   \n".to_vec(),
+                    true,
+                )
+            }),
+        ),
+        (
+            "ingest_native_md_no_extract",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/kept.md",
+                    "text/markdown",
+                    b"# Kept as a blob\n".to_vec(),
+                    false,
+                )
+            }),
+        ),
+        (
+            "ingest_pdf_rest_failed",
+            200,
+            Box::new(|db, rt| {
+                ingest_direct(
+                    db,
+                    rt,
+                    "uploads/Report.PDF",
+                    "application/pdf",
+                    GARBAGE_PDF.to_vec(),
+                    true,
+                )
+            }),
+        ),
         (
             "blobs_list",
             200,
@@ -563,6 +705,7 @@ fn mount_write_matches_oracle() {
     ];
 
     let mut checked = 0usize;
+    let mut red: Vec<&str> = Vec::new();
     for (name, created_status, run) in &cases {
         let want = oracle
             .get(*name)
@@ -600,19 +743,24 @@ fn mount_write_matches_oracle() {
             blank_encoded(&mut want, rel);
         }
         let want = &want;
-        assert_eq!(
-            norm(&got),
-            norm(want),
-            "case {name}\n{}",
-            diff_first_line(&norm(&got), &norm(want))
-        );
+        // P4.D354: collect every red case (the red-first record names them all).
+        if norm(&got) != norm(want) {
+            eprintln!("case {name}\n{}", diff_first_line(&norm(&got), &norm(want)));
+            red.push(*name);
+        }
         drop(db);
         let _ = std::fs::remove_dir_all(&scratch);
         checked += 1;
     }
 
     // 22 + 1 (P4.D209 added `blob_patch_twin_pair`, bug 157's instrument)
-    // + 2 (P4.104's decodable-image rows).
-    assert_eq!(checked, 25, "expected the 25 mount-write cases");
+    // + 2 (P4.104's decodable-image rows) + 7 (P4.D354's direct-ingest rows).
+    assert!(
+        red.is_empty(),
+        "{} case(s) red: {}",
+        red.len(),
+        red.join(", ")
+    );
+    assert_eq!(checked, 32, "expected the 32 mount-write cases");
     eprintln!("OK: mount-write matched oracle ({checked} cases).");
 }

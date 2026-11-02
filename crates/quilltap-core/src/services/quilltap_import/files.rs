@@ -451,27 +451,32 @@ pub(super) fn import_files(
             let stored = match project_id.as_deref() {
                 // v4's project branch goes through `fileStorageManager.uploadFile`,
                 // whose catch wraps the bridge's sentence — carried verbatim.
-                Some(pid) => crate::services::file_storage::write_project_file_to_mount_store(
-                    mount,
-                    codec,
-                    pid,
-                    &original_filename,
-                    &bytes,
-                    &mime,
-                    Some(os(file, "folderPath").as_deref().unwrap_or("/")),
-                    None,
-                )
-                .map_err(|e| {
-                    format!(
-                        "Failed to upload file '{original_filename}': {}",
-                        err_msg(e)
+                Some(pid) => {
+                    crate::services::file_storage::write_project_file_to_mount_store_indexed(
+                        main,
+                        mount,
+                        codec,
+                        crate::services::mount_index::converters::default_text_extractor().as_ref(),
+                        pid,
+                        &original_filename,
+                        &bytes,
+                        &mime,
+                        Some(os(file, "folderPath").as_deref().unwrap_or("/")),
+                        None,
                     )
-                })?,
+                    .map_err(|e| {
+                        format!(
+                            "Failed to upload file '{original_filename}': {}",
+                            err_msg(e)
+                        )
+                    })?
+                }
                 // The uploads branch calls the bridge directly (no wrapper).
-                None => crate::services::file_storage::write_user_upload_to_mount_store(
+                None => crate::services::file_storage::write_user_upload_to_mount_store_indexed(
                     main,
                     mount,
                     codec,
+                    crate::services::mount_index::converters::default_text_extractor().as_ref(),
                     &original_filename,
                     &bytes,
                     &mime,

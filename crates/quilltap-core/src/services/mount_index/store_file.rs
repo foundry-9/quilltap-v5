@@ -33,7 +33,8 @@ use super::converters::DocumentTextExtractor;
 use super::file_op_error::{FileOpError, FileOpErrorCode};
 use super::file_ops::{delete_at_dest, dest_exists, resolve_fs_absolute, write_fs_file_bytes};
 use super::path_utils::{
-    detect_native_text, mime_for_extension, normalise_relative_path, path_extname,
+    detect_blob_file_type, detect_native_text, is_extractable_blob_path, mime_for_extension,
+    normalise_relative_path, path_extname,
 };
 use super::read_file::MountFileError;
 use super::refresh::refresh_now;
@@ -71,7 +72,8 @@ pub struct StoreFileInput {
     pub expected_mtime: Option<i64>,
     /// Default true.
     pub transcode_images: bool,
-    /// Default true.
+    /// Extract text from PDF/DOCX and native-text blobs and enqueue chunks
+    /// (default true; v4 `40fab1c54` widened it from PDF/DOCX only).
     pub extract_text: bool,
     /// Default true.
     pub enqueue_embedding: bool,
@@ -118,14 +120,6 @@ pub struct StoreFileResult {
     pub file_id: Option<String>,
     pub link_id: Option<String>,
     pub blob_id: Option<String>,
-}
-
-fn detect_blob_file_type(relative_path: &str) -> &'static str {
-    match path_extname(relative_path).to_lowercase().as_str() {
-        ".pdf" => "pdf",
-        ".docx" => "docx",
-        _ => "blob",
-    }
 }
 
 fn sha256_hex(bytes: &[u8]) -> String {
@@ -180,6 +174,181 @@ fn load_mount(conn: &Connection, mount_point_id: &str) -> Result<MountServiceInf
             FileOpErrorCode::MountNotFound,
         ))
     })
+}
+
+/// v4 `extractBlobText`'s argument bag (`store-file.ts:158-164`).
+pub struct ExtractBlobTextArgs<'a> {
+    pub blob_id: &'a str,
+    pub link_id: &'a str,
+    pub relative_path: &'a str,
+    pub data: &'a [u8],
+    pub mount_point_id: &'a str,
+}
+
+/// What [`extract_blob_text`] does with a `pdf`/`docx` blob when the
+/// [`DocumentTextExtractor`] cannot convert at all
+/// (`is_available() == false`) — P4.D354 ruling R-1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RefusedConverterPolicy {
+    /// v4's bytes: the empty-text arm writes `failed` / `Converter produced no
+    /// text`. The Scriptorium REST upload (`store_mount_file`) — where v5
+    /// already wrote those bytes and `mount_write_equivalence` pins them.
+    WriteFailed,
+    /// Write NOTHING: the row stays `extractionStatus 'none'`, so the startup
+    /// backfill's worklist revisits it once a real extractor lands. The upload
+    /// bridges and the backfill — under v5's refusing seam v4's write would
+    /// stamp every PDF/DOCX upload `failed` forever. The NAMED divergence
+    /// `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED`.
+    LeaveUnextracted,
+}
+
+/// v4 `extractBlobText` (`store-file.ts:148-239`, `40fab1c54`): derive a
+/// blob's plain text and record it on its link (`extractedText`,
+/// `extractionStatus`, `conversionStatus`). The one place blob text extraction
+/// lives: `storeMountFile` calls it on ingest and the startup backfill
+/// (`upload_blob_text_backfill`) on uploads that predate it. Does not chunk or
+/// embed — callers run `reindex_single_file` after. Never throws in v4; a
+/// failed conversion is recorded as `failed` and returns false.
+///
+/// Returns true when usable text was stored. Native text is the bytes as
+/// UTF-8 (v4's `Buffer.toString('utf-8')` replaces each invalid sequence with
+/// U+FFFD — `String::from_utf8_lossy`, byte-identical).
+///
+/// v4's `try` wraps the conversion AND the writes, so its catch arm is
+/// reachable in v5 through a failed write: WARN `extractBlobText: text
+/// extraction failed` `{mountPointId, relativePath, blobType, error}`
+/// (renamed by `40fab1c54` from `storeMountFile: text extraction failed`; the
+/// key `blobType` was `fileType`), then the `failed` / `skipped` writes with
+/// the error's message, and — if THOSE fail — WARN `extractBlobText: could
+/// not record the failure` `{mountPointId, relativePath, error}`. What stays
+/// unreachable is a CONVERTER throw: the seam is `extract(&self, &[u8], &str)
+/// -> String`, infallible by signature; the future extractor order widens it
+/// to `Result` (`converters.rs`'s spec; P4.D354 H5).
+pub fn extract_blob_text(
+    mount: &Connection,
+    args: &ExtractBlobTextArgs<'_>,
+    extractor: &dyn DocumentTextExtractor,
+    refused_converter: RefusedConverterPolicy,
+) -> bool {
+    if !is_extractable_blob_path(args.relative_path) {
+        return false;
+    }
+    let blob_type = detect_blob_file_type(args.relative_path);
+    let text = if blob_type == "pdf" || blob_type == "docx" {
+        if refused_converter == RefusedConverterPolicy::LeaveUnextracted
+            && !extractor.is_available()
+        {
+            // v5's own line (v4 has a working converter): R-1's skip.
+            tracing::debug!(
+                target: "quilltap::mount_index",
+                mountPointId = %args.mount_point_id,
+                relativePath = %args.relative_path,
+                blobType = %blob_type,
+                "extractBlobText: converter unavailable; leaving the blob unextracted"
+            );
+            return false;
+        }
+        extractor.extract(args.data, blob_type)
+    } else {
+        String::from_utf8_lossy(args.data).into_owned()
+    };
+    match record_extracted_text(mount, args, blob_type, &text) {
+        Ok(stored) => stored,
+        Err(e) => {
+            let msg = e.to_string();
+            tracing::warn!(
+                target: "quilltap::mount_index",
+                mountPointId = %args.mount_point_id,
+                relativePath = %args.relative_path,
+                blobType = %blob_type,
+                error = %msg,
+                "extractBlobText: text extraction failed"
+            );
+            if let Err(record_err) = record_extraction_failure(mount, args, &msg) {
+                tracing::warn!(
+                    target: "quilltap::mount_index",
+                    mountPointId = %args.mount_point_id,
+                    relativePath = %args.relative_path,
+                    error = %record_err,
+                    "extractBlobText: could not record the failure"
+                );
+            }
+            false
+        }
+    }
+}
+
+/// The body of v4's `try` past the conversion: the `converted` writes + the
+/// DEBUG on non-blank text, else the empty arm (no log line).
+fn record_extracted_text(
+    mount: &Connection,
+    args: &ExtractBlobTextArgs<'_>,
+    blob_type: &str,
+    text: &str,
+) -> Result<bool, crate::db::DbError> {
+    if crate::jsstr::js_trim(text).is_empty() {
+        record_extraction_failure(mount, args, "Converter produced no text")?;
+        return Ok(false);
+    }
+    let sha = sha256_of_string(text);
+    DocMountBlobsRepository::new(mount).update_extracted_text(
+        args.blob_id,
+        Some(text),
+        Some(&sha),
+        "converted",
+        None,
+        args.link_id,
+    )?;
+    let text_length = crate::jsstr::utf16_len(text);
+    DocMountFileLinksRepository::new(mount).update(
+        args.link_id,
+        &LinkUpdate {
+            conversion_status: Some("converted".to_string()),
+            conversion_error: Some(None),
+            plain_text_length: Some(Some(text_length as f64)),
+            chunk_count: Some(0.0),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        },
+    )?;
+    tracing::debug!(
+        target: "quilltap::mount_index",
+        mountPointId = %args.mount_point_id,
+        relativePath = %args.relative_path,
+        blobType = %blob_type,
+        textLength = text_length,
+        "extractBlobText: stored extracted text"
+    );
+    Ok(true)
+}
+
+/// v4's `failed` / `skipped` pair with `error` as both messages (the empty arm
+/// passes `Converter produced no text`; the catch arm the thrown message).
+fn record_extraction_failure(
+    mount: &Connection,
+    args: &ExtractBlobTextArgs<'_>,
+    error: &str,
+) -> Result<(), crate::db::DbError> {
+    DocMountBlobsRepository::new(mount).update_extracted_text(
+        args.blob_id,
+        None,
+        None,
+        "failed",
+        Some(error),
+        args.link_id,
+    )?;
+    DocMountFileLinksRepository::new(mount).update(
+        args.link_id,
+        &LinkUpdate {
+            conversion_status: Some("skipped".to_string()),
+            conversion_error: Some(Some(error.to_string())),
+            plain_text_length: Some(None),
+            chunk_count: Some(0.0),
+            updated_at: crate::clock::now_iso(),
+            ..Default::default()
+        },
+    )?;
+    Ok(())
 }
 
 /// v4 `storeMountFile` — the single ingest pipeline. The post-write refresh
@@ -446,78 +615,24 @@ pub fn store_mount_file(
         created_at: None,
     })?;
 
-    // PDF/DOCX: extract plain text from the ORIGINAL bytes (transcode only
-    // touches bitmaps, so for these types transcoded bytes == input bytes).
-    let mut has_extracted_text = false;
-    if input.extract_text && (mirror_file_type == "pdf" || mirror_file_type == "docx") {
-        let blobs = DocMountBlobsRepository::new(mount);
-        let text = extractor.extract(&input.data, mirror_file_type);
-        if !crate::jsstr::js_trim(&text).is_empty() {
-            let sha = sha256_of_string(&text);
-            blobs.update_extracted_text(
-                &result.blob_id,
-                Some(&text),
-                Some(&sha),
-                "converted",
-                None,
-                &result.link_id,
-            )?;
-            has_extracted_text = true;
-            links.update(
-                &result.link_id,
-                &LinkUpdate {
-                    conversion_status: Some("converted".to_string()),
-                    conversion_error: Some(None),
-                    plain_text_length: Some(Some(crate::jsstr::utf16_len(&text) as f64)),
-                    chunk_count: Some(0.0),
-                    updated_at: crate::clock::now_iso(),
-                    ..Default::default()
-                },
-            )?;
-        } else {
-            // The extractor produced no text (v4's empty arm; the refusing
-            // seam routes here too, loudly).
-            //
-            // ⚠ **v4 has a THIRD arm here and v5 cannot reach it** (P4.D209
-            // tier-2 item 7, measured rather than deferred on a hunch).
-            // `store-file.ts:329-350` wraps the extraction in a try/catch and,
-            // on a throw, warns `storeMountFile: text extraction failed` and
-            // writes `extractionStatus: 'failed'` with the EXCEPTION'S MESSAGE
-            // as `extractionError` — where this empty arm writes the fixed
-            // sentence. v5's seam is
-            // `DocumentTextExtractor::extract(&self, &[u8], &str) -> String`:
-            // infallible by signature, so there is no error to catch, and the
-            // refusing default returns an empty string and lands HERE instead.
-            //
-            // Porting the arm therefore is not a local edit — it means widening
-            // the seam to `Result<String, String>` across every implementor and
-            // caller, which is out of this lane's mandate and pointless before
-            // there is an extractor that can fail: the production pdf/docx
-            // extractor is itself a standing deferral, so today NOTHING can take
-            // v4's catch. **The order belongs with the extractor**: whoever
-            // lands it widens the seam and takes v4's third arm in the same
-            // commit, with a `mount_write` row for the thrown-message text.
-            blobs.update_extracted_text(
-                &result.blob_id,
-                None,
-                None,
-                "failed",
-                Some("Converter produced no text"),
-                &result.link_id,
-            )?;
-            links.update(
-                &result.link_id,
-                &LinkUpdate {
-                    conversion_status: Some("skipped".to_string()),
-                    conversion_error: Some(Some("Converter produced no text".to_string())),
-                    plain_text_length: Some(None),
-                    chunk_count: Some(0.0),
-                    updated_at: crate::clock::now_iso(),
-                    ..Default::default()
-                },
-            )?;
-        }
-    }
+    // Text the doc tools can read, grep and search (v4 `40fab1c54`, bug 260):
+    // PDF/DOCX are converted from the ORIGINAL bytes (transcode only touches
+    // bitmaps, so for these types transcoded bytes == input bytes); native text
+    // is the bytes themselves. The REST path keeps v4's `failed` bytes when the
+    // converter answers nothing (R-1: `WriteFailed`).
+    let has_extracted_text = input.extract_text
+        && extract_blob_text(
+            mount,
+            &ExtractBlobTextArgs {
+                blob_id: &result.blob_id,
+                link_id: &result.link_id,
+                relative_path: &final_path,
+                data: &input.data,
+                mount_point_id: &mp.id,
+            },
+            extractor,
+            RefusedConverterPolicy::WriteFailed,
+        );
 
     // v4 emitDocumentWritten — the watcher deferral (see file_ops header).
 

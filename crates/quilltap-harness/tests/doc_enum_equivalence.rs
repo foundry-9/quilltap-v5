@@ -269,6 +269,9 @@ fn doc_enum_matches_oracle() {
         mount_pool: None,
     };
 
+    // P4.D354: every diverging op is collected before the family fails, so a
+    // red run names ALL its rows (the red-first record), not just the first.
+    let mut diverged: Vec<String> = Vec::new();
     for (i, op) in spec.ops.iter().enumerate() {
         let result = execute_doc_edit_tool(
             main.connection(),
@@ -288,12 +291,20 @@ fn doc_enum_matches_oracle() {
         }));
         let want = normalize(&oracle_ops[i]);
 
-        assert_eq!(
-            got, want,
-            "op[{i}] {} diverged\n  rust:   {got}\n  oracle: {want}",
-            op.name
-        );
+        if got != want {
+            eprintln!(
+                "op[{i}] {} diverged\n  rust:   {got}\n  oracle: {want}",
+                op.name
+            );
+            diverged.push(op.name.clone());
+        }
     }
+    assert!(
+        diverged.is_empty(),
+        "{} op(s) diverged: {}",
+        diverged.len(),
+        diverged.join(", ")
+    );
 
     // Shape assert (v4 bug 109, `487ae16b1`): doc_grep's LITERAL path folds
     // typographic spellings while the regex path and the un-normalized path do

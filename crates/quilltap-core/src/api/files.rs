@@ -42,8 +42,8 @@ use crate::folder_utils::{
 };
 use crate::photos::keep_image_markdown::sha256_of_buffer;
 use crate::services::file_storage::{
-    cleanup_thumbnails, write_project_file_to_mount_store, write_user_upload_to_mount_store,
-    NotConfiguredPixelCodec, StorageBackend, StoredBlob,
+    cleanup_thumbnails, write_project_file_to_mount_store_indexed,
+    write_user_upload_to_mount_store_indexed, NotConfiguredPixelCodec, StorageBackend, StoredBlob,
 };
 
 use super::types::{ErrorKind, FileAssocCharacter, FileAssocMessage, FileAssociations, Response};
@@ -1252,9 +1252,11 @@ fn save_file_entry(
 
     // Write the bytes (project store vs the Quilltap Uploads mount).
     let stored: StoredBlob = if let Some(pid) = project_id {
-        write_project_file_to_mount_store(
+        write_project_file_to_mount_store_indexed(
+            main,
             mount,
             codec,
+            crate::services::mount_index::converters::default_text_extractor().as_ref(),
             pid,
             &sanitized,
             data,
@@ -1269,8 +1271,16 @@ fn save_file_entry(
         } else {
             "uploads"
         };
-        write_user_upload_to_mount_store(
-            main, mount, codec, &sanitized, data, mime_type, subfolder, None,
+        write_user_upload_to_mount_store_indexed(
+            main,
+            mount,
+            codec,
+            crate::services::mount_index::converters::default_text_extractor().as_ref(),
+            &sanitized,
+            data,
+            mime_type,
+            subfolder,
+            None,
         )?
     };
     let storage_key = stored.storage_key();

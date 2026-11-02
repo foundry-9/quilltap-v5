@@ -1973,6 +1973,16 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                     mount_index,
                     builtin_mounts::LazyRepairFailures::LogAndContinue,
                 )?);
+                // === P4.D354 (v4 `40fab1c54`, bugs 260 / 261): uploads stored before
+                // text extraction get what new uploads get at ingest. v4 chains this
+                // after PHASE 3.3's `scanAllMountPoints`; v5 has no boot scan, so it
+                // runs here, after the built-in mounts exist and before the scenario
+                // heals. Idempotent, stampless, never fails the boot.
+                let extractor = quilltap_core::services::mount_index::converters::default_text_extractor();
+                let _ = quilltap_core::services::mount_index::upload_blob_text_backfill::backfill_upload_blob_text(
+                    main, mount_index, extractor.as_ref(),
+                );
+                // === end P4.D354 ===
                 // === P4.171 (C-19): v4's PHASE 3.4 / 3.4b scenario heals ===
                 // Every project, then every group: find / adopt / create the
                 // official store and heal `Scenarios/` (groups also

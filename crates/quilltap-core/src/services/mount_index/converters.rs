@@ -16,6 +16,47 @@
 //!   document read (`generators::file_content`) falls back to its native PDF
 //!   scrape. The refusal itself is loud (stderr, once per file) and — having no
 //!   caller context — names both outcomes ([`refusal_notice`]).
+//!
+//! ## The production PDF reader (v4 `pdf-converter.ts` at `236c04e35`) — SPEC
+//!
+//! P4.D354 R-2 (round ruling R-C): NO PDF crate lands this round. v4
+//! `026222176` replaced `pdf-parse` with an in-house reader over `pdfjs-dist`
+//! 6.4; the future extractor order (P4.D354 HANDOFF H5) reproduces these
+//! assembly rules, and they are the EXPECTED lines it is held to:
+//!
+//! - Constants (pdf-parse 2.x's defaults, kept so already-indexed documents
+//!   stay byte-stable on re-index): `LINE_THRESHOLD = 4.6`,
+//!   `CELL_THRESHOLD = 7`, `CELL_SEPARATOR = '\t'`.
+//! - Per page (`extractPageText`): `viewport = page.getViewport({scale: 1})`;
+//!   for each `textContent.items` item with a `str`: `[x, y] =
+//!   viewport.convertToViewportPoint(transform[4], transform[5])`; when a
+//!   previous item exists, `yDiff = |lastY − y|`:
+//!   - `yDiff > 4.6` → push `'\n'` (and reset `lineHeight = 0`) when the last
+//!     pushed part does not end in `'\n'`, the item does not start its own
+//!     line (`str.startsWith('\n') || (str.trim() === '' && item.hasEOL)`),
+//!     and `yDiff − 1 > lineHeight`;
+//!   - else `yDiff < 4.6 && |lastX − x| > 7` → `str = '\t' + str`;
+//!   - then push `str`; `lastX = x + item.width`; `lastY = y`; `lineHeight =
+//!     max(lineHeight, item.height)`; `item.hasEOL` → push `'\n'`; `hasEOL ||
+//!     str.endsWith('\n')` → `lineHeight = 0`.
+//! - Per document (`convertPdfBufferToText`): an empty buffer → WARN `PDF
+//!   buffer is empty` → `''`; `getDocument({ data, enableXfa: false,
+//!   verbosity: ERRORS })`; for `n` in `1..=numPages`: `text += pageText +
+//!   '\n\n-- {n} of {numPages} --\n\n'`, `page.cleanup()` always; DEBUG
+//!   `Extracted PDF text` `{pages, chars}`; any failure → WARN `Failed to
+//!   extract text from PDF buffer` `{error}` → `''`; the loading task is
+//!   always destroyed.
+//! - Dependency options recorded for that order: `pdf-extract` over `lopdf`
+//!   (glyph positions through a custom `OutputDev`, the layout above
+//!   re-implemented); `pdfium-render` (pdfjs-equivalent item geometry, a
+//!   native library per platform); `mupdf` is AGPL — unsuitable. DOCX is a
+//!   separate ruling (`mammoth`'s paragraph rules are not byte-reproducible
+//!   without a port).
+//! - That order also widens the seam to `Result<String, String>` (v4
+//!   `extractBlobText`'s catch arm), flips [`DocumentTextExtractor::is_available`]
+//!   to `true`, retires the `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED` carve, and
+//!   re-queues the rows a pre-round v5 wrote `failed` with `Converter produced
+//!   no text`.
 
 use std::sync::Arc;
 
@@ -29,6 +70,14 @@ use crate::jsstr::{is_js_ws, js_trim, JS_WS_CLASS};
 pub trait DocumentTextExtractor: Send + Sync {
     /// Extract plaintext from raw `pdf`/`docx` bytes. `''` = nothing extracted.
     fn extract(&self, bytes: &[u8], file_type: &str) -> String;
+
+    /// Whether this extractor can produce `pdf`/`docx` text at all (P4.D354
+    /// R-12). Defaulted `true`; only [`RefusingTextExtractor`] answers `false`,
+    /// so the R-1 policy (`RefusedConverterPolicy::LeaveUnextracted`) reads the
+    /// seam itself rather than a global.
+    fn is_available(&self) -> bool {
+        true
+    }
 }
 
 /// The default extractor: refuses loudly (stderr names the deferring order) and
@@ -55,6 +104,10 @@ impl DocumentTextExtractor for RefusingTextExtractor {
     fn extract(&self, _bytes: &[u8], file_type: &str) -> String {
         eprintln!("{}", refusal_notice(file_type));
         String::new()
+    }
+
+    fn is_available(&self) -> bool {
+        false
     }
 }
 

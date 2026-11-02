@@ -267,6 +267,37 @@ pub fn detect_native_text(relative_path: &str) -> Option<NativeTextType> {
     }
 }
 
+/// v4 `detectBlobFileType` (`path-utils.ts:69-74`, moved out of
+/// `store-file.ts` by `40fab1c54`): the converter type of a blob path —
+/// `pdf`, `docx`, or the generic `blob`.
+pub fn detect_blob_file_type(relative_path: &str) -> &'static str {
+    match path_extname(relative_path).to_lowercase().as_str() {
+        ".pdf" => "pdf",
+        ".docx" => "docx",
+        _ => "blob",
+    }
+}
+
+/// v4 `EXTRACTABLE_BLOB_EXTENSIONS` (`path-utils.ts:89-91`, bug 260): the
+/// blob extensions whose text the doc tools can read — every native-text type
+/// [`detect_native_text`] knows plus the two converter types. v4's order.
+pub const EXTRACTABLE_BLOB_EXTENSIONS: &[&str] = &[
+    ".md",
+    ".markdown",
+    ".txt",
+    ".json",
+    ".jsonl",
+    ".ndjson",
+    ".pdf",
+    ".docx",
+];
+
+/// v4 `isExtractableBlobPath` (`path-utils.ts:81-83`, bug 260): whether a
+/// blob at this path yields text (case-insensitive on the extension).
+pub fn is_extractable_blob_path(relative_path: &str) -> bool {
+    EXTRACTABLE_BLOB_EXTENSIONS.contains(&path_extname(relative_path).to_lowercase().as_str())
+}
+
 /// v4 `nativeTextAttachmentMime` (bug 38): a clean, parameter-free MIME type for
 /// a native-text document, suitable for a provider attachment. Unlike
 /// [`mime_for_extension`] this drops the `; charset=utf-8` suffix, because the
@@ -296,5 +327,62 @@ pub fn mime_for_extension(relative_path: &str) -> &'static str {
         ".pdf" => "application/pdf",
         ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         _ => "application/octet-stream",
+    }
+}
+
+#[cfg(test)]
+mod extractable_tests {
+    use super::*;
+
+    // v4 `lib/mount-index/__tests__/extractable-blob-paths.test.ts:11-31`.
+    #[test]
+    fn extractable_blob_paths_accept_the_eight_case_insensitively() {
+        for p in [
+            "a.md",
+            "a.MARKDOWN",
+            "notes/a.Txt",
+            "a.json",
+            "a.JSONL",
+            "a.ndjson",
+            "Report.PDF",
+            "x/y.Docx",
+        ] {
+            assert!(is_extractable_blob_path(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn extractable_blob_paths_reject_images_audio_archives_and_no_extension() {
+        for p in [
+            "avatar.webp",
+            "photo.png",
+            "song.mp3",
+            "archive.zip",
+            "noext",
+        ] {
+            assert!(!is_extractable_blob_path(p), "{p}");
+        }
+    }
+
+    #[test]
+    fn the_extractable_set_is_native_text_plus_the_two_converter_types() {
+        let native: Vec<&str> = EXTRACTABLE_BLOB_EXTENSIONS
+            .iter()
+            .copied()
+            .filter(|e| detect_native_text(&format!("f{e}")).is_some())
+            .collect();
+        assert_eq!(
+            native,
+            vec![".md", ".markdown", ".txt", ".json", ".jsonl", ".ndjson"]
+        );
+        let converters: Vec<&str> = EXTRACTABLE_BLOB_EXTENSIONS
+            .iter()
+            .copied()
+            .filter(|e| detect_native_text(&format!("f{e}")).is_none())
+            .collect();
+        assert_eq!(converters, vec![".pdf", ".docx"]);
+        assert_eq!(detect_blob_file_type("f.PDF"), "pdf");
+        assert_eq!(detect_blob_file_type("f.docx"), "docx");
+        assert_eq!(detect_blob_file_type("f.md"), "blob");
     }
 }

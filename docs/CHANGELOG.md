@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — FILES: uploads become readable, greppable and searchable; doc_list_files' real glob (P4.D354 Tier 1, v4 bugs 260 / 261)
+
+_Versions: core 0.0.1380, host 0.0.218._
+
+Ports v4 `40fab1c54` at the `236c04e35` pin. `extract_blob_text` is the one place blob text extraction lives (native text = the bytes as UTF-8, `.pdf` / `.docx` through the `DocumentTextExtractor` seam, v4's catch arm reachable through a failed write); `store_mount_file` no longer gates it on pdf/docx. Contract C1: `write_user_upload_to_mount_store_indexed` / `write_project_file_to_mount_store_indexed` extract + reindex + queue embeddings through `refresh_now`; nine production callers (the survey's seven plus the project-image upload and the images `createFile` path), with the two restore sites left on the doc-deprecated pair for P4.D355 (HANDOFF H1) and pinned by `bridge_callers_census`. Contract C2: the NEW boot backfill `upload_blob_text_backfill`, called once from the host's mount-index boot closure, `quilltap::startup` lines. Round ruling R-1: under the refusing seam (`is_available()` — a NEW defaulted trait method, `false` only on `RefusingTextExtractor`) the bridges and the backfill leave PDF / DOCX rows at `'none'`, the REST path keeps v4's `failed` bytes — the named divergence `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED`. `read_database_blob_text` / `list_database_blob_texts`, `list_unextracted_by_extensions` + `read_data_or_none` (fallback reads). `doc_read_file` reads a converted blob (`derivedFromBlob`, the retired deferral) and falls back onto an upload's text on ENOENT; `doc_grep` searches upload text; `doc_list_files`' `pattern` is v4's glob (NEW `doc_edit::path_glob`, compiled through the workspace's V8-faithful RegExp twin) over the relative path. `converters.rs` carries v4's pdfjs assembly rules as the future extractor's spec (no PDF crate — R-2). Differentials: NEW `path_glob_equivalence` (1,228 rows), NEW `upload_blob_text_backfill_equivalence` (three runs, the carve both ways), `doc_enum_equivalence` +15 ops, `mount_write_equivalence` +7 direct-ingest rows; capture pins for every new line with its silence leg.
+
+## November 2026
+
 #### 2026-11-04 — docs(porting): the P4.D356 lane record; the settings builder's spec carries settingsIdA2
 
 _Versions: unchanged (docs + oracle builder)._

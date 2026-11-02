@@ -616,6 +616,62 @@ impl<'c> DocMountBlobsRepository<'c> {
         }
     }
 
+    /// v4 `listUnextractedByExtensions` (`doc-mount-blobs.repository.ts:
+    /// 468-503`, `40fab1c54`, bug 260): every blob link in a database-backed
+    /// store still marked `extractionStatus = 'none'` (NULL counts as `'none'`)
+    /// whose path ends in one of `extensions` (lower-case, with the dot) — the
+    /// startup backfill's worklist: uploads that predate text extraction.
+    /// Filesystem and Obsidian stores are left out — the doc tools read those
+    /// from disk. Extension matching is case-insensitive.
+    ///
+    /// A FALLBACK read, as v4's: a failed read logs `Failed to list unextracted
+    /// blobs` and answers `[]`. The SELECT column list is the shared
+    /// [`Self::join_query`] helper's (v4's also names `descriptionUpdatedAt`,
+    /// `extractedTextSha256` and `extractionError`, which no caller reads — the
+    /// rows compare by value); the WHERE / ORDER are v4's bytes.
+    pub fn list_unextracted_by_extensions(&self, extensions: &[&str]) -> Vec<BlobWithLink> {
+        if extensions.is_empty() {
+            return Vec::new();
+        }
+        let likes = extensions
+            .iter()
+            .map(|_| "LOWER(l.relativePath) LIKE ?")
+            .collect::<Vec<_>>()
+            .join(" OR ");
+        let sql = Self::join_query(&format!(
+            "JOIN doc_mount_points m ON m.id = l.mountPointId \
+             WHERE m.mountType = 'database' \
+               AND COALESCE(l.extractionStatus, 'none') = 'none' AND ({likes}) \
+             ORDER BY l.mountPointId, l.relativePath"
+        ));
+        let binds: Vec<String> = extensions
+            .iter()
+            .map(|e| format!("%{}", e.to_lowercase()))
+            .collect();
+        let read = || -> Result<Vec<BlobWithLink>, DbError> {
+            let mut stmt = self.conn.prepare(&sql)?;
+            let rows = stmt
+                .query_map(
+                    rusqlite::params_from_iter(binds.iter()),
+                    Self::map_blob_with_link,
+                )?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        };
+        match read() {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    extensions = ?extensions,
+                    error = %e,
+                    "Failed to list unextracted blobs"
+                );
+                Vec::new()
+            }
+        }
+    }
+
     /// v4 `readData` (`doc-mount-blobs.repository.ts:189`): the raw bytes for a
     /// blob row by its blob `id`, or `None`.
     pub fn read_data(&self, id: &str) -> Result<Option<Vec<u8>>, DbError> {
@@ -630,6 +686,38 @@ impl<'c> DocMountBlobsRepository<'c> {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(other.into()),
             })
+    }
+
+    /// v4 `readData` as v4 runs it (`doc-mount-blobs.repository.ts:185-198`): a
+    /// FALLBACK read — a failed read logs `Failed to read blob data` `{id,
+    /// error}` and answers `None`, and a NULL `data` cell (v4's `row.data`
+    /// `null`) answers `None` too. The propagating [`Self::read_data`] stays for
+    /// the callers that must see a failure.
+    pub fn read_data_or_none(&self, id: &str) -> Option<Vec<u8>> {
+        let read = self
+            .conn
+            .query_row(
+                "SELECT data FROM doc_mount_blobs WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, Option<Vec<u8>>>(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other),
+            });
+        match read {
+            Ok(data) => data.flatten(),
+            Err(e) => {
+                tracing::warn!(
+                    target: "quilltap::db",
+                    id = %id,
+                    error = %e,
+                    "Failed to read blob data"
+                );
+                None
+            }
+        }
     }
 
     /// v4 `deleteByMountPointAndPath` (`doc-mount-blobs.repository.ts:594`): delete
