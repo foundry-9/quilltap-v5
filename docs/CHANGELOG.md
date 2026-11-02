@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — CATALOG: regenerate the tool catalog from v4 236c04e35 (seven entries)
+
+_Versions: core 0.0.1380._
+
+The round's one regeneration of the generated tool catalog (`crates/quilltap-core/src/tools/definitions/data.rs`) from the v4 `236c04e35` pin, through `harness/oracle/tools/gen-tool-catalog.mjs`. Exactly seven entries change: `doc_list_files` (the `pattern` glob sentence), `inventory_create` and `inventory_update` (the `image_description` picture-cue text, and `inventory_create`'s description), `self_inventory` (eleven sections: `vault.coreFiles` and `holdings` with its dotted parts), `wardrobe_list` (`pronoun_aware`), `wardrobe_create` and `wardrobe_update` (`pronoun_guidance` and the Portrait Cue texts). `wardrobe_read`, `project_info`, `run_custom` and `state` do not change. The catalog still holds 76 tools. Handlers that do not yet read a new parameter ignore it, as before; the handler ports land in later commits of this round. `tool_definitions_equivalence` stays red on any branch without this commit until the round is unified.
+
+## November 2026
+
 #### 2026-11-02 — docs(porting): P4.D341 status header — the `KEYSTONE` sha `c2c28c031` and the landed contract spellings
 
 _Docs-only change._
