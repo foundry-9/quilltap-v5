@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): toasts converge on v4's solid status colours
+
+_Versions: SPA 0.5.909._
+
+Toasts now paint v4's solid status triple: each type reads `--color-<x>` for its fill and border and `--color-<x>-foreground` for its text (error maps to destructive), as v4 `58120a7fe`'s `qt-bg-<x> qt-text-<x>-foreground qt-border-<x>` classes do. This replaces the tinted `--qt-status-*` colours v5 kept as a recorded divergence while v4 painted raw Tailwind; that reason is gone, so the divergence is retired. Earl Grey's and Rains's status-triple overrides no longer reach the toast, matching v4. The `--qt-toast-*` hooks stay as v5's theme override points. Geometry, stacking and the entry animation are unchanged; `toast_stacking_guard` is green before and after.
+
 #### 2026-11-02 — fix(spa): v4 4.11.0 WCAG palette, legibility and focus CSS
 
 _Versions: SPA 0.5.908._

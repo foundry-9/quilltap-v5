@@ -8,13 +8,19 @@
  * fixed, bottom-right, z-50, pointer-events none, flex column, 10px gap,
  * max-width 400px — with the toasts themselves re-enabling pointer events.
  *
- * The COLOURS follow the repo's qt-token convention rather than v4's literal
- * `bg-green-500 dark:bg-green-600` family, per the order: the existing
- * `--qt-status-*` triples are the sanctioned analog and are what every other
- * status surface in v5 already uses, so themes theme the toasts for free. The
- * one visible consequence is the warning toast, which lands on
- * `--color-warning-foreground` (near-black) instead of v4's `text-white` on
- * yellow-500 — legible where v4's is barely so.
+ * The COLOURS are v4's solid status triple. v4 `58120a7fe` (`lib/toast.tsx`
+ * `getToastStyles`) paints each toast `qt-bg-<x> qt-text-<x>-foreground
+ * qt-border-<x>` and drops `text-white` — "Theme status colours: every bundle
+ * pairs each fill with a foreground at 4.5:1 or better, which the old fixed
+ * Tailwind palette did not." Those utilities resolve to `--color-<x>` /
+ * `--color-<x>-foreground`, and so do the rules below (success, error →
+ * destructive, warning, info), so the toast is legible on every theme by the
+ * same token pairs the contrast spec (`theme/theme-contrast.spec.ts`) holds.
+ * A pack's status-triple overrides in `_variables.css`'s tinted family (Earl
+ * Grey's, Rains's) no longer reach the toast, as they never reached v4's.
+ * The `--qt-toast-<type>-{bg,border,fg}` hooks are v5's own override points
+ * for a theme; no bundled pack sets them.
+ * (This retires the earlier tinted-status-triple divergence — P4.D357.)
  *
  * Entry animation (v4 `ea4dc011`, bug 42): v4 once carried an inline
  * `animation: 'slideInUp 0.3s ease-out'` plus dead `animate-in …` classes, but
@@ -74,26 +80,26 @@
   }
 
   .qt-toast-success {
-    background-color: var(--qt-toast-success-bg, var(--qt-status-success-bg));
-    border-color: var(--qt-toast-success-border, var(--qt-status-success-border));
-    color: var(--qt-toast-success-fg, var(--qt-status-success-fg));
+    background-color: var(--qt-toast-success-bg, var(--color-success));
+    border-color: var(--qt-toast-success-border, var(--color-success));
+    color: var(--qt-toast-success-fg, var(--color-success-foreground));
   }
 
   .qt-toast-error {
-    background-color: var(--qt-toast-error-bg, var(--qt-status-danger-bg));
-    border-color: var(--qt-toast-error-border, var(--qt-status-danger-border));
-    color: var(--qt-toast-error-fg, var(--qt-status-danger-fg));
+    background-color: var(--qt-toast-error-bg, var(--color-destructive));
+    border-color: var(--qt-toast-error-border, var(--color-destructive));
+    color: var(--qt-toast-error-fg, var(--color-destructive-foreground));
   }
 
   .qt-toast-warning {
-    background-color: var(--qt-toast-warning-bg, var(--qt-status-warning-bg));
-    border-color: var(--qt-toast-warning-border, var(--qt-status-warning-border));
-    color: var(--qt-toast-warning-fg, var(--qt-status-warning-fg));
+    background-color: var(--qt-toast-warning-bg, var(--color-warning));
+    border-color: var(--qt-toast-warning-border, var(--color-warning));
+    color: var(--qt-toast-warning-fg, var(--color-warning-foreground));
   }
 
   .qt-toast-info {
-    background-color: var(--qt-toast-info-bg, var(--qt-status-info-bg));
-    border-color: var(--qt-toast-info-border, var(--qt-status-info-border));
-    color: var(--qt-toast-info-fg, var(--qt-status-info-fg));
+    background-color: var(--qt-toast-info-bg, var(--color-info));
+    border-color: var(--qt-toast-info-border, var(--color-info));
+    color: var(--qt-toast-info-fg, var(--color-info-foreground));
   }
 }
