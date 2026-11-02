@@ -193992,6 +193992,17 @@ The sweep driver's own recipes (`recipe_sweep.py --show <family>`), run by hand 
 
 `self_inventory` bare on the Friday copy (`## Core Vault Files` 9 of 9 on a scaffolded vault; a hand-deleted `metadata.json` reads MISSING with its named `qtap://` uri; `## Holdings` counts match the dialog); a text-block turn on a provider without native tools landing a `CREATE_WARDROBE_ITEM` body in the description and its `cue` in the Portrait Cue; `POST …/inventory?action=duplicate` with `{}` → 400 `Validation error`; an operator REST create refreshing a second open Inventory dialog (with P4.D359's reload); a `.json` note under a character's `Inventory/` surviving an edit of one of their objects; nothing here is SQL, so the first boot runs no ensure.
 
+### P4.D350 — the lane gate (2026-11-02)
+
+- `cargo fmt --all --check`: clean. `cargo clippy --workspace --all-targets -- -D warnings`: rc 0; with `--features quilltap-core/native-transport`: rc 0. `scripts/recipe_sweep --self-test`: 0.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast` with every family env var of this lane set and `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin: **871 binaries / 5,759 passed / 6 failed / 3 ignored, zero SKIP** for this lane's families (each confirmed RAN by name). The six reds, none this lane's:
+  - `realtime_topics_equivalence` — the union red above (`storytellerRounds`, `customToolInterventions`, P4.D343 / P4.D345).
+  - `custom_tool_schema_embed_guard`, `public_schemas_vendor_guard` (`qtap-custom-tool.schema.json`, v4 66,469 B vs vendored 63,595 B), `qtap_schema_embed_guard` (`qtap-export.schema.json`, 115,274 B vs 109,559 B) — the pin moved both public schemas; re-vendoring is P4.D360's.
+  - `provider_sdk_version_guard` — the pin's root `openai` 7.45.0 / `@openrouter/sdk` 1.5.9 and the plugin SDKs moved (the round's provider lane).
+  - `cli_differential` — 5 rows (`completion bash|zsh|fish`, `recall-replay help`, `recall-replay no chat`): the pin's CLI moved; no CLI file is in this lane's Ownership.
+- `pascal_inventory_effects_equivalence` alone with its own fixture env: 1 passed.
+- Versions: core 0.0.1386 (web 0.0.251, host 0.0.217 unchanged); harness frozen.
+
 ## P4.D341 — the `236c04e35` KEYSTONE: the 17th–21st D23 moves in one re-dump, five boot ensures, the column plumbing, keystone memories server (lane `claude/p4.d341-keystone-d23-17-21-8976915ea`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Venue.** Session opened on `main` at `8976915ea` (the orders' commit). Moved to the worktree `.claude/worktrees/p4d341` on `claude/p4.d341-keystone-d23-17-21-8976915ea`, cut from `8976915ea` (wave 0, the stacking root). `target/` was cloned from main's (`cp -cR`).

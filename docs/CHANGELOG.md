@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D350 lane complete — the gate record
+
+_Docs only._
+
+The lane's workspace gate result is appended to the porting status log and the work order's status header reads LANE COMPLETE.
+
 #### 2026-11-02 — fix(inventory): clippy needless borrows at load_own_record; P4.D350 lane record
 
 _Versions: core 0.0.1386._
