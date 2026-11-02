@@ -193978,6 +193978,72 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
     - `provider_sdk_version_guard`: the pin's ROOT openai 7.45.0 and openrouter 1.5.9 against the recorded 7.34.0 / 1.4.25.
   - `embedding_generate_jobs` is RED only on the keystone drift recorded above (run by name).
 
+## P4.D354 — lane record (LANE COMPLETE, 2026-11-02)
+
+Lane `claude/p4.d354-mount-index-files-8976915ea`, pin `236c04e35`. Commits:
+- **`1976d88a1`** — `FILES:` (the stacking commit P4.D355 branches from).
+- **`34fffc844`** — the order's status header with the FILES sha.
+- **`415c0468b`** — the rest of Tier 1.
+- The status-header commit that closes the lane.
+
+The unit records above carry the red-first counts, mutation proofs, bridge callers, carve, glob grid and gate; this record names what is left.
+
+**Landed, Tier 1 (items 1–18):**
+- C1 bridges: NINE callers, not the order's seven.
+- C2 backfill and the ONE host call, at `host.rs:1976-1984`. P4.D355's `FsTranscriptStore` construction is at `host.rs:951`, ~1,000 lines away, so the two lanes do not collide.
+- C4 glob, plus the gated catalog test.
+- C7 persistent target, plus the **C7 EXTENSION:** `SyncDeps.mount_info` / `SyncDeps.is_docker` are both `Option`. `None` means production's `ProcMountInfo` / `is_docker_environment(&DataDirEnv::from_process())`. The equivalence family injects them.
+- The browse default (R-5).
+- The CLI's container default (R-6), with its Tier R row asserting `/app/quilltap/data` in both outputs.
+- The mount-chunk guard (R-7).
+- The WARN move at eleven sites (census 0).
+- The IMPORT-DEAD re-aim.
+- The `converters.rs` spec, with no crate added and `Cargo.lock` moved only by the version bumps.
+- `PartitionState` mapping: `Degraded` → `Mount index database is in degraded mode`; `Absent` → `Mount index database not initialized`. Retry goes through `job_runner.rs` `JobOutcome::Failed` → `db/background_jobs.rs:527` `mark_failed`.
+
+**Tier 2:**
+- Landed: 20, 21, 22 (already true), and 23 (censuses re-run green in the gate).
+- **OPEN: item 19.** The backfill family has no planted `list_unextracted_by_extensions` failure row. The WARN and its silence leg are unit-pinned only.
+
+**Tier 3 records:**
+- **24:** the unreachable converter-throw arm, in `store_file.rs` / the backfill doc. H5 names its home.
+- **25:** the two unreachable backfill lines, in the backfill module doc.
+- **26:** the R-1 carve, both ways; it retires when `is_available()` returns true.
+- **27:** `assert_persistent_target` has no production caller; its WARN is unit-pinned.
+- **28:** NO-PORTs, ratified by P4.D360.
+- **29:** `ProcMountInfo` is never reached off-Docker (the docker gate returns first); the module doc records this.
+- **30:** v4's `lock-helpers.js` / `theme-commands.js` re-routes have no v5 home, and nothing is stubbed.
+- **31 / 32:** see H2 / H3.
+
+**HANDOFFs:**
+
+| id | to | the handoff |
+|---|---|---|
+| H1 | P4.D355 | `restore/orchestrator.rs:3346,3356` → the `_indexed` bridges. Measured by `bridge_callers_census` (its deprecated-callers count goes red at 0, and the unifier deletes the deprecated pair). |
+| H2 | P4.D350 | The catalog sentence. The unifier sets `P4D350_CATALOG_LANDED` at §S.9. |
+| H3 | P4.D360 | The five help pages and the NO-PORTs. |
+| H4 | the unifier | `ai_import_tier3`'s `V4_APP_VERSION` (`:126`, P4.D360's) is red by name on this branch. |
+| H5 | the future extractor order | The seam → `Result`, plus v4's catch arm, the pdfjs rules, and the re-queue of pre-round `failed` rows. |
+
+**Findings for the unifier:**
+1. The almanack oracle needs a drain. `persisted_after_generate` dumps before v4's un-awaited reindex lands.
+2. `embedding_generate_jobs` is RED at the pin on the committed fixture's missing `keystone` column. That is the P4.D341 fixture move; this lane's degraded row is asserted ahead of it, and green.
+3. The plugin-SDK pin ruling AFFECTED this lane. The pin was re-installed with `pin-plugin-sdks.sh` and the two plugin-loading families re-run, with unchanged results.
+
+**Fixtures changed:**
+- `harness/oracle/cases/doc-enum.json` (+15 ops).
+- `file-content-extractor-corpus.json` (`pdfParse` → `pdfConverter`, 12 keys).
+
+These oracle cases grew: `mount-sync-action`, `browse-directory`, `embedding-generate-jobs`, `file-content-extractor`, `character-wizard-tier3` / `ai-import-tier3` (the WARN bytes), and `mount-write`. New oracle cases: `persistent-target.ts`, `path-glob`, `upload-blob-text-backfill`. Any oracle that reads `file-content-extractor-corpus.json` regenerates from this branch's case file.
+
+**Regen recipes:** each family's sweep-driver `--show` recipe (`python3.13 harness/tools/recipe_sweep.py --v5w ~/source/quilltap-v5 --show <family>_equivalence`). Run it from the pin, with outputs moved under `/tmp/p4d354/`. The hand-copy runner is `/tmp/p4d354/regen/run-family.sh`, left in place for the unifier.
+
+**v4 moved:** 38 commits past the pin at the lane start (`d2795f72c`); live plugin SDKs were re-installed at `9f761e157`. Both are observations, not a stop.
+
+**Dogfood (💸):** the order's rows stand as written. No Friday copy was taken in-lane.
+
+**Versions at close:** core 0.0.1381, cli 0.0.36, host as bumped at FILES. Harness and sqlite3mc-sys untouched.
+
 ## P4.D349 — the three vault keys (`humanoid`, `canDrawDiagrams` / `diagramStyle`, `pronounGuidance`)
 
 Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-keys-8ab640`; worktree `.claude/worktrees/p4d349`). The session started on `main`'s checkout and moved to the new worktree cut from `8ab640259` before the first edit. The writers were NOT pre-started from `main`: the branch was cut from `CATALOG` directly, so no mid-lane rebase happened.
