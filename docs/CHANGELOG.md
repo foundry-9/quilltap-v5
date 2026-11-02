@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Inspector's Storyteller Rounds filter, Bid badge and round chip
+
+_Versions: SPA 0.5.911._
+
+P4.D344 Tier 1 item 9 (contract I1). The LLM Inspector gains v4's `Storyteller Rounds` filter third, admitting `STORYTELLER_BID` rows and any row carrying `storytellerRoundId`; the entry gains the `Bid` badge and the `round abcdef` chip after the type badge. P4.D359's derived `other` group is untouched.
+
 #### 2026-11-02 — feat(spa): the Turn mode radiogroup replaces the drawer's Pause button
 
 _Versions: SPA 0.5.910._

@@ -17,7 +17,7 @@ import { LLMInspectorEntry } from './llm-inspector-entry';
 import type { LlmLogDto } from './llm-logs.api';
 
 /** The filter categories (v4 `LLMInspectorPanel.tsx:9`). */
-type FilterCategory = 'all' | 'chat' | 'memory' | 'system' | 'image' | 'safety' | 'other';
+type FilterCategory = 'all' | 'chat' | 'storyteller' | 'memory' | 'system' | 'image' | 'safety' | 'other';
 
 /**
  * Which log types each filter admits (v4 `:11-19`) — VERBATIM. `all` is null,
@@ -27,6 +27,10 @@ type FilterCategory = 'all' | 'chat' | 'memory' | 'system' | 'image' | 'safety' 
 const FILTER_GROUPS: Record<FilterCategory, string[] | null> = {
   all: null,
   chat: ['CHAT_MESSAGE', 'TOOL_CONTINUATION'],
+  // === P4.D344: Storyteller mode (v4 `b15fe9404`, `:15`) ===
+  // Bids, plus every call a round ran (matched on storytellerRoundId below)
+  storyteller: ['STORYTELLER_BID'],
+  // === end P4.D344 ===
   memory: ['MEMORY_EXTRACTION'],
   system: ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION'],
   image: ['IMAGE_PROMPT_CRAFTING', 'IMAGE_DESCRIPTION', 'APPEARANCE_RESOLUTION'],
@@ -45,6 +49,9 @@ const FILTER_GROUPS: Record<FilterCategory, string[] | null> = {
 const FILTER_LABELS: Record<FilterCategory, string> = {
   all: 'All',
   chat: 'Chat Messages',
+  // === P4.D344 ===
+  storyteller: 'Storyteller Rounds',
+  // === end P4.D344 ===
   memory: 'Memory',
   system: 'System Ops',
   image: 'Image',
@@ -166,6 +173,12 @@ export class LLMInspectorPanel {
   protected readonly filteredLogs = computed(() => {
     const types = FILTER_GROUPS[this.filter()];
     if (!types) return this.chronologicalLogs();
+    // === P4.D344: a round's speaking turns are CHAT_MESSAGE rows — admitted by
+    // their round id (v4 `:81-83`) ===
+    if (this.filter() === 'storyteller') {
+      return this.chronologicalLogs().filter((log) => types.includes(log.type) || !!log.storytellerRoundId);
+    }
+    // === end P4.D344 ===
     return this.chronologicalLogs().filter((log) => types.includes(log.type));
   });
 

@@ -109,7 +109,7 @@ describe('LLMInspectorPanel — chronological order (v4 :54-55)', () => {
 describe('LLMInspectorPanel — the filter (v4 :11-29, :57-62, :94-104)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('offers v4’s seven options, in v4’s order, with v4’s copy', () => {
+  it('offers v4’s options, in v4’s order, with v4’s copy (P4.D344: Storyteller Rounds third)', () => {
     const fixture = render();
     const options = (Array.from(select(fixture).options) as HTMLOptionElement[]).map((o) => [
       o.value,
@@ -118,6 +118,7 @@ describe('LLMInspectorPanel — the filter (v4 :11-29, :57-62, :94-104)', () => 
     expect(options).toEqual([
       ['all', 'All'],
       ['chat', 'Chat Messages'],
+      ['storyteller', 'Storyteller Rounds'],
       ['memory', 'Memory'],
       ['system', 'System Ops'],
       ['image', 'Image'],
@@ -391,5 +392,30 @@ describe('the SCENARIO_BUILDER filter group (v4 d1c06cd9d)', () => {
     const chat = render({ logs });
     setFilter(chat, 'chat');
     expect(entryIds(chat)).toEqual(['chat']);
+  });
+});
+
+/**
+ * P4.D344 (v4 `b15fe9404`, `LLMInspectorPanel.tsx:15, :43, :81-83`): the
+ * `Storyteller Rounds` filter admits every bid AND every call a round ran — a
+ * speaking turn is a `CHAT_MESSAGE` row, matched on its `storytellerRoundId`.
+ */
+describe('the Storyteller Rounds filter (v4 b15fe9404)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('admits a bid and a round-tagged chat call, and nothing else', () => {
+    const fixture = render({
+      logs: [
+        log({ id: 'turn', type: 'CHAT_MESSAGE', storytellerRoundId: 'abcdef123456' }),
+        log({ id: 'plain', type: 'CHAT_MESSAGE' }),
+        log({ id: 'bid', type: 'STORYTELLER_BID', storytellerRoundId: 'abcdef123456' }),
+        log({ id: 'nullround', type: 'CHAT_MESSAGE', storytellerRoundId: null }),
+        log({ id: 'memory', type: 'MEMORY_EXTRACTION' }),
+      ],
+    });
+    setFilter(fixture, 'storyteller');
+    expect(entryIds(fixture)).toEqual(['bid', 'turn']);
+    setFilter(fixture, 'chat');
+    expect(entryIds(fixture).sort()).toEqual(['nullround', 'plain', 'turn']);
   });
 });

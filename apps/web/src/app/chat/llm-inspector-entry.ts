@@ -32,6 +32,9 @@ const TYPE_BADGE_CLASSES: Record<string, string> = {
   VOICE_REWRITE: 'qt-bg-info/15 qt-text-info',
   // The Host's Scenario Builder (v4 `d1c06cd9d`, `LLMInspectorEntry.tsx:29`).
   SCENARIO_BUILDER: 'qt-bg-info/15 qt-text-info',
+  // === P4.D344: a storyteller seat's bid (v4 `b15fe9404`, `:41`) ===
+  STORYTELLER_BID: 'qt-bg-primary/15 qt-text-primary',
+  // === end P4.D344 ===
 };
 
 /** Badge copy per log type (v4 `:29-42`) — VERBATIM; same twelve-of-nineteen note. */
@@ -52,6 +55,9 @@ const TYPE_LABELS: Record<string, string> = {
   VOICE_REWRITE: 'Voice',
   // v4 `d1c06cd9d` (`:47`) — "Scenario" here; Wire Records says "Scenario Builder".
   SCENARIO_BUILDER: 'Scenario',
+  // === P4.D344 (v4 `:69`) ===
+  STORYTELLER_BID: 'Bid',
+  // === end P4.D344 ===
 };
 
 /** UI truncation threshold for display (v4 `:243` — full content is stored in the DB). */
@@ -178,6 +184,17 @@ export class LlmInspectorMessageBlock {
           [class]="badgeClass()"
           >{{ typeLabel() }}</span
         >
+
+        <!-- === P4.D344: the storyteller round this call belonged to (a bid or a
+             speaking turn) — v4 LLMInspectorEntry.tsx:117-125 === -->
+        @if (log().storytellerRoundId; as rid) {
+          <span
+            class="text-[10px] font-mono px-1.5 py-0.5 rounded qt-bg-muted qt-text-secondary flex-shrink-0"
+            [title]="'Storyteller round ' + rid"
+            >round {{ rid.slice(0, 6) }}</span
+          >
+        }
+        <!-- === end P4.D344 === -->
 
         <span class="text-xs qt-text-secondary truncate min-w-0 flex-shrink"
           >{{ log().provider }}/{{ log().modelName }}</span

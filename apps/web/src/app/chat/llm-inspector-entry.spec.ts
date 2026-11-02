@@ -542,3 +542,31 @@ describe('the SCENARIO_BUILDER type (v4 d1c06cd9d)', () => {
     expect(badge?.className).toContain('qt-text-info');
   });
 });
+
+/**
+ * P4.D344 (v4 `b15fe9404`): the storyteller bid's own type (`LLMInspectorEntry
+ * .tsx:41` badge class, `:69` label) and the round chip after the type badge
+ * (`:117-125`) on any call a round ran.
+ */
+describe('the STORYTELLER_BID type and the round chip (v4 b15fe9404)', () => {
+  it('a bid reads "Bid" in the primary badge, and its round chip names the first six characters', () => {
+    const fixture = render(log({ type: 'STORYTELLER_BID', storytellerRoundId: 'abcdef123456' }));
+    const el = fixture.nativeElement as HTMLElement;
+    const spans = Array.from(el.querySelectorAll('span'));
+    const badgeIndex = spans.findIndex((s) => s.textContent?.trim() === 'Bid');
+    expect(badgeIndex).toBeGreaterThan(-1);
+    expect(spans[badgeIndex].className).toContain('qt-bg-primary/15');
+    expect(spans[badgeIndex].className).toContain('qt-text-primary');
+    const chip = spans[badgeIndex + 1];
+    expect(chip.textContent).toBe('round abcdef');
+    expect(chip.getAttribute('title')).toBe('Storyteller round abcdef123456');
+    expect(chip.getAttribute('class')).toBe(
+      'text-[10px] font-mono px-1.5 py-0.5 rounded qt-bg-muted qt-text-secondary flex-shrink-0',
+    );
+  });
+
+  it('a call outside any round carries no chip', () => {
+    const el = render(log({ type: 'CHAT_MESSAGE' })).nativeElement as HTMLElement;
+    expect(Array.from(el.querySelectorAll('span')).some((s) => s.textContent?.startsWith('round '))).toBe(false);
+  });
+});
