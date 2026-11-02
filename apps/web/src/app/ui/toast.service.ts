@@ -27,15 +27,16 @@ export const TOAST_DEFAULT_DURATION = 3000;
  * ## The mechanism difference (deliberate, and the only one)
  *
  * v4's module is imperative and host-less: the first `showToast` call lazily
- * appends a `<div role="toast-container">` to `document.body` and mounts a
- * React root into it. The Angular analog is this root-provided service holding
- * the toast array as a signal, plus `qt-toast-container` rendered ONCE in the
- * app root (`app.ts`). Two consequences, both harmless:
+ * appends a `<div role="status" aria-live="polite" data-toast-container>` to
+ * `document.body` and mounts a React root into it. The Angular analog is this
+ * root-provided service holding the toast array as a signal, plus
+ * `qt-toast-container` rendered ONCE in the app root (`app.ts`). Two consequences, both harmless:
  *
  *  - the container element exists from boot rather than from the first toast
  *    (it is `pointer-events: none` and zero-sized while empty);
- *  - `role="toast-container"` is carried verbatim — it is v4's own testability
- *    handle and this lane's e2e anchor.
+ *  - `data-toast-container` is v4's testability handle (`58120a7fe`) and the
+ *    e2e anchor (`e2e/support/toasts.ts`); the container is v4's polite live
+ *    region.
  *
  * ## Behavior ported exactly
  *

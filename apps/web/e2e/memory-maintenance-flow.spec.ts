@@ -196,7 +196,7 @@ function countDispatches(page: Page, type: string): { count: () => number } {
 }
 
 const toast = (page: Page, text: string | RegExp) =>
-  page.locator('[role="toast-container"]').getByText(text);
+  page.locator('[data-toast-container]').getByText(text);
 
 const maintenanceHeading = (page: Page) => page.getByRole('heading', { name: 'Maintenance', exact: true });
 

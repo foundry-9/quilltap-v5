@@ -169,7 +169,7 @@ function dispatchResponse(page: Page, type: string): Promise<Response> {
 }
 
 const toast = (page: Page, text: string | RegExp) =>
-  page.locator('[role="toast-container"]').getByText(text);
+  page.locator('[data-toast-container]').getByText(text);
 
 test.describe('P4.D276 — the memory surfaces of v4 d58548051', () => {
   test.skip(!existsSync(MAIN_FIXTURE), 'the committed memories fixture is absent');

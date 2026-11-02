@@ -294,7 +294,7 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
 
     await agentMode.selectOption(other);
     const toast = page
-      .locator('[role="toast-container"] > div')
+      .locator('[data-toast-container] > div')
       .filter({ hasText: 'Failed to update agent mode setting' });
     await expect(toast).toBeVisible({ timeout: 10_000 });
     await expect(agentMode).toHaveValue(stored);
@@ -374,7 +374,7 @@ test.describe('P4.6l — Projects vertical (list → detail → toggle → renam
     const IOTA = 'a3000000-0000-4000-8000-000000000001';
     const ARIA = 'a1000000-0000-4000-8000-000000000001';
     const CLEO = 'a1000000-0000-4000-8000-000000000003';
-    const toasts = page.locator('[role="toast-container"] > div');
+    const toasts = page.locator('[data-toast-container] > div');
 
     await page.goto(`${PROJ_BASE_URL}/prospero`);
     await unlockIfLocked(page);

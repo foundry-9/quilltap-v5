@@ -202,7 +202,7 @@ test.describe('P4.D161 — a pause the user did not cause is announced (LIVE)', 
     await injectPausedChainComplete(page, 'error');
     await openGroupExpedition(page);
 
-    const warnings = page.locator('[role="toast-container"] .qt-toast-warning');
+    const warnings = page.locator('[data-toast-container] .qt-toast-warning');
     await expect(warnings).toHaveCount(0);
 
     await sendAMessage(page, 'Is anyone still there?');
@@ -221,7 +221,7 @@ test.describe('P4.D161 — a pause the user did not cause is announced (LIVE)', 
 
     await sendAMessage(page, 'And now?');
 
-    const infos = page.locator('[role="toast-container"] .qt-toast-info');
+    const infos = page.locator('[data-toast-container] .qt-toast-info');
     await expect(infos).toHaveText([INFO], { timeout: 20_000 });
     // The reason picks the register: the failure sentence is NOT the one shown.
     await expect(page.getByText(WARNING)).toHaveCount(0);
@@ -357,7 +357,7 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
   }
 
   const heldToasts = (page: Page) =>
-    page.locator('[role="toast-container"] .qt-toast-info', { hasText: HELD });
+    page.locator('[data-toast-container] .qt-toast-info', { hasText: HELD });
 
   test('the first held message of a pause raises the notice, and the second does not', async ({
     page,

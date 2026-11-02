@@ -127,7 +127,7 @@ test.describe('P4.D109 — the dropped-attachment warning (LIVE)', () => {
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
 
     // Nothing is warning before the turn.
-    const warnings = page.locator('[role="toast-container"] .qt-toast-warning');
+    const warnings = page.locator('[data-toast-container] .qt-toast-warning');
     await expect(warnings).toHaveCount(0);
 
     // The composer is the qt-rich-editor: drive the contenteditable with real keys.

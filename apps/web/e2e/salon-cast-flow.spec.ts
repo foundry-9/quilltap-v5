@@ -127,7 +127,7 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     // from inside the dialog (P4.25) — and the cast grows by one.
     await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
     await expect(
-      page.locator('[role="toast-container"]').getByText(`${joinerName} has joined the chat`),
+      page.locator('[data-toast-container]').getByText(`${joinerName} has joined the chat`),
     ).toBeVisible({ timeout: 15_000 });
     await expect(castNames).toHaveCount(before + 1, { timeout: 15_000 });
     await expect(castNames.filter({ hasText: joinerName })).toHaveCount(1);
@@ -141,7 +141,7 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 15_000 });
     await expect(
       page
-        .locator('[role="toast-container"]')
+        .locator('[data-toast-container]')
         .getByText(`${joinerName} has been removed from the chat`),
     ).toBeVisible({ timeout: 15_000 });
 
@@ -224,7 +224,7 @@ test.describe('P4.9E1B — the in-chat cast', () => {
     await box.click();
     await expect(
       page
-        .locator('[role="toast-container"]')
+        .locator('[data-toast-container]')
         .getByText(wasOn ? 'Avatar generation disabled' : 'Avatar generation enabled'),
     ).toBeVisible({ timeout: 15_000 });
     await expect(box).toBeChecked({ checked: !wasOn, timeout: 15_000 });

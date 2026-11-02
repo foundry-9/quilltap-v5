@@ -218,7 +218,7 @@ test.describe('P4.D187 — the server holds a user turn in a paused room', () =>
 
       // The notice, once.
       await expect(
-        page.locator('[role="toast-container"] .qt-toast-info', {
+        page.locator('[data-toast-container] .qt-toast-info', {
           hasText: 'Your remark is in the record.',
         }),
       ).toHaveCount(1, { timeout: 20_000 });

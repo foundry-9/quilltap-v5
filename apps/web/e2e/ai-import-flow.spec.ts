@@ -259,7 +259,7 @@ test.describe('p4.9k4 — Summon from Lore joins the cast', () => {
       // catch: the count stayed at `before + 1`, correctly).
       await expect(
         page
-          .locator('[role="toast-container"]')
+          .locator('[data-toast-container]')
           .getByText(/Pennyroyal.* has been removed from the chat/),
       ).toBeVisible({ timeout: 15_000 });
     } finally {

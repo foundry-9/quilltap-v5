@@ -91,7 +91,7 @@ test.describe('P4.9c — About + Profile', () => {
     await expect(save).toBeEnabled();
     await save.click();
     await expect(
-      page.locator('[role="toast-container"]').getByText('Profile updated successfully'),
+      page.locator('[data-toast-container]').getByText('Profile updated successfully'),
     ).toBeVisible();
 
     // The persistence claim: a full reload re-reads from the database.
@@ -103,7 +103,7 @@ test.describe('P4.9c — About + Profile', () => {
     await page.locator('#profile-name').fill(original);
     await page.getByRole('button', { name: 'Save Changes' }).click();
     await expect(
-      page.locator('[role="toast-container"]').getByText('Profile updated successfully'),
+      page.locator('[data-toast-container]').getByText('Profile updated successfully'),
     ).toBeVisible();
   });
 });

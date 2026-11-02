@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } 
 import { resolve } from 'node:path';
 
 import { expect, test, type APIRequestContext, type Page } from './support/fixtures';
+import { toastByClass } from './support/toasts';
 
 import { makeDbKeyFile } from './support/dbkey';
 import {
@@ -217,7 +218,7 @@ function attachmentChips(page: Page) {
 }
 
 function errorToasts(page: Page) {
-  return page.locator('[role="toast-container"] > .qt-toast-error');
+  return toastByClass(page, 'qt-toast-error');
 }
 
 async function dispatch(

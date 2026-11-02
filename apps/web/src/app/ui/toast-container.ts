@@ -17,15 +17,22 @@ const TYPE_CLASS: Record<ToastType, string> = {
  * v4 renders the container div (fixed, bottom-right, `pointer-events: none`)
  * with an inner flex column; v5 collapses the two into one element, since v4's
  * outer and inner divs carry the same `display:flex; flex-direction:column;
- * gap:10px`. `role="toast-container"` is v4's, verbatim.
+ * gap:10px`. The container is v4's polite live region (`58120a7fe`): `role="status"`
+ * + `aria-live="polite"`, with `data-toast-container` as v4's testability handle.
  */
 @Component({
   selector: 'qt-toast-container',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div role="toast-container" class="qt-toast-container">
+    <!-- Polite live region: screen readers announce each toast as it lands. -->
+    <div role="status" aria-live="polite" data-toast-container class="qt-toast-container">
       @for (toast of toasts(); track toast.id) {
-        <div class="qt-toast" [class]="'qt-toast ' + typeClass(toast.type)">{{ toast.message }}</div>
+        <!-- Errors interrupt; everything else waits its turn in the polite region. -->
+        <div
+          class="qt-toast"
+          [class]="'qt-toast ' + typeClass(toast.type)"
+          [attr.role]="toast.type === 'error' ? 'alert' : null"
+        >{{ toast.message }}</div>
       }
     </div>
   `,

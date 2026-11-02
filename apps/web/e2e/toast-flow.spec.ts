@@ -1,4 +1,5 @@
 import { expect, test, type Page } from './support/fixtures';
+import { toastContainer, toastStack } from './support/toasts';
 
 import { E2E_PASSPHRASE } from './support/env';
 
@@ -11,7 +12,7 @@ import { E2E_PASSPHRASE } from './support/env';
  * The three claims v4's module makes and this walk proves against the real
  * server, on a real dialog:
  *
- *  1. a SUCCESS raises v4's sentence inside `[role="toast-container"]` — v4's
+ *  1. a SUCCESS raises v4's sentence inside `[data-toast-container]` — v4's
  *     own testability handle, carried verbatim into the Angular port;
  *  2. a FAILURE raises the server's sentence there instead (driven by a
  *     route-intercept so nothing in the fixture has to be broken to see it);
@@ -34,9 +35,9 @@ async function maybeUnlock(page: Page): Promise<void> {
   }
 }
 
-/** The live stack — the container is v4's `role="toast-container"` div. */
+/** The live stack — the container is v4's `data-toast-container` live region. */
 function toasts(page: Page) {
-  return page.locator('[role="toast-container"] > div');
+  return toastStack(page);
 }
 
 test.describe('P4.25 — the toast subsystem', () => {
@@ -52,7 +53,7 @@ test.describe('P4.25 — the toast subsystem', () => {
 
     // The container exists from boot (the one mechanism divergence from v4,
     // which appends it lazily) and is EMPTY until something is raised.
-    await expect(page.locator('[role="toast-container"]')).toHaveCount(1);
+    await expect(toastContainer(page)).toHaveCount(1);
     await expect(toasts(page)).toHaveCount(0);
 
     await nameInput.fill('Bertram Wilberforce Wooster');

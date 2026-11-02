@@ -467,7 +467,7 @@ test.describe('P4.D286 — the wardrobe item editor, row and picture cleanup', (
     expect((after['images'] as unknown[] | undefined) ?? []).toHaveLength(0);
     expect(refusals).toEqual([]);
     await expect(
-      page.locator('[role="toast-container"] > div').filter({ hasText: /not yet available/i }),
+      page.locator('[data-toast-container] > div').filter({ hasText: /not yet available/i }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Done' }).click();
   });

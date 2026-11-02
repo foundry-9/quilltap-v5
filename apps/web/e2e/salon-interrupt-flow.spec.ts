@@ -328,7 +328,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await send(page, 'Hold that thought.');
     await expect(stopButton(page)).toBeEnabled({ timeout: 15_000 });
     await stopButton(page).click();
-    await expect(page.locator('[role="toast-container"] .qt-toast-info', { hasText: STOP_TOAST })).toBeVisible({
+    await expect(page.locator('[data-toast-container] .qt-toast-info', { hasText: STOP_TOAST })).toBeVisible({
       timeout: 10_000,
     });
     await expect(stopButton(page)).toBeDisabled({ timeout: 10_000 });
@@ -381,7 +381,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     // Stop only once this turn's prose is streaming.
     await expect(page.getByText('Barometer falling').first()).toBeVisible({ timeout: 15_000 });
     await stopButton(page).click();
-    const infos = page.locator('[role="toast-container"] .qt-toast-info');
+    const infos = page.locator('[data-toast-container] .qt-toast-info');
     await expect(infos.filter({ hasText: STOP_TOAST })).toHaveCount(1, { timeout: 15_000 });
     // ONE toast: the stop's, never the pause toast beside it (the sidebar's own
     // "Auto-responses are paused — …" banner is the room's paused state, not a toast).
@@ -445,7 +445,7 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await page.waitForTimeout(1_200);
     const clickedAt = Date.now();
     await stopButton(page).click();
-    await expect(page.locator('[role="toast-container"] .qt-toast-info', { hasText: STOP_TOAST })).toBeVisible({
+    await expect(page.locator('[data-toast-container] .qt-toast-info', { hasText: STOP_TOAST })).toBeVisible({
       timeout: 10_000,
     });
     // The stop settles at once — never the 15 s settle timeout a Brahma stream

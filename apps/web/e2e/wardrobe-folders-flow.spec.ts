@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:f
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from './support/fixtures';
+import { toastStack } from './support/toasts';
 
 import { makeDbKeyFile } from './support/dbkey';
 import {
@@ -198,7 +199,7 @@ test.describe('P4.D285 — wardrobe folders in the browser', () => {
     return dialog;
   }
 
-  const toasts = (page: Page) => page.locator('[role="toast-container"] > div');
+  const toasts = (page: Page) => toastStack(page);
   const folderRow = (dialog: ReturnType<Page['getByRole']>, name: string) =>
     dialog.getByTestId('wardrobe-folder-row').filter({ hasText: name });
   const itemRow = (dialog: ReturnType<Page['getByRole']>, title: string) =>

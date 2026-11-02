@@ -266,7 +266,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     // beside it (the full-suite-only flake this replaced).
     await expect(
       page
-        .locator('[role="toast-container"] > .qt-toast-error')
+        .locator('[data-toast-container] > .qt-toast-error')
         .filter({ hasText: "The 'convert' mount-point action is recognized but not yet available" }),
     ).toBeVisible({ timeout: 15_000 });
 

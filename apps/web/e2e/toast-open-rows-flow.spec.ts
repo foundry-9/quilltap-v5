@@ -3,6 +3,7 @@ import { copyFileSync, existsSync, mkdirSync, openSync, rmSync, writeFileSync } 
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from './support/fixtures';
+import { toastStack } from './support/toasts';
 
 import { makeDbKeyFile } from './support/dbkey';
 import {
@@ -22,7 +23,7 @@ import {
  * OPEN rows, walked live: a character save, a project-detail action, and a
  * files action. Every screen here answered these outcomes with either
  * nothing at all or a v5-invented inline banner before this lane; all three
- * now raise v4's own sentence in `[role="toast-container"]` (`toast-flow.spec.ts`'s
+ * now raise v4's own sentence in `[data-toast-container]` (`toast-flow.spec.ts`'s
  * mechanism, the toast subsystem's own e2e anchor).
  *
  * Own dedicated server + a private copy of the committed groups-projects
@@ -94,7 +95,7 @@ async function unlock(page: Page): Promise<void> {
 
 /** The live toast stack — v4's own testability handle, carried verbatim. */
 function toasts(page: Page) {
-  return page.locator('[role="toast-container"] > div');
+  return toastStack(page);
 }
 
 test.describe('P4.29 — the census OPEN rows, three representative beats', () => {

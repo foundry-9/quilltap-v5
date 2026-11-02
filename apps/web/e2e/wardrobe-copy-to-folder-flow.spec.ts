@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, openSync, rmSync, writeFileSync } from 'node:f
 import { resolve } from 'node:path';
 
 import { expect, test, type Page } from './support/fixtures';
+import { toastStack } from './support/toasts';
 
 import { makeDbKeyFile } from './support/dbkey';
 import {
@@ -190,7 +191,7 @@ test.describe('P4.D309 — wardrobe copy to folder in the browser', () => {
     return dialog;
   }
 
-  const toasts = (page: Page) => page.locator('[role="toast-container"] > div');
+  const toasts = (page: Page) => toastStack(page);
   const itemRow = (dialog: ReturnType<Page['getByRole']>, title: string) =>
     dialog.locator('qt-wardrobe-item-row').filter({ hasText: title });
 

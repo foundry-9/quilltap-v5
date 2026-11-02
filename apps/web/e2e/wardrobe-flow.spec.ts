@@ -1122,7 +1122,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     // it as a toast and the dialog carries no banner (P4.25).
     await expect(
       page
-        .locator('[role="toast-container"] > div')
+        .locator('[data-toast-container] > div')
         .filter({
           hasText:
             'No image profile is configured. Set one in Settings → Images before generating avatars.',
@@ -1434,7 +1434,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     const index = await entryIndex(earlier);
     await earlier.getByRole('button', { name: 'Wear again', exact: true }).click();
     await expect(
-      page.locator('[role="toast-container"]').getByText(`Back in outfit ${index}`, { exact: true }),
+      page.locator('[data-toast-container]').getByText(`Back in outfit ${index}`, { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
     await expect(dialog.getByTestId(`outfit-history-entry-${index}`)).toContainText('Wearing now');
     // The cursor moved; nothing was appended.
@@ -1513,7 +1513,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     });
     await earlier.getByRole('button', { name: 'Wear again', exact: true }).click();
     await expect(
-      page.locator('[role="toast-container"]').getByText(`Back in outfit ${index}`, { exact: true }),
+      page.locator('[data-toast-container]').getByText(`Back in outfit ${index}`, { exact: true }),
     ).toBeVisible({ timeout: 10_000 });
 
     // Live: the staged monocle is GONE and the restored outfit paints.
@@ -1920,7 +1920,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     const section = page.getByTestId('wardrobe-item-image-section');
     await expect(section).toContainText('No picture yet', { timeout: 10_000 });
 
-    const toasts = page.locator('[role="toast-container"] > div');
+    const toasts = page.locator('[data-toast-container] > div');
     await page.getByLabel('Upload a picture').setInputFiles({
       name: 'amber.png',
       mimeType: 'image/png',
@@ -2115,7 +2115,7 @@ test.describe('P4.9f2 — the wardrobe control dialog', () => {
     await garmentWithTwoPictures(page, title, Date.now() + 101);
     const dialog = page.getByRole('dialog').filter({ has: page.locator('.qt-dialog-title', { hasText: /^Wardrobe$/ }) });
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    const toasts = page.locator('[role="toast-container"] > div');
+    const toasts = page.locator('[data-toast-container] > div');
 
     const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: title }).first();
     await row.getByRole('button', { name: `View the picture of ${title}` }).click();

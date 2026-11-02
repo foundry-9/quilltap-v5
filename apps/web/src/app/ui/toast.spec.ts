@@ -102,9 +102,9 @@ describe('ToastContainer', () => {
     };
   }
 
-  it("renders v4's role=\"toast-container\" handle, empty at rest", () => {
+  it("renders v4's data-toast-container handle, empty at rest", () => {
     const { host } = render();
-    const container = host.querySelector('[role="toast-container"]');
+    const container = host.querySelector('[data-toast-container]');
     expect(container).not.toBeNull();
     expect(container?.children).toHaveLength(0);
   });
@@ -117,7 +117,7 @@ describe('ToastContainer', () => {
     toasts.showInfo('Working…');
     detect();
 
-    const nodes = Array.from(host.querySelectorAll('[role="toast-container"] > div'));
+    const nodes = Array.from(host.querySelectorAll('[data-toast-container] > div'));
     expect(nodes.map((n) => n.textContent?.trim())).toEqual([
       'Chat renamed',
       'Failed to rename chat',
@@ -136,10 +136,36 @@ describe('ToastContainer', () => {
     const { host, toasts, detect } = render();
     toasts.showInfo('gone in a moment');
     detect();
-    expect(host.querySelectorAll('[role="toast-container"] > div')).toHaveLength(1);
+    expect(host.querySelectorAll('[data-toast-container] > div')).toHaveLength(1);
 
     vi.advanceTimersByTime(3000);
     detect();
-    expect(host.querySelectorAll('[role="toast-container"] > div')).toHaveLength(0);
+    expect(host.querySelectorAll('[data-toast-container] > div')).toHaveLength(0);
+  });
+
+  it('is a polite live region (v4 58120a7fe: role="status" aria-live="polite")', () => {
+    const { host } = render();
+    const container = host.querySelector('[data-toast-container]');
+    expect(container?.getAttribute('role')).toBe('status');
+    expect(container?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('gives an error toast role="alert" so it interrupts', () => {
+    const { host, toasts, detect } = render();
+    toasts.showError('Failed to rename chat');
+    detect();
+    const node = host.querySelector('[data-toast-container] > div');
+    expect(node?.getAttribute('role')).toBe('alert');
+  });
+
+  it('gives success / warning / info toasts NO role (they wait in the polite region)', () => {
+    const { host, toasts, detect } = render();
+    toasts.showSuccess('ok');
+    toasts.showWarning('careful');
+    toasts.showInfo('fyi');
+    detect();
+    const nodes = Array.from(host.querySelectorAll('[data-toast-container] > div'));
+    expect(nodes).toHaveLength(3);
+    for (const n of nodes) expect(n.getAttribute('role')).toBeNull();
   });
 });

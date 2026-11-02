@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): the toast role — the toast stack is a polite live region (`role="status"`), error toasts `role="alert"`, specs select `data-toast-container`
+
+_Versions: SPA 0.5.908._
+
+P4.D358's first commit, cherry-pickable on its own (v4 `58120a7fe`). The toast container drops the invalid `role="toast-container"` for v4's `role="status" aria-live="polite" data-toast-container`, and an error toast now carries `role="alert"` so a screen reader interrupts for it; other toasts carry no role. New `e2e/support/toasts.ts` exports `toastContainer`, `toastStack` and `toastByClass`; the 37 selector lines in 19 e2e spec files move to `[data-toast-container]` (the five files with a local helper now delegate to it). `ui/toast.spec.ts` gains three cases for the live-region attributes.
+
+## November 2026
+
 #### 2026-11-02 — docs(porting): P4.D360 — close the CLI node_modules finding under the extended pin-only install ruling
 
 _Docs-only change._

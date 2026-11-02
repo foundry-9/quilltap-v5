@@ -113,7 +113,7 @@ async function readTitle(
  * round trip is the proof, the toast is the UI's report of it.
  */
 const renamedToast = (page: Page) =>
-  page.locator('[role="toast-container"] div.qt-toast-success', { hasText: 'Chat renamed' });
+  page.locator('[data-toast-container] div.qt-toast-success', { hasText: 'Chat renamed' });
 
 /**
  * The `chatUpdate` dispatch that commits `title` — matched on the RESPONSE BODY
@@ -253,7 +253,7 @@ test.describe('P4.9E3C — Rename Chat', () => {
     // can still be on screen here, so an any-toast probe would match it early
     // and start the revert assertion's clock before the regenerate has even
     // answered (the flake's second arm, same repro).
-    await expect(page.locator('[role="toast-container"] > div.qt-toast-error').first()).toBeVisible(
+    await expect(page.locator('[data-toast-container] > div.qt-toast-error').first()).toBeVisible(
       { timeout: 15_000 },
     );
     await expect(auto).not.toBeChecked();
@@ -869,7 +869,7 @@ test.describe('P4.D213 — Rebuild Summary', () => {
     );
 
     await expect(
-      page.locator('[role="toast-container"] div.qt-toast-success', {
+      page.locator('[data-toast-container] div.qt-toast-success', {
         hasText: 'Summary cleared — the Librarian is rebuilding it.',
       }),
     ).toBeVisible({ timeout: 15_000 });
