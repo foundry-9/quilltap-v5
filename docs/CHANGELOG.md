@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — port(inventory): re-aim the item-folders oracle; drop the two dead Inventory folder wrappers (v4 0276d10d9)
+
+_Versions: core 0.0.1382._
+
+v4 `0276d10d9` deleted `normalizeInventoryFolderPath` and `inventoryFolderStorePath` from `lib/inventory/folders.ts`, so `harness/oracle/cases/item-folders.ts` died at import at the pin (`does not provide an export named 'inventoryFolderStorePath'`). The case now builds the two as local wrappers over the generic `normalizeItemFolderPath` / `itemFolderStorePath` with `INVENTORY_FOLDER_RULES`, exactly what the deleted ones did; every row keeps its name and bytes. v5's two twins (`inventory::folders::normalize_inventory_folder_path`, `inventory_folder_store_path`) had no caller outside the differential and are deleted; `inventory_folders_equivalence` calls the generic helpers. Green from the pin.
+
 #### 2026-11-02 — port(tools): text-block wardrobe and object blocks ask for a picture cue (v4 265b711dd)
 
 _Versions: core 0.0.1381._

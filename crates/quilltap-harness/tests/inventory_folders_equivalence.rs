@@ -21,11 +21,11 @@
 //!     cargo test -p quilltap-harness --test inventory_folders_equivalence -- --nocapture
 
 use quilltap_core::inventory::folders::{
-    folder_of_inventory_path, inventory_folder_store_path, is_inventory_item_document_path,
-    is_safe_inventory_folder_path, is_valid_inventory_folder_path, normalize_inventory_folder_name,
-    normalize_inventory_folder_path, normalize_inventory_folder_path_or_root,
-    resolve_inventory_folder, InventoryFolderError, INVENTORY_FOLDER, INVENTORY_FOLDER_MAX_DEPTH,
-    INVENTORY_FOLDER_RULES, INVENTORY_FOLDER_SCHEMA_MESSAGE, INVENTORY_RESERVED_FOLDER_SEGMENTS,
+    folder_of_inventory_path, is_inventory_item_document_path, is_safe_inventory_folder_path,
+    is_valid_inventory_folder_path, normalize_inventory_folder_name,
+    normalize_inventory_folder_path_or_root, resolve_inventory_folder, InventoryFolderError,
+    INVENTORY_FOLDER, INVENTORY_FOLDER_MAX_DEPTH, INVENTORY_FOLDER_RULES,
+    INVENTORY_FOLDER_SCHEMA_MESSAGE, INVENTORY_RESERVED_FOLDER_SEGMENTS,
 };
 use quilltap_core::inventory::item_folders::{
     self, folder_crumb, folder_name, folder_of_item_path, folder_segments, folder_under_item_root,
@@ -265,7 +265,10 @@ fn item_folders_match_oracle() {
                 row["out"].clone(),
             ),
             "inv_normalize" => (
-                inv_outcome(normalize_inventory_folder_path(opt(&row, "input"))),
+                inv_outcome(
+                    normalize_item_folder_path(&INVENTORY_FOLDER_RULES, opt(&row, "input"))
+                        .map_err(InventoryFolderError::Path),
+                ),
                 row["out"].clone(),
             ),
             "inv_normalize_or_root" => (
@@ -299,7 +302,10 @@ fn item_folders_match_oracle() {
                 )
             }
             "inv_store_path" => (
-                json!(inventory_folder_store_path(s(&row, "folder"))),
+                json!(item_folder_store_path(
+                    &INVENTORY_FOLDER_RULES,
+                    s(&row, "folder")
+                )),
                 row["out"].clone(),
             ),
             other => panic!("unknown row kind {other}"),

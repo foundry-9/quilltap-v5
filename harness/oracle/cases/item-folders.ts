@@ -61,16 +61,24 @@ import {
   InventoryFolderNotFoundError,
   InventoryItemNotInLocationError,
   folderOfInventoryPath,
-  inventoryFolderStorePath,
+  InventoryFolderPathError,
   isInventoryItemDocumentPath,
   isSafeInventoryFolderPath,
   isValidInventoryFolderPath,
   normalizeInventoryFolderName,
-  normalizeInventoryFolderPath,
   normalizeInventoryFolderPathOrRoot,
   resolveInventoryFolder,
 } from '@/lib/inventory/folders';
 import { InventoryFolderPathSchema } from '@/lib/schemas/inventory.types';
+
+// v4 `0276d10d9` (P4.D350) deleted the two Inventory wrappers below with no
+// replacement; at `236c04e35` callers use the generic helpers with
+// `INVENTORY_FOLDER_RULES` directly. These local wrappers are byte-for-byte
+// what the deleted ones did (`folders.ts` at `322a5488e`), so the rows keep
+// their names and bytes.
+const normalizeInventoryFolderPath = (input: string | null | undefined): string =>
+  normalizeItemFolderPath(INVENTORY_FOLDER_RULES, input, (m: string) => new InventoryFolderPathError(m));
+const inventoryFolderStorePath = (folder: string): string => itemFolderStorePath(INVENTORY_FOLDER_RULES, folder);
 
 const BASELINE = 'p4.d324-item-folders';
 

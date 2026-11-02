@@ -82,14 +82,6 @@ impl std::fmt::Display for InventoryFolderError {
 
 impl std::error::Error for InventoryFolderError {}
 
-/// Normalise an operator-typed folder path.
-pub fn normalize_inventory_folder_path(
-    input: Option<&str>,
-) -> Result<String, InventoryFolderError> {
-    item_folders::normalize_item_folder_path(&INVENTORY_FOLDER_RULES, input)
-        .map_err(InventoryFolderError::Path)
-}
-
 /// A folder an existing object carries, in normal form or the root.
 pub fn normalize_inventory_folder_path_or_root(input: Option<&str>) -> String {
     item_folders::normalize_item_folder_path_or_root(&INVENTORY_FOLDER_RULES, input)
@@ -129,12 +121,6 @@ pub fn folder_of_inventory_path(relative_path: &str) -> String {
     item_folders::folder_of_item_path(&INVENTORY_FOLDER_RULES, relative_path)
 }
 
-/// The store path of an Inventory folder: `''` → `Inventory`, `A/B` →
-/// `Inventory/A/B`.
-pub fn inventory_folder_store_path(folder: &str) -> String {
-    item_folders::item_folder_store_path(&INVENTORY_FOLDER_RULES, folder)
-}
-
 /// The folder under `Inventory/` for a store folder path (or `None`).
 pub fn folder_under_inventory_root(store_path: &str) -> Option<String> {
     item_folders::folder_under_item_root(&INVENTORY_FOLDER_RULES, store_path)
@@ -167,7 +153,8 @@ mod tests {
             "Not in this inventory (shared items are filed where they live): x, y"
         );
         assert_eq!(
-            normalize_inventory_folder_path(Some("images"))
+            item_folders::normalize_item_folder_path(&INVENTORY_FOLDER_RULES, Some("images"))
+                .map_err(InventoryFolderError::Path)
                 .unwrap_err()
                 .to_string(),
             "\"images\" is reserved for item pictures and cannot be a inventory folder"
