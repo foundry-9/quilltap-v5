@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D360 — close the plugin-SDK finding under the pin-only floor install ruling
+
+_Docs-only change._
+
+Under the human's 2026-11-02 ruling (the pin's plugin SDKs installed pin-only, offline, at their range floors by `.claude/pin-plugin-sdks.sh`), `provider_sdk_version_guard` passes 4 / 4 on a fresh pin. The lane record and the order's status header record the closure; the CLI symlink finding stays open.
+
 #### 2026-11-02 — docs(porting): P4.D360 lane record — help 137, docs/v4 518, the NO-PORT record and the HANDOFF table
 
 _Docs-only change._

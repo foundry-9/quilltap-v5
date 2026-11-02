@@ -194605,6 +194605,13 @@ None moved: core 0.0.1379, host 0.0.217, web 0.0.251, cli 0.0.35, tauri 0.0.9, S
 - **`recipe_sweep.py --self-test`:** 0 failures.
 - **R-7 emptiness:** `git diff --stat main -- 'crates/*/src' apps/web Cargo.toml Cargo.lock 'crates/*/Cargo.toml' harness/oracle` → EMPTY. `git diff --stat main -- crates` → exactly the five test files (27 +, 9 −).
 
+### P4.D360 addendum — FINDING 1 (plugin SDKs past the pin) CLOSED (2026-11-02)
+
+- **Ruling (human, 2026-11-02):** install the pin's plugin SDKs PIN-ONLY, offline, at their range floors. The recipe is `.claude/pin-plugin-sdks.sh <PIN>` (main checkout), run after the root `npm ci --offline`. It REPLACES symlink class (3) for the rest of the `236c04e35` round and never touches the live checkout.
+- **Re-check:** a fresh pin `/tmp/qt-v4-pin-p4d360b-236c04e35` (`236c04e35`; root `npm ci --offline` "added 1159 packages"; then the script). The script reported `openai 7.23.0 | anthropic 0.115.0 | genai 1.52.0 | openrouter 1.3.28 | plugin-utils 2.7.1`; no plugin `node_modules` symlink was left in the pin; the live `plugins/dist/qtap-plugin-openai/node_modules/openai` still reads 7.45.1.
+- `QT_V4_CHECKOUT=<that pin> cargo test -p quilltap-harness --test provider_sdk_version_guard` → **4 passed / 0 failed**, `every_installed_provider_sdk_matches_the_recorded_version` ok (the RECORDED plugin legs green; the root legs green on U4's constants). No constant moved.
+- **Still open, outside the ruling:** FINDING 1(b) — symlink class (2) (`packages/quilltap/node_modules` → the live checkout, past the pin's driver) still makes every `cli_differential` case red on the driver-rebuild line. The ruling covers class (3) only; class (2) needs its own.
+
 ## P4.D359 — the SPA riders of the `236c04e35` round (floating Brahma Console, name chips, keystone UI, vault-key fields) — lane record
 
 _2026-11-03. Branch `claude/p4.d359-spa-riders-8976915ea`. Cut from `main` `8976915ea`, then rebased onto P4.D353's Tier-1 commit `c1da5c4de`, so the name-chips hook stacks on it as the order says. Worktree `.claude/worktrees/p4d359`. Wave 1. Pin `236c04e35`. Own-instance e2e: port 4358, mock 45356. The lane was paused for a machine restart. On resume, /tmp was empty: the pin and the scratch were rebuilt, `git worktree prune` first; no stale server held either port._
