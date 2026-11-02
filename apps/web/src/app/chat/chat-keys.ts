@@ -53,6 +53,20 @@ export const chatKeys = {
    * publishes `chats` explicitly. See `realtime-topic-map.ts`.
    */
   informs: (chatId: string) => ['chat', chatId, 'informs'] as const,
+  // === P4.D344: Storyteller mode ===
+  /**
+   * The chat's storyteller round — open, running or the last one closed (v4
+   * `queryKeys.chats.storytellerRound`, `b15fe9404`, `['chats', id,
+   * 'storytellerRound']`) — what the board above the composer reads from
+   * `chatStorytellerRound`.
+   *
+   * Like {@link informs} it sits under {@link detail}'s prefix, so a `chats`
+   * topic invalidation ALSO refetches the board (v4's does not) — a harmless
+   * superset (P4.D344 R-6). The `storytellerRounds` topic is its own row in
+   * `realtime-topic-map.ts`, as v4's is.
+   */
+  storytellerRound: (chatId: string) => ['chat', chatId, 'storytellerRound'] as const,
+  // === end P4.D344 ===
   /**
    * Where the chat's scene was taken from (v4 `queryKeys.chats.scenarioSource`,
    * `545e299bb`) — what the in-chat scenario control reads from

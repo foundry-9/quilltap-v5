@@ -131,9 +131,14 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     }
   });
 
-  it('carries all eight topics and eight sweep prefixes (v4: eight and ten; mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
-    expect(REALTIME_TOPICS).toHaveLength(8);
-    expect(REALTIME_TOPICS[REALTIME_TOPICS.length - 1]).toBe('inventory');
+  // §R.10 (f) `RealtimeTopicAppend`: each adder rewrites the "last topic"
+  // assert to `toContain` (P4.D344 adds `storytellerRounds` NINTH, P4.D346
+  // `customToolInterventions` TENTH); the unifier restores the positional
+  // assert at ten.
+  it('carries every topic and eight sweep prefixes (mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
+    expect(REALTIME_TOPICS).toContain('inventory');
+    expect(REALTIME_TOPICS).toContain('storytellerRounds');
+    expect(REALTIME_TOPICS.indexOf('storytellerRounds')).toBe(REALTIME_TOPICS.indexOf('inventory') + 1);
     expect(ALL_REALTIME_PREFIXES).toHaveLength(8);
     // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
     expect(ALL_REALTIME_PREFIXES[ALL_REALTIME_PREFIXES.length - 1]).toEqual(['memories']);
@@ -237,4 +242,18 @@ describe('the outfit timelines (P4.D318 — v4 8d8618819 topic-map.ts row, as an
     expect(queryKeysForTopic('inventory')).toEqual([]);
     expect(queryKeysForTopic('inventory', 'item-1')).toEqual([]);
   });
+
+  // === P4.D344: Storyteller mode ===
+  it('storytellerRounds: the chat\'s round key when scoped, the chat collection otherwise (v4 topic-map.ts:101-103)', () => {
+    expect(queryKeysForTopic('storytellerRounds', 'chat-9')).toEqual([['chat', 'chat-9', 'storytellerRound']]);
+    expect(queryKeysForTopic('storytellerRounds')).toEqual([['chats']]);
+    expect(chatKeys.storytellerRound('chat-9')).toEqual(['chat', 'chat-9', 'storytellerRound']);
+  });
+
+  it('the round key sits under the chat detail prefix, so a scoped chats hint reaches it too (R-6 — a harmless superset)', () => {
+    const [scoped] = queryKeysForTopic('chats', 'chat-9');
+    expect(partialMatchKey([...chatKeys.storytellerRound('chat-9')], [...scoped])).toBe(true);
+    expect(partialMatchKey([...chatKeys.storytellerRound('chat-8')], [...scoped])).toBe(false);
+  });
+  // === end P4.D344 ===
 });

@@ -59,6 +59,13 @@ export const REALTIME_TOPICS = [
    * `chats` topic's. (v4 `e1872c94f`, appended after `memories`; P4.D330.)
    */
   'inventory',
+  // === P4.D344: Storyteller mode ===
+  /**
+   * A storyteller round opened, a bid landed, the round ran or closed — the
+   * board's query. (v4 `b15fe9404`, appended after `inventory`; P4.D344.)
+   */
+  'storytellerRounds',
+  // === end P4.D344 ===
 ] as const;
 
 export type RealtimeTopic = (typeof REALTIME_TOPICS)[number];

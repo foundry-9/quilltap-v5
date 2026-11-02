@@ -158,6 +158,16 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // `ALL_REALTIME_PREFIXES` is unchanged (v4 adds two).
       return [];
 
+    // === P4.D344: Storyteller mode ===
+    case 'storytellerRounds':
+      // v4 `topic-map.ts:101-103` byte for byte (`queryKeys.chats.all` ↔
+      // `chatKeys.all`). The scoped key sits under `chatKeys.detail(id)`'s
+      // prefix, so it is NOT a reconnect-sweep prefix of its own — exactly as
+      // `chatKeys.informs` is not (P4.D344 item 3); the bare arm's
+      // `chatKeys.all` is already swept, so `ALL_REALTIME_PREFIXES` is unchanged.
+      return id ? [chatKeys.storytellerRound(id)] : [chatKeys.all];
+    // === end P4.D344 ===
+
     default:
       return [];
   }

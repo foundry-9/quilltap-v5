@@ -133,6 +133,15 @@ export interface ChatUpdateRequest {
    * 400 with nothing written, so the client must never send a free-form string.
    */
   conciergeState?: ConciergeState;
+  // === P4.D344: Storyteller mode (W1) ===
+  /**
+   * The chat's turn mode (v4 `b15fe9404`, `chatUpdateRequestSchema.turnMode`).
+   * turnMode rides beside `chat`, not in it: it is patch-only on the row and has
+   * its own setter server-side. Absent leaves the mode alone; `null` or any
+   * other value is a 400 with nothing written, so the SPA sends only the two.
+   */
+  turnMode?: 'rotation' | 'storyteller';
+  // === end P4.D344 ===
 }
 
 /** Turn-management actions (v4 `handleTurnAction`). */
@@ -2718,6 +2727,12 @@ export type CoreRequest =
   | ChatStopTurnRequest
   | ChatRaiseHandRequest
   // === end P4.D336 ===
+  // === P4.D344: Storyteller mode (W1 — P4.D343 serves it) ===
+  | ChatStorytellerRoundRequest
+  | ChatStorytellerRunRequest
+  | ChatStorytellerAskRequest
+  | ChatStorytellerLieRequest
+  // === end P4.D344 ===
   | ChatInformsListRequest
   | ChatInformCancelRequest
   // --- The Host's Scenario Builder (the d1c06cd9d round's §S.1; P4.D217 serves
@@ -3301,6 +3316,10 @@ export interface MessageDto {
   hostEvent: HostEvent | null;
   customAnnouncer: CustomAnnouncer | null;
   carinaMeta: CarinaMeta | null;
+  // === P4.D344: Storyteller mode (W1) ===
+  /** The bid a speaking turn carried out (v4 `chat_messages.storytellerBid`); never model-facing. */
+  storytellerBid?: StorytellerBidRecord | null;
+  // === end P4.D344 ===
   /** The Pascal roll record (v4 `.nullable().optional()`); the read omits it when
    *  NULL, so it's typed optional here rather than `| null` like `carinaMeta`. */
   pascalMeta?: PascalMeta | null;
@@ -3401,6 +3420,17 @@ export interface ChatDetail {
   createdAt: string;
   updatedAt: string;
   isPaused: boolean;
+  // === P4.D344: Storyteller mode (W1) ===
+  /**
+   * The chat's turn mode (v4 `types.ts:262`). The wire never sends null (v4
+   * `handlers/get.ts:378 ?? 'rotation'`); OPTIONAL here only because an older
+   * server omits the key — read it through `turnModeOf` (`chat/storyteller-
+   * board.pure.ts`), never a scattered default.
+   */
+  turnMode?: 'rotation' | 'storyteller';
+  /** Storyteller: invite by talkativeness (v4 `types.ts:264`; off = everyone is asked every round). */
+  storytellerInviteFilter?: boolean;
+  // === end P4.D344 ===
   isManuallyRenamed: boolean;
   /** The per-chat composition-mode flag (v4 `chats.documentEditingMode` —
    *  Enter inserts a newline, Cmd/Ctrl+Enter sends). Baked from
@@ -4864,6 +4894,12 @@ export type CoreResponse =
   | { type: 'stopTurn'; data: StopTurnResult }
   | { type: 'raiseHand'; data: RaiseHandResult }
   // === end P4.D336 ===
+  // === P4.D344: Storyteller mode (W1) ===
+  | { type: 'storytellerRound'; data: StorytellerRoundResponse }
+  | { type: 'storytellerRun'; data: null }
+  | { type: 'storytellerAsk'; data: StorytellerAskResult }
+  | { type: 'storytellerLie'; data: StorytellerLieResult }
+  // === end P4.D344 ===
   | { type: 'message'; data: { message: MessageDto } }
   | { type: 'messageDelete'; data: MessageDeleteDto }
   // --- The Settings surface (P4.6d implements the server side) ---
@@ -5197,6 +5233,22 @@ export interface ChatStreamFrame {
    * CLIENT's, §C.4). It never appears without `paused: true`.
    */
   heldUserTurn?: boolean;
+
+  // === P4.D344: Storyteller mode (W1) ===
+  /**
+   * Storyteller: a frame from one of several turns sharing the stream ("all at
+   * once"). Every such frame carries `participantId`; the Salon keeps one
+   * streaming bubble per participant for them.
+   */
+  concurrent?: boolean;
+  /** Storyteller: the round's board as it opened. */
+  storytellerRound?: StorytellerRound;
+  /** Storyteller: one seat's bid landed. */
+  storytellerBid?: { roundId: string; bid: StorytellerBid };
+  /** Storyteller: every bid is in (or the board timed out); the choice is the operator's. */
+  roundOpen?: boolean;
+  roundId?: string;
+  // === end P4.D344 ===
 
   // mid-turn posted messages (full MessageEvent objects)
   carinaAnswer?: PostedMessage;
@@ -7647,6 +7699,19 @@ export interface CustomToolLibraryEntry {
   llm: boolean;
   /** How many trigger phrases the tool listens for (0 = none) (v4 `362426c8f`). */
   triggerCount: number;
+  // === P4.D344: declared tool effects (W1; v4 `b15fe9404`) ===
+  /**
+   * The tool's declared effect: `write` touches state, wardrobe, inventory or
+   * the log; `read` only rolls and announces. Key order `LibraryEntryKeys`:
+   * `intervention` (P4.D345 / P4.D346) sits between `triggerCount` and this.
+   *
+   * The server always sends it once P4.D343 lands; OPTIONAL here because main's
+   * server omits it today and the library fixtures in P4.D346's
+   * `workbench-library.spec.ts` (not this lane's file) carry no `effect` key —
+   * the unifier may tighten it to required on the union (P4.D344 record).
+   */
+  effect?: 'read' | 'write';
+  // === end P4.D344 ===
   parameterCount: number;
   outcomeCount: number;
   mountPointId: string;
@@ -9179,6 +9244,126 @@ export interface RaiseHandResult {
   active: boolean;
 }
 // === end P4.D336 ===
+
+// === P4.D344: Storyteller mode (W1) ===
+// Field for field from v4 `lib/schemas/storyteller.types.ts` at `236c04e35`
+// (optional / nullable preserved). P4.D343 serves the wire.
+
+/** The tiers a bid may claim, lowest first. */
+export type StorytellerTier = 'simple' | 'lookup' | 'act' | 'destroy';
+
+export type StorytellerOrder = 'sequential' | 'simultaneous';
+
+/** What became of one invited seat's bid. */
+export type StorytellerBidStatus = 'pending' | 'bid' | 'pass' | 'error' | 'kept-quiet';
+
+/** One seat's card on the board. */
+export interface StorytellerBid {
+  participantId: string;
+  characterId: string;
+  characterName: string;
+  status: StorytellerBidStatus;
+  /** The tier the character claimed. */
+  statedTier?: StorytellerTier | null;
+  /** The tier the server computed: the highest of the claim and the named tools' effects. */
+  tier?: StorytellerTier | null;
+  /** The named tools put the bid above what the character claimed. */
+  tierRaised: boolean;
+  /** Tools the character named, as intent (`run_custom:<name>` for a custom tool). */
+  tools: string[];
+  /** One or two sentences of what they mean to do. Private to the board. */
+  plan?: string | null;
+  /** Why a pass or error is one. */
+  reason?: string | null;
+  /** The talkativeness the seat was weighed with. */
+  talkativeness: number;
+  /** Silent seat: may only act or emote. */
+  silent: boolean;
+  askedAt?: string | null;
+  answeredAt?: string | null;
+}
+
+export interface StorytellerSelection {
+  participantIds: string[];
+  order: StorytellerOrder | null;
+  chosenAt: string;
+  /** Display names in chosen order, kept for the one-line summary after the bids are cleared. */
+  names: string[];
+}
+
+export interface StorytellerRound {
+  id: string;
+  chatId: string;
+  /** The operator post that opened the round. */
+  triggerMessageId: string | null;
+  status: 'open' | 'running' | 'closed';
+  bids: StorytellerBid[];
+  selection?: StorytellerSelection | null;
+  /** Why it closed: run, let lie, superseded by a new post, or abandoned. */
+  closedReason?: 'ran' | 'let-lie' | 'superseded' | 'abandoned' | null;
+  createdAt: string;
+  updatedAt: string;
+  closedAt?: string | null;
+}
+
+/** The bid a speaking turn carried out, stored on its message. Never model-facing. */
+export interface StorytellerBidRecord {
+  roundId: string;
+  tier: StorytellerTier;
+  plan: string;
+  toolsNamed: string[];
+}
+
+export const TIER_LABELS: Record<StorytellerTier, string> = {
+  simple: 'Simple',
+  lookup: 'Lookup',
+  act: 'Act',
+  destroy: 'Destroy',
+};
+
+/** v4 `GET ?action=storyteller-round`. */
+export interface ChatStorytellerRoundRequest {
+  type: 'chatStorytellerRound';
+  chatId: string;
+}
+
+/** v4 `POST ?action=storyteller-run`. The reply is empty; every frame rides the chat's Event channel. */
+export interface ChatStorytellerRunRequest {
+  type: 'chatStorytellerRun';
+  chatId: string;
+  roundId: string;
+  participantIds: string[];
+  order?: StorytellerOrder;
+  keepOrder?: boolean;
+}
+
+/** v4 `POST ?action=storyteller-ask` — ask a kept-quiet / failed seat anyway. */
+export interface ChatStorytellerAskRequest {
+  type: 'chatStorytellerAsk';
+  chatId: string;
+  roundId: string;
+  participantId: string;
+}
+
+/** v4 `POST ?action=storyteller-lie` — close the round unrun. */
+export interface ChatStorytellerLieRequest {
+  type: 'chatStorytellerLie';
+  chatId: string;
+  roundId: string;
+}
+
+export interface StorytellerRoundResponse {
+  round: StorytellerRound | null;
+}
+
+export interface StorytellerAskResult {
+  bid: StorytellerBid;
+}
+
+export interface StorytellerLieResult {
+  closed: boolean;
+}
+// === end P4.D344 ===
 
 /** v4 `GET /api/v1/chats/[id]?action=informs` — the batches still owed. */
 export interface ChatInformsListRequest {

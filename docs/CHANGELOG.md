@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Storyteller wire W1 — contract types, the round key, the ninth realtime topic
+
+_Versions: SPA 0.5.908._
+
+P4.D344 Tier 1 items 2–3. The SPA side of wire contract W1 (P4.D343 serves it), each site in a `// === P4.D344 ===` fence: the storyteller types and `TIER_LABELS` (v4 `lib/schemas/storyteller.types.ts` at `236c04e35`, field for field), the four `chatStoryteller*` requests and their responses, `ChatUpdateRequest.turnMode` as a sibling of `chat`, `ChatDetail.turnMode` / `storytellerInviteFilter` (optional; read through `turnModeOf`), `MessageDto.storytellerBid`, the five board/concurrent frame keys, `CustomToolLibraryEntry.effect` (optional until the server sends it), `LlmLogType` `STORYTELLER_BID` and `LlmLogDto.storytellerRoundId`. Adds `chatKeys.storytellerRound` under the chat detail prefix and `storytellerRounds` as the ninth realtime topic; the topic-map spec's last-topic assert becomes `toContain` per the round's append rule.
+
+## November 2026
+
 #### 2026-11-02 — docs(porting): P4.D357 lane record — WCAG tokens, CSS and theme packs
 
 _Docs-only change._

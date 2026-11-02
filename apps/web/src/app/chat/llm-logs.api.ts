@@ -55,7 +55,9 @@ export type LlmLogType =
   | 'WARDROBE_ITEM_IMAGE'
   | 'ANSWER_CONFIRMATION'
   // The Host's Scenario Builder (v4 `d1c06cd9d` adds it to `LLMLogTypeEnum`).
-  | 'SCENARIO_BUILDER';
+  | 'SCENARIO_BUILDER'
+  // === P4.D344: a storyteller seat's bid call (v4 `b15fe9404`, appended last) ===
+  | 'STORYTELLER_BID';
 
 /** One prompt message in a logged request (v4 `LLMLogMessageSummarySchema` :44-49). */
 export interface LlmLogMessageSummary {
@@ -115,6 +117,8 @@ export interface LlmLogDto {
   chatId?: string | null;
   characterId?: string | null;
   autonomousRunId?: string | null;
+  // === P4.D344: the storyteller round a call ran under (v4 `b15fe9404`) ===
+  storytellerRoundId?: string | null;
   provider: string;
   modelName: string;
   request: LlmLogRequestSummary;
