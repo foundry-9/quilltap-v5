@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(spa): theme token contrast spec over v4's checklist pairs
+
+_Versions: SPA 0.5.911._
+
+Adds a real WCAG 2.x contrast helper (`theme/contrast-ratio.ts`) and a spec that checks v4's release-checklist-13 token pairs over every bundled pack's `tokens.json` and the default palette, both modes. Known failures that v4 also ships (3:1 border, input and ring pairs, and Earl Grey's transparent user bubble) live in a committed 59-row allowlist that fails in both directions: a new failure fails the spec, and so does a listed pair that starts passing or measures differently. The same spec pins the six pack versions, the packs' served asset URLs and the Madman's Box glyph block, and checks that the toast rules read the solid status tokens. On the previous tree it reported 87 failing text and fill pairs.
+
 #### 2026-11-02 — chore(spa): vendor v4 4.11.0 bundled theme packs
 
 _Versions: SPA 0.5.910._

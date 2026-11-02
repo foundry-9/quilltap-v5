@@ -1,0 +1,474 @@
+[
+  {
+    "theme": "art-deco",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 2.19,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.98,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.41,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.53,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.43,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.29,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.2,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "art-deco",
+    "mode": "light",
+    "pair": "ring on input",
+    "min": 3,
+    "measured": 2.59,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.38,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.29,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.38,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.29,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.37,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "default",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.37,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.36,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.37,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "chatUserForeground on chatUser",
+    "min": 4.5,
+    "measured": null,
+    "class": "NOT_A_FILL"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.36,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.37,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "dark",
+    "pair": "ring on input",
+    "min": 3,
+    "measured": 2.98,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.25,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.25,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "light",
+    "pair": "chatUserForeground on chatUser",
+    "min": 4.5,
+    "measured": null,
+    "class": "NOT_A_FILL"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.09,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "earl-grey",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.09,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.96,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.77,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.44,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.31,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.5,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.44,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.39,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.33,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "great-estate",
+    "mode": "light",
+    "pair": "ring on input",
+    "min": 3,
+    "measured": 2.31,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 2.57,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 2.32,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.41,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 2.57,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 2.32,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.41,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "madmans-box",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "dark",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.42,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "dark",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.29,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "dark",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.42,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "dark",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.29,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.25,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.34,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.25,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "old-school",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.34,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "dark",
+    "pair": "ring on input",
+    "min": 3,
+    "measured": 1.92,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "light",
+    "pair": "border on background",
+    "min": 3,
+    "measured": 1.2,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "light",
+    "pair": "border on card",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "light",
+    "pair": "input on background",
+    "min": 3,
+    "measured": 1.2,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "light",
+    "pair": "input on card",
+    "min": 3,
+    "measured": 1.28,
+    "class": "NON_TEXT_3_1"
+  },
+  {
+    "theme": "rains",
+    "mode": "light",
+    "pair": "ring on input",
+    "min": 3,
+    "measured": 2.54,
+    "class": "NON_TEXT_3_1"
+  }
+]
