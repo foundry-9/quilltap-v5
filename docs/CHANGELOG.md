@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D357 lane record — WCAG tokens, CSS and theme packs
+
+_Docs-only change._
+
+Records the P4.D357 lane: the red-first and green counts of the contrast spec, the S.11 grep proof, the fenced-append anchors for the sibling CSS lanes, the NO-PORT list, the gate, and the Playwright re-runs by file. Marks the work order lane-complete.
+
 #### 2026-11-02 — test(spa): theme token contrast spec over v4's checklist pairs
 
 _Versions: SPA 0.5.911._

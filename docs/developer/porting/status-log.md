@@ -193888,6 +193888,191 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+
+## P4.D357 — the WCAG tokens / CSS / theme packs / legibility lane (lane record)
+
+Branch `claude/p4.d357-wcag-tokens-css-theme-packs-8976915ea`, worktree `~/source/quilltap-v5/.claude/worktrees/p4d357`, cut from `main` at the orders' commit `8976915ea`. The session started in the main checkout on `main` at `8976915ea` and moved into the new worktree before the first edit. Pin worktree `/tmp/qt-v4-pin-p4d357-236c04e35`: `rev-parse` `236c04e35ab23ccc604fd188e5b73d0141066697`; `git show 236c04e35:package.json` → `"version": "4.12.0-dev.0",`.
+
+### The §2 probe (observation, §R.2)
+
+2026-11-02 12:59 CST: v4 checkout on `main`, tree CLEAN (the chokidar dirt the order expected is gone). v4 moved: `git log 236c04e35..main` = **40 commits**, HEAD `94f041764` ("UI: WCAG 2.2 AA pass across bundled themes (release checklist 13) (#129)"), with `87c3860df` ("Fix undefined CSS custom properties in component styles (#128)") just under it. Both touch this lane's surfaces and are the NEXT round's. This lane copied the PIN's bytes only. `git log 73b334af3..bugfix` = 0. **This lane ran no oracle and no `npm ci` in the pin, so the npm-cache gap did not gate it (R-12).**
+
+### Red-first (unported tree; spec + residues present, bytes not yet moved)
+
+- **The contrast spec on `main`'s bytes** (`/tmp/p4d357/contrast-red.txt`): **27 failed / 25 passed of 52**. **87 unallowlisted failing pairs**, every one a text / fill pair, in 14 of 14 theme-modes: art-deco dark 5, light 8; default dark 3, light 5; earl-grey dark 7, light 7; great-estate dark 6, light 9; madmans-box dark 2, light 2; old-school dark 7, light 7; rains dark 8, light 11. **3 stale residues** were found, all allowlisted 3:1 pairs that measure WORSE on `main` than at the pin: `ring on input` art-deco light 1.07 (pin 2.59), great-estate light 1.46 (2.31), rains light 1.24 (2.54). The six `theme.json` tripwires and the four toast-colour pins were red. The adaptation census was green on `main` as expected, since the adaptation predates this lane. Five quoted rows:
+  - `"art-deco dark: successForeground on success = 2.45 (min 4.5)"`
+  - `"art-deco dark: infoForeground on info = 3.00 (min 4.5)"`
+  - `"default light: warning on background = 2.38 (min 4.5)"`
+  - `"default dark: successForeground on success = 2.82 (min 4.5)"`
+  - `"default light: infoForeground on info = 4.34 (min 4.5)"`
+- **The count, corrected:** the planning probe's 152 / 93 counted `mutedForeground on muted` twice. It appears in both the `X`/`XForeground` bullet and the foreground-on-surface bullet. The spec measures it once, giving **29 distinct pairs per theme-mode and 406 in all**. On `main` that is **146** failing pairs: 59 at their pin values + 87 text/fill. The pin has **59**. The six double-counted rows were six theme-modes whose `mutedForeground on muted` failed on `main`, so 93 = 87 + 6 and 152 = 146 + 6. A spec case pins the 29 and their uniqueness.
+- **The eight default-palette text/fill failures** (S.1) are all among the 87: light `successForeground on success` 3.52, `infoForeground on info` 4.34, `success on background` 3.28, `warning on background` 2.38, `info on background` 4.05; dark `successForeground on success` 2.82, `infoForeground on info` 3.19, `destructive on background` 3.98.
+- **Per-unit grep reds:** `qt-text-success-foreground` in `_utilities.css` 0; `qt-skip-link` in `_interactive.css` 0 (and 0 under `src/app`); the three `_chat.css` hooks 0; `qt-status-success-bg` in `_toast.css` 1; no `max-width: 639px` in `_layout.css`; `width: 1.15rem;` present in `_workspace.css`; no `forced-colors` in `_icons.css`.
+- **Green after:** 52 / 52 (`/tmp/p4d357/contrast-green.txt`).
+
+### The residue allowlist as committed (`theme-contrast.residues.json`)
+
+**59 rows**: 57 `NON_TEXT_3_1` + 2 `NOT_A_FILL` (Earl Grey `chatUserForeground on chatUser`, light and dark, `transparent`). **Zero text / fill pairs fail at the pin.** R-8's alpha blending gives the Earl Grey dark alpha rows numbers: `border on background` 1.36, `border on card` 1.37, `input on background` 1.36, `input on card` 1.37, `ring on input` 2.98. Per theme-mode: art-deco 5 light / 4 dark; default 4 / 4; earl-grey 5 / 6; great-estate 5 / 4; madmans-box 4 / 4; old-school 4 / 4; rains 5 / 1. The rows are identical, theme / mode / pair / measured, to the planning table S.9.
+
+### The byte tables
+
+15 byte copies, each `cmp` EQ against `git show 236c04e35:themes/bundled/<id>/<file>`:
+
+| file | pin md5 | v5 md5 | cmp |
+|---|---|---|---|
+| art-deco/theme.json | 96d4baaa35a7d0e3b34a2492b01d38bc | 96d4baaa35a7d0e3b34a2492b01d38bc | EQ |
+| art-deco/tokens.json | 319db2117dd26f676ef03fc3222510f6 | 319db2117dd26f676ef03fc3222510f6 | EQ |
+| earl-grey/theme.json | 6e8d427c456bb98bf74b47c0a73fb7d1 | 6e8d427c456bb98bf74b47c0a73fb7d1 | EQ |
+| earl-grey/tokens.json | 8c2a46024de871e68ec72730f4c810a5 | 8c2a46024de871e68ec72730f4c810a5 | EQ |
+| earl-grey/styles.css | 1cb851a43b6c294dda8bd6c2e1e2e0a8 | 1cb851a43b6c294dda8bd6c2e1e2e0a8 | EQ |
+| great-estate/theme.json | a9ab69c17de09a97cbbee18fe6adbca4 | a9ab69c17de09a97cbbee18fe6adbca4 | EQ |
+| great-estate/tokens.json | ccdb223e8648be28fd5bd493f9defa39 | ccdb223e8648be28fd5bd493f9defa39 | EQ |
+| madmans-box/theme.json | e2258d41a134eec403b5cb1b6b0d0858 | e2258d41a134eec403b5cb1b6b0d0858 | EQ |
+| madmans-box/tokens.json | 1ee360e1e9f44c183a1187c5e675ee11 | 1ee360e1e9f44c183a1187c5e675ee11 | EQ |
+| old-school/theme.json | 5ec7ce8e8fa676bbd6fcd89218ae8bab | 5ec7ce8e8fa676bbd6fcd89218ae8bab | EQ |
+| old-school/tokens.json | 2a755f52353efad8d2f49c6cbb9cbc77 | 2a755f52353efad8d2f49c6cbb9cbc77 | EQ |
+| old-school/styles.css | ae4e881578a9d45e1714602a87bb55c4 | ae4e881578a9d45e1714602a87bb55c4 | EQ |
+| rains/theme.json | e196b516196a4b493a1d22f3ad71a91d | e196b516196a4b493a1d22f3ad71a91d | EQ |
+| rains/tokens.json | ceaff97a626c1e3d62f5cbf784320c62 | ceaff97a626c1e3d62f5cbf784320c62 | EQ |
+| rains/styles.css | b7cdc4cdd9e4a58a6c7523e4d641136e | b7cdc4cdd9e4a58a6c7523e4d641136e | EQ |
+
+The three adapted `styles.css`: `patch` applied every v4 span hunk with offsets and no `.rej`. `diff <(git show 236c04e35:themes/bundled/<id>/styles.css) apps/web/public/themes/<id>/styles.css` is EXACTLY the adaptation list. The post-patch line numbers are the v5 side of these diffs:
+
+```
+== art-deco
+597c597
+<   background-image: url('/api/themes/assets/bundle:art-deco/textures/background-light.webp');
+---
+>   background-image: url('/themes/art-deco/textures/background-light.webp');
+607c607
+<     url('/api/themes/assets/bundle:art-deco/textures/background-dark.webp');
+---
+>     url('/themes/art-deco/textures/background-dark.webp');
+== great-estate
+592c592
+<   background-image: url('/api/themes/assets/bundle:great-estate/textures/background.webp');
+---
+>   background-image: url('/themes/great-estate/textures/background.webp');
+676c676
+<   background-image: url("/api/themes/assets/bundle:great-estate/textures/carbon-fibre.png");
+---
+>   background-image: url("/themes/great-estate/textures/carbon-fibre.png");
+== madmans-box
+562c562
+<   background: url('/api/themes/assets/bundle:madmans-box/textures/home-bg.webp') center center / cover no-repeat;
+---
+>   background: url('/themes/madmans-box/textures/home-bg.webp') center center / cover no-repeat;
+644c644
+<    <Link>s wearing .qt-button, so an element selector caught only the handful
+---
+>    links wearing .qt-button, so an element selector caught only the handful
+709,711c709,711
+<    idling rather than a hand writing. `thinking` is mapped to icons/brand.svg in
+<    theme.json, so both are literally the same drawing; change one and you change
+<    the other.
+---
+>    idling rather than a hand writing. `thinking` is pointed at icons/brand.svg
+>    below, so both are literally the same drawing; change one and you change the
+>    other.
+712a713,717
+>    The glyph swap is a plain [data-icon] re-declaration rather than a theme.json
+>    `icons` entry: this stylesheet is injected unlayered, so it beats core's
+>    @layer components defaults. (The manifest keeps the mapping too, for hosts
+>    that read it.)
+> 
+720a726,729
+> [data-theme="madmans-box"] [data-icon="thinking"] {
+>   --_qt-icon-mask: url("/themes/madmans-box/icons/brand.svg");
+>   --_qt-icon-bg: none;
+> }
+```
+
+`grep -rc '/api/themes/assets/bundle:' apps/web/public/themes` → 0 in every file. `git diff --stat 8976915ea -- apps/web/public/themes` = 18 files, +241 / −142, the same as v4's `322a5488e..236c04e35` span. The six `theme.json` versions read back: art-deco 1.0.13, earl-grey 1.3.10, great-estate 1.0.10, madmans-box 1.1.9, old-school 1.0.14, rains 1.3.14. `git diff 322a5488e 236c04e35 -- 'themes/bundled/*/theme.json'`, filtered to non-`"version"` content lines, is EMPTY, so `bundled-themes.ts` was not regenerated (U10 (d)). `theme-preview-modal.ts:244` is the live reader of the `tokens.json` moves.
+
+**S.11 grep proof** (`+` content lines of this lane's v4 hunks, sibling hunks excluded by v4 line range; checked / found): `styles.css` 11 / 11; `_variables.css` 8 / 8; `_utilities.css` 16 / 16; `_chat.css` 22 / 22; `_interactive.css` 21 / 21; `_layout.css` 12 / 12; `_workspace.css` 4 / 4; `_icons.css` 9 / 9. **`-` values at 0:** the seven distinct replaced palette values are each 0 in `styles.css`. `hsl(0 0% 100%)` and `hsl(0 0% 10%)` survive on other unmoved lines by design. `hsl(152 55% 38%)` is gone from `:389` / `:551`; its one remaining hit is `:560` `--qt-autonomous-badge-running-bg`, which is not in v4's hunk. `hsl(152 50% 42%)` 0; `[data-theme="default"] *` 0; `width: 1.15rem;` 0. `_variables.css` grew by exactly 4 lines (952 → 956). `grep -c 'qt-status-' _toast.css` → 0; `grep -c 'var(--color-' _toast.css` → 12.
+
+**Hunks applied by hand, from the patch text:**
+- `_icons.css`: v4's trailing context line (`/* ---- per-icon defaults (generated from icon-registry.ts) ---- */`) does not match v5's hand-maintained wording, so the hunk rejected and was applied by hand. v5's wording is kept (R-10).
+- `_utilities.css`: `patch` fuzz-matched the hunk after `.qt-text-info` (v5 orders the status text classes differently). That placement was reverted, and the block was inserted after `.qt-text-destructive` as the order says.
+
+### Divergences RETIRED / RECORDED
+
+- **RETIRED:** `_toast.css:11-17`'s tinted-`--qt-status-*` toast colours → **CONVERGED on v4 `58120a7fe`, round ruling R-N** (R-1). The header now names v4's `getToastStyles` triple. Earl Grey's (`styles.css:334-348`) and Rains's (`:366-380`) status-triple overrides no longer reach the toast, as they never reached v4's. The `--qt-toast-*` hooks are kept (R-5).
+- **REWRITTEN:** `_utilities.css`'s "dead class" warning (R-2). Both spellings are now real, and `qt-text-on-*` stay as the aliases.
+- **RECORDED:** none new. The residue allowlist is v4's own residue.
+
+### The fenced-append contract (U13), re-measured on this lane's FINAL files
+
+Rule: **P4.D357 edits ONLY existing lines and inserts its own NEW rules at anchors no sibling uses. A sibling appends ONLY new declarations / rules, inside a fence `/* ==== <lane id> ==== */ … /* ==== /<lane id> ==== */` at its named anchor, and never edits an existing line.**
+
+| file | P4.D357 (lines on final file) | P4.D352 | P4.D353 | P4.D359 |
+|---|---|---|---|---|
+| `_variables.css` (952 → 956) | edits `:389`, `:551`, `:888`; reduced-motion `:946-956` (v4's comment `:946-947`, `@media` `:948`, selector `:949-951`) | after `:100` (`--qt-status-danger-border`), before the banner opening `:102` whose text is `ALERT TOKENS` (`:103`) — UNCHANGED by this lane | between `:585` (`--qt-code-font`) and the `LINK VARIABLES` banner (`:587` opening, text `:588`) — UNCHANGED | after `:277` (`--qt-dialog-backdrop`), before `:279` — UNCHANGED |
+| `_chat.css` (3,739 → 3,759) | plate `:164-172` (+4: three comment lines + `color:`); user-dialogue rule inserted after the dialogue rule (`:1958-1968`, +11 with its blank line); badge / muted / mark `:3116-3143` (+5) | before the `Lexical rich text node styles` comment: main `:1042` (text `:1043`) → **final `:1046` (text `:1047`)** | — | before the banner opening above `MARKDOWN ELEMENT SPACING`: main `:715` (text `:716`) → **final `:719` (text `:720`)** |
+| `_utilities.css`, `_workspace.css`, `_layout.css`, `_icons.css`, `_interactive.css`, `_toast.css` | this lane only | — | — | — |
+| `_content.css` | — | — | WHOLE | — |
+| `_surfaces.css` | — | — | — | WHOLE |
+| `_index.css` | — | C14 (P4.D344 / P4.D346 imports) | — | — |
+| `_intervention.css` / `_storyteller.css` | — | NEW, P4.D346 / P4.D344, from the PIN's bytes (`cce44e098`'s legibility hunks ride in there, not here) | — | — |
+| `apps/web/public/themes/**` | ALL 18 | — | — | — |
+| `src/styles.css` | the eleven values | — | — | — |
+
+A sibling should search by anchor TEXT, not number. Meeting points: `qt-skip-link` is defined at `_interactive.css:419-437` and emitted by P4.D358 (`shell/shell.ts`). On this branch it is DEFINED-UNUSED, and `check-qt-classes.mjs` polices neither direction for a bare `<a>` class. `.qt-tab-close`, `[data-icon]`, `.qt-page-toolbar` and `-right` are CSS-only changes. The toast class names are unchanged. `qt-text-*-foreground` has no consumer this round.
+
+### NO-PORT / NO-COUNTERPART (for P4.D360's §S.6 ratification)
+
+- `packages/theme-storybook/**` 1.0.87–1.0.90 (`cce44e098`, `86cc25482`, `58120a7fe`, `10e09b7c3`): NO-PORT, v5 has no storybook.
+- `packages/create-quilltap-theme/*`, the dependency drop, `knip.json`, `README.md` (`58120a7fe`): NO-PORT, v5 has no theme-scaffolding package.
+- `lib/themes/default-tokens.ts` (`58120a7fe`): NO-COUNTERPART. v5's one palette home is `styles.css`, moved in U1.
+- `__tests__/unit/lib/toast-stacking.test.ts` selector flip (`58120a7fe`): NO-PORT. v5's `e2e/toast-stacking-flow.spec.ts` selects by class.
+- `scripts/generate-icon-css.ts` (`10e09b7c3`): NO-PORT. v5's `_icons.css` is hand-maintained; the rule was ported by hand in U8.
+- `components/layout/footer-wrapper.tsx:52` `max-sm:pl-14` (`10e09b7c3`): NO-COUNTERPART. v5's shell has no footer.
+- `_intervention.css` / `_storyteller.css` hunks (`cce44e098`): ride into P4.D346 / P4.D344's files from the pin. Nothing to do here.
+- `help/appearance-settings.md`, `help/ariel.md`, `help/pascals-workbench.md:39`: P4.D360's.
+- The packs' `.qt-intervention-row` exemptions (art-deco, great-estate) and `--qt-diagram-*` / `.qt-diagram` rules (madmans-box): vendored WITH the packs and inert until P4.D346 / P4.D353 land. This is a forward reference, not a refusal.
+
+### HANDOFFs
+
+None needed from a sibling. Noted for the unifier (§S.5 wire (9), §S.4): the union keeps this lane's edited lines beside the P4.D352 / P4.D353 / P4.D359 fences (anchors above); `check-qt-classes.mjs` on the union sees `qt-skip-link`'s emitter; re-run the residue allowlist + version tripwire (`theme-contrast.spec.ts`) on the union — a red there is a finding, not a re-record. Preference recorded (Tier 2 item 14): the toast-colour source pin lives in the vitest spec; the Rust `toast_stacking_guard.rs` header's claim that "a vitest spec cannot see a stylesheet" is now doubly stale (not edited — not this lane's).
+
+### Measurements
+
+- **Reduced motion (Tier 2 item 16).** The widened selector now stops these infinite `qt-components` animations under every pack: `_chat.css:1428` `qt-hand-raised-pulse`, `:2469` `qt-doc-pulse`, `:3016` `qt-position-pulse`, `:3355` `qt-avatar-pulse`; `_utilities.css:1197` `qt-progress-slide`. It also stops every bundled pack's own animations. `_toast.css`'s own reduced-motion guard is now a harmless duplicate.
+- **`toast_stacking_guard`** passed 4 / 4 both before U9 (`main`'s `_toast.css` swapped in temporarily) and after. `spelling_guard` passed 1 / 1.
+
+### Gate (on the lane's final tree, `71067b388`)
+
+- `cargo fmt --all --check` rc 0; `cargo clippy --workspace --all-targets -- -D warnings` rc 0, and again with `--features quilltap-core/native-transport` rc 0. This lane touches no crate.
+- `CARGO_INCREMENTAL=0 cargo test --workspace --no-fail-fast`: **871 binaries / 5,752 passed / 5 failed / 3 ignored**. The five reds are live-checkout vendor guards that compare against the v4 checkout, which is past the pin: `builtin_prompt_templates_guard`, `custom_tool_schema_embed_guard`, `provider_sdk_version_guard`, `public_schemas_vendor_guard`, `qtap_schema_embed_guard`. They are independent of this lane, which changes no Rust, no vendored prompt, no schema and no SDK pin. They are the round's re-vendor lanes' to move.
+- SPA (`apps/web`): `npm run lint` green (966 classes); `npm test` **569 files / 13,173 tests**, all green; `npm run build` rc 0.
+- `theme-contrast.spec.ts`: red-first on `main`'s palette **27 failed / 25 passed of 52** (`/tmp` capture); green after U1–U10 **52 / 52**.
+
+### Playwright (by FILE, `--project=chromium`, debug bins — the clone's stale release bins were deleted so `e2e/support/env.ts` could not pick them)
+
+- First chain (2026-11-02 13:0x–14:16 CST, overlapping P4.D344 / P4.D358 runs on the shared 4319 global-setup server): `page-toolbar-flow` 8 / 0; `workspace-gallery-modal-flow` 2 / 0; `salon-interrupt-flow` 8 / 0 / 1 skipped; `toast-stacking-flow` 1 / 0. Four files red at the FIRST unlock beat (the shell never shown), with nothing to do with CSS: `aa-foundation` 0 / 1, `workspace-flow` 12 / 1, `scenario-builder-flow` 4 / 1, `toast-flow` 1 / 1.
+- Re-run alone, after P4.D358 logged its chain DONE (17:28 CST), one file at a time: **`aa-foundation` 1 / 0, `workspace-flow` 13 / 0, `scenario-builder-flow` 5 / 0, `toast-flow` 2 / 0**. Every red is green by file. The collisions were coordinated in the shared notes' `PLAYWRIGHT-RUNS.md`.
+
+### Versions at close
+
+SPA 0.5.907 → **0.5.911** (+1 per code commit, four commits). No crate bumped. The docs commit is docs-only.
+
+### 💸 Dogfood rows owed
+
+- The Appearance tab: each of the six packs plus Default, light and dark (Madman's Box light only). Check that the success / warning / info / destructive fills and their ink read legibly, and that the preview card shows the moved tokens.
+- A toast of each type under Earl Grey and Rains: solid status fill, legible ink (the converged divergence).
+- The regenerating plate's ink, a user message's quoted dialogue under Rains, and the Concierge badge plus its muted variant.
+- Keyboard: `Tab` from page load reaches the skip link once P4.D358's shell emits it (inert on this branch). The 24 px tab-close target. The page toolbar wrapping at ≤ 639 px.
+- macOS "Reduce motion" on: the hand-raised / doc / position / avatar pulses and the progress slide all stop.
+- Windows High Contrast (forced-colors): icons paint in system colours. This needs a Windows host; BLOCKED here.
+
+### Commits
+
+`d8104c24b` U1–U8 palette + legibility + focus CSS (0.5.908); `5ae4c9db2` U9 toasts converge (0.5.909); `6353300af` U10 the eighteen pack files (0.5.910); `71067b388` U11–U12 the contrast spec + residues + tripwire (0.5.911); then this docs commit.
+
+### OPEN
+
+None. Every unit of the order landed.
+
 ## P4.D354 — mount-index / files: `FILES` (Tier 1, part 1) (lane `claude/p4.d354-mount-index-files-8976915ea`, pin `236c04e35`, 2026-11-02) — UNIT RECORD
 
 - **Start / base.** The session started on `main` at `8976915ea` (the orders' commit); the lane moved to its own worktree `~/source/quilltap-v5/.claude/worktrees/p4d354` on `claude/p4.d354-mount-index-files-8976915ea`, cut from `8976915ea`.
