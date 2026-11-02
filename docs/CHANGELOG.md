@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D360 lane record — help 137, docs/v4 518, the NO-PORT record and the HANDOFF table
+
+_Docs-only change._
+
+The lane record for P4.D360 joins `status-log.md`: the red-first set and the oracles regenerated at the pin, the 37 help pages and 43 mirror operations, the NO-PORT ratifications (22 whole rows, 13 halves), the 42 rows this lane joins, the dependency facts at the pin, the 99-range HANDOFF byte-compare table for the unifier, and the gate with its six classified reds. The order's status header reads LANE COMPLETE.
+
 #### 2026-11-02 — test(harness): move the root openai / openrouter SDK constants to v4 236c04e35
 
 _No crate versions bumped._
