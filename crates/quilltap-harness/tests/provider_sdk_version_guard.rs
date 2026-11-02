@@ -125,11 +125,15 @@ const RECORDED_OPENROUTER_SDK: &str = "1.3.28";
 /// (every OpenAI-SDK provider plugin ships its own `RECORDED_OPENAI_SDK`), so
 /// it is pinned apart from the recorded constant: a root move is a regen
 /// event to MEASURE (does a recorder now resolve the root?), not a re-record.
-const INSTALLED_ROOT_OPENAI_SDK: &str = "7.34.0";
+/// 7.45.0 / 1.5.9 at v4 `236c04e35` (`026222176`, P4.D360): the root move
+/// MEASURED — no recorder resolves the root (every provider corpus this round
+/// is appended from a plugin dir declaring `openai` ^7.23.0 /
+/// `@openrouter/sdk` ^1.3.28), so no re-record.
+const INSTALLED_ROOT_OPENAI_SDK: &str = "7.45.0";
 /// The ROOT `node_modules`' `@openrouter/sdk` (the root lockfile's, since
 /// `a9c99a4a0`); the openrouter plugin records through its own
 /// `RECORDED_OPENROUTER_SDK`.
-const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.4.25";
+const INSTALLED_ROOT_OPENROUTER_SDK: &str = "1.5.9";
 /// The Node runtime every provider corpus is recorded under: the Stainless
 /// `x-stainless-runtime-version` and the genai `gl-node/<v>` token (P4.D232).
 /// The recipes pin `~/.nvm/versions/node/v24.13.1/bin`; the PATH also carries

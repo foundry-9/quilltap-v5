@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(harness): move the root openai / openrouter SDK constants to v4 236c04e35
+
+_No crate versions bumped._
+
+P4.D360 U4. `INSTALLED_ROOT_OPENAI_SDK` moves 7.34.0 → 7.45.0 and `INSTALLED_ROOT_OPENROUTER_SDK` 1.4.25 → 1.5.9, measured from the pin's own install. No recorder resolves the root, so nothing is re-recorded; the plugin-dir `RECORDED_*` constants do not move.
+
 #### 2026-11-02 — test(harness): move V4_APP_VERSION to 4.12.0-dev.0 (v4 236c04e35)
 
 _No crate versions bumped._
