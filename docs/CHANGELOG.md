@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(v4): bring the docs/v4 mirror to v4 236c04e35 (502 → 518)
+
+_Docs-only change._
+
+P4.D360 U2. The reference mirror takes forty-three operations from the pin: three deletions, two moves into `features/complete/`, and thirty-eight copies (bugs 258–269, the 4.11.0 release notes, four completed feature specs, `CHANGELOG.md`, `API.md`, `DDL.md` and others), plus the CLI README. The mirror now equals the pin's `docs/` (517 files) plus `packages-quilltap-README.md`; it stays reference-only.
+
 #### 2026-11-02 — chore(help): re-vendor help/ whole at v4 236c04e35 (135 → 137 pages)
 
 _No crate versions bumped._

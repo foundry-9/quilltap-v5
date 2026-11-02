@@ -534,7 +534,7 @@ Update chat settings.
 }
 ```
 
-Further accepted fields (each optional, same shapes as in the `GET` response): `tokenDisplaySettings`, `customTools`, `customToolTriggers` (boolean, default `false`: run a custom tool when anyone in a chat says one of its `triggers` phrases; ignored while `customTools` is off), `agentModeSettings`, `storyBackgroundsSettings`, `contextCompressionSettings`, `autoLockSettings`, `compositionModeDefault`, `composerSpellcheck`, `composerEmoji`, `composerUnicode`, `composerSlashCommands` (boolean, default `true`: the Salon composer's `/` command menu), `impersonationVoiceMode` (`'off'` / `'ask'` / `'always'`), `textReplacementsEnabled`, `autonomousRoomSettings`, `thinkingDisplay`, `autoScrollOnResponseComplete`, `answerConfirmationSettings`, `smartTypographySettings`.
+Further accepted fields (each optional, same shapes as in the `GET` response): `tokenDisplaySettings`, `customTools`, `customToolTriggers` (boolean, default `false`: run a custom tool when anyone in a chat says one of its `triggers` phrases; ignored while `customTools` is off), `customToolIntervention` (boolean, default `true`: hold a custom tool marked intervenable for the operator before it is announced; `false` lets every run go ahead as rolled; ignored while `customTools` is off), `agentModeSettings`, `storyBackgroundsSettings`, `contextCompressionSettings`, `autoLockSettings`, `compositionModeDefault`, `composerSpellcheck`, `composerEmoji`, `composerUnicode`, `composerSlashCommands` (boolean, default `true`: the Salon composer's `/` command menu), `impersonationVoiceMode` (`'off'` / `'ask'` / `'always'`), `textReplacementsEnabled`, `autonomousRoomSettings`, `thinkingDisplay`, `autoScrollOnResponseComplete`, `answerConfirmationSettings`, `smartTypographySettings`.
 
 `conciergeSettings` is validated with `ConciergeSettingsSchema` (a malformed object is a `400`). The retired Concierge settings — `dangerousContentSettings`, the top-level `uncensoredImageDescriptionProfileId`, and `cheapLLMSettings.imagePromptProfileId` — are rejected with `400` so a stale client fails loudly instead of writing a column nothing reads.
 
@@ -892,6 +892,26 @@ Update a profile.
 
 Delete a profile.
 
+#### `POST /api/v1/connection-profiles/[id]?action=auto-configure`
+
+Look up the profile's provider and model and fill in recommended settings. No request body. The profile is updated in place with `maxContext`, `maxTokens`, `modelClass`, `isDangerousCompatible`, and `temperature` / `max_tokens` / `top_p` merged into `parameters`.
+
+**Response:**
+```json
+{
+  "profile": {},
+  "autoConfigureResult": {
+    "maxContext": 200000,
+    "maxTokens": 8192,
+    "temperature": 0.7,
+    "topP": 1,
+    "isDangerousCompatible": false,
+    "modelClass": "Standard",
+    "searchSources": ["https://…"]
+  }
+}
+```
+
 #### `POST /api/v1/connection-profiles?action=test-connection`
 
 Test a profile connection.
@@ -972,6 +992,31 @@ Update an embedding profile. When the update changes what the default profile pr
 #### `DELETE /api/v1/embedding-profiles/[id]`
 
 Delete an embedding profile.
+
+#### `POST /api/v1/embedding-profiles/[id]?action=refit`
+
+Manually enqueue a vocabulary refit for a BUILTIN profile; a full reindex follows it. Other providers get 400 (use `reindex`). No request body.
+
+**Response:** `{ "message": "Vocabulary refit job enqueued", "jobId": "uuid" }`
+
+#### `POST /api/v1/embedding-profiles/[id]?action=reindex`
+
+Enqueue a re-embed of stored content with this profile.
+
+**Request Body** (optional):
+```json
+{ "scope": "all" }
+```
+
+`scope` is `all` (default; invalidates every embedding status row first) or `mismatched-dim` (re-embeds only rows whose stored vector dimension differs from `truncateToDimensions`, or `dimensions` when that is unset; 400 if neither is set).
+
+**Response:** `{ "message": "…", "jobId": "uuid", "scope": "all", "invalidatedCount": 0 }`
+
+#### `POST /api/v1/embedding-profiles/[id]?action=reapply`
+
+Slice and renormalize stored vectors to match the profile's `truncateToDimensions` (Matryoshka). No provider call is made, and each affected database is backed up before any rewrite. 400 if `truncateToDimensions` is not set. No request body.
+
+**Response:** `{ "message": "…", "jobId": "uuid", "targetDimensions": 512 }`
 
 #### `GET /api/v1/embedding-profiles?action=list-providers`
 
@@ -1456,6 +1501,26 @@ file: <character.json>
 #### `POST /api/v1/characters?action=ai-wizard`
 
 Use AI to generate character details from a brief description.
+
+#### `POST /api/v1/characters?action=ai-wizard-stream`
+
+Same request body and generation as `ai-wizard`, but streams progress as Server-Sent Events (`Content-Type: text/event-stream`). Each event is a `data: {...}` line carrying a wizard progress event; the stream closes when generation finishes.
+
+#### `POST /api/v1/characters?action=reset-builtins`
+
+Delete and re-seed the built-in characters (Lorian and Riya) from the bundled seed data. Existing IDs are preserved so chats and links keep pointing at the right rows; their chats and images are not deleted. Memories are re-imported and avatars re-seeded. No request body.
+
+**Response:**
+```json
+{
+  "success": true,
+  "deletedCharacterIds": ["uuid"],
+  "preservedIds": { "Lorian": "uuid", "Riya": "uuid" },
+  "postResetIds": { "Lorian": "uuid", "Riya": "uuid" },
+  "remappedIdCount": 2,
+  "importResult": {}
+}
+```
 
 #### `POST /api/v1/characters?action=quick-create`
 
@@ -2240,7 +2305,7 @@ One `.json` file per object under a tier's `Inventory/` folder; four tiers, one 
 - `GET ?action=archetypes` — `{ items }`, the archetypes reachable from this tier (a character's with `?projectId=` / `?chatId=`), for the instantiate picker.
 - `POST` — create a standalone object, archetype or kit (`createInventorySchema`: `name`, `title`, `description`, `imageDescription`, `equippedByDefault`, `maxEquipped`, `canCopy`, `isArchetype`, `kind`, `itemIds`, `emoji`, `svg`, `metadata`, `folder`). A kit's members must resolve from this tier, never a kit. `svg` is sanitised (≤ 16 KB). Answers `201 { item }`.
 - `POST ?action=instantiate` — `{ archetypeId, folder?, overrides?, projectId?, chatId? }`: a sparse instance of a reachable archetype. Answers `201 { item }`.
-- `POST ?action=duplicate` — `{ itemId }`: a copy beside the original, titled "(copy)", keeping its name (kin); `NOT_COPYABLE` when `canCopy` is false.
+- `POST ?action=duplicate` — `{ itemId }` (`duplicateInventorySchema`; a missing `itemId` is a `400`): a copy beside the original, titled "(copy)", keeping its name (kin); `NOT_COPYABLE` when `canCopy` is false.
 - `POST ?action=create-folder` / `rename-folder` / `delete-folder` — the wardrobe's folder rules (`{ path }`, `{ path, name }`).
 - `POST ?action=move-items` / `copy-items` — `{ itemIds, folder }`; a copy refuses any object with `canCopy: false`.
 
@@ -2609,6 +2674,13 @@ Where the chat's scene came from. Query key `queryKeys.chats.scenarioSource(chat
 - The chat-start `systemKind: "scenario"` message is **not** removed or rewritten.
 - `updateChatSchema` (`PUT /api/v1/chats/[id]`) deliberately does **not** expose `scenarioText`; a bare field update would skip the recompile and the announcement.
 
+#### `GET /api/v1/chats/[id]?action=absent-mentions`
+
+Absent workspace characters named in the chat, for the Salon's name chips (`lib/chat/absent-mentions.ts`). Query key `queryKeys.chats.absentMentions(chatId)`, refreshed by the `chats` realtime topic.
+
+**Response**: `{ mentions: [{ messageId, characterId, text, card: { name, aliases, pronouns, body } }] }` — one entry per absent character: the first spoken message (no Staff messages) that names them, the name or alias exactly as written there (case-sensitive, letter-bounded), and their card. `card` is `offSceneCardFields`, the same particulars the model gets in the referent ledger; `pronouns` is `subject/object/possessive` or null; `body` is identity, else description, with `{{char}}` / `{{user}}` bound.
+- "Absent" is `presenceOf`: not seated (removed seats count as absent), and not the operator's unseated persona where the operator speaks without a seat.
+
 #### `POST /api/v1/chats/[id]?action=bulk-reattribute`
 
 Re-attribute multiple messages from one participant to another in a single operation. All memories associated with the affected messages are permanently deleted.
@@ -2646,6 +2718,26 @@ Hard-stop the chat's open Salon stream(s) (`lib/chat/turn-control.ts`). A room w
 ```
 
 `stopped: 0` means no stream was open in this process.
+
+#### Storyteller mode
+
+A chat whose `turnMode` is `'storyteller'` (set with `PUT /api/v1/chats/[id]` and a top-level `"turnMode": "rotation" | "storyteller"` beside `chat`; it is patch-only and written by `ChatsRepository.setTurnMode`, and leaving storyteller mode closes any open round) opens a **round** on every public operator post, instead of drawing a reply. The ordinary send (`POST /api/v1/messages?chatId=`) records the post and then streams the round: a `storytellerRound` frame (the board), one `storytellerBid` frame per seat as each bid lands, `roundOpen { roundId }`, and `chainComplete` reason `round_open`. Bids still out after 45 s land on the round row and reach the board through the `storytellerRounds` realtime topic. A whisper or an `@Name:` query opens no round; a continue-mode send (Nudge) runs one turn with no chain. `chats.storytellerInviteFilter` (boolean, on the `chat` object) weights invitations by talkativeness. Design of record: `docs/developer/features/complete/storyteller-mode.md`.
+
+##### `GET /api/v1/chats/[id]?action=storyteller-round`
+
+The chat's open or running round, else its latest closed one (the board's summary line): `{ "round": StorytellerRound | null }`. A closed round's `bids` are empty.
+
+##### `POST /api/v1/chats/[id]?action=storyteller-run`
+
+Run the operator's selection. **Request Body**: `{ "roundId": "...", "participantIds": ["..."], "order": "sequential" | "simultaneous", "keepOrder": boolean }` (`order` defaults to `sequential`). The chosen seats run in the turn manager's rotation order unless `keepOrder` is `true`, in which case they run in `participantIds` order (the operator dragged the board's cards into place); this also orders an all-at-once round's Act / Destroy tail. Only seats whose bid status is `bid` may be chosen, and a `destroy`-tier bid only on its own (`400`); a round that is no longer open answers `409`. The response is an SSE stream in the chain dialect: `turnStart` (chainDepth ≥ 1) before each sequential speaker, the turn's own events, `turnComplete`, and one `chainComplete` (`user_turn`, `yielded`, or `stopped` with `paused: true`). With `simultaneous`, Simple and Lookup turns run concurrently (at most 4 per connection profile) and every frame they write carries `participantId` and `concurrent: true`; Act and Destroy turns follow one at a time. Each turn runs under its bid's effect ceiling and stores the bid on its reply (`chat_messages.storytellerBid`).
+
+##### `POST /api/v1/chats/[id]?action=storyteller-ask`
+
+"Ask anyway": one late bid for a seat on an open round (kept quiet, or failed). **Request Body**: `{ "roundId": "...", "participantId": "..." }`. **Response**: `{ "bid": StorytellerBid }`.
+
+##### `POST /api/v1/chats/[id]?action=storyteller-lie`
+
+"Let it lie": close an open round with nobody chosen. **Request Body**: `{ "roundId": "..." }`. **Response**: `{ "closed": true }`.
 
 #### `POST /api/v1/chats/[id]?action=raise-hand`
 
@@ -6596,6 +6688,73 @@ Scoping notes, because they are not uniform:
 
 An unknown `type` returns 400.
 
+#### `POST /api/v1/system/tools?action=export`
+
+Create a `.qtap` export, streamed as NDJSON (`Content-Disposition: attachment; filename="quilltap-<type>-<date>.qtap"`).
+
+**Body:**
+```json
+{ "type": "characters", "scope": "selected", "selectedIds": ["uuid"], "includeMemories": false }
+```
+
+`type` is an `ExportEntityType` (see `export-entities`). `scope` is `all` (default) or `selected`.
+
+#### `GET /api/v1/system/tools?action=export-preview`
+
+Preview what an export would contain.
+
+**Query Parameters:**
+- `type` (required) — an `ExportEntityType`
+- `scope` — `all` (default) or `selected`
+- `selectedIds` — comma-separated ids, for `selected`
+- `includeMemories` — `true` to count memories
+
+Returns the preview object. 400 if `type` is missing.
+
+#### `POST /api/v1/system/tools?action=import-preview`
+
+Preview an import without writing anything. Send `multipart/form-data` with `file` (a `.qtap`, NDJSON or legacy JSON), or a JSON body `{ "exportData": {…} }` for older clients. A file that is not `quilltap-export` v1.0 returns 400.
+
+#### `POST /api/v1/system/tools?action=import-execute`
+
+Run the import. Send `multipart/form-data` with `file` and an `options` JSON string, or a JSON body `{ "exportData": {…}, "options": {…} }`.
+
+**Options:**
+```json
+{ "conflictStrategy": "skip", "importMemories": false, "selectedIds": { "characters": ["uuid"] } }
+```
+
+`conflictStrategy` is required: `skip`, `replace` (alias of `overwrite`), `overwrite`, or `duplicate`. `selectedIds` (optional) limits the import to the listed ids per entity type. Returns the import result (`success`, `imported`, `skipped`, `warnings`, `importedCharacterIds`, …).
+
+#### `POST /api/v1/system/tools?action=ai-import-stream`
+
+Generate characters from source material with an LLM, streamed as Server-Sent Events (`text/event-stream`, one `data: {…}` progress event per line).
+
+**Body:**
+```json
+{
+  "profileId": "uuid",
+  "sourceFileIds": ["uuid"],
+  "sourceText": "",
+  "includeMemories": true,
+  "includeChats": false,
+  "existingResult": null,
+  "regenerateSteps": null
+}
+```
+
+`profileId` is required, and at least one of `sourceFileIds` / `sourceText` must be non-empty (400 otherwise). `existingResult` and `regenerateSteps` re-run selected steps against an earlier result.
+
+#### The Almanack actions
+
+The Almanack (system report) is served by five `capabilities-report-*` actions; the names predate the rename and are kept so saved links keep working. Reports are Markdown files in the `/reports` folder.
+
+- `POST …?action=capabilities-report-generate` — generate and save a new report. Optional body `{ "progressId": "uuid" }` correlates the progress stream. Returns `{ "success": true, "reportId", "filename", "storageKey", "size", "content" }`; `reportId` is the file id the other actions key off.
+- `GET …?action=capabilities-report-progress&id=<progressId>` — Server-Sent Events of phase progress for a run. Replays the backlog (including a terminal `done`/`error`) so a reopened card can re-attach. 400 without `id`.
+- `GET …?action=capabilities-report-list` — `{ "reports": [{ "id", "filename", "storageKey", "createdAt", "size" }] }`, newest first.
+- `GET …?action=capabilities-report-get&reportId=<id>` — `{ "reportId", "filename", "content", "size" }`. With `&download=true`, returns the Markdown as an attachment. 404 if not found.
+- `POST …?action=capabilities-report-delete` — body `{ "reportId": "uuid" }`; deletes the report and its file. Returns `{ "success": true }`.
+
 ---
 
 ### LLM Tools
@@ -6932,6 +7091,20 @@ Remove a character from the project roster.
 }
 ```
 
+#### `GET /api/v1/projects/[id]?action=list-characters`
+
+List the project's character roster.
+
+**Response:**
+```json
+{
+  "characters": [{ "id": "uuid", "name": "Alice", "tags": [] }],
+  "count": 1
+}
+```
+
+Roster entries whose character no longer exists are omitted.
+
 #### `GET /api/v1/projects/[id]?action=list-chats`
 
 List chats in the project with pagination.
@@ -6959,6 +7132,42 @@ Remove a chat from the project.
 ```json
 {
   "chatId": "uuid"
+}
+```
+
+#### `GET /api/v1/projects/[id]?action=list-files`
+
+List the project's files. When the project has a linked primary document store, the store's files are listed (each with `mountPointId` and `relativePath`); otherwise the legacy files table is filtered by `projectId`.
+
+**Response:**
+```json
+{
+  "files": [{ "id": "uuid", "originalFilename": "notes.md", "mimeType": "text/markdown", "size": 1024, "category": "DOCUMENT" }],
+  "count": 1
+}
+```
+
+#### `POST /api/v1/projects/[id]?action=add-file`
+
+Associate an existing file with the project.
+
+**Request Body:**
+```json
+{
+  "fileId": "uuid"
+}
+```
+
+Returns `{ "success": true }`. 404 if the project or file does not exist.
+
+#### `DELETE /api/v1/projects/[id]?action=remove-file`
+
+Remove a file's association with the project. The file itself is not deleted.
+
+**Request Body:**
+```json
+{
+  "fileId": "uuid"
 }
 ```
 
