@@ -194612,6 +194612,19 @@ None moved: core 0.0.1379, host 0.0.217, web 0.0.251, cli 0.0.35, tauri 0.0.9, S
 - `QT_V4_CHECKOUT=<that pin> cargo test -p quilltap-harness --test provider_sdk_version_guard` → **4 passed / 0 failed**, `every_installed_provider_sdk_matches_the_recorded_version` ok (the RECORDED plugin legs green; the root legs green on U4's constants). No constant moved.
 - **Still open, outside the ruling:** FINDING 1(b) — symlink class (2) (`packages/quilltap/node_modules` → the live checkout, past the pin's driver) still makes every `cli_differential` case red on the driver-rebuild line. The ruling covers class (3) only; class (2) needs its own.
 
+### P4.D360 addendum — FINDING 1(b) (the CLI's `node_modules` past the pin) CLOSED (2026-11-02)
+
+- **Ruling (human, 2026-11-02):** the pin-only offline floor install now covers the CLI too. `.claude/pin-plugin-sdks.sh <PIN>` (main checkout) also removes the class-(2) `packages/quilltap/node_modules` symlink and installs the pin's CLI dependencies offline at their floors, scripts ON (native code): driver 12.11.1, `@napi-rs/canvas` 1.0.13, `node-pty` 1.1.0, `sharp` 0.35.4, `tar` 7.5.22, `yauzl` 3.4.0.
+- **Re-check:** a fresh pin `/tmp/qt-v4-pin-p4d360c-236c04e35` (`236c04e35`; root `npm ci --offline` "added 1159 packages"; then the script, which printed `cli driver 12.11.1 | sqlite 3.53.2 | cipher chacha20`). The pin's `packages/quilltap/node_modules` is a real directory; the live checkout's driver still reads 13.0.3.
+- `QT_V4_CHECKOUT=<that pin> QT_NODE=<node 24.13.1> cargo test -p quilltap-cli --test cli_differential` → **`CLI differential: 422 cases, 5 failures`** (was 840). The `Rebuilding the SQLCipher binding` line appears 0 times. The five remaining reds are text v4 moved at the pin and sibling lanes own — none is this lane's (the CLI is outside its ownership):
+
+  | case | owner |
+  |---|---|
+  | `[completion bash]`, `[completion zsh]`, `[completion fish]` stdout | P4.D341 (R-P, the `completion/*.template` files) |
+  | `[recall-replay help]`, `[recall-replay no chat]` stdout (the `--tuning` key list grows `innerCircleShare`, `innerCircleAllowance`, …) | P4.D342 (`recall_replay_help.txt`) |
+
+  Expected to go green on the union once those lanes land; the unifier's Tier R run confirms.
+
 ## P4.D359 — the SPA riders of the `236c04e35` round (floating Brahma Console, name chips, keystone UI, vault-key fields) — lane record
 
 _2026-11-03. Branch `claude/p4.d359-spa-riders-8976915ea`. Cut from `main` `8976915ea`, then rebased onto P4.D353's Tier-1 commit `c1da5c4de`, so the name-chips hook stacks on it as the order says. Worktree `.claude/worktrees/p4d359`. Wave 1. Pin `236c04e35`. Own-instance e2e: port 4358, mock 45356. The lane was paused for a machine restart. On resume, /tmp was empty: the pin and the scratch were rebuilt, `git worktree prune` first; no stale server held either port._

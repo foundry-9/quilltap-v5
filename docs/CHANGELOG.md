@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D360 — close the CLI node_modules finding under the extended pin-only install ruling
+
+_Docs-only change._
+
+Under the extended 2026-11-02 ruling (`.claude/pin-plugin-sdks.sh` also installs the pin's CLI dependencies at their floors), `cli_differential` on a fresh pin drops from 840 failures to 5, and the driver-rebuild line is gone. The five remaining cases are the completion templates (P4.D341) and the `recall-replay` help (P4.D342).
+
 #### 2026-11-02 — docs(porting): P4.D360 — close the plugin-SDK finding under the pin-only floor install ruling
 
 _Docs-only change._
