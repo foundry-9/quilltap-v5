@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(harness): move V4_APP_VERSION to 4.12.0-dev.0 (v4 236c04e35)
+
+_No crate versions bumped._
+
+P4.D360 U3. `ai_import_tier3_equivalence`'s `V4_APP_VERSION` follows the round's pin from `4.11.0-dev.53` to `4.12.0-dev.0`. The stamp assert now passes against the regenerated oracle; the family's remaining PDF-row red belongs to P4.D354.
+
 #### 2026-11-02 — docs(v4): bring the docs/v4 mirror to v4 236c04e35 (502 → 518)
 
 _Docs-only change._

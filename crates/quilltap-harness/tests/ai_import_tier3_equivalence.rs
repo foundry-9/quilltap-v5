@@ -123,7 +123,7 @@ const V5_APP_VERSION: &str = "0.0.0-harness";
 /// into the manifest. v4 bumps it on EVERY commit, so this constant moves with
 /// every regen — that is by design: the assert proves the stamp reached the
 /// manifest on both sides before the value is normalized away.
-const V4_APP_VERSION: &str = "4.11.0-dev.53"; // v4 `322a5488e` (the round's pin, P4.D339 — moves with every baseline move)
+const V4_APP_VERSION: &str = "4.12.0-dev.0"; // v4 `236c04e35` (the round's pin, P4.D360 — moves with every baseline move)
 
 /// Every engine-dependent count v4 (ajv) puts on the wire, in encounter order.
 /// See the module header: the entries that differ from [`V5_VALIDATION_COUNTS`]
