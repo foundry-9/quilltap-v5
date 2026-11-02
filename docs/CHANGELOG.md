@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the storyteller's all-at-once bubbles — one live bubble per concurrent turn
+
+_Versions: SPA 0.5.914._
+
+P4.D344 Tier 2 item 16. The stream reducer folds a `concurrent` frame with a `participantId` into its own bubble (v4 `useSSEStreaming.ts:722-760`): `turnStart` opens it, `content` appends, `done` settles it into an assistant message (none when skipped or stopped), surfaced Carina / Host / Pascal messages fold as usual, and the shared streaming slot is left alone. The message list renders one streaming bubble per concurrent turn after the ordinary slot, each state memoised per participant. The server's `simultaneous` order is P4.D343's Tier 2; until it lands the run's refusal toasts through the existing error path.
+
 #### 2026-11-02 — feat(spa): arrange the storyteller board by buttons and arrow keys — badges, Reset order, keepOrder
 
 _Versions: SPA 0.5.913._

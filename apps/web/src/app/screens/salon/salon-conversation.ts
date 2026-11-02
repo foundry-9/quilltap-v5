@@ -478,6 +478,7 @@ interface CascadePrompt {
           [swipeStates]="effectiveSwipeStates()"
           [settings]="settings()"
           [stream]="stream()"
+          [concurrentStreams]="stream()?.concurrentStreams ?? []"
           [editingId]="editingId()"
           [messagesWithLogs]="messagesWithLogs()"
           [userParticipantIds]="userParticipantIdSet()"

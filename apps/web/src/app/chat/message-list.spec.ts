@@ -223,6 +223,48 @@ describe('MessageList — chained stream render in the DOM', () => {
   });
 });
 
+// === P4.D344 Tier 2: the concurrent storyteller bubbles (v4 VirtualizedMessageList.tsx:421-437) ===
+describe('MessageList — one bubble per concurrent storyteller turn (P4.D344)', () => {
+  function render(concurrent: { participantId: string; content: string }[]): ComponentFixture<MessageList> {
+    TestBed.configureTestingModule({
+      imports: [MessageList],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn(), events$: { subscribe: () => ({ unsubscribe() {} }) } } }],
+    });
+    const fixture = TestBed.createComponent(MessageList);
+    fixture.componentRef.setInput('messages', [message({ id: 'u1', role: 'USER', content: 'Everyone at once.' })]);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.componentRef.setInput('stream', { ...initialChatStreamState(), concurrentStreams: concurrent });
+    fixture.componentRef.setInput('concurrentStreams', concurrent);
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  it('renders one streaming bubble per entry, after the ordinary slot, each with its text', () => {
+    const fixture = render([
+      { participantId: 'p1', content: 'Tea first.' },
+      { participantId: 'p2', content: 'Coffee.' },
+    ]);
+    const bubbles = [...fixture.nativeElement.querySelectorAll('qt-streaming-message')] as HTMLElement[];
+    expect(bubbles).toHaveLength(3);
+    expect(bubbles[1].textContent).toContain('Tea first.');
+    expect(bubbles[2].textContent).toContain('Coffee.');
+  });
+
+  it('keeps each entry’s state object while its text is unchanged (NG0100-safe)', () => {
+    const fixture = render([{ participantId: 'p1', content: 'Tea.' }]);
+    const slots = (fixture.componentInstance as unknown as { concurrentSlots(): { state: unknown }[] }).concurrentSlots;
+    const first = slots()[0].state;
+    fixture.componentRef.setInput('concurrentStreams', [
+      { participantId: 'p1', content: 'Tea.' },
+      { participantId: 'p2', content: '' },
+    ]);
+    fixture.detectChanges();
+    expect(slots()[0].state).toBe(first);
+    expect((slots()[1].state as { waitingForResponse: boolean }).waitingForResponse).toBe(true);
+  });
+});
+// === end P4.D344 ===
+
 /**
  * P4.D38 tier 2 — the overheard-dim wiring (v4 `VirtualizedMessageList.tsx
  * :358-373`). `userParticipantIds` is threaded straight to `isOverheardWhisper`

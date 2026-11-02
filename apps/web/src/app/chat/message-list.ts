@@ -14,7 +14,12 @@ import {
 } from '@angular/core';
 import { injectVirtualizer } from '@tanstack/angular-virtual';
 
-import type { ChatStreamState, StreamMessage } from '../core/chat-stream.reducer';
+import {
+  initialChatStreamState,
+  type ChatStreamState,
+  type ConcurrentStream,
+  type StreamMessage,
+} from '../core/chat-stream.reducer';
 import type {
   ChatDetail,
   ChatSettingsDto,
@@ -197,6 +202,20 @@ import { VirtualRow } from './virtual-row';
           />
         }
 
+        <!-- === P4.D344: one bubble per concurrent ("all at once") storyteller
+             turn, after the ordinary slot (v4 VirtualizedMessageList.tsx:421-437) === -->
+        @for (entry of concurrentSlots(); track entry.participantId) {
+          <qt-streaming-message
+            [state]="entry.state"
+            [renderingPatterns]="renderingPatterns()"
+            [dialogueDetection]="dialogueDetection()"
+            [showAvatar]="showAvatars()"
+            [respondingCharacter]="entry.character"
+            [isDangerousChat]="isDangerousChat()"
+          />
+        }
+        <!-- === end P4.D344 === -->
+
         <div #endAnchor></div>
       </div>
     </div>
@@ -220,6 +239,9 @@ export class MessageList {
   readonly swipeStates = input<Record<string, SwipeState>>({});
   readonly settings = input<ChatSettingsDto | null>(null);
   readonly stream = input<ChatStreamState | null>(null);
+  // === P4.D344: the concurrent storyteller turns' live text ===
+  readonly concurrentStreams = input<ConcurrentStream[]>([]);
+  // === end P4.D344 ===
   readonly editingId = input<string | null>(null);
   /**
    * The chat's roleplay-template rendering patterns and dialogue detection,
@@ -360,6 +382,44 @@ export class MessageList {
    * character may still be absent, in which case v4's Avatar renders the 'AI'
    * fallback name.
    */
+  // === P4.D344 ===
+  /**
+   * Each concurrent entry as a bubble state (v4: `streaming = content.length >
+   * 0`, `waitingForResponse` its inverse, no tool batches, no reasoning) and its
+   * character. The synthesized state is memoised per participant and reused
+   * while its text is unchanged, so the input object stays stable across change
+   * detection (NG0100).
+   */
+  private concurrentCache = new Map<string, { content: string; state: ChatStreamState }>();
+  protected readonly concurrentSlots = computed(() => {
+    const participants = this.chat().participants;
+    const next = new Map<string, { content: string; state: ChatStreamState }>();
+    const slots = this.concurrentStreams().map((c) => {
+      let cached = this.concurrentCache.get(c.participantId);
+      if (!cached || cached.content !== c.content) {
+        cached = {
+          content: c.content,
+          state: {
+            ...initialChatStreamState(),
+            content: c.content,
+            streaming: c.content.length > 0,
+            waitingForResponse: c.content.length === 0,
+            respondingParticipantId: c.participantId,
+          },
+        };
+      }
+      next.set(c.participantId, cached);
+      return {
+        participantId: c.participantId,
+        state: cached.state,
+        character: participants.find((p) => p.id === c.participantId)?.character ?? null,
+      };
+    });
+    this.concurrentCache = next;
+    return slots;
+  });
+  // === end P4.D344 ===
+
   protected readonly respondingCharacter = computed<DetailCharacter | null>(() => {
     const participants = this.chat().participants;
     const id = this.stream()?.respondingParticipantId ?? null;

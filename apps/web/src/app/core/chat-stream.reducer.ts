@@ -55,6 +55,12 @@ export type StorytellerStreamEvent =
   | { kind: 'round'; round: StorytellerRound }
   | { kind: 'bid'; roundId: string; bid: StorytellerBid }
   | { kind: 'open'; roundId: string };
+
+/** One live bubble for a concurrent ("all at once") storyteller turn (v4 `useSSEStreaming.ts:23-26`). */
+export interface ConcurrentStream {
+  participantId: string;
+  content: string;
+}
 // === end P4.D344 ===
 
 /** One in-progress tool call within a batch. */
@@ -228,6 +234,12 @@ export interface ChatStreamState {
   storyteller: StorytellerStreamEvent | null;
   /** Bumped per storyteller frame so every bid in a burst reaches the board. */
   storytellerSeq: number;
+  /**
+   * The "all at once" turns still streaming, one bubble per participant (v4
+   * `concurrentStreams`). A concurrent frame leaves the shared streaming slot
+   * above alone.
+   */
+  concurrentStreams: ConcurrentStream[];
   // === end P4.D344 ===
   /** The terminal `done` payload for dispatch-reply reconciliation. */
   finalDone: FinalDoneInfo | null;
@@ -258,6 +270,7 @@ export function initialChatStreamState(): ChatStreamState {
     handAnsweredSeq: 0,
     storyteller: null,
     storytellerSeq: 0,
+    concurrentStreams: [],
     finalDone: null,
     toolBatchSeq: 0,
   };
@@ -281,6 +294,12 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
   }
   if (frame.roundOpen && frame.roundId) {
     return carryStoryteller(s, { kind: 'open', roundId: frame.roundId });
+  }
+  // Storyteller "all at once": a frame from one of several concurrent turns.
+  // Each participant gets its own bubble; the shared streaming slot is left
+  // alone (v4 `:722-760`).
+  if (frame.concurrent && frame.participantId) {
+    return reduceConcurrent(s, frame, frame.participantId);
   }
   // === end P4.D344 ===
 
@@ -434,6 +453,65 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
 }
 
 // === P4.D344 ===
+function reduceConcurrent(s: ChatStreamState, frame: ChatStreamFrame, pid: string): ChatStreamState {
+  const has = s.concurrentStreams.some((c) => c.participantId === pid);
+  if (frame.turnStart) {
+    return {
+      ...s,
+      waitingForResponse: false,
+      concurrentStreams: has ? s.concurrentStreams : [...s.concurrentStreams, { participantId: pid, content: '' }],
+    };
+  }
+  if (frame.content) {
+    const text = frame.content;
+    return {
+      ...s,
+      concurrentStreams: has
+        ? s.concurrentStreams.map((c) => (c.participantId === pid ? { ...c, content: c.content + text } : c))
+        : [...s.concurrentStreams, { participantId: pid, content: text }],
+    };
+  }
+  if (frame.done) {
+    const finished = s.concurrentStreams.find((c) => c.participantId === pid)?.content ?? '';
+    let messages = s.messages;
+    if (frame.messageId && !frame.skipped && !frame.stopped) {
+      messages = dedupePush(messages, {
+        kind: 'assistant',
+        id: frame.messageId,
+        content: finished,
+        participantId: pid,
+        provider: frame.provider || null,
+        modelName: frame.modelName || null,
+        routeTrail: frame.routeTrail ?? null,
+        isSilentMessage: frame.isSilentMessage || undefined,
+        reasoningContent: frame.reasoningContent ?? null,
+        reasoningSegments: frame.reasoningSegments ?? null,
+        intermediate: true,
+      });
+    }
+    return {
+      ...s,
+      messages,
+      concurrentStreams: s.concurrentStreams.filter((c) => c.participantId !== pid),
+    };
+  }
+  const posted = frame.carinaAnswer
+    ? ({ kind: 'carina', message: frame.carinaAnswer } as const)
+    : frame.hostAnnouncement
+      ? ({ kind: 'host', message: frame.hostAnnouncement } as const)
+      : frame.pascalResult
+        ? ({ kind: 'pascal', message: frame.pascalResult } as const)
+        : null;
+  if (posted) {
+    return { ...s, messages: dedupePush(s.messages, { kind: posted.kind, id: posted.message.id, message: posted.message }) };
+  }
+  if (frame.error) {
+    // v4 toasts it and reads on; v5 records it for the run's one error toast.
+    return { ...s, error: frame.error };
+  }
+  return s;
+}
+
 function carryStoryteller(s: ChatStreamState, event: StorytellerStreamEvent): ChatStreamState {
   return { ...s, storyteller: event, storytellerSeq: s.storytellerSeq + 1 };
 }

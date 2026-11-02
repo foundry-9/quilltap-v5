@@ -607,3 +607,70 @@ describe('chat stream reducer — the storyteller board frames (P4.D344)', () =>
   });
 });
 // === end P4.D344 ===
+
+// === P4.D344 Tier 2: the concurrent ("all at once") bubbles (v4 useSSEStreaming.ts:722-760) ===
+describe('chat stream reducer — concurrent storyteller turns (P4.D344)', () => {
+  it('keeps one bubble per participant, interleaved, and leaves the shared slot alone', () => {
+    const base = { ...initialChatStreamState(), waitingForResponse: true };
+    const s = foldChatFrames(
+      [
+        { turnStart: true, participantId: 'a', concurrent: true },
+        { turnStart: true, participantId: 'b', concurrent: true },
+        { content: 'Tea', participantId: 'a', concurrent: true },
+        { content: 'Cof', participantId: 'b', concurrent: true },
+        { content: ' first.', participantId: 'a', concurrent: true },
+        { content: 'fee.', participantId: 'b', concurrent: true },
+      ],
+      base,
+    );
+    expect(s.concurrentStreams).toEqual([
+      { participantId: 'a', content: 'Tea first.' },
+      { participantId: 'b', content: 'Coffee.' },
+    ]);
+    expect(s.waitingForResponse).toBe(false);
+    expect(s.content).toBe('');
+    expect(s.streaming).toBe(false);
+    expect(s.respondingParticipantId).toBeNull();
+  });
+
+  it('a content frame for an unknown participant opens its bubble', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { content: 'Hm.', participantId: 'c', concurrent: true });
+    expect(s.concurrentStreams).toEqual([{ participantId: 'c', content: 'Hm.' }]);
+  });
+
+  it('done settles the bubble into an assistant message with v4’s fields; skipped / stopped push nothing', () => {
+    let s = foldChatFrames([
+      { turnStart: true, participantId: 'a', concurrent: true },
+      { content: 'Tea first.', participantId: 'a', concurrent: true },
+      { turnStart: true, participantId: 'b', concurrent: true },
+      { content: 'Nothing.', participantId: 'b', concurrent: true },
+    ]);
+    s = reduceChatFrame(s, { done: true, messageId: 'm-a', participantId: 'a', provider: 'p', modelName: 'm', concurrent: true });
+    s = reduceChatFrame(s, { done: true, messageId: 'm-b', participantId: 'b', skipped: true, concurrent: true });
+    expect(s.concurrentStreams).toEqual([]);
+    expect(s.messages).toEqual([
+      {
+        kind: 'assistant',
+        id: 'm-a',
+        content: 'Tea first.',
+        participantId: 'a',
+        provider: 'p',
+        modelName: 'm',
+        routeTrail: null,
+        isSilentMessage: undefined,
+        reasoningContent: null,
+        reasoningSegments: null,
+        intermediate: true,
+      },
+    ]);
+    // A repeated done is deduped by id.
+    expect(reduceChatFrame(s, { done: true, messageId: 'm-a', participantId: 'a', concurrent: true }).messages).toHaveLength(1);
+  });
+
+  it('a concurrent frame without a participantId is an ordinary frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { content: 'x', concurrent: true });
+    expect(s.content).toBe('x');
+    expect(s.concurrentStreams).toEqual([]);
+  });
+});
+// === end P4.D344 ===
