@@ -5345,3 +5345,299 @@ describe('SalonConversation — raise a hand / stop (v4 useSSEStreaming 2b5e8ee2
     expect(inactive.inst.canRaiseHand()).toBe(false);
   });
 });
+
+// === P4.D344: Storyteller mode (v4 b15fe9404 / 946a50a04 @ 236c04e35) ===
+describe('SalonConversation — Storyteller mode (P4.D344)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const bidOf = (participantId: string, over: Record<string, unknown> = {}) => ({
+    participantId,
+    characterId: `c-${participantId}`,
+    characterName: participantId === 'p1' ? 'Friday' : participantId,
+    status: 'bid' as const,
+    statedTier: 'simple' as const,
+    tier: 'simple' as const,
+    tierRaised: false,
+    tools: [],
+    plan: 'I shall put the kettle on.',
+    reason: null,
+    talkativeness: 0.5,
+    silent: false,
+    ...over,
+  });
+  const roundOf = (id: string, bids: ReturnType<typeof bidOf>[]) => ({
+    id,
+    chatId: 'chat-1',
+    triggerMessageId: 'm-1',
+    status: 'open' as const,
+    bids,
+    createdAt: 'x',
+    updatedAt: 'x',
+  });
+
+  interface StoryStub {
+    client: Partial<CoreClient>;
+    dispatch: ReturnType<typeof vi.fn>;
+    events$: Subject<ScopedEvent>;
+  }
+
+  function storyStub(
+    chat: ChatDetail,
+    opts: {
+      sendFrames?: Record<string, unknown>[];
+      runFrames?: Record<string, unknown>[];
+      runError?: { kind: string; message: string };
+      hangRun?: boolean;
+      round?: unknown;
+      /** Runs right after the send's frames are folded, before the dispatch resolves. */
+      onSent?: () => void;
+    } = {},
+  ): StoryStub {
+    const events$ = new Subject<ScopedEvent>();
+    const emit = (frames: Record<string, unknown>[] = []) => {
+      for (const f of frames) events$.next({ chatId: 'chat-1', ...f } as ScopedEvent);
+    };
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      switch (req.type) {
+        case 'chatGet':
+          return { type: 'chat', data: { chat } };
+        case 'chatSettings':
+          return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+        case 'chatStorytellerRound':
+          return { type: 'storytellerRound', data: { round: (opts.round ?? null) as never } };
+        case 'chatSend':
+          emit(opts.sendFrames);
+          opts.onSent?.();
+          return { type: 'chatSend', data: { messageId: 'm-1', hasContent: true, isMultiCharacter: true, isPaused: false } } as CoreResponse;
+        case 'chatStorytellerRun':
+          if (opts.hangRun) return new Promise<CoreResponse>(() => {});
+          if (opts.runError) return { type: 'error', data: opts.runError } as CoreResponse;
+          emit(opts.runFrames);
+          return { type: 'storytellerRun', data: null };
+        default:
+          return { type: 'ack', data: {} } as CoreResponse;
+      }
+    });
+    const client: Partial<CoreClient> = {
+      events$: events$.asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: (async () => ({ backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null })) as unknown as CoreClient['dispatchData'],
+    };
+    client.dispatchExpect = CoreClient.prototype.dispatchExpect.bind(client as CoreClient);
+    return { client, dispatch, events$ };
+  }
+
+  async function mount(s: StoryStub): Promise<ComponentFixture<SalonConversation>> {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    TestBed.configureTestingModule({
+      imports: [SalonConversation],
+      providers: [
+        provideRouter([]),
+        provideTanStackQuery(new QueryClient({ defaultOptions: { queries: { retry: false } } })),
+        { provide: CoreClient, useValue: s.client },
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({ id: 'chat-1' })) } },
+      ],
+    });
+    const fixture = TestBed.createComponent(SalonConversation);
+    fixture.detectChanges();
+    await flush(fixture);
+    return fixture;
+  }
+
+  async function flush(fixture: ComponentFixture<SalonConversation>, n = 10): Promise<void> {
+    for (let i = 0; i < n; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  const storyChat = (): ChatDetail => ({ ...chatDetail(), turnMode: 'storyteller' });
+  const sendOf = (fixture: ComponentFixture<SalonConversation>) =>
+    (fixture.componentInstance as unknown as { send(p: { content: string; fileIds: string[] }): void }).send({
+      content: 'Shall we have tea?',
+      fileIds: [],
+    });
+  const roundCache = () =>
+    TestBed.inject(QueryClient).getQueryData<{ round: ReturnType<typeof roundOf> | null }>(
+      chatKeys.storytellerRound('chat-1'),
+    );
+  const calls = (s: StoryStub, type: string) =>
+    s.dispatch.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((r) => r['type'] === type);
+
+  it('the page carries the sr-only heading with the chat title (H3, v4 SalonView.tsx:1582)', async () => {
+    const fixture = await mount(storyStub(chatDetail()));
+    const h1 = (fixture.nativeElement as HTMLElement).querySelector('.qt-chat-main > h1');
+    expect(h1?.getAttribute('class')).toBe('sr-only');
+    expect(h1?.textContent).toBe('Tea Time');
+  });
+
+  it('mounts the board only in storyteller mode — never when the key is absent (an older server)', async () => {
+    const rotation = storyStub(chatDetail());
+    const f1 = await mount(rotation);
+    expect((f1.nativeElement as HTMLElement).querySelector('qt-storyteller-board')).toBeNull();
+    expect(calls(rotation, 'chatStorytellerRound')).toEqual([]);
+    TestBed.resetTestingModule();
+
+    const story = storyStub(storyChat(), { round: roundOf('r-1', [bidOf('p1')]) });
+    const f2 = await mount(story);
+    const el = f2.nativeElement as HTMLElement;
+    expect(el.querySelector('qt-storyteller-board')).not.toBeNull();
+    // Immediately ABOVE the composer.
+    expect(el.querySelector('qt-storyteller-board')?.nextElementSibling?.tagName.toLowerCase()).toBe('qt-chat-composer');
+    expect(el.querySelector('section[aria-label="The storyteller\'s board"]')).not.toBeNull();
+    expect(
+      [...el.querySelectorAll('[role="radiogroup"][aria-label="Turn mode"] [role="radio"]')].map((r) =>
+        r.getAttribute('aria-checked'),
+      ),
+    ).toEqual(['false', 'false', 'true']);
+  });
+
+  it("a send's board frames land in the round cache: round replaces, bid patches ONLY its round, roundOpen refetches", async () => {
+    let atSend: ReturnType<typeof roundCache> | undefined;
+    let invalidatedRound = false;
+    const s = storyStub(storyChat(), {
+      sendFrames: [
+        { status: { stage: 'initializing', message: '…' } },
+        { turnStart: true, participantId: 'p1', characterName: 'Friday', chainDepth: 0 },
+        { storytellerRound: roundOf('r-1', [bidOf('p1', { status: 'pending', plan: null }), bidOf('p2', { status: 'pending', plan: null })]) },
+        { storytellerBid: { roundId: 'r-1', bid: bidOf('p1') } },
+        { storytellerBid: { roundId: 'r-other', bid: bidOf('p2', { plan: 'Wrong round.' }) } },
+      ],
+      onSent: () => {
+        atSend = roundCache();
+        const qc = TestBed.inject(QueryClient);
+        const spy = vi.spyOn(qc, 'invalidateQueries');
+        s.events$.next({ chatId: 'chat-1', roundOpen: true, roundId: 'r-1' } as ScopedEvent);
+        invalidatedRound = spy.mock.calls.some(
+          (c) => JSON.stringify(c[0]?.queryKey) === JSON.stringify(['chat', 'chat-1', 'storytellerRound']),
+        );
+        spy.mockRestore();
+      },
+    });
+    const fixture = await mount(s);
+    sendOf(fixture);
+    await flush(fixture);
+    expect(atSend?.round?.id).toBe('r-1');
+    expect(atSend?.round?.bids.map((b) => [b.participantId, b.status, b.plan])).toEqual([
+      ['p1', 'bid', 'I shall put the kettle on.'],
+      ['p2', 'pending', null],
+    ]);
+    expect(invalidatedRound).toBe(true);
+  });
+
+  it('a round_open chain leaves the composer live: nothing waiting, no toast', async () => {
+    const s = storyStub(storyChat(), {
+      sendFrames: [
+        { turnStart: true, participantId: 'p1', characterName: 'Friday', chainDepth: 0 },
+        { storytellerRound: roundOf('r-1', []) },
+        { roundOpen: true, roundId: 'r-1' },
+        { chainComplete: true, reason: 'round_open', nextSpeakerId: null, chainDepth: 0 },
+      ],
+    });
+    const fixture = await mount(s);
+    const before = toasts().length;
+    sendOf(fixture);
+    await flush(fixture);
+    const inst = fixture.componentInstance as unknown as { busy(): boolean };
+    expect(inst.busy()).toBe(false);
+    expect(toasts().slice(before)).toEqual([]);
+  });
+
+  it('runStorytellerSelection dispatches the exact body, folds a two-turn chain, and refreshes the chat and the round', async () => {
+    const s = storyStub(storyChat(), {
+      runFrames: [
+        { turnStart: true, participantId: 'p1', characterName: 'Friday', chainDepth: 1 },
+        { content: 'The kettle is on, as promised.' },
+        { done: true, messageId: 'reply-1', participantId: 'p1' },
+        { turnComplete: true, participantId: 'p1', messageId: 'reply-1', chainDepth: 1 },
+        { turnStart: true, participantId: 'p2', characterName: 'Jeeves', chainDepth: 2 },
+        { content: 'Very good, sir.' },
+        { done: true, messageId: 'reply-2', participantId: 'p2' },
+        { turnComplete: true, participantId: 'p2', messageId: 'reply-2', chainDepth: 2 },
+        { chainComplete: true, reason: 'user_turn', nextSpeakerId: null, chainDepth: 2 },
+      ],
+    });
+    const fixture = await mount(s);
+    const inst = fixture.componentInstance as unknown as {
+      runStorytellerSelection(r: string, p: string[], o: string, k?: boolean): Promise<boolean>;
+      stream(): { messages: { kind: string; id: string }[] } | null;
+    };
+    const seen: string[][] = [];
+    const sub = s.events$.subscribe(() => {
+      const st = inst.stream();
+      if (st) seen.push(st.messages.map((m) => `${m.kind}:${m.id}`));
+    });
+    const gets = calls(s, 'chatGet').length;
+    const rounds = calls(s, 'chatStorytellerRound').length;
+    const ok = await inst.runStorytellerSelection('r-1', ['p1', 'p2'], 'sequential');
+    sub.unsubscribe();
+    expect(ok).toBe(true);
+    expect(calls(s, 'chatStorytellerRun')).toEqual([
+      { type: 'chatStorytellerRun', chatId: 'chat-1', roundId: 'r-1', participantIds: ['p1', 'p2'], order: 'sequential', keepOrder: false },
+    ]);
+    // Two settled bubbles, one per chained turn (the streaming→message path).
+    expect(seen.at(-1)).toEqual(['assistant:reply-1', 'assistant:reply-2']);
+    expect(calls(s, 'chatGet').length).toBeGreaterThan(gets);
+    await flush(fixture);
+    expect(calls(s, 'chatStorytellerRound').length).toBeGreaterThan(rounds);
+    expect(inst.stream()).toBeNull();
+  });
+
+  it("runStorytellerSelection toasts the server's refusal, else v4's fallback", async () => {
+    const s = storyStub(storyChat(), { runError: { kind: 'bad-request', message: 'A Destroy bid must be chosen on its own' } });
+    const fixture = await mount(s);
+    const inst = fixture.componentInstance as unknown as {
+      runStorytellerSelection(r: string, p: string[], o: string, k?: boolean): Promise<boolean>;
+    };
+    const before = toasts().length;
+    expect(await inst.runStorytellerSelection('r-1', ['p1', 'p2'], 'sequential', true)).toBe(false);
+    expect(calls(s, 'chatStorytellerRun')[0]['keepOrder']).toBe(true);
+    expect(toasts().slice(before)).toEqual([{ type: 'error', message: 'A Destroy bid must be chosen on its own' }]);
+    TestBed.resetTestingModule();
+
+    const s2 = storyStub(storyChat(), { runError: { kind: 'internal', message: '' } });
+    const f2 = await mount(s2);
+    const inst2 = f2.componentInstance as unknown as {
+      runStorytellerSelection(r: string, p: string[], o: string): Promise<boolean>;
+    };
+    const before2 = toasts().length;
+    await inst2.runStorytellerSelection('r-1', ['p1'], 'sequential');
+    expect(toasts().slice(before2)).toEqual([{ type: 'error', message: 'The storyteller could not run that selection' }]);
+  });
+
+  it('refuses while the room is still speaking, with v4’s sentence and no dispatch', async () => {
+    const s = storyStub(storyChat(), { hangRun: true });
+    const fixture = await mount(s);
+    const inst = fixture.componentInstance as unknown as {
+      runStorytellerSelection(r: string, p: string[], o: string): Promise<boolean>;
+    };
+    void inst.runStorytellerSelection('r-1', ['p1'], 'sequential');
+    await flush(fixture, 2);
+    const before = toasts().length;
+    expect(await inst.runStorytellerSelection('r-1', ['p1'], 'sequential')).toBe(false);
+    expect(calls(s, 'chatStorytellerRun')).toHaveLength(1);
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: 'One moment — the room is still speaking.' }]);
+  });
+
+  it("the board's run output reaches runStorytellerSelection", async () => {
+    const s = storyStub(storyChat(), {
+      round: roundOf('r-1', [bidOf('p1')]),
+      runFrames: [{ chainComplete: true, reason: 'user_turn', nextSpeakerId: null, chainDepth: 1 }],
+    });
+    const fixture = await mount(s);
+    const el = fixture.nativeElement as HTMLElement;
+    const box = el.querySelector('input[aria-label="Let Friday go ahead"]') as HTMLInputElement;
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await flush(fixture);
+    const run = [...el.querySelectorAll('button')].find((b) => b.textContent?.trim() === 'Run in order') as HTMLButtonElement;
+    run.click();
+    await flush(fixture);
+    expect(calls(s, 'chatStorytellerRun')).toEqual([
+      { type: 'chatStorytellerRun', chatId: 'chat-1', roundId: 'r-1', participantIds: ['p1'], order: 'sequential', keepOrder: false },
+    ]);
+  });
+});
+// === end P4.D344 ===

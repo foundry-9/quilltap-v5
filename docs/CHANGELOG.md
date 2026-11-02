@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Salon's storyteller wiring — turn mode, the board's frames, running a selection
+
+_Versions: SPA 0.5.912._
+
+P4.D344 Tier 1 items 7, 8 and H3–H5. The stream reducer carries the three storyteller board frames (`storyteller` + `storytellerSeq`, nothing else folded from them, v4 `useSSEStreaming.ts:705-717`); the Salon writes them into the board's cache (`round` replaces, `bid` patches only the cached round it names via `getQueryData`, `roundOpen` refetches). The Salon gains `setTurnPosition` and `toggleStorytellerInviteFilter` with v4's bodies, optimistic writes, four toasts and log lines; the board mounts above the composer in storyteller mode only; and `runStorytellerSelection` runs the chosen bids through the per-turn fold loop now shared with `runTurn` (`foldTurnStream` / `endTurnStream`). The page gains v4's `sr-only` heading (P4.D358's hunk), and fenced anchors mark where P4.D358's announcer, P4.D352's prose-mode bindings, P4.D359's feed filter and P4.D346's hold dialog land at unification.
+
 #### 2026-11-02 — feat(spa): the Inspector's Storyteller Rounds filter, Bid badge and round chip
 
 _Versions: SPA 0.5.911._

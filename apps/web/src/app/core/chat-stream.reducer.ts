@@ -41,7 +41,21 @@ import type {
   NextSpeakerInfo,
   PostedMessage,
   RouteAttempt,
+  StorytellerBid,
+  StorytellerRound,
 } from './core-contract';
+
+// === P4.D344: Storyteller mode ===
+/**
+ * Storyteller frames the Salon's board reads off a send's stream (v4
+ * `useSSEStreaming.ts:17-20`). The reducer only CARRIES the latest one; the
+ * board's cache write is the vertical's (`reportStreamTransitions`).
+ */
+export type StorytellerStreamEvent =
+  | { kind: 'round'; round: StorytellerRound }
+  | { kind: 'bid'; roundId: string; bid: StorytellerBid }
+  | { kind: 'open'; roundId: string };
+// === end P4.D344 ===
 
 /** One in-progress tool call within a batch. */
 export interface PendingToolCall {
@@ -205,6 +219,16 @@ export interface ChatStreamState {
   handAnswered: HandAnswered | null;
   /** Bumped per `handAnswered` frame so two answers in one chain each report. */
   handAnsweredSeq: number;
+  // === P4.D344: Storyteller mode ===
+  /**
+   * The latest storyteller board frame (`storytellerRound` / `storytellerBid`
+   * / `roundOpen`) — CARRIED, like {@link handAnswered}: the fold is pure, the
+   * board's cache write is the vertical's.
+   */
+  storyteller: StorytellerStreamEvent | null;
+  /** Bumped per storyteller frame so every bid in a burst reaches the board. */
+  storytellerSeq: number;
+  // === end P4.D344 ===
   /** The terminal `done` payload for dispatch-reply reconciliation. */
   finalDone: FinalDoneInfo | null;
   // --- internal bookkeeping ---
@@ -232,6 +256,8 @@ export function initialChatStreamState(): ChatStreamState {
     chainHeldUserTurn: false,
     handAnswered: null,
     handAnsweredSeq: 0,
+    storyteller: null,
+    storytellerSeq: 0,
     finalDone: null,
     toolBatchSeq: 0,
   };
@@ -244,6 +270,19 @@ export function initialChatStreamState(): ChatStreamState {
  */
 export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): ChatStreamState {
   let s = prev;
+
+  // === P4.D344: storyteller board frames — handed to the board, nothing else
+  // folds from them (v4 `useSSEStreaming.ts:705-717`, three early returns) ===
+  if (frame.storytellerRound) {
+    return carryStoryteller(s, { kind: 'round', round: frame.storytellerRound });
+  }
+  if (frame.storytellerBid) {
+    return carryStoryteller(s, { kind: 'bid', ...frame.storytellerBid });
+  }
+  if (frame.roundOpen && frame.roundId) {
+    return carryStoryteller(s, { kind: 'open', roundId: frame.roundId });
+  }
+  // === end P4.D344 ===
 
   // status
   if (frame.status) {
@@ -393,6 +432,12 @@ export function reduceChatFrame(prev: ChatStreamState, frame: ChatStreamFrame): 
 
   return s;
 }
+
+// === P4.D344 ===
+function carryStoryteller(s: ChatStreamState, event: StorytellerStreamEvent): ChatStreamState {
+  return { ...s, storyteller: event, storytellerSeq: s.storytellerSeq + 1 };
+}
+// === end P4.D344 ===
 
 /** Fold a whole frame sequence into a final state (test/util convenience). */
 export function foldChatFrames(

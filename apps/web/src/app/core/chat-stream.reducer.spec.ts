@@ -533,3 +533,77 @@ describe('chat stream reducer — raise a hand / stop (v4 2b5e8ee24)', () => {
     expect(s.finished).toBe(true);
   });
 });
+
+// === P4.D344: Storyteller mode (v4 b15fe9404, useSSEStreaming.ts:705-717) ===
+describe('chat stream reducer — the storyteller board frames (P4.D344)', () => {
+  const bidOf = (participantId: string) => ({
+    participantId,
+    characterId: `c-${participantId}`,
+    characterName: participantId,
+    status: 'bid' as const,
+    tier: 'simple' as const,
+    statedTier: 'simple' as const,
+    tierRaised: false,
+    tools: [],
+    plan: 'Tea.',
+    reason: null,
+    talkativeness: 0.5,
+    silent: false,
+  });
+  const round = {
+    id: 'r-1',
+    chatId: 'chat-1',
+    triggerMessageId: 'm-1',
+    status: 'open' as const,
+    bids: [],
+    createdAt: 'x',
+    updatedAt: 'x',
+  };
+
+  it('starts empty', () => {
+    const s = initialChatStreamState();
+    expect(s.storyteller).toBeNull();
+    expect(s.storytellerSeq).toBe(0);
+  });
+
+  it('carries each of the three frames with a bumped seq, and folds nothing else from them', () => {
+    const base = { ...initialChatStreamState(), waitingForResponse: true, content: 'held' };
+    const a = reduceChatFrame(base, { storytellerRound: round });
+    expect(a).toEqual({ ...base, storyteller: { kind: 'round', round }, storytellerSeq: 1 });
+    // A stray status beside the board key is NOT folded — v4 returns first.
+    const b = reduceChatFrame(a, { storytellerBid: { roundId: 'r-1', bid: bidOf('x') }, status: { stage: 'x', message: 'y' } } as ChatStreamFrame);
+    expect(b.storyteller).toEqual({ kind: 'bid', roundId: 'r-1', bid: bidOf('x') });
+    expect(b.storytellerSeq).toBe(2);
+    expect(b.status).toBeNull();
+    const c = reduceChatFrame(b, { storytellerBid: { roundId: 'r-1', bid: bidOf('y') } });
+    expect(c.storytellerSeq).toBe(3);
+    const d = reduceChatFrame(c, { roundOpen: true, roundId: 'r-1' });
+    expect(d.storyteller).toEqual({ kind: 'open', roundId: 'r-1' });
+    expect(d.storytellerSeq).toBe(4);
+    expect(d.content).toBe('held');
+    expect(d.waitingForResponse).toBe(true);
+  });
+
+  it('a roundOpen without a roundId is not a board frame', () => {
+    const s = reduceChatFrame(initialChatStreamState(), { roundOpen: true });
+    expect(s.storytellerSeq).toBe(0);
+  });
+
+  it("a storyteller send's chainComplete rides the string chainReason — round_open — and leaves nothing waiting", () => {
+    const s = foldChatFrames([
+      { status: { stage: 'initializing', message: '…' } },
+      { turnStart: true, participantId: 'p-1', characterName: 'Ada', chainDepth: 0 },
+      { storytellerRound: round },
+      { storytellerBid: { roundId: 'r-1', bid: bidOf('p-1') } },
+      { roundOpen: true, roundId: 'r-1' },
+      { chainComplete: true, reason: 'round_open', nextSpeakerId: null, chainDepth: 0 },
+    ]);
+    expect(s.chainReason).toBe('round_open');
+    expect(s.chainPaused).toBe(false);
+    expect(s.waitingForResponse).toBe(false);
+    expect(s.finished).toBe(true);
+    expect(s.messages).toEqual([]);
+    expect(s.storytellerSeq).toBe(3);
+  });
+});
+// === end P4.D344 ===

@@ -246,6 +246,8 @@ function charOf(id: string, name: string): ParticipantDetail['character'] {
 interface StubOptions {
   /** Hold every `chatUpdate` reply until this settles (v4's deferred `setPauseState`). */
   holdUpdate?: Promise<void>;
+  /** P4.D344: every `chatUpdate` answers this refusal (the dispatch's error envelope). */
+  updateError?: string;
   /** The `turn` payload the `query` action returns. */
   query?: { nextSpeakerId: string | null; nextSpeakerControlledBy: string | null };
   /** The `skipUserTurn` response — a `turnAction` turn, or an error message. */
@@ -335,8 +337,14 @@ function stubClient(
           type: 'chatSend',
           data: { messageId: 'x', hasContent: true, isMultiCharacter: true, isPaused: false },
         };
+      // P4.D344: a storyteller chat mounts the board, which reads its round.
+      case 'chatStorytellerRound':
+        return { type: 'storytellerRound', data: { round: null } };
       case 'chatUpdate':
         if (opts.holdUpdate) await opts.holdUpdate;
+        if (opts.updateError) {
+          return { type: 'error', data: { kind: 'bad-request', message: opts.updateError } };
+        }
         return { type: 'ack', data: {} };
       default:
         return { type: 'ack', data: {} };
@@ -1136,10 +1144,14 @@ describe('Salon turn controls', () => {
       fixture.nativeElement.querySelector('qt-turn-controls .qt-chat-pause-button'),
     ).toBeNull();
 
+    // P4.D344: the expanded drawer's control is the Turn mode radiogroup (v4
+    // `ChatSidebar.tsx:852-858`); its Paused position is the old Pause.
+    expect(fixture.nativeElement.querySelector('qt-chat-sidebar .qt-chat-pause-button')).toBeNull();
     const pauseBtn = fixture.nativeElement.querySelector(
-      'qt-chat-sidebar .qt-chat-pause-button',
+      'qt-chat-sidebar [role="radiogroup"][aria-label="Turn mode"] [role="radio"][title="Nobody answers until you nudge them"]',
     ) as HTMLButtonElement;
-    expect(pauseBtn.textContent).toContain('Pause');
+    expect(pauseBtn.textContent?.trim()).toBe('Paused');
+    expect(pauseBtn.getAttribute('aria-checked')).toBe('false');
     pauseBtn.click();
     for (let i = 0; i < 5; i++) {
       await new Promise((r) => setTimeout(r, 0));
@@ -1171,10 +1183,11 @@ describe('Salon turn controls', () => {
     // The guard: the retired promise must not come back. A port that reverts to
     // the #83 wording would still pass an "Auto-responses are paused" check.
     expect(text).not.toContain('will still answer a message you send');
-    const resumeBtn = fixture.nativeElement.querySelector(
-      'qt-chat-sidebar .qt-chat-pause-button',
+    // P4.D344: the paused state reads off the radiogroup's Paused position.
+    const paused = fixture.nativeElement.querySelector(
+      'qt-chat-sidebar [role="radiogroup"][aria-label="Turn mode"] [role="radio"][aria-checked="true"]',
     ) as HTMLButtonElement;
-    expect(resumeBtn.textContent).toContain('Resume');
+    expect(paused.textContent?.trim()).toBe('Paused');
   });
 
   it('nudges the next LLM speaker with nudge: true', async () => {
@@ -1667,3 +1680,124 @@ describe('SalonConversation — the held-turn notice is once per pause (bug 137)
     expect(toasts().slice(before)).toEqual([{ type: 'info', message: SENTENCE }]);
   });
 });
+
+// === P4.D344: the turn-mode control (v4 useChatControls.ts:226-262 @ 236c04e35) ===
+describe('Salon turn controls — the Turn mode radiogroup and the invite filter (P4.D344)', () => {
+  async function radio(fixture: ComponentFixture<SalonConversation>, label: string): Promise<void> {
+    const el = fixture.nativeElement as HTMLElement;
+    const btn = [...el.querySelectorAll('[role="radiogroup"][aria-label="Turn mode"] [role="radio"]')].find(
+      (b) => b.textContent?.trim() === label,
+    ) as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    btn.click();
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+  }
+
+  it('Storyteller sends turnMode as a SIBLING of chat and toasts the storyteller sentence', async () => {
+    const { client, dispatch } = stubClient(groupChat());
+    const fixture = await render(client);
+    const before = toasts().length;
+    await radio(fixture, 'Storyteller');
+    expect(calls(dispatch, 'chatUpdate')).toEqual([
+      { type: 'chatUpdate', chatId: 'chat-1', chat: { isPaused: false }, turnMode: 'storyteller' },
+    ]);
+    expect(toasts().slice(before)).toEqual([
+      { type: 'info', message: 'Storyteller mode: each of your posts asks the company who wishes to answer' },
+    ]);
+    // v4 `fetchChat()` — the chat GET re-runs after the write.
+    expect(calls(dispatch, 'chatGet').length).toBeGreaterThan(1);
+  });
+
+  it('Normal on a paused chat sends turnMode rotation and says Auto-responses resumed', async () => {
+    const { client, dispatch } = stubClient(groupChat({ isPaused: true }));
+    const fixture = await render(client);
+    const before = toasts().length;
+    await radio(fixture, 'Normal');
+    expect(calls(dispatch, 'chatUpdate')).toEqual([
+      { type: 'chatUpdate', chatId: 'chat-1', chat: { isPaused: false }, turnMode: 'rotation' },
+    ]);
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: 'Auto-responses resumed' }]);
+  });
+
+  it('Paused is setPauseState(true) — NO turnMode key — and says Auto-responses paused', async () => {
+    const { client, dispatch } = stubClient(groupChat({ turnMode: 'storyteller' }));
+    const fixture = await render(client);
+    const before = toasts().length;
+    await radio(fixture, 'Paused');
+    expect(calls(dispatch, 'chatUpdate')).toEqual([
+      { type: 'chatUpdate', chatId: 'chat-1', chat: { isPaused: true } },
+    ]);
+    expect(toasts().slice(before)).toEqual([{ type: 'info', message: 'Auto-responses paused' }]);
+  });
+
+  it('a refused change toasts v4\'s sentence, logs v4\'s line, and still re-reads the chat', async () => {
+    const { client, dispatch } = stubClient(groupChat(), { updateError: 'Validation error' });
+    const fixture = await render(client);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = toasts().length;
+    const gets = calls(dispatch, 'chatGet').length;
+    await radio(fixture, 'Storyteller');
+    expect(toasts().slice(before)).toEqual([{ type: 'error', message: 'Could not change the turn mode' }]);
+    expect(err).toHaveBeenCalledWith('[useChatControls] turn mode change failed', expect.anything());
+    expect(calls(dispatch, 'chatGet').length).toBeGreaterThan(gets);
+    err.mockRestore();
+  });
+
+  it('the turn mode writes optimistically into the chat cache (v4 setChat)', async () => {
+    const hold = (() => {
+      let release!: () => void;
+      const promise = new Promise<void>((r) => (release = r));
+      return { promise, release };
+    })();
+    const { client } = stubClient(groupChat(), { holdUpdate: hold.promise });
+    const fixture = await render(client);
+    await radio(fixture, 'Storyteller');
+    const cached = TestBed.inject(QueryClient).getQueryData<ChatDetail>(chatKeys.detail('chat-1'));
+    expect(cached?.turnMode).toBe('storyteller');
+    expect(cached?.isPaused).toBe(false);
+    hold.release();
+  });
+
+  it('the invite filter toggles optimistically, sends ONE bag key, and rolls back with v4\'s toast on a refusal', async () => {
+    const { client, dispatch } = stubClient(groupChat({ turnMode: 'storyteller', storytellerInviteFilter: false }));
+    const fixture = await render(client);
+    const box = (fixture.nativeElement as HTMLElement).querySelector(
+      'qt-participants-section input.qt-checkbox[type="checkbox"]',
+    ) as HTMLInputElement;
+    expect(box).toBeTruthy();
+    box.dispatchEvent(new Event('change'));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls(dispatch, 'chatUpdate')).toEqual([
+      { type: 'chatUpdate', chatId: 'chat-1', chat: { storytellerInviteFilter: true } },
+    ]);
+    expect(
+      TestBed.inject(QueryClient).getQueryData<ChatDetail>(chatKeys.detail('chat-1'))?.storytellerInviteFilter,
+    ).toBe(true);
+    TestBed.resetTestingModule();
+
+    const refused = stubClient(groupChat({ turnMode: 'storyteller', storytellerInviteFilter: true }), {
+      updateError: 'Validation error',
+    });
+    const f2 = await render(refused.client);
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const before = toasts().length;
+    const box2 = (f2.nativeElement as HTMLElement).querySelector(
+      'qt-participants-section input.qt-checkbox[type="checkbox"]',
+    ) as HTMLInputElement;
+    box2.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 4; i++) await new Promise((r) => setTimeout(r, 0));
+    expect(calls(refused.dispatch, 'chatUpdate')).toEqual([
+      { type: 'chatUpdate', chatId: 'chat-1', chat: { storytellerInviteFilter: false } },
+    ]);
+    expect(
+      TestBed.inject(QueryClient).getQueryData<ChatDetail>(chatKeys.detail('chat-1'))?.storytellerInviteFilter,
+    ).toBe(true);
+    expect(toasts().slice(before)).toEqual([{ type: 'error', message: 'Could not change the invitation setting' }]);
+    expect(err).toHaveBeenCalledWith('[Chat] Error persisting storyteller invite filter', expect.anything());
+    err.mockRestore();
+  });
+});
+// === end P4.D344 ===

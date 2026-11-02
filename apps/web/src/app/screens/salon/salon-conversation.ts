@@ -87,6 +87,11 @@ import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal
 import { AllLLMPauseModal, type AllLLMPauseParticipant } from '../../chat/all-llm-pause-modal';
 import { getNextPauseThreshold } from '../../chat/all-llm-pause';
 import { RunToolModal } from '../../chat/tools/run-tool-modal';
+// === P4.D344: Storyteller mode ===
+import { StorytellerBoard, type StorytellerRunRequest } from '../../chat/storyteller-board';
+import { turnModeOf, withBid } from '../../chat/storyteller-board.pure';
+import type { TurnPosition } from '../../chat/sidebar/participants-section';
+// === end P4.D344 ===
 import { SearchReplaceModal } from '../../chat/tools/search-replace-modal';
 import { ChatRenameModal } from '../../chat/chat-rename-modal';
 import { ReattributeMessageDialog } from '../../chat/reattribute-message-dialog';
@@ -156,6 +161,9 @@ import type { UploadedChatFile } from '../../chat/chat-files.api';
 import { CoreDispatchError } from '../../core/core-contract';
 import type {
   ChatDetail,
+  ChatUpdateRequest,
+  StorytellerOrder,
+  StorytellerRoundResponse,
   ChatSettingsDto,
   ConnectionProfileDto,
   MessageAttachment,
@@ -341,10 +349,14 @@ interface CascadePrompt {
     SelectLlmProfileDialog,
     LibraryFilePickerModal,
     Modal,
+    StorytellerBoard,
   ],
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="visibleBackgroundVar()">
       <div class="qt-chat-main">
+        <!-- === P4.D358 (owner P4.D344): the page heading (v4 SalonView.tsx:1582) === -->
+        <h1 class="sr-only">{{ chat()?.title || 'The Salon' }}</h1>
+        <!-- === P4.D358 (owner P4.D344): <qt-reply-announcer> mounts here once chat/reply-announcer.ts lands === -->
         @if (chatQuery.isPending()) {
           <qt-loading-state message="Loading chat..." />
         } @else if (chatQuery.isError() || !chat()) {
@@ -387,6 +399,8 @@ interface CascadePrompt {
           [turnSelectionResult]="effectiveTurnSelection()"
           [isGenerating]="busy()"
           [isPaused]="c.isPaused"
+          [turnMode]="turnModeOf(c)"
+          [storytellerInviteFilter]="c.storytellerInviteFilter === true"
           [userParticipantId]="userParticipantId()"
           [respondingParticipantId]="stream()?.respondingParticipantId ?? null"
           [impersonatingParticipantIds]="impersonatingIds()"
@@ -402,6 +416,8 @@ interface CascadePrompt {
           [showAllWhispers]="showAllWhispers()"
           [isAutonomousRoom]="c.chatType === 'autonomous'"
           (togglePause)="onTogglePause()"
+          (setTurnPosition)="setTurnPosition($event)"
+          (toggleStorytellerInviteFilter)="toggleStorytellerInviteFilter()"
           (nudge)="onSidebarNudge($event)"
           (queue)="onSidebarQueue($event)"
           (dequeue)="onSidebarDequeue($event)"
@@ -500,6 +516,19 @@ interface CascadePrompt {
         (nudge)="onNudge()"
       />
 
+      <!-- === P4.D344: the storyteller board, immediately above the composer, only
+           in storyteller mode (v4 SalonView.tsx:1761-1771) === -->
+      @if (turnModeOf(chat()) === 'storyteller') {
+        <qt-storyteller-board
+          [chatId]="chatId()!"
+          [busy]="busy()"
+          [participants]="chat()?.participants ?? []"
+          (run)="onStorytellerRun($event)"
+        />
+      }
+      <!-- === end P4.D344 === -->
+
+      <!-- === P4.D352 (owner P4.D344): prose-mode bindings === -->
       <qt-chat-composer
         [busy]="busy()"
         [handRaised]="handRaised()"
@@ -769,6 +798,7 @@ interface CascadePrompt {
       />
     }
 
+    <!-- === P4.D346 (owner P4.D344): the custom-tool intervention hold dialog mounts here === -->
     @if (showRunTool() && chat(); as c) {
       <qt-run-tool-modal
         [chatId]="c.id"
@@ -1066,6 +1096,7 @@ export class SalonConversation {
     // arm. The three reset arms (no id / non-ok / throw) are deliberately the
     // same reset, which is what lets a chat whose template was deleted keep
     // rendering with the defaults rather than showing an error.
+    // === P4.D352 (owner P4.D344): composerProseMode ===
     effect(() => {
       const templateId = this.roleplayTemplateId();
       const seq = ++this.templateFetchSeq;
@@ -2277,6 +2308,7 @@ export class SalonConversation {
         return m;
       })
       .filter((m) =>
+        // === P4.D359 (owner P4.D344): isOffSceneMentionIntroduction filter ===
         isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
       );
   });
@@ -3566,6 +3598,84 @@ export class SalonConversation {
     this.toasts.showInfo(paused ? 'Auto-responses paused' : 'Auto-responses resumed');
   }
 
+  // === P4.D344: Storyteller mode — the turn-mode control ===
+  /** The ONE read of the chat's turn mode (R-4; absent = rotation). */
+  protected readonly turnModeOf = turnModeOf;
+
+  /**
+   * The three-position turn-mode control: Normal / Paused / Storyteller (v4
+   * `useChatControls.ts:226-251`). Pause and turn mode are independent (a
+   * paused storyteller chat records posts without opening a round), so Paused
+   * keeps the turn mode, and Normal / Storyteller each un-pause and set the mode.
+   */
+  protected async setTurnPosition(position: TurnPosition): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    if (position === 'paused') {
+      await this.setPauseState(true);
+      this.toasts.showInfo('Auto-responses paused');
+      return;
+    }
+    const turnMode = position === 'storyteller' ? 'storyteller' : 'rotation';
+    this.queryClient.setQueryData<ChatDetail>(chatKeys.detail(chatId), (prev) =>
+      prev ? { ...prev, isPaused: false, turnMode } : prev,
+    );
+    try {
+      // turnMode rides beside `chat`, not in it: it is patch-only on the row
+      // and has its own setter server-side.
+      await this.dispatchChatUpdate({ type: 'chatUpdate', chatId, chat: { isPaused: false }, turnMode });
+      this.toasts.showInfo(
+        turnMode === 'storyteller'
+          ? 'Storyteller mode: each of your posts asks the company who wishes to answer'
+          : 'Auto-responses resumed',
+      );
+    } catch (error) {
+      this.toasts.showError('Could not change the turn mode');
+      console.error('[useChatControls] turn mode change failed', error);
+    }
+    // v4 `fetchChat()` — always, so a server that kept the old mode (or knew
+    // no turn mode at all) snaps the control back.
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+  }
+
+  /**
+   * Storyteller: the talkativeness invite filter (off = everyone is asked every
+   * round). v4 `useChatControls.ts:254-262` — an optimistic write, persisted,
+   * rolled back with v4's toast on a refusal.
+   */
+  protected async toggleStorytellerInviteFilter(): Promise<void> {
+    const chatId = this.chatId();
+    if (!chatId) return;
+    // Read BEFORE the optimistic write (react-closure-reads-in-signal-ports).
+    const next = !(this.chat()?.storytellerInviteFilter === true);
+    const key = chatKeys.detail(chatId);
+    this.queryClient.setQueryData<ChatDetail>(key, (prev) =>
+      prev ? { ...prev, storytellerInviteFilter: next } : prev,
+    );
+    try {
+      await this.dispatchChatUpdate({ type: 'chatUpdate', chatId, chat: { storytellerInviteFilter: next } });
+    } catch (error) {
+      // v4 `persistChatField`'s rollback arm.
+      this.queryClient.setQueryData<ChatDetail>(key, (prev) =>
+        prev ? { ...prev, storytellerInviteFilter: !next } : prev,
+      );
+      // v4's log line for a non-HTTP failure (a dispatch carries no status).
+      console.error('[Chat] Error persisting storyteller invite filter', error);
+      this.toasts.showError('Could not change the invitation setting');
+    }
+  }
+
+  /**
+   * A `chatUpdate` that THROWS on a refusal (v4 `apiFetch` rejects on a non-2xx).
+   * This file has no `persistChatField` twin — its other `chatUpdate` sites
+   * ignore the answer — so the two storyteller writes read it here.
+   */
+  private async dispatchChatUpdate(request: ChatUpdateRequest): Promise<void> {
+    const resp = await this.core.dispatch(request);
+    if (resp.type === 'error') throw new CoreDispatchError(resp.data);
+  }
+  // === end P4.D344 ===
+
   /**
    * v4 `announceChainPause` (`useSSEStreaming.ts:378-393`, bug 123). A chain
    * that stops because the chat is paused used to do so in silence — the room
@@ -3788,28 +3898,11 @@ export class SalonConversation {
       this.messageList()?.scrollOnUserMessage();
     }
 
-    let state: ChatStreamState = { ...initialChatStreamState(), waitingForResponse: true };
-    this.stream.set(state);
-
     // P4.D301: the dispatch rejection (if any) and the error the FRAME recorded
     // before it — both read after the reconcile, where the one toast goes.
-    let sendFailure: unknown = null;
-    let frameError: string | null = null;
-    const token = {};
-    this.liveTurnToken = token;
-    const sub = this.core.events$
-      .pipe(filter((frame) => frame.chatId === chatId))
-      .subscribe((frame) => {
-        // An abandoned turn's frames no longer fold (v4 aborts its reader).
-        if (this.abandonedTurnToken === token) return;
-        const before = state;
-        state = reduceChatFrame(state, frame);
-        this.stream.set(state);
-        this.reportStreamTransitions(before, state);
-      });
-
-    try {
-      await this.core.dispatchExpect(
+    // P4.D344: the fold loop is shared with `runStorytellerSelection`.
+    const folded = await this.foldTurnStream(chatId, () =>
+      this.core.dispatchExpect(
         {
           type: 'chatSend',
           chatId,
@@ -3840,8 +3933,11 @@ export class SalonConversation {
               : undefined,
         },
         'chatSend',
-      );
-    } catch (err) {
+      ),
+    );
+    let state = folded.state;
+    const { token, failure: sendFailure, frameError } = folded;
+    if (sendFailure) {
       // v4 `useSSEStreaming` (:841-845): an unknown/TypeError failure reads as a
       // lost connection; anything else keeps the server's own sentence.
       //
@@ -3849,17 +3945,13 @@ export class SalonConversation {
       // post-error `fetchChat()` and the restore it decides — so the toast moves
       // to the reconcile below. (Measured 2026-09-06, the A1 walk: an
       // initial-turn failure used to raise TWO error toasts here, this one and
-      // the frame's via `reportStreamTransitions`.) The frame's error is read
+      // the frame's via `reportStreamTransitions`.) The frame's error was read
       // into `frameError` BEFORE this state is overwritten.
-      frameError = state.error;
-      sendFailure = err;
-      const raw = err instanceof Error ? err.message : String(err);
+      const raw = sendFailure instanceof Error ? sendFailure.message : String(sendFailure);
       const display =
         raw === 'Unknown error' || raw === 'TypeError' ? 'Connection lost. Please try again.' : raw;
       state = { ...state, error: display || 'Failed to send message' };
       this.stream.set(state);
-    } finally {
-      sub.unsubscribe();
     }
 
     // Reconcile: refetch the canonical chat (v4 `fetchChat()` on done), then clear
@@ -3897,6 +3989,56 @@ export class SalonConversation {
       pending,
       tempUserId,
     });
+    await this.endTurnStream(state, token, pausedBefore);
+  }
+
+  /**
+   * The per-turn stream registration + fold loop (P4.D344: factored out of
+   * `runTurn` so `runStorytellerSelection` shares it rather than copying it).
+   * Subscribes to the chat's frames BEFORE `dispatch` runs (v5 rides the global
+   * event stream while the dispatch resolves only when the turn completes),
+   * folds each through the pure reducer and the vertical's transitions, and
+   * hands back the final state, the rejection (if any), the error the FRAME
+   * recorded before that rejection, and the turn's token.
+   */
+  private async foldTurnStream(
+    chatId: string,
+    dispatch: () => Promise<unknown>,
+  ): Promise<{ state: ChatStreamState; failure: unknown; frameError: string | null; token: object }> {
+    let state: ChatStreamState = { ...initialChatStreamState(), waitingForResponse: true };
+    this.stream.set(state);
+    let failure: unknown = null;
+    let frameError: string | null = null;
+    const token = {};
+    this.liveTurnToken = token;
+    const sub = this.core.events$
+      .pipe(filter((frame) => frame.chatId === chatId))
+      .subscribe((frame) => {
+        // An abandoned turn's frames no longer fold (v4 aborts its reader).
+        if (this.abandonedTurnToken === token) return;
+        const before = state;
+        state = reduceChatFrame(state, frame);
+        this.stream.set(state);
+        this.reportStreamTransitions(before, state);
+      });
+    try {
+      await dispatch();
+    } catch (err) {
+      frameError = state.error;
+      failure = err;
+    } finally {
+      sub.unsubscribe();
+    }
+    return { state, failure, frameError, token };
+  }
+
+  /**
+   * The close every streamed turn shares, after its own reconcile (P4.D344:
+   * factored out of `runTurn` with {@link foldTurnStream}) — the chain-pause
+   * notice, the queue wake, the stream cleared, the hand lowered, the
+   * provisional sweep, the logs refresh and the document re-read.
+   */
+  private async endTurnStream(state: ChatStreamState, token: object, pausedBefore: boolean): Promise<void> {
     // v4 calls `announceChainPause(event)` immediately after `fetchChat()` at
     // BOTH chain-complete sites (`:956` send, `:1132` continue-mode); v5's one
     // reconcile point stands in for both. v4 defaults the reason at the
@@ -3948,6 +4090,62 @@ export class SalonConversation {
       await this.documentMode.handleLLMEditEnd();
     }
   }
+  // === P4.D344: Storyteller mode — running the operator's choice ===
+  /** The board's `run` output (fire-and-forget; the Salon owns the promise — R-5). */
+  protected onStorytellerRun(ev: StorytellerRunRequest): void {
+    void this.runStorytellerSelection(ev.roundId, ev.participantIds, ev.order, ev.keepOrder);
+  }
+
+  /**
+   * Run the bids the operator chose (v4 `runStorytellerSelection`,
+   * `useSSEStreaming.ts:1543-1662`) — a sibling of {@link runTurn} over the same
+   * fold loop: the chosen seats speak in the chain dialect (`turnStart` →
+   * the turn's frames → `turnComplete`, then one `chainComplete`).
+   *
+   * v4 aborts any open reader first; v5 has no `AbortController` twin (P4.D336
+   * Tier 3), so a run while the room is still speaking is REFUSED with v4's own
+   * sentence for that state. The dispatch reply is `null` (W1) — everything is
+   * read off the frames.
+   */
+  async runStorytellerSelection(
+    roundId: string,
+    participantIds: string[],
+    order: StorytellerOrder,
+    keepOrder = false,
+  ): Promise<boolean> {
+    const chatId = this.chatId();
+    if (!chatId) return false;
+    if (this.busy()) {
+      this.toasts.showInfo('One moment — the room is still speaking.');
+      return false;
+    }
+    const { state, failure, token } = await this.foldTurnStream(chatId, () =>
+      this.core.dispatchExpect(
+        { type: 'chatStorytellerRun', chatId, roundId, participantIds, order, keepOrder },
+        'storytellerRun',
+      ),
+    );
+    const pausedBefore = this.chat()?.isPaused === true || this.pauseBeliefFromStop;
+    await this.queryClient.invalidateQueries({ queryKey: chatKeys.detail(chatId) });
+    this.settleTranscriptAfterTurn();
+    let ok = true;
+    if (failure) {
+      // v4: `!res.ok` → `errorData.error || 'The storyteller could not run that
+      // selection'`; the catch toasts `extractErrorMessage(err)`.
+      const message = failure instanceof Error ? failure.message : '';
+      this.toasts.showError(message || 'The storyteller could not run that selection');
+      ok = false;
+    } else if (state.error) {
+      // A stream error frame — v4's reader throws it into the same catch.
+      this.toasts.showError(state.error);
+      ok = false;
+    }
+    await this.endTurnStream(state, token, pausedBefore);
+    void this.queryClient.invalidateQueries({ queryKey: chatKeys.storytellerRound(chatId) });
+    return ok;
+  }
+  // === end P4.D344 ===
+
 
   /**
    * The tool-execution notice above the composer (v4 `useSSEStreaming.ts`'s
@@ -4177,6 +4375,30 @@ export class SalonConversation {
  *    the failure carrying the tool's own sentence (Bug 84).
    */
   private reportStreamTransitions(before: ChatStreamState, after: ChatStreamState): void {
+    // === P4.D344: the storyteller board's frames, written into its query cache
+    // (v4 `SalonView.handleStorytellerEvent`, `:558-570`) — `round` replaces,
+    // `bid` patches ONLY the cached round it names (read through getQueryData,
+    // never a lagging `data()` signal), `open` refetches. ===
+    if (after.storytellerSeq !== before.storytellerSeq && after.storyteller) {
+      const chatId = this.chatId();
+      if (chatId) {
+        const key = chatKeys.storytellerRound(chatId);
+        const event = after.storyteller;
+        if (event.kind === 'round') {
+          this.queryClient.setQueryData<StorytellerRoundResponse>(key, { round: event.round });
+        } else if (event.kind === 'bid') {
+          const prev = this.queryClient.getQueryData<StorytellerRoundResponse>(key);
+          if (prev?.round && prev.round.id === event.roundId) {
+            this.queryClient.setQueryData<StorytellerRoundResponse>(key, {
+              round: withBid(prev.round, event.bid),
+            });
+          }
+        } else {
+          void this.queryClient.invalidateQueries({ queryKey: key });
+        }
+      }
+    }
+    // === end P4.D344 ===
     // v4 `useSSEStreaming.ts:734-742`: the raised hand has been answered. A
     // yield speaks for itself (the Host's note, then the floor); a decline is
     // said here, or the hand would simply go down with no word of why.
