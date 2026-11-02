@@ -8,6 +8,7 @@ import type {
 import { CoreClient } from '../../../../core/core-client';
 import { dispatchGenerateExternalPrompt } from '../detail-generators.api';
 import { isInFloatingLayer } from '../../../../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../../../../ui/dialog-focus';
 
 /**
  * `ExternalPromptDialog` — v4 `app/aurora/[id]/view/components/
@@ -21,6 +22,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
 @Component({
   selector: 'qt-external-prompt-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DialogFocus],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
   },
@@ -31,9 +33,14 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
     >
       <div
         class="qt-border-default qt-bg-card flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border p-6 shadow-2xl md:max-w-lg"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
-        <h3 class="qt-heading-4 mb-4 flex-shrink-0">
+        <h3 class="qt-heading-4 mb-4 flex-shrink-0" [id]="titleId">
           Generate External Prompt{{ characterName() ? ' for ' + characterName() : '' }}
         </h3>
 
@@ -166,6 +173,9 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
   `,
 })
 export class ExternalPromptDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   private readonly core = inject(CoreClient);
 
   readonly characterId = input.required<string>();

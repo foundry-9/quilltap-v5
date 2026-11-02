@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, Injectable, inject, signal } from '@angular/core';
 import { isInFloatingLayer } from './floating-layer';
+import { DialogFocus } from './dialog-focus';
 
 /** One open alert: its message, its labelled buttons, and who is waiting. */
 interface AlertRequest {
@@ -55,6 +56,7 @@ export class AlertModalService {
 @Component({
   selector: 'qt-alert-modal-host',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DialogFocus],
   host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (alerts.current(); as alert) {
@@ -65,9 +67,18 @@ export class AlertModalService {
         (click)="alerts.answer(null)"
       ></button>
       <div class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[101] pointer-events-auto">
-        <div class="qt-dialog p-6" role="alertdialog" aria-modal="true">
+        <!-- v4 alert-dialog.tsx: aria-labelledby={messageId} — the MESSAGE names it
+             (there is no title). The host is a singleton, so the id is static. -->
+        <div
+          class="qt-dialog p-6"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="qt-alert-modal-message"
+          tabindex="-1"
+          qtDialogFocus
+        >
           <div class="qt-dialog-body !px-0 !py-0 mb-6">
-            <p class="text-sm text-foreground whitespace-pre-wrap break-words" data-testid="alert-modal-message">{{ alert.message }}</p>
+            <p id="qt-alert-modal-message" class="text-sm text-foreground whitespace-pre-wrap break-words" data-testid="alert-modal-message">{{ alert.message }}</p>
           </div>
           <div class="flex gap-3 justify-end">
             @for (label of alert.buttons; track label; let last = $last) {

@@ -2,15 +2,13 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
-  ElementRef,
   effect,
   inject,
   input,
   output,
-  untracked,
-  viewChild,
 } from '@angular/core';
 
+import { DialogFocus } from './dialog-focus';
 import { Icon } from './icon';
 
 /**
@@ -26,10 +24,12 @@ import { Icon } from './icon';
  *    for the panel), so an `@if` around the markup would swap the transition for
  *    a hard cut. `pointer-events: none` on the closed scrim is what keeps the
  *    always-mounted overlay from eating clicks.
- *  - **Focus is saved on open and restored on close** (v4 :39-50): the panel
- *    itself takes focus (it is `tabindex="-1"`) one frame after opening, and the
+ *  - **Focus is saved on open and restored on close**: the panel itself takes
+ *    focus (it is `tabindex="-1"`) one frame after opening, and the
  *    previously-focused element gets it back on close. Without the restore, the
- *    toolbar button that opened the panel loses the caret on every close.
+ *    toolbar button that opened the panel loses the caret on every close. Since
+ *    v4 `58120a7fe` that, and the Tab trap, are the shared `useDialogFocus`
+ *    hook's — v5's `qtDialogFocus` directive (`./dialog-focus`, P4.D358).
  *
  * PORTAL DIVERGENCE: v4 renders through `createPortal(…, document.body)` because
  * React composes the panel deep inside SalonView's tree. v5 renders inline — the
@@ -67,7 +67,7 @@ import { Icon } from './icon';
 @Component({
   selector: 'qt-slide-over-panel',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   template: `
     <!-- Scrim backdrop (v4 :103-109). A click on the scrim ITSELF closes; the
          target check is what stops a click bubbling out of the panel from
@@ -80,7 +80,6 @@ import { Icon } from './icon';
     ></div>
 
     <div
-      #panel
       class="qt-slide-over-panel"
       [class]="klass()"
       [attr.data-open]="isOpen()"
@@ -90,7 +89,7 @@ import { Icon } from './icon';
       [attr.inert]="isOpen() ? null : ''"
       [attr.aria-label]="ariaLabel() || title()"
       tabindex="-1"
-      (keydown)="onKeydown($event)"
+      [qtDialogFocus]="isOpen()"
     >
       <div class="qt-slide-over-header">
         <h2 class="text-base font-semibold qt-text truncate">{{ title() }}</h2>
@@ -122,30 +121,11 @@ export class SlideOverPanel {
   readonly ariaLabel = input<string | undefined>(undefined);
   readonly close = output<void>();
 
-  private readonly panel = viewChild<ElementRef<HTMLElement>>('panel');
-
   /**
    * v4's `headerActions` prop is a ReactNode slot; Angular's equivalent is a
    * named `ng-content`. Consumers project with `<div qt-slide-over-actions>`.
    */
   constructor() {
-    // v4 :39-50 — save/restore focus around the open transition.
-    let previousFocus: HTMLElement | null = null;
-    effect(() => {
-      const open = this.isOpen();
-      untracked(() => {
-        if (open) {
-          previousFocus = document.activeElement as HTMLElement | null;
-          // v4 uses requestAnimationFrame: the panel must be laid out before it
-          // can take focus.
-          requestAnimationFrame(() => this.panel()?.nativeElement.focus());
-        } else if (previousFocus) {
-          previousFocus.focus();
-          previousFocus = null;
-        }
-      });
-    });
-
     // Escape closes (v4 :53-65). The listener is DOCUMENT-level and attached only
     // while open — v4 `stopPropagation`s so an outer Escape handler (the Salon's
     // terminal-focus exit) does not also fire on the same key.
@@ -168,33 +148,6 @@ export class SlideOverPanel {
     // v4 :68-72 — only a click on the scrim itself, never a bubbled one.
     if (event.target === event.currentTarget) {
       this.close.emit();
-    }
-  }
-
-  /**
-   * The focus trap (v4 :75-97): Tab off the last focusable wraps to the first,
-   * Shift+Tab off the first wraps to the last. v4's selector list is carried
-   * verbatim — it is what decides which controls are in the cycle.
-   */
-  protected onKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Tab') return;
-    const panel = this.panel()?.nativeElement;
-    if (!panel) return;
-
-    const focusable = panel.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    );
-    if (focusable.length === 0) return;
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
     }
   }
 }

@@ -4,6 +4,7 @@ import { MessageContent } from '../../../../chat/message-content';
 import { Icon } from '../../../../ui/icon';
 import { ToastService } from '../../../../ui/toast.service';
 import { isInFloatingLayer } from '../../../../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../../../../ui/dialog-focus';
 
 /**
  * `ExternalPromptResultDialog` — v4 `app/aurora/[id]/view/components/
@@ -23,7 +24,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
 @Component({
   selector: 'qt-external-prompt-result-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MessageContent],
+  imports: [DialogFocus, Icon, MessageContent],
   host: {
     '(document:keydown.escape)': 'onDocumentEscape($event)',
   },
@@ -31,9 +32,14 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
     <div class="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
       <div
         class="qt-border-default qt-bg-card flex max-h-[90vh] w-full max-w-md flex-col rounded-2xl border p-6 shadow-2xl md:max-w-3xl"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
       >
         <div class="mb-4 flex flex-shrink-0 items-center justify-between">
-          <h3 class="qt-heading-4">
+          <h3 class="qt-heading-4" [id]="titleId">
             Generated Prompt{{ characterName() ? ' for ' + characterName() : '' }}
           </h3>
           <div class="flex items-center gap-2">
@@ -81,6 +87,9 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
   `,
 })
 export class ExternalPromptResultDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   private readonly toasts = inject(ToastService);
 
   readonly characterName = input<string | null>(null);

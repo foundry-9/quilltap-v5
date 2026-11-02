@@ -46,6 +46,7 @@ import {
   type HelpPastChat,
 } from './help-wire';
 import { HelpService } from './help.service';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 type HelpTab = 'guide' | 'ask';
 
@@ -65,7 +66,9 @@ function getInitialTab(): HelpTab {
 @Component({
   selector: 'qt-help-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   imports: [
+    DialogFocus,
     NgTemplateOutlet,
     Icon,
     HelpComposer,
@@ -80,12 +83,14 @@ function getInitialTab(): HelpTab {
           class="qt-dialog flex flex-col"
           role="dialog"
           aria-modal="true"
-          aria-label="Help"
+          [attr.aria-labelledby]="titleId"
+          tabindex="-1"
+          qtDialogFocus
           style="width: 560px; max-width: 90vw; height: 80vh; max-height: 90vh"
           (click)="$event.stopPropagation()"
         >
           <div class="qt-dialog-header flex items-center justify-between gap-4">
-            <h2 class="qt-dialog-title">Help</h2>
+            <h2 class="qt-dialog-title" [id]="titleId">Help</h2>
             <div class="flex items-center gap-1">
               @if (activeTab() === 'ask' && currentChatId()) {
                 <button
@@ -264,6 +269,15 @@ function getInitialTab(): HelpTab {
   `,
 })
 export class HelpDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** Escape closes Help (P4.D358 R-9: Help stays a modal this round, so C9 R1 — ungated while open). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    if (this.isOpen()) this.close();
+  }
+
   private readonly help = inject(HelpService);
   private readonly api = inject(HelpApi);
   private readonly stream = inject(HelpStreamingService);

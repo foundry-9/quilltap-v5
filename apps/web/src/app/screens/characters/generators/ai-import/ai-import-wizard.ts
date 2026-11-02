@@ -14,6 +14,7 @@ import {
 } from './ai-import.types';
 import type { AIImportStepName, StepStatus } from './ai-import.types';
 import { isInFloatingLayer } from '../../../../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../../../../ui/dialog-focus';
 
 /**
  * `AiImportWizard` — v4 `components/settings/ai-import/AIImportWizard.tsx`
@@ -49,15 +50,23 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
   selector: 'qt-ai-import-wizard',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [AiImportState],
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div class="qt-dialog-overlay" (click)="onBackdrop()">
-      <div class="qt-dialog m-4 flex h-[92vh] w-full max-w-4xl flex-col" (click)="$event.stopPropagation()">
+      <div
+        class="qt-dialog m-4 flex h-[92vh] w-full max-w-4xl flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+        (click)="$event.stopPropagation()"
+      >
         <div class="qt-dialog-header flex flex-shrink-0 items-center justify-between">
-          <h2 class="qt-dialog-title flex items-center gap-2">
+          <h2 class="qt-dialog-title flex items-center gap-2" [id]="titleId">
             <qt-icon name="sparkles" class="w-5 h-5 text-primary" />
             {{ WIZARD_CHROME_TITLE }}
           </h2>
@@ -99,7 +108,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
             @case (1) {
               <div class="flex flex-col gap-4">
                 <div>
-                  <h3 class="qt-section-title mb-2">Upload Source Files</h3>
+                  <h3 class="qt-section-title mb-2" [id]="titleId + '-upload'">Upload Source Files</h3>
                   <p class="qt-body-sm qt-text-secondary mb-3">
                     Upload wiki pages, character sheets, story documents, or any text files describing a
                     character. Supports .txt, .md, and .pdf files.
@@ -114,6 +123,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
                     <input
                       #fileInput
                       type="file"
+                      [attr.aria-labelledby]="titleId + '-upload'"
                       class="hidden"
                       accept=".txt,.md,.pdf"
                       multiple
@@ -154,6 +164,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
                   <textarea
                     class="qt-input w-full"
                     rows="8"
+                    aria-label="Freeform text"
                     [value]="state.sourceText()"
                     (input)="state.setSourceText($any($event.target).value)"
                     placeholder="Paste character descriptions, wiki content, backstory, personality notes..."
@@ -184,6 +195,7 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
                          [value] on the <select> itself. -->
                     <select
                       class="qt-select w-full"
+                      aria-label="Connection profile"
                       (change)="state.setProfileId($any($event.target).value)"
                     >
                       @for (profile of state.profiles(); track profile.id) {
@@ -500,6 +512,9 @@ import { isInFloatingLayer } from '../../../../ui/floating-layer';
   `,
 })
 export class AiImportWizard {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   protected readonly state = inject(AiImportState);
   protected readonly formatBytes = formatBytes;
 

@@ -15,6 +15,7 @@ import { MarkdownField } from '../../editor/markdown-field';
 import { uploadCharacterPhoto } from '../../screens/characters/characters.api';
 import { Icon } from '../../ui/icon';
 import { ToastService } from '../../ui/toast.service';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * Create Ad-hoc NPC (v4 `components/chat/CreateNPCDialog.tsx`, 482 LOC), nested
@@ -51,17 +52,21 @@ import { ToastService } from '../../ui/toast.service';
 @Component({
   selector: 'qt-create-npc-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MarkdownField],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, Icon, MarkdownField],
   template: `
     <div class="qt-dialog-overlay p-4" (click)="onBackdrop($event)">
       <div
         class="qt-dialog max-w-2xl max-h-[90vh] flex flex-col"
         role="dialog"
         aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header flex items-center justify-between">
-          <h2 class="qt-dialog-title">Create Ad-hoc NPC</h2>
+          <h2 class="qt-dialog-title" [id]="titleId">Create Ad-hoc NPC</h2>
           <button
             type="button"
             class="qt-button qt-button-ghost p-2"
@@ -239,6 +244,15 @@ import { ToastService } from '../../ui/toast.service';
   `,
 })
 export class CreateNpcDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `CreateNPCDialog.tsx:91-103` — a document Escape closes unless a create is in flight. */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    if (!this.creating()) this.close.emit();
+  }
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

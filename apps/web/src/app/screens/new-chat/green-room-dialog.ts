@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/c
 
 import { GreenRoomStore } from './green-room.state';
 import { OutfitSlotsPreview } from './outfit-slots-preview';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * The Green Room — the blocking chat-creation status dialog (v4
@@ -13,7 +14,7 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
 @Component({
   selector: 'qt-green-room-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [OutfitSlotsPreview],
+  imports: [DialogFocus, OutfitSlotsPreview],
   template: `
     @if (state().open) {
       <div class="qt-dialog-overlay">
@@ -22,9 +23,12 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
           style="max-width: 42rem;"
           role="dialog"
           aria-modal="true"
+          [attr.aria-labelledby]="titleId"
+          tabindex="-1"
+          qtDialogFocus
         >
           <div class="qt-dialog-header">
-            <h2 class="qt-dialog-title">The Green Room</h2>
+            <h2 class="qt-dialog-title" [id]="titleId">The Green Room</h2>
           </div>
 
           <div class="qt-dialog-body overflow-y-auto">
@@ -103,6 +107,9 @@ import { OutfitSlotsPreview } from './outfit-slots-preview';
   `,
 })
 export class GreenRoomDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   private readonly store = inject(GreenRoomStore);
 
   protected readonly state = this.store.state;

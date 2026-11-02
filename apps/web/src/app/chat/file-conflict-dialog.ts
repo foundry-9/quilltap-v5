@@ -21,7 +21,7 @@ const CONFLICT_DESCRIPTION: Record<FileConflictInfo['conflictType'], string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="File Already Exists" maxWidth="lg" [closeOnBackdrop]="!resolving()" (close)="cancel.emit()">
+    <qt-modal title="File Already Exists" maxWidth="lg" [closeOnBackdrop]="!resolving()" [closeOnEscape]="!resolving()" (close)="cancel.emit()">
       <div class="space-y-4">
         <p class="qt-text-secondary">{{ description() }}</p>
 

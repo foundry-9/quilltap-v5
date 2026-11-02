@@ -106,6 +106,19 @@ describe('SearchDialog (v4 search-dialog.tsx)', () => {
     expect(searchCalls.length).toBe(2);
     expect(searchCalls[1]).toContain('types=characters,memories');
   });
+
+  it('the panel announces as a modal dialog named "Search", and the field is labelled (P4.D358)', async () => {
+    const fixture = render('');
+    await flush();
+    const host = fixture.nativeElement as HTMLElement;
+    const dlg = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('bg-background')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    expect(dlg.getAttribute('aria-label')).toBe('Search');
+    const input = dlg.querySelector('input[type="text"]') as HTMLInputElement;
+    expect(input.getAttribute('aria-label')).toBe('Search');
+  });
 });
 
 /**

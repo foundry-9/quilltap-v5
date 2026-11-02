@@ -36,6 +36,7 @@ import {
   removeGalleryEntry,
 } from './photos.api';
 import { isInFloatingLayer } from '../../ui/floating-layer';
+import { DialogFocus } from '../../ui/dialog-focus';
 
 /**
  * The "My Photos" screen at `/photos` (v4 `app/photos/PhotosView.tsx`) — by
@@ -76,7 +77,7 @@ import { isInFloatingLayer } from '../../ui/floating-layer';
 @Component({
   selector: 'qt-photos-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, RouterLink, Icon],
+  imports: [DialogFocus, FormsModule, RouterLink, Icon],
   // v4's detail modal binds Escape on `window` (`:394-400`). The listener is
   // declared on the page rather than the modal because the modal is inline
   // control flow here, not a child component with its own lifecycle.
@@ -244,6 +245,8 @@ import { isInFloatingLayer } from '../../ui/floating-layer';
             role="dialog"
             aria-modal="true"
             aria-labelledby="photo-detail-title"
+            tabindex="-1"
+            qtDialogFocus
             (click)="$event.stopPropagation()"
           >
             <header

@@ -26,7 +26,6 @@ import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 import { WardrobeVantageItemsLoader } from './wardrobe-vantage-items';
 import { formatWearLine, wearOf } from './wear-display';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** How a picked item is written down: by its title (default) or its exact id. */
 export type WardrobeReferenceForm = 'title' | 'id';
@@ -78,9 +77,6 @@ interface PickerRow {
   selector: 'qt-wardrobe-reference-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Modal, NgTemplateOutlet, QtAutofocus, SlotBadge, WardrobeItemThumbnail],
-  host: {
-    '(document:keydown.escape)': 'onEscape($event)',
-  },
   template: `
     @if (open()) {
       <qt-modal title="Choose a garment or outfit" maxWidth="2xl" (close)="closed.emit()">
@@ -418,11 +414,6 @@ export class WardrobeReferencePicker {
       vantage.kind === 'character' ? { characterId: vantage.characterId } : undefined,
     );
     this.closed.emit();
-  }
-
-  protected onEscape(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (this.open()) this.closed.emit();
   }
 
   protected inputValue(event: Event): string {

@@ -404,12 +404,11 @@ describe('MaintenanceDialog — the lane\'s own rows (P4.D300)', () => {
     }
   });
 
-  it('sits under document.body, z-[100], with no role="dialog"; both Close controls emit close (L-4)', async () => {
+  it('sits under document.body, z-[100]; both Close controls emit close (L-4; the role landed with dff76ebef)', async () => {
     const f = render({ characterId: CHAR }, {});
     await settle(f);
     expect(host(f).parentElement).toBe(document.body);
     expect((host(f).querySelector('.qt-dialog-overlay') as HTMLElement).classList.contains('z-[100]')).toBe(true);
-    expect(host(f).querySelector('[role="dialog"]')).toBeNull();
     let closed = 0;
     f.componentInstance.close.subscribe(() => (closed += 1));
     (host(f).querySelector('button[aria-label="Close"]') as HTMLButtonElement).click();
@@ -436,5 +435,33 @@ describe('MaintenanceDialog — the lane\'s own rows (P4.D300)', () => {
     ]);
     expect(host(f).querySelector('legend')?.textContent).toBe('Phases');
     expect(text(f)).toContain('Choose the phases, then rehearse or send for the staff.');
+  });
+});
+
+describe('MaintenanceDialog — WCAG semantics (P4.D358, v4 dff76ebef)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('announces as a dialog named by its title', async () => {
+    const fixture = render({ characterId: CHAR, characterName: 'Ariadne' }, {});
+    await settle(fixture);
+    const dlg = host(fixture).querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect((host(fixture).querySelector('#' + id) as HTMLElement).textContent?.trim()).toBe(
+      'Memory Maintenance — Ariadne',
+    );
+  });
+
+  it('a document Escape closes exactly once', async () => {
+    const fixture = render({ characterId: CHAR, characterName: 'Ariadne' }, {});
+    await settle(fixture);
+    let closed = 0;
+    fixture.componentInstance.close.subscribe(() => closed++);
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(closed).toBe(1);
   });
 });

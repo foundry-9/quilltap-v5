@@ -26,6 +26,7 @@ import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { MaintenanceReportView, MaintenanceReportsTable, PHASE_LABELS } from './maintenance-report';
 import { fetchCharacterMemoryCounts, memoryKeys, runMaintenance } from './memory.api';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 const ALL = '__all__';
 
@@ -54,9 +55,11 @@ type Result = { kind: 'one'; report: MaintenanceReport } | { kind: 'many'; repor
  * memory list (fixed to one character: `characterId` hides the picker and the
  * counts read never runs).
  *
- * **Transcribed as v4 writes it (P4.D300 L-4, the P4.D276 R-H idiom):** hand
- * markup — no `role="dialog"`, no Escape, no backdrop close; the header's close
- * icon and the footer's Close are the only exits. The host reparents to
+ * **Hand markup, as v4 writes it.** v4 moved at `dff76ebef` (the WCAG pass):
+ * the card now carries `role="dialog"`, `aria-modal`, `aria-labelledby` → the
+ * title, `tabIndex={-1}` with `useDialogFocus`, and `useEscapeKey(onClose,
+ * true)` — so the P4.D300 L-4 "no role, no Escape" idiom is RETIRED (P4.D358);
+ * there is still no backdrop close. The host reparents to
  * `document.body` after the first render (v4's `createPortal`; the
  * `images/image-detail-modal.ts` idiom). Every control is disabled while a
  * run is in flight.
@@ -68,13 +71,21 @@ type Result = { kind: 'one'; report: MaintenanceReport } | { kind: 'many'; repor
 @Component({
   selector: 'qt-maintenance-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, MaintenanceReportView, MaintenanceReportsTable],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, Icon, MaintenanceReportView, MaintenanceReportsTable],
   template: `
     <div class="qt-dialog-overlay p-4 z-[100]">
-      <div class="qt-dialog max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div
+        class="qt-dialog max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="qt-dialog-header">
           <div class="flex items-center justify-between">
-            <h2 class="qt-dialog-title">{{ title() }}</h2>
+            <h2 class="qt-dialog-title" [id]="titleId">{{ title() }}</h2>
             <button
               type="button"
               class="qt-text-secondary hover:text-foreground"
@@ -203,6 +214,15 @@ type Result = { kind: 'one'; report: MaintenanceReport } | { kind: 'many'; repor
   `,
 })
 export class MaintenanceDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onClose, true)` (`maintenance-dialog.tsx`, `dff76ebef`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.close.emit();
+  }
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();

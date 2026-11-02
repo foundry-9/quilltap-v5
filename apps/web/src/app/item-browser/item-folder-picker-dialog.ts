@@ -6,7 +6,6 @@ import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import { QtAutofocus } from '../wardrobe/autofocus.directive';
 import { folderName, folderSegments, isSameFolder, joinFolder } from '../wardrobe/folders';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 interface PickerRow {
   path: string;
@@ -39,15 +38,13 @@ interface PickerRow {
   selector: 'qt-item-folder-picker-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Modal, NgTemplateOutlet, QtAutofocus],
-  host: {
-    '(document:keydown.escape)': 'onEscape($event)',
-  },
   template: `
     <qt-modal
       [title]="verb() + ' ' + subject() + ' to a folder'"
       maxWidth="md"
       overlayClass="z-[70]"
       [closeOnBackdrop]="!working()"
+      [closeOnEscape]="!working()"
       (close)="closed.emit()"
     >
       <p class="qt-text-xs qt-text-secondary mb-2">{{ note() }}</p>
@@ -230,12 +227,5 @@ export class ItemFolderPickerDialog {
     } finally {
       this.pending.set(false);
     }
-  }
-
-  /** v4 `closeOnEscape={!working}`. */
-  protected onEscape(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (this.working()) return;
-    this.closed.emit();
   }
 }

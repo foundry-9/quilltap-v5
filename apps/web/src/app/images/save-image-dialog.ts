@@ -21,7 +21,6 @@ import { listWardrobeSaveTargets, saveWardrobeImageToStore } from '../wardrobe/i
 import type { WardrobeContainer } from '../wardrobe/wardrobe-container';
 import { listInventorySaveTargets, saveInventoryImageToStore } from '../inventory/inventory.api';
 import { fileUrl } from './image-urls';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 const ALBUM_KIND_LABEL: Record<AlbumKind, string> = {
   character: 'Character',
@@ -85,19 +84,15 @@ export type SaveImageTarget =
  * (the dispatch error carries none — `ALBUM_LOAD_STATUS_ABSENT`, P4.173 R-A),
  * ALONE: v4's failed fetch leaves `albums` null, so `groupedAlbums` is null and
  * neither the empty sentence nor the select renders (`SaveImageDialog.tsx`
- * :138-151, :215-216, :302 at `322a5488e`). And (R-C) v5's `qt-modal` renders in place with no
- * Escape, so this dialog ports v4 `BaseModal`'s two behaviours LOCALLY for all
- * three doors: it reparents its own host to `document.body` (so it paints
- * above a body-portalled full-screen viewer, and escapes the item editor's
- * `transform`ed ancestor), and it closes on a document Escape (v4
- * `closeOnEscape`, default true).
+ * :138-151, :215-216, :302 at `322a5488e`). And (R-C) the portal stays local:
+ * it reparents its own host to `document.body` for all three doors (so it
+ * paints above a body-portalled full-screen viewer, and escapes the item
+ * editor's `transform`ed ancestor); Escape is `qt-modal`'s since P4.D358.
  */
 @Component({
   selector: 'qt-save-image-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
-  // R-C — v4 BaseModal's `closeOnEscape` (default true; `BaseModal.tsx:97-100`).
-  host: { '(document:keydown.escape)': 'onDocumentEscape($event)' },
   template: `
     <qt-modal
       title="Save image to album"
@@ -218,12 +213,6 @@ export type SaveImageTarget =
   `,
 })
 export class SaveImageDialog {
-  /** The document Escape — but never one pressed in the topmost floating layer. */
-  protected onDocumentEscape(event: Event): void {
-    if (isInFloatingLayer(event.target)) return;
-    this.close.emit();
-  }
-
   private readonly core = inject(CoreClient);
 
   readonly target = input.required<SaveImageTarget>();

@@ -53,7 +53,7 @@ export interface GeneratedImage {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="Generate Image" maxWidth="3xl" (close)="close.emit()">
+    <qt-modal title="Generate Image" maxWidth="3xl" [closeOnEscape]="!generating()" (close)="close.emit()">
       <div class="space-y-4">
         @if (!imageProfileId()) {
           <div class="qt-alert-error text-sm" role="alert">

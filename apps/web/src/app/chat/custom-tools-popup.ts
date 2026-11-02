@@ -124,7 +124,7 @@ interface ReferenceRow {
     }
 
     @if (isOpen()) {
-      <qt-modal [title]="dialogTitle()" maxWidth="2xl" (close)="close()">
+      <qt-modal [title]="dialogTitle()" maxWidth="2xl" [closeOnEscape]="false" (close)="close()">
         <!-- Both slots below are STATIC children of qt-modal, each switching
              phase inside itself. Angular matches projection selectors against
              the compile-time children, so a [qt-modal-footer] nested inside an
@@ -682,7 +682,9 @@ export class CustomToolsPopup {
   }
 
   /** Escape dismisses (v4 `BaseModal`'s `closeOnEscape`). Stopped so an outer
-   *  Escape handler doesn't also fire on the same keystroke. */
+   *  Escape handler doesn't also fire on the same keystroke — so this host owns
+   *  its Escape and binds `qt-modal`'s `[closeOnEscape]="false"` (P4.D358: one
+   *  owner of Escape per host). */
   protected onEscape(event: Event): void {
     if (isInFloatingLayer(event.target)) return;
     if (!this.isOpen()) return;

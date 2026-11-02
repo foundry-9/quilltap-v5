@@ -357,3 +357,19 @@ describe('ImageDetailModal', () => {
     expect(fixture.nativeElement.querySelector('qt-image-metadata')).toBeNull();
   });
 });
+
+describe('ImageDetailModal — WCAG semantics (P4.D358)', () => {
+  afterEach(() => {
+    document.body.style.overflow = '';
+    TestBed.resetTestingModule();
+  });
+
+  it('announces as a modal dialog named for its image', async () => {
+    const fixture = await render(stubClient({}), imageData({ filename: 'harbour.png' }));
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('fixed')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    expect(dlg.getAttribute('aria-label')).toBe('Image viewer: harbour.png');
+  });
+});

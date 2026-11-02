@@ -4,6 +4,7 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, output, si
 import { CoreClient } from '../../core/core-client';
 import type { CustomToolDestinations, DestinationStore } from '../../core/core-contract';
 import * as api from './workbench.api';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * DestinationPicker — "Where shall Pascal keep this contrivance?" (v4
@@ -39,13 +40,19 @@ export function allStores(data: CustomToolDestinations): DestinationStore[] {
 @Component({
   selector: 'qt-destination-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgTemplateOutlet],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, NgTemplateOutlet],
   template: `
-    <div class="qt-dialog-overlay" role="dialog" aria-modal="true">
+    <div class="qt-dialog-overlay">
       <div
         class="qt-card qt-shadow-lg rounded-lg border w-full max-w-lg max-h-[80vh] overflow-y-auto p-4 space-y-3"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
       >
-        <h2 class="qt-card-title text-base">Where shall Pascal keep this contrivance?</h2>
+        <h2 class="qt-card-title text-base" [id]="titleId">Where shall Pascal keep this contrivance?</h2>
 
         @if (loading()) {
           <p class="text-sm qt-text-secondary">Surveying the premises…</p>
@@ -236,6 +243,15 @@ export function allStores(data: CustomToolDestinations): DestinationStore[] {
   `,
 })
 export class DestinationPicker {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onCancel)` (`dff76ebef`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.cancel.emit();
+  }
+
   private readonly core = inject(CoreClient);
 
   /** The draft's tool name, for duplicate warnings. */

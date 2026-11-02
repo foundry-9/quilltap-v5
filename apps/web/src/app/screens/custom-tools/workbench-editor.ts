@@ -41,6 +41,7 @@ import { SideEffectsSection } from './side-effects-section';
 import { ProvingBench } from './proving-bench';
 import * as api from './workbench.api';
 import { ToastService } from '../../ui/toast.service';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * WorkbenchEditor — the single-definition editor of Pascal's Workbench (v4
@@ -78,6 +79,7 @@ function extractErrorMessage(err: unknown): string {
   selector: 'qt-workbench-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DialogFocus,
     Icon,
     BuilderForm,
     SideEffectsSection,
@@ -295,9 +297,16 @@ function extractErrorMessage(err: unknown): string {
 
         <!-- Conflict dialog -->
         @if (conflictContent() !== null && location(); as where) {
-          <div class="qt-dialog-overlay" role="dialog" aria-modal="true">
-            <div class="qt-card qt-shadow-lg rounded-lg border w-full max-w-md p-4 space-y-3">
-              <h2 class="qt-card-title text-base">The file has moved under your hand</h2>
+          <div class="qt-dialog-overlay">
+            <div
+              class="qt-card qt-shadow-lg rounded-lg border w-full max-w-md p-4 space-y-3"
+              role="alertdialog"
+              aria-modal="true"
+              [attr.aria-labelledby]="conflictTitleId"
+              tabindex="-1"
+              qtDialogFocus
+            >
+              <h2 class="qt-card-title text-base" [id]="conflictTitleId">The file has moved under your hand</h2>
               <p class="text-sm">
                 {{ where.path }} was changed by someone else since you opened it. Take theirs, or
                 press yours?
@@ -326,6 +335,9 @@ function extractErrorMessage(err: unknown): string {
   `,
 })
 export class WorkbenchEditor {
+  /** The conflict dialog's `aria-labelledby` target — v4 `conflictTitleId = useId()` (`dff76ebef`). */
+  protected readonly conflictTitleId = mintDialogId();
+
   private readonly core = inject(CoreClient);
   private readonly cdr = inject(ChangeDetectorRef);
   private readonly toasts = inject(ToastService);

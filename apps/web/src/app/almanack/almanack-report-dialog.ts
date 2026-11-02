@@ -14,6 +14,7 @@ import { Icon } from '../ui/icon';
 import { renderAlmanackMarkdown } from './almanack-markdown';
 import { ALMANACK_TITLE } from './almanack-phases';
 import { isInFloatingLayer } from '../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 /**
  * The Almanack report viewer — a port of v4
@@ -38,7 +39,7 @@ import { isInFloatingLayer } from '../ui/floating-layer';
 @Component({
   selector: 'qt-almanack-report-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   template: `
     <button
       type="button"
@@ -54,10 +55,13 @@ import { isInFloatingLayer } from '../ui/floating-layer';
         class="qt-dialog w-full h-full max-w-6xl flex flex-col"
         role="dialog"
         aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
       >
         <div class="qt-dialog-header flex-shrink-0">
           <div class="flex items-center justify-between">
-            <h2 class="qt-dialog-title">{{ filename() }}</h2>
+            <h2 class="qt-dialog-title" [id]="titleId">{{ filename() }}</h2>
             <button
               type="button"
               class="p-1 hover:qt-bg-muted rounded transition-colors"
@@ -95,6 +99,9 @@ import { isInFloatingLayer } from '../ui/floating-layer';
   `,
 })
 export class AlmanackReportDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   readonly reportId = input.required<string>();
   readonly filename = input.required<string>();
   readonly content = input.required<string>();

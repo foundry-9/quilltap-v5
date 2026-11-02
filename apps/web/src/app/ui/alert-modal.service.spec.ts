@@ -56,4 +56,19 @@ describe('AlertModalService + AlertModalHost', () => {
     alerts.answer('B');
     expect(await second).toBe('B');
   });
+
+  it('announces as an alertdialog named by its message (v4 alert-dialog.tsx aria-labelledby, P4.D358)', () => {
+    const { fixture, el, alerts } = render();
+    void alerts.show('The boiler has opinions.', ['Fine']);
+    fixture.detectChanges();
+    const dlg = el.querySelector('[role="alertdialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-dialog')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    expect(dlg.getAttribute('aria-labelledby')).toBe('qt-alert-modal-message');
+    const label = document.getElementById('qt-alert-modal-message') as HTMLElement;
+    expect(label.tagName).toBe('P');
+    expect(label.textContent?.trim()).toBe('The boiler has opinions.');
+    alerts.answer('Fine');
+  });
 });

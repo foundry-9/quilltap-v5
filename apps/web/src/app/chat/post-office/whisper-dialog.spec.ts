@@ -109,3 +109,38 @@ describe('WhisperDialog (v4 components/chat/WhisperDialog.tsx)', () => {
     expect(closed).toHaveBeenCalled();
   });
 });
+
+describe('WhisperDialog — WCAG semantics (P4.D358)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const esc = (): KeyboardEvent =>
+    new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+
+  it('announces as a dialog named by its title', () => {
+    const fixture = mount();
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(
+      (fixture.nativeElement.querySelector('#' + id) as HTMLElement).textContent?.trim(),
+    ).toBe('Whisper to Bram');
+  });
+
+  it('a document Escape closes exactly once', () => {
+    const fixture = mount();
+    const closed = vi.fn();
+    fixture.componentInstance.close.subscribe(closed);
+    document.dispatchEvent(esc());
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it('an Escape typed in the textarea closes exactly ONCE (the document listener skips it)', () => {
+    const fixture = mount();
+    const closed = vi.fn();
+    fixture.componentInstance.close.subscribe(closed);
+    textarea(fixture).dispatchEvent(esc());
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+});

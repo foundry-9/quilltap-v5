@@ -17,6 +17,7 @@ import { ApplyConfirmation, type OptimizerAcceptedChangeView } from './apply-con
 import { OptimizerState } from './optimizer-state';
 import { SuggestionCard } from './suggestion-card';
 import { isInFloatingLayer } from '../../../../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../../../../ui/dialog-focus';
 
 /**
  * v4's own three progress segments (`components/characters/optimizer/
@@ -45,16 +46,24 @@ const SEGMENTS: ProgressSegment[] = [
   selector: 'qt-character-optimizer-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [OptimizerState],
-  imports: [Icon, ProgressBar, AnalysisSummary, SuggestionCard, ApplyConfirmation],
+  imports: [DialogFocus, Icon, ProgressBar, AnalysisSummary, SuggestionCard, ApplyConfirmation],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div class="qt-dialog-overlay" (click)="onBackdrop()">
-      <div class="qt-dialog m-4 flex h-[92vh] w-full max-w-2xl flex-col" (click)="$event.stopPropagation()">
+      <div
+        class="qt-dialog m-4 flex h-[92vh] w-full max-w-2xl flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+        (click)="$event.stopPropagation()"
+      >
         <div class="qt-dialog-header flex flex-shrink-0 items-start justify-between">
           <div class="flex flex-col gap-0.5">
-            <h2 class="qt-dialog-title flex items-center gap-2">
+            <h2 class="qt-dialog-title flex items-center gap-2" [id]="titleId">
               <qt-icon name="book" class="w-5 h-5 text-primary" />
               Refine from Memories
             </h2>
@@ -462,6 +471,9 @@ const SEGMENTS: ProgressSegment[] = [
   `,
 })
 export class CharacterOptimizerModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   protected readonly state = inject(OptimizerState);
   protected readonly segments = SEGMENTS;
 

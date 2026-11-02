@@ -26,6 +26,7 @@ import { Icon } from '../../ui/icon';
 import { ProviderModelBadge } from '../sidebar/provider-model-badge';
 import { CreateNpcDialog } from './create-npc-dialog';
 import { ToastService } from '../../ui/toast.service';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * v4's sentinel for "the human types for this character" in the Controlled-By
@@ -73,17 +74,21 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
 @Component({
   selector: 'qt-add-character-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Avatar, Icon, MarkdownField, OutfitSelector, ProviderModelBadge, CreateNpcDialog, AiImportWizard],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, Avatar, Icon, MarkdownField, OutfitSelector, ProviderModelBadge, CreateNpcDialog, AiImportWizard],
   template: `
     <div class="qt-dialog-overlay p-4" (click)="onBackdrop($event)">
       <div
         class="qt-dialog max-w-2xl max-h-[90vh] flex flex-col"
         role="dialog"
         aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header flex items-center justify-between">
-          <h2 class="qt-dialog-title">Add Character to Chat</h2>
+          <h2 class="qt-dialog-title" [id]="titleId">Add Character to Chat</h2>
           <button
             type="button"
             class="qt-button qt-button-ghost p-2"
@@ -378,6 +383,15 @@ export const USER_IMPERSONATION_VALUE = '__user_impersonation__';
   `,
 })
 export class AddCharacterDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `onEscape: () => { if (!isAdding && !isCreateNPCOpen) onClose() }` (`AddCharacterDialog.tsx:176`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    if (!this.adding() && !this.createNpcOpen()) this.close.emit();
+  }
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

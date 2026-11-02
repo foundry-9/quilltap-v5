@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * The Whisper dialog (v4 `components/chat/WhisperDialog.tsx`): a private line to
@@ -35,12 +36,21 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
 @Component({
   selector: 'qt-whisper-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 qt-bg-overlay-caption" (click)="close.emit()"></div>
-      <div class="qt-dialog relative z-10 w-full max-w-md mx-4" role="dialog" aria-modal="true">
+      <div
+        class="qt-dialog relative z-10 w-full max-w-md mx-4"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="qt-dialog-header">
-          <h3 class="qt-dialog-title">Whisper to {{ targetName() }}</h3>
+          <h3 class="qt-dialog-title" [id]="titleId">Whisper to {{ targetName() }}</h3>
         </div>
         <div class="qt-dialog-body">
           <p class="text-sm qt-text-muted mb-3">
@@ -80,6 +90,15 @@ import { ChangeDetectionStrategy, Component, input, output, signal } from '@angu
   `,
 })
 export class WhisperDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onClose, isOpen)` (`WhisperDialog.tsx:38`) — document-level, beside the textarea's own. */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.close.emit();
+  }
+
   readonly targetName = input.required<string>();
   /** Carried on `send` so the Salon needs no lookup of its own. */
   readonly targetParticipantId = input.required<string>();
@@ -103,6 +122,8 @@ export class WhisperDialog {
       this.commit();
     }
     if (event.key === 'Escape') {
+      // Consumed here, so the document Escape below skips it (one close per key).
+      event.preventDefault();
       this.close.emit();
     }
   }

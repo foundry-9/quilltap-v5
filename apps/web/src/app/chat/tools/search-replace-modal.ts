@@ -85,6 +85,7 @@ const PREVIEW_DEBOUNCE_MS = 300;
       title="Search &amp; Replace"
       maxWidth="xl"
       [closeOnBackdrop]="!executing()"
+      [closeOnEscape]="!executing()"
       (close)="onClose()"
     >
       @if (step() !== 'processing' && step() !== 'results') {

@@ -24,6 +24,7 @@ import {
   type Progression,
   type TimeIncrement,
 } from './schema';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 /** The entry being edited, with its id. Null = creating a fresh one. */
 export interface ProgressionEdit {
@@ -225,16 +226,23 @@ export function toProgression(
 @Component({
   selector: 'qt-progression-editor-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   // v4's outer element is a fixed overlay; an unstyled Angular custom element
   // is `display: inline`, which would take the overlay out of the flow
   // (dogfood #97 / #107's class).
-  host: { class: 'block' },
+  host: { '(document:keydown.escape)': 'onEscape($event)', class: 'block' },
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center qt-bg-overlay p-4">
-      <div class="qt-card qt-bg-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+      <div
+        class="qt-card qt-bg-card w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 space-y-4"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="flex items-start justify-between">
-          <h3 class="qt-heading-4">{{ heading() }}</h3>
+          <h3 class="qt-heading-4" [id]="titleId">{{ heading() }}</h3>
           <button
             type="button"
             class="qt-button-icon qt-button-ghost"
@@ -518,6 +526,15 @@ export function toProgression(
   `,
 })
 export class ProgressionEditorModal implements OnInit {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onClose, !saving)` (`dff76ebef`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    if (!this.saving()) this.close.emit();
+  }
+
   /** The entry being edited, with its id. Null = creating a fresh one. */
   readonly editing = input<ProgressionEdit | null>(null);
   /** Ids already in use, so a create cannot silently overwrite one. */

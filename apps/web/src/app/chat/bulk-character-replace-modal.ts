@@ -13,6 +13,7 @@ import type { MessageDto, ParticipantDetail } from '../core/core-contract';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { bulkReattribute, type RoleFilter } from './chat-admin.api';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 /**
  * The sentinel v4 uses for "the messages nobody is attributed to" — the
@@ -60,12 +61,20 @@ export const UNASSIGNED_USER = '__UNASSIGNED__';
 @Component({
   selector: 'qt-bulk-character-replace-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, Icon],
   template: `
     <div class="qt-dialog-overlay p-4" (click)="onBackdrop($event)">
-      <div class="qt-dialog max-w-lg" role="dialog" aria-modal="true">
+      <div
+        class="qt-dialog max-w-lg"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="qt-dialog-header flex items-center justify-between">
-          <h2 class="qt-dialog-title">Bulk Character Replace</h2>
+          <h2 class="qt-dialog-title" [id]="titleId">Bulk Character Replace</h2>
           <button
             type="button"
             class="qt-button qt-button-ghost p-2"
@@ -181,6 +190,15 @@ export const UNASSIGNED_USER = '__UNASSIGNED__';
   `,
 })
 export class BulkCharacterReplaceModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useClickOutside`'s `onEscape: () => { if (!isSubmitting) onClose() }` (`BulkCharacterReplaceModal.tsx:98-100`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    if (!this.submitting()) this.close.emit();
+  }
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

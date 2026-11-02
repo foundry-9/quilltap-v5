@@ -20,7 +20,6 @@ import type { InventoryItemActions } from './inventory-item-actions';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
 import { instantiateInventoryItem, listInventoryArchetypes, type InventoryInstantiateBody } from './inventory.api';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * Make an instance of an archetype — a port of v4
@@ -39,13 +38,13 @@ import { isInFloatingLayer } from '../ui/floating-layer';
   selector: 'qt-inventory-instantiate-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, InventoryPicture],
-  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <qt-modal
       [title]="title()"
       maxWidth="lg"
       overlayClass="z-[70]"
       [closeOnBackdrop]="!working()"
+      [closeOnEscape]="!working()"
       (close)="closed.emit()"
     >
       <p class="qt-text-xs qt-text-secondary mb-2">
@@ -205,10 +204,5 @@ export class InventoryInstantiateDialog {
       this.working.set(false);
       void this.actions().refresh();
     }
-  }
-
-  protected onEscape(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (!this.working()) this.closed.emit();
   }
 }

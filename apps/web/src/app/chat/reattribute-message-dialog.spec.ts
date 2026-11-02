@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
@@ -173,5 +174,37 @@ describe('ReattributeMessageDialog', () => {
     fixture.detectChanges();
     expect(toasts()).toEqual([{ type: 'error', message: 'the clerk refuses' }]);
     expect(fixture.componentInstance.closed).toBe(0);
+  });
+});
+
+describe('ReattributeMessageDialog — WCAG semantics (P4.D358)', () => {
+  function escape(): void {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+  }
+
+  it('announces as a dialog named by its title', async () => {
+    const fixture = await render();
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(
+      (fixture.nativeElement.querySelector('#' + id) as HTMLElement).textContent?.trim(),
+    ).toBe('Re-attribute Message');
+  });
+
+  it('a document Escape closes once — but not while a re-attribution is in flight', async () => {
+    const fixture = await render();
+    const dialog = fixture.debugElement.query(By.directive(ReattributeMessageDialog))
+      .componentInstance as unknown as { submitting: { set(v: boolean): void } };
+    dialog.submitting.set(true);
+    escape();
+    expect(fixture.componentInstance.closed).toBe(0);
+    dialog.submitting.set(false);
+    escape();
+    expect(fixture.componentInstance.closed).toBe(1);
   });
 });

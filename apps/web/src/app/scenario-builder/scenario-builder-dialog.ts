@@ -72,10 +72,10 @@ type Mode = 'real' | 'in-world';
  * while open, simply runs on mount. The run state is provided HERE, so closing
  * the dialog destroys it and aborts any run (v4's unmount abort).
  *
- * Two SPA-convention notes: v4's `closeOnEscape={!running && !saveOpen}` has no
- * counterpart because `qt-modal` handles no Escape at all (the standing modal
- * convention); the ✕ button reaches {@link handleClose}, which refuses while
- * running exactly as v4's does. v4's dialog persists no geometry (measured —
+ * Two notes: v4's `closeOnEscape={!running && !saveOpen}` is bound on
+ * `qt-modal` as-is (P4.D358 retired the "handles no Escape" convention); the ✕
+ * button reaches {@link handleClose}, which refuses while running exactly as
+ * v4's does. v4's dialog persists no geometry (measured —
  * `BaseModal` takes none), so neither does this (the order's Tier 2 item 11).
  *
  * @module scenario-builder/scenario-builder-dialog
@@ -90,6 +90,7 @@ type Mode = 'real' | 'in-world';
       title="The Host sets the scene"
       maxWidth="2xl"
       [closeOnBackdrop]="false"
+      [closeOnEscape]="!running() && !saveOpen()"
       (close)="handleClose()"
     >
       <div class="flex items-start gap-3 mb-4">

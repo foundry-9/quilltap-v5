@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * Confirmation prompt shown when switching a bundle with components back to a
@@ -11,6 +12,8 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 @Component({
   selector: 'qt-wardrobe-mode-change-prompt',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus],
   template: `
     <button
       class="qt-dialog-overlay !p-0 cursor-default border-none z-[90]"
@@ -22,9 +25,16 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
       class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[100] pointer-events-auto"
       style="width: min(420px, calc(100vw - 2rem))"
     >
-      <div class="qt-dialog">
+      <div
+        class="qt-dialog"
+        role="alertdialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="qt-dialog-header">
-          <h3 class="qt-dialog-title">Switch to a single garment?</h3>
+          <h3 class="qt-dialog-title" [id]="titleId">Switch to a single garment?</h3>
         </div>
         <div class="qt-dialog-body">
           <p class="qt-text-small">
@@ -46,6 +56,15 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
   `,
 })
 export class WardrobeModeChangePrompt {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onCancel, true)` (`dff76ebef`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.cancel.emit();
+  }
+
   /** How many components will be discarded by switching to a single garment. */
   readonly componentCount = input.required<number>();
   readonly cancel = output<void>();

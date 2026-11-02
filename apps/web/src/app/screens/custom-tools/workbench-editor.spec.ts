@@ -451,6 +451,30 @@ describe('WorkbenchEditor (v4 WorkbenchEditor.tsx)', () => {
   });
 });
 
+describe('WorkbenchEditor — the conflict dialog\'s WCAG semantics (P4.D358)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('the CARD announces as an alertdialog named by its title — not the overlay', async () => {
+    const fixture = await renderEditor(
+      stubClient({ writeThrows: () => conflictError() }),
+      { source: SOURCE },
+    );
+    await fixture.componentInstance.save(SOURCE);
+    fixture.detectChanges();
+    const host = fixture.nativeElement as HTMLElement;
+    const dlg = host.querySelector('[role="alertdialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-card')).toBe(true);
+    expect(host.querySelector('.qt-dialog-overlay[role]')).toBeNull();
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect((host.querySelector('#' + id) as HTMLElement).textContent?.trim()).toBe(
+      'The file has moved under your hand',
+    );
+  });
+});
+
 describe('DestinationPicker (v4 DestinationPicker.tsx)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
@@ -564,6 +588,31 @@ describe('DestinationPicker (v4 DestinationPicker.tsx)', () => {
       (b) => b.textContent?.trim() === 'Keep it here',
     );
     expect(keep?.disabled).toBe(true);
+  });
+
+  it('the CARD announces as a dialog named by its question — not the overlay (P4.D358)', async () => {
+    const fixture = await renderPicker('unlock', TREE);
+    const host = fixture.nativeElement as HTMLElement;
+    const dlg = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-dialog-overlay')).toBe(false);
+    expect((host.querySelector('.qt-dialog-overlay') as HTMLElement).hasAttribute('role')).toBe(false);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect((host.querySelector('#' + id) as HTMLElement).textContent?.trim()).toBe(
+      'Where shall Pascal keep this contrivance?',
+    );
+  });
+
+  it('a document Escape cancels exactly once (v4 useEscapeKey, P4.D358)', async () => {
+    const fixture = await renderPicker('unlock', TREE);
+    let cancelled = 0;
+    fixture.componentInstance.cancel.subscribe(() => cancelled++);
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(cancelled).toBe(1);
   });
 });
 

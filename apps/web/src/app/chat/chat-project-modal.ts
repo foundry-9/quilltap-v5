@@ -43,7 +43,7 @@ import { ToastService } from '../ui/toast.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="Assign to Project" [closeOnBackdrop]="!saving()" (close)="onClose()">
+    <qt-modal title="Assign to Project" [closeOnBackdrop]="!saving()" [closeOnEscape]="!saving()" (close)="onClose()">
       <div class="space-y-4">
         @if (projectName()) {
           <p class="qt-text-small">

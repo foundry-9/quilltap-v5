@@ -11,6 +11,7 @@ import {
 import { apiUrl } from '../../core/api-url';
 import { CoreClient } from '../../core/core-client';
 import type { FileEntry } from '../../core/core-contract';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 /**
  * Pick an avatar from the stored image files (tier 2 of P4.9c; v4
@@ -34,17 +35,21 @@ import type { FileEntry } from '../../core/core-contract';
 @Component({
   selector: 'qt-avatar-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus],
   template: `
     <div class="qt-dialog-overlay" (click)="cancelled.emit()">
       <div
         class="qt-dialog max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col"
         role="dialog"
         aria-modal="true"
-        aria-label="Select Avatar"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header flex items-center justify-between">
-          <h2 class="qt-dialog-title">Select Avatar</h2>
+          <h2 class="qt-dialog-title" [id]="titleId">Select Avatar</h2>
         </div>
 
         <div class="qt-dialog-body flex-1 overflow-y-auto">
@@ -101,6 +106,15 @@ import type { FileEntry } from '../../core/core-contract';
   `,
 })
 export class AvatarPicker {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(handleClose, isOpen && !showUploadDialog)` (`avatar-selector.tsx`); v5's picker has no nested upload dialog, so ungated. */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.cancelled.emit();
+  }
+
   private readonly core = inject(CoreClient);
 
   /** The currently-set avatar's file id, if any (pre-selects it, as v4 does). */

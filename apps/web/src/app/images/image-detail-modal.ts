@@ -26,6 +26,7 @@ import {
   type ImageData,
 } from './images.api';
 import { ToastService } from '../ui/toast.service';
+import { DialogFocus } from '../ui/dialog-focus';
 
 /**
  * The deep image-detail modal — a port of v4
@@ -67,11 +68,16 @@ import { ToastService } from '../ui/toast.service';
 @Component({
   selector: 'qt-image-detail-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DeletedImagePlaceholder, ImageActions, ImageMetadata],
+  imports: [DialogFocus, DeletedImagePlaceholder, ImageActions, ImageMetadata],
   template: `
     <!-- v4 ImageDetailModal.tsx:87 — z-[60], one layer above the z-50 gallery. -->
     <div
       class="fixed inset-0 z-[60] flex items-center justify-center qt-bg-overlay backdrop-blur-sm p-4"
+      role="dialog"
+      aria-modal="true"
+      [attr.aria-label]="'Image viewer: ' + image().filename"
+      tabindex="-1"
+      qtDialogFocus
       (click)="closeModal.emit()"
     >
       <qt-image-actions

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 
 import type { StartupState } from '../../startup/startup.service';
+import { DialogFocus } from '../../ui/dialog-focus';
 
 /**
  * The pre-shell startup / error screens (v4 `StartupProgress` +
@@ -11,6 +12,7 @@ import type { StartupState } from '../../startup/startup.service';
 @Component({
   selector: 'qt-startup-screen',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DialogFocus],
   template: `
     @switch (state().kind) {
       @case ('lock-conflict') {
@@ -18,6 +20,8 @@ import type { StartupState } from '../../startup/startup.service';
           class="fixed inset-0 z-[9999] flex items-center justify-center p-4 qt-pretheme-bg"
           role="alertdialog"
           aria-labelledby="qt-lock-title"
+          tabindex="-1"
+          qtDialogFocus
         >
           <div class="qt-card max-w-xl w-full p-6 space-y-4">
             <div class="text-4xl" aria-hidden="true">&#x1F512;</div>

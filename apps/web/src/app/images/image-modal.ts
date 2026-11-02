@@ -14,6 +14,7 @@ import { downloadImageUrl } from '../core/download-utils';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { isInFloatingLayer } from '../ui/floating-layer';
+import { DialogFocus } from '../ui/dialog-focus';
 
 /**
  * The in-chat image lightbox — a port of v4 `components/chat/ImageModal.tsx`.
@@ -28,12 +29,15 @@ import { isInFloatingLayer } from '../ui/floating-layer';
 @Component({
   selector: 'qt-image-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   template: `
     <div
       class="fixed inset-0 z-[100] flex items-center justify-center qt-bg-overlay backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
+      [attr.aria-label]="'Image viewer: ' + filename()"
+      tabindex="-1"
+      qtDialogFocus
       (click)="close.emit()"
     >
       <div class="absolute top-4 right-4 flex gap-2 z-10">

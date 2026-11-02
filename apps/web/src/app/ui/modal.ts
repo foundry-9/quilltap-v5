@@ -1,6 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  computed,
+  inject,
+  input,
+  output,
+} from '@angular/core';
 
+import { DialogFocus, mintDialogId } from './dialog-focus';
+import { isInFloatingLayer } from './floating-layer';
 import { Icon } from './icon';
+
 
 const MAX_WIDTHS: Record<string, string> = {
   md: '28rem',
@@ -19,14 +30,22 @@ const MAX_WIDTHS: Record<string, string> = {
  * scrollable body (`<ng-content>`), and a footer slot
  * (`<ng-content select="[qt-modal-footer]">`). Backdrop + the ✕ both emit `close`.
  *
- * It renders IN PLACE and handles no Escape (the standing convention); a host
- * that needs v4 `BaseModal`'s portal or `closeOnEscape` ports them locally
- * (`images/save-image-dialog.ts`, P4.D277 R-C).
+ * Renders IN PLACE (no portal); closes on a document Escape unless
+ * `closeOnEscape` is false (v4 `BaseModal.tsx:96` / `useClickOutside.ts:98-110`,
+ * converged P4.D358 R-N); announces as a dialog named by its title and traps
+ * focus (`qtDialogFocus`).
+ *
+ * The Escape listener is DOCUMENT-level, bubble phase, and does not stop
+ * propagation, as v4's is — so two stacked `qt-modal`s BOTH close on one Escape,
+ * exactly as two stacked v4 `BaseModal`s do (`MODAL_ESCAPE_NO_STOP_PROPAGATION`).
+ * A host that needs the inner-popover behaviour keeps its own capture-phase
+ * handler and binds `[closeOnEscape]="false"` (v4's `escapeCapture` opt-in):
+ * one owner of Escape per host, never both.
  */
 @Component({
   selector: 'qt-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [DialogFocus, Icon],
   template: `
     <div class="qt-dialog-overlay" [class]="overlayClass()" (click)="onBackdrop()">
       <div
@@ -34,10 +53,13 @@ const MAX_WIDTHS: Record<string, string> = {
         [style.max-width]="maxWidthRem()"
         role="dialog"
         aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header flex items-center justify-between gap-4">
-          <h2 class="qt-dialog-title">{{ title() }}</h2>
+          <h2 class="qt-dialog-title" [id]="titleId">{{ title() }}</h2>
           <button
             type="button"
             class="qt-button-ghost qt-button-sm"
@@ -63,6 +85,8 @@ export class Modal {
   readonly maxWidth = input<string>('lg');
   /** Whether a backdrop click dismisses (v4 `closeOnClickOutside`, default true). */
   readonly closeOnBackdrop = input(true);
+  /** Whether a document Escape dismisses (v4 `closeOnEscape`, default true — `BaseModal.tsx:96`). */
+  readonly closeOnEscape = input(true);
   /**
    * Additional classes for the full-screen overlay — e.g. a raised `z-[…]`
    * when the modal opens over a viewer already above the dialog layer.
@@ -74,6 +98,24 @@ export class Modal {
   readonly close = output<void>();
 
   protected readonly maxWidthRem = computed(() => MAX_WIDTHS[this.maxWidth()] ?? MAX_WIDTHS['lg']);
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  constructor() {
+    // v4 `useClickOutside.ts:98-110`'s `onEscape`: a document keydown, bubble
+    // phase, no stopPropagation. `defaultPrevented` means an inner control
+    // already consumed the key. An Escape pressed in the topmost floating
+    // layer (the always-on Brahma Console) is not this modal's — v4
+    // `useClickOutside.ts` returns on `isInFloatingLayer(event.target)` first
+    // (`99463fc56`; P4.D359's guard, carried onto P4.D358's listener at union).
+    const onDocumentKeydown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape' || !this.closeOnEscape() || event.defaultPrevented) return;
+      if (isInFloatingLayer(event.target)) return;
+      this.close.emit();
+    };
+    document.addEventListener('keydown', onDocumentKeydown);
+    inject(DestroyRef).onDestroy(() => document.removeEventListener('keydown', onDocumentKeydown));
+  }
 
   protected onBackdrop(): void {
     if (this.closeOnBackdrop()) {

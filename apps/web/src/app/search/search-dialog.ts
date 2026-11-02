@@ -18,6 +18,7 @@ import { appendDeduped } from './search.logic';
 import { ALL_SEARCH_TYPES } from './search.types';
 import type { SearchResult, SearchType } from './search.types';
 import { isInFloatingLayer } from '../ui/floating-layer';
+import { DialogFocus } from '../ui/dialog-focus';
 
 /**
  * v4's dialog reads the shared constant rather than keeping its own copy
@@ -45,7 +46,7 @@ const DEBOUNCE_MS = 300;
   selector: 'qt-search-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { '(document:keydown.escape)': 'onEscape($event)' },
-  imports: [Icon, SearchResults],
+  imports: [DialogFocus, Icon, SearchResults],
   template: `
     @if (isOpen()) {
       <!-- Backdrop (v4: a full-viewport button on qt-dialog-overlay). -->
@@ -59,7 +60,14 @@ const DEBOUNCE_MS = 300;
       <div
         class="fixed inset-x-4 top-16 md:inset-x-auto md:left-1/2 md:-translate-x-1/2 md:w-full md:max-w-2xl z-[101]"
       >
-        <div class="bg-background rounded-lg shadow-2xl overflow-hidden">
+        <div
+          class="bg-background rounded-lg shadow-2xl overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search"
+          tabindex="-1"
+          qtDialogFocus
+        >
           <!-- Search input + type chips -->
           <div class="p-4 border-b qt-border-default">
             <div class="relative">
@@ -73,6 +81,7 @@ const DEBOUNCE_MS = 300;
                 [value]="query()"
                 (input)="onInput($event)"
                 (keydown.enter)="onEnter()"
+                aria-label="Search"
                 placeholder="Search chats, characters, messages, documents, tags, memories..."
                 class="w-full pl-10 pr-4 py-3 text-lg border-0 bg-transparent text-foreground placeholder-muted-foreground focus:outline-none focus:ring-0"
               />

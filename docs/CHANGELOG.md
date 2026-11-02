@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): dialogs announce as v4's — `qtDialogFocus`, `qt-modal`'s `closeOnEscape`, and every hand-rolled overlay named by its title
+
+_Versions: SPA 0.5.909._
+
+P4.D358 (v4 `58120a7fe` + `dff76ebef`). New `ui/dialog-focus.ts` ports v4's `useDialogFocus` as one directive: focus moves into the dialog a frame after it opens unless a child already holds it, Tab and Shift+Tab wrap inside it, and focus returns to the opener on close. `qt-modal` now names its card by its title (`aria-labelledby`), takes focus (`tabindex="-1"`), and closes on a document Escape unless the host binds `[closeOnEscape]="false"`, which retires the "qt-modal handles no Escape" convention. Two stacked modals both close on one Escape, as in v4. Eleven hosts that handled Escape themselves now use the binding, two keep their own handler and bind `false`, and thirteen hosts take v4's busy gates. The slide-over uses the same directive. Thirty-one hand-rolled overlays carry v4's `role` (`alertdialog` where v4 uses it), `aria-modal`, title link, `tabindex` and focus handling, and twelve gain v4's Escape. New `ui/activate-on-key.ts` ports v4's `activateOnKey`. New `ui/dialog-roles.table.ts` and its source-reading spec pin every overlay's role and name; the three rows owned by P4.D359 are skipped until the unifier applies them.
+
 #### 2026-11-02 — fix(spa): the toast role — the toast stack is a polite live region (`role="status"`), error toasts `role="alert"`, specs select `data-toast-container`
 
 _Versions: SPA 0.5.908._

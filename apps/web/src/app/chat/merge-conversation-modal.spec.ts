@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -277,5 +278,39 @@ describe('MergeConversationModal', () => {
     await settle(fixture);
     expect(toasts()).toEqual([{ type: 'error', message: 'the two ledgers will not meet' }]);
     expect(fixture.componentInstance.closed).toBe(0);
+  });
+});
+
+describe('MergeConversationModal — WCAG semantics (P4.D358)', () => {
+  function escape(): void {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+  }
+
+  it('announces as a dialog named by its title', async () => {
+    chats = [];
+    const fixture = await render();
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(
+      (fixture.nativeElement.querySelector('#' + id) as HTMLElement).textContent?.trim(),
+    ).toBe('Merge a Conversation In');
+  });
+
+  it('a document Escape closes once — but not while a merge is in flight', async () => {
+    chats = [];
+    const fixture = await render();
+    const modal = fixture.debugElement.query(By.directive(MergeConversationModal))
+      .componentInstance as unknown as { merging: { set(v: boolean): void } };
+    modal.merging.set(true);
+    escape();
+    expect(fixture.componentInstance.closed).toBe(0);
+    modal.merging.set(false);
+    escape();
+    expect(fixture.componentInstance.closed).toBe(1);
   });
 });

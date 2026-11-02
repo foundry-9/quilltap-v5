@@ -7,7 +7,8 @@ import { MemoryDigestViewer } from './memory-digest-viewer';
 /**
  * P4.D276 — the digest viewer, transcribed from v4
  * `components/memory/memory-list.tsx:370-389` at `01a83539d` (R-H: v4's
- * hand markup, portalled; no `role="dialog"`, no Escape, no backdrop close).
+ * hand markup, portalled; no backdrop close — v4 `dff76ebef` added the role and
+ * Escape, P4.D358).
  */
 
 function digest(over: Partial<MemoryDto> = {}): MemoryDto {
@@ -71,9 +72,25 @@ describe('MemoryDigestViewer (P4.D276, v4 memory-list.tsx:370-389)', () => {
     }
   });
 
-  it('has no role="dialog" — v4\'s overlay is hand markup (R-H, recorded)', () => {
+  it('announces as a dialog named by its title (v4 dff76ebef retired R-H\'s "no role", P4.D358)', () => {
     const host = mount(digest()).nativeElement as HTMLElement;
-    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    const dlg = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-dialog')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(document.getElementById(id)?.textContent?.trim()).toBe('The Digest');
+  });
+
+  it('a document Escape closes exactly once (v4 useEscapeKey, dff76ebef)', () => {
+    const fixture = mount(digest());
+    let closed = 0;
+    fixture.componentInstance.close.subscribe(() => (closed += 1));
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(closed).toBe(1);
   });
 
   it('reparents its host to document.body after the first render, and removes it on destroy', () => {

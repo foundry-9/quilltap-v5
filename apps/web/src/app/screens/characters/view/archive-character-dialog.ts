@@ -25,6 +25,7 @@ import { Modal } from '../../../ui/modal';
       [title]="'Set ' + characterName() + ' resting in the archive?'"
       maxWidth="lg"
       [closeOnBackdrop]="!working()"
+      [closeOnEscape]="!working()"
       (close)="onCancel()"
     >
       <div class="space-y-4">

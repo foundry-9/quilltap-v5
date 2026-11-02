@@ -17,6 +17,7 @@ import {
 import { Icon, type IconName } from '../ui/icon';
 import { DeletedImagePlaceholder } from './deleted-image-placeholder';
 import { applyImageNavigation } from './image-navigation';
+import { DialogFocus } from '../ui/dialog-focus';
 
 /** v4 `FullScreenImageAction` (`components/images/FullScreenImageViewer.tsx:25-31`). */
 export interface FullScreenImageAction {
@@ -87,13 +88,15 @@ const ARROW_BUTTON =
 @Component({
   selector: 'qt-full-screen-image-viewer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, DeletedImagePlaceholder],
+  imports: [DialogFocus, Icon, DeletedImagePlaceholder],
   template: `
     <div
       [attr.class]="'fixed inset-0 ' + zIndexClass() + ' flex items-center justify-center qt-bg-overlay backdrop-blur-sm'"
       role="dialog"
       aria-modal="true"
       [attr.aria-label]="alt()"
+      tabindex="-1"
+      qtDialogFocus
       (click)="closeModal.emit()"
     >
       @if (onPrev(); as prev) {

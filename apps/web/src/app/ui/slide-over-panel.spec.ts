@@ -294,3 +294,64 @@ describe('SlideOverPanel — focus save/restore (v4 :39-50)', () => {
     opener.remove();
   });
 });
+
+describe('SlideOverPanel — the shared dialog focus model (P4.D358, v4 SlideOverPanel.tsx → useDialogFocus at 58120a7fe)', () => {
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    document.body.innerHTML = '';
+  });
+
+  function mounted(): ComponentFixture<Host> {
+    const fixture = render();
+    document.body.appendChild(fixture.nativeElement);
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+    return fixture;
+  }
+  const tab = (target: HTMLElement, shiftKey = false): KeyboardEvent => {
+    const ev = new KeyboardEvent('keydown', { key: 'Tab', shiftKey, bubbles: true, cancelable: true });
+    target.dispatchEvent(ev);
+    return ev;
+  };
+
+  it('skips a disabled button in the trap', () => {
+    const fixture = mounted();
+    const inner = fixture.nativeElement.querySelector('#inner') as HTMLButtonElement;
+    inner.disabled = true;
+    // DOM order: #action (projected header action), the close button, #inner.
+    // With #inner disabled the close button is the LAST focusable: Tab wraps.
+    const closeBtn = panel(fixture).querySelector('[aria-label="Close panel"]') as HTMLElement;
+    closeBtn.focus();
+    const ev = tab(closeBtn);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe('action');
+  });
+
+  it('wraps Shift+Tab from the PANEL itself to the last focusable', async () => {
+    const fixture = mounted();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(document.activeElement).toBe(panel(fixture));
+    tab(panel(fixture), true);
+    expect(document.activeElement?.id).toBe('inner');
+  });
+
+  it('prevents Tab outright when nothing inside can take focus', () => {
+    const fixture = mounted();
+    for (const b of Array.from(panel(fixture).querySelectorAll('button'))) {
+      (b as HTMLButtonElement).disabled = true;
+    }
+    const ev = tab(panel(fixture));
+    expect(ev.defaultPrevented).toBe(true);
+  });
+
+  it('does not steal focus from a descendant that already holds it', async () => {
+    const fixture = render();
+    document.body.appendChild(fixture.nativeElement);
+    fixture.componentInstance.open.set(true);
+    fixture.detectChanges();
+    const inner = fixture.nativeElement.querySelector('#inner') as HTMLElement;
+    inner.focus();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    expect(document.activeElement).toBe(inner);
+  });
+});

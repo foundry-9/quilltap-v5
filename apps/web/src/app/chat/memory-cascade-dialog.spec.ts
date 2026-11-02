@@ -93,3 +93,26 @@ describe('MemoryCascadeDialog — the confirm payload (v4 onConfirm(action, reme
     );
   });
 });
+
+describe('MemoryCascadeDialog — WCAG semantics (P4.D358)', () => {
+  it('announces as an alertdialog named by its title', async () => {
+    const fixture = await render();
+    const dlg = fixture.nativeElement.querySelector('[role="alertdialog"]') as HTMLElement;
+    expect(dlg).toBeTruthy();
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    const title = fixture.nativeElement.querySelector('#' + id) as HTMLElement;
+    expect(title.textContent?.trim()).toBe('Delete Message');
+  });
+
+  it('a document Escape cancels exactly once', async () => {
+    const fixture = await render();
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(fixture.componentInstance.cancelled).toBe(1);
+    expect(fixture.componentInstance.choices).toEqual([]);
+  });
+});

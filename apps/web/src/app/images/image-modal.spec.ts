@@ -123,3 +123,15 @@ describe('ImageModal', () => {
     expect(closed).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('ImageModal — WCAG semantics (P4.D358)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('announces as a modal dialog named for its file', () => {
+    const fixture = render({}, stubClient({ requests: [] }));
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    expect(dlg.getAttribute('aria-label')).toBe('Image viewer: portrait.webp');
+  });
+});

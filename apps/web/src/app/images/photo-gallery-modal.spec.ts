@@ -520,3 +520,20 @@ describe('PhotoGalleryModal', () => {
     });
   });
 });
+
+describe('PhotoGalleryModal — WCAG semantics (P4.D358)', () => {
+  afterEach(() => {
+    document.body.style.overflow = '';
+    TestBed.resetTestingModule();
+  });
+
+  it('announces as a dialog named by its title', async () => {
+    const fixture = await render(stubClient({ entries: [] }));
+    const dlg = (fixture.nativeElement as HTMLElement).querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(document.getElementById(id)?.textContent?.trim()).toBe('Chat Photos');
+  });
+});

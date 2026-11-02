@@ -25,6 +25,7 @@ import { ImageDetailModal } from './image-detail-modal';
 import { applyImageNavigation } from './image-navigation';
 import type { ImageData } from './images.api';
 import { SaveImageDialog } from './save-image-dialog';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 /** v4 `THUMBNAIL_SIZES` / `DEFAULT_THUMBNAIL_INDEX` (120px). */
 const THUMBNAIL_SIZES = [80, 100, 120, 150, 180, 200];
@@ -94,7 +95,7 @@ interface AlbumImage {
 @Component({
   selector: 'qt-photo-gallery-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ChatGalleryImageViewModal, DeletedImagePlaceholder, ImageDetailModal, SaveImageDialog],
+  imports: [DialogFocus, Icon, ChatGalleryImageViewModal, DeletedImagePlaceholder, ImageDetailModal, SaveImageDialog],
   template: `
     <!-- v4 :480 — the gallery overlay is z-50; detail modals sit at z-[60]. -->
     <div
@@ -104,10 +105,15 @@ interface AlbumImage {
       <div
         class="qt-dialog flex flex-col max-h-[90vh] max-w-[90vw]"
         style="min-width: 300px"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header border-b qt-border-default">
-          <h2 class="qt-heading-4 text-foreground">{{ title() }}</h2>
+          <h2 class="qt-heading-4 text-foreground" [id]="titleId">{{ title() }}</h2>
           <div class="flex items-center gap-2">
             <button
               type="button"
@@ -324,6 +330,9 @@ interface AlbumImage {
   `,
 })
 export class PhotoGalleryModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

@@ -22,6 +22,7 @@ import {
   getFileTypeLabel,
   getPreviewType,
 } from './file-model';
+import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
 
 const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE).
 
@@ -41,6 +42,7 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
 @Component({
   selector: 'qt-file-preview-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [DialogFocus],
   template: `
     <div
       class="fixed inset-0 z-50 flex items-center justify-center qt-bg-overlay backdrop-blur-sm"
@@ -50,6 +52,9 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
         class="qt-dialog w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <!-- Actions bar -->
@@ -79,7 +84,10 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
           </div>
 
           <div class="flex-1 text-center px-4 truncate">
-            <span class="font-medium" [title]="name()">{{ name() }}</span>
+            <!-- v4 points aria-labelledby at "file-preview-title", an id no element
+                 carries (V4_DANGLING_LABELLEDBY, P4.D358); v5 names the dialog by
+                 the visible filename, which is what v4's id evidently meant. -->
+            <span class="font-medium" [id]="titleId" [title]="name()">{{ name() }}</span>
           </div>
 
           <div class="flex items-center gap-2">
@@ -227,6 +235,9 @@ const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE
   `,
 })
 export class FilePreviewModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   private readonly destroyRef = inject(DestroyRef);
   private readonly toasts = inject(ToastService);
 

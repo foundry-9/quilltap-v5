@@ -24,7 +24,7 @@ export interface OrphanCleanupStats {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="Untracked Files Detected" maxWidth="lg" (close)="cancel.emit()">
+    <qt-modal title="Untracked Files Detected" maxWidth="lg" [closeOnEscape]="!isProcessing()" (close)="cancel.emit()">
       <div class="space-y-4">
         <p class="text-base font-semibold">
           We have discovered <strong>{{ stats().orphanedCount }} files</strong> loitering about the

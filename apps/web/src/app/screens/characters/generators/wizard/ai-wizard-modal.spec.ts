@@ -152,3 +152,18 @@ describe('AiWizardModal — the four-step flow (v4 `AIWizardModal.tsx`)', () => 
     expect(closeButton.disabled).toBe(true);
   });
 });
+
+describe('AiWizardModal — WCAG semantics (P4.D358)', () => {
+  it('announces as a dialog named "AI Wizard", with a labelled header close', async () => {
+    const { fixture } = await render();
+    const host = fixture.nativeElement as HTMLElement;
+    const dlg = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-dialog')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect((host.querySelector('#' + id) as HTMLElement).textContent?.trim()).toBe('AI Wizard');
+    expect(host.querySelector('.qt-dialog-header button[aria-label="Close"]')).not.toBeNull();
+  });
+});

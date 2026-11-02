@@ -9,6 +9,7 @@ import { WizardProfileSelectionStep } from './profile-selection-step';
 import { WizardState, type WizardStep } from './wizard-state';
 import type { WizardCharacterData } from './wizard-types';
 import { isInFloatingLayer } from '../../../../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../../../../ui/dialog-focus';
 
 /** v4 `STEP_TITLES` (`AIWizardModal.tsx:20-25`). */
 const STEP_TITLES: Record<WizardStep, string> = {
@@ -32,6 +33,7 @@ const STEP_TITLES: Record<WizardStep, string> = {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [WizardState],
   imports: [
+    DialogFocus,
     Icon,
     WizardProfileSelectionStep,
     WizardDescriptionSourceStep,
@@ -48,11 +50,16 @@ const STEP_TITLES: Record<WizardStep, string> = {
     >
       <div
         class="qt-dialog w-full max-w-2xl max-h-[90vh] m-4 flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
         (click)="$event.stopPropagation()"
       >
         <div class="qt-dialog-header flex justify-between items-center flex-shrink-0">
           <div>
-            <h2 class="qt-dialog-title flex items-center gap-2">
+            <h2 class="qt-dialog-title flex items-center gap-2" [id]="titleId">
               <qt-icon name="wand" class="w-5 h-5 text-primary" />
               AI Wizard
             </h2>
@@ -62,6 +69,7 @@ const STEP_TITLES: Record<WizardStep, string> = {
             type="button"
             class="qt-button-icon qt-button-ghost disabled:opacity-50"
             [disabled]="wizard.generating()"
+            aria-label="Close"
             (click)="handleClose()"
           >
             <qt-icon name="close" class="w-5 h-5" />
@@ -139,6 +147,9 @@ const STEP_TITLES: Record<WizardStep, string> = {
   `,
 })
 export class AiWizardModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
   protected readonly wizard = inject(WizardState);
   protected readonly steps: WizardStep[] = [1, 2, 3, 4];
 

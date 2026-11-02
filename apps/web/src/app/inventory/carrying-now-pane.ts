@@ -4,7 +4,6 @@ import type { CarriedEntry, ResolvedInventoryItem } from '../core/core-contract'
 import { Modal } from '../ui/modal';
 import { inventoryDisplayName } from './inventory-display';
 import { InventoryGlyph, InventoryPicture } from './inventory-glyph';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * *Carrying now* — what one cast member carries in this chat, beside the
@@ -24,7 +23,6 @@ import { isInFloatingLayer } from '../ui/floating-layer';
   selector: 'qt-carrying-now-pane',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, InventoryGlyph, InventoryPicture],
-  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <section class="flex flex-col min-h-0 gap-2" data-testid="inventory-carrying-now">
       <div class="flex items-center justify-between gap-2">
@@ -143,11 +141,5 @@ export class CarryingNowPane {
   protected pick(item: ResolvedInventoryItem): void {
     this.picking.set(false);
     this.equip.emit([item.id]);
-  }
-
-  /** v4 `BaseModal` `closeOnEscape` on the picker — the dialog's own gate stands down meanwhile. */
-  protected onEscape(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (this.picking()) this.picking.set(false);
   }
 }

@@ -353,3 +353,28 @@ describe("AiImportWizard — v4's `(N entities imported)` line is dead code", ()
     expect(Number(imported as unknown as number)).toBeNaN();
   });
 });
+
+describe('AiImportWizard — WCAG semantics (P4.D358)', () => {
+  it('announces as a dialog named by its title', async () => {
+    const core = stubCore((req) =>
+      req.type === 'connectionProfileList' ? { profiles: [] } : new Error(`unexpected ${req.type}`),
+    );
+    TestBed.configureTestingModule({
+      imports: [AiImportWizard],
+      providers: [{ provide: CoreClient, useValue: core }],
+    });
+    const fixture = TestBed.createComponent(AiImportWizard);
+    fixture.detectChanges();
+    await settle(fixture);
+    const host = fixture.nativeElement as HTMLElement;
+    const dlg = host.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.classList.contains('qt-dialog')).toBe(true);
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect((host.querySelector('#' + id) as HTMLElement).textContent?.trim()).toContain(
+      'Summon From Lore',
+    );
+  });
+});

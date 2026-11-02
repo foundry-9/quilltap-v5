@@ -343,3 +343,37 @@ describe('CreateNpcDialog (v4 components/chat/CreateNPCDialog.tsx)', () => {
     expect(text(fixture)).toContain('No connection profiles available');
   });
 });
+
+describe('CreateNpcDialog — WCAG semantics (P4.D358)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('announces as a dialog named by its title', async () => {
+    const fixture = await mount(stub({}));
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(
+      (fixture.nativeElement.querySelector('#' + id) as HTMLElement).textContent?.trim(),
+    ).toBe('Create Ad-hoc NPC');
+  });
+
+  it('a document Escape closes once — but not while a create is in flight', async () => {
+    const fixture = await mount(stub({}));
+    let closed = 0;
+    fixture.componentInstance.close.subscribe(() => closed++);
+    const escape = (): void => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    };
+    const busy = fixture.componentInstance as unknown as { creating: { set(v: boolean): void } };
+    busy.creating.set(true);
+    escape();
+    expect(closed).toBe(0);
+    busy.creating.set(false);
+    escape();
+    expect(closed).toBe(1);
+  });
+});

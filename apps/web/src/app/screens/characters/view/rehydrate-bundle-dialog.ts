@@ -24,6 +24,7 @@ import { deleteArchiveBundle } from '../characters.api';
       title="The empty bundle remains on the shelf"
       maxWidth="lg"
       [closeOnBackdrop]="!working()"
+      [closeOnEscape]="!working()"
       (close)="onKeep()"
     >
       <div class="space-y-4">

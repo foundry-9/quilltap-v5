@@ -427,3 +427,45 @@ describe('AddCharacterDialog — archived characters are not offered (P4.D64)', 
     }
   });
 });
+
+describe('AddCharacterDialog — WCAG semantics (P4.D358)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function escape(): void {
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+  }
+
+  it('announces as a dialog named by its title', async () => {
+    const fixture = await mount(stub({}));
+    const dlg = fixture.nativeElement.querySelector('[role="dialog"]') as HTMLElement;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(
+      (fixture.nativeElement.querySelector('#' + id) as HTMLElement).textContent?.trim(),
+    ).toBe('Add Character to Chat');
+  });
+
+  it('a document Escape closes once — not while adding, nor while Create NPC is open', async () => {
+    const fixture = await mount(stub({}));
+    let closed = 0;
+    fixture.componentInstance.close.subscribe(() => closed++);
+    const state = fixture.componentInstance as unknown as {
+      adding: { set(v: boolean): void };
+      createNpcOpen: { set(v: boolean): void };
+    };
+    state.adding.set(true);
+    escape();
+    expect(closed).toBe(0);
+    state.adding.set(false);
+    state.createNpcOpen.set(true);
+    escape();
+    expect(closed).toBe(0);
+    state.createNpcOpen.set(false);
+    escape();
+    expect(closed).toBe(1);
+  });
+});

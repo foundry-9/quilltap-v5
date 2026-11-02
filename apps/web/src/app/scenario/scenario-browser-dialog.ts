@@ -90,7 +90,7 @@ interface OwnerSection {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="Every scene on every shelf" maxWidth="4xl" (close)="closed.emit()">
+    <qt-modal title="Every scene on every shelf" maxWidth="4xl" [closeOnEscape]="false" (close)="closed.emit()">
       <div class="flex flex-col gap-3" (keydown)="onKeyDown($event)">
         <div class="flex flex-col sm:flex-row sm:items-center gap-2">
           <input
@@ -357,7 +357,8 @@ export class ScenarioBrowserDialog {
 
     // Escape closes the BROWSER only (v4 BaseModal `closeOnEscape`, default
     // true). Window + capture runs before every document / element listener,
-    // and stopping it there keeps a parent's Escape from firing too.
+    // and stopping it there keeps a parent's Escape from firing too. This host
+    // owns its Escape, so its qt-modal binds [closeOnEscape]="false" (P4.D358).
     if (typeof window !== 'undefined') {
       const onEscape = (event: KeyboardEvent) => {
         if (event.key !== 'Escape') return;

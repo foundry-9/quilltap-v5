@@ -567,3 +567,35 @@ describe('HelpStreamingService', () => {
     await run;
   });
 });
+
+describe('HelpDialog — WCAG semantics (P4.D358)', () => {
+  it('announces as a dialog named by its "Help" title', async () => {
+    const { fixture, help } = await render();
+    help.openHelpChat();
+    await settle(fixture);
+    const dlg = q<HTMLElement>(fixture, '[role="dialog"]')!;
+    expect(dlg.getAttribute('aria-modal')).toBe('true');
+    expect(dlg.getAttribute('tabindex')).toBe('-1');
+    expect(dlg.hasAttribute('aria-label')).toBe(false);
+    const id = dlg.getAttribute('aria-labelledby')!;
+    expect(id).toMatch(/^qt-dialog-\d+$/);
+    expect(q<HTMLElement>(fixture, '#' + id)?.textContent?.trim()).toBe('Help');
+  });
+
+  it('a document Escape closes Help only while it is open', async () => {
+    const { fixture, help } = await render();
+    const closeSpy = vi.spyOn(help, 'closeHelpChat');
+    const escape = (): void => {
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+      );
+    };
+    escape();
+    expect(closeSpy).not.toHaveBeenCalled();
+    help.openHelpChat();
+    await settle(fixture);
+    escape();
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    expect(help.isOpen()).toBe(false);
+  });
+});

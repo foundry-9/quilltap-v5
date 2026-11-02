@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 export type MemoryCascadeAction = 'DELETE_MEMORIES' | 'KEEP_MEMORIES' | 'REGENERATE_MEMORIES';
 
@@ -23,10 +24,20 @@ export interface MemoryCascadeChoice {
 @Component({
   selector: 'qt-memory-cascade-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus],
   template: `
     <div class="qt-dialog-overlay" (click)="cancel.emit()">
-      <div class="qt-dialog-content max-w-md" (click)="$event.stopPropagation()">
-        <h3 class="qt-heading-sm mb-4">Delete Message</h3>
+      <div
+        class="qt-dialog-content max-w-md"
+        role="alertdialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+        (click)="$event.stopPropagation()"
+      >
+        <h3 class="qt-heading-sm mb-4" [id]="titleId">Delete Message</h3>
         <p class="qt-body-sm mb-2">{{ bodyLine() }}</p>
         <p class="qt-body-sm font-medium mb-3">What would you like to do with the memories?</p>
 
@@ -78,6 +89,15 @@ export interface MemoryCascadeChoice {
   `,
 })
 export class MemoryCascadeDialog {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(onClose, isOpen)` — always, while rendered (`dff76ebef`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.cancel.emit();
+  }
+
   readonly memoryCount = input.required<number>();
   readonly isSwipeGroup = input(false);
 

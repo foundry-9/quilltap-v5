@@ -15,7 +15,7 @@ import { Modal } from '../../ui/modal';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   template: `
-    <qt-modal title="This file is in use" maxWidth="lg" (close)="cancel.emit()">
+    <qt-modal title="This file is in use" maxWidth="lg" [closeOnEscape]="!isDeleting()" (close)="cancel.emit()">
       <div class="space-y-4">
         <p class="text-base font-semibold">
           "{{ filename() }}" is associated with characters and messages

@@ -22,6 +22,7 @@ import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { chatActivityAt } from './chat-activity';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 /** v4 `presentCharacters` (`MergeConversationModal.tsx:63-74`). */
 export function presentCharacters(chat: EnrichedChatSummary): { id: string; name: string }[] {
@@ -71,12 +72,20 @@ export function presentCharacters(chat: EnrichedChatSummary): { id: string; name
 @Component({
   selector: 'qt-merge-conversation-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, OutfitSelector],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
+  imports: [DialogFocus, Icon, OutfitSelector],
   template: `
     <div class="qt-dialog-overlay p-4" (click)="onBackdrop($event)">
-      <div class="qt-dialog max-w-2xl max-h-[90vh] flex flex-col" role="dialog" aria-modal="true">
+      <div
+        class="qt-dialog max-w-2xl max-h-[90vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+        qtDialogFocus
+      >
         <div class="qt-dialog-header flex items-center justify-between">
-          <h2 class="qt-dialog-title">
+          <h2 class="qt-dialog-title" [id]="titleId">
             {{ step() === 'pick' ? 'Merge a Conversation In' : 'Merge “' + sourceTitle() + '”' }}
           </h2>
           <button
@@ -233,6 +242,15 @@ export function presentCharacters(chat: EnrichedChatSummary): { id: string; name
   `,
 })
 export class MergeConversationModal {
+  /** One `aria-labelledby` target per instance — v4's `useId()` (C9 R1). */
+  protected readonly titleId = mintDialogId();
+
+  /** v4 `useEscapeKey(handleClose, isOpen)` (`MergeConversationModal.tsx:215`). */
+  protected onEscape(event: Event): void {
+    if ((event as KeyboardEvent).defaultPrevented) return;
+    this.onClose();
+  }
+
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
   private readonly queryClient = injectQueryClient();

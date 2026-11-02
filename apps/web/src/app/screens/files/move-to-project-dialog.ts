@@ -29,7 +29,7 @@ const GENERAL_FILES_VALUE = '__general__';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FolderPicker, Modal],
   template: `
-    <qt-modal [title]="modalTitle()" maxWidth="lg" (close)="close.emit()">
+    <qt-modal [title]="modalTitle()" maxWidth="lg" [closeOnEscape]="!saving()" (close)="close.emit()">
       <div class="space-y-4">
         <p class="qt-text-small">
           Move <span class="font-medium">"{{ fileName() }}"</span> to a different location.

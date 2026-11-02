@@ -73,6 +73,7 @@ export function decodeDestination(value: string): DestinationValue | null {
       [title]="title()"
       maxWidth="lg"
       [closeOnBackdrop]="!working()"
+      [closeOnEscape]="!working()"
       (close)="requestClose()"
     >
       <div class="space-y-3">

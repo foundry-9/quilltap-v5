@@ -18,7 +18,6 @@ import { inventoryOriginLabel } from './inventory-container';
 import { inventoryDisplayName } from './inventory-display';
 import { InventoryPicture } from './inventory-glyph';
 import { InventoryVantageItemsLoader } from './inventory-vantage-items';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** How a picked object is written down: by its label (title, else name) or its exact id. */
 export type InventoryReferenceForm = 'label' | 'id';
@@ -74,7 +73,6 @@ interface PickerRow {
   selector: 'qt-inventory-reference-picker',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, InventoryPicture],
-  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (open()) {
       <qt-modal title="Choose an object" maxWidth="2xl" (close)="closed.emit()">
@@ -212,10 +210,5 @@ export class InventoryReferencePicker {
   protected pick(item: ResolvedInventoryItem): void {
     this.picked.emit({ item, reference: this.reference() });
     this.closed.emit();
-  }
-
-  protected onEscape(event?: Event): void {
-    if (isInFloatingLayer(event?.target ?? null)) return;
-    if (this.open()) this.closed.emit();
   }
 }
