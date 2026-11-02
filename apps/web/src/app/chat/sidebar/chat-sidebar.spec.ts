@@ -63,9 +63,13 @@ function participant(
         [turnState]="turnState()"
         [turnSelectionResult]="turnSelectionResult()"
         [isPaused]="isPaused()"
+        [turnMode]="turnMode()"
+        [storytellerInviteFilter]="inviteFilter()"
         [conciergeState]="conciergeState()"
         [userParticipantId]="'user'"
         (togglePause)="paused.push(true)"
+        (setTurnPosition)="positions.push($event)"
+        (toggleStorytellerInviteFilter)="inviteToggles.push(true)"
         (nudge)="nudged.push($event)"
         (whisper)="whispered.push($event)"
         (subpromptsChange)="subpromptsChanged.push($event)"
@@ -86,6 +90,10 @@ class Host {
     cycleComplete: false,
   });
   readonly isPaused = signal(false);
+  readonly turnMode = signal<'rotation' | 'storyteller'>('rotation');
+  readonly inviteFilter = signal(false);
+  readonly positions: string[] = [];
+  readonly inviteToggles: boolean[] = [];
   readonly conciergeState = signal<ConciergeState | undefined>(undefined);
   readonly chatSectionState: ChatSectionState = {
     roleplayTemplateId: null,
@@ -279,6 +287,35 @@ describe('ChatSidebar', () => {
     const fixture = await render();
     button(fixture, 'Pause auto-responses').click();
     expect(fixture.componentInstance.paused).toEqual([true]);
+  });
+
+  // --- P4.D344: the turn-mode control replaces the expanded Pause button ------
+
+  it('the expanded drawer carries the Turn mode radiogroup and no Pause button; the strip keeps its own (P4.D344)', async () => {
+    localStorage.setItem('quilltap.chat-sidebar.collapsed', 'false');
+    const fixture = await render();
+    const el = sidebarEl(fixture);
+    expect(el.querySelector('.qt-chat-pause-button')).toBeNull();
+    const group = el.querySelector('[role="radiogroup"][aria-label="Turn mode"]');
+    expect(group).not.toBeNull();
+    const radios = Array.from(group!.querySelectorAll('[role="radio"]'));
+    expect(radios.map((r) => [r.textContent?.trim(), r.getAttribute('aria-checked')])).toEqual([
+      ['Normal', 'true'],
+      ['Paused', 'false'],
+      ['Storyteller', 'false'],
+    ]);
+    (radios[2] as HTMLButtonElement).click();
+    expect(fixture.componentInstance.positions).toEqual(['storyteller']);
+    expect(el.textContent).not.toContain('Invite by talkativeness');
+
+    fixture.componentInstance.turnMode.set('storyteller');
+    fixture.componentInstance.inviteFilter.set(true);
+    fixture.detectChanges();
+    const box = el.querySelector('input.qt-checkbox[type="checkbox"]') as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    box.dispatchEvent(new Event('change'));
+    expect(fixture.componentInstance.inviteToggles).toEqual([true]);
+    expect(fixture.componentInstance.paused).toEqual([]);
   });
 
   // --- P4.9E2B: the Whisper opener (v4 ChatSidebar.tsx:823) -----------------

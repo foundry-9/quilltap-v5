@@ -10,10 +10,25 @@ import {
 } from '../turn-order';
 import { ParticipantCard, type ConnectionProfileOption } from './participant-card';
 
+// === P4.D344: Storyteller mode ===
+/** The three-position turn-mode control (v4 `ChatSidebar.tsx:770-774`). */
+export type TurnPosition = 'normal' | 'paused' | 'storyteller';
+
+export const TURN_POSITIONS: ReadonlyArray<{ id: TurnPosition; label: string; title: string }> = [
+  { id: 'normal', label: 'Normal', title: 'The company takes turns on its own' },
+  { id: 'paused', label: 'Paused', title: 'Nobody answers until you nudge them' },
+  {
+    id: 'storyteller',
+    label: 'Storyteller',
+    title: 'Each of your posts asks the company who wishes to answer; you choose',
+  },
+];
+// === end P4.D344 ===
+
 /**
  * The chat sidebar's default-open section (v4 `ChatSidebar.tsx:721-845`
- * `ParticipantsSection`): the turn meta line, the queue depth, the Pause /
- * Resume button, the cast of {@link ParticipantCard}s in predicted turn order,
+ * `ParticipantsSection`): the turn meta line, the queue depth, the three-way
+ * turn-mode control (P4.D344 — it replaced the Pause / Resume button), the cast of {@link ParticipantCard}s in predicted turn order,
  * and the "Add Character" footer.
  *
  * The footer is no longer withheld. It was a tier-3 deferral for as long as v5
@@ -54,15 +69,41 @@ import { ParticipantCard, type ConnectionProfileOption } from './participant-car
         </div>
       }
 
-      <button
-        type="button"
-        [class]="'qt-chat-pause-button mt-3 ' + (isPaused() ? 'qt-chat-pause-button-paused' : '')"
-        [title]="isPaused() ? 'Resume auto-responses' : 'Pause auto-responses'"
-        (click)="togglePause.emit()"
-      >
-        <qt-icon [name]="isPaused() ? 'play' : 'pause'" class="w-4 h-4" />
-        <span>{{ isPaused() ? 'Resume' : 'Pause' }}</span>
-      </button>
+      <!-- === P4.D344: the turn-mode control (v4 ChatSidebar.tsx:776-808, mounted
+           :852-858) REPLACES the expanded Pause button — v4 renders that button
+           only when no onSetTurnPosition is passed, and the Salon always passes
+           it. The collapsed strip's pause button (chat-sidebar.ts) stays. === -->
+      <div class="qt-storyteller-mode mt-3" role="radiogroup" aria-label="Turn mode">
+        @for (position of turnPositions; track position.id) {
+          @let active = position.id === currentPosition();
+          <button
+            type="button"
+            role="radio"
+            [attr.aria-checked]="active"
+            [attr.class]="positionClass(position.id, active)"
+            [title]="position.title"
+            (click)="onPosition(position.id, active)"
+          >
+            <span>{{ position.label }}</span>
+          </button>
+        }
+      </div>
+
+      @if (turnMode() === 'storyteller') {
+        <label
+          class="flex items-center gap-2 cursor-pointer mt-2"
+          title="Each round, a quiet character may be left out — the likelier the less talkative. Kept-quiet seats can still be asked from the board."
+        >
+          <input
+            type="checkbox"
+            class="qt-checkbox"
+            [checked]="storytellerInviteFilter()"
+            (change)="toggleStorytellerInviteFilter.emit()"
+          />
+          <span class="qt-label">Invite by talkativeness</span>
+        </label>
+      }
+      <!-- === end P4.D344 === -->
 
       <div class="qt-chat-sidebar-cards mt-3">
         @if (sortedParticipants().length === 0) {
@@ -138,7 +179,21 @@ export class ParticipantsSection {
   readonly chatId = input<string | null>(null);
   /** The user's connection profiles, for each card's Controlled-By select. */
   readonly connectionProfiles = input<ConnectionProfileOption[]>([]);
+  // === P4.D344: Storyteller mode ===
+  /** The chat's turn mode, already read through `turnModeOf` (absent = rotation). */
+  readonly turnMode = input<'rotation' | 'storyteller'>('rotation');
+  /** Storyteller: invite by talkativeness (v4 `storytellerInviteFilter === true`). */
+  readonly storytellerInviteFilter = input(false);
+  /** v4 `onSetTurnPosition` — Normal / Paused / Storyteller. */
+  readonly setTurnPosition = output<TurnPosition>();
+  /** v4 `onToggleStorytellerInviteFilter`. */
+  readonly toggleStorytellerInviteFilter = output<void>();
+  // === end P4.D344 ===
 
+  /**
+   * Kept for the collapsed strip's pause button (`chat-sidebar.ts`), which v4
+   * keeps; the expanded section raises {@link setTurnPosition} instead (P4.D344).
+   */
   readonly togglePause = output<void>();
   readonly nudge = output<string>();
   readonly queue = output<string>();
@@ -169,6 +224,29 @@ export class ParticipantsSection {
    * withholding the button keeps the operator from meeting that refusal.
    */
   protected readonly canRemove = computed(() => this.activeCharacterCount() > 1);
+
+  // === P4.D344: Storyteller mode ===
+  protected readonly turnPositions = TURN_POSITIONS;
+
+  /** v4 `TurnModeControl`'s `current`: pause wins, then the mode. */
+  protected readonly currentPosition = computed<TurnPosition>(() =>
+    this.isPaused() ? 'paused' : this.turnMode() === 'storyteller' ? 'storyteller' : 'normal',
+  );
+
+  /** The active Paused option wears `-paused`, any other active one `-active`. */
+  protected positionClass(id: TurnPosition, active: boolean): string {
+    const classes = ['qt-storyteller-mode-option'];
+    if (active) {
+      classes.push(id === 'paused' ? 'qt-storyteller-mode-option-paused' : 'qt-storyteller-mode-option-active');
+    }
+    return classes.join(' ');
+  }
+
+  /** Clicking the position already held does nothing (v4 `if (!active) onSet(id)`). */
+  protected onPosition(id: TurnPosition, active: boolean): void {
+    if (!active) this.setTurnPosition.emit(id);
+  }
+  // === end P4.D344 ===
 
   /**
    * v4 `ChatSidebar.tsx:722-724,823` — the Whisper button is threaded to the

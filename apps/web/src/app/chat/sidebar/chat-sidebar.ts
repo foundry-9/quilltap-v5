@@ -30,7 +30,7 @@ import { ChatSection, type ChatSectionState } from './chat-section';
 import { EditSection } from './edit-section';
 import { OrganizeSection } from './organize-section';
 import type { ConnectionProfileOption } from './participant-card';
-import { ParticipantsSection } from './participants-section';
+import { ParticipantsSection, type TurnPosition } from './participants-section';
 import { shouldDismissSidebarOverlay } from './sidebar-overlay-dismiss';
 import { VisibilitySection, type VisibilityState } from './visibility-section';
 
@@ -253,6 +253,10 @@ function collapsedPositionBadgeClass(status: TurnOrderStatus): string {
             [isDangerousChat]="participantDangerStyling()"
             [chatId]="chatId()"
             [connectionProfiles]="connectionProfiles()"
+            [turnMode]="turnMode()"
+            [storytellerInviteFilter]="storytellerInviteFilter()"
+            (setTurnPosition)="setTurnPosition.emit($event)"
+            (toggleStorytellerInviteFilter)="toggleStorytellerInviteFilter.emit()"
             (togglePause)="togglePause.emit()"
             (nudge)="nudge.emit($event)"
             (queue)="queue.emit($event)"
@@ -371,6 +375,10 @@ export class ChatSidebar implements OnInit {
   readonly turnSelectionResult = input<TurnSelectionResult | null>(null);
   readonly isGenerating = input(false);
   readonly isPaused = input(false);
+  // === P4.D344: Storyteller mode (passed through to the participants section) ===
+  readonly turnMode = input<'rotation' | 'storyteller'>('rotation');
+  readonly storytellerInviteFilter = input(false);
+  // === end P4.D344 ===
   readonly userParticipantId = input<string | null>(null);
   readonly respondingParticipantId = input<string | null>(null);
   readonly impersonatingParticipantIds = input<string[]>([]);
@@ -436,6 +444,10 @@ export class ChatSidebar implements OnInit {
   readonly chatUpdated = output<void>();
   readonly regenerateBackground = output<void>();
   readonly togglePause = output<void>();
+  // === P4.D344: Storyteller mode ===
+  readonly setTurnPosition = output<TurnPosition>();
+  readonly toggleStorytellerInviteFilter = output<void>();
+  // === end P4.D344 ===
   readonly nudge = output<string>();
   readonly queue = output<string>();
   readonly dequeue = output<string>();

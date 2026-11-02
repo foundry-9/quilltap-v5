@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Turn mode radiogroup replaces the drawer's Pause button
+
+_Versions: SPA 0.5.910._
+
+P4.D344 Tier 1 item 6. The participants drawer's expanded Pause button is replaced by v4's three-way Turn mode radiogroup (`Normal` / `Paused` / `Storyteller`, v4 `ChatSidebar.tsx:770-808`): the current position from pause then mode, the `-paused` / `-active` option classes, v4's titles, and no emit on the active option. In storyteller mode the `Invite by talkativeness` checkbox appears with v4's title. The collapsed strip's pause button stays, as in v4. `chat-sidebar.ts` passes the two inputs and two outputs through.
+
 #### 2026-11-02 — feat(spa): the storyteller board — bids, selection, run / let lie, the folded summary
 
 _Versions: SPA 0.5.909._
