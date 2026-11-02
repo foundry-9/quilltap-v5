@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D341 status header — the `KEYSTONE` sha `c2c28c031` and the landed contract spellings
+
+_Docs-only change._
+
+Records `c2c28c031` as the round's `KEYSTONE` in the order's status header, with the landed C-1 / C-2 / C-3 / C-4 / C-8 spellings (C-2 amended: `ChatCreate.turn_mode` exists for the import / restore carriers). Marks the lane complete with Tier 2 item 24 open.
+
 #### 2026-11-02 — KEYSTONE: the 17th–21st D23 moves — the re-dump, five boot ensures, the column plumbing, keystone memories server (P4.D341)
 
 _Versions: core 0.0.1380, host 0.0.218, cli 0.0.36._
