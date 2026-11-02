@@ -61,6 +61,14 @@ export interface RunV4MigrationsOptions {
    * real v4 boot records it. Ignored under `reportOnly`.
    */
   runner?: boolean;
+  /**
+   * P4.D341 — the llm-logs SIBLING file a migration that opens the logs
+   * database itself reads (`SQLITE_LLM_LOGS_PATH`; v4's
+   * `add-llm-logs-storyteller-round-id-column-v1` opens it directly with its
+   * own `journal_mode = WAL` connection). Set for the run, restored after, and
+   * its header's journal mode put back like `dbPath`'s.
+   */
+  llmLogsPath?: string;
 }
 
 /**
@@ -100,6 +108,9 @@ export const P4D288_SPAN_MIGRATIONS: V4MigrationRef[] = [
  */
 export const CHAT_SETTINGS_4_11_MIGRATIONS: V4MigrationRef[] = [
   { file: 'migrations/scripts/add-custom-tool-triggers-field.ts', exportName: 'addCustomToolTriggersFieldMigration' },
+  // P4.D341 (v4 `839575d89`, the TWENTIETH D23 move): registered in the MIDDLE
+  // of the 4.11 pair at the `236c04e35` pin (`index.ts:921-925`).
+  { file: 'migrations/scripts/add-custom-tool-intervention-field.ts', exportName: 'addCustomToolInterventionFieldMigration' },
   { file: 'migrations/scripts/add-composer-slash-commands-field.ts', exportName: 'addComposerSlashCommandsFieldMigration' },
 ];
 
@@ -146,6 +157,32 @@ export const TERMINAL_GEOMETRY_MIGRATIONS: V4MigrationRef[] = [
   },
 ];
 // === end P4.D337 ===
+
+// === P4.D341 (v4 8cb584eff / b15fe9404 / 778b97b2b — the 17th, 18th, 19th and 21st D23 moves) ===
+/**
+ * P4.D341 — the LAST four migrations of the `236c04e35` registry
+ * (`migrations/scripts/index.ts:942-946`, after the terminal geometry), in
+ * registration order: the memory keystone (column + partial index), the
+ * Storyteller mode (three columns + the `storyteller_rounds` table), the
+ * llm-logs round id (the logs FILE, opened by the module itself from
+ * `SQLITE_LLM_LOGS_PATH` — pass `llmLogsPath`), the roleplay-template
+ * unmarked pair. The intervention step (the 20th move) rides
+ * `CHAT_SETTINGS_4_11_MIGRATIONS`. The llm-logs FILE name carries no `-v1`.
+ * Every one of v5's five ensures is UNSTAMPED.
+ */
+export const KEYSTONE_236_MIGRATIONS: V4MigrationRef[] = [
+  { file: 'migrations/scripts/add-memory-keystone-v1.ts', exportName: 'addMemoryKeystoneMigration' },
+  { file: 'migrations/scripts/add-storyteller-mode-v1.ts', exportName: 'addStorytellerModeMigration' },
+  {
+    file: 'migrations/scripts/add-llm-logs-storyteller-round-id-column.ts',
+    exportName: 'addLLMLogsStorytellerRoundIdColumnMigration',
+  },
+  {
+    file: 'migrations/scripts/add-roleplay-template-unmarked-fields-v1.ts',
+    exportName: 'addRoleplayTemplateUnmarkedFieldsMigration',
+  },
+];
+// === end P4.D341 ===
 
 /**
  * P4.D315 — the `e8e17b2d9` round's ONE shared fixture plant (§R.3, R-S).
@@ -241,7 +278,81 @@ export async function plantInventoryColumns(db?: {
   }
 }
 
-const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
+// === P4.D341 ===
+/**
+ * P4.D341 — the `236c04e35` round's per-case plant of the five moves'
+ * EXISTING-instance shape (§R.3), the `plantInventoryColumns` role for a case
+ * whose per-run copy predates the round (a committed pair the lane did not
+ * widen, or a base a builder made before the pin).
+ *
+ * Unlike the Inventory plant it does not spell the clauses: it runs v4's REAL
+ * migration modules — the intervention step (`CHAT_SETTINGS_4_11_MIGRATIONS`'
+ * middle entry) then `KEYSTONE_236_MIGRATIONS`, in registration order —
+ * through {@link runV4Migrations}' direct arm (no ledger rows: a plant is not
+ * a boot), so the partial index, the `storyteller_rounds` table in the
+ * migration's text and the llm-logs column + index all land exactly as v4
+ * makes them. `llmLogsPath` names the per-run llm-logs sibling (omit it for a
+ * main-only copy: v4's round-id migration then finds no file and does
+ * nothing). Close every connection on both files first. Idempotent (each
+ * `shouldRun` is structural) and self-checking: it throws unless the main
+ * file's `memories` (when present) carries `keystone` + the index afterwards,
+ * and the sibling's `llm_logs` (when present) carries `storytellerRoundId`.
+ * The v5 side's twins are `test_support::ensure_keystone_schema_on` /
+ * `ensure_llm_logs_storyteller_round_id_on`.
+ */
+export async function plantKeystoneColumns(
+  mainPath: string,
+  llmLogsPath: string | undefined,
+  pepperBase64: string,
+): Promise<string[]> {
+  const report = await runV4Migrations({
+    dbPath: mainPath,
+    pepperBase64,
+    llmLogsPath,
+    migrations: [
+      CHAT_SETTINGS_4_11_MIGRATIONS.find((m) => m.exportName === 'addCustomToolInterventionFieldMigration')!,
+      ...KEYSTONE_236_MIGRATIONS,
+    ],
+  });
+  const Database = createRequire(process.cwd() + '/')('better-sqlite3');
+  const check = (path: string, probe: (db: any) => string | null) => {
+    const db = new Database(path, { readonly: true });
+    try {
+      db.pragma(`key = "x'${keyHex(pepperBase64)}'"`);
+      const problem = probe(db);
+      if (problem) throw new Error(`plantKeystoneColumns: ${problem} after the plant (${path})`);
+    } finally {
+      db.close();
+    }
+  };
+  const hasTable = (db: any, t: string) =>
+    !!db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`).get(t);
+  const cols = (db: any, t: string) =>
+    (db.prepare(`PRAGMA table_info("${t}")`).all() as Array<{ name: string }>).map((c) => c.name);
+  check(mainPath, (db) => {
+    if (hasTable(db, 'memories')) {
+      if (!cols(db, 'memories').includes('keystone')) return 'memories.keystone is absent';
+      if (!db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = 'idx_memories_keystone'`).get()) {
+        return 'idx_memories_keystone is absent';
+      }
+    }
+    if (hasTable(db, 'chats') && hasTable(db, 'chat_messages') && !hasTable(db, 'storyteller_rounds')) {
+      return 'storyteller_rounds is absent';
+    }
+    return null;
+  });
+  if (llmLogsPath && existsSync(llmLogsPath)) {
+    check(llmLogsPath, (db) =>
+      hasTable(db, 'llm_logs') && !cols(db, 'llm_logs').includes('storytellerRoundId')
+        ? 'llm_logs.storytellerRoundId is absent'
+        : null,
+    );
+  }
+  return report;
+}
+// === end P4.D341 ===
+
+const ENV_KEYS = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR', 'SQLITE_LLM_LOGS_PATH'] as const;
 
 function keyHex(pepperBase64: string): string {
   return Buffer.from(pepperBase64, 'base64').toString('hex');
@@ -269,8 +380,14 @@ export async function runV4Migrations(opts: RunV4MigrationsOptions): Promise<str
   const savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   const scratch = mkdtempSync(join(tmpdir(), 'qt-v4-migrations-'));
   const originalMode = readJournalMode(Database, opts.dbPath, opts.pepperBase64);
+  const logsOriginalMode =
+    opts.llmLogsPath && existsSync(opts.llmLogsPath)
+      ? readJournalMode(Database, opts.llmLogsPath, opts.pepperBase64)
+      : null;
 
   process.env.SQLITE_PATH = opts.dbPath;
+  if (opts.llmLogsPath) process.env.SQLITE_LLM_LOGS_PATH = opts.llmLogsPath;
+  else delete process.env.SQLITE_LLM_LOGS_PATH;
   process.env.ENCRYPTION_MASTER_PEPPER = opts.pepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
 
@@ -342,21 +459,27 @@ export async function runV4Migrations(opts: RunV4MigrationsOptions): Promise<str
   // migration connection, which sets `journal_mode = WAL` in the header: a dry
   // run over a committed fixture left it byte-changed until P4.D226 measured it
   // (41 of 41 copies differed after a `--report-only` pass).
-  {
-    const db = new Database(opts.dbPath);
+  // P4.D341: the llm-logs sibling too — v4's round-id migration opens it with
+  // its OWN `journal_mode = WAL` connection.
+  const restores: Array<[string, string]> = [[opts.dbPath, originalMode]];
+  if (opts.llmLogsPath && logsOriginalMode !== null && opts.llmLogsPath !== opts.dbPath) {
+    restores.push([opts.llmLogsPath, logsOriginalMode]);
+  }
+  for (const [path, mode] of restores) {
+    const db = new Database(path);
     try {
       db.pragma(`key = "x'${keyHex(opts.pepperBase64)}'"`);
       const now = String(db.pragma('journal_mode', { simple: true }));
-      if (now !== originalMode) db.pragma(`journal_mode = ${originalMode}`);
+      if (now !== mode) db.pragma(`journal_mode = ${mode}`);
     } finally {
       db.close();
     }
     for (const suffix of ['-wal', '-shm']) {
-      if (existsSync(opts.dbPath + suffix)) rmSync(opts.dbPath + suffix);
+      if (existsSync(path + suffix)) rmSync(path + suffix);
     }
     // An EMPTY rollback journal is residue, not state (a non-empty one would
     // be a hot journal and is left for SQLite to recover).
-    const journal = opts.dbPath + '-journal';
+    const journal = path + '-journal';
     if (existsSync(journal) && statSync(journal).size === 0) rmSync(journal);
   }
   return report;

@@ -306,6 +306,7 @@ async function main(): Promise<void> {
           supersededById: null,
           consolidatedFrom: t.consolidatedFrom ?? [],
           consolidatedAt: t.consideredAgoDays !== undefined ? iso(t.consideredAgoDays) : null,
+          keystone: t.keystone ?? false,
         } as never,
         { id, createdAt: created, updatedAt: created },
       );

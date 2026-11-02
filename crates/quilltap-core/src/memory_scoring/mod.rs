@@ -250,6 +250,7 @@ mod jest_twins {
             graph_degree: b.related_memory_ids.len(),
             kind: Some(b.kind),
             source: Some(b.source),
+            keystone: false,
         };
         protection(&input, now_ms(), &DEFAULT_PROTECTION_CONFIG)
     }

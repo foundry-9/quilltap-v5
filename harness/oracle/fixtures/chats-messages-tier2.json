@@ -254,6 +254,12 @@
           "answererId": "bbbb2222-2222-4222-8222-222222222222",
           "question": "What is the answer?"
         },
+        "storytellerBid": {
+          "roundId": "5b000001-0000-4000-8000-000000000002",
+          "tier": "lookup",
+          "plan": "Consult the ledger before answering.",
+          "toolsNamed": ["saving_throw"]
+        },
         "pascalMeta": {
           "tool": "saving_throw",
           "toolTitle": "Saving Throw",

@@ -66,7 +66,13 @@ interface Spec {
   // Post-seed RAW UPDATEs that bypass Zod, so a seed row can carry a genuine
   // legacy kind-less delimiter on disk (validation would backfill kind:'wrap').
   rawDelimiters?: Array<{ id: string; delimitersJson: string }>;
+  // P4.D341: post-seed RAW single-column UPDATEs (value null → SQL NULL) that
+  // bypass v4's narration codec / Zod, planting pre-codec and legacy cells.
+  rawCells?: Array<{ id: string; column: string; value: string | null }>;
 }
+
+/** The columns a `rawCells` plant may name (it is interpolated into the SQL). */
+const RAW_CELL_COLUMNS = new Set(['narrationDelimiters', 'markdownAsterisks', 'unmarkedStyle']);
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -137,6 +143,21 @@ async function main(): Promise<void> {
       raw.delimitersJson,
       raw.id,
     ]);
+  }
+
+  for (const cell of spec.rawCells ?? []) {
+    if (!RAW_CELL_COLUMNS.has(cell.column)) {
+      throw new Error(`rawCells: column ${cell.column} not allowed`);
+    }
+    const res = (await rawQuery(
+      `UPDATE roleplay_templates SET "${cell.column}" = ? WHERE id = ?`,
+      [cell.value, cell.id],
+    )) as unknown;
+    void res;
+    const hit = (await rawQuery('SELECT COUNT(*) AS n FROM roleplay_templates WHERE id = ?', [
+      cell.id,
+    ])) as Array<{ n: number }>;
+    if (hit[0]?.n !== 1) throw new Error(`rawCells: no row ${cell.id}`);
   }
 
   await closeDatabase();

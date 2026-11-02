@@ -56,6 +56,8 @@ interface SeedMemory {
   aboutCharacterId?: string;
   raw?: boolean;
   vanishOnPromote?: boolean;
+  /** P4.D341 (v4 `236c04e35`): an operator-marked standing fact. */
+  keystone?: boolean;
 }
 interface CharSpec {
   id: string;
@@ -189,6 +191,7 @@ async function main(): Promise<void> {
       supersededById: seed.supersededById ?? null,
       consolidatedFrom: seed.consolidatedFrom ?? [],
       consolidatedAt: null,
+      keystone: seed.keystone ?? false,
     };
     if (seed.raw) {
       // A row v4's MemorySchema refuses (a non-UUID id): only a raw INSERT

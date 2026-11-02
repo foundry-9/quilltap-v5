@@ -213,6 +213,32 @@ fn open(instance: &Path) -> Db {
     })
     .expect("boot-align the vintage main partition (P4.D337)");
     // === end P4.D337 ===
+    // === P4.D341: mirror-boot ensures ===
+    // The round's last four in v4's registration order, through the host's OWN
+    // functions (the intervention step already rode the 4.11 chain above):
+    // the keystone (column + partial index), the Storyteller mode (three
+    // columns + `storyteller_rounds`), the llm-logs round id on the trio's
+    // llm-logs partition, the template unmarked pair. The restore's memory /
+    // chat / template INSERTs name `keystone` / `storytellerInviteFilter` /
+    // `unmarkedStyle` (measured red-first: six reds without this block). The
+    // mirror boot runs no template seed, so `TEMPLATE_SEED_AFTER_ENSURES` has
+    // no slot here.
+    db.write_blocking(|writers| {
+        let main = writers.main().connection();
+        quilltap_core::db::memory_keystone_repair::ensure_memory_keystone(main)?;
+        quilltap_core::db::storyteller_mode_repair::run_storyteller_mode_ensures(main)?;
+        if let Some(logs) = writers.llm_logs() {
+            quilltap_core::db::llm_logs_storyteller_round_id_repair::ensure_llm_logs_storyteller_round_id(
+                logs.connection(),
+            )?;
+        }
+        quilltap_core::db::roleplay_templates_unmarked_repair::ensure_roleplay_templates_unmarked_fields(
+            main,
+        )
+        .map(|_| ())
+    })
+    .expect("boot-align the vintage instance (P4.D341)");
+    // === end P4.D341 ===
     db
 }
 

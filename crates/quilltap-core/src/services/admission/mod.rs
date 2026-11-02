@@ -48,7 +48,9 @@ pub use rate_ledger::{
     count_recent_admissions, record_admission_insert, reset_rate_ledger_for_tests,
     RATE_LEDGER_WINDOW_MS,
 };
-pub use update_memory::{update_memory, MemoryEditPatch, UpdateMemoryResult};
+pub use update_memory::{
+    update_memory, MemoryEditPatch, UpdateMemoryResult, KEYSTONES_PER_SUBJECT_MAX,
+};
 
 use serde_json::Value;
 
@@ -120,7 +122,7 @@ mod tests {
         occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
         kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
         reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
-        reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+        reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, keystone INTEGER DEFAULT 0, createdAt TEXT, updatedAt TEXT);
     CREATE TABLE chat_settings (id TEXT PRIMARY KEY, timezone TEXT);
 ";
 

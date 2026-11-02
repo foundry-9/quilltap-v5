@@ -60,6 +60,8 @@
         ],
         "messageCount": 5,
         "isPaused": true,
+        "turnMode": "storyteller",
+        "storytellerInviteFilter": true,
         "chatType": "salon",
         "state": {
           "zeta": true,
@@ -173,7 +175,8 @@
         "contextSummary": "They met at the cafe.",
         "dangerScore": 0.25,
         "chatType": "help",
-        "isManuallyRenamed": true
+        "isManuallyRenamed": true,
+        "storytellerInviteFilter": true
       }
     },
     {

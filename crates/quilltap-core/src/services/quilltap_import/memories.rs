@@ -211,7 +211,8 @@ fn remapped_link_list(
 /// 'hot'`, `supersededById` (truthy → remapped, else `null`), `supersededAt`
 /// (P4.D294, `c2795733f` bug 225 — "the cold-retention clock travels with the
 /// link": `supersededById` truthy → `supersededAt ?? null`, else `null`),
-/// `consolidatedFrom`, `consolidatedAt ?? null`.
+/// `consolidatedFrom`, `consolidatedAt ?? null` — then P4.D341's `keystone ??
+/// false`.
 fn insert_consolidation_fields(
     memory: &Value,
     payload: &mut serde_json::Map<String, Value>,
@@ -248,6 +249,14 @@ fn insert_consolidation_fields(
     payload.insert("supersededAt".into(), superseded_at);
     payload.insert("consolidatedFrom".into(), consolidated_from);
     payload.insert("consolidatedAt".into(), consolidated_at);
+    // P4.D341 (v4 `8cb584eff`, `import-entities.ts:577-578`): "A standing
+    // fact stays one; older bundles read as false." — `memory.keystone ??
+    // false` (a non-boolean value rides through to `MemorySchema`, which
+    // refuses it as the row's import failure).
+    payload.insert(
+        "keystone".into(),
+        present("keystone").unwrap_or(Value::Bool(false)),
+    );
     Ok(())
 }
 

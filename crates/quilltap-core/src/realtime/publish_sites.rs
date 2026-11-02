@@ -809,7 +809,7 @@ mod memory_gate_tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
             kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
             reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
-            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, keystone INTEGER DEFAULT 0, createdAt TEXT, updatedAt TEXT);
     ";
 
     fn memories() -> (String, Option<String>) {
@@ -862,6 +862,7 @@ mod memory_gate_tests {
                         superseded_at: None,
                         consolidated_from: Vec::new(),
                         consolidated_at: None,
+                        keystone: false,
                     },
                     &CreateOptions {
                         id: (*id).to_string(),
@@ -1524,7 +1525,7 @@ mod admission_publish_tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]',
             kind TEXT DEFAULT 'semantic', sourceMessageId TEXT, lastAccessedAt TEXT,
             reinforcementCount REAL, lastReinforcedAt TEXT, relatedMemoryIds TEXT,
-            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+            reinforcedImportance REAL, tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, keystone INTEGER DEFAULT 0, createdAt TEXT, updatedAt TEXT);
         CREATE TABLE chat_settings (id TEXT PRIMARY KEY, timezone TEXT);
     ";
 

@@ -10,6 +10,14 @@ are archived under `docs/changelog/`.
 
 Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 (days 1–15)](changelog/2026-07a.md), [June 2026](changelog/2026-06.md).
 
+## November 2026
+
+#### 2026-11-02 — KEYSTONE: the 17th–21st D23 moves — the re-dump, five boot ensures, the column plumbing, keystone memories server (P4.D341)
+
+_Versions: core 0.0.1380, host 0.0.218, cli 0.0.36._
+
+The `236c04e35` round's stacking root. `fresh_schema.json`, `chat_settings_seed.json`, `migration_indexes.json` and the `.qtap` export key order are re-dumped from v4's live code at the pin (the 17th–21st D23 moves: `memories.keystone`, the Storyteller's `chats.turnMode` / `storytellerInviteFilter` / `chat_messages.storytellerBid` / `storyteller_rounds`, `llm_logs.storytellerRoundId`, `chat_settings.customToolIntervention`, the roleplay templates' unmarked-style fields; the re-dump also carries `characters.canDrawDiagrams` / `diagramStyle`, which v4 adds with no migration). Five v4 migrations become unstamped boot ensures, compared against v4's real migrations, and the built-in template seed now runs after them. The new columns are read and written through the chats, messages, LLM-log and chat-settings repositories. Keystone memories work on the server: the repository reads, admission's per-subject cap, protection from demotion and consolidation, the Memories API and `.qtap` import. The roleplay-template narration codec and the third built-in template (Novel) land. The vendored `qtap-export.schema.json` and the CLI completion templates take the pin's bytes. 95 committed fixture pairs are widened through v4's real migrations, and seven more `chats`-only fixtures get the two Storyteller columns.
+
 ## October 2026
 
 #### 2026-10-29 — docs(porting): the `236c04e35` round's rulings approved as planned; lanes not yet started

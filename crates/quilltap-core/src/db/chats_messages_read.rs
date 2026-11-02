@@ -76,7 +76,8 @@ use crate::api::zod_issues::{zod_issue_lines, ZodIssue};
 /// `type` discriminator is column 1; `chatId` / `isSilentMessage` are not read
 /// here (see module docs). Indices below match this list.
 ///
-/// New columns are APPENDED (`pascalMeta` at 44, `routeTrail` at 45), never
+/// New columns are APPENDED (`pascalMeta` at 44, `routeTrail` at 45,
+/// `storytellerBid` at 46 — P4.D341, v4 `b15fe9404`), never
 /// spliced in beside their schema neighbour: the marshaling below is
 /// positional, so inserting one mid-list would silently re-point every later
 /// index. The SELECT order is free — the emitted key order is fixed by the
@@ -88,7 +89,8 @@ const COLUMNS: &str = "id, type, role, content, rawResponse, tokenCount, promptT
      carinaMeta, pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
      summaryAnchor, context, systemEventType, description, totalTokens, provider, modelName, \
      estimatedCostUSD, createdAt, isSilentMessage, confirmed, confirmationChecked, \
-     confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, routeTrail";
+     confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, routeTrail, \
+     storytellerBid";
 
 /// Nullable-optional TEXT/UUID/enum column: `Some` → string, `None` → omit.
 fn put_opt_string(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -226,6 +228,12 @@ fn marshal_message(row: &Row) -> Result<Value, rusqlite::Error> {
     put_opt_json(&mut o, "summaryAnchor", row.get(29)?);
     put_opt_json(&mut o, "customAnnouncer", row.get(24)?);
     put_opt_json(&mut o, "carinaMeta", row.get(25)?);
+    // P4.D341 (v4 `b15fe9404`, the Storyteller): the message's bid record —
+    // `storytellerBid` sits between `carinaMeta` and `pascalMeta` in v4's
+    // MessageEventSchema declaration, so it is EMITTED here though SELECTed
+    // last (see `COLUMNS`). A registered JSON column: parsed object; NULL →
+    // omitted.
+    put_opt_json(&mut o, "storytellerBid", row.get(46)?);
     // Emitted here — `pascalMeta` follows `carinaMeta` in v4's MessageEventSchema
     // declaration — though it is SELECTed last (see `COLUMNS`).
     put_opt_json(&mut o, "pascalMeta", row.get(44)?);
@@ -578,6 +586,78 @@ pub fn find_chat_id_for_message(
 mod tests {
     use super::*;
 
+    /// P4.D341 (Tier 2 item 27): [`COLUMNS`] against the D23 dump. The list is
+    /// APPENDED, not schema-ordered (see its doc), so ORDER is not the pin —
+    /// MEMBERSHIP is: every dump column but `chatId` (the WHERE key, never
+    /// marshaled) is selected exactly once, and nothing else. A D23 re-dump
+    /// that adds a `chat_messages` column lands here first.
+    #[test]
+    fn columns_name_exactly_the_d23_dump_chat_messages_columns_but_chat_id() {
+        let schema: Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chat_messages\" ("))
+            .expect("the dump carries the chat_messages DDL");
+        let mut declared: Vec<String> = ddl
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim().strip_prefix('"')?;
+                Some(t[..t.find('"')?].to_string())
+            })
+            .filter(|c| c != "chatId")
+            .collect();
+        let mut selected: Vec<String> = COLUMNS.split(',').map(|c| c.trim().to_string()).collect();
+        assert_eq!(selected.len(), 47, "46 + `storytellerBid` (P4.D341)");
+        assert_eq!(selected.last().map(String::as_str), Some("storytellerBid"));
+        declared.sort();
+        selected.sort();
+        assert_eq!(selected, declared);
+    }
+
+    /// …and the bid is EMITTED at schema position — between `carinaMeta` and
+    /// `pascalMeta` — though SELECTed last.
+    #[test]
+    fn storyteller_bid_is_emitted_between_carina_meta_and_pascal_meta() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(MIGRATED_DDL).unwrap();
+        crate::test_support::ensure_p4d171_columns(&conn);
+        conn.execute(
+            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt, carinaMeta, \
+             pascalMeta, storytellerBid) VALUES (?1, 'c1', 'message', 'ASSISTANT', 'hi', \
+             '2026-11-02T00:00:00.000Z', '{\"question\":\"q\"}', '{\"tool\":\"t\"}', \
+             '{\"roundId\":\"r1\",\"tier\":\"act\",\"plan\":\"p\",\"toolsNamed\":[]}')",
+            [M1],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) \
+             VALUES (?1, 'c1', 'message', 'USER', 'no bid', '2026-11-02T00:00:01.000Z')",
+            [M2],
+        )
+        .unwrap();
+        let msgs = get_messages(&conn, "c1").unwrap();
+        let keys: Vec<&str> = msgs[0]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
+        assert_eq!(at("storytellerBid"), at("carinaMeta") + 1, "{keys:?}");
+        assert_eq!(at("pascalMeta"), at("storytellerBid") + 1, "{keys:?}");
+        assert_eq!(
+            serde_json::to_string(&msgs[0]["storytellerBid"]).unwrap(),
+            r#"{"roundId":"r1","tier":"act","plan":"p","toolsNamed":[]}"#
+        );
+        // NULL → ABSENT (`put_opt_json`).
+        assert!(msgs[1].get("storytellerBid").is_none());
+    }
+
     // P4.112: message ids must be Zod uuids — v4's `ChatEventSchema` (and so
     // `get_messages`) skips any other id as a corrupted row.
     const M1: &str = "a0000000-0000-4000-8000-000000000001";
@@ -606,7 +686,7 @@ mod tests {
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \
         confirmationChecked INTEGER, confirmationRevised INTEGER, confirmationNotes TEXT, \
-        confirmationOriginalContent TEXT);";
+        confirmationOriginalContent TEXT, storytellerBid TEXT);";
 
     #[test]
     fn is_silent_reads_integer_cells_from_a_migrated_instance() {

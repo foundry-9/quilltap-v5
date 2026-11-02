@@ -360,7 +360,12 @@ async fn one_boot_gives_a_pre_round_instance_a_fresh_instances_sqlite_master() {
     // ensures already made `idx_memories_supersededById`,
     // `idx_files_generationKey`, `idx_folders_userId_projectId_path` and
     // `idx_help_doc_chunks_docId`), the mount index 4 + the converted
-    // `mp_path`, the LLM logs 5.
+    // `mp_path`, the LLM logs 5. P4.D341 (measured): main STAYS 45 — the
+    // keystone ensure makes `idx_memories_keystone` and the Storyteller ensure's
+    // half-made-table arm makes `idx_storyteller_rounds_chat` BEFORE this pass —
+    // and the LLM logs make 6: the round-id ensure is `NotNeeded` on a table that
+    // has the column (v4's `shouldRun` gates on the column alone), so
+    // `idx_llm_logs_storytellerRoundId` is the backfill's.
     booted.assert_line(
         "INFO quilltap::boot Backfilled migration-created indexes partition=main created=45 skipped=0",
     );
@@ -368,14 +373,14 @@ async fn one_boot_gives_a_pre_round_instance_a_fresh_instances_sqlite_master() {
         "INFO quilltap::boot Backfilled migration-created indexes partition=mountIndex created=5 skipped=0",
     );
     booted.assert_line(
-        "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=5 skipped=0",
+        "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=6 skipped=0",
     );
 }
 
 /// §S.2 of the `94fbb1ae3` boot-hardness round — the UNION of P4.159 and
 /// P4.160: a pre-round instance whose mount index is GARBAGE boots DEGRADED
 /// (P4.159) and the backfill still runs on the partitions it HAS — main makes
-/// its 45 (47 before P4.D288's re-dump and slot-6 ensure) and the LLM logs their 5 — while the degraded mount index (no writer)
+/// its 45 (47 before P4.D288's re-dump and slot-6 ensure) and the LLM logs their 6 (5 before P4.D341) — while the degraded mount index (no writer)
 /// is skipped with no line and no error.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfill() {
@@ -396,7 +401,7 @@ async fn a_degraded_mount_index_skips_its_statements_and_the_others_still_backfi
         "INFO quilltap::boot Backfilled migration-created indexes partition=main created=45 skipped=0",
     );
     booted.assert_line(
-        "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=5 skipped=0",
+        "INFO quilltap::boot Backfilled migration-created indexes partition=llmLogs created=6 skipped=0",
     );
     for needle in [
         "partition=mountIndex",

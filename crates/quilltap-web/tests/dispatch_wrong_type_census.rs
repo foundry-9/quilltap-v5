@@ -2298,6 +2298,13 @@ const CENSUS: &[Row] = &[
         note: "`memories/route.ts:302-303` `searchParams.get('tier')` — `'hot'|'cold'` else undefined (honoured by P4.D269)",
     },
     Row {
+        variant: "MemoryList",
+        field: "keystone",
+        rust_type: "Option<bool>",
+        v4: V4::Query,
+        note: "`memories/route.ts:321` `searchParams.get('keystone') === 'true'` — any other value lists everything (P4.D341)",
+    },
+    Row {
         variant: "MemoryAnchorGateProbe",
         field: "limit",
         rust_type: "Option<f64>",

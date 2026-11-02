@@ -281,6 +281,12 @@ pub struct LlCreate {
     pub character_id: Option<String>,
     /// `None` => SQL NULL.
     pub autonomous_run_id: Option<String>,
+    /// P4.D341 (v4 `b15fe9404`, the Storyteller): the round this call ran
+    /// under. Named in the INSERT only when `Some` — v4's `insertOne` names
+    /// the document's keys, and an undefined round id is no key — so a
+    /// pre-column llm-logs partition still takes every round-less write.
+    /// `None` => the column is not named (SQL NULL where it exists).
+    pub storyteller_round_id: Option<String>,
     pub provider: String,
     pub model_name: String,
     /// The connection profile that served this call, when the call site has one
@@ -327,6 +333,8 @@ pub struct LlUpdate {
     pub chat_id: Option<String>,
     pub character_id: Option<String>,
     pub autonomous_run_id: Option<String>,
+    /// P4.D341: the Storyteller round id (`storytellerRoundId`).
+    pub storyteller_round_id: Option<String>,
     pub provider: Option<String>,
     pub model_name: Option<String>,
     pub connection_profile_id: Option<String>,
@@ -371,6 +379,12 @@ pub struct LlmLogRow {
     pub character_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub autonomous_run_id: Option<String>,
+    /// P4.D341 (v4 `b15fe9404`): `storytellerRoundId` —
+    /// `.nullable().optional()` at schema position after `autonomousRunId`,
+    /// so NULL (and a pre-column partition) is ABSENT. Read BY NAME, like the
+    /// profile columns (it is not on the positional [`LOG_COLUMNS`] list).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storyteller_round_id: Option<String>,
     pub provider: String,
     pub model_name: String,
     /// v4 `0cde7fbc`'s profile-attribution columns. Both are
@@ -430,6 +444,14 @@ const LOG_COLUMNS: &str = "id, userId, type, messageId, chatId, characterId, aut
 /// The two columns v4's `add-llm-logs-profile-columns-v1` migration adds.
 const PROFILE_COLUMNS: [&str; 2] = ["connectionProfileId", "imageProfileId"];
 
+/// P4.D341 (v4 `b15fe9404`, `add-llm-logs-storyteller-round-id-v1`): the
+/// Storyteller's round-id column. It joins the [`PROFILE_COLUMNS`] idiom —
+/// NOT the positional [`LOG_COLUMNS`] list (indices 0..=17 stay put) —
+/// selected only when the table has it and read BY NAME, so an llm-logs
+/// partition that predates the migration reads exactly as v4's `SELECT *`
+/// does (no key).
+const STORYTELLER_ROUND_COLUMN: &str = "storytellerRoundId";
+
 /// The `SELECT` list for THIS partition — [`LOG_COLUMNS`] plus the profile
 /// columns when the table carries them.
 ///
@@ -449,7 +471,10 @@ const PROFILE_COLUMNS: [&str; 2] = ["connectionProfileId", "imageProfileId"];
 /// separate thing in a separate module (§2 of the round contract).
 fn log_columns(conn: &Connection) -> String {
     let mut list = String::from(LOG_COLUMNS);
-    for col in PROFILE_COLUMNS {
+    for col in PROFILE_COLUMNS
+        .into_iter()
+        .chain([STORYTELLER_ROUND_COLUMN])
+    {
         if table_has_column(conn, col) {
             list.push_str(", ");
             list.push_str(col);
@@ -571,6 +596,16 @@ impl<'c> LLMLogsRepository<'c> {
             &data.provider,
             &data.model_name,
         ];
+        // P4.D341: named only when the call carries a round (v4's `insertOne`
+        // names defined keys only) — and, on the restore path, only when the
+        // table has the column (the attribution-drop ruling above).
+        if data.storyteller_round_id.is_some()
+            && (!omit_columns_the_table_lacks
+                || table_has_column(self.conn, STORYTELLER_ROUND_COLUMN))
+        {
+            columns.push(STORYTELLER_ROUND_COLUMN);
+            values.push(&data.storyteller_round_id);
+        }
         // Schema position: between `modelName` and `request`.
         if !omit_columns_the_table_lacks || table_has_column(self.conn, PROFILE_COLUMNS[0]) {
             columns.push(PROFILE_COLUMNS[0]);
@@ -889,6 +924,10 @@ impl<'c> LLMLogsRepository<'c> {
         if let Some(autonomous_run_id) = &patch.autonomous_run_id {
             assignments.push(format!("autonomousRunId = ?{}", values.len() + 1));
             values.push(Box::new(autonomous_run_id.clone()));
+        }
+        if let Some(storyteller_round_id) = &patch.storyteller_round_id {
+            assignments.push(format!("storytellerRoundId = ?{}", values.len() + 1));
+            values.push(Box::new(storyteller_round_id.clone()));
         }
         if let Some(provider) = &patch.provider {
             assignments.push(format!("provider = ?{}", values.len() + 1));
@@ -1218,6 +1257,7 @@ fn map_log_row(row: &rusqlite::Row<'_>) -> Result<LlmLogRow, DbError> {
         chat_id: row.get(4)?,
         character_id: row.get(5)?,
         autonomous_run_id: row.get(6)?,
+        storyteller_round_id: profile_col(row, STORYTELLER_ROUND_COLUMN)?,
         provider: row.get(7)?,
         model_name: row.get(8)?,
         connection_profile_id: profile_col(row, "connectionProfileId")?,
@@ -1498,6 +1538,7 @@ mod tests {
             chat_id: None,
             character_id: None,
             autonomous_run_id: None,
+            storyteller_round_id: None,
             provider: "ANTHROPIC".into(),
             model_name: "m".into(),
             connection_profile_id: Some("cp-1".into()),
@@ -1584,6 +1625,118 @@ mod tests {
             .expect("row reads back");
         assert_eq!(row.connection_profile_id, None);
         assert_eq!(row.image_profile_id, None);
+    }
+
+    /// P4.D341 (v4 `b15fe9404`): `storytellerRoundId` is named only when the
+    /// call carries a round — v4's `insertOne` names defined keys — so the
+    /// 20-column pre-round partition still takes every round-less create AND
+    /// reads it (no key, by name); the column-bearing partition writes and
+    /// reads a round; and the RESTORE create drops a round on a pre-round
+    /// partition (the attribution-drop ruling) where the ordinary create
+    /// fails as v4's would.
+    #[test]
+    fn storyteller_round_id_is_named_only_when_carried_and_read_by_name() {
+        let pre = Connection::open_in_memory().unwrap();
+        pre.execute_batch(DDL_MIGRATED).unwrap();
+        let repo = LLMLogsRepository::new(&pre);
+        repo.create(&sample_create(), &opts())
+            .expect("a round-less create fits a pre-round partition");
+        let row = repo.find_by_id("x1").unwrap().expect("row reads back");
+        assert_eq!(row.storyteller_round_id, None);
+        let wire = serde_json::to_string(&row).unwrap();
+        assert!(!wire.contains("storytellerRoundId"), "{wire}");
+
+        let mut with_round = sample_create();
+        with_round.storyteller_round_id = Some("round-1".into());
+        let mut o2 = opts();
+        o2.id = "x2".into();
+        let err = repo
+            .create(&with_round, &o2)
+            .expect_err("v4's INSERT names the defined key; a pre-round table refuses it");
+        assert!(format!("{err:?}").contains("storytellerRoundId"), "{err:?}");
+        repo.create_for_restore(&with_round, &o2)
+            .expect("the restore create drops the round on a pre-round table");
+
+        let post = Connection::open_in_memory().unwrap();
+        post.execute_batch(DDL_MIGRATED).unwrap();
+        post.execute_batch("ALTER TABLE llm_logs ADD COLUMN storytellerRoundId TEXT")
+            .unwrap();
+        let repo = LLMLogsRepository::new(&post);
+        repo.create(&with_round, &o2).unwrap();
+        let row = repo.find_by_id("x2").unwrap().expect("row reads back");
+        assert_eq!(row.storyteller_round_id.as_deref(), Some("round-1"));
+        let wire = serde_json::to_string(&row).unwrap();
+        // Wire key order: right after `autonomousRunId`'s slot (absent here),
+        // before `provider`.
+        let at = |k: &str| wire.find(k).unwrap();
+        assert!(at("\"storytellerRoundId\"") < at("\"provider\""), "{wire}");
+        assert!(at("\"type\"") < at("\"storytellerRoundId\""), "{wire}");
+        assert!(LLMLogsRepository::new(&post)
+            .update(
+                "x2",
+                &LlUpdate {
+                    storyteller_round_id: Some("round-2".into()),
+                    updated_at: "2026-08-06T00:00:00.000Z".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap());
+        let row = LLMLogsRepository::new(&post)
+            .find_by_id("x2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.storyteller_round_id.as_deref(), Some("round-2"));
+    }
+
+    /// P4.D341 (Tier 2 item 27): the positional [`LOG_COLUMNS`] plus the
+    /// by-name columns ([`PROFILE_COLUMNS`], [`STORYTELLER_ROUND_COLUMN`]) are
+    /// EXACTLY the D23 dump's `llm_logs` columns, and `LOG_COLUMNS` keeps the
+    /// dump's relative order (its indices are what `map_log_row` reads).
+    #[test]
+    fn log_columns_follow_the_d23_dump() {
+        let schema: Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["llmLogs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"llm_logs\" ("))
+            .expect("the dump carries the llm_logs DDL");
+        let declared: Vec<String> = ddl
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim().strip_prefix('"')?;
+                Some(t[..t.find('"')?].to_string())
+            })
+            .collect();
+        let positional: Vec<String> = LOG_COLUMNS
+            .split(',')
+            .map(|c| c.trim().to_string())
+            .collect();
+        let by_name: Vec<&str> = PROFILE_COLUMNS
+            .into_iter()
+            .chain([STORYTELLER_ROUND_COLUMN])
+            .collect();
+        let relative: Vec<String> = declared
+            .iter()
+            .filter(|c| !by_name.contains(&c.as_str()))
+            .cloned()
+            .collect();
+        assert_eq!(positional, relative);
+        let mut all: Vec<String> = positional
+            .iter()
+            .cloned()
+            .chain(by_name.iter().map(|c| c.to_string()))
+            .collect();
+        let mut want = declared.clone();
+        all.sort();
+        want.sort();
+        assert_eq!(all, want);
+        // Schema position of the round id: right after `autonomousRunId`.
+        let at = |k: &str| declared.iter().position(|c| c == k).unwrap();
+        assert_eq!(at("storytellerRoundId"), at("autonomousRunId") + 1);
     }
 
     /// A read against a missing table returns the safeQuery default (zeros).

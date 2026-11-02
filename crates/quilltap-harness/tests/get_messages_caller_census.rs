@@ -95,6 +95,12 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     // unification's unknown-type test added one of each).
     ("db/chats_messages_read.rs", "get_messages", S),
     ("db/chats_messages_read.rs", "get_message_count", F),
+    // P4.D341: the `storytellerBid` slot pin (a unit test).
+    (
+        "db/chats_messages_read.rs",
+        "storyteller_bid_is_emitted_between_carina_meta_and_pascal_meta",
+        F,
+    ),
     (
         "db/chats_messages_read.rs",
         "is_silent_reads_integer_cells_from_a_migrated_instance",
@@ -499,7 +505,9 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // handlers, the fold catch-up's `chat_message_events` — its file deleted
     // with v4's `ac6348c5f`) into ONE (`turn_transcript::load_chat_message_
     // events`), and three files left the census while one joined: 79 and 50.
-    assert_eq!((swallowing, strict), (79, 7), "census totals");
+    // P4.D341 added ONE unit-test fallback call in an existing file (the
+    // `storytellerBid` slot pin in `db/chats_messages_read.rs`): 80 and 50.
+    assert_eq!((swallowing, strict), (80, 7), "census totals");
     assert_eq!(file_count, 50, "census files");
 }
 

@@ -303,6 +303,57 @@ pub fn ensure_table_from_dump(
     }
 }
 
+// === P4.D341 ===
+/// P4.D341 — the v5 twin of the oracle's `plantKeystoneColumns` on the MAIN
+/// partition: the intervention step (the 4.11 chain's middle) then the round's
+/// four main chains in v4's registration order — the keystone (column + partial
+/// index), the Storyteller mode (three columns + `storyteller_rounds`), the
+/// template unmarked pair — through the SAME functions the host runs.
+/// Idempotent; self-checking (panics unless every present table carries its
+/// new columns afterwards).
+pub fn ensure_keystone_schema_on(conn: &rusqlite::Connection) {
+    crate::db::chat_settings_4_11_repair::run_chat_settings_4_11_ensures(conn)
+        .expect("the 4.11 chat_settings chain on a test fixture");
+    crate::db::memory_keystone_repair::ensure_memory_keystone(conn)
+        .expect("the keystone ensure on a test fixture");
+    crate::db::storyteller_mode_repair::run_storyteller_mode_ensures(conn)
+        .expect("the Storyteller ensure on a test fixture");
+    crate::db::roleplay_templates_unmarked_repair::ensure_roleplay_templates_unmarked_fields(conn)
+        .expect("the template unmarked ensure on a test fixture");
+    let columns = |table: &str| -> Vec<String> {
+        crate::db::schema_probe::column_names(conn, table).expect("read a planted table's columns")
+    };
+    for (table, column) in [
+        ("memories", "keystone"),
+        ("chats", "turnMode"),
+        ("chats", "storytellerInviteFilter"),
+        ("chat_messages", "storytellerBid"),
+        ("chat_settings", "customToolIntervention"),
+        ("roleplay_templates", "unmarkedStyle"),
+        ("roleplay_templates", "markdownAsterisks"),
+    ] {
+        let names = columns(table);
+        assert!(
+            names.is_empty() || names.iter().any(|n| n == column),
+            "ensure_keystone_schema_on: {table}.{column} is absent after the plant"
+        );
+    }
+}
+
+/// P4.D341 — the v5 twin of `plantKeystoneColumns`' llm-logs leg: the round-id
+/// ensure on an llm-logs connection. Self-checking.
+pub fn ensure_llm_logs_storyteller_round_id_on(conn: &rusqlite::Connection) {
+    crate::db::llm_logs_storyteller_round_id_repair::ensure_llm_logs_storyteller_round_id(conn)
+        .expect("the llm-logs round-id ensure on a test fixture");
+    let names =
+        crate::db::schema_probe::column_names(conn, "llm_logs").expect("read llm_logs' columns");
+    assert!(
+        names.is_empty() || names.iter().any(|n| n == "storytellerRoundId"),
+        "ensure_llm_logs_storyteller_round_id_on: llm_logs.storytellerRoundId is absent"
+    );
+}
+// === end P4.D341 ===
+
 pub fn ensure_memory_tiers_columns(conn: &rusqlite::Connection) {
     crate::db::memory_tiers_repair::ensure_memory_tiers(conn)
         .expect("ensure the memory-tiers columns on a test fixture");

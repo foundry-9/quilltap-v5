@@ -370,6 +370,22 @@ pub struct ChatCreate {
     pub summary_anchor_message_ids: Vec<String>,
     #[serde(default)]
     pub is_paused: bool,
+    /// P4.D341 (v4 `b15fe9404`, the Storyteller): `turnMode` —
+    /// `ChatTurnModeSchema.nullable().optional()`. A RUNTIME create never
+    /// carries it (v4's create input leaves it `undefined`, so the column is
+    /// NULL by omission; the runtime writer is P4.D343's patch-only
+    /// `set_turn_mode`). But v4's `patchOnlyFields` only gate the whole-row
+    /// UPDATE: `_create` inserts every key the document carries, so the
+    /// CARRIERS — `restore.ts:282` and `import-entities.ts:429`, both
+    /// `repos.chats.create(chatData)` over a backed-up / exported chat —
+    /// write a stored `'storyteller'` back. This field is that carrier path
+    /// (serde: the archived chat's `turnMode` key); `None` binds NULL.
+    #[serde(default)]
+    pub turn_mode: Option<String>,
+    /// P4.D341 (v4 `b15fe9404`): `z.boolean().default(false)` — the create
+    /// always writes it (v4's Zod-defaulted insert names every key).
+    #[serde(default)]
+    pub storyteller_invite_filter: bool,
     #[serde(default)]
     pub is_manually_renamed: bool,
     #[serde(default)]
@@ -637,6 +653,10 @@ pub struct ChatUpdate {
     /// P4.D288 (C1-9): the scene notes — the same writer rule.
     pub scenario_notes: Option<Option<String>>,
     pub is_paused: Option<bool>,
+    /// P4.D341 (v4 `b15fe9404`): the Storyteller invite filter — an ordinary
+    /// whole-row field. `turnMode` is NOT here: v4's `patchOnlyFields` refuses
+    /// it in the whole-row update (P4.D343's own setter writes it).
+    pub storyteller_invite_filter: Option<bool>,
     pub is_manually_renamed: Option<bool>,
     pub message_count: Option<f64>,
     pub danger_score: Option<Option<f64>>,
@@ -1008,7 +1028,8 @@ impl<'c> ChatsRepository<'c> {
                runPausedAccumMs, runTurnsConsumed, runTokensConsumed, runMilestonesAnnounced, \
                runDestructiveToolsAllowed, budgetExcludeCacheHits, runVisibility, coreWhisperEnabled, \
                coreWhisperInterval, showThinking, createdAt, updatedAt, answerConfirmationOverride, \
-               turnSkippingEnabled, scenarioSource, scenarioNotes) \
+               turnSkippingEnabled, scenarioSource, scenarioNotes, storytellerInviteFilter, \
+               turnMode) \
              VALUES (\
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, \
                ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?98, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, \
@@ -1017,7 +1038,7 @@ impl<'c> ChatsRepository<'c> {
                ?61, ?62, ?63, ?64, \
                ?65, ?66, ?67, ?68, ?69, ?70, ?71, ?72, ?73, ?74, ?75, ?76, ?77, ?78, ?79, ?80, \
                ?81, ?82, ?83, ?84, ?85, ?86, ?87, ?88, ?89, ?90, ?91, ?92, ?93, ?94, ?95, ?96, \
-               ?97, ?102, ?103)",
+               ?97, ?102, ?103, ?104, ?105)",
             params![
                 opts.id,
                 data.user_id,
@@ -1125,6 +1146,10 @@ impl<'c> ChatsRepository<'c> {
                 // watermark, retired with the column (`ac6348c5f`).
                 scenario_source_json,
                 data.scenario_notes,
+                // ?104 / ?105 — P4.D341 (v4 `b15fe9404`), appended (never
+                // renumber).
+                data.storyteller_invite_filter,
+                data.turn_mode,
             ],
         )?;
         // P4.D324 (v4 `4fbdad186`): `equippedInventory` is named only when the
@@ -1227,6 +1252,9 @@ impl<'c> ChatsRepository<'c> {
         }
         if let Some(v) = patch.is_paused {
             set_col!("isPaused", Box::new(v));
+        }
+        if let Some(v) = patch.storyteller_invite_filter {
+            set_col!("storytellerInviteFilter", Box::new(v));
         }
         if let Some(v) = patch.is_manually_renamed {
             set_col!("isManuallyRenamed", Box::new(v));
@@ -2392,5 +2420,109 @@ mod concierge_state_tests {
             stored(&conn),
             (None, None, None, "2026-01-01T00:00:00.000Z".into())
         );
+    }
+}
+
+#[cfg(test)]
+mod storyteller_column_tests {
+    //! P4.D341 (v4 `b15fe9404`, C-2 / K): the two `chats` columns through
+    //! `ChatCreate` / `ChatUpdate` on the D23 dump's DDL, read back through
+    //! `chats_read`.
+    use super::*;
+    use serde_json::json;
+
+    fn conn() -> Connection {
+        let schema: Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = schema["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .find(|s| s.starts_with("CREATE TABLE \"chats\" ("))
+            .unwrap();
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(ddl).unwrap();
+        conn
+    }
+
+    fn opts(id: &str) -> CreateOptions {
+        CreateOptions {
+            id: id.into(),
+            created_at: "2026-11-02T00:00:00.000Z".into(),
+            updated_at: "2026-11-02T00:00:00.000Z".into(),
+        }
+    }
+
+    /// A RUNTIME create (no `turnMode` key) writes `storytellerInviteFilter`
+    /// 0 and leaves `turnMode` NULL — read back as `false` and ABSENT (R-10,
+    /// proven by `chats_read_equivalence` at the pin). A CARRIER create (a
+    /// restored / imported chat whose archived record carries `turnMode`)
+    /// writes it back, as v4's `_create` inserts every key the document
+    /// carries (`patchOnlyFields` gate only the whole-row update).
+    #[test]
+    fn runtime_create_leaves_turn_mode_null_and_a_carrier_create_keeps_it() {
+        let conn = conn();
+        let repo = ChatsRepository::new(&conn);
+        let runtime: ChatCreate = serde_json::from_value(json!({
+            "userId": "u1", "title": "t", "participants": [],
+        }))
+        .unwrap();
+        repo.create(&runtime, &opts("c1")).unwrap();
+        let row = super::super::chats_read::find_by_id(&conn, "c1")
+            .unwrap()
+            .unwrap();
+        assert!(row.get("turnMode").is_none(), "{row}");
+        assert_eq!(row["storytellerInviteFilter"], false);
+        let stored: (Option<String>, Option<i64>) = conn
+            .query_row(
+                "SELECT turnMode, storytellerInviteFilter FROM chats WHERE id = 'c1'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(stored, (None, Some(0)));
+
+        let carried: ChatCreate = serde_json::from_value(json!({
+            "userId": "u1", "title": "t", "participants": [],
+            "turnMode": "storyteller", "storytellerInviteFilter": true,
+        }))
+        .unwrap();
+        repo.create(&carried, &opts("c2")).unwrap();
+        let row = super::super::chats_read::find_by_id(&conn, "c2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(row["turnMode"], "storyteller");
+        assert_eq!(row["storytellerInviteFilter"], true);
+        // Schema position on the read: `isPaused`, then the pair, then
+        // `isManuallyRenamed`.
+        let keys: Vec<&str> = row
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
+        assert_eq!(at("turnMode"), at("isPaused") + 1);
+        assert_eq!(at("storytellerInviteFilter"), at("turnMode") + 1);
+        assert_eq!(at("isManuallyRenamed"), at("storytellerInviteFilter") + 1);
+
+        // The whole-row update sets the filter and never touches `turnMode`.
+        assert!(repo
+            .update(
+                "c2",
+                &ChatUpdate {
+                    storyteller_invite_filter: Some(false),
+                    title: Some("renamed".into()),
+                    ..ChatUpdate::default()
+                },
+            )
+            .unwrap());
+        let row = super::super::chats_read::find_by_id(&conn, "c2")
+            .unwrap()
+            .unwrap();
+        assert_eq!(row["storytellerInviteFilter"], false);
+        assert_eq!(row["turnMode"], "storyteller");
     }
 }

@@ -4,6 +4,9 @@
  * every `(source, tier)` pair a stored row can carry (absent and `null` both
  * read as "not the literal"), and `partitionByPolicyProtection` over mixed
  * corpora (input order kept on both halves; `sparedBy` in v4's key order).
+ * P4.D341 (v4 `236c04e35`): every `(source, tier)` pair again under
+ * `keystone` true / false / absent (`keystone` wins FIRST), and corpora with
+ * keystones in them (`sparedBy` now opens `keystone: 0`).
  *
  * Pure: no database, no logger. One NDJSON line per case.
  *
@@ -18,12 +21,16 @@ async function main(): Promise<void> {
   const out: string[] = [];
   const SOURCES: Array<string | null | undefined> = ['AUTO', 'MANUAL', 'CONSOLIDATED', 'manual', '', null, undefined];
   const TIERS: Array<string | null | undefined> = ['hot', 'cold', 'COLD', '', null, undefined];
-  for (const source of SOURCES) {
-    for (const tier of TIERS) {
-      const row: Record<string, unknown> = {};
-      if (source !== undefined) row.source = source;
-      if (tier !== undefined) row.tier = tier;
-      out.push(JSON.stringify({ case: 'of', row, result: policyProtectionOf(row as never) }));
+  const KEYSTONES: Array<boolean | undefined> = [undefined, false, true];
+  for (const keystone of KEYSTONES) {
+    for (const source of SOURCES) {
+      for (const tier of TIERS) {
+        const row: Record<string, unknown> = {};
+        if (source !== undefined) row.source = source;
+        if (tier !== undefined) row.tier = tier;
+        if (keystone !== undefined) row.keystone = keystone;
+        out.push(JSON.stringify({ case: 'of', row, result: policyProtectionOf(row as never) }));
+      }
     }
   }
   const corpora: Array<Array<Record<string, unknown>>> = [
@@ -37,6 +44,14 @@ async function main(): Promise<void> {
       { id: 'a2', source: 'AUTO' },
       { id: 'm2', source: 'MANUAL' },
       { id: 'n', tier: null },
+    ],
+    [
+      { id: 'k-auto', source: 'AUTO', tier: 'hot', keystone: true },
+      { id: 'k-manual', source: 'MANUAL', tier: 'hot', keystone: true },
+      { id: 'k-digest', source: 'CONSOLIDATED', tier: 'hot', keystone: true },
+      { id: 'k-off', source: 'AUTO', tier: 'hot', keystone: false },
+      { id: 'm', source: 'MANUAL', tier: 'hot', keystone: false },
+      { id: 'c', source: 'AUTO', tier: 'cold' },
     ],
   ];
   for (const rows of corpora) {

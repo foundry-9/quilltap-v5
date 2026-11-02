@@ -62,6 +62,8 @@ pub struct MemoryEditPatch {
     pub about_character_id: Option<Option<String>>,
     pub chat_id: Option<Option<String>>,
     pub related_memory_ids: Option<Vec<String>>,
+    /// Mark or unmark the row as a standing fact (v4 `keystone?: boolean`).
+    pub keystone: Option<bool>,
 }
 
 impl MemoryEditPatch {
@@ -77,6 +79,7 @@ impl MemoryEditPatch {
             ("aboutCharacterId", self.about_character_id.is_some()),
             ("chatId", self.chat_id.is_some()),
             ("relatedMemoryIds", self.related_memory_ids.is_some()),
+            ("keystone", self.keystone.is_some()),
         ];
         for (key, is_present) in present {
             if is_present {
@@ -97,6 +100,11 @@ pub enum UpdateMemoryResult {
     NotFound,
     InvalidRelated {
         invalid_ids: Vec<String>,
+    },
+    /// A keystone must be hot, and a subject holds at most
+    /// `KEYSTONES_PER_SUBJECT_MAX`; nothing was written.
+    KeystoneRefused {
+        message: String,
     },
     /// The edited text could not be embedded; nothing was written.
     EmbeddingFailed {
@@ -135,6 +143,7 @@ const MEMORY_SCHEMA_ORDER: &[&str] = &[
     "supersededAt",
     "consolidatedFrom",
     "consolidatedAt",
+    "keystone",
     "createdAt",
     "updatedAt",
 ];
@@ -189,10 +198,70 @@ fn changes_embedded_text(existing: &Value, patch: &MemoryEditPatch) -> bool {
             .is_some_and(|s| Some(s) != str_field(existing, "summary"))
 }
 
+/// v4 `KEYSTONES_PER_SUBJECT_MAX` (`lib/schemas/memory.types.ts:165`): "Most
+/// hot keystones one holder may keep about one subject (or about themself)."
+pub const KEYSTONES_PER_SUBJECT_MAX: i64 = 5;
+
+/// v4 `checkKeystone(characterId, existing, patch)` (`update-memory.ts:81-96`
+/// at `236c04e35`): "Why a patch may not leave the row a keystone, or null
+/// when it may. Checked only when the edit makes the row a keystone or moves
+/// a keystone's subject, so an ordinary edit of an existing keystone never
+/// trips the limit."
+///
+/// v4's five steps: `willBe = patch.keystone ?? !!existing.keystone` (not →
+/// `None`); `becoming = !existing.keystone`; `subject` / `moving` from the
+/// patch's three-state `aboutCharacterId` (`!== undefined` is `Some(_)`, `??
+/// null` is the inner `None`); neither becoming nor moving → `None`; a
+/// non-hot row (`tier ?? 'hot'`) → the archived sentence; `countKeystones(
+/// characterId, subject, existing.id) >= KEYSTONES_PER_SUBJECT_MAX` → the
+/// limit sentence.
+pub fn check_keystone(
+    conn: &rusqlite::Connection,
+    character_id: &str,
+    existing: &Value,
+    patch: &MemoryEditPatch,
+) -> Result<Option<String>, DbError> {
+    let existing_keystone = existing
+        .get("keystone")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let will_be = patch.keystone.unwrap_or(existing_keystone);
+    if !will_be {
+        return Ok(None);
+    }
+    let becoming = !existing_keystone;
+    let existing_about = str_field(existing, "aboutCharacterId");
+    let subject: Option<&str> = match &patch.about_character_id {
+        Some(about) => about.as_deref(),
+        None => existing_about,
+    };
+    let moving =
+        matches!(&patch.about_character_id, Some(about) if about.as_deref() != existing_about);
+    if !becoming && !moving {
+        return Ok(None);
+    }
+    if str_field(existing, "tier").unwrap_or("hot") != "hot" {
+        return Ok(Some(
+            "An archived memory cannot be a keystone; it belongs to the digest that replaced it."
+                .to_string(),
+        ));
+    }
+    let existing_id = str_field(existing, "id");
+    let held = memories_read::count_keystones(conn, character_id, subject, existing_id)?;
+    if held >= KEYSTONES_PER_SUBJECT_MAX {
+        return Ok(Some(format!(
+            "A character may keep at most {KEYSTONES_PER_SUBJECT_MAX} keystones about one subject; unmark one first."
+        )));
+    }
+    Ok(None)
+}
+
 /// Apply a hand edit to one memory and bring its derived state with it — v4
 /// `updateMemory(characterId, memoryId, patch, { userId })`.
 ///
-/// v4's order: find (`NotFound`) → an importance change recomputes
+/// v4's order: find (`NotFound`) → the keystone rule ([`check_keystone`];
+/// DEBUG `Refusing memory edit: keystone rule` → `KeystoneRefused`, nothing
+/// written) → an importance change recomputes
 /// `reinforcedImportance` (DEBUG `Recomputed reinforcedImportance for edited
 /// importance`) → `relatedMemoryIds` validated (deduped, self dropped, each
 /// through `findByIdForCharacter`; DEBUG `Refusing memory edit: related ids
@@ -232,8 +301,24 @@ pub async fn update_memory<P: EmbeddingProvider + Sync>(
         importance: patch.importance,
         about_character_id: patch.about_character_id.clone(),
         chat_id: patch.chat_id.clone(),
+        // v4: the patch's `keystone` rides the `{ ...patch }` spread into the
+        // row write.
+        keystone: patch.keystone,
         ..Default::default()
     };
+
+    // --- keystone: hot only, and within the per-subject limit ----------------
+    let refusal = db.read_main(|c| check_keystone(c, character_id, &existing, &patch))?;
+    if let Some(message) = refusal {
+        tracing::debug!(
+            module = MODULE,
+            characterId = %character_id,
+            memoryId = %memory_id,
+            reason = %message,
+            "Refusing memory edit: keystone rule"
+        );
+        return Ok(UpdateMemoryResult::KeystoneRefused { message });
+    }
 
     // --- importance → reinforcedImportance ----------------------------------
     let existing_importance = existing.get("importance").and_then(Value::as_f64);

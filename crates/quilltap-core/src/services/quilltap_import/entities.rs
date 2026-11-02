@@ -497,7 +497,11 @@ fn create_template(
         delimiters: t.delimiters,
         rendering_patterns: t.rendering_patterns,
         dialogue_detection: t.dialogue_detection,
-        narration_delimiters: t.narration_delimiters,
+        narration_delimiters: Some(t.narration_delimiters),
+        // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351 owns the
+        // carrier's `unmarkedStyle` / `markdownAsterisks` / null narration.
+        unmarked_style: None,
+        markdown_asterisks: true,
     };
     let (id, now) = mint_or_preserve(options, source_id);
     repo.create(

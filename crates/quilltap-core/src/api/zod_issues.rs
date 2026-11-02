@@ -1249,6 +1249,18 @@ pub fn zod_memory_issues(row: &serde_json::Map<String, Value>) -> Vec<ZodIssue> 
     nullable_timestamp_issues(row, "supersededAt", &mut issues);
     default_string_array_issues(row, "consolidatedFrom", true, &mut issues);
     nullable_timestamp_issues(row, "consolidatedAt", &mut issues);
+    // P4.D341 (v4 `8cb584eff`, `memory.types.ts:158`): `keystone:
+    // z.boolean().default(false)` — absent passes (the default), a present
+    // non-boolean (incl. `null`, and a TEXT cell the raw reads leave alone)
+    // is `invalid_type` expected boolean.
+    match row.get("keystone") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("keystone")],
+            got,
+        )),
+    }
     zod_timestamp_issues(row, "createdAt", &mut issues);
     zod_timestamp_issues(row, "updatedAt", &mut issues);
     issues

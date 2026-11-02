@@ -186,6 +186,9 @@ struct CreateData {
     last_reinforced_at: Option<String>,
     related_memory_ids: Vec<String>,
     reinforced_importance: f64,
+    /// P4.D341 (v4 `8cb584eff`): `keystone ?? false` — absent or `null` → false.
+    #[serde(default)]
+    keystone: Option<bool>,
 }
 
 #[derive(Deserialize, Default)]
@@ -203,6 +206,9 @@ struct PatchData {
     tags: Option<Vec<String>>,
     #[serde(default)]
     source: Option<String>,
+    /// P4.D341: mark / unmark a keystone.
+    #[serde(default)]
+    keystone: Option<bool>,
 }
 
 impl CreateData {
@@ -235,6 +241,7 @@ impl CreateData {
             superseded_at: None,
             consolidated_from: Vec::new(),
             consolidated_at: None,
+            keystone: self.keystone.unwrap_or(false),
         }
     }
 }
@@ -248,6 +255,7 @@ impl PatchData {
             keywords: self.keywords.clone(),
             tags: self.tags.clone(),
             source: self.source.clone(),
+            keystone: self.keystone,
             ..Default::default()
         }
     }
@@ -661,14 +669,18 @@ fn memories_tier2_matches_oracle() {
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
 
-    // [P4.161 — P4.155's R-E twin] v4's REAL `memories.create` over five
+    // [P4.161 — P4.155's R-E twin] v4's REAL `memories.create` over seven (P4.D341: +2 keystone)
     // rows `MemorySchema` refuses (run oracle-side AFTER the op sequence; the
     // dump above is the "wrote nothing" proof): each message must be exactly
     // `parse_create_memory`'s over the same data and claimed id.
     let errors = oracle["errors"]
         .as_array()
         .expect("the oracle carries no `errors` — regenerate it (P4.161)");
-    assert_eq!(errors.len(), 5, "the five createExpectError rows");
+    assert_eq!(
+        errors.len(),
+        7,
+        "the seven createExpectError rows (P4.D341: +2 keystone)"
+    );
     for e in errors {
         let label = e["label"].as_str().unwrap_or("?");
         let want = e["message"].as_str();

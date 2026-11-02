@@ -50,6 +50,8 @@ interface Op {
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
+  // P4.D341: ids read back through the REAL repository's findById (decoded()).
+  reads?: { ids: string[] };
 }
 
 async function main(): Promise<void> {
@@ -100,6 +102,14 @@ async function main(): Promise<void> {
     }
   }
 
+  // P4.D341: the decoded read — v4's REAL findById (the repository's decoded()
+  // over Zod's parse) for every surviving id, as the JSON text it serializes to.
+  const reads: Array<{ id: string; json: string | null }> = [];
+  for (const id of spec.reads?.ids ?? []) {
+    const found = await repo.findById(id);
+    reads.push({ id, json: found ? JSON.stringify(found) : null });
+  }
+
   // Read RAW on-disk state through v4's own connected backend. table_info gives
   // schema column order; SELECT * gives the persisted rows (isBuiltIn as 0/1,
   // JSON columns as the stored compact text).
@@ -122,7 +132,7 @@ async function main(): Promise<void> {
   });
 
   process.stdout.write(
-    JSON.stringify({ case: 'roleplay-templates-tier2', ...dump }) + '\n'
+    JSON.stringify({ case: 'roleplay-templates-tier2', ...dump, reads }) + '\n'
   );
   process.exit(0);
 }

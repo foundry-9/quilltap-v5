@@ -70,8 +70,8 @@ fn truthy(s: &Option<String>) -> Option<String> {
 }
 
 /// The entity v4's `memories.create` returns for `insertRow`'s data — the
-/// `MemorySchema`-parsed `{ ...data, tier, consolidatedFrom, id, createdAt,
-/// updatedAt }`: the schema's key order, every key `insertRow` names present
+/// `MemorySchema`-parsed `{ ...data, tier, consolidatedFrom, keystone, id,
+/// createdAt, updatedAt }`: the schema's key order, every key `insertRow` names present
 /// (its explicit `null`s included), the two it does not name
 /// (`lastAccessedAt`, `lastReinforcedAt`) and the digest-only tier fields
 /// absent. Not a re-read: v4 answers the create, and the manual create's
@@ -102,6 +102,9 @@ fn created_entity(c: &MemCreate, opts: &CreateOptions) -> Value {
         "reinforcedImportance": js_number_to_json(c.reinforced_importance),
         "tier": c.tier,
         "consolidatedFrom": c.consolidated_from,
+        // P4.D341 (v4 `236c04e35` `memories.repository.ts:552`): the create
+        // prefill's `keystone: data.keystone ?? false`, in schema order.
+        "keystone": c.keystone,
         "createdAt": opts.created_at,
         "updatedAt": opts.updated_at,
     })
@@ -156,6 +159,7 @@ pub async fn insert_row(db: &Db, row: &AdmissionRow, embedding: &[f32]) -> Resul
         superseded_at: None,
         consolidated_from: Vec::new(),
         consolidated_at: None,
+        keystone: false,
     };
     let opts = CreateOptions {
         id: id.clone(),

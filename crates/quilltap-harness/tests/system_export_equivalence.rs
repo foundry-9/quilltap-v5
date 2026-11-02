@@ -675,7 +675,7 @@ const WEAR_PLANT_SQL: &str = "INSERT INTO \"wardrobe_wear_stats\" (\"id\", \"ite
 /// the two new instance settings (Tier 2 item 13). Every export line otherwise
 /// carries the tier columns at their defaults — the same bytes whether the
 /// key order (`schema-key-order.json`) is right or not.
-const MEMORY_TIERS_PLANT_SQL: [&str; 9] = [
+const MEMORY_TIERS_PLANT_SQL: [&str; 10] = [
     "UPDATE \"memories\" SET \"source\" = 'CONSOLIDATED', \"tier\" = 'hot', \"consolidatedFrom\" = '[\"ad000000-0000-4000-8000-000000000003\"]', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000001'",
     "UPDATE \"memories\" SET \"tier\" = 'cold', \"supersededById\" = 'ad000000-0000-4000-8000-000000000001', \"consolidatedAt\" = '2026-01-01T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
     // [P4.D294] `CHAT_1`'s three cursor ROWS (`ac6348c5f` moved them off the
@@ -687,6 +687,8 @@ const MEMORY_TIERS_PLANT_SQL: [&str; 9] = [
     "UPDATE \"memories\" SET \"supersededAt\" = '2026-01-02T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
     "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
     "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
+    // [P4.D341] (v4 `8cb584eff`): a keystone on `MEM_2`.
+    "UPDATE \"memories\" SET \"keystone\" = 1 WHERE \"id\" = 'ad000000-0000-4000-8000-000000000002'",
 ];
 
 /// Run [`MEMORY_TIERS_PLANT_SQL`], each statement touching exactly one row.

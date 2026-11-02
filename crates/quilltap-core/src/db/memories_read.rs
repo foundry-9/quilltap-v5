@@ -69,7 +69,9 @@ use super::DbError;
 use crate::chunk::{chunk_array, SQLITE_VARIABLE_CHUNK_SIZE};
 use crate::embedding_blob::blob_to_float32;
 
-/// All `memories` columns in schema order (indices 0..=29 in [`marshal_row`];
+/// All `memories` columns in schema order (indices 0..=30 in [`marshal_row`];
+/// P4.D341 — v4 `8cb584eff`'s `keystone` at 28, between `consolidatedAt` and
+/// `createdAt`, its generateDDL / Zod-shape position;
 /// P4.D288 — v4 `c2795733f`'s `supersededAt` at 25, between `supersededById`
 /// and `consolidatedFrom`, its generateDDL / Zod-shape position).
 /// The four episodic columns (v4 8bf3cb5f) sit between `witnessedContext` and
@@ -82,7 +84,7 @@ const COLS: &str = "id, characterId, aboutCharacterId, chatId, projectId, conten
      keywords, tags, importance, embedding, source, witnessedContext, \
      occurredAt, narrativeTime, entities, kind, sourceMessageId, \
      lastAccessedAt, reinforcementCount, lastReinforcedAt, relatedMemoryIds, reinforcedImportance, \
-     tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, \
+     tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, keystone, \
      createdAt, updatedAt";
 
 /// [`COLS`] as keys, in schema order — v4's parsed `Memory` object's key
@@ -164,6 +166,58 @@ fn embedding_to_value(blob: &[u8]) -> Value {
         m.insert(i.to_string(), js_number_to_json(*f as f64));
     }
     Value::Object(m)
+}
+
+/// P4.D341 (v4 `8cb584eff`): the `keystone` cell as v4 reads it.
+///
+/// - The RAW path (`keep_nulls = true`, v4 `hydrateRawRows`
+///   `memories.repository.ts:462-465`): "SQLite stores the boolean as 0 / 1;
+///   SQLiteCollection converts it, a raw query must." — a number / bigint /
+///   NULL cell becomes `Number(row.keystone ?? 0) === 1` (a NULL → `false`);
+///   ANY other storage class (TEXT, BLOB) is left as it is, so
+///   `MemorySchema.safeParse` refuses it (`invalid_type`, expected boolean) and
+///   [`hydrate_raw_rows`] DROPS the row with its WARN.
+/// - The `findByFilter` path (`keep_nulls = false`, v4 `SQLiteCollection.
+///   hydrateRow`, `backend.ts:445-453`, `keystone` a registered boolean
+///   column): NULL → `undefined` → the Zod `.default(false)`; a number →
+///   `value === 1`; anything else → `Boolean(value)` (a non-empty TEXT reads
+///   `true`, an empty one `false`; a Buffer is an object → `true`).
+fn put_keystone(
+    m: &mut Map<String, Value>,
+    key: &str,
+    idx: usize,
+    row: &Row,
+    keep_nulls: bool,
+) -> Result<(), rusqlite::Error> {
+    use rusqlite::types::ValueRef;
+    let v = match row.get_ref(idx)? {
+        ValueRef::Null => Value::Bool(false),
+        ValueRef::Integer(n) => Value::Bool(n == 1),
+        ValueRef::Real(f) => Value::Bool(f == 1.0),
+        ValueRef::Text(t) => {
+            if keep_nulls {
+                Value::String(String::from_utf8_lossy(t).into_owned())
+            } else {
+                Value::Bool(!t.is_empty())
+            }
+        }
+        ValueRef::Blob(b) => {
+            if keep_nulls {
+                // A Buffer: Zod's `invalid_type` refuses it as a non-boolean
+                // object — the bytes never reach the line (only the issue).
+                Value::Object(
+                    b.iter()
+                        .enumerate()
+                        .map(|(i, x)| (i.to_string(), Value::from(*x)))
+                        .collect(),
+                )
+            } else {
+                Value::Bool(true)
+            }
+        }
+    };
+    m.insert(key.to_string(), v);
+    Ok(())
 }
 
 /// Marshal one `memories` row (column order = [`COLS`]) to the net Memory JSON.
@@ -311,8 +365,12 @@ fn marshal_row(row: &Row, keep_nulls: bool) -> Result<Value, rusqlite::Error> {
     put_nullable_str(&mut m, "supersededAt", row.get(25)?, keep_nulls);
     arr(&mut m, "consolidatedFrom", 26)?;
     put_nullable_str(&mut m, "consolidatedAt", row.get(27)?, keep_nulls);
-    req_str(&mut m, "createdAt", 28)?;
-    req_str(&mut m, "updatedAt", 29)?;
+    // P4.D341 (v4 `8cb584eff`): `keystone` is `z.boolean().default(false)`
+    // stored as INTEGER 0 / 1 — see [`put_keystone`] for the two paths'
+    // coercions.
+    put_keystone(&mut m, "keystone", 28, row, keep_nulls)?;
+    req_str(&mut m, "createdAt", 29)?;
+    req_str(&mut m, "updatedAt", 30)?;
     Ok(Value::Object(m))
 }
 
@@ -645,6 +703,12 @@ pub struct PaginateOptions<'a> {
     /// (v4's `filter.tier = tier` through `findByFilter`), so a NULL-tier row
     /// is in neither tier's listing. `None` lists both.
     pub tier: Option<&'a str>,
+    /// P4.D341 (v4 `8cb584eff`, `memories.repository.ts:266-268`):
+    /// keystones only — `filter.keystone = true` through `findByFilter`,
+    /// whose translator binds the boolean as `1`: an exact `keystone = ?`
+    /// with `1` (a NULL / `0` / TEXT cell is not listed). `false` adds no
+    /// filter (v4's `keystone: keystoneOnly || undefined`).
+    pub keystone: bool,
 }
 
 /// Restrict a caller-supplied sort column to a known identifier (v4 interpolates
@@ -694,6 +758,10 @@ pub fn find_by_character_id_paginated(
             if let Some(tier) = opts.tier {
                 where_clause.push_str(" AND tier = ?");
                 params.push(Box::new(tier.to_string()));
+            }
+            if opts.keystone {
+                where_clause.push_str(" AND keystone = ?");
+                params.push(Box::new(1_i64));
             }
             let dir = if opts.sort_order == "desc" {
                 "DESC"
@@ -1240,6 +1308,126 @@ pub fn find_hot_digests(
         Ok(hydrate_raw_rows(rows, "hot digest fetch"))
     })
 }
+
+// === P4.D341 (v4 `8cb584eff`): the keystone reads (contract C-1) ===
+
+/// v4 `findKeystones`' `subjects: readonly string[] | 'self'`.
+#[derive(Debug, Clone, Copy)]
+pub enum KeystoneSubjects<'a> {
+    /// `'self'`: rows about the holder, or about no one
+    /// (`aboutCharacterId = characterId OR aboutCharacterId IS NULL`).
+    SelfSubject,
+    /// Rows about any of these characters. The list is DEDUPED (first-seen
+    /// order) and loses the holder's own id and every empty id — v4's `[...new
+    /// Set(subjects.filter((id) => id && id !== characterId))]`; an empty set
+    /// after that answers `[]` with NO query.
+    About(&'a [String]),
+}
+
+/// v4 `findKeystones(characterId, subjects)` (`memories.repository.ts:
+/// 1153-1183`): "A holder's hot keystones about one or more subjects, or
+/// about themself (`'self'`: rows about the holder, or about no one).
+/// Ordered by creation, then id — never by score — so the frozen archive's
+/// keystone lines keep their order however the rows are reinforced
+/// (inner-circle-recall.md C3)." `keystone = 1 AND` [`HOT_TIER_SQL`] (a
+/// NULL-tier keystone is HOT; a cold one is not); raw rows through
+/// [`hydrate_raw_rows`] (`keystone fetch` — a TEXT `keystone` cell is DROPPED
+/// with the WARN). v4's `safeQuery` is the fallback home
+/// ([`keystones_or_empty`](super::fallback::keystones_or_empty)): outside the
+/// strict scope a failure logs `Error finding keystones` and answers `[]`;
+/// inside it, `Err`.
+pub fn find_keystones(
+    conn: &Connection,
+    character_id: &str,
+    subjects: KeystoneSubjects<'_>,
+) -> Result<Vec<Value>, DbError> {
+    let logged = match subjects {
+        KeystoneSubjects::SelfSubject => None,
+        KeystoneSubjects::About(list) => Some(list.len()),
+    };
+    super::fallback::keystones_or_empty(character_id, logged, || {
+        let mut params: Vec<&dyn ToSql> = vec![&character_id];
+        let ids: Vec<&String>;
+        let subject_sql = match subjects {
+            KeystoneSubjects::SelfSubject => {
+                params.push(&character_id);
+                "(aboutCharacterId = ? OR aboutCharacterId IS NULL)".to_string()
+            }
+            KeystoneSubjects::About(list) => {
+                let mut seen = std::collections::HashSet::new();
+                ids = list
+                    .iter()
+                    .filter(|id| !id.is_empty() && id.as_str() != character_id)
+                    .filter(|id| seen.insert(id.as_str()))
+                    .collect();
+                if ids.is_empty() {
+                    return Ok(Vec::new());
+                }
+                for id in &ids {
+                    params.push(*id);
+                }
+                format!("aboutCharacterId IN ({})", vec!["?"; ids.len()].join(", "))
+            }
+        };
+        let sql = format!(
+            "SELECT {COLS} FROM memories \
+             WHERE characterId = ? \
+               AND keystone = 1 \
+               AND {HOT_TIER_SQL} \
+               AND {subject_sql} \
+             ORDER BY createdAt ASC, id ASC"
+        );
+        let rows = query_raw_memories(conn, &sql, &params)?;
+        Ok(hydrate_raw_rows(rows, "keystone fetch"))
+    })
+}
+
+/// v4 `countKeystones(characterId, aboutCharacterId, excludeId?)`
+/// (`memories.repository.ts:1189-1210`): "How many hot keystones a holder
+/// keeps about one subject (`null` or the holder's own id: about themself),
+/// leaving `excludeId` out — the row being edited. The write paths hold this
+/// under `KEYSTONES_PER_SUBJECT_MAX`." `self = !aboutCharacterId ||
+/// aboutCharacterId === characterId` (an EMPTY id is self too — JS-falsy);
+/// `excludeId` adds `AND id <> ?` only when truthy. Fallback home
+/// [`keystones_count_or_zero`](super::fallback::keystones_count_or_zero)
+/// (`Error counting keystones`, `0`).
+pub fn count_keystones(
+    conn: &Connection,
+    character_id: &str,
+    about_character_id: Option<&str>,
+    exclude_id: Option<&str>,
+) -> Result<i64, DbError> {
+    super::fallback::keystones_count_or_zero(character_id, about_character_id, || {
+        let subject = about_character_id.filter(|a| !a.is_empty() && *a != character_id);
+        let mut params: Vec<&dyn ToSql> = vec![&character_id];
+        let subject_sql = match &subject {
+            None => {
+                params.push(&character_id);
+                "(aboutCharacterId = ? OR aboutCharacterId IS NULL)"
+            }
+            Some(about) => {
+                params.push(about);
+                "aboutCharacterId = ?"
+            }
+        };
+        let exclude = exclude_id.filter(|e| !e.is_empty());
+        let exclude_sql = match &exclude {
+            Some(e) => {
+                params.push(e);
+                "AND id <> ?"
+            }
+            None => "",
+        };
+        let sql = format!(
+            "SELECT COUNT(*) AS n FROM memories \
+             WHERE characterId = ? AND keystone = 1 AND {HOT_TIER_SQL} AND {subject_sql} {exclude_sql}"
+        );
+        let n: i64 = conn.query_row(&sql, params.as_slice(), |r| r.get(0))?;
+        Ok(n)
+    })
+}
+
+// === end P4.D341 ===
 
 /// `countCreatedSince` — `{ characterId, createdAt: { $gte: since } }`.
 pub fn count_created_since(
@@ -1976,7 +2164,7 @@ pub fn find_digest_subjects_by_ids(
 
 /// The retire path's raw row — v4 `retire.ts`'s `RetireRow` (`SELECT id,
 /// characterId, source, tier, aboutCharacterId, consolidatedFrom,
-/// supersededById`).
+/// supersededById, keystone`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RetireRow {
     pub id: String,
@@ -1986,6 +2174,23 @@ pub struct RetireRow {
     pub about_character_id: Option<String>,
     pub consolidated_from: Option<String>,
     pub superseded_by_id: Option<String>,
+    /// v4 `keystone: number | null` ("1 for a keystone (SQLite boolean)"),
+    /// read as v4 reads it — JS truthiness of the raw cell (`!!row.keystone`
+    /// / `if (row.keystone)`): NULL and 0 false, any other number true, a
+    /// TEXT cell true when non-empty, a BLOB true.
+    pub keystone: bool,
+}
+
+/// JS truthiness of a raw SQLite cell as better-sqlite3 hands it over.
+fn js_truthy_cell(v: rusqlite::types::ValueRef<'_>) -> bool {
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Null => false,
+        ValueRef::Integer(n) => n != 0,
+        ValueRef::Real(f) => f != 0.0 && !f.is_nan(),
+        ValueRef::Text(t) => !t.is_empty(),
+        ValueRef::Blob(_) => true,
+    }
 }
 
 /// v4 `retire.ts`'s `resolveRows(ids)` (`:136-149`): a bare `rawQuery` per
@@ -1995,7 +2200,7 @@ pub fn find_retire_rows(conn: &Connection, ids: &[String]) -> Result<Vec<RetireR
     let mut out = Vec::new();
     for chunk in ids.chunks(SQLITE_VARIABLE_CHUNK_SIZE) {
         let sql = format!(
-            "SELECT id, characterId, source, tier, aboutCharacterId, consolidatedFrom, supersededById \
+            "SELECT id, characterId, source, tier, aboutCharacterId, consolidatedFrom, supersededById, keystone \
                FROM memories WHERE id IN ({})",
             vec!["?"; chunk.len()].join(",")
         );
@@ -2010,6 +2215,7 @@ pub fn find_retire_rows(conn: &Connection, ids: &[String]) -> Result<Vec<RetireR
                 about_character_id: r.get(4)?,
                 consolidated_from: r.get(5)?,
                 superseded_by_id: r.get(6)?,
+                keystone: js_truthy_cell(r.get_ref(7)?),
             })
         })?;
         for row in rows {
@@ -2292,12 +2498,13 @@ mod alignment_census {
 
     /// `COLS` is EXACTLY the D23 dump's `memories` column list, in its order
     /// (29 columns at `01a83539d`; 30 at `83334b9a5` — P4.D288's
-    /// `supersededAt`) — the marshaled key order is v4's parsed Memory order
-    /// because the two coincide.
+    /// `supersededAt`; 31 at `236c04e35` — P4.D341's `keystone`) — the
+    /// marshaled key order is v4's parsed Memory order because the two
+    /// coincide.
     #[test]
     fn cols_is_the_d23_dump_memories_column_list_in_order() {
         assert_eq!(selected_columns(), schema_columns());
-        assert_eq!(selected_columns().len(), 30);
+        assert_eq!(selected_columns().len(), 31);
     }
 
     /// …and every index `marshal_row` reads marshals the column at that
@@ -2317,6 +2524,113 @@ mod alignment_census {
         assert_eq!(in_order, (0..cols.len()).collect::<Vec<_>>());
     }
 }
+
+// === P4.D341: the keystone reads' fallback homes + silence legs ===
+#[cfg(test)]
+mod p4d341_keystone_tests {
+    use super::*;
+    use crate::db::fallback::with_strict_repository_failures;
+
+    fn errors(lines: &[String]) -> Vec<String> {
+        lines
+            .iter()
+            .filter(|l| l.starts_with("ERROR") || l.starts_with("WARN"))
+            .cloned()
+            .collect()
+    }
+
+    const H: &str = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+    /// v4's `safeQuery` line — `{collection, characterId, subjects: 'self' |
+    /// subjects.length, error}` — and the `[]` fallback; inside the strict
+    /// scope the same line with `strictFailures=true` and the `Err`.
+    #[test]
+    fn find_keystones_failure_logs_v4s_line_and_answers_empty() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(find_keystones(&conn, H, KeystoneSubjects::SelfSubject))
+        });
+        assert_eq!(got.unwrap().unwrap(), Vec::<Value>::new());
+        assert_eq!(
+            errors(&lines),
+            [format!("ERROR quilltap::db Error finding keystones collection=memories characterId={H} subjects=self error=no such table: memories")]
+        );
+        // `subjects` is the CALLER's list length, before the dedup.
+        let list = vec!["a".to_string(), "a".to_string()];
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                find_keystones(&conn, H, KeystoneSubjects::About(&list))
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines),
+            [format!("ERROR quilltap::db Error finding keystones collection=memories characterId={H} subjects=2 error=no such table: memories strictFailures=true")]
+        );
+    }
+
+    /// An empty subject set after the filter answers `[]` with NO query — so
+    /// no line even on a broken connection (the silence leg).
+    #[test]
+    fn an_empty_subject_set_runs_no_query() {
+        let conn = Connection::open_in_memory().unwrap();
+        let only_self = vec![H.to_string(), String::new()];
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(find_keystones(
+                &conn,
+                H,
+                KeystoneSubjects::About(&only_self),
+            ))
+        });
+        assert_eq!(got.unwrap().unwrap(), Vec::<Value>::new());
+        assert!(errors(&lines).is_empty(), "{lines:?}");
+    }
+
+    #[test]
+    fn count_keystones_failure_logs_v4s_line_and_answers_zero() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut got = None;
+        let lines =
+            crate::test_support::captured(|| got = Some(count_keystones(&conn, H, None, None)));
+        assert_eq!(got.unwrap().unwrap(), 0);
+        assert_eq!(
+            errors(&lines),
+            [format!("ERROR quilltap::db Error counting keystones collection=memories characterId={H} aboutCharacterId=null error=no such table: memories")]
+        );
+        let mut got = None;
+        let lines = crate::test_support::captured(|| {
+            got = Some(with_strict_repository_failures(|| {
+                count_keystones(&conn, H, Some("f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1"), None)
+            }))
+        });
+        assert!(got.unwrap().is_err());
+        assert_eq!(
+            errors(&lines),
+            [format!("ERROR quilltap::db Error counting keystones collection=memories characterId={H} aboutCharacterId=f1f1f1f1-f1f1-4f1f-8f1f-f1f1f1f1f1f1 error=no such table: memories strictFailures=true")]
+        );
+    }
+
+    /// The silence legs: a sound table logs nothing on either read.
+    #[test]
+    fn sound_reads_log_nothing() {
+        let conn = Connection::open_in_memory().unwrap();
+        let cols: Vec<String> = COLS.split(',').map(|c| c.trim().to_string()).collect();
+        conn.execute_batch(&format!("CREATE TABLE memories ({});", cols.join(", ")))
+            .unwrap();
+        let lines = crate::test_support::captured(|| {
+            assert_eq!(
+                find_keystones(&conn, H, KeystoneSubjects::SelfSubject).unwrap(),
+                Vec::<Value>::new()
+            );
+            assert_eq!(count_keystones(&conn, H, Some(H), Some("x")).unwrap(), 0);
+        });
+        assert!(errors(&lines).is_empty(), "{lines:?}");
+    }
+}
+// === end P4.D341 ===
 
 // === P4.168: the fallback homes, both sides of the strict scope ===
 #[cfg(test)]

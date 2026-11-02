@@ -62,14 +62,21 @@ pub fn protection_of(m: &Value, now_ms: f64) -> ProtectionBreakdown {
             .map_or(0, Vec::len),
         kind: str_of(m, "kind"),
         source: str_of(m, "source"),
+        keystone: is_keystone(m),
     };
     protection(&input, now_ms, &DEFAULT_PROTECTION_CONFIG)
 }
 
+/// v4 `memory.keystone` truthiness over a hydrated row (a boolean since the
+/// repository's hydrate; absent reads as `false`).
+fn is_keystone(m: &Value) -> bool {
+    m.get("keystone").and_then(Value::as_bool).unwrap_or(false)
+}
+
 /// v4 `isDemotable(m)` — the rows the cap measures and may demote: hot AUTO
-/// rows.
+/// rows that are not keystones (P4.D341, v4 `236c04e35`).
 pub fn is_demotable(m: &Value) -> bool {
-    is_hot(m) && str_of(m, "source") == Some("AUTO")
+    is_hot(m) && str_of(m, "source") == Some("AUTO") && !is_keystone(m)
 }
 
 /// v4 `planDemotion(rows, cap, nowMs)` — which rows to demote so the

@@ -980,6 +980,13 @@
       "kind": "plantCell",
       "chatId": "c00000b0-0000-4000-8000-000000000001",
       "messageId": "e00000b0-0000-4000-8000-000000000001",
+      "column": "storytellerBid",
+      "value": "{\"roundId\":\"5b000001-0000-4000-8000-000000000003\",\"tier\":\"destroy\",\"plan\":\"Burn the map.\",\"toolsNamed\":[\"ignite\",\"scatter\"]}"
+    },
+    {
+      "kind": "plantCell",
+      "chatId": "c00000b0-0000-4000-8000-000000000001",
+      "messageId": "e00000b0-0000-4000-8000-000000000001",
       "column": "routeTrail",
       "value": "[{\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"primary\", \"outcome\": \"refused\", \"trigger\": \"moderation-refusal\", \"evidence\": \"provider-code\", \"profileKind\": \"image\", \"detail\": \"refused\"}, {\"profileId\": \"a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11\", \"profileName\": \"Frank Desk\", \"provider\": \"OPENAI\", \"modelName\": \"gpt-image-2\", \"via\": \"understudy\", \"outcome\": \"answered\"}]"
     },

@@ -78,7 +78,12 @@ pub fn embedding_of(memory: &Value) -> Option<Vec<f32>> {
 /// digest or a MANUAL row), with a vector" — `policyProtectionOf(m) === null
 /// && source === 'AUTO' && embedding instanceof Float32Array && length > 0`.
 pub fn is_fold_eligible(memory: &Value) -> bool {
-    policy_protection_of(str_of(memory, "source"), str_of(memory, "tier")).is_none()
+    policy_protection_of(
+        str_of(memory, "source"),
+        str_of(memory, "tier"),
+        memory["keystone"].as_bool().unwrap_or(false),
+    )
+    .is_none()
         && str_of(memory, "source") == Some("AUTO")
         && memory
             .get("embedding")

@@ -163,7 +163,18 @@ fn normalize_templates(dump: &Value) -> Value {
         obj.insert("updatedAt".into(), Value::from("<ts>"));
     }
     rows.sort_by_key(|r| format!("{} {}", r["name"].as_str().unwrap_or(""), r["isBuiltIn"]));
-    json!({ "columns": dump["columns"], "rows": rows })
+    // P4.D341: the column SET, not the physical order — v4's real boot appends
+    // `unmarkedStyle` / `markdownAsterisks` through its migration (after
+    // `updatedAt`) where v5's generateDDL table carries them before `createdAt`
+    // (the standing R-A table-text asymmetry; (1a) pins v5's text byte-exact).
+    let mut columns: Vec<String> = dump["columns"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c.as_str().unwrap().to_string())
+        .collect();
+    columns.sort();
+    json!({ "columns": columns, "rows": rows })
 }
 
 /// Collapse an integer-valued REAL to an integer (v5's generateDDL REAL count
@@ -793,7 +804,13 @@ const TABLE_COLUMN_ASYMMETRY: &[(&str, &str, &str, &[&str], &str)] = &[
         &[
             "aliases",
             "canChooseOutfit",
+            // P4.D341 (v4 `6588972d5`, measured at `236c04e35`): generateDDL
+            // renders the two diagram keys, but they are MANAGED fields
+            // (`vault-overlay/managed-fields.ts`) and no v4 migration adds them,
+            // so a real v4 boot's slim row never carries them.
+            "canDrawDiagrams",
             "description",
+            "diagramStyle",
             "exampleDialogues",
             "firstMessage",
             "identity",

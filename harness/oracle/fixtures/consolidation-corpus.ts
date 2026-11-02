@@ -110,6 +110,8 @@ export interface TemplateRow {
   witnessedContext?: string;
   consolidatedFrom?: string[];
   noEmbedding?: boolean;
+  /** P4.D341 (v4 `236c04e35`): an operator-marked standing fact. */
+  keystone?: boolean;
 }
 
 const KW = ['present', 'scope: wide', 'information'];
@@ -149,6 +151,9 @@ export const TEMPLATE: TemplateRow[] = [
   { row: 32, tag: 'Q2', bucket: 'other', topic: 'J', source: 'AUTO', kind: 'semantic', createdAgoDays: 31, importance: 0.4, reinforcedImportance: 0.42, reinforcementCount: 1, content: '[J2] Laura says barometers lie.', keywords: KW },
   { row: 33, tag: 'F4', bucket: 'self', topic: 'F', source: 'AUTO', kind: 'semantic', createdAgoDays: 1, importance: 0.5, reinforcedImportance: 0.5, reinforcementCount: 1, content: '[F4] I bought a new ledger.', keywords: KW },
   { row: 34, tag: 'A5', bucket: 'other', topic: 'A', source: 'AUTO', kind: 'semantic', createdAgoDays: 1, importance: 0.6, reinforcedImportance: 0.6, reinforcementCount: 1, content: '[A6] Laura framed her best chart.', keywords: KW },
+  // P4.D341: a mature KEYSTONE in topic A's bucket — counted in `rowsLoaded`,
+  // never a member and never a seed, so topic A's cluster is unchanged.
+  { row: 35, tag: 'KS', bucket: 'other', topic: 'A', source: 'AUTO', kind: 'semantic', createdAgoDays: 20, importance: 0.8, reinforcedImportance: 0.8, reinforcementCount: 1, content: '[A10] Laura charts by the stars (a standing fact).', keywords: KW, keystone: true },
 ];
 
 /** The template's row number for a tag (links name tags). */

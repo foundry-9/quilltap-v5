@@ -6,6 +6,15 @@
     "(builtin_templates_equivalence). Three states exercise the three seeder paths:",
     "",
     "  - `fresh`          : empty table → INSERT both built-ins (SCHEMA-order",
+    "  - `legacy-builtins`: a PRE-CODEC instance (P4.D341) — Standard + Quilltap RP",
+    "                       built-ins whose narration cells are planted RAW (`*`,",
+    "                       `[\"[\",\"]\"]`, as the pre-`778b97b2b` layer stored them)",
+    "                       and a user row with a SQL-NULL narration cell. The seeder",
+    "                       must rewrite both built-in cells ENCODED (`\"*\"`), add",
+    "                       the two new columns, INSERT Novel, and leave the user row",
+    "                       alone — the first-boot rewrite (R-6) both sides perform.",
+    "                       `rawNarration` / `rawNarrationNull` are post-create RAW",
+    "                       UPDATEs (bypassing the codec), stripped before create.",
     "                       delimiters, the fresh-instance path).",
     "  - `stale-builtin`  : a built-in `Standard` with stale content → UPDATE-in-",
     "                       place (proving upgrade-drift; the delimiters land in",
@@ -22,7 +31,10 @@
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "states": [
-    { "name": "fresh", "pre": [] },
+    {
+      "name": "fresh",
+      "pre": []
+    },
     {
       "name": "stale-builtin",
       "pre": [
@@ -35,7 +47,13 @@
           "isBuiltIn": true,
           "tags": [],
           "delimiters": [
-            { "kind": "wrap", "name": "Stale", "buttonName": "St", "style": "qt-stale", "delimiters": "?" }
+            {
+              "kind": "wrap",
+              "name": "Stale",
+              "buttonName": "St",
+              "style": "qt-stale",
+              "delimiters": "?"
+            }
           ],
           "renderingPatterns": [],
           "dialogueDetection": null,
@@ -62,6 +80,70 @@
           "narrationDelimiters": "*",
           "createdAt": "2025-02-02T00:00:00.000Z",
           "updatedAt": "2025-02-02T00:00:00.000Z"
+        }
+      ]
+    },
+    {
+      "name": "legacy-builtins",
+      "pre": [
+        {
+          "id": "d0000000-0000-4000-8000-0000000000d1",
+          "userId": null,
+          "name": "Standard",
+          "description": "Old Standard description.",
+          "systemPrompt": "Old Standard prompt.",
+          "isBuiltIn": true,
+          "tags": [],
+          "delimiters": [
+            {
+              "kind": "wrap",
+              "name": "Narration",
+              "buttonName": "Nar",
+              "style": "qt-chat-narration",
+              "delimiters": "*"
+            }
+          ],
+          "renderingPatterns": [],
+          "dialogueDetection": null,
+          "narrationDelimiters": "*",
+          "rawNarration": "*",
+          "createdAt": "2025-03-03T00:00:00.000Z",
+          "updatedAt": "2025-03-03T00:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-0000000000d2",
+          "userId": null,
+          "name": "Quilltap RP",
+          "description": "Old RP description.",
+          "systemPrompt": "Old RP prompt.",
+          "isBuiltIn": true,
+          "tags": [],
+          "delimiters": [],
+          "renderingPatterns": [],
+          "dialogueDetection": null,
+          "narrationDelimiters": [
+            "[",
+            "]"
+          ],
+          "rawNarration": "[\"[\",\"]\"]",
+          "createdAt": "2025-03-03T00:00:00.000Z",
+          "updatedAt": "2025-03-03T00:00:00.000Z"
+        },
+        {
+          "id": "d0000000-0000-4000-8000-0000000000d3",
+          "userId": "9f000000-0000-4000-8000-0000000000ff",
+          "name": "Novel",
+          "description": "A user's own Novel; the seeder keys on isBuiltIn.",
+          "systemPrompt": "User prompt.",
+          "isBuiltIn": false,
+          "tags": [],
+          "delimiters": [],
+          "renderingPatterns": [],
+          "dialogueDetection": null,
+          "narrationDelimiters": "*",
+          "rawNarrationNull": true,
+          "createdAt": "2025-03-03T00:00:00.000Z",
+          "updatedAt": "2025-03-03T00:00:00.000Z"
         }
       ]
     }

@@ -227,7 +227,8 @@ async fn setup_flow_end_to_end() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(n_templates, 2, "2 built-in roleplay templates after setup");
+    // P4.D341: v4 `778b97b2b` added the Novel built-in (three rows).
+    assert_eq!(n_templates, 3, "3 built-in roleplay templates after setup");
     let n_pointers: i64 = main
         .query_row(
             "SELECT count(*) FROM instance_settings WHERE key IN \

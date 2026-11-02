@@ -25,7 +25,14 @@
  *     `scrubDanglingMemoryLinks` over it (a related scrub, a digest every one
  *     of whose members is gone retired, a partly dangling digest trimmed, two
  *     orphaned members cut in their own tiers), then the scan again (clean);
- *   - H4: a retirement that rewrites 200 neighbours (the WARN).
+ *   - H4: a retirement that rewrites 200 neighbours (the WARN);
+ *   - H5, P4.D341 (v4 `236c04e35`): keystones — a chat wipe (and its
+ *     preview) sparing a keystone AUTO row (`sparedBy.keystone`, the key
+ *     order now `keystone, manual, digest, cold`); a keystone digest KEPT
+ *     though its last member retires (the DEBUG; R-5's `added` counting only
+ *     doomed rows — the kept digest the SOLE emptied candidate, so
+ *     `digestsRetiredWithLastMember` is 0); a kept keystone digest beside an
+ *     ordinary digest that retires.
  *
  * After the ops the `memories` rows are dumped (minted `updatedAt` /
  * `supersededAt` masked on the Rust side). v4's announcement (archive
@@ -64,7 +71,9 @@ const H2 = 'e2890000-0000-4000-8000-0000000000c2';
 const H3 = 'e2890000-0000-4000-8000-0000000000c3';
 const H4 = 'e2890000-0000-4000-8000-0000000000c4';
 const SUBJECT = 'e2890000-0000-4000-8000-0000000000d1';
+const H5 = 'e2890000-0000-4000-8000-0000000000c5';
 const CHAT = 'e2890000-0000-4000-8000-0000000000e1';
+const CHAT2 = 'e2890000-0000-4000-8000-0000000000e2';
 const mid = (n: number) => `e2890000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const T0 = '2026-01-01T00:00:00.000Z';
 
@@ -79,6 +88,8 @@ interface Seed {
   supersededBy?: number;
   members?: number[];
   vector?: number[];
+  chat2?: boolean;
+  keystone?: boolean;
 }
 
 async function main(): Promise<void> {
@@ -101,6 +112,7 @@ async function main(): Promise<void> {
   const CAPTURED = new Set([
     // retire.ts (module: memory:retire)
     'Digest retires with its last member',
+    'Keystone digest kept though its last member retires',
     'Scrubbed digest links to retired memories',
     'Nothing to retire',
     'Retirement rewrote an unusually large neighbour set',
@@ -181,6 +193,18 @@ async function main(): Promise<void> {
     { n: 400, holder: H4 },
   ];
   for (let i = 0; i < 200; i++) seeds.push({ n: 401 + i, holder: H4, related: [400] });
+  // H5 — keystones (P4.D341; 7xx — H4 holds 401-600).
+  seeds.push(
+    { n: 701, holder: H5, chat2: true, keystone: true, vector: [1, 0, 1] },
+    { n: 702, holder: H5, chat2: true },
+    { n: 703, holder: H5, chat2: true, source: 'MANUAL', keystone: true },
+    { n: 710, holder: H5, source: 'CONSOLIDATED', keystone: true, members: [711] },
+    { n: 711, holder: H5, tier: 'cold', supersededBy: 710 },
+    { n: 720, holder: H5, source: 'CONSOLIDATED', keystone: true, members: [722] },
+    { n: 721, holder: H5, source: 'CONSOLIDATED', members: [723] },
+    { n: 722, holder: H5, tier: 'cold', supersededBy: 720 },
+    { n: 723, holder: H5, tier: 'cold', supersededBy: 721 },
+  );
 
   await ensure();
   {
@@ -194,6 +218,8 @@ async function main(): Promise<void> {
           source: s.source ?? 'AUTO',
           tier: s.tier ?? 'hot',
           ...(s.chat ? { chatId: CHAT } : {}),
+          ...(s.chat2 ? { chatId: CHAT2 } : {}),
+          ...(s.keystone ? { keystone: true } : {}),
           ...(s.about ? { aboutCharacterId: s.about } : {}),
           ...(s.related ? { relatedMemoryIds: s.related.map(mid) } : {}),
           ...(s.supersededBy ? { supersededById: mid(s.supersededBy) } : {}),
@@ -221,7 +247,7 @@ async function main(): Promise<void> {
   const { memoryIndex } = await import('@/lib/memory/index-store');
   const repo = new MemoriesRepository();
   // L-2: every holder's index LOADED before the first op, silently.
-  for (const h of [H1, H2, H3, H4]) await memoryIndex.shape(h, 3);
+  for (const h of [H1, H2, H3, H4, H5]) await memoryIndex.shape(h, 3);
   capturing = true;
 
   const ops: Array<Record<string, unknown>> = [];
@@ -259,6 +285,11 @@ async function main(): Promise<void> {
   await run('findDanglingLinks', { characterIds: [H3] }, async () => repo.findDanglingLinks([H3]));
   // H4
   await retire([400], 'item-delete');
+  // H5
+  await run('previewChatWipe', { chatId: CHAT2 }, async () => [...(await previewChatWipe(CHAT2))].sort());
+  await run('retireChatMemories', { chatId: CHAT2 }, async () => retireChatMemories(CHAT2));
+  await retire([711], 'item-delete');
+  await retire([722, 723], 'item-delete');
 
   capturing = false;
   const memories = await rawQuery(

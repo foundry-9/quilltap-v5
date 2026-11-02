@@ -62,7 +62,7 @@ use super::chats::ChatParticipant;
 use super::js_number_to_json;
 use super::DbError;
 
-/// All 103 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
+/// All 105 columns, in `ChatMetadataBaseSchema` field order (= DDL / SELECT
 /// order). The count, the order and `marshal_row`'s index table are pinned
 /// against the D23 dump by this module's `alignment_census` tests.
 /// `timelineMode` (v4 8bf3cb5f, the episodic spine) sits between
@@ -79,10 +79,17 @@ use super::DbError;
 /// every read after it shifted back by 1. An explicit list, so an instance
 /// that still HAS the column (migrated before `-dev.88`) opens exactly like
 /// one without it — v5 never drops the column itself.
+/// P4.D341 (v4 `b15fe9404`, the Storyteller): `turnMode` +
+/// `storytellerInviteFilter` are SPLICED at their generateDDL position between
+/// `isPaused` and `isManuallyRenamed` (R-11) — every read from
+/// `isManuallyRenamed` (19 → 21) onward shifted by 2. Not appended: the as-RUN
+/// select treats `equippedInventory` as the LAST column. The relative order is
+/// pinned against the dump by `all_columns_follow_the_d23_dump_order`.
 const ALL_COLUMNS: &str = "id, userId, participants, title, contextSummary, sillyTavernMetadata, \
      tags, roleplayTemplateId, timestampConfig, lastTurnParticipantId, messageCount, lastMessageAt, \
      lastRenameCheckInterchange, compactionGeneration, lastSummaryTurn, lastSummaryTokens, \
-     lastFullRebuildTurn, summaryAnchorMessageIds, isPaused, isManuallyRenamed, \
+     lastFullRebuildTurn, summaryAnchorMessageIds, isPaused, turnMode, storytellerInviteFilter, \
+     isManuallyRenamed, \
      impersonatingParticipantIds, activeTypingParticipantId, allLLMPauseTurnCount, turnQueue, \
      spokenThisCycleParticipantIds, cycleOrderParticipantIds, documentEditingMode, documentMode, \
      dividerPosition, terminalMode, \
@@ -323,173 +330,189 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
         "isPaused".into(),
         Value::Bool(row.get::<_, Option<i64>>(18)?.unwrap_or(0) == 1),
     );
+    // P4.D341 (v4 `b15fe9404`, the Storyteller — the D23 move's two `chats`
+    // columns at their generateDDL / Zod-shape position, between `isPaused`
+    // and `isManuallyRenamed`; every read after them shifted by 2, R-11).
+    // `turnMode` is `.nullable().optional()` TEXT — the table's
+    // `put_opt_string` idiom (R-10: the regen decides absent vs `null`); the
+    // `?? 'rotation'` default is the wire's, never the reader's.
+    put_opt_string(&mut obj, "turnMode", row.get(19)?);
+    // `storytellerInviteFilter` — `z.boolean().default(false)`: NULL / 0 →
+    // `false`, the `isPaused` idiom.
+    obj.insert(
+        "storytellerInviteFilter".into(),
+        Value::Bool(row.get::<_, Option<i64>>(20)?.unwrap_or(0) == 1),
+    );
     obj.insert(
         "isManuallyRenamed".into(),
-        Value::Bool(row.get::<_, Option<i64>>(19)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(21)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "impersonatingParticipantIds".into(),
-        array_or_empty(row.get(20)?),
+        array_or_empty(row.get(22)?),
     );
-    put_opt_string(&mut obj, "activeTypingParticipantId", row.get(21)?);
-    obj.insert("allLLMPauseTurnCount".into(), number_or(row.get(22)?, 0.0));
+    put_opt_string(&mut obj, "activeTypingParticipantId", row.get(23)?);
+    obj.insert("allLLMPauseTurnCount".into(), number_or(row.get(24)?, 0.0));
     obj.insert(
         "turnQueue".into(),
-        Value::String(row.get::<_, Option<String>>(23)?.unwrap_or_else(empty_arr)),
+        Value::String(row.get::<_, Option<String>>(25)?.unwrap_or_else(empty_arr)),
     );
     obj.insert(
         "spokenThisCycleParticipantIds".into(),
-        Value::String(row.get::<_, Option<String>>(24)?.unwrap_or_else(empty_arr)),
+        Value::String(row.get::<_, Option<String>>(26)?.unwrap_or_else(empty_arr)),
     );
     // The drawn speaking order for this cycle (v4 2aca73ad6): the raw JSON
     // string, as v4 spreads the row — always present (`.default('[]')`), same
     // shape as `turnQueue`/`spokenThisCycleParticipantIds` beside it.
     obj.insert(
         "cycleOrderParticipantIds".into(),
-        Value::String(row.get::<_, Option<String>>(25)?.unwrap_or_else(empty_arr)),
+        Value::String(row.get::<_, Option<String>>(27)?.unwrap_or_else(empty_arr)),
     );
     obj.insert(
         "documentEditingMode".into(),
-        Value::Bool(row.get::<_, Option<i64>>(26)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(28)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "documentMode".into(),
-        Value::String(
-            row.get::<_, Option<String>>(27)?
-                .unwrap_or_else(|| "normal".into()),
-        ),
-    );
-    obj.insert("dividerPosition".into(), number_or(row.get(28)?, 45.0));
-    obj.insert(
-        "terminalMode".into(),
         Value::String(
             row.get::<_, Option<String>>(29)?
                 .unwrap_or_else(|| "normal".into()),
         ),
     );
-    put_opt_string(&mut obj, "activeTerminalSessionId", row.get(30)?);
+    obj.insert("dividerPosition".into(), number_or(row.get(30)?, 45.0));
+    obj.insert(
+        "terminalMode".into(),
+        Value::String(
+            row.get::<_, Option<String>>(31)?
+                .unwrap_or_else(|| "normal".into()),
+        ),
+    );
+    put_opt_string(&mut obj, "activeTerminalSessionId", row.get(32)?);
     obj.insert(
         "rightPaneVerticalSplit".into(),
-        number_or(row.get(31)?, 50.0),
+        number_or(row.get(33)?, 50.0),
     );
-    put_opt_string(&mut obj, "projectId", row.get(32)?);
-    put_opt_string(&mut obj, "scenarioText", row.get(33)?);
+    put_opt_string(&mut obj, "projectId", row.get(34)?);
+    put_opt_string(&mut obj, "scenarioText", row.get(35)?);
     // P4.D288 (C1-9, v4 `545e299bb`): the scenario source — the PARSED object
     // (v4's JSON column hydration then `ScenarioSourceSchema`: NULL / `''` /
     // unparseable text → omitted; a parsed value the schema refuses refuses
     // the ROW, as v4's validate does — measured at the pin) — then the notes.
     let scenario_source_key = "scenarioSource";
-    if let Some(source) = scenario_source_cell(row.get(34)?)? {
+    if let Some(source) = scenario_source_cell(row.get(36)?)? {
         obj.insert(scenario_source_key.into(), source);
     }
-    put_opt_string(&mut obj, "scenarioNotes", row.get(35)?);
-    obj.insert("totalPromptTokens".into(), number_or(row.get(36)?, 0.0));
-    obj.insert("totalCompletionTokens".into(), number_or(row.get(37)?, 0.0));
-    put_opt_number(&mut obj, "estimatedCostUSD", row.get(38)?);
-    put_opt_string(&mut obj, "priceSource", row.get(39)?);
-    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(40)?);
+    put_opt_string(&mut obj, "scenarioNotes", row.get(37)?);
+    obj.insert("totalPromptTokens".into(), number_or(row.get(38)?, 0.0));
+    obj.insert("totalCompletionTokens".into(), number_or(row.get(39)?, 0.0));
+    put_opt_number(&mut obj, "estimatedCostUSD", row.get(40)?);
+    put_opt_string(&mut obj, "priceSource", row.get(41)?);
+    put_opt_bool(&mut obj, "showSystemEventsOverride", row.get(42)?);
     obj.insert(
         "requestFullContextOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(41)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(43)?.unwrap_or(0) == 1),
     );
-    obj.insert("disabledTools".into(), array_or_empty(row.get(42)?));
-    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(43)?));
+    obj.insert("disabledTools".into(), array_or_empty(row.get(44)?));
+    obj.insert("disabledToolGroups".into(), array_or_empty(row.get(45)?));
     obj.insert(
         "forceToolsOnNextMessage".into(),
-        Value::Bool(row.get::<_, Option<i64>>(44)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(46)?.unwrap_or(0) == 1),
     );
     obj.insert(
         "allowCrossCharacterVaultReads".into(),
-        Value::Bool(row.get::<_, Option<i64>>(45)?.unwrap_or(0) == 1),
+        Value::Bool(row.get::<_, Option<i64>>(47)?.unwrap_or(0) == 1),
     );
-    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(46)?);
-    obj.insert("state".into(), object_or_empty(row.get(47)?));
-    put_opt_json(&mut obj, "compressionCache", row.get(48)?);
-    put_opt_bool(&mut obj, "agentModeEnabled", row.get(49)?);
-    obj.insert("agentTurnCount".into(), number_or(row.get(50)?, 0.0));
-    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(51)?);
-    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(52)?);
-    put_opt_string(&mut obj, "imageProfileId", row.get(53)?);
-    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(54)?);
-    put_opt_bool(&mut obj, "isDangerousChat", row.get(55)?);
-    put_opt_number(&mut obj, "dangerScore", row.get(56)?);
-    obj.insert("dangerCategories".into(), array_or_empty(row.get(57)?));
-    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(58)?);
-    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(59)?);
+    put_opt_json(&mut obj, "pendingOutfitNotifications", row.get(48)?);
+    obj.insert("state".into(), object_or_empty(row.get(49)?));
+    put_opt_json(&mut obj, "compressionCache", row.get(50)?);
+    put_opt_bool(&mut obj, "agentModeEnabled", row.get(51)?);
+    obj.insert("agentTurnCount".into(), number_or(row.get(52)?, 0.0));
+    put_opt_string(&mut obj, "storyBackgroundImageId", row.get(53)?);
+    put_opt_string(&mut obj, "lastBackgroundGeneratedAt", row.get(54)?);
+    put_opt_string(&mut obj, "imageProfileId", row.get(55)?);
+    put_opt_bool(&mut obj, "alertCharactersOfLanternImages", row.get(56)?);
+    put_opt_bool(&mut obj, "isDangerousChat", row.get(57)?);
+    put_opt_number(&mut obj, "dangerScore", row.get(58)?);
+    obj.insert("dangerCategories".into(), array_or_empty(row.get(59)?));
+    put_opt_string(&mut obj, "dangerClassifiedAt", row.get(60)?);
+    put_opt_number(&mut obj, "dangerClassifiedAtMessageCount", row.get(61)?);
     // The Concierge state + provenance (v4 `4d370a90f`, #75): nullable
     // enums, NO DDL default on a fresh instance (v4's migration defaults
     // `conciergeMode` to `'moderated'` on a migrated one) — NULL → omitted,
     // which `get_concierge_state` reads as Moderated.
-    put_opt_string(&mut obj, "conciergeMode", row.get(60)?);
-    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(61)?);
-    put_opt_string(&mut obj, "conciergeModeReason", row.get(62)?);
-    put_opt_json(&mut obj, "sceneState", row.get(63)?);
-    put_opt_json(&mut obj, "equippedOutfit", row.get(64)?);
-    put_opt_json(&mut obj, "characterAvatars", row.get(65)?);
-    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(66)?);
+    put_opt_string(&mut obj, "conciergeMode", row.get(62)?);
+    put_opt_string(&mut obj, "conciergeModeSetBy", row.get(63)?);
+    put_opt_string(&mut obj, "conciergeModeReason", row.get(64)?);
+    put_opt_json(&mut obj, "sceneState", row.get(65)?);
+    put_opt_json(&mut obj, "equippedOutfit", row.get(66)?);
+    put_opt_json(&mut obj, "characterAvatars", row.get(67)?);
+    put_opt_bool(&mut obj, "avatarGenerationEnabled", row.get(68)?);
     obj.insert(
         "chatType".into(),
         Value::String(
-            row.get::<_, Option<String>>(67)?
+            row.get::<_, Option<String>>(69)?
                 .unwrap_or_else(|| "salon".into()),
         ),
     );
-    put_opt_string(&mut obj, "helpPageUrl", row.get(68)?);
-    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(69)?);
-    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(70)?);
-    put_opt_json(&mut obj, "courierCheckpoints", row.get(71)?);
-    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(72)?);
-    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(73)?);
+    put_opt_string(&mut obj, "helpPageUrl", row.get(70)?);
+    put_opt_string(&mut obj, "consoleConnectionProfileId", row.get(71)?);
+    put_opt_json(&mut obj, "compiledIdentityStacks", row.get(72)?);
+    put_opt_json(&mut obj, "courierCheckpoints", row.get(73)?);
+    put_opt_json(&mut obj, "commonplaceSceneCache", row.get(74)?);
+    put_opt_json(&mut obj, "commonplaceRecallHistory", row.get(75)?);
     // Episodic spine (v4 8bf3cb5f): 'realtime' | 'narrative'; NULL reads as
     // realtime and is omitted (v4's undefined dropped by JSON.stringify).
-    put_opt_string(&mut obj, "timelineMode", row.get(74)?);
-    put_opt_number(&mut obj, "budgetMaxTurns", row.get(75)?);
-    put_opt_number(&mut obj, "budgetMaxTokens", row.get(76)?);
-    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(77)?);
-    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(78)?);
-    put_opt_string(&mut obj, "scheduleCron", row.get(79)?);
-    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(80)?);
-    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(81)?);
-    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(82)?);
-    put_opt_string(&mut obj, "runState", row.get(83)?);
-    put_opt_string(&mut obj, "currentRunId", row.get(84)?);
-    put_opt_string(&mut obj, "runStateMessage", row.get(85)?);
-    put_opt_string(&mut obj, "runStartedAt", row.get(86)?);
-    put_opt_string(&mut obj, "runEndedAt", row.get(87)?);
-    put_opt_string(&mut obj, "runPausedAt", row.get(88)?);
-    put_opt_number(&mut obj, "runPausedAccumMs", row.get(89)?);
-    put_opt_number(&mut obj, "runTurnsConsumed", row.get(90)?);
-    put_opt_number(&mut obj, "runTokensConsumed", row.get(91)?);
+    put_opt_string(&mut obj, "timelineMode", row.get(76)?);
+    put_opt_number(&mut obj, "budgetMaxTurns", row.get(77)?);
+    put_opt_number(&mut obj, "budgetMaxTokens", row.get(78)?);
+    put_opt_number(&mut obj, "budgetMaxWallClockMs", row.get(79)?);
+    put_opt_number(&mut obj, "budgetEstimatedSpendCapUSD", row.get(80)?);
+    put_opt_string(&mut obj, "scheduleCron", row.get(81)?);
+    put_opt_number(&mut obj, "scheduleFreshnessWindowMs", row.get(82)?);
+    put_opt_string(&mut obj, "scheduleNextRunAt", row.get(83)?);
+    put_opt_string(&mut obj, "scheduleLastRunAt", row.get(84)?);
+    put_opt_string(&mut obj, "runState", row.get(85)?);
+    put_opt_string(&mut obj, "currentRunId", row.get(86)?);
+    put_opt_string(&mut obj, "runStateMessage", row.get(87)?);
+    put_opt_string(&mut obj, "runStartedAt", row.get(88)?);
+    put_opt_string(&mut obj, "runEndedAt", row.get(89)?);
+    put_opt_string(&mut obj, "runPausedAt", row.get(90)?);
+    put_opt_number(&mut obj, "runPausedAccumMs", row.get(91)?);
+    put_opt_number(&mut obj, "runTurnsConsumed", row.get(92)?);
+    put_opt_number(&mut obj, "runTokensConsumed", row.get(93)?);
     obj.insert(
         "runMilestonesAnnounced".into(),
-        number_or(row.get(92)?, 0.0),
+        number_or(row.get(94)?, 0.0),
     );
     obj.insert(
         "runDestructiveToolsAllowed".into(),
-        number_or(row.get(93)?, 0.0),
+        number_or(row.get(95)?, 0.0),
     );
     obj.insert(
         "budgetExcludeCacheHits".into(),
-        number_or(row.get(94)?, 1.0),
+        number_or(row.get(96)?, 1.0),
     );
-    put_opt_string(&mut obj, "runVisibility", row.get(95)?);
-    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(96)?);
-    put_opt_number(&mut obj, "coreWhisperInterval", row.get(97)?);
-    put_opt_bool(&mut obj, "showThinking", row.get(98)?);
-    obj.insert("createdAt".into(), Value::String(row.get::<_, String>(99)?));
+    put_opt_string(&mut obj, "runVisibility", row.get(97)?);
+    put_opt_bool(&mut obj, "coreWhisperEnabled", row.get(98)?);
+    put_opt_number(&mut obj, "coreWhisperInterval", row.get(99)?);
+    put_opt_bool(&mut obj, "showThinking", row.get(100)?);
+    obj.insert(
+        "createdAt".into(),
+        Value::String(row.get::<_, String>(101)?),
+    );
     obj.insert(
         "updatedAt".into(),
-        Value::String(row.get::<_, String>(100)?),
+        Value::String(row.get::<_, String>(102)?),
     );
-    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(101)?);
+    put_opt_string(&mut obj, "answerConfirmationOverride", row.get(103)?);
     // "Nothing to add" turn-skipping toggle (nullable boolean; NULL → omitted,
     // v4's `undefined` dropped by `JSON.stringify`). v4 b90cd1f5.
-    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(102)?);
+    put_opt_bool(&mut obj, "turnSkippingEnabled", row.get(104)?);
     // P4.D324 (v4 `4fbdad186`, the THIRTEENTH D23 move): the chat's carried
     // Inventory, `{ [characterId]: string[] }` — APPENDED at the end of the
     // marshal (the P4.D171 precedent), never at its DDL position (cid 66),
     // so no earlier index shifts. NULL → omitted.
-    put_opt_json(&mut obj, "equippedInventory", row.get(103)?);
+    put_opt_json(&mut obj, "equippedInventory", row.get(105)?);
 
     Ok(Value::Object(obj))
 }
@@ -881,6 +904,49 @@ mod alignment_census {
             "declared-but-unselected {missing:?}; selected-but-undeclared {extra:?}"
         );
         assert_eq!(selected_columns().len(), schema_columns().len());
+    }
+
+    /// P4.D341 (R-11): the SELECT list's ORDER against the dump. The set test
+    /// above cannot see a column spliced at the wrong place — and a splice is
+    /// what every mid-table D23 move now is (the Storyteller's two columns sit
+    /// between `isPaused` and `isManuallyRenamed`). Three columns are carried
+    /// OUT of DDL order on purpose and are named here, so any other drift
+    /// reddens: `answerConfirmationOverride` and `turnSkippingEnabled` (this
+    /// port's Zod-order transcription puts them at the tail) and
+    /// `equippedInventory` (the as-RUN select's LAST column, P4.D324). Every
+    /// other column must appear in exactly the dump's relative order.
+    #[test]
+    fn all_columns_follow_the_d23_dump_order() {
+        const OUT_OF_ORDER: [&str; 3] = [
+            "answerConfirmationOverride",
+            "turnSkippingEnabled",
+            "equippedInventory",
+        ];
+        let keep = |c: &String| !OUT_OF_ORDER.contains(&c.as_str());
+        let selected: Vec<String> = selected_columns().into_iter().filter(keep).collect();
+        let declared: Vec<String> = schema_columns().into_iter().filter(keep).collect();
+        assert_eq!(selected, declared);
+        // The tail the exemptions describe really is the tail.
+        let cols = selected_columns();
+        assert_eq!(
+            &cols[cols.len() - 3..],
+            &[
+                "answerConfirmationOverride",
+                "turnSkippingEnabled",
+                "equippedInventory"
+            ]
+        );
+        // The Storyteller pair at its spliced position.
+        let at = |name: &str| cols.iter().position(|c| c == name).unwrap();
+        assert_eq!(
+            (
+                at("isPaused"),
+                at("turnMode"),
+                at("storytellerInviteFilter"),
+                at("isManuallyRenamed")
+            ),
+            (18, 19, 20, 21)
+        );
     }
 
     /// …and every `row.get(N)` in `marshal_row` marshals the column at position

@@ -242,7 +242,11 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
         delimiters: delimiters.clone(),
         rendering_patterns: rendering_patterns.clone(),
         dialogue_detection: dialogue_detection.clone(),
-        narration_delimiters: narration_typed,
+        narration_delimiters: Some(narration_typed),
+        // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351 owns the
+        // route's `unmarkedStyle` / `markdownAsterisks` / null-narration arms.
+        unmarked_style: None,
+        markdown_asterisks: true,
     };
     let opts = CreateOptions {
         id: id.clone(),
@@ -550,7 +554,11 @@ fn build_update_patch(
         }
     }
     if let Some(nd) = body_obj.get("narrationDelimiters") {
-        patch.narration_delimiters = serde_json::from_value(nd.clone()).ok();
+        // P4.D341 minimal compile fix (C-4): `Some(Some(v))` for a parsed value;
+        // P4.D351 owns the explicit-`null` arm.
+        patch.narration_delimiters = serde_json::from_value::<StringOrPair>(nd.clone())
+            .ok()
+            .map(Some);
     }
     patch
 }

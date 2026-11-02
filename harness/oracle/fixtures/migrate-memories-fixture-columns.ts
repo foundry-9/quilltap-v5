@@ -607,6 +607,29 @@ const MIGRATIONS: {
     ],
     source: 'migrations/scripts/add-file-generation-key-column-v1.ts:54,57',
   },
+  {
+    // P4.D341 (v4 `b15fe9404`, the Storyteller). The same class as the
+    // `transcriptVersion` row above: v5's `chats_read` names `turnMode` +
+    // `storytellerInviteFilter` in a fixed column list where v4 reads
+    // `SELECT *`. v4's `add-storyteller-mode-v1` `shouldRun()` returns false
+    // unless BOTH `chats` and `chat_messages` exist (`:42`), so the `--module`
+    // arm leaves the SEVEN committed fixtures carrying `chats` without
+    // `chat_messages` un-widened (autonomous, avatar-rolls, character-archive,
+    // photos, recall-assemble, text-replacements, wardrobe-routes — measured)
+    // and v5 answered `no such column: turnMode` on three of them. No real
+    // instance carries one table without the other; these rows replay v4's
+    // `run()` ALTERs (`:55`, `:59`) on exactly those seven.
+    table: 'chats',
+    column: 'turnMode',
+    sql: 'ALTER TABLE "chats" ADD COLUMN "turnMode" TEXT DEFAULT NULL',
+    source: 'migrations/scripts/add-storyteller-mode-v1.ts:55',
+  },
+  {
+    table: 'chats',
+    column: 'storytellerInviteFilter',
+    sql: 'ALTER TABLE "chats" ADD COLUMN "storytellerInviteFilter" INTEGER DEFAULT 0',
+    source: 'migrations/scripts/add-storyteller-mode-v1.ts:59',
+  },
 ];
 
 /** The first known test pepper that opens `path` (read-only probe). */
@@ -634,6 +657,7 @@ async function runModules(
   modules: V4MigrationRef[],
   reportOnly: boolean,
   runner: boolean,
+  llmLogs: boolean,
 ): Promise<void> {
   for (const path of paths) {
     const pepper = pepperFor(path);
@@ -652,6 +676,9 @@ async function runModules(
         migrations: modules,
         reportOnly,
         runner,
+        // P4.D341 `--llm-logs`: the target IS the logs file the module opens
+        // itself through `SQLITE_LLM_LOGS_PATH`.
+        llmLogsPath: llmLogs ? target : undefined,
       });
       process.stderr.write(`${path}: ${report.join('; ')}\n`);
     } finally {
@@ -664,11 +691,25 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const reportOnly = argv.includes('--report-only');
   const runner = argv.includes('--runner');
+  const llmLogs = argv.includes('--llm-logs');
+  if (llmLogs && runner) throw new Error('--llm-logs runs the modules directly; it refuses --runner');
   const modules: V4MigrationRef[] = [];
   const paths: string[] = [];
+  // P4.D341 `--only <table>.<column>` (repeatable): restrict the default arm to
+  // the named rows. Without it every row whose column is absent is replayed —
+  // including rows earlier rounds deliberately left absent on some pairs.
+  const only: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--report-only' || a === '--runner') continue;
+    if (a === '--report-only' || a === '--runner' || a === '--llm-logs') continue;
+    if (a === '--only') {
+      const spec = argv[++i];
+      if (!spec || !MIGRATIONS.some((m) => `${m.table}.${m.column}` === spec)) {
+        throw new Error(`--only wants a MIGRATIONS row as <table>.<column>, got ${JSON.stringify(spec)}`);
+      }
+      only.push(spec);
+      continue;
+    }
     if (a === '--p4d288-span') {
       modules.push(...P4D288_SPAN_MIGRATIONS);
       continue;
@@ -686,11 +727,12 @@ async function main(): Promise<void> {
   }
   if (paths.length === 0) {
     throw new Error(
-      'usage: migrate-memories-fixture-columns.ts [--report-only] [--runner] [--p4d288-span] [--module <file>#<export> …] <fixture.db> [<fixture.db> …]',
+      'usage: migrate-memories-fixture-columns.ts [--report-only] [--runner] [--llm-logs] [--p4d288-span] [--only <table>.<column> …] [--module <file>#<export> …] <fixture.db> [<fixture.db> …]',
     );
   }
   if (modules.length > 0) {
-    await runModules(paths, modules, reportOnly, runner);
+    if (only.length > 0) throw new Error('--only restricts the default arm; it refuses --module');
+    await runModules(paths, modules, reportOnly, runner, llmLogs);
     return;
   }
 
@@ -725,6 +767,7 @@ async function main(): Promise<void> {
     // the dry run before, and an apply added the indexes silently.
     const indexAdds: string[] = [];
     for (const m of MIGRATIONS) {
+      if (only.length > 0 && !only.includes(`${m.table}.${m.column}`)) continue;
       const table = db
         .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`)
         .get(m.table);

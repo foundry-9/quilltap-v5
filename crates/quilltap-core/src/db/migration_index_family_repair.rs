@@ -695,7 +695,8 @@ mod tests {
         assert_eq!(
             report,
             PartitionBackfill {
-                skipped_absent_table: 5,
+                // P4.D341: six since `idx_llm_logs_storytellerRoundId`.
+                skipped_absent_table: 6,
                 ..Default::default()
             }
         );
@@ -708,7 +709,7 @@ mod tests {
         let c = conn();
         c.execute_batch(
             "CREATE TABLE llm_logs (autonomousRunId TEXT, chatId TEXT, connectionProfileId TEXT, \
-             imageProfileId TEXT, type TEXT);
+             imageProfileId TEXT, type TEXT, storytellerRoundId TEXT);
              CREATE TABLE idx_llm_logs_chatId (x TEXT);",
         )
         .unwrap();
@@ -716,7 +717,7 @@ mod tests {
         let (report, lines) = crate::test_support::captured_with(|| {
             backfill_partition("llmLogs", &c, &family.llm_logs).unwrap()
         });
-        assert_eq!((report.created, report.failed), (4, 1));
+        assert_eq!((report.created, report.failed), (5, 1));
         assert_eq!(
             lines,
             [
@@ -734,14 +735,14 @@ mod tests {
         let c = conn();
         c.execute_batch(
             "CREATE TABLE llm_logs (autonomousRunId TEXT, chatId TEXT, connectionProfileId TEXT, \
-             imageProfileId TEXT, type TEXT);
+             imageProfileId TEXT, type TEXT, storytellerRoundId TEXT);
              CREATE UNIQUE INDEX idx_llm_logs_type ON llm_logs (type, chatId);",
         )
         .unwrap();
         let family = migration_index_family().unwrap();
         let report = backfill_partition("llmLogs", &c, &family.llm_logs).unwrap();
-        assert_eq!((report.created, report.skipped_present), (4, 1));
+        assert_eq!((report.created, report.skipped_present), (5, 1));
         let again = backfill_partition("llmLogs", &c, &family.llm_logs).unwrap();
-        assert_eq!((again.created, again.skipped_present), (0, 5));
+        assert_eq!((again.created, again.skipped_present), (0, 6));
     }
 }

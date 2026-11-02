@@ -858,6 +858,7 @@ pub fn plan_consolidation_writes(input: PlanInput<'_>) -> ConsolidationWritePlan
                         superseded_at: None,
                         consolidated_from,
                         consolidated_at: Some(now_iso.to_string()),
+                        keystone: false,
                     },
                 });
             }

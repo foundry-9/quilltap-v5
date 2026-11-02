@@ -288,7 +288,7 @@ fn apply_keep_manual(
         } else {
             "hot"
         };
-        match policy_protection_of(row.source.as_deref(), Some(tier)) {
+        match policy_protection_of(row.source.as_deref(), Some(tier), row.keystone) {
             None => doomed.push(row),
             Some(PolicyProtection::Digest) => spared_digests.push(row),
             Some(protection) => report.spared_by.count(protection),
@@ -317,7 +317,7 @@ fn apply_keep_manual(
     Ok(doomed)
 }
 
-/// v4 `cascadeEmptiedDigests(doomed)` (`:233-262`): digests the retirement
+/// v4 `cascadeEmptiedDigests(doomed)` (`:241-273` at `236c04e35`): digests the retirement
 /// would leave with no living member, repeated (bounded) in case a retired
 /// digest was itself a member of another. Also hands back the digests that
 /// contain a doomed member as read against the FINAL doomed set (`None` when
@@ -328,12 +328,14 @@ fn cascade_emptied_digests(
 ) -> Result<(usize, Option<Vec<DigestRef>>), DbError> {
     let mut added = 0usize;
     let mut containing: Option<Vec<DigestRef>> = None;
+    // "A keystone digest is the operator's to delete: it outlives its members."
+    let mut kept_keystones: HashSet<String> = HashSet::new();
     for _ in 0..MAX_DIGEST_CASCADE_PASSES {
         let holders = dedupe(doomed.rows.iter().map(|r| &r.character_id));
         let digests = find_digests_containing_members(conn, &holders, &doomed.keys())?;
         let candidates: Vec<DigestRef> = digests
             .iter()
-            .filter(|d| !doomed.ids.contains(&d.id))
+            .filter(|d| !doomed.ids.contains(&d.id) && !kept_keystones.contains(&d.id))
             .cloned()
             .collect();
         containing = Some(digests);
@@ -349,7 +351,21 @@ fn cascade_emptied_digests(
         if emptied.is_empty() {
             break;
         }
+        // R-5 (ported as shipped): `added` counts only the rows actually
+        // doomed, and a pass that dooms nothing (every emptied digest a kept
+        // keystone) ends the loop.
+        let mut grew = false;
         for row in find_retire_rows(conn, &emptied)? {
+            if row.keystone {
+                tracing::debug!(
+                    module = MODULE,
+                    digestId = %row.id,
+                    characterId = %row.character_id,
+                    "Keystone digest kept though its last member retires"
+                );
+                kept_keystones.insert(row.id);
+                continue;
+            }
             tracing::debug!(
                 module = MODULE,
                 digestId = %row.id,
@@ -358,8 +374,12 @@ fn cascade_emptied_digests(
                 "Digest retires with its last member"
             );
             doomed.insert(row);
+            added += 1;
+            grew = true;
         }
-        added += emptied.len();
+        if !grew {
+            break;
+        }
         containing = None; // the doomed set grew after this read
     }
     Ok((added, containing))
@@ -941,7 +961,7 @@ mod tests {
             occurredAt TEXT, narrativeTime TEXT, entities TEXT DEFAULT '[]', kind TEXT DEFAULT 'semantic',
             sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
             lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
-            tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);
+            tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]', consolidatedAt TEXT, keystone INTEGER DEFAULT 0, createdAt TEXT, updatedAt TEXT);
     ";
 
     #[derive(Default)]
@@ -1007,6 +1027,7 @@ mod tests {
                             .map(|r| r.to_string())
                             .collect(),
                         consolidated_at: None,
+                        keystone: false,
                     },
                     &CreateOptions {
                         id: s.id.to_string(),
@@ -1129,6 +1150,7 @@ mod tests {
         assert_eq!(
             r.spared_by,
             SparedBy {
+                keystone: 0,
                 manual: 1,
                 digest: 1,
                 cold: 1

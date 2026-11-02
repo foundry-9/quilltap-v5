@@ -153,6 +153,16 @@ pub fn bucket_candidates(
             },
         );
         let hot = is_hot(memory);
+        // "A keystone is never a member and never a seed: a seed digest is
+        // rewritten when it takes members in, and a member goes cold."
+        // (P4.D341, v4 `236c04e35` — counted in `rowsLoaded` above.)
+        if memory
+            .get("keystone")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
         let source = str_of(memory, "source");
 
         if source == Some("CONSOLIDATED") {

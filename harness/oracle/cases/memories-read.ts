@@ -25,6 +25,11 @@
  * splicing a transport into the singleton logger, as `lines: [{level,
  * message, fields}]`.
  *
+ * P4.D341 (v4 `8cb584eff`): the keystone corpus (a fifth holder, `charE`, with
+ * keystones about itself, about no one, about two subjects — one cold, one
+ * NULL-tier, a TEXT / `2` / NULL `keystone` cell planted), `findKeystones` /
+ * `countKeystones` (C-1), and the paginated `keystone` filter.
+ *
  * Run (Node 24, from the v4 checkout), AFTER building the fixture:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   cd ~/source/quilltap-server
@@ -69,6 +74,11 @@ interface Query {
   tier?: 'hot' | 'cold';
   subject?: string;
   olderThan?: string;
+  // P4.D341 (C-1, v4 `8cb584eff`): the keystone reads.
+  keystone?: boolean;
+  /** `findKeystones`' subjects; absent → `'self'`. */
+  subjects?: string[];
+  excludeId?: string;
 }
 interface Spec {
   testPepperBase64: string;
@@ -186,6 +196,7 @@ async function main(): Promise<void> {
           source: q.source as 'AUTO' | 'MANUAL' | 'CONSOLIDATED' | undefined,
           minImportance: q.minImportance,
           tier: q.tier,
+          keystone: q.keystone,
         });
         break;
       case 'searchByContent':
@@ -300,6 +311,17 @@ async function main(): Promise<void> {
         break;
       case 'findExpiredColdIds':
         result = await repo.findExpiredColdIds(q.characterId as string, q.olderThan as string);
+        break;
+      // === P4.D341 (v4 `8cb584eff`, contract C-1) ===
+      case 'findKeystones':
+        result = await repo.findKeystones(q.characterId as string, q.subjects ?? 'self');
+        break;
+      case 'countKeystones':
+        result = await repo.countKeystones(
+          q.characterId as string,
+          q.aboutCharacterId ?? null,
+          q.excludeId,
+        );
         break;
       default:
         throw new Error(`unknown query kind: ${q.kind}`);

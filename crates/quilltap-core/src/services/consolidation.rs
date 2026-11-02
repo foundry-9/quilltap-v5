@@ -987,6 +987,7 @@ fn clone_mem_create(d: &crate::db::memories::MemCreate) -> crate::db::memories::
         superseded_at: d.superseded_at.clone(),
         consolidated_from: d.consolidated_from.clone(),
         consolidated_at: d.consolidated_at.clone(),
+        keystone: d.keystone,
     }
 }
 
@@ -1018,6 +1019,7 @@ fn clone_mem_update(p: &MemUpdate) -> MemUpdate {
         superseded_at: p.superseded_at.clone(),
         consolidated_from: p.consolidated_from.clone(),
         consolidated_at: p.consolidated_at.clone(),
+        keystone: p.keystone,
         updated_at: p.updated_at.clone(),
     }
 }

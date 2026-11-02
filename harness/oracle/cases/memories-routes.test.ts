@@ -546,6 +546,164 @@ function P4D269_LIST_SEARCH_CASES(
 }
 // === end ===
 
+// === P4.D341: the keystone rows (append-only) ===
+/** v4 `8cb584eff` (C-8): the list's `?keystone=true` on both paths, the
+ *  create's pre-check + post-admission mark (a 400 AFTER the write, R-3), the
+ *  PUT's `keystone-refused` arm. The Rust twins are the `P4D341_*` consts in
+ *  memories_routes_equivalence.rs. Mnemo's self rows a0 b0 b1 b2 b3. */
+const P4D341_ID = (s: string) => `b2000000-0000-4000-8000-0000000000${s}`;
+/** Two keystones (a0 MANUAL, b0 AUTO), a TEXT 'yes' cell on b1 (the legacy
+ *  path's hydrated `true`, the paginated `keystone = 1` miss), a cold keystone
+ *  b2. */
+const P4D341_LIST_PLANT = [
+  `UPDATE memories SET keystone = 1 WHERE id IN ('${P4D341_ID('a0')}', '${P4D341_ID('b0')}')`,
+  `UPDATE memories SET keystone = 'yes' WHERE id = '${P4D341_ID('b1')}'`,
+  `UPDATE memories SET keystone = 1, tier = 'cold' WHERE id = '${P4D341_ID('b2')}'`,
+];
+/** Five hot self keystones — the per-subject limit. */
+const P4D341_FIVE_SELF = [
+  `UPDATE memories SET keystone = 1 WHERE id IN ('${P4D341_ID('b0')}', '${P4D341_ID('b1')}', '${P4D341_ID('b2')}', '${P4D341_ID('b3')}', '${P4D341_ID('d0')}')`,
+];
+/** A "concurrent mark" staged by a trigger: the new row's INSERT marks five
+ *  self keystones, so the pre-check passed and the edit chokepoint refuses. */
+const P4D341_RACE_COUNT = [
+  `CREATE TRIGGER qt_p4d341_race AFTER INSERT ON memories BEGIN UPDATE memories SET keystone = 1 WHERE id IN ('${P4D341_ID('b0')}', '${P4D341_ID('b1')}', '${P4D341_ID('b2')}', '${P4D341_ID('b3')}', '${P4D341_ID('d0')}'); END`,
+];
+/** …and the archived arm: the new row goes cold as it is inserted. */
+const P4D341_RACE_ARCHIVED = [
+  `CREATE TRIGGER qt_p4d341_archive AFTER INSERT ON memories BEGIN UPDATE memories SET tier = 'cold' WHERE id = NEW.id; END`,
+];
+/** …and the not-found arm: the new row is gone as it is inserted. */
+const P4D341_RACE_GONE = [
+  `CREATE TRIGGER qt_p4d341_gone AFTER INSERT ON memories BEGIN DELETE FROM memories WHERE id = NEW.id; END`,
+];
+/** Five keystones about Orla held by Mnemo, a0 a self keystone. */
+const P4D341_FIVE_ABOUT_ORLA = [
+  `UPDATE memories SET keystone = 1, aboutCharacterId = 'b1000000-0000-4000-8000-000000000002' WHERE id IN ('${P4D341_ID('b0')}', '${P4D341_ID('b1')}', '${P4D341_ID('b2')}', '${P4D341_ID('b3')}', '${P4D341_ID('d0')}')`,
+  `UPDATE memories SET keystone = 1 WHERE id = '${P4D341_ID('a0')}'`,
+];
+
+async function p4d341Rows(): Promise<Array<Record<string, unknown>>> {
+  const Driver = require(
+    require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers'),
+  );
+  const db = new Driver(process.env.SQLITE_PATH, { readonly: true });
+  const hex = Buffer.from(process.env.ENCRYPTION_MASTER_PEPPER ?? '', 'base64').toString('hex');
+  db.pragma(`key = "x'${hex}'"`);
+  try {
+    return db.prepare('SELECT id, aboutCharacterId, tier, keystone FROM memories').all();
+  } finally {
+    db.close();
+  }
+}
+
+/** The keystone state: the baked rows that carry a non-zero cell (sorted by
+ *  the BAKED id), and the minted rows (never ordered by their id). */
+function p4d341Tables(
+  before: Set<string>,
+  rows: Array<Record<string, unknown>>,
+  also?: string,
+): Record<string, unknown> {
+  const baked = rows
+    .filter((r) => before.has(r.id as string) && (r.keystone !== 0 || r.id === also))
+    .sort((a, b) => ((a.id as string) < (b.id as string) ? -1 : 1));
+  const minted = rows
+    .filter((r) => !before.has(r.id as string))
+    .map((r) => ({ aboutCharacterId: r.aboutCharacterId, tier: r.tier, keystone: r.keystone }));
+  return { baked, minted, rowsBefore: before.size, rowsAfter: rows.length };
+}
+
+function P4D341_KEYSTONE_CASES(
+  listGet: (qs: string) => Promise<{ status: number; body: unknown }>,
+): CaseSpec[] {
+  const B = 'http://localhost/api/v1/memories';
+  const M = 'b1000000-0000-4000-8000-000000000001';
+  const O = 'b1000000-0000-4000-8000-000000000002';
+  const list = (name: string, qs: string): CaseSpec => ({
+    name,
+    run: async () => {
+      await plantSql(P4D341_LIST_PLANT);
+      return listGet(qs);
+    },
+  });
+  const create = (name: string, body: unknown, plant?: string[]): CaseSpec => ({
+    name,
+    run: async () => {
+      if (plant) await plantSql(plant);
+      const before = new Set((await p4d341Rows()).map((r) => r.id as string));
+      const out = await respond(
+        await (await loadRoute('@/app/api/v1/memories/route')).POST(mockRequest(B, body)),
+      );
+      return { ...out, tables: p4d341Tables(before, await p4d341Rows()) };
+    },
+  });
+  const put = (name: string, id: string, body: unknown, plant?: string[]): CaseSpec => ({
+    name,
+    run: async () => {
+      if (plant) await plantSql(plant);
+      const before = new Set((await p4d341Rows()).map((r) => r.id as string));
+      const out = await respond(
+        await (await loadRoute('@/app/api/v1/memories/[id]/route')).PUT(
+          mockRequest(`${B}/${id}`, body),
+          { params: Promise.resolve({ id }) },
+        ),
+      );
+      return { ...out, tables: p4d341Tables(before, await p4d341Rows(), id) };
+    },
+  });
+  const base = {
+    characterId: M,
+    content: 'The tide clock above the chandlery runs nine minutes fast.',
+    summary: 'The chandlery tide clock runs fast.',
+  };
+  // The fixture's MANUAL `a1` — a twin of it reinforces (200).
+  const a1Twin = {
+    characterId: M,
+    content: 'Alden the lighthouse keeper trusts only the harbor master.',
+    summary: 'Alden trusts the harbor master.',
+  };
+  return [
+    list('keystone_list_paginated_true', `characterId=${M}&limit=50&keystone=true`),
+    list('keystone_list_paginated_false', `characterId=${M}&limit=50&keystone=false`),
+    list('keystone_list_paginated_one', `characterId=${M}&limit=50&keystone=1`),
+    list('keystone_list_legacy_true', `characterId=${M}&keystone=true`),
+    list('keystone_list_legacy_false', `characterId=${M}&keystone=false`),
+    list('keystone_list_legacy_tier_hot_true', `characterId=${M}&tier=hot&keystone=true`),
+    create('keystone_create_marked', { ...base, keystone: true }),
+    create('keystone_create_false', { ...base, keystone: false }),
+    create('keystone_create_bad_type_400', { ...base, keystone: 'yes' }),
+    create('keystone_create_sixth_refused_before_write', { ...base, keystone: true }, P4D341_FIVE_SELF),
+    create('keystone_create_other_subject_ok', { ...base, aboutCharacterId: O, keystone: true }, P4D341_FIVE_SELF),
+    create('keystone_create_mark_refused_count', { ...base, keystone: true }, P4D341_RACE_COUNT),
+    create('keystone_create_mark_refused_archived', { ...base, keystone: true }, P4D341_RACE_ARCHIVED),
+    create('keystone_create_mark_refused_not_found', { ...base, keystone: true }, P4D341_RACE_GONE),
+    create('keystone_create_reinforce_marks', { ...a1Twin, keystone: true }),
+    create('keystone_create_reinforce_into_keystone', { ...a1Twin, keystone: true }, [
+      `UPDATE memories SET keystone = 1 WHERE id = '${P4D341_ID('a1')}'`,
+    ]),
+    // A TEXT 'yes' keystone cell on the fold target: `findByFilter`'s
+    // `Boolean('yes')` reads it a keystone (no drop, no line), so no mark runs.
+    create('keystone_create_reinforce_into_text_keystone', { ...a1Twin, keystone: true }, [
+      `UPDATE memories SET keystone = 'yes' WHERE id = '${P4D341_ID('a1')}'`,
+    ]),
+    put('keystone_put_mark', P4D341_ID('a0'), { keystone: true }),
+    put('keystone_put_unmark', P4D341_ID('a0'), { keystone: false }, [
+      `UPDATE memories SET keystone = 1 WHERE id = '${P4D341_ID('a0')}'`,
+    ]),
+    put('keystone_put_sixth_refused', P4D341_ID('a0'), { keystone: true }, P4D341_FIVE_SELF),
+    put('keystone_put_archived_refused', P4D341_ID('a0'), { keystone: true }, [
+      `UPDATE memories SET tier = 'cold' WHERE id = '${P4D341_ID('a0')}'`,
+    ]),
+    put('keystone_put_move_subject_refused', P4D341_ID('a0'), { aboutCharacterId: O }, P4D341_FIVE_ABOUT_ORLA),
+    put('keystone_put_edit_existing_ok', P4D341_ID('b0'), { importance: 0.4 }, [
+      ...P4D341_FIVE_SELF,
+      `UPDATE memories SET keystone = 1 WHERE id = '${P4D341_ID('a0')}'`,
+    ]),
+    put('keystone_put_bad_type_400', P4D341_ID('a0'), { keystone: 'yes' }),
+  ];
+}
+// === end ===
+
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
   const spec = JSON.parse(
@@ -1059,6 +1217,9 @@ async function main(): Promise<void> {
     // true` + the CONSOLIDATED enum + its Zod refusals (R-E). Every row plants
     // P4D269_PLANT on its copy first (after the shared tier migration).
     ...P4D269_LIST_SEARCH_CASES(listGet),
+    // === end ===
+    // === P4.D341: the keystone rows (append-only) ===
+    ...P4D341_KEYSTONE_CASES(listGet),
     // === end ===
   ];
 

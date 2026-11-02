@@ -911,6 +911,15 @@ pub struct ChatSettingsCreate {
     /// `composer_emoji` below: an archive taken before 4.11 has no such key.
     #[serde(default)]
     pub custom_tool_triggers: bool,
+    /// P4.D341 (v4 `839575d89`, C-3) — Pascal's mid-conversation
+    /// intervention: the custom-tool LLM consult may be offered while a turn
+    /// is in flight (default: TRUE). Schema-ordered between
+    /// `customToolTriggers` and `compositionModeDefault`.
+    ///
+    /// `#[serde(default = …)]` with v4's `z.boolean().default(true)` — the
+    /// restore reason again: an archive taken before the column has no key.
+    #[serde(default = "smart_typography_default_true")]
+    pub custom_tool_intervention: bool,
     pub composition_mode_default: bool,
     pub composer_spellcheck: bool,
     /// v4 4.8.2 `22de75f9` — the `:` emoji typeahead gate (schema-ordered
@@ -1060,6 +1069,9 @@ pub struct ChatSettingsUpdate {
     pub custom_tools: Option<bool>,
     /// P4.D304 (v4 4.11): `customToolTriggers`.
     pub custom_tool_triggers: Option<bool>,
+    /// P4.D341 (v4 `839575d89`, C-3): `customToolIntervention` (P4.D356 drives
+    /// it from the settings PUT).
+    pub custom_tool_intervention: Option<bool>,
     pub composition_mode_default: Option<bool>,
     pub composer_spellcheck: Option<bool>,
     pub composer_emoji: Option<bool>,
@@ -1162,6 +1174,7 @@ impl<'c> ChatSettingsRepository<'c> {
         let auto_detect_rng = i64::from(data.auto_detect_rng);
         let custom_tools = i64::from(data.custom_tools);
         let custom_tool_triggers = i64::from(data.custom_tool_triggers);
+        let custom_tool_intervention = i64::from(data.custom_tool_intervention);
         let composition_mode_default = i64::from(data.composition_mode_default);
         let composer_spellcheck = i64::from(data.composer_spellcheck);
         let composer_emoji = i64::from(data.composer_emoji);
@@ -1201,6 +1214,7 @@ impl<'c> ChatSettingsRepository<'c> {
                 ("autoDetectRng", &auto_detect_rng),
                 ("customTools", &custom_tools),
                 ("customToolTriggers", &custom_tool_triggers),
+                ("customToolIntervention", &custom_tool_intervention),
                 ("compositionModeDefault", &composition_mode_default),
                 ("composerSpellcheck", &composer_spellcheck),
                 ("composerEmoji", &composer_emoji),
@@ -1311,6 +1325,10 @@ impl<'c> ChatSettingsRepository<'c> {
         if let Some(custom_tool_triggers) = patch.custom_tool_triggers {
             assignments.push(format!("customToolTriggers = ?{}", values.len() + 1));
             values.push(Box::new(i64::from(custom_tool_triggers)));
+        }
+        if let Some(custom_tool_intervention) = patch.custom_tool_intervention {
+            assignments.push(format!("customToolIntervention = ?{}", values.len() + 1));
+            values.push(Box::new(i64::from(custom_tool_intervention)));
         }
         if let Some(composition_mode_default) = patch.composition_mode_default {
             assignments.push(format!("compositionModeDefault = ?{}", values.len() + 1));
@@ -1522,6 +1540,7 @@ fn find_one_where(
             "autoDetectRng",
             "customTools",
             "customToolTriggers",
+            "customToolIntervention",
             "compositionModeDefault",
             "composerSpellcheck",
             "composerEmoji",
@@ -1650,13 +1669,24 @@ fn find_one_where(
                     "customToolTriggers".into(),
                     Value::Bool(r.get::<_, Option<i64>>(18)?.is_some_and(|v| v == 1)),
                 );
+                // P4.D341 (v4 `839575d89`, C-3): `customToolIntervention` —
+                // `z.boolean().default(true)`, so an ABSENT column (a
+                // pre-ensure instance, a fixture opened without a boot; the
+                // tolerant list substitutes NULL) reads `true` — the
+                // `customTools` / `composerUnicode` `.is_none_or` class, NOT
+                // the triggers' `.is_some_and` above. Every read after it
+                // shifted by 1 (schema position, cid 19).
+                obj.insert(
+                    "customToolIntervention".into(),
+                    Value::Bool(r.get::<_, Option<i64>>(19)?.is_none_or(|v| v == 1)),
+                );
                 obj.insert(
                     "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(19)? == 1),
+                    Value::Bool(r.get::<_, i64>(20)? == 1),
                 );
                 obj.insert(
                     "composerSpellcheck".into(),
-                    Value::Bool(r.get::<_, i64>(20)? == 1),
+                    Value::Bool(r.get::<_, i64>(21)? == 1),
                 );
                 // P4.D73, same shape as `customTools` above: v5 adopts the
                 // three 4.8.2 columns without porting v4's migration runner,
@@ -1667,18 +1697,18 @@ fn find_one_where(
                 // must surface as `true` and the row must still READ.
                 obj.insert(
                     "composerEmoji".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(21)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
                 );
                 obj.insert(
                     "composerUnicode".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
                 );
                 // P4.D304 (v4 4.11 `4877fc2da`): the `composerUnicode` shape —
                 // `z.boolean().default(true)` fills an absent column, so
                 // absent → `true`.
                 obj.insert(
                     "composerSlashCommands".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
+                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
                 );
                 // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
                 // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
@@ -1692,33 +1722,33 @@ fn find_one_where(
                 obj.insert(
                     "impersonationVoiceMode".into(),
                     Value::String(
-                        r.get::<_, Option<String>>(24)?
+                        r.get::<_, Option<String>>(25)?
                             .unwrap_or_else(|| "off".to_string()),
                     ),
                 );
                 obj.insert(
                     "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(25)? == 1),
-                );
-                obj.insert(
-                    "autoScrollOnResponseComplete".into(),
                     Value::Bool(r.get::<_, i64>(26)? == 1),
                 );
                 obj.insert(
-                    "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(27)?),
+                    "autoScrollOnResponseComplete".into(),
+                    Value::Bool(r.get::<_, i64>(27)? == 1),
                 );
                 obj.insert(
-                    "coreWhisper".into(),
+                    "agentModeSettings".into(),
                     parse_json(r.get::<_, Option<String>>(28)?),
                 );
                 obj.insert(
-                    "thinkingDisplay".into(),
+                    "coreWhisper".into(),
                     parse_json(r.get::<_, Option<String>>(29)?),
                 );
                 obj.insert(
-                    "answerConfirmationSettings".into(),
+                    "thinkingDisplay".into(),
                     parse_json(r.get::<_, Option<String>>(30)?),
+                );
+                obj.insert(
+                    "answerConfirmationSettings".into(),
+                    parse_json(r.get::<_, Option<String>>(31)?),
                 );
                 // The JSON-column twin of the two booleans above: an absent
                 // column (or a NULL cell) is `undefined` to v4, and
@@ -1727,19 +1757,19 @@ fn find_one_where(
                 obj.insert(
                     "smartTypographySettings".into(),
                     parse_json_or_default(
-                        r.get::<_, Option<String>>(31)?,
+                        r.get::<_, Option<String>>(32)?,
                         super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
                     ),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(32)?),
+                    parse_json(r.get::<_, Option<String>>(33)?),
                 );
                 // P4.D255: `wardrobeImageSettings` (index 33 — every later
                 // positional read shifted by one). A NULL cell is v4's
                 // `undefined`: the key is OMITTED; a stored object is parsed
                 // with the schema's defaults (judged below with the voice mode).
-                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(33)?)
+                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(34)?)
                 {
                     obj.insert("wardrobeImageSettings".into(), v);
                 }
@@ -1756,15 +1786,15 @@ fn find_one_where(
                 // strips them).
                 obj.insert(
                     "conciergeSettings".into(),
-                    read_concierge_settings_cell(r.get::<_, Option<String>>(34)?),
+                    read_concierge_settings_cell(r.get::<_, Option<String>>(35)?),
                 );
                 obj.insert(
                     "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(35)?),
+                    parse_json(r.get::<_, Option<String>>(36)?),
                 );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(36)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(37)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(38)?));
+                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(37)?);
+                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(38)?));
+                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(39)?));
                 Ok(Value::Object(obj))
             },
         )
@@ -2406,6 +2436,58 @@ mod tests {
         assert_eq!(row["composerSlashCommands"], serde_json::Value::Bool(true));
     }
 
+    /// P4.D341 (v4 `839575d89`, C-3): `customToolIntervention` absent → `true`
+    /// — `z.boolean().default(true)` over v4's `SELECT *` (the `customTools` /
+    /// `composerUnicode` `.is_none_or` class, NOT the triggers'
+    /// `.is_some_and`). A STORED 0 still reads `false` (the second row), and
+    /// the neighbours keep their own cells.
+    #[test]
+    fn find_by_user_id_defaults_custom_tool_intervention_true_when_the_column_is_absent() {
+        let conn = Connection::open_in_memory().unwrap();
+        let fresh = fresh_chat_settings_ddl();
+        let ddl = fresh.replace("  \"customToolIntervention\" INTEGER DEFAULT 1,\n", "");
+        assert_ne!(ddl, fresh, "the dump carries the column at this spelling");
+        conn.execute_batch(&ddl).unwrap();
+        update_for_user(
+            &conn,
+            "u1",
+            &[("customToolTriggers", SettingsColVal::Int(1))],
+            "2026-11-02T00:00:00.000Z",
+        )
+        .unwrap();
+        let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
+        assert_eq!(row["customToolIntervention"], serde_json::Value::Bool(true));
+        assert_eq!(row["customToolTriggers"], serde_json::Value::Bool(true));
+        assert_eq!(
+            row["compositionModeDefault"],
+            serde_json::Value::Bool(false)
+        );
+
+        // With the column present, a stored 0 reads `false`; the seeded
+        // default (`default_settings_columns`, the ONE default source) is 1.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh).unwrap();
+        update_for_user(&conn, "u2", &[], "2026-11-02T00:00:00.000Z").unwrap();
+        let row = find_by_user_id(&conn, "u2").unwrap().expect("row");
+        assert_eq!(row["customToolIntervention"], serde_json::Value::Bool(true));
+        update_for_user(
+            &conn,
+            "u2",
+            &[("customToolIntervention", SettingsColVal::Int(0))],
+            "2026-11-02T00:00:01.000Z",
+        )
+        .unwrap();
+        let row = find_by_user_id(&conn, "u2").unwrap().expect("row");
+        assert_eq!(
+            row["customToolIntervention"],
+            serde_json::Value::Bool(false)
+        );
+        assert!(default_settings_columns()
+            .unwrap()
+            .iter()
+            .any(|(c, v)| c == "customToolIntervention" && matches!(v, SettingsColVal::Int(1))));
+    }
+
     /// P4.D304 (v4 4.11 `4877fc2da`): `composerSlashCommands` absent → `true`
     /// (the `composerUnicode` shape, `z.boolean().default(true)`).
     #[test]
@@ -2428,7 +2510,7 @@ mod tests {
     }
 
     /// P4.D304: the positional read, pinned BY NAME over a FULLY-POPULATED
-    /// 39-column row — every TEXT a unique sentinel, every JSON bag a unique
+    /// 40-column row — every TEXT a unique sentinel, every JSON bag a unique
     /// object, every boolean a pattern that differs from its neighbours' (two
     /// rows; the (row1, row2) pairs cycle 00 → 01 → 11 → 10, so a read shifted
     /// by one OR two columns lands on a different pair). The trailing
@@ -2442,6 +2524,7 @@ mod tests {
             "autoDetectRng",
             "customTools",
             "customToolTriggers",
+            "customToolIntervention",
             "compositionModeDefault",
             "composerSpellcheck",
             "composerEmoji",
@@ -2570,7 +2653,13 @@ mod tests {
                 .collect();
             let at = |k: &str| keys.iter().position(|x| *x == k).unwrap();
             assert_eq!(at("customToolTriggers"), at("customTools") + 1);
-            assert_eq!(at("compositionModeDefault"), at("customToolTriggers") + 1);
+            // P4.D341: `customToolIntervention` between the triggers and
+            // `compositionModeDefault` (schema position).
+            assert_eq!(at("customToolIntervention"), at("customToolTriggers") + 1);
+            assert_eq!(
+                at("compositionModeDefault"),
+                at("customToolIntervention") + 1
+            );
             assert_eq!(at("composerSlashCommands"), at("composerUnicode") + 1);
             assert_eq!(
                 at("impersonationVoiceMode"),

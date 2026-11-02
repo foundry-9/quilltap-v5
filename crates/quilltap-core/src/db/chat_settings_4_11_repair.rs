@@ -10,7 +10,17 @@
 //!     ['sqlite-initial-schema-v1']`, `introducedInVersion '4.11.0'`,
 //!     registered at `index.ts:911`.
 //!
-//! Both are appended after the twelve P4.D288 span migrations (slot 12 =
+//! **P4.D341 (the `236c04e35` round, the TWENTIETH D23 move):** v4 `839575d89`
+//! ("Pascal waits for your nod") — migration
+//! `add-custom-tool-intervention-field-v1`, `dependsOn:
+//! ['add-custom-tool-triggers-field-v1']`, `introducedInVersion '4.11.0'` —
+//! is registered in the MIDDLE of the pair (`index.ts:921-925` at the pin:
+//! triggers → intervention → slash), and is the chain's NEW MIDDLE step. v4's
+//! why, carried: when enabled (the default, 1), a Pascal custom tool marked
+//! intervenable is held for the operator in a dialog before it is announced;
+//! when off, every run goes ahead as rolled. Dead while `customTools` is off.
+//!
+//! All three are appended after the twelve P4.D288 span migrations (slot 12 =
 //! `drop-housekeeping-consolidation-jobs-v1`, `index.ts:907`), triggers FIRST;
 //! each `dependsOn` is earlier in the array, so registration order IS run
 //! order. [`run_chat_settings_4_11_ensures`] is the ONE home for that order —
@@ -23,13 +33,18 @@
 //!
 //! generateDDL's `"customToolTriggers" INTEGER DEFAULT 0` (cid 18, between
 //! `customTools` and `compositionModeDefault`) and `"composerSlashCommands"
-//! INTEGER DEFAULT 1` (cid 23, between `composerUnicode` and
+//! INTEGER DEFAULT 1` (cid 23 at P4.D304 — 24 after the P4.D341 re-dump —
+//! between `composerUnicode` and
 //! `impersonationVoiceMode`) are BYTE-EQUAL to the migrations'
 //! `addColumnIfMissing(…, 'INTEGER DEFAULT 0')` / `'INTEGER DEFAULT 1'`
 //! clauses; only the POSITION differs (a migration appends). Both defaults
 //! equal the Zod defaults (`z.boolean().default(false)` / `.default(true)`) and
 //! the repository seed values, so a row written by an app that does not bind
 //! the column reads the same either way. No backfill on either side.
+//! P4.D341: generateDDL's `"customToolIntervention" INTEGER DEFAULT 1` (cid 19,
+//! right after `customToolTriggers` in the `236c04e35` re-dump — every later
+//! cid shifts by one) is byte-equal to the migration's `addColumnIfMissing(…,
+//! 'INTEGER DEFAULT 1')` clause too; the migration appends it.
 //!
 //! v4's `shouldRun` (`isSQLiteBackend() ∧ sqliteTableExists('chat_settings') ∧
 //! !sqliteColumnExists('chat_settings', <col>)`) is the table gate here plus
@@ -45,6 +60,14 @@
 //! so a failure stops v4's boot (the host `?`s the chain).
 //!
 //! ## NO-PORT
+//!
+//! P4.D341: the intervention migration's INFO `Added customToolIntervention
+//! column to chat_settings table` is DOUBLED on a real add, exactly the
+//! triggers shape (inside the `if`, `add-custom-tool-intervention-field.ts:
+//! 54-56`, and again as the summary with `columnsAdded` / `durationMs`,
+//! `:61-65`), its ERROR `Failed to add customToolIntervention column`, its
+//! `migrations_state` row and the prettify label `Teaching Pascal to wait for
+//! your nod` — all NO-PORT, like the pair's below.
 //!
 //! v4's migration INFO lines — `Added customToolTriggers column to
 //! chat_settings table` TWICE on a real add (inside the `if`,
@@ -68,12 +91,17 @@ use super::DbError;
 
 /// v4's migration id for the trigger-phrase toggle.
 pub const MIGRATION_ID_TRIGGERS: &str = "add-custom-tool-triggers-field-v1";
+/// v4's migration id for the operator-intervention toggle (P4.D341).
+pub const MIGRATION_ID_INTERVENTION: &str = "add-custom-tool-intervention-field-v1";
 /// v4's migration id for the composer slash-command toggle.
 pub const MIGRATION_ID_SLASH: &str = "add-composer-slash-commands-field-v1";
 
 /// The trigger-phrase column, with v4's migration clause verbatim.
 pub const TRIGGERS_COLUMN: &str = "customToolTriggers";
 pub const TRIGGERS_DECL: &str = "INTEGER DEFAULT 0";
+/// The operator-intervention column, with v4's migration clause verbatim.
+pub const INTERVENTION_COLUMN: &str = "customToolIntervention";
+pub const INTERVENTION_DECL: &str = "INTEGER DEFAULT 1";
 /// The composer slash-command column, with v4's migration clause verbatim.
 pub const SLASH_COLUMN: &str = "composerSlashCommands";
 pub const SLASH_DECL: &str = "INTEGER DEFAULT 1";
@@ -91,6 +119,13 @@ pub fn ensure_chat_settings_custom_tool_triggers(main: &Connection) -> Result<bo
     ensure_column(main, TRIGGERS_COLUMN, TRIGGERS_DECL)
 }
 
+/// `add-custom-tool-intervention-field-v1` (P4.D341): add
+/// `chat_settings.customToolIntervention` when the table exists and the column
+/// does not. Answers whether it added.
+pub fn ensure_chat_settings_custom_tool_intervention(main: &Connection) -> Result<bool, DbError> {
+    ensure_column(main, INTERVENTION_COLUMN, INTERVENTION_DECL)
+}
+
 /// `add-composer-slash-commands-field-v1`: add
 /// `chat_settings.composerSlashCommands` when the table exists and the column
 /// does not. Answers whether it added.
@@ -98,7 +133,8 @@ pub fn ensure_chat_settings_composer_slash_commands(main: &Connection) -> Result
     ensure_column(main, SLASH_COLUMN, SLASH_DECL)
 }
 
-/// Run both ensures in v4's registration order (triggers, then slash),
+/// Run the three ensures in v4's registration order (triggers, intervention,
+/// slash — P4.D341 put the intervention step in the middle),
 /// logging v5's ONE boot INFO per column added. The first `Err` returns.
 ///
 /// The lines are emitted here, on whatever thread runs the chain — the host
@@ -111,6 +147,14 @@ pub fn run_chat_settings_4_11_ensures(main: &Connection) -> Result<(), DbError> 
             migrationId = MIGRATION_ID_TRIGGERS,
             columnAdded = true,
             "Fitted the custom-tool trigger toggle"
+        );
+    }
+    if ensure_chat_settings_custom_tool_intervention(main)? {
+        tracing::info!(
+            target: "quilltap::boot",
+            migrationId = MIGRATION_ID_INTERVENTION,
+            columnAdded = true,
+            "Fitted the custom-tool intervention toggle"
         );
     }
     if ensure_chat_settings_composer_slash_commands(main)? {
@@ -155,7 +199,7 @@ mod tests {
         let db = old_schema_db();
         run_chat_settings_4_11_ensures(&db).expect("chain");
         let cols = info(&db);
-        let tail: Vec<_> = cols[cols.len() - 2..].to_vec();
+        let tail: Vec<_> = cols[cols.len() - 3..].to_vec();
         assert_eq!(
             tail,
             vec![
@@ -163,6 +207,11 @@ mod tests {
                     "customToolTriggers".to_string(),
                     "INTEGER".to_string(),
                     Some("0".to_string())
+                ),
+                (
+                    "customToolIntervention".to_string(),
+                    "INTEGER".to_string(),
+                    Some("1".to_string())
                 ),
                 (
                     "composerSlashCommands".to_string(),
@@ -180,7 +229,7 @@ mod tests {
             .unwrap();
         assert!(
             sql.ends_with(
-                ", \"customToolTriggers\" INTEGER DEFAULT 0, \"composerSlashCommands\" INTEGER DEFAULT 1)"
+                ", \"customToolTriggers\" INTEGER DEFAULT 0, \"customToolIntervention\" INTEGER DEFAULT 1, \"composerSlashCommands\" INTEGER DEFAULT 1)"
             ),
             "{sql}"
         );
@@ -197,14 +246,14 @@ mod tests {
         )
         .unwrap();
         run_chat_settings_4_11_ensures(&db).expect("chain");
-        let (t, s): (Option<i64>, Option<i64>) = db
+        let (t, i, s): (Option<i64>, Option<i64>, Option<i64>) = db
             .query_row(
-                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings",
+                "SELECT customToolTriggers, customToolIntervention, composerSlashCommands FROM chat_settings",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .unwrap();
-        assert_eq!((t, s), (Some(0), Some(1)));
+        assert_eq!((t, i, s), (Some(0), Some(1), Some(1)));
     }
 
     /// Half-migrated (triggers present, slash absent): only slash is added,
@@ -216,6 +265,8 @@ mod tests {
         assert!(!ensure_chat_settings_custom_tool_triggers(&db).unwrap());
         assert!(ensure_chat_settings_composer_slash_commands(&db).unwrap());
         assert!(!ensure_chat_settings_composer_slash_commands(&db).unwrap());
+        assert!(ensure_chat_settings_custom_tool_intervention(&db).unwrap());
+        assert!(!ensure_chat_settings_custom_tool_intervention(&db).unwrap());
         let before = info(&db);
         run_chat_settings_4_11_ensures(&db).expect("re-run is a no-op");
         assert_eq!(info(&db), before);
@@ -226,13 +277,14 @@ mod tests {
         let db = Connection::open_in_memory().expect("open");
         assert!(!ensure_chat_settings_custom_tool_triggers(&db).unwrap());
         assert!(!ensure_chat_settings_composer_slash_commands(&db).unwrap());
+        assert!(!ensure_chat_settings_custom_tool_intervention(&db).unwrap());
         run_chat_settings_4_11_ensures(&db).expect("no-op");
         assert!(column_names(&db, "chat_settings").unwrap().is_empty());
     }
 
     /// ONE shape: each `COLUMN` + `DECL` is byte-equal to its line in the
     /// committed generateDDL dump (D23 re-dump #10/#11), position apart — and
-    /// the dump carries each exactly once, at cid 18 / 23.
+    /// the dump carries each exactly once, at cid 18 / 24 (P4.D341: the intervention toggle at 19).
     #[test]
     fn the_decls_match_the_committed_dump_lines() {
         let fresh: serde_json::Value =
@@ -247,7 +299,11 @@ mod tests {
                     .filter(|s| s.starts_with("CREATE TABLE \"chat_settings\""))
             })
             .unwrap();
-        for (col, decl) in [(TRIGGERS_COLUMN, TRIGGERS_DECL), (SLASH_COLUMN, SLASH_DECL)] {
+        for (col, decl) in [
+            (TRIGGERS_COLUMN, TRIGGERS_DECL),
+            (INTERVENTION_COLUMN, INTERVENTION_DECL),
+            (SLASH_COLUMN, SLASH_DECL),
+        ] {
             let line = format!("  \"{col}\" {decl},\n");
             assert_eq!(ddl.matches(&line).count(), 1, "{line:?}");
         }
@@ -255,10 +311,13 @@ mod tests {
         db.execute_batch(ddl).unwrap();
         let names = column_names(&db, "chat_settings").unwrap();
         assert_eq!(names[18], TRIGGERS_COLUMN);
-        assert_eq!(names[23], SLASH_COLUMN);
-        assert_eq!(names.len(), 39);
-        // A fresh table is a no-op for both.
+        // P4.D341: the intervention toggle right after triggers; slash shifts.
+        assert_eq!(names[19], INTERVENTION_COLUMN);
+        assert_eq!(names[24], SLASH_COLUMN);
+        assert_eq!(names.len(), 40);
+        // A fresh table is a no-op for all three.
         assert!(!ensure_chat_settings_custom_tool_triggers(&db).unwrap());
+        assert!(!ensure_chat_settings_custom_tool_intervention(&db).unwrap());
         assert!(!ensure_chat_settings_composer_slash_commands(&db).unwrap());
     }
 }

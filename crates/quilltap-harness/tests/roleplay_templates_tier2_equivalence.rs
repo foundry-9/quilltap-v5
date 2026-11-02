@@ -11,8 +11,17 @@
 //! a nullable JSON-object column (`dialogueDetection`). Both store compact JSON
 //! whose object key order is the Zod schema field order; the Rust port models the
 //! elements with typed serde structs in schema order, so the stored text matches
-//! v4 byte-for-byte (including omitted optional fields). `delimiters` is held
-//! empty and `narrationDelimiters` to a plain string across the corpus.
+//! v4 byte-for-byte (including omitted optional fields).
+//!
+//! P4.D341 (v4 `778b97b2b`, the narration codec): `narrationDelimiters` is now
+//! JSON text on every write and decoded on every read. The corpus plants
+//! pre-codec / legacy cells RAW (`rawCells`: a SQL-NULL narration, the TEXT
+//! `null`, a raw `+`, a raw built-in `*`, a NULL `markdownAsterisks`, an
+//! out-of-order `unmarkedStyle`), creates an unmarked-prose template (`null`
+//! narration + an `unmarkedStyle` + the three new pattern scopes with an EMPTY
+//! `className`), and updates rows WITHOUT naming the narration (the merged write
+//! ENCODES the stored value). After the ops, `reads` compares v4's REAL
+//! `findById` (`decoded()`) against v5's `find_full_json_by_id`, byte for byte.
 //!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -30,8 +39,8 @@
 use std::path::{Path, PathBuf};
 
 use quilltap_core::db::roleplay_templates::{
-    CreateOptions, DialogueDetection, RenderingPattern, RtCreate, RtUpdate, StringOrPair,
-    TemplateDelimiter,
+    find_full_json_by_id, CreateOptions, DialogueDetection, RenderingPattern, RtCreate, RtUpdate,
+    StringOrPair, TemplateDelimiter, UnmarkedStyle,
 };
 use quilltap_core::db::Writer;
 use serde::Deserialize;
@@ -43,6 +52,27 @@ struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
     ops: Vec<Op>,
+    #[serde(default)]
+    reads: Option<Reads>,
+}
+
+#[derive(Deserialize)]
+struct Reads {
+    ids: Vec<String>,
+}
+
+/// Absent → `None`; present (`null` included) → `Some(..)` — v4's
+/// `'narrationDelimiters' in data` tri-state.
+fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Deserialize)]
@@ -76,7 +106,11 @@ struct CreateData {
     #[serde(rename = "dialogueDetection")]
     dialogue_detection: Option<DialogueDetection>,
     #[serde(rename = "narrationDelimiters")]
-    narration_delimiters: StringOrPair,
+    narration_delimiters: Option<StringOrPair>,
+    #[serde(rename = "unmarkedStyle", default)]
+    unmarked_style: Option<UnmarkedStyle>,
+    #[serde(rename = "markdownAsterisks", default = "default_true")]
+    markdown_asterisks: bool,
 }
 
 #[derive(Deserialize)]
@@ -104,8 +138,12 @@ struct UpdateData {
     rendering_patterns: Option<Vec<RenderingPattern>>,
     #[serde(default, rename = "dialogueDetection")]
     dialogue_detection: Option<DialogueDetection>,
-    #[serde(default, rename = "narrationDelimiters")]
-    narration_delimiters: Option<StringOrPair>,
+    #[serde(default, rename = "narrationDelimiters", deserialize_with = "present")]
+    narration_delimiters: Option<Option<StringOrPair>>,
+    #[serde(default, rename = "unmarkedStyle", deserialize_with = "present")]
+    unmarked_style: Option<Option<UnmarkedStyle>>,
+    #[serde(default, rename = "markdownAsterisks")]
+    markdown_asterisks: Option<bool>,
     #[serde(rename = "updatedAt")]
     updated_at: String,
 }
@@ -172,6 +210,8 @@ fn roleplay_templates_tier2_matches_oracle() {
                             rendering_patterns: data.rendering_patterns.clone(),
                             dialogue_detection: data.dialogue_detection.clone(),
                             narration_delimiters: data.narration_delimiters.clone(),
+                            unmarked_style: data.unmarked_style.clone(),
+                            markdown_asterisks: data.markdown_asterisks,
                         },
                         &CreateOptions {
                             id: options.id.clone(),
@@ -193,6 +233,8 @@ fn roleplay_templates_tier2_matches_oracle() {
                                 rendering_patterns: data.rendering_patterns.clone(),
                                 dialogue_detection: data.dialogue_detection.clone(),
                                 narration_delimiters: data.narration_delimiters.clone(),
+                                unmarked_style: data.unmarked_style.clone(),
+                                markdown_asterisks: data.markdown_asterisks,
                                 updated_at: data.updated_at.clone(),
                             },
                         )
@@ -225,4 +267,32 @@ fn roleplay_templates_tier2_matches_oracle() {
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);
     assert!(n > 0, "dump looks empty");
     eprintln!("OK: roleplay_templates tier-2 matched oracle ({n} rows).");
+
+    // P4.D341: the decoded reads, byte for byte (key order included — a
+    // `serde_json::Map` `==` is order-blind under preserve_order).
+    let want_reads = oracle["reads"].as_array().expect("oracle reads[]");
+    let ids = spec.reads.as_ref().map(|r| r.ids.as_slice()).unwrap_or(&[]);
+    assert_eq!(want_reads.len(), ids.len(), "read count");
+    assert!(!ids.is_empty(), "no reads in the corpus");
+    let mut diverged = Vec::new();
+    for (id, want) in ids.iter().zip(want_reads) {
+        assert_eq!(want["id"].as_str(), Some(id.as_str()), "read order");
+        let got = find_full_json_by_id(writer.connection(), id)
+            .expect("find_full_json_by_id")
+            .map(|v| serde_json::to_string(&v).expect("serialize read"));
+        let want = want["json"].as_str().map(str::to_string);
+        if got != want {
+            diverged.push(format!("  {id}\n    rust:   {got:?}\n    oracle: {want:?}"));
+        }
+    }
+    assert!(
+        diverged.is_empty(),
+        "{} decoded read(s) diverged:\n{}",
+        diverged.len(),
+        diverged.join("\n")
+    );
+    eprintln!(
+        "OK: roleplay_templates decoded reads matched oracle ({} ids).",
+        ids.len()
+    );
 }

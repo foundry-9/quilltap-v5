@@ -190,6 +190,8 @@ async function main(): Promise<void> {
     lastReinforcedAgo?: number;
     supersededById?: string | null;
     consolidatedFrom?: string[];
+    /** P4.D341 (v4 `236c04e35`): an operator-marked standing fact. */
+    keystone?: boolean;
   }
   const put = async (holder: Named, r: Row) => {
     const created = iso(r.createdAgo ?? 30);
@@ -221,6 +223,7 @@ async function main(): Promise<void> {
         supersededById: r.supersededById ?? null,
         consolidatedFrom: r.consolidatedFrom ?? [],
         consolidatedAt: null,
+        keystone: r.keystone ?? false,
       } as never,
       { id: r.id, createdAt: created, updatedAt: created },
     );
@@ -251,6 +254,10 @@ async function main(): Promise<void> {
       { id: id('4a010001', 12), content: 'Laura keeps a brass telescope (gone cold).', embedding: at(T, 0.99, 2), tier: 'cold' },
       // About the holder (self bucket) — no near-duplicate.
       { id: id('4a010001', 13), content: 'I keep the ledger in green ink.', about: h.id, embedding: unit([0, 0, 0, 0, 0, 0, 1, 1]) },
+      // P4.D341: a KEYSTONE twin of the telescope — never folded (policy
+      // protection: `isFoldEligible` refuses it), so the telescope group is
+      // unchanged.
+      { id: id('4a010001', 14), content: 'Laura keeps a brass telescope by the east window (a standing fact).', importance: 0.95, embedding: at(T, 0.995, 1), keystone: true },
     ];
     for (const r of rows) await put(h, r);
   }
@@ -278,6 +285,9 @@ async function main(): Promise<void> {
     await put(h, { id: id('4a020004', 1), content: 'Dorrit tie a.', importance: 0.15, createdAgo: 200 });
     await put(h, { id: id('4a020004', 2), content: 'Dorrit tie b.', importance: 0.15, createdAgo: 300 });
     await put(h, { id: id('4a020004', 3), content: 'Dorrit tie c.', importance: 0.15, createdAgo: 250 });
+    // P4.D341: a keystone AUTO row the score would demote first — never
+    // demotable, counted in `protected`.
+    await put(h, { id: id('4a020005', 1), content: 'Dorrit standing fact.', importance: 0.05, createdAgo: 400, keystone: true });
     maindb.prepare('UPDATE memories SET tier = NULL WHERE id = ?').run(id('4a020001', 30));
   }
 

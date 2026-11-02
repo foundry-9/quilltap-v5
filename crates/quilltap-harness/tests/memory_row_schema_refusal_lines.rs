@@ -166,12 +166,23 @@ fn memory_create_refusal_logs_v4_three_repository_lines() {
             .extend(extra.as_object().unwrap().clone());
         b
     };
-    // (row, body, expect a refusal) — the refusal and a passing control.
-    let rows = [
+    // (row, body, expect a refusal, plant) — the refusal and passing controls.
+    // P4.D341 (v4 `8cb584eff`): a TEXT `keystone` cell on the fold target
+    // (`a1`) — the `findByFilter` reads hydrate it `Boolean('yes')`, so v4
+    // logs NO repository line and drops nothing (a silence row on both
+    // sides). The raw-path drop of a TEXT cell (`Memory failed validation in
+    // most-important fetch`) is `memories_read_equivalence`'s K09 row; C-1's
+    // `keystone fetch` can never select one (`keystone = 1` against a TEXT
+    // cell in an INTEGER-affinity column is never true — measured).
+    const A1_TEXT_KEYSTONE: &[&str] = &[
+        "UPDATE memories SET keystone = 'yes' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'",
+    ];
+    let rows: [(&str, Value, bool, Option<&[&str]>); 3] = [
         (
             "create_offset_occurred_at_row_refusal",
             with(json!({ "occurredAt": "2026-03-01T10:00:00+05:30" })),
             true,
+            None,
         ),
         (
             "create_kind_occurred_entities",
@@ -181,10 +192,22 @@ fn memory_create_refusal_logs_v4_three_repository_lines() {
                 "entities": ["Alden", "harbor"],
             })),
             false,
+            None,
+        ),
+        (
+            "keystone_create_reinforce_into_text_keystone",
+            json!({
+                "characterId": MNEMO,
+                "content": "Alden the lighthouse keeper trusts only the harbor master.",
+                "summary": "Alden trusts the harbor master.",
+                "keystone": true,
+            }),
+            false,
+            Some(A1_TEXT_KEYSTONE),
         ),
     ];
     let mut failed = Vec::new();
-    for (name, body, refuses) in rows {
+    for (name, body, refuses, plant) in rows {
         let rec = oracle
             .get(name)
             .unwrap_or_else(|| panic!("oracle row {name} missing — regenerate"));
@@ -196,6 +219,18 @@ fn memory_create_refusal_logs_v4_three_repository_lines() {
             .collect();
         let scratch = fresh_db(&spec, name);
         let db = &scratch.db;
+        if let Some(statements) = plant {
+            rt.block_on(db.write(move |w| {
+                for sql in statements {
+                    w.main()
+                        .connection()
+                        .execute_batch(sql)
+                        .map_err(quilltap_core::db::DbError::from)?;
+                }
+                Ok(())
+            }))
+            .expect("plant");
+        }
         let p = ErasedEmbeddingProvider::new(ApiEmbeddingProvider::new(
             db.clone(),
             CannedWireTransport::new(),
@@ -211,8 +246,19 @@ fn memory_create_refusal_logs_v4_three_repository_lines() {
             body,
         ));
         let got = repo_v5_lines(&lines.lock().unwrap());
+        // P4.D341: no raw-path drop WARN on either side for these rows (v4's
+        // `Memory failed validation in …` would ride the oracle's sibling
+        // capture as a non-`[Memories API` line; it never fires here).
+        let dropped = lines
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|l| l.contains("Memory failed validation in"));
         let after = count(db);
         let mut bad = Vec::new();
+        if dropped {
+            bad.push("v5 dropped a row with `Memory failed validation in …`".to_string());
+        }
         if refuses == want.is_empty() {
             bad.push(format!(
                 "the oracle row's premise moved: {} v4 lines",

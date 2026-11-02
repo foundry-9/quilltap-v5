@@ -2,7 +2,10 @@
  * Data-module generator for the built-in roleplay templates (P4.4u3, family 1).
  *
  * Emits `crates/quilltap-core/src/services/builtin_templates.json` — the verbatim
- * "Standard" / "Quilltap RP" seed data the v5 seeder replays. The bytes come from
+ * "Standard" / "Quilltap RP" / "Novel" seed data the v5 seeder replays (Novel's
+ * `renderingPatterns` are COMPUTED by v4's generator at module load — never
+ * hand-transcribed). `narrationDelimiters` is dumped DECODED through v4's real
+ * codec; `unmarkedStyle` / `markdownAsterisks` ride along (P4.D341). The bytes come from
  * v4's REAL `seedBuiltInTemplates()`, so there is no hand transcription of the
  * (large, whitespace-sensitive) system prompts.
  *
@@ -66,6 +69,13 @@ async function main(): Promise<void> {
     '@/lib/database/repositories/roleplay-templates.repository'
   );
   const { RoleplayTemplateSchema } = await import('@/lib/schemas/template.types');
+  // P4.D341: v4 now writes `narrationDelimiters` as JSON text (`"*"`,
+  // `["[","]"]`, `null`) and decodes it on every read — decode the stored cell
+  // through v4's REAL codec so the data module carries the DECODED value (the v5
+  // seeder re-encodes it on both write paths).
+  const { decodeNarrationDelimiters } = await import(
+    '@/lib/database/repositories/roleplay-template-narration-codec'
+  );
 
   await initializeDatabase();
   await ensureCollection('roleplay_templates', RoleplayTemplateSchema);
@@ -78,19 +88,10 @@ async function main(): Promise<void> {
   await repo.seedBuiltInTemplates();
 
   const rows = (await rawQuery(
-    "SELECT name, description, systemPrompt, delimiters, renderingPatterns, dialogueDetection, narrationDelimiters FROM roleplay_templates WHERE isBuiltIn = 1 ORDER BY name",
-  )) as Array<Record<string, string | null>>;
+    "SELECT name, description, systemPrompt, delimiters, renderingPatterns, dialogueDetection, narrationDelimiters, unmarkedStyle, markdownAsterisks FROM roleplay_templates WHERE isBuiltIn = 1 ORDER BY name",
+  )) as Array<Record<string, string | number | null>>;
 
   await closeDatabase();
-
-  // `narrationDelimiters` is stored as plain TEXT for the string form and JSON
-  // array text for the pair form (v4's union is NOT a registered JSON column, so
-  // documentToRow only JSON-encodes it when the value is an array). Recover the
-  // structured value: a leading '[' means the pair form.
-  const parseNarration = (raw: string): unknown => {
-    if (raw.startsWith('[')) return JSON.parse(raw);
-    return raw;
-  };
 
   const templates = rows.map((r) => ({
     name: r.name,
@@ -100,14 +101,27 @@ async function main(): Promise<void> {
     delimiters: JSON.parse(r.delimiters as string),
     renderingPatterns: JSON.parse(r.renderingPatterns as string),
     dialogueDetection:
-      r.dialogueDetection == null ? null : JSON.parse(r.dialogueDetection),
-    narrationDelimiters: parseNarration(r.narrationDelimiters as string),
+      r.dialogueDetection == null ? null : JSON.parse(r.dialogueDetection as string),
+    // The stored cell is the codec's JSON text; carry the DECODED value
+    // ('*', ['[', ']'], or null for Novel's unmarked prose).
+    narrationDelimiters: decodeNarrationDelimiters(r.narrationDelimiters),
+    // SEED-LITERAL key order (update path); `null` for the two legacy built-ins.
+    unmarkedStyle: r.unmarkedStyle == null ? null : JSON.parse(r.unmarkedStyle as string),
+    markdownAsterisks: r.markdownAsterisks === 1,
   }));
 
-  // Order the two built-ins the way v4's BUILT_IN_TEMPLATES literal lists them
-  // (Standard first, then Quilltap RP) for a stable, readable module.
-  const rank = (name: string | null) => (name === 'Standard' ? 0 : 1);
+  // Order the built-ins the way v4's BUILT_IN_TEMPLATES literal lists them
+  // (Standard, Quilltap RP, Novel) for a stable, readable module.
+  const ORDER = ['Standard', 'Quilltap RP', 'Novel'];
+  const rank = (name: unknown) => {
+    const i = ORDER.indexOf(name as string);
+    if (i < 0) throw new Error(`unexpected built-in template ${String(name)}`);
+    return i;
+  };
   templates.sort((a, b) => rank(a.name) - rank(b.name));
+  if (templates.length !== ORDER.length) {
+    throw new Error(`expected ${ORDER.length} built-ins, dumped ${templates.length}`);
+  }
 
   writeFileSync(out, JSON.stringify(templates, null, 2) + '\n');
   process.stderr.write(`wrote ${templates.length} built-in templates → ${out}\n`);

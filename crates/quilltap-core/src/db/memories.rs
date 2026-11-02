@@ -94,6 +94,11 @@ pub struct MemCreate {
     pub consolidated_from: Vec<String>,
     /// Last time the consolidator considered the row (`None` → NULL).
     pub consolidated_at: Option<String>,
+    /// P4.D341 (v4 `8cb584eff`): an operator-marked standing fact — never
+    /// demoted, folded into a digest, or footnoted. v4's create prefill
+    /// `keystone: data.keystone ?? false` (`memories.repository.ts:552`);
+    /// every internal caller states `false`. Stored as INTEGER 0 / 1.
+    pub keystone: bool,
 }
 
 /// P4.D265 (v4 `70f9b495c`): what
@@ -171,9 +176,12 @@ pub fn parse_create_memory(item: &Value, claimed_id: Option<&str>) -> Result<Mem
     // `MemorySchema` — `{...data, tier: data.tier ?? 'hot', consolidatedFrom:
     // data.consolidatedFrom ?? []}` — so an absent OR `null` tier /
     // consolidatedFrom becomes `'hot'` / `[]` (the raw schema refuses `null`).
+    // P4.D341 (v4 `8cb584eff`, `:552`): `keystone: data.keystone ?? false`
+    // joins the same prefill — an absent OR `null` keystone becomes `false`.
     for (k, default) in [
         ("tier", Value::String("hot".into())),
         ("consolidatedFrom", Value::Array(Vec::new())),
+        ("keystone", Value::Bool(false)),
     ] {
         if matches!(entity.get(k), None | Some(Value::Null)) {
             entity.insert(k.into(), default);
@@ -251,6 +259,10 @@ pub fn parse_create_memory(item: &Value, claimed_id: Option<&str>) -> Result<Mem
         superseded_at: str_of("supersededAt"),
         consolidated_from: arr("consolidatedFrom"),
         consolidated_at: str_of("consolidatedAt"),
+        keystone: entity
+            .get("keystone")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
     })
 }
 
@@ -311,6 +323,8 @@ pub struct MemUpdate {
     pub superseded_at: Option<Option<String>>,
     pub consolidated_from: Option<Vec<String>>,
     pub consolidated_at: Option<Option<String>>,
+    /// P4.D341 (v4 `8cb584eff`): mark / unmark a keystone (INTEGER 0 / 1).
+    pub keystone: Option<bool>,
     pub updated_at: Option<String>,
 }
 
@@ -345,6 +359,7 @@ impl MemUpdate {
             || self.superseded_at.is_some()
             || self.consolidated_from.is_some()
             || self.consolidated_at.is_some()
+            || self.keystone.is_some()
             || self.updated_at.is_some()
     }
 }
@@ -435,6 +450,7 @@ fn validate_create_row(data: &MemCreate, opts: &CreateOptions) -> Result<(), DbE
     if let Some(v) = opt(&data.consolidated_at) {
         put("consolidatedAt", v);
     }
+    put("keystone", Value::Bool(data.keystone));
     put("createdAt", Value::String(opts.created_at.clone()));
     put("updatedAt", Value::String(opts.updated_at.clone()));
     let issues = zod_memory_issues(&row);
@@ -527,10 +543,10 @@ impl<'c> MemoriesRepository<'c> {
                 occurredAt, narrativeTime, entities, kind, \
                 sourceMessageId, lastAccessedAt, reinforcementCount, lastReinforcedAt, \
                 relatedMemoryIds, reinforcedImportance, \
-                tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, \
+                tier, supersededById, supersededAt, consolidatedFrom, consolidatedAt, keystone, \
                 createdAt, updatedAt) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
+                     ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31)",
             params![
                 opts.id,
                 data.character_id,
@@ -560,6 +576,7 @@ impl<'c> MemoriesRepository<'c> {
                 data.superseded_at,
                 consolidated_from_json,
                 data.consolidated_at,
+                data.keystone,
                 opts.created_at,
                 opts.updated_at,
             ],
@@ -683,6 +700,9 @@ impl<'c> MemoriesRepository<'c> {
         }
         if let Some(v) = &patch.consolidated_at {
             set_col!("consolidatedAt", Box::new(v.clone()));
+        }
+        if let Some(v) = patch.keystone {
+            set_col!("keystone", Box::new(v));
         }
         let updated_at = patch.updated_at.clone().unwrap_or_else(now_iso);
         set_col!("updatedAt", Box::new(updated_at));
@@ -1561,7 +1581,7 @@ mod tests {
         sourceMessageId TEXT, lastAccessedAt TEXT, reinforcementCount REAL,
         lastReinforcedAt TEXT, relatedMemoryIds TEXT, reinforcedImportance REAL,
         tier TEXT DEFAULT 'hot', supersededById TEXT, supersededAt TEXT, consolidatedFrom TEXT DEFAULT '[]',
-        consolidatedAt TEXT, createdAt TEXT, updatedAt TEXT);";
+        consolidatedAt TEXT, keystone INTEGER DEFAULT 0, createdAt TEXT, updatedAt TEXT);";
 
     /// Build a fresh encrypted DB, create the memories table, and seed the given
     /// `(id, characterId, relatedMemoryIds)` rows (all pinned timestamps).
@@ -1601,6 +1621,7 @@ mod tests {
                     superseded_at: None,
                     consolidated_from: Vec::new(),
                     consolidated_at: None,
+                    keystone: false,
                 },
                 &CreateOptions {
                     id: (*id).to_string(),
@@ -2159,6 +2180,7 @@ mod tests {
             superseded_at: None,
             consolidated_from: Vec::new(),
             consolidated_at: None,
+            keystone: false,
         };
         let opts = CreateOptions {
             id: id.to_string(),

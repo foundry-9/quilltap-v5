@@ -251,6 +251,9 @@ fn carrier_plant_sql() -> Vec<String> {
         ),
         r#"UPDATE "memories" SET "supersededAt" = '2026-03-04T00:00:00.000Z' WHERE "id" = 'ad000000-0000-4000-8000-000000000003'"#.to_string(),
         r#"UPDATE "tfidf_vocabularies" SET "textShapeVersion" = 1"#.to_string(),
+        // P4.D341: a keystone rides the backup (the pair's column is the
+        // migration's `NOT NULL DEFAULT 0`).
+        r#"UPDATE "memories" SET "keystone" = 1 WHERE "id" = 'ad000000-0000-4000-8000-000000000001'"#.to_string(),
     ]
 }
 

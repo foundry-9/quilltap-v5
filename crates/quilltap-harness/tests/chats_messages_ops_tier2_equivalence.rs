@@ -503,7 +503,8 @@ fn chats_messages_ops_tier2_matches_oracle() {
                             "hostEvent",
                             "createdAt",
                             "participantId",
-                            "routeTrail"
+                            "routeTrail",
+                            "storytellerBid"
                         ]
                         .contains(&column.as_str()),
                         "plantCell: unplantable column {column}"

@@ -49,6 +49,8 @@ const ADOPTED_BOOLEAN_COLUMNS: &[&str] = &[
     // P4.D304 (v4 4.11)
     "customToolTriggers",
     "composerSlashCommands",
+    // P4.D341 (v4 `839575d89`, C-3)
+    "customToolIntervention",
 ];
 
 /// The plain-enum TEXT columns adopted the same way — the same six regions,

@@ -131,6 +131,10 @@ const PROTECT: Array<[string, Mem]> = [
   ['episodic-threshold', { importance: 0.3, createdAt: '2026-06-20T00:00:00.000Z', reinforcementCount: 3, kind: 'episodic' }],
   ['negative-count', { importance: 0.5, createdAt: '2026-06-20T00:00:00.000Z', reinforcementCount: -3 }],
   ['access-unparseable', { importance: 0.5, createdAt: '2026-06-20T00:00:00.000Z', lastAccessedAt: 'later' }],
+  // P4.D341 (v4 `236c04e35`): a keystone AUTO row is protected by source; an
+  // unmarked one scores as usual.
+  ['keystone-auto-low', { importance: 0.2, createdAt: '2025-09-01T00:00:00.000Z', source: 'AUTO', keystone: true }],
+  ['keystone-false-low', { importance: 0.2, createdAt: '2025-09-01T00:00:00.000Z', source: 'AUTO', keystone: false }],
 ];
 for (const [id, m] of PROTECT) {
   const p = protection(m as any, { nowMs: NOW_MS });

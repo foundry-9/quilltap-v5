@@ -70,6 +70,11 @@ fn chats_ddl() -> String {
         "lastFullRebuildTurn REAL",
         "summaryAnchorMessageIds TEXT",
         "isPaused INTEGER",
+        // P4.D341 (v4 `b15fe9404`): this fixture has no `chat_messages`, so the
+        // Storyteller ensure (gated on BOTH tables, as v4's migration is) never
+        // adds these two — the chat read names them.
+        "turnMode TEXT",
+        "storytellerInviteFilter INTEGER",
         "isManuallyRenamed INTEGER",
         "impersonatingParticipantIds TEXT",
         "activeTypingParticipantId TEXT",

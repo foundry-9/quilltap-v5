@@ -313,6 +313,9 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
         chat_id: params.chat_id,
         character_id: params.character_id,
         autonomous_run_id: ctx.autonomous_run_id.clone(),
+        // P4.D341 lands the column; the `LogContext` field + the stamp are
+        // P4.D343's (contract K names only the row).
+        storyteller_round_id: None,
         provider: params.provider,
         model_name: params.model_name,
         connection_profile_id: params.connection_profile_id,

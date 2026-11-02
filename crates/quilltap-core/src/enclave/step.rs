@@ -1491,6 +1491,9 @@ mod tests {
             "lastFullRebuildTurn REAL",
             "summaryAnchorMessageIds TEXT",
             "isPaused INTEGER",
+            // P4.D341 (v4 `b15fe9404`): the Storyteller pair.
+            "turnMode TEXT",
+            "storytellerInviteFilter INTEGER DEFAULT 0",
             "isManuallyRenamed INTEGER",
             "impersonatingParticipantIds TEXT",
             "activeTypingParticipantId TEXT",
@@ -1599,7 +1602,7 @@ mod tests {
         systemEventType TEXT, description TEXT, totalTokens REAL, provider TEXT, \
         modelName TEXT, estimatedCostUSD REAL, createdAt TEXT, confirmed INTEGER, \
         confirmationChecked INTEGER, confirmationRevised INTEGER, confirmationNotes TEXT, \
-        confirmationOriginalContent TEXT);";
+        confirmationOriginalContent TEXT, storytellerBid TEXT);";
 
     const BACKGROUND_JOBS_DDL: &str = "CREATE TABLE background_jobs (\
         id TEXT PRIMARY KEY, userId TEXT NOT NULL, type TEXT NOT NULL, status TEXT NOT NULL, \

@@ -1,7 +1,9 @@
 //! Tier-1 differential test — P4.D288 (C1-7): `quilltap_core::policy_protection`
 //! against v4's REAL `lib/memory/policy-protection.ts` (bug 201) at the
 //! `83334b9a5` pin: `policy_protection_of` over every `(source, tier)` pair the
-//! oracle enumerates (absent and `null` both reach v5 as `None`), and
+//! oracle enumerates (absent and `null` both reach v5 as `None`) — since
+//! P4.D341 (v4 `236c04e35`) under `keystone` absent / false / true, the
+//! keystone class tested FIRST — and
 //! `partition_by_policy_protection` over mixed corpora — both halves in input
 //! order, `sparedBy` byte-equal in v4's key order.
 //!
@@ -20,6 +22,13 @@ fn field<'a>(row: &'a Value, key: &str) -> Option<&'a str> {
     row.get(key).and_then(Value::as_str)
 }
 
+/// v4's `memory.keystone` truthiness over the corpus's boolean-or-absent key.
+fn keystone(row: &Value) -> bool {
+    row.get("keystone")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
 #[test]
 fn policy_protection_matches_v4() {
     let Ok(path) = std::env::var("QT_ORACLE_POLICY_PROTECTION") else {
@@ -33,16 +42,17 @@ fn policy_protection_matches_v4() {
         match case["case"].as_str().unwrap() {
             "of" => {
                 let row = &case["row"];
-                let got = policy_protection_of(field(row, "source"), field(row, "tier"))
-                    .map(|p| json!(p.as_str()))
-                    .unwrap_or(Value::Null);
+                let got =
+                    policy_protection_of(field(row, "source"), field(row, "tier"), keystone(row))
+                        .map(|p| json!(p.as_str()))
+                        .unwrap_or(Value::Null);
                 assert_eq!(got, case["result"], "policyProtectionOf({row})");
                 ofs += 1;
             }
             "partition" => {
                 let rows: Vec<Value> = case["rows"].as_array().unwrap().clone();
                 let (actionable, spared, spared_by) = partition_by_policy_protection(&rows, |r| {
-                    (field(r, "source"), field(r, "tier"))
+                    (field(r, "source"), field(r, "tier"), keystone(r))
                 });
                 let ids = |rs: Vec<Value>| -> Value {
                     Value::Array(rs.into_iter().map(|r| r["id"].clone()).collect())
@@ -65,6 +75,6 @@ fn policy_protection_matches_v4() {
             other => panic!("unknown case {other}"),
         }
     }
-    assert_eq!((ofs, partitions), (42, 3), "the oracle's case counts");
+    assert_eq!((ofs, partitions), (126, 4), "the oracle's case counts");
     eprintln!("OK: policy protection matched v4 ({ofs} rows, {partitions} partitions).");
 }

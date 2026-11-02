@@ -1308,7 +1308,26 @@
           }
         }
       ]
-    }
+    },
+    {"name": "memory_keystone_true_valid", "from": "characters_valid_rich", "ops": [{"op": "set", "path": "/data/memories/0/keystone", "value": true}]},
+    {"name": "memory_keystone_absent_valid", "from": "characters_valid_rich", "ops": [{"op": "remove", "path": "/data/memories/0/keystone"}]},
+    {"name": "memory_keystone_string_invalid", "from": "characters_valid_rich", "ops": [{"op": "set", "path": "/data/memories/0/keystone", "value": "yes"}]},
+    {"name": "memory_keystone_null_invalid", "from": "characters_valid_rich", "ops": [{"op": "set", "path": "/data/memories/0/keystone", "value": null}]},
+    {"name": "chat_turn_mode_storyteller_valid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/turnMode", "value": "storyteller"}]},
+    {"name": "chat_turn_mode_null_valid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/turnMode", "value": null}]},
+    {"name": "chat_turn_mode_off_enum_invalid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/turnMode", "value": "round-robin"}]},
+    {"name": "chat_invite_filter_true_valid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/storytellerInviteFilter", "value": true}]},
+    {"name": "chat_invite_filter_number_invalid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/storytellerInviteFilter", "value": 1}]},
+    {"name": "message_storyteller_bid_valid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/messages/0/storytellerBid", "value": {"roundId": "r1", "tier": "act", "plan": "Steps forward.", "toolsNamed": []}}]},
+    {"name": "message_storyteller_bid_null_valid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/messages/0/storytellerBid", "value": null}]},
+    {"name": "message_storyteller_bid_missing_plan_invalid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/messages/0/storytellerBid", "value": {"roundId": "r1", "tier": "act"}}]},
+    {"name": "message_storyteller_bid_tier_off_enum_invalid", "from": "chats_inventory_base_valid", "ops": [{"op": "set", "path": "/data/chats/0/messages/0/storytellerBid", "value": {"roundId": "r1", "tier": "shout", "plan": "x"}}]},
+    {"name": "template_narration_null_valid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/narrationDelimiters", "value": null}]},
+    {"name": "template_narration_empty_invalid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/narrationDelimiters", "value": ""}]},
+    {"name": "template_unmarked_style_valid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/unmarkedStyle", "value": {"style": "qt-roleplay-plain", "addOns": {"bold": false, "italic": true, "reverse": false, "underline": "none", "border": "none", "font": ""}}}]},
+    {"name": "template_unmarked_style_missing_style_invalid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/unmarkedStyle", "value": {"addOns": {}}}]},
+    {"name": "template_markdown_asterisks_false_valid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/markdownAsterisks", "value": false}]},
+    {"name": "template_markdown_asterisks_string_invalid", "from": "roleplay_templates_all", "ops": [{"op": "set", "path": "/data/roleplayTemplates/0/markdownAsterisks", "value": "no"}]}
   ],
   "literals": [
     {

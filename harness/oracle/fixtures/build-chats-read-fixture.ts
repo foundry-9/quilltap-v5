@@ -33,6 +33,11 @@ interface Spec {
   /** P4.D265: `chats.update(id, data)` calls run AFTER the creates (the
    *  OTHER-pass watermark is written only by an update in v4). */
   updates?: Array<{ id: string; data: Record<string, unknown> }>;
+  /** P4.D341: raw statements run LAST, for cells no repository write can
+   *  produce (a NULL `storytellerInviteFilter` — v4's create always writes the
+   *  Zod default `false`; a NULL arises only on a fresh-DDL row written
+   *  outside the repository). */
+  rawSql?: string[];
 }
 
 async function main(): Promise<void> {
@@ -71,6 +76,12 @@ async function main(): Promise<void> {
   }
   for (const u of spec.updates ?? []) {
     await repo.update(u.id, u.data as never);
+  }
+  if (spec.rawSql?.length) {
+    const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
+    const raw = getRawDatabase();
+    if (!raw) throw new Error('no raw database for the rawSql plants');
+    for (const sql of spec.rawSql) raw.prepare(sql).run();
   }
 
   await closeDatabase();

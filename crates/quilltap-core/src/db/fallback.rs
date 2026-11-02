@@ -1826,6 +1826,63 @@ pub fn hot_digests_or_empty<T>(
     })
 }
 
+// === P4.D341 (v4 `8cb584eff`): the keystone reads' homes ===
+
+/// v4 `findKeystones` (`memories.repository.ts:1153-1183`): ERROR `Error
+/// finding keystones {collection, characterId, subjects, error}` (`subjects`
+/// renders `self` or the CALLER's list length — before the dedup), fallback
+/// `[]`.
+pub fn keystones_or_empty<T>(
+    character_id: &str,
+    subjects: Option<usize>,
+    read: impl FnOnce() -> Result<Vec<T>, DbError>,
+) -> Result<Vec<T>, DbError> {
+    memories_fallback(Vec::new(), read, |error, strict| match subjects {
+        None => tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            subjects = "self",
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding keystones"
+        ),
+        Some(n) => tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            subjects = n as u64,
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error finding keystones"
+        ),
+    })
+}
+
+/// v4 `countKeystones` (`memories.repository.ts:1189-1210`): ERROR `Error
+/// counting keystones {collection, characterId, aboutCharacterId, error}`,
+/// fallback `0`. A `null` subject renders `null` (v4 names the key with a
+/// JSON `null`; the `memory_create` `projectId=null` precedent).
+pub fn keystones_count_or_zero(
+    character_id: &str,
+    about_character_id: Option<&str>,
+    read: impl FnOnce() -> Result<i64, DbError>,
+) -> Result<i64, DbError> {
+    memories_fallback(0, read, |error, strict| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "memories",
+            characterId = %character_id,
+            aboutCharacterId = %about_character_id.unwrap_or("null"),
+            error = %error_text(error),
+            strictFailures = strict,
+            "Error counting keystones"
+        );
+    })
+}
+
+// === end P4.D341 ===
+
 /// v4 `findExpiredColdIds` (`:947-965`): ERROR `Error finding expired cold
 /// memories {collection, characterId, olderThan, error}`, fallback `[]`.
 pub fn expired_cold_ids_or_empty(

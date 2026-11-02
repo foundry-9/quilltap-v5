@@ -131,6 +131,10 @@ fn parse_f64(s: Option<&str>) -> Option<f64> {
 /// `(m.tier ?? 'hot') === tier`, and `findByFilter`'s hydration has already
 /// defaulted a NULL tier to `'hot'`, so the row lists as hot there. `source`
 /// gains `CONSOLIDATED` (the digests).
+///
+/// P4.D341 (C-8, v4 `8cb584eff`): `keystone` (`?keystone=true` only) lists
+/// keystones alone on both paths — the paginated path's exact `keystone = 1`,
+/// the legacy path's `m.keystone === true` after the tier filter.
 #[allow(clippy::too_many_arguments)]
 pub fn memory_list(
     db: &Db,
@@ -139,6 +143,7 @@ pub fn memory_list(
     min_importance: Option<f64>,
     source: Option<&str>,
     tier: Option<&str>,
+    keystone: bool,
     sort_by: Option<&str>,
     sort_order: Option<&str>,
     limit: Option<i64>,
@@ -183,6 +188,9 @@ pub fn memory_list(
                 min_importance,
                 // The exact `"tier" = ?` (a NULL-tier row matches neither).
                 tier,
+                // P4.D341 (v4 `:345`): `keystone: keystoneOnly || undefined`
+                // — the exact `keystone = 1` through `findByFilter`.
+                keystone,
             };
             let (page, total) = memories_read::find_by_character_id_paginated(main, &cid, &opts)?;
             let memories: Vec<Value> = page.into_iter().map(|m| with_tag_details(m, &tm)).collect();
@@ -216,6 +224,12 @@ pub fn memory_list(
             // source filter, before the sort.
             if let Some(t) = tier {
                 memories.retain(|m| m.get("tier").and_then(Value::as_str).unwrap_or("hot") == t);
+            }
+            // P4.D341 (v4 `:389-391`): `memories.filter(m => m.keystone ===
+            // true)` — after the tier filter, before the sort. The hydrated
+            // row's `keystone` is `findByFilter`'s boolean.
+            if keystone {
+                memories.retain(|m| m.get("keystone") == Some(&Value::Bool(true)));
             }
             sort_memories(&mut memories, &sort_by, &sort_order);
             let memories: Vec<Value> = memories
@@ -513,6 +527,9 @@ struct ManualCreate {
     kind: Option<String>,
     occurred_at: Option<String>,
     entities: Option<Vec<String>>,
+    /// P4.D341 (C-8, v4 `route.ts:112-113`): "Mark the new memory a standing
+    /// fact" — `z.boolean().optional()`.
+    keystone: Option<bool>,
 }
 
 /// v4's `MemoryKindEnum` (`lib/schemas/memory.types.ts`), in schema order.
@@ -567,6 +584,23 @@ fn nullable_uuid(obj: &Map<String, Value>, k: &str, issues: &mut Vec<ZodIssue>) 
 }
 
 /// `z.array(item)` at `k` (absent → `None`): each element through `item`.
+/// P4.D341: `z.boolean().optional()` — absent → `None`; a boolean → it; any
+/// other value (incl. `null`) → `invalid_type` expected boolean.
+fn optional_boolean(obj: &Map<String, Value>, k: &str, issues: &mut Vec<ZodIssue>) -> Option<bool> {
+    match obj.get(k) {
+        None => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "boolean",
+                vec![zod_key(k)],
+                Some(other),
+            ));
+            None
+        }
+    }
+}
+
 fn array_of(
     obj: &Map<String, Value>,
     k: &str,
@@ -725,6 +759,7 @@ fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
             parsed
         }
     };
+    let keystone = optional_boolean(obj, "keystone", &mut issues);
     if !issues.is_empty() {
         return Err(issues);
     }
@@ -742,6 +777,7 @@ fn parse_create_bag(bag: &Value) -> Result<ManualCreate, Vec<ZodIssue>> {
         kind,
         occurred_at,
         entities,
+        keystone,
     })
 }
 
@@ -870,6 +906,28 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
         }
     }
 
+    // P4.D341 (v4 `route.ts:559-569`): "A keystone request is refused before
+    // anything is written when the subject already holds its limit; the mark
+    // itself goes on after admission, through the edit chokepoint, which
+    // checks again."
+    let wants_keystone = data.keystone == Some(true);
+    if wants_keystone {
+        let cid = data.character_id.clone();
+        let about = data.about_character_id.clone();
+        let held = match db.read_main(move |main| {
+            memories_read::count_keystones(main, &cid, about.as_deref(), None)
+        }) {
+            Ok(n) => n,
+            Err(e) => return internal(e),
+        };
+        if held >= crate::services::admission::KEYSTONES_PER_SUBJECT_MAX {
+            return bad_request(format!(
+                "A character may keep at most {} keystones about one subject; unmark one first.",
+                crate::services::admission::KEYSTONES_PER_SUBJECT_MAX
+            ));
+        }
+    }
+
     // The candidate, in v4's literal order (`route.ts:555-574`).
     let candidate_json = json!({
         "content": data.content,
@@ -957,7 +1015,7 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
         Err(e) => return internal(e),
     };
 
-    let Some(memory) = outcome.memory else {
+    let Some(mut memory) = outcome.memory else {
         // "Nothing was written. Say why: only an embedding failure is the
         // provider's fault (bug 236)."
         let reason = match &outcome.action {
@@ -982,6 +1040,59 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
 
     let inserted = crate::admission::admission_inserted(&outcome.action);
     let action = outcome.action.kind().as_str();
+
+    // P4.D341 (v4 `route.ts:637-654`): the mark, through the edit chokepoint
+    // (which checks the rule again). A refusal answers 400 AFTER the row was
+    // written — "The memory stands; only the mark was refused (a race on the
+    // limit, or admission folded the text into a row that cannot carry one)."
+    // (R-3: v4's bytes, ported as they are.)
+    if wants_keystone && memory.get("keystone") != Some(&Value::Bool(true)) {
+        let holder = memory
+            .get("characterId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let row_id = memory
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let patch = crate::services::admission::MemoryEditPatch {
+            keystone: Some(true),
+            ..Default::default()
+        };
+        let marked = match provider {
+            Some(p) => {
+                crate::services::admission::update_memory(
+                    db,
+                    p,
+                    &holder,
+                    &row_id,
+                    patch,
+                    user_id,
+                    host_zone_fallback,
+                )
+                .await
+            }
+            None => {
+                crate::services::admission::update_memory(
+                    db,
+                    &crate::model::embedding::NoEmbeddingProvider,
+                    &holder,
+                    &row_id,
+                    patch,
+                    user_id,
+                    host_zone_fallback,
+                )
+                .await
+            }
+        };
+        match keystone_mark_outcome(marked, &data.character_id, &row_id) {
+            Ok(m) => memory = m,
+            Err(refusal) => return refusal,
+        }
+    }
+
     let memory_id = memory
         .get("id")
         .and_then(Value::as_str)
@@ -1024,6 +1135,39 @@ pub async fn memory_create<P: EmbeddingProvider + Sync>(
     // "201 only when a row was created; a reinforcement or near-duplicate
     // absorption returns 200 with the existing row, and `action` says which."
     Response::Memory(json!({ "memory": memory, "action": action }))
+}
+
+/// P4.D341 (v4 `route.ts:638-653`): the post-admission keystone mark's
+/// result. `Ok` → the marked row (the body carries it); any refusal → DEBUG
+/// `[Memories API] Keystone mark refused after manual create` `{characterId,
+/// memoryId, reason}` and the 400 — `The memory was saved, but not as a
+/// keystone: <message>` for `keystone-refused`, `The memory was saved, but
+/// could not be marked a keystone.` for every other `!ok` reason. A thrown
+/// error (v5's `Err`) is the route's 500, as v4's `handleRouteError`.
+fn keystone_mark_outcome(
+    marked: Result<crate::services::admission::UpdateMemoryResult, DbError>,
+    character_id: &str,
+    memory_id: &str,
+) -> Result<Value, Response> {
+    use crate::services::admission::UpdateMemoryResult as R;
+    let (reason, message) = match marked {
+        Ok(R::Ok { memory }) => return Ok(memory),
+        Err(e) => return Err(internal(e)),
+        Ok(R::KeystoneRefused { message }) => ("keystone-refused", Some(message)),
+        Ok(R::NotFound) => ("not-found", None),
+        Ok(R::InvalidRelated { .. }) => ("invalid-related", None),
+        Ok(R::EmbeddingFailed { .. }) => ("embedding-failed", None),
+    };
+    tracing::debug!(
+        characterId = character_id,
+        memoryId = memory_id,
+        reason = reason,
+        "[Memories API] Keystone mark refused after manual create"
+    );
+    Err(bad_request(match message {
+        Some(m) => format!("The memory was saved, but not as a keystone: {m}"),
+        None => "The memory was saved, but could not be marked a keystone.".to_string(),
+    }))
 }
 
 /// §R.7 `MEMORY_BAD_GATEWAY_AS_INTERNAL` (R-H, L-5): v4's 502 carried as
@@ -1103,6 +1247,9 @@ fn parse_update_bag(
     let about_character_id = nullable("aboutCharacterId", &mut issues);
     let chat_id = nullable("chatId", &mut issues);
     let related_memory_ids = array_of(obj, "relatedMemoryIds", &mut issues, uuid_item);
+    // P4.D341 (C-8, v4 `[id]/route.ts:29-32`): `keystone: z.boolean().optional()`
+    // after `relatedMemoryIds`.
+    let keystone = optional_boolean(obj, "keystone", &mut issues);
     if !issues.is_empty() {
         return Err(issues);
     }
@@ -1115,6 +1262,7 @@ fn parse_update_bag(
         about_character_id,
         chat_id,
         related_memory_ids,
+        keystone,
     })
 }
 
@@ -1206,6 +1354,9 @@ pub async fn memory_update<P: EmbeddingProvider + Sync>(
                 "The memory was not saved because its new text could not be embedded. {message}"
             ));
         }
+        // v4 `[id]/route.ts:119-121`: AFTER the `embedding-failed` 502 arm,
+        // BEFORE `invalid-related`.
+        Ok(UpdateMemoryResult::KeystoneRefused { message }) => return bad_request(message),
         Ok(UpdateMemoryResult::InvalidRelated { invalid_ids }) => {
             return bad_request(format!(
                 "relatedMemoryIds must name existing memories of the same character: {}",

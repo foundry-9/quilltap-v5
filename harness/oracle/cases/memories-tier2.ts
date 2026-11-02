@@ -507,6 +507,10 @@ async function main(): Promise<void> {
     { label: 'reinforcement-zero', data: { ...base, reinforcementCount: 0 } },
     { label: 'tags-not-uuid', data: { ...base, tags: ['nope'] } },
     { label: 'claimed-id-not-uuid', data: base, id: 'not-a-uuid' },
+    // P4.D341 (v4 `8cb584eff`): `keystone ?? false` leaves a non-boolean as it
+    // is, and `z.boolean().default(false)` refuses it.
+    { label: 'keystone-string', data: { ...base, keystone: 'yes' } },
+    { label: 'keystone-number', data: { ...base, keystone: 1 } },
   ];
   const errors: Array<Record<string, unknown>> = [];
   for (const c of createExpectErrors) {

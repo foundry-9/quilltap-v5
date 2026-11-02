@@ -60,12 +60,22 @@
 //!     for legacy kind-less rows is ported in [`parse_delimiters`]. The optional
 //!     `hideDelimiter` / `addOns` / `tokenPattern` keys carry
 //!     `skip_serializing_if`, matching Zod's omission of an absent `.optional()`.
-//!   - **`narrationDelimiters: z.union([string, tuple])`** → the [`StringOrPair`]
-//!     union again. Per `schema-translator`'s `getBaseType`, a heterogeneous union
-//!     is `'unknown'` — NOT registered as a JSON column — so a string is stored as
-//!     plain TEXT (`*`) and a pair as JSON array text (`["[","]"]`, via v4's
-//!     `documentToRow` `shouldStoreAsJson`-on-value branch). [`narration_storage`]
-//!     reproduces both.
+//!   - **`narrationDelimiters: NarrationDelimitersSchema.nullable().default('*')`**
+//!     → the [`StringOrPair`] union again, now NULLABLE (`null` = unmarked prose,
+//!     P4.D341 / v4 `778b97b2b`). The union is `'unknown'` to the schema
+//!     classifier, so the generic SQLite layer used to store a string as plain
+//!     TEXT and a pair as JSON text and hand the pair BACK as that string (Quilltap
+//!     RP's `["[","]"]` reached the composer as one eight-character delimiter),
+//!     and a `null` came back as `undefined` → the default `'*'`. v4's repository
+//!     therefore writes the field as JSON text itself and decodes it on every read
+//!     (`roleplay-template-narration-codec.ts`): [`encode_narration_delimiters`] /
+//!     [`decode_narration_delimiters`] port that codec exactly. Decoding accepts
+//!     legacy rows too: a raw delimiter string (`*`, `+`) that is not JSON is
+//!     returned as-is.
+//!   - **`unmarkedStyle: UnmarkedStyleSchema.nullable().optional()`** → a nullable
+//!     JSON object ([`UnmarkedStyle`]); `None` → SQL NULL (v4's `toJson(null)`).
+//!   - **`markdownAsterisks: z.boolean().default(true)`** → INTEGER 0/1; a NULL
+//!     cell reads as `true` (hydrate → `undefined` → the Zod default).
 //!
 //! Determinism: the tier-2 case pins the id and timestamps, so the persisted rows
 //! match v4's byte-for-byte with no normalization — the pinned form
@@ -149,12 +159,88 @@ pub enum StringOrPair {
     Pair([String; 2]),
 }
 
-impl StringOrPair {
-    /// The stored-column form of a `narrationDelimiters` value (see
-    /// [`narration_storage`]): a bare string is plain TEXT, a pair is JSON array
-    /// text. Exposed for the built-in seeder's raw update path.
-    pub fn storage(&self) -> Result<String, DbError> {
-        narration_storage(self)
+/// How a template displays text that no delimiter claims (v4
+/// `UnmarkedStyleSchema`): a base `style` class plus optional add-ons. A template
+/// whose narration is plain prose (`narrationDelimiters: null`) uses this to
+/// style it; any template may set it. Field order is the schema's.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnmarkedStyle {
+    pub style: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub add_ons: Option<DelimiterAddOns>,
+}
+
+/// v4 `encodeNarrationDelimiters(value) = JSON.stringify(value)` — the JSON text
+/// the `narrationDelimiters` column stores: `'*'` → the three bytes `"*"`, a pair
+/// → `["[","]"]`, `null` (unmarked prose) → the four-byte TEXT `null` (never SQL
+/// NULL).
+pub fn encode_narration_delimiters(v: Option<&StringOrPair>) -> String {
+    match v {
+        // `serde_json::to_string` of a `String` / `[String; 2]` cannot fail.
+        Some(StringOrPair::Single(s)) => serde_json::to_string(s).unwrap_or_default(),
+        Some(StringOrPair::Pair(pair)) => serde_json::to_string(pair).unwrap_or_default(),
+        None => "null".to_string(),
+    }
+}
+
+/// v4 `isPair`: an array of exactly two NON-EMPTY strings.
+fn json_pair(v: &serde_json::Value) -> Option<[String; 2]> {
+    let serde_json::Value::Array(items) = v else {
+        return None;
+    };
+    match items.as_slice() {
+        [serde_json::Value::String(a), serde_json::Value::String(b)]
+            if !a.is_empty() && !b.is_empty() =>
+        {
+            Some([a.clone(), b.clone()])
+        }
+        _ => None,
+    }
+}
+
+/// v4 `decodeNarrationDelimiters(stored)` over the column cell as the read path
+/// hands it over. v4's hydrate turns a SQL NULL into `undefined`, which the
+/// schema's `.default('*')` makes `'*'` before the decoder sees it — so a NULL
+/// cell on a legacy row reads as the historical default `'*'` (the codec's own
+/// docblock). Otherwise: an empty string → `'*'`; JSON `null` → `None`
+/// (unmarked prose); a JSON non-empty string or two-string pair → it; a parse
+/// failure or any other parsed value → the RAW stored string (a legacy raw
+/// delimiter like `*` or `+`).
+pub fn decode_narration_delimiters(stored: Option<&str>) -> Option<StringOrPair> {
+    let Some(stored) = stored else {
+        return Some(StringOrPair::Single("*".to_string()));
+    };
+    if stored.is_empty() {
+        return Some(StringOrPair::Single("*".to_string()));
+    }
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(stored) {
+        match &parsed {
+            serde_json::Value::Null => return None,
+            serde_json::Value::String(s) if !s.is_empty() => {
+                return Some(StringOrPair::Single(s.clone()))
+            }
+            other => {
+                if let Some(pair) = json_pair(other) {
+                    return Some(StringOrPair::Pair(pair));
+                }
+            }
+        }
+    }
+    // Not JSON (or JSON of another shape) — a legacy raw delimiter string.
+    Some(StringOrPair::Single(stored.to_string()))
+}
+
+/// The decoded narration as the read DTO carries it: a string, a two-string
+/// array, or `null` (unmarked prose).
+fn narration_value(v: Option<&StringOrPair>) -> serde_json::Value {
+    match v {
+        Some(StringOrPair::Single(s)) => serde_json::Value::String(s.clone()),
+        Some(StringOrPair::Pair([a, b])) => serde_json::Value::Array(vec![
+            serde_json::Value::String(a.clone()),
+            serde_json::Value::String(b.clone()),
+        ]),
+        None => serde_json::Value::Null,
     }
 }
 
@@ -185,6 +271,25 @@ pub enum TemplateDelimiter {
         #[serde(rename = "addOns", skip_serializing_if = "Option::is_none", default)]
         add_ons: Option<DelimiterAddOns>,
         delimiters: StringOrPair,
+        /// v4 `matchCurlyQuotes`: a straight quote in the delimiters also matches
+        /// its curly forms, in any mix. Absent ⇒ the delimiters match literally.
+        /// (Without this field serde DROPS the key on re-emission — Novel's
+        /// Dialogue delimiter carries it.)
+        #[serde(
+            rename = "matchCurlyQuotes",
+            skip_serializing_if = "Option::is_none",
+            default
+        )]
+        match_curly_quotes: Option<bool>,
+        /// v4 `closeOptional`: a span that opens but never closes runs to the end
+        /// of its paragraph (speech carried over several paragraphs). Absent ⇒
+        /// an unclosed span is not styled.
+        #[serde(
+            rename = "closeOptional",
+            skip_serializing_if = "Option::is_none",
+            default
+        )]
+        close_optional: Option<bool>,
     },
     /// A `marker` at the start of a line styles the whole line (e.g. `// `).
     #[serde(rename = "linePrefix")]
@@ -260,16 +365,14 @@ fn parse_delimiters(json_text: &str) -> Result<Vec<TemplateDelimiter>, DbError> 
     Ok(out)
 }
 
-/// The storage form of a `narrationDelimiters` value: a bare string stays plain
-/// TEXT (`*`); a pair is stored as JSON array text (`["[","]"]`) — mirroring v4's
-/// `documentToRow`, which JSON-encodes any array-valued cell even on a column the
-/// schema classifies as `'unknown'` (not a registered JSON column).
-fn narration_storage(nd: &StringOrPair) -> Result<String, DbError> {
-    match nd {
-        StringOrPair::Single(s) => Ok(s.clone()),
-        StringOrPair::Pair(pair) => serde_json::to_string(pair)
-            .map_err(|e| DbError::Internal(format!("narration serialize: {e}"))),
-    }
+/// Serialize an optional [`UnmarkedStyle`] to its stored text (`None` → SQL NULL,
+/// v4's `toJson(null)`).
+fn serialize_unmarked_style(v: Option<&UnmarkedStyle>) -> Result<Option<String>, DbError> {
+    v.map(|u| {
+        serde_json::to_string(u)
+            .map_err(|e| DbError::Internal(format!("unmarkedStyle serialize: {e}")))
+    })
+    .transpose()
 }
 
 /// Fields for creating a roleplay template (the `Omit<RoleplayTemplate,'id'|
@@ -292,9 +395,14 @@ pub struct RtCreate {
     pub rendering_patterns: Vec<RenderingPattern>,
     /// `None` => SQL NULL; `Some` => compact JSON object.
     pub dialogue_detection: Option<DialogueDetection>,
-    /// The narration delimiter — a bare string (plain TEXT) or an `[open, close]`
-    /// pair (JSON array text).
-    pub narration_delimiters: StringOrPair,
+    /// The narration delimiter — a bare string or an `[open, close]` pair;
+    /// `None` = unmarked prose, stored as the TEXT `null`. Always written
+    /// ENCODED ([`encode_narration_delimiters`]).
+    pub narration_delimiters: Option<StringOrPair>,
+    /// `None` => SQL NULL; `Some` => compact JSON object.
+    pub unmarked_style: Option<UnmarkedStyle>,
+    /// v4 `markdownAsterisks` (Zod default `true`) → INTEGER 0/1.
+    pub markdown_asterisks: bool,
 }
 
 /// Pinned id + timestamps (v4's `CreateOptions`).
@@ -316,7 +424,13 @@ pub struct RtUpdate {
     pub delimiters: Option<Vec<TemplateDelimiter>>,
     pub rendering_patterns: Option<Vec<RenderingPattern>>,
     pub dialogue_detection: Option<DialogueDetection>,
-    pub narration_delimiters: Option<StringOrPair>,
+    /// `None` = not named (the stored value is re-encoded); `Some(None)` = set
+    /// `null` (unmarked prose); `Some(Some(v))` = set `v`.
+    pub narration_delimiters: Option<Option<StringOrPair>>,
+    /// `None` = not named; `Some(None)` = set SQL NULL; `Some(Some(v))` = set `v`.
+    pub unmarked_style: Option<Option<UnmarkedStyle>>,
+    /// `None` = not named (the stored value, NULL → `true`, is rewritten).
+    pub markdown_asterisks: Option<bool>,
     pub updated_at: String,
 }
 
@@ -330,8 +444,9 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         Self { conn }
     }
 
-    /// Insert a roleplay template with the given pinned id + timestamps. All 13
-    /// columns are written; JSON columns via `serde_json::to_string`, the bool via
+    /// Insert a roleplay template with the given pinned id + timestamps. All 15
+    /// columns are written (`narrationDelimiters` ENCODED — v4's
+    /// `toPersistedRow`); JSON columns via `serde_json::to_string`, the bool via
     /// `i64::from`, nullable columns via `Option`. `delimiters` is the JSON text of
     /// an empty array (held empty across the corpus).
     pub fn create(&self, data: &RtCreate, opts: &CreateOptions) -> Result<(), DbError> {
@@ -340,7 +455,8 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         let rendering_patterns_json = serde_json::to_string(&data.rendering_patterns)
             .map_err(|e| DbError::Internal(format!("renderingPatterns serialize: {e}")))?;
         let delimiters_json = serialize_delimiters(&data.delimiters)?;
-        let narration_delimiters = narration_storage(&data.narration_delimiters)?;
+        let narration_delimiters = encode_narration_delimiters(data.narration_delimiters.as_ref());
+        let unmarked_style_json = serialize_unmarked_style(data.unmarked_style.as_ref())?;
         let dialogue_detection_json: Option<String> = match &data.dialogue_detection {
             Some(dd) => Some(
                 serde_json::to_string(dd)
@@ -352,8 +468,9 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         self.conn.execute(
             "INSERT INTO roleplay_templates \
                (id, userId, name, description, systemPrompt, isBuiltIn, tags, delimiters, \
-                renderingPatterns, dialogueDetection, narrationDelimiters, createdAt, updatedAt) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                renderingPatterns, dialogueDetection, narrationDelimiters, unmarkedStyle, \
+                markdownAsterisks, createdAt, updatedAt) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 opts.id,
                 data.user_id,
@@ -366,6 +483,8 @@ impl<'c> RoleplayTemplatesRepository<'c> {
                 rendering_patterns_json,
                 dialogue_detection_json,
                 narration_delimiters,
+                unmarked_style_json,
+                i64::from(data.markdown_asterisks),
                 opts.created_at,
                 opts.updated_at,
             ],
@@ -380,26 +499,46 @@ impl<'c> RoleplayTemplatesRepository<'c> {
     /// v4's `_update` reads the existing row, merges the patch, re-validates the
     /// WHOLE object, and `$set`s every column — so a column absent from the patch
     /// is still rewritten from its re-parsed self. That is a byte-level no-op for
-    /// every column EXCEPT `delimiters`, whose read-side `kind:'wrap'` backfill
-    /// (`parse_delimiters`) upgrades a legacy kind-less entry. So this port always
-    /// rewrites `delimiters` (from the patch, or from the re-parsed existing value)
-    /// and leaves the other columns partial — byte-identical to v4.
+    /// every column EXCEPT:
+    ///   - `delimiters`, whose read-side `kind:'wrap'` backfill
+    ///     (`parse_delimiters`) upgrades a legacy kind-less entry;
+    ///   - `narrationDelimiters` — v4: "_update writes the whole merged row, so
+    ///     the narration value always travels encoded — the patch's if it names
+    ///     one, else the stored one" (the stored one DECODED then re-encoded, so a
+    ///     legacy raw `+` lands as `"+"` and a NULL cell as `"*"`);
+    ///   - `markdownAsterisks` — a NULL cell reads as the Zod default `true` and
+    ///     is written back as `1`;
+    ///   - `unmarkedStyle` — a stored object is re-emitted in Zod schema order with
+    ///     its add-on defaults materialized (a NULL / `null` cell hydrates to
+    ///     `undefined` and is left out of the `$set`).
+    ///
+    /// So this port always rewrites those four (from the patch, or from the
+    /// re-parsed existing value) and leaves the other columns partial —
+    /// byte-identical to v4.
     pub fn update(&self, id: &str, patch: &RtUpdate) -> Result<bool, DbError> {
         // v4 `_update` first `findById`s — the row must exist or it's a no-op.
-        // Fetch the current `delimiters` in the same read for the backfill rewrite.
-        let existing_delimiters: Option<String> = self
+        // Fetch the always-rewritten columns in the same read.
+        type Existing = (String, Option<String>, Option<String>, Option<i64>);
+        let existing: Option<Existing> = self
             .conn
             .query_row(
-                "SELECT delimiters FROM roleplay_templates WHERE id = ?1",
+                "SELECT delimiters, narrationDelimiters, unmarkedStyle, markdownAsterisks \
+                 FROM roleplay_templates WHERE id = ?1",
                 params![id],
-                |row| row.get::<_, String>(0),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .map(Some)
             .or_else(|e| match e {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
                 other => Err(other),
             })?;
-        let Some(existing_delimiters) = existing_delimiters else {
+        let Some((
+            existing_delimiters,
+            existing_narration,
+            existing_unmarked,
+            existing_markdown_asterisks,
+        )) = existing
+        else {
             return Ok(false);
         };
 
@@ -445,11 +584,43 @@ impl<'c> RoleplayTemplatesRepository<'c> {
             assignments.push(format!("dialogueDetection = ?{}", values.len() + 1));
             values.push(Box::new(json));
         }
-        if let Some(narration_delimiters) = &patch.narration_delimiters {
-            let storage = narration_storage(narration_delimiters)?;
-            assignments.push(format!("narrationDelimiters = ?{}", values.len() + 1));
-            values.push(Box::new(storage));
+        // narrationDelimiters: ALWAYS written encoded (the patch's, else the
+        // stored one through decode → encode).
+        let narration = match &patch.narration_delimiters {
+            Some(named) => encode_narration_delimiters(named.as_ref()),
+            None => encode_narration_delimiters(
+                decode_narration_delimiters(existing_narration.as_deref()).as_ref(),
+            ),
+        };
+        assignments.push(format!("narrationDelimiters = ?{}", values.len() + 1));
+        values.push(Box::new(narration));
+        // unmarkedStyle: the patch's (`Some(None)` → SQL NULL), else the stored
+        // object re-emitted through the schema; an absent (NULL / `null`) cell is
+        // left out of the `$set`, as v4's hydrate → `undefined` leaves it.
+        let unmarked: Option<Option<String>> = match &patch.unmarked_style {
+            Some(named) => Some(serialize_unmarked_style(named.as_ref())?),
+            None => match existing_unmarked
+                .as_deref()
+                .map(serde_json::from_str::<serde_json::Value>)
+            {
+                Some(Ok(v)) if !v.is_null() => {
+                    let typed: UnmarkedStyle = serde_json::from_value(v)
+                        .map_err(|e| DbError::Internal(format!("unmarkedStyle parse: {e}")))?;
+                    Some(serialize_unmarked_style(Some(&typed))?)
+                }
+                _ => None,
+            },
+        };
+        if let Some(unmarked) = unmarked {
+            assignments.push(format!("unmarkedStyle = ?{}", values.len() + 1));
+            values.push(Box::new(unmarked));
         }
+        // markdownAsterisks: the patch's, else the stored flag (NULL → `true`).
+        let markdown_asterisks = patch
+            .markdown_asterisks
+            .unwrap_or_else(|| existing_markdown_asterisks.is_none_or(|v| v == 1));
+        assignments.push(format!("markdownAsterisks = ?{}", values.len() + 1));
+        values.push(Box::new(i64::from(markdown_asterisks)));
         assignments.push(format!("updatedAt = ?{}", values.len() + 1));
         values.push(Box::new(patch.updated_at.clone()));
 
@@ -496,9 +667,12 @@ impl<'c> RoleplayTemplatesRepository<'c> {
             .map_err(DbError::from)
     }
 
-    /// v4 seeder UPDATE path: `collection.updateOne({id}, {$set: {systemPrompt,
-    /// description, delimiters, renderingPatterns, dialogueDetection,
-    /// narrationDelimiters, updatedAt}})`. Unlike the public [`Self::update`], this
+    /// v4 seeder UPDATE path: `collection.updateOne({id}, {$set: this.encoded({
+    /// systemPrompt, description, delimiters, renderingPatterns,
+    /// dialogueDetection, narrationDelimiters, unmarkedStyle, markdownAsterisks,
+    /// updatedAt})})` — run on EVERY boot, so it rewrites a legacy raw `*`
+    /// narration cell to the encoded `"*"` and moves `updatedAt` each time
+    /// (measured at v4 `236c04e35`). Unlike the public [`Self::update`], this
     /// is a RAW column write that does NOT re-validate through the schema — so
     /// `delimiters` (and the other JSON columns) are stored in the exact bytes the
     /// caller supplies (the seed-literal key order, NOT the Zod schema order the
@@ -509,8 +683,9 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         self.conn.execute(
             "UPDATE roleplay_templates SET \
                systemPrompt = ?1, description = ?2, delimiters = ?3, renderingPatterns = ?4, \
-               dialogueDetection = ?5, narrationDelimiters = ?6, updatedAt = ?7 \
-             WHERE id = ?8",
+               dialogueDetection = ?5, narrationDelimiters = ?6, unmarkedStyle = ?7, \
+               markdownAsterisks = ?8, updatedAt = ?9 \
+             WHERE id = ?10",
             params![
                 patch.system_prompt,
                 patch.description,
@@ -518,6 +693,8 @@ impl<'c> RoleplayTemplatesRepository<'c> {
                 patch.rendering_patterns_json,
                 patch.dialogue_detection_json,
                 patch.narration_delimiters,
+                patch.unmarked_style_json,
+                i64::from(patch.markdown_asterisks),
                 patch.updated_at,
                 id,
             ],
@@ -539,24 +716,32 @@ pub struct SeedUpdate {
     pub rendering_patterns_json: String,
     /// `dialogueDetection` stored text, or `None` → SQL NULL.
     pub dialogue_detection_json: Option<String>,
-    /// `narrationDelimiters` storage form (plain string or JSON pair text).
+    /// `narrationDelimiters` stored text — ENCODED
+    /// ([`encode_narration_delimiters`]).
     pub narration_delimiters: String,
+    /// `unmarkedStyle` stored text (seed-literal order), or `None` → SQL NULL.
+    pub unmarked_style_json: Option<String>,
+    pub markdown_asterisks: bool,
     pub updated_at: String,
 }
 
-/// The shared column list every roleplay-template full read selects (schema order).
+/// The shared column list every roleplay-template full read selects (schema order —
+/// `unmarkedStyle` / `markdownAsterisks` before `createdAt`, as the re-dumped
+/// `fresh_schema.json` renders them).
 const RT_COLUMNS: &str = "id, userId, name, description, systemPrompt, isBuiltIn, tags, \
-     delimiters, renderingPatterns, dialogueDetection, narrationDelimiters, createdAt, updatedAt";
+     delimiters, renderingPatterns, dialogueDetection, narrationDelimiters, unmarkedStyle, \
+     markdownAsterisks, createdAt, updatedAt";
 
 /// Marshal one `roleplay_templates` row into the route-read [`serde_json::Value`],
 /// reproducing v4's SQLite-backend `hydrateRow` + `RoleplayTemplateSchema.parse`:
 /// null nullable columns (`userId` / `description` / `dialogueDetection`) become
 /// `undefined` → **omitted**; `isBuiltIn` → bool; the JSON columns
 /// (`tags`/`delimiters`/`renderingPatterns`/`dialogueDetection`) are `JSON.parse`d;
-/// **`narrationDelimiters` is NOT a registered JSON column** (its heterogeneous
-/// `string | [string,string]` union classifies as `'unknown'`), so it is returned
-/// as the RAW column string — a stored `[open,close]` pair round-trips to the
-/// literal JSON string, exactly as v4's union `z.string()` branch keeps it.
+/// **`narrationDelimiters` is DECODED** through v4's codec (the repository's
+/// `decoded()` on every read): a string, a two-string array, or `null` (unmarked
+/// prose); `unmarkedStyle` is OMITTED on a NULL / `null` cell (hydrate →
+/// `undefined`) and otherwise the parsed object re-emitted through the schema;
+/// `markdownAsterisks` is a bool (a NULL cell → the Zod default `true`).
 fn marshal_rt_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> {
     use serde_json::{Map, Value};
     let mut obj = Map::new();
@@ -590,13 +775,31 @@ fn marshal_rt_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<serde_json::Value> 
             }
         }
     }
-    // narrationDelimiters: RAW string passthrough (not a JSON column).
+    // narrationDelimiters: v4's codec, decoded.
     obj.insert(
         "narrationDelimiters".into(),
-        Value::String(r.get::<_, String>(10)?),
+        narration_value(
+            decode_narration_delimiters(r.get::<_, Option<String>>(10)?.as_deref()).as_ref(),
+        ),
     );
-    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(11)?));
-    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(12)?));
+    // unmarkedStyle: nullable JSON object → omitted when NULL / `null` / not JSON.
+    if let Some(raw) = r.get::<_, Option<String>>(11)? {
+        if let Ok(v) = serde_json::from_str::<Value>(&raw) {
+            if !v.is_null() {
+                let v = match serde_json::from_value::<UnmarkedStyle>(v.clone()) {
+                    Ok(typed) => serde_json::to_value(typed).unwrap_or(v),
+                    Err(_) => v,
+                };
+                obj.insert("unmarkedStyle".into(), v);
+            }
+        }
+    }
+    obj.insert(
+        "markdownAsterisks".into(),
+        Value::Bool(r.get::<_, Option<i64>>(12)?.is_none_or(|v| v == 1)),
+    );
+    obj.insert("createdAt".into(), Value::String(r.get::<_, String>(13)?));
+    obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(14)?));
     Ok(Value::Object(obj))
 }
 
@@ -710,4 +913,43 @@ pub fn find_system_prompt_by_id(conn: &Connection, id: &str) -> Result<Option<St
         other => Err(other),
     })
     .map_err(DbError::from)
+}
+
+#[cfg(test)]
+mod narration_codec_tests {
+    //! The codec's arms in isolation; the differential proof (v4's REAL
+    //! `decodeNarrationDelimiters` over every planted cell) is
+    //! `roleplay_templates_tier2_equivalence`'s `reads`.
+    use super::*;
+
+    fn single(s: &str) -> Option<StringOrPair> {
+        Some(StringOrPair::Single(s.to_string()))
+    }
+
+    #[test]
+    fn encode_is_json_stringify() {
+        assert_eq!(encode_narration_delimiters(single("*").as_ref()), "\"*\"");
+        let pair = StringOrPair::Pair(["[".to_string(), "]".to_string()]);
+        assert_eq!(encode_narration_delimiters(Some(&pair)), "[\"[\",\"]\"]");
+        assert_eq!(encode_narration_delimiters(None), "null");
+    }
+
+    #[test]
+    fn decode_arms() {
+        let enc =
+            |v: Option<&str>| encode_narration_delimiters(decode_narration_delimiters(v).as_ref());
+        // SQL NULL → the historical default '*'.
+        assert_eq!(enc(None), "\"*\"");
+        assert_eq!(enc(Some("")), "\"*\"");
+        assert_eq!(enc(Some("null")), "null");
+        assert_eq!(enc(Some("\"*\"")), "\"*\"");
+        assert_eq!(enc(Some("[\"[\",\"]\"]")), "[\"[\",\"]\"]");
+        // Legacy raw delimiters (not JSON) come back as-is.
+        assert_eq!(enc(Some("*")), "\"*\"");
+        assert_eq!(enc(Some("+")), "\"+\"");
+        // JSON of another shape → the RAW stored string.
+        assert_eq!(enc(Some("\"\"")), "\"\\\"\\\"\"");
+        assert_eq!(enc(Some("[\"\",\"]\"]")), "\"[\\\"\\\",\\\"]\\\"]\"");
+        assert_eq!(enc(Some("5")), "\"5\"");
+    }
 }

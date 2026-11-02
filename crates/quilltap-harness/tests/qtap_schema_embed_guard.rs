@@ -90,7 +90,18 @@ mod common;
 /// true`, so a bundle carrying either key was ACCEPTED before and stays
 /// accepted; the move tightens the PRESENT keys only (a non-boolean flag, a
 /// non-object map, a non-array entry, a non-UUID element are now refused).
-const VENDORED_BYTES: usize = 109_559;
+///
+/// P4.D341: 115,274 at v4 `236c04e35` (the 4.11.0 code; md5
+/// `8665e3cbffc8db5d808fcebe4bfe302b`), vendored WHOLE by the round's
+/// keystone (R-7) — seven writers in the span: `8cb584eff` (the memory
+/// record's `keystone`), `b15fe9404` (`turnMode` / `storytellerInviteFilter`
+/// on the chat, `storytellerBid` on the message), `839575d89`
+/// (`pascalMeta.intervention`), `778b97b2b` (`unmarkedStyle` /
+/// `markdownAsterisks`, `DelimiterAddOns`' `tokenPattern`, the wrap's
+/// `matchCurlyQuotes` / `closeOptional` / `addOns`, `narrationDelimiters`
+/// `null`), `b27e5089a` (`humanoid`), `eb90d9ed8` (`pronounGuidance`),
+/// `6588972d5` (`canDrawDiagrams` / `diagramStyle`).
+const VENDORED_BYTES: usize = 115_274;
 
 #[test]
 fn the_embedded_schema_is_self_consistent() {

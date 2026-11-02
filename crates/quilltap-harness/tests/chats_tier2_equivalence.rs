@@ -124,6 +124,9 @@ struct PatchData {
     is_paused: Option<bool>,
     #[serde(default)]
     is_manually_renamed: Option<bool>,
+    /// P4.D341 (v4 `b15fe9404`): the Storyteller invite filter.
+    #[serde(default)]
+    storyteller_invite_filter: Option<bool>,
     #[serde(default)]
     message_count: Option<f64>,
     #[serde(default)]
@@ -174,6 +177,7 @@ impl PatchData {
             context_summary: self.context_summary.clone().map(Some),
             is_paused: self.is_paused,
             is_manually_renamed: self.is_manually_renamed,
+            storyteller_invite_filter: self.storyteller_invite_filter,
             message_count: self.message_count,
             danger_score: self.danger_score.map(Some),
             chat_type: self.chat_type.clone(),

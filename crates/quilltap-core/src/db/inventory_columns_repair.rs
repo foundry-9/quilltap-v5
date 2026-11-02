@@ -292,7 +292,8 @@ mod tests {
         db.execute_batch(&chats).unwrap();
         db.execute_batch(&characters).unwrap();
         let names = column_names(&db, "chats").unwrap();
-        assert_eq!(names[66], EQUIPPED_INVENTORY_COLUMN);
+        // P4.D341: `turnMode` / `storytellerInviteFilter` sit before it (66 → 68).
+        assert_eq!(names[68], EQUIPPED_INVENTORY_COLUMN);
         assert!(!ensure_chats_equipped_inventory(&db).unwrap());
         assert!(!ensure_characters_can_manage_inventory(&db).unwrap());
     }

@@ -99,6 +99,7 @@ fn protection_input(m: &Value) -> ProtectionInput<'_> {
             .map_or(0, Vec::len),
         kind: m.get("kind").and_then(Value::as_str),
         source: m.get("source").and_then(Value::as_str),
+        keystone: m.get("keystone").and_then(Value::as_bool).unwrap_or(false),
     }
 }
 
@@ -295,7 +296,7 @@ fn memory_scoring_matches_oracle() {
         ("filter", 4),
         ("formula", 72),
         ("lexical", 6),
-        ("protection", 10),
+        ("protection", 12),
         ("salience", 12),
         ("sort", 5),
     ];

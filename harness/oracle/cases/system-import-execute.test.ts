@@ -1897,6 +1897,12 @@ function memoryRefusalsPayload(merged: {
  * 16. `supersededById: 5` — truthy, remaps to itself; Zod refuses;
  * 17. `tags: 'x'` + `relatedMemoryIds: 'y'` — the tags TypeError wins (the
  *     tags are built before the payload literal).
+ * [P4.D341] (v4 `8cb584eff`, `import-entities.ts:577-578` — "A standing fact
+ * stays one; older bundles read as false."): item 4 also loses `keystone` (a
+ * pre-round bundle);
+ * 18. `keystone: true` — a keystone survives the import;
+ * 19. `keystone: null` — `?? false`;
+ * 20. `keystone: 'yes'` — left as it is by `??`, `MemorySchema` refuses it.
  */
 function memoryTiersPayload(merged: {
   manifest: unknown;
@@ -1937,7 +1943,7 @@ function memoryTiersPayload(merged: {
           relatedMemoryIds: [A, B],
           consolidatedAt: AT,
         }),
-        item(4, {}, ['tier', 'supersededById', 'consolidatedFrom', 'consolidatedAt']),
+        item(4, {}, ['tier', 'supersededById', 'consolidatedFrom', 'consolidatedAt', 'keystone']),
         item(5, { supersededById: UNKNOWN, relatedMemoryIds: [UNKNOWN, A] }),
         item(6, { supersededById: '', tier: null }),
         item(7, { tier: 'warm' }),
@@ -1951,6 +1957,9 @@ function memoryTiersPayload(merged: {
         item(15, {}, ['id']),
         item(16, { supersededById: 5 }),
         item(17, { tags: 'x', relatedMemoryIds: 'y' }),
+        item(18, { keystone: true }),
+        item(19, { keystone: null }),
+        item(20, { keystone: 'yes' }),
       ],
     },
   };

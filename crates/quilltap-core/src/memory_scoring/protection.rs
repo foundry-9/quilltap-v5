@@ -92,6 +92,9 @@ pub struct ProtectionInput<'a> {
     pub kind: Option<&'a str>,
     /// `source` (`'MANUAL'` / `'CONSOLIDATED'` protect by source alone).
     pub source: Option<&'a str>,
+    /// `keystone` (P4.D341, v4 `236c04e35`) — an operator-marked standing fact
+    /// is protected as MANUAL / CONSOLIDATED are (v4 tests its truthiness).
+    pub keystone: bool,
 }
 
 /// v4 `ProtectionScoreResult`.
@@ -193,7 +196,7 @@ pub struct ProtectionBreakdown {
 /// included — is protected when its blended score reaches the threshold.
 pub fn protection(m: &ProtectionInput, now_ms: f64, cfg: &ProtectionConfig) -> ProtectionBreakdown {
     let mut score = calculate_protection_score(m, cfg, now_ms);
-    if matches!(m.source, Some("MANUAL") | Some("CONSOLIDATED")) {
+    if matches!(m.source, Some("MANUAL") | Some("CONSOLIDATED")) || m.keystone {
         score.score = 1.0;
         return ProtectionBreakdown {
             score,
@@ -270,6 +273,7 @@ mod jest_twins {
             graph_degree: m.related_memory_ids.len(),
             kind: None,
             source: Some("AUTO"),
+            keystone: false,
         };
         // v4 passes `undefined` for the config → the default.
         calculate_protection_score(&input, &DEFAULT_PROTECTION_CONFIG, now_ms())

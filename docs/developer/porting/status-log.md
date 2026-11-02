@@ -193887,3 +193887,264 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - `settings_routes_equivalence`'s carve `REFUSED_CHEAP_LLM_ROW_GET` is RETIRED. Its three rows (`s_get_cheap_llm_bad_strategy` / `_bad_uuid` / `_non_object`) now compare whole against v4's minted row.
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
+
+## P4.D341 — the `236c04e35` KEYSTONE: the 17th–21st D23 moves in one re-dump, five boot ensures, the column plumbing, keystone memories server (lane `claude/p4.d341-keystone-d23-17-21-8976915ea`, pin `236c04e35`, 2026-11-02) — LANE RECORD
+
+**Venue.** Session opened on `main` at `8976915ea` (the orders' commit). Moved to the worktree `.claude/worktrees/p4d341` on `claude/p4.d341-keystone-d23-17-21-8976915ea`, cut from `8976915ea` (wave 0, the stacking root). `target/` was cloned from main's (`cp -cR`).
+
+**§2 probe (2026-11-02, ~10:00 CST).** v4 `main` was at `27fb3ec77`, 31 commits past the pin. The `4.11.0` bugfix branch was 53 commits on. The `lib/` / `app/` / `packages/` / `plugins/` tree was clean. The ledger records the drift past the pin (PIN REQUIRED), so the probe PASSED. Every regen ran from the lane-unique pin worktree `/tmp/qt-v4-pin-p4d341-236c04e35`.
+
+**npm cache.** `npm ci --offline` in the pin answered `ENOTCACHED` (the pin's lock wants `openai@7.45.0`, `@openrouter/sdk@1.5.9`, the v13 driver). STOP reported. The human then approved the online `npm ci` ("Yes, run it online"), which succeeded. `packages/quilltap` has no lockfile at the pin. The live tree's symlinked driver is 13.0.3, so the symlink was removed and the package installed in place: `npm install --no-package-lock`, plus `--no-save` `@napi-rs/canvas@1.0.13` / `sharp@0.35.4`. The resulting driver is 12.11.1, which opens every committed fixture.
+
+### Re-dumps (item 2)
+
+- **`fresh_schema.json`.** main 85 / mount-index 31 / llm-logs 7 tables. Deltas:
+  - `memories."keystone" INTEGER DEFAULT 0` between `consolidatedAt` and `createdAt`.
+  - `chats."turnMode" TEXT` (**bare TEXT** — re-dump answer 1) and `"storytellerInviteFilter" INTEGER DEFAULT 0` between `isPaused` and `isManuallyRenamed`.
+  - `chat_messages."storytellerBid" TEXT` between `carinaMeta` and `pascalMeta`.
+  - NEW `storyteller_rounds`, with `idx_storyteller_rounds_createdAt`.
+  - `llm_logs."storytellerRoundId" TEXT`.
+  - `chat_settings."customToolIntervention" INTEGER DEFAULT 1`.
+  - `roleplay_templates."unmarkedStyle" TEXT` and `"markdownAsterisks" INTEGER DEFAULT 1`, **before `createdAt`** (re-dump answer 2).
+  - **Unpredicted:** `characters."canDrawDiagrams" INTEGER DEFAULT 0` and `"diagramStyle" TEXT DEFAULT 'handDrawn'`. These are fresh-only and vault-managed; v4 has no migration for them. `provisioning_equivalence`'s `TABLE_COLUMN_ASYMMETRY` characters row names both. The `normalize_templates` comparison now sorts column names, because the R-A asymmetry put the two template columns in different positions on the two sides.
+- **`chat_settings_seed.json`.**
+  - `customToolIntervention: 1` at schema index 17.
+  - `smartTypographySettings` is the four-key bag.
+  - The seed test asserts cids **18 / 19 / 24**: the order's "cid 20 / 25" was 1-based (a correction).
+- **`migration_indexes.json`.**
+  - main 54 / mount-index 5 / llm-logs 6 = 65, up from 62.
+  - Gains `idx_memories_keystone` (partial), `idx_storyteller_rounds_chat` and `idx_llm_logs_storytellerRoundId`.
+  - `source.v4Commit` moves `83334b9a5` → `236c04e35`.
+  - The real-v4-boot cross-check found **0** findings.
+- **`schema-key-order.json`.** Dumped whole. Its deltas are exactly memory / chat / chat_message / roleplay_template plus the two character diagram keys. Counts: 104 → 106 and 47 → 49.
+  - Correction: the order's `humanoid` / `pronounGuidance` expectation is wrong. The file carries no nested kinds, so those keys are absent here; they are P4.D349's.
+- **`qtap-export.schema.json`.** Re-vendored at 109,559 → **115,274 B** (md5 `8665e3cbffc8db5d808fcebe4bfe302b`). `VENDORED_BYTES` moved. `qtap_schema_validate_equivalence` is green at 121 rows. Red-first: 10 of the 19 new mutation rows fail under the OLD schema. The rows were spliced as text, because re-serializing the corpus churns its formatting.
+- **Re-measured literals:**
+  - `index_table…` count: 62 → 65.
+  - `migration_index_family_repair` absent-table count 6, and its (5,1) / (0,6) counts.
+  - `host_boot_backfilled_indexes` llmLogs `created=6` (main stays 45).
+  - `host_boot_p4d324_inventory_columns` cid 66 → 68.
+  - The built-in template count: 3, in `host_builtin_seeds` and web `contract`.
+- **(1b) / (1c) / (1d).** `provisioning_equivalence` is 3/3 from the pin: LIVE == COMMITTED, V4READS_OK, DBKEY_OK. `migration_index_backfill_equivalence` is 2/2; v4's runner re-ran none of the five.
+
+### The five ensures (items 3–8; all UNSTAMPED)
+
+- **Modules:** `memory_keystone_repair`, `storyteller_mode_repair`, `llm_logs_storyteller_round_id_repair`, `roleplay_templates_unmarked_repair`, and the intervention step as the new middle of `chat_settings_4_11_repair.rs` (triggers → intervention → slash).
+- **Where they are wired:** `host.rs` after the terminal-geometry block and before P4.160. They are also in `restore_vintage_state`'s mirror-boot, `zero-rerun.ts` (+4 ids plus the planted llm-logs sibling) and `table_shape.rs`'s `llm_logs` literal.
+- **INFOs (v5's own, once per boot that changes something):**
+  - "Set the keystones in the Commonplace Book"
+  - "Cleared a dais in the Salon for the Storyteller"
+  - "Taught the wire ledger to bundle each storyteller round under one ribbon"
+  - "Set aside a shelf for the unadorned novel"
+  - "Fitted the custom-tool intervention toggle"
+- **`UNSTAMPED_COLUMN_ENSURES`.** All five are unstamped. `zero_migrations_rerun_equivalence` was red first: the planted v4 re-ran exactly the five. It is green after the port.
+- **Red-first / after:**
+
+  | family | red-first | after |
+  |---|---|---|
+  | `chat_settings_4_11_columns_ensure` | 1/1 red | green, 10 shapes |
+  | `host_boot_p4d304_chat_settings_4_11` | 2/2 red | 2/2 green |
+  | `table_shape` | 1/7 red | 7/7 green |
+  | `restore_vintage_state` | 6/10 red | 10/10 green |
+  | `memory_keystone_ensure` | NEW | green, 5 shapes |
+  | `storyteller_mode_ensure` | NEW | green, 6 shapes |
+  | `llm_logs_storyteller_round_id_ensure` | NEW | green, 5 shapes |
+  | `roleplay_templates_unmarked_ensure` | NEW | green, 5 shapes; the v4-seeder leg RAN |
+  | `host_boot_p4d341_keystone_schema` | NEW | 3/3 green |
+
+- **Mutation proofs (each reddens its family; each was restored and `cmp`-checked):**
+  - each ensure's gate inverted;
+  - the intervention step → `Ok(false)`;
+  - the template seed moved back above the ensures.
+- **`V4_LLM_LOGS_MIGRATION_WAL` (item 5, MEASURED; carve pinned both ways).** v4's llm-logs module opens the logs file with its own `journal_mode = WAL` in `shouldRun` as well as in `run`. So `rawJournalMode` = `wal` persists on every mode that has a file, even the not-needed ones. v5's header stays `delete`. `runV4Migrations` gained `llmLogsPath` and restores the journal mode.
+- **Further named carves:** `HALF_MADE_TABLE_INDEXES`, `CREATED_AT_INDEX_ON_FIRST_TOUCH`, `COLUMN_WITHOUT_INDEX_NOT_NEEDED`.
+- **`TEMPLATE_SEED_AFTER_ENSURES` (a correction).** v5 seeded built-in templates at the TOP of `seed_built_ins`, before every ensure. With the new seeder, a pre-round instance answered `no such column` and seeded nothing. The seed block moved after the P4.D341 ensures and before P4.160, matching v4's PHASE 1 → PHASE 1.25. The mutation that moves it back reddens host-boot arm (a).
+
+### Column plumbing (items 9–13)
+
+- **`chats_read`** (item 10).
+  - Spliced at 19 / 20 (`… isPaused, turnMode, storytellerInviteFilter, isManuallyRenamed …`, 105 names).
+  - **R-10 proved by the regen:** a NULL `turnMode` is **ABSENT**. Mutation: emitting `null` reddens `chats_read_equivalence` query 1.
+- **`ChatCreate.storyteller_invite_filter` (`?104`).**
+- **`ChatCreate.turn_mode` (`?105`) — a C-2 AMENDMENT.** v4's `_create` carriers (import / restore) write `turnMode`. C-2 had said "NOT bound at create"; the field exists and every non-carrier caller passes `None`.
+- **`chats_messages_read`:** `storytellerBid` is the 46th column, emitted between `carinaMeta` and `pascalMeta`, absent on NULL. The census row is `storyteller_bid_is_emitted_between_carina_meta_and_pascal_meta` F.
+- **`llm_logs`:** `storyteller_round_id` is bound by name only when `Some`, so a pre-column logs file still inserts.
+- **`chat_settings`:** the six intervention sites read an absent column as `true`. The mutation `.is_some_and` reddens the unit.
+- **Tier 2 item 27** (the dump-pinned alignment tests for the three positional readers) landed with the plumbing.
+
+### Roleplay templates (item 14)
+
+- **C-4 landed as specified:**
+  - the codec `encode_narration_delimiters` / `decode_narration_delimiters`;
+  - `UnmarkedStyle`;
+  - the Wrap optionals;
+  - the `RtCreate` / `RtUpdate` / `SeedUpdate` fields;
+  - `RT_COLUMNS` with `unmarkedStyle, markdownAsterisks` before `createdAt`.
+- `narration_storage` / `StringOrPair::storage()` retired.
+- **`builtin_templates.json`:** re-dumped as 3 rows incl. Novel. `dump-builtin-templates.ts` **took a hunk** (the narration's encoded shape).
+- **`builtin_templates_equivalence`:** red-first `state fresh diverged`; after, green on all four states (fresh 3, stale-builtin 3, user-same-name 4, legacy-builtins 4).
+- **Mutations:** decode-NULL → None, a skipped `matchCurlyQuotes`, an un-re-encoded update. Each reddens.
+- **R-6 measured.** v4's `seedBuiltInTemplates` `$set`s `updatedAt` on every boot (all three rows move on a second call). v5's seeder does the same, pinned in host-boot arm (b).
+
+### Keystone memories server (items 15–20)
+
+- **C-1:**
+  - `KeystoneSubjects<'a> { SelfSubject, About(&'a [String]) }`;
+  - `find_keystones(conn, character_id, subjects)`;
+  - `count_keystones(conn, character_id, about, exclude_id)`.
+  - Callers answer through the fallback homes `db::fallback::keystones_or_empty` / `keystones_count_or_zero`: outside strict scope, an `Err` answers `Ok([])` / `Ok(0)` with v4's `Error finding keystones` / `Error counting keystones`.
+  - `COLS` is 31. The hydrated Value carries `"keystone": Bool` between `consolidatedAt` and `createdAt`.
+- **Admission:** `check_keystone`, `KEYSTONES_PER_SUBJECT_MAX`, the fold `anchor_patch`.
+- **Maintenance:** `policy_protection` puts keystone FIRST, with `sparedBy` key order keystone, manual, digest, cold. Also:
+  - demote and consolidate skip keystones;
+  - `cascade_emptied_digests` keeps the set and does R-5;
+  - `ProtectionInput.keystone`.
+- **C-8:** `Request::MemoryList.keystone: Option<bool>`. There is no web query-string parser for this action, so the SPA sends `keystone` in the dispatch body (census row added). It also covers the create pre-check, the post-admission mark, PUT, and the three sentences.
+- **Post-admission refusal (item 19) — REACHABLE only by a race.** It is staged deterministically on both sides with an `AFTER INSERT` trigger. Three rows (`…_count`, `…_archived`, `…_not_found`) are byte-equal with the row left standing (R-3).
+- **Families green after the port:**
+  - `memories_read` (71 queries)
+  - `memories_tier2`
+  - `memories_routes`
+  - `memory_row_schema_refusal_lines`
+  - `policy_protection` (126 rows)
+  - `memory_scoring`
+  - `update_memory_tier2` (22 edits)
+  - `admission_tier3` (utc + chicago)
+  - `admission_fold_plan`
+  - `memory_retire_tier2`
+  - `memory_delete_tier2`
+  - `memory_cascade_tier2`
+  - `memory_maintenance_planning`
+  - `memory_maintenance_tier2`
+  - `memory_graph_repair_tier2`
+  - `memory_maintenance_queue_tier2`
+  - `commonplace_digest_vault_bridge_tier2`
+  - `commonplace_mirror`
+  - `memory_regenerate_jobs_tier3`
+- **Mutation proofs:** About-filter dropped, post-write 400 → 200, pre-check disabled. Each reddens exactly its rows.
+- **Carriers (item 20):**
+  - `.qtap` import `keystone ?? false` is green in `system_import_state` (`true` → 1, `null` → 0, absent → 0, `'yes'` → v4's Zod warning).
+  - backup `memories.json` is byte-equal with a keystone row.
+  - `system_restore_state` proves "a pre-round bundle reads false".
+  - No restore `rows.rs` change was needed.
+- **Findings:**
+  - (F-a) The order's "string-cell row dropped with `Memory failed validation in keystone fetch`" is **UNREACHABLE**. `keystone = 1` never matches a TEXT cell in an INTEGER-affinity column. The reachable `keystone fetch` WARN is a NULL-tier keystone (K07). The TEXT drop is pinned under `most-important fetch` (K09). `memory_row_schema_refusal_lines` gained a silence row instead. This answers Tier 2 item 25 differently from the way it was ordered.
+  - (F-b) A BLOB `keystone` cell emits a JSON object on the raw path. UNMEASURED edge, named.
+  - (F2) The R-5 mutation claim ("counting `emptied.length` flips only the sole-candidate row") is false: it also flips a pass with a kept keystone beside a doomed digest (op 16).
+  - (F3) `FoldSource` carries no keystone. That is v4-faithful; the fold reads it through `anchor_patch`.
+
+### Widening (item 22) and the completion templates (item 21)
+
+- **95 `+RAN` through v4's REAL migrations at the pin, zero residue, journal modes preserved:**
+  - intervention: 22 pairs;
+  - keystone: **23** pairs (the 21 planned plus `recall-assemble` and `semantic-search-tuning` — a correction);
+  - storyteller: 36;
+  - unmarked: 4;
+  - llm-logs siblings: 10, through the new `--llm-logs` arm.
+- **`CHATS_WITHOUT_MESSAGES_FIXTURES` (found by the workspace gate).**
+  - v4's `add-storyteller-mode-v1` `shouldRun()` needs both `chats` AND `chat_messages`. So seven committed `*-main.db` carrying `chats` alone stayed un-widened: autonomous, avatar-rolls, character-archive, photos, recall-assemble, text-replacements, wardrobe-routes.
+  - v5's fixed column list then answered `no such column: turnMode` in `avatar_rolls_tier2`, `text_replacements_web_routes` and `wardrobe_routes_equivalence`.
+  - **The fix:** two `MIGRATIONS` rows replaying the migration's `run()` ALTERs verbatim (`:55`, `:59`, the `transcriptVersion` precedent), plus a new `--only <table>.<column>` filter, so the default arm replays nothing else.
+  - The dry run named exactly the seven. The applied run left no journal residue, and the re-run reports already current.
+  - No real instance carries `chats` without `chat_messages`.
+- **Completion templates (item 21).** The three templates now hold the pin's bytes. `completion_behavior` gained `bash_completes_the_p4d341_template_lines` / `fish_and_zsh_carry_the_p4d341_template_lines` (14/14). Tier R: 422 cases, 2 failures, both `recall-replay` help (P4.D342's).
+
+### HANDOFF table
+
+| to | what |
+|---|---|
+| P4.D343 | `set_turn_mode`, the explicit round delete on chat delete, the replace-restore truncate-list entry for `storyteller_rounds`, the `LogContext` stamp; the GET projection `turnMode ?? 'rotation'` (`salon_reads` red until then) |
+| P4.D351 | the template carriers' `unmarkedStyle` / `markdownAsterisks` + encoded narration at `api/roleplay_templates.rs`, `quilltap_import/entities.rs`, `restore/orchestrator.rs`, and backup `collect.rs:257` (`system_backup` red until then) |
+| P4.D356 | the intervention PUT arm and `default_settings_columns`' consumer; `punctuationWarnings` (`chat_settings_tier2`, `settings_routes` red until then) |
+| P4.D349 | the character `canDrawDiagrams` / `diagramStyle` keys in the vault + carriers (`salon_reads`, `salon_mutations`, `system_export`, `qtap_import`, `system_restore_state` red until then) |
+| P4.D360 | the ledger's "R-AL" → **R-P** correction (the CLI `memories keystone` verb is NO-PORT under R-P of the `83334b9a5` round); the provider-SDK guard constants |
+| P4.D342 | C-1's final spellings (above); the consolidation prompt drift (`memory_maintenance_consolidate_tier3` red, F1); `recall_replay_help.txt` (Tier R) |
+| P4.D345 | `qtap-custom-tool.schema.json` re-vendor (`custom_tool_schema_embed_guard`, `public_schemas_vendor_guard` red until then) |
+| P4.D355 | `log_entries` in backup / restore preview (`system_backup`, `system_restore` red until then) |
+| P4.D354 | text extraction on import (`system_import_state` minted-id shifts) |
+| P4.D359 | C-8's wire for the memory SPA (`keystone` in the `memory-list` body) |
+
+### R-3 filing DRAFT (Tier 2 item 26 — for the human's go-ahead; NOT filed)
+
+> **Title:** `POST /api/v1/memories` answers 400 after it has already written the memory when the post-admission keystone mark is refused
+>
+> **What happens:** A create with `memory.keystone: true` passes the pre-check (`countKeystones < 5`), the memory goes through admission and is written, and the keystone mark is applied afterwards. If the mark is refused — another request filled the subject's five slots in between, or admission's write left the row cold or gone — the route answers **400** (`The memory was saved, but not as a keystone: …` / `The memory was saved, but could not be marked a keystone.`) while the memory row stands. A client treating 400 as "nothing written" retries and saves a duplicate.
+>
+> **Reproduce:** only reachable by a race at the limit (sequentially the pre-check and admission make it impossible). Stage it with an `AFTER INSERT` trigger on `memories` that marks five self keystones for the same character, then `POST` a keystone memory: the response is 400 and the row exists.
+>
+> **Expected:** a 2xx carrying the saved memory with `keystone: false` and a warning, or a refusal that rolls back the write.
+
+### Union-expected reds (the workspace gate, 2026-11-02)
+
+The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
+
+- **Mine, fixed after the gate and green by name:**
+  - `get_messages_caller_census`: the new unit-test row, totals (79, 7) → (80, 7).
+  - `avatar_rolls_tier2` (3/3), `text_replacements_web_routes`, `wardrobe_routes_equivalence`'s `p4d316_rollback_route_lines_are_v4s`: the seven-fixture re-widen.
+- **The re-widen's ten oracle families, regenerated from the pin** (sweep, `/tmp/p4d341/sweep2-results.json`): 7 ok (`archive_reencrypt_tier2`, `autonomous_rooms_routes`, `avatar_rolls_tier2`, `photos_routes`, `text_replacements_routes`, `wardrobe_rollback_tier2`, `wardrobe_wear_history`). Three reds, every one sibling-owned and none in a column the widen added:
+  - `character_archive_tier2`: the archive bundle's character `canDrawDiagrams` / `diagramStyle` / `physicalDescription.humanoid` (P4.D349);
+  - `wardrobe_routes_equivalence`: the item body's `pronounGuidance` on seven cases (P4.D349);
+  - `recall_assemble_tier3`: the archive assemble trace's `circleHeld` / `circleRendered` / `circleMembers` / `circleTokenBudget` (P4.D342's inner circle).
+- **Env-block, green by name:** `update_memory_tier2` — the shared admission fixture is rebuilt with re-minted ids by several recipes; regenerated lane-privately, green.
+- **Sibling-owned, by family:**
+
+  | family | cause | owner |
+  |---|---|---|
+  | `cli_differential` | `recall-replay` help ×2 | P4.D342 |
+  | `chat_settings_tier2`, `settings_routes` | `punctuationWarnings` | P4.D356 / P4.D352 |
+  | `salon_reads` | `turnMode ?? 'rotation'` projection | P4.D343 |
+  | `salon_reads`, `salon_mutations`, `system_export`, `qtap_import`, `system_restore_state` | character `diagramStyle` / vault keys | P4.D349 |
+  | `system_backup` | log-entries | P4.D355 |
+  | `system_backup` | template carrier | P4.D351 |
+  | `system_backup` | punctuation | P4.D356 |
+  | `system_restore` | `logEntries` preview | P4.D355 |
+  | `system_import_execute_state` | text extraction, minted-id shift | P4.D354 |
+  | `custom_tool_schema_embed_guard`, `public_schemas_vendor_guard` | v4 changed `qtap-custom-tool.schema.json` | P4.D345 |
+  | `provider_sdk_version_guard` | the pin's `openai` 7.45 / `@openrouter/sdk` 1.5.9 (and the plugin installs) | P4.D360 |
+  | `memory_maintenance_consolidate_tier3` (withheld from the gate env) | consolidation prompt drift | P4.D342 |
+  | `recall_assemble_tier3` (pin regen) | inner-circle trace keys | P4.D342 |
+  | `character_archive_tier2`, `wardrobe_routes_equivalence` (pin regen) | `diagramStyle` / `humanoid` / `pronounGuidance` | P4.D349 |
+
+### 💸 Dogfood rows (the keystone survey §11)
+
+1. **First boot of a v4-migrated Friday copy:** five NO-OP ensures, `/health` not degraded, `storytellerRoundId` present.
+2. **A pre-`8cb584eff` copy:**
+   - five INFOs once, the four indexes present, the second boot silent;
+   - v4 at the pin, opening the same copy afterwards, stamps NO new `migrations_state` row.
+3. **Built-ins after the first boot:**
+   - Standard `"*"` / NULL / 1;
+   - Quilltap RP `["[","]"]` / NULL / 1;
+   - Novel `null` / `{"style":"qt-roleplay-plain",…}` / 0;
+   - a Quilltap-RP chat still renders bracket narration.
+4. **Keystones on the running copy:**
+   - `PUT /api/v1/memories/<id> {"keystone": true}` marks one;
+   - `?keystone=true` lists it;
+   - the sixth is refused with v4's sentence;
+   - a cold row is refused with the archived sentence.
+5. 💸 **Maintenance on the keystone's holder:** never folded, demoted or digested; the kept-digest DEBUG; the chat wipe's `sparedBy` key order.
+6. **Carriers:** a full backup → `replace` restore and a `.qtap` round trip keep every keystone; a pre-round bundle reads `false`.
+7. **CLI:** `quilltap memories keystone …` answers the standing refusal, while bash completion offers `keystone` / `--keystone` / `--off`.
+
+### Tier 2 / Tier 3
+
+- **Tier 2:**
+  - Item 26: DRAFT above.
+  - Item 27: LANDED.
+  - Item 25: answered by F-a; the ordered shape is unreachable.
+  - **Item 24 (the first-boot seed rewrite on a real `migration-vintage/` copy): OPEN.** Its second-boot half is pinned by host-boot arm (b) on a synthetic pre-round instance.
+- **Tier 3:** every deferral stands as ordered (CLI verb NO-PORT under R-P; v4's migration log lines; the llm-logs opener → `V4_LLM_LOGS_MIGRATION_WAL`; the P4.D343 / D356 / D351 / D342 / D360 pieces).
+
+**Gate (final tree):** fmt clean; clippy clean on both feature sets; the workspace gate as above, with every non-standing red either fixed (green by name) or classified to its owning sibling.
+
+**Regen recipes (lane-authored).**
+- The seven-fixture re-widen, from the pin with Node 24:
+
+      cd /tmp/qt-v4-pin-p4d341-236c04e35 && F=<v5w>/crates/quilltap-web/tests/fixtures && \
+        npx tsx <v5w>/harness/oracle/fixtures/migrate-memories-fixture-columns.ts \
+        --only chats.turnMode --only chats.storytellerInviteFilter \
+        $F/{autonomous,avatar-rolls,character-archive,photos,recall-assemble,text-replacements,wardrobe-routes}-main.db
+
+  Add `--report-only` first.
+- Every other family regenerates through the sweep driver from the pin (`--run-all --force --v4 <pin> --v5w <spaceless worktree> --families …`), with the recipes in each test header.
+
+**Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).

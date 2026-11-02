@@ -18,6 +18,14 @@
 //!   (real wall-clock both sides) masked;
 //! - the end state of `memories` (minted `updatedAt` / `supersededAt` masked).
 //!
+//! P4.D341 (v4 `236c04e35`), holder H5: a chat wipe + preview sparing
+//! keystones (`sparedBy` now `keystone, manual, digest, cold`); a keystone
+//! digest KEPT though its last member retires (DEBUG `Keystone digest kept
+//! though its last member retires`) as the SOLE emptied candidate —
+//! `digestsRetiredWithLastMember` 0 (R-5: `added` counts only doomed rows,
+//! and the pass loop breaks when nothing grew); a kept keystone digest beside
+//! an ordinary digest that retires (1).
+//!
 //! v4's store is LOADED for every holder before the first op (L-2,
 //! `MEMORY_INDEX_ALWAYS_LOADED`), so the index's counts and its `Re-stamped
 //! vector tiers` lines meet v5's loaded answers. v4's announcement runs inside

@@ -34,7 +34,9 @@ const BACKGROUND_JOBS_DDL: &str = "CREATE TABLE background_jobs (\
 /// The `chat_messages` + `memories` tables the enriched chat-list read (P4.6a)
 /// counts from, in the LEGACY shape — no `routeTrail`. `make_instance` adds it
 /// (with `chats.cycleOrderParticipantIds`) through the shared ensure; the legacy
-/// builder deliberately does not.
+/// builder deliberately does not. (P4.D341: `aboutCharacterId` — present on
+/// every real v4 `memories` table since the initial schema — so the keystone
+/// ensure's partial index on `(characterId, aboutCharacterId)` can be made.)
 const LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL: &str =
     "CREATE TABLE IF NOT EXISTS chat_messages (chatId TEXT, id TEXT, type TEXT, role TEXT, \
      content TEXT, rawResponse TEXT, tokenCount TEXT, promptTokens TEXT, completionTokens TEXT, \
@@ -47,7 +49,7 @@ const LEGACY_CHAT_MESSAGES_AND_MEMORIES_DDL: &str =
      description TEXT, totalTokens TEXT, provider TEXT, modelName TEXT, estimatedCostUSD TEXT, \
      createdAt TEXT, isSilentMessage TEXT, confirmed TEXT, confirmationChecked TEXT, \
      confirmationRevised TEXT, confirmationNotes TEXT, confirmationOriginalContent TEXT);\
-     CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, characterId TEXT, chatId TEXT, createdAt TEXT, updatedAt TEXT);";
+     CREATE TABLE IF NOT EXISTS memories (id TEXT PRIMARY KEY, characterId TEXT, aboutCharacterId TEXT, chatId TEXT, createdAt TEXT, updatedAt TEXT);";
 
 /// The full `chats` column set, loose types (the enclave self-tests' shape) —
 /// **minus** the two `78b381a96` columns, which

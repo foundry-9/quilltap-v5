@@ -596,6 +596,211 @@
     0.0
    ],
    "aboutCharacterId": "c0000000-0000-4000-8000-000000000016"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000030",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Standing fact 1 about Sable.",
+   "summary": "Sable fact 1",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000031",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Standing fact 2 about Sable.",
+   "summary": "Sable fact 2",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000032",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Standing fact 3 about Sable.",
+   "summary": "Sable fact 3",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000033",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Standing fact 4 about Sable.",
+   "summary": "Sable fact 4",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000034",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Standing fact 5 about Sable.",
+   "summary": "Sable fact 5",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000035",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Sable hums when nervous.",
+   "summary": "Sable hums",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000036",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Sable once lived by the mill.",
+   "summary": "Sable by the mill",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c",
+   "tier": "cold"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000037",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "Tamsin keeps the ledger.",
+   "summary": "Tamsin's ledger",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002d",
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000038",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "The holder was born in winter.",
+   "summary": "Born in winter",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ]
+  },
+  {
+   "id": "a0000000-0000-4000-8000-000000000039",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "A standing fact 1 about the holder.",
+   "summary": "Holder fact 1",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000003a",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "A standing fact 2 about the holder.",
+   "summary": "Holder fact 2",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000003b",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "A standing fact 3 about the holder.",
+   "summary": "Holder fact 3",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000003c",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "A standing fact 4 about the holder.",
+   "summary": "Holder fact 4",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "keystone": true
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000003d",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "content": "The holder dislikes rain.",
+   "summary": "Dislikes rain",
+   "vector": [
+    0.0,
+    0.6,
+    0.8,
+    0.0
+   ],
+   "aboutCharacterId": "c0000000-0000-4000-8000-00000000002b"
+  },
+  {
+   "id": "a0000000-0000-4000-8000-00000000003e",
+   "characterId": "c0000000-0000-4000-8000-00000000002e",
+   "content": "Wren keeps the lighthouse lamp trimmed.",
+   "summary": "Wren trims the lamp",
+   "vector": [
+    0.87,
+    0.493052,
+    0.0,
+    0.0
+   ],
+   "importance": 0.5,
+   "reinforcementCount": 2,
+   "reinforcedImportance": 0.55,
+   "relatedMemoryIds": [],
+   "keystone": true
   }
  ],
  "legs": [
@@ -1385,6 +1590,27 @@
        0.0
       ]
      }
+    },
+    {
+     "op": "admit",
+     "name": "reinforce_keystone_writes_no_footnote",
+     "row": {
+      "characterId": "c0000000-0000-4000-8000-00000000002e",
+      "content": "Wren keeps the lighthouse lamp trimmed with Mariana on July 3.",
+      "summary": "Wren and Mariana trim the lamp",
+      "source": "AUTO",
+      "importance": 0.5,
+      "entities": [
+       "Mariana"
+      ],
+      "narrativeTime": "the third summer",
+      "_vector": [
+       1.0,
+       0.0,
+       0.0,
+       0.0
+      ]
+     }
     }
    ]
   },
@@ -1575,6 +1801,92 @@
    "memoryId": "a0000000-0000-4000-8000-000000000029",
    "patch": {
     "chatId": null
+   }
+  },
+  {
+   "name": "keystone_archived_refused",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000036",
+   "patch": {
+    "keystone": true
+   }
+  },
+  {
+   "name": "keystone_sixth_refused",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000035",
+   "patch": {
+    "keywords": [
+     "sixth"
+    ],
+    "keystone": true
+   }
+  },
+  {
+   "name": "keystone_move_onto_full_subject",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000037",
+   "patch": {
+    "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c"
+   }
+  },
+  {
+   "name": "keystone_already_no_move",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000030",
+   "patch": {
+    "keywords": [
+     "still"
+    ],
+    "keystone": true
+   }
+  },
+  {
+   "name": "keystone_same_subject_not_a_move",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000031",
+   "patch": {
+    "aboutCharacterId": "c0000000-0000-4000-8000-00000000002c"
+   }
+  },
+  {
+   "name": "keystone_unmark",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000032",
+   "patch": {
+    "keystone": false
+   }
+  },
+  {
+   "name": "keystone_mark_after_unmark",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000035",
+   "patch": {
+    "keystone": true
+   }
+  },
+  {
+   "name": "keystone_self_subject",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000038",
+   "patch": {
+    "keystone": true
+   }
+  },
+  {
+   "name": "keystone_self_move_excludes_itself",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-000000000038",
+   "patch": {
+    "aboutCharacterId": "c0000000-0000-4000-8000-00000000002b"
+   }
+  },
+  {
+   "name": "keystone_self_sixth_refused",
+   "characterId": "c0000000-0000-4000-8000-00000000002b",
+   "memoryId": "a0000000-0000-4000-8000-00000000003d",
+   "patch": {
+    "keystone": true
    }
   }
  ],

@@ -14,6 +14,16 @@
 //! projection (LR-6: the hot digest's bucket, both buckets when the subject
 //! moves; a cold digest and a plain row mirror nothing).
 //!
+//! P4.D341 (v4 `236c04e35`): the keystone rule (`checkKeystone`, run FIRST)
+//! — an archived row refused, a sixth keystone about one subject refused, a
+//! subject MOVE onto a full subject refused, an already-keystone row edited
+//! with no move (no check), a same-subject `aboutCharacterId` (not a move),
+//! an unmark (always allowed) and a re-mark into the freed slot, the self
+//! subject (`aboutCharacterId` NULL or the holder) incl. a move onto the
+//! holder's own id that must EXCLUDE the row itself, and a sixth self
+//! keystone refused; `keystone-refused` results + the DEBUG `Refusing memory
+//! edit: keystone rule` (every other edit is its silence leg).
+//!
 //! Recipe (canonical; the fixture pair is the admission family's):
 //!   N=$HOME/.nvm/versions/node/v24.13.1/bin
 //!   V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -65,6 +75,7 @@ fn patch_of(v: &Value) -> MemoryEditPatch {
         about_character_id: nullable("aboutCharacterId"),
         chat_id: nullable("chatId"),
         related_memory_ids: opt_strings(v, "relatedMemoryIds"),
+        keystone: v.get("keystone").and_then(Value::as_bool),
     }
 }
 
@@ -75,6 +86,9 @@ fn result_json(r: &UpdateMemoryResult) -> Value {
         UpdateMemoryResult::NotFound => json!({ "ok": false, "reason": "not-found" }),
         UpdateMemoryResult::InvalidRelated { invalid_ids } => {
             json!({ "ok": false, "reason": "invalid-related", "invalidIds": invalid_ids })
+        }
+        UpdateMemoryResult::KeystoneRefused { message } => {
+            json!({ "ok": false, "reason": "keystone-refused", "message": message })
         }
         UpdateMemoryResult::EmbeddingFailed { message } => {
             json!({ "ok": false, "reason": "embedding-failed", "message": message })

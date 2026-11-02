@@ -81,6 +81,8 @@ const PLANTABLE_COLUMNS = new Set([
   'createdAt',
   'participantId',
   'routeTrail',
+  // P4.D341: + `storytellerBid` (v4 `b15fe9404`) — a valid bid read back.
+  'storytellerBid',
 ]);
 interface Spec {
   testPepperBase64: string;

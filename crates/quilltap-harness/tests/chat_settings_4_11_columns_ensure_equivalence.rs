@@ -1,16 +1,18 @@
 //! P4.D304 (C1-4) — the two 4.11 `chat_settings` boot ensures
 //! (`db::chat_settings_4_11_repair`) against v4's REAL
 //! `add-custom-tool-triggers-field-v1` and `add-composer-slash-commands-field-v1`
-//! in seven shapes (the oracle case `harness/oracle/cases/chat-settings-4-11-
+//! in ten shapes (the oracle case `harness/oracle/cases/chat-settings-4-11-
 //! columns-ensure.ts` builds the base files; its header names them): T-A / T-B /
-//! T-C for the triggers column, S-A / S-B / S-C for the slash column, and the
-//! pair-order mode D (BOTH absent — v4 runs both in registration order, v5 runs
-//! its chain). A v5-only D-rev leg re-runs the D base through the chain and
+//! T-C for the triggers column, S-A / S-B / S-C for the slash column, I-A / I-B
+//! / I-C for P4.D341's intervention column (`add-custom-tool-intervention-
+//! field-v1`, v4 `839575d89` — the TWENTIETH D23 move), and the order mode D
+//! (ALL THREE absent — v4 runs the three in registration order, triggers →
+//! intervention → slash; v5 runs its chain). A v5-only D-rev leg re-runs the D base through the chain and
 //! asserts the appended order outright.
 //!
 //! Comparands per shape, byte-exact: `PRAGMA table_info` (order included —
-//! mode D's order is the point), `sqlite_master.sql`, every row's two raw cells
-//! (the DEFAULT back-fill: `0` / `1`, never NULL). v4's report is asserted per
+//! mode D's order is the point), `sqlite_master.sql`, every row's three raw
+//! cells (the DEFAULT back-fill: `0` / `1` / `1`, never NULL). v4's report is asserted per
 //! mode (`+RAN` on the A modes and D only), so no mode can go vacuous. No
 //! `migrations_state` comparand: neither side stamps (R-B).
 //!
@@ -29,8 +31,9 @@
 use std::path::Path;
 
 use quilltap_core::db::chat_settings_4_11_repair::{
-    ensure_chat_settings_composer_slash_commands, ensure_chat_settings_custom_tool_triggers,
-    run_chat_settings_4_11_ensures, MIGRATION_ID_SLASH, MIGRATION_ID_TRIGGERS,
+    ensure_chat_settings_composer_slash_commands, ensure_chat_settings_custom_tool_intervention,
+    ensure_chat_settings_custom_tool_triggers, run_chat_settings_4_11_ensures,
+    MIGRATION_ID_INTERVENTION, MIGRATION_ID_SLASH, MIGRATION_ID_TRIGGERS,
 };
 use quilltap_core::db::Writer;
 use rusqlite::Connection;
@@ -75,7 +78,8 @@ fn snapshot(conn: &Connection) -> (Value, Value, Value) {
         .unwrap();
     let mut stmt = conn
         .prepare(
-            "SELECT id, \"customToolTriggers\", \"composerSlashCommands\" FROM chat_settings ORDER BY id",
+            "SELECT id, \"customToolTriggers\", \"customToolIntervention\", \"composerSlashCommands\" \
+             FROM chat_settings ORDER BY id",
         )
         .unwrap();
     let rows: Vec<Value> = stmt
@@ -83,7 +87,8 @@ fn snapshot(conn: &Connection) -> (Value, Value, Value) {
             Ok(json!({
                 "id": r.get::<_, String>(0)?,
                 "triggers": r.get::<_, Option<i64>>(1)?,
-                "slash": r.get::<_, Option<i64>>(2)?,
+                "intervention": r.get::<_, Option<i64>>(2)?,
+                "slash": r.get::<_, Option<i64>>(3)?,
             }))
         })
         .unwrap()
@@ -93,7 +98,7 @@ fn snapshot(conn: &Connection) -> (Value, Value, Value) {
 }
 
 #[test]
-fn the_two_column_ensures_match_v4s_migrations_in_seven_shapes() {
+fn the_three_column_ensures_match_v4s_migrations_in_ten_shapes() {
     let (Some(oracle_path), Some(dir)) = (
         std::env::var_os("QT_ORACLE_CS411_ENSURE"),
         std::env::var_os("QT_FIXTURE_CS411_ENSURE_DIR"),
@@ -120,8 +125,13 @@ fn the_two_column_ensures_match_v4s_migrations_in_seven_shapes() {
         let expected_ran: &[&str] = match mode.as_str() {
             "T-A" => &[MIGRATION_ID_TRIGGERS],
             "S-A" => &[MIGRATION_ID_SLASH],
-            "D" => &[MIGRATION_ID_TRIGGERS, MIGRATION_ID_SLASH],
-            "T-B" | "T-C" | "S-B" | "S-C" => &[],
+            "I-A" => &[MIGRATION_ID_INTERVENTION],
+            "D" => &[
+                MIGRATION_ID_TRIGGERS,
+                MIGRATION_ID_INTERVENTION,
+                MIGRATION_ID_SLASH,
+            ],
+            "T-B" | "T-C" | "S-B" | "S-C" | "I-B" | "I-C" => &[],
             other => panic!("unknown mode {other}"),
         };
         if expected_ran.is_empty() {
@@ -145,6 +155,9 @@ fn the_two_column_ensures_match_v4s_migrations_in_seven_shapes() {
             "S-A" | "S-B" | "S-C" => {
                 vec![ensure_chat_settings_composer_slash_commands(w.connection()).expect("ensure")]
             }
+            "I-A" | "I-B" | "I-C" => {
+                vec![ensure_chat_settings_custom_tool_intervention(w.connection()).expect("ensure")]
+            }
             _ => {
                 run_chat_settings_4_11_ensures(w.connection()).expect("the chain");
                 Vec::new()
@@ -166,17 +179,21 @@ fn the_two_column_ensures_match_v4s_migrations_in_seven_shapes() {
             let sql = sql.as_str().unwrap();
             assert!(
                 sql.ends_with(
-                    ", \"customToolTriggers\" INTEGER DEFAULT 0, \"composerSlashCommands\" INTEGER DEFAULT 1)"
+                    ", \"customToolTriggers\" INTEGER DEFAULT 0, \"customToolIntervention\" INTEGER DEFAULT 1, \"composerSlashCommands\" INTEGER DEFAULT 1)"
                 ),
                 "{sql}"
+            );
+            assert!(
+                line.contains(r#"\"customToolIntervention\" INTEGER DEFAULT 1"#),
+                "marker"
             );
         }
         modes.push(mode);
     }
     assert_eq!(
         modes,
-        ["T-A", "T-B", "T-C", "S-A", "S-B", "S-C", "D"],
+        ["T-A", "T-B", "T-C", "S-A", "S-B", "S-C", "I-A", "I-B", "I-C", "D"],
         "every shape ran"
     );
-    eprintln!("OK: the two 4.11 chat_settings ensures matched v4 in shapes {modes:?}.");
+    eprintln!("OK: the three 4.11 chat_settings ensures matched v4 in shapes {modes:?}.");
 }

@@ -89,6 +89,7 @@ pub const STRUCTURAL_TABLES: &[StructuralTable] = &[
             "chatId",
             "characterId",
             "autonomousRunId",
+            "storytellerRoundId",
             "provider",
             "modelName",
             "connectionProfileId",

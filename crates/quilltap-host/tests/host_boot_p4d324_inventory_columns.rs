@@ -194,7 +194,8 @@ async fn a_fresh_instance_boots_silent_with_the_columns_at_dump_positions() {
     let lines = boot(dir.path());
     assert!(ours(&lines).is_empty(), "{lines:#?}");
     let (cid, ty, dflt, _) = column(&data, "chats", "equippedInventory").unwrap();
-    assert_eq!((cid, ty.as_str(), dflt), (66, "TEXT", None));
+    // P4.D341: 66 → 68 (the two Storyteller columns spliced after `isPaused`).
+    assert_eq!((cid, ty.as_str(), dflt), (68, "TEXT", None));
     let (cid, ty, dflt, _) = column(&data, "characters", "canManageInventory").unwrap();
     assert_eq!((cid, ty.as_str(), dflt), (34, "INTEGER", None));
     assert!(stamped(&data).is_empty());

@@ -1096,11 +1096,18 @@ fn restore_on_writer(
                 delimiters: de_or_default(t, "delimiters"),
                 rendering_patterns: de_or_default(t, "renderingPatterns"),
                 dialogue_detection: de_opt(t, "dialogueDetection"),
-                narration_delimiters: de_opt(t, "narrationDelimiters")
-                    // v4's Zod default for `narrationDelimiters` is `"*"`.
-                    .unwrap_or_else(|| {
-                        crate::db::roleplay_templates::StringOrPair::Single("*".to_string())
-                    }),
+                narration_delimiters: Some(
+                    de_opt(t, "narrationDelimiters")
+                        // v4's Zod default for `narrationDelimiters` is `"*"`.
+                        .unwrap_or_else(|| {
+                            crate::db::roleplay_templates::StringOrPair::Single("*".to_string())
+                        }),
+                ),
+                // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351
+                // owns the carrier's `unmarkedStyle` / `markdownAsterisks` / null
+                // narration.
+                unmarked_style: None,
+                markdown_asterisks: true,
             };
             warn_row!(
                 w,
@@ -1338,6 +1345,9 @@ fn restore_on_writer(
                     chat_id: os(log, "chatId"),
                     character_id: os(log, "characterId"),
                     autonomous_run_id: os(log, "autonomousRunId"),
+                    // P4.D341: a data-only carrier column (dropped on a
+                    // pre-column target by `create_for_restore`).
+                    storyteller_round_id: os(log, "storytellerRoundId"),
                     provider: s(log, "provider"),
                     model_name: s(log, "modelName"),
                     connection_profile_id: os(log, "connectionProfileId"),

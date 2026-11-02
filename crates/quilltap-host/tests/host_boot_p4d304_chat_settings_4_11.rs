@@ -9,8 +9,12 @@
 //!     INFOs land in order, none of v4's migration lines appear, and nothing
 //!     is stamped (UNSTAMPED, R-B).
 //! (b) The SECOND boot logs neither.
-//! (c) A fresh `setup` instance (the columns at cid 18 / 23 from the dump)
-//!     logs neither on its first boot.
+//! (c) A fresh `setup` instance (the columns at cid 18 / 19 / 24 from the
+//!     dump) logs none on its first boot.
+//!
+//! **P4.D341:** the chain's NEW MIDDLE step — `customToolIntervention` (v4
+//! `839575d89`, the TWENTIETH D23 move): (a) drops all THREE and the THREE
+//! INFOs land in v4's registration order (triggers, intervention, slash).
 //!
 //! The chain runs inside `Db::write` (the writer thread), so the capture is
 //! the process-wide subscriber, as `host_boot_p4d288_ensures`.
@@ -29,19 +33,22 @@ const MAIN: &str = "quilltap.db";
 
 static SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
-const EXPECTED: [&str; 2] = [
+const EXPECTED: [&str; 3] = [
     "INFO quilltap::boot Fitted the custom-tool trigger toggle migrationId=add-custom-tool-triggers-field-v1 columnAdded=true",
+    "INFO quilltap::boot Fitted the custom-tool intervention toggle migrationId=add-custom-tool-intervention-field-v1 columnAdded=true",
     "INFO quilltap::boot Fitted the composer slash-command toggle migrationId=add-composer-slash-commands-field-v1 columnAdded=true",
 ];
 
-const IDS: [&str; 2] = [
+const IDS: [&str; 3] = [
     "add-custom-tool-triggers-field-v1",
+    "add-custom-tool-intervention-field-v1",
     "add-composer-slash-commands-field-v1",
 ];
 
 /// v4's migration lines (NO-PORT) — none may appear.
-const V4_LINES: [&str; 3] = [
+const V4_LINES: [&str; 4] = [
     "Added customToolTriggers column to chat_settings table",
+    "Added customToolIntervention column to chat_settings table",
     "Added composerSlashCommands column to chat_settings table",
     "Adding column",
 ];
@@ -96,7 +103,8 @@ fn columns(data: &Path) -> Vec<(i64, String, String, Option<String>)> {
         .connection()
         .prepare(
             "SELECT cid, name, type, dflt_value FROM pragma_table_info('chat_settings') \
-             WHERE name IN ('customToolTriggers', 'composerSlashCommands') ORDER BY cid",
+             WHERE name IN ('customToolTriggers', 'customToolIntervention', 'composerSlashCommands') \
+             ORDER BY cid",
         )
         .unwrap();
     let rows = stmt
@@ -152,11 +160,12 @@ async fn a_pre_4_11_instance_gains_both_columns_in_v4s_order() {
         w.connection()
             .execute_batch(
                 "ALTER TABLE \"chat_settings\" DROP COLUMN \"customToolTriggers\"; \
+                 ALTER TABLE \"chat_settings\" DROP COLUMN \"customToolIntervention\"; \
                  ALTER TABLE \"chat_settings\" DROP COLUMN \"composerSlashCommands\";",
             )
             .unwrap();
     }
-    assert!(columns(&data).is_empty(), "the plant took both away");
+    assert!(columns(&data).is_empty(), "the plant took all three away");
 
     let lines = boot(dir.path());
     assert_eq!(ours(&lines), EXPECTED, "{lines:#?}");
@@ -167,7 +176,7 @@ async fn a_pre_4_11_instance_gains_both_columns_in_v4s_order() {
         );
     }
     // Appended LAST (the migrations' position), triggers first, v4's clauses.
-    assert_eq!(column_count(&data), 39);
+    assert_eq!(column_count(&data), 40);
     assert_eq!(
         columns(&data),
         [
@@ -179,6 +188,12 @@ async fn a_pre_4_11_instance_gains_both_columns_in_v4s_order() {
             ),
             (
                 38,
+                "customToolIntervention".to_string(),
+                "INTEGER".to_string(),
+                Some("1".to_string())
+            ),
+            (
+                39,
                 "composerSlashCommands".to_string(),
                 "INTEGER".to_string(),
                 Some("1".to_string())
@@ -187,15 +202,16 @@ async fn a_pre_4_11_instance_gains_both_columns_in_v4s_order() {
     );
     {
         let w = Writer::open_writable(&data.join(MAIN), PEPPER).unwrap();
-        let cells: (i64, i64) = w
+        let cells: (i64, i64, i64) = w
             .connection()
             .query_row(
-                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings",
+                "SELECT customToolTriggers, customToolIntervention, composerSlashCommands \
+                 FROM chat_settings",
                 [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .unwrap();
-        assert_eq!(cells, (0, 1), "the seeded row reads the DDL defaults");
+        assert_eq!(cells, (0, 1, 1), "the seeded row reads the DDL defaults");
     }
     assert!(stamped(&data).is_empty(), "UNSTAMPED (R-B)");
 
@@ -221,7 +237,8 @@ async fn a_fresh_instance_boots_silent_with_the_columns_at_schema_positions() {
             .collect::<Vec<_>>(),
         [
             (18, "customToolTriggers".to_string()),
-            (23, "composerSlashCommands".to_string()),
+            (19, "customToolIntervention".to_string()),
+            (24, "composerSlashCommands".to_string()),
         ]
     );
     assert!(stamped(&data).is_empty());

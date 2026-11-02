@@ -344,6 +344,10 @@ async function main(): Promise<void> {
     mem(uuid('d0000000', 13), { importance: 0.25, reinforcedImportance: 0.25, createdAt: iso(NOW_MS - 200 * DAY) }),
     mem(uuid('d0000000', 14), { importance: 0.25, reinforcedImportance: 0.25, createdAt: iso(NOW_MS - 300 * DAY) }),
     mem(uuid('d0000000', 15), { importance: 0.25, reinforcedImportance: 0.25, createdAt: iso(NOW_MS - 250 * DAY) }),
+    // P4.D341 (v4 `236c04e35`): a keystone AUTO row is never demotable and is
+    // counted in `protected`; an explicit `keystone: false` is ordinary.
+    mem(uuid('d0000000', 16), { keystone: true, importance: 0.05, reinforcedImportance: 0.05, createdAt: iso(NOW_MS - 400 * DAY) }),
+    mem(uuid('d0000000', 17), { keystone: false, importance: 0.06, reinforcedImportance: 0.06, createdAt: iso(NOW_MS - 400 * DAY) }),
   ];
   for (const cap of [100, 8, 5, 3, 2.5, 0, 9, 12, 11]) {
     emit({ kind: 'planDemotion', rows: demoteRows.map(rowJson), cap, nowMs: NOW_MS, out: demote.planDemotion(demoteRows as never, cap, NOW_MS) });
@@ -451,6 +455,12 @@ async function main(): Promise<void> {
     mem(uuid('b0000000', 14), { tier: 'cold' }), // demoted, no embedding
     mem(uuid('b0000000', 15), { embedding: unit([1, 0, 0, 0]), tier: 'cold', createdAt: iso(NOW_MS - 1 * DAY) }),
     mem(uuid('b0000000', 16), { embedding: unit([1, 0, 0, 0]), relatedMemoryIds: ['x', 'y'], aboutCharacterId: 'c0000000-0000-4000-8000-000000000003' }),
+    // P4.D341: a keystone is never a member and never a seed — counted in
+    // `rowsLoaded` and the row index, then skipped (an AUTO candidate, a hot
+    // digest that would seed, a demoted row that would be a candidate).
+    mem(uuid('b0000000', 17), { embedding: unit([1, 0, 0, 0]), keystone: true, relatedMemoryIds: ['k'] }),
+    mem(uuid('b0000000', 18), { embedding: unit([1, 0, 0, 0]), source: 'CONSOLIDATED', keystone: true }),
+    mem(uuid('b0000000', 19), { embedding: unit([1, 0, 0, 0]), tier: 'cold', keystone: true }),
   ];
   const describeBuckets = (b: ReturnType<typeof consolidate.bucketCandidates>) => ({
     rowIndex: Array.from(b.rowIndex.entries()),

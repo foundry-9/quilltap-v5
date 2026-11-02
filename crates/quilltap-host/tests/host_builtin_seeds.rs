@@ -63,15 +63,16 @@ async fn assemble_seeds_and_adopts_builtins() {
 
     let db = core.db().expect("engine ready");
 
-    // Family 1: exactly the two built-in templates (drift-updated, not doubled).
+    // Family 1: exactly the three built-in templates (drift-updated, not
+    // doubled; P4.D341 — v4 `778b97b2b`'s Novel is the third).
     assert_eq!(
         count(
             &db,
             true,
             "SELECT count(*) FROM roleplay_templates WHERE isBuiltIn = 1"
         ),
-        2,
-        "expected exactly 2 built-in roleplay templates after re-seed"
+        3,
+        "expected exactly 3 built-in roleplay templates after re-seed"
     );
     // Family 2: exactly the three mount stores (ADOPTED, not duplicated).
     assert_eq!(

@@ -19,6 +19,11 @@
 //!
 //! Non-finite numbers ride as strings (`"NaN"`, `"Infinity"`).
 //!
+//! P4.D341 (v4 `236c04e35`): a KEYSTONE survivor (no footnotes, an empty
+//! patch, links + the delta + `reinforcedAt` kept), an explicit `keystone:
+//! false` survivor (ordinary), and a keystone ABSORBED into an ordinary
+//! survivor (ordinary — `FoldSource` carries no keystone).
+//!
 //! Generate the oracle output, then run:
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
 //!   cd ~/source/quilltap-server
@@ -148,6 +153,6 @@ fn admission_fold_plan_matches_oracle() {
         failures.join("\n")
     );
     // Corpus drift guard: the case's exact row counts.
-    assert_eq!((constants, folds), (1, 50), "row counts (constant, fold)");
+    assert_eq!((constants, folds), (1, 53), "row counts (constant, fold)");
     eprintln!("OK: admission-fold-plan matched oracle ({constants} constant, {folds} fold rows).");
 }

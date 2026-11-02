@@ -198,7 +198,46 @@ mod tests {
             "characterAvatars",
             "and precedes characterAvatars"
         );
-        assert_eq!(t.len(), 104);
+        // P4.D341: 104 → 106 (the two Storyteller keys).
+        assert_eq!(t.len(), 106);
+    }
+
+    // === P4.D341: the 17th–21st D23 moves' keys, at their schema slots ===
+    #[test]
+    fn the_keystone_round_keys_sit_in_their_schema_slots() {
+        let after = |kind: &str, key: &str| -> (String, String) {
+            let t = template(kind).expect("template");
+            let i = t
+                .iter()
+                .position(|k| k == key)
+                .unwrap_or_else(|| panic!("{kind} lacks {key}"));
+            let name = |v: &Value| v.as_str().unwrap_or_default().to_string();
+            (name(&t[i - 1]), name(&t[i + 1]))
+        };
+        assert_eq!(
+            after("memory", "keystone"),
+            ("consolidatedAt".into(), "createdAt".into())
+        );
+        assert_eq!(
+            after("chat", "turnMode"),
+            ("isPaused".into(), "storytellerInviteFilter".into())
+        );
+        assert_eq!(
+            after("chat", "storytellerInviteFilter"),
+            ("turnMode".into(), "isManuallyRenamed".into())
+        );
+        assert_eq!(
+            after("chat_message", "storytellerBid"),
+            ("carinaMeta".into(), "pascalMeta".into())
+        );
+        assert_eq!(
+            after("roleplay_template", "unmarkedStyle"),
+            ("narrationDelimiters".into(), "markdownAsterisks".into())
+        );
+        assert_eq!(
+            after("character", "canDrawDiagrams"),
+            ("canChooseOutfit".into(), "diagramStyle".into())
+        );
     }
 
     #[test]
@@ -218,7 +257,9 @@ mod tests {
             "canChooseOutfit",
             "and precedes canChooseOutfit"
         );
-        assert_eq!(t.len(), 47);
+        // P4.D341: 47 → 49 (`6588972d5`'s two diagram keys — P4.D349's to
+        // write; the dump carries them, R-14).
+        assert_eq!(t.len(), 49);
     }
 
     #[test]

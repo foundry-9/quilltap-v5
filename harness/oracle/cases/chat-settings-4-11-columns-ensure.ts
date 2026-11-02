@@ -1,12 +1,14 @@
 /**
- * Tier-2 oracle case — the two 4.11 `chat_settings` boot ensures (P4.D304,
- * `db::chat_settings_4_11_repair`) against v4's REAL migrations
- * `add-custom-tool-triggers-field-v1` (`362426c8f`) and
+ * Tier-2 oracle case — the THREE 4.11 `chat_settings` boot ensures (P4.D304,
+ * P4.D341; `db::chat_settings_4_11_repair`) against v4's REAL migrations
+ * `add-custom-tool-triggers-field-v1` (`362426c8f`),
+ * `add-custom-tool-intervention-field-v1` (`839575d89` — the TWENTIETH D23
+ * move, registered in the MIDDLE of the pair at the `236c04e35` pin) and
  * `add-composer-slash-commands-field-v1` (`4877fc2da`), through
  * `harness/oracle/lib/v4-migrations.ts` (the direct `shouldRun()` / `run()`
  * arm — no ledger handshake is under test: neither side stamps, R-B).
  *
- * Seven shapes, each base file built HERE at the pin from v4's own generateDDL
+ * Ten shapes, each base file built HERE at the pin from v4's own generateDDL
  * (the CREATE `ensureCollection` makes, read back from `sqlite_master`) and
  * written to `QT_FIXTURE_OUT_DIR/cs411-<mode>.db`, each with two rows (one at
  * every default, one with `customTools = 0`):
@@ -16,12 +18,14 @@
  *   T-C  T-A with the migration's ADD applied by hand → `not needed`;
  *   S-A / S-B / S-C  the same three for `"composerSlashCommands" INTEGER
  *        DEFAULT 1,` and the slash migration;
- *   D    BOTH lines removed → v4 runs BOTH in registration order (triggers,
- *        then slash), so `sqlite_master.sql` ends with the two clauses in that
- *        order.
+ *   I-A / I-B / I-C  the same three for `"customToolIntervention" INTEGER
+ *        DEFAULT 1,` and the intervention migration (P4.D341);
+ *   D    ALL THREE lines removed → v4 runs the three in registration order
+ *        (triggers, intervention, slash), so `sqlite_master.sql` ends with the
+ *        three clauses in that order.
  * Each line is asserted present exactly once before its removal. Comparands:
  * `PRAGMA table_info` (order included), `sqlite_master.sql`, and each row's
- * two raw cells (the DEFAULT back-fill — `0` / `1`, never NULL). v4's report is
+ * three raw cells (the DEFAULT back-fill — `0` / `1` / `1`, never NULL). v4's report is
  * emitted per mode; the Rust side asserts `+RAN` only on the A modes and D.
  *
  * Run from the pinned v4 worktree under Node 24:
@@ -43,10 +47,13 @@ import { runV4Migrations } from '../lib/v4-migrations';
 
 const TRIGGERS_LINE = `  "customToolTriggers" INTEGER DEFAULT 0,\n`;
 const SLASH_LINE = `  "composerSlashCommands" INTEGER DEFAULT 1,\n`;
+const INTERVENTION_LINE = `  "customToolIntervention" INTEGER DEFAULT 1,\n`;
 /** v4 `add-custom-tool-triggers-field.ts:52` through `addColumnIfMissing`. */
 const TRIGGERS_ADD = `ALTER TABLE "chat_settings" ADD COLUMN "customToolTriggers" INTEGER DEFAULT 0`;
 /** v4 `add-composer-slash-commands-field.ts:47` through `addColumnIfMissing`. */
 const SLASH_ADD = `ALTER TABLE "chat_settings" ADD COLUMN "composerSlashCommands" INTEGER DEFAULT 1`;
+/** v4 `add-custom-tool-intervention-field.ts:53` through `addColumnIfMissing`. */
+const INTERVENTION_ADD = `ALTER TABLE "chat_settings" ADD COLUMN "customToolIntervention" INTEGER DEFAULT 1`;
 // NOTE: no `-v1` in either file name (unlike the ids).
 const TRIGGERS = {
   file: 'migrations/scripts/add-custom-tool-triggers-field.ts',
@@ -56,8 +63,12 @@ const SLASH = {
   file: 'migrations/scripts/add-composer-slash-commands-field.ts',
   exportName: 'addComposerSlashCommandsFieldMigration',
 };
+const INTERVENTION = {
+  file: 'migrations/scripts/add-custom-tool-intervention-field.ts',
+  exportName: 'addCustomToolInterventionFieldMigration',
+};
 
-type Mode = 'T-A' | 'T-B' | 'T-C' | 'S-A' | 'S-B' | 'S-C' | 'D';
+type Mode = 'T-A' | 'T-B' | 'T-C' | 'S-A' | 'S-B' | 'S-C' | 'I-A' | 'I-B' | 'I-C' | 'D';
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -87,14 +98,15 @@ async function main(): Promise<void> {
     (await rawQuery("SELECT sql FROM sqlite_master WHERE name = 'chat_settings'")) as Array<{ sql: string }>
   )[0].sql;
   await closeDatabase();
-  for (const line of [TRIGGERS_LINE, SLASH_LINE]) {
+  for (const line of [TRIGGERS_LINE, SLASH_LINE, INTERVENTION_LINE]) {
     if (current.split(line).length !== 2) {
       throw new Error(`expected exactly one ${JSON.stringify(line)} in v4's DDL:\n${current}`);
     }
   }
   const withoutTriggers = current.replace(TRIGGERS_LINE, '');
   const withoutSlash = current.replace(SLASH_LINE, '');
-  const withoutBoth = withoutTriggers.replace(SLASH_LINE, '');
+  const withoutIntervention = current.replace(INTERVENTION_LINE, '');
+  const withoutAll = withoutTriggers.replace(SLASH_LINE, '').replace(INTERVENTION_LINE, '');
 
   const plan: Record<Mode, { ddl: string; add?: string; migrations: Array<typeof TRIGGERS> }> = {
     'T-A': { ddl: withoutTriggers, migrations: [TRIGGERS] },
@@ -103,7 +115,10 @@ async function main(): Promise<void> {
     'S-A': { ddl: withoutSlash, migrations: [SLASH] },
     'S-B': { ddl: current, migrations: [SLASH] },
     'S-C': { ddl: withoutSlash, add: SLASH_ADD, migrations: [SLASH] },
-    D: { ddl: withoutBoth, migrations: [TRIGGERS, SLASH] },
+    'I-A': { ddl: withoutIntervention, migrations: [INTERVENTION] },
+    'I-B': { ddl: current, migrations: [INTERVENTION] },
+    'I-C': { ddl: withoutIntervention, add: INTERVENTION_ADD, migrations: [INTERVENTION] },
+    D: { ddl: withoutAll, migrations: [TRIGGERS, INTERVENTION, SLASH] },
   };
 
   const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -145,7 +160,7 @@ async function main(): Promise<void> {
     ).sql;
     const rows = db
       .prepare(
-        'SELECT id, "customToolTriggers" AS triggers, "composerSlashCommands" AS slash FROM chat_settings ORDER BY id',
+        'SELECT id, "customToolTriggers" AS triggers, "customToolIntervention" AS intervention, "composerSlashCommands" AS slash FROM chat_settings ORDER BY id',
       )
       .all();
     db.close();

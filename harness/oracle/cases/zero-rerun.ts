@@ -34,6 +34,20 @@
  *           result; the dumps = `sqlite_master` minus the two ledger tables +
  *           every touched table through `quote()`, and the ledger rows).
  *
+ * **P4.D341 (the `236c04e35` round):** the narrowed runner also carries the
+ * intervention step (the MIDDLE of `CHAT_SETTINGS_4_11_MIGRATIONS`) and
+ * `KEYSTONE_236_MIGRATIONS` LAST (keystone → storyteller → llm-logs round id →
+ * unmarked); the planted base takes the five moves back (the memories,
+ * chats ×2, message, intervention and template ×2 lines; no
+ * `storyteller_rounds` + its createdAt index; no `idx_memories_keystone` /
+ * `idx_storyteller_rounds_chat`), and — R-8 — a planted llm-logs SIBLING
+ * `planted-llm-logs.db` (the dump's `llmLogs` block minus `storytellerRoundId`
+ * and its index) rides beside every main file: the build migrates
+ * `v4-migrated-llm-logs.db` with it, the Rust write step leaves a
+ * `<mode>.llm-logs.after-v5.db` beside each `<mode>.after-v5.db`, and the v4
+ * phase points `SQLITE_LLM_LOGS_PATH` at the copy and dumps it like the main
+ * file (`logs`: `sqlite_master` + `llm_logs` through `quote()`).
+ *
  * Recipe (Node 24, from the round's pin; `TZ=UTC QUILLTAP_TIMEZONE=UTC`):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
  *   D=/tmp/qt-zero-rerun ; rm -rf $D /tmp/oracle-zero-rerun-*.ndjson
@@ -63,6 +77,9 @@ import {
   // === P4.D337 ===
   TERMINAL_GEOMETRY_MIGRATIONS,
   // === end P4.D337 ===
+  // === P4.D341 ===
+  KEYSTONE_236_MIGRATIONS,
+  // === end P4.D341 ===
 } from '../lib/v4-migrations';
 
 const PEPPER = 'dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=';
@@ -83,6 +100,11 @@ const TOUCHED = [
   // === P4.D337: the geometry columns (stripped from the planted base) ===
   'terminal_sessions',
   // === end P4.D337 ===
+  // === P4.D341: the five moves' tables (stripped / absent on the planted base) ===
+  'chat_messages',
+  'roleplay_templates',
+  'storyteller_rounds',
+  // === end P4.D341 ===
 ];
 
 const Database = createRequire(process.cwd() + '/')('better-sqlite3');
@@ -127,9 +149,25 @@ function inspect(path: string): Record<string, unknown> {
   return { master, tables, ledger };
 }
 
+/** P4.D341 (R-8): the llm-logs sibling's `sqlite_master` + `llm_logs` rows
+ *  through `quote()` (`null` when the file is absent). */
+function inspectLogs(path: string): Record<string, unknown> | null {
+  if (!existsSync(path)) return null;
+  const db = new Database(path, { readonly: true });
+  db.pragma(KEY_PRAGMA);
+  const master = db.prepare(`SELECT type, name, tbl_name, sql FROM sqlite_master ORDER BY type, name`).all();
+  let rows: unknown = null;
+  if (db.prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'llm_logs'`).get()) {
+    const info = db.prepare(`PRAGMA table_info("llm_logs")`).all() as Array<{ name: string }>;
+    rows = db.prepare(`SELECT ${info.map((c) => `quote("${c.name}")`).join(', ')} FROM llm_logs ORDER BY rowid`).raw().all();
+  }
+  db.close();
+  return { master, rows };
+}
+
 /** v4's narrowed runner over the twelve on `path` (env saved / restored, the
  *  journal mode put back, WAL residue swept); answers the ids it ran. */
-async function runTwelve(path: string): Promise<string[]> {
+async function runTwelve(path: string, logsPath?: string): Promise<string[]> {
   const v4Root = process.cwd();
   const mode = (() => {
     const db = new Database(path, { readonly: true });
@@ -138,13 +176,27 @@ async function runTwelve(path: string): Promise<string[]> {
     db.close();
     return m;
   })();
-  const keys = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR'] as const;
+  const keys = ['SQLITE_PATH', 'ENCRYPTION_MASTER_PEPPER', 'QUILLTAP_DATA_DIR', 'SQLITE_LLM_LOGS_PATH'] as const;
+  // P4.D341: the llm-logs sibling's journal mode, put back like the main file's
+  // (v4's round-id migration opens it with its OWN `journal_mode = WAL`).
+  const logsMode =
+    logsPath && existsSync(logsPath)
+      ? (() => {
+          const db = new Database(logsPath, { readonly: true });
+          db.pragma(KEY_PRAGMA);
+          const m = String(db.pragma('journal_mode', { simple: true }));
+          db.close();
+          return m;
+        })()
+      : null;
   const saved = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   const scratch = mkdtempSync(join(tmpdir(), 'qt-zero-rerun-runner-'));
   mkdirSync(join(scratch, 'data'), { recursive: true });
   process.env.SQLITE_PATH = path;
   process.env.ENCRYPTION_MASTER_PEPPER = PEPPER;
   process.env.QUILLTAP_DATA_DIR = scratch;
+  if (logsPath) process.env.SQLITE_LLM_LOGS_PATH = logsPath;
+  else delete process.env.SQLITE_LLM_LOGS_PATH;
   const utils = await import(join(v4Root, 'migrations/lib/database-utils.ts'));
   const migrations = [];
   // P4.D304: the span, then the two 4.11 chat_settings migrations (v4's
@@ -161,6 +213,9 @@ async function runTwelve(path: string): Promise<string[]> {
     // === P4.D337 ===
     ...TERMINAL_GEOMETRY_MIGRATIONS,
     // === end P4.D337 ===
+    // === P4.D341: the round's last four, LAST (registration order) ===
+    ...KEYSTONE_236_MIGRATIONS,
+    // === end P4.D341 ===
   ]) {
     migrations.push((await import(join(v4Root, ref.file)))[ref.exportName]);
   }
@@ -188,27 +243,58 @@ async function runTwelve(path: string): Promise<string[]> {
   for (const suffix of ['-wal', '-shm']) if (existsSync(path + suffix)) rmSync(path + suffix);
   const journal = path + '-journal';
   if (existsSync(journal) && statSync(journal).size === 0) rmSync(journal);
+  if (logsPath && logsMode !== null) {
+    const ldb = new Database(logsPath);
+    ldb.pragma(KEY_PRAGMA);
+    if (String(ldb.pragma('journal_mode', { simple: true })) !== logsMode) ldb.pragma(`journal_mode = ${logsMode}`);
+    ldb.close();
+    for (const suffix of ['-wal', '-shm']) if (existsSync(logsPath + suffix)) rmSync(logsPath + suffix);
+    const lj = logsPath + '-journal';
+    if (existsSync(lj) && statSync(lj).size === 0) rmSync(lj);
+  }
   return ran;
 }
 
 function buildPlanted(path: string): void {
   const here = dirname(fileURLToPath(import.meta.url));
   const provisioning = join(here, '..', '..', '..', 'crates/quilltap-core/src/services/provisioning');
-  const fresh = JSON.parse(readFileSync(join(provisioning, 'fresh_schema.json'), 'utf8')) as { main: string[] };
+  const fresh = JSON.parse(readFileSync(join(provisioning, 'fresh_schema.json'), 'utf8')) as {
+    main: string[];
+    llmLogs: string[];
+  };
   const migrationIndexes = JSON.parse(readFileSync(join(provisioning, 'migration_indexes.json'), 'utf8')) as {
     main: string[];
+    llmLogs: string[];
   };
   const db = new Database(path);
   db.pragma(KEY_PRAGMA);
   db.pragma('journal_mode = TRUNCATE');
   for (const stmt of fresh.main) {
     if (stmt.includes('"memory_extraction_cursors"')) continue;
+    // === P4.D341: no storyteller_rounds (+ its createdAt index) ===
+    if (stmt.includes('"storyteller_rounds"')) continue;
+    // === end P4.D341 ===
     let s = stmt;
-    if (s.startsWith('CREATE TABLE "memories" (')) s = strip(s, [`  "supersededAt" TEXT,\n`]);
+    if (s.startsWith('CREATE TABLE "memories" (')) {
+      s = strip(s, [`  "supersededAt" TEXT,\n`, /* P4.D341 */ `  "keystone" INTEGER DEFAULT 0,\n`]);
+    }
+    // === P4.D341: the Storyteller message column + the template pair ===
+    if (s.startsWith('CREATE TABLE "chat_messages" (')) s = strip(s, [`  "storytellerBid" TEXT,\n`]);
+    if (s.startsWith('CREATE TABLE "roleplay_templates" (')) {
+      s = strip(s, [`  "unmarkedStyle" TEXT,\n`, `  "markdownAsterisks" INTEGER DEFAULT 1,\n`]);
+    }
+    // === end P4.D341 ===
     // P4.D324: the Inventory's two columns taken back too (the planted base is
     // pre-round; v4's runner APPENDS them, v5's ensures do the same).
     if (s.startsWith('CREATE TABLE "chats" (')) {
-      s = strip(s, [`  "scenarioSource" TEXT,\n`, `  "scenarioNotes" TEXT,\n`, `  "equippedInventory" TEXT,\n`]);
+      s = strip(s, [
+        `  "scenarioSource" TEXT,\n`,
+        `  "scenarioNotes" TEXT,\n`,
+        `  "equippedInventory" TEXT,\n`,
+        // P4.D341: the Storyteller pair.
+        `  "turnMode" TEXT,\n`,
+        `  "storytellerInviteFilter" INTEGER DEFAULT 0,\n`,
+      ]);
     }
     if (s.startsWith('CREATE TABLE "characters" (')) s = strip(s, [`  "canManageInventory" INTEGER,\n`]);
     // === P4.D337: the terminal geometry taken back too (pre-a6292f169) ===
@@ -217,12 +303,20 @@ function buildPlanted(path: string): void {
     if (s.startsWith('CREATE TABLE "tfidf_vocabularies" (')) s = strip(s, [`  "textShapeVersion" REAL DEFAULT 0,\n`]);
     // P4.D304: the 4.11 chat_settings toggles taken back too.
     if (s.startsWith('CREATE TABLE "chat_settings" (')) {
-      s = strip(s, [`  "customToolTriggers" INTEGER DEFAULT 0,\n`, `  "composerSlashCommands" INTEGER DEFAULT 1,\n`]);
+      s = strip(s, [
+        `  "customToolTriggers" INTEGER DEFAULT 0,\n`,
+        `  "composerSlashCommands" INTEGER DEFAULT 1,\n`,
+        // P4.D341: the intervention toggle (the 4.11 trio's middle).
+        `  "customToolIntervention" INTEGER DEFAULT 1,\n`,
+      ]);
     }
     db.exec(s);
   }
   for (const stmt of migrationIndexes.main) {
     if (stmt.includes('"idx_memories_supersededById"')) continue;
+    // === P4.D341: the two new main-partition migration indexes ===
+    if (stmt.includes('"idx_memories_keystone"') || stmt.includes('"idx_storyteller_rounds_chat"')) continue;
+    // === end P4.D341 ===
     db.exec(stmt);
   }
   db.exec(`ALTER TABLE "chats" ADD COLUMN "otherExtractionWatermarkMessageId" TEXT DEFAULT NULL`);
@@ -280,7 +374,32 @@ function buildPlanted(path: string): void {
     `INSERT INTO tfidf_vocabularies (id, profileId, userId, vocabulary, idf, avgDocLength, vocabularySize, fittedAt, createdAt, updatedAt)
      VALUES ('v1', 'p1', 'u1', '[]', '[]', 1.5, 2, ?, ?, ?)`,
   ).run(T0, T0, T0);
+  // === P4.D341: rows the five moves' columns land under ===
+  db.prepare(
+    `INSERT INTO chat_messages (id, chatId, type, role, content, createdAt) VALUES ('msg1', 'c1', 'message', 'USER', 'hi', ?)`,
+  ).run(T0);
+  // === end P4.D341 ===
   db.close();
+
+  // === P4.D341 (R-8): the planted llm-logs SIBLING ===
+  const logsPath = path.replace(/\.db$/, '-llm-logs.db');
+  sweep(logsPath);
+  const logs = new Database(logsPath);
+  logs.pragma(KEY_PRAGMA);
+  logs.pragma('journal_mode = TRUNCATE');
+  for (const stmt of fresh.llmLogs) {
+    logs.exec(stmt.startsWith('CREATE TABLE "llm_logs" (') ? strip(stmt, [`  "storytellerRoundId" TEXT,\n`]) : stmt);
+  }
+  for (const stmt of migrationIndexes.llmLogs) {
+    if (stmt.includes('"idx_llm_logs_storytellerRoundId"')) continue;
+    logs.exec(stmt);
+  }
+  logs.prepare(
+    `INSERT INTO llm_logs (id, userId, type, provider, modelName, request, response, createdAt, updatedAt)
+     VALUES ('l1', 'u1', 'CHAT_MESSAGE', 'OPENAI', 'gpt', '{}', '{}', ?, ?)`,
+  ).run(T0, T0);
+  logs.close();
+  // === end P4.D341 ===
 }
 
 async function main(): Promise<void> {
@@ -298,7 +417,11 @@ async function main(): Promise<void> {
     sweep(migrated);
     buildPlanted(planted);
     copyFileSync(planted, migrated);
-    const ran = await runTwelve(migrated);
+    // P4.D341 (R-8): the sibling migrates beside it.
+    const migratedLogs = join(dir, 'v4-migrated-llm-logs.db');
+    sweep(migratedLogs);
+    copyFileSync(join(dir, 'planted-llm-logs.db'), migratedLogs);
+    const ran = await runTwelve(migrated, migratedLogs);
     process.stdout.write(JSON.stringify({ phase: 'build', ran, ...inspect(migrated) }) + '\n');
   } else {
     for (const mode of [
@@ -312,9 +435,14 @@ async function main(): Promise<void> {
       const scratch = mkdtempSync(join(tmpdir(), 'qt-zero-rerun-'));
       const work = join(scratch, 'work.db');
       copyFileSync(src, work);
-      const before = inspect(work);
-      const ran = await runTwelve(work);
-      const after = inspect(work);
+      // P4.D341 (R-8): the mode's llm-logs sibling, copied beside it.
+      const logsSrc = join(dir, `${mode}.llm-logs.after-v5.db`);
+      if (!existsSync(logsSrc)) throw new Error(`${logsSrc} is missing — run the Rust write step first (header)`);
+      const logsWork = join(scratch, 'work-llm-logs.db');
+      copyFileSync(logsSrc, logsWork);
+      const before = { ...inspect(work), logs: inspectLogs(logsWork) };
+      const ran = await runTwelve(work, logsWork);
+      const after = { ...inspect(work), logs: inspectLogs(logsWork) };
       rmSync(scratch, { recursive: true, force: true });
       process.stdout.write(JSON.stringify({ phase: 'v4', mode, ran, before, after }) + '\n');
     }

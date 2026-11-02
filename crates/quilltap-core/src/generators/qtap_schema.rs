@@ -201,7 +201,10 @@ mod tests {
         // `ExportedChat.equippedInventory`; `e1872c94f`:
         // `ExportedCharacter.canManageInventory` + the `pascalMeta.effects`
         // Inventory sentence).
-        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 109_559);
+        // P4.D341: 115,274 at v4 `236c04e35` (the 4.11.0 code — the keystone,
+        // Storyteller, intervention, Novel-template, humanoid, pronoun-guidance
+        // and diagram keys; one vendor, R-7).
+        assert_eq!(QTAP_EXPORT_SCHEMA_JSON.len(), 115_274);
     }
 
     /// The export with one memory of `minimal_characters_export`'s character.

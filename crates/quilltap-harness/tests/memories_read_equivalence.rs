@@ -18,6 +18,9 @@
 //! important memories`, `Memory failed validation in <context>`), compared
 //! line for line through the thread-scoped capture rig.
 //!
+//! P4.D341 (v4 `8cb584eff`): the keystone corpus (holder `charE`) — C-1's
+//! `findKeystones` / `countKeystones` and the paginated `keystone` filter.
+//!
 //! Generate the oracle output + fixture (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
@@ -100,6 +103,14 @@ struct Query {
     tier: Option<String>,
     #[serde(default)]
     subject: Option<String>,
+    // P4.D341 (C-1): the keystone reads' arguments.
+    #[serde(default)]
+    keystone: Option<bool>,
+    /// `findKeystones`' `subjects`: absent → `'self'`; a list → `About`.
+    #[serde(default)]
+    subjects: Option<Vec<String>>,
+    #[serde(default, rename = "excludeId")]
+    exclude_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -182,6 +193,7 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
                 source: q.source.as_deref(),
                 min_importance: q.min_importance,
                 tier: q.tier.as_deref(),
+                keystone: q.keystone.unwrap_or(false),
             };
             let (page, total) = mr::find_by_character_id_paginated(conn, cid(), &opts)
                 .expect("findByCharacterIdPaginated");
@@ -325,6 +337,23 @@ fn run_query(writer: &Writer, q: &Query) -> Value {
         "countUnconsideredHot" => {
             Value::from(mr::count_unconsidered_hot(conn, cid()).expect("countUnconsideredHot"))
         }
+        // === P4.D341 (v4 `8cb584eff`, contract C-1) ===
+        "findKeystones" => {
+            let subjects = match &q.subjects {
+                None => mr::KeystoneSubjects::SelfSubject,
+                Some(list) => mr::KeystoneSubjects::About(list),
+            };
+            Value::Array(mr::find_keystones(conn, cid(), subjects).expect("findKeystones"))
+        }
+        "countKeystones" => Value::from(
+            mr::count_keystones(
+                conn,
+                cid(),
+                q.about_character_id.as_deref(),
+                q.exclude_id.as_deref(),
+            )
+            .expect("countKeystones"),
+        ),
         other => panic!("unknown query kind: {other}"),
     }
 }

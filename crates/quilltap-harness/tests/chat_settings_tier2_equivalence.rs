@@ -117,6 +117,9 @@ struct CreateData {
     /// P4.D304 (v4 4.11): absent → `false` (the struct's serde default).
     #[serde(default)]
     custom_tool_triggers: bool,
+    /// P4.D341 (v4 `839575d89`): absent → `true`.
+    #[serde(default = "default_true")]
+    custom_tool_intervention: bool,
     composition_mode_default: bool,
     composer_spellcheck: bool,
     composer_emoji: bool,
@@ -186,6 +189,8 @@ struct UpdateData {
     custom_tools: Option<bool>,
     #[serde(default)]
     custom_tool_triggers: Option<bool>,
+    #[serde(default)]
+    custom_tool_intervention: Option<bool>,
     #[serde(default)]
     composition_mode_default: Option<bool>,
     #[serde(default)]
@@ -285,6 +290,7 @@ fn chat_settings_tier2_matches_oracle() {
                             auto_detect_rng: data.auto_detect_rng,
                             custom_tools: data.custom_tools,
                             custom_tool_triggers: data.custom_tool_triggers,
+                            custom_tool_intervention: data.custom_tool_intervention,
                             composition_mode_default: data.composition_mode_default,
                             composer_spellcheck: data.composer_spellcheck,
                             composer_emoji: data.composer_emoji,
@@ -330,6 +336,7 @@ fn chat_settings_tier2_matches_oracle() {
                                 auto_detect_rng: data.auto_detect_rng,
                                 custom_tools: data.custom_tools,
                                 custom_tool_triggers: data.custom_tool_triggers,
+                                custom_tool_intervention: data.custom_tool_intervention,
                                 composition_mode_default: data.composition_mode_default,
                                 composer_spellcheck: data.composer_spellcheck,
                                 composer_emoji: data.composer_emoji,

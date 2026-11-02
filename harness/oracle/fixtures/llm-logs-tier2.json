@@ -207,7 +207,7 @@
   "ops": [
     {
       "kind": "create",
-      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state. Type changed to ANSWER_CONFIRMATION to bank v4's new LLMLogType enum member (a plain TEXT column on the port side, no marshaling change). P4.D49: also carries v4 0cde7fbc's connectionProfileId (a real profile id) with imageProfileId explicitly null - the two-column write in LLMLogSchema field order.",
+      "comment": "New SURVIVING log: rawProviderUsage as EMPTY object {}, chatId set but the rest of the linkage null, cacheUsage with one of the two optional fields omitted, durationMs integer. Banks {} in the final state. Type changed to ANSWER_CONFIRMATION to bank v4's new LLMLogType enum member (a plain TEXT column on the port side, no marshaling change). P4.D49: also carries v4 0cde7fbc's connectionProfileId (a real profile id) with imageProfileId explicitly null - the two-column write in LLMLogSchema field order. P4.D341 (v4 b15fe9404): also carries a storytellerRoundId (named only when defined).",
       "data": {
         "userId": "7d000000-0000-4000-8000-0000000000d1",
         "type": "ANSWER_CONFIRMATION",
@@ -215,6 +215,7 @@
         "chatId": "6f000000-0000-4000-8000-0000000000f1",
         "characterId": null,
         "autonomousRunId": null,
+        "storytellerRoundId": "3d000000-0000-4000-8000-0000000000d1",
         "provider": "zai",
         "modelName": "glm-4.6",
         "connectionProfileId": "5c000000-0000-4000-8000-0000000000c1",
@@ -256,7 +257,7 @@
     },
     {
       "kind": "update",
-      "comment": "Swap the response object AND set usage on the sparse seed row 2. createdAt preserved, updatedAt pinned. Also sets durationMs (was null) to an integer. P4.D49: also sets connectionProfileId on a row that had none, through the UPDATE path.",
+      "comment": "Swap the response object AND set usage on the sparse seed row 2. createdAt preserved, updatedAt pinned. Also sets durationMs (was null) to an integer. P4.D49: also sets connectionProfileId on a row that had none, through the UPDATE path. P4.D341: also sets storytellerRoundId through the UPDATE path.",
       "id": "2a000000-0000-4000-8000-0000000000a2",
       "data": {
         "response": {
@@ -271,6 +272,7 @@
         },
         "durationMs": 321,
         "connectionProfileId": "5c000000-0000-4000-8000-0000000000c2",
+        "storytellerRoundId": "3d000000-0000-4000-8000-0000000000d2",
         "updatedAt": "2026-03-01T00:00:00.000Z"
       }
     },

@@ -747,3 +747,75 @@ fn fish_and_zsh_carry_the_p4d299_template_lines() {
         "zsh template lacks memories maintain"
     );
 }
+
+// ---------------------------------------------------------------------------
+// P4.D341 — the `236c04e35` template lines (`8cb584eff`'s memories `keystone`
+// verb + `--keystone` / `--off`, and `--write`'s widened description). v4's
+// bytes, copied whole from the pin; the `memories` verb family itself stays
+// v5's loud refusal (R-P of the `83334b9a5` round — the ledger's "R-AL" cite is
+// corrected in the lane record).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn bash_completes_the_p4d341_template_lines() {
+    if !has_shell("bash") {
+        eprintln!(
+            "SKIPPING bash_completes_the_p4d341_template_lines: no working `bash` on this host"
+        );
+        return;
+    }
+    let bash = Bash::new();
+
+    let line = "quilltap memories ";
+    let got = bash.complete(line);
+    assert_offers(&got, "keystone", line);
+    assert_offers(&got, "maintain", line);
+
+    let line = "quilltap memories --";
+    let got = bash.complete(line);
+    for flag in ["--keystone", "--off", "--write"] {
+        assert_offers(&got, flag, line);
+    }
+}
+
+#[test]
+fn fish_and_zsh_carry_the_p4d341_template_lines() {
+    for (line, what) in [
+        (
+            "complete -c quilltap -n '__quilltap_using_subcommand memories' -f -a 'keystone' -d 'Mark or unmark a keystone'",
+            "memories keystone",
+        ),
+        (
+            "complete -c quilltap -n '__quilltap_using_subcommand memories' -l 'write' -d 'Validate --repair / keystone: apply the change'",
+            "--write's keystone description",
+        ),
+        (
+            "complete -c quilltap -n '__quilltap_using_subcommand memories' -l 'keystone' -d 'Only keystones'",
+            "--keystone",
+        ),
+        (
+            "complete -c quilltap -n '__quilltap_using_subcommand memories' -l 'off' -d 'Keystone: unmark instead of mark'",
+            "--off",
+        ),
+    ] {
+        assert!(FISH_TEMPLATE.contains(line), "fish template lacks {what}");
+    }
+    assert!(
+        !FISH_TEMPLATE.contains("'Validate --repair: apply the repair'"),
+        "fish template still carries the pre-keystone --write description"
+    );
+    for (line, what) in [
+        (
+            "'keystone:Mark or unmark a keystone (standing fact) via the running server'",
+            "memories keystone",
+        ),
+        (
+            "'--write[Validate --repair / keystone: apply the change]'",
+            "--write's keystone description",
+        ),
+        ("'--keystone[Only keystones]'", "--keystone"),
+        ("'--off[Keystone: unmark instead of mark]'", "--off"),
+    ] {
+        assert!(ZSH_TEMPLATE.contains(line), "zsh template lacks {what}");
+    }
+}

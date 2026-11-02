@@ -7,13 +7,22 @@
 //!
 //!   - `fresh`         → INSERT path, SCHEMA-order delimiters;
 //!   - `stale-builtin` → UPDATE path, SEED-LITERAL-order delimiters (v4 quirk);
-//!   - `user-same-name`→ built-in inserted alongside a same-name user row.
+//!   - `user-same-name`→ built-in inserted alongside a same-name user row;
+//!   - `legacy-builtins` (P4.D341) → PRE-CODEC built-ins whose narration cells
+//!     are planted RAW (`*`, `["[","]"]`) + a user `Novel` with a SQL-NULL cell:
+//!     the every-boot `$set` rewrites both built-in cells ENCODED (`"*"`), writes
+//!     the two new columns, INSERTs the built-in Novel, and leaves the user row
+//!     alone — the first-boot rewrite (R-6) both sides perform.
+//!
+//! Measured at v4 `236c04e35` (P4.D341): the seeder `$set`s `updatedAt = now`
+//! on EVERY boot (two back-to-back seeds move all three rows' `updatedAt`;
+//! `createdAt` stays) — normalized out here, so the dump compares the bytes.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   cd ~/source/quilltap-server
 //!   : > /tmp/oracle-builtin-templates.ndjson
-//!   for S in fresh stale-builtin user-same-name; do
+//!   for S in fresh stale-builtin user-same-name legacy-builtins; do
 //!     QT_STATE=$S $N/npx tsx \
 //!       ~/source/quilltap-v5/harness/oracle/cases/builtin-templates.ts \
 //!       >> /tmp/oracle-builtin-templates.ndjson
@@ -26,6 +35,7 @@ use std::path::{Path, PathBuf};
 
 use quilltap_core::db::roleplay_templates::{
     CreateOptions, DialogueDetection, RenderingPattern, RtCreate, StringOrPair, TemplateDelimiter,
+    UnmarkedStyle,
 };
 use quilltap_core::db::Writer;
 use quilltap_core::services::builtin_templates::seed_built_in_templates;
@@ -63,11 +73,25 @@ struct PreRow {
     #[serde(rename = "dialogueDetection")]
     dialogue_detection: Option<DialogueDetection>,
     #[serde(rename = "narrationDelimiters")]
-    narration_delimiters: StringOrPair,
+    narration_delimiters: Option<StringOrPair>,
+    #[serde(rename = "unmarkedStyle", default)]
+    unmarked_style: Option<UnmarkedStyle>,
+    #[serde(rename = "markdownAsterisks", default = "default_true")]
+    markdown_asterisks: bool,
+    /// Post-create RAW narration plant (bypasses the codec) — a pre-codec cell.
+    #[serde(rename = "rawNarration", default)]
+    raw_narration: Option<String>,
+    /// Post-create RAW SQL-NULL narration plant.
+    #[serde(rename = "rawNarrationNull", default)]
+    raw_narration_null: bool,
     #[serde(rename = "createdAt")]
     created_at: String,
     #[serde(rename = "updatedAt")]
     updated_at: String,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 fn spec_path() -> PathBuf {
@@ -162,6 +186,8 @@ fn builtin_templates_matches_oracle() {
                         rendering_patterns: row.rendering_patterns.clone(),
                         dialogue_detection: row.dialogue_detection.clone(),
                         narration_delimiters: row.narration_delimiters.clone(),
+                        unmarked_style: row.unmarked_style.clone(),
+                        markdown_asterisks: row.markdown_asterisks,
                     },
                     &CreateOptions {
                         id: row.id.clone(),
@@ -170,6 +196,21 @@ fn builtin_templates_matches_oracle() {
                     },
                 )
                 .expect("pre-row create");
+                if row.raw_narration.is_some() || row.raw_narration_null {
+                    let cell = if row.raw_narration_null {
+                        None
+                    } else {
+                        row.raw_narration.clone()
+                    };
+                    let n = writer
+                        .connection()
+                        .execute(
+                            "UPDATE roleplay_templates SET narrationDelimiters = ?1 WHERE id = ?2",
+                            rusqlite::params![cell, row.id],
+                        )
+                        .expect("raw narration plant");
+                    assert_eq!(n, 1, "raw narration plant matched no row {}", row.id);
+                }
             }
         }
 

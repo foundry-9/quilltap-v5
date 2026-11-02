@@ -634,6 +634,9 @@ const MEMORY_TIERS_PLANT_SQL: string[] = [
   "UPDATE \"memories\" SET \"supersededAt\" = '2026-01-02T00:00:00.000Z' WHERE \"id\" = 'ad000000-0000-4000-8000-000000000003'",
   "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryConsolidation', '{\"enabled\":true,\"watermark\":25}')",
   "INSERT INTO \"instance_settings\" (\"key\", \"value\") VALUES ('memoryExtractionMode', '{\"otherPass\":\"fold\"}')",
+  // [P4.D341] (v4 `8cb584eff`): a keystone on `MEM_2` — the export carries
+  // `"keystone": true` at its `schema-key-order.json` position.
+  "UPDATE \"memories\" SET \"keystone\" = 1 WHERE \"id\" = 'ad000000-0000-4000-8000-000000000002'",
 ];
 
 function plantMemoryTiersValues(db: { prepare(sql: string): { run(...a: unknown[]): unknown } }): void {

@@ -435,6 +435,7 @@ async fn execute<P: EmbeddingProvider + Sync>(
                 Ok(other) => {
                     let reason = match other {
                         UpdateMemoryResult::NotFound => "not-found",
+                        UpdateMemoryResult::KeystoneRefused { .. } => "keystone-refused",
                         _ => "invalid-related",
                     };
                     tracing::debug!(

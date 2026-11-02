@@ -274,6 +274,10 @@ const CARRIER_PLANT_SQL = [
   `UPDATE "chats" SET "scenarioSource" = '{"mountPointId":"5ce00000-0000-4000-8000-000000000001","path":"Scenarios/The Road.md","bodySha256":"${'ab'.repeat(32)}"}', "scenarioNotes" = 'Notes for the road.' WHERE "id" = '${CHAT_2}'`,
   `UPDATE "memories" SET "supersededAt" = '2026-03-04T00:00:00.000Z' WHERE "id" = 'ad000000-0000-4000-8000-000000000003'`,
   `UPDATE "tfidf_vocabularies" SET "textShapeVersion" = 1`,
+  // P4.D341 (v4 `8cb584eff`): a keystone rides the backup (no v4 hunk — the
+  // collector reads `findByCharacterId`). (The pair's column is the
+  // migration's `NOT NULL DEFAULT 0` — a NULL cell cannot be planted here.)
+  `UPDATE "memories" SET "keystone" = 1 WHERE "id" = 'ad000000-0000-4000-8000-000000000001'`,
 ];
 
 async function plantMemoryCarriers(): Promise<void> {

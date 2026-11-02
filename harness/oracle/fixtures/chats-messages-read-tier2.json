@@ -240,6 +240,12 @@
       "systemSender": "pascal",
       "systemKind": "custom-tool-result",
       "opaqueContent": "\ud83c\udfb2 **Saving Throw** \u2014 Saved! (3d6+2: [4, 2, 6] + 2 = 14)",
+      "storytellerBid": {
+        "roundId": "5b000001-0000-4000-8000-000000000001",
+        "tier": "act",
+        "plan": "Roll for the door, then describe what the hinges confess.",
+        "toolsNamed": []
+      },
       "pascalMeta": {
         "tool": "saving_throw",
         "toolTitle": "Saving Throw",

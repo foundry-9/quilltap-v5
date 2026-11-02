@@ -973,6 +973,9 @@ mod tests {
             "lastFullRebuildTurn REAL",
             "summaryAnchorMessageIds TEXT",
             "isPaused INTEGER",
+            // P4.D341 (v4 `b15fe9404`): the Storyteller pair.
+            "turnMode TEXT",
+            "storytellerInviteFilter INTEGER DEFAULT 0",
             "isManuallyRenamed INTEGER",
             "impersonatingParticipantIds TEXT",
             "activeTypingParticipantId TEXT",

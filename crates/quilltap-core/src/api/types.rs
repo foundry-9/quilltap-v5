@@ -1683,6 +1683,13 @@ pub enum Request {
         /// `tier` is refused (R-G); an absent one keeps the existing list.
         #[serde(default)]
         tier: Option<String>,
+        /// P4.D341 (C-8, v4 `8cb584eff` `route.ts:321`): keystones only —
+        /// v4's `searchParams.get('keystone') === 'true'`. The web arm maps
+        /// exactly `?keystone=true` → `Some(true)`; any other value (`false`,
+        /// `1`, `TRUE`, absent) → `None` (no filter). `Some(false)` lists
+        /// everything, as `None` does.
+        #[serde(default)]
+        keystone: Option<bool>,
         #[serde(default)]
         sort_by: Option<String>,
         #[serde(default)]

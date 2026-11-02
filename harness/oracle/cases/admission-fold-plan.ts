@@ -334,6 +334,49 @@ const cases: FoldCase[] = [
     ],
     CAPS,
   ],
+  // ---- P4.D341 (v4 `236c04e35`): a keystone survivor ----
+  // "A keystone's words and anchor fields change only by hand edit: a fold
+  // into one counts the observation and links, and writes nothing else."
+  [
+    'keystone-survivor-counts-and-links-only',
+    makeMemory({
+      keystone: true,
+      reinforcementCount: 2,
+      relatedMemoryIds: ['x'],
+      occurredAt: '2026-05-03T00:00:00.000Z',
+      lastReinforcedAt: '2026-05-03T00:00:00.000Z',
+      entities: ['Mara'],
+    }),
+    [
+      {
+        id: 'l1',
+        content: 'Mara reached Lisbon and Porto and Faro.',
+        reinforcementCount: 3,
+        relatedMemoryIds: ['y', 'keep'],
+        occurredAt: '2026-05-01T00:00:00.000Z',
+        narrativeTime: 'the fourth watch',
+        entities: ['Lisbon', 'mara', 'Porto'],
+        lastReinforcedAt: '2026-05-04T00:00:00.000Z',
+      },
+      { id: 'l2', content: 'Friday keeps the ledger with Odessa.', relatedMemoryIds: ['z'] },
+    ],
+    CAPS,
+  ],
+  [
+    'keystone-false-survivor-ordinary',
+    makeMemory({ keystone: false, entities: ['Mara'] }),
+    [{ id: 'l1', content: 'Friday keeps the ledger with Odessa.', entities: ['Odessa'], narrativeTime: 'dusk' }],
+    CAPS,
+  ],
+  [
+    // A keystone ABSORBED into a non-keystone survivor folds as any source:
+    // `FoldSource` carries no keystone (maintenance never folds one away —
+    // `isFoldEligible` — but the plan itself is ordinary).
+    'keystone-absorbed-into-ordinary-survivor',
+    makeMemory({ entities: [] }),
+    [makeMemory({ id: 'ks', keystone: true, content: 'Friday keeps the ledger with Odessa.', entities: ['Odessa'], reinforcementCount: 4 })],
+    CAPS,
+  ],
 ];
 
 for (const [id, survivor, sources, caps] of cases) {

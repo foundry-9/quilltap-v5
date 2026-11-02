@@ -24,7 +24,15 @@
     "pepper; safe to commit.",
     "",
     "DETERMINISM: every id and timestamp is pinned, so both sides produce",
-    "byte-identical post-op state and the canonical dump needs ZERO normalization."
+    "byte-identical post-op state and the canonical dump needs ZERO normalization.",
+    "",
+    "P4.D341 (the narration codec, v4 `778b97b2b`): `rawCells` are post-seed RAW",
+    "UPDATEs of one column (value null → SQL NULL) planting pre-codec / legacy cells",
+    "(a NULL narration, the TEXT `null`, a raw `+`, a raw built-in `*`, a NULL",
+    "markdownAsterisks, an out-of-order unmarkedStyle); the ops add a null-narration",
+    "create with an unmarkedStyle and updates that name no narration on legacy rows",
+    "(the merged write ENCODES the stored value); `reads` compares v4's decoded",
+    "findById against v5's route read for every surviving row."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "seed": [
@@ -37,16 +45,43 @@
       "isBuiltIn": true,
       "tags": [],
       "delimiters": [
-        { "kind": "wrap", "name": "Narration", "buttonName": "Nar", "delimiters": "*", "style": "qt-chat-narration" },
-        { "kind": "wrap", "name": "Out of Character", "buttonName": "OOC", "delimiters": ["((", "))"], "style": "qt-chat-ooc" }
+        {
+          "kind": "wrap",
+          "name": "Narration",
+          "buttonName": "Nar",
+          "delimiters": "*",
+          "style": "qt-chat-narration"
+        },
+        {
+          "kind": "wrap",
+          "name": "Out of Character",
+          "buttonName": "OOC",
+          "delimiters": [
+            "((",
+            "))"
+          ],
+          "style": "qt-chat-ooc"
+        }
       ],
       "renderingPatterns": [
-        { "pattern": "\\(\\([^)]+\\)\\)", "className": "qt-chat-ooc" },
-        { "pattern": "(?<!\\*)\\*[^*]+\\*(?!\\*)", "className": "qt-chat-narration" }
+        {
+          "pattern": "\\(\\([^)]+\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "(?<!\\*)\\*[^*]+\\*(?!\\*)",
+          "className": "qt-chat-narration"
+        }
       ],
       "dialogueDetection": {
-        "openingChars": ["\"", "“"],
-        "closingChars": ["\"", "”"],
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
         "className": "qt-chat-dialogue"
       },
       "narrationDelimiters": "*",
@@ -60,15 +95,31 @@
       "description": null,
       "systemPrompt": "Actions in [brackets], thoughts in {braces}.",
       "isBuiltIn": false,
-      "tags": ["7a000000-0000-4000-8000-00000000aa01"],
+      "tags": [
+        "7a000000-0000-4000-8000-00000000aa01"
+      ],
       "delimiters": [
-        { "kind": "linePrefix", "name": "Out of Character", "buttonName": "OOC", "marker": "// ", "style": "qt-chat-ooc" }
+        {
+          "kind": "linePrefix",
+          "name": "Out of Character",
+          "buttonName": "OOC",
+          "marker": "// ",
+          "style": "qt-chat-ooc"
+        }
       ],
       "renderingPatterns": [
-        { "pattern": "^// .+$", "className": "qt-chat-ooc", "flags": "m", "scope": "line" }
+        {
+          "pattern": "^// .+$",
+          "className": "qt-chat-ooc",
+          "flags": "m",
+          "scope": "line"
+        }
       ],
       "dialogueDetection": null,
-      "narrationDelimiters": ["[", "]"],
+      "narrationDelimiters": [
+        "[",
+        "]"
+      ],
       "createdAt": "2026-01-01T00:00:00.000Z",
       "updatedAt": "2026-01-01T00:00:00.000Z"
     },
@@ -78,6 +129,84 @@
       "name": "Legacy",
       "description": "A pre-`kind` template whose delimiters lack the discriminant.",
       "systemPrompt": "Legacy wrap in tildes.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "6f000000-0000-4000-8000-000000000006",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "NullCell",
+      "description": null,
+      "systemPrompt": "NullCell prompt.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "7a000000-0000-4000-8000-000000000007",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "TextNull",
+      "description": null,
+      "systemPrompt": "TextNull prompt.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "8b000000-0000-4000-8000-000000000008",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "LegacyPlus",
+      "description": null,
+      "systemPrompt": "LegacyPlus prompt.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": "*",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "9c000000-0000-4000-8000-000000000009",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "PairKeep",
+      "description": null,
+      "systemPrompt": "PairKeep prompt.",
+      "isBuiltIn": false,
+      "tags": [],
+      "delimiters": [],
+      "renderingPatterns": [],
+      "dialogueDetection": null,
+      "narrationDelimiters": [
+        "<<",
+        ">>"
+      ],
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "ad000000-0000-4000-8000-00000000000a",
+      "userId": "9f000000-0000-4000-8000-0000000000ff",
+      "name": "Styled",
+      "description": null,
+      "systemPrompt": "Styled prompt.",
       "isBuiltIn": false,
       "tags": [],
       "delimiters": [],
@@ -107,23 +236,85 @@
         "isBuiltIn": false,
         "tags": [],
         "delimiters": [
-          { "kind": "wrap", "name": "Narration", "buttonName": "Nar", "style": "qt-nar", "delimiters": "*" },
-          { "kind": "wrap", "name": "OOC", "buttonName": "OOC", "style": "qt-ooc", "delimiters": ["((", "))"] },
-          { "kind": "linePrefix", "name": "Meta", "buttonName": "M", "style": "qt-meta", "marker": "// " },
-          { "kind": "tagPrefix", "name": "Rank", "buttonName": "R", "style": "qt-rank", "open": "[", "close": "]", "tokenPattern": "[A-Z]+" },
-          { "kind": "wrap", "name": "Bold", "buttonName": "B", "style": "qt-bold", "addOns": { "bold": true }, "delimiters": "+" },
-          { "kind": "wrap", "name": "Hidden", "buttonName": "Hd", "style": "qt-hidden", "hideDelimiter": true, "delimiters": "~" },
-          { "kind": "tagPrefix", "name": "Tag2", "buttonName": "T2", "style": "qt-tag2", "open": "<", "close": ">" }
+          {
+            "kind": "wrap",
+            "name": "Narration",
+            "buttonName": "Nar",
+            "style": "qt-nar",
+            "delimiters": "*"
+          },
+          {
+            "kind": "wrap",
+            "name": "OOC",
+            "buttonName": "OOC",
+            "style": "qt-ooc",
+            "delimiters": [
+              "((",
+              "))"
+            ]
+          },
+          {
+            "kind": "linePrefix",
+            "name": "Meta",
+            "buttonName": "M",
+            "style": "qt-meta",
+            "marker": "// "
+          },
+          {
+            "kind": "tagPrefix",
+            "name": "Rank",
+            "buttonName": "R",
+            "style": "qt-rank",
+            "open": "[",
+            "close": "]",
+            "tokenPattern": "[A-Z]+"
+          },
+          {
+            "kind": "wrap",
+            "name": "Bold",
+            "buttonName": "B",
+            "style": "qt-bold",
+            "addOns": {
+              "bold": true
+            },
+            "delimiters": "+"
+          },
+          {
+            "kind": "wrap",
+            "name": "Hidden",
+            "buttonName": "Hd",
+            "style": "qt-hidden",
+            "hideDelimiter": true,
+            "delimiters": "~"
+          },
+          {
+            "kind": "tagPrefix",
+            "name": "Tag2",
+            "buttonName": "T2",
+            "style": "qt-tag2",
+            "open": "<",
+            "close": ">"
+          }
         ],
         "renderingPatterns": [
-          { "pattern": "\\{[^}]+\\}", "className": "qt-chat-inner-monologue" }
+          {
+            "pattern": "\\{[^}]+\\}",
+            "className": "qt-chat-inner-monologue"
+          }
         ],
         "dialogueDetection": {
-          "openingChars": ["“"],
-          "closingChars": ["”"],
+          "openingChars": [
+            "“"
+          ],
+          "closingChars": [
+            "”"
+          ],
           "className": "qt-chat-dialogue"
         },
-        "narrationDelimiters": ["[", "]"]
+        "narrationDelimiters": [
+          "[",
+          "]"
+        ]
       },
       "options": {
         "id": "3c000000-0000-4000-8000-000000000003",
@@ -168,7 +359,14 @@
       "data": {
         "name": "Brackets v2",
         "delimiters": [
-          { "kind": "tagPrefix", "name": "Speaker", "buttonName": "Sp", "style": "qt-speaker", "open": "[", "close": "]" }
+          {
+            "kind": "tagPrefix",
+            "name": "Speaker",
+            "buttonName": "Sp",
+            "style": "qt-speaker",
+            "open": "[",
+            "close": "]"
+          }
         ],
         "narrationDelimiters": "*",
         "updatedAt": "2026-03-01T00:00:00.000Z"
@@ -184,9 +382,178 @@
       }
     },
     {
+      "kind": "create",
+      "comment": "P4.D341: unmarked prose — narrationDelimiters null (stored as the TEXT `null`) + an unmarkedStyle with partial addOns (materialized) + markdownAsterisks false; renderingPatterns carry the three new pattern scopes with an EMPTY className.",
+      "data": {
+        "userId": "9f000000-0000-4000-8000-0000000000ff",
+        "name": "Prose",
+        "description": "Plain prose.",
+        "systemPrompt": "Write prose.",
+        "isBuiltIn": false,
+        "tags": [],
+        "delimiters": [
+          {
+            "kind": "wrap",
+            "name": "Dialogue",
+            "buttonName": "Dia",
+            "style": "qt-chat-dialogue",
+            "delimiters": "\"",
+            "matchCurlyQuotes": true,
+            "closeOptional": true
+          }
+        ],
+        "renderingPatterns": [
+          {
+            "pattern": "\\*{2,}",
+            "className": "",
+            "scope": "strip"
+          },
+          {
+            "pattern": "\\*",
+            "className": "",
+            "scope": "literal"
+          },
+          {
+            "pattern": "[\\s\\S]",
+            "className": "qt-roleplay-plain qt-rp-italic",
+            "scope": "unmarked"
+          }
+        ],
+        "dialogueDetection": null,
+        "narrationDelimiters": null,
+        "unmarkedStyle": {
+          "style": "qt-roleplay-plain",
+          "addOns": {
+            "italic": true
+          }
+        },
+        "markdownAsterisks": false
+      },
+      "options": {
+        "id": "be000000-0000-4000-8000-00000000000b",
+        "createdAt": "2026-02-03T00:00:00.000Z",
+        "updatedAt": "2026-02-03T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: a name-only update on the legacy raw `+` row — the merged write ENCODES the stored value (`+` → \"+\").",
+      "id": "8b000000-0000-4000-8000-000000000008",
+      "data": {
+        "name": "LegacyPlus v2",
+        "updatedAt": "2026-03-04T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: a description-only update on the NULL-cell row — narration NULL → '*' → \"*\"; markdownAsterisks NULL → true → 1.",
+      "id": "6f000000-0000-4000-8000-000000000006",
+      "data": {
+        "description": "Now described.",
+        "updatedAt": "2026-03-05T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: a systemPrompt-only update on the out-of-order unmarkedStyle row — re-emitted in schema order with defaults.",
+      "id": "ad000000-0000-4000-8000-00000000000a",
+      "data": {
+        "systemPrompt": "Styled v2.",
+        "updatedAt": "2026-03-06T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: the TEXT-`null` row gains an unmarkedStyle and markdownAsterisks false; narration not named → stays `null`.",
+      "id": "7a000000-0000-4000-8000-000000000007",
+      "data": {
+        "unmarkedStyle": {
+          "style": "qt-u"
+        },
+        "markdownAsterisks": false,
+        "updatedAt": "2026-03-07T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: an explicit `narrationDelimiters: null` + `unmarkedStyle: null` on AllKinds (pair → `null`; style stays SQL NULL).",
+      "id": "3c000000-0000-4000-8000-000000000003",
+      "data": {
+        "narrationDelimiters": null,
+        "unmarkedStyle": null,
+        "updatedAt": "2026-03-08T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D341: an explicit pair onto the unmarked-prose row, unmarkedStyle cleared.",
+      "id": "be000000-0000-4000-8000-00000000000b",
+      "data": {
+        "narrationDelimiters": [
+          "{",
+          "}"
+        ],
+        "unmarkedStyle": null,
+        "updatedAt": "2026-03-09T00:00:00.000Z"
+      }
+    },
+    {
       "kind": "delete",
       "comment": "Delete the minimal `Plain` template created above.",
       "id": "4d000000-0000-4000-8000-000000000004"
     }
-  ]
+  ],
+  "rawCells": [
+    {
+      "$comment": "P4.D341: a pre-codec built-in narration cell (raw `*`) — read only; v4's decoded() reads it as '*'.",
+      "id": "1a000000-0000-4000-8000-000000000001",
+      "column": "narrationDelimiters",
+      "value": "*"
+    },
+    {
+      "$comment": "P4.D341: a SQL-NULL narration cell (hydrate → undefined → Zod default '*'); the update below writes the encoded \"*\".",
+      "id": "6f000000-0000-4000-8000-000000000006",
+      "column": "narrationDelimiters",
+      "value": null
+    },
+    {
+      "$comment": "P4.D341: a SQL-NULL markdownAsterisks cell — reads true; the update below writes 1.",
+      "id": "6f000000-0000-4000-8000-000000000006",
+      "column": "markdownAsterisks",
+      "value": null
+    },
+    {
+      "$comment": "P4.D341: the four-byte TEXT `null` — unmarked prose; reads null; the update below keeps it.",
+      "id": "7a000000-0000-4000-8000-000000000007",
+      "column": "narrationDelimiters",
+      "value": "null"
+    },
+    {
+      "$comment": "P4.D341: a legacy RAW `+` (not JSON) — reads '+'; the name-only update below writes the encoded \"+\".",
+      "id": "8b000000-0000-4000-8000-000000000008",
+      "column": "narrationDelimiters",
+      "value": "+"
+    },
+    {
+      "$comment": "P4.D341: an unmarkedStyle out of schema order with partial addOns — the read and the systemPrompt-only update re-emit it in schema order with the defaults materialized.",
+      "id": "ad000000-0000-4000-8000-00000000000a",
+      "column": "unmarkedStyle",
+      "value": "{\"addOns\":{\"italic\":true},\"style\":\"qt-roleplay-plain\"}"
+    }
+  ],
+  "reads": {
+    "$comment": "P4.D341: after the ops, every remaining id is read through v4's REAL findById (the repository's decoded()) and v5's find_full_json_by_id; the JSON bytes must match.",
+    "ids": [
+      "1a000000-0000-4000-8000-000000000001",
+      "2b000000-0000-4000-8000-000000000002",
+      "3c000000-0000-4000-8000-000000000003",
+      "5e000000-0000-4000-8000-000000000005",
+      "6f000000-0000-4000-8000-000000000006",
+      "7a000000-0000-4000-8000-000000000007",
+      "8b000000-0000-4000-8000-000000000008",
+      "9c000000-0000-4000-8000-000000000009",
+      "ad000000-0000-4000-8000-00000000000a",
+      "be000000-0000-4000-8000-00000000000b"
+    ]
+  }
 }

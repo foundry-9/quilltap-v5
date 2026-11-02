@@ -1333,16 +1333,8 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
         db.write_blocking(move |ws| {
             let main = ws.main().connection();
             let mut ensure_failures = EnsureFailures::default();
-            // === P4.134 (dogfood #134(b)) ===
-            // v4 seeds the templates inside `seedInitialData` (phase 1.25)
-            // through a FALLBACK `safeQuery`: a failure logs `Error seeding
-            // built-in roleplay templates` and seeding carries on (the
-            // `seed-initial-data.ts` ERROR around it is unreachable on a
-            // database failure). Never a boot failure in v4, so not here.
-            quilltap_core::db::fallback::seed_built_in_templates_or_log(|| {
-                builtin_templates::seed_built_in_templates(main)
-            });
-            // === end P4.134 ===
+            // P4.D341: the P4.134 built-in template seed MOVED below the
+            // P4.D341 ensure block (`TEMPLATE_SEED_AFTER_ENSURES` — see there).
             // v4 `e3a9654f`'s migration `anchor-fictional-clock-base-v1`,
             // re-homed as a boot repair because v5's migration runner is
             // deferred — the same shape as the mount-index case repair below.
@@ -2303,6 +2295,97 @@ fn seed_built_ins(db: &Db, tz: &str) -> Result<EnsureFailures, String> {
                 );
             }
             // === end P4.D337 ===
+            // === P4.D341 (v4 8cb584eff / b15fe9404 / 839575d89 / 778b97b2b — the 17th–21st D23 moves) ===
+            // The round's last four migrations, re-homed as boot ensures in v4's
+            // registration order (`migrations/scripts/index.ts:942-946` at the
+            // `236c04e35` pin, after the terminal geometry): the memory
+            // keystone (column + its partial index — R-4), the Storyteller
+            // mode (three columns + `storyteller_rounds` in the MIGRATION's
+            // text, R-2), the llm-logs round id (the FIRST llm-logs column
+            // ensure — here, inside `seed_built_ins`, so PHASE 3.1's
+            // structural verify after this closure never names a pre-round
+            // `llm_logs` MISSING `storytellerRoundId`), the template unmarked
+            // pair. The intervention step (the 20th move) rides the 4.11
+            // chain above. ALL FIVE UNSTAMPED (R-9 — every `shouldRun` is
+            // structural); FATAL on failure except the llm-logs step on an
+            // Absent / Degraded partition, which SKIPS with a DEBUG (R-17).
+            // ONE v5 INFO per step that changed anything; v4's migration lines
+            // and prettify labels are NO-PORT. P4.160 stays LAST.
+            if let quilltap_core::db::memory_keystone_repair::KeystoneEnsureOutcome::Changed {
+                column_added,
+                index_created,
+            } = quilltap_core::db::memory_keystone_repair::ensure_memory_keystone(main)?
+            {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::memory_keystone_repair::MIGRATION_ID,
+                    columnAdded = column_added,
+                    indexCreated = index_created,
+                    "Set the keystones in the Commonplace Book"
+                );
+            }
+            let storyteller =
+                quilltap_core::db::storyteller_mode_repair::run_storyteller_mode_ensures(main)?;
+            if storyteller.changed() {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::storyteller_mode_repair::MIGRATION_ID,
+                    columnsAdded = storyteller.columns_added,
+                    tableCreated = storyteller.table_created,
+                    "Cleared a dais in the Salon for the Storyteller"
+                );
+            }
+            match ws.llm_logs().map(|w| w.connection()) {
+                Some(logs) => {
+                    if let quilltap_core::db::llm_logs_storyteller_round_id_repair::LlmLogsRoundIdOutcome::Added {
+                        index_created,
+                    } = quilltap_core::db::llm_logs_storyteller_round_id_repair::ensure_llm_logs_storyteller_round_id(logs)?
+                    {
+                        tracing::info!(
+                            target: "quilltap::boot",
+                            migrationId =
+                                quilltap_core::db::llm_logs_storyteller_round_id_repair::MIGRATION_ID,
+                            indexCreated = index_created,
+                            "Taught the wire ledger to bundle each storyteller round under one ribbon"
+                        );
+                    }
+                }
+                None => tracing::debug!(
+                    target: "quilltap::boot",
+                    "Storyteller round-id ensure skipped: llm-logs partition unavailable"
+                ),
+            }
+            let unmarked_added =
+                quilltap_core::db::roleplay_templates_unmarked_repair::ensure_roleplay_templates_unmarked_fields(
+                    main,
+                )?;
+            if unmarked_added > 0 {
+                tracing::info!(
+                    target: "quilltap::boot",
+                    migrationId = quilltap_core::db::roleplay_templates_unmarked_repair::MIGRATION_ID,
+                    columnsAdded = unmarked_added,
+                    "Set aside a shelf for the unadorned novel"
+                );
+            }
+            // `TEMPLATE_SEED_AFTER_ENSURES` (P4.D341): v4 runs its migrations
+            // (PHASE 1) BEFORE `seedInitialData` (PHASE 1.25), and at the pin
+            // the built-in template seeder writes `unmarkedStyle` /
+            // `markdownAsterisks` — so on a pre-round instance it must run
+            // AFTER the unmarked ensure above, or it answers `no such column`.
+            // The P4.134 seed therefore sits here, after every boot ensure that
+            // re-homes a v4 migration, as v4's phase order has it (nothing
+            // between its old slot and here reads `roleplay_templates`).
+            // === P4.134 (dogfood #134(b)) ===
+            // v4 seeds the templates inside `seedInitialData` (phase 1.25)
+            // through a FALLBACK `safeQuery`: a failure logs `Error seeding
+            // built-in roleplay templates` and seeding carries on (the
+            // `seed-initial-data.ts` ERROR around it is unreachable on a
+            // database failure). Never a boot failure in v4, so not here.
+            quilltap_core::db::fallback::seed_built_in_templates_or_log(|| {
+                builtin_templates::seed_built_in_templates(main)
+            });
+            // === end P4.134 ===
+            // === end P4.D341 ===
             // === P4.160 (P4.153's OPEN item) ===
             // v4's MIGRATION-created index family on an instance provisioned
             // before P4.153 (the 56 absent names + the PLAIN `mp_path`),

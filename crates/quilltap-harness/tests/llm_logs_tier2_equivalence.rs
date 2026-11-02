@@ -226,6 +226,8 @@ struct CreateData {
     chat_id: Option<String>,
     character_id: Option<String>,
     autonomous_run_id: Option<String>,
+    #[serde(default)]
+    storyteller_round_id: Option<String>,
     provider: String,
     model_name: String,
     #[serde(default)]
@@ -259,6 +261,8 @@ struct UpdateData {
     chat_id: Option<String>,
     character_id: Option<String>,
     autonomous_run_id: Option<String>,
+    #[serde(default)]
+    storyteller_round_id: Option<String>,
     provider: Option<String>,
     model_name: Option<String>,
     #[serde(default)]
@@ -331,6 +335,7 @@ fn llm_logs_tier2_matches_oracle() {
                         chat_id: data.chat_id.clone(),
                         character_id: data.character_id.clone(),
                         autonomous_run_id: data.autonomous_run_id.clone(),
+                        storyteller_round_id: data.storyteller_round_id.clone(),
                         provider: data.provider.clone(),
                         model_name: data.model_name.clone(),
                         connection_profile_id: data.connection_profile_id.clone(),
@@ -360,6 +365,7 @@ fn llm_logs_tier2_matches_oracle() {
                         chat_id: data.chat_id.clone(),
                         character_id: data.character_id.clone(),
                         autonomous_run_id: data.autonomous_run_id.clone(),
+                        storyteller_round_id: data.storyteller_round_id.clone(),
                         provider: data.provider.clone(),
                         model_name: data.model_name.clone(),
                         connection_profile_id: data.connection_profile_id.clone(),

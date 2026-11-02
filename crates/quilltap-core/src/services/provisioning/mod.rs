@@ -246,6 +246,30 @@ pub const SINGLE_USER_ID: &str = "ffffffff-ffff-ffff-ffff-ffffffffffff";
 /// clauses, position apart (the migrations append — re-homed as
 /// `db::chat_settings_4_11_repair`). Nothing else moved;
 /// `migration_indexes.json` UNMOVED (neither migration makes an index).
+///
+/// `236c04e35` (P4.D341 — D23 re-dumps #17–#21 as ONE, the 4.11.0 code: v4
+/// `8cb584eff` keystone memories, `b15fe9404` Storyteller mode, `839575d89`
+/// operator intervention, `778b97b2b` the Novel template; run FROM the pin,
+/// 2026-11-02): main 83 → 85 — `memories` GAINS `"keystone" INTEGER DEFAULT 0`
+/// between `consolidatedAt` and `createdAt` (no `NOT NULL`: a default is
+/// present; the migration appends `INTEGER NOT NULL DEFAULT 0` — TWO shapes);
+/// `chats` GAINS `"turnMode" TEXT` (bare — the nullable-optional rule; the
+/// migration appends `TEXT DEFAULT NULL`) and `"storytellerInviteFilter" INTEGER
+/// DEFAULT 0` between `isPaused` and `isManuallyRenamed`; `chat_messages` GAINS
+/// `"storytellerBid" TEXT` between `carinaMeta` and `pascalMeta`; `chat_settings`
+/// GAINS `"customToolIntervention" INTEGER DEFAULT 1` after `customToolTriggers`
+/// (cid 19; ONE shape — byte-equal to the migration's clause); `roleplay_templates`
+/// GAINS `"unmarkedStyle" TEXT` and `"markdownAsterisks" INTEGER DEFAULT 1`
+/// BEFORE `createdAt` (the Zod order; `narrationDelimiters`' own `TEXT DEFAULT
+/// '*'` line does NOT move); the NEW table `storyteller_rounds` in generateDDL's
+/// shape (no FK, no chat index) + its `idx_storyteller_rounds_createdAt`; and —
+/// NOT predicted by the order — `characters` GAINS `"canDrawDiagrams" INTEGER
+/// DEFAULT 0` and `"diagramStyle" TEXT DEFAULT 'handDrawn'` after
+/// `canChooseOutfit` (`6588972d5`'s Zod fields; v4 has NO migration for them, so
+/// only a FRESH instance carries the two columns, and both are vault-managed —
+/// no ensure, no reader). llm-logs: `llm_logs` GAINS `"storytellerRoundId" TEXT`
+/// after `autonomousRunId` (one column, no new statement). mount-index
+/// `cmp`-identical.
 static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 
 /// The captured `chat_settings` seed row's columns (all but the minted
@@ -278,6 +302,11 @@ static FRESH_SCHEMA_JSON: &str = include_str!("fresh_schema.json");
 /// after `composerUnicode`) — v4's repository defaults
 /// (`chat-settings.repository.ts:194`, `:199`), as captured at schema
 /// positions; nothing else moved.
+/// `236c04e35` (P4.D341): the seed row GAINS `"customToolIntervention": 1`
+/// (column index 17, after `customToolTriggers`) and `smartTypographySettings`
+/// gains `"punctuationWarnings":true` as its fourth key (v4
+/// `chat-settings.repository.ts:113-118` — a SEED-ONLY move: the DDL default
+/// stays three keys); 35 → 36 columns; nothing else moved.
 static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 
 /// P4.153 (dogfood #149): v4's OTHER index family — the one its MIGRATIONS
@@ -336,6 +365,14 @@ static CHAT_SETTINGS_SEED_JSON: &str = include_str!("chat_settings_seed.json");
 /// `idx_vector_entries_characterId` / `idx_vector_indices_characterId` (the
 /// tables retired, `af48f6cc2`). main 52 / mount-index 5 / llm-logs 5 = 62. The
 /// cursor table's two autoindexes are `sql IS NULL` and stay out.
+/// `236c04e35` (P4.D341 — re-dumped from the pin, the REAL `tsx server.ts`
+/// first boot's `sqlite_master` the cross-check, zero findings; `source.v4Commit`
+/// moves from `83334b9a5` — it was not re-dumped at `322a5488e`): main GAINS
+/// EXACTLY the partial `idx_memories_keystone ("characterId", "aboutCharacterId")
+/// WHERE "keystone" = 1` (`add-memory-keystone-v1`) and `idx_storyteller_rounds_chat
+/// ("chatId", "status")` (`add-storyteller-mode-v1`); llm-logs GAINS
+/// `idx_llm_logs_storytellerRoundId ("storytellerRoundId")`. main 54 /
+/// mount-index 5 / llm-logs 6 = 65.
 static MIGRATION_INDEXES_JSON: &str = include_str!("migration_indexes.json");
 
 /// One artifact's statements per partition (`fresh_schema.json` and
@@ -728,8 +765,10 @@ mod tests {
             .chain(&family.mount_index)
             .chain(&family.llm_logs)
             .collect();
-        // 63 → 62 at `83334b9a5` (P4.D288: the vector mirror's index gone).
-        assert_eq!(all.len(), 62);
+        // 63 → 62 at `83334b9a5` (P4.D288: the vector mirror's index gone);
+        // 62 → 65 at `236c04e35` (P4.D341: the keystone, round-chat and
+        // round-id indexes).
+        assert_eq!(all.len(), 65);
         for sql in all {
             let table = index_table(sql).unwrap_or_else(|| panic!("no table in {sql}"));
             assert!(
@@ -858,6 +897,8 @@ mod tests {
                 "supersededAt",
                 "consolidatedFrom",
                 "consolidatedAt",
+                // P4.D341 (v4 `8cb584eff`).
+                "keystone",
                 "createdAt",
                 "updatedAt"
             ]
@@ -920,7 +961,8 @@ mod tests {
     /// P4.D304 (D23 re-dumps #10 + #11): the provisioned `chat_settings` seed
     /// row carries v4's two 4.11 toggles at their repository defaults
     /// (`customToolTriggers = 0`, `composerSlashCommands = 1`), at generateDDL's
-    /// schema positions (cid 18 / 23).
+    /// schema positions (cid 18 / 23; P4.D341: 18 / 19 / 24 with the
+    /// intervention toggle between them).
     #[test]
     fn the_seed_row_carries_the_4_11_toggles_at_schema_positions() {
         let dir = tempdir().unwrap();
@@ -929,15 +971,21 @@ mod tests {
         provision_fresh_instance(&data, PEPPER).unwrap();
         let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
         let conn = main.connection();
-        let (t, s): (i64, i64) = conn
+        let (t, i, s, typo): (i64, i64, i64, String) = conn
             .query_row(
-                "SELECT customToolTriggers, composerSlashCommands FROM chat_settings \
-                 WHERE userId = ?1",
+                "SELECT customToolTriggers, customToolIntervention, composerSlashCommands, \
+                 smartTypographySettings FROM chat_settings WHERE userId = ?1",
                 [SINGLE_USER_ID],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .unwrap();
-        assert_eq!((t, s), (0, 1));
+        assert_eq!((t, i, s), (0, 1, 1));
+        // P4.D341: v4's seed carries the fourth typography key (a SEED-ONLY
+        // move — the DDL default stays three keys).
+        assert_eq!(
+            typo,
+            r#"{"displayQuotes":false,"dashes":true,"ellipsis":true,"punctuationWarnings":true}"#
+        );
         let cid = |name: &str| -> i64 {
             conn.query_row(
                 "SELECT cid FROM pragma_table_info('chat_settings') WHERE name = ?1",
@@ -947,7 +995,101 @@ mod tests {
             .unwrap()
         };
         assert_eq!(cid("customToolTriggers"), 18);
-        assert_eq!(cid("composerSlashCommands"), 23);
+        // P4.D341 (D23 #20): the intervention toggle right after the triggers
+        // (cid 19 — the order's "cid 20" counted from 1); slash moves 23 → 24.
+        assert_eq!(cid("customToolIntervention"), 19);
+        assert_eq!(cid("composerSlashCommands"), 24);
+    }
+
+    /// P4.D341 (D23 re-dumps #17–#21): a fresh instance carries the keystone
+    /// column in generateDDL's schema slot, the Storyteller columns and table
+    /// (generateDDL's shape — no FK), the round-id log column, the template
+    /// pair, and the three new migration-family indexes from
+    /// `migration_indexes.json`.
+    #[test]
+    fn a_fresh_instance_carries_the_4_11_keystone_surface() {
+        let dir = tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let conn = main.connection();
+        let columns = |c: &rusqlite::Connection, table: &str| -> Vec<String> {
+            c.prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+                .unwrap()
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let mem = columns(conn, "memories");
+        let at = mem.iter().position(|c| c == "keystone").unwrap();
+        assert_eq!(
+            mem[at - 1..=at + 1],
+            ["consolidatedAt", "keystone", "createdAt"]
+        );
+        let chats = columns(conn, "chats");
+        let at = chats.iter().position(|c| c == "isPaused").unwrap();
+        assert_eq!(
+            chats[at..at + 4],
+            [
+                "isPaused",
+                "turnMode",
+                "storytellerInviteFilter",
+                "isManuallyRenamed"
+            ]
+        );
+        let msgs = columns(conn, "chat_messages");
+        let at = msgs.iter().position(|c| c == "storytellerBid").unwrap();
+        assert_eq!(
+            msgs[at - 1..=at + 1],
+            ["carinaMeta", "storytellerBid", "pascalMeta"]
+        );
+        let rt = columns(conn, "roleplay_templates");
+        let at = rt.iter().position(|c| c == "unmarkedStyle").unwrap();
+        assert_eq!(
+            rt[at..at + 3],
+            ["unmarkedStyle", "markdownAsterisks", "createdAt"]
+        );
+        let sql = |c: &rusqlite::Connection, name: &str| -> Option<String> {
+            c.query_row(
+                "SELECT sql FROM sqlite_master WHERE name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .ok()
+        };
+        let rounds = sql(conn, "storyteller_rounds").unwrap();
+        assert!(
+            !rounds.contains("FOREIGN KEY"),
+            "generateDDL's shape: {rounds}"
+        );
+        assert_eq!(
+            sql(conn, "idx_memories_keystone").as_deref(),
+            Some(
+                "CREATE INDEX \"idx_memories_keystone\" ON \"memories\" (\"characterId\", \"aboutCharacterId\") WHERE \"keystone\" = 1"
+            )
+        );
+        assert_eq!(
+            sql(conn, "idx_storyteller_rounds_chat").as_deref(),
+            Some(
+                "CREATE INDEX \"idx_storyteller_rounds_chat\" ON \"storyteller_rounds\" (\"chatId\", \"status\")"
+            )
+        );
+        assert!(sql(conn, "idx_storyteller_rounds_createdAt").is_some());
+        let logs = Writer::open_writable(&data.join("quilltap-llm-logs.db"), PEPPER).unwrap();
+        let log_cols = columns(logs.connection(), "llm_logs");
+        let at = log_cols
+            .iter()
+            .position(|c| c == "storytellerRoundId")
+            .unwrap();
+        assert_eq!(log_cols[at - 1], "autonomousRunId");
+        assert_eq!(
+            sql(logs.connection(), "idx_llm_logs_storytellerRoundId").as_deref(),
+            Some(
+                "CREATE INDEX \"idx_llm_logs_storytellerRoundId\" ON \"llm_logs\" (\"storytellerRoundId\")"
+            )
+        );
     }
 
     #[test]

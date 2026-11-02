@@ -9,10 +9,20 @@
 //!     minted UUID + `now` timestamps, through the repo's validating [`create`]
 //!     (v4 `this.validate(...) → collection.insertOne`), so `delimiters` land in
 //!     Zod SCHEMA key order;
-//!   - **present** → UPDATE the six drift-tracked fields + `updatedAt` in place,
+//!   - **present** → UPDATE the eight drift-tracked fields + `updatedAt` in place,
 //!     through the RAW [`seed_update`] (v4 `collection.updateOne({id}, {$set})`),
 //!     so `delimiters` land in the SEED-LITERAL key order — the two paths store
 //!     DIFFERENT bytes for the same data, a v4 quirk this port reproduces.
+//!
+//! Both paths write `narrationDelimiters` ENCODED (v4's `this.encoded(...)` on
+//! the INSERT and on the `$set`), so the every-boot UPDATE rewrites a pre-codec
+//! instance's raw `*` cell to `"*"` and moves `updatedAt` on every boot — v4 does
+//! exactly this at `236c04e35` (the R-6 dogfood note: on a pre-round instance the
+//! first boot silently rewrites the two legacy cells and INSERTs Novel).
+//!
+//! **Seed all three or refuse loudly.** The seed data is parsed into the typed
+//! union for EVERY row before any write; a row that fails to parse returns `Err`
+//! naming the row — never a half-seeded table and never a silently skipped row.
 //!
 //! The seed data ([`BUILTIN_TEMPLATES_JSON`]) is generated verbatim from v4's real
 //! seeder by `harness/oracle/provision/dump-builtin-templates.ts` (the
@@ -30,12 +40,14 @@ use serde::Deserialize;
 
 use crate::clock;
 use crate::db::roleplay_templates::{
-    CreateOptions, DialogueDetection, RenderingPattern, RoleplayTemplatesRepository, RtCreate,
-    SeedUpdate, StringOrPair, TemplateDelimiter,
+    encode_narration_delimiters, CreateOptions, DialogueDetection, RenderingPattern,
+    RoleplayTemplatesRepository, RtCreate, SeedUpdate, StringOrPair, TemplateDelimiter,
+    UnmarkedStyle,
 };
 use crate::db::DbError;
 
-/// The verbatim built-in template seed data (Standard / Quilltap RP). Regenerate
+/// The verbatim built-in template seed data (Standard / Quilltap RP / Novel —
+/// Novel's `renderingPatterns` computed by v4's generator). Regenerate
 /// with `harness/oracle/provision/dump-builtin-templates.ts` (recipe in its
 /// header). `delimiters` is SEED-LITERAL key order.
 static BUILTIN_TEMPLATES_JSON: &str = include_str!("builtin_templates.json");
@@ -57,9 +69,15 @@ struct BuiltInTemplate {
     /// Raw dialogue-detection object, or `null`.
     #[serde(rename = "dialogueDetection")]
     dialogue_detection: Option<serde_json::Value>,
-    /// The narration delimiter — bare string or `[open, close]` pair.
+    /// The DECODED narration delimiter — bare string, `[open, close]` pair, or
+    /// `null` (Novel's unmarked prose).
     #[serde(rename = "narrationDelimiters")]
-    narration_delimiters: StringOrPair,
+    narration_delimiters: Option<StringOrPair>,
+    /// Raw unmarked-style object (SEED-LITERAL order), or `null`.
+    #[serde(rename = "unmarkedStyle")]
+    unmarked_style: Option<serde_json::Value>,
+    #[serde(rename = "markdownAsterisks")]
+    markdown_asterisks: bool,
 }
 
 /// Seed (insert-or-update) the built-in roleplay templates into `main` — v4's
@@ -85,14 +103,21 @@ pub fn seed_built_in_templates(main: &Connection) -> Result<(), DbError> {
 
     let templates: Vec<BuiltInTemplate> = serde_json::from_str(BUILTIN_TEMPLATES_JSON)
         .map_err(|e| DbError::Internal(format!("builtin_templates.json: {e}")))?;
+    // Parse EVERY row into both write shapes before the first write: a row that
+    // cannot parse refuses the whole seed by name (never a half row, never a
+    // silent skip).
+    let prepared = templates
+        .iter()
+        .map(|t| Ok((t, t.to_create()?)))
+        .collect::<Result<Vec<_>, DbError>>()?;
     let repo = RoleplayTemplatesRepository::new(main);
 
-    for template in &templates {
+    for (template, create) in &prepared {
         match repo.find_built_in_id_by_name(&template.name)? {
             None => {
                 let now = clock::now_iso();
                 repo.create(
-                    &template.to_create()?,
+                    create,
                     &CreateOptions {
                         id: uuid::Uuid::new_v4().to_string(),
                         created_at: now.clone(),
@@ -113,17 +138,26 @@ impl BuiltInTemplate {
     /// raw JSON columns are re-parsed into the typed marshaling, which serializes
     /// them in Zod schema order.
     fn to_create(&self) -> Result<RtCreate, DbError> {
-        let delimiters: Vec<TemplateDelimiter> =
-            serde_json::from_value(serde_json::Value::Array(self.delimiters.clone()))
-                .map_err(|e| DbError::Internal(format!("builtin delimiters: {e}")))?;
+        let name = &self.name;
+        let delimiters: Vec<TemplateDelimiter> = serde_json::from_value(serde_json::Value::Array(
+            self.delimiters.clone(),
+        ))
+        .map_err(|e| DbError::Internal(format!("builtin template {name:?} delimiters: {e}")))?;
         let rendering_patterns: Vec<RenderingPattern> =
             serde_json::from_value(serde_json::Value::Array(self.rendering_patterns.clone()))
-                .map_err(|e| DbError::Internal(format!("builtin renderingPatterns: {e}")))?;
+                .map_err(|e| {
+                    DbError::Internal(format!("builtin template {name:?} renderingPatterns: {e}"))
+                })?;
         let dialogue_detection: Option<DialogueDetection> = match &self.dialogue_detection {
-            Some(v) => Some(
-                serde_json::from_value(v.clone())
-                    .map_err(|e| DbError::Internal(format!("builtin dialogueDetection: {e}")))?,
-            ),
+            Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| {
+                DbError::Internal(format!("builtin template {name:?} dialogueDetection: {e}"))
+            })?),
+            None => None,
+        };
+        let unmarked_style: Option<UnmarkedStyle> = match &self.unmarked_style {
+            Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| {
+                DbError::Internal(format!("builtin template {name:?} unmarkedStyle: {e}"))
+            })?),
             None => None,
         };
         Ok(RtCreate {
@@ -137,6 +171,8 @@ impl BuiltInTemplate {
             rendering_patterns,
             dialogue_detection,
             narration_delimiters: self.narration_delimiters.clone(),
+            unmarked_style,
+            markdown_asterisks: self.markdown_asterisks,
         })
     }
 
@@ -154,13 +190,22 @@ impl BuiltInTemplate {
             })?),
             None => None,
         };
+        let unmarked_style_json =
+            match &self.unmarked_style {
+                Some(v) => Some(serde_json::to_string(v).map_err(|e| {
+                    DbError::Internal(format!("builtin unmarkedStyle serialize: {e}"))
+                })?),
+                None => None,
+            };
         Ok(SeedUpdate {
             system_prompt: self.system_prompt.clone(),
             description: self.description.clone(),
             delimiters_json,
             rendering_patterns_json,
             dialogue_detection_json,
-            narration_delimiters: self.narration_delimiters.storage()?,
+            narration_delimiters: encode_narration_delimiters(self.narration_delimiters.as_ref()),
+            unmarked_style_json,
+            markdown_asterisks: self.markdown_asterisks,
             updated_at: now.to_string(),
         })
     }

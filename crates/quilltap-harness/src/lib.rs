@@ -86,6 +86,7 @@ impl CorpusMemory {
             graph_degree: self.graph_degree,
             kind: self.kind,
             source: None,
+            keystone: false,
         }
     }
 }

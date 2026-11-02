@@ -56,6 +56,17 @@
 //! migration (P4.D288 unit 7's `FRESH_INSTANCE_UNLEDGERED`; on `fresh-used`
 //! that inserts `episode-fold` cursors at the last summary anchor).
 //!
+//! **P4.D341 (the `236c04e35` round):** the narrowed runner also carries the
+//! intervention step (the MIDDLE of the 4.11 trio) and the round's last four
+//! (`KEYSTONE_236_MIGRATIONS` — keystone, Storyteller, the llm-logs round id,
+//! the template pair) LAST; the planted base takes all five moves back, and
+//! (R-8) every mode carries an llm-logs SIBLING (`<mode>.llm-logs.after-v5.db`)
+//! v4's round-id migration opens through `SQLITE_LLM_LOGS_PATH` — dumped
+//! before / after like the main file (`logs`). v4 runs all five on the planted
+//! base (24 in all) and NONE after v5's chain on any base; v5 stamps none of
+//! them (R-9 — every `shouldRun` is structural, so the `-unstamped` twins are
+//! vacuous for these five).
+//!
 //! Regenerate + run (three steps around this file, Node 24, from the round's
 //! pin, `TZ=UTC QUILLTAP_TIMEZONE=UTC`):
 //!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
@@ -114,8 +125,10 @@ fn dir() -> Option<PathBuf> {
 /// after the span (`CHAT_SETTINGS_4_11_MIGRATIONS`) — UNSTAMPED on v5's side,
 /// so v4's `shouldRun` (false once v5's chain added both columns) is the whole
 /// zero-rerun proof for them.
-const CHAT_SETTINGS_4_11: [&str; 2] = [
+const CHAT_SETTINGS_4_11: [&str; 3] = [
     "add-custom-tool-triggers-field-v1",
+    // P4.D341: the TWENTIETH D23 move, registered in the MIDDLE.
+    "add-custom-tool-intervention-field-v1",
     "add-composer-slash-commands-field-v1",
 ];
 
@@ -147,6 +160,24 @@ const TERMINAL_GEOMETRY: [&str; 1] =
     [quilltap_core::db::terminal_sessions_geometry_repair::GEOMETRY_MIGRATION_ID];
 // === end P4.D337 ===
 
+// === P4.D341 (v4 8cb584eff / b15fe9404 / 778b97b2b — the 17th–19th and 21st D23 moves) ===
+/// P4.D341: the round's last four (`KEYSTONE_236_MIGRATIONS`), registered after
+/// the geometry — all UNSTAMPED on v5's side (R-9).
+const KEYSTONE_236: [&str; 4] = [
+    quilltap_core::db::memory_keystone_repair::MIGRATION_ID,
+    quilltap_core::db::storyteller_mode_repair::MIGRATION_ID,
+    quilltap_core::db::llm_logs_storyteller_round_id_repair::MIGRATION_ID,
+    quilltap_core::db::roleplay_templates_unmarked_repair::MIGRATION_ID,
+];
+
+/// The llm-logs sibling of a mode's file (`<x>.after-v5.db` →
+/// `<x>.llm-logs.after-v5.db`).
+fn logs_sibling(main: &Path) -> PathBuf {
+    let name = main.file_name().unwrap().to_str().unwrap();
+    main.with_file_name(name.replacen(".after-v5.db", ".llm-logs.after-v5.db", 1))
+}
+// === end P4.D341 ===
+
 /// Run v5's span chain, then the 4.11 `chat_settings` chain, then the chat
 /// wardrobe history's, then the Inventory columns' (the host's boot order),
 /// on `path` (a caller-thread writer).
@@ -168,14 +199,37 @@ fn run_chain(path: &Path) {
     )
     .expect("the terminal geometry ensure");
     // === end P4.D337 ===
+    // === P4.D341: the round's last four, in v4's registration order — the
+    // host's own functions (the intervention step rode the 4.11 chain) ===
+    quilltap_core::db::memory_keystone_repair::ensure_memory_keystone(w.connection())
+        .expect("the keystone ensure");
+    quilltap_core::db::storyteller_mode_repair::run_storyteller_mode_ensures(w.connection())
+        .expect("the Storyteller ensure");
+    let logs =
+        Writer::open_writable(&logs_sibling(path), PEPPER).expect("open the llm-logs sibling");
+    quilltap_core::db::llm_logs_storyteller_round_id_repair::ensure_llm_logs_storyteller_round_id(
+        logs.connection(),
+    )
+    .expect("the llm-logs round-id ensure");
+    quilltap_core::db::roleplay_templates_unmarked_repair::ensure_roleplay_templates_unmarked_fields(
+        w.connection(),
+    )
+    .expect("the template unmarked ensure");
+    // === end P4.D341 ===
 }
 
-/// A fresh v5-provisioned main partition at `out` (its first boot not yet run).
+/// A fresh v5-provisioned main partition at `out` (its first boot not yet run),
+/// with its llm-logs partition beside it (P4.D341, R-8).
 fn provision_to(out: &Path) {
     let scratch = tempfile::tempdir().unwrap();
     quilltap_core::services::provisioning::provision_fresh_instance(scratch.path(), PEPPER)
         .expect("provision");
     std::fs::copy(scratch.path().join("quilltap.db"), out).expect("copy fresh");
+    std::fs::copy(
+        scratch.path().join("quilltap-llm-logs.db"),
+        logs_sibling(out),
+    )
+    .expect("copy fresh llm-logs");
 }
 
 /// The write step: v5's chain over each base → `<mode>.after-v5.db`, and each
@@ -194,6 +248,9 @@ fn write_after_v5() {
         match mode {
             "planted" | "v4-migrated" => {
                 std::fs::copy(dir.join(format!("{mode}.db")), &out).expect("copy base");
+                // P4.D341 (R-8): the planted / v4-migrated llm-logs sibling.
+                std::fs::copy(dir.join(format!("{mode}-llm-logs.db")), logs_sibling(&out))
+                    .expect("copy base llm-logs");
             }
             "fresh" => provision_to(&out),
             "fresh-used" => {
@@ -225,6 +282,7 @@ fn write_after_v5() {
         let twin = dir.join(format!("{mode}-unstamped.after-v5.db"));
         let _ = std::fs::remove_file(&twin);
         std::fs::copy(&out, &twin).expect("copy twin");
+        std::fs::copy(logs_sibling(&out), logs_sibling(&twin)).expect("copy twin llm-logs");
         let w = Writer::open_writable(&twin, PEPPER).expect("open twin");
         for id in SPAN {
             w.connection()
@@ -235,6 +293,7 @@ fn write_after_v5() {
         let twin = dir.join(format!("{mode}-history-unstamped.after-v5.db"));
         let _ = std::fs::remove_file(&twin);
         std::fs::copy(&out, &twin).expect("copy history twin");
+        std::fs::copy(logs_sibling(&out), logs_sibling(&twin)).expect("copy history twin llm-logs");
         let w = Writer::open_writable(&twin, PEPPER).expect("open history twin");
         for id in CHAT_WARDROBE_HISTORY {
             w.connection()
@@ -282,11 +341,11 @@ fn no_migration_reruns_after_the_v5_chain() {
     let v4_ledger = ledger_by_id(&build[0]["ledger"]);
     assert_eq!(
         build[0]["ran"].as_array().unwrap().len(),
-        19,
-        "v4 ran the twelve + the two 4.11 chat_settings migrations + the history table and \
-         seed (the column is `not needed` on a table born at its final shape — P4.D315) + \
-         the Inventory's two columns (P4.D324) + the terminal geometry (P4.D337) on the \
-         planted base"
+        24,
+        "v4 ran the twelve + the three 4.11 chat_settings migrations (P4.D341's middle one) + \
+         the history table and seed (the column is `not needed` on a table born at its final \
+         shape — P4.D315) + the Inventory's two columns (P4.D324) + the terminal geometry \
+         (P4.D337) + the round's last four (P4.D341) on the planted base"
     );
     let build_ran: Vec<&str> = build[0]["ran"]
         .as_array()
@@ -320,6 +379,18 @@ fn no_migration_reruns_after_the_v5_chain() {
         );
     }
     // === end P4.D337 ===
+    // === P4.D341: v4's build RAN and stamped the five (R-9's other side) ===
+    for id in KEYSTONE_236.into_iter().chain([CHAT_SETTINGS_4_11[1]]) {
+        assert!(
+            build_ran.contains(&id),
+            "v4's build ran {id}: {build_ran:?}"
+        );
+        assert!(
+            v4_ledger.iter().any(|(i, _)| i == id),
+            "v4's build stamped {id}"
+        );
+    }
+    // === end P4.D341 ===
     let row_of = |mode: &str| -> &Value {
         v4.iter()
             .find(|r| r["mode"] == mode)
@@ -347,7 +418,8 @@ fn no_migration_reruns_after_the_v5_chain() {
         if !ran.is_empty() {
             failures.push(format!("{mode}: v4 re-ran {ran:?} after v5's chain"));
         }
-        for key in ["master", "tables", "ledger"] {
+        // P4.D341 (R-8): `logs` — the llm-logs sibling's master + rows.
+        for key in ["master", "tables", "ledger", "logs"] {
             if row["before"][key] != row["after"][key] {
                 failures.push(format!(
                     "{mode}: v4's runner changed {key}\n  before {}\n  after  {}",
@@ -428,7 +500,7 @@ fn no_migration_reruns_after_the_v5_chain() {
                 }
             }
             // === P4.D337 (`UNSTAMPED_COLUMN_ENSURES`): the geometry id the same ===
-            for id in TERMINAL_GEOMETRY {
+            for id in TERMINAL_GEOMETRY.into_iter().chain(KEYSTONE_236) {
                 if ledger_by_id(&row["before"]["ledger"])
                     .iter()
                     .any(|(i, _)| i == id)

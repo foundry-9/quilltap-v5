@@ -452,6 +452,108 @@ fn own_v5_lines(lines: &[String]) -> Vec<String> {
         .collect()
 }
 
+// === P4.D341: the keystone rows (append-only) ===
+/// The twins of the oracle's `P4D341_*` plants (`memories-routes.test.ts`).
+const P4D341_LIST_PLANT: &[&str] = &[
+    "UPDATE memories SET keystone = 1 WHERE id IN ('b2000000-0000-4000-8000-0000000000a0', 'b2000000-0000-4000-8000-0000000000b0')",
+    "UPDATE memories SET keystone = 'yes' WHERE id = 'b2000000-0000-4000-8000-0000000000b1'",
+    "UPDATE memories SET keystone = 1, tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000b2'",
+];
+const P4D341_FIVE_SELF: &[&str] = &[
+    "UPDATE memories SET keystone = 1 WHERE id IN ('b2000000-0000-4000-8000-0000000000b0', 'b2000000-0000-4000-8000-0000000000b1', 'b2000000-0000-4000-8000-0000000000b2', 'b2000000-0000-4000-8000-0000000000b3', 'b2000000-0000-4000-8000-0000000000d0')",
+];
+/// A "concurrent mark" staged by a trigger — the pre-check passed, the edit
+/// chokepoint refuses AFTER the row was written.
+const P4D341_RACE_COUNT: &[&str] = &[
+    "CREATE TRIGGER qt_p4d341_race AFTER INSERT ON memories BEGIN UPDATE memories SET keystone = 1 WHERE id IN ('b2000000-0000-4000-8000-0000000000b0', 'b2000000-0000-4000-8000-0000000000b1', 'b2000000-0000-4000-8000-0000000000b2', 'b2000000-0000-4000-8000-0000000000b3', 'b2000000-0000-4000-8000-0000000000d0'); END",
+];
+const P4D341_RACE_ARCHIVED: &[&str] = &[
+    "CREATE TRIGGER qt_p4d341_archive AFTER INSERT ON memories BEGIN UPDATE memories SET tier = 'cold' WHERE id = NEW.id; END",
+];
+const P4D341_RACE_GONE: &[&str] = &[
+    "CREATE TRIGGER qt_p4d341_gone AFTER INSERT ON memories BEGIN DELETE FROM memories WHERE id = NEW.id; END",
+];
+const P4D341_FIVE_ABOUT_ORLA: &[&str] = &[
+    "UPDATE memories SET keystone = 1, aboutCharacterId = 'b1000000-0000-4000-8000-000000000002' WHERE id IN ('b2000000-0000-4000-8000-0000000000b0', 'b2000000-0000-4000-8000-0000000000b1', 'b2000000-0000-4000-8000-0000000000b2', 'b2000000-0000-4000-8000-0000000000b3', 'b2000000-0000-4000-8000-0000000000d0')",
+    "UPDATE memories SET keystone = 1 WHERE id = 'b2000000-0000-4000-8000-0000000000a0'",
+];
+const P4D341_A0_KEYSTONE: &[&str] =
+    &["UPDATE memories SET keystone = 1 WHERE id = 'b2000000-0000-4000-8000-0000000000a0'"];
+const P4D341_A1_KEYSTONE: &[&str] =
+    &["UPDATE memories SET keystone = 1 WHERE id = 'b2000000-0000-4000-8000-0000000000a1'"];
+const P4D341_A1_TEXT_KEYSTONE: &[&str] =
+    &["UPDATE memories SET keystone = 'yes' WHERE id = 'b2000000-0000-4000-8000-0000000000a1'"];
+const P4D341_A0_COLD: &[&str] =
+    &["UPDATE memories SET tier = 'cold' WHERE id = 'b2000000-0000-4000-8000-0000000000a0'"];
+const P4D341_FIVE_SELF_AND_A0: &[&str] = &[
+    "UPDATE memories SET keystone = 1 WHERE id IN ('b2000000-0000-4000-8000-0000000000b0', 'b2000000-0000-4000-8000-0000000000b1', 'b2000000-0000-4000-8000-0000000000b2', 'b2000000-0000-4000-8000-0000000000b3', 'b2000000-0000-4000-8000-0000000000d0')",
+    "UPDATE memories SET keystone = 1 WHERE id = 'b2000000-0000-4000-8000-0000000000a0'",
+];
+
+/// The twin of the oracle's `p4d341Rows`.
+fn p4d341_rows(db: &Db) -> Vec<serde_json::Map<String, Value>> {
+    db.read_main(|c| {
+        let mut st = c.prepare("SELECT id, aboutCharacterId, tier, keystone FROM memories")?;
+        let rows = st.query_map([], |r| {
+            let cell = |i: usize| -> rusqlite::Result<Value> {
+                use rusqlite::types::ValueRef;
+                Ok(match r.get_ref(i)? {
+                    ValueRef::Null => Value::Null,
+                    ValueRef::Integer(n) => json!(n),
+                    ValueRef::Real(f) => json!(f),
+                    ValueRef::Text(t) => json!(String::from_utf8_lossy(t)),
+                    ValueRef::Blob(_) => json!("<blob>"),
+                })
+            };
+            let mut m = serde_json::Map::new();
+            for (i, k) in ["id", "aboutCharacterId", "tier", "keystone"]
+                .iter()
+                .enumerate()
+            {
+                m.insert((*k).to_string(), cell(i)?);
+            }
+            Ok(m)
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    })
+    .unwrap()
+}
+
+/// The twin of the oracle's `p4d341Tables`.
+fn p4d341_tables(
+    before: &std::collections::HashSet<String>,
+    rows: &[serde_json::Map<String, Value>],
+    also: Option<&str>,
+) -> Value {
+    let id = |r: &serde_json::Map<String, Value>| r["id"].as_str().unwrap().to_string();
+    let mut baked: Vec<&serde_json::Map<String, Value>> = rows
+        .iter()
+        .filter(|r| {
+            before.contains(&id(r)) && (r["keystone"] != json!(0) || Some(id(r).as_str()) == also)
+        })
+        .collect();
+    baked.sort_by_key(|r| id(r));
+    let minted: Vec<Value> = rows
+        .iter()
+        .filter(|r| !before.contains(&id(r)))
+        .map(|r| {
+            json!({
+                "aboutCharacterId": r["aboutCharacterId"],
+                "tier": r["tier"],
+                "keystone": r["keystone"],
+            })
+        })
+        .collect();
+    json!({
+        "baked": baked,
+        "minted": minted,
+        "rowsBefore": before.len(),
+        "rowsAfter": rows.len(),
+    })
+}
+// === end ===
+
 /// The twin of the oracle's `plantSql` (a plant on the case's own copy).
 fn plant(rt: &tokio::runtime::Runtime, db: &Db, statements: &'static [&'static str]) {
     rt.block_on(db.write(move |w| {
@@ -782,6 +884,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 None,
                 None,
                 Some(20),
@@ -801,6 +904,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 None,
                 None,
                 Some(20),
@@ -820,6 +924,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 Some("importance"),
                 Some("asc"),
                 Some(15),
@@ -839,6 +944,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 None,
                 None,
                 Some(50),
@@ -858,6 +964,7 @@ fn memories_routes_match_oracle() {
                 Some(0.7),
                 None,
                 None,
+                false,
                 None,
                 None,
                 Some(50),
@@ -877,6 +984,7 @@ fn memories_routes_match_oracle() {
                 None,
                 Some("MANUAL"),
                 None,
+                false,
                 None,
                 None,
                 Some(50),
@@ -897,6 +1005,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 None,
                 None,
                 Some(0),
@@ -910,7 +1019,9 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "ll");
         check_body(
             "list_legacy",
-            &memories::memory_list(&db, ORLA, None, None, None, None, None, None, None, None),
+            &memories::memory_list(
+                &db, ORLA, None, None, None, None, false, None, None, None, None,
+            ),
             &mut failed,
         );
     }
@@ -925,6 +1036,7 @@ fn memories_routes_match_oracle() {
                 None,
                 None,
                 None,
+                false,
                 None,
                 None,
                 None,
@@ -937,7 +1049,9 @@ fn memories_routes_match_oracle() {
         let db = fresh_db(&spec, "lmc");
         check_error(
             "list_missing_character",
-            &memories::memory_list(&db, MISSING, None, None, None, None, None, None, None, None),
+            &memories::memory_list(
+                &db, MISSING, None, None, None, None, false, None, None, None, None,
+            ),
             &mut failed,
         );
     }
@@ -1507,7 +1621,7 @@ fn memories_routes_match_oracle() {
                     limit: Option<i64>| {
             let db = planted(tag);
             memories::memory_list(
-                &db, MNEMO, search, None, source, tier, None, None, limit, None,
+                &db, MNEMO, search, None, source, tier, false, None, None, limit, None,
             )
         };
         for (name, search, source, tier, limit) in [
@@ -2633,6 +2747,7 @@ fn memories_routes_match_oracle() {
                 Some(0.7),
                 None,
                 None,
+                false,
                 Some("importance"),
                 Some("asc"),
                 limit,
@@ -2974,6 +3089,326 @@ fn memories_routes_match_oracle() {
     // since the `83334b9a5` unification and the rows are strict — once the
     // oracle case reloaded v4's process-singleton index cache per case (see
     // `memories-routes.test.ts`), they agree row for row.
+    // === end ===
+
+    // === P4.D341: the keystone rows (append-only) ===
+    // v4 `8cb584eff` (C-8): the list's `?keystone=true` on both paths (the
+    // paginated exact `keystone = 1` misses the TEXT 'yes' cell the legacy
+    // path's hydrated `true` keeps; `=false` / `=1` filter nothing — the
+    // caller maps only `'true'`), the create's pre-check BEFORE any write, the
+    // post-admission mark through the edit chokepoint (a 400 AFTER a durable
+    // write, R-3 — REACHED here by a trigger staging the race: the count arm
+    // and the archived arm), the PUT's `keystone-refused` arm. Bodies by
+    // BYTES; the route's own lines exact; the chokepoint's `Refusing memory
+    // edit: keystone rule` by presence BOTH ways; the keystone state by
+    // `p4d341_tables`. A PUT 400's Zod `details` stay the recorded L-1
+    // no-details class (the error text compares).
+    {
+        use quilltap_core::test_support::global_capture;
+        let ks_list = |name: &str, keystone: bool, limit: Option<i64>, tier: Option<&str>| {
+            let db = fresh_db(&spec, name);
+            plant(&rt, &db, P4D341_LIST_PLANT);
+            memories::memory_list(
+                &db, MNEMO, None, None, None, tier, keystone, None, None, limit, None,
+            )
+        };
+        for (name, keystone, limit, tier) in [
+            ("keystone_list_paginated_true", true, Some(50), None),
+            ("keystone_list_paginated_false", false, Some(50), None),
+            ("keystone_list_paginated_one", false, Some(50), None),
+            ("keystone_list_legacy_true", true, None, None),
+            ("keystone_list_legacy_false", false, None, None),
+            (
+                "keystone_list_legacy_tier_hot_true",
+                true,
+                None,
+                Some("hot"),
+            ),
+        ] {
+            let got = ks_list(name, keystone, limit, tier);
+            let rec = &oracle[name];
+            let mut g = response_data(&got);
+            let mut w = rec["body"].clone();
+            canon_numbers(&mut g);
+            canon_numbers(&mut w);
+            let (gs, ws) = (
+                serde_json::to_string_pretty(&g).unwrap(),
+                serde_json::to_string_pretty(&w).unwrap(),
+            );
+            if rec["status"] != 200 || matches!(got, Response::Error(_)) || gs != ws {
+                eprintln!("[{name}] MISMATCH (P4.D341):\n{}", first_diff(&gs, &ws));
+                failed.push(format!("{name}:d341"));
+            } else {
+                eprintln!("[{name}] OK (P4.D341).");
+            }
+        }
+
+        const REFUSING: &str = "Refusing memory edit: keystone rule";
+        let check_ks = |name: &str,
+                        resp: &Response,
+                        lines: &[String],
+                        tables: Value,
+                        is_create: bool,
+                        failed: &mut Vec<String>| {
+            let rec = &oracle[name];
+            let want_status = rec["status"].as_u64().unwrap();
+            let mut bad = Vec::new();
+            match resp {
+                Response::Error(e) => {
+                    if u64::from(status_of(e.kind)) != want_status {
+                        bad.push(format!("status {:?} vs {want_status}", e.kind));
+                    }
+                    if rec["body"]["error"].as_str() != Some(e.message.as_str()) {
+                        bad.push(format!("error {:?} vs {}", e.message, rec["body"]["error"]));
+                    }
+                    if is_create && want_status == 400 {
+                        let got_d = e
+                            .details
+                            .as_deref()
+                            .map(|d| serde_json::to_string(d).unwrap());
+                        let want_d = rec["body"]
+                            .get("details")
+                            .map(|d| serde_json::to_string(d).unwrap());
+                        if got_d != want_d {
+                            bad.push(format!("details:\n  v5 {got_d:?}\n  v4 {want_d:?}"));
+                        }
+                    }
+                }
+                other => {
+                    let mut got = response_data(other);
+                    let mut want = rec["body"].clone();
+                    for v in [&mut got, &mut want] {
+                        mask_minted_memory(v);
+                        round_floats(v);
+                        canon_numbers(v);
+                    }
+                    let (gs, ws) = (
+                        serde_json::to_string(&got).unwrap(),
+                        serde_json::to_string(&want).unwrap(),
+                    );
+                    if gs != ws {
+                        bad.push(format!("body bytes:\n  v5 {gs}\n  v4 {ws}"));
+                    }
+                    if is_create {
+                        let inserted =
+                            matches!(got["action"].as_str(), Some("insert" | "insert-linked"));
+                        if (want_status == 201) != inserted {
+                            bad.push(format!(
+                                "201/200 split: v4 {want_status}, {}",
+                                got["action"]
+                            ));
+                        }
+                    } else if want_status != 200 {
+                        bad.push(format!("v5 answered 200, v4 {want_status}"));
+                    }
+                }
+            }
+            let want_lines: Vec<String> = rec["logs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|l| mask_field(&render_v4_line(l), "memoryId"))
+                .collect();
+            let got_lines: Vec<String> = own_v5_lines(lines)
+                .iter()
+                .map(|l| mask_field(l, "memoryId"))
+                .collect();
+            if got_lines != want_lines {
+                bad.push(format!(
+                    "lines:\n--- v4 ---\n{}\n--- v5 ---\n{}",
+                    want_lines.join("\n"),
+                    got_lines.join("\n")
+                ));
+            }
+            let v4_refusing = rec["siblingMessages"].as_array().is_some_and(|a| {
+                a.iter()
+                    .any(|m| m.as_str() == Some(&format!("memory:update-memory|{REFUSING}")))
+            });
+            let v5_refusing = lines.iter().any(|l| l.contains(REFUSING));
+            if v4_refusing != v5_refusing {
+                bad.push(format!("`{REFUSING}`: v4 {v4_refusing}, v5 {v5_refusing}"));
+            }
+            let (gt, wt) = (
+                serde_json::to_string_pretty(&tables).unwrap(),
+                serde_json::to_string_pretty(&rec["tables"]).unwrap(),
+            );
+            if gt != wt {
+                bad.push(format!("tables:\n{}", first_diff(&gt, &wt)));
+            }
+            if bad.is_empty() {
+                eprintln!("[{name}] OK (P4.D341).");
+            } else {
+                eprintln!("[{name}] MISMATCH (P4.D341):\n{}", bad.join("\n"));
+                failed.push(format!("{name}:d341"));
+            }
+        };
+
+        let base = json!({
+            "characterId": MNEMO,
+            "content": "The tide clock above the chandlery runs nine minutes fast.",
+            "summary": "The chandlery tide clock runs fast.",
+        });
+        let a1_twin = json!({
+            "characterId": MNEMO,
+            "content": "Alden the lighthouse keeper trusts only the harbor master.",
+            "summary": "Alden trusts the harbor master.",
+        });
+        let with = |b: &Value, extra: Value| -> Value {
+            let mut b = b.clone();
+            for (k, v) in extra.as_object().unwrap() {
+                b[k] = v.clone();
+            }
+            b
+        };
+        let create_rows: Vec<(&str, Value, Option<&'static [&'static str]>)> = vec![
+            (
+                "keystone_create_marked",
+                with(&base, json!({ "keystone": true })),
+                None,
+            ),
+            (
+                "keystone_create_false",
+                with(&base, json!({ "keystone": false })),
+                None,
+            ),
+            (
+                "keystone_create_bad_type_400",
+                with(&base, json!({ "keystone": "yes" })),
+                None,
+            ),
+            (
+                "keystone_create_sixth_refused_before_write",
+                with(&base, json!({ "keystone": true })),
+                Some(P4D341_FIVE_SELF),
+            ),
+            (
+                "keystone_create_other_subject_ok",
+                with(&base, json!({ "aboutCharacterId": ORLA, "keystone": true })),
+                Some(P4D341_FIVE_SELF),
+            ),
+            (
+                "keystone_create_mark_refused_count",
+                with(&base, json!({ "keystone": true })),
+                Some(P4D341_RACE_COUNT),
+            ),
+            (
+                "keystone_create_mark_refused_archived",
+                with(&base, json!({ "keystone": true })),
+                Some(P4D341_RACE_ARCHIVED),
+            ),
+            (
+                "keystone_create_mark_refused_not_found",
+                with(&base, json!({ "keystone": true })),
+                Some(P4D341_RACE_GONE),
+            ),
+            (
+                "keystone_create_reinforce_marks",
+                with(&a1_twin, json!({ "keystone": true })),
+                None,
+            ),
+            (
+                "keystone_create_reinforce_into_keystone",
+                with(&a1_twin, json!({ "keystone": true })),
+                Some(P4D341_A1_KEYSTONE),
+            ),
+            (
+                "keystone_create_reinforce_into_text_keystone",
+                with(&a1_twin, json!({ "keystone": true })),
+                Some(P4D341_A1_TEXT_KEYSTONE),
+            ),
+        ];
+        for (name, body, plant_sql) in create_rows {
+            let db = fresh_db(&spec, &format!("{name}-d341"));
+            if let Some(sql) = plant_sql {
+                plant(&rt, &db, sql);
+            }
+            let before: std::collections::HashSet<String> = p4d341_rows(&db)
+                .iter()
+                .map(|r| r["id"].as_str().unwrap().to_string())
+                .collect();
+            let p = provider(&db);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_create(
+                    &db,
+                    Some(&p),
+                    &uid,
+                    FIXED_NOW_MS,
+                    "UTC",
+                    body,
+                ))
+            });
+            let tables = p4d341_tables(&before, &p4d341_rows(&db), None);
+            check_ks(name, &resp, &lines, tables, true, &mut failed);
+        }
+        let put_rows: Vec<(&str, &str, Value, Option<&'static [&'static str]>)> = vec![
+            (
+                "keystone_put_mark",
+                MEM_TAGGED_1,
+                json!({ "keystone": true }),
+                None,
+            ),
+            (
+                "keystone_put_unmark",
+                MEM_TAGGED_1,
+                json!({ "keystone": false }),
+                Some(P4D341_A0_KEYSTONE),
+            ),
+            (
+                "keystone_put_sixth_refused",
+                MEM_TAGGED_1,
+                json!({ "keystone": true }),
+                Some(P4D341_FIVE_SELF),
+            ),
+            (
+                "keystone_put_archived_refused",
+                MEM_TAGGED_1,
+                json!({ "keystone": true }),
+                Some(P4D341_A0_COLD),
+            ),
+            (
+                "keystone_put_move_subject_refused",
+                MEM_TAGGED_1,
+                json!({ "aboutCharacterId": ORLA }),
+                Some(P4D341_FIVE_ABOUT_ORLA),
+            ),
+            (
+                "keystone_put_edit_existing_ok",
+                "b2000000-0000-4000-8000-0000000000b0",
+                json!({ "importance": 0.4 }),
+                Some(P4D341_FIVE_SELF_AND_A0),
+            ),
+            (
+                "keystone_put_bad_type_400",
+                MEM_TAGGED_1,
+                json!({ "keystone": "yes" }),
+                None,
+            ),
+        ];
+        for (name, id, body, plant_sql) in put_rows {
+            let db = fresh_db(&spec, &format!("{name}-d341"));
+            if let Some(sql) = plant_sql {
+                plant(&rt, &db, sql);
+            }
+            let before: std::collections::HashSet<String> = p4d341_rows(&db)
+                .iter()
+                .map(|r| r["id"].as_str().unwrap().to_string())
+                .collect();
+            let p = provider(&db);
+            let (resp, lines) = global_capture::capture(|| {
+                rt.block_on(memories::memory_update(
+                    &db,
+                    Some(&p),
+                    &uid,
+                    id,
+                    "UTC",
+                    FIXED_NOW_MS,
+                    body,
+                ))
+            });
+            let tables = p4d341_tables(&before, &p4d341_rows(&db), Some(id));
+            check_ks(name, &resp, &lines, tables, false, &mut failed);
+        }
+    }
     // === end ===
 
     assert!(failed.is_empty(), "mismatched cases: {failed:?}");

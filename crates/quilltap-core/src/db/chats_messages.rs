@@ -163,6 +163,13 @@ pub struct MessageEventInput {
     pub carina_meta: Option<CarinaMetaIn>,
     #[serde(default)]
     pub pascal_meta: Option<PascalMetaIn>,
+    /// P4.D341 (v4 `b15fe9404`, the Storyteller): the bid a speaking turn
+    /// carried out — `StorytellerBidRecordSchema.nullable().optional()`,
+    /// written as compact JSON text to `storytellerBid`. Carried as a raw
+    /// `Value` (the `route_trail` idiom); a typed record is P4.D343's if it
+    /// wants one. Every construct site in this lane passes `None`.
+    #[serde(default)]
+    pub storyteller_bid: Option<serde_json::Value>,
     // The route trail (v4 `5841a8c62`): every model tried, in order, for this
     // reply — `RouteAttemptSchema.array().nullable().optional()`. Carried as a
     // raw `Value` (not a typed `Vec<RouteAttemptIn>`): this lane only threads
@@ -1107,6 +1114,7 @@ fn message_columns(m: &MessageEventInput) -> Result<Vec<MemberColumn>, DbError> 
             opt(m.confirmation_original_content.clone()),
         ),
         ("pascalMeta", opt(opt_json(&m.pascal_meta)?)),
+        ("storytellerBid", opt(opt_value_json(&m.storyteller_bid)?)),
         ("routeTrail", opt(opt_value_json(&m.route_trail)?)),
     ])
 }
@@ -1249,7 +1257,9 @@ mod member_column_tests {
         pendingExternalPrompt, pendingExternalPromptFull, pendingExternalAttachments, \
         summaryAnchor, provider, modelName, createdAt, confirmed, confirmationChecked, \
         confirmationRevised, confirmationNotes, confirmationOriginalContent, pascalMeta, \
-        routeTrail";
+        routeTrail, storytellerBid";
+    // (`storytellerBid` — P4.D341, v4 `b15fe9404` — joined the member list
+    // after P4.105; the pin grows with the column, like `routeTrail` did.)
     const PRE_P4105_CONTEXT_SUMMARY_INSERT: &str = "id, chatId, type, context, createdAt";
     const PRE_P4105_SYSTEM_INSERT: &str = "id, chatId, type, systemEventType, description, \
         promptTokens, completionTokens, totalTokens, provider, modelName, estimatedCostUSD, \

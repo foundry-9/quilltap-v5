@@ -26,6 +26,12 @@
 //!
 //! Pure: P4.D290's `apply_fold` writes the plan.
 //!
+//! P4.D341 (v4 `236c04e35`): a KEYSTONE survivor ("A keystone's words and
+//! anchor fields change only by hand edit: a fold into one counts the
+//! observation and links, and writes nothing else") takes no footnotes and
+//! an empty patch; links, the delta and `reinforcedAt` are unchanged. The
+//! anchor-field widening moved into [`anchor_patch`] verbatim.
+//!
 //! JS fidelity: `earliest` is the first value with the smallest `Date.parse`
 //! (strict `<`; [`crate::episodic::js_date_parse_ms`]); `latest` is
 //! `filter(non-empty string).sort().pop()` — the UTF-16 code-unit
@@ -124,8 +130,10 @@ impl FoldSource {
 
 /// The survivor a fold reads (v4 `FoldSurvivor = Pick<Memory, 'id' |
 /// 'content' | 'occurredAt' | 'narrativeTime' | 'entities' |
-/// 'relatedMemoryIds' | 'lastReinforcedAt'>`): v4's `Memory` JSON row (the
-/// [`crate::db::memories_read`] shape); only those seven keys are read.
+/// 'relatedMemoryIds' | 'lastReinforcedAt'> & Partial<Pick<Memory,
+/// 'keystone'>>`): v4's `Memory` JSON row (the [`crate::db::memories_read`]
+/// shape); only those eight keys are read (`keystone` by JS truthiness, so
+/// absent reads as `false`).
 pub type FoldSurvivor = Value;
 
 /// Anchor fields that change (v4 `FoldPlan['patch']`). Never the count, its
@@ -242,60 +250,10 @@ fn truthy(v: Option<&Value>) -> bool {
     }
 }
 
-/// Work out what folding `absorbed` into `survivor` changes (v4 `foldInto`).
-/// Pure — no writes.
-///
-/// The survivor's `entities` / `relatedMemoryIds` are read as string arrays
-/// (the `Memory` schema's `string[]`; v4 would throw on a non-string survivor
-/// entity's `toLowerCase`, so no defined behaviour exists to follow there).
-pub fn fold_into(survivor: &FoldSurvivor, absorbed: &[FoldSource], caps: &FoldCaps) -> FoldPlan {
-    let survivor_id = survivor
-        .get("id")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let survivor_content = survivor
-        .get("content")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let at_cap = count_reinforcement_footnotes(survivor_content) >= caps.footnote_cap;
-
-    // Footnotes, judged against the content as it grows so two sources
-    // carrying the same detail append it once.
-    let mut content = survivor_content.to_string();
-    let mut footnotes: Vec<String> = Vec::new();
-    for source in absorbed {
-        let novel = extract_novel_details(&source.content, &content);
-        if novel.is_empty() {
-            continue;
-        }
-        let (next, appended) = append_capped_footnotes(&content, &novel, caps.footnote_cap);
-        content = next;
-        footnotes.extend(appended);
-    }
-
-    // Links: the sources' links, minus the group and what the survivor has.
-    let mut group: HashSet<&str> = HashSet::new();
-    group.insert(survivor_id.as_str());
-    for source in absorbed {
-        if let Some(id) = source.id.as_deref().filter(|id| !id.is_empty()) {
-            group.insert(id);
-        }
-    }
-    let existing_links: HashSet<String> = string_array(survivor.get("relatedMemoryIds"))
-        .into_iter()
-        .collect();
-    let mut add_links: Vec<String> = Vec::new();
-    for id in absorbed
-        .iter()
-        .flat_map(|s| s.related_memory_ids.iter().flatten())
-    {
-        if group.contains(id.as_str()) || existing_links.contains(id) || add_links.contains(id) {
-            continue;
-        }
-        add_links.push(id.clone());
-    }
-
+/// v4 `anchorPatch(survivor, absorbed, caps)`: "The anchor fields a fold
+/// widens: the earliest event time, a narrative time, entities up to the
+/// cap." (Extracted verbatim from the former inline block at P4.D341.)
+fn anchor_patch(survivor: &FoldSurvivor, absorbed: &[FoldSource], caps: &FoldCaps) -> FoldPatch {
     let mut patch = FoldPatch::default();
     let survivor_occurred = survivor.get("occurredAt").and_then(Value::as_str);
     let occurred_at = earliest(
@@ -335,6 +293,72 @@ pub fn fold_into(survivor: &FoldSurvivor, absorbed: &[FoldSource], caps: &FoldCa
     if entities.len() > survivor_entities.len() {
         patch.entities = Some(entities);
     }
+    patch
+}
+
+/// Work out what folding `absorbed` into `survivor` changes (v4 `foldInto`).
+/// Pure — no writes.
+///
+/// The survivor's `entities` / `relatedMemoryIds` are read as string arrays
+/// (the `Memory` schema's `string[]`; v4 would throw on a non-string survivor
+/// entity's `toLowerCase`, so no defined behaviour exists to follow there).
+pub fn fold_into(survivor: &FoldSurvivor, absorbed: &[FoldSource], caps: &FoldCaps) -> FoldPlan {
+    let survivor_id = survivor
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let survivor_content = survivor
+        .get("content")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let at_cap = count_reinforcement_footnotes(survivor_content) >= caps.footnote_cap;
+    // "A keystone's words and anchor fields change only by hand edit: a fold
+    // into one counts the observation and links, and writes nothing else."
+    let keystone = truthy(survivor.get("keystone"));
+
+    // Footnotes, judged against the content as it grows so two sources
+    // carrying the same detail append it once.
+    let mut content = survivor_content.to_string();
+    let mut footnotes: Vec<String> = Vec::new();
+    let footnote_sources: &[FoldSource] = if keystone { &[] } else { absorbed };
+    for source in footnote_sources {
+        let novel = extract_novel_details(&source.content, &content);
+        if novel.is_empty() {
+            continue;
+        }
+        let (next, appended) = append_capped_footnotes(&content, &novel, caps.footnote_cap);
+        content = next;
+        footnotes.extend(appended);
+    }
+
+    // Links: the sources' links, minus the group and what the survivor has.
+    let mut group: HashSet<&str> = HashSet::new();
+    group.insert(survivor_id.as_str());
+    for source in absorbed {
+        if let Some(id) = source.id.as_deref().filter(|id| !id.is_empty()) {
+            group.insert(id);
+        }
+    }
+    let existing_links: HashSet<String> = string_array(survivor.get("relatedMemoryIds"))
+        .into_iter()
+        .collect();
+    let mut add_links: Vec<String> = Vec::new();
+    for id in absorbed
+        .iter()
+        .flat_map(|s| s.related_memory_ids.iter().flatten())
+    {
+        if group.contains(id.as_str()) || existing_links.contains(id) || add_links.contains(id) {
+            continue;
+        }
+        add_links.push(id.clone());
+    }
+
+    let patch = if keystone {
+        FoldPatch::default()
+    } else {
+        anchor_patch(survivor, absorbed, caps)
+    };
 
     let reinforcement_delta = absorbed.iter().fold(0.0_f64, |sum, s| {
         sum + math_max(1.0, s.reinforcement_count.unwrap_or(1.0))
