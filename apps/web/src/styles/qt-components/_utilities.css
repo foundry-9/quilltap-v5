@@ -595,6 +595,26 @@
   }
 
   /**
+   * Text ON a status fill (qt-bg-success / -warning / -info / -destructive) —
+   * each theme pairs these with its status colour at 4.5:1 or better.
+   */
+  .qt-text-success-foreground {
+    color: var(--color-success-foreground);
+  }
+
+  .qt-text-warning-foreground {
+    color: var(--color-warning-foreground);
+  }
+
+  .qt-text-info-foreground {
+    color: var(--color-info-foreground);
+  }
+
+  .qt-text-destructive-foreground {
+    color: var(--color-destructive-foreground);
+  }
+
+  /**
    * The `danger` spelling of the same colour — an alias of qt-text-destructive
    * for the inline error sites (StartupProgress, ChatCreationProgressModal, and
    * v5's ported dialogs) that reach for the "danger" name. v5 defined this first
@@ -654,10 +674,15 @@
    *   <span class="qt-bg-accent qt-text-on-accent">…</span>
    *   <button class="bg-destructive qt-text-on-destructive">…</button>
    *
-   * Mind the naming: these are `-on-<fill>`, never `-<fill>-foreground`. The
-   * `qt-text-destructive-foreground` spelling reads like a real class — it is
-   * the Tailwind utility with a `qt-` bolted on — and fifteen call sites wore
-   * one silently, doing nothing at all, until 4.9-dev.
+   * Both spellings are real. Until 4.9-dev the `qt-text-destructive-foreground`
+   * spelling was the Tailwind utility with a `qt-` bolted on — no rule behind
+   * it — and fifteen call sites wore one silently, doing nothing at all (bug
+   * 100), which is why v5 minted these `-on-<fill>` names. v4 `58120a7fe` then
+   * made the four `qt-text-{success,warning,info,destructive}-foreground`
+   * spellings real classes (defined above, beside `qt-text-destructive`) for
+   * its toast; both spellings read the same `--color-<fill>-foreground` token,
+   * so either is correct. These four `-on-*` names stay as v5's aliases; there
+   * is no `-on-warning` / `-on-info` and none is needed (P4.D357).
    */
   .qt-text-on-accent {
     color: var(--color-accent-foreground);

@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): v4 4.11.0 WCAG palette, legibility and focus CSS
+
+_Versions: SPA 0.5.908._
+
+Ports the stylesheet half of v4's 4.11.0 legibility and WCAG pass (`58120a7fe`, `cce44e098`, `86cc25482`, `10e09b7c3`) from the pinned `236c04e35` hunks. The default palette in `apps/web/src/styles.css` takes v4's eleven value moves (light success / warning / info / sidebar-muted darker, warning text now white; dark muted text, destructive and sidebar-muted lighter, dark text on the destructive / success / info fills). `_variables.css` darkens the light streaming ink and both queue summary badges and widens the reduced-motion rule from the default theme to every element. `_utilities.css` defines the four `qt-text-{success,warning,info,destructive}-foreground` classes v4 added; the old note calling that spelling a dead class is rewritten, and the `qt-text-on-*` aliases stay. `_chat.css` puts the regenerating plate's words in the bubble's ink, gives dialogue in a user message the bubble's foreground, and moves the Concierge badge and mark onto the alert ink, with two new theme hooks (`--qt-chat-regenerating-plate-fg`, `--qt-rp-user-dialogue-color`). The workspace tab close button grows to a 24 px target, the page toolbar wraps at phone widths, icons opt out of forced colours, and a `.qt-skip-link` rule is defined for the shell's skip link.
+
+## November 2026
+
 #### 2026-11-04 — docs(porting): P4.D355 lane record and status header
 
 _Docs-only change._
