@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — chore(help): re-vendor help/ whole at v4 236c04e35 (135 → 137 pages)
+
+_No crate versions bumped._
+
+P4.D360 U1. The vendored `help/` tree is copied whole from v4 `236c04e35`: `diagrams.md` and `storyteller-mode.md` added, thirty-five pages updated, every file md5-equal to the pin. `help_tree_embed_guard`'s `VENDORED_FILE_COUNT` and `host_help_docs_boot`'s count move 135 → 137 (both measured red first); `help_tree_equivalence`'s history notes the move (chunks 818 → 857).
+
+## November 2026
+
 #### 2026-11-03 — docs(porting): P4.D359 lane record — the SPA riders, LANE COMPLETE
 
 _Versions: SPA 0.5.929._

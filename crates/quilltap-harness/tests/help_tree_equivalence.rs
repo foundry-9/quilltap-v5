@@ -147,7 +147,10 @@ async fn shipped_help_tree_matches_oracle() {
     // measured RED at the count (131 vs the pin's 135 — `interrupting.md`,
     // `inventory.md`, `project-inventory.md`, `the-log.md` new; eighteen
     // pages re-vendored) before the tree was re-vendored WHOLE; 135 = 135
-    // after (chunks 790 → 818).
+    // after (chunks 790 → 818). P4.D360 (v4 `236c04e35`): measured RED at the
+    // count (135 vs the pin's 137 — `diagrams.md`, `storyteller-mode.md` new;
+    // thirty-five pages re-vendored) before the tree was re-vendored WHOLE;
+    // 137 = 137 after (chunks 818 → 857).
     assert_eq!(
         files.len(),
         want.count,

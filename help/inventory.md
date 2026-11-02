@@ -18,6 +18,8 @@ The Inventory is not the [Wardrobe](wardrobe.md). The Wardrobe dresses a charact
 
 At the top of the dialog a single dropdown chooses which inventory you are looking at: a **character**, **Quilltap General**, a **project** or a **group**.
 
+The dialog keeps itself current without being asked. Should a shelf be rearranged while it is open — by your own hand in another window, by a character rummaging through their pockets, or by one of Pascal's tools — the lists, the folders and the archetype pickers simply rearrange themselves to match, and the **Carrying now** pane does the same whenever anything is taken up or set down in the chat.
+
 ## Where items are kept
 
 An item lives on one of four shelves. Each is an `Inventory/` folder in a document store, one `.json` file per item, so every item may also be read and edited in [the Scriptorium](scriptorium.md) like any other file.
@@ -161,7 +163,7 @@ A character is not obliged to wait upon the operator's hand. Given the run of th
 | `inventory_equip` | Takes up one to eight objects or kits, through the very same machinery as the Carrying now pane. If carrying one more would break an object's limit, nothing changes and they are told why. |
 | `inventory_unequip` | Sets objects down. A kit sets down every member it holds. |
 | `inventory_pick_up` | Makes an instance of a reachable **archetype** in their own vault — a *magic bow* from the project shelf becomes their own magic bow — and equips it unless asked not to. The limit is checked first: a pick-up that would break it makes nothing at all. |
-| `inventory_create` | Makes a new object of their own, plainly: never an archetype, never a kit, never copyable. |
+| `inventory_create` | Makes a new object of their own, plainly: never an archetype, never a kit, never copyable. The character is asked, firmly, to furnish drawing hints as well --- two hundred characters or fewer of plain visual fact --- for the painter never reads the description, and an object without hints is invisible in every picture of its bearer. |
 | `inventory_update` | Amends one of their **own** objects — name, title, descriptions, emoji, limit, metadata. Shared objects are not theirs to amend. On an instance, a change is an override of the archetype. |
 | `inventory_archive` | Puts away (or restores) one of their own objects. Putting one away also sets it down in every chat, so a later restore returns it to the pocket, not to the hand. |
 | `inventory_give` | Hands one of their own objects to another character in the chat. The object moves to the receiver's vault, keeping its identity; the giver stops carrying it in every chat; the receiver decides for themselves whether to take it up. Should the hand-over be refused, the giver keeps carrying it exactly as before. Shared objects, kits, archived characters and anyone not seated at the table are refused, politely but firmly. |
@@ -174,7 +176,7 @@ However many of these a character uses in one reply, Pascal posts **one** line a
 
 Whether a character may use any of these tools is the **Inventory Management** setting on the character's page in Aurora, beside *Self-Dressing* and *Outfit Creation*. It is on unless you turn it off, and it governs the whole family — a character who may not manage their inventory cannot so much as list it. The [Brahma Console](brahma-console.md) and the [Scenario Builder](scenario-builder.md) never offer these tools.
 
-The [`self_inventory`](character-system-transparency.md) tool, despite the name, has nothing to do with any of this: it is a character's look at their own settings, not their pockets.
+The [`self_inventory`](character-system-transparency.md) tool, despite the name, cannot pick anything up or set anything down: it is a character's look at their own settings, not a hand in their pockets. It will, however, *count* the pockets on request — its `holdings.inventory` part reports how many objects, kits and archetypes are within reach, how many the character is carrying in this chat, and which shelves they came from.
 
 ## Pascal's custom tools and the Inventory
 

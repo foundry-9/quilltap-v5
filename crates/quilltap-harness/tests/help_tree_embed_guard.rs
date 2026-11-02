@@ -111,7 +111,14 @@ use quilltap_host::help_content::EMBEDDED_HELP;
 /// `pascals-workbench.md` with six, …) move no count. The tree re-vendored
 /// WHOLE at the pin. Measured RED at 135 on disk vs this constant's 131
 /// before the move.
-const VENDORED_FILE_COUNT: usize = 135;
+///
+/// **137 at v4 `236c04e35` (135 + 2, P4.D360):** `diagrams.md`,
+/// `storyteller-mode.md` added; the thirty-five re-vendored pages
+/// (`custom-tools.md` with four commits' hunks, `salon-host-introductions.md`
+/// rewritten by four, `memory-recall-relevance.md` with three, …) move no
+/// count. The tree re-vendored WHOLE at the pin. Measured RED at 137 on disk
+/// vs this constant's 135 before the move.
+const VENDORED_FILE_COUNT: usize = 137;
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

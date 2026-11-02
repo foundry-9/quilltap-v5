@@ -466,6 +466,8 @@ Up to eight phrases per tool, each between three and eighty characters. When a m
 
 **How it rolls.** Every parameter at its default — there is nobody to fill in a form. Visibility follows the tool's own `defaultVisibility`: a whispering tool whispers to whoever spoke the words. The announcement lands *after* the message that caused it (dice, by long habit, land before yours; Pascal is more of a respecter of sequence).
 
+**In a storyteller turn.** A character speaking in [Storyteller Mode](storyteller-mode.md) is held to the tier of the bid you chose, and so are its trigger phrases: a phrase in its reply sets off only a tool whose effect the tier allows. A tool with side effects (a *write*) needs an *Act* bid; a tool without them (a *read*) needs at least *Lookup*. A phrase that names a tool above the tier is simply not heard — nothing is run and nothing is posted. Your own remarks, and every turn outside storyteller mode, are unaffected.
+
 **At most four tools per message.** Should one sentence happen to contain the phrases of six tools, the first four to appear are dealt and the rest are noted in the logs, not run — a sentence should not be able to spend six oracle consultations on your account.
 
 **A word on echoes.** Pascal never hears himself, but a character who *repeats* Pascal's announcement in their own reply will say whatever words it contains — and if those include the tool's own trigger, the tool goes off again on that reply, and possibly again on the next. The Workbench warns you when an outcome message, the chip label or an oracle prompt quotes one of the tool's own phrases. Heed it.
@@ -752,6 +754,40 @@ Pascal announces every outcome by default, under his own name and his own face. 
 
 Nothing else changes. The outcome is still a genuine roll that Pascal keeps the books on — the chip, the coloured edge for success or failure, and the full record of the deal are all there — and a whispered tool still whispers. Should nobody in particular have rolled (you, from the run dialog, as no one), there is no character to speak, and Pascal announces it as usual.
 
+## Taking a Hand in the Deal — `intervention`
+
+There are evenings when the proprietor would rather like a word with the wheel before it stops. Mark a tool **intervenable** and Pascal will deal each run exactly as usual — parameters, roll, oracle, outcome, consequences and all — and then *hold it*, cards face down, while a dialog opens for you alone. Nothing is announced and nothing is changed until you say so.
+
+```json
+"intervention": { "enabled": true }
+```
+
+On the Workbench this is the **Let me take a hand in each roll** tick, off for every new tool.
+
+**What the dialog lets you touch.** Every part of the run that could differ between two deals of the same tool: the parameters the character passed, the raw roll (or each die), the value after its modifiers, the oracle's prompt and its answer, which outcome row wins, the message, the verdict, each consequence (left to its own condition, forced on, or switched off — and what it writes, edited), whether the result is whispered, who announces it, its title and its chip label. Change an early thing and every later thing you have not pinned is reckoned again: nudge a parameter and the same stroke of luck is applied to the new range, so a draw in the top tenth stays in the top tenth. The oracle is never consulted again of its own accord — an upstream change merely marks its answer *out of date*, with a **Re-ask** button should you want a fresh one. A preview of the bubble, as it will be announced, sits at the foot.
+
+**Knowing the bounds of the table.** Beneath the roll and the value, Pascal notes what the deal *could* have produced, given the parameters as they now stand: *the table draws 0 up to (not including) 10*, or *3d6+2 can come to 5 to 20, each die 1 to 6*, and *after the modifiers, it comes to 5 to 45*. Nudge a parameter that moves a bound and the note moves with it. You may still pin a figure beyond them — it is your house — but Pascal will mention, without fuss, that the number is one no honest deal could have dealt.
+
+**Three ways out.** **Deal it** announces the run as you have arranged it. **As rolled** lets the original stand untouched. **Set the table aside** — with a moment's confirmation — vetoes the run entirely: no announcement, no consequences, nothing in the transcript at all.
+
+**The character is never told.** It sees only the final run, in the same words it would have had if the dice had simply fallen that way. A vetoed call is answered, to an ordinary character, with nothing more than *the tool did not run*; only a character who already knows the house's arrangements — one granted system transparency, or a seat you are playing yourself — hears that the table is closed for the moment. Every change is for that one run; nothing is written back to the file.
+
+**You are not quite so discreet with yourself.** A roll you adjusted wears a small hand beside its chip. Hover over it for the particulars — *roll 0.12 → 0.81; outcome row 2 → 1* — which are for your eyes and never reach any model.
+
+**Choosing what to show.** Once the tool is intervenable, every part is shown unless you hide it. On the Workbench each field grows a little hand toggle; in the file, a parameter or a consequence carries `"intervene": false` on itself, and the parts of a run that are not objects in the file are hidden in the block:
+
+```json
+"intervention": { "enabled": true, "fields": { "roll": false, "llmPrompt": false } }
+```
+
+The keys are `roll`, `value`, `llmPrompt`, `llmAnswer`, `outcome`, `message`, `state`, `chipLabel`, `title`, `visibility` and `announcer`. A hidden field is not merely left out of the dialog; the house refuses any attempt to change it. One courtesy survives the hiding of the oracle: since its prompt may quote the very things you change — the winning row's `brief`, a parameter — the dialog keeps a small **The oracle** section with a **Re-ask** button, and tells you plainly when your adjustments have left its answer replying to a question nobody is asking any longer. A Re-ask poses the prompt exactly as the run now renders it; it never lets you rewrite a prompt the author hid. Switching the tool's intervention off keeps your choices for when you switch it back on.
+
+**When it holds, and when it does not.** A run reached by a character's `run_custom`, or by a trigger phrase, is held. Your own runs from the gutter dialog are not — you set those figures yourself. Neither are runs in autonomous rooms, where nobody is watching.
+
+**A held roll waits for you indefinitely.** There is no timeout; the turn stands quietly open until you answer, so leave a chat unattended with care. Reload the page or open a second tab and the dialog simply reappears; several held rolls are shown one at a time, oldest first. Pressing **Stop** while a roll is held sets it aside. To let every roll go ahead as dealt without editing a single file, untick **Hold intervenable rolls for me** under Settings → Chat → Automation.
+
+**The same honest caveat as for the odds.** The `intervention` block hides nothing from a character who can read the store the file lives in: it is an ordinary document. A character with read access may learn that a tool is intervenable, though never what you did with any particular roll.
+
 ## On keeping the odds to yourself
 
 Set `"revealOdds": false` and a character is told only the tool's name, its description, and its parameters. The roll spec and the outcome table are withheld — they know they may attempt the lock; they do not know what it takes.
@@ -833,6 +869,8 @@ Sixty-four tools per scene, eight parameters and thirty-two outcomes per tool, e
 The **Custom tools** setting on Settings → Chat governs the whole arrangement. Switched off, neither `run_custom` nor `edit_custom_tool` is offered to any model, the gutter button goes away, and no trigger phrase is listened for. Your files stay exactly where they are.
 
 Trigger phrases have a switch of their own besides — **Auto-Run Custom Tools on Trigger Phrases**, under Settings → Chat → Automation, off unless you turn it on.
+
+Held rolls have one too — **Hold intervenable rolls for me**, beside it, on unless you turn it off. Off, every intervenable tool simply deals as rolled and no dialog opens. See [Taking a Hand in the Deal](custom-tools.md#taking-a-hand-in-the-deal--intervention).
 
 ## In-Chat Navigation
 
