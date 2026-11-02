@@ -22,11 +22,11 @@ use quilltap_core::api::zod_issues::ZodIssue;
 use quilltap_core::inventory::types::{
     inventory_shape_issues, parse_chat_inventory_equip_body, parse_chat_inventory_reset_body,
     parse_clear_inventory_override_body, parse_create_inventory_body,
-    parse_file_inventory_items_body, parse_instantiate_inventory_body,
-    parse_inventory_folder_path_body, parse_inventory_transfer_body,
-    parse_rename_inventory_folder_body, parse_update_inventory_body, zod_inventory_full_file,
-    zod_inventory_item, zod_inventory_item_file, INVENTORY_FILE_KEYS, INVENTORY_INHERITABLE_FIELDS,
-    INVENTORY_KIT_MAX_MEMBERS, INVENTORY_SVG_MAX_BYTES,
+    parse_duplicate_inventory_body, parse_file_inventory_items_body,
+    parse_instantiate_inventory_body, parse_inventory_folder_path_body,
+    parse_inventory_transfer_body, parse_rename_inventory_folder_body, parse_update_inventory_body,
+    zod_inventory_full_file, zod_inventory_item, zod_inventory_item_file, INVENTORY_FILE_KEYS,
+    INVENTORY_INHERITABLE_FIELDS, INVENTORY_KIT_MAX_MEMBERS, INVENTORY_SVG_MAX_BYTES,
 };
 use serde_json::{json, Map, Value};
 
@@ -49,6 +49,7 @@ fn parser(schema: &str) -> Parser {
         "chatEquip" => parse_chat_inventory_equip_body,
         "chatReset" => parse_chat_inventory_reset_body,
         "transfer" => parse_inventory_transfer_body,
+        "duplicate" => parse_duplicate_inventory_body,
         other => panic!("unknown schema {other}"),
     }
 }

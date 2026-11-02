@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — port(inventory): the duplicate 400, one seat rule, the kit unequip arm and the pick-up vault sentence (v4 0276d10d9)
+
+_Versions: core 0.0.1383._
+
+Four observable pieces of v4's Inventory chokepoints refactor. `POST …/inventory?action=duplicate` now parses its body as v4's `duplicateInventorySchema` before resolving, so a missing, empty or non-string `itemId` answers v4's Zod 400 (`{"error":"Validation error","details":[…]}`) instead of a 404 (`parse_duplicate_inventory_body`; `inventory_types_equivalence` +4 rows, `inventory_routes_equivalence` 8 rows red before, green after). The chat's Inventory GET and reset gate use v4's `seatedCharacterIds` (any non-removed seat with a character) through one `inventory::equip::seated_character_ids`, which `assert_participant` now shares; through v4's real chat schema every valid seat is a CHARACTER seat, so this is unobservable (measured: v4 answers 404 for a chat with a planted USER-type seat). `pick_for_gesture`'s unequip falls back to a kit, so `inventory_unequip` and Pascal's inventory effects no longer carry their own copy (`inventory_refs_equivalence`: the GARBLED row renamed `…-unequip-picks-kit`, +1 row from v4's `refs.test.ts`; 88 rows). A vault-less pick-up now fails with `Character <id> has no vault to hold a picked-up object` (unit-tested; the corpus cannot reach it).
+
 #### 2026-11-02 — port(inventory): re-aim the item-folders oracle; drop the two dead Inventory folder wrappers (v4 0276d10d9)
 
 _Versions: core 0.0.1382._

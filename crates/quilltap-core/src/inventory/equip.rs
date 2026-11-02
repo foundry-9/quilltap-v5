@@ -300,15 +300,29 @@ fn json_text(v: &impl Serialize) -> String {
 // The guards
 // ============================================================================
 
+/// Every character seated in a chat — any participant with a character who
+/// has not been removed, whatever the seat's type — unique, in participant
+/// order (v4 `seatedCharacterIds`, `0276d10d9`). The ONE seat rule: the
+/// guard below, the chat's Inventory GET and its reset gate.
+pub fn seated_character_ids(chat: &EquipChat) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for p in &chat.participants {
+        let Some(character_id) = p.character_id.as_deref().filter(|s| !s.is_empty()) else {
+            continue;
+        };
+        if p.status.as_deref() != Some("removed") && !out.iter().any(|c| c == character_id) {
+            out.push(character_id.to_string());
+        }
+    }
+    out
+}
+
 /// The character is seated in the chat (any seat type, not `removed`); else
 /// INFO `[InventoryEquip] Refused` + `NOT_A_PARTICIPANT` (v4
 /// `assertParticipant`, R-18 — a USER-type seat carrying a `characterId`
 /// counts).
 pub fn assert_participant(chat: &EquipChat, character_id: &str) -> Result<(), InventoryError> {
-    let seated = chat.participants.iter().any(|p| {
-        p.character_id.as_deref() == Some(character_id) && p.status.as_deref() != Some("removed")
-    });
-    if seated {
+    if seated_character_ids(chat).iter().any(|c| c == character_id) {
         return Ok(());
     }
     tracing::info!(
@@ -1025,7 +1039,7 @@ pub fn pick_up_items_holding_lock(
         mount,
         character_id,
         ctx.user_id,
-        "to pick an object up into",
+        "to hold a picked-up object",
     )?;
     let title = opts
         .title
@@ -1123,4 +1137,42 @@ pub async fn pick_up_items(
         pick_up_items_holding_lock(main, mount, &chat, &character_id, &ids, &ctx, &opts)
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    //! The holder-vault sentences (v4 `holderVault(…, why)`, `0276d10d9`). The
+    //! corpus cannot reach a vault-less pick-up — v4's `repos.characters.create`
+    //! mints a vault for every character — so the sentence is pinned here over a
+    //! real provisioned instance, through a character the resolver cannot find.
+    use super::*;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR: &str = "a1000000-0000-4000-8000-00000000000a";
+
+    fn holder_vault_error(why: &str) -> String {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let main = crate::db::Writer::open_writable(&data.join("quilltap.db"), PEPPER).unwrap();
+        let mount = crate::db::Writer::open_writable(&data.join("quilltap-mount-index.db"), PEPPER)
+            .unwrap();
+        match character_vault(main.connection(), mount.connection(), CHAR, "u", why) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("a missing character resolved a vault"),
+        }
+    }
+
+    #[test]
+    fn a_vaultless_pick_up_names_the_picked_up_object() {
+        assert_eq!(
+            holder_vault_error("to hold a picked-up object"),
+            format!("Character {CHAR} has no vault to hold a picked-up object")
+        );
+        assert_eq!(
+            holder_vault_error("to hold a kit's instances"),
+            format!("Character {CHAR} has no vault to hold a kit's instances")
+        );
+    }
 }

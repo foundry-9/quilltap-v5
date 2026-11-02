@@ -217,7 +217,15 @@ const m1 = obj('m1', { name: 'flint' });
 const m2 = obj('m2', { name: 'tinder' });
 const halfKit: PoolSpec = { items: [kitHalf, m1, m2], own: ['kit1', 'm1', 'm2'], equipped: ['m1'] };
 resolveRow('corner-kit-half-equipped', halfKit, 'traveller kit');
-pickRow('corner-kit-half-equipped-unequip-null', halfKit, 'traveller kit', 'unequip');
+pickRow('corner-kit-half-equipped-unequip-picks-kit', halfKit, 'traveller kit', 'unequip');
+// v4 `refs.test.ts` "unequip falls back to a kit, which sets down whatever
+// members it holds" (`0276d10d9` moved the kit arm into `pickForGesture`).
+{
+  const fa = obj('fa', { name: 'sword' });
+  const fb = obj('fb', { name: 'sword' });
+  const loadout = obj('kit', { kind: 'kit', name: 'loadout', itemIds: ['fa', 'fb'] });
+  pickRow('kit-fallback-one-member-carried', { items: [fa, fb, loadout], own: ['fa', 'kit'], equipped: ['fa'] }, 'loadout', 'unequip');
+}
 pickRow('corner-kit-half-equipped-equip-picks-kit', halfKit, 'traveller kit', 'equip');
 resolveRow('corner-kit-all-equipped', { ...halfKit, equipped: ['m1', 'm2'] }, 'traveller kit');
 resolveRow('corner-ref-surrounding-whitespace', p1, '  Excalibur \n');

@@ -272,15 +272,20 @@ pub enum Gesture {
     Unequip,
 }
 
-/// For a gesture: the match to act on — the first equipped one for unequip,
-/// the first unequipped, carriable one for equip (kits allowed), own tier
-/// before shared (v4 `pickForGesture`). `None` when none qualifies.
+/// For a gesture: the match to act on, own tier before shared (v4
+/// `pickForGesture`). Equip takes the first unequipped, carriable one (kits
+/// allowed). Unequip takes the first equipped one, else a kit — a kit sets
+/// down whatever members it holds even when not all are carried. `None` when
+/// none qualifies.
 pub fn pick_for_gesture(
     matches: &[InventoryRefMatch],
     gesture: Gesture,
 ) -> Option<&InventoryRefMatch> {
     match gesture {
-        Gesture::Unequip => matches.iter().find(|m| m.equipped),
+        Gesture::Unequip => matches
+            .iter()
+            .find(|m| m.equipped)
+            .or_else(|| matches.iter().find(|m| m.item.is_kit())),
         Gesture::Equip => matches
             .iter()
             .find(|m| !m.equipped && !m.item.is_archetype() && !m.item.is_archived()),

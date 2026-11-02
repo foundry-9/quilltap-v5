@@ -1052,6 +1052,15 @@ pub fn parse_chat_inventory_reset_body(input: &Value) -> Result<Map<String, Valu
     parse_object(&[f("characterId", s_min_max(1, None, None))], false, input)
 }
 
+/// v4 `duplicateInventorySchema` — `?action=duplicate` (v4 `0276d10d9`).
+pub fn parse_duplicate_inventory_body(input: &Value) -> Result<Map<String, Value>, Vec<ZodIssue>> {
+    parse_object(
+        &[f("itemId", s_min_max(1, Some("itemId is required"), None))],
+        false,
+        input,
+    )
+}
+
 /// v4 `inventoryTransferSchema` — `POST /api/v1/inventory/transfers`.
 pub fn parse_inventory_transfer_body(input: &Value) -> Result<Map<String, Value>, Vec<ZodIssue>> {
     let side = || {

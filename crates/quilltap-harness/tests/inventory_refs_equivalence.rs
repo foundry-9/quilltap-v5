@@ -41,7 +41,7 @@ use serde_json::{json, Map, Value};
 
 /// The row count the oracle's corpus emits (asserted, so a silently truncated
 /// regen cannot pass).
-const EXPECTED_ROWS: usize = 87; // P4.169: +1 insertion-order row
+const EXPECTED_ROWS: usize = 88; // P4.169: +1 insertion-order row; P4.D350: +1 kit-fallback row
 
 fn item(v: &Value) -> ResolvedInventoryItem {
     ResolvedInventoryItem(v.as_object().expect("an item literal").clone())

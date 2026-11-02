@@ -29,7 +29,8 @@
 //!     storeless project leaves `doc_mount_points` untouched;
 //!   - an item route resolves and finds the object FIRST, then parses — a
 //!     missing object 404s before a bad body 400s;
-//!   - `duplicate` checks its hand-read `itemId` before it resolves.
+//!   - `duplicate` parses `{ itemId }` as `duplicateInventorySchema` before
+//!     it resolves — a Zod 400.
 //!
 //! **Provisioning (v4's own `ensure` flags — they DIFFER from the
 //! wardrobe's).** The three GET reads never provision: a project / group that
@@ -961,8 +962,9 @@ async fn file_items(
 }
 
 /// `POST ?action=duplicate` `{ itemId }` → 201 `{ item }` — a copy beside the
-/// original, titled "(copy)"; refused when not copyable. v4 reads `itemId` by
-/// hand BEFORE it resolves: a non-string or empty one is the 404.
+/// original, titled "(copy)"; refused when not copyable. v4 parses the body as
+/// `duplicateInventorySchema` BEFORE it resolves: a missing, non-string or
+/// empty `itemId` is the Zod 400 (v4 `0276d10d9`).
 async fn duplicate(
     db: &Db,
     cfg: InventoryRouteConfig,
@@ -970,13 +972,13 @@ async fn duplicate(
     user_id: &str,
     body: &Value,
 ) -> Response {
-    let Some(item_id) = body
-        .get("itemId")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
-    else {
-        return not_found("Inventory object");
+    let item_id = match crate::inventory::types::parse_duplicate_inventory_body(body) {
+        Ok(parsed) => parsed
+            .get("itemId")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
+        Err(issues) => return validation_error(&issues),
     };
     let uid = user_id.to_string();
     let out = with_both_conns_maybe_for(

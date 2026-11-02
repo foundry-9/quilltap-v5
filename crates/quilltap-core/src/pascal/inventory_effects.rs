@@ -63,7 +63,7 @@ use crate::inventory::refs::{
     ResolvedInventoryPool,
 };
 use crate::inventory::resolve::inventory_label;
-use crate::inventory::types::{InventoryFields, InventoryKind, ResolvedInventoryItem};
+use crate::inventory::types::{InventoryFields, ResolvedInventoryItem}; // P4.D350: `InventoryKind` left with the kit arm
 use crate::services::inventory_change_effects::{
     notify_inventory_changed, PendingInventoryAnnouncements,
 };
@@ -428,9 +428,10 @@ pub fn apply_inventory_effects(
                     let pick = if action == InventoryEffectAction::Equip {
                         pick_for_gesture(&matches, Gesture::Equip)
                     } else {
-                        pick_for_gesture(&matches, Gesture::Unequip).or_else(|| {
-                            matches.iter().find(|m| m.item.kind() == InventoryKind::Kit)
-                        })
+                        // === P4.D350: chokepoints ===
+                        // The kit fallback lives in `pick_for_gesture` (v4 `0276d10d9`).
+                        pick_for_gesture(&matches, Gesture::Unequip)
+                        // === end P4.D350 ===
                     };
                     match pick {
                         Some(m) => {

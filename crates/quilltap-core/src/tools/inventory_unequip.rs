@@ -71,9 +71,8 @@ pub fn execute(
     for reference in &refs {
         let matches = resolve_tool_ref(&ctx, reference, ResolveInventoryRefOptions::default());
         // The first equipped match, else the first kit (it sets down its
-        // members).
-        let pick = pick_for_gesture(&matches, Gesture::Unequip)
-            .or_else(|| matches.iter().find(|m| m.item.is_kit()));
+        // members) — `pick_for_gesture`'s unequip rule.
+        let pick = pick_for_gesture(&matches, Gesture::Unequip);
         match pick {
             Some(pick) => {
                 if !ids.iter().any(|id| id == pick.item.id()) {

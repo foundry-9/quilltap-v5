@@ -38,6 +38,7 @@ import {
   chatInventoryResetSchema,
   clearInventoryOverrideSchema,
   createInventorySchema,
+  duplicateInventorySchema,
   fileInventoryItemsSchema,
   instantiateInventorySchema,
   inventoryFolderPathBodySchema,
@@ -63,6 +64,7 @@ const SCHEMAS: Record<string, { safeParse(input: unknown): { success: boolean; d
   chatEquip: chatInventoryEquipSchema,
   chatReset: chatInventoryResetSchema,
   transfer: inventoryTransferSchema,
+  duplicate: duplicateInventorySchema,
 };
 
 function emit(row: Record<string, unknown>): void {
@@ -216,6 +218,11 @@ const probes: Array<[string, string, unknown]> = [
   ['transfer-bad-action', 'transfer', { action: 'swap', itemId: U1, from: { scope: 'general' }, to: { scope: 'general' } }],
   ['transfer-bad-scope', 'transfer', { action: 'move', itemId: 'x', from: { scope: 'world' }, to: {} }],
   ['transfer-missing', 'transfer', {}],
+  // v4 `0276d10d9` (P4.D350): `?action=duplicate`'s body schema.
+  ['duplicate-missing', 'duplicate', {}],
+  ['duplicate-empty', 'duplicate', { itemId: '' }],
+  ['duplicate-number', 'duplicate', { itemId: 42 }],
+  ['duplicate-ok', 'duplicate', { itemId: 'x', extra: 1 }],
   ['transfer-extra', 'transfer', { action: 'move', itemId: U1, from: { scope: 'general', x: 1 }, to: { scope: 'general' }, y: 2 }],
 ];
 

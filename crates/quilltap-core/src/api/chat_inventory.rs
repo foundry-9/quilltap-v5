@@ -34,8 +34,8 @@ use super::types::Response;
 use crate::db::runtime::Db;
 use crate::inventory::apply_defaults::reset_inventory_to_defaults;
 use crate::inventory::equip::{
-    equip_items, unequip_items, EquipChat, EquipOptions, InventoryChange, InventoryChangeContext,
-    InventoryChangeProvenance,
+    equip_items, seated_character_ids, unequip_items, EquipChat, EquipOptions, InventoryChange,
+    InventoryChangeContext, InventoryChangeProvenance,
 };
 use crate::inventory::equipped_set::read_equipped_set;
 use crate::inventory::errors::InventoryRefusal;
@@ -99,25 +99,6 @@ impl InventoryChangeEffects for ProductionInventoryEffects {
     }
 }
 
-/// v4 `castOf(chat)` — the cast whose Inventory the chat shows: every seated
-/// CHARACTER, unique, in participant order. (NB the keystone's
-/// `assert_participant` ignores `type` — v4's two checks, as written.)
-pub fn cast_of(chat: &EquipChat) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for p in &chat.participants {
-        let Some(character_id) = p.character_id.as_deref().filter(|s| !s.is_empty()) else {
-            continue;
-        };
-        if p.kind.as_deref() == Some("CHARACTER")
-            && p.status.as_deref() != Some("removed")
-            && !out.iter().any(|c| c == character_id)
-        {
-            out.push(character_id.to_string());
-        }
-    }
-    out
-}
-
 /// The chat as the gestures see it (`repos.chats.findById`), or `None`.
 fn chat_of(db: &Db, chat_id: &str) -> Result<Option<EquipChat>, crate::db::DbError> {
     db.read_main(|main| {
@@ -136,7 +117,7 @@ pub fn chat_inventory_get(db: &Db, chat_id: &str) -> Response {
         Ok(None) => return not_found("Chat"),
         Err(e) => return escaped(e),
     };
-    let cast = cast_of(&chat);
+    let cast = seated_character_ids(&chat);
     let built = db.read_main(|main| {
         db.read_mount_index(|mount| {
             let pools = load_cast_inventory_pools(
@@ -303,7 +284,7 @@ pub async fn chat_inventory_reset_defaults(
         Ok(None) => return not_found("Chat"),
         Err(e) => return escaped(e),
     };
-    if !cast_of(&chat).contains(&character_id) {
+    if !seated_character_ids(&chat).contains(&character_id) {
         return inventory_error_response(InventoryRefusal::not_a_participant(&character_id).into());
     }
     match reset_inventory_to_defaults(db, &chat, &character_id, user_id).await {
