@@ -181,7 +181,7 @@ pub fn execute(
     };
     // The giver's own record first, then the receiver's vault (v4
     // `0276d10d9`'s order — a vanished record provisions nothing).
-    let (source, record) = match load_own_record(&cx, &item_id) {
+    let (source, record) = match load_own_record(cx, &item_id) {
         Ok(Some(own)) => own,
         Ok(None) => return refuse(inventory_not_found_message(&reference), vec![item_id]),
         Err(e) => return refuse(error_message_of(&e), Vec::new()),

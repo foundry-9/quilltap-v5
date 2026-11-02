@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(inventory): clippy needless borrows at load_own_record; P4.D350 lane record
+
+_Versions: core 0.0.1386._
+
+The three `load_own_record(&cx, …)` calls pass `cx` (clippy `needless_borrow`). The P4.D350 lane record is appended to the porting status log.
+
 #### 2026-11-02 — port(inventory): the Inventory chokepoints — publishes in v4's places, one scan per write, detach-all's two phases (v4 0276d10d9)
 
 _Versions: core 0.0.1385._

@@ -193888,6 +193888,110 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
+
+**Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.
+
+**§2 probe (an observation, §R.2).** 2026-11-02 10:00 CST: branch `main`, tree CLEAN, `236c04e35..main` = 31 commits (`8832cfd20` … `27fb3ec77`, the chokidar removal now committed as `db4a76e39`, through `4.12.0-dev` work: the item-browser folder layer, Document Mode's folder browser, Deus Ex Machina, the composer slash-command trims, prompt-trust probation, images-per-request cap, Green Room multi-slot picks, the Salon carried-items line). **v4 moved: 31 commits past the pin, observed 10:00 CST**; recorded for `/driftcheck`; the lane followed the pin. Pin `/tmp/qt-v4-pin-p4d350-236c04e35`: HEAD `236c04e35ab23ccc604fd188e5b73d0141066697`, `4.12.0-dev.0`; root `npm ci --offline` SUCCEEDED (the cache was populated); `openai` 7.45.0, `@xterm/headless` 6.0.0, `zod` 4.6.7, `pdfjs-dist` 6.4.299, `@quilltap/plugin-types` 2.9.0, root `better-sqlite3` alias = `better-sqlite3-multiple-ciphers` 12.11.1. `packages/quilltap` has NO lockfile at the pin (the live one's `package-lock.json` is untracked and its driver is 13.0.3), so the jest oracles' `packages/quilltap/node_modules/better-sqlite3-multiple-ciphers` was pointed at the pin root's 12.11.1 copy (a symlink inside the pin; the pin's own lockfile's version) — the inventory-routes oracle needs it.
+
+### Commits (branch `claude/p4.d350-inventory-chokepoints-897691`, from `8976915ea`)
+
+| sha | unit | core |
+|---|---|---|
+| `8ab640259` | **`CATALOG`** — the round's ONE `tools/definitions/data.rs` regen (Tier 1 item 1) | 0.0.1380 |
+| `f39823583` | docs — the `CATALOG` sha in this order's status header | — |
+| `9bf1f8ebf` | `265b711dd` text-block parser row + the two prompt blocks (items 2–3) | 0.0.1381 |
+| `37472d62e` | `cases/item-folders.ts` IMPORT-DEAD re-aim + the two v5 twins deleted (item 18) | 0.0.1382 |
+| `3711d1991` | the duplicate 400, `seated_character_ids`, the kit arm in `pick_for_gesture`, the pick-up vault sentence (items 9–12) | 0.0.1383 |
+| `ba73461f4` | `074e1e01a` whole — `vault.coreFiles`, `CORE_VAULT_FILE_SUMMARIES`, `holdings.*`, the `includedParts` split (items 4–8) | 0.0.1384 |
+| `28ec548b7` | the chokepoints — R-1 publishes, `op` keys, `detach_all` two-phase, `ownedPaths`, resolve-in-hand + Tier 2 items 20–25 (items 13–17, 19–25) | 0.0.1385 |
+
+Versions at close: **core 0.0.1385**; host 0.0.217, web 0.0.251 (no web source moved — the duplicate 400 rides the existing `BadRequest` edge, measured), cli 0.0.35, tauri 0.0.9 unchanged; harness frozen 0.0.1110; SPA untouched (R-7).
+
+### `CATALOG` (item 1)
+
+`CATALOG` = **`8ab640259`**. NDJSON from the pin: `oracle-tool-definitions.ndjson` 76 lines, md5 `facb18400e4b8d10de576844dfa0a6b6`; canonical md5 `3b817b7082b19b54ecadff357ccf9fc5`. Markers before the Rust run: `"pronoun_guidance` 2, `Eleven top-level sections` 1, `spans any number of folders` 1, `Portrait Cue — ALWAYS` 1, `dented brass pocket compass` 2, `pronoun_aware` 1. `git diff` touched EXACTLY seven entries: `doc_list_files`, `inventory_create`, `inventory_update`, `self_inventory`, `wardrobe_list`, `wardrobe_create`, `wardrobe_update` (the order's §"Corrections" held: `wardrobe_read`, `project_info`, `run_custom`, `state` byte-identical). `data.rs:12` `76 entries` and `mod.rs`'s 76 assert unmoved; `cargo test -p quilltap-core --lib definitions` 4/4. **Red-first** on unported `main`: `stored bytes drift for docListFiles` (the first moved key in the oracle's row order — NOT `wardrobe_create` as the order predicted). Green: `OK: tool-definitions byte-exact for 76 tools.` **UNION FAMILY:** `tool_definitions_equivalence` is red on every lane tree cut from `main` without `CATALOG` until the union. A shared note for P4.D349 was left in the round's side-session notes folder.
+
+### Red-first counts (each family's failing assertion on unported code, then green)
+
+- **item 2** `pseudo_tool_parsers_equivalence`: `1 of 224 rows red: ["parse_text_block/tb-wardrobe-create-body"]` (the body answered `content`) → 224/224.
+- **item 3** `pseudo_tool_prompts_equivalence`: `11 of 52 rows red` (every row with `wardrobeCreate` / `inventoryCreate` on) → 52/52, compared as bytes.
+- **item 4/8** `self_inventory_equivalence` (main's prebuilt binary, the oracle trimmed to main's nine cases): `case full_sections: output JSON mismatch` (`coreFiles` absent) → 15/15 cases green, 7 v4 DEBUG lines compared (silence legs on the other 8 cases), JSON now compared as BYTES (it was `Value ==`).
+- **item 9** `inventory_types_equivalence`: `unknown schema duplicate` (no twin) → 126 parses green; `inventory_routes_equivalence` (main's prebuilt web binary against the regenerated oracle): `8 rows differ` — `char_duplicate_numeric` / `_empty` / `_no_key` / `_numeric_missing_owner` × direct/http, 404 vs v4's 400 → 171 cases green (`"error":"Validation error"` ×19 in the NDJSON).
+- **item 12** `inventory_refs_equivalence`: `RED pick/corner-kit-half-equipped-unequip-picks-kit`, `RED pick/kit-fallback-one-member-carried` → 88/88 (`EXPECTED_ROWS` 87 → 88).
+- **item 18** `inventory_folders_equivalence`: the import death on main's case — `SyntaxError: The requested module '@/lib/inventory/folders' does not provide an export named 'inventoryFolderStorePath'` → the re-aimed case regenerates 605 rows, green.
+- **items 13–17, 24** `inventory_keystone_tier2_equivalence`: main's prebuilt binary reads main's own `inventory-keystone.json` (fewer ops), so the per-op red could not be run on unported code without rebuilding main; recorded instead from the pin's bytes against the pre-port code paths: the stray-note rows (v4 keeps `Inventory/notes.json`; pre-port `owns` = `is_inventory_item_document` sweeps it), the `op` keys (absent pre-port), the publishes (pre-port: none from locations, three inline carried-set pairs, no drop publish), the pick-up sentence (`to pick an object up into` pre-port). Green after: **141 ops, 1,041 owned v4 lines**.
+
+### Measurements and rulings applied
+
+- **item 10 — pin NEGATIVE.** v4's `ParticipantTypeEnum` is `z.enum(['CHARACTER'])`; a chat planted with a `USER`-type seat carrying a character answers **404 `Chat not found`** from v4 (measured with two probe rows, `mainSql` `json_set(participants,'$[1].type','USER')`). So dropping the `type` filter is unobservable through valid v4 data; the port is the one rule (`inventory::equip::seated_character_ids`, shared with `assert_participant`). **Finding (not this lane's file):** v5's chat read ADMITS that seat type (answered 200 with the character's inventory) — a pre-existing chat-read Zod-twin divergence in `db/chats_read.rs`; the probe rows were withdrawn from the corpus, the finding goes to the follow-ups round.
+- **item 14 — the WARN is unreachable through v4's real code.** `mountOwnerResolver` finds the owner by `findByDocumentMountPointIdRaw(mount)`, and `resolveVaultFolderMount(ownerId)` then reads that same character's pointer, so it cannot answer null for a found owner; an unlinked vault reads as an `unknown` mount and is baked as a shared one. Ported faithfully (two phases + the WARN + `dependent_location`); the corpus row `detach-all-unlinked-vault` pins the unknown-mount bake (2 baked, no WARN) both sides.
+- **item 15** — `update-keeps-stray-note` and `update-keeps-note-and-duplicate` (a note in Vivienne's and Wren's vaults + a `cup copy.json` duplicate) both keep their files on both sides; the folder ops reuse the scan their `read` took (`TREE_SCANS`, writer-thread local, taken on use, validated by record equality — v4's `treeScans` WeakMap).
+- **item 16 / R-1** — adopted as ruled. Recording-bus unit module `inventory::location::publish_tests` (2 tests: create → one `inventory`; a read, an update and a delete matching nothing → silence; a folder op → one; `write_carried_set` → `chats/chat-1`; a drop changing nothing → silence). **`realtime_publish_sites_guard` delta:** `equip.rs` `Chats` 3 → 2 (`write_carried_set` + the drop), `equip.rs` `Inventory` 1 → 0, NEW `location.rs` `Inventory` 1 + `landed();` 6, the handlers' rows 2/1/2/2 → 0/0/0/0, the table loop stays 1; the two duplicated P4.D324 / P4.D328 equip rows folded into one set. **Harness fix in `inventory_tools_equivalence`:** with the handler-owned `chats` hint gone, `give-by-id-uppercase` exposed that Pascal's posted line announces its chat from the `Db` writer thread (`announce_transcript_change`), which the thread-scoped capture never saw — the family now arms the bus on the writer thread per case and listens there through a process-wide sink (one-test binary; the `log_tools_equivalence` idiom), comparing publishes as a sorted SET (two thread-local buses each queue their own first hint where v4's one bus coalesces).
+- **item 17** — `inventory_tools_equivalence` bytes EQUAL after the change (101 cases green, measured); no separate mutation unit test was added (recorded).
+- **item 24** — REPRESENTED: `pick-up-no-vault` (Ulla, whose vault pointer the builder NULLs, seated in a new chat `b7`) answers `Character c5000000-… has no vault to hold a picked-up object` both sides; plus `inventory::equip::tests::a_vaultless_pick_up_names_the_picked_up_object`.
+- **R-4 (`withInventoryErrors`) — NO-PORT, pin NEGATIVE:** every routes row kept its status at the regen (the only moved rows were the four duplicate cases, item 9's); no code added.
+- **R-5** — the "one failing part" arm is NOT-REPRESENTABLE through real reads: v5's wearable pool and roster never fail (and v4's test mocks a throw); covered by `tools::self_inventory_holdings::tests::one_failing_part_does_not_take_the_others_down` (JSON bytes, the report, the DEBUG's `wardrobe=false inventory=true customTools=null`).
+- **Tier 3 item 28** — v5's roster never fails (it reads soft), so a degraded mount index cannot reach `holdings.customTools`'s unavailable arm through the roster; recorded.
+- **R-9** — the roster clock is an ARGUMENT, not an env field: `execute_self_inventory(…, now_ms)` (the executor passes `crate::clock::now_unix_ms()`), because a `SelfInventoryEnv` field would have touched ~25 construction sites in files other lanes own (orchestrator, host env, web tests).
+- **item 26 (`mountOwnerResolver` memo)** — not landed (perf only); recorded.
+- **item 21** — v4 also stopped logging the prompt-section / image-phrase DEBUG when the stored ids resolve to nothing (`if (carried.length === 0) return null`); ported with `load_equipped_set`.
+- **item 23** — `EquipOptions.pool: Option<Arc<InventoryPool>>` (the struct derives `Clone`; the pool does not).
+
+### Deletions (item 25), zero-caller greps after
+
+`grep -rn 'kin_of\b\|describe_equipped_inventory_for_images\|read_duplicate_inventory_paths\|normalize_inventory_folder_path\b\|inventory_folder_store_path' crates harness` → nothing; the `Elsewhere` origin tag gone from `pool.rs` (the remaining `Elsewhere` hits are unrelated test strings).
+
+### Fences and owned-file touches outside the lane
+
+`pascal/inventory_effects.rs` (P4.D345's file): the two `// === P4.D350: chokepoints ===` hunks (`inventory_change_context` at the applier and at `finish_inventory_effects`), the unequip `.or_else(kit)` drop (fenced, `3711d1991`), and the import list trimmed of `InventoryKind` / `InventoryChangeContext`, which those hunks orphaned. `tools/executor.rs`: ONE line in `run_self_inventory` (the `now_ms` argument) — NOT in `BuiltInToolRunner::run` (P4.D343's region). `tools/self_inventory.rs:1322-1350` (P4.D349's fence) untouched.
+
+### Families, regen recipes (all from the pin `/tmp/qt-v4-pin-p4d350-236c04e35`, Node 24.13.1, outputs under `/tmp/p4d350/`)
+
+The sweep driver's own recipes (`recipe_sweep.py --show <family>`), run by hand with every output re-rooted under `/tmp/p4d350/` (the driver writes shared `/tmp` paths):
+
+| family | oracle | rows | md5 |
+|---|---|---|---|
+| `tool_definitions_equivalence` | `npx tsx cases/tool-definitions.ts` / `-canonical.ts` | 76 / 1 | `facb1840…` / `3b817b70…` |
+| `pseudo_tool_parsers_equivalence` | `node --import tsx cases/pseudo-tool-parsers.ts` | 224 | `28e574f2…` |
+| `pseudo_tool_prompts_equivalence` | `node --import tsx cases/pseudo-tool-prompts.ts` | 52 | `980a2a87…` |
+| `inventory_types_equivalence` | `node --import tsx cases/inventory-types.ts` | 137 | `60699b8f…` |
+| `inventory_refs_equivalence` | `node --import tsx cases/inventory-refs.ts` | 88 | `64a9dbca…` |
+| `inventory_folders_equivalence` | `node --import tsx cases/item-folders.ts` | 605 | `273cfe1f…` |
+| `inventory_routes_equivalence` (web) | jest mirror `/tmp/p4d350/iroutes-oracle`, `QT_FIXTURE_IROUTES_{MAIN,MOUNT}` = the committed pair, `TZ=UTC` | 219 | `332bcae3…` |
+| `self_inventory_equivalence` | `build-self-inventory-fixture.ts` → `/tmp/p4d350/qt-selfinv-{main,mount,llmlogs}.db`; `cases/self-inventory.ts` | 15 | `f0c7cfb4…` |
+| `inventory_keystone_tier2_equivalence` | `build-inventory-mutations-fixture.ts` → `/tmp/p4d350/qt-inv-*.db`; `cases/inventory-keystone-tier2.ts` | 141 | `45bfd646…` |
+| `pascal_inventory_effects_equivalence` | same builder → `/tmp/p4d350/qt-pie-*.db`; `cases/pascal-inventory-effects.ts` | 20 | `cbd2f4c8…` |
+| `inventory_tools_equivalence` | `build-inventory-tools-fixture.ts` → `/tmp/p4d350/qt-it-*.db`; `cases/inventory-tools.ts` | 101 | `5ccb6127…` |
+| `tools_inventory_equivalence` | jest mirror `/tmp/p4d350/cd-oracle` `-- chat-dialogs-tools` | 9 | `6f971d9a…` |
+| `inventory_image_description_equivalence` | jest mirror `/tmp/p4d350/invimg-oracle` | 35 | `c917e0c1…` |
+| `chats_inventory_tier2_equivalence` | `build-chats-inventory-fixture.ts` → `/tmp/p4d350/qt-chinv-fixture.db` | 34 | `8ab79d10…` |
+| `realtime_topics_equivalence` | `npx tsx cases/realtime-topics.ts` | 92 | `d98dded1…` |
+
+**Pin env note:** `packages/quilltap` has no lockfile at `236c04e35`; the inventory-routes oracle `require`s `packages/quilltap/node_modules/better-sqlite3-multiple-ciphers`, so `$PIN/packages/quilltap/node_modules/better-sqlite3-multiple-ciphers` was symlinked to `$PIN/node_modules/better-sqlite3` (the pin's own 12.11.1) — worth a line in the regen recipe for every jest oracle this round.
+
+**`realtime_topics_equivalence` is RED on this branch by design:** v4's topic list at the pin adds `storytellerRounds` and `customToolInterventions` (P4.D343 / P4.D345's topics) — a union red, not this lane's (nothing in it moved for `inventory`).
+
+### Fixtures changed (dependents to regenerate)
+
+- `harness/oracle/fixtures/self-inventory.json` + `build-self-inventory-fixture.ts` (per sweep): General store, 2 garments + 1 outfit, 4 Inventory records (Aria + General), a carried object, a custom tool `Tools/catalogue_check.tool.json`, `manifesto.md` deleted, `example-dialogues.md` emptied, Fenn (vault pointer NULLed), a `chat_settings` row; +6 cases; per-case `plantSql`/`restoreSql`. Feeds `self_inventory_equivalence` only.
+- `harness/oracle/fixtures/inventory-keystone.json` + `build-inventory-mutations-fixture.ts` (per sweep): Ulla (`unlinked`), the `spyglass` archetype + two instances, `strayFiles` (two notes + a duplicate-id copy), chat `b7`, +4 ops (`detach-all-unlinked-vault`, `update-keeps-stray-note`, `update-keeps-note-and-duplicate`, `pick-up-no-vault`). Feeds `inventory_keystone_tier2_equivalence` AND `pascal_inventory_effects_equivalence` (both regenerated, both green).
+- `harness/oracle/cases/{pseudo-tool-parsers,inventory-types,inventory-refs,item-folders,self-inventory}.ts`. No committed DB pair changed.
+
+### HANDOFFs
+
+- **P4.D349** — branches from `CATALOG` `8ab640259`; its fence in `tools/self_inventory.rs:1322-1350` is untouched here.
+- **P4.D354** — the `doc_list_files` `pattern` sentence is in `CATALOG`.
+- **P4.D343 / P4.D345** — zero catalog delta for their tools; their trees' `tool_definitions_equivalence` red through the seven entries until the union. P4.D345: the fenced hunks in `pascal/inventory_effects.rs` above.
+- **P4.D359** — R-1 is live: an operator REST Inventory write publishes `inventory`; a carried-set write publishes `chats/<id>`.
+- **P4.D360** — `help/inventory.md`, `help/wardrobe.md`, `help/character-system-transparency.md`, `docs/FEATURES.md`, `docs/developer/API.md`, `docs/developer/features/complete/inventory.md`.
+- **The unifier** — the publish-site census rows above; `tool_definitions_equivalence` on the union; `realtime_topics_equivalence`'s two new topics.
+- **Follow-ups (finding)** — v5's chat read admits a non-`CHARACTER` participant type that v4's chat schema refuses (`db/chats_read.rs`).
+
+### 💸 Dogfood rows
+
+`self_inventory` bare on the Friday copy (`## Core Vault Files` 9 of 9 on a scaffolded vault; a hand-deleted `metadata.json` reads MISSING with its named `qtap://` uri; `## Holdings` counts match the dialog); a text-block turn on a provider without native tools landing a `CREATE_WARDROBE_ITEM` body in the description and its `cue` in the Portrait Cue; `POST …/inventory?action=duplicate` with `{}` → 400 `Validation error`; an operator REST create refreshing a second open Inventory dialog (with P4.D359's reload); a `.json` note under a character's `Inventory/` surviving an edit of one of their objects; nothing here is SQL, so the first boot runs no ensure.
+
 ## P4.D341 — the `236c04e35` KEYSTONE: the 17th–21st D23 moves in one re-dump, five boot ensures, the column plumbing, keystone memories server (lane `claude/p4.d341-keystone-d23-17-21-8976915ea`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Venue.** Session opened on `main` at `8976915ea` (the orders' commit). Moved to the worktree `.claude/worktrees/p4d341` on `claude/p4.d341-keystone-d23-17-21-8976915ea`, cut from `8976915ea` (wave 0, the stacking root). `target/` was cloned from main's (`cp -cR`).

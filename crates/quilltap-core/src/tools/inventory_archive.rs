@@ -104,7 +104,7 @@ pub fn execute(
             InventoryToolLogLevel::Info,
         );
     };
-    let (vault, record) = match load_own_record(&cx, m.item.id()) {
+    let (vault, record) = match load_own_record(cx, m.item.id()) {
         Ok(Some(own)) => own,
         Ok(None) => {
             return InventoryHandled::quiet(failure(inventory_not_found_message(&reference)))
