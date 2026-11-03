@@ -170,6 +170,9 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         // P4.D343: v4 `job-topics.ts` `storytellerRounds: []` — no job child
         // publishes it (the round service runs in the request path).
         RealtimeTopic::StorytellerRounds => &[],
+        // P4.D345: v4 `job-topics.ts:147` `customToolInterventions: []` —
+        // a hold never opens in the job child, so nothing there publishes it.
+        RealtimeTopic::CustomToolInterventions => &[],
     }
 }
 

@@ -33,15 +33,16 @@ pub enum RealtimeTopic {
     /// moved. Collection-wide (lists and folders). What a chat carries is the
     /// `chats` topic's. (v4 `e1872c94f`, P4.D324.)
     Inventory,
-    // === P4.D343 (`RealtimeTopicAppend`) ===
     /// A chat's storyteller rounds: a round opened, a bid landed, a selection
-    /// ran, a round closed. Scoped by CHAT id (v4 `b15fe9404` — NINTH; P4.D345's
-    /// `customToolInterventions` follows at union).
+    /// ran, a round closed. Scoped by CHAT id (v4 `b15fe9404`, P4.D343).
     StorytellerRounds,
+    /// A chat's held Pascal runs — a hold added or settled. Scoped by chat id;
+    /// never published from the job child (v4 `839575d89`).
+    CustomToolInterventions,
 }
 
 /// Every topic, in v4's declaration order.
-pub const REALTIME_TOPICS: [RealtimeTopic; 9] = [
+pub const REALTIME_TOPICS: [RealtimeTopic; 10] = [
     RealtimeTopic::Jobs,
     RealtimeTopic::AutonomousRooms,
     RealtimeTopic::Chats,
@@ -51,6 +52,7 @@ pub const REALTIME_TOPICS: [RealtimeTopic; 9] = [
     RealtimeTopic::Memories,
     RealtimeTopic::Inventory,
     RealtimeTopic::StorytellerRounds,
+    RealtimeTopic::CustomToolInterventions,
 ];
 
 impl RealtimeTopic {
@@ -66,6 +68,7 @@ impl RealtimeTopic {
             RealtimeTopic::Memories => "memories",
             RealtimeTopic::Inventory => "inventory",
             RealtimeTopic::StorytellerRounds => "storytellerRounds",
+            RealtimeTopic::CustomToolInterventions => "customToolInterventions",
         }
     }
 }
@@ -113,13 +116,15 @@ mod tests {
     use crate::api::types::{Event, EventPayload};
 
     #[test]
-    fn topics_are_v4s_nine_in_order() {
+    fn topics_are_v4s_ten_in_order() {
         // `memories` came seventh: bug 128 (`4a9be9878`) appended it;
-        // `inventory` eighth (`e1872c94f`, P4.D324), `storytellerRounds` NINTH
-        // (`b15fe9404`, P4.D343 — P4.D345 makes it ten at union). The order is
-        // v4's declaration order in `REALTIME_TOPICS`.
+        // `inventory` eighth (`e1872c94f`, P4.D324), `storytellerRounds` ninth
+        // (`b15fe9404`, P4.D343), `customToolInterventions` tenth (`839575d89`,
+        // P4.D345 — restored positionally at the union, H4). The order is v4's
+        // declaration order in `REALTIME_TOPICS`.
+        let names = REALTIME_TOPICS.map(RealtimeTopic::as_str).to_vec();
         assert_eq!(
-            REALTIME_TOPICS.map(RealtimeTopic::as_str).to_vec(),
+            names,
             vec![
                 "jobs",
                 "autonomousRooms",
@@ -129,7 +134,8 @@ mod tests {
                 "mountPoints",
                 "memories",
                 "inventory",
-                "storytellerRounds"
+                "storytellerRounds",
+                "customToolInterventions"
             ]
         );
     }

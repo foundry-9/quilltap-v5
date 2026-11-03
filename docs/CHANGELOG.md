@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(realtime): the customToolInterventions topic (P4.D345)
+
+_Versions: core 0.0.1388._
+
+`RealtimeTopic::CustomToolInterventions` (`"customToolInterventions"`, chat-scoped) is appended after `inventory`, per v4 `839575d89` and contract `RealtimeTopicAppend`; the union makes it tenth, after P4.D343's `storytellerRounds`. `job_topics` gets its empty arm, since a hold never opens in the job child. The topic-order test now pins the first eight positionally and this topic present and last; the unifier restores the positional ten-list (H4). `realtime_topics_equivalence` was re-run from the pin and is red by design only on `storytellerRounds`.
+
 #### 2026-11-03 — feat(pascal): the Workbench library says which tools hold their runs (P4.D345)
 
 _Versions: core 0.0.1387._
