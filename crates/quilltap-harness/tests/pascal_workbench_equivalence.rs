@@ -157,6 +157,30 @@ fn workbench_matches_oracle() {
             })
             .unwrap();
 
+        // P4.D345: `canon` compares ORDER-BLIND (`Value ==`), so the library
+        // entry's key ORDER — v4's builder literal, with `intervention` right
+        // after `disabled` — is pinned separately. P4.D343's `effect` key is
+        // excluded from v4's list until the union (H3), so this leg is green
+        // on either branch and on the union.
+        if case == "library" {
+            let keys_of = |v: &Value| -> Vec<Vec<String>> {
+                v["tools"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|t| {
+                        t.as_object()
+                            .map(|o| o.keys().filter(|k| *k != "effect").cloned().collect())
+                            .unwrap_or_default()
+                    })
+                    .collect()
+            };
+            assert_eq!(
+                keys_of(&got),
+                keys_of(&want["value"]),
+                "library entry key order"
+            );
+        }
         assert_eq!(canon(&got), canon(&want["value"]), "case '{case}'");
         checked += 1;
     }

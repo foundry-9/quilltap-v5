@@ -54,6 +54,13 @@ pub struct CustomToolLibraryEntry {
     pub title: String,
     pub description: String,
     pub disabled: bool,
+    // === P4.D345: T2 / `LibraryEntryKeys` ===
+    /// Whether the tool holds its runs for the operator (v4 `839575d89`,
+    /// `isIntervenable`). v4's interface declares it after `triggerCount`, but
+    /// the builder's object LITERAL — which is the JSON key order — places it
+    /// right after `disabled` (`workbench.ts:200-201` at the `236c04e35` pin);
+    /// the literal wins.
+    pub intervention: bool,
     /// Which availability clause this tool declares, if any (v4 `6864bf0e`).
     /// Declared after `disabled` and before `defaultVisibility`, which is v4's
     /// own order.
@@ -383,6 +390,7 @@ pub fn build_custom_tool_library(
             title: display_title(&entry.definition.name, entry.definition.title.as_deref()),
             description: entry.definition.description.clone(),
             disabled: entry.definition.disabled.unwrap_or(false),
+            intervention: super::intervention::eligibility::is_intervenable(&entry.definition),
             gate: if entry.definition.available_when.is_some() {
                 Some(LibraryGate::Available)
             } else if entry.definition.withheld_when.is_some() {

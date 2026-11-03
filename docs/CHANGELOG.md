@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): the Workbench library says which tools hold their runs (P4.D345)
+
+_Versions: core 0.0.1387._
+
+`CustomToolLibraryEntry.intervention` (v4 `839575d89`, `isIntervenable`) sits right after `disabled`. That is where v4's builder literal puts it at the pin; contract T2's prose said after `triggerCount`, and the hunk wins. `pascal_workbench_equivalence` was regenerated once at the pin, and a new key-order leg pins the position (the value compare is order-blind). Red by design until the union (H3): P4.D343's `effect` key, missing on each of the 10 library entries in `pascal_workbench_equivalence` and on the Workbench-route `library` row.
+
 #### 2026-11-03 — feat(pascal): operator intervention's pure half — eligibility, overrides, recompute, spans, veto texts, views (P4.D345)
 
 _Versions: core 0.0.1386._
