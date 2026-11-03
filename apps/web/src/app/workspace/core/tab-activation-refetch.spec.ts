@@ -20,7 +20,12 @@ import { Component, signal, type WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
-import { WORKSPACE_TAB_VISIBLE, onTabActivated, type TabKind, type WorkspaceTab } from '../workspace-contract';
+import {
+  WORKSPACE_TAB_VISIBLE,
+  onTabActivated,
+  type TabKind,
+  type WorkspaceTab,
+} from '../workspace-contract';
 import { characterKeys, tagKeys } from '../../screens/characters/characters.api';
 import { groupKeys } from '../../screens/groups/groups.api';
 import { homeKeys } from '../../screens/home/home.api';
@@ -206,21 +211,14 @@ describe('tabActivationQueryKeys', () => {
 
   it('invalidates BOTH live spellings of every split key (v5-only)', () => {
     const settings = tabActivationQueryKeys(tab('settings'));
-    for (const pair of [
-      [['apiKeys'], ['api-keys']],
-      [['chatSettings'], ['chat-settings']],
-    ]) {
+    for (const pair of [[['apiKeys'], ['api-keys']]]) {
       for (const spelling of pair) {
         expect(settings).toContainEqual(spelling);
       }
     }
     // The salon list reads chat settings and connection profiles too.
     const salonList = tabActivationQueryKeys(tab('salon-list'));
-    for (const spelling of [
-      ['connection-profiles'],
-      ['chatSettings'],
-      ['chat-settings'],
-    ]) {
+    for (const spelling of [['connection-profiles'], ['chatSettings']]) {
       expect(salonList).toContainEqual(spelling);
     }
   });
@@ -228,7 +226,6 @@ describe('tabActivationQueryKeys', () => {
   it('covers the settings tab cards that have a v5 query key', () => {
     expect(tabActivationQueryKeys(tab('settings'))).toEqual([
       ['chatSettings'],
-      ['chat-settings'],
       ['textReplacements'],
       ['connection-profiles'],
       ['embedding-profiles'],

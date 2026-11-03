@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — fix(spa): the templates card writes the shared chat-settings row from the PUT response (v4 3b8b6f42b)
+
+_Versions: SPA 0.5.913._
+
+The roleplay-templates card now reads and writes the Chat tab's one settings key, following v4 `3b8b6f42b` (`useRoleplayTemplates.ts:247-249`; ruling R-8). It had read its own hyphenated `chat-settings` query, so a default-template change refreshed the card but left the Chat tab's `['chatSettings']` copy stale. The card now reads `chatSettingsKeys.all` through `fetchChatSettings`, and saves through `updateChatSettings` followed by `setQueryData` with the PUT's returned row. The workspace tab-refetch table drops the retired spelling. The auto-lock card already seeds the cache through `ChatSettingsCard.save()`; a new spec case pins that it gets the returned row with no refetch (verify-only). Specs: two templates-card cases (red first), the auto-lock case, and the refetch-table spec updated.
+
 #### 2026-11-03 — feat(spa): the About credits at v4's 4.11.0 vintage — Diagrams, Terminals & Realtime (v4 a4945d8d9)
 
 _Versions: SPA 0.5.912._

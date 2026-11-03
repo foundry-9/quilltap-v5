@@ -45,12 +45,15 @@ async function settle(fixture: ComponentFixture<unknown>): Promise<void> {
   }
 }
 
-async function mount(s: Stub): Promise<ComponentFixture<AutoLockSettingsCard>> {
+async function mount(
+  s: Stub,
+  queryClient = new QueryClient(),
+): Promise<ComponentFixture<AutoLockSettingsCard>> {
   TestBed.resetTestingModule();
   TestBed.configureTestingModule({
     imports: [AutoLockSettingsCard],
     providers: [
-      provideTanStackQuery(new QueryClient()),
+      provideTanStackQuery(queryClient),
       { provide: CoreClient, useValue: s.client },
       SystemSettingsSignals,
     ],
@@ -98,5 +101,31 @@ describe('AutoLockSettingsCard', () => {
     minutes.dispatchEvent(new Event('blur'));
     await settle(fixture);
     expect(s.updates).toContainEqual({ autoLockSettings: { enabled: true, idleMinutes: 5 } });
+  });
+  /**
+   * v4 `3b8b6f42b` (`AutoLockSettingsCard.tsx:88-90`): after the PUT, the shared
+   * settings row is seeded from the RESPONSE — "or a remount re-seeds the card
+   * from the pre-save copy". v5's card persists through `ChatSettingsCard.save()`,
+   * which already seeds `chatSettingsKeys.all`; this case pins that (verify-only).
+   */
+  it('a save seeds [chatSettings] with the PUT’s returned row and triggers no refetch', async () => {
+    const s = stub({ hasPassphrase: true });
+    const queryClient = new QueryClient();
+    const fixture = await mount(s, queryClient);
+    const reads = () =>
+      (s.client.dispatchExpect as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+        ([req]) => (req as { type: string }).type === 'chatSettings',
+      ).length;
+    const before = reads();
+    const toggle = fixture.nativeElement.querySelector(
+      'input[type="checkbox"]',
+    ) as HTMLInputElement;
+    toggle.checked = true;
+    toggle.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(queryClient.getQueryData(['chatSettings'])).toMatchObject({
+      autoLockSettings: { enabled: true, idleMinutes: 15 },
+    });
+    expect(reads()).toBe(before);
   });
 });

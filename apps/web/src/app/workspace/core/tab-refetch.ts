@@ -46,15 +46,16 @@
  *    card fetch outside TanStack Query, and plugins are Rust-core (no client
  *    query). Recorded as a gap rather than invented.
  *
- * **Split key spellings.** Until a consolidation lane unifies them, two v5
- * keys exist in two spellings each and BOTH must be swept (the connection
- * profiles were the third: P4.116 moved every reader onto v4's one
- * `['connection-profiles']`, `lib/query/keys.ts:108-109` at `d1c06cd9d`):
+ * **Split key spellings.** Until a consolidation lane unifies them, one v5
+ * key exists in two spellings and BOTH must be swept (the connection profiles
+ * and the chat settings were the others: P4.116 moved every reader onto v4's
+ * one `['connection-profiles']`, `lib/query/keys.ts:108-109` at `d1c06cd9d`):
  *  - `['apiKeys']` (api-keys card, connection-profiles card, image-profile
  *    modal) and `['api-keys']` (the chat sidebar's chat section).
  *  - `['chatSettings']` (salon list + conversation, new-chat form, autonomous
- *    room defaults, appearance tab, cheap-llm card, `chatSettingsKeys.all`) and
- *    `['chat-settings']` (the roleplay-templates card).
+ *    room defaults, appearance tab, cheap-llm card, the roleplay-templates card,
+ *    `chatSettingsKeys.all`) — a split key until P4.D359 converged the
+ *    templates card's hyphenated spelling onto it.
  *
  * @module workspace/core/tab-refetch
  */
@@ -88,8 +89,11 @@ const CHAT_LISTS: QueryKeyPrefix = chatKeys.all;
 const CONNECTION_PROFILES: QueryKeyPrefix[] = [['connection-profiles']];
 /** Both live spellings of the API-keys key. */
 const API_KEYS: QueryKeyPrefix[] = [['apiKeys'], ['api-keys']];
-/** Both live spellings of the chat-settings key (v4 `queryKeys.settings.chat`). */
-const CHAT_SETTINGS: QueryKeyPrefix[] = [['chatSettings'], ['chat-settings']];
+/**
+ * The chat-settings key (v4 `queryKeys.settings.chat`) — ONE spelling since
+ * P4.D359 moved the roleplay-templates card off its hyphenated spelling.
+ */
+const CHAT_SETTINGS: QueryKeyPrefix[] = [['chatSettings']];
 
 /**
  * The query-key prefixes to invalidate when `tab` is re-activated. Empty for

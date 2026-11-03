@@ -40,10 +40,13 @@ function stubClient(
   };
 }
 
-async function render(client: Partial<CoreClient>): Promise<ComponentFixture<RoleplayTemplatesCard>> {
+async function render(
+  client: Partial<CoreClient>,
+  queryClient = new QueryClient(),
+): Promise<ComponentFixture<RoleplayTemplatesCard>> {
   TestBed.configureTestingModule({
     imports: [RoleplayTemplatesCard],
-    providers: [provideTanStackQuery(new QueryClient()), { provide: CoreClient, useValue: client }],
+    providers: [provideTanStackQuery(queryClient), { provide: CoreClient, useValue: client }],
   });
   const fixture = TestBed.createComponent(RoleplayTemplatesCard);
   fixture.detectChanges();
@@ -55,8 +58,8 @@ async function render(client: Partial<CoreClient>): Promise<ComponentFixture<Rol
 }
 
 function buttonLabels(fixture: ComponentFixture<RoleplayTemplatesCard>): string[] {
-  return Array.from(fixture.nativeElement.querySelectorAll('button')).map((b) =>
-    (b as HTMLButtonElement).textContent?.trim() ?? '',
+  return Array.from(fixture.nativeElement.querySelectorAll('button')).map(
+    (b) => (b as HTMLButtonElement).textContent?.trim() ?? '',
   );
 }
 
@@ -190,5 +193,60 @@ describe('RoleplayTemplatesCard', () => {
     expect(dispatchData).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'roleplayTemplateDelete', templateId: 'u' }),
     );
+  });
+
+  /**
+   * v4 `3b8b6f42b` (`useRoleplayTemplates.ts:247-249`): "The picker reads the
+   * shared settings row, so the saved value has to land in the cache or the
+   * selection snaps back until the next refetch." v5 split that row across two
+   * spellings (`['chat-settings']` here, `['chatSettings']` on the Chat tab);
+   * ruling R-8 converges the card onto `chatSettingsKeys.all` and seeds it from
+   * the PUT's returned row.
+   */
+  it('a default-template change seeds [chatSettings] with the PUT’s returned row', async () => {
+    let row: Record<string, unknown> = { defaultRoleplayTemplateId: null, marker: 'get' };
+    const dispatchExpect = vi.fn(
+      async (req: { type: string; settings?: Record<string, unknown> }) => {
+        if (req.type === 'chatSettingsUpdate') {
+          row = { ...row, ...(req.settings ?? {}), marker: 'put' };
+        }
+        return { type: 'chatSettings', data: row };
+      },
+    );
+    const dispatchData = vi.fn(
+      async (req: { type: string; settings?: Record<string, unknown> }) => {
+        if (req.type === 'chatSettingsUpdate') {
+          row = { ...row, ...(req.settings ?? {}), marker: 'put' };
+          return row;
+        }
+        return [tmpl({ id: 'u', name: 'Mine' })];
+      },
+    );
+    const queryClient = new QueryClient();
+    const fixture = await render(
+      stubClient([], {
+        dispatchExpect: dispatchExpect as unknown as CoreClient['dispatchExpect'],
+        dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      }),
+      queryClient,
+    );
+    const select = fixture.nativeElement.querySelector('select') as HTMLSelectElement;
+    select.value = 'u';
+    select.dispatchEvent(new Event('change'));
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(queryClient.getQueryData(['chatSettings'])).toEqual({
+      defaultRoleplayTemplateId: 'u',
+      marker: 'put',
+    });
+  });
+
+  it('no query lives under the retired chat-settings spelling after mount', async () => {
+    const queryClient = new QueryClient();
+    await render(stubClient([]), queryClient);
+    expect(queryClient.getQueryCache().find({ queryKey: ['chat-settings'] })).toBeUndefined();
+    expect(queryClient.getQueryCache().find({ queryKey: ['chatSettings'] })).toBeDefined();
   });
 });

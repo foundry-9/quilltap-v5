@@ -6,13 +6,10 @@ import type { ChatSettingsDto, RoleplayTemplateDto } from '../../../core/core-co
 import { EmptyState } from '../../../ui/empty-state';
 import { ErrorAlert } from '../../../ui/error-alert';
 import { LoadingState } from '../../../ui/loading-state';
+import { chatSettingsKeys, fetchChatSettings, updateChatSettings } from '../chat/chat-settings.api';
 import { TemplateFormModal } from './template-form-modal';
 import { TemplatePreviewModal } from './template-preview-modal';
-import {
-  deleteRoleplayTemplate,
-  fetchRoleplayTemplates,
-  templateKeys,
-} from './templates.api';
+import { deleteRoleplayTemplate, fetchRoleplayTemplates, templateKeys } from './templates.api';
 
 /**
  * The Roleplay Templates manager (v4 `components/settings/roleplay-templates/
@@ -235,12 +232,15 @@ export class RoleplayTemplatesCard {
     queryFn: (): Promise<RoleplayTemplateDto[]> => fetchRoleplayTemplates(this.core),
   }));
 
+  /**
+   * The shared chat-settings row — the Chat tab's ONE key (`chatSettingsKeys.all`,
+   * v4 `queryKeys.settings.chat`). This card once read its own hyphenated
+   * spelling, which left the Chat tab's copy stale after a change here (ruling
+   * R-8 of P4.D359 converged the two).
+   */
   private readonly settingsQuery = injectQuery(() => ({
-    queryKey: ['chat-settings'],
-    queryFn: async (): Promise<ChatSettingsDto> => {
-      const resp = await this.core.dispatchExpect({ type: 'chatSettings' }, 'chatSettings');
-      return resp.data;
-    },
+    queryKey: chatSettingsKeys.all,
+    queryFn: (): Promise<ChatSettingsDto> => fetchChatSettings(this.core),
   }));
 
   protected readonly templates = computed(() => this.templatesQuery.data() ?? []);
@@ -305,11 +305,13 @@ export class RoleplayTemplatesCard {
     this.defaultSaving.set(true);
     this.banner.set(null);
     try {
-      await this.core.dispatchData({
-        type: 'chatSettingsUpdate',
-        settings: { defaultRoleplayTemplateId: value || null },
+      const row = await updateChatSettings(this.core, {
+        defaultRoleplayTemplateId: value || null,
       });
-      await this.queryClient.invalidateQueries({ queryKey: ['chat-settings'] });
+      // The picker reads the shared settings row, so the saved value has to
+      // land in the cache or the selection snaps back until the next refetch.
+      // (v4 `3b8b6f42b`, `useRoleplayTemplates.ts:247-249`)
+      this.queryClient.setQueryData(chatSettingsKeys.all, row);
     } catch (err) {
       this.banner.set(
         err instanceof Error && err.message ? err.message : 'Failed to update default template',
