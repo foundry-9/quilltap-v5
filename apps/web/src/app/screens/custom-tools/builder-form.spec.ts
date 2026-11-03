@@ -789,3 +789,156 @@ describe('BuilderForm — From an object (v4 e1872c94f)', () => {
     expect(box.getAttribute('value') ?? box.value).toSatisfy((v: string) => v === '' || v === '[object Object]');
   });
 });
+
+// ---------------------------------------------------------------------------
+// v4 `__tests__/unit/components/custom-tools/workbench-intervention.test.tsx`
+// (`839575d89`), by name — the BuilderForm and OutcomesSection describes.
+// ---------------------------------------------------------------------------
+
+const IV_TOOL = {
+  name: 'lockpick',
+  description: 'Pick a lock.',
+  parameters: { bonus: { type: 'number', default: 0, description: 'A bonus.' } },
+  effects: [{ target: 'state.picks', value: '{{state.picks}} + 1' }],
+  outcomes: [{ when: true, message: 'Done.', state: 'info' }],
+};
+
+function ivDraft(intervention?: { enabled: boolean; fields?: Record<string, boolean> }, extra = {}): ToolDraft {
+  const draft = draftFromDefinition({ ...IV_TOOL, ...(intervention ? { intervention } : {}), ...extra });
+  if (!draft) throw new Error('fixture failed to load');
+  return draft;
+}
+
+function byLabel(fixture: ComponentFixture<unknown>, label: string): HTMLElement | null {
+  return (fixture.nativeElement as HTMLElement).querySelector(`[aria-label="${label}"]`);
+}
+
+/** The master tick — a checkbox inside the label that reads "Let me take a hand in each roll". */
+function masterTick(fixture: ComponentFixture<unknown>): HTMLInputElement {
+  const labels = [...(fixture.nativeElement as HTMLElement).querySelectorAll('label')];
+  const label = labels.find((l) => l.textContent?.trim() === 'Let me take a hand in each roll');
+  if (!label) throw new Error('no master tick');
+  return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
+}
+
+function captured(fixture: ComponentFixture<BuilderForm> | ComponentFixture<OutcomesSection>): ToolDraft[] {
+  const seen: ToolDraft[] = [];
+  fixture.componentInstance.draftChange.subscribe((d: ToolDraft) => seen.push(d));
+  return seen;
+}
+
+describe('BuilderForm — intervention master switch', () => {
+  it('is off by default and shows no hands', async () => {
+    const fixture = await renderForm(ivDraft());
+    expect(masterTick(fixture).checked).toBe(false);
+    expect(byLabel(fixture, 'Show the roll in the hold dialog')).toBeNull();
+    expect(byLabel(fixture, 'Show the title in the hold dialog')).toBeNull();
+    expect(text(fixture)).not.toContain('With this on, each run');
+  });
+
+  it('writes intervention.enabled when ticked', async () => {
+    const fixture = await renderForm(ivDraft());
+    const seen = captured(fixture);
+    masterTick(fixture).click();
+    expect(seen[0]!.intervention.enabled).toBe(true);
+  });
+
+  it('shows a hand beside each eligible field while on', async () => {
+    const fixture = await renderForm(ivDraft({ enabled: true }));
+    for (const label of [
+      'Show the roll in the hold dialog',
+      'Show the final value in the hold dialog',
+      'Show the title in the hold dialog',
+      'Show the chip label in the hold dialog',
+      'Show the visibility in the hold dialog',
+      'Show the announcer in the hold dialog',
+      'Show bonus in the hold dialog',
+    ]) {
+      expect(byLabel(fixture, label)?.getAttribute('aria-pressed'), label).toBe('true');
+    }
+    // No consult block, so no consult hands.
+    expect(byLabel(fixture, 'Show the oracle’s question in the hold dialog')).toBeNull();
+    // v4 `BuilderForm.tsx:398-404`: the hint rides the master.
+    expect(text(fixture)).toContain(
+      'With this on, each run a character or a trigger phrase reaches is held at the table until you have looked it over; only then does Pascal announce it. The model is never told. Mind that a character who can read this store can read the flag.',
+    );
+  });
+
+  it('hides a tool-level field by writing fields[key] = false, and restores it by deleting', async () => {
+    const fixture = await renderForm(ivDraft({ enabled: true }));
+    const seen = captured(fixture);
+    byLabel(fixture, 'Show the roll in the hold dialog')!.click();
+    const hidden = seen[0]!;
+    expect(hidden.intervention.fields.roll).toBe(false);
+
+    fixture.componentRef.setInput('draft', hidden);
+    fixture.detectChanges();
+    const hand = byLabel(fixture, 'Show the roll in the hold dialog')!;
+    expect(hand.getAttribute('aria-pressed')).toBe('false');
+    expect(hand.className).toContain('qt-intervene-toggle--off');
+    hand.click();
+    const shown = seen[1]!;
+    expect('roll' in shown.intervention.fields).toBe(false);
+  });
+
+  it('keeps hidden-field values in the draft while the master is off', async () => {
+    const draft = ivDraft({ enabled: false, fields: { roll: false } });
+    const fixture = await renderForm(draft);
+    expect(byLabel(fixture, 'Show the roll in the hold dialog')).toBeNull();
+    expect(draft.intervention.fields.roll).toBe(false);
+  });
+
+  it('writes param.intervene = false to hide a parameter and clears it to show again', async () => {
+    const fixture = await renderForm(ivDraft({ enabled: true }));
+    const seen = captured(fixture);
+    byLabel(fixture, 'Show bonus in the hold dialog')!.click();
+    const hidden = seen[0]!;
+    expect(hidden.parameters[0]!.intervene).toBe(false);
+
+    fixture.componentRef.setInput('draft', hidden);
+    fixture.detectChanges();
+    byLabel(fixture, 'Show bonus in the hold dialog')!.click();
+    const shown = seen[1]!;
+    expect(shown.parameters[0]!.intervene).toBeUndefined();
+    expect(JSON.stringify(definitionFromDraft(shown))).not.toContain('intervene');
+  });
+
+  it('offers the consult hands only while the consult is on', async () => {
+    const draft = ivDraft({ enabled: true }, { llm: { prompt: 'YES or NO?', errorMessage: 'Silence.' } });
+    const fixture = await renderForm(draft);
+    expect(byLabel(fixture, 'Show the oracle’s question in the hold dialog')).not.toBeNull();
+    expect(byLabel(fixture, 'Show the oracle’s answer in the hold dialog')).not.toBeNull();
+  });
+
+  it("the master's tooltip and the hands' titles are v4's words", async () => {
+    const fixture = await renderForm(ivDraft({ enabled: true, fields: { title: false } }));
+    const label = masterTick(fixture).closest('label')!;
+    expect(label.getAttribute('title')).toBe(
+      'On: each run a character or a trigger phrase reaches waits for you before Pascal announces it. The model is never told. A character who can read this store can read the flag.',
+    );
+    expect(byLabel(fixture, 'Show the title in the hold dialog')!.getAttribute('title')).toBe(
+      'Show the title in the hold dialog (hidden)',
+    );
+    expect(byLabel(fixture, 'Show the roll in the hold dialog')!.getAttribute('title')).toBe(
+      'Show the roll in the hold dialog (shown)',
+    );
+  });
+});
+
+describe('OutcomesSection — intervention hands', () => {
+  it('is bare while the master is off', async () => {
+    const fixture = await renderOutcomes(ivDraft());
+    expect(byLabel(fixture, 'Show the winning outcome in the hold dialog')).toBeNull();
+  });
+
+  it('writes outcome, message and state keys when on', async () => {
+    const fixture = await renderOutcomes(ivDraft({ enabled: true }));
+    const seen = captured(fixture);
+    byLabel(fixture, 'Show the winning outcome in the hold dialog')!.click();
+    byLabel(fixture, 'Show the rendered message in the hold dialog')!.click();
+    byLabel(fixture, 'Show the outcome state in the hold dialog')!.click();
+    expect(seen[0]!.intervention.fields.outcome).toBe(false);
+    expect(seen[1]!.intervention.fields.message).toBe(false);
+    expect(seen[2]!.intervention.fields.state).toBe(false);
+  });
+});

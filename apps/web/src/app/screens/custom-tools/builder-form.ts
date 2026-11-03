@@ -32,6 +32,7 @@ import {
 } from '../../pascal/tool-draft';
 import { Icon } from '../../ui/icon';
 import { GateSection } from './gate-section';
+import { InterventionToggle, ToolFieldInterventionToggle } from './intervention-toggle';
 import { NumberOrParamField } from './number-or-param-field';
 import { TriggerPhrasesField } from './trigger-phrases-field';
 
@@ -106,7 +107,14 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
 @Component({
   selector: 'qt-builder-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GateSection, Icon, NumberOrParamField, TriggerPhrasesField],
+  imports: [
+    GateSection,
+    Icon,
+    InterventionToggle,
+    NumberOrParamField,
+    ToolFieldInterventionToggle,
+    TriggerPhrasesField,
+  ],
   template: `
     <div class="space-y-4">
       <!-- Identity -->
@@ -114,7 +122,17 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
         <h2 class="qt-card-title text-sm">The contrivance itself</h2>
 
         <div>
-          <label for="wb-title" class="qt-label">Title</label>
+          <!-- v4 \`839575d89\` (\`BuilderForm.tsx:233-241\`): the label and its hand. -->
+          <div class="flex items-center gap-2">
+            <label for="wb-title" class="qt-label">Title</label>
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="title"
+              label="Show the title in the hold dialog"
+              [disabled]="disabled()"
+              (draftChange)="draftChange.emit($event)"
+            />
+          </div>
           <input
             id="wb-title"
             type="text"
@@ -131,7 +149,16 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
         </div>
 
         <div>
-          <label for="wb-chip-label" class="qt-label">Chip label</label>
+          <div class="flex items-center gap-2">
+            <label for="wb-chip-label" class="qt-label">Chip label</label>
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="chipLabel"
+              label="Show the chip label in the hold dialog"
+              [disabled]="disabled()"
+              (draftChange)="draftChange.emit($event)"
+            />
+          </div>
           <input
             id="wb-chip-label"
             type="text"
@@ -220,34 +247,73 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
             />
             Reveal the odds
           </label>
-          <label class="flex items-center gap-2">
-            Results
-            <select
-              [value]="draft().defaultVisibility"
-              (change)="onVisibilityChange(selectValue($event))"
+          <span class="flex items-center gap-2">
+            <label class="flex items-center gap-2">
+              Results
+              <select
+                [value]="draft().defaultVisibility"
+                (change)="onVisibilityChange(selectValue($event))"
+                [disabled]="disabled()"
+                class="qt-select qt-select-sm"
+                aria-label="Default visibility"
+              >
+                <option value="public">announced publicly</option>
+                <option value="whisper">whispered</option>
+              </select>
+            </label>
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="visibility"
+              label="Show the visibility in the hold dialog"
               [disabled]="disabled()"
-              class="qt-select qt-select-sm"
-              aria-label="Default visibility"
-            >
-              <option value="public">announced publicly</option>
-              <option value="whisper">whispered</option>
-            </select>
-          </label>
+              (draftChange)="draftChange.emit($event)"
+            />
+          </span>
           <!-- v4 \`a05c6f755\` (\`BuilderForm.tsx:342-355\`). -->
+          <span class="flex items-center gap-2">
+            <label
+              class="flex items-center gap-2"
+              title="On: the character who rolled announces the outcome under their own name and face. A roll nobody in particular made is still Pascal's to announce."
+            >
+              <input
+                type="checkbox"
+                class="qt-checkbox"
+                [checked]="draft().announceAsCharacter"
+                (change)="update({ announceAsCharacter: checkedValue($event) })"
+                [disabled]="disabled()"
+              />
+              The character announces it
+            </label>
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="announcer"
+              label="Show the announcer in the hold dialog"
+              [disabled]="disabled()"
+              (draftChange)="draftChange.emit($event)"
+            />
+          </span>
+          <!-- v4 \`839575d89\` (\`BuilderForm.tsx:382-396\`): the intervention master. -->
           <label
             class="flex items-center gap-2"
-            title="On: the character who rolled announces the outcome under their own name and face. A roll nobody in particular made is still Pascal's to announce."
+            title="On: each run a character or a trigger phrase reaches waits for you before Pascal announces it. The model is never told. A character who can read this store can read the flag."
           >
             <input
               type="checkbox"
               class="qt-checkbox"
-              [checked]="draft().announceAsCharacter"
-              (change)="update({ announceAsCharacter: checkedValue($event) })"
+              [checked]="draft().intervention.enabled"
+              (change)="onInterventionChange(checkedValue($event))"
               [disabled]="disabled()"
             />
-            The character announces it
+            Let me take a hand in each roll
           </label>
         </div>
+        @if (draft().intervention.enabled) {
+          <p class="qt-hint">
+            With this on, each run a character or a trigger phrase reaches is held at the table until you have
+            looked it over; only then does Pascal announce it. The model is never told. Mind that a character who
+            can read this store can read the flag.
+          </p>
+        }
 
         <!-- v4 \`362426c8f\` (\`BuilderForm.tsx:344-349\`): the last thing in the identity section. -->
         <qt-trigger-phrases-field
@@ -319,6 +385,14 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
                 <option value="string">string</option>
                 <option value="boolean">boolean</option>
               </select>
+              @if (draft().intervention.enabled) {
+                <qt-intervention-toggle
+                  [shown]="param.intervene !== false"
+                  [label]="'Show ' + (param.name || 'this parameter') + ' in the hold dialog'"
+                  [disabled]="disabled()"
+                  (shownChange)="updateParam(param.id, { intervene: $event ? undefined : false })"
+                />
+              }
               <button
                 type="button"
                 class="qt-button qt-button-ghost qt-button-sm ml-auto"
@@ -414,7 +488,16 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
       <!-- Roll -->
       <section class="qt-card p-4 space-y-3">
         <div class="flex items-center justify-between">
-          <h2 class="qt-card-title text-sm">The roll</h2>
+          <h2 class="qt-card-title text-sm flex items-center gap-2">
+            The roll
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="roll"
+              label="Show the roll in the hold dialog"
+              [disabled]="disabled()"
+              (draftChange)="draftChange.emit($event)"
+            />
+          </h2>
           <div class="flex rounded overflow-hidden border" role="radiogroup" aria-label="Roll form">
             @for (form of ROLL_FORMS; track form) {
               <button
@@ -531,6 +614,18 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
               />
               Round the final value
             </label>
+            @if (draft().intervention.enabled) {
+              <div class="flex items-center gap-2 text-sm">
+                Final value after the multiplier, offset and rounding
+                <qt-tool-field-intervention-toggle
+                  [draft]="draft()"
+                  fieldKey="value"
+                  label="Show the final value in the hold dialog"
+                  [disabled]="disabled()"
+                  (draftChange)="draftChange.emit($event)"
+                />
+              </div>
+            }
             @if (firstRollFieldError(); as message) {
               <p class="text-xs qt-text-destructive">{{ message }}</p>
             }
@@ -558,7 +653,16 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
         @if (draft().llmEnabled) {
           <div class="space-y-3">
             <div>
-              <label for="wb-llm-prompt" class="qt-label">The question</label>
+              <div class="flex items-center gap-2">
+                <label for="wb-llm-prompt" class="qt-label">The question</label>
+                <qt-tool-field-intervention-toggle
+                  [draft]="draft()"
+                  fieldKey="llmPrompt"
+                  label="Show the oracle’s question in the hold dialog"
+                  [disabled]="disabled()"
+                  (draftChange)="draftChange.emit($event)"
+                />
+              </div>
               <textarea
                 id="wb-llm-prompt"
                 [value]="draft().llmPrompt"
@@ -597,7 +701,16 @@ type RangeField = (typeof RANGE_FIELDS)[number]['field'];
             </div>
 
             <div>
-              <label for="wb-llm-max-output" class="qt-label">Answer cap</label>
+              <div class="flex items-center gap-2">
+                <label for="wb-llm-max-output" class="qt-label">Answer cap</label>
+                <qt-tool-field-intervention-toggle
+                  [draft]="draft()"
+                  fieldKey="llmAnswer"
+                  label="Show the oracle’s answer in the hold dialog"
+                  [disabled]="disabled()"
+                  (draftChange)="draftChange.emit($event)"
+                />
+              </div>
               <input
                 id="wb-llm-max-output"
                 type="number"
@@ -820,6 +933,11 @@ export class BuilderForm {
 
   onRangeChange(field: RangeField, value: NumberOrParamValue): void {
     this.update({ rollRange: { ...this.draft().rollRange, [field]: value } });
+  }
+
+  /** The intervention master (v4 `BuilderForm.tsx:388-392`); the per-field flags are kept either way. */
+  onInterventionChange(enabled: boolean): void {
+    this.update({ intervention: { ...this.draft().intervention, enabled } });
   }
 
   onRoundChange(round: boolean): void {

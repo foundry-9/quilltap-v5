@@ -37,6 +37,7 @@ import {
   type WardrobeReferenceForm,
 } from '../../wardrobe/wardrobe-reference-picker';
 import { WardrobeVantageItemsLoader } from '../../wardrobe/wardrobe-vantage-items';
+import { InterventionToggle } from './intervention-toggle';
 import { InventoryEffectFields } from './inventory-effect-fields';
 import { inventoryLabel } from '../../inventory/inventory-display';
 import { InventoryReferencePicker, type InventoryReferenceForm } from '../../inventory/inventory-reference-picker';
@@ -146,6 +147,7 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     Icon,
+    InterventionToggle,
     InventoryEffectFields,
     InventoryReferencePicker,
     WardrobeFields,
@@ -231,6 +233,15 @@ export function whenChoiceOf(effect: DraftEffect): WhenChoice | 'verbatim' {
                 </select>
               }
             </label>
+            <!-- v4 \`839575d89\` (\`SideEffectsSection.tsx:252-262\`). -->
+            @if (draft().intervention.enabled) {
+              <qt-intervention-toggle
+                [shown]="effect.intervene !== false"
+                label="Show this effect in the hold dialog"
+                [disabled]="disabled()"
+                (shownChange)="updateEffect(effect.id, { intervene: $event ? undefined : false })"
+              />
+            }
             <button
               type="button"
               class="qt-button qt-button-ghost qt-button-sm ml-auto"

@@ -748,3 +748,43 @@ describe('SideEffectsSection — Enter a log line', () => {
     expect(emitted.at(-1)!.effects[0]).toMatchObject({ kind: 'log', target: 'state.tally' });
   });
 });
+
+// v4 `__tests__/unit/components/custom-tools/workbench-intervention.test.tsx`
+// (`839575d89`) — the SideEffectsSection describe, by name.
+describe('SideEffectsSection — intervention hands', () => {
+  function ivDraft(enabled?: boolean): ToolDraft {
+    const draft = draftFromDefinition({
+      name: 'lockpick',
+      description: 'Pick a lock.',
+      parameters: { bonus: { type: 'number', default: 0, description: 'A bonus.' } },
+      effects: [{ target: 'state.picks', value: '{{state.picks}} + 1' }],
+      outcomes: [{ when: true, message: 'Done.', state: 'info' }],
+      ...(enabled === undefined ? {} : { intervention: { enabled } }),
+    });
+    if (!draft) throw new Error('fixture failed to load');
+    return draft;
+  }
+  const hand = (fixture: ComponentFixture<unknown>) =>
+    (fixture.nativeElement as HTMLElement).querySelector<HTMLElement>(
+      '[aria-label="Show this effect in the hold dialog"]',
+    );
+
+  it('shows no hand while the master is off', async () => {
+    const fixture = await render(ivDraft());
+    expect(hand(fixture)).toBeNull();
+  });
+
+  it('writes effect.intervene = false and clears it again', async () => {
+    const fixture = await render(ivDraft(true));
+    const seen: ToolDraft[] = [];
+    fixture.componentInstance.draftChange.subscribe((d) => seen.push(d));
+    hand(fixture)!.click();
+    expect(seen[0]!.effects[0]!.intervene).toBe(false);
+
+    fixture.componentRef.setInput('draft', seen[0]!);
+    fixture.detectChanges();
+    expect(hand(fixture)!.getAttribute('aria-pressed')).toBe('false');
+    hand(fixture)!.click();
+    expect(seen[1]!.effects[0]!.intervene).toBeUndefined();
+  });
+});

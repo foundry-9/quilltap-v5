@@ -32,6 +32,7 @@ import { Icon } from '../../ui/icon';
 import { AggregateKeyField } from './aggregate-key-field';
 import { COMPARATOR_LABELS } from './comparator-labels';
 import { ConditionGroups } from './condition-groups';
+import { ToolFieldInterventionToggle } from './intervention-toggle';
 import { LiteralOperandField } from './literal-operand-field';
 
 /**
@@ -1231,12 +1232,46 @@ export class OutcomeRow {
 @Component({
   selector: 'qt-outcomes-section',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, OutcomeRow],
+  imports: [Icon, OutcomeRow, ToolFieldInterventionToggle],
   template: `
     <section class="qt-card p-4 space-y-3">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="qt-card-title text-sm">The outcome table</h2>
+          <!-- v4 \`839575d89\` (\`OutcomesSection.tsx:153-190\`). -->
+          <h2 class="qt-card-title text-sm flex items-center gap-2">
+            The outcome table
+            <qt-tool-field-intervention-toggle
+              [draft]="draft()"
+              fieldKey="outcome"
+              label="Show the winning outcome in the hold dialog"
+              [disabled]="disabled()"
+              (draftChange)="draftChange.emit($event)"
+            />
+          </h2>
+          @if (draft().intervention.enabled) {
+            <div class="flex items-center gap-4 text-xs qt-text-secondary">
+              <span class="flex items-center gap-1">
+                Message
+                <qt-tool-field-intervention-toggle
+                  [draft]="draft()"
+                  fieldKey="message"
+                  label="Show the rendered message in the hold dialog"
+                  [disabled]="disabled()"
+                  (draftChange)="draftChange.emit($event)"
+                />
+              </span>
+              <span class="flex items-center gap-1">
+                State
+                <qt-tool-field-intervention-toggle
+                  [draft]="draft()"
+                  fieldKey="state"
+                  label="Show the outcome state in the hold dialog"
+                  [disabled]="disabled()"
+                  (draftChange)="draftChange.emit($event)"
+                />
+              </span>
+            </div>
+          }
           <p class="qt-hint">
             Checked top to bottom — the first row that holds wins. Tests on one line must all hold;
             any line of a row will do.

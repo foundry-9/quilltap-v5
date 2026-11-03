@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Workbench's intervention hands (v4 839575d89)
+
+_Versions: SPA 0.5.911._
+
+P4.D346 item 5. NEW `screens/custom-tools/intervention-toggle.ts` ports v4's `InterventionToggle` (a named `qt-intervene-toggle` button with `aria-pressed`, a "(shown)" / "(hidden)" title and the `--off` strike), `isToolFieldShown` / `withToolFieldShown` (showing deletes the key, hiding writes `false`), and `ToolFieldInterventionToggle` (nothing while the master is off). The Workbench gains v4's hands: the master tick "Let me take a hand in each roll" with its tooltip and hint, a hand beside Title, Chip label, Results, "The character announces it", The roll, the final value (range form), The question and Answer cap, one per parameter and one per effect, and the outcome / message / state trio on the outcome table. Specs: v4's eleven `workbench-intervention.test.tsx` cases by name across `builder-form.spec.ts` (+8, one v5-authored on the titles), `side-effects-section.spec.ts` (+2), and NEW `intervention-toggle.spec.ts` (7). v4 names neither of the two unnamed builder controls the WCAG census counted, so they are left unchanged (R-10).
+
 #### 2026-11-02 — feat(spa): getInterventionSummary and its corpus (v4 839575d89)
 
 _Versions: SPA 0.5.910._
