@@ -163,6 +163,55 @@ interface CaseSpec {
   noHistoryTable?: boolean;
   /** [P4.D327] `INVENTORY_CELLS_SQL`: the two Inventory cells set on the copy. */
   inventoryCells?: boolean;
+  /** [P4.D351] The five template rows of `plantNovelTemplate`. */
+  novelTemplate?: boolean;
+}
+
+/**
+ * [P4.D351] The Novel template's carrier plant — the SAME five rows as
+ * `system-backup.test.ts`'s `plantNovelTemplate`: (a) a Novel-like user row and
+ * (b) a pair-narration row through v4's REAL `roleplayTemplates.create`, then
+ * three more whose `narrationDelimiters` cell is rewritten by raw SQL — the
+ * text `null`, the encoded `"*"`, SQL NULL. The export reads them DECODED,
+ * schema-ordered (`findById`).
+ */
+async function plantNovelTemplate(userId: string): Promise<void> {
+  const { getRepositories } = await import('@/lib/database/repositories');
+  const { rawQuery } = await import('@/lib/database/manager');
+  const repo = getRepositories().roleplayTemplates;
+  const TS = '2026-01-04T00:00:00.000Z';
+  const base = { userId, description: null, isBuiltIn: false, tags: [], renderingPatterns: [], dialogueDetection: null };
+  const opts = (id: string) => ({ id, createdAt: TS, updatedAt: TS });
+  await repo.create(
+    {
+      ...base,
+      name: 'Novel Copy',
+      systemPrompt: 'Write as a novel.',
+      delimiters: [
+        { kind: 'wrap', name: 'Dialogue', buttonName: 'Dia', style: 'qt-chat-dialogue', delimiters: '"', matchCurlyQuotes: true, closeOptional: true },
+      ],
+      narrationDelimiters: null,
+      unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { italic: true } },
+      markdownAsterisks: false,
+    } as never,
+    opts('ad000000-0000-4000-8000-0000000000a1'),
+  );
+  await repo.create(
+    { ...base, name: 'Bracket Narration', systemPrompt: 'Use brackets.', delimiters: [], narrationDelimiters: ['[', ']'], unmarkedStyle: null, markdownAsterisks: true } as never,
+    opts('ad000000-0000-4000-8000-0000000000a2'),
+  );
+  const cells: Array<[string, string, string | null]> = [
+    ['ad000000-0000-4000-8000-0000000000a3', 'Text Null Cell', 'null'],
+    ['ad000000-0000-4000-8000-0000000000a4', 'Encoded Star Cell', '"*"'],
+    ['ad000000-0000-4000-8000-0000000000a5', 'Sql Null Cell', null],
+  ];
+  for (const [id, name, cell] of cells) {
+    await repo.create(
+      { ...base, name, systemPrompt: 'Plain.', delimiters: [], narrationDelimiters: '*', markdownAsterisks: true } as never,
+      opts(id),
+    );
+    await rawQuery('UPDATE roleplay_templates SET narrationDelimiters = ? WHERE id = ?', [cell, id]);
+  }
 }
 
 function buildCases(spec: Spec): CaseSpec[] {
@@ -352,6 +401,22 @@ function buildCases(spec: Spec): CaseSpec[] {
     cases.push(entitiesCase(`entities_${type}`, type));
   }
   cases.push(entitiesCase('entities_bogus', 'nonsense'));
+
+  // ── P4.D351 (v4 `778b97b2b`): the Novel template's `.qtap` record ─────────
+  // Over the `plantNovelTemplate` copy: each `roleplay_template` record carries
+  // the DECODED narration (`"*"`, a pair, `null`), `unmarkedStyle` (absent on
+  // NULL) and `markdownAsterisks`, in `RoleplayTemplateSchema` key order.
+  const novel = (c: CaseSpec): CaseSpec => ({ ...c, novelTemplate: true });
+  cases.push(
+    novel(
+      streamCase('stream_roleplay-templates_all_novel', {
+        type: 'roleplay-templates',
+        scope: 'all',
+        includeMemories: false,
+      }),
+    ),
+  );
+  cases.push(novel(entitiesCase('entities_roleplay-templates_novel', 'roleplay-templates')));
 
   // ── P4.D264 (v4 `3ee3b1342` #81 + `7c8572869` #82): the wardrobe carriers ─
   // Over the `plantWardrobe` copy: the coat ARCHIVED and pointing at its
@@ -840,6 +905,7 @@ async function runCase(
   }
   if (c.outfitHistory) await plantOutfitHistory();
   if (c.wardrobe) await plantWardrobe();
+  if (c.novelTemplate) await plantNovelTemplate(spec.userId);
   if (c.cursorThrow) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     plantThrowingCursors(getRawDatabase()!);

@@ -47,6 +47,9 @@
  *   `backup_absent_history_table` — [P4.D317 R-J] the table NOT planted: v4's
  *                           `createBackup` throws (`{ name, error }`); v5
  *                           writes `[]` (`BACKUP_ABSENT_HISTORY_TABLE`).
+ *   `backup_novel_template` — [P4.D351] five template rows (`plantNovelTemplate`):
+ *                           the DECODED narration, `unmarkedStyle`,
+ *                           `markdownAsterisks`.
  *   (Every other case plants `chat_wardrobe_history` empty — v4 reads it
  *   unguarded at the `e8e17b2d9` pin.)
  *
@@ -205,6 +208,8 @@ interface CaseSpec {
   withoutHistoryTable?: boolean;
   /** [P4.D327] `INVENTORY_PLANT_*`: an object file, its picture link, a carried set, a flag. */
   plantInventory?: boolean;
+  /** [P4.D351] five roleplay-template rows on the per-run COPY (see `plantNovelTemplate`). */
+  plantNovelTemplate?: boolean;
 }
 
 /**
@@ -589,6 +594,72 @@ async function plantInforms(userId: string): Promise<void> {
   }
 }
 
+/**
+ * [P4.D351] The Novel template's carrier plant, on the per-run COPY: (a) a
+ * Novel-like user row (`narrationDelimiters: null`, a Dialogue wrap with both
+ * flags, an unmarked style, `markdownAsterisks: false`) and (b) a pair-narration
+ * row with `unmarkedStyle: null`, both through v4's REAL
+ * `roleplayTemplates.create` (encoded on write); then three more created the
+ * same way and their `narrationDelimiters` cell rewritten by raw SQL — (c) the
+ * four-byte text `null`, (d) the keystone's encoded `"*"`, (e) SQL NULL. v4's
+ * backup reads them DECODED (`findByUserId`). The Rust family plants the same
+ * cells.
+ */
+const NOVEL_PLANT_TS = '2026-01-04T00:00:00.000Z';
+const NOVEL_PLANT_IDS = {
+  novel: 'ad000000-0000-4000-8000-0000000000a1',
+  pair: 'ad000000-0000-4000-8000-0000000000a2',
+  textNull: 'ad000000-0000-4000-8000-0000000000a3',
+  encodedStar: 'ad000000-0000-4000-8000-0000000000a4',
+  sqlNull: 'ad000000-0000-4000-8000-0000000000a5',
+};
+
+async function plantNovelTemplate(userId: string): Promise<void> {
+  const { getRepositories } = await import('@/lib/database/repositories');
+  const { rawQuery } = await import('@/lib/database/manager');
+  const repo = getRepositories().roleplayTemplates;
+  const base = { userId, description: null, isBuiltIn: false, tags: [], renderingPatterns: [], dialogueDetection: null };
+  const opts = (id: string) => ({ id, createdAt: NOVEL_PLANT_TS, updatedAt: NOVEL_PLANT_TS });
+  await repo.create(
+    {
+      ...base,
+      name: 'Novel Copy',
+      systemPrompt: 'Write as a novel.',
+      delimiters: [
+        { kind: 'wrap', name: 'Dialogue', buttonName: 'Dia', style: 'qt-chat-dialogue', delimiters: '"', matchCurlyQuotes: true, closeOptional: true },
+      ],
+      narrationDelimiters: null,
+      unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { italic: true } },
+      markdownAsterisks: false,
+    } as never,
+    opts(NOVEL_PLANT_IDS.novel),
+  );
+  await repo.create(
+    {
+      ...base,
+      name: 'Bracket Narration',
+      systemPrompt: 'Use brackets.',
+      delimiters: [],
+      narrationDelimiters: ['[', ']'],
+      unmarkedStyle: null,
+      markdownAsterisks: true,
+    } as never,
+    opts(NOVEL_PLANT_IDS.pair),
+  );
+  const cells: Array<[string, string, string | null]> = [
+    [NOVEL_PLANT_IDS.textNull, 'Text Null Cell', 'null'],
+    [NOVEL_PLANT_IDS.encodedStar, 'Encoded Star Cell', '"*"'],
+    [NOVEL_PLANT_IDS.sqlNull, 'Sql Null Cell', null],
+  ];
+  for (const [id, name, cell] of cells) {
+    await repo.create(
+      { ...base, name, systemPrompt: 'Plain.', delimiters: [], narrationDelimiters: '*', markdownAsterisks: true } as never,
+      opts(id),
+    );
+    await rawQuery('UPDATE roleplay_templates SET narrationDelimiters = ? WHERE id = ?', [cell, id]);
+  }
+}
+
 const CASES: CaseSpec[] = [
   { name: 'backup_full', seedFileBytes: true },
   { name: 'backup_missing_file', seedFileBytes: false },
@@ -619,6 +690,10 @@ const CASES: CaseSpec[] = [
   // its link, the picture's `linkedTo`, the carried set and the flag ride the
   // existing data files — no new archive file, no new count, no `log_entries`.
   { name: 'backup_with_inventory', seedFileBytes: true, plantInventory: true },
+  // [P4.D351] `data/roleplay-templates.json` carries the DECODED narration
+  // (`"*"`, a pair, `null` — key always present), `unmarkedStyle` (absent on
+  // NULL) and `markdownAsterisks`, in schema key order.
+  { name: 'backup_novel_template', seedFileBytes: true, plantNovelTemplate: true },
 ];
 
 async function runCase(
@@ -673,6 +748,7 @@ async function runCase(
   if (c.plantMemoryCarriers) await plantMemoryCarriers();
   if (c.plantThrowingCursors) await plantThrowingCursors();
   if (c.plantInventory) await plantInventory();
+  if (c.plantNovelTemplate) await plantNovelTemplate(spec.userId);
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {

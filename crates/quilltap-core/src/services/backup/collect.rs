@@ -254,10 +254,41 @@ const ROLEPLAY_TEMPLATES: &[(&str, F)] = &[
     ("delimiters", F::Json("[]")),
     ("renderingPatterns", F::Json("[]")),
     ("dialogueDetection", F::JsonOpt),
-    ("narrationDelimiters", F::StrOpt),
+    // P4.D351: the stored cell as found — `decode_template_narration` swaps in
+    // the DECODED value at the collect site (v4's `findByUserId` decodes).
+    ("narrationDelimiters", F::Raw),
+    ("unmarkedStyle", F::JsonOpt),
+    ("markdownAsterisks", F::BoolDefault(true)),
     ("createdAt", F::Str),
     ("updatedAt", F::Str),
 ];
+
+/// v4 `backup-service.ts:167` reads templates through `findByUserId` →
+/// the repository's OVERRIDDEN `findByFilter`, which maps every row through
+/// `decoded()`: `narrationDelimiters` is the DECODED value (`"*"`, a pair, or
+/// `null` for unmarked prose), its key ALWAYS present (a SQL NULL decodes to
+/// `"*"`). Swapped in place, so the key keeps its schema position.
+fn decode_template_narration(rows: Vec<Value>) -> Vec<Value> {
+    rows.into_iter()
+        .map(|mut row| {
+            if let Some(o) = row.as_object_mut() {
+                let cell = o.get("narrationDelimiters").and_then(Value::as_str);
+                let decoded = match crate::db::roleplay_templates::decode_narration_delimiters(cell)
+                {
+                    Some(crate::db::roleplay_templates::StringOrPair::Single(s)) => {
+                        Value::String(s)
+                    }
+                    Some(crate::db::roleplay_templates::StringOrPair::Pair([a, b])) => {
+                        Value::Array(vec![Value::String(a), Value::String(b)])
+                    }
+                    None => Value::Null,
+                };
+                o.insert("narrationDelimiters".into(), decoded);
+            }
+            row
+        })
+        .collect()
+}
 
 pub(crate) const PLUGIN_CONFIGS: &[(&str, F)] = &[
     ("id", F::Str),
@@ -719,13 +750,13 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
                 "userId = ?1",
                 &[&user_id],
             )?,
-            roleplay_templates: query_all(
+            roleplay_templates: decode_template_narration(query_all(
                 main,
                 "roleplay_templates",
                 ROLEPLAY_TEMPLATES,
                 "userId = ?1",
                 &[&user_id],
-            )?,
+            )?),
             provider_models: if_table(main, "provider_models", || provider_models::find_all(main))?,
             plugin_configs: query_all(
                 main,

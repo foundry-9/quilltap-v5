@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(templates): the backup, restore, .qtap import and export carry the Novel template's narration, unmarked style and markdownAsterisks (P4.D351)
+
+_Versions: core 0.0.1384._
+
+The four template carriers follow v4 `778b97b2b` at the `236c04e35` pin.
+
+- **Backup:** `data/roleplay-templates.json` now carries the decoded `narrationDelimiters` (`"*"`, a pair, or `null`; the key is always present), `unmarkedStyle` (absent when unset) and `markdownAsterisks`, in v4's schema key order. Before, it carried the raw stored cell.
+- **Restore and `.qtap` import:** both read the narration as a three-state. A missing key becomes `'*'` and an explicit `null` stays unmarked prose. `unmarkedStyle` and `markdownAsterisks` are carried. A bad value in any of the three keys refuses the row with v4's `ZodError` message and its repository log lines. That includes an empty unmarked `style`, which v5 used to accept.
+- **Export:** no source change. New rows prove that the record keys follow the keystone's dump.
+- **Fixtures:** a new derived archive, `restore-archive-novel-template.zip`, with its derive script. New cases in the backup, restore, import and export oracles.
+
 #### 2026-11-02 — feat(templates): the roleplay-template routes for the Novel template — null narration, the unmarked style, markdownAsterisks, one pattern derivation (P4.D351)
 
 _Versions: core 0.0.1383._

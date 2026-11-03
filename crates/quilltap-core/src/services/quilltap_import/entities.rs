@@ -30,7 +30,7 @@ use super::{ConflictStrategy, IdMap, ImportOptions};
 use crate::db::chats::{ChatCreate, ChatsRepository};
 use crate::db::chats_messages::{ChatEventInput, ChatMessagesRepository};
 use crate::db::roleplay_templates::{
-    self, DialogueDetection, RenderingPattern, RoleplayTemplatesRepository, RtCreate, StringOrPair,
+    self, DialogueDetection, RenderingPattern, RoleplayTemplatesRepository, RtCreate,
     TemplateDelimiter,
 };
 use crate::db::{chats_read, groups, projects, tags, DbError};
@@ -321,12 +321,6 @@ struct ImportedTemplate {
     rendering_patterns: Vec<RenderingPattern>,
     #[serde(default)]
     dialogue_detection: Option<DialogueDetection>,
-    #[serde(default = "d_star")]
-    narration_delimiters: StringOrPair,
-}
-
-fn d_star() -> StringOrPair {
-    StringOrPair::Single("*".to_string())
 }
 
 /// v4's `annotationButtons` → `delimiters` back-compat conversion
@@ -448,17 +442,19 @@ pub(super) fn import_roleplay_templates(
                         let t = serde_json::from_value::<ImportedTemplate>(migrated.clone())
                             .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
                         let name = format!("{} (imported)", t.name);
-                        create_template(&repo, user_id, t, name, options, DUPLICATE_MINTS)?;
+                        let keys = carrier_keys(user_id, &name, &migrated)?;
+                        create_template(&repo, user_id, t, keys, name, options, DUPLICATE_MINTS)?;
                         imported += 1;
                         return Ok(());
                     }
                 }
             }
             // P4.143 item 9: refused → the per-item catch (warning + WARN).
-            let t = serde_json::from_value::<ImportedTemplate>(migrated)
+            let t = serde_json::from_value::<ImportedTemplate>(migrated.clone())
                 .map_err(|e| DbError::Internal(super::serde_error_text(&e)))?;
             let name = t.name.clone();
-            let new_id = create_template(&repo, user_id, t, name, options, &source_id)?;
+            let keys = carrier_keys(user_id, &name, &migrated)?;
+            let new_id = create_template(&repo, user_id, t, keys, name, options, &source_id)?;
             id_map.set(source_id.clone(), new_id);
             imported += 1;
             Ok(())
@@ -479,10 +475,29 @@ pub(super) fn import_roleplay_templates(
     })
 }
 
+/// P4.D351: the bundle row's `narrationDelimiters` (three-state — ABSENT →
+/// v4's `.default('*')`, `null` → unmarked prose), `unmarkedStyle` and
+/// `markdownAsterisks` as v4's `create` parses them; a refusal is v4's
+/// `ZodError.message` (the per-item catch's tail) after the repository's lines.
+fn carrier_keys(
+    user_id: &str,
+    name: &str,
+    raw: &Value,
+) -> Result<crate::api::roleplay_templates::TemplateCarrierKeys, DbError> {
+    crate::api::roleplay_templates::template_carrier_keys(raw).map_err(|issues| {
+        DbError::Internal(crate::api::roleplay_templates::log_refused_template(
+            user_id,
+            Some(name),
+            &issues,
+        ))
+    })
+}
+
 fn create_template(
     repo: &RoleplayTemplatesRepository,
     user_id: &str,
     t: ImportedTemplate,
+    keys: crate::api::roleplay_templates::TemplateCarrierKeys,
     name: String,
     options: &ImportOptions,
     source_id: &str,
@@ -497,11 +512,9 @@ fn create_template(
         delimiters: t.delimiters,
         rendering_patterns: t.rendering_patterns,
         dialogue_detection: t.dialogue_detection,
-        narration_delimiters: Some(t.narration_delimiters),
-        // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351 owns the
-        // carrier's `unmarkedStyle` / `markdownAsterisks` / null narration.
-        unmarked_style: None,
-        markdown_asterisks: true,
+        narration_delimiters: keys.narration_delimiters,
+        unmarked_style: keys.unmarked_style,
+        markdown_asterisks: keys.markdown_asterisks,
     };
     let (id, now) = mint_or_preserve(options, source_id);
     repo.create(

@@ -391,6 +391,94 @@ fn plant_blob_profile(db: &Db) {
 /// P4.106 item 6 — the oracle's `plantInforms`, cell for cell: a PENDING and a
 /// CONSUMED row on each of the user's first two chats (sorted by id), on the
 /// per-run COPY only.
+/// [P4.D351] The oracle's `plantNovelTemplate`, cell for cell: (a) / (b)
+/// through C-4's `RoleplayTemplatesRepository::create` (encoded on write), (c)
+/// – (e) created the same way with their `narrationDelimiters` cell rewritten by
+/// raw SQL (the text `null`, the encoded `"*"`, SQL NULL).
+fn plant_novel_template(db: &Db) {
+    use quilltap_core::db::roleplay_templates::{
+        CreateOptions, DelimiterAddOns, RoleplayTemplatesRepository, RtCreate, StringOrPair,
+        TemplateDelimiter, UnmarkedStyle,
+    };
+    const TS: &str = "2026-01-04T00:00:00.000Z";
+    let base = |name: &str, system_prompt: &str| RtCreate {
+        user_id: Some(USER.to_string()),
+        name: name.to_string(),
+        description: None,
+        system_prompt: system_prompt.to_string(),
+        is_built_in: false,
+        tags: Vec::new(),
+        delimiters: Vec::new(),
+        rendering_patterns: Vec::new(),
+        dialogue_detection: None,
+        narration_delimiters: Some(StringOrPair::Single("*".to_string())),
+        unmarked_style: None,
+        markdown_asterisks: true,
+    };
+    let opts = |id: &str| CreateOptions {
+        id: id.to_string(),
+        created_at: TS.to_string(),
+        updated_at: TS.to_string(),
+    };
+    db.write_blocking(move |w| {
+        let conn = w.main().connection();
+        let repo = RoleplayTemplatesRepository::new(conn);
+        let mut novel = base("Novel Copy", "Write as a novel.");
+        novel.delimiters = vec![TemplateDelimiter::Wrap {
+            name: "Dialogue".into(),
+            button_name: "Dia".into(),
+            style: "qt-chat-dialogue".into(),
+            hide_delimiter: None,
+            add_ons: None,
+            delimiters: StringOrPair::Single("\"".into()),
+            match_curly_quotes: Some(true),
+            close_optional: Some(true),
+        }];
+        novel.narration_delimiters = None;
+        novel.unmarked_style = Some(UnmarkedStyle {
+            style: "qt-roleplay-plain".into(),
+            add_ons: Some(DelimiterAddOns {
+                bold: false,
+                italic: true,
+                reverse: false,
+                underline: "none".into(),
+                border: "none".into(),
+                font: String::new(),
+            }),
+        });
+        novel.markdown_asterisks = false;
+        repo.create(&novel, &opts("ad000000-0000-4000-8000-0000000000a1"))?;
+        let mut pair = base("Bracket Narration", "Use brackets.");
+        pair.narration_delimiters = Some(StringOrPair::Pair(["[".into(), "]".into()]));
+        repo.create(&pair, &opts("ad000000-0000-4000-8000-0000000000a2"))?;
+        for (id, name, cell) in [
+            (
+                "ad000000-0000-4000-8000-0000000000a3",
+                "Text Null Cell",
+                Some("null"),
+            ),
+            (
+                "ad000000-0000-4000-8000-0000000000a4",
+                "Encoded Star Cell",
+                Some("\"*\""),
+            ),
+            (
+                "ad000000-0000-4000-8000-0000000000a5",
+                "Sql Null Cell",
+                None,
+            ),
+        ] {
+            repo.create(&base(name, "Plain."), &opts(id))?;
+            conn.execute(
+                "UPDATE roleplay_templates SET narrationDelimiters = ?1 WHERE id = ?2",
+                rusqlite::params![cell, id],
+            )?;
+        }
+        Ok(())
+    })
+    .expect("plant the Novel-template rows on the fixture copy");
+}
+
 fn plant_informs(db: &Db) {
     use quilltap_core::db::chat_informs::{ChatInformCreate, ChatInformsRepository};
     db.write_blocking(|w| {
@@ -967,7 +1055,8 @@ fn system_backup_equivalence() {
             || name == "backup_with_memory_carriers"
             || name == "backup_cursor_read_fails"
             || name == "backup_with_wardrobe_history"
-            || name == "backup_with_inventory";
+            || name == "backup_with_inventory"
+            || name == "backup_novel_template";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the four derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -1001,6 +1090,9 @@ fn system_backup_equivalence() {
         }
         if name == "backup_with_inventory" {
             plant_inventory(&db);
+        }
+        if name == "backup_novel_template" {
+            plant_novel_template(&db);
         }
 
         // The oracle seeds the user file's bytes into its data dir for the

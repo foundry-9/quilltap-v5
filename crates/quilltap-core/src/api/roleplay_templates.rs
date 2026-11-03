@@ -139,6 +139,83 @@ fn apply_read_time_regen(t: &mut Value) {
 }
 
 // ===========================================================================
+// The carriers' template keys (backup restore + `.qtap` import)
+// ===========================================================================
+
+/// The three P4.D351 keys of a carried template row, as v4's whole-entity
+/// `RoleplayTemplateSchema` parse (inside `roleplayTemplates.create`) leaves
+/// them.
+#[derive(Debug, Clone)]
+pub(crate) struct TemplateCarrierKeys {
+    /// `None` = unmarked prose (a sent `null`); an ABSENT key is v4's
+    /// `.default('*')`.
+    pub narration_delimiters: Option<StringOrPair>,
+    pub unmarked_style: Option<UnmarkedStyle>,
+    pub markdown_asterisks: bool,
+}
+
+/// v4 `RoleplayTemplateSchema`'s `narrationDelimiters`
+/// (`NarrationDelimitersSchema.nullable().default('*')`), `unmarkedStyle`
+/// (`UnmarkedStyleSchema.nullable().optional()`) and `markdownAsterisks`
+/// (`z.boolean().default(true)`) over a carried row — the backup restore's
+/// step 11 and the `.qtap` import. A refusal is those keys' Zod issues in
+/// schema order (the caller renders `ZodError.message`); the template's OTHER
+/// keys stay with the carriers' existing coercion (the whole-entity twin is
+/// not ported — a pre-existing class).
+pub(crate) fn template_carrier_keys(row: &Value) -> Result<TemplateCarrierKeys, Vec<ZodIssue>> {
+    let mut issues = zod_narration_delimiters_update_issues(
+        row.get("narrationDelimiters"),
+        &[key("narrationDelimiters")],
+    );
+    issues.extend(zod_unmarked_style_issues(
+        row.get("unmarkedStyle"),
+        &[key("unmarkedStyle")],
+    ));
+    match row.get("markdownAsterisks") {
+        None | Some(Value::Bool(_)) => {}
+        got => issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("markdownAsterisks")],
+            got,
+        )),
+    }
+    if !issues.is_empty() {
+        return Err(issues);
+    }
+    let narration_delimiters = match row.get("narrationDelimiters") {
+        None => Some(StringOrPair::Single("*".to_string())),
+        v => narration_of(v),
+    };
+    Ok(TemplateCarrierKeys {
+        narration_delimiters,
+        unmarked_style: unmarked_of(row.get("unmarkedStyle")),
+        markdown_asterisks: row
+            .get("markdownAsterisks")
+            .and_then(Value::as_bool)
+            .unwrap_or(true),
+    })
+}
+
+/// A carrier's refused template create — v4's repository lines (`_create`'s
+/// `Data validation failed` + its rethrowing wrap, then `create`'s `Error
+/// creating roleplay template`), returning the `ZodError.message` tail the
+/// caller's warning carries.
+pub(crate) fn log_refused_template(
+    user_id: &str,
+    name: Option<&str>,
+    issues: &[ZodIssue],
+) -> String {
+    let zod = super::zod_issues::zod_error_message(issues);
+    crate::db::fallback::log_refused_create("roleplay_templates", &zod);
+    crate::db::fallback::log_roleplay_template_create_wrap_failure(
+        user_id,
+        name,
+        &crate::db::DbError::Internal(zod.clone()),
+    );
+    zod
+}
+
+// ===========================================================================
 // Handlers
 // ===========================================================================
 

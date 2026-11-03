@@ -1086,37 +1086,43 @@ fn restore_on_writer(
     {
         let repo = crate::db::roleplay_templates::RoleplayTemplatesRepository::new(main);
         for t in &data.roleplay_templates {
-            let create = crate::db::roleplay_templates::RtCreate {
-                user_id: Some(target_user_id.to_string()),
-                name: s(t, "name"),
-                description: os(t, "description"),
-                system_prompt: s(t, "systemPrompt"),
-                is_built_in: b(t, "isBuiltIn", false),
-                tags: sa(t, "tags"),
-                delimiters: de_or_default(t, "delimiters"),
-                rendering_patterns: de_or_default(t, "renderingPatterns"),
-                dialogue_detection: de_opt(t, "dialogueDetection"),
-                narration_delimiters: Some(
-                    de_opt(t, "narrationDelimiters")
-                        // v4's Zod default for `narrationDelimiters` is `"*"`.
-                        .unwrap_or_else(|| {
-                            crate::db::roleplay_templates::StringOrPair::Single("*".to_string())
-                        }),
-                ),
-                // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351
-                // owns the carrier's `unmarkedStyle` / `markdownAsterisks` / null
-                // narration.
-                unmarked_style: None,
-                markdown_asterisks: true,
+            // P4.D351: the three-state narration (ABSENT → v4's `.default('*')`,
+            // `null` → unmarked prose), `unmarkedStyle` and `markdownAsterisks`
+            // as v4's `create` parses them — a refusal is v4's `ZodError`
+            // message plus the repository's lines (`restore.ts:403-416`).
+            let created = match crate::api::roleplay_templates::template_carrier_keys(t) {
+                Err(issues) => Err(crate::api::roleplay_templates::log_refused_template(
+                    target_user_id,
+                    t.get("name").and_then(Value::as_str),
+                    &issues,
+                )),
+                Ok(keys) => {
+                    let create = crate::db::roleplay_templates::RtCreate {
+                        user_id: Some(target_user_id.to_string()),
+                        name: s(t, "name"),
+                        description: os(t, "description"),
+                        system_prompt: s(t, "systemPrompt"),
+                        is_built_in: b(t, "isBuiltIn", false),
+                        tags: sa(t, "tags"),
+                        delimiters: de_or_default(t, "delimiters"),
+                        rendering_patterns: de_or_default(t, "renderingPatterns"),
+                        dialogue_detection: de_opt(t, "dialogueDetection"),
+                        narration_delimiters: keys.narration_delimiters,
+                        unmarked_style: keys.unmarked_style,
+                        markdown_asterisks: keys.markdown_asterisks,
+                    };
+                    repo.create(
+                        &create,
+                        &copts!(new_id(), crate::db::roleplay_templates::CreateOptions),
+                    )
+                    .map_err(|e| e.warn_text())
+                }
             };
             warn_row!(
                 w,
                 c.roleplay_templates,
                 format!("Failed to restore roleplay template \"{}\"", s(t, "name")),
-                repo.create(
-                    &create,
-                    &copts!(new_id(), crate::db::roleplay_templates::CreateOptions)
-                ),
+                created,
                 "Failed to restore roleplay template",
                 templateId = s(t, "id"),
             );

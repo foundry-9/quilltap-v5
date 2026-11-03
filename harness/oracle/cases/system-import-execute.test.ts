@@ -2029,6 +2029,101 @@ function informRefusalsPayload(chatsInforms: {
 }
 
 /**
+ * [P4.D351] The Novel template's `.qtap` carrier (v4 `778b97b2b`): the bundle
+ * rows reach `roleplayTemplates.create`, which validates the WHOLE entity
+ * through `RoleplayTemplateSchema` and ENCODES the narration — a MISSING
+ * `narrationDelimiters` key takes `.default('*')`, an explicit `null` stays
+ * unmarked prose, `unmarkedStyle` / `markdownAsterisks` ride as parsed. Fresh
+ * ids and names (preserveIds), so none meets an existing row first.
+ */
+function novelTemplatePayload(): { manifest: unknown; data: Record<string, unknown> } {
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      roleplayTemplates: [
+        {
+          id: 'ad510000-0000-4000-8000-000000000001',
+          name: 'Novel Copy',
+          systemPrompt: 'Write as a novel.',
+          delimiters: [
+            {
+              kind: 'wrap',
+              name: 'Dialogue',
+              buttonName: 'Dia',
+              style: 'qt-chat-dialogue',
+              delimiters: '"',
+              matchCurlyQuotes: true,
+              closeOptional: true,
+            },
+          ],
+          narrationDelimiters: null,
+          unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { italic: true } },
+          markdownAsterisks: false,
+        },
+        { id: 'ad510000-0000-4000-8000-000000000002', name: 'Legacy No Key', systemPrompt: 'Old shape.' },
+        {
+          id: 'ad510000-0000-4000-8000-000000000003',
+          name: 'Explicit Null Unmarked',
+          systemPrompt: 'Plain.',
+          narrationDelimiters: '*',
+          unmarkedStyle: null,
+          markdownAsterisks: true,
+        },
+        {
+          id: 'ad510000-0000-4000-8000-000000000004',
+          name: 'Bracket Narration',
+          systemPrompt: 'Use brackets.',
+          narrationDelimiters: ['[', ']'],
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * [P4.D351] Three bundle templates `RoleplayTemplateSchema` refuses at
+ * `_create` over the three new keys alone (every other key sound): a string
+ * `markdownAsterisks`, a numeric `unmarkedStyle`, an empty unmarked `style`.
+ */
+function novelTemplateRefusalsPayload(): { manifest: unknown; data: Record<string, unknown> } {
+  const item = (n: number, name: string, extra: Record<string, unknown>) => ({
+    id: `ad520000-0000-4000-8000-00000000000${n}`,
+    name,
+    systemPrompt: 'Refuse me.',
+    narrationDelimiters: '*',
+    ...extra,
+  });
+  return {
+    manifest: {
+      format: 'quilltap-export',
+      version: '1.0',
+      exportType: 'all',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      appVersion: '4.0.0',
+      settings: { includeMemories: false, scope: 'all', selectedIds: [], preserveIds: true },
+      counts: {},
+    },
+    data: {
+      roleplayTemplates: [
+        item(1, 'Bad Asterisks', { markdownAsterisks: 'yes' }),
+        item(2, 'Bad Unmarked', { unmarkedStyle: 5 }),
+        item(3, 'Bad Unmarked Empty', { unmarkedStyle: { style: '' } }),
+        item(4, 'Bad Narration Empty', { narrationDelimiters: '' }),
+        item(5, 'Sound Twin', {}),
+      ],
+    },
+  };
+}
+
+/**
  * [P4.161 Tier 2] Prompt templates v4's `PromptTemplateSchema` refuses at
  * `_create` (`prompt-templates.repository.ts:250-262`): a 101-code-point
  * name, an empty `content`, a 501-character `description`, an unmapped
@@ -4156,6 +4251,20 @@ async function main(): Promise<void> {
       { conflictStrategy: 'skip', includeMemories: false, includeRelatedEntities: false },
       true,
     ),
+    // [P4.D351] the Novel template's `.qtap` carrier — stored cells diffed.
+    executeCase('execute_novel_template', () => novelTemplatePayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
+    // [P4.D351] the three new keys' `RoleplayTemplateSchema` refusals.
+    executeCase('execute_template_refusals', () => novelTemplateRefusalsPayload(), {
+      conflictStrategy: 'skip',
+      includeMemories: false,
+      includeRelatedEntities: false,
+      preserveIds: true,
+    }),
     executeCase(
       'execute_prompt_template_refusals',
       () => promptTemplateRefusalsPayload(),

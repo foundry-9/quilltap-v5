@@ -107,6 +107,10 @@ fn fresh_db(tag: &str) -> ScratchDb {
                 .execute_batch(&THROWING_CURSORS_SQL.join(";\n"))
                 .expect("plant the throwing cursor table");
         }
+        // [P4.D351] the oracle's `plantNovelTemplate`, for the `…_novel` cases.
+        if tag.ends_with("_novel") {
+            plant_novel_template(w.connection());
+        }
         // [P4.D264] the oracle's `plantWardrobe`, for the `…_wardrobe` cases.
         if tag.ends_with("_wardrobe") {
             let m = quilltap_core::db::Writer::open_writable(&mount, TEST_PEPPER).unwrap();
@@ -196,12 +200,18 @@ fn system_export_matches_oracle() {
     let mut failed: Vec<String> = Vec::new();
     let mut ran = 0usize;
     let mut wardrobe_cases = 0usize;
+    // [P4.D351] the `…_novel` cases read a copy with the five template rows.
+    let novel = fresh_db("reads_novel");
+    let mut novel_cases = 0usize;
 
     for name in order.iter().filter(|n| n.as_str() != "_meta") {
         let exp = &oracle[name];
         let db = if name.ends_with("_wardrobe") {
             wardrobe_cases += 1;
             &planted
+        } else if name.ends_with("_novel") {
+            novel_cases += 1;
+            &novel
         } else if name.ends_with("_cursor_throw") {
             &throwing
         } else if name.ends_with("_scenario_text") {
@@ -397,7 +407,12 @@ fn system_export_matches_oracle() {
     // `…_no_history_table` stream).
     // P4.D327: 68 + 2 = 70 (the two `…_inventory` streams).
     // P4.167 H-3: 70 + 1 = 71 (`preview_chats_selected_one_scenario_text`).
-    assert_eq!(ran, 71, "expected 71 cases to run, ran {ran}");
+    // P4.D351: 71 + 2 = 73 (the two `…_novel` template cases).
+    assert_eq!(ran, 73, "expected 73 cases to run, ran {ran}");
+    assert_eq!(
+        novel_cases, 2,
+        "the two P4.D351 Novel-template cases read their own copy"
+    );
     assert_eq!(
         inventory_cases, 2,
         "the two P4.D327 Inventory cases read their own copy"
@@ -624,6 +639,94 @@ const P4D182_FILE_ID: &str = "f0000001-0000-4000-8000-000000000001";
 /// through C1 §6's helper (the migration's DDL, as the oracle runs v4's
 /// `WARDROBE_WEAR_STATS_DDL`), the oracle's three rows verbatim, `portrait.png`
 /// linked to the coat, and the coat's frontmatter archived + pointing at it.
+/// [P4.D351] The oracle's `plantNovelTemplate`, cell for cell (the
+/// `system_backup_equivalence` plant): (a) / (b) through C-4's
+/// `RoleplayTemplatesRepository::create`, (c) – (e) created the same way with
+/// their `narrationDelimiters` cell rewritten by raw SQL.
+fn plant_novel_template(main: &rusqlite::Connection) {
+    use quilltap_core::db::roleplay_templates::{
+        CreateOptions, DelimiterAddOns, RoleplayTemplatesRepository, RtCreate, StringOrPair,
+        TemplateDelimiter, UnmarkedStyle,
+    };
+    const TS: &str = "2026-01-04T00:00:00.000Z";
+    let user = "e18e05bc-63e8-4539-8a85-719b7a508850";
+    let base = |name: &str, system_prompt: &str| RtCreate {
+        user_id: Some(user.to_string()),
+        name: name.to_string(),
+        description: None,
+        system_prompt: system_prompt.to_string(),
+        is_built_in: false,
+        tags: Vec::new(),
+        delimiters: Vec::new(),
+        rendering_patterns: Vec::new(),
+        dialogue_detection: None,
+        narration_delimiters: Some(StringOrPair::Single("*".to_string())),
+        unmarked_style: None,
+        markdown_asterisks: true,
+    };
+    let opts = |id: &str| CreateOptions {
+        id: id.to_string(),
+        created_at: TS.to_string(),
+        updated_at: TS.to_string(),
+    };
+    let repo = RoleplayTemplatesRepository::new(main);
+    let mut novel = base("Novel Copy", "Write as a novel.");
+    novel.delimiters = vec![TemplateDelimiter::Wrap {
+        name: "Dialogue".into(),
+        button_name: "Dia".into(),
+        style: "qt-chat-dialogue".into(),
+        hide_delimiter: None,
+        add_ons: None,
+        delimiters: StringOrPair::Single("\"".into()),
+        match_curly_quotes: Some(true),
+        close_optional: Some(true),
+    }];
+    novel.narration_delimiters = None;
+    novel.unmarked_style = Some(UnmarkedStyle {
+        style: "qt-roleplay-plain".into(),
+        add_ons: Some(DelimiterAddOns {
+            bold: false,
+            italic: true,
+            reverse: false,
+            underline: "none".into(),
+            border: "none".into(),
+            font: String::new(),
+        }),
+    });
+    novel.markdown_asterisks = false;
+    repo.create(&novel, &opts("ad000000-0000-4000-8000-0000000000a1"))
+        .expect("plant (a)");
+    let mut pair = base("Bracket Narration", "Use brackets.");
+    pair.narration_delimiters = Some(StringOrPair::Pair(["[".into(), "]".into()]));
+    repo.create(&pair, &opts("ad000000-0000-4000-8000-0000000000a2"))
+        .expect("plant (b)");
+    for (id, name, cell) in [
+        (
+            "ad000000-0000-4000-8000-0000000000a3",
+            "Text Null Cell",
+            Some("null"),
+        ),
+        (
+            "ad000000-0000-4000-8000-0000000000a4",
+            "Encoded Star Cell",
+            Some("\"*\""),
+        ),
+        (
+            "ad000000-0000-4000-8000-0000000000a5",
+            "Sql Null Cell",
+            None,
+        ),
+    ] {
+        repo.create(&base(name, "Plain."), &opts(id))
+            .expect("plant (c)-(e)");
+        main.execute(
+            "UPDATE roleplay_templates SET narrationDelimiters = ?1 WHERE id = ?2",
+            rusqlite::params![cell, id],
+        )
+        .expect("rewrite the narration cell");
+    }
+}
+
 fn plant_wardrobe(main: &rusqlite::Connection, mount: &rusqlite::Connection) {
     quilltap_core::test_support::ensure_wear_ledger_on(main);
     main.execute_batch(WEAR_PLANT_SQL)

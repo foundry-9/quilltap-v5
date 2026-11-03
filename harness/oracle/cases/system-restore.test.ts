@@ -62,6 +62,8 @@ const PREVIEW_CASES: PreviewCase[] = [
   // [P4.D327] (v4 `4fbdad186`): NO preview key moves — the Inventory rides
   // existing files (doc-mount rows, chat / character cells). A regression row.
   { name: 'preview_inventory', archive: 'restore-archive-inventory.zip' },
+  // [P4.D351]: the template count over the derived Novel-template archive.
+  { name: 'preview_novel_template', archive: 'restore-archive-novel-template.zip' },
 ];
 
 /**
@@ -383,6 +385,24 @@ const RESTORE_CASES: Array<{
   // settings row carries NEITHER key, so none of them can see the chain.
   // Built by `fixtures/derive-restore-archive-voice-legacy.py`.
   { name: 'restore_voice_legacy_replace', archive: 'restore-archive-voice-legacy.zip' },
+
+  // ── P4.D351 (`778b97b2b`): the Novel template's carrier ──────────────────
+  //
+  // `restore-archive-novel-template.zip` is `restore-archive.zip` plus FIVE
+  // templates: a Novel-like row (`null` narration, a Dialogue wrap with both
+  // flags, an unmarked style, `markdownAsterisks: false`), a pre-pin row with
+  // NO narration key (`.default('*')`), a pair narration with an explicit
+  // `unmarkedStyle: null`, and two `RoleplayTemplateSchema` refusals
+  // (`markdownAsterisks: "yes"`, `unmarkedStyle: {style: ""}`) — skipped with
+  // `Failed to restore roleplay template "<name>": <ZodError message>`. The
+  // state diff reads the stored cells (the ENCODED narration). Built by
+  // `fixtures/derive-restore-archive-novel-template.py`.
+  { name: 'restore_novel_template_replace', archive: 'restore-archive-novel-template.zip' },
+  {
+    name: 'restore_novel_template_new_account',
+    archive: 'restore-archive-novel-template.zip',
+    mode: 'new-account',
+  },
 
   // ── P4.D126 (`e000d6bfc`, bug 103): the columns an older archive predates ─
   //

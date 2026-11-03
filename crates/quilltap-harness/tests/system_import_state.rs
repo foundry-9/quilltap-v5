@@ -1846,7 +1846,9 @@ fn system_import_execute_state_equivalence() {
     // `…_preserve` — the `cb88a3840` rider re-ported at the pin) (89 + 2 = 91).
     // …+ P4.167's `execute_memory_preserved_numeric_id` (P4.D272 R-E) (91 + 1
     // = 92).
-    assert_eq!(ran, 92, "expected 92 cases, ran {ran}");
+    // …+ P4.D351's `execute_novel_template` and `execute_template_refusals`
+    // (92 + 2 = 94).
+    assert_eq!(ran, 94, "expected 94 cases, ran {ran}");
     // [P4.167 chat record columns] Non-vacuity: v4 REFUSED the planted chats
     // with its `expected record` ZodError (the whole-state diff above compares
     // v5's warnings and rows with these), and the remint's null-out of a

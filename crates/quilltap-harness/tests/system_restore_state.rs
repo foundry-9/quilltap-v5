@@ -565,6 +565,24 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D351] the Novel-template archive IS `restore-archive.zip`'s instance
+    // plus five template rows, so its `new-account` restore replays the same
+    // legacy disk-key `portrait.png` — the ruled residual, one more case.
+    (
+        "restore_novel_template_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_novel_template_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_novel_template_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
 ];
 
 /// ## A pre-existing v5 gap, newly VISIBLE — not this lane's to fix
@@ -655,6 +673,9 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // [P4.D317] the outfit-history archive's `new-account` arm replays the same
     // `files/portrait.png`.
     ("restore_outfit_history_new_account", "Quilltap Uploads"),
+    // [P4.D351] the Novel-template archive's `new-account` arm replays the same
+    // `files/portrait.png`.
+    ("restore_novel_template_new_account", "Quilltap Uploads"),
 ];
 
 /// The columns [`V5_STATS_GAP`] makes incomparable on its named rows.
@@ -1329,6 +1350,14 @@ fn archive_for(name: &str) -> &'static str {
         // other committed archive can see. Built by
         // `harness/oracle/fixtures/derive-restore-archive-voice-legacy.py`.
         "restore_voice_legacy_replace" => "restore-archive-voice-legacy.zip",
+        // P4.D351 (v4 `778b97b2b`): `restore-archive.zip` plus five templates —
+        // the Novel-like `null` narration + unmarked style + `markdownAsterisks:
+        // false`, a pre-pin row with no narration key, a pair with an explicit
+        // `unmarkedStyle: null`, and two `RoleplayTemplateSchema` refusals.
+        // Built by `harness/oracle/fixtures/derive-restore-archive-novel-template.py`.
+        "restore_novel_template_replace" | "restore_novel_template_new_account" => {
+            "restore-archive-novel-template.zip"
+        }
         "restore_legacy_archive" => "restore-archive-legacy.zip",
         "restore_minimal" => "restore-archive-minimal.zip",
         "restore_new_account" => "restore-archive.zip",
@@ -2435,15 +2464,16 @@ fn system_restore_state_equivalence() {
     // 66 + 3 = 69: P4.D327's Inventory carriers (replace, new-account, the
     // tombstone twin). 69 + 1 = 70: P4.167's `new-account` twin of the
     // dup-store-id arm (P4.D273 Tier 2 #17). 70 + 1 = 71: P4.167's
-    // wardrobe-folders arm (P4.D284 banked — 22f-bis's `folder`).
+    // wardrobe-folders arm (P4.D284 banked — 22f-bis's `folder`). 71 + 2 = 73:
+    // P4.D351's Novel-template carrier in both modes.
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        71,
-        "expected all seventy-one restore cases in the oracle (ten + the #58 orphan-links arm \
+        73,
+        "expected all seventy-three restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2457,7 +2487,8 @@ fn system_restore_state_equivalence() {
          arms in both modes + P4.D293's legacy-vectors, cursors, scenario-source and \
          legacy-settings arms in both modes and the legacy-settings own / null arms \
          + P4.D317's five outfit-history arms + P4.D327's three Inventory arms \
-         + P4.167's new-account dup-store-id and wardrobe-folders arms)"
+         + P4.167's new-account dup-store-id and wardrobe-folders arms \
+         + P4.D351's two Novel-template arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");

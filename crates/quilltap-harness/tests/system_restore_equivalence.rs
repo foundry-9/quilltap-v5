@@ -94,6 +94,8 @@ fn archive_for(name: &str) -> &'static str {
         // [P4.D327]: NO new key — the Inventory rides existing files (a
         // regression row over the derived Inventory archive).
         "preview_inventory" => "restore-archive-inventory.zip",
+        // [P4.D351]: the template count over the derived Novel-template archive.
+        "preview_novel_template" => "restore-archive-novel-template.zip",
         other => panic!("unknown oracle case {other}"),
     }
 }
@@ -180,7 +182,8 @@ fn system_restore_equivalence() {
     // P4.D264: + `preview_wardrobe_wear` (the 42nd key over a ledger-carrying archive).
     // P4.D317: + `preview_outfit_history` (the 43rd key over a history-carrying one).
     // [P4.D327]: + `preview_inventory` (no preview key moves).
-    assert_eq!(seen, 9, "expected all nine preview cases in the oracle");
+    // [P4.D351]: + `preview_novel_template` (the template count, 1 → 6).
+    assert_eq!(seen, 10, "expected all ten preview cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore difference(s):\n{}",
