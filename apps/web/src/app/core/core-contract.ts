@@ -3222,6 +3222,34 @@ export interface PascalMeta {
   /** The trigger phrase that fired the run, as the definition wrote it (only on `'trigger'`). */
   triggerPhrase?: string;
   callerParticipantId?: string;
+  // === P4.D346: the operator-intervention record (v4 839575d89) ===
+  /**
+   * Operator intervention: what was first dealt and which fields the operator
+   * changed. Operator-facing only — the "adjusted" badge (v4 `app/salon/[id]/
+   * types.ts:84-103`, carried as v4's SPA type writes it; the server record
+   * also carries `dealt.llm` / `dealt.effects`, which no renderer reads).
+   */
+  intervention?: {
+    resolvedAt: string;
+    decision: 'deal' | 'as-rolled';
+    changed: string[];
+    dealt: {
+      params: Record<string, number | string | boolean>;
+      raw: number;
+      diceRolls?: number[];
+      value: number;
+      outcomeIndex: number;
+      state: 'success' | 'partial' | 'failure' | 'info';
+      message: string;
+      chipLabel?: string;
+      toolTitle?: string;
+      visibility: 'public' | 'whisper';
+      announcer: 'pascal' | 'character';
+    };
+    reasks?: number;
+    staleAnswer?: boolean;
+  };
+  // === end P4.D346 ===
 }
 
 // === P4.D177 ===

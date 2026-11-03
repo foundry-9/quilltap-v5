@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): getInterventionSummary and its corpus (v4 839575d89)
+
+_Versions: SPA 0.5.910._
+
+P4.D346 item 4. `chat/system-message-labels.ts` gains v4's `getInterventionSummary` (the "adjusted" badge's tooltip: each changed field as dealt → final, numbers to four significant digits, presentation changes in words), and the `PascalMeta` contract type gains `intervention?` last, as v4's SPA type writes it. NEW `chat/intervention-spans.ts` ports v4's client-safe `describeSpan` for the hold dialog's span hints. NEW `oracle/intervention-summary.recorder.ts` records both through v4's real code at the pin `236c04e35` into NEW `intervention-summary.oracle.ndjson` (38 rows: 24 summary, 14 span; sha256 `52d90e1a…`), replayed byte-exact by NEW `system-message-labels.intervention.oracle.spec.ts`; v4's twelve test cases also land by name in `system-message-labels.spec.ts`. The badge's template in `message-row.ts` is P4.D353's file this round — the hunk is handed off (H2), not committed here.
+
 #### 2026-11-02 — feat(spa): the intervention block in the Workbench draft (v4 839575d89)
 
 _Versions: SPA 0.5.909._

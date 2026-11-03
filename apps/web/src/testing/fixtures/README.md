@@ -489,3 +489,27 @@ Turn mode radiogroup, the turn-mode hooks, the frame fold, the Inspector filter
 with your bid` streams the four bid lines, one carrying `The storyteller chose
 you to go ahead` streams `plan.turnReply`, anything else `plan.reply`; SSE word
 deltas `plan.delayMs` apart). `e2e/support/mock-llm.ts` is untouched.
+
+## P4.D346 — the Pascal intervention prose (`intervention-summary`) and the `tool-draft-grammar` re-record
+
+Recorded at the round's pin `236c04e35` from a lane-unique detached v4 worktree
+with its OWN `npm ci --offline` (zod 4.6.7) — never the live checkout, which is
+past the pin. Each recorder carries its invocation in its header (`cp` it into
+the pin, `npx tsx` it there, redirect into this directory, `rm -f` the output
+first).
+
+- `intervention-summary.oracle.ndjson` drives v4's REAL
+  `getInterventionSummary` (the "adjusted" badge's tooltip, `839575d89`) over
+  v4's own twelve test cases and twelve edges, and v4's REAL `describeSpan`
+  (`lib/pascal/intervention/spans.ts`, `8ae8a127c` — the hold dialog's span
+  hints) over fourteen spans. Every row is live (no `needs`).
+- `tool-draft-grammar.oracle.ndjson` was RE-RECORDED WHOLE (P4.D346 R-8):
+  `839575d89`'s `newDraft()` seeds `intervention`, so all 244 earlier rows'
+  draft inputs / parsed drafts moved by that key. Stripping the `intervention`
+  key from both the `322a5488e` copy and the new one leaves ZERO differences
+  over the 244 earlier ids; the thirty P4.D346 rows ride a fenced block at the
+  recorder's end.
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `intervention-summary.oracle.ndjson` | 38 — 24 `getInterventionSummary`, 14 `describeSpan` | `52d90e1aa20edb639d5a698bddbe43aed179b1f83171ca2105b0d53eaafbc7e9` | `app/salon/[id]/components/system-message-labels.ts` (`839575d89`) + `lib/pascal/intervention/spans.ts` (`8ae8a127c`); pin `236c04e35` | `app/chat/system-message-labels.intervention.oracle.spec.ts` |
