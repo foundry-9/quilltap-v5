@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(templates): rendering-pattern generation for the Novel template — the asterisk pre-parse pair, the unmarked tail, quote-tolerant wraps (P4.D351)
+
+_Versions: core 0.0.1382._
+
+`services::annotations` follows v4 `778b97b2b`. `generate_rendering_patterns` takes a third `TemplateRenderingOptions` argument: `markdownAsterisks: false` puts the `strip` / `literal` asterisk patterns first, and an `unmarkedStyle` with a style adds the `unmarked` pattern last. A `null` narration emits no narration pattern. A `wrap` delimiter's `matchCurlyQuotes` / `closeOptional` take v4's new first arm: quote-tolerant open and close classes with `\uXXXX` escapes, an optional close, and no `]` link exclusion when the close is optional. The new `generate_template_rendering_patterns` derives a whole template's patterns from its four authoring fields. A unit test checks that generating Novel's patterns reproduces the seeded built-in row byte for byte. The oracle case grows from 25 to 51 rows, including v4's real `NOVEL_TEMPLATE`, and the family now also compares bytes. The routes still pass default options until the next commit.
+
 #### 2026-11-02 — feat(templates): the formatting prompt hint's three-state narration, wrap notes and double-asterisk bullet (P4.D351)
 
 _Versions: core 0.0.1381._

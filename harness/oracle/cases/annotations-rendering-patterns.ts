@@ -16,10 +16,20 @@
  *     > /tmp/oracle-annotations.ndjson
  *
  * The corpus is fixed in code (no randomness, no Date.now()).
+ *
+ * P4.D351 (v4 `778b97b2b`, the Novel template): the generator takes a third
+ * `options` argument (`unmarkedStyle` → the `[\s\S]` `unmarked` tail,
+ * `markdownAsterisks === false` → the `strip` / `literal` pre-parse pair), the
+ * narration may be `null`, and a `wrap` carries `matchCurlyQuotes` /
+ * `closeOptional` (the quote-tolerant / close-optional arm). A row's `options`
+ * rides the NDJSON; a `viaTemplate` row drives `generateTemplateRenderingPatterns`
+ * over its `template` object instead. `novel-whole` drives v4's REAL
+ * `NOVEL_TEMPLATE` authoring fields.
  */
 
-import { generateRenderingPatterns } from '@/lib/chat/annotations';
-import type { TemplateDelimiter, NarrationDelimiters } from '@/lib/schemas/template.types';
+import { generateRenderingPatterns, generateTemplateRenderingPatterns } from '@/lib/chat/annotations';
+import type { TemplateDelimiter, NarrationDelimiters, UnmarkedStyle } from '@/lib/schemas/template.types';
+import { NOVEL_TEMPLATE } from '@/lib/chat/novel-template';
 
 // A delimiter builder that fills the required common fields (name/buttonName/
 // style) the auto-gen doesn't read for pattern shape but the row schema carries.
@@ -33,10 +43,18 @@ function delim(fields: Partial): TemplateDelimiter {
   } as unknown as TemplateDelimiter;
 }
 
+interface Options {
+  unmarkedStyle?: UnmarkedStyle | null;
+  markdownAsterisks?: boolean;
+}
+
 interface Case {
   name: string;
   delimiters: TemplateDelimiter[];
-  narration?: NarrationDelimiters;
+  narration?: NarrationDelimiters | null;
+  options?: Options;
+  /** Drive `generateTemplateRenderingPatterns(template)` instead. */
+  viaTemplate?: Record<string, unknown>;
 }
 
 const CASES: Case[] = [
@@ -170,14 +188,147 @@ const CASES: Case[] = [
     delimiters: [],
     narration: '',
   },
+
+  // --- P4.D351: the Novel template's generator arms ---
+  {
+    name: 'narration-null',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-emph', delimiters: '*' })],
+    narration: null,
+  },
+  {
+    name: 'unmarked-plain',
+    delimiters: [],
+    narration: null,
+    options: { unmarkedStyle: { style: 'qt-roleplay-plain' } },
+  },
+  {
+    name: 'unmarked-with-addons',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-chat-dialogue', delimiters: '"' })],
+    narration: null,
+    options: { unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { italic: true } as never } },
+  },
+  {
+    name: 'unmarked-empty-style-emits-nothing',
+    delimiters: [],
+    narration: null,
+    options: { unmarkedStyle: { style: '' } },
+  },
+  {
+    name: 'unmarked-null-explicit',
+    delimiters: [],
+    narration: '*',
+    options: { unmarkedStyle: null },
+  },
+  {
+    name: 'markdown-asterisks-false-alone',
+    delimiters: [],
+    options: { markdownAsterisks: false },
+  },
+  {
+    name: 'markdown-asterisks-false-with-star-wrap',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-emph', delimiters: '*' })],
+    narration: null,
+    options: { markdownAsterisks: false },
+  },
+  {
+    name: 'markdown-asterisks-true-explicit',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-emph', delimiters: '*' })],
+    narration: '*',
+    options: { markdownAsterisks: true },
+  },
+  {
+    name: 'wrap-quote-curly',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-chat-dialogue', delimiters: '"', matchCurlyQuotes: true })],
+  },
+  {
+    name: 'wrap-quote-close-optional',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-chat-dialogue', delimiters: '"', closeOptional: true })],
+  },
+  {
+    name: 'wrap-quote-both',
+    delimiters: [
+      delim({ kind: 'wrap', style: 'qt-chat-dialogue', delimiters: '"', matchCurlyQuotes: true, closeOptional: true }),
+    ],
+  },
+  {
+    name: 'wrap-single-quote-curly',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-thought', delimiters: "'", matchCurlyQuotes: true })],
+  },
+  {
+    name: 'wrap-pair-curly-quotes-mixed',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-x', delimiters: ['<"', '">'], matchCurlyQuotes: true })],
+  },
+  {
+    name: 'wrap-bracket-close-optional-drops-link-exclusion',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-br', delimiters: ['[', ']'], closeOptional: true })],
+  },
+  {
+    name: 'wrap-bracket-curly-keeps-link-exclusion',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-br', delimiters: ['[', ']'], matchCurlyQuotes: true })],
+  },
+  {
+    name: 'wrap-dash-suffix-exclude',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-x', delimiters: ['<', '-'], closeOptional: true })],
+  },
+  {
+    name: 'wrap-non-ascii-suffix-exclude',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-x', delimiters: ['«', '»'], closeOptional: true })],
+  },
+  {
+    name: 'wrap-astral-suffix-exclude',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-x', delimiters: ['🌙', '🌞'], closeOptional: true })],
+  },
+  {
+    name: 'wrap-same-delim-close-optional-no-guard',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-emph', delimiters: '*', closeOptional: true })],
+  },
+  {
+    name: 'wrap-flags-false-explicit',
+    delimiters: [
+      delim({ kind: 'wrap', style: 'qt-chat-dialogue', delimiters: '"', matchCurlyQuotes: false, closeOptional: false }),
+    ],
+  },
+  {
+    name: 'wrap-empty-suffix-with-flags-degrades',
+    delimiters: [delim({ kind: 'wrap', style: 'qt-rp-x', delimiters: ['#', ''], closeOptional: true })],
+  },
+  {
+    name: 'novel-whole',
+    delimiters: NOVEL_TEMPLATE.delimiters,
+    narration: NOVEL_TEMPLATE.narrationDelimiters,
+    options: { unmarkedStyle: NOVEL_TEMPLATE.unmarkedStyle, markdownAsterisks: NOVEL_TEMPLATE.markdownAsterisks },
+  },
+  { name: 'template-fn-empty', delimiters: [], viaTemplate: {} },
+  { name: 'template-fn-null-delimiters', delimiters: [], viaTemplate: { delimiters: null } },
+  {
+    name: 'template-fn-novel',
+    delimiters: [],
+    viaTemplate: {
+      delimiters: NOVEL_TEMPLATE.delimiters,
+      narrationDelimiters: NOVEL_TEMPLATE.narrationDelimiters,
+      unmarkedStyle: NOVEL_TEMPLATE.unmarkedStyle,
+      markdownAsterisks: NOVEL_TEMPLATE.markdownAsterisks,
+    },
+  },
+  {
+    name: 'template-fn-markdown-undefined',
+    delimiters: [],
+    viaTemplate: { delimiters: [delim({ kind: 'wrap', style: 'qt-rp-emph', delimiters: '*' })], narrationDelimiters: '*' },
+  },
 ];
 
 for (const c of CASES) {
-  const output = generateRenderingPatterns(c.delimiters, c.narration);
+  const output = c.viaTemplate
+    ? generateTemplateRenderingPatterns(c.viaTemplate as Parameters<typeof generateTemplateRenderingPatterns>[0])
+    : generateRenderingPatterns(c.delimiters, c.narration, c.options ?? {});
   const row = {
     name: c.name,
     delimiters: c.delimiters,
-    narrationDelimiters: c.narration ?? null,
+    // The generator cannot tell `undefined` from `null` (both skip the arm);
+    // keep the collapse.
+    narrationDelimiters: c.narration === undefined ? null : c.narration,
+    ...(c.options ? { options: c.options } : {}),
+    ...(c.viaTemplate ? { viaTemplate: c.viaTemplate } : {}),
     output,
   };
   process.stdout.write(JSON.stringify(row) + '\n');

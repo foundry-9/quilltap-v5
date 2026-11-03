@@ -81,7 +81,7 @@ fn apply_read_time_regen(t: &mut Value) {
     if patterns_empty && (has_delims || has_narration) {
         let typed = delimiters_from_value(&delimiters);
         let nd = serde_json::from_value::<StringOrPair>(narration).ok();
-        let generated = generate_rendering_patterns(&typed, nd.as_ref());
+        let generated = generate_rendering_patterns(&typed, nd.as_ref(), Default::default());
         if let Some(obj) = t.as_object_mut() {
             obj.insert(
                 "renderingPatterns".into(),
@@ -209,7 +209,8 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
     };
     if rendering_patterns.is_empty() && (!delimiters.is_empty() || js_truthy(&narration)) {
         let nd = serde_json::from_value::<StringOrPair>(narration.clone()).ok();
-        rendering_patterns = generate_rendering_patterns(&delimiters, nd.as_ref());
+        rendering_patterns =
+            generate_rendering_patterns(&delimiters, nd.as_ref(), Default::default());
     }
     // description: description?.trim() || null.
     let description: Option<String> = body
@@ -414,7 +415,7 @@ pub async fn roleplay_template_update(
                 .unwrap_or(Value::Null)
         };
         let nd = serde_json::from_value::<StringOrPair>(nd_value).ok();
-        let generated = generate_rendering_patterns(&delims, nd.as_ref());
+        let generated = generate_rendering_patterns(&delims, nd.as_ref(), Default::default());
         mo.insert(
             "renderingPatterns".into(),
             serde_json::to_value(generated).unwrap_or(Value::Array(Vec::new())),
@@ -425,7 +426,7 @@ pub async fn roleplay_template_update(
             .get("narrationDelimiters")
             .cloned()
             .and_then(|v| serde_json::from_value::<StringOrPair>(v).ok());
-        let generated = generate_rendering_patterns(&delims, nd.as_ref());
+        let generated = generate_rendering_patterns(&delims, nd.as_ref(), Default::default());
         mo.insert(
             "renderingPatterns".into(),
             serde_json::to_value(generated).unwrap_or(Value::Array(Vec::new())),
