@@ -40,6 +40,22 @@ const PARSER_WIRING: &[(&str, &str, &str)] = &[
          `runSchema.parse`, uncaught, so any wrong-typed key is the flat 400 \
          `Validation error`",
     ),
+    // === P4.D345: operator intervention's three POSTs (ruling R-12) ===
+    (
+        "crates/quilltap-web/src/custom_tools_routes.rs",
+        "id: field(\"id\"),",
+        "POST /api/v1/chats/{id}/custom-tools?action=intervention-preview|\
+         intervention-reask|intervention-resolve — v4's `readBody` safeParses \
+         the WHOLE body, so the edge forwards `id` and `overrides` / \
+         `decision` RAW (absent kept absent) for the core's Zod twin to answer \
+         v4's sentences on both transports",
+    ),
+    (
+        "crates/quilltap-web/src/custom_tools_routes.rs",
+        "parse_preview_body(&parsed)",
+        "the same three POSTs with a NON-object JSON body — the core twin's \
+         outer `expected object` sentence, never re-worded at the edge",
+    ),
     (
         "crates/quilltap-web/src/characters_routes.rs",
         "characters::parse_photo_save_by_id_body(",

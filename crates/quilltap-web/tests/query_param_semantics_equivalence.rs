@@ -893,7 +893,9 @@ async fn unserved_known_actions_are_pinned_v5_side() {
         );
     }
 
-    // custom-tools GET: v4's EMPTY map — `Unknown action: <x>` with `[]`.
+    // custom-tools GET: v4's map at the `236c04e35` pin holds ONE action
+    // (`interventions`, P4.D345 — it was EMPTY before v4 `839575d89`) — so
+    // `Unknown action: <x>` lists it.
     let resp = client
         .get(format!(
             "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=foo"
@@ -904,7 +906,76 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     assert_eq!(resp.status().as_u16(), 400);
     let body: Value = resp.json().await.unwrap();
     assert_eq!(body["error"], "Unknown action: foo");
-    assert_eq!(body["availableActions"], json!([]));
+    assert_eq!(body["availableActions"], json!(["interventions"]));
+
+    // === P4.D345: the intervention actions at the edge ===
+    // `?action=interventions` lists (nothing held here) …
+    let resp = client
+        .get(format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=interventions"
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 200);
+    assert_eq!(resp.json::<Value>().await.unwrap(), json!({"holds": []}));
+    // … the three POSTs answer v4's `readBody` sentence for a body that is
+    // not JSON (NOT the run arm's `Invalid body: …`), a non-object body the
+    // core twin's outer sentence, and an unknown id the 404 …
+    for action in [
+        "intervention-preview",
+        "intervention-reask",
+        "intervention-resolve",
+    ] {
+        let url = format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action={action}"
+        );
+        let resp = client.post(&url).body("{not json").send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 400, "{action}");
+        assert_eq!(
+            resp.json::<Value>().await.unwrap(),
+            json!({"error": "The request body is not JSON"}),
+            "{action}"
+        );
+        let resp = client.post(&url).body("[1]").send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 400, "{action}");
+        assert_eq!(
+            resp.json::<Value>().await.unwrap()["error"],
+            "Invalid input: expected object, received array",
+            "{action}"
+        );
+        let body = if action == "intervention-resolve" {
+            r#"{"id":"nope","decision":{"kind":"veto"}}"#
+        } else {
+            r#"{"id":"nope","overrides":{}}"#
+        };
+        let resp = client.post(&url).body(body).send().await.unwrap();
+        assert_eq!(resp.status().as_u16(), 404, "{action}");
+        assert_eq!(
+            resp.json::<Value>().await.unwrap()["error"],
+            "Held run not found",
+            "{action}"
+        );
+    }
+    // … and an unknown POST action lists v4's four, in its literal order.
+    let resp = client
+        .post(format!(
+            "http://{addr}/api/v1/chats/00000000-0000-4000-8000-000000000002/custom-tools?action=intervention-explode"
+        ))
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400);
+    assert_eq!(
+        resp.json::<Value>().await.unwrap()["availableActions"],
+        json!([
+            "run",
+            "intervention-preview",
+            "intervention-reask",
+            "intervention-resolve"
+        ])
+    );
     // …and since `ad1c4c37f` a bare `?action=` is refused the same way (it
     // listed until then).
     let resp = client
@@ -918,7 +989,7 @@ async fn unserved_known_actions_are_pinned_v5_side() {
     let body: Value = resp.json().await.unwrap();
     assert_eq!(
         body,
-        json!({"error": "Unknown action: ", "availableActions": []})
+        json!({"error": "Unknown action: ", "availableActions": ["interventions"]})
     );
 
     // The duplicate-key class on a NON-action key is pinned where the venue

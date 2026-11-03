@@ -2590,6 +2590,46 @@ pub enum Request {
         #[serde(default)]
         as_character_id: Option<String>,
     },
+    // === P4.D345: operator intervention (InterventionWire) ===
+    /// v4 `GET /api/v1/chats/[id]/custom-tools?action=interventions` →
+    /// `{holds}` — this chat's pending holds, oldest first.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolInterventionsList {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=intervention-preview` with `{id, overrides}` →
+    /// `{preview}`. `id` / `overrides` ride as raw JSON (absent = absent, a
+    /// present `null` kept) so the core's Zod twin answers v4's sentences on
+    /// both transports.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolInterventionPreview {
+        chat_id: String,
+        #[serde(default, deserialize_with = "de_present_json")]
+        id: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "de_present_json")]
+        overrides: Option<serde_json::Value>,
+    },
+    /// v4 `POST …?action=intervention-reask` with `{id, overrides}` →
+    /// `{preview, consults}` (💸 one consult).
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolInterventionReask {
+        chat_id: String,
+        #[serde(default, deserialize_with = "de_present_json")]
+        id: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "de_present_json")]
+        overrides: Option<serde_json::Value>,
+    },
+    /// v4 `POST …?action=intervention-resolve` with `{id, decision}` →
+    /// `{resolved}`.
+    #[serde(rename_all = "camelCase")]
+    ChatCustomToolInterventionResolve {
+        chat_id: String,
+        #[serde(default, deserialize_with = "de_present_json")]
+        id: Option<serde_json::Value>,
+        #[serde(default, deserialize_with = "de_present_json")]
+        decision: Option<serde_json::Value>,
+    },
+    // === end P4.D345 ===
     /// v4 `GET /api/v1/custom-tools` → the Workbench library: every definition
     /// in every enabled store, valid or broken, with attachment badges.
     CustomToolsLibrary,
@@ -4900,6 +4940,16 @@ pub enum Response {
     CustomToolsList(serde_json::Value),
     /// v4 `POST .../custom-tools?action=run` body (`{messages, result}`).
     CustomToolRun(serde_json::Value),
+    // === P4.D345: operator intervention (InterventionWire) ===
+    /// `GET ?action=interventions` body (`{holds}`).
+    CustomToolInterventions(serde_json::Value),
+    /// `POST ?action=intervention-preview` body (`{preview}`).
+    CustomToolInterventionPreview(serde_json::Value),
+    /// `POST ?action=intervention-reask` body (`{preview, consults}`).
+    CustomToolInterventionReask(serde_json::Value),
+    /// `POST ?action=intervention-resolve` body (`{resolved}`).
+    CustomToolInterventionResolve(serde_json::Value),
+    // === end P4.D345 ===
     /// v4 `GET /api/v1/custom-tools` body (`{tools, errors}` — the Workbench
     /// library).
     CustomToolsLibrary(serde_json::Value),
@@ -6758,4 +6808,15 @@ mod db_error_surface_tests {
         ));
     }
     // === end P4.D217 ===
+}
+
+// === P4.D345: a present JSON value — INCLUDING `null` — as `Some` ===
+/// Paired with `#[serde(default)]`: an absent key is `None` (v4's
+/// `undefined`), a present `null` is `Some(Null)`, so the Zod twin can tell
+/// `received undefined` from `received null`.
+fn de_present_json<'de, D>(d: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    <serde_json::Value as serde::Deserialize>::deserialize(d).map(Some)
 }

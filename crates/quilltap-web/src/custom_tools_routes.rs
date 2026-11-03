@@ -6,6 +6,9 @@
 //!
 //! - `GET  /api/v1/chats/{id}/custom-tools`            → `{tools, errors, droppedForCap?}`
 //! - `POST /api/v1/chats/{id}/custom-tools?action=run` → `{messages, result}`
+//! - P4.D345 (operator intervention, v4 `839575d89`): `GET ?action=interventions`
+//!   → `{holds}`; `POST ?action=intervention-preview | intervention-reask |
+//!   intervention-resolve` → `{preview}` / `{preview, consults}` / `{resolved}`.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -19,7 +22,13 @@ use crate::text_replacements_routes::{dispatch_core, error_to_http};
 
 fn unwrap_to_http(resp: CoreResponse, success_status: StatusCode) -> AxumResponse {
     match resp {
-        CoreResponse::CustomToolsList(v) | CoreResponse::CustomToolRun(v) => (
+        CoreResponse::CustomToolsList(v)
+        | CoreResponse::CustomToolRun(v)
+        // === P4.D345 ===
+        | CoreResponse::CustomToolInterventions(v)
+        | CoreResponse::CustomToolInterventionPreview(v)
+        | CoreResponse::CustomToolInterventionReask(v)
+        | CoreResponse::CustomToolInterventionResolve(v) => (
             success_status,
             [("content-type", "application/json")],
             v.to_string(),
@@ -46,12 +55,22 @@ pub async fn custom_tools_get(
     Path(id): Path<String>,
     Query(pairs): Query<crate::query::QueryPairs>,
 ) -> AxumResponse {
-    if let Err(r) =
-        crate::query::dispatch_action(&pairs, &[], "GET", "/api/v1/chats/[id]/custom-tools")
-    {
-        return *r;
-    }
-    match dispatch_core(&state, CoreRequest::ChatCustomToolsList { chat_id: id }).await {
+    // P4.D345: v4 `withActionDispatch({ interventions: handleListInterventions },
+    // handleList)` (`route.ts:517`) — one action beside the default list.
+    let action = match crate::query::dispatch_action(
+        &pairs,
+        &["interventions"],
+        "GET",
+        "/api/v1/chats/[id]/custom-tools",
+    ) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    let req = match action {
+        Some("interventions") => CoreRequest::ChatCustomToolInterventionsList { chat_id: id },
+        _ => CoreRequest::ChatCustomToolsList { chat_id: id },
+    };
+    match dispatch_core(&state, req).await {
         Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }
@@ -67,10 +86,20 @@ pub async fn custom_tools_post(
     // v4: `POST` is `withActionDispatch({ run: handleRun })` with NO default
     // handler, so the middleware answers its own two envelopes — and a bare
     // `?action=` is refused as unknown since `ad1c4c37f`.
-    const AVAILABLE: &[&str] = &["run"];
+    // P4.D345: v4's map at the pin (`route.ts:521-526`), in its literal order.
+    const AVAILABLE: &[&str] = &[
+        "run",
+        "intervention-preview",
+        "intervention-reask",
+        "intervention-resolve",
+    ];
     const PATH: &str = "/api/v1/chats/[id]/custom-tools";
-    if let Err(r) = crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
-        return *r;
+    let action = match crate::query::dispatch_required_action(&query, AVAILABLE, "POST", PATH) {
+        Ok(a) => a,
+        Err(r) => return *r,
+    };
+    if action != "run" {
+        return intervention_post(&state, id, action, &body).await;
     }
     let json_body: Value = if body.is_empty() {
         Value::Object(Default::default())
@@ -224,6 +253,64 @@ pub async fn workbench_post(
 
     match dispatch_core(&state, req).await {
         Ok(resp) => workbench_unwrap(resp),
+        Err(r) => r,
+    }
+}
+
+// === P4.D345: operator intervention's three POST actions ===
+
+/// The three intervention POSTs. v4's `readBody`: a body that is not JSON is
+/// the edge's own 400 `The request body is not JSON` (NOT the run arm's
+/// `Invalid body: …`); a parsed body is forwarded WHOLE — its `id` and
+/// `overrides` / `decision` raw, absent kept absent — so the core's Zod twin
+/// answers v4's sentences on every transport (ruling R-12).
+async fn intervention_post(
+    state: &SharedState,
+    chat_id: String,
+    action: &str,
+    body: &[u8],
+) -> AxumResponse {
+    let parsed: Value = match serde_json::from_slice(body) {
+        Ok(v) => v,
+        Err(_) => return error_json(StatusCode::BAD_REQUEST, "The request body is not JSON"),
+    };
+    // A non-object body never yields its keys: it is the core twin's OUTER
+    // `expected object` sentence, answered from the core's own parse (the
+    // `parse_run_body` precedent) rather than re-worded here.
+    if !parsed.is_object() {
+        use quilltap_core::pascal::intervention::overrides::{
+            join_messages, parse_preview_body, parse_resolve_body,
+        };
+        let issues = if action == "intervention-resolve" {
+            parse_resolve_body(&parsed).err()
+        } else {
+            parse_preview_body(&parsed).err()
+        };
+        return error_json(
+            StatusCode::BAD_REQUEST,
+            &join_messages(&issues.unwrap_or_default()),
+        );
+    }
+    let field = |k: &str| parsed.get(k).cloned();
+    let req = match action {
+        "intervention-preview" => CoreRequest::ChatCustomToolInterventionPreview {
+            chat_id,
+            id: field("id"),
+            overrides: field("overrides"),
+        },
+        "intervention-reask" => CoreRequest::ChatCustomToolInterventionReask {
+            chat_id,
+            id: field("id"),
+            overrides: field("overrides"),
+        },
+        _ => CoreRequest::ChatCustomToolInterventionResolve {
+            chat_id,
+            id: field("id"),
+            decision: field("decision"),
+        },
+    };
+    match dispatch_core(state, req).await {
+        Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
         Err(r) => r,
     }
 }

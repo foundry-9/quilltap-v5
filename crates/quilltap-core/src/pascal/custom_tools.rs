@@ -3124,17 +3124,30 @@ mod render_template_debug_tests {
 /// so the outcome table gets to deal with the silence the way its author wrote
 /// it to.
 async fn resolve_llm_consult(
+    tool_name: &str,
     spec: &CustomToolLlm,
     prompt: String,
     invoke: Option<&dyn LlmInvoker>,
 ) -> LlmConsultResult {
-    let failed = |reason: String, prompt: String| LlmConsultResult {
-        ok: false,
-        output: spec.error_message.clone(),
-        prompt,
-        reason: Some(reason),
-        provider: None,
-        model: None,
+    let failed = |reason: String, prompt: String| {
+        // v4 `resolveLlmConsult`'s `failed` (`custom-tools.ts:2007` at the pin,
+        // already at `322a5488e` — P4.D345 found it unported): every fail-soft
+        // arm says why, once.
+        tracing::warn!(
+            target: "quilltap::pascal",
+            context = "pascal.custom-tools",
+            tool = tool_name,
+            reason = reason.as_str(),
+            "Custom tool LLM consult failed",
+        );
+        LlmConsultResult {
+            ok: false,
+            output: spec.error_message.clone(),
+            prompt,
+            reason: Some(reason),
+            provider: None,
+            model: None,
+        }
     };
 
     let Some(invoke) = invoke else {
@@ -3200,7 +3213,7 @@ pub async fn pose_llm_consult(
             definition.name
         )));
     };
-    Ok(resolve_llm_consult(spec, prompt, invoke).await)
+    Ok(resolve_llm_consult(&definition.name, spec, prompt, invoke).await)
 }
 
 /// Run a definition: validate params, roll, transform, consult (when declared),
@@ -3443,8 +3456,15 @@ pub async fn execute_custom_tool(
         Some(spec) if consult_first => {
             let prompt = render_template(&spec.prompt, &template_vars);
             llm_prompt_rendered = Some(prompt.clone());
-            let consult =
-                replay_or_resolve_consult(spec, prompt, pins, replay_consult, llm_invoke).await;
+            let consult = replay_or_resolve_consult(
+                spec,
+                prompt,
+                pins,
+                replay_consult,
+                llm_invoke,
+                &definition.name,
+            )
+            .await;
             let subject = consult.subject();
             let subjects = OutcomeSubjects {
                 llm: Some(&subject),
@@ -3497,8 +3517,15 @@ pub async fn execute_custom_tool(
                     dealt_brief = brief;
                     llm_prompt_rendered = Some(prompt.clone());
                     llm = Some(
-                        replay_or_resolve_consult(spec, prompt, pins, replay_consult, llm_invoke)
-                            .await,
+                        replay_or_resolve_consult(
+                            spec,
+                            prompt,
+                            pins,
+                            replay_consult,
+                            llm_invoke,
+                            &definition.name,
+                        )
+                        .await,
                     );
                 }
                 None => llm = None,
@@ -3611,6 +3638,7 @@ async fn replay_or_resolve_consult(
     pins: Option<&RunPins>,
     replay_consult: Option<&LlmConsultResult>,
     llm_invoke: Option<&dyn LlmInvoker>,
+    tool_name: &str,
 ) -> LlmConsultResult {
     if let Some(answer) = pins.and_then(|p| p.llm_answer.as_ref()) {
         return LlmConsultResult {
@@ -3625,7 +3653,7 @@ async fn replay_or_resolve_consult(
     if let Some(given) = replay_consult {
         return given.clone();
     }
-    resolve_llm_consult(spec, prompt, llm_invoke).await
+    resolve_llm_consult(tool_name, spec, prompt, llm_invoke).await
 }
 
 /// v4 `drawRoll`'s dice arm: the faces a pin or a replayed draw names (via

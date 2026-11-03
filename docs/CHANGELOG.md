@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(api): the four operator-intervention actions on /api/v1/chats/{id}/custom-tools (P4.D345)
+
+_Versions: core 0.0.1391, web 0.0.253._
+
+New `api::custom_tool_interventions`, ported from v4 `interventions.ts`: `?action=interventions` (GET → `{holds}`), plus `intervention-preview`, `intervention-reask` (one consult; `This tool consults no oracle` refuses only a tool with no `llm`, per `b02d902f3`) and `intervention-resolve` (POST). Each follows v4's arm order: body parse → 404 `Held run not found` → refusal 400 → recompute → 409 `That run has already been settled`. Each logs its v4 line.
+
+The dispatch verbs carry `id` / `overrides` / `decision` as raw JSON, so the core's Zod twin answers v4's sentences on both transports. The web edge forwards the body whole and answers `The request body is not JSON` itself. The GET action list is now `["interventions"]` and the POST list v4's four.
+
+`resolve_llm_consult` now logs v4's `Custom tool LLM consult failed` WARN. It existed at the baseline and was never ported; the route family found it.
+
+New families: `pascal_intervention_route_equivalence` (33 scenes over v4's real route, registry and engine, with bodies, decisions, prompts and lines compared as bytes) and the `pascal_intervention_wire_contract` guard. Also updated: the census's route-identifier count (515 → 519) and the body-parse wiring rows.
+
 #### 2026-11-03 — feat(pascal): the run service holds an intervenable run for the operator; the entrances, the veto and the Stop (P4.D345)
 
 _Versions: core 0.0.1390._

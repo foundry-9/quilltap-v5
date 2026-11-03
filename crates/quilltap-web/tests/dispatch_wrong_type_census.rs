@@ -2951,7 +2951,14 @@ fn is_route_identifier(field: &str) -> bool {
 // `keepOrder`) ride as RAW `Value`s so the core answers v4's ZodError arm —
 // untyped, so the census sees none of them; `ChatUpdate.turn_mode` is a
 // `double_option` `Value` too. Measured red at 519 against 515 first.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 519;
+//
+// **P4.D345 (+4): 519 → 523** (on the union) — the four `Request::ChatCustomToolIntervention*`
+// verbs' `chat_id`, each the `[id]` PATH segment of `/api/v1/chats/[id]/
+// custom-tools` (never a body key). Their other fields (`id`, `overrides`,
+// `decision`) are raw `Option<Value>`s the core's Zod twin parses, so no typed
+// field can wrong-type. Measured red at 519 against 515 first; the unifier
+// re-measures on the union (H11).
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 523;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

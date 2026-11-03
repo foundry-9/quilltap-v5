@@ -5235,6 +5235,58 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D345: operator intervention (InterventionWire) ===
+            Request::ChatCustomToolInterventionsList { chat_id } => match self.ready_db() {
+                Ok(_) => super::custom_tool_interventions::chat_custom_tool_interventions_list(
+                    &chat_id,
+                ),
+                Err(r) => r,
+            },
+            Request::ChatCustomToolInterventionPreview {
+                chat_id,
+                id,
+                overrides,
+            } => match self.ready_db() {
+                Ok(_) => {
+                    super::custom_tool_interventions::chat_custom_tool_intervention_preview(
+                        &chat_id, id, overrides,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatCustomToolInterventionReask {
+                chat_id,
+                id,
+                overrides,
+            } => match self.ready_db_and_consult() {
+                Ok((db, consult)) => {
+                    super::custom_tool_interventions::chat_custom_tool_intervention_reask(
+                        &db,
+                        SINGLE_USER_ID,
+                        &chat_id,
+                        id,
+                        overrides,
+                        consult.as_deref(),
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatCustomToolInterventionResolve {
+                chat_id,
+                id,
+                decision,
+            } => match self.ready_db() {
+                Ok(_) => {
+                    super::custom_tool_interventions::chat_custom_tool_intervention_resolve(
+                        &chat_id, id, decision,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D345 ===
             // --- unit 12: Pascal's Workbench collection resource ---
             Request::CustomToolsLibrary => match self.ready_db() {
                 Ok(db) => super::custom_tools::custom_tools_library(&db),
