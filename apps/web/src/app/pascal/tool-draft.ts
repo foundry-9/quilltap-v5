@@ -20,6 +20,8 @@
 
 import {
   COMPARATOR_KEYS,
+  INTERVENTION_FIELD_KEYS,
+  type InterventionFieldKey,
   IDENTIFIER_PATTERN,
   MAX_CHIP_LABEL_LENGTH,
   MAX_TRIGGERS,
@@ -125,6 +127,8 @@ export interface DraftParameter {
   /** Loose numeric text; '' means unset. Numeric types only. */
   min: string;
   max: string;
+  /** Operator intervention: false hides this parameter from the hold dialog. Absent = shown. */
+  intervene?: boolean;
 }
 
 /**
@@ -300,6 +304,8 @@ export interface DraftEffect {
   inventory: DraftInventoryGesture;
   /** The log line's template (like an outcome message). Trimmed on save. */
   log: string;
+  /** Operator intervention: false hides this effect from the hold dialog. Absent = shown. */
+  intervene?: boolean;
 }
 
 /** An Inventory gesture, form-shaped. `equip` is emitted only on pick_up, and only when false. */
@@ -403,6 +409,13 @@ export interface ToolDraft {
   defaultVisibility: Visibility;
   /** The rolling character announces the outcome instead of Pascal. False = no key emitted. */
   announceAsCharacter: boolean;
+  /**
+   * Operator intervention. `enabled` is the master toggle; `fields` holds the
+   * per-field flags (only `false` means anything) and is kept while the master
+   * is off, like the roll fields. `authored` remembers a block the file carried
+   * switched off, so `{ "enabled": false }` survives a round trip.
+   */
+  intervention: { enabled: boolean; authored: boolean; fields: Partial<Record<InterventionFieldKey, boolean>> };
   parameters: DraftParameter[];
   /** `inventory`: the dice an object names (`{ "$inventory": …, "fallback": "1d4" }`). */
   rollForm: 'range' | 'dice' | 'inventory';
@@ -443,6 +456,7 @@ const KNOWN_KEY_ORDER = [
   'revealOdds',
   'defaultVisibility',
   'announceAsCharacter',
+  'intervention',
   'parameters',
   'roll',
   'llm',
@@ -483,6 +497,7 @@ export function newDraft(): ToolDraft {
     revealOdds: true,
     defaultVisibility: 'public',
     announceAsCharacter: false,
+    intervention: { enabled: false, authored: false, fields: {} },
     parameters: [],
     rollForm: 'range',
     rollDice: '',
@@ -754,6 +769,9 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
     when = { kind: 'verbatim', when: effect.when as EffectWhen };
   }
 
+  // Operator intervention's per-effect flag rides on every kind alike.
+  const flag = effect.intervene === false ? { intervene: false } : {};
+
   if (effect.wardrobe) {
     const { action, items, mode, slot } = effect.wardrobe;
     return {
@@ -771,6 +789,7 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
       },
       inventory: emptyDraftInventoryGesture(),
       log: '',
+      ...flag,
     };
   }
 
@@ -786,6 +805,7 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
       wardrobe: emptyDraftWardrobeGesture(),
       inventory: { action, items: items.length > 0 ? [...items] : [''], equip: equip !== false },
       log: '',
+      ...flag,
     };
   }
 
@@ -800,6 +820,7 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
       wardrobe: emptyDraftWardrobeGesture(),
       inventory: emptyDraftInventoryGesture(),
       log: effect.log,
+      ...flag,
     };
   }
 
@@ -818,6 +839,7 @@ function effectToDraft(effect: CustomToolEffect): DraftEffect {
     wardrobe: emptyDraftWardrobeGesture(),
     inventory: emptyDraftInventoryGesture(),
     log: '',
+    ...flag,
   };
 }
 
@@ -866,10 +888,13 @@ function effectFromDraft(effect: DraftEffect): CustomToolEffect {
     when = effect.when.when;
   }
 
+  const flag = effect.intervene === false ? { intervene: false } : {};
+
   if (effect.kind === 'wardrobe') {
     return {
       ...(when !== undefined ? { when } : {}),
       wardrobe: wardrobeFromDraft(effect.wardrobe),
+      ...flag,
     } as unknown as CustomToolEffect;
   }
 
@@ -877,6 +902,7 @@ function effectFromDraft(effect: DraftEffect): CustomToolEffect {
     return {
       ...(when !== undefined ? { when } : {}),
       inventory: inventoryFromDraft(effect.inventory),
+      ...flag,
     } as CustomToolEffect;
   }
 
@@ -884,6 +910,7 @@ function effectFromDraft(effect: DraftEffect): CustomToolEffect {
     return {
       ...(when !== undefined ? { when } : {}),
       log: effect.log.trim(),
+      ...flag,
     } as CustomToolEffect;
   }
 
@@ -901,6 +928,7 @@ function effectFromDraft(effect: DraftEffect): CustomToolEffect {
   if (when !== undefined) out.when = when;
   out.target = effect.target;
   out.value = value;
+  if (effect.intervene === false) out.intervene = false;
   return out;
 }
 
@@ -929,6 +957,7 @@ function parameterToDraft(name: string, spec: CustomToolParameter): DraftParamet
     description: spec.description ?? '',
     min: spec.min === undefined ? '' : numberText(spec.min),
     max: spec.max === undefined ? '' : numberText(spec.max),
+    ...(spec.intervene === false ? { intervene: false } : {}),
   };
 }
 
@@ -970,6 +999,11 @@ export function draftFromDefinition(raw: unknown): ToolDraft | null {
     revealOdds: definition.revealOdds ?? true,
     defaultVisibility: definition.defaultVisibility ?? 'public',
     announceAsCharacter: definition.announceAsCharacter ?? false,
+    intervention: {
+      enabled: definition.intervention?.enabled === true,
+      authored: definition.intervention !== undefined,
+      fields: { ...(definition.intervention?.fields ?? {}) },
+    },
     parameters: Object.entries(definition.parameters ?? {}).map(([name, spec]) =>
       parameterToDraft(name, spec),
     ),
@@ -1168,6 +1202,7 @@ function parameterFromDraft(param: DraftParameter): CustomToolParameter {
     if (Number.isFinite(min)) spec.min = min;
     if (Number.isFinite(max)) spec.max = max;
   }
+  if (param.intervene === false) spec.intervene = false;
   return spec;
 }
 
@@ -1221,6 +1256,9 @@ export function definitionFromDraft(draft: ToolDraft): Record<string, unknown> {
   if (draft.defaultVisibility !== 'public') doc['defaultVisibility'] = draft.defaultVisibility;
   if (draft.announceAsCharacter) doc['announceAsCharacter'] = true;
 
+  const intervention = interventionFromDraft(draft);
+  if (intervention) doc['intervention'] = intervention;
+
   if (draft.parameters.length > 0) {
     const parameters: Record<string, CustomToolParameter> = {};
     for (const param of draft.parameters) {
@@ -1267,6 +1305,26 @@ export function definitionFromDraft(draft: ToolDraft): Record<string, unknown> {
   }
 
   return doc;
+}
+
+/**
+ * The `intervention` block a draft emits: present while the master toggle is
+ * on, while the file already carried one, or while any per-field flag says
+ * `false` (so switching the master off keeps the author's choices). Only
+ * `false` flags are written — absent means shown.
+ */
+function interventionFromDraft(draft: ToolDraft): Record<string, unknown> | undefined {
+  const hidden = INTERVENTION_FIELD_KEYS.filter((key) => draft.intervention.fields[key] === false);
+  const memberFlags =
+    draft.parameters.some((param) => param.intervene === false) ||
+    draft.effects.some((effect) => effect.intervene === false);
+  if (!draft.intervention.enabled && !draft.intervention.authored && hidden.length === 0 && !memberFlags) {
+    return undefined;
+  }
+  return {
+    enabled: draft.intervention.enabled,
+    ...(hidden.length > 0 ? { fields: Object.fromEntries(hidden.map((key) => [key, false])) } : {}),
+  };
 }
 
 /** The exact bytes Save writes: 2-space indent, trailing newline. */

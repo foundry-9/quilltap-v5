@@ -19,8 +19,9 @@ import {
 } from './tool-draft';
 
 /**
- * The corpus differential for the Workbench's draft model at the pin
- * `322a5488e` (P4.D334 R-13 / item 8): v4's REAL `lib/pascal/tool-draft.ts`
+ * The corpus differential for the Workbench's draft model, RE-RECORDED at the
+ * pin `236c04e35` by P4.D346 (first recorded at `322a5488e`, P4.D334 R-13 /
+ * item 8): v4's REAL `lib/pascal/tool-draft.ts`
  * over the round's arms — the one-level any-of groups, the outcome brief, the
  * Inventory and the Log — recorded by
  * `apps/web/oracle/tool-draft-grammar.recorder.ts`.
@@ -95,12 +96,13 @@ function normaliser() {
 
 describe('the draft model agrees with v4 row for row', () => {
   it('carries the whole recorded corpus', () => {
-    expect(ROWS).toHaveLength(244);
+    // Re-recorded whole at the `236c04e35` pin by P4.D346 (244 + its 30 rows).
+    expect(ROWS).toHaveLength(274);
     expect(ofKind('groupsOf')).toHaveLength(10);
-    expect(ofKind('draft')).toHaveLength(159);
-    expect(ofKind('rename')).toHaveLength(4);
-    expect(ofKind('find')).toHaveLength(4);
-    expect(ofKind('definition')).toHaveLength(12);
+    expect(ofKind('draft')).toHaveLength(182);
+    expect(ofKind('rename')).toHaveLength(5);
+    expect(ofKind('find')).toHaveLength(5);
+    expect(ofKind('definition')).toHaveLength(17);
     expect(ofKind('direct')).toHaveLength(55);
   });
 

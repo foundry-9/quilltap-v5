@@ -2434,3 +2434,43 @@ describe('conditionSlotKey and the three inventory subjects', () => {
     expect(conditionSlotKey({ subject: { kind: 'inventoryAggregate', key: 'equipped.count' }, comparator: 'gt' })).toBe('inventoryAggregate:equipped.count:gt');
   });
 });
+
+// v4 `__tests__/unit/lib/pascal/intervention-format.test.ts:84-113` (`839575d89`), by name.
+describe('the Workbench draft', () => {
+  const BASE = {
+    name: 'probe',
+    description: 'A probe.',
+    outcomes: [{ when: true, message: '-', state: 'info' }],
+  };
+
+  it('round-trips every flag', () => {
+    const raw = {
+      ...BASE,
+      intervention: { enabled: true, fields: { roll: false, announcer: false } },
+      parameters: { bonus: { type: 'number', default: 0, intervene: false }, plain: { type: 'number', default: 1 } },
+      effects: [{ target: 'state.n', value: 1, intervene: false }, { log: 'A line.' }],
+    };
+    const draft = draftFromDefinition(raw);
+    expect(draft).not.toBeNull();
+    const doc = definitionFromDraft(draft!);
+    expect(doc['intervention']).toEqual({ enabled: true, fields: { roll: false, announcer: false } });
+    const parameters = doc['parameters'] as Record<string, { intervene?: boolean }>;
+    expect(parameters['bonus']!.intervene).toBe(false);
+    expect(parameters['plain']!.intervene).toBeUndefined();
+    const effects = doc['effects'] as Array<{ intervene?: boolean }>;
+    expect(effects[0]!.intervene).toBe(false);
+    expect(effects[1]!.intervene).toBeUndefined();
+    expect(safeParse(doc).success).toBe(true);
+  });
+
+  it("keeps a switched-off block, and the author's choices, through a round trip", () => {
+    const draft = draftFromDefinition({ ...BASE, intervention: { enabled: false, fields: { roll: false } } })!;
+    expect(definitionFromDraft(draft)['intervention']).toEqual({ enabled: false, fields: { roll: false } });
+  });
+
+  it('writes no block for a new tool', () => {
+    expect(newDraft().intervention.enabled).toBe(false);
+    const draft = { ...newDraft(), name: 'fresh', description: 'Fresh.' };
+    expect(definitionFromDraft(draft)['intervention']).toBeUndefined();
+  });
+});

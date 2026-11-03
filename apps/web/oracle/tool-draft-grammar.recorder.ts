@@ -38,10 +38,17 @@
  * `outcome` / `inventory` reads its classify arm; `inventoryGestureProblems`
  * and `parseInventoryOperand` (the object roll's path) read its grammar twins.
  *
- * Run it from a pinned v4 worktree at `322a5488e` (Node 24):
+ * RE-RECORDED WHOLE at the `236c04e35` pin by P4.D346 (R-8): v4
+ * `839575d89`'s `newDraft()` seeds `intervention`, so every draft row's input
+ * and every parsed draft moved by that one key; the key-stripped diff over the
+ * 244 pre-existing ids was ZERO. The P4.D346 rows sit in their own fenced block
+ * at the end of this file.
+ *
+ * Run it from a pinned v4 worktree at `236c04e35` with its own `npm ci
+ * --offline` (Node 24):
  *
  * ```bash
- * PIN=${PIN:?a detached v4 worktree at 322a5488e}
+ * PIN=${PIN:?a detached v4 worktree at 236c04e35}
  * V5W=${V5W:-$HOME/source/quilltap-v5}
  * cp "$V5W/apps/web/oracle/tool-draft-grammar.recorder.ts" "$PIN/"
  * OUT="$V5W/apps/web/src/testing/fixtures/tool-draft-grammar.oracle.ndjson"
@@ -911,4 +918,99 @@ const direct = (id: string, fn: string, needs: Needs, args: unknown, out: unknow
   }
   const quiet = { ...reads, llmPrompt: 'say hi' };
   direct('reachableOutcomesMissingBrief: a prompt that reads none', 'reachableOutcomesMissingBrief', [], { draft: quiet, hits: [{ index: 0, hits: 4 }] }, reachableOutcomesMissingBrief(quiet as never, [{ index: 0, hits: 4 }]));
+}
+
+// === P4.D346 rows (v4 839575d89; append-only) ===
+// The operator-intervention block in the draft: the master toggle, every
+// hidden field one at a time, the authored-off block, the member flags that
+// keep a switched-off block alive, the flag LAST in each effect kind, and the
+// parse of v4's own `intervention-format.test.ts:84-113` inputs. Every row is
+// `needs: []` — the twin they read (P4.D346's `custom-tool-types.ts`) lands in
+// the same lane. Draft rows ride the same normaliser as the rest.
+{
+  const INTERVENTION_KEYS = [
+    'roll', 'value', 'llmPrompt', 'llmAnswer', 'outcome', 'message', 'state',
+    'chipLabel', 'title', 'visibility', 'announcer',
+  ] as const;
+  const iv = (d: AnyDraft, enabled: boolean, authored: boolean, fields: Record<string, boolean>): AnyDraft => {
+    (d as unknown as { intervention: unknown }).intervention = { enabled, authored, fields };
+    return d;
+  };
+  const draftRow = (id: string, draft: AnyDraft) => {
+    const norm = normaliser();
+    const normDraft = norm(clone(draft)) as AnyDraft;
+    emit({ kind: 'draft', id, needs: [], draft: normDraft, out: norm(run(draft)) });
+  };
+
+  draftRow('intervention-master-on', iv(base(), true, false, {}));
+  for (const key of INTERVENTION_KEYS) {
+    draftRow(`intervention-hides-${key}`, iv(base(), true, false, { [key]: false }));
+  }
+  draftRow(
+    'intervention-hides-all',
+    iv(base(), true, false, Object.fromEntries([...INTERVENTION_KEYS].reverse().map((k) => [k, false]))),
+  );
+  draftRow('intervention-authored-off', iv(base(), false, true, {}));
+  draftRow('intervention-off-field-flag', iv(base(), false, false, { roll: false }));
+  {
+    const d = withParam(base(), 'bonus', 'number', '0');
+    d.parameters[0].min = '0';
+    d.parameters[0].max = '5';
+    (d.parameters[0] as unknown as { intervene: boolean }).intervene = false;
+    draftRow('intervention-off-param-flag', d);
+  }
+  const withEffect = (kind: DraftEffect['kind'], over: Partial<DraftEffect>) => {
+    const d = base();
+    d.effects = [effect(kind, { ...over, ...({ intervene: false } as Partial<DraftEffect>) })];
+    return d;
+  };
+  draftRow('intervention-off-effect-flag-write', withEffect('write', { target: 'state.n', valueKind: 'literal-number', value: '1' }));
+  draftRow('intervention-off-effect-flag-wardrobe', withEffect('wardrobe', { wardrobe: { action: 'wear', items: ['Hat'], mode: 'wear', slot: '' } as never }));
+  draftRow('intervention-off-effect-flag-inventory', withEffect('inventory', { inventory: gest('pick_up', ['Coin'], false) }));
+  draftRow('intervention-off-effect-flag-log', withEffect('log', { log: 'A line.' }));
+  draftRow('intervention-new-draft-silent', base());
+  {
+    const d = iv(withParam(base(), 'bonus', 'number', '0'), true, false, { title: false });
+    d.announceAsCharacter = true;
+    draftRow('intervention-on-with-announcer', d);
+  }
+  {
+    // A true flag in `fields` (as v4's Zod keeps it) is carried, never written.
+    draftRow('intervention-true-field-not-written', iv(base(), true, false, { roll: true, value: false }));
+  }
+
+  const PROBE = { name: 'probe', description: 'A probe.', outcomes: [{ when: true, message: '-', state: 'info' }] };
+  const IV_DEFINITIONS: Array<[string, unknown]> = [
+    ['intervention: round-trips every flag', {
+      ...PROBE,
+      intervention: { enabled: true, fields: { roll: false, announcer: false } },
+      parameters: { bonus: { type: 'number', default: 0, intervene: false }, plain: { type: 'number', default: 1 } },
+      effects: [{ target: 'state.n', value: 1, intervene: false }, { log: 'A line.' }],
+    }],
+    ['intervention: keeps a switched-off block', { ...PROBE, intervention: { enabled: false, fields: { roll: false } } }],
+    ['intervention: an enabled block hiding the roll and the announcer', { ...PROBE, intervention: { enabled: true, fields: { roll: false, announcer: false } } }],
+    ['intervention: flags on a log and a wardrobe effect', {
+      ...PROBE,
+      effects: [{ log: 'Logged.', intervene: false }, { wardrobe: { action: 'wear', items: ['Hat'] }, intervene: false }],
+    }],
+    ['intervention: an empty block is refused by the parse', { ...PROBE, intervention: {} }],
+  ];
+  for (const [id, doc] of IV_DEFINITIONS) {
+    const draft = draftFromDefinition(doc);
+    if (!draft) {
+      emit({ kind: 'definition', id, needs: [], doc, out: null });
+      continue;
+    }
+    const norm = normaliser();
+    const normDraft = norm(clone(draft));
+    emit({ kind: 'definition', id, needs: [], doc, draft: normDraft, out: norm({ ...run(draft as AnyDraft) }) });
+  }
+
+  // rename / find over a draft carrying the block: the rename leaves it untouched.
+  const held = iv(withParam(base(), 'bonus', 'number', '0'), true, false, { roll: false });
+  held.outcomes[0].message = 'Bonus {{params.bonus}}';
+  (held.parameters[0] as unknown as { intervene: boolean }).intervene = false;
+  const normHeld = normaliser();
+  emit({ kind: 'rename', id: 'intervention: a held draft', needs: [], draft: normHeld(clone(held)), from: 'bonus', to: 'edge', out: normHeld(renameParameterEverywhere(clone(held) as ToolDraft, 'bonus', 'edge')) });
+  emit({ kind: 'find', id: 'intervention: a held draft', needs: [], draft: normHeld(clone(held)), name: 'bonus', out: findParameterReferences(held as ToolDraft, 'bonus') });
 }

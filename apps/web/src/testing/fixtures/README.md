@@ -445,7 +445,7 @@ stand-ins; every row now replays live.
 
 | Corpus | Rows | sha256 | v4 code | Consumer |
 |---|---|---|---|---|
-| `tool-draft-grammar.oracle.ndjson` | 244 — 10 `groupsOf`, 159 `draft`, 4 `rename`, 4 `find`, 12 `definition`, 55 `direct`; by `needs`: 182 live, 62 `P4D333` | `bd57b79b398508f71fb95bd0bf4e63a19497ca16d757a6672014d843e94a3dcc` | `lib/pascal/tool-draft.ts` (`a53024d3c`, `322a5488e`, `e1872c94f`, `e4a60ad9e`) | `app/pascal/tool-draft-grammar.oracle.spec.ts` |
+| `tool-draft-grammar.oracle.ndjson` | 274 (re-recorded at the `236c04e35` pin by P4.D346) — 10 `groupsOf`, 182 `draft`, 5 `rename`, 5 `find`, 17 `definition`, 55 `direct`; by `needs`: 212 live, 62 `P4D333` | `3b8aa25a3e7dece768151886f9b7468dfedcea194f81708633d0f22dd0528306` | `lib/pascal/tool-draft.ts` (`a53024d3c`, `322a5488e`, `e1872c94f`, `e4a60ad9e`, `839575d89`; pin `236c04e35`) | `app/pascal/tool-draft-grammar.oracle.spec.ts` |
 | `pascal-inventory-twins.oracle.ndjson` | 636 — 46 `parseAggregateKey`, 26 `isListAggregate`, 26 `aggregateKeyEndsInFold`, 90 `inventoryAggregateHolds`, 10 `parseInventoryOperand`, 31 `resolveInventoryValue`, 30 `inventoryStateHolds`, 36 `inventoryCountHolds`, 9 `gateNamesInventory`, 12 `mockInventoryContext`, 320 `resolveInventoryRef`; by `needs`: 536 live, 80 `P4D333`, 20 `P4D330` | `0407da9b23816519fbdbec8ad345ea69dd6f95d3c521738309bd666347e31e5f` | `lib/pascal/{inventory-aggregate,inventory-subjects,bench-inventory}.ts` + `lib/inventory/refs.ts` | `app/pascal/inventory-twins.oracle.spec.ts` |
 
 - **The draft inputs are draft JSON, ids normalised.** Every `nextDraftId` value

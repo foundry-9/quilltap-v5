@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the intervention block in the Workbench draft (v4 839575d89)
+
+_Versions: SPA 0.5.909._
+
+P4.D346 item 3. The Workbench draft (`pascal/tool-draft.ts`) carries v4's operator-intervention block line for line: `intervene?` on `DraftParameter` and `DraftEffect`, `ToolDraft.intervention {enabled, authored, fields}` seeded off by `newDraft()`, the flag spread last into every effect kind both ways, `parameterToDraft` / `parameterFromDraft`, the parse's block after `announceAsCharacter`, and `interventionFromDraft`'s emission rule (a block while the master is on, while the file carried one, or while any field or member flag says `false`; only `false` flags written, in `INTERVENTION_FIELD_KEYS` order). `KNOWN_KEY_ORDER` gains `intervention`. The `tool-draft-grammar` corpus is RE-RECORDED whole at the pin `236c04e35` (R-8): 244 → 274 rows (30 new, all `needs: []`; 182 draft, 17 definition, 5 rename, 5 find), sha256 `3b8aa25a…`. Re-recorded before the new rows, the 244 old rows differ from the `322a5488e` copy only by the `intervention` seed (key-stripped diff zero; 11 definition rows red on main). `tool-draft.spec.ts` gains v4's three "the Workbench draft" cases by name.
+
 #### 2026-11-02 — feat(spa): the intervention block in the SPA grammar twin (v4 839575d89)
 
 _Versions: SPA 0.5.908._
