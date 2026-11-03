@@ -8,13 +8,9 @@
  * (`intervention-summary.oracle.ndjson`, the `describeSpan` rows).
  */
 
-/** v4 `RunSpan` (`lib/pascal/custom-tools.ts`): a closed span unless an end is marked open. */
-export interface RunSpan {
-  min: number;
-  max: number;
-  minExclusive?: true;
-  maxExclusive?: true;
-}
+import type { RunSpan } from '../core/core-contract';
+
+export type { RunSpan };
 
 /** Integers plain, floats to 4 significant digits — the way Pascal prints numbers. */
 function formatSpanNumber(n: number): string {

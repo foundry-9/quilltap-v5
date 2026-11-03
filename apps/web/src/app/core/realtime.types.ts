@@ -66,6 +66,14 @@ export const REALTIME_TOPICS = [
    */
   'storytellerRounds',
   // === end P4.D344 ===
+  // === P4.D346: operator intervention (v4 839575d89; RealtimeTopicAppend — TENTH on the union, after P4.D344's `storytellerRounds`) ===
+  /**
+   * Custom-tool runs held for the operator (Pascal operator intervention),
+   * scoped by *chat* id: a hold opened or settled. The dialog re-reads the
+   * chat's pending holds.
+   */
+  'customToolInterventions',
+  // === end P4.D346 ===
 ] as const;
 
 export type RealtimeTopic = (typeof REALTIME_TOPICS)[number];

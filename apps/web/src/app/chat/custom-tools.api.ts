@@ -16,6 +16,12 @@ import type {
  */
 
 export const customToolsKeys = {
+  /**
+   * The whole custom-tools namespace (P4.D346 R-5; v4 `queryKeys.customTools
+   * .all`) — what an unscoped `customToolInterventions` hint and the reconnect
+   * sweep invalidate. NEW in v5: nothing before it needed the bare prefix.
+   */
+  all: ['customTools'] as const,
   /** The roster for one chat — the same key the popup refetches fresh on open. */
   byChat: (chatId: string) => ['customTools', chatId] as const,
   /**
@@ -30,6 +36,12 @@ export const customToolsKeys = {
    */
   presets: (vaultMountPointId: string, toolName: string) =>
     ['customTools', 'presets', vaultMountPointId, toolName] as const,
+  /**
+   * The runs held for the operator in one chat (operator intervention, v4
+   * `839575d89`). Refreshed by the `customToolInterventions` realtime topic.
+   * v4 spells the prefix `custom-tools`; v5 keeps its own `customTools` (R-5).
+   */
+  interventions: (chatId: string) => ['customTools', chatId, 'interventions'] as const,
 };
 
 /**

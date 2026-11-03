@@ -19,6 +19,7 @@
  */
 
 import { chatKeys } from '../chat/chat-keys';
+import { customToolsKeys } from '../chat/custom-tools.api';
 import { memoryKeys } from '../memory/memory.api';
 import { characterKeys } from '../screens/characters/characters.api';
 import { projectKeys } from '../screens/prospero/projects.api';
@@ -60,6 +61,11 @@ export const ALL_REALTIME_PREFIXES: readonly QueryKeyPrefix[] = [
   // `queryKeys.memories.all` (`topic-map.ts:35`; R-AB, P4.D300 L-6).
   chatKeys.all,
   memoryKeys.all,
+  // === P4.D346 (v4 839575d89, `topic-map.ts:38-40`) ===
+  // Held custom-tool runs (operator intervention). Also under the custom-tools
+  // namespace the popup reads, which a reconnect may as well refresh too.
+  customToolsKeys.all,
+  // === end P4.D346 ===
 ];
 
 /**
@@ -167,6 +173,12 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       // `chatKeys.all` is already swept, so `ALL_REALTIME_PREFIXES` is unchanged.
       return id ? [chatKeys.storytellerRound(id)] : [chatKeys.all];
     // === end P4.D344 ===
+
+    // === P4.D346 (v4 839575d89, `topic-map.ts:100-102`) ===
+    case 'customToolInterventions':
+      // Scoped by chat id: the hold dialog for that chat re-reads its queue.
+      return id ? [customToolsKeys.interventions(id)] : [customToolsKeys.all];
+    // === end P4.D346 ===
 
     default:
       return [];

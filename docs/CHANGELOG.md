@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the intervention wire, keys and realtime map (v4 839575d89)
+
+_Versions: SPA 0.5.914._
+
+P4.D346 item 8. NEW `chat/custom-tool-interventions.api.ts` carries the hold dialog's wire under P4.D345's `InterventionWire` names: v4's `InterventionHoldView` / `InterventionPreview` / `InterventionRunView` / `InterventionEffectView` shapes and four functions over `dispatchData` (`fetchInterventions`, `previewIntervention`, `reaskIntervention`, `resolveIntervention`). `core-contract.ts` gains one fenced block: `RunSpan`, `RecordedDraw`, `EffectPin`, `InterventionOverrides`, `InterventionDecision`, the four request interfaces and their union lines, plus the run result's five new keys (type-only, R-12). `customToolsKeys` gains `all` (NEW) and `interventions(chatId)` = `['customTools', chatId, 'interventions']` (R-5). The realtime map appends `customToolInterventions` (ninth here, tenth on the union after P4.D344's `storytellerRounds`), its arm (the chat's held-runs key scoped, the whole namespace unscoped) and the custom-tools prefix in the reconnect sweep, with v4's comments. `realtime-topic-map.spec.ts` counts 9 / 9 and asserts membership in place of the positional last-topic check (the unifier restores it at ten).
+
 #### 2026-11-02 — feat(spa): the "Hold intervenable rolls for me" row (v4 839575d89, 2041bb875)
 
 _Versions: SPA 0.5.913._

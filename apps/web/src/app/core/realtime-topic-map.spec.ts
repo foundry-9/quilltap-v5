@@ -131,17 +131,16 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     }
   });
 
-  // §R.10 (f) `RealtimeTopicAppend`: each adder rewrites the "last topic"
-  // assert to `toContain` (P4.D344 adds `storytellerRounds` NINTH, P4.D346
-  // `customToolInterventions` TENTH); the unifier restores the positional
-  // assert at ten.
-  it('carries every topic and eight sweep prefixes (mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
-    expect(REALTIME_TOPICS).toContain('inventory');
-    expect(REALTIME_TOPICS).toContain('storytellerRounds');
-    expect(REALTIME_TOPICS.indexOf('storytellerRounds')).toBe(REALTIME_TOPICS.indexOf('inventory') + 1);
-    expect(ALL_REALTIME_PREFIXES).toHaveLength(8);
+  // `storytellerRounds` ninth (P4.D344), `customToolInterventions` tenth
+  // (P4.D346) — v4's declaration order, restored positionally at the union.
+  it('carries all ten topics and nine sweep prefixes (mountPoints and inventory have none — v5 sweeps `memories` twice over)', () => {
+    expect(REALTIME_TOPICS).toHaveLength(10);
+    expect(REALTIME_TOPICS.slice(7)).toEqual(['inventory', 'storytellerRounds', 'customToolInterventions']);
+    expect(ALL_REALTIME_PREFIXES).toHaveLength(9);
     // R-AB / L-6: the sweep's memories entry is v4's `queryKeys.memories.all`.
-    expect(ALL_REALTIME_PREFIXES[ALL_REALTIME_PREFIXES.length - 1]).toEqual(['memories']);
+    expect(ALL_REALTIME_PREFIXES).toContainEqual(['memories']);
+    // v4 `topic-map.ts:38-40`: the custom-tools namespace closes the sweep.
+    expect(ALL_REALTIME_PREFIXES[ALL_REALTIME_PREFIXES.length - 1]).toEqual(['customTools']);
   });
 });
 
@@ -235,6 +234,12 @@ describe('the outfit timelines (P4.D318 — v4 8d8618819 topic-map.ts row, as an
     for (const unscoped of queryKeysForTopic('chats') as readonly (readonly unknown[])[]) {
       expect(partialMatchKey([...chatKeys.wardrobeHistories('chat-7')], [...unscoped])).toBe(false);
     }
+  });
+
+  it('resolves customToolInterventions to the chat\'s held-runs key, and the whole custom-tools namespace unscoped', () => {
+    expect(queryKeysForTopic('customToolInterventions', 'chat-1')).toEqual([['customTools', 'chat-1', 'interventions']]);
+    expect(queryKeysForTopic('customToolInterventions')).toEqual([['customTools']]);
+    expect(ALL_REALTIME_PREFIXES).toContainEqual(['customTools']);
   });
 
   it('resolves inventory to no query key — the lists are signal-held and subscribe directly (P4.D330 R-2)', () => {

@@ -772,6 +772,95 @@ export interface ChatCustomToolRunRequest {
   asCharacterId?: string;
 }
 
+// === P4.D346: Pascal operator intervention (InterventionWire; append-only) ===
+// The four hold verbs P4.D345 serves (its order's "Contract `InterventionWire`"
+// block is the BINDING copy; v4 `839575d89`'s `?action=interventions` /
+// `intervention-preview` / `-reask` / `-resolve`). The bodies are read
+// STRUCTURALLY through `CoreClient.dispatchData` — no response variant is
+// pinned here; the view shapes live in `chat/custom-tool-interventions.api.ts`.
+
+/**
+ * What a draw could have produced, given the run's resolved parameters: the
+ * low and high ends, each inclusive unless flagged (v4 `lib/pascal/
+ * custom-tools.ts` `RunSpan`).
+ */
+export interface RunSpan {
+  min: number;
+  max: number;
+  minExclusive?: true;
+  maxExclusive?: true;
+}
+
+/** The random draw a run used — what a held run replays (v4 `RecordedDraw`). */
+export type RecordedDraw = { form: 'range'; unit: number } | { form: 'dice'; faces: number[] };
+
+/** One effect's pin (v4 `lib/pascal/intervention/overrides.ts` `EffectPinSchema`). */
+export interface EffectPin {
+  mode: 'auto' | 'on' | 'off';
+  value?: number | string | boolean;
+  items?: string[];
+  log?: string;
+}
+
+/**
+ * The operator's pins on a held run (v4 `InterventionOverridesSchema`): every
+ * key optional, a hidden field refused by the server. `effects` is keyed by
+ * the effect's index as a STRING (`^\d+$`).
+ */
+export interface InterventionOverrides {
+  params?: Record<string, number | string | boolean>;
+  roll?: number;
+  dice?: number[];
+  value?: number;
+  llmPrompt?: string;
+  llmAnswer?: { ok: boolean; output: string };
+  outcomeIndex?: number;
+  message?: string;
+  state?: 'success' | 'partial' | 'failure' | 'info';
+  chipLabel?: string;
+  title?: string;
+  visibility?: 'public' | 'whisper';
+  announcer?: 'pascal' | 'character';
+  effects?: Record<string, EffectPin>;
+}
+
+/** How the operator answers a hold (v4 `InterventionDecisionSchema`). */
+export type InterventionDecision =
+  | { kind: 'deal'; overrides: InterventionOverrides }
+  | { kind: 'as-rolled' }
+  | { kind: 'veto' };
+
+/** The chat's pending holds, oldest first (`GET ?action=interventions`) → `{holds}`. */
+export interface ChatCustomToolInterventionsListRequest {
+  type: 'chatCustomToolInterventionsList';
+  chatId: string;
+}
+
+/** Recompute a held run under the pins (`POST ?action=intervention-preview`) → `{preview}`. */
+export interface ChatCustomToolInterventionPreviewRequest {
+  type: 'chatCustomToolInterventionPreview';
+  chatId: string;
+  id: string;
+  overrides: InterventionOverrides;
+}
+
+/** Ask the oracle again under the pins (`POST ?action=intervention-reask`) → `{preview, consults}`. */
+export interface ChatCustomToolInterventionReaskRequest {
+  type: 'chatCustomToolInterventionReask';
+  chatId: string;
+  id: string;
+  overrides: InterventionOverrides;
+}
+
+/** Answer a hold (`POST ?action=intervention-resolve`) → `{resolved}`. */
+export interface ChatCustomToolInterventionResolveRequest {
+  type: 'chatCustomToolInterventionResolve';
+  chatId: string;
+  id: string;
+  decision: InterventionDecision;
+}
+// === end P4.D346 ===
+
 /**
  * One entry in the popup's roster (v4 custom-tools `route.ts:57` **plus
  * `mountPointId`**, the d68638b4 addition). Deliberately ODDS-FREE — the roll
@@ -2747,6 +2836,12 @@ export type CoreRequest =
   //     server side; the two REST legs are GET/POST /chats/{id}/custom-tools) ---
   | ChatCustomToolsListRequest
   | ChatCustomToolRunRequest
+  // === P4.D346 (InterventionWire) ===
+  | ChatCustomToolInterventionsListRequest
+  | ChatCustomToolInterventionPreviewRequest
+  | ChatCustomToolInterventionReaskRequest
+  | ChatCustomToolInterventionResolveRequest
+  // === end P4.D346 ===
   // --- The Settings surface (P4.6d implements the server side) ---
   | ChatSettingsUpdateRequest
   | { type: 'connectionProfileList' }
@@ -7838,6 +7933,22 @@ export interface CustomToolRunResult {
    * oracle carries `provider: 'bench', model: 'simulated'`.
    */
   llm?: LlmConsultRecord;
+  // === P4.D346: the run result's five new keys (InterventionWire; type-only — R-12) ===
+  /** The random draw this run used — what a held run replays. */
+  draw?: RecordedDraw;
+  /** What the raw draw could have been (dice: the total). Independent of any pin. */
+  rollSpan?: RunSpan;
+  /** What the value could have been after modifiers (dice: the total). Independent of any pin. */
+  valueSpan?: RunSpan;
+  /**
+   * The consult prompt as rendered for THIS run. Equal to `llm.prompt` on an
+   * ordinary run; on a replay it may differ from the prompt that produced the
+   * answer in use, which is how a held run knows its answer is out of date.
+   */
+  llmPromptRendered?: string;
+  /** When the outcome was pinned: the row the table itself would have picked. */
+  tableOutcomeIndex?: number;
+  // === end P4.D346 ===
 }
 
 /**
