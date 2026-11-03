@@ -194002,6 +194002,26 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
   - `chats_participants_tier2` OK; `characters_slim_tier2` OK.
   - `character_archive_tier2`: `character_detail_enrichment` now `result=ok` (red-first: the detail lacked `diagramStyle`). Its remaining diffs are the keystone's memory class (`pruneComplete`, `restored.memories`) and the R-D bundle key positions — both green on the union.
 
+### Commit G — the PUT's three keys and the fan-out (items 15, 16)
+
+- **The PUT:**
+  - `UPDATE_SCHEMA_KEYS` gains `canDrawDiagrams` / `diagramStyle` after `canChooseOutfit`.
+  - NEW `p4d349_update_issues` — the three Zod arms in shape order, answered through `Response::validation_error` BEFORE any write. Measured: v4 parses the whole physical sub-object (`name` min 1, the length caps). v5 does not re-validate it, and only the `humanoid` arm is ported; the rest stays the standing Zod-format-validator deferral, as do every other PUT key's Zod arms.
+  - The flip: `previous` = `read_current_physical_prompts(…)?.humanoid ?? true` (read BEFORE the update, only when the patch's physical object carries a boolean `humanoid` and the raw row has a vault). After the update and the default-prompt step comes NEW `fan_out_humanoid_flip`: silent when unchanged; otherwise `recompile_character_seats(reason: "humanoid flag changed")` + the DEBUG `{characterId, humanoid, chatsTouched, seatsRecompiled}`.
+- **The 400 bodies, measured from the oracle:**
+  - `{"error":"Validation error","details":[{"code":"invalid_value","values":["handDrawn","clean"],"path":["diagramStyle"],"message":"Invalid option: expected one of \"handDrawn\"|\"clean\""}]}`.
+  - `{… "details":[{"expected":"boolean","code":"invalid_type","path":["canDrawDiagrams"],"message":"Invalid input: expected boolean, received string"}]}`.
+  - The same at `["physicalDescription","humanoid"]`.
+- **The fan-out:** NEW `recompile_character_seats` + `CharacterSeatFanoutOptions` / `CharacterSeatFanoutResult` / `PrepareSeat`. v4 hands `prepareSeat` the chat AS LISTED (not `current`) — ported. `fan_out_subprompt_change` is the thin caller (`reason = "subprompt <id>"`, the selection filter, the strip as `prepare_seat` re-reading the chat on `true`).
+- **Behaviour change, measured in v4:** the early return moved into the generalised fan-out, so the subprompt INFO now ALSO fires (with zeros) when the chat listing fails. The old `log_tests` pin "the info line is NOT reached" inverted; it now pins the INFO's zero counts and the completion DEBUG's absence.
+- NEW target `quilltap::system_prompt_compiler::character_fanout` (R-4). The two old texts survive only as the negative asserts in `fanout.rs`'s `log_tests` (the order's gate grep "→ 0" conflicts with its own "negative assert per line"; the asserts win). No harness census enumerated the old texts (`grep -rn "subprompt fan-out" crates/quilltap-harness/tests` → none).
+- **Families:**
+  - `characters_mutations` +6 `p4d349_update_*` rows: three 200s OK; the three 400s byte-compared, OK. The Rust side compares the refusals outside `run`.
+  - `characters_update_tier2` OK; `characters_actions` OK.
+  - `subprompts_prompt_tier2` / `_storage_tier2` / `_routes`: RED on this base's `subprompts-*.db` pair (v4 at the pin answers `seatsRecompiled: 0` and fails the `compile_all_*` rows on the pre-re-widen fixture). **GREEN all three when run once with P4.D341's re-widened pair swapped in** (the files restored after; never committed). Green on the union.
+- **Capture pins (lib):** `fanout.rs` `log_tests` (moved; the trio's texts, keys and target; the old texts absent). `p4d349_humanoid_flip_tests` (2): a flip recompiles the seats and logs with the counts and `reason=humanoid flag changed`; an unchanged flag fans out nothing and logs nothing.
+- **NOT landed (named deferral):** a flip DIFFERENTIAL row on a seated character comparing the recompiled stack's `## Physical Appearance` after the flip (order item 15's last row). The unit pins cover the fan-out mechanics and the form-note bytes are pinned by `system_prompt_equivalence`; the end-to-end row is OPEN for the follow-ups round.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

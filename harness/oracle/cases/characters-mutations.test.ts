@@ -949,6 +949,46 @@ async function main(): Promise<void> {
       id: ARIA,
       body: { canChooseOutfit: true },
     },
+    // P4.D349 (v4 `6588972d5` / `b27e5089a`): the PUT's three new keys. The two
+    // diagram keys are vault-managed (properties.json, eight keys), a bad value
+    // is a Zod 400 at the parse (nothing written); `physicalDescription.humanoid`
+    // is written to physical-prompts.json, a non-boolean the same 400.
+    {
+      name: 'p4d349_update_can_draw_diagrams',
+      kind: 'update',
+      id: ARIA,
+      body: { canDrawDiagrams: true },
+    },
+    {
+      name: 'p4d349_update_diagram_style_clean',
+      kind: 'update',
+      id: ARIA,
+      body: { diagramStyle: 'clean' },
+    },
+    {
+      name: 'p4d349_update_diagram_style_crayon',
+      kind: 'update',
+      id: ARIA,
+      body: { diagramStyle: 'crayon' },
+    },
+    {
+      name: 'p4d349_update_can_draw_diagrams_string',
+      kind: 'update',
+      id: ARIA,
+      body: { canDrawDiagrams: 'yes' },
+    },
+    {
+      name: 'p4d349_update_humanoid_false',
+      kind: 'update',
+      id: ARIA,
+      body: { physicalDescription: { name: 'Spheres', mediumPrompt: 'seven interlocking brass spheres', humanoid: false } },
+    },
+    {
+      name: 'p4d349_update_humanoid_string',
+      kind: 'update',
+      id: ARIA,
+      body: { physicalDescription: { name: 'Spheres', humanoid: 'no' } },
+    },
     // [P4.D201 / v4 `baa85e19b`, bug 154] The character PUT's
     // `defaultSystemPromptId` chokepoint. Aria's baked prompts are `Backup`
     // (path-first) and `Explorer` (the standing default), so a move to `Backup`

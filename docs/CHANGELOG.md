@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(characters): the PUT's diagram and humanoid keys, and the identity-stack fan-out on a Humanoid flip (P4.D349)
+
+_Versions: core 0.0.1387._
+
+The character PUT accepts `canDrawDiagrams` and `diagramStyle` (routed to the vault's `properties.json`) and `physicalDescription.humanoid` (routed to `physical-prompts.json`). It refuses three things with v4's Zod 400 bytes, before any write: a non-boolean `canDrawDiagrams` (`invalid_type`), an unknown `diagramStyle` (`invalid_value`, `Invalid option: expected one of "handDrawn"|"clean"`), and a non-boolean `humanoid` (`invalid_type` at `["physicalDescription","humanoid"]`). When a PUT flips the vault's Humanoid flag, every LLM seat of the character gets its identity stack recompiled, and the PUT logs `[Characters v1] Humanoid flag changed; identity stacks recompiled`.
+
+The fan-out is now v4's generalised `recompile_character_seats`; the subprompt fan-out is a thin caller of it. Its three lines moved to the target `quilltap::system_prompt_compiler::character_fanout` with v4's texts and keys (`reason` replaces `subpromptId`): `Could not list chats for identity-stack fan-out`, `Failed to recompile a seat in an identity-stack fan-out`, and the new DEBUG `Identity-stack fan-out complete`. The subprompt INFO stays, and now also fires (with zero counts) when the chat listing fails, as in v4.
+
 #### 2026-11-03 — feat(characters): the diagram keys on the character list, the chat participant and the chat detail (P4.D349)
 
 _Versions: core 0.0.1386._

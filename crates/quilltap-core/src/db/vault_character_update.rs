@@ -663,7 +663,7 @@ fn empty_properties_default() -> CharacterVaultProperties {
 /// into `null` (WARN `Failed to read vault file`) and `parseVaultPhysicalPrompts`
 /// turns a malformed file into `null` — so an absent, unreadable or unparseable
 /// file all keep the renderer's `?? true`.
-fn read_current_physical_prompts(
+pub(crate) fn read_current_physical_prompts(
     mount: &Connection,
     mount_point_id: &str,
     character_id: &str,

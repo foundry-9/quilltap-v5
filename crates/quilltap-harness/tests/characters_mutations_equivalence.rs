@@ -654,6 +654,9 @@ fn characters_mutations_match_oracle() {
     // `failed` for its whole scope, so direct pushes would conflict.
     let mut extra: Vec<String> = Vec::new();
 
+    // P4.D349: the PUT's Zod 400 arms are compared outside `run` (which owns
+    // `failed` for its lifetime); asserted at the end.
+    let mut p4d349_refusals_failed: Vec<String> = Vec::new();
     let mut run = |name: &str, resp: Response| {
         let want = &oracle[name];
         if let Response::Error(e) = &resp {
@@ -722,6 +725,63 @@ fn characters_mutations_match_oracle() {
             json!({ "canChooseOutfit": true }),
         ));
         run("update_can_choose_outfit", r);
+    }
+    // P4.D349 (v4 `6588972d5` / `b27e5089a`): the PUT's three new keys — two
+    // vault-managed writes, the Humanoid physical write, and the three Zod 400s
+    // (bytes measured: `invalid_type` / `invalid_value`, nothing written).
+    for (name, scratch, body) in [
+        (
+            "p4d349_update_can_draw_diagrams",
+            "p4d349_cdd",
+            json!({ "canDrawDiagrams": true }),
+        ),
+        (
+            "p4d349_update_diagram_style_clean",
+            "p4d349_dsc",
+            json!({ "diagramStyle": "clean" }),
+        ),
+        (
+            "p4d349_update_diagram_style_crayon",
+            "p4d349_dsx",
+            json!({ "diagramStyle": "crayon" }),
+        ),
+        (
+            "p4d349_update_can_draw_diagrams_string",
+            "p4d349_cds",
+            json!({ "canDrawDiagrams": "yes" }),
+        ),
+        (
+            "p4d349_update_humanoid_false",
+            "p4d349_hf",
+            json!({ "physicalDescription": { "name": "Spheres", "mediumPrompt": "seven interlocking brass spheres", "humanoid": false } }),
+        ),
+        (
+            "p4d349_update_humanoid_string",
+            "p4d349_hs",
+            json!({ "physicalDescription": { "name": "Spheres", "humanoid": "no" } }),
+        ),
+    ] {
+        let (db, _scratch) = fresh_db(&spec, scratch);
+        let r = rt.block_on(characters::character_update(&db, &uid, ARIA, body));
+        if matches!(r, Response::Error(_)) {
+            // The Zod 400s: status + v4's `{error, details}` bytes, byte-compared.
+            let (status, got) = to_status_body(&r);
+            let want = &oracle[name];
+            if Some(status) != want["status"].as_i64()
+                || serde_json::to_string(&got).unwrap()
+                    != serde_json::to_string(&want["body"]).unwrap()
+            {
+                eprintln!(
+                    "[{name}] 400 MISMATCH: got {status} {got} want {} {}",
+                    want["status"], want["body"]
+                );
+                p4d349_refusals_failed.push(name.to_string());
+            } else {
+                eprintln!("[{name}] OK ({status}).");
+            }
+            continue;
+        }
+        run(name, r);
     }
     {
         // P4.6bh (blissful-einstein): the wardrobe-permission tri-states persist
@@ -1641,5 +1701,6 @@ fn characters_mutations_match_oracle() {
     }
 
     failed.extend(extra);
+    failed.extend(p4d349_refusals_failed);
     assert!(failed.is_empty(), "characters-mutations FAILED: {failed:?}");
 }

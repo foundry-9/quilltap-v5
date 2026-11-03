@@ -2237,6 +2237,10 @@ const UPDATE_SCHEMA_KEYS: &[&str] = &[
     // Vault-managed (`properties.json`) plain boolean — named here or the Zod strip
     // would drop it before `update()` could route it to the vault (v4 `put.ts:69`).
     "canChooseOutfit",
+    // P4.D349 (v4 `6588972d5`, `put.ts:74-76`): diagrams in the Salon —
+    // vault-managed (`properties.json`) for the same reason.
+    "canDrawDiagrams",
+    "diagramStyle",
     // Wardrobe-permission tri-states (null = inherit global, true/false = override).
     // Real DB columns; omitting them here would strip the key before it reached
     // `update()`, so the editor toggles would silently never persist (v4 `put.ts:74`).
@@ -2292,7 +2296,42 @@ pub async fn character_update(
         if characters_read::find_by_id_raw(main, &cid)?.is_none() {
             return Ok(Err(not_found("Character")));
         }
+        // P4.D349: v4's `updateCharacterSchema.parse` refuses a bad diagram key
+        // or a non-boolean `physicalDescription.humanoid` with the Zod 400,
+        // before any write. Only these three arms are ported; the rest of the
+        // schema stays the standing Zod-format-validator deferral.
+        let issues = p4d349_update_issues(&body);
+        if !issues.is_empty() {
+            return Ok(Err(Response::validation_error(
+                crate::api::zod_issues::zod_issue_details(&issues),
+            )));
+        }
         let mut patch = build_update_patch(&body);
+        // v4 `put.ts:203-212` — the Humanoid flag is baked into every chat's
+        // cached identity stack for this character, which a character edit does
+        // not otherwise invalidate. Read the vault's current value BEFORE the
+        // update so a flip can be fanned out after it.
+        let incoming_humanoid = patch
+            .get("physicalDescription")
+            .and_then(|p| p.get("humanoid"))
+            .and_then(Value::as_bool);
+        let previous_humanoid = match incoming_humanoid {
+            Some(_) => characters_read::find_by_id_raw(main, &cid)?
+                .as_ref()
+                .and_then(|c| c.get("characterDocumentMountPointId"))
+                .and_then(Value::as_str)
+                .filter(|m| !m.is_empty())
+                .map(|mount_point_id| {
+                    vault_character_update::read_current_physical_prompts(
+                        mount,
+                        mount_point_id,
+                        &cid,
+                    )
+                    .and_then(|c| c.humanoid)
+                    .unwrap_or(true)
+                }),
+            None => None,
+        };
         // v4 `put.ts:145` — destructured OUT of the generic payload. Absent stays
         // absent; `Value::Null` is the clear; a string names a prompt.
         let raw_default_prompt = patch.remove("defaultSystemPromptId");
@@ -2339,6 +2378,18 @@ pub async fn character_update(
             }
         }
 
+        // v4 `put.ts:226-234` — AFTER the update and the default-prompt step.
+        if let (Some(previous), Some(incoming)) = (previous_humanoid, incoming_humanoid) {
+            fan_out_humanoid_flip(
+                main,
+                mount,
+                &cid,
+                previous,
+                incoming,
+                &crate::subprompts::fanout::ProductionFanoutSeams,
+            );
+        }
+
         // Reload through the overlay (managed fields read back from the vault).
         Ok(Ok(
             characters_read::find_by_id(main, mount, &cid)?.unwrap_or(Value::Null)
@@ -2350,6 +2401,91 @@ pub async fn character_update(
         Ok(Err(r)) => r,
         Err(e) => db_error_response(e),
     }
+}
+
+/// P4.D349: the three refusals of v4's `updateCharacterSchema` this lane ports,
+/// in the schema's shape order (`put.ts:74-76`, `:93-101`): a present
+/// non-boolean `canDrawDiagrams` (`invalid_type`), a present `diagramStyle`
+/// outside `DIAGRAM_STYLES` (`invalid_value`), and a present non-boolean
+/// `physicalDescription.humanoid` (`invalid_type` at `["physicalDescription",
+/// "humanoid"]`). Bytes measured from the oracle (`characters-mutations`'
+/// `p4d349_update_*` rows).
+fn p4d349_update_issues(body: &Value) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::{key, ZodIssue};
+    let mut issues = Vec::new();
+    let Some(obj) = body.as_object() else {
+        return issues;
+    };
+    if let Some(v) = obj.get("canDrawDiagrams") {
+        if !v.is_boolean() {
+            issues.push(ZodIssue::invalid_type(
+                "boolean",
+                vec![key("canDrawDiagrams")],
+                Some(v),
+            ));
+        }
+    }
+    if let Some(v) = obj.get("diagramStyle") {
+        if !v
+            .as_str()
+            .is_some_and(|s| crate::characters::diagrams::DIAGRAM_STYLES.contains(&s))
+        {
+            issues.push(ZodIssue::invalid_value(
+                &crate::characters::diagrams::DIAGRAM_STYLES,
+                vec![key("diagramStyle")],
+            ));
+        }
+    }
+    if let Some(v) = obj
+        .get("physicalDescription")
+        .filter(|p| p.is_object())
+        .and_then(|p| p.get("humanoid"))
+    {
+        if !v.is_boolean() {
+            issues.push(ZodIssue::invalid_type(
+                "boolean",
+                vec![key("physicalDescription"), key("humanoid")],
+                Some(v),
+            ));
+        }
+    }
+    issues
+}
+
+/// v4 `put.ts:226-234`: when a PUT flips the vault's Humanoid flag, recompile
+/// the identity stack of every LLM seat of the character (the flag is baked
+/// into each chat's cached stack) and log `[Characters v1] Humanoid flag
+/// changed; identity stacks recompiled` `{characterId, humanoid, chatsTouched,
+/// seatsRecompiled}`. Silent when the flag is unchanged.
+pub(crate) fn fan_out_humanoid_flip(
+    main: &rusqlite::Connection,
+    mount: &rusqlite::Connection,
+    character_id: &str,
+    previous: bool,
+    incoming: bool,
+    seams: &dyn crate::subprompts::fanout::FanoutSeams,
+) {
+    if previous == incoming {
+        return;
+    }
+    let fanout = crate::subprompts::fanout::recompile_character_seats(
+        main,
+        mount,
+        character_id,
+        crate::subprompts::fanout::CharacterSeatFanoutOptions {
+            reason: "humanoid flag changed",
+            seat_filter: None,
+            prepare_seat: None,
+        },
+        seams,
+    );
+    tracing::debug!(
+        characterId = %character_id,
+        humanoid = incoming,
+        chatsTouched = fanout.chats_touched,
+        seatsRecompiled = fanout.seats_recompiled,
+        "[Characters v1] Humanoid flag changed; identity stacks recompiled"
+    );
 }
 
 /// Build the slim+managed patch from an update body: keep only
@@ -3345,3 +3481,111 @@ mod p4d321_wardrobe_images_tests {
     }
 }
 // === end P4.D321 ===
+
+#[cfg(test)]
+mod p4d349_humanoid_flip_tests {
+    //! v4 `put.ts:226-234`: the Humanoid flip's fan-out and its DEBUG, with
+    //! the silence leg (an unchanged flag fans out nothing and logs nothing).
+    //! The seated pair is the subprompts fixture (Aria holds two LLM seats).
+    use super::*;
+    use crate::db::Writer;
+    use crate::subprompts::fanout::FanoutSeams;
+    use crate::test_support::captured_with;
+    use std::sync::Mutex;
+
+    const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR_A: &str = "a1000000-0000-4000-8000-0000000000a1";
+    const LINE: &str = "[Characters v1] Humanoid flag changed; identity stacks recompiled";
+
+    struct Recorder(Mutex<Vec<String>>);
+    impl FanoutSeams for Recorder {
+        fn compile(
+            &self,
+            _m: &rusqlite::Connection,
+            _mo: &rusqlite::Connection,
+            _chat: &Value,
+            pid: &str,
+        ) -> Result<(), crate::db::DbError> {
+            self.0.lock().unwrap().push(pid.to_string());
+            Ok(())
+        }
+        fn publish_chat(&self, _chat_id: &str) {}
+        fn publish_character(&self, _character_id: &str) {}
+    }
+
+    fn open_pair(dir: &tempfile::TempDir) -> (Writer, Writer) {
+        let fx = |n: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../quilltap-web/tests/fixtures")
+                .join(n)
+        };
+        let main = dir.path().join("main.db");
+        let mount = dir.path().join("mount.db");
+        std::fs::copy(fx("subprompts-main.db"), &main).unwrap();
+        std::fs::copy(fx("subprompts-mount.db"), &mount).unwrap();
+        let main_w = Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        crate::test_support::ensure_p4d171_columns(main_w.connection());
+        (main_w, Writer::open_writable(&mount, TEST_PEPPER).unwrap())
+    }
+
+    #[test]
+    fn a_flip_recompiles_every_llm_seat_and_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let seams = Recorder(Mutex::new(vec![]));
+        let ((), lines) = captured_with(|| {
+            fan_out_humanoid_flip(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                true,
+                false,
+                &seams,
+            )
+        });
+        let compiled = seams.0.lock().unwrap().len();
+        assert!(compiled > 0, "the character's LLM seats were recompiled");
+        let l = lines
+            .iter()
+            .find(|l| l.contains(LINE))
+            .unwrap_or_else(|| panic!("no flip line in {lines:?}"));
+        assert!(l.starts_with("DEBUG quilltap_core::api::characters"), "{l}");
+        for needle in [
+            format!("characterId={CHAR_A}"),
+            "humanoid=false".to_string(),
+            format!("seatsRecompiled={compiled}"),
+            "chatsTouched=".to_string(),
+        ] {
+            assert!(l.contains(&needle), "{l} lacks {needle}");
+        }
+        assert!(
+            lines
+                .iter()
+                .any(|l| l.contains("reason=humanoid flag changed")),
+            "the fan-out ran with v4's reason: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_flag_is_silent() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let seams = Recorder(Mutex::new(vec![]));
+        let ((), lines) = captured_with(|| {
+            fan_out_humanoid_flip(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                false,
+                false,
+                &seams,
+            )
+        });
+        assert!(seams.0.lock().unwrap().is_empty());
+        assert!(!lines.iter().any(|l| l.contains(LINE)), "{lines:?}");
+        assert!(
+            !lines.iter().any(|l| l.contains("identity-stack fan-out")),
+            "no fan-out ran: {lines:?}"
+        );
+    }
+}
