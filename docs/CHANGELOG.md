@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D351 lane record and status header — the Novel template server lane complete
+
+_Docs-only change._
+
+The lane record (red-first counts, mutation proofs, the measured wire contract, the corrections, HANDOFFs and the gate) is appended to `status-log.md`. The order's status header now reads LANE COMPLETE. Tier 2 item 16 is partial: the whole-entity template twin beyond the three new keys is still open.
+
 #### 2026-11-02 — feat(templates): the backup, restore, .qtap import and export carry the Novel template's narration, unmarked style and markdownAsterisks (P4.D351)
 
 _Versions: core 0.0.1384._
