@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(spa): diagrams e2e — the denied-clipboard toast and a live theme re-draw; the live-page fieldset premise narrowed
+
+_Versions: SPA 0.5.911._
+
+`e2e/diagrams-flow.spec.ts` gains two beats. With no clipboard permission, Copy PNG raises v4's `The picture could not be put on the clipboard.` toast. A live Light → Dark switch through the nav theme switcher re-draws the visible drawing, and switching back to Light restores the drawing's markup. The Aurora beats' `characterList` read takes the `{ characters }` envelope. `character-detail.spec.ts`'s live-page case now looks for the page-wide read-only wrapper (`fieldset.opacity-90`): the Draws-diagrams card carries its own Drawing style fieldset.
+
 #### 2026-11-03 — docs(porting): P4.D353 records its Tier-1 commit for P4.D359
 
 _Docs-only change._

@@ -268,6 +268,23 @@ test.describe('P4.D353 — diagrams in the Salon', () => {
     await page.keyboard.press('Escape');
   });
 
+  test('(5b) Copy PNG without the clipboard permission raises v4’s clipboard toast', async ({ page }) => {
+    const errors: string[] = [];
+    page.on('console', (m) => {
+      if (m.type() === 'error' && m.text().includes('Failed to copy diagram as PNG')) errors.push(m.text());
+    });
+    await page.context().clearPermissions();
+    await openChat(page, soloChatId);
+    await expect(row(page, 'Diagram the first').locator('.qt-diagram-canvas svg')).toBeVisible({ timeout: 30_000 });
+    await row(page, 'Diagram the first').getByRole('button', { name: 'Enlarge' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Diagram, enlarged' });
+    await dialog.getByRole('button', { name: /Copy PNG/ }).click();
+    await expect(page.getByText('The picture could not be put on the clipboard.')).toBeVisible({ timeout: 15_000 });
+    await expect(dialog.getByRole('button', { name: /Copy PNG/ })).toBeEnabled();
+    expect(errors.length).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+  });
+
   test('(6) a streaming reply keeps its fence as code; the settled row draws it', async ({ page }) => {
     test.setTimeout(120_000);
     await openChat(page, soloChatId);
@@ -286,6 +303,30 @@ test.describe('P4.D353 — diagrams in the Salon', () => {
     await expect(thinking).toHaveCount(1);
     await expect(thinking.locator('pre > code.language-mermaid')).toHaveCount(1);
     await expect(thinking.locator('qt-diagram-block')).toHaveCount(0);
+  });
+
+  test('(9) a live theme switch re-draws the visible diagram in the new palette', async ({ page }) => {
+    // The server's themePreference is the source of truth the shell syncs to,
+    // so show the nav theme switcher there (localStorage alone is overridden).
+    await dispatchRaw({ type: 'unlock', passphrase: E2E_PASSPHRASE });
+    await dispatchRaw({
+      type: 'chatSettingsUpdate',
+      settings: { themePreference: { activeThemeId: null, colorMode: 'light', showNavThemeSelector: true } },
+    });
+    await openChat(page, soloChatId);
+    const svg = row(page, 'Diagram the first').locator('.qt-diagram-canvas svg');
+    await expect(svg).toBeVisible({ timeout: 30_000 });
+    // The switcher's menu stays open across picks: open it once.
+    await page.getByRole('button', { name: 'Themes' }).click();
+    const pick = (mode: string) => page.getByRole('menuitemradio', { name: mode }).click();
+    await pick('Light');
+    await expect(svg).toBeVisible({ timeout: 30_000 });
+    const light = await svg.evaluate((el) => el.outerHTML);
+    await pick('Dark');
+    await expect.poll(() => svg.evaluate((el) => el.outerHTML), { timeout: 30_000 }).not.toBe(light);
+    // Back to Light for whatever runs next on this instance.
+    await pick('Light');
+    await expect.poll(() => svg.evaluate((el) => el.outerHTML), { timeout: 30_000 }).toBe(light);
   });
 
   // ---- gated: P4.D349 ----------------------------------------------------
@@ -345,7 +386,8 @@ function scrollTopOf(canvas: Locator): Promise<number> {
 }
 
 async function characterId(name: string): Promise<string> {
-  const list = ((await dispatchRaw({ type: 'characterList' })).data as unknown as { id: string; name: string }[]) ?? [];
+  const data = (await dispatchRaw({ type: 'characterList' })).data ?? {};
+  const list = (data['characters'] as { id: string; name: string }[] | undefined) ?? [];
   const id = list.find((c) => c.name === name)?.id ?? '';
   expect(id, `${name} on the pair`).toBeTruthy();
   return id;

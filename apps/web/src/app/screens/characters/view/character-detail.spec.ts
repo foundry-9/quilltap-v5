@@ -592,7 +592,9 @@ describe('CharacterDetail — the archived read-only page (P4.D64)', () => {
 
   it('leaves a live character unfieldsetted', async () => {
     const fixture = await render(stubClient(character({})));
-    expect(fixture.nativeElement.querySelector('fieldset')).toBeNull();
+    // The page-wide read-only wrapper — not the Draws-diagrams card's own
+    // "Drawing style" fieldset (P4.D353, v4's byte), which a live page carries.
+    expect(fixture.nativeElement.querySelector('fieldset.opacity-90')).toBeNull();
     expect(fixture.nativeElement.querySelector('qt-character-details-tab')).toBeTruthy();
   });
 
