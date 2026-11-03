@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D358 lane record — LANE COMPLETE
+
+_Docs-only change._
+
+The P4.D358 order's status header reads LANE COMPLETE with its four commits, and its lane record joins `status-log.md`: the gate figures, the axe baseline per page with each row's owner, the handoff table at close, the skip-link base-href finding, and the shared-server collision.
+
 #### 2026-11-02 — fix(spa): the skip link focuses `<main>` without a navigation, and the axe sweep measures the right pages
 
 _Versions: SPA 0.5.911._

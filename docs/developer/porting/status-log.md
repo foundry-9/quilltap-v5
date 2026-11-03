@@ -193888,6 +193888,188 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+
+## P4.D358 — the WCAG semantics lane (2026-11-02) — LANE COMPLETE
+
+Branch `claude/p4.d358-wcag-semantics-8976915ea` (worktree `.claude/worktrees/p4d358`), cut from `main` `8976915ea`.
+The session started on the main checkout at `8976915ea` and moved to the worktree before any edit. SPA only; no crate touched. Pinned at `236c04e35`.
+
+### Probe + pin
+- **§2 probe** (2026-11-02 12:59 CST, an observation under the pin rule): v4 `main` is 40 commits past `236c04e35`; the newest observed is `94f041764` ("UI: WCAG 2.2 AA pass across bundled themes (release checklist 13) (#129)"). `bugfix` is 53 past. The tree is CLEAN, on branch `main`. CONTINUED.
+- **Pin**: `/tmp/qt-v4-pin-p4d358-236c04e35`. `rev-parse` = `236c04e35ab23ccc604fd188e5b73d0141066697`; `package.json` = `4.12.0-dev.0`. Read-only: no symlinks and no v4 script run.
+
+### Commits
+| sha | what | SPA |
+|---|---|---|
+| `5b9ed38dc` | **the toast commit** (cherry-pickable, R-10): container `role="status" aria-live="polite" data-toast-container`, error toasts `role="alert"`, NEW `e2e/support/toasts.ts`, the 37 e2e lines in 19 files + 5 unit-spec lines + 3 comments | 0.5.908 |
+| `0c27b025f` | items 2–7: `qtDialogFocus`, `qt-modal` R1 + `closeOnEscape`, the 13 own-Escape hosts, the gated hosts, the slide-over, the hand-rolled overlays, `activateOnKey`, the dialog-roles table + spec | 0.5.909 |
+| `7f5e66067` | items 8–18 + Tier 2.1 / 2.2: rows/tiles, the name sweep, `check-a11y-names.mjs`, the skip link, `ReplyAnnouncer`, Document Mode, the participant card, markdown-field, terminal F6, copy-id, H-in-1, visibility-section, the axe project | 0.5.910 |
+| `3627defed` | the skip link's `SKIP_LINK_BASE_HREF` fix + 2 spec cases; the axe sweep's page premises, 30 s action timeout and transitions-off measurement; `known-violations.json` baselined; five e2e specs select by role | 0.5.911 |
+
+### Red-first counts (new cases failing on main, then green)
+- `ui/toast.spec.ts`: 6 red (the 3 new cases plus the 3 cases whose selector moved).
+- `ui/modal.spec.ts`: compile-red on main (NG8002, no `closeOnEscape` input). 7 new cases.
+- `ui/slide-over-panel.spec.ts`: 4 of 4 new cases red.
+- `ui/dialog-focus.spec.ts`, `ui/activate-on-key.spec.ts`, `chat/reply-announcer.spec.ts`, `terminal/terminal.spec.ts`: new files, and every symbol they import is absent on main. 11, 4, 7 and 5 cases respectively.
+- The per-overlay specs (25 files): 40 of 42 new cases red on main. The two exceptions are guards that pass by design: the whisper textarea's "Escape closes exactly once", and the Green Room's "Escape does not close".
+- The remaining specs: 14 of 15 new cases red. The exception is the gallery's "no attributes without `onSelectImage`" regression guard. The specs are participant-card +2, document-pane +3, image-gallery +4, file-manager +1, NEW store-card, file-table-opener +1, NEW copy-chat-id-button, and NEW shell (source-reading, 2).
+- `ui/dialog-roles.spec.ts`: every role-less or unlinked row is red on main. 32 rows run; 3 are skipped with an owner.
+- `markdown-field.spec.ts` +2, `visibility-section.spec.ts` +1, `defaults-tab.spec.ts` +1, NEW `ui/model-selector.spec.ts` (3).
+
+### Censuses
+- `check-a11y-names.mjs`: on main **143 offenders in 76 files, 651 form controls** (planning figure 143 / 676 / 73). On this branch it reports **0 outside the allowlist** (648 controls). Inside the allowlist: **P4.D352 13**, **P4.D359 10**. `--self-test` 25 of 25, exit 0.
+- `role="dialog"|"alertdialog"` (non-spec): 25 → 38. `aria-labelledby` (non-spec): 5 → 75.
+- The `role="toast-container"` grep: 45 → 0. That covers the 37 e2e lines, 5 unit-spec lines and 3 source comments; the only remaining mention is a docblock line in `e2e/support/toasts.ts` that names the retired role.
+- `keydown.escape` beside `<qt-modal`: 13 → 5:
+  - `custom-tools-popup.ts` and `scenario-browser-dialog.ts` keep their own handler and bind `[closeOnEscape]="false"`;
+  - `item-folder-picker-dialog.ts` keeps only the inner new-folder input's `escapeCapture` stopPropagation;
+  - `salon-conversation.ts` (the terminal-focus exit, P4.D344) and `inventory-control-dialog.ts` (H-out-7, P4.D359) are sibling files.
+
+### The 13 own-Escape hosts
+- **Listener deleted, now owned by `qt-modal`:**
+  - `save-image-dialog.ts` (the R-C local Escape is retired; the portal stays);
+  - `wardrobe-reference-picker.ts` and `inventory-reference-picker.ts` (default);
+  - `library-file-picker-modal.ts` (`!linking()`);
+  - `inventory-transfer-dialog.ts` and `inventory-instantiate-dialog.ts` (`!working()`);
+  - `inventory-item-editor.ts` (`!saving() && !viewing()`);
+  - `carrying-now-pane.ts` (default);
+  - `item-folder-picker-dialog.ts` (`!working()`).
+- **Kept, with `[closeOnEscape]="false"`:** `custom-tools-popup.ts` (stops propagation) and `scenario-browser-dialog.ts` (window capture + stop + preventDefault).
+- **Sibling-owned:** `inventory-control-dialog.ts` (H-out-7) and `salon-conversation.ts` (H-out-10, a note).
+
+### Gated hosts (v4's `closeOnEscape=` / `useEscapeKey` gate)
+- `chat-project-modal` `!saving()`.
+- `file-conflict-dialog` `!resolving()`.
+- `file-delete-confirmation` `!isDeleting()`.
+- `move-to-project-dialog` `!saving()`.
+- `orphan-cleanup-dialog` `!isProcessing()`.
+- `scenario-builder-dialog` `!running() && !saveOpen()`. Its "has no counterpart" note is retired.
+- `search-replace-modal` `!executing()`.
+- `wardrobe-transfer-dialog` `!working()`.
+- `library-file-picker-modal` `!linking()`.
+- `item-folder-picker-dialog` `!working()`.
+- `generate-image-dialog` `!generating()`.
+- `archive-character-dialog` and `rehydrate-bundle-dialog` `!working()`.
+- **Default true** (v4 `isOpen`): `avatar-picker-modal` (v5 has no nested upload dialog), `task-details-modal`, `import-dialog`, `character-import-dialog`.
+- **NO-COUNTERPART** (absent by stem): the SillyTavern chat-import wizard (`components/import/import-wizard.tsx` and `memory-creation-dialog.tsx`), `ExportKeysDialog` / `ImportKeysDialog`, the wardrobe `import-from-image-modal`, and `image-generation-dialog` / `image-upload-dialog`.
+
+### The overlay table, final state
+- **Already role-bearing, now carrying the full R1 set:** `role` on the CARD, `aria-modal`, the title link (`mintDialogId()`, one app-wide counter `qt-dialog-<n>` in `ui/dialog-focus.ts`), `tabindex="-1"` and `qtDialogFocus`.
+  - The rows: memory-cascade (`alertdialog`, Escape NEW), image-detail-modal (`aria-label` `Image viewer: <filename>`), photo-gallery-modal, progression-editor (Escape NEW, `!saving()`), ai-import-wizard, external-prompt-dialog, external-prompt-result-dialog, character-optimizer, ai-wizard (+ `aria-label="Close"`).
+  - search-dialog: the panel carries `aria-label="Search"`, and so does the input.
+  - wardrobe-mode-change-prompt: `alertdialog`, Escape NEW.
+  - destination-picker and the workbench conflict dialog (`alertdialog`, `conflictTitleId`, no Escape): role MOVED from the overlay to the card. The destination picker's Escape is NEW.
+  - help-dialog: `aria-label` → `aria-labelledby`, Escape NEW while open (R-9: Help stays modal).
+  - bulk-character-replace, create-npc, merge-conversation, reattribute and add-character: Escape NEW, each with v4's gate.
+  - whisper: document Escape NEW. The textarea's Escape now `preventDefault`s, so one key closes once.
+  - maintenance-dialog and memory-digest-viewer: Escape NEW. The P4.D300 L-4 and P4.D276 R-H "transcribed as v4 writes it" idioms are RETIRED, with their headers rewritten.
+  - image-modal: `aria-label` `Image viewer: <filename>`. It has no v4 twin, but the component holds a filename, so Tier 2.5 resolves.
+  - green-room: NO Escape (v4 `closeOnEscape={false}`).
+  - avatar-picker: `aria-label` → `aria-labelledby`, Escape NEW, ungated (no nested upload).
+  - almanack-report-dialog: newly linked to its filename `<h2>`.
+  - full-screen-image-viewer, photos-page and startup-screen: `tabindex` + focus only.
+  - alert-modal: `aria-labelledby="qt-alert-modal-message"` on the message `<p>` (a static id; the host is a singleton).
+- **Recorded divergence** `V4_DANGLING_LABELLEDBY`: in `file-preview-modal`, v4 points at `file-preview-title`, an id no element carries. v5 links the visible filename.
+
+### The divergences and records
+- `MODAL_ESCAPE_NO_STOP_PROPAGATION`: stacked modals both close on one Escape, pinned in `modal.spec.ts`.
+- `DIALOG_FOCUS_DEV_WARN`: `console.warn` on a host without `tabindex="-1"`.
+- `FOCUSABLE_ONE_CONSTANT`: `DIALOG_FOCUSABLE` is reused by the terminal.
+- `CENSUS_TITLE_COUNTS_AS_NAME`.
+- **New, `CENSUS_CONTENT_NAMES_ROLE_BUTTON`:** a `role="button"` / `"radio"` / `"switch"` element with its own text is named by its content, as the platform names it. v4's `role="button"` spans carry no `aria-label`, so requiring one would mean inventing a string. Dialogs are never content-named.
+- **The census blanks HTML comments** (preserving length). A sweep agent found `<select>` mentioned inside comments that the scan counted as controls.
+- **`V5_ONLY_CONTROL`** (R4, no invented string):
+  - the image-profile JSON `-parameters` textarea;
+  - the file-manager's hidden upload input (`sr-only` `Upload`) and rename input (`sr-only` `Rename`);
+  - the ai-import file input (`aria-labelledby` → its `Upload Source Files` heading);
+  - the `.qtap` import and backup-restore file inputs, labelled by their visible captions.
+- **Document Mode:** v5's single textarea serves both of v4's, so it takes v4's byte per mode: `Document source` for markdown source view, `Document content` for plain text. This amends the order's "`Document content` has no twin".
+- **Order correction 4 amended:** `external-prompt-result-dialog.ts` already closed on a document Escape on main (`host: '(document:keydown.escape)': 'onClose()'`). `memory-digest-viewer.ts` confirmed absent.
+- **Tier 2.3:** CONVERGED. The character card's name sits inside its `routerLink` anchor. Note: in tab mode the anchor's `routerLink` is null, so it has no `href` and is not a Tab stop (v4 keeps the href and `preventDefault`s). This is recorded, not fixed (not in this order's hunks).
+- **Tier 2.4:** the second pass found no further twins beyond the NO-COUNTERPARTs above.
+- **NO-COUNTERPART / NO-PORT** (Tier 3.1 / 3.2):
+  - the footer `max-sm:pl-14` (no shell footer);
+  - `ExportKeysDialog` / `ImportKeysDialog` (the API-key export / import surface is unported);
+  - the wardrobe `import-from-image-modal`;
+  - `plugins/dist` rebuilds;
+  - `58120a7fe`'s README / knip / `create-quilltap-theme` / `theme-storybook` / `toast-stacking.test.ts` (v5's `toast-stacking-flow` selects by class);
+  - `scripts/generate-icon-css.ts`.
+
+### HANDOFFs (state at close)
+| # | From → to | Exact bytes | State at P4.D358 close |
+|---|---|---|---|
+| H-in-1 | P4.D344 → P4.D358 | `screens/settings/system/llm-logs-card.ts`: `STORYTELLER_BID: 'Storyteller Bid',` after `SCENARIO_BUILDER` (v4 `components/tools/llm-logs-card.tsx:47` at the pin) | **applied** |
+| H-in-2 | P4.D346 → unifier | `chat/custom-tool-intervention-dialog.ts` `<qt-modal … [closeOnEscape]="false">` (v4 `CustomToolInterventionDialog.tsx:280`) — the input exists on this branch | pending (unifier) |
+| H-out-1 | → P4.D344 | `salon-conversation.ts` `.qt-chat-main` first two children: `<h1 class="sr-only">{{ chat()?.title \|\| 'The Salon' }}</h1>` then `<qt-reply-announcer [messages]="<the rendered feed>" [nameFor]="announcerNameFor" />`; import `ReplyAnnouncer` from `../../chat/reply-announcer`; class member `protected readonly announcerNameFor = (pid: string \| null \| undefined): string \| undefined => pid ? this.chat()?.participants.find((p) => p.id === pid)?.character?.name : undefined;` (v4 `SalonView.tsx:1341-1344, :1581-1583`) | pending |
+| H-out-2 | → P4.D352 | `chat/chat-composer.ts:498` `aria-label="Message (Markdown source)"`; `editor/rich-editor.ts:79` default `'Editor'` → `'Markdown editor'` (+ `role="group"` on the frame if rich-editor renders one — v5's `markdown-field.ts` host now carries it); `smart-typography-settings.ts` `aria-label="Try smart typography"`; `template-delimiter-editor.ts` (11 census offenders) + `template-form-modal.ts` (2) — v4 `roleplay-templates/index.tsx` ids `-underline`, `-border`, `-font`, `-default-template`, `-name`, `-description`, `-narration-delimiter`, `-narration-open`, `-narration-close`, `-unmarked-style`, `-delim-${index}-{kind,name,button,style,marker,tag-open,token}` | pending (allowlisted) |
+| H-out-3 | → P4.D346 | `builder-form.ts` / `workbench-library.ts` / `automation-settings.ts` (`qt-checkbox mt-1`, `2041bb875`) / `custom-tool-intervention-dialog.ts` — the real census finds ZERO offenders in these four today, so none is allowlisted; R-state recorded only | pending (no census row) |
+| H-out-4 | → P4.D359 | `memory/memory-list.ts:214` digest dialog: `aria-labelledby` → its title + `tabindex="-1" qtDialogFocus` + Escape while open; `:82` `aria-label="Search memories"`, `:90` `aria-label="Sort memories by"`, `:106` `aria-label="Filter by source"` (v4 `memory-list.tsx`, `eed72d60c`) | pending (allowlisted; dialog-roles row skipped) |
+| H-out-5 | → P4.D359 | `wardrobe/wardrobe-item-editor.ts`: R1 whole + Escape `!showKeepResetPrompt` (dialog-roles row skipped); `wardrobe/equipped-slot-row.ts:85` `` [attr.aria-label]="'Search ' + <slot label>.toLowerCase() + ' items'" `` (v4 `` `Search ${WARDROBE_SLOT_META[slot].label.toLowerCase()} items` ``); `wardrobe/wardrobe-control-dialog.ts:155` the hand-rolled `role="dialog"` card needs `aria-labelledby` → its title (v4 renders it inside `BaseModal`, so it is named by the BaseModal title) + `tabindex="-1" qtDialogFocus`; `screens/characters/edit/appearance-tab.ts:98` the Name `<label>` → `for`/`id` (R4) | pending (allowlisted) |
+| H-out-6 | → P4.D359 | `brahma/brahma-console-dialog.ts` → R2 on `ui/floating-dialog.ts`: `role="dialog" aria-modal="false" [attr.aria-labelledby]`, `tabindex="-1"`, `qtDialogFocus [qtDialogTrap]="false"`, close `aria-label="Close"`, Escape inside closes (stopPropagation), Escape elsewhere only while `!document.querySelector('[aria-modal="true"]')`, both skip `defaultPrevented`; `brahma/help-composer.ts:31` `aria-label="Message"` (v4 `HelpChatComposer.tsx:60`) | pending (allowlisted; dialog-roles row skipped) |
+| H-out-7 | → P4.D359 | `inventory/inventory-control-dialog.ts:101` add `[closeOnEscape]="false"` to its `<qt-modal>` — the host keeps its own `:93` Escape listener + `onEscape()` `:502`, which closes an open overlay / confirm FIRST. Without it Escape closes the whole dialog: `inventory-control-dialog.spec.ts` 2 reds on this branch, measured green 100/100 with the one attribute (scratch edit, reverted) | pending (union red until applied) |
+| H-out-8 | → P4.D359 | `images/standalone-generate-image-dialog.ts`: `[closeOnEscape]="!<generating>"` on its `<qt-modal>`; `:116` `aria-label="Search characters"` (v4 `GenerateImageDialog.tsx`); `screens/generate-image/generate-image-page.ts:124` `aria-label="Search characters"` + its two captions `<label for>` `-f0` / `-f1` (v4 `GenerateImageView.tsx`, `eed72d60c`) | pending (allowlisted) |
+| H-out-9 | → P4.D359 | keep a `PRONOUN_PRESETS` re-export at `character-form.ts` if it moves | pending |
+| H-out-10 | → P4.D344 (note) | `salon-conversation.ts:719` `<qt-modal title="Remove Character">` now closes on Escape by default — no edit | n/a |
+| H-out-11 | → P4.D353 | `chat/message-row.ts:189` `' (overheard)'` appended when `isOverheardWhisper()` (v4 `MessageRow.tsx:388`) | pending (in P4.D353's order) |
+| H-out-12 | → P4.D357 | none — the literal class `qt-skip-link` (emitted in `shell/shell.ts`) | transient: unstyled until the union |
+| H-out-13 | → P4.D360 | none | n/a |
+| H-out-15 | → P4.D353 | `screens/characters/edit/character-edit.spec.ts:179` ``querySelector(`[aria-label="${label}"]`)`` → ``querySelector(`qt-rich-editor [aria-label="${label}"]`)`` — the markdown field's `role="group"` frame now carries the same label (v4 `68340008b`), so the bare query finds the frame first; measured green with the edit (scratch, reverted) | pending (union red until applied) |
+| H-out-14 | → unifier | empty `scripts/a11y-names-allowlist.json` row by row; drop `owner` from the three `ui/dialog-roles.table.ts` rows; `check-a11y-names.mjs` exit 0 with `{}`; `ui/dialog-roles.spec.ts` zero skips; re-run the a11y sweep on the union and re-baseline `e2e/a11y/known-violations.json` (`QT_AXE_REBASELINE=1`); add `if (isInFloatingLayer(event.target)) return;` to `ui/modal.ts`'s Escape listener once `ui/floating-layer.ts` exists (R-3) | pending |
+
+### Union reds in THIS tree (each green with its handoff applied; proven by a scratch edit, then reverted)
+- `inventory/inventory-control-dialog.spec.ts`: 2 cases. Fixed by H-out-7 = `[closeOnEscape]="false"` on its `<qt-modal title="Inventory">`. Its own `onEscape()` also gates `asTab()`, so it stays the one owner; this supersedes the order's `!overlayOpen() && !confirming()` binding, which would double-close alongside the kept listener.
+- `screens/characters/edit/character-edit.spec.ts:179`: 1 case. Fixed by **H-out-15 → P4.D353**: the query `[aria-label="${label}"]` → `qt-rich-editor [aria-label="${label}"]`, because the markdown field's frame now carries the same label (v4 `68340008b`).
+- My own specs that moved for the same reason: `new-character.spec.ts`, `insert-announcement-dialog.spec.ts` (`[role="group"]:not(qt-markdown-field)`), and `markdown-field.spec.ts` (`Markdown source` is v4's byte with no caller label).
+- Two out-of-batch spec type fixes made by a spec agent:
+  - `new-chat-form.host.spec.ts:149`: `f.ariaLabel() ?? ''`;
+  - `defaults-tab.spec.ts`: scenario literals gain `createdAt` / `updatedAt`.
+
+### Gates
+- `cargo build --workspace` (`CARGO_INCREMENTAL=0`): rc 0, 2 m 55 s. No crate source touched, so no Rust test / clippy gate is owed beyond this build.
+- `npm run lint`: rc 0. `check-a11y-names`: 797 files, 648 form controls, every control outside the allowlist named; allowlisted P4.D352 13, P4.D359 10. `--self-test` 25 / 25.
+- `npm test`: 584 files (582 passed, 2 failed); **13,262 tests — 13,256 passed, 3 failed, 3 skipped**. The 3 failures are exactly the recorded union reds (`inventory-control-dialog.spec` ×2 → H-out-7; `character-edit.spec` ×1 → H-out-15), each proven green with its handoff applied. The 3 skips are the `owner` rows of `ui/dialog-roles.spec.ts`.
+- `npm run build`: rc 0 (on `3627defed`).
+- Playwright (chromium, by file, one run at a time on the shared 4319): every touched spec green — toast-flow 2, toast-open-rows 3, salon-dialogs 11, profile 2, salon-cast 3, projects 7, scriptorium 4, memory-maintenance 11, settings-memory-consolidation 3, salon-library-picker 3, inventory 9, scenario-builder 5, scenarios-shelf-builder 3, characters-flow 7, aa-foundation 1, salon-interrupt 8 (+1 skipped), salon-chain-pause-toast 2 (+3 skipped), salon-paused-hold (2 skipped), salon-send-failure-restore 2, salon-attachment-ledger 1, wardrobe 21, wardrobe-copy-to-folder 1, wardrobe-folders 5, wardrobe-items-editor 4, ai-import 1. The first chain's reds in toast-flow / aa-foundation were server collisions with a sibling's run and green on re-run.
+- **The `a11y` project (Tier 2.1 LANDED):** rebaseline then confirm, **2 / 2 passed both times** (8.0 m each). Shared fixture only; the own-instance pair 4357 / 45355 was not needed.
+
+### The axe baseline (`e2e/a11y/known-violations.json`, 696 rows, every row owned)
+No clean pre-lane figure exists (the sweep is new in this lane; earlier runs measured the wrong pages or another lane's build), so this is the starting AND final size. Per page, over 6 packs × light / dark:
+
+| page | color-contrast (P4.D357) | target-size |
+|---|---|---|
+| home | 125 | — |
+| salon | 60 | 66 |
+| rename-dialog | 61 | — |
+| settings-chat | 98 | — |
+| settings-appearance | 94 | — |
+| settings-system | 102 | — |
+| characters | 78 | 12 |
+
+- **target-size, salon (66):** `RULE v4-faithful` — the participant card's camera / wardrobe / inventory buttons are v4's `qt-participant-avatar-tool-button` (`ParticipantCard.tsx:340-375`) at v4's size; the CSS is P4.D357's.
+- **target-size, characters (12) — FOLLOW-UP:** the character card's favourite star (`character-card.ts:87`) carries `leading-none`, which v4's `AuroraView.tsx:566` does not. Measure v4's target-size on that button before changing it.
+- No `aria-*`, `label`, `button-name` or dialog row remains: the names sweep cleared them.
+
+### Findings this lane
+- **`SKIP_LINK_BASE_HREF` (v5-only, fixed):** v5's `<base href="/">` resolves `href="#main-content"` to `/#main-content`, so Enter on `Skip to content` was a full navigation to the home page. v4's Next.js page has no `<base>`. The link keeps v4's href and a click handler (`shell.ts` `skipToMain`) focuses `<main>` and `preventDefault`s; pinned by 2 spec cases and the live a11y beat.
+- **Markdown-field label consequences:** v4 `68340008b` names the markdown field's frame (`role="group"`) with the same label as its textbox, so `getByLabel(X)` now matches two elements. Five e2e specs moved to `getByRole('textbox', { name: X })`; `scriptorium-flow` `Convert` became `exact: true`. The same cause gives the H-out-15 red.
+- **The axe sweep and transitions:** colour-contrast rows on the settings tabs changed from run to run because a tab's colour transition was still running when axe measured, and the Salon restarts a finite animation so a wait never settles. The sweep now injects `transition: none; animation: none` before each analysis.
+- **Shared-server collision:** a sibling's (p4d344) Playwright run, not logged in `PLAYWRIGHT-RUNS.md`, started mid-way through an a11y run and its global setup replaced 4319 with its own `quilltap-web` and dist; that run's baseline (a phantom `role="toast-container"` from the other build) was discarded. Noted in the coordination log.
+
+### Versions
+SPA 0.5.911 (from 0.5.907). No crate bumped.
+
+### 💸 Dogfood rows owed
+- One real Salon turn to hear `<name> replied: …` (≤ 300 characters), after H-out-1 lands.
+- A VoiceOver pass:
+  - Tab once from a fresh load → `Skip to content`;
+  - the Salon `<h1>` reads the chat title;
+  - a toast is announced;
+  - five dialogs each announce their title and role; Escape closes; focus returns to the opener.
+- Keyboard-only:
+  - Tab into Ariel's terminal, F6 out, Shift+F6 back;
+  - Enter / Space on a store title, a file row, a gallery tile and the Document Mode title.
+- A raised error toast interrupts (`role="alert"`) where an info toast waits.
+
 ## P4.D360 — the `236c04e35` round's vendored trees + the NO-PORT record + the version guards (lane complete, 2026-11-02)
 
 ### 1. Where it ran
