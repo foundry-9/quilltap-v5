@@ -129,6 +129,20 @@ pub fn build_list_dto(
         "canChooseOutfit".to_string(),
         js_nullish(character.get("canChooseOutfit"), json!(false)),
     );
+    // v4 `6588972d5` (`get.ts:79-82`): `canDrawDiagrams ?? false` and
+    // `diagramStyleOrDefault(character.diagramStyle)`, right after
+    // `canChooseOutfit` (contract C6).
+    out.insert(
+        "canDrawDiagrams".to_string(),
+        js_nullish(character.get("canDrawDiagrams"), json!(false)),
+    );
+    out.insert(
+        "diagramStyle".to_string(),
+        json!(
+            crate::characters::diagrams::diagram_style_or_default(character.get("diagramStyle"))
+                .as_str()
+        ),
+    );
     out.insert(
         "defaultConnectionProfileId".to_string(),
         js_or_null(character.get("defaultConnectionProfileId")),

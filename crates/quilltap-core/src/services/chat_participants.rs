@@ -371,6 +371,9 @@ pub struct EnrichedParticipantCharacter {
     /// `d553f72a`). Unlike the two fields above this is explicitly
     /// null-coalesced by v4, so the key survives `JSON.stringify`.
     pub archived_at: Option<String>,
+    /// v4 `6588972d5` (`helpers.ts:64-70`): `diagramStyleOrDefault(charData.
+    /// diagramStyle)` AFTER `archivedAt` — always present (contract C6).
+    pub diagram_style: String,
 }
 
 /// v4 `getEnrichedConnectionProfile` (`helpers.ts:72`).
@@ -472,6 +475,9 @@ pub fn get_enriched_character(
         default_image,
         default_connection_profile_id: s(&c, "defaultConnectionProfileId"),
         archived_at: s(&c, "archivedAt"),
+        diagram_style: crate::characters::diagrams::diagram_style_or_default(c.get("diagramStyle"))
+            .as_str()
+            .to_string(),
     }))
 }
 

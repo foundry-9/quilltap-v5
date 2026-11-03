@@ -287,6 +287,15 @@ pub struct EnrichedCharacterDetail {
     /// [`crate::services::chat_participants::EnrichedParticipantCharacter::archived_at`]).
     /// v4 bug 66, `aa464abf`.
     pub archived_at: Option<String>,
+    /// v4 `6588972d5` (`chat-enrichment.service.ts:113-118`): the character's
+    /// diagram style after `archivedAt`, on BOTH `getCharacterDetail` arms
+    /// (contract C6). Defaults to `handDrawn` when an older cached value lacks it.
+    #[serde(default = "default_diagram_style")]
+    pub diagram_style: String,
+}
+
+fn default_diagram_style() -> String {
+    crate::characters::diagrams::DEFAULT_DIAGRAM_STYLE.to_string()
 }
 
 /// v4 `getConnectionProfile`'s `apiKey` summary — `{ id, provider, label }` (no
@@ -383,6 +392,11 @@ pub fn get_character_detail(
         .unwrap_or(0.5);
     // v4 `character.archivedAt ?? null` — read once, carried on BOTH returns.
     let archived_at = s(&character, "archivedAt");
+    // v4 `diagramStyleOrDefault(character.diagramStyle)` — likewise both returns.
+    let diagram_style =
+        crate::characters::diagrams::diagram_style_or_default(character.get("diagramStyle"))
+            .as_str()
+            .to_string();
 
     // Avatar-override branch: a chat-specific avatar wins over the default image.
     if let Some(cid) = chat_id {
@@ -408,6 +422,7 @@ pub fn get_character_detail(
                             talkativeness,
                             system_prompts,
                             archived_at,
+                            diagram_style,
                         }));
                     }
                 }
@@ -440,6 +455,7 @@ pub fn get_character_detail(
         // Bug 66: the chat GET renders the sidebar, so the archive badge needs
         // this projection here too — not only in the participants/PUT enrichment.
         archived_at,
+        diagram_style,
     }))
 }
 

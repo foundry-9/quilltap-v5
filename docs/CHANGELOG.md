@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(characters): the diagram keys on the character list, the chat participant and the chat detail (P4.D349)
+
+_Versions: core 0.0.1386._
+
+Contract C6 from v4 `6588972d5`'s server half. The characters list DTO carries `canDrawDiagrams` (`?? false`) and `diagramStyle` (lenient, default `handDrawn`) after `canChooseOutfit`. The chat participant's `character` and the chat-enrichment character detail carry `diagramStyle` after `archivedAt`, on both arms of the detail (the avatar-override return and the main one). The character GET-by-id already carries both keys through the read defaults and the vault overlay. The SPA reads them defensively (P4.D353).
+
 #### 2026-11-03 — feat(prompt): the non-humanoid form note and the [FORMATTING: DIAGRAMS] note (P4.D349)
 
 _Versions: core 0.0.1385._

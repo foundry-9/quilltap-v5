@@ -193992,6 +193992,16 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
 - Unit: `a_drawing_character_gets_the_diagram_note_right_after_the_math_note` (the bytes, the position, never in the stack). `cargo test -p quilltap-core --lib` 4,003 / 0.
 - **Fix carried:** commit C left one `#[cfg(test)]` `WardrobeItemFromFile` literal (`vault_overlay.rs`, `wif`) without `pronoun_guidance`. The lib-test target did not compile between C and E. Fixed here.
 
+### Commit F — the wire, contract C6 (item 17)
+
+- `character_enrichment.rs::build_list_dto`: `canDrawDiagrams` (`js_nullish(…, false)`) and `diagramStyle` (`diagram_style_or_default`) after `canChooseOutfit`, before `defaultConnectionProfileId`.
+- `chat_participants.rs::EnrichedParticipantCharacter.diagram_style` LAST (after `archived_at`).
+- `chat_enrichment.rs::EnrichedCharacterDetail.diagram_style` LAST (`#[serde(default)]` → `handDrawn`), set on BOTH arms.
+- **Families (sweep from the pin):**
+  - `characters_reads` OK — red-first was the ten `list_*` cases lacking `canDrawDiagrams`, recorded after commit A. This proves the LIST dispatch's output, so no `characters-reads.test.ts` row was needed.
+  - `chats_participants_tier2` OK; `characters_slim_tier2` OK.
+  - `character_archive_tier2`: `character_detail_enrichment` now `result=ok` (red-first: the detail lacked `diagramStyle`). Its remaining diffs are the keystone's memory class (`pruneComplete`, `restored.memories`) and the R-D bundle key positions — both green on the union.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.
