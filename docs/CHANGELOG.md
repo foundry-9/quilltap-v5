@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D353 lane record — diagrams SPA
+
+_Docs-only change._
+
+Closes the P4.D353 lane. The status log gains its lane record: the §R.2 observation, the red-first and lazy-chunk measurements, the dependency install, the renderer's code-block bytes, 88 of 88 v4 cases transcribed plus 56 v5-authored, the SPA gate (583 files / 13,265 tests), the Playwright record incl. the gate-true probe, the HANDOFFs and the dogfood rows. The order's status header reads LANE COMPLETE with the Tier-1 commit `c1da5c4de`.
+
 #### 2026-11-03 — test(spa): diagrams e2e — the denied-clipboard toast and a live theme re-draw; the live-page fieldset premise narrowed
 
 _Versions: SPA 0.5.911._
