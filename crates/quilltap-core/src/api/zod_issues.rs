@@ -250,6 +250,31 @@ pub enum ZodIssue {
         message: String,
     },
     // === end ===
+    // === P4.D351: a z.tuple's length (append-only) ===
+    /// A `z.tuple([...])` over an array LONGER than its items — `code, maximum,
+    /// inclusive, origin, path, message`, a key order unlike `.max(n)`'s
+    /// [`Self::TooBig`] (measured at zod 4.6.7 at the `236c04e35` pin through
+    /// the roleplay-template PUT's `narrationDelimiters` union: `{"code":
+    /// "too_big","maximum":2,"inclusive":true,"origin":"array","path":[],
+    /// "message":"Too big: expected array to have <=2 items"}`). It ABORTS.
+    TooBigTupleLength {
+        code: &'static str,
+        maximum: Value,
+        inclusive: bool,
+        origin: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
+    /// The SHORTER-than-its-items mirror of [`Self::TooBigTupleLength`].
+    TooSmallTupleLength {
+        code: &'static str,
+        minimum: Value,
+        inclusive: bool,
+        origin: &'static str,
+        path: Vec<Value>,
+        message: String,
+    },
+    // === end P4.D351 ===
 }
 
 /// JS `Number.MAX_SAFE_INTEGER` — the bound `z.number().int()` reports as
@@ -585,6 +610,32 @@ impl ZodIssue {
         }
     }
 
+    // === P4.D351: a z.tuple's length (append-only) ===
+    /// See [`Self::TooBigTupleLength`].
+    pub fn too_big_tuple_length(maximum: usize, path: Vec<Value>) -> Self {
+        Self::TooBigTupleLength {
+            code: "too_big",
+            maximum: json!(maximum),
+            inclusive: true,
+            origin: "array",
+            path,
+            message: format!("Too big: expected array to have <={maximum} items"),
+        }
+    }
+
+    /// See [`Self::TooSmallTupleLength`].
+    pub fn too_small_tuple_length(minimum: usize, path: Vec<Value>) -> Self {
+        Self::TooSmallTupleLength {
+            code: "too_small",
+            minimum: json!(minimum),
+            inclusive: true,
+            origin: "array",
+            path,
+            message: format!("Too small: expected array to have >={minimum} items"),
+        }
+    }
+    // === end P4.D351 ===
+
     // === P4.D324: superRefine's ctx.addIssue (append-only) ===
     /// A `superRefine`'s `ctx.addIssue({ code: 'custom', message, path })`
     /// (see [`Self::CustomAdded`]).
@@ -687,6 +738,8 @@ impl ZodIssue {
             Self::UnrecognizedKeys { path, .. } => path,
             // P4.D324: superRefine's ctx.addIssue
             Self::CustomAdded { path, .. } => path,
+            // P4.D351: a z.tuple's length
+            Self::TooBigTupleLength { path, .. } | Self::TooSmallTupleLength { path, .. } => path,
         }
     }
 
@@ -710,6 +763,10 @@ impl ZodIssue {
             Self::UnrecognizedKeys { message, .. } => message,
             // P4.D324: superRefine's ctx.addIssue
             Self::CustomAdded { message, .. } => message,
+            // P4.D351: a z.tuple's length
+            Self::TooBigTupleLength { message, .. } | Self::TooSmallTupleLength { message, .. } => {
+                message
+            }
         }
     }
 }
@@ -1396,6 +1453,145 @@ pub fn zod_prompt_template_issues(row: &serde_json::Map<String, Value>) -> Vec<Z
     issues
 }
 
+/// v4 `DelimiterAddOnsSchema` (`lib/schemas/template.types.ts:44-53`) at
+/// `prefix`: an object whose `bold` / `italic` / `reverse` are booleans and
+/// whose `underline` / `border` / `font` are enums, every key `.default(..)`ed
+/// (absent passes). Issues in schema key order.
+fn delimiter_add_ons_issues(got: &Value, prefix: &[Value], issues: &mut Vec<ZodIssue>) {
+    let Value::Object(bag) = got else {
+        issues.push(ZodIssue::invalid_type("object", prefix.to_vec(), Some(got)));
+        return;
+    };
+    let path = |k: &str| child_path(prefix, key(k));
+    for k in ["bold", "italic", "reverse"] {
+        match bag.get(k) {
+            None | Some(Value::Bool(_)) => {}
+            got => issues.push(ZodIssue::invalid_type("boolean", path(k), got)),
+        }
+    }
+    let enums: [(&str, &[&str]); 3] = [
+        ("underline", &["none", "single", "double"]),
+        ("border", &["none", "solid", "dashed"]),
+        ("font", &["", "sans", "serif", "mono", "display", "script"]),
+    ];
+    for (k, values) in enums {
+        match bag.get(k) {
+            None => {}
+            Some(Value::String(v)) if values.contains(&v.as_str()) => {}
+            Some(_) => issues.push(ZodIssue::invalid_value(values, path(k))),
+        }
+    }
+}
+
+/// v4 `UnmarkedStyleSchema.nullable().optional()` (`lib/schemas/template.types.ts
+/// :275-279`) over `got` (`None` = the key is absent) at `prefix` — the POST
+/// route's `safeParse(body.unmarkedStyle)` (prefix `[]`) and the PUT schema's
+/// `unmarkedStyle` key (prefix `["unmarkedStyle"]`). Absent / `null` pass; a
+/// non-object is `invalid_type` object; `style` is `z.string().min(1).max(50)`
+/// (code points); `addOns` is [`delimiter_add_ons_issues`] `.optional()`.
+pub fn zod_unmarked_style_issues(got: Option<&Value>, prefix: &[Value]) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    let bag = match got {
+        None | Some(Value::Null) => return issues,
+        Some(Value::Object(bag)) => bag,
+        Some(other) => {
+            issues.push(ZodIssue::invalid_type(
+                "object",
+                prefix.to_vec(),
+                Some(other),
+            ));
+            return issues;
+        }
+    };
+    let style_path = child_path(prefix, key("style"));
+    match bag.get("style") {
+        Some(Value::String(v)) => {
+            if !crate::jsstr::zod_len_min_ok(v, 1) {
+                issues.push(ZodIssue::too_small_string(json!(1), style_path));
+            } else if !crate::jsstr::zod_len_max_ok(v, 50) {
+                issues.push(ZodIssue::too_big_string(json!(50), style_path));
+            }
+        }
+        got => issues.push(ZodIssue::invalid_type("string", style_path, got)),
+    }
+    match bag.get("addOns") {
+        None => {}
+        Some(got) => delimiter_add_ons_issues(got, &child_path(prefix, key("addOns")), &mut issues),
+    }
+    issues
+}
+
+/// One option of the PUT's `narrationDelimiters` union over `got`, its issue
+/// paths under `base` — `z.string().min(1)` (`tuple == false`) or
+/// `z.tuple([z.string().min(1), z.string().min(1)])` (`tuple == true`).
+fn narration_option_issues(got: &Value, tuple: bool, base: &[Value]) -> Vec<ZodIssue> {
+    let mut issues = Vec::new();
+    if !tuple {
+        match got {
+            Value::String(v) if !crate::jsstr::zod_len_min_ok(v, 1) => {
+                issues.push(ZodIssue::too_small_string(json!(1), base.to_vec()))
+            }
+            Value::String(_) => {}
+            other => issues.push(ZodIssue::invalid_type("string", base.to_vec(), Some(other))),
+        }
+        return issues;
+    }
+    let Value::Array(items) = got else {
+        issues.push(ZodIssue::invalid_type("tuple", base.to_vec(), Some(got)));
+        return issues;
+    };
+    if items.len() > 2 {
+        issues.push(ZodIssue::too_big_tuple_length(2, base.to_vec()));
+        return issues;
+    }
+    if items.len() < 2 {
+        issues.push(ZodIssue::too_small_tuple_length(2, base.to_vec()));
+        return issues;
+    }
+    for (i, item) in items.iter().enumerate() {
+        let path = child_path(base, json!(i));
+        match item {
+            Value::String(v) if !crate::jsstr::zod_len_min_ok(v, 1) => {
+                issues.push(ZodIssue::too_small_string(json!(1), path))
+            }
+            Value::String(_) => {}
+            other => issues.push(ZodIssue::invalid_type("string", path, Some(other))),
+        }
+    }
+    issues
+}
+
+/// The roleplay-template PUT schema's `narrationDelimiters` (v4 `app/api/v1/
+/// roleplay-templates/[id]/route.ts:31-34`): `z.union([z.string().min(1),
+/// z.tuple([z.string().min(1), z.string().min(1)])]).nullable().optional()`
+/// over `got` (`None` = absent) at `prefix`. Absent / `null` pass. Zod 4's
+/// union: an option with no issue wins; when exactly ONE option's issues do
+/// not abort, its issues ARE the union's (under `prefix`); otherwise one
+/// `invalid_union` carrying every option's issues (option-relative paths).
+pub fn zod_narration_delimiters_update_issues(
+    got: Option<&Value>,
+    prefix: &[Value],
+) -> Vec<ZodIssue> {
+    let got = match got {
+        None | Some(Value::Null) => return Vec::new(),
+        Some(v) => v,
+    };
+    let relative: Vec<Vec<ZodIssue>> = [false, true]
+        .iter()
+        .map(|tuple| narration_option_issues(got, *tuple, &[]))
+        .collect();
+    if relative.iter().any(Vec::is_empty) {
+        return Vec::new();
+    }
+    let nonaborted: Vec<usize> = (0..relative.len())
+        .filter(|i| !relative[*i].iter().any(zod_issue_aborts))
+        .collect();
+    if let [only] = nonaborted.as_slice() {
+        return narration_option_issues(got, *only == 1, prefix);
+    }
+    vec![ZodIssue::invalid_union(relative, prefix.to_vec())]
+}
+
 /// v4 `FolderSchema` (`lib/schemas/folder.types.ts:18-41`) over the WHOLE
 /// entity `folders.create` hands `_create`, in schema key order: `id` /
 /// `userId` uuid; `path` / `name` string (any, `""` included);
@@ -1807,6 +2003,10 @@ pub fn zod_issue_aborts(issue: &ZodIssue) -> bool {
         ZodIssue::UnrecognizedKeys { .. } => false,
         // P4.D324: a superRefine issue continues.
         ZodIssue::CustomAdded { .. } => false,
+        // P4.D351: a tuple's length is part of its type check — it aborts
+        // (measured: a three-item narration pair leaves the union with no
+        // non-aborted option).
+        ZodIssue::TooBigTupleLength { .. } | ZodIssue::TooSmallTupleLength { .. } => true,
     }
 }
 
@@ -3034,3 +3234,104 @@ mod tests {
         );
     }
 }
+
+// === P4.D351: the roleplay-template twins' unit tests (append-only) ===
+#[cfg(test)]
+mod p4d351_template_twin_tests {
+    use super::*;
+
+    fn messages(issues: &[ZodIssue]) -> Vec<String> {
+        issues.iter().map(|i| i.message().to_string()).collect()
+    }
+
+    /// One row per `UnmarkedStyleSchema` issue shape, each message the
+    /// routes oracle's measured bytes (`Invalid unmarked style: …`).
+    #[test]
+    fn unmarked_style_issue_shapes() {
+        let t = |v: Value| messages(&zod_unmarked_style_issues(Some(&v), &[]));
+        assert!(zod_unmarked_style_issues(None, &[]).is_empty());
+        assert!(t(Value::Null).is_empty());
+        assert!(t(json!({ "style": "qt-roleplay-plain" })).is_empty());
+        assert_eq!(
+            t(json!(5)),
+            ["Invalid input: expected object, received number"]
+        );
+        assert_eq!(
+            t(json!({})),
+            ["Invalid input: expected string, received undefined"]
+        );
+        assert_eq!(
+            t(json!({ "style": 3 })),
+            ["Invalid input: expected string, received number"]
+        );
+        assert_eq!(
+            t(json!({ "style": "" })),
+            ["Too small: expected string to have >=1 characters"]
+        );
+        // `max(50)` counts CODE POINTS: 50 astral glyphs pass, 51 fail.
+        let glyph = "\u{1D4D2}";
+        assert!(t(json!({ "style": glyph.repeat(50) })).is_empty());
+        assert_eq!(
+            t(json!({ "style": glyph.repeat(51) })),
+            ["Too big: expected string to have <=50 characters"]
+        );
+        assert_eq!(
+            t(json!({ "style": "x", "addOns": 5 })),
+            ["Invalid input: expected object, received number"]
+        );
+        assert_eq!(
+            t(json!({ "style": "x", "addOns": null })),
+            ["Invalid input: expected object, received null"]
+        );
+        assert_eq!(
+            t(json!({ "style": "x", "addOns": { "underline": "wavy" } })),
+            ["Invalid option: expected one of \"none\"|\"single\"|\"double\""]
+        );
+        assert_eq!(
+            t(json!({ "style": "x", "addOns": { "bold": "yes" } })),
+            ["Invalid input: expected boolean, received string"]
+        );
+        // The PUT's prefix carries into every path.
+        let prefixed =
+            zod_unmarked_style_issues(Some(&json!({ "style": "" })), &[key("unmarkedStyle")]);
+        assert_eq!(prefixed[0].path(), [key("unmarkedStyle"), key("style")]);
+    }
+
+    /// The PUT's `narrationDelimiters` union: one non-aborted option's issues
+    /// surface alone under the key; otherwise ONE `invalid_union` (the routes
+    /// oracle's measured `details`).
+    #[test]
+    fn narration_union_issue_shapes() {
+        let p = [key("narrationDelimiters")];
+        let t = |v: Value| zod_narration_delimiters_update_issues(Some(&v), &p);
+        assert!(zod_narration_delimiters_update_issues(None, &p).is_empty());
+        assert!(t(Value::Null).is_empty());
+        assert!(t(json!("*")).is_empty());
+        assert!(t(json!(["[", "]"])).is_empty());
+        assert_eq!(
+            serde_json::to_string(&t(json!(""))).unwrap(),
+            r#"[{"origin":"string","code":"too_small","minimum":1,"inclusive":true,"path":["narrationDelimiters"],"message":"Too small: expected string to have >=1 characters"}]"#
+        );
+        assert_eq!(
+            t(json!(["[", ""]))[0].path(),
+            [key("narrationDelimiters"), json!(1)]
+        );
+        assert_eq!(
+            serde_json::to_string(&t(json!(["a", "b", "c"]))).unwrap(),
+            r#"[{"code":"invalid_union","errors":[[{"expected":"string","code":"invalid_type","path":[],"message":"Invalid input: expected string, received array"}],[{"code":"too_big","maximum":2,"inclusive":true,"origin":"array","path":[],"message":"Too big: expected array to have <=2 items"}]],"path":["narrationDelimiters"],"message":"Invalid input"}]"#
+        );
+        assert_eq!(
+            serde_json::to_string(&t(json!(["a"]))[0]).unwrap(),
+            r#"{"code":"invalid_union","errors":[[{"expected":"string","code":"invalid_type","path":[],"message":"Invalid input: expected string, received array"}],[{"code":"too_small","minimum":2,"inclusive":true,"origin":"array","path":[],"message":"Too small: expected array to have >=2 items"}]],"path":["narrationDelimiters"],"message":"Invalid input"}"#
+        );
+        assert!(matches!(
+            t(json!(7)).as_slice(),
+            [ZodIssue::InvalidUnion { .. }]
+        ));
+        assert!(matches!(
+            t(json!([1, ""])).as_slice(),
+            [ZodIssue::InvalidUnion { .. }]
+        ));
+    }
+}
+// === end P4.D351 ===

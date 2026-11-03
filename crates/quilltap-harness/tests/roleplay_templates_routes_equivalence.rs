@@ -5,6 +5,21 @@
 //! id + timestamps (blanked); update mints updatedAt (blanked). Error cases assert
 //! the Error kind's HTTP status + message.
 //!
+//! P4.D351 (v4 `778b97b2b`, the Novel template, pin `236c04e35`): both sides run
+//! the REAL built-in seed on every copy (v4's `seedBuiltInTemplates`, v5's
+//! `seed_built_in_templates` — production's boot step; v4's
+//! `initializeDatabase` does not seed), so the Novel row exists on both with an
+//! id / stamps each side mints, and the seed restamps the legacy built-ins'
+//! `updatedAt` — the normaliser blanks those (and ONLY those) minted fields.
+//! Every case compares the whole `{status, body}` (a `Validation error`'s
+//! `details` included) AND the captured `Roleplay template …` log lines — the
+//! two DEBUGs and the route-level INFOs. v4's REPOSITORY-level INFOs (`…
+//! created successfully`, the field-less `… updated successfully` /
+//! `… deleted successfully`) live in `db/roleplay_templates.rs`, a file this
+//! family's lane does not own: they are dropped from v4's side BY NAME
+//! (`REPO_LEVEL_INFO_LINES`) — and since v5's lines are compared whole, a v5
+//! that starts logging them trips the compare (the carve retires then).
+//!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-roleplay-templates-routes.ndjson npx jest -- roleplay-templates-routes
 //! Run:
@@ -17,6 +32,8 @@ use std::path::PathBuf;
 use quilltap_core::api::roleplay_templates as rt;
 use quilltap_core::api::types::{ErrorKind, Response};
 use quilltap_core::db::runtime::{Db, DbPaths};
+use quilltap_core::services::builtin_templates::seed_built_in_templates;
+use quilltap_core::test_support::captured_with;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -154,6 +171,11 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         &spec.test_pepper_base64,
     )
     .expect("open db");
+    // Production's boot step (v4 `seed-initial-data.ts` →
+    // `seedBuiltInTemplates`; v5 `host.rs`): Novel inserted, legacy cells
+    // rewritten — the oracle runs v4's real seed on its copy the same way.
+    db.write_blocking(|ws| seed_built_in_templates(ws.main().connection()))
+        .expect("seed the built-in templates");
     ScratchDb { db, _dir: scratch }
 }
 
@@ -167,6 +189,112 @@ fn builtin_id(db: &Db, name: &str) -> String {
         .map_err(Into::into)
     })
     .expect("resolve built-in id")
+}
+
+/// Blank the fields the seed mints per copy: every built-in's `updatedAt`
+/// (the every-boot `$set` restamps the legacy two — measured), and the Novel
+/// row's `id` / `createdAt` (inserted by the seed).
+fn blank_minted_builtins(v: &mut Value) {
+    match v {
+        Value::Object(o) => {
+            if o.get("isBuiltIn") == Some(&Value::Bool(true)) {
+                let novel = o.get("name") == Some(&Value::String("Novel".into()));
+                let keys: &[&str] = if novel {
+                    &["id", "createdAt", "updatedAt"]
+                } else {
+                    &["updatedAt"]
+                };
+                for k in keys {
+                    if o.contains_key(*k) {
+                        o.insert((*k).to_string(), Value::String(format!("<builtin-{k}>")));
+                    }
+                }
+            }
+            o.iter_mut().for_each(|(_, x)| blank_minted_builtins(x));
+        }
+        Value::Array(a) => a.iter_mut().for_each(blank_minted_builtins),
+        _ => {}
+    }
+}
+
+/// v4's REPOSITORY-level INFO lines (`roleplay-templates.repository.ts`), not
+/// ported here — see the module docs.
+fn is_repo_level_info(line: &str) -> bool {
+    line.starts_with("INFO Roleplay template created successfully ")
+        || ((line.starts_with("INFO Roleplay template updated successfully templateId=")
+            || line.starts_with("INFO Roleplay template deleted successfully templateId="))
+            && line.split(' ').count() == 6)
+}
+
+/// Mask a minted `templateId=` value (anything but the fixture's two user ids).
+fn mask_minted(line: &str) -> String {
+    line.split(' ')
+        .map(|tok| match tok.strip_prefix("templateId=") {
+            Some(id) if id != RT_USER_1 && id != RT_USER_2 => "templateId=<minted>".to_string(),
+            _ => tok.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// v5's captured lines as v4 renders them: `LEVEL message k=v…` — the target
+/// token dropped, only this module's `Roleplay template …` lines kept.
+fn v5_lines(raw: &[String]) -> Vec<String> {
+    raw.iter()
+        .filter_map(|l| {
+            let mut parts = l.splitn(3, ' ');
+            let level = parts.next()?;
+            let target = parts.next()?;
+            let rest = parts.next()?;
+            (target == "quilltap_core::api::roleplay_templates"
+                && rest.starts_with("Roleplay template "))
+            .then(|| mask_minted(&format!("{level} {rest}")))
+        })
+        .collect()
+}
+
+fn v4_lines(row: &Value) -> Vec<String> {
+    row["lines"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .filter(|l| !is_repo_level_info(l))
+                .map(mask_minted)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// One route call, v5's side.
+enum Call {
+    List,
+    Get(String),
+    Create(Value),
+    Update(String, Value),
+    Delete(String),
+}
+
+/// A v5 response as v4's `{status, body}`.
+fn as_status_body(call: &Call, r: &Response) -> Value {
+    match r {
+        Response::Error(e) => {
+            let mut body = serde_json::Map::new();
+            body.insert("error".into(), Value::String(e.message.clone()));
+            if let Some(d) = &e.details {
+                body.insert("details".into(), (**d).clone());
+            }
+            json!({ "status": http_for(e.kind), "body": Value::Object(body) })
+        }
+        _ => {
+            let status = if matches!(call, Call::Create(_)) {
+                201
+            } else {
+                200
+            };
+            json!({ "status": status, "body": response_data(r) })
+        }
+    }
 }
 
 #[test]
@@ -191,93 +319,121 @@ fn roleplay_templates_routes_match_oracle() {
         .enable_all()
         .build()
         .unwrap();
-    let mut failed: Vec<String> = Vec::new();
 
-    // Resolve built-in ids (stable across copies).
+    // Resolve built-in ids (the fixture's two are stable across copies).
     let standard = builtin_id(&fresh_db(&spec, "resolve"), "Standard");
     let quilltap_rp = builtin_id(&fresh_db(&spec, "resolve2"), "Quilltap RP");
 
-    let ok = |name: &str, resp: &Response, blank: &[&str], failed: &mut Vec<String>| {
-        if let Response::Error(e) = resp {
-            eprintln!("[{name}] expected success, got {:?}: {}", e.kind, e.message);
-            failed.push(name.to_string());
-            return;
-        }
-        let want = &oracle[name]["body"];
-        let got = response_data(resp);
-        if norm(&got, blank) != norm(want, blank) {
-            eprintln!(
-                "[{name}] MISMATCH:\n{}",
-                first_diff(&norm(&got, blank), &norm(want, blank))
-            );
-            failed.push(name.to_string());
-        } else {
-            eprintln!("[{name}] OK.");
+    let run = |db: &Db, call: &Call| -> Response {
+        match call {
+            Call::List => rt::roleplay_template_list(db, &uid),
+            Call::Get(id) => rt::roleplay_template_get(db, id),
+            Call::Create(b) => rt_rt.block_on(rt::roleplay_template_create(db, &uid, b.clone())),
+            Call::Update(id, b) => {
+                rt_rt.block_on(rt::roleplay_template_update(db, &uid, id, b.clone()))
+            }
+            Call::Delete(id) => rt_rt.block_on(rt::roleplay_template_delete(db, id)),
         }
     };
-    let err = |name: &str, resp: &Response, failed: &mut Vec<String>| {
-        let want = &oracle[name];
-        let want_status = want["status"].as_i64().unwrap();
-        let want_msg = want["body"]["error"].as_str().unwrap_or("");
-        match resp {
-            Response::Error(e) if http_for(e.kind) == want_status && e.message == want_msg => {
-                eprintln!("[{name}] OK (err {want_status}).");
+
+    let mut failed: Vec<String> = Vec::new();
+    let ran = std::cell::Cell::new(0usize);
+    let check = |name: &str, calls: Vec<Call>, blank: &[&str], failed: &mut Vec<String>| {
+        let Some(row) = oracle.get(name) else {
+            eprintln!("[{name}] MISSING from the oracle");
+            failed.push(name.to_string());
+            return;
+        };
+        ran.set(ran.get() + 1);
+        let db = fresh_db(&spec, name);
+        let (got, raw_lines) = captured_with(|| {
+            let outs: Vec<Value> = calls
+                .iter()
+                .map(|c| as_status_body(c, &run(&db, c)))
+                .collect();
+            match outs.as_slice() {
+                [one] => one.clone(),
+                [a, b] => json!({ "status": b["status"], "body": { "first": a, "second": b } }),
+                _ => unreachable!("one or two calls per case"),
             }
-            Response::Error(e) => {
-                eprintln!(
-                    "[{name}] ERR MISMATCH: got {}:'{}' want {}/'{}'",
-                    http_for(e.kind),
-                    e.message,
-                    want_status,
-                    want_msg
-                );
-                failed.push(name.to_string());
-            }
-            _ => {
-                eprintln!("[{name}] expected error {want_status}, got success");
-                failed.push(name.to_string());
-            }
+        });
+        let mut want = json!({ "status": row["status"], "body": row["body"] });
+        let mut got = got;
+        blank_minted_builtins(&mut want);
+        blank_minted_builtins(&mut got);
+        let (g, w) = (norm(&got, blank), norm(&want, blank));
+        let mut ok = true;
+        if g != w {
+            eprintln!("[{name}] MISMATCH:\n{}", first_diff(&g, &w));
+            ok = false;
+        }
+        let (gl, wl) = (v5_lines(&raw_lines), v4_lines(row));
+        if gl != wl {
+            eprintln!("[{name}] LINES MISMATCH:\n  v5: {gl:#?}\n  v4: {wl:#?}");
+            ok = false;
+        }
+        if ok {
+            eprintln!("[{name}] OK.");
+        } else {
+            failed.push(name.to_string());
         }
     };
 
     const CREATED: &[&str] = &["id", "createdAt", "updatedAt"];
     const UPDATED: &[&str] = &["updatedAt"];
+    let u1 = || RT_USER_1.to_string();
+    let u2 = || RT_USER_2.to_string();
+    let wrap_q = json!([{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q" }]);
 
     // --- Reads ---
-    ok(
-        "list",
-        &rt::roleplay_template_list(&fresh_db(&spec, "list"), &uid),
-        &[],
-        &mut failed,
-    );
-    ok(
-        "get_user",
-        &rt::roleplay_template_get(&fresh_db(&spec, "gu"), RT_USER_1),
-        &[],
-        &mut failed,
-    );
-    ok(
-        "get_regen",
-        &rt::roleplay_template_get(&fresh_db(&spec, "gr"), RT_USER_2),
-        &[],
-        &mut failed,
-    );
-    ok(
+    check("list", vec![Call::List], &[], &mut failed);
+    check("get_user", vec![Call::Get(u1())], &[], &mut failed);
+    check("get_regen", vec![Call::Get(u2())], &[], &mut failed);
+    check(
         "get_builtin",
-        &rt::roleplay_template_get(&fresh_db(&spec, "gb"), &standard),
+        vec![Call::Get(standard.clone())],
         &[],
         &mut failed,
     );
-    err(
+    check(
         "get_missing",
-        &rt::roleplay_template_get(&fresh_db(&spec, "gm"), BOGUS),
+        vec![Call::Get(BOGUS.into())],
+        &[],
         &mut failed,
     );
+    {
+        // The seeded Novel row: its id is minted per copy, so resolve it on the
+        // case's own copy (the oracle does the same on its copy).
+        let name = "get_builtin_novel";
+        let row = oracle.get(name).cloned();
+        let db = fresh_db(&spec, name);
+        let novel = builtin_id(&db, "Novel");
+        let (resp, raw) = captured_with(|| rt::roleplay_template_get(&db, &novel));
+        let mut got = as_status_body(&Call::Get(novel.clone()), &resp);
+        match row {
+            Some(row) => {
+                ran.set(ran.get() + 1);
+                let mut want = json!({ "status": row["status"], "body": row["body"] });
+                blank_minted_builtins(&mut want);
+                blank_minted_builtins(&mut got);
+                if norm(&got, &[]) != norm(&want, &[]) || v5_lines(&raw) != v4_lines(&row) {
+                    eprintln!(
+                        "[{name}] MISMATCH:\n{}",
+                        first_diff(&norm(&got, &[]), &norm(&want, &[]))
+                    );
+                    failed.push(name.into());
+                } else {
+                    eprintln!("[{name}] OK.");
+                }
+            }
+            None => failed.push(format!("{name} (missing)")),
+        }
+    }
 
     // --- Create ---
-    {
-        let db = fresh_db(&spec, "c_happy");
-        let body = json!({
+    check(
+        "create_happy",
+        vec![Call::Create(json!({
             "name": "Fresh Template",
             "description": "  A fresh one.  ",
             "systemPrompt": "  Write freshly.  ",
@@ -286,168 +442,448 @@ fn roleplay_templates_routes_match_oracle() {
                 { "kind": "wrap", "name": "Emph", "buttonName": "Em", "delimiters": "~", "style": "qt-rp-emph" },
                 { "kind": "linePrefix", "name": "OOC", "buttonName": "O", "marker": "// ", "style": "qt-rp-ooc" }
             ]
-        });
-        ok(
-            "create_happy",
-            &rt_rt.block_on(rt::roleplay_template_create(&db, &uid, body)),
-            CREATED,
-            &mut failed,
-        );
-    }
-    {
-        let db = fresh_db(&spec, "c_arr");
-        let body = json!({
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    check(
+        "create_narration_array",
+        vec![Call::Create(json!({
             "name": "Bracketed",
             "systemPrompt": "Use brackets.",
             "narrationDelimiters": ["[", "]"],
             "delimiters": [
                 { "kind": "wrap", "name": "Nar", "buttonName": "N", "delimiters": ["[", "]"], "style": "qt-rp-nar" }
             ]
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    check(
+        "create_name_required",
+        vec![Call::Create(json!({}))],
+        &[],
+        &mut failed,
+    );
+    check(
+        "create_sysprompt_required",
+        vec![Call::Create(json!({ "name": "X" }))],
+        &[],
+        &mut failed,
+    );
+    check(
+        "create_narration_required",
+        vec![Call::Create(json!({ "name": "X", "systemPrompt": "Y" }))],
+        &[],
+        &mut failed,
+    );
+    check(
+        "create_dup",
+        vec![Call::Create(
+            json!({ "name": "Bracket Prose", "systemPrompt": "Y", "narrationDelimiters": "*" }),
+        )],
+        &[],
+        &mut failed,
+    );
+    check(
+        "create_null_narration",
+        vec![Call::Create(json!({
+            "name": "Plain Prose",
+            "systemPrompt": "Write plainly.",
+            "narrationDelimiters": null,
+            "delimiters": [{ "kind": "wrap", "name": "Speech", "buttonName": "S", "delimiters": "\"", "style": "qt-chat-dialogue" }]
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    for (name, nd) in [
+        ("create_narration_empty_string", json!("")),
+        ("create_narration_zero", json!(0)),
+        ("create_narration_false", json!(false)),
+        ("create_narration_object", json!({ "a": 1 })),
+    ] {
+        check(
+            name,
+            vec![Call::Create(
+                json!({ "name": "X", "systemPrompt": "Y", "narrationDelimiters": nd }),
+            )],
+            &[],
+            &mut failed,
+        );
+    }
+    let glyph = "\u{1D4D2}";
+    for (name, unmarked) in [
+        ("create_unmarked_style_bad_empty", json!({ "style": "" })),
+        ("create_unmarked_style_bad_type", json!(5)),
+        ("create_unmarked_style_missing_style", json!({})),
+        (
+            "create_unmarked_style_too_long",
+            json!({ "style": glyph.repeat(51) }),
+        ),
+        (
+            "create_unmarked_style_bad_addons",
+            json!({ "style": "x", "addOns": 5 }),
+        ),
+        (
+            "create_unmarked_style_bad_addons_enum",
+            json!({ "style": "x", "addOns": { "underline": "wavy" } }),
+        ),
+        (
+            "create_unmarked_style_addons_null",
+            json!({ "style": "x", "addOns": null }),
+        ),
+    ] {
+        check(
+            name,
+            vec![Call::Create(
+                json!({ "name": "X", "systemPrompt": "Y", "narrationDelimiters": null, "unmarkedStyle": unmarked }),
+            )],
+            &[],
+            &mut failed,
+        );
+    }
+    check(
+        "create_unmarked_style_fifty_code_points_ok",
+        vec![Call::Create(json!({
+            "name": "Fifty Glyphs", "systemPrompt": "Y", "narrationDelimiters": null,
+            "unmarkedStyle": { "style": glyph.repeat(50) }
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    check(
+        "create_unmarked_null_explicit",
+        vec![Call::Create(
+            json!({ "name": "Null Unmarked", "systemPrompt": "Y", "narrationDelimiters": "*", "unmarkedStyle": null }),
+        )],
+        CREATED,
+        &mut failed,
+    );
+    check(
+        "create_unmarked_partial_addons",
+        vec![Call::Create(json!({
+            "name": "Partial Addons", "systemPrompt": "Y", "narrationDelimiters": null,
+            "unmarkedStyle": { "style": "qt-roleplay-plain", "addOns": { "italic": true } }
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    for (name, md) in [
+        ("create_markdown_asterisks_not_bool", json!("yes")),
+        ("create_markdown_asterisks_null", Value::Null),
+    ] {
+        check(
+            name,
+            vec![Call::Create(
+                json!({ "name": "X", "systemPrompt": "Y", "narrationDelimiters": "*", "markdownAsterisks": md }),
+            )],
+            &[],
+            &mut failed,
+        );
+    }
+    check(
+        "create_markdown_false_regen",
+        vec![Call::Create(json!({
+            "name": "No Markdown Stars", "systemPrompt": "Y", "narrationDelimiters": "*", "markdownAsterisks": false,
+            "delimiters": [{ "kind": "wrap", "name": "Emph", "buttonName": "E", "delimiters": "_", "style": "qt-rp-emph" }]
+        }))],
+        CREATED,
+        &mut failed,
+    );
+    {
+        // Create, then GET the created row (the id is minted — resolve it from
+        // the 201 inside the case).
+        let name = "create_unmarked_only_regen";
+        let row = oracle.get(name).cloned().expect("oracle row");
+        ran.set(ran.get() + 1);
+        let db = fresh_db(&spec, name);
+        let (got, raw) = captured_with(|| {
+            let c = Call::Create(json!({
+                "name": "Unmarked Only", "systemPrompt": "Y", "narrationDelimiters": null,
+                "unmarkedStyle": { "style": "qt-roleplay-plain" }
+            }));
+            let a = as_status_body(&c, &run(&db, &c));
+            let id = a["body"]["id"].as_str().unwrap_or_default().to_string();
+            let g = Call::Get(id);
+            let b = as_status_body(&g, &run(&db, &g));
+            json!({ "status": b["status"], "body": { "first": a, "second": b } })
         });
-        ok(
-            "create_narration_array",
-            &rt_rt.block_on(rt::roleplay_template_create(&db, &uid, body)),
+        let want = json!({ "status": row["status"], "body": row["body"] });
+        if norm(&got, CREATED) != norm(&want, CREATED) || v5_lines(&raw) != v4_lines(&row) {
+            eprintln!(
+                "[{name}] MISMATCH:\n{}\n  v5 lines: {:?}\n  v4 lines: {:?}",
+                first_diff(&norm(&got, CREATED), &norm(&want, CREATED)),
+                v5_lines(&raw),
+                v4_lines(&row)
+            );
+            failed.push(name.into());
+        } else {
+            eprintln!("[{name}] OK.");
+        }
+    }
+    check(
+        "create_empty_patterns_no_regen_input",
+        vec![Call::Create(
+            json!({ "name": "Nothing To Derive", "systemPrompt": "Y", "narrationDelimiters": null }),
+        )],
+        CREATED,
+        &mut failed,
+    );
+    {
+        // v4's REAL NOVEL_TEMPLATE authoring fields — read back from the
+        // keystone's seeded Novel row (the same fields, dumped from v4).
+        let rows: Vec<Value> = serde_json::from_str(include_str!(
+            "../../quilltap-core/src/services/builtin_templates.json"
+        ))
+        .unwrap();
+        let novel = rows.iter().find(|r| r["name"] == "Novel").unwrap().clone();
+        check(
+            "create_novel_like",
+            vec![Call::Create(json!({
+                "name": "My Novel",
+                "description": novel["description"],
+                "systemPrompt": novel["systemPrompt"],
+                "delimiters": novel["delimiters"],
+                "dialogueDetection": novel["dialogueDetection"],
+                "narrationDelimiters": novel["narrationDelimiters"],
+                "unmarkedStyle": novel["unmarkedStyle"],
+                "markdownAsterisks": novel["markdownAsterisks"],
+            }))],
             CREATED,
             &mut failed,
         );
     }
-    err(
-        "create_name_required",
-        &rt_rt.block_on(rt::roleplay_template_create(
-            &fresh_db(&spec, "c_nn"),
-            &uid,
-            json!({}),
-        )),
+    check(
+        "create_wrap_curly_not_bool",
+        vec![Call::Create(json!({
+            "name": "X", "systemPrompt": "Y", "narrationDelimiters": "*",
+            "delimiters": [{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q", "matchCurlyQuotes": "yes" }]
+        }))],
+        &[],
         &mut failed,
     );
-    err(
-        "create_sysprompt_required",
-        &rt_rt.block_on(rt::roleplay_template_create(
-            &fresh_db(&spec, "c_sp"),
-            &uid,
-            json!({ "name": "X" }),
-        )),
+    check(
+        "create_wrap_close_optional_null",
+        vec![Call::Create(json!({
+            "name": "X", "systemPrompt": "Y", "narrationDelimiters": "*",
+            "delimiters": [{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q", "closeOptional": null }]
+        }))],
+        &[],
         &mut failed,
     );
-    err(
-        "create_narration_required",
-        &rt_rt.block_on(rt::roleplay_template_create(
-            &fresh_db(&spec, "c_nr"),
-            &uid,
-            json!({ "name": "X", "systemPrompt": "Y" }),
-        )),
-        &mut failed,
-    );
-    err(
-        "create_dup",
-        &rt_rt.block_on(rt::roleplay_template_create(
-            &fresh_db(&spec, "c_dup"),
-            &uid,
-            json!({ "name": "Bracket Prose", "systemPrompt": "Y", "narrationDelimiters": "*" }),
-        )),
+    check(
+        "create_wrap_flags_kept",
+        vec![Call::Create(json!({
+            "name": "Flagged Wrap", "systemPrompt": "Y", "narrationDelimiters": null,
+            "delimiters": [{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q", "matchCurlyQuotes": true, "closeOptional": false }]
+        }))],
+        CREATED,
         &mut failed,
     );
 
     // --- Update ---
-    ok(
+    let upd = |id: String, b: Value| vec![Call::Update(id, b)];
+    check(
         "update_happy",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_h"),
-            &uid,
-            RT_USER_1,
+        upd(
+            u1(),
             json!({ "name": "Renamed Prose", "systemPrompt": "  Trimmed.  " }),
-        )),
+        ),
         UPDATED,
         &mut failed,
     );
-    err(
+    check(
         "update_builtin_403",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_b"),
-            &uid,
-            &standard,
-            json!({ "name": "Nope" }),
-        )),
+        upd(standard.clone(), json!({ "name": "Nope" })),
+        &[],
         &mut failed,
     );
-    err(
+    check(
         "update_dup",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_d"),
-            &uid,
-            RT_USER_2,
-            json!({ "name": "Bracket Prose" }),
-        )),
+        upd(u2(), json!({ "name": "Bracket Prose" })),
+        &[],
         &mut failed,
     );
-    ok(
+    check(
         "update_regen_delims",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_rd"),
-            &uid,
-            RT_USER_1,
-            json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "delimiters": [{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q" }] }),
-        )),
+        upd(
+            u1(),
+            json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "delimiters": wrap_q }),
+        ),
         UPDATED,
         &mut failed,
     );
-    ok(
+    check(
         "update_regen_narration",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_rn"),
-            &uid,
-            RT_USER_1,
+        upd(
+            u1(),
             json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "narrationDelimiters": "|" }),
-        )),
+        ),
         UPDATED,
         &mut failed,
     );
-    ok(
+    check(
         "update_null_description",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_nd"),
-            &uid,
-            RT_USER_1,
+        upd(
+            u1(),
             json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "description": null }),
-        )),
+        ),
         UPDATED,
         &mut failed,
     );
-    err(
+    check(
         "update_missing_required",
-        &rt_rt.block_on(rt::roleplay_template_update(
-            &fresh_db(&spec, "u_mr"),
-            &uid,
-            RT_USER_1,
-            json!({ "delimiters": [{ "kind": "wrap", "name": "Q", "buttonName": "Q", "delimiters": "\"", "style": "qt-rp-q" }] }),
-        )),
+        upd(u1(), json!({ "delimiters": wrap_q })),
+        &[],
+        &mut failed,
+    );
+    check(
+        "update_narration_null",
+        upd(
+            u1(),
+            json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "narrationDelimiters": null }),
+        ),
+        UPDATED,
+        &mut failed,
+    );
+    check(
+        "update_regen_unmarked_only",
+        upd(
+            u1(),
+            json!({
+                "name": "Bracket Prose", "systemPrompt": "Keep prose.",
+                "unmarkedStyle": { "style": "qt-roleplay-plain", "addOns": { "bold": true } }
+            }),
+        ),
+        UPDATED,
+        &mut failed,
+    );
+    check(
+        "update_regen_markdown_only",
+        upd(
+            u2(),
+            json!({ "name": "Quiet Draft", "systemPrompt": "Keep quiet.", "markdownAsterisks": false }),
+        ),
+        UPDATED,
+        &mut failed,
+    );
+    check(
+        "update_unmarked_null_clears",
+        vec![
+            Call::Update(
+                u1(),
+                json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "unmarkedStyle": { "style": "qt-roleplay-plain" } }),
+            ),
+            Call::Update(
+                u1(),
+                json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "unmarkedStyle": null }),
+            ),
+        ],
+        UPDATED,
+        &mut failed,
+    );
+    check(
+        "update_keeps_unmarked_when_absent",
+        vec![
+            Call::Update(
+                u1(),
+                json!({
+                    "name": "Bracket Prose", "systemPrompt": "Keep prose.",
+                    "unmarkedStyle": { "style": "qt-roleplay-plain" }, "markdownAsterisks": false
+                }),
+            ),
+            Call::Update(
+                u1(),
+                json!({ "name": "Bracket Prose", "systemPrompt": "Keep prose.", "narrationDelimiters": "~" }),
+            ),
+        ],
+        UPDATED,
+        &mut failed,
+    );
+    for (name, extra) in [
+        (
+            "update_narration_empty_string",
+            json!({ "narrationDelimiters": "" }),
+        ),
+        (
+            "update_narration_bad_pair",
+            json!({ "narrationDelimiters": ["[", ""] }),
+        ),
+        (
+            "update_narration_number",
+            json!({ "narrationDelimiters": 7 }),
+        ),
+        (
+            "update_narration_triple",
+            json!({ "narrationDelimiters": ["a", "b", "c"] }),
+        ),
+        (
+            "update_narration_single_elem",
+            json!({ "narrationDelimiters": ["a"] }),
+        ),
+        (
+            "update_narration_pair_nonstring",
+            json!({ "narrationDelimiters": [1, ""] }),
+        ),
+        (
+            "update_unmarked_style_bad",
+            json!({ "unmarkedStyle": { "style": "" } }),
+        ),
+        (
+            "update_markdown_asterisks_not_bool",
+            json!({ "markdownAsterisks": "yes" }),
+        ),
+        (
+            "update_two_new_key_refusals",
+            json!({ "narrationDelimiters": "", "markdownAsterisks": 1 }),
+        ),
+    ] {
+        let mut b = json!({ "name": "Bracket Prose", "systemPrompt": "K" });
+        for (k, v) in extra.as_object().unwrap() {
+            b[k] = v.clone();
+        }
+        check(name, upd(u1(), b), &[], &mut failed);
+    }
+    check(
+        "update_patterns_sent_no_regen",
+        upd(
+            u1(),
+            json!({
+                "name": "Bracket Prose", "systemPrompt": "Keep prose.", "markdownAsterisks": false,
+                "renderingPatterns": [{ "pattern": "x", "className": "qt-x" }]
+            }),
+        ),
+        UPDATED,
+        &mut failed,
+    );
+    check(
+        "update_name_only_no_regen",
+        upd(
+            u1(),
+            json!({ "name": "Renamed Prose", "systemPrompt": "Keep prose." }),
+        ),
+        UPDATED,
         &mut failed,
     );
 
     // --- Delete ---
-    ok(
-        "delete_happy",
-        &rt_rt.block_on(rt::roleplay_template_delete(
-            &fresh_db(&spec, "d_h"),
-            RT_USER_2,
-        )),
+    check("delete_happy", vec![Call::Delete(u2())], &[], &mut failed);
+    check(
+        "delete_builtin_403",
+        vec![Call::Delete(quilltap_rp.clone())],
         &[],
         &mut failed,
     );
-    err(
-        "delete_builtin_403",
-        &rt_rt.block_on(rt::roleplay_template_delete(
-            &fresh_db(&spec, "d_b"),
-            &quilltap_rp,
-        )),
-        &mut failed,
-    );
-    err(
+    check(
         "delete_missing",
-        &rt_rt.block_on(rt::roleplay_template_delete(&fresh_db(&spec, "d_m"), BOGUS)),
+        vec![Call::Delete(BOGUS.into())],
+        &[],
         &mut failed,
     );
 
+    let ran = ran.get();
+    eprintln!("ran {ran} of {} oracle cases", oracle.len());
+    assert_eq!(ran, oracle.len(), "every oracle case must be driven");
     assert!(
         failed.is_empty(),
         "roleplay-templates-routes FAILED: {failed:?}"

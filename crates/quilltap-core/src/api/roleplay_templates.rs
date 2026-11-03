@@ -1,7 +1,15 @@
 //! The roleplay-templates dispatch handlers (P4.6p) — a differential port of v4's
 //! `roleplay-templates/route.ts` (+ `[id]/route.ts`), composed over the ported
 //! `db::roleplay_templates` repo (create/update/delete) + the new full-JSON reads,
-//! plus the pure `services::annotations::generate_rendering_patterns`.
+//! plus the pure `services::annotations::generate_template_rendering_patterns`.
+//!
+//! P4.D351 (v4 `778b97b2b`, the Novel template, at the `236c04e35` pin): POST
+//! admits an explicit `null` narration (unmarked prose) and refuses a bad
+//! `unmarkedStyle` / a non-boolean `markdownAsterisks`; every create, an empty-
+//! patterns GET, and a PUT that changes any of the four authoring fields
+//! (`delimiters`, `narrationDelimiters`, `unmarkedStyle`, `markdownAsterisks`)
+//! derive the patterns through ONE `generate_template_rendering_patterns`; the
+//! two DEBUG lines and the route-level INFO lines are v4's.
 //!
 //! Response texture (per v4's `successResponse`): the LIST is a **bare JSON
 //! array**; create/get/update return the bare template; delete returns
@@ -14,13 +22,24 @@ use crate::collation::locale_compare;
 use crate::db::roleplay_templates::{
     delimiters_from_value, find_all_for_user, find_full_json_by_id, find_id_by_user_and_name,
     CreateOptions, DialogueDetection, RenderingPattern, RoleplayTemplatesRepository, RtCreate,
-    RtUpdate, StringOrPair, TemplateDelimiter,
+    RtUpdate, StringOrPair, TemplateDelimiter, UnmarkedStyle,
 };
 use crate::db::runtime::Db;
 use crate::jsstr::utf16_len;
-use crate::services::annotations::generate_rendering_patterns;
+use crate::services::annotations::generate_template_rendering_patterns;
 
 use super::types::{ErrorKind, Response};
+
+/// v4's middleware `validationError(zodError)` — `{error: 'Validation error',
+/// details: [issues]}` at 400.
+fn validation_error(issues: &[ZodIssue]) -> Response {
+    Response::validation_error(Value::Array(
+        issues.iter().map(ZodIssue::to_value).collect(),
+    ))
+}
+use super::zod_issues::{
+    key, zod_narration_delimiters_update_issues, zod_unmarked_style_issues, ZodIssue,
+};
 
 // ===========================================================================
 // Response helpers
@@ -42,6 +61,14 @@ fn forbidden(msg: impl Into<String>) -> Response {
     Response::error(ErrorKind::Forbidden, msg)
 }
 
+/// v4's POST 400 for a missing / `''` narration (`route.ts:82-84`).
+const NARRATION_REQUIRED: &str = "Narration delimiters are required (null for unmarked prose)";
+
+/// `issues[0]?.message` — the first Zod issue's sentence.
+fn issue_message(issue: &ZodIssue) -> &str {
+    issue.message()
+}
+
 /// JS truthiness for a JSON value (`!value` inversion): `null`/`false`/`0`/`""`
 /// are falsy; every non-empty string, non-zero number, array, and object is
 /// truthy. (v4's narration-delimiters + regen guards test truthiness directly.)
@@ -59,29 +86,49 @@ fn js_truthy(v: &Value) -> bool {
 // Read-time rendering-pattern auto-generation (shared by GET + the update arms)
 // ===========================================================================
 
-/// v4 GET-\[id\]'s read-time regen: when `renderingPatterns` is absent/empty AND
-/// (`delimiters` non-empty OR `narrationDelimiters` truthy), regenerate the
-/// patterns on the fly (NON-persisted). Mutates `t` in place.
+/// A stored / sent `narrationDelimiters` value as the generator takes it:
+/// `null` (unmarked prose) and an unparseable value are `None`.
+fn narration_of(v: Option<&Value>) -> Option<StringOrPair> {
+    v.filter(|v| !v.is_null())
+        .and_then(|v| serde_json::from_value::<StringOrPair>(v.clone()).ok())
+}
+
+/// A stored / sent `unmarkedStyle` value as the generator takes it: absent /
+/// `null` are `None`.
+fn unmarked_of(v: Option<&Value>) -> Option<UnmarkedStyle> {
+    v.filter(|v| !v.is_null())
+        .and_then(|v| serde_json::from_value::<UnmarkedStyle>(v.clone()).ok())
+}
+
+/// v4 `generateTemplateRenderingPatterns(template)` over a template JSON object
+/// (the hydrated row): `delimiters ?? []`, the decoded narration, the
+/// `unmarkedStyle`, and `markdownAsterisks` passed through as found (absent →
+/// `undefined`, so no literal pair).
+fn template_patterns_of(t: &Value) -> Vec<RenderingPattern> {
+    let delimiters = t
+        .get("delimiters")
+        .map(delimiters_from_value)
+        .unwrap_or_default();
+    generate_template_rendering_patterns(
+        Some(&delimiters),
+        narration_of(t.get("narrationDelimiters")).as_ref(),
+        unmarked_of(t.get("unmarkedStyle")).as_ref(),
+        t.get("markdownAsterisks").and_then(Value::as_bool),
+    )
+}
+
+/// v4 GET-\[id\]'s read-time regen: when `renderingPatterns` is absent or
+/// empty, derive the patterns on the fly (NON-persisted) — unconditionally
+/// (the pin dropped the old `delimiters || narration` condition). Mutates `t`
+/// in place.
 fn apply_read_time_regen(t: &mut Value) {
     let patterns_empty = t
         .get("renderingPatterns")
         .and_then(Value::as_array)
         .map(|a| a.is_empty())
         .unwrap_or(true);
-    let delimiters = t
-        .get("delimiters")
-        .cloned()
-        .unwrap_or_else(|| Value::Array(Vec::new()));
-    let has_delims = delimiters
-        .as_array()
-        .map(|a| !a.is_empty())
-        .unwrap_or(false);
-    let narration = t.get("narrationDelimiters").cloned().unwrap_or(Value::Null);
-    let has_narration = js_truthy(&narration);
-    if patterns_empty && (has_delims || has_narration) {
-        let typed = delimiters_from_value(&delimiters);
-        let nd = serde_json::from_value::<StringOrPair>(narration).ok();
-        let generated = generate_rendering_patterns(&typed, nd.as_ref(), Default::default());
+    if patterns_empty {
+        let generated = template_patterns_of(t);
         if let Some(obj) = t.as_object_mut() {
             obj.insert(
                 "renderingPatterns".into(),
@@ -158,16 +205,18 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
             return bad_request("Description must be 500 characters or less");
         }
     }
-    // narrationDelimiters (required) — the exact branch structure.
-    let narration = body
-        .get("narrationDelimiters")
-        .cloned()
-        .unwrap_or(Value::Null);
-    if !js_truthy(&narration) {
-        return bad_request("Narration delimiters are required");
-    }
+    // narrationDelimiters (required; an explicit null means narration is
+    // unmarked plain prose) — v4's exact branch structure.
+    let narration = match body.get("narrationDelimiters") {
+        None => return bad_request(NARRATION_REQUIRED),
+        Some(Value::String(s)) if s.is_empty() => return bad_request(NARRATION_REQUIRED),
+        Some(v) => v.clone(),
+    };
     match &narration {
+        // Unmarked narration — nothing further to check.
+        Value::Null => {}
         Value::String(s) => {
+            // Unreachable after the `''` arm above — kept, as v4 keeps it.
             if s.is_empty() {
                 return bad_request("Narration delimiters string must not be empty");
             }
@@ -202,16 +251,44 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
             Err(msg) => return bad_request(format!("Invalid delimiters: {msg}")),
         },
     };
-    // renderingPatterns: body || []; auto-regen when empty and delimiters/narration present.
+    // unmarkedStyle: UnmarkedStyleSchema.nullable().optional().safeParse(..).
+    if let Some(first) = zod_unmarked_style_issues(body.get("unmarkedStyle"), &[]).first() {
+        return bad_request(format!("Invalid unmarked style: {}", issue_message(first)));
+    }
+    let unmarked_style: Option<UnmarkedStyle> = unmarked_of(body.get("unmarkedStyle"));
+    // markdownAsterisks: undefined or a boolean (`?? true`).
+    let markdown_asterisks = match body.get("markdownAsterisks") {
+        None => true,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return bad_request("markdownAsterisks must be a boolean"),
+    };
+    let narration_typed: Option<StringOrPair> = match &narration {
+        Value::Null => None,
+        v => match serde_json::from_value(v.clone()) {
+            Ok(nd) => Some(nd),
+            Err(e) => return bad_request(format!("Invalid narrationDelimiters: {e}")),
+        },
+    };
+    // renderingPatterns: `body.renderingPatterns || []`; derived whenever empty.
     let mut rendering_patterns: Vec<RenderingPattern> = match body.get("renderingPatterns") {
-        Some(v) if !v.is_null() => serde_json::from_value(v.clone()).unwrap_or_default(),
+        Some(v) if js_truthy(v) => serde_json::from_value(v.clone()).unwrap_or_default(),
         _ => Vec::new(),
     };
-    if rendering_patterns.is_empty() && (!delimiters.is_empty() || js_truthy(&narration)) {
-        let nd = serde_json::from_value::<StringOrPair>(narration.clone()).ok();
-        rendering_patterns =
-            generate_rendering_patterns(&delimiters, nd.as_ref(), Default::default());
+    if rendering_patterns.is_empty() {
+        rendering_patterns = generate_template_rendering_patterns(
+            Some(&delimiters),
+            narration_typed.as_ref(),
+            unmarked_style.as_ref(),
+            Some(markdown_asterisks),
+        );
     }
+    tracing::debug!(
+        delimiterCount = delimiters.len(),
+        patternCount = rendering_patterns.len(),
+        unmarkedNarration = narration_typed.is_none(),
+        markdownAsterisks = markdown_asterisks,
+        "Roleplay template patterns resolved for create"
+    );
     // description: description?.trim() || null.
     let description: Option<String> = body
         .get("description")
@@ -226,10 +303,6 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
         },
         _ => None,
     };
-    let narration_typed: StringOrPair = match serde_json::from_value(narration.clone()) {
-        Ok(nd) => nd,
-        Err(e) => return bad_request(format!("Invalid narrationDelimiters: {e}")),
-    };
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = crate::clock::now_iso();
@@ -243,11 +316,9 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
         delimiters: delimiters.clone(),
         rendering_patterns: rendering_patterns.clone(),
         dialogue_detection: dialogue_detection.clone(),
-        narration_delimiters: Some(narration_typed),
-        // P4.D341 minimal compile fix (C-4): v4's Zod defaults; P4.D351 owns the
-        // route's `unmarkedStyle` / `markdownAsterisks` / null-narration arms.
-        unmarked_style: None,
-        markdown_asterisks: true,
+        narration_delimiters: narration_typed,
+        unmarked_style: unmarked_style.clone(),
+        markdown_asterisks,
     };
     let opts = CreateOptions {
         id: id.clone(),
@@ -262,10 +333,18 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
     if let Err(e) = write {
         return internal(e);
     }
+    tracing::info!(
+        userId = %user_id,
+        templateId = %id,
+        templateName = %name_trimmed,
+        "Roleplay template created"
+    );
 
     // The 201 body = v4's `validate(entityInput)` (the in-memory created object):
     // every field present, `description`/`dialogueDetection` null-or-value present,
-    // `narrationDelimiters` the input verbatim (string OR array).
+    // `narrationDelimiters` the input verbatim (string, array, or `null`),
+    // `unmarkedStyle` the parsed object or `null` (the object literal carries the
+    // key), `markdownAsterisks` the boolean.
     let mut obj = serde_json::Map::new();
     obj.insert("id".into(), Value::String(id));
     obj.insert("userId".into(), Value::String(user_id.to_string()));
@@ -295,6 +374,13 @@ pub async fn roleplay_template_create(db: &Db, user_id: &str, body: Value) -> Re
             .unwrap_or(Value::Null),
     );
     obj.insert("narrationDelimiters".into(), narration);
+    obj.insert(
+        "unmarkedStyle".into(),
+        unmarked_style
+            .and_then(|u| serde_json::to_value(u).ok())
+            .unwrap_or(Value::Null),
+    );
+    obj.insert("markdownAsterisks".into(), Value::Bool(markdown_asterisks));
     obj.insert("createdAt".into(), Value::String(now.clone()));
     obj.insert("updatedAt".into(), Value::String(now));
     Response::RoleplayTemplate(Value::Object(obj))
@@ -325,6 +411,31 @@ pub async fn roleplay_template_update(
         return bad_request("Expected object");
     };
 
+    // v4 `updateRoleplayTemplateSchema.parse(body)` THROWS on a refused key and
+    // the middleware answers `validationError` — the three P4.D351 keys'
+    // arms, in schema key order. (The older keys' parse arms are not ported —
+    // a pre-existing P4.6p-era class.)
+    let mut parse_issues: Vec<ZodIssue> = Vec::new();
+    parse_issues.extend(zod_narration_delimiters_update_issues(
+        body_obj.get("narrationDelimiters"),
+        &[key("narrationDelimiters")],
+    ));
+    parse_issues.extend(zod_unmarked_style_issues(
+        body_obj.get("unmarkedStyle"),
+        &[key("unmarkedStyle")],
+    ));
+    match body_obj.get("markdownAsterisks") {
+        None | Some(Value::Bool(_)) => {}
+        got => parse_issues.push(ZodIssue::invalid_type(
+            "boolean",
+            vec![key("markdownAsterisks")],
+            got,
+        )),
+    }
+    if !parse_issues.is_empty() {
+        return validation_error(&parse_issues);
+    }
+
     // Duplicate-name guard — only when a name is provided AND it differs. Runs
     // BEFORE the required-field re-validate (v4 order), so a dup-name body missing
     // systemPrompt still 409s.
@@ -341,29 +452,89 @@ pub async fn roleplay_template_update(
         }
     }
 
+    // Regenerate rendering patterns whenever any authoring field they derive
+    // from changed and no explicit patterns were sent. Every field falls back to
+    // the stored value, so a partial update never drops the others' patterns
+    // (`narrationDelimiters` / `unmarkedStyle` fall back on `!== undefined`, so
+    // an explicit `null` WINS; `markdownAsterisks` on `??`). v4 regenerates
+    // BEFORE the repository's whole-row re-validate, so the DEBUG fires even on
+    // a body that then 400s.
+    let derives_patterns = [
+        "delimiters",
+        "narrationDelimiters",
+        "unmarkedStyle",
+        "markdownAsterisks",
+    ]
+    .iter()
+    .any(|k| body_obj.contains_key(*k));
+    let regenerated: Option<Vec<RenderingPattern>> =
+        if derives_patterns && !body_obj.contains_key("renderingPatterns") {
+            let delimiters = match body_obj.get("delimiters") {
+                Some(v) => delimiters_from_value(v),
+                None => existing
+                    .get("delimiters")
+                    .map(delimiters_from_value)
+                    .unwrap_or_default(),
+            };
+            let narration = match body_obj.get("narrationDelimiters") {
+                Some(v) => narration_of(Some(v)),
+                None => narration_of(existing.get("narrationDelimiters")),
+            };
+            let unmarked = match body_obj.get("unmarkedStyle") {
+                Some(v) => unmarked_of(Some(v)),
+                None => unmarked_of(existing.get("unmarkedStyle")),
+            };
+            let markdown = body_obj
+                .get("markdownAsterisks")
+                .and_then(Value::as_bool)
+                .or_else(|| existing.get("markdownAsterisks").and_then(Value::as_bool));
+            let generated = generate_template_rendering_patterns(
+                Some(&delimiters),
+                narration.as_ref(),
+                unmarked.as_ref(),
+                markdown,
+            );
+            tracing::debug!(
+                templateId = %template_id,
+                patternCount = generated.len(),
+                "Roleplay template patterns regenerated for update"
+            );
+            Some(generated)
+        } else {
+            None
+        };
+
     // v4 `updateData` ALWAYS sets name / description / systemPrompt to
     // `validatedData.field?.trim()` — undefined when the field is absent (or, for
     // description, explicitly null). The `_update` merge (`{...existing,
     // ...updateData}`) then OVERWRITES those keys with undefined, and the full
     // `RoleplayTemplateSchema.parse` re-validate runs: `name`/`systemPrompt` are
-    // REQUIRED, so a body omitting either yields a 400 `Validation error`;
-    // `description` is nullable+optional, so undefined → the key is dropped.
+    // REQUIRED, so a body omitting either yields the middleware's 400
+    // `Validation error` with Zod's issues; `description` is nullable+optional,
+    // so undefined → the key is dropped.
     let name_new = body_obj.get("name").and_then(Value::as_str).map(str::trim);
     let sysprompt_new = body_obj
         .get("systemPrompt")
         .and_then(Value::as_str)
         .map(str::trim);
-    match (name_new, sysprompt_new) {
-        (Some(n), Some(sp)) if !n.is_empty() && !sp.is_empty() => {}
-        _ => return bad_request("Validation error"),
+    let mut required_issues: Vec<ZodIssue> = Vec::new();
+    for (k, v) in [("name", name_new), ("systemPrompt", sysprompt_new)] {
+        match v {
+            None => required_issues.push(ZodIssue::invalid_type("string", vec![key(k)], None)),
+            Some("") => required_issues.push(ZodIssue::too_small_string(json!(1), vec![key(k)])),
+            Some(_) => {}
+        }
     }
-    let name_new = name_new.unwrap().to_string();
-    let sysprompt_new = sysprompt_new.unwrap().to_string();
+    if !required_issues.is_empty() {
+        return validation_error(&required_issues);
+    }
+    let name_new = name_new.unwrap_or_default().to_string();
+    let sysprompt_new = sysprompt_new.unwrap_or_default().to_string();
 
     // Build the merged echo.
     let mut merged = existing.clone();
     let mo = merged.as_object_mut().unwrap();
-    mo.insert("name".into(), Value::String(name_new));
+    mo.insert("name".into(), Value::String(name_new.clone()));
     mo.insert("systemPrompt".into(), Value::String(sysprompt_new));
     // description is ALWAYS overwritten: a body string trims in; anything else
     // (absent / null) drops the key.
@@ -385,6 +556,18 @@ pub async fn roleplay_template_update(
     if let Some(v) = body_obj.get("narrationDelimiters") {
         mo.insert("narrationDelimiters".into(), v.clone());
     }
+    // unmarkedStyle: a sent value WINS (`null` stays `null`, an object is the
+    // Zod-parsed one — add-on defaults materialised); absent keeps the stored
+    // shape (ABSENT when the cell is NULL).
+    if let Some(v) = body_obj.get("unmarkedStyle") {
+        let parsed = unmarked_of(Some(v))
+            .and_then(|u| serde_json::to_value(u).ok())
+            .unwrap_or(Value::Null);
+        mo.insert("unmarkedStyle".into(), parsed);
+    }
+    if let Some(v) = body_obj.get("markdownAsterisks") {
+        mo.insert("markdownAsterisks".into(), v.clone());
+    }
     // delimiters: the full re-validate re-parses them → normalize via the typed
     // union (materializes addOns defaults, backfills legacy kinds).
     if let Some(v) = body_obj.get("delimiters") {
@@ -395,38 +578,7 @@ pub async fn roleplay_template_update(
     if let Some(v) = body_obj.get("renderingPatterns") {
         mo.insert("renderingPatterns".into(), v.clone());
     }
-
-    // Regen-on-update: delimiters changed & no explicit patterns → regen with the
-    // new-or-existing narration; else narration-only changed → regen with existing
-    // delimiters.
-    let has_new_delims = body_obj.contains_key("delimiters");
-    let has_new_patterns = body_obj.contains_key("renderingPatterns");
-    let has_new_narration = body_obj.contains_key("narrationDelimiters");
-    if has_new_delims && !has_new_patterns {
-        let delims = delimiters_from_value(mo.get("delimiters").unwrap_or(&Value::Null));
-        let nd_value = if has_new_narration {
-            mo.get("narrationDelimiters")
-                .cloned()
-                .unwrap_or(Value::Null)
-        } else {
-            existing
-                .get("narrationDelimiters")
-                .cloned()
-                .unwrap_or(Value::Null)
-        };
-        let nd = serde_json::from_value::<StringOrPair>(nd_value).ok();
-        let generated = generate_rendering_patterns(&delims, nd.as_ref(), Default::default());
-        mo.insert(
-            "renderingPatterns".into(),
-            serde_json::to_value(generated).unwrap_or(Value::Array(Vec::new())),
-        );
-    } else if has_new_narration && !has_new_patterns && !has_new_delims {
-        let delims = delimiters_from_value(existing.get("delimiters").unwrap_or(&Value::Null));
-        let nd = mo
-            .get("narrationDelimiters")
-            .cloned()
-            .and_then(|v| serde_json::from_value::<StringOrPair>(v).ok());
-        let generated = generate_rendering_patterns(&delims, nd.as_ref(), Default::default());
+    if let Some(generated) = &regenerated {
         mo.insert(
             "renderingPatterns".into(),
             serde_json::to_value(generated).unwrap_or(Value::Array(Vec::new())),
@@ -439,7 +591,7 @@ pub async fn roleplay_template_update(
 
     // Persist the changed columns (the row is not re-read; the echo above is the
     // response). `updatedAt` always set; each provided field written.
-    let patch = build_update_patch(mo, body_obj, now);
+    let patch = build_update_patch(mo, body_obj, regenerated.is_some(), now);
     let id = template_id.to_string();
     let write = db
         .write(move |ws| {
@@ -447,7 +599,15 @@ pub async fn roleplay_template_update(
         })
         .await;
     match write {
-        Ok(_) => Response::RoleplayTemplate(merged),
+        Ok(_) => {
+            tracing::info!(
+                templateId = %template_id,
+                templateName = %name_new,
+                userId = %user_id,
+                "Roleplay template updated successfully"
+            );
+            Response::RoleplayTemplate(merged)
+        }
         Err(e) => internal(e),
     }
 }
@@ -473,6 +633,17 @@ pub async fn roleplay_template_delete(db: &Db, template_id: &str) -> Response {
         .await;
     match out {
         Ok(true) => {
+            // v4 logs the session user's id; this handler takes none, and the
+            // only templates that reach a delete are the single user's own
+            // (built-ins 403 above), so the row's `userId` is that id.
+            let template_name = existing.get("name").and_then(Value::as_str).unwrap_or("");
+            let owner_id = existing.get("userId").and_then(Value::as_str).unwrap_or("");
+            tracing::info!(
+                templateId = %template_id,
+                templateName = %template_name,
+                userId = %owner_id,
+                "Roleplay template deleted successfully"
+            );
             Response::RoleplayTemplate(json!({ "success": true, "deletedId": template_id }))
         }
         Ok(false) => internal("Failed to delete roleplay template"),
@@ -498,6 +669,15 @@ fn parse_delimiters_strict(v: &Value) -> Result<Vec<TemplateDelimiter>, String> 
             map.entry("kind")
                 .or_insert_with(|| Value::String("wrap".to_string()));
         }
+        // P4.D351: a `wrap`'s `matchCurlyQuotes` / `closeOptional` are
+        // `z.boolean().optional()` — a present non-boolean (`null` included,
+        // which serde's `Option<bool>` would admit) is Zod's first issue when
+        // the element is otherwise sound, so answer its sentence rather than
+        // the `malformed` fallback (that fallback stays for every OTHER parse
+        // failure — a pre-existing P4.6p-era class).
+        if let Some(msg) = wrap_flag_type_miss(&item) {
+            return Err(msg);
+        }
         match serde_json::from_value::<TemplateDelimiter>(item) {
             Ok(d) => out.push(d),
             Err(_) => return Err("malformed".to_string()),
@@ -506,12 +686,36 @@ fn parse_delimiters_strict(v: &Value) -> Result<Vec<TemplateDelimiter>, String> 
     Ok(out)
 }
 
+/// The Zod sentence for a `wrap` delimiter whose `matchCurlyQuotes` /
+/// `closeOptional` (schema order) is present and not a boolean, WHEN the
+/// element parses once both flags are set aside (so that flag is the element's
+/// first issue). `None` otherwise.
+fn wrap_flag_type_miss(item: &Value) -> Option<String> {
+    let obj = item.as_object()?;
+    if obj.get("kind").and_then(Value::as_str) != Some("wrap") {
+        return None;
+    }
+    let bad = ["matchCurlyQuotes", "closeOptional"]
+        .into_iter()
+        .find(|k| obj.get(*k).is_some_and(|v| !v.is_boolean()))?;
+    let mut rest = obj.clone();
+    rest.remove("matchCurlyQuotes");
+    rest.remove("closeOptional");
+    serde_json::from_value::<TemplateDelimiter>(Value::Object(rest)).ok()?;
+    Some(
+        ZodIssue::invalid_type("boolean", vec![key(bad)], obj.get(bad))
+            .message()
+            .to_string(),
+    )
+}
+
 /// Build the persistence patch from the merged echo + the request body. Mirrors
 /// v4's `$set: validated` shape closely enough for a correct write (the echo, not
 /// a re-read, is the diffed response).
 fn build_update_patch(
     merged: &serde_json::Map<String, Value>,
     body_obj: &serde_json::Map<String, Value>,
+    regenerated: bool,
     updated_at: String,
 ) -> RtUpdate {
     let mut patch = RtUpdate {
@@ -541,11 +745,9 @@ fn build_update_patch(
             merged.get("delimiters").unwrap_or(&Value::Null),
         ));
     }
+    // renderingPatterns: persisted whenever sent or regenerated.
     if let Some(rp) = merged.get("renderingPatterns") {
-        if body_obj.contains_key("delimiters")
-            || body_obj.contains_key("renderingPatterns")
-            || body_obj.contains_key("narrationDelimiters")
-        {
+        if regenerated || body_obj.contains_key("renderingPatterns") {
             patch.rendering_patterns = serde_json::from_value(rp.clone()).ok();
         }
     }
@@ -554,12 +756,16 @@ fn build_update_patch(
             patch.dialogue_detection = serde_json::from_value(dd.clone()).ok();
         }
     }
+    // narrationDelimiters / unmarkedStyle: a sent `null` sets null (`Some(None)`),
+    // a value sets it; markdownAsterisks: a sent boolean.
     if let Some(nd) = body_obj.get("narrationDelimiters") {
-        // P4.D341 minimal compile fix (C-4): `Some(Some(v))` for a parsed value;
-        // P4.D351 owns the explicit-`null` arm.
-        patch.narration_delimiters = serde_json::from_value::<StringOrPair>(nd.clone())
-            .ok()
-            .map(Some);
+        patch.narration_delimiters = Some(narration_of(Some(nd)));
+    }
+    if let Some(u) = body_obj.get("unmarkedStyle") {
+        patch.unmarked_style = Some(unmarked_of(Some(u)));
+    }
+    if let Some(b) = body_obj.get("markdownAsterisks").and_then(Value::as_bool) {
+        patch.markdown_asterisks = Some(b);
     }
     patch
 }

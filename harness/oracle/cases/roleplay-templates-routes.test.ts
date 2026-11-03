@@ -8,6 +8,18 @@
  * resolved once from the committed fixture and identical on both differential
  * sides.
  *
+ * P4.D351 (v4 `778b97b2b`, the Novel template): every case also emits the v4
+ * log lines it wrote (`lines`, rendered `LEVEL message k=v`) whose message
+ * starts with `Roleplay template ` — the two NEW DEBUGs (`… patterns resolved
+ * for create`, `… patterns regenerated for update`) and the pre-existing INFOs.
+ * v4's `initializeDatabase()` does NOT seed the built-ins — production runs
+ * `repos.roleplayTemplates.seedBuiltInTemplates()` from `lib/startup/
+ * seed-initial-data.ts` at boot — so each case calls that REAL seed on its copy
+ * right after `initializeDatabase()` (the Rust family runs v5's
+ * `seed_built_in_templates` on its copy the same way). The seed inserts Novel
+ * with an id / stamps minted per copy, so a case that needs Novel's id resolves
+ * it on the case copy AFTER the seed.
+ *
  * Run (Node 24, from the v4 checkout — cp to a /tmp mirror; jest ignores .claude/):
  *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=<this worktree>
  *   TMPO=/tmp/qt-gp-oracle
@@ -108,6 +120,62 @@ interface CaseSpec {
   run: () => Promise<{ status: number; body: unknown }>;
 }
 
+/** The v4 lines a case logs that the Rust family compares. */
+const LINE_PREFIXES = ['Roleplay template '];
+let capturedLines: string[] = [];
+
+function renderField(k: string, v: unknown): string {
+  if (v === null || v === undefined) return ` ${k}=null`;
+  if (Array.isArray(v) || typeof v === 'object') return ` ${k}Json=${JSON.stringify(v)}`;
+  return ` ${k}=${String(v)}`;
+}
+
+async function installCapture(): Promise<void> {
+  capturedLines = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as {
+        level: string;
+        message: string;
+        context?: Record<string, unknown>;
+        error?: { message?: string };
+      };
+      if (!LINE_PREFIXES.some((p) => data.message.startsWith(p))) return;
+      const { service: _s, environment: _e, ...fields } = data.context ?? {};
+      let line = `${data.level.toUpperCase()} ${data.message}`;
+      for (const [k, v] of Object.entries(fields)) line += renderField(k, v);
+      if (data.error) line += ` error=${data.error.message}`;
+      capturedLines.push(line);
+    },
+  });
+}
+
+/** The seeded Novel built-in's id on THIS case's copy (minted by the seed). */
+function novelIdOnCopy(spec: Spec): string {
+  const Database = require(cipherDriverPath());
+  const hex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+  const db = new Database(process.env.SQLITE_PATH, { readonly: true });
+  db.pragma(`key = "x'${hex}'"`);
+  const row = db
+    .prepare("SELECT id FROM roleplay_templates WHERE isBuiltIn = 1 AND name = 'Novel'")
+    .get() as { id: string } | undefined;
+  db.close();
+  if (!row) throw new Error('the seeded Novel row is missing on the case copy');
+  return row.id;
+}
+
+/** Call a route twice in one case (create then GET), so the body carries both. */
+async function both(
+  first: () => Promise<{ status: number; body: unknown }>,
+  second: (firstBody: Record<string, unknown>) => Promise<{ status: number; body: unknown }>,
+): Promise<{ status: number; body: unknown }> {
+  const a = await first();
+  const b = await second(a.body as Record<string, unknown>);
+  return { status: b.status, body: { first: a, second: b } };
+}
+
 async function loadRoute(
   path: string,
 ): Promise<Record<string, (...a: unknown[]) => Promise<unknown>>> {
@@ -141,9 +209,12 @@ async function runCase(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
   await initializeDatabase();
+  const { getRepositories } = await import('@/lib/database/repositories');
+  await getRepositories().roleplayTemplates.seedBuiltInTemplates();
+  await installCapture();
   try {
     const out = await c.run();
-    return { name: c.name, status: out.status, body: out.body };
+    return { name: c.name, status: out.status, body: out.body, lines: capturedLines.slice() };
   } finally {
     await closeDatabase();
     closeMountIndexSQLiteClient();
@@ -183,7 +254,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // DEBUG so the two P4.D351 lines reach the capture transport.
+  process.env.LOG_LEVEL = 'debug';
 
   const cases: CaseSpec[] = [
     { name: 'list', run: async () => respond(await (await collGET()).GET(mockRequest(B))) },
@@ -369,6 +441,518 @@ async function main(): Promise<void> {
       name: 'delete_missing',
       run: async () =>
         respond(await (await idRoute()).DELETE(mockRequest(`${B}/${BOGUS}`), params(BOGUS))),
+    },
+    // --- P4.D351: the Novel template's route arms (v4 778b97b2b) ---
+    {
+      name: 'create_null_narration',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'Plain Prose',
+              systemPrompt: 'Write plainly.',
+              narrationDelimiters: null,
+              delimiters: [
+                { kind: 'wrap', name: 'Speech', buttonName: 'S', delimiters: '"', style: 'qt-chat-dialogue' },
+              ],
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_narration_empty_string',
+      run: async () =>
+        respond(await (await collGET()).POST(mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: '' }))),
+    },
+    {
+      name: 'create_narration_zero',
+      run: async () =>
+        respond(await (await collGET()).POST(mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: 0 }))),
+    },
+    {
+      name: 'create_narration_false',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: false })),
+        ),
+    },
+    {
+      name: 'create_narration_object',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: { a: 1 } })),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_bad_empty',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: null, unmarkedStyle: { style: '' } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_bad_type',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: null, unmarkedStyle: 5 }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_missing_style',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: null, unmarkedStyle: {} }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_too_long',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            // 51 two-UTF-16-unit glyphs: 51 code points, 102 UTF-16 units.
+            mockRequest(B, {
+              name: 'X',
+              systemPrompt: 'Y',
+              narrationDelimiters: null,
+              unmarkedStyle: { style: '\u{1D4D2}'.repeat(51) },
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_fifty_code_points_ok',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'Fifty Glyphs',
+              systemPrompt: 'Y',
+              narrationDelimiters: null,
+              unmarkedStyle: { style: '\u{1D4D2}'.repeat(50) },
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_bad_addons',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: null, unmarkedStyle: { style: 'x', addOns: 5 } }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_bad_addons_enum',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'X',
+              systemPrompt: 'Y',
+              narrationDelimiters: null,
+              unmarkedStyle: { style: 'x', addOns: { underline: 'wavy' } },
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_null_explicit',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'Null Unmarked', systemPrompt: 'Y', narrationDelimiters: '*', unmarkedStyle: null }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_partial_addons',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'Partial Addons',
+              systemPrompt: 'Y',
+              narrationDelimiters: null,
+              unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { italic: true } },
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_markdown_asterisks_not_bool',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: '*', markdownAsterisks: 'yes' }),
+          ),
+        ),
+    },
+    {
+      name: 'create_markdown_asterisks_null',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: '*', markdownAsterisks: null }),
+          ),
+        ),
+    },
+    {
+      name: 'create_markdown_false_regen',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'No Markdown Stars',
+              systemPrompt: 'Y',
+              narrationDelimiters: '*',
+              markdownAsterisks: false,
+              delimiters: [{ kind: 'wrap', name: 'Emph', buttonName: 'E', delimiters: '_', style: 'qt-rp-emph' }],
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_only_regen',
+      run: async () =>
+        both(
+          async () =>
+            respond(
+              await (await collGET()).POST(
+                mockRequest(B, {
+                  name: 'Unmarked Only',
+                  systemPrompt: 'Y',
+                  narrationDelimiters: null,
+                  unmarkedStyle: { style: 'qt-roleplay-plain' },
+                }),
+              ),
+            ),
+          async (created) =>
+            respond(
+              await (await idRoute()).GET(
+                mockRequest(`${B}/${created.id as string}`),
+                params(created.id as string),
+              ),
+            ),
+        ),
+    },
+    {
+      name: 'create_empty_patterns_no_regen_input',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'Nothing To Derive', systemPrompt: 'Y', narrationDelimiters: null }),
+          ),
+        ),
+    },
+    {
+      name: 'create_novel_like',
+      run: async () => {
+        const { NOVEL_TEMPLATE } = await import('@/lib/chat/novel-template');
+        return respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'My Novel',
+              description: NOVEL_TEMPLATE.description,
+              systemPrompt: NOVEL_TEMPLATE.systemPrompt,
+              delimiters: NOVEL_TEMPLATE.delimiters,
+              dialogueDetection: NOVEL_TEMPLATE.dialogueDetection,
+              narrationDelimiters: NOVEL_TEMPLATE.narrationDelimiters,
+              unmarkedStyle: NOVEL_TEMPLATE.unmarkedStyle,
+              markdownAsterisks: NOVEL_TEMPLATE.markdownAsterisks,
+            }),
+          ),
+        );
+      },
+    },
+    {
+      name: 'create_wrap_curly_not_bool',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'X',
+              systemPrompt: 'Y',
+              narrationDelimiters: '*',
+              delimiters: [
+                { kind: 'wrap', name: 'Q', buttonName: 'Q', delimiters: '"', style: 'qt-rp-q', matchCurlyQuotes: 'yes' },
+              ],
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_wrap_close_optional_null',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'X',
+              systemPrompt: 'Y',
+              narrationDelimiters: '*',
+              delimiters: [
+                { kind: 'wrap', name: 'Q', buttonName: 'Q', delimiters: '"', style: 'qt-rp-q', closeOptional: null },
+              ],
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'create_wrap_flags_kept',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, {
+              name: 'Flagged Wrap',
+              systemPrompt: 'Y',
+              narrationDelimiters: null,
+              delimiters: [
+                { kind: 'wrap', name: 'Q', buttonName: 'Q', delimiters: '"', style: 'qt-rp-q', matchCurlyQuotes: true, closeOptional: false },
+              ],
+            }),
+          ),
+        ),
+    },
+    {
+      name: 'get_builtin_novel',
+      run: async () => {
+        const id = novelIdOnCopy(spec);
+        return respond(await (await idRoute()).GET(mockRequest(`${B}/${id}`), params(id)));
+      },
+    },
+    {
+      name: 'update_narration_null',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, {
+              name: 'Bracket Prose',
+              systemPrompt: 'Keep prose.',
+              narrationDelimiters: null,
+            }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_regen_unmarked_only',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, {
+              name: 'Bracket Prose',
+              systemPrompt: 'Keep prose.',
+              unmarkedStyle: { style: 'qt-roleplay-plain', addOns: { bold: true } },
+            }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_regen_markdown_only',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_2}`, {
+              name: 'Quiet Draft',
+              systemPrompt: 'Keep quiet.',
+              markdownAsterisks: false,
+            }),
+            params(RT_USER_2),
+          ),
+        ),
+    },
+    {
+      name: 'update_unmarked_null_clears',
+      run: async () =>
+        both(
+          async () =>
+            respond(
+              await (await idRoute()).PUT(
+                mockRequest(`${B}/${RT_USER_1}`, {
+                  name: 'Bracket Prose',
+                  systemPrompt: 'Keep prose.',
+                  unmarkedStyle: { style: 'qt-roleplay-plain' },
+                }),
+                params(RT_USER_1),
+              ),
+            ),
+          async () =>
+            respond(
+              await (await idRoute()).PUT(
+                mockRequest(`${B}/${RT_USER_1}`, {
+                  name: 'Bracket Prose',
+                  systemPrompt: 'Keep prose.',
+                  unmarkedStyle: null,
+                }),
+                params(RT_USER_1),
+              ),
+            ),
+        ),
+    },
+    {
+      name: 'update_keeps_unmarked_when_absent',
+      run: async () =>
+        both(
+          async () =>
+            respond(
+              await (await idRoute()).PUT(
+                mockRequest(`${B}/${RT_USER_1}`, {
+                  name: 'Bracket Prose',
+                  systemPrompt: 'Keep prose.',
+                  unmarkedStyle: { style: 'qt-roleplay-plain' },
+                  markdownAsterisks: false,
+                }),
+                params(RT_USER_1),
+              ),
+            ),
+          async () =>
+            respond(
+              await (await idRoute()).PUT(
+                mockRequest(`${B}/${RT_USER_1}`, {
+                  name: 'Bracket Prose',
+                  systemPrompt: 'Keep prose.',
+                  narrationDelimiters: '~',
+                }),
+                params(RT_USER_1),
+              ),
+            ),
+        ),
+    },
+    {
+      name: 'update_narration_empty_string',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: '' }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_narration_bad_pair',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: ['[', ''] }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_narration_number',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: 7 }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_narration_triple',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: ['a', 'b', 'c'] }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_narration_single_elem',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: ['a'] }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_narration_pair_nonstring',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', narrationDelimiters: [1, ''] }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'create_unmarked_style_addons_null',
+      run: async () =>
+        respond(
+          await (await collGET()).POST(
+            mockRequest(B, { name: 'X', systemPrompt: 'Y', narrationDelimiters: null, unmarkedStyle: { style: 'x', addOns: null } }),
+          ),
+        ),
+    },
+    {
+      name: 'update_unmarked_style_bad',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', unmarkedStyle: { style: '' } }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_markdown_asterisks_not_bool',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Bracket Prose', systemPrompt: 'K', markdownAsterisks: 'yes' }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_two_new_key_refusals',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, {
+              name: 'Bracket Prose',
+              systemPrompt: 'K',
+              narrationDelimiters: '',
+              markdownAsterisks: 1,
+            }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_patterns_sent_no_regen',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, {
+              name: 'Bracket Prose',
+              systemPrompt: 'Keep prose.',
+              markdownAsterisks: false,
+              renderingPatterns: [{ pattern: 'x', className: 'qt-x' }],
+            }),
+            params(RT_USER_1),
+          ),
+        ),
+    },
+    {
+      name: 'update_name_only_no_regen',
+      run: async () =>
+        respond(
+          await (await idRoute()).PUT(
+            mockRequest(`${B}/${RT_USER_1}`, { name: 'Renamed Prose', systemPrompt: 'Keep prose.' }),
+            params(RT_USER_1),
+          ),
+        ),
     },
   ];
 

@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(templates): the roleplay-template routes for the Novel template — null narration, the unmarked style, markdownAsterisks, one pattern derivation (P4.D351)
+
+_Versions: core 0.0.1383._
+
+The roleplay-template routes follow v4 `778b97b2b` at the `236c04e35` pin.
+
+- **POST:** admits an explicit `null` narration (unmarked prose). A missing or empty narration now answers `Narration delimiters are required (null for unmarked prose)`. A bad `unmarkedStyle` answers `Invalid unmarked style: <Zod's first issue>`, and a non-boolean `markdownAsterisks` answers `markdownAsterisks must be a boolean`. The 201 echo carries `unmarkedStyle` (`null` when unset) and `markdownAsterisks`.
+- **GET:** an empty `renderingPatterns` is always derived on read.
+- **PUT:** refuses a bad `narrationDelimiters` / `unmarkedStyle` / `markdownAsterisks` with Zod's `Validation error` details. A change to any of the four authoring fields re-derives the patterns from the sent or stored values; an explicit `null` wins.
+- Every derivation goes through `generate_template_rendering_patterns`. The two new DEBUG lines and the route-level `created` / `updated successfully` / `deleted successfully` INFO lines are logged.
+- A `wrap` delimiter's non-boolean `matchCurlyQuotes` / `closeOptional` now answers Zod's sentence instead of `Invalid delimiters: malformed`.
+- `zod_issues` gains the `UnmarkedStyleSchema` and narration-union twins, and the tuple-length issue shapes.
+- The routes family seeds the built-ins on every copy as production's boot does, and compares whole bodies and captured log lines. It grows from 21 to 62 cases.
+
 #### 2026-11-02 — feat(templates): rendering-pattern generation for the Novel template — the asterisk pre-parse pair, the unmarked tail, quote-tolerant wraps (P4.D351)
 
 _Versions: core 0.0.1382._
