@@ -228,6 +228,11 @@ interface CaseSpec {
    *  the pool. `'all'` archives every tier at once (v4's "hands the LLM nothing
    *  at all" case — no consult happens, so `llmMessages` is EMPTY). */
   archiveTier?: 'character' | 'general' | 'group' | 'all';
+  /** [P4.D349 / v4 `eb90d9ed8`] Raw plants on the fresh copy: the joining
+   *  character's vault `properties.json` gains `pronouns: She/Her/Her`, and
+   *  the FIRST `Wardrobe/*.md` of its own vault (by `relativePath`, code-unit
+   *  order) gains `pronounGuidance: [he]` — so the green room holds it back. */
+  seedPronouns?: true;
 }
 
 async function runCase(
@@ -332,6 +337,33 @@ async function runCase(
     main.prepare('UPDATE chats SET participants = ? WHERE id = ?').run(JSON.stringify(participants), c.chatId);
   }
 
+  if (c.seedPronouns) {
+    const { getRepositories } = await import('@/lib/repositories/factory');
+    const charId = (c.body as { characterId?: string }).characterId ?? '';
+    const row = await getRepositories().characters.findByIdRaw(charId);
+    const mp = row?.characterDocumentMountPointId as string | undefined;
+    if (!mp) throw new Error(`no vault for seedPronouns character ${charId}`);
+    const midb = (await import('@/lib/database/backends/sqlite/mount-index-client')).getRawMountIndexDatabase();
+    if (!midb) throw new Error('mount-index handle unavailable');
+    const docOf = (where: string) =>
+      midb
+        .prepare(
+          `SELECT d.id AS did, d.content AS content, l.relativePath AS rel FROM doc_mount_file_links l
+             JOIN doc_mount_documents d ON d.fileId = l.fileId
+            WHERE l.mountPointId = ? AND ${where} ORDER BY l.relativePath`,
+        )
+        .all(mp) as Array<{ did: string; content: string; rel: string }>;
+    const props = docOf("l.relativePath = 'properties.json'")[0];
+    const bag = JSON.parse(props.content);
+    bag.pronouns = { subject: 'she', object: 'her', possessive: 'her' };
+    midb.prepare('UPDATE doc_mount_documents SET content = ? WHERE id = ?').run(JSON.stringify(bag, null, 2), props.did);
+    const items = docOf("lower(l.relativePath) LIKE 'wardrobe/%.md'").filter((r) => r.content.startsWith('---'));
+    items.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0));
+    const first = items[0];
+    midb
+      .prepare('UPDATE doc_mount_documents SET content = ? WHERE id = ?')
+      .run(first.content.replace(/^---\n/, '---\npronounGuidance: [he]\n'), first.did);
+  }
   if (c.archiveTier) {
     const { getRawDatabase } = await import('@/lib/database/backends/sqlite/client');
     const { getRepositories } = await import('@/lib/repositories/factory');
@@ -651,6 +683,21 @@ async function main(): Promise<void> {
       },
       reply: 'wrenPicksShared',
       archiveTier: 'group',
+    },
+    // P4.D349 (v4 `eb90d9ed8`): the green room is pronoun-aware — a she/her
+    // Pip is never offered the garment guided [he] (the recorded prompt lacks
+    // it; the DEBUG `Pronoun guidance held items back from the green room`).
+    {
+      name: 'add_llm_choose_pronoun_guidance_holds_back',
+      action: 'add-participant',
+      chatId: MERGE_TARGET,
+      body: {
+        type: 'CHARACTER',
+        characterId: PIP,
+        outfitSelection: { characterId: PIP, mode: 'llm_choose' },
+      },
+      reply: 'pipPick',
+      seedPronouns: true,
     },
     {
       // v4: "hands the LLM nothing at all when every garment in every tier is

@@ -36,6 +36,9 @@ pub struct WardrobeReadToolOutput {
     pub image_file_id: Option<String>,
     pub types: Vec<String>,
     pub appropriateness: Option<String>,
+    /// v4 `eb90d9ed8`: the pronouns (by subject) the item is meant for
+    /// (`item.pronounGuidance ?? []`; `[]` on the failure shape).
+    pub pronoun_guidance: Vec<String>,
     pub is_default: bool,
     pub replace: bool,
     pub is_composite: bool,
@@ -298,6 +301,7 @@ pub fn build_read_failure(error: impl Into<String>) -> WardrobeReadToolOutput {
         image_file_id: None,
         types: Vec::new(),
         appropriateness: None,
+        pronoun_guidance: Vec::new(),
         is_default: false,
         replace: false,
         is_composite: false,
@@ -355,6 +359,15 @@ pub fn build_read_output(
         image_file_id: str_field(item, "imageFileId"),
         types: types_of(item),
         appropriateness: str_field(item, "appropriateness"),
+        pronoun_guidance: item
+            .get("pronounGuidance")
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(|e| e.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default(),
         is_default: item
             .get("isDefault")
             .and_then(Value::as_bool)
@@ -535,6 +548,12 @@ pub fn format_at(output: &WardrobeReadToolOutput, now_ms: f64) -> String {
     lines.push(format!("  types: {}", output.types.join(", ")));
     if let Some(a) = &output.appropriateness {
         lines.push(format!("  appropriateness: {a}"));
+    }
+    if !output.pronoun_guidance.is_empty() {
+        lines.push(format!(
+            "  pronoun guidance: meant for {}",
+            crate::wardrobe::pronoun_guidance::format_pronoun_guidance(&output.pronoun_guidance)
+        ));
     }
     if let Some(d) = &output.description {
         lines.push(format!("  description: {d}"));

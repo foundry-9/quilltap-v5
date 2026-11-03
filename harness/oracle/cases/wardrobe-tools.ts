@@ -196,12 +196,19 @@ async function main(): Promise<void> {
     containers: Record<string, unknown> = { pendingWardrobeAnnouncements, pendingWardrobeHistory },
   ): Promise<{ name: string; tool: string; output: unknown; formatted: string; logs: unknown[] }> => {
     // [P4.170 C.2] `unvaulted` = the corpus growth's vault-less participant.
+    // [P4.D349] `clementine` / `quill` = the pronoun corpus's two characters.
+    const pc = (spec as unknown as { pronounCorpus?: { clementine: { id: string }; quill: { id: string } } })
+      .pronounCorpus;
     const characterId =
       op.characterId === 'recipient'
         ? spec.recipientCharacterId
         : op.characterId === 'unvaulted'
           ? spec.toolsCorpusGrowth.unvaultedCharacterId
-          : spec.callerCharacterId;
+          : op.characterId === 'clementine'
+            ? pc!.clementine.id
+            : op.characterId === 'quill'
+              ? pc!.quill.id
+              : spec.callerCharacterId;
     // [P4.D280] v4's executor hands EVERY wardrobe tool the turn's Set — and
     // [P4.D316] the Map and the caller's provenance (`tool-executor.ts:725-738`).
     const base = {
@@ -259,6 +266,13 @@ async function main(): Promise<void> {
 
   const returns: unknown[] = [];
   for (const op of spec.ops) returns.push(await runOp(op));
+  // [P4.D349] The pronoun corpus's ops — only when the builder seeded it
+  // (`QT_WT_PRONOUN_CORPUS=1`, the wardrobe_tools recipe); they follow the main
+  // ops, so every main op's row keeps its index.
+  if (process.env.QT_WT_PRONOUN_CORPUS === '1') {
+    const pcOps = (spec as unknown as { pronounCorpus: { ops: Op[] } }).pronounCorpus.ops;
+    for (const op of pcOps) returns.push(await runOp(op));
+  }
 
   // Read the mutated state back (the "tables" diff, in read-back form).
   const repos = getRepositories();

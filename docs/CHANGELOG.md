@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(wardrobe): pronoun guidance in the four wardrobe tools and the green room (P4.D349)
+
+_Versions: core 0.0.1388._
+
+The tool half of v4 `eb90d9ed8`, against the catalog that already advertises the params.
+
+- **`wardrobe_list`.** Pronoun-aware by default, it holds back items whose guidance names other pronouns. It never hides what the character is wearing, and filters nothing for a character with custom or unset pronouns. `pronoun_aware: false` lists everything. Each item carries `pronoun_guidance` and the output carries `hidden_by_pronoun_guidance`. The formatted list tags guided items `[meant for: …]` and ends with a note when items were held back. The `Wardrobe list completed` INFO gains `pronounAware` and `hiddenByPronounGuidance`. A character that cannot be read lists unfiltered, with v4's WARN `Wardrobe list could not read the character's pronouns; listing unfiltered`.
+- **`wardrobe_read`.** Reports `pronoun_guidance` and a `pronoun guidance: meant for …` line.
+- **`wardrobe_create` / `wardrobe_update`.** Accept `pronoun_guidance` as v4's strict enum list. `wardrobe_update` patches it normalised, with `pronounGuidance` in the completed line's `fields`.
+- **The green room.** "Let character choose" (`llm_choose`) offers the model only the items that fit the character's pronouns, and logs `[applyOutfitSelections] Pronoun guidance held items back from the green room` when it held any back.
+
+The shared `wardrobe-tools` fixture builder gains a pronoun corpus behind its own switch (`QT_WT_PRONOUN_CORPUS=1`): two new characters, three items and nine ops. Every existing op's output is unchanged.
+
 #### 2026-11-03 — feat(characters): the PUT's diagram and humanoid keys, and the identity-stack fan-out on a Humanoid flip (P4.D349)
 
 _Versions: core 0.0.1387._

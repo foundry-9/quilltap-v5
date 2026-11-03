@@ -23,14 +23,23 @@
 //!   N=~/.nvm/versions/node/v24.13.1/bin
 //!   V5=~/source/quilltap-v5
 //!   cd ~/source/quilltap-server
-//!   QT_WT_TOOLS_CORPUS=1 QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
+//!   QT_WT_TOOLS_CORPUS=1 QT_WT_PRONOUN_CORPUS=1 QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/fixtures/build-wardrobe-tools-fixture.ts
-//!   QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
+//!   QT_WT_PRONOUN_CORPUS=1 QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     $N/node --import tsx $V5/harness/oracle/cases/wardrobe-tools.ts > /tmp/oracle-wardrobe-tools.ndjson
 //! Run:
 //!   QT_ORACLE_WT=/tmp/oracle-wardrobe-tools.ndjson \
 //!   QT_FIXTURE_WT_MAIN=/tmp/qt-wt-main.db QT_FIXTURE_WT_MOUNT=/tmp/qt-wt-mount.db \
 //!     cargo test -p quilltap-harness --test wardrobe_tools_equivalence
+//!
+//! P4.D349 (v4 `eb90d9ed8`, ruling R-3): `QT_WT_PRONOUN_CORPUS=1` seeds two NEW
+//! characters (Clementine She/Her/Her, Quill ze/zir/zir) + Clementine's three
+//! guided / unguided items, and the case runs `pronounCorpus.ops` AFTER the
+//! main ops: the default pronoun-aware list (one item held back + the note),
+//! `pronoun_aware: false`, the read's guidance line, a re-guided WORN item that
+//! is never hidden, a custom-pronoun character listed unfiltered, a non-boolean
+//! `pronoun_aware` (the unchanged validation text), and the create's
+//! `pronoun_guidance` (normalised) + its refusal. Every main op stays byte-equal.
 //!
 //! P4.D262 (v4 `3ee3b1342` + `b3f937076`): the formatters run at the spec's
 //! pinned `nowMs` (`format_at`, v4's second parameter); the wear ledger and one
@@ -119,6 +128,10 @@ struct Spec {
     /// participant is the `characterId: "unvaulted"` ops' caller.
     #[serde(rename = "toolsCorpusGrowth")]
     tools_corpus_growth: Value,
+    /// P4.D349 (ruling R-3): the `QT_WT_PRONOUN_CORPUS=1` widen — two NEW
+    /// characters (`clementine` / `quill`) and their ops, run AFTER `ops`.
+    #[serde(rename = "pronounCorpus")]
+    pronoun_corpus: Value,
 }
 
 #[derive(Deserialize)]
@@ -146,7 +159,7 @@ struct PictureScenario {
     ops: Vec<Op>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Op {
     name: String,
     tool: String,
@@ -387,10 +400,38 @@ fn wardrobe_tools_match_oracle() {
         .as_str()
         .unwrap_or_default()
         .to_string();
-    for (i, op) in spec.ops.iter().enumerate() {
+    // [P4.D349] The pronoun corpus's ops follow the main ops — run when the
+    // oracle carries their rows (the fixture was built with
+    // `QT_WT_PRONOUN_CORPUS=1`, as the recipe does).
+    let pronoun_ops: Vec<Op> =
+        serde_json::from_value(spec.pronoun_corpus["ops"].clone()).expect("pronounCorpus.ops");
+    let mut all_ops: Vec<Op> = spec.ops.clone();
+    let mut pronoun_ops_run = 0usize;
+    if oracle_returns.len() > spec.ops.len() {
+        assert_eq!(
+            oracle_returns.len(),
+            spec.ops.len() + pronoun_ops.len(),
+            "the oracle carries the main ops plus every pronoun-corpus op"
+        );
+        all_ops.extend(pronoun_ops.iter().cloned());
+        pronoun_ops_run = pronoun_ops.len();
+    } else {
+        eprintln!("NOTE: the oracle predates the P4.D349 pronoun corpus — its ops not run");
+    }
+    let clementine = spec.pronoun_corpus["clementine"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    let quill = spec.pronoun_corpus["quill"]["id"]
+        .as_str()
+        .unwrap_or_default()
+        .to_string();
+    for (i, op) in all_ops.iter().enumerate() {
         let character_id = match op.character_id.as_deref() {
             Some("recipient") => &spec.recipient_character_id,
             Some("unvaulted") => &unvaulted,
+            Some("clementine") => &clementine,
+            Some("quill") => &quill,
             _ => &spec.caller_character_id,
         };
         let (output, lines) = global_capture::capture(|| {
@@ -854,8 +895,9 @@ fn wardrobe_tools_match_oracle() {
     drop(scratch);
 
     eprintln!(
-        "OK: wardrobe tools matched oracle ({} ops + read-back + {} picture ops, {} jobs).",
+        "OK: wardrobe tools matched oracle ({} ops + {} pronoun-corpus ops + read-back + {} picture ops, {} jobs).",
         spec.ops.len(),
+        pronoun_ops_run,
         pictures.len(),
         jobs.len()
     );
@@ -1297,11 +1339,13 @@ fn the_list_completed_line_is_v4s() {
                      include: bool| {
         let items = &out.items;
         format!(
-            "INFO quilltap::tools Wardrobe list completed context=wardrobe-list-handler userId={} characterId={} chatId={} totalItems={total} filteredCount={} hasTypeFilter={has_type} hasAppropriatenessFilter={has_appr} includeEquipped={include} compositeCount={} neverWornCount={} neverWornByCallerCount={} withPictureCount={}",
+            "INFO quilltap::tools Wardrobe list completed context=wardrobe-list-handler userId={} characterId={} chatId={} totalItems={total} filteredCount={} hasTypeFilter={has_type} hasAppropriatenessFilter={has_appr} includeEquipped={include} pronounAware=true hiddenByPronounGuidance={} compositeCount={} neverWornCount={} neverWornByCallerCount={} withPictureCount={}",
             spec.user_id,
             spec.caller_character_id,
             spec.chat_id,
             items.len(),
+            // P4.D349 (v4 `eb90d9ed8`): the two keys after `includeEquipped`.
+            out.hidden_by_pronoun_guidance.unwrap_or(0),
             items.iter().filter(|i| i.is_composite == Some(true)).count(),
             items.iter().filter(|i| i.wear_count == 0).count(),
             items.iter().filter(|i| i.worn_by_you == 0).count(),

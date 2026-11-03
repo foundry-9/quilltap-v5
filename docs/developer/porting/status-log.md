@@ -194022,6 +194022,28 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
 - **Capture pins (lib):** `fanout.rs` `log_tests` (moved; the trio's texts, keys and target; the old texts absent). `p4d349_humanoid_flip_tests` (2): a flip recompiles the seats and logs with the counts and `reason=humanoid flag changed`; an unchanged flag fans out nothing and logs nothing.
 - **NOT landed (named deferral):** a flip DIFFERENTIAL row on a seated character comparing the recompiled stack's `## Physical Appearance` after the flip (order item 15's last row). The unit pins cover the fan-out mechanics and the form-note bytes are pinned by `system_prompt_equivalence`; the end-to-end row is OPEN for the follow-ups round.
 
+### Commit H — the four tools and the green room (items 20, 21)
+
+- **`tools/wardrobe_list.rs`:**
+  - `ListInput.pronoun_aware` (a non-boolean → the UNCHANGED `VALIDATION_ERROR`).
+  - The filter after the appropriateness `retain` and before the ledger read, keeping the worn ids (`all_equipped_item_ids` over `Slots::from_value`).
+  - NEW `read_character_pronouns` with v4's WARN (`error` = the bare `error_text`).
+  - `WardrobeListItemResult.pronoun_guidance`; `WardrobeListToolOutput.hidden_by_pronoun_guidance: Option<usize>` (`Some` on success, absent on failure); the INFO's two keys; `format_at`'s guidance tag, hidden note, and the empty case with the note.
+- **`tools/wardrobe_read.rs`:** `pronoun_guidance` (`[]` on the failure shape) + the formatter line.
+- **`tools/wardrobe_create.rs` / `wardrobe_update.rs`:** the strict `pronoun_guidance` param through NEW `wardrobe::pronoun_guidance::parse_pronoun_guidance_list` (also adopted by the REST `ItemFields`). Create hands it RAW to the create body; update patches it normalised, `note`d after `appropriateness`.
+- **`services/outfit_selections.rs`:** NEW `offer_pronoun_fitting` (filter + DEBUG `{chatId, characterId, hiddenCount}`), used at BOTH `llm_choose` callers (`resolve_llm_choose` and `run_llm_choose_via_db`). Measured, not in the order: the second caller is the production `HostOutfitLlmChooseRunner` path.
+- **Fixture widen (R-3), gated on its OWN switch `QT_WT_PRONOUN_CORPUS=1`.** `wardrobe-announcement-job` also builds with `QT_WT_TOOLS_CORPUS=1`, so the growth switch could not carry it.
+  - `wardrobe-tools.json#pronounCorpus`: Clementine (She/Her/Her) and Quill (ze/zir/zir) seated AFTER the existing participants. Clementine's vault holds Tea Gown `[she, they]` (worn), Frock Coat `[he]` and Scarf.
+  - Nine ops, run after the main ops: default list (1 held back + the note), `pronoun_aware: false`, `read_guided`, `update_reguide_worn_he`, `list_worn_never_hidden`, `list_custom_pronouns_unfiltered`, a non-boolean `pronoun_aware`, `create_guided`, and a refused label.
+  - **Proven additive:** the oracle regenerated with and without the switch; all 66 main ops equal after the id / timestamp normalisation.
+- **Families:**
+  - `wardrobe_tools` OK (66 + 9 ops + read-back + 12 picture ops + 5 jobs); `the_list_completed_line_is_v4s` moved to the INFO's two keys.
+  - `wardrobe_tools_avatar_trigger` OK, `pascal_wardrobe_effects` OK (unchanged consumers).
+  - `outfit_llm_choose_tier3`: NEW case `add_llm_choose_pronoun_guidance_holds_back` (`seedPronouns` raw plants on both sides). The guided `Pip's cast-off lantern coat` is absent from v4's recorded prompt and from v5's.
+  - The whole family is RED on this base's `chat-dialogs-main.db` (v4 answers 500 on every case — the pre-re-widen pair) and GREEN, new case included, with P4.D341's re-widened pair swapped in once (restored after). Green on the union.
+- **R-6, the pronoun-read WARN's plant:** the differential plant was NOT attempted (the both-sides throwing plant was not measured). The arm is pinned by `an_unreadable_character_warns_and_lists_unfiltered` over a main partition with no `characters` table. The pre-existing `the_validation_line_is_v4s_and_the_catch_is_unreachable` now expects the WARN before the INFO on its empty partition (v4's `findById` throws there too).
+- **Lib:** `p4d349_green_room_tests` (2: the line with its keys; silent when nothing is hidden), `the_hidden_note_closes_the_list_and_the_empty_case`. `cargo test -p quilltap-core --lib` 4,009 / 0.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

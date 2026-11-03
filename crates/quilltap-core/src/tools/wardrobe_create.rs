@@ -133,6 +133,9 @@ struct CreateInput {
     replace: Option<bool>,
     /// v4 `generate_image: z.boolean().optional()` (`b3f937076`).
     generate_image: Option<bool>,
+    /// v4 `eb90d9ed8`: `pronoun_guidance` (`z.array(PronounGuidanceEnum)
+    /// .optional()`) — handed to the create body, which normalises it.
+    pronoun_guidance: Option<Vec<String>>,
 }
 
 // P4.170 C.9: v4's tool input schema marks NO key `.nullable()` — every one
@@ -229,6 +232,10 @@ fn validate(args: &Value) -> Option<CreateInput> {
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };
+    let pronoun_guidance = match obj.get("pronoun_guidance") {
+        None => None,
+        Some(v) => Some(crate::wardrobe::pronoun_guidance::parse_pronoun_guidance_list(v)?),
+    };
     // Top-level refine: types OR non-empty components.
     let has_components = component_item_ids.as_ref().is_some_and(|v| !v.is_empty())
         || component_titles.as_ref().is_some_and(|v| !v.is_empty());
@@ -247,6 +254,7 @@ fn validate(args: &Value) -> Option<CreateInput> {
         component_titles,
         replace,
         generate_image,
+        pronoun_guidance,
     })
 }
 
@@ -411,7 +419,12 @@ fn run(
             component_item_ids: Some(component_item_ids.clone()),
             replace: Some(input.replace.unwrap_or(false)),
             folder: None,
-            pronoun_guidance: None,
+            // v4 `pronounGuidance: pronoun_guidance` into the create body; the
+            // normaliser runs inside `wardrobeItemFromCreateBody`.
+            pronoun_guidance: input
+                .pronoun_guidance
+                .as_ref()
+                .map(|g| serde_json::json!(g)),
         },
         CreateItemOptions {
             lookup: Some(pool.by_id()),

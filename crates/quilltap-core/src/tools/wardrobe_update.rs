@@ -43,6 +43,9 @@ struct UpdateInput {
     component_item_ids: Option<Vec<String>>,
     /// v4 `generate_image: z.boolean().optional()` (`b3f937076`).
     generate_image: Option<bool>,
+    /// v4 `eb90d9ed8`: `pronoun_guidance` (`z.array(PronounGuidanceEnum)
+    /// .optional()`) — normalised into the patch.
+    pronoun_guidance: Option<Vec<String>>,
 }
 
 /// What a successful update hands the executor's picture call (v4's
@@ -131,6 +134,10 @@ fn validate(args: &Value) -> Option<UpdateInput> {
     let is_default = opt_bool(obj, "is_default").ok()?;
     let replace = opt_bool(obj, "replace").ok()?;
     let generate_image = opt_bool(obj, "generate_image").ok()?;
+    let pronoun_guidance = match obj.get("pronoun_guidance") {
+        None => None,
+        Some(v) => Some(crate::wardrobe::pronoun_guidance::parse_pronoun_guidance_list(v)?),
+    };
     // component_item_ids: array of string.
     let component_item_ids = match obj.get("component_item_ids") {
         None => None,
@@ -155,6 +162,7 @@ fn validate(args: &Value) -> Option<UpdateInput> {
         replace,
         component_item_ids,
         generate_image,
+        pronoun_guidance,
     })
 }
 
@@ -261,6 +269,8 @@ fn run(
     note(input.description.is_some(), "description");
     note(input.image_prompt.is_some(), "imagePrompt");
     note(input.appropriateness.is_some(), "appropriateness");
+    // v4 `wardrobe-update-handler.ts:106`: after `appropriateness`, before `types`.
+    note(input.pronoun_guidance.is_some(), "pronounGuidance");
     note(input.types.is_some(), "types");
     note(input.is_default.is_some(), "isDefault");
     note(input.replace.is_some(), "replace");
@@ -274,6 +284,12 @@ fn run(
         is_default: input.is_default,
         replace: input.replace,
         component_item_ids: input.component_item_ids.clone(),
+        // v4 `patch.pronounGuidance = normalizePronounGuidance(pronoun_guidance)`.
+        pronoun_guidance: input.pronoun_guidance.as_ref().map(|g| {
+            crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(Some(&serde_json::json!(
+                g
+            )))
+        }),
         ..ItemPatch::default()
     };
 

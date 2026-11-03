@@ -1271,7 +1271,8 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
                 Some(&mounts),
                 LoadWearablePoolOptions::default(),
             );
-            let items = pool.wearable().to_vec();
+            // Pronoun-aware, like every listing a character chooses from.
+            let items = offer_pronoun_fitting(pool.wearable(), character.as_ref(), chat_id, &cid);
             let groups = pool.tiers.group_mount_point_ids.clone();
             let profiles = connection_profiles::find_all(main)?;
             Ok((character, items, groups, profiles))
@@ -1319,6 +1320,54 @@ pub async fn run_llm_choose_via_db<C: CompletionProvider>(
     }
 }
 
+/// v4 `filterByPronounGuidance(pool.wearable(), character?.pronouns)` for the
+/// green room's `llm_choose` (`apply-outfit-selections.ts:357-366`): the items
+/// offered to the character, with `[applyOutfitSelections] Pronoun guidance
+/// held items back from the green room` `{chatId, characterId, hiddenCount}`
+/// when any were held back. No `keepIds` — nothing is worn yet.
+fn offer_pronoun_fitting(
+    wearable: &[Value],
+    character: Option<&Value>,
+    chat_id: &str,
+    character_id: &str,
+) -> Vec<Value> {
+    let pronouns = character.and_then(|c| c.get("pronouns")).and_then(|p| {
+        let f = |k: &str| p.get(k).and_then(Value::as_str);
+        Some((f("subject")?, f("object")?, f("possessive")?))
+    });
+    let guidance: Vec<(&Value, Vec<String>)> = wearable
+        .iter()
+        .map(|item| {
+            let g = item
+                .get("pronounGuidance")
+                .and_then(Value::as_array)
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|e| e.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            (item, g)
+        })
+        .collect();
+    let (kept, hidden) = crate::wardrobe::pronoun_guidance::filter_by_pronoun_guidance(
+        &guidance,
+        pronouns,
+        None,
+        |(item, _)| item.get("id").and_then(Value::as_str).unwrap_or_default(),
+        |(_, g)| g.as_slice(),
+    );
+    if hidden > 0 {
+        tracing::debug!(
+            chatId = %chat_id,
+            characterId = %character_id,
+            hiddenCount = hidden,
+            "[applyOutfitSelections] Pronoun guidance held items back from the green room"
+        );
+    }
+    kept.into_iter().map(|(item, _)| (*item).clone()).collect()
+}
+
 /// v4's `llm_choose` arm of `resolveSelection`: consult the cheap LLM over the
 /// merged pool, honour a deliberate-nudity claim, and otherwise fall back to the
 /// default outfit. Returns the value to persist — never `None`, because v4 always
@@ -1346,7 +1395,10 @@ async fn resolve_llm_choose<C: CompletionProvider>(
     // here propagates to the create handler's try/catch (as v4's throws do).
     let character = characters_read::find_by_id(main, mount, character_id)?;
     let pool = pools.get(character_id);
-    let wardrobe_items = pool.wearable();
+    // Pronoun-aware, like every listing a character chooses from: items meant
+    // for other pronouns are not offered (v4 `eb90d9ed8`).
+    let offered = offer_pronoun_fitting(pool.wearable(), character.as_ref(), chat_id, character_id);
+    let wardrobe_items = offered.as_slice();
     let all_profiles = connection_profiles::find_all(main)?;
 
     if let LlmChooseOutcome::Attempted {
@@ -2098,5 +2150,50 @@ mod tests {
         assert_eq!(none, user(Some("")));
         assert_eq!(none, user(Some("   \n  ")));
         assert!(!none.contains("Dressing Instructions"));
+    }
+}
+
+#[cfg(test)]
+mod p4d349_green_room_tests {
+    //! v4 `apply-outfit-selections.ts:357-366`: the green room offers only the
+    //! items that fit the character's pronouns, and says so when it held any
+    //! back; silent when nothing was hidden.
+    use super::offer_pronoun_fitting;
+    use crate::test_support::captured_with;
+    use serde_json::json;
+
+    const LINE: &str =
+        "[applyOutfitSelections] Pronoun guidance held items back from the green room";
+
+    #[test]
+    fn a_she_her_character_is_not_offered_a_he_item_and_the_line_says_so() {
+        let items = vec![
+            json!({"id": "gown", "pronounGuidance": ["she"]}),
+            json!({"id": "suit", "pronounGuidance": ["he"]}),
+            json!({"id": "boots"}),
+        ];
+        let character =
+            json!({"pronouns": {"subject": "she", "object": "her", "possessive": "her"}});
+        let (offered, lines) =
+            captured_with(|| offer_pronoun_fitting(&items, Some(&character), "chat-1", "char-1"));
+        let ids: Vec<&str> = offered.iter().map(|i| i["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["gown", "boots"]);
+        let l = lines.iter().find(|l| l.contains(LINE)).expect("the DEBUG");
+        assert!(l.starts_with("DEBUG"), "{l}");
+        for needle in ["chatId=chat-1", "characterId=char-1", "hiddenCount=1"] {
+            assert!(l.contains(needle), "{l} lacks {needle}");
+        }
+    }
+
+    #[test]
+    fn nothing_hidden_is_silent() {
+        let items = vec![json!({"id": "suit", "pronounGuidance": ["he"]})];
+        // A custom-pronoun character sees everything; no line.
+        let character =
+            json!({"pronouns": {"subject": "ze", "object": "zir", "possessive": "zir"}});
+        let (offered, lines) =
+            captured_with(|| offer_pronoun_fitting(&items, Some(&character), "chat-1", "char-1"));
+        assert_eq!(offered.len(), 1);
+        assert!(!lines.iter().any(|l| l.contains(LINE)), "{lines:?}");
     }
 }

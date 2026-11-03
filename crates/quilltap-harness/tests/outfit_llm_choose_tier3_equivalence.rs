@@ -377,6 +377,9 @@ fn outfit_llm_choose_matches_oracle() {
         /// TO END through the recorded prompt rather than by a pool unit test.
         /// `"all"` is v4's "hands the LLM nothing at all" case.
         archive_tier: Option<&'a str>,
+        /// [P4.D349 / v4 `eb90d9ed8`] The oracle's `seedPronouns` raw plants
+        /// (see [`seed_pronouns`]).
+        seed_pronouns: bool,
         /// [P4.D164 / v4 `2f4254b42`] `Some` = the `apply-outfit-selections`
         /// action: seed a seat for `character` on the TARGET carrying these
         /// ids (raw participants-cell update on the fresh copy) + plant the
@@ -396,6 +399,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -406,6 +410,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -416,6 +421,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -426,6 +432,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -436,6 +443,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // ── P4.D39 / v4 `8bb1a958` ────────────────────────────────────────
@@ -451,6 +459,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // ── P4.D71 / v4 `8600c83f` ────────────────────────────────────────
@@ -470,6 +479,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // The validator used to drop any id outside the character's own vault,
@@ -482,6 +492,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // Naked on purpose — honoured, no default fallback.
@@ -493,6 +504,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // The same empty answer with no flag reads as a failure to choose.
@@ -504,6 +516,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // ── P4.D120 / v4 `d25dacc1` ───────────────────────────────────────
@@ -520,6 +533,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("character"),
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -530,6 +544,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("general"),
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -540,6 +555,18 @@ fn outfit_llm_choose_matches_oracle() {
             character: WREN,
             seed_instructions: None,
             archive_tier: Some("group"),
+            seed_pronouns: false,
+            seed_seat: None,
+        },
+        Case {
+            name: "add_llm_choose_pronoun_guidance_holds_back",
+            add: true,
+            reply: Some("pipPick"),
+            throws: false,
+            character: PIP,
+            seed_instructions: None,
+            archive_tier: None,
+            seed_pronouns: true,
             seed_seat: None,
         },
         Case {
@@ -552,6 +579,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: Some("all"),
+            seed_pronouns: false,
             seed_seat: None,
         },
         // ── P4.D119 / v4 `b86bb1a5` ───────────────────────────────────────
@@ -571,6 +599,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "  You keep to oilskins on the quay, whatever the hour.  \n",
             )),
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // The merge entrance, same seed.
@@ -585,6 +614,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "You keep to oilskins on the quay, whatever the hour.",
             )),
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         Case {
@@ -598,6 +628,7 @@ fn outfit_llm_choose_matches_oracle() {
                 "The house dresses for the weather, not the occasion.",
             )),
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // A whitespace-only file counts as absent: the user message must be
@@ -610,6 +641,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: Some(("character", "   \n  ")),
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // Only a real boolean counts.
@@ -621,6 +653,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: None,
         },
         // ── P4.D164 / v4 `2f4254b42` — the green-room subprompts note ────
@@ -639,6 +672,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "llm",
                 ids: &["oilskins", "QUIET"],
@@ -660,6 +694,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "user",
                 ids: &["oilskins"],
@@ -678,6 +713,7 @@ fn outfit_llm_choose_matches_oracle() {
             character: PIP,
             seed_instructions: None,
             archive_tier: None,
+            seed_pronouns: false,
             seed_seat: Some(SeedSeat {
                 controlled_by: "llm",
                 ids: &["gone"],
@@ -708,6 +744,9 @@ fn outfit_llm_choose_matches_oracle() {
         }
         if let Some(tier) = c.archive_tier {
             archive_tier_garments(&db, tier, c.character);
+        }
+        if c.seed_pronouns {
+            seed_pronouns(&db, c.character);
         }
         let provider = Arc::new(CannedOutfitProvider {
             reply: c.reply.map(|k| spec.canned_outfits[k].clone()),
@@ -1047,6 +1086,57 @@ fn seed_instructions_file(db: &Db, scope: &str, character_id: &str, content: &st
 /// [P4.D120] Stamp `archivedAt` into every `Wardrobe/*.md` frontmatter in the
 /// named tier's mounts, by RAW content rewrite — the archiving machinery under
 /// test never does the seeding, and the committed fixture is untouched.
+/// [P4.D349] The oracle's `seedPronouns`: the character's vault
+/// `properties.json` gains She/Her/Her, and its FIRST `Wardrobe/*.md` (by
+/// `relativePath`, code-unit order) gains `pronounGuidance: [he]` — raw content
+/// rewrites on the fresh copy, byte-identical to the oracle's.
+fn seed_pronouns(db: &Db, character_id: &str) {
+    let cid = character_id.to_string();
+    db.write_blocking(move |w| {
+        let mp: String = w.main().connection().query_row(
+            "SELECT characterDocumentMountPointId FROM characters WHERE id = ?1",
+            [&cid],
+            |r| r.get(0),
+        )?;
+        let mount = w.mount_index().expect("mount writer").connection();
+        let docs = |filter: &str| -> rusqlite::Result<Vec<(String, String, String)>> {
+            let mut st = mount.prepare(&format!(
+                "SELECT d.id, d.content, l.relativePath FROM doc_mount_file_links l \
+                 JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                 WHERE l.mountPointId = ?1 AND {filter} ORDER BY l.relativePath"
+            ))?;
+            let mapped = st.query_map([&mp], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?;
+            mapped.collect()
+        };
+        let (pid, pcontent, _) = docs("l.relativePath = 'properties.json'")?
+            .into_iter()
+            .next()
+            .expect("the vault's properties.json");
+        let mut bag: serde_json::Value = serde_json::from_str(&pcontent).expect("properties.json");
+        bag["pronouns"] = json!({ "subject": "she", "object": "her", "possessive": "her" });
+        mount.execute(
+            "UPDATE doc_mount_documents SET content = ?1 WHERE id = ?2",
+            rusqlite::params![serde_json::to_string_pretty(&bag).unwrap(), pid],
+        )?;
+        let mut items: Vec<(String, String, String)> =
+            docs("lower(l.relativePath) LIKE 'wardrobe/%.md'")?
+                .into_iter()
+                .filter(|(_, c, _)| c.starts_with("---"))
+                .collect();
+        items.sort_by(|a, b| a.2.cmp(&b.2));
+        let (did, content, _) = items.into_iter().next().expect("a wardrobe item");
+        mount.execute(
+            "UPDATE doc_mount_documents SET content = ?1 WHERE id = ?2",
+            rusqlite::params![
+                content.replacen("---\n", "---\npronounGuidance: [he]\n", 1),
+                did
+            ],
+        )?;
+        Ok(())
+    })
+    .expect("seed pronouns");
+}
+
 fn archive_tier_garments(db: &Db, tier: &str, character_id: &str) {
     const STAMP: &str = "2026-02-01T00:00:00.000Z";
     let tier = tier.to_string();

@@ -54,6 +54,14 @@ interface ItemSpec {
   archived?: boolean;
   /** P4.D280: the item's folder under `Wardrobe/` (`''` / absent = root). */
   folder?: string;
+  /** P4.D349: the item's pronoun guidance (v4 `eb90d9ed8`). */
+  pronounGuidance?: string[];
+}
+interface PronounCorpus {
+  clementine: { id: string; name: string; participantId: string; pronouns: Record<string, string> };
+  quill: { id: string; name: string; participantId: string; pronouns: Record<string, string> };
+  clementineItems: ItemSpec[];
+  clementineEquipped: Record<string, string[]>;
 }
 interface Spec {
   testPepperBase64: string;
@@ -263,6 +271,7 @@ async function main(): Promise<void> {
         migratedFromClothingRecordId: null,
         archivedAt: item.archived ? TS : null,
         ...(item.folder ? { folder: item.folder } : {}),
+        ...(item.pronounGuidance ? { pronounGuidance: item.pronounGuidance } : {}),
       } as never,
       { id: item.id, createdAt: TS, updatedAt: TS } as never,
     );
@@ -283,6 +292,26 @@ async function main(): Promise<void> {
     await rawQuery('UPDATE "characters" SET "characterDocumentMountPointId" = NULL WHERE "id" = ?', [
       growth.unvaultedCharacterId,
     ]);
+  }
+
+  // 4a. [P4.D349 / v4 eb90d9ed8, ruling R-3] The pronoun corpus — ADDITIVE and
+  // gated on its own switch, so every other consumer of this builder (the
+  // avatar-trigger, Pascal-effects and announcement-job families) builds the
+  // byte-identical fixture it always did.
+  const pronounCorpus =
+    process.env.QT_WT_PRONOUN_CORPUS === '1'
+      ? ((spec as unknown as { pronounCorpus: PronounCorpus }).pronounCorpus)
+      : null;
+  if (pronounCorpus) {
+    for (const who of [pronounCorpus.clementine, pronounCorpus.quill]) {
+      await repos.characters.create(
+        { name: who.name, userId: spec.userId, pronouns: who.pronouns } as never,
+        { id: who.id, createdAt: TS, updatedAt: TS } as never,
+      );
+    }
+    for (const item of pronounCorpus.clementineItems) {
+      await seedItem(item, pronounCorpus.clementine.id);
+    }
   }
 
   // 4b. [P4.D71 / v4 8600c83f] The GROUP tier. Two groups, each with its own
@@ -397,6 +426,19 @@ async function main(): Promise<void> {
       updatedAt: TS,
     });
   }
+  if (pronounCorpus) {
+    for (const who of [pronounCorpus.clementine, pronounCorpus.quill]) {
+      participants.push({
+        id: who.participantId,
+        type: 'CHARACTER',
+        characterId: who.id,
+        controlledBy: 'llm',
+        status: 'active',
+        createdAt: TS,
+        updatedAt: TS,
+      });
+    }
+  }
   await repos.chats.create(
     {
       userId: spec.userId,
@@ -405,7 +447,12 @@ async function main(): Promise<void> {
       chatType: 'salon',
       contextSummary: null,
       avatarGenerationEnabled: false,
-      equippedOutfit: { [spec.callerCharacterId]: spec.seedEquipped },
+      equippedOutfit: {
+        [spec.callerCharacterId]: spec.seedEquipped,
+        ...(pronounCorpus
+          ? { [pronounCorpus.clementine.id]: pronounCorpus.clementineEquipped }
+          : {}),
+      },
     } as never,
     { id: spec.chatId, createdAt: TS, updatedAt: TS },
   );

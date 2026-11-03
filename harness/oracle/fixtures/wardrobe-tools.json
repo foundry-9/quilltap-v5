@@ -1166,5 +1166,150 @@
         }
       }
     ]
+  },
+  "pronounCorpus": {
+    "_doc": "P4.D349 (v4 eb90d9ed8, ruling R-3): seeded ONLY when the builder runs with QT_WT_PRONOUN_CORPUS=1 (the wardrobe_tools family's recipe). Two NEW characters seated in the fixture chat — Clementine (She/Her/Her) and Quill (custom ze/zir/zir) — and three items in Clementine's vault: Tea Gown guided [she, they] and WORN, Frock Coat guided [he], Scarf unguided. The ops run AFTER the main ops, under each new character. Rosalind / Basil / every existing item are untouched, so every existing op's Output stays byte-equal.",
+    "clementine": {
+      "id": "c1000000-0000-4000-8000-0000000003c1",
+      "name": "Clementine",
+      "participantId": "6666c1c1-0000-4000-8000-0000000003c1",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      }
+    },
+    "quill": {
+      "id": "c1000000-0000-4000-8000-0000000003c2",
+      "name": "Quill",
+      "participantId": "6666c1c1-0000-4000-8000-0000000003c2",
+      "pronouns": {
+        "subject": "ze",
+        "object": "zir",
+        "possessive": "zir"
+      }
+    },
+    "clementineItems": [
+      {
+        "id": "b1000000-0000-4000-8000-0000000003a1",
+        "title": "Tea Gown",
+        "types": [
+          "top"
+        ],
+        "pronounGuidance": [
+          "she",
+          "they"
+        ]
+      },
+      {
+        "id": "b1000000-0000-4000-8000-0000000003a2",
+        "title": "Frock Coat",
+        "types": [
+          "top"
+        ],
+        "pronounGuidance": [
+          "he"
+        ]
+      },
+      {
+        "id": "b1000000-0000-4000-8000-0000000003a3",
+        "title": "Scarf",
+        "types": [
+          "accessories"
+        ]
+      }
+    ],
+    "clementineEquipped": {
+      "top": [
+        "b1000000-0000-4000-8000-0000000003a1"
+      ],
+      "bottom": [],
+      "footwear": [],
+      "accessories": []
+    },
+    "ops": [
+      {
+        "name": "list_pronoun_default",
+        "tool": "wardrobe_list",
+        "characterId": "clementine",
+        "args": {}
+      },
+      {
+        "name": "list_pronoun_aware_false",
+        "tool": "wardrobe_list",
+        "characterId": "clementine",
+        "args": {
+          "pronoun_aware": false
+        }
+      },
+      {
+        "name": "read_guided",
+        "tool": "wardrobe_read",
+        "characterId": "clementine",
+        "args": {
+          "item_title": "Tea Gown"
+        }
+      },
+      {
+        "name": "update_reguide_worn_he",
+        "tool": "wardrobe_update",
+        "characterId": "clementine",
+        "args": {
+          "item_title": "Tea Gown",
+          "pronoun_guidance": [
+            "he"
+          ]
+        }
+      },
+      {
+        "name": "list_worn_never_hidden",
+        "tool": "wardrobe_list",
+        "characterId": "clementine",
+        "args": {}
+      },
+      {
+        "name": "list_custom_pronouns_unfiltered",
+        "tool": "wardrobe_list",
+        "characterId": "quill",
+        "args": {}
+      },
+      {
+        "name": "list_pronoun_aware_nonbool",
+        "tool": "wardrobe_list",
+        "characterId": "clementine",
+        "args": {
+          "pronoun_aware": "no"
+        }
+      },
+      {
+        "name": "create_guided",
+        "tool": "wardrobe_create",
+        "characterId": "clementine",
+        "args": {
+          "title": "Opera Gloves",
+          "types": [
+            "accessories"
+          ],
+          "pronoun_guidance": [
+            "they",
+            "she"
+          ]
+        }
+      },
+      {
+        "name": "create_guided_label_refused",
+        "tool": "wardrobe_create",
+        "characterId": "clementine",
+        "args": {
+          "title": "Opera Gloves",
+          "types": [
+            "accessories"
+          ],
+          "pronoun_guidance": [
+            "She/Her/Her"
+          ]
+        }
+      }
+    ]
   }
 }

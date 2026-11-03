@@ -495,22 +495,9 @@ fn parse_item_fields(body: &Value, partial: bool) -> Result<ItemFields, ()> {
     // preset label, a capitalised subject or a non-string is a Zod failure).
     let pronoun_guidance = match get("pronounGuidance") {
         None => None,
-        Some(Value::Array(a)) => {
-            let mut out = Vec::with_capacity(a.len());
-            for v in a {
-                match v.as_str() {
-                    Some(s)
-                        if crate::characters::pronoun_presets::STANDARD_PRONOUN_SUBJECTS
-                            .contains(&s) =>
-                    {
-                        out.push(s.to_string())
-                    }
-                    _ => return Err(()),
-                }
-            }
-            Some(out)
+        Some(v) => {
+            Some(crate::wardrobe::pronoun_guidance::parse_pronoun_guidance_list(v).ok_or(())?)
         }
-        _ => return Err(()),
     };
     // folder: WardrobeFolderInputSchema.optional() = z.string().max(900).
     let folder = match get("folder") {

@@ -53,6 +53,24 @@ pub fn normalize_pronoun_guidance(raw: Option<&Value>) -> Vec<String> {
         .collect()
 }
 
+/// v4 `z.array(PronounGuidanceEnum)` (`PronounGuidanceListSchema`, the
+/// `wardrobe_*` tools' `pronoun_guidance` param and the REST field): `Some` of
+/// the list when `v` is an array whose EVERY element is one of the four
+/// standard subjects, as given (NOT normalised); `None` otherwise (a Zod
+/// refusal — a preset label, a capitalised subject, a non-string, a non-array).
+pub fn parse_pronoun_guidance_list(v: &Value) -> Option<Vec<String>> {
+    let a = v.as_array()?;
+    let mut out = Vec::with_capacity(a.len());
+    for e in a {
+        let s = e.as_str()?;
+        if !STANDARD_PRONOUN_SUBJECTS.contains(&s) {
+            return None;
+        }
+        out.push(s.to_string());
+    }
+    Some(out)
+}
+
 /// v4 `hasNoPronounGuidance`: true when the item names no pronoun guidance
 /// (offered to everyone).
 pub fn has_no_pronoun_guidance(guidance: &[String]) -> bool {

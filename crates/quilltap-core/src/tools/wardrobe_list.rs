@@ -33,6 +33,9 @@ pub struct WardrobeListItemResult {
     pub image_file_id: Option<String>,
     pub types: Vec<String>,
     pub appropriateness: Option<String>,
+    /// v4 `eb90d9ed8`: the pronouns (by subject) the item is meant for
+    /// (`item.pronounGuidance ?? []`). Empty = everyone.
+    pub pronoun_guidance: Vec<String>,
     pub is_own: bool,
     /// The operator's folder for the item under its wardrobe (e.g.
     /// `Formal/Evening`), `null` at the root (v4 `4a38222e6`: `item.folder ||
@@ -65,6 +68,10 @@ pub struct WardrobeListToolOutput {
     pub success: bool,
     pub items: Vec<WardrobeListItemResult>,
     pub total_count: usize,
+    /// v4 `eb90d9ed8`: how many items pronoun guidance held back — ALWAYS set
+    /// on success; v4's failure object carries no key.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hidden_by_pronoun_guidance: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -74,6 +81,8 @@ struct ListInput {
     type_filter: Option<Vec<String>>,
     appropriateness_filter: Option<String>,
     include_equipped: Option<bool>,
+    /// v4 `eb90d9ed8`: `pronoun_aware` (`z.boolean().optional()`).
+    pronoun_aware: Option<bool>,
 }
 
 const VALIDATION_ERROR: &str = "Invalid input: type_filter must be a string array, appropriateness_filter must be a string, include_equipped must be a boolean";
@@ -106,10 +115,18 @@ fn validate(args: &Value) -> Option<ListInput> {
         Some(Value::Bool(b)) => Some(*b),
         Some(_) => return None,
     };
+    // The same shape as its neighbours; a non-boolean fails with the
+    // UNCHANGED validation text (v4 kept `wardrobe-list-handler.ts:66-68`).
+    let pronoun_aware = match obj.get("pronoun_aware") {
+        None | Some(Value::Null) => None,
+        Some(Value::Bool(b)) => Some(*b),
+        Some(_) => return None,
+    };
     Some(ListInput {
         type_filter,
         appropriateness_filter,
         include_equipped,
+        pronoun_aware,
     })
 }
 
@@ -161,6 +178,7 @@ pub fn execute(
             success: false,
             items: Vec::new(),
             total_count: 0,
+            hidden_by_pronoun_guidance: None,
             error: Some(VALIDATION_ERROR.to_string()),
         };
     };
@@ -220,6 +238,41 @@ fn run(
         });
     }
 
+    // Pronoun guidance (on unless the caller turns it off): hold back items
+    // meant for other pronouns, never what the character is wearing now
+    // (v4 `eb90d9ed8`, after the type / appropriateness filters and before the
+    // ledger read).
+    let pronoun_aware = input.pronoun_aware != Some(false);
+    let mut hidden_by_pronoun_guidance = 0usize;
+    if pronoun_aware {
+        let pronouns = read_character_pronouns(main, mount, character_id);
+        let worn_ids: std::collections::HashSet<String> = equipped
+            .as_ref()
+            .map(|v| {
+                crate::db::wardrobe_wear_stats::all_equipped_item_ids(
+                    &crate::wardrobe::Slots::from_value(Some(v)),
+                )
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
+        let candidates: Vec<(&Value, Vec<String>)> = filtered
+            .iter()
+            .map(|item| (*item, guidance_of(item)))
+            .collect();
+        let (kept, hidden) = crate::wardrobe::pronoun_guidance::filter_by_pronoun_guidance(
+            &candidates,
+            pronouns
+                .as_ref()
+                .map(|(a, b, c)| (a.as_str(), b.as_str(), c.as_str())),
+            Some(&worn_ids),
+            |(item, _)| item.get("id").and_then(Value::as_str).unwrap_or_default(),
+            |(_, guidance)| guidance.as_slice(),
+        );
+        filtered = kept.into_iter().map(|(item, _)| *item).collect();
+        hidden_by_pronoun_guidance = hidden;
+    }
+
     // One ledger read for every listed item's wear, the caller's own share
     // kept apart from the household's (v4 `ed8b15b50`, bug 184 — over the type
     // / appropriateness-filtered items, before the `include_equipped` filter).
@@ -265,6 +318,7 @@ fn run(
                 image_file_id: str_field(item, "imageFileId"),
                 types: types_of(item),
                 appropriateness: str_field(item, "appropriateness"),
+                pronoun_guidance: guidance_of(item),
                 // The field compare (v4 keeps it here; `wardrobe_read` asks the
                 // pool's `owns`).
                 is_own: item.get("characterId").and_then(Value::as_str) == Some(character_id),
@@ -313,6 +367,8 @@ fn run(
             .as_deref()
             .is_some_and(|s| !s.is_empty()),
         includeEquipped = input.include_equipped != Some(false),
+        pronounAware = pronoun_aware,
+        hiddenByPronounGuidance = hidden_by_pronoun_guidance,
         compositeCount = final_items
             .iter()
             .filter(|i| i.is_composite == Some(true))
@@ -331,7 +387,52 @@ fn run(
         success: true,
         items: final_items,
         total_count,
+        hidden_by_pronoun_guidance: Some(hidden_by_pronoun_guidance),
         error: None,
+    }
+}
+
+/// A read item's `pronounGuidance` (present only when non-empty on a read
+/// item; `[]` otherwise — v4 `item.pronounGuidance ?? []`).
+fn guidance_of(item: &Value) -> Vec<String> {
+    item.get("pronounGuidance")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|e| e.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// v4 `readCharacterPronouns` (`wardrobe-list-handler.ts:212-233`): the calling
+/// character's pronouns `(subject, object, possessive)`, or `None`. A character
+/// that cannot be read (a broken vault) lists unfiltered rather than failing
+/// the listing — WARN `Wardrobe list could not read the character's pronouns;
+/// listing unfiltered` `{context, characterId, error}`.
+fn read_character_pronouns(
+    main: &Connection,
+    mount: &Connection,
+    character_id: &str,
+) -> Option<(String, String, String)> {
+    match crate::db::characters_read::find_by_id(main, mount, character_id) {
+        Ok(Some(c)) => {
+            let p = c.get("pronouns")?;
+            let f = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_string);
+            Some((f("subject")?, f("object")?, f("possessive")?))
+        }
+        Ok(None) => None,
+        Err(error) => {
+            tracing::warn!(
+                target: "quilltap::tools",
+                context = LOG_CONTEXT,
+                characterId = character_id,
+                // v4 renders `error.message` — the bare SQLite / Zod text.
+                error = %crate::db::fallback::error_text(&error),
+                "Wardrobe list could not read the character's pronouns; listing unfiltered",
+            );
+            None
+        }
     }
 }
 
@@ -408,8 +509,23 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             output.error.as_deref().unwrap_or("Unknown error")
         );
     }
+    // v4 `eb90d9ed8`: the trailing note for what pronoun guidance held back.
+    let hidden = output.hidden_by_pronoun_guidance.unwrap_or(0);
+    let hidden_note = if hidden > 0 {
+        format!(
+            "({hidden} more item{} meant for characters with other pronouns; call wardrobe_list with pronoun_aware: false to see them.)",
+            if hidden != 1 { "s are" } else { " is" }
+        )
+    } else {
+        String::new()
+    };
     if output.items.is_empty() {
-        return "Wardrobe: No items found matching the specified filters.".to_string();
+        let none = "Wardrobe: No items found matching the specified filters.";
+        return if hidden_note.is_empty() {
+            none.to_string()
+        } else {
+            format!("{none}\n{hidden_note}")
+        };
     }
     let mut lines: Vec<String> = vec![format!(
         "Wardrobe ({} item{}):",
@@ -446,6 +562,14 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             Some(a) => format!(" | {a}"),
             None => String::new(),
         };
+        let guidance_tag = if item.pronoun_guidance.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " [meant for: {}]",
+                crate::wardrobe::pronoun_guidance::format_pronoun_guidance(&item.pronoun_guidance)
+            )
+        };
         let description = match &item.description {
             Some(d) => format!(" - {d}"),
             None => String::new(),
@@ -480,19 +604,23 @@ pub fn format_at(output: &WardrobeListToolOutput, now_ms: f64) -> String {
             _ => String::new(),
         };
         lines.push(format!(
-            "  {} {}{}{}{}{}{}{}{}{}{}",
+            "  {} {}{}{}{}{}{}{}{}{}{}{}",
             type_tags,
             item.title,
             folder_tag,
             equipped_tag,
             shared_tag,
             appropriateness_tag,
+            guidance_tag,
             composite_tag,
             cue_tag,
             description,
             wear_tag,
             picture_tag
         ));
+    }
+    if !hidden_note.is_empty() {
+        lines.push(hidden_note);
     }
     lines.join("\n")
 }
@@ -503,6 +631,51 @@ mod tests {
     use crate::test_support::captured_with;
     use rusqlite::Connection;
     use serde_json::json;
+
+    /// P4.D349 (v4 `eb90d9ed8`, R-6): a character that cannot be read lists
+    /// unfiltered — WARN `Wardrobe list could not read the character's
+    /// pronouns; listing unfiltered` `{context, characterId, error}` and
+    /// `None`. The differential plant (a broken vault failing BOTH sides'
+    /// `findById` identically) was NOT measured; this arm is pinned here over a
+    /// main partition with no `characters` table (the read errors).
+    #[test]
+    fn an_unreadable_character_warns_and_lists_unfiltered() {
+        let main = Connection::open_in_memory().unwrap();
+        let mount = Connection::open_in_memory().unwrap();
+        let (pronouns, lines) = captured_with(|| read_character_pronouns(&main, &mount, "char-1"));
+        assert_eq!(pronouns, None);
+        let l = lines
+            .iter()
+            .find(|l| {
+                l.contains(
+                    "Wardrobe list could not read the character's pronouns; listing unfiltered",
+                )
+            })
+            .unwrap_or_else(|| panic!("no WARN in {lines:?}"));
+        assert!(l.starts_with("WARN quilltap::tools"), "{l}");
+        for needle in [
+            "context=wardrobe-list-handler",
+            "characterId=char-1",
+            "error=",
+        ] {
+            assert!(l.contains(needle), "{l} lacks {needle}");
+        }
+    }
+
+    #[test]
+    fn the_hidden_note_closes_the_list_and_the_empty_case() {
+        let out = WardrobeListToolOutput {
+            success: true,
+            items: Vec::new(),
+            total_count: 0,
+            hidden_by_pronoun_guidance: Some(2),
+            error: None,
+        };
+        assert_eq!(
+            format_at(&out, 0.0),
+            "Wardrobe: No items found matching the specified filters.\n(2 more items are meant for characters with other pronouns; call wardrobe_list with pronoun_aware: false to see them.)"
+        );
+    }
 
     /// R-B: v4's WARN on a validation failure (`{context, userId,
     /// characterId, input}` — no `chatId`, v4's own key set), on the caller's
@@ -551,9 +724,16 @@ mod tests {
             .collect();
         assert!(out.success);
         assert!(out.items.is_empty());
-        assert_eq!(lines.len(), 1, "{lines:#?}");
+        // P4.D349 (v4 `eb90d9ed8`): the character read fails too, so the
+        // pronoun WARN precedes the INFO (v4's `findById` throws there).
+        assert_eq!(lines.len(), 2, "{lines:#?}");
+        assert_eq!(
+            lines[0],
+            "WARN quilltap::tools Wardrobe list could not read the character's pronouns; listing unfiltered context=wardrobe-list-handler characterId=ch1 error=no such table: characters",
+            "{lines:#?}"
+        );
         assert!(
-            lines[0].starts_with("INFO quilltap::tools Wardrobe list completed "),
+            lines[1].starts_with("INFO quilltap::tools Wardrobe list completed "),
             "{lines:#?}"
         );
         assert!(!lines.iter().any(|l| l.contains("execution failed")));
