@@ -1051,6 +1051,11 @@ fn raw_messages(events: &[Value]) -> Vec<crate::chat_tasks::RawMessage> {
                 .and_then(Value::as_str)
                 .map(str::to_string),
             // === end P4.D205 ===
+            // === P4.D347 (v4 `d68c1af88`) — the off-scene rule reads it ===
+            system_sender: e
+                .get("systemSender")
+                .and_then(Value::as_str)
+                .map(str::to_string),
         })
         .collect()
 }

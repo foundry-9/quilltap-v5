@@ -88,8 +88,9 @@ interface Op {
   name: string;
   characterId: string;
   newUserMessage?: string;
-  existingMessages?: Array<{ id?: string; role: string; content: string }>;
-  existingMessagesRepeat?: { count: number; userContent: string; assistantContent: string };
+  // P4.D347 (bug 265): a row may carry `type` / `systemKind` / `systemSender`.
+  existingMessages?: ExistingRow[];
+  existingMessagesRepeat?: { count: number; userContent: string; assistantContent: string; tail?: ExistingRow[] };
   chatOverrides?: {
     /** P4.124: bug 172's scan gate — set as the chat ROW's `chatType` for the
      *  op (and restored after), since v5's scan reads the row; v4 re-reads the
@@ -231,13 +232,16 @@ const DEFAULT_USAGE = { promptTokens: 40, completionTokens: 20, totalTokens: 60 
  * 2024-06-15T12:00:00.000Z. */
 const FIXED_NOW_MS = 1718452800000;
 
-function buildExistingMessages(op: Op): Array<{ id?: string; role: string; content: string }> {
+type ExistingRow = { id?: string; role: string; content: string; type?: string; systemKind?: string; systemSender?: string };
+
+function buildExistingMessages(op: Op): ExistingRow[] {
   if (op.existingMessagesRepeat) {
-    const out: Array<{ id?: string; role: string; content: string }> = [];
+    const out: ExistingRow[] = [];
     for (let i = 0; i < op.existingMessagesRepeat.count; i++) {
       out.push({ role: 'user', content: op.existingMessagesRepeat.userContent });
       out.push({ role: 'assistant', content: op.existingMessagesRepeat.assistantContent });
     }
+    out.push(...(op.existingMessagesRepeat.tail ?? []));
     return out;
   }
   return op.existingMessages ?? [];
@@ -387,6 +391,18 @@ async function main(): Promise<void> {
   let deliveryLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
   // P4.D335: the `[TurnYield] Offering the yield note…` DEBUG, per op.
   let yieldLog: Array<{ message: string; fields: Record<string, unknown> }> = [];
+  // P4.D347: the context builder's own lines (see the patch below).
+  let p4d347Log: Array<{ level: string; message: string; fields: Record<string, unknown> }> = [];
+  const P4D347_PREFIXES = [
+    '[ContextManager] Message budget exhausted',
+    '[ContextManager] Could not place the compression window',
+    '[ReferentLedger] ',
+    '[CoreWhisper] Failed to offer',
+    '[CoreWhisper] Swept stale whispers',
+    '[CoreWhisper] Failed to sweep',
+    '[CommonplaceWhisper] Swept stale whispers',
+    '[CommonplaceWhisper] Failed to sweep',
+  ];
   // P4.D291 (v4 `584d28164`): the pools line and the old stamp are RETIRED;
   // Phase E's `[ContextManager] Recall assembled` (its `durationMs` masked on
   // both sides), the ONE writer's stamp and `[Recall] Delivered` replace them.
@@ -408,8 +424,24 @@ async function main(): Promise<void> {
     if (typeof message === 'string' && DELIVERY_PREFIXES.some((p) => message.startsWith(p))) {
       deliveryLog.push(JSON.parse(JSON.stringify({ message, fields: fields ?? {} })));
     }
+    if (typeof message === 'string' && P4D347_PREFIXES.some((p) => message.startsWith(p))) {
+      p4d347Log.push(JSON.parse(JSON.stringify({ level: 'debug', message, fields: fields ?? {} })));
+    }
     return priorDebug.call(logger, message, fields);
   };
+  // P4.D347: this lane's lines at every level — the exhausted-budget WARN, the
+  // cast-window WARN, the referent ledger's three, the Core arm's ERROR and the
+  // two sweeps' INFO / WARN. v4 builds some of them inside `Promise.all`
+  // groups, so the Rust side compares them ORDER-MASKED (v5 is sequential).
+  for (const level of ['info', 'warn', 'error'] as const) {
+    const prior = (logger as unknown as Record<string, (...a: unknown[]) => unknown>)[level];
+    (logger as unknown as Record<string, unknown>)[level] = (message: string, fields?: unknown, ...rest: unknown[]) => {
+      if (typeof message === 'string' && P4D347_PREFIXES.some((p) => message.startsWith(p))) {
+        p4d347Log.push(JSON.parse(JSON.stringify({ level, message, fields: fields ?? {} })));
+      }
+      return prior.call(logger, message, fields, ...rest);
+    };
+  }
   // P4.D268: the archive cache is process-global and every op shares one chat,
   // so it is RESET before every op (both sides) — an op's archive must never
   // depend on its predecessors.
@@ -664,6 +696,7 @@ async function main(): Promise<void> {
     informLog = [];
     deliveryLog = [];
     yieldLog = [];
+    p4d347Log = [];
     const result = await buildContext(options as never);
     // v4's `markMemoriesAccessed` does not await its bulk UPDATE; let it land
     // before the dumps and the next op (memory note `oracle-async-tails`).
@@ -672,6 +705,7 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'informLog', op: op.name, lines: informLog }));
     lines.push(JSON.stringify({ kind: 'deliveryLog', op: op.name, lines: deliveryLog }));
     lines.push(JSON.stringify({ kind: 'yieldLog', op: op.name, lines: yieldLog }));
+    lines.push(JSON.stringify({ kind: 'p4d347Log', op: op.name, lines: p4d347Log }));
 
     // P4.d15: the Commonplace-Book whisper ROWS this op left behind + the
     // recall-history column it persisted. Minted ids and `createdAt` are dropped

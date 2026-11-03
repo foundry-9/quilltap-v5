@@ -2,13 +2,18 @@
 //! builders / formatters / config resolvers / parsers, diffed against v4's REAL
 //! exports (`harness/oracle/cases/context-feeders-leaves.ts`).
 //!
-//! Covers: the off-scene content/opaque builders + `findIntroducedOffScene-
-//! CharacterIds`, `resolveCoreWhisperConfig` + the three core-whisper content
+//! Covers: the off-scene content/opaque builders, `resolveCoreWhisperConfig` + the three core-whisper content
 //! builders, `renderRelevantConversationsBlock`, `buildSuparnaMailLLMContext`,
 //! `capClothingSummary`, and (P4.D233, v4 `acadcc7cd`) `operatorSpeaksWith-
-//! outSeat` — whose rows REQUIRE a pin at or after `acadcc7cd`. The stateful
+//! outSeat` — whose rows REQUIRE a pin at or after `acadcc7cd` — and (P4.D347,
+//! v4 `bdd09b75b` / `d68c1af88` / `9a88f862f`, REQUIRING a pin at or after
+//! `236c04e35`) `hasWhisperTargets` / `isInWhisperScope` (an EMPTY target array
+//! is the room), `isOffSceneMentionIntroduction`, and the one card —
+//! `offSceneCardFields` (compared as BYTES: the wire's key order) +
+//! `renderOffSceneCard`. `findIntroducedOffSceneCharacterIds` is gone at the pin
+//! with the per-turn scan it served; its rows went with it. The stateful
 //! reads (frozen-archive DB ranking, the recap's vault-summary search, the
-//! off-scene SCAN, the core-whisper packet
+//! core-whisper packet
 //! assembly, the recap composition end-to-end) are exercised by
 //! `build_context_tier3_equivalence`.
 //!
@@ -26,7 +31,9 @@
 
 use serde_json::{json, Value};
 
-use quilltap_core::chat_predicates::operator_speaks_without_seat;
+use quilltap_core::chat_predicates::{
+    has_whisper_targets, is_in_whisper_scope, operator_speaks_without_seat,
+};
 
 use quilltap_core::services::core_whisper::{
     build_core_whisper_content, build_core_whisper_llm_context, build_core_whisper_opaque_content,
@@ -34,8 +41,10 @@ use quilltap_core::services::core_whisper::{
 };
 use quilltap_core::services::off_scene::{
     build_off_scene_characters_content, build_off_scene_characters_opaque_content,
-    find_introduced_off_scene_character_ids, OffSceneCharacterCard, OffSceneIntroductionReason,
+    off_scene_card_fields, render_off_scene_card, OffSceneCharacterCard,
+    OffSceneIntroductionReason,
 };
+use quilltap_core::services::off_scene_kinds::is_off_scene_mention_introduction;
 use quilltap_core::services::scene_state_tracking::cap_clothing_summary;
 use quilltap_core::services::suparna_mail::build_suparna_mail_llm_context;
 
@@ -50,14 +59,6 @@ fn rust_value(kind: &str, id: &str) -> Value {
                 build_off_scene_characters_opaque_content(&chars, user.as_deref(), reason)
             };
             Value::String(s)
-        }
-        "introduced_ids" => {
-            let messages = introduced_case(id);
-            let mut ids: Vec<String> = find_introduced_off_scene_character_ids(&messages)
-                .into_iter()
-                .collect();
-            ids.sort();
-            json!(ids)
         }
         "core_config" => {
             let (chat_enabled, chat_interval, char_enabled, global) = core_config_case(id);
@@ -84,11 +85,114 @@ fn rust_value(kind: &str, id: &str) -> Value {
         "suparna_llm" => Value::String(suparna_case(id)),
         "clothing_cap" => Value::String(clothing_case(id)),
         "operator_speaks" => json!(operator_speaks_without_seat(operator_speaks_case(id))),
+        "has_whisper_targets" => json!(has_whisper_targets(&scope_shape(id))),
+        "whisper_scope" => {
+            let (shape, target) = id.split_once('|').expect("shape|target");
+            let target = (target != "null").then_some(target);
+            json!(is_in_whisper_scope(&scope_shape(shape), target))
+        }
+        "mention_intro" => {
+            let (sender, kind, content) = mention_intro_case(id);
+            json!(is_off_scene_mention_introduction(sender, kind, content))
+        }
+        "card_fields" => {
+            let (c, user) = card_case(id);
+            serde_json::to_value(off_scene_card_fields(&c, user)).unwrap()
+        }
+        "render_card" => {
+            let (c, user) = card_case(id);
+            Value::String(render_off_scene_card(&c, user))
+        }
         other => panic!("unknown oracle kind {other}"),
     }
 }
 
 // ---- case data (mirrors the oracle corpus) ----
+
+fn scope_shape(id: &str) -> Value {
+    match id {
+        "null" => json!({ "targetParticipantIds": null }),
+        "absent" => json!({}),
+        "empty" => json!({ "targetParticipantIds": [] }),
+        "x" => json!({ "targetParticipantIds": ["x"] }),
+        "xy" => json!({ "targetParticipantIds": ["x", "y"] }),
+        other => panic!("unknown scope shape {other}"),
+    }
+}
+
+fn mention_intro_case(
+    id: &str,
+) -> (
+    Option<&'static str>,
+    Option<&'static str>,
+    Option<&'static str>,
+) {
+    const LEFT: &str =
+        "The Host observes that one member of the previous company did not make the journey.";
+    match id {
+        "mention-card" => (
+            Some("host"),
+            Some("off-scene-characters"),
+            Some("The Host begs leave to introduce a person spoken of."),
+        ),
+        "legacy-left-behind" => (Some("host"), Some("off-scene-characters"), Some(LEFT)),
+        "new-kind" => (Some("host"), Some("off-scene-left-behind"), Some(LEFT)),
+        "non-host" => (Some("lantern"), Some("off-scene-characters"), Some("x")),
+        "absent-content" | "null-content" => (Some("host"), Some("off-scene-characters"), None),
+        other => panic!("unknown mention_intro case {other}"),
+    }
+}
+
+fn card_case(id: &str) -> (OffSceneCharacterCard, Option<&'static str>) {
+    let pron = |s: &str, o: &str, p: &str| Some((s.to_string(), o.to_string(), p.to_string()));
+    let mut c = card(id, "");
+    let mut user = None;
+    match id {
+        "identity" => {
+            c.id = "c1".into();
+            c.name = "Ada".into();
+            c.aliases = vec!["A".into(), "Ace".into()];
+            c.pronouns = pron("she", "her", "hers");
+            c.identity = Some("  Ada keeps the ledgers.  ".into());
+            c.description = Some("ignored".into());
+            user = Some("Charlie");
+        }
+        "description-only" => {
+            c.name = "Bea".into();
+            c.description = Some("  A gentle beekeeper.  ".into());
+        }
+        "neither" => {
+            c.name = "Cy".into();
+            c.aliases = vec!["C".into()];
+        }
+        "no-aliases" => {
+            c.name = "Di".into();
+            c.pronouns = pron("they", "them", "theirs");
+            c.identity = Some("Di.".into());
+        }
+        "no-pronouns" => {
+            c.name = "Ed".into();
+            c.aliases = vec!["Eddie".into()];
+            c.identity = Some("Ed.".into());
+        }
+        "templates" => {
+            c.name = "Flo".into();
+            c.identity = Some("{{char}} keeps {{user}} honest.".into());
+            user = Some("Charlie");
+        }
+        "templates-no-user" => {
+            c.name = "Gus".into();
+            c.identity = Some("{{char}} keeps {{user}} honest.".into());
+        }
+        "blank-identity-falls-through" => {
+            c.name = "Hal".into();
+            c.identity = Some("   ".into());
+            c.description = Some("Hal hums.".into());
+        }
+        other => panic!("unknown card case {other}"),
+    }
+    (c, user)
+}
 
 fn card(id: &str, name: &str) -> OffSceneCharacterCard {
     OffSceneCharacterCard {
@@ -162,20 +266,6 @@ fn off_scene_case(
             (vec![c], None, Mentioned)
         }
         other => panic!("unknown off_scene case {other}"),
-    }
-}
-
-fn introduced_case(id: &str) -> Vec<Value> {
-    match id {
-        "mixed-host-and-others" => vec![
-            json!({"type":"message","systemSender":"host","systemKind":"off-scene-characters","hostEvent":{"introducedCharacterIds":["c1","c2"]}}),
-            json!({"type":"message","systemSender":"aurora","systemKind":"core-whisper"}),
-            json!({"type":"message","role":"USER","content":"hi"}),
-            json!({"type":"message","systemSender":"host","systemKind":"off-scene-characters","hostEvent":{"introducedCharacterIds":["c2","c3"]}}),
-            json!({"type":"message","systemSender":"host","systemKind":"add","hostEvent":{"introducedCharacterIds":["c9"]}}),
-        ],
-        "empty" => vec![],
-        other => panic!("unknown introduced case {other}"),
     }
 }
 
@@ -359,15 +449,43 @@ fn context_feeders_leaves_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).expect("read oracle ndjson");
     let mut count = 0usize;
+    let mut kinds: std::collections::BTreeMap<String, usize> = Default::default();
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Value = serde_json::from_str(line).expect("parse oracle row");
         let kind = row["kind"].as_str().unwrap();
         let id = row["id"].as_str().unwrap();
         let want = &row["value"];
         let got = rust_value(kind, id);
-        assert_eq!(&got, want, "context feeder leaf {kind}/{id} diverges");
+        if kind == "card_fields" {
+            // The card is a WIRE shape (the name chip's popup): compare BYTES —
+            // `Value ==` is blind to key order (memory note
+            // serde-json-map-eq-ignores-order).
+            assert_eq!(
+                serde_json::to_string(&got).unwrap(),
+                serde_json::to_string(want).unwrap(),
+                "card_fields/{id} bytes diverge"
+            );
+        } else {
+            assert_eq!(&got, want, "context feeder leaf {kind}/{id} diverges");
+        }
+        *kinds.entry(kind.to_string()).or_insert(0usize) += 1;
         count += 1;
     }
     assert!(count > 0, "oracle had no rows");
+    // P4.D347: a regenerated oracle that lost the new arms must not pass.
+    for (kind, min) in [
+        ("whisper_scope", 15),
+        ("has_whisper_targets", 5),
+        ("mention_intro", 6),
+        ("card_fields", 8),
+        ("render_card", 8),
+    ] {
+        let n = kinds.get(kind).copied().unwrap_or(0);
+        assert!(n >= min, "{kind}: {n} rows < {min}");
+    }
+    assert!(
+        !kinds.contains_key("introduced_ids"),
+        "a retired arm came back"
+    );
     eprintln!("context-feeders-leaves: {count} rows matched");
 }

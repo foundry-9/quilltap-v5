@@ -1,12 +1,13 @@
 /**
- * Oracle case: the scene-state + summary context formatters (chat-orchestration
- * wave 1.3; RE-AIMED by P4.D291).
+ * Oracle case: the scene-state context formatter (chat-orchestration wave 1.3;
+ * RE-AIMED by P4.D291; the summary formatter's rows DELETED by P4.D347).
  *
  * Drives the REAL pure functions from v4's lib/chat/context/scene-state.ts —
- * formatCurrentSceneState, formatSummaryForContext — over a fixed deterministic
- * corpus, printing results as NDJSON. The Rust port (`memory_injector.rs`, which
- * keeps exactly these two formatters byte-for-byte) feeds the SAME corpus and
- * asserts byte-equal output (tier-1 exact).
+ * formatCurrentSceneState — over a fixed deterministic corpus, printing results
+ * as NDJSON. The Rust port (`memory_injector.rs`, which keeps it byte-for-byte)
+ * feeds the SAME corpus and asserts byte-equal output (tier-1 exact). v4
+ * `bdd09b75b` DELETED `formatSummaryForContext` (the summary rides as a
+ * Librarian whisper; its rows died at import), and its port with it.
  *
  * v4 Phase E moved these two verbatim out of `memory-injector.ts` (deleted) into
  * `scene-state.ts`; every memory formatter the old corpus drove now lives in
@@ -49,7 +50,6 @@ class PinnedDate extends RealDate {
 
 import {
   formatCurrentSceneState,
-  formatSummaryForContext,
   type SceneStateEmissionEntry,
 } from '@/lib/chat/context/scene-state';
 import type { SceneState } from '@/lib/schemas/chat.types';
@@ -223,21 +223,6 @@ sceneCase(
   [],
   [],
 );
-
-// ===========================================================================
-// formatSummaryForContext
-// ===========================================================================
-function summaryCase(id: string, summary: string, maxTokens: number) {
-  const out = formatSummaryForContext(summary, maxTokens, undefined as never);
-  emit({ kind: 'summary', id, summary, maxTokens, out });
-}
-
-summaryCase('sum-empty', '', 1000);
-summaryCase('sum-blank', '   ', 1000);
-summaryCase('sum-fits', 'A short recap of the tale so far.', 1000);
-summaryCase('sum-truncate', 'word '.repeat(200).trim(), 30);
-summaryCase('sum-truncate-tiny', 'word '.repeat(200).trim(), 12);
-summaryCase('sum-astral', '🎩 A soirée with Zöe and a café.', 1000);
 
 // ---- emit ------------------------------------------------------------------
 for (const r of rows) process.stdout.write(JSON.stringify(r) + '\n');

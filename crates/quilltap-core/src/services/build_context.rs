@@ -125,6 +125,7 @@ use std::collections::{HashMap, HashSet};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::chat_predicates::is_in_whisper_scope;
 use crate::chat_tasks::{extract_visible_conversation, strip_tool_artifacts, RawMessage};
 use crate::cheap_llm::UncensoredFallbackOptions;
 use crate::context_budget::{
@@ -221,7 +222,6 @@ pub struct ContextBudget {
     pub system_prompt_budget: i64,
     pub memory_budget: i64,
     pub knowledge_budget: i64,
-    pub summary_budget: i64,
     /// v4 keeps this un-floored (`allocation.recentMessages` is an `f64`), but
     /// `JSON.stringify` renders an integer-valued float bare (`120000`, not
     /// `120000.0`) — so serialize via `js_number_to_json`.
@@ -246,14 +246,15 @@ fn serialize_js_number<S: serde::Serializer>(v: &f64, s: S) -> Result<S::Ok, S::
     crate::db::js_number_to_json(*v).serialize(s)
 }
 
-/// v4 `BuiltContext.tokenUsage`.
+/// v4 `BuiltContext.tokenUsage` (`context-manager.ts:868-874`). The summary
+/// slot is gone at `bdd09b75b` (the summary rides as a Librarian whisper), and
+/// the rest are counted by the one per-message rule the pre-send check uses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TokenUsage {
     pub system_prompt: i64,
     pub memories: i64,
     pub knowledge: i64,
-    pub summary: i64,
     pub recent_messages: i64,
     pub total: i64,
 }
@@ -314,7 +315,6 @@ pub struct BuiltContext {
     pub messages: Vec<ContextMessage>,
     pub token_usage: TokenUsage,
     pub budget: ContextBudget,
-    pub included_summary: bool,
     pub memories_included: usize,
     pub messages_included: usize,
     pub messages_truncated: bool,
@@ -392,6 +392,10 @@ pub struct ExistingMessage {
     /// rows behaves as v4 does.
     pub system_kind: Option<String>,
     // === end P4.D205 ===
+    /// `systemSender` — the Host "spoken of" card is told apart by it (v4
+    /// `toVisibleConversationMessage`, `d68c1af88`). Like `system_kind`, `None`
+    /// on the production path (the record-only strip has run).
+    pub system_sender: Option<String>,
 }
 
 /// v4's `TimestampConfig` subset buildContext reads (mode / autoPrepend), plus
@@ -642,6 +646,27 @@ pub struct BuildContextInput {
     /// path that skipped that fill would silently lose every note; the
     /// orchestrator / regenerate-swipe regens are the proof the fill is live.
     pub human_turn_message_ids: Option<std::collections::HashSet<String>>,
+    // === C1 (P4.D347) — P4.D343 sets both through `BuildContextArgs` ===
+    /// v4 `options.purpose` (`'turn' | 'bid'`, absent = turn): a Storyteller
+    /// bid build delivers no recall — it is a plan, not a turn — so nothing is
+    /// stamped accessed or ring-recorded on [`ContextPurpose::Bid`].
+    pub purpose: ContextPurpose,
+    /// v4 `options.storytellerSection` — the Storyteller's trailing section,
+    /// emitted LAST in the trailing list (after the turn notes). Its text is
+    /// the Storyteller's; this builder only places what it is handed. `None` /
+    /// empty adds nothing.
+    pub storyteller_section: Option<String>,
+}
+
+/// What a build is for (v4 `BuildContextOptions.purpose`, `b15fe9404`).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ContextPurpose {
+    /// A turn — the default.
+    #[default]
+    Turn,
+    /// A Storyteller bid: the context is built to plan, never to speak, so it
+    /// delivers no recall.
+    Bid,
 }
 
 /// v4's `turnSkip` option bag (`{ offerSkip, recentlyAddressed, characterName }`).
@@ -696,7 +721,7 @@ pub use crate::db::instance_settings::MemoryRecallSettings;
 
 /// The injected **whisper-POSTING** half of the context feeders (W4.6b, wired live
 /// in the Round-3 unification pass). W4.6a closed every READ/COMPUTE feeder in-line
-/// (recap, distill, mount pool, frozen archive, live clothing, off-scene scan,
+/// (recap, distill, mount pool, frozen archive, live clothing,
 /// recall settings, core-whisper assembly, Suparṇā mail read,
 /// scene-cache/recall-history persist); this trait is the set of personified-system
 /// message POSTs. [`RealBuildContextSeams`] delegates each to its W4.6b writer;
@@ -704,21 +729,6 @@ pub use crate::db::instance_settings::MemoryRecallSettings;
 /// methods are async (RPITIT `+ Send`), matching [`crate::services::context_summary::
 /// ContextSummarySeams`].
 pub trait BuildContextSeams {
-    /// v4 `postHostOffSceneCharactersAnnouncement` — the Host's public off-scene
-    /// introduction. Given the newcomer cards, post the intro (the writer builds the
-    /// content + stamps `hostEvent.introducedCharacterIds`) and return the posted
-    /// message's content, which THIS turn's LLM context includes (v4's
-    /// `pendingOffSceneAnnouncement = { content: announcement.content }`). Default:
-    /// no post → `None`.
-    fn post_host_off_scene_announcement(
-        &self,
-        chat_id: &str,
-        cards: &[crate::services::off_scene::OffSceneCharacterCard],
-    ) -> impl std::future::Future<Output = Option<String>> + Send {
-        let _ = (chat_id, cards);
-        async { None }
-    }
-
     /// v4 `postHostTimestampAnnouncement` — the Host's fictional-clock note.
     /// Default: no-op.
     fn post_host_timestamp_announcement(
@@ -808,27 +818,6 @@ pub struct RealBuildContextSeams<'a> {
 }
 
 impl BuildContextSeams for RealBuildContextSeams<'_> {
-    async fn post_host_off_scene_announcement(
-        &self,
-        chat_id: &str,
-        cards: &[crate::services::off_scene::OffSceneCharacterCard],
-    ) -> Option<String> {
-        let posted =
-            crate::services::host_notifications::post_host_off_scene_characters_announcement(
-                self.db,
-                crate::services::host_notifications::HostOffSceneCharactersAnnouncement {
-                    chat_id: chat_id.to_string(),
-                    characters: cards.to_vec(),
-                },
-            )
-            .await?;
-        posted
-            .message
-            .get("content")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-    }
-
     async fn post_host_timestamp_announcement(&self, chat_id: &str, formatted: &str) {
         let _ = crate::services::host_notifications::post_host_timestamp_announcement(
             self.db,
@@ -861,14 +850,19 @@ impl BuildContextSeams for RealBuildContextSeams<'_> {
                 .and_then(Value::as_str)
                 .unwrap_or("")
                 .to_string();
-            let target = target_participant_id.to_string();
             // v4: sweep prior aurora/core-whisper targeted at this participant,
             // except the just-posted one.
-            sweep_stale_whispers(self.db, chat_id, &posted_id, move |m| {
-                m.get("systemSender").and_then(Value::as_str) == Some("aurora")
-                    && m.get("systemKind").and_then(Value::as_str) == Some("core-whisper")
-                    && target_ids_include(m, Some(&target))
-            })
+            sweep_stale_whispers(
+                self.db,
+                chat_id,
+                &posted_id,
+                Some(target_participant_id),
+                "[CoreWhisper]",
+                |m| {
+                    m.get("systemSender").and_then(Value::as_str) == Some("aurora")
+                        && m.get("systemKind").and_then(Value::as_str) == Some("core-whisper")
+                },
+            )
             .await;
         }
     }
@@ -891,15 +885,20 @@ impl BuildContextSeams for RealBuildContextSeams<'_> {
             .await
         {
             Some(posted) => {
-                let target = target_participant_id.map(str::to_string);
                 // v4: sweep prior commonplaceBook whispers (NOT relevant-conversations)
                 // in the same target scope, except the just-posted one.
-                sweep_stale_whispers(self.db, chat_id, &posted.id, move |m| {
-                    m.get("systemSender").and_then(Value::as_str) == Some("commonplaceBook")
-                        && m.get("systemKind").and_then(Value::as_str)
-                            != Some("relevant-conversations")
-                        && target_ids_include(m, target.as_deref())
-                })
+                sweep_stale_whispers(
+                    self.db,
+                    chat_id,
+                    &posted.id,
+                    target_participant_id,
+                    "[CommonplaceWhisper]",
+                    |m| {
+                        m.get("systemSender").and_then(Value::as_str) == Some("commonplaceBook")
+                            && m.get("systemKind").and_then(Value::as_str)
+                                != Some("relevant-conversations")
+                    },
+                )
                 .await;
                 true
             }
@@ -951,49 +950,56 @@ impl BuildContextSeams for RealBuildContextSeams<'_> {
     }
 }
 
-/// v4's target-scope filter for the whisper sweep: when `target` is `None`, the
-/// stale whisper must be public (`targetParticipantIds` null/absent); when
-/// `Some(id)`, its `targetParticipantIds` must be an array including `id`.
-fn target_ids_include(message: &Value, target: Option<&str>) -> bool {
-    let ids = message.get("targetParticipantIds");
-    match target {
-        None => matches!(ids, None | Some(Value::Null)),
-        Some(t) => ids
-            .and_then(Value::as_array)
-            .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(t))),
-    }
-}
-
-/// v4's stale-whisper sweep (shared by core-whisper + commonplace): re-read the
-/// chat's messages, keep the `type:'message'` rows matching `predicate` (already
-/// excluding the just-posted id), and delete them. Best-effort — a read/write
-/// failure is swallowed (v4 logs + continues).
-async fn sweep_stale_whispers<F: Fn(&Value) -> bool>(
+/// v4 `sweepPriorWhispers` (`lib/chat/whisper-sweep.ts:41-71`, `bdd09b75b`) —
+/// the ONE stale-whisper sweep (the Core whisper, the Commonplace whisper and
+/// the fold refresh's relevant-conversations whisper): re-read the chat's
+/// messages AFTER the post (a build for the same recipient that overlapped this
+/// one posted after any snapshot of ours, and only a fresh read sees its
+/// whisper), keep the `type:'message'` rows other than the kept one that are of
+/// the same kind (`is_same_kind`) and in the kept one's whisper scope
+/// ([`is_in_whisper_scope`] — an EMPTY target array is the public scope), and
+/// delete them. Returns how many were removed (0 on failure).
+///
+/// v4 logs INFO `${logTag} Swept stale whispers` after a non-empty delete and
+/// WARN `${logTag} Failed to sweep stale whispers` on a failure. Here the only
+/// failure that reaches the WARN is the READ: the delete is P4.163's FALLBACK
+/// (`fallback::messages_deleted_or_zero` — v4's `deleteMessagesByIds` is a
+/// `safeQuery(…, 0)` that logs and answers 0 itself), so v4's catch is
+/// unreachable on that arm and the INFO then reports `deletedCount: 0`, as v4's
+/// does. Both lines are logged on the caller's thread, after the write.
+pub(crate) async fn sweep_stale_whispers<F: Fn(&Value) -> bool>(
     db: &Db,
     chat_id: &str,
-    posted_id: &str,
-    predicate: F,
-) {
+    keep_id: &str,
+    target_participant_id: Option<&str>,
+    log_tag: &'static str,
+    is_same_kind: F,
+) -> i64 {
+    let target_json = serde_json::to_string(&target_participant_id).unwrap_or_default();
     let cid = chat_id.to_string();
     let messages =
         match db.read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid)) {
             Ok(m) => m,
-            Err(_) => return,
+            Err(error) => {
+                tracing::warn!(
+                    chatId = %chat_id,
+                    targetParticipantIdJson = %target_json,
+                    error = %crate::db::fallback::error_text(&error),
+                    "{log_tag} Failed to sweep stale whispers"
+                );
+                return 0;
+            }
         };
     let stale: Vec<String> = messages
         .iter()
         .filter(|m| m.get("type").and_then(Value::as_str) == Some("message"))
-        .filter(|m| m.get("id").and_then(Value::as_str) != Some(posted_id))
-        .filter(|m| predicate(m))
+        .filter(|m| m.get("id").and_then(Value::as_str) != Some(keep_id))
+        .filter(|m| is_same_kind(m) && is_in_whisper_scope(m, target_participant_id))
         .filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string))
         .collect();
     if stale.is_empty() {
-        return;
+        return 0;
     }
-    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
-    // failed delete logs `Failed to delete messages from chat {chatId, count}`
-    // and answers 0, so the whisper sweeps' own catches (`context-manager.ts:
-    // 2284, 2575`) are unreachable (v5 had swallowed the failure silently).
     let (cid, count) = (chat_id.to_string(), stale.len());
     let outcome = db
         .write(move |w| {
@@ -1002,7 +1008,252 @@ async fn sweep_stale_whispers<F: Fn(&Value) -> bool>(
                 .delete_messages_by_ids(&cid, &stale)
         })
         .await;
-    crate::db::fallback::messages_deleted_or_zero(chat_id, count, || outcome);
+    let removed = crate::db::fallback::messages_deleted_or_zero(chat_id, count, || outcome);
+    tracing::info!(
+        chatId = %chat_id,
+        messageId = %keep_id,
+        targetParticipantIdJson = %target_json,
+        deletedCount = removed,
+        "{log_tag} Swept stale whispers"
+    );
+    removed
+}
+
+/// v4 `fromWindow(rows, existingMessages, windowStart)` (`turn-history.ts:
+/// 139-157`, bug 264): the cast history from the compression window on. The
+/// participant rows are the same sequence as `existing_messages`, so the window
+/// is found by the id of `existing_messages[window_start]`; with no id to match
+/// by, by the index when the two sequences agree in length; else kept WHOLE
+/// with v4's WARN.
+pub fn from_window(
+    rows: &[MessageWithParticipant],
+    existing_messages: &[ExistingMessage],
+    window_start: usize,
+) -> Vec<MessageWithParticipant> {
+    if window_start == 0 {
+        return rows.to_vec();
+    }
+    if window_start >= existing_messages.len() {
+        return Vec::new();
+    }
+    // `startId ? rows.findIndex(m => m.id === startId) : -1` — an empty id is
+    // JS-falsy.
+    let at = existing_messages[window_start]
+        .id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .and_then(|start_id| rows.iter().position(|m| m.id.as_deref() == Some(start_id)));
+    if let Some(at) = at {
+        return rows[at..].to_vec();
+    }
+    // No id to match by: the two sequences are built row for row, so fall
+    // back to the index when they agree in length.
+    if rows.len() == existing_messages.len() {
+        return rows[window_start..].to_vec();
+    }
+    tracing::warn!(
+        windowStart = window_start,
+        rows = rows.len(),
+        existingMessages = existing_messages.len(),
+        "[ContextManager] Could not place the compression window in the cast history; keeping it whole"
+    );
+    rows.to_vec()
+}
+
+/// v4 `buildReferentSections` (`turn-trailing.ts:138-224`): the referent ledger
+/// and the closing echo for this turn, or `("", "")`. Reads only, and never
+/// fails the turn — any failure logs v4's WARN and both sections are empty.
+///
+/// The window is the chat's own rows, read through the turn's one transcript
+/// memo ([`CadenceEvents`], v4 `transcript.events()` — the SAME read the Core
+/// cadence and the progressions share), never the filtered `existing_messages`:
+/// v4's ledger sees the raw transcript, and `spoken_text` drops every Staff row
+/// itself. The participants are v4's `allParticipants ?? chat.participants` —
+/// a single-character build is handed no participant list, so the chat row is
+/// read for its `participants` (an unobservable read; v4 has the chat object).
+fn build_referent_sections(
+    db: &Db,
+    input: &BuildContextInput,
+    new_user_message: Option<&str>,
+    cadence: &mut CadenceEvents<'_>,
+) -> (String, String) {
+    match referent_sections_inner(db, input, new_user_message, cadence) {
+        Ok(sections) => sections,
+        Err(error) => {
+            tracing::warn!(
+                chatId = %input.chat.id,
+                error = %error,
+                "[ReferentLedger] Could not build the referent ledger; turn continues"
+            );
+            (String::new(), String::new())
+        }
+    }
+}
+
+fn referent_sections_inner(
+    db: &Db,
+    input: &BuildContextInput,
+    new_user_message: Option<&str>,
+    cadence: &mut CadenceEvents<'_>,
+) -> Result<(String, String), String> {
+    use crate::services::absent_mentions::{presence_of, spoken_text_of};
+    use crate::services::off_scene::{render_off_scene_card, OffSceneCharacterCard};
+    use crate::services::referent_ledger::{
+        build_closing_echo, build_referent_ledger, ReferentLedgerLine, ReferentLedgerPerson,
+        REFERENT_LEDGER_WINDOW_LINES,
+    };
+
+    // `allParticipants ?? chat.participants ?? []`.
+    let participants: Vec<Value> = match &input.all_participants {
+        Some(all) => all
+            .iter()
+            .map(|p| {
+                serde_json::json!({
+                    "id": p.id,
+                    "type": p.participant_type,
+                    "characterId": p.character_id,
+                    "controlledBy": p.controlled_by,
+                    "status": p.status,
+                })
+            })
+            .collect(),
+        None => {
+            let chat_id = input.chat.id.clone();
+            db.read_main(move |c| crate::db::chats_read::find_by_id(c, &chat_id))
+                .map_err(|e| crate::db::fallback::error_text(&e))?
+                .and_then(|chat| chat.get("participants").and_then(Value::as_array).cloned())
+                .unwrap_or_default()
+        }
+    };
+    let speaker_names = db
+        .read_main(|c| {
+            Ok(crate::services::speaker_names::resolve_speaker_names(
+                c,
+                &participants,
+            ))
+        })
+        .map_err(|e| crate::db::fallback::error_text(&e))?;
+    let user_name = input
+        .user_character
+        .as_ref()
+        .map(|u| u.name.as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("User");
+    let responding_id = input.responding_participant.as_ref().map(|p| p.id.as_str());
+    let label_for = |m: &Value| -> String {
+        let role = m
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_uppercase();
+        let label = crate::services::speaker_names::speaker_label(
+            m.get("participantId").and_then(Value::as_str),
+            &role,
+            &speaker_names,
+        );
+        if label == "User" {
+            user_name.to_string()
+        } else {
+            label
+        }
+    };
+    let is_responder_line = |m: &Value| -> bool {
+        match responding_id {
+            Some(id) => m.get("participantId").and_then(Value::as_str) == Some(id),
+            None => {
+                m.get("role")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_uppercase()
+                    == "ASSISTANT"
+            }
+        }
+    };
+
+    let rows = cadence.rows()?;
+    let mut spoken: Vec<ReferentLedgerLine> = Vec::new();
+    for m in rows.iter().rev() {
+        if spoken.len() >= REFERENT_LEDGER_WINDOW_LINES {
+            break;
+        }
+        if let Some(content) = spoken_text_of(m) {
+            spoken.insert(
+                0,
+                ReferentLedgerLine {
+                    speaker: label_for(m),
+                    is_responder: is_responder_line(m),
+                    content,
+                },
+            );
+        }
+    }
+
+    // The new user message is normally persisted before the context is built;
+    // when it is not (or not yet), it is still the line being answered.
+    let user_speaker = input
+        .active_user_participant_id
+        .as_deref()
+        .filter(|id| !id.is_empty())
+        .and_then(|id| speaker_names.get(id))
+        .filter(|n| !n.is_empty())
+        .unwrap_or(user_name)
+        .to_string();
+    if let Some(message) = new_user_message {
+        let latest = spoken.last().map(|l| crate::jsstr::js_trim(&l.content));
+        if latest != Some(crate::jsstr::js_trim(message)) {
+            spoken.push(ReferentLedgerLine {
+                speaker: user_speaker.clone(),
+                is_responder: false,
+                content: message.to_string(),
+            });
+        }
+    }
+
+    // The same presence rule the Salon's name chips use: seated characters,
+    // and an unseated persona wherever the operator speaks without a seat.
+    let presence = presence_of(
+        &participants,
+        input.chat.chat_type.as_deref().or(Some("salon")),
+        input.user_character.as_ref().map(|u| u.name.as_str()),
+    );
+    let user_id = input.user_id.clone();
+    let characters = db
+        .read_main(|main| {
+            db.read_mount_index(|mount| {
+                crate::db::characters_read::find_by_user_id(main, mount, &user_id)
+            })
+        })
+        .map_err(|e| crate::db::fallback::error_text(&e))?;
+    let user_character_name = input.user_character.as_ref().map(|u| u.name.clone());
+    let people: Vec<ReferentLedgerPerson<'_>> = characters
+        .iter()
+        .filter_map(OffSceneCharacterCard::from_value)
+        .map(|card| {
+            let in_room = presence.is_in_room(&card.id, &card.name);
+            let user_character_name = user_character_name.clone();
+            ReferentLedgerPerson {
+                id: card.id.clone(),
+                name: card.name.clone(),
+                aliases: Some(card.aliases.clone()),
+                pronouns: card.pronouns.clone(),
+                in_room,
+                // Absent people bring their card — the particulars the Salon's
+                // name-chip popup shows the operator.
+                render_card: if in_room {
+                    None
+                } else {
+                    Some(Box::new(move || {
+                        render_off_scene_card(&card, user_character_name.as_deref())
+                    }) as Box<dyn Fn() -> String>)
+                },
+            }
+        })
+        .collect();
+
+    Ok((
+        build_referent_ledger(&spoken, &people, &input.character.id),
+        build_closing_echo(new_user_message, &user_speaker),
+    ))
 }
 
 /// Errors from [`build_context`]. v4 throws on an invalid timezone (aborting the
@@ -1358,6 +1609,9 @@ struct CadenceEvents<'a> {
     db: &'a Db,
     chat_id: String,
     cached: Option<Result<Vec<crate::core_whisper::WhisperEvent>, String>>,
+    /// The raw rows behind `cached` — the referent ledger reads them (P4.D347:
+    /// v4's ONE transcript read serves the cadence AND the ledger).
+    rows: Vec<Value>,
     /// How many times the DB was actually hit. The tier-3 differential cannot
     /// see a read COUNT — only [`cadence_events_are_read_at_most_once`] can.
     reads: usize,
@@ -1382,9 +1636,11 @@ impl CadenceEvents<'_> {
             match self
                 .db
                 .read_main(move |c| crate::db::chats_messages_read::get_messages(c, &cid))
-                .map(|rows| rows.iter().map(whisper_event_from_row).collect())
             {
-                Ok(events) => self.cached = Some(Ok(events)),
+                Ok(rows) => {
+                    self.cached = Some(Ok(rows.iter().map(whisper_event_from_row).collect()));
+                    self.rows = rows;
+                }
                 Err(e) => return Err(e.to_string()),
             }
         }
@@ -1392,6 +1648,12 @@ impl CadenceEvents<'_> {
             Ok(events) => Ok(events.as_slice()),
             Err(e) => Err(e.clone()),
         }
+    }
+
+    /// The chat's raw rows, through the same one read as [`Self::load`].
+    fn rows(&mut self) -> Result<&[Value], String> {
+        self.load()?;
+        Ok(self.rows.as_slice())
     }
 }
 
@@ -1455,8 +1717,29 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     use crate::services::core_whisper as cw;
 
     // Global core-whisper settings (user chat settings' `coreWhisper` sub-object).
+    // v4 `offerCoreWhisper` (`turn-whispers.ts:69-123`, `bdd09b75b`) runs the
+    // whole offer inside ONE try whose catch logs ERROR `[CoreWhisper] Failed
+    // to offer Core packet` and offers nothing. Almost nothing reaches it: the
+    // settings read tolerates a missing table (v4's collection layer — the
+    // tier-3 fixture has none, and v4 logs nothing there, so v5 keeps reading
+    // that as "no settings"), and `postCoreWhisper` catches its own write
+    // failure (ERROR `Failed to post whisper`, `null`), so a failed POST still
+    // delivers the section in v4 — the Core text is returned whether or not
+    // `posted` (measured at the pin; an order premise that a failed post drops
+    // the section is not v4's code). The one v5 failure mapped onto the catch
+    // is the transcript read itself (`read_main` failing).
+    let offer_failed = |error: &str| {
+        tracing::error!(
+            chatId = %input.chat.id,
+            respondingParticipantId = %responding_participant_id,
+            error = %error,
+            "[CoreWhisper] Failed to offer Core packet"
+        );
+        String::new()
+    };
     let uid = input.user_id.clone();
-    let global = match db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid)) {
+    let settings_read = db.read_main(move |c| crate::db::chat_settings::find_by_user_id(c, &uid));
+    let global = match settings_read {
         Ok(Some(settings)) => match settings.get("coreWhisper").and_then(Value::as_object) {
             Some(g) => cw::GlobalCoreWhisperSettings {
                 enabled: g.get("enabled").and_then(Value::as_bool),
@@ -1497,7 +1780,7 @@ async fn resolve_core_whisper_llm_context<S: BuildContextSeams>(
     // progressions walk below shares this one read (v4 `loadChatEventsForCadence`).
     let events: Vec<crate::core_whisper::WhisperEvent> = match cadence.load() {
         Ok(e) => e.to_vec(),
-        Err(_) => return String::new(),
+        Err(error) => return offer_failed(&error),
     };
 
     let decision = crate::core_whisper::should_fire_core_whisper(
@@ -1571,7 +1854,7 @@ fn collect_fold_whisper_conversation_ids(
         {
             continue;
         }
-        if !target_ids_include(m, target_participant_id) {
+        if !is_in_whisper_scope(m, target_participant_id) {
             continue;
         }
         let content = m.get("content").and_then(Value::as_str).unwrap_or("");
@@ -1623,7 +1906,6 @@ where
         system_prompt_budget: allocation.system_prompt,
         memory_budget: allocation.memories,
         knowledge_budget: allocation.knowledge,
-        summary_budget: allocation.conversation_summary,
         recent_messages_budget: allocation.recent_messages,
         response_reserve: allocation.response_reserve,
         safety_margin: allocation.safety_margin,
@@ -1661,46 +1943,6 @@ where
         .responding_participant
         .as_ref()
         .and_then(|p| p.selected_system_prompt_id.clone());
-
-    // Off-scene announcement — v4's SCAN + content build (W4.6a). The Host POST
-    // is W4.6b (the recorded `post_host_off_scene_announcement` seam); here we
-    // compute the content this turn's LLM context needs.
-    let pending_off_scene_announcement = {
-        let participants: Vec<crate::services::off_scene::OffSceneParticipant> = input
-            .all_participants
-            .as_ref()
-            .map(|all| {
-                all.iter()
-                    .map(|p| crate::services::off_scene::OffSceneParticipant {
-                        participant_type: p.participant_type.clone(),
-                        character_id: p.character_id.clone(),
-                        controlled_by: p.controlled_by.clone(),
-                        status: p.status.clone(),
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        let newcomers = crate::services::off_scene::scan_off_scene_newcomers(
-            db,
-            &input.chat.id,
-            input.chat.chat_type.as_deref().unwrap_or("salon"),
-            &input.user_id,
-            &input.character.id,
-            input.user_character.as_ref().map(|uc| uc.name.as_str()),
-            &participants,
-        );
-        // The W4.6b Host POST builds + persists the announcement from the newcomer
-        // cards and returns its content; v4 surfaces THAT content to this turn's LLM
-        // context (`pendingOffSceneAnnouncement = { content: announcement.content }`).
-        match newcomers {
-            Some(cards) if !cards.is_empty() => {
-                seams
-                    .post_host_off_scene_announcement(&input.chat.id, &cards)
-                    .await
-            }
-            _ => None,
-        }
-    };
 
     // Instance-wide Taboo list (`instance_settings['taboo']`, v4 `7df7de8e`).
     // `build_system_prompt` is synchronous by design, so the read happens here
@@ -1860,6 +2102,7 @@ where
             // === P4.D205 ===
             system_kind: m.system_kind.clone(),
             // === end P4.D205 ===
+            system_sender: m.system_sender.clone(),
         })
         .collect();
     let visible_conversation = extract_visible_conversation(&existing_raw);
@@ -1978,6 +2221,8 @@ where
     // Compressed-history block (system block 3) + effective-messages window.
     let mut compressed_history_block: Option<String> = None;
     let mut effective_messages: Vec<ExistingMessage> = input.existing_messages.clone();
+    // Where the compression window starts in `existing_messages` (0 = no cut).
+    let mut window_start = 0usize;
 
     if use_compressed_context {
         if let Some(cr) = &compression_result {
@@ -1993,13 +2238,11 @@ where
             // When using a fallback cache (computed for fewer visible messages than
             // we have now), include ALL messages since the compression point — not
             // just the standard window — so nothing is lost (v4 dynamic window).
-            let effective_window_size = match input.cached_compression_message_count {
-                Some(cached_count) if cached_count < visible_messages.len() as i64 => {
-                    let messages_since_cache = visible_messages.len() as i64 - cached_count;
-                    standard_window_size + messages_since_cache
-                }
-                _ => standard_window_size,
-            };
+            let effective_window_size = crate::context_compression::effective_window_size(
+                standard_window_size,
+                visible_messages.len() as i64,
+                input.cached_compression_message_count,
+            );
             let vis_compressible: Vec<CompressibleMessage> = visible_messages
                 .iter()
                 .map(|m| CompressibleMessage {
@@ -2008,33 +2251,19 @@ where
                 })
                 .collect();
             let split = split_messages_for_compression(&vis_compressible, effective_window_size);
-            let window_count = split.window_messages.len();
 
-            // Walk backwards to find the last N visible messages in existing_messages.
-            let mut found = 0usize;
-            let mut window_start = input.existing_messages.len();
-            let mut i = input.existing_messages.len();
-            while i > 0 && found < window_count {
-                i -= 1;
-                let msg = &input.existing_messages[i];
-                let role = msg.role.to_uppercase();
-                let is_visible =
-                    msg.message_type.is_none() || msg.message_type.as_deref() == Some("message");
-                if is_visible && (role == "USER" || role == "ASSISTANT") {
-                    found += 1;
-                    window_start = i;
-                }
-            }
+            // Bug 265 (v4 `bdd09b75b`): the window starts where the last N
+            // VISIBLE messages begin, counted by the one visible-conversation
+            // rule — an inform record, a "spoken of" card, an empty row or a
+            // tool-only assistant turn rides along inside the window but never
+            // counts toward it (the old type + role walk counted them).
+            window_start = crate::context_compression::verbatim_window_start(
+                &existing_raw,
+                split.window_messages.len(),
+            );
             effective_messages = input.existing_messages[window_start..].to_vec();
         }
     }
-
-    let compressed_history_block_tokens = compressed_history_block
-        .as_deref()
-        .map(|b| estimate_tokens(b, cpt))
-        .unwrap_or(0);
-    let effective_system_prompt_tokens =
-        final_system_prompt_tokens + compressed_history_block_tokens;
 
     // ---------------------------------------------------------------------
     // 2. Recall's query text and the instance recall settings, read once for
@@ -2408,33 +2637,33 @@ where
     // from both call sites — taking the background default would silently
     // diverge (90 s/120 s budgets where v4 runs 45 s/75 s).
     //
+    // P4.D347 (v4 `bdd09b75b`, `turn-compression.ts:311-376`): a THIRD rider —
+    // the decomposition renamed the compressor's lines, so when this task lands
+    // it must carry the pin's strings, not the old ones: INFO `[ContextManager]
+    // Compressed memories` / `[ContextManager] Compressed inter-character
+    // memories` `{originalTokens, compressedTokens}`; the warnings `Failed to
+    // compress memories: ${error}` / `Failed to compress inter-character
+    // memories: ${error}` (unchanged) and `Error during memories compression:
+    // ${getErrorMessage(error)}` / `Error during inter-character memories
+    // compression: ${getErrorMessage(error)}`; ERROR `[ContextManager] Error
+    // compressing memories` / `[ContextManager] Error compressing
+    // inter-character memories`. Recorded, not stubbed: there is no compressor
+    // here to carry them.
+    //
     // MEMORY_BUDGET_RATIO is referenced here to keep the constant live.
     let _memory_budget_ratio = MEMORY_BUDGET_RATIO;
 
-    // 3. Summary rides as a Librarian whisper → no dedicated section.
-    let summary_tokens = 0i64;
-
-    // 4. Remaining budget for messages.
+    // 3. The summary rides as a Librarian whisper → no section, no budget slot.
     //
-    // The ceiling is `safe_input_limit` — window less response reserve less the
-    // estimator safety margin — which is the same number the pre-send validation
-    // checks against. Packing to `total_limit − response_reserve` instead (as
-    // this did) meant deliberately filling 10% past the line that then warned
-    // about it.
-    //
-    // `reserved_outgoing_tokens` is the caller's declaration of what it will add
-    // afterwards (tool schemas, agent-mode instructions, tool-change notice);
-    // history must not be packed into space those will occupy.
+    // 4. The inform block.
     //
     // === P4.D205 (v4 `e7d77bb60`, `context-manager.ts:1972-1983`) ===
     // === P4.D254 (v4 `94fbb1ae3`, `context-manager.ts:1986-1997`) ===
-    // The inform block rides the trailing context sections (see the new-user-
-    // message assembly below), not the system prefix. It is
-    // read HERE rather than at assembly so its tokens are spoken for before the
-    // history selection spends what is left: an operator's passage is short, but
-    // a budget that cannot see it is how bytes get onto the wire under a clean
-    // log line. Empty-is-absent, so a turn with no informs costs exactly nothing
-    // and assembles byte-for-byte as it did before the feature existed.
+    // The inform block rides the trailing context sections (see the trailing
+    // composition below), not the system prefix, and is measured there with
+    // every other section before the history selection spends what is left
+    // (bug 263). Empty-is-absent, so a turn with no informs costs exactly
+    // nothing and assembles byte-for-byte as it did before the feature existed.
     //
     // The read is gated on the responding participant, exactly as v4 gates it:
     // a turn with no responding seat performs NO `chat_informs` read at all.
@@ -2448,29 +2677,26 @@ where
         None => crate::services::inform_block::InformBlock::default(),
     };
     let inform_block = inform_block_result.content.clone();
-    // v4's `estimateTokens(informBlock, provider) + 4` — the same +4 per-block
-    // envelope every other system block pays.
-    let inform_tokens = inform_block
-        .as_deref()
-        .map(|b| estimate_tokens(b, cpt) + 4)
-        .unwrap_or(0);
     // === end P4.D205 ===
 
-    let used_tokens = effective_system_prompt_tokens
-        + memory_recap_tokens
-        + memory_tokens
-        + inter_character_memory_tokens
-        + summary_tokens
-        + inform_tokens;
-    let reserved_outgoing_tokens = input.reserved_outgoing_tokens.unwrap_or(0);
-    let remaining_budget = budget.safe_input_limit - used_tokens - reserved_outgoing_tokens;
-
-    // 5. Prepare messages.
-    let mut messages_to_process: Vec<SelectableMessage> = if is_multi_character {
+    // 5. The history rows that may ride this turn, oldest first, before
+    // packing (v4 `turnHistoryRows`, `turn-history.ts:56-66`): from the
+    // responder's vantage in a multi-character chat, from the compression
+    // window on, without rows the running summary absorbed. What packing sends
+    // is always a suffix of these — which is what lets the scene note's room be
+    // measured over them before the packing is done.
+    let mut history_rows: Vec<SelectableMessage> = if is_multi_character {
         let rp = input.responding_participant.as_ref().unwrap();
         let all = input.all_participants.as_ref().unwrap();
         let pc = input.participant_characters.as_ref().unwrap();
-        let mwp = input.messages_with_participants.as_ref().unwrap();
+        // Bug 264 (v4 `bdd09b75b`): cut to the compression window FIRST, like
+        // the single-character path — the summary's rows used to ride verbatim
+        // AND as block 3.
+        let mwp = &from_window(
+            input.messages_with_participants.as_ref().unwrap(),
+            &input.existing_messages,
+            window_start,
+        );
 
         // History-access filter.
         let responding = all.iter().find(|p| p.id == rp.id);
@@ -2572,64 +2798,13 @@ where
         .cloned()
         .collect();
     if !summary_anchor_ids.is_empty() {
-        messages_to_process.retain(|m| {
+        history_rows.retain(|m| {
             m.id.as_deref()
                 .is_none_or(|id| !summary_anchor_ids.contains(id))
         });
     }
 
-    // The fixed parts of the payload (system prompt, memories, and whatever the
-    // caller reserved) can add up to more than the window allows, leaving nothing
-    // for the conversation itself. That state is worth saying out loud: the
-    // symptom is a character with no apparent memory of the exchange, and the
-    // trimming that produces it is otherwise indistinguishable from routine
-    // housekeeping.
-    if remaining_budget <= 0 {
-        warnings.push(format!(
-            "No room left for conversation history: the system prompt, memories and reserved payload ({} tokens) fill the {}-token input budget. Raise Max Context on the connection profile, or trim the character.",
-            used_tokens + reserved_outgoing_tokens,
-            budget.safe_input_limit
-        ));
-        tracing::warn!(
-            safe_input_limit = budget.safe_input_limit,
-            system_prompt_tokens = effective_system_prompt_tokens,
-            memory_tokens,
-            memory_recap_tokens,
-            inter_character_memory_tokens,
-            reserved_outgoing_tokens,
-            remaining_budget,
-            "[ContextManager] Message budget exhausted before any history"
-        );
-    }
-
-    // 6. Select recent messages.
-    let recent_budget = remaining_budget
-        .min(budget.recent_messages_budget.floor() as i64)
-        .max(0);
-    let selection = select_recent_messages(&messages_to_process, recent_budget, cpt);
-    let selected_messages = selection.messages;
-    let messages_tokens = selection.token_count;
-    let truncated = selection.truncated;
-
-    if truncated {
-        let all_pairs: Vec<(String, String)> = messages_to_process
-            .iter()
-            .map(|m| (m.role.clone(), m.content.clone()))
-            .collect();
-        let total_message_tokens = count_messages_tokens(&all_pairs, cpt);
-        if should_summarize_conversation(
-            messages_to_process.len() as i64,
-            total_message_tokens,
-            budget.total_limit,
-        ) {
-            warnings.push(
-                "Conversation is getting long. Consider generating a summary for better context management."
-                    .to_string(),
-            );
-        }
-    }
-
-    // 7. New user message tokens.
+    // 6. The new user message.
     //
     // Whether THIS turn carries a new user message, computed ONCE (P4.137,
     // P4.D243-F1). v4 tests the raw string by JS truthiness at every
@@ -2648,15 +2823,15 @@ where
     // on its own, as v4's `buildRecentWindowQuery` does).
     let new_user_message: Option<&str> =
         input.new_user_message.as_deref().filter(|s| !s.is_empty());
-    let new_user_message_tokens = new_user_message
-        .map(|m| estimate_tokens(m, cpt) + 4)
-        .unwrap_or(0);
-
-    // 8. Assemble.
-    let mut context_messages: Vec<ContextMessage> = Vec::new();
+    // 7. The request's system blocks, in their fixed order (v4
+    // `buildLeadingSystemBlocks`, `turn-history.ts:176-194`): the persona
+    // prompt (the cacheable prefix), the identity reinforcement, and the
+    // compressed-history summary when compression is in force. Built once: the
+    // blocks measured for the budget are the blocks sent.
+    let mut system_blocks: Vec<ContextMessage> = Vec::new();
 
     // Block 1.
-    context_messages.push(ContextMessage {
+    system_blocks.push(ContextMessage {
         role: "system",
         content: final_system_prompt.clone(),
         metadata: Some(ContextMessageMetadata {
@@ -2669,7 +2844,7 @@ where
     });
     // Block 2.
     let identity_reminder = build_identity_reinforcement(&input.character.name);
-    context_messages.push(ContextMessage {
+    system_blocks.push(ContextMessage {
         role: "system",
         content: identity_reminder,
         metadata: Some(ContextMessageMetadata {
@@ -2682,7 +2857,7 @@ where
     });
     // Block 3.
     if let Some(block) = &compressed_history_block {
-        context_messages.push(ContextMessage {
+        system_blocks.push(ContextMessage {
             role: "system",
             content: block.clone(),
             metadata: Some(ContextMessageMetadata {
@@ -2695,55 +2870,10 @@ where
         });
     }
 
-    // Selected conversation messages, with the summary-head cache breakpoint.
-    let mut summary_breakpoint_placed = false;
-    for msg in &selected_messages {
-        let is_summary_head =
-            !summary_breakpoint_placed && msg.content.starts_with(SUMMARY_CONTENT_PREFIX);
-        let role: &'static str = if msg.role.to_lowercase() == "assistant" {
-            "assistant"
-        } else {
-            "user"
-        };
-        context_messages.push(ContextMessage {
-            role,
-            content: msg.content.clone(),
-            // Carried so the attachment anchor can tell the user's own
-            // historical turn from a staff whisper wearing role=user (bug 95).
-            // v4 `msg.id ? { messageId: msg.id } : undefined` — an empty
-            // string is falsy.
-            metadata: msg.id.as_ref().filter(|id| !id.is_empty()).map(|id| {
-                ContextMessageMetadata {
-                    message_id: Some(id.clone()),
-                    ..Default::default()
-                }
-            }),
-            thought_signature: msg.thought_signature.clone(),
-            name: msg.name.clone(),
-            cache_control: if is_summary_head {
-                Some(CacheControl { kind: "ephemeral" })
-            } else {
-                None
-            },
-        });
-        if is_summary_head {
-            summary_breakpoint_placed = true;
-        }
-    }
-
-    // Off-scene announcement push (role=user).
-    if let Some(content) = &pending_off_scene_announcement {
-        context_messages.push(ContextMessage {
-            role: "user",
-            content: content.clone(),
-            metadata: None,
-            thought_signature: None,
-            name: None,
-            cache_control: None,
-        });
-    }
-
-    // Timestamp whisper push (+ the post-office post seam).
+    // The timestamp line (+ the post-office post seam). Built here, sent after
+    // the history (v4 `contextMessages = [systemBlocks, history, timestampLine?,
+    // trailing?]`).
+    let mut timestamp_line: Option<ContextMessage> = None;
     if should_inject_timestamp_now(input) {
         let cfg = input.timestamp_config.as_ref().unwrap();
         let ts = crate::chat_timestamp::calculate_current_timestamp(
@@ -2756,7 +2886,7 @@ where
         seams
             .post_host_timestamp_announcement(&input.chat.id, &ts.formatted)
             .await;
-        context_messages.push(ContextMessage {
+        timestamp_line = Some(ContextMessage {
             role: "user",
             content: build_timestamp_content(&ts.formatted),
             metadata: None,
@@ -2773,6 +2903,7 @@ where
         db,
         chat_id: input.chat.id.clone(),
         cached: None,
+        rows: Vec::new(),
         reads: 0,
     };
     let core_whisper_llm_context = match &input.responding_participant {
@@ -3023,8 +3154,9 @@ where
     // applies; never on the first responder, who has the human's line last.
     //
     // v4 `context-manager.ts:2703-2722` (`ca363178d`). Three traps the port
-    // keeps by hand: the window is the POST-trim `selected_messages` (scanning
-    // the pre-trim list would fire when the human's row was trimmed out);
+    // keeps by hand: the final note's window is the POST-trim packed history
+    // (scanning the pre-trim list would fire when the human's row was trimmed
+    // out — the draft over every eligible row is for the budget only);
     // `hasNewUserMessage` is v4's `!!newUserMessage`, so `Some("")` is NO new
     // message here (the token count above and the first-responder branch below
     // read the SAME `new_user_message` binding — P4.137); and there is
@@ -3033,14 +3165,32 @@ where
     // Nudge get the note too. `is_multi_character` is this function's own predicate, which
     // counts the user's persona seat (the commit message's "single-character is
     // byte-identical" holds only for a seatless chat).
-    let user_narration_anchor = {
-        let user_name = input
-            .user_character
-            .as_ref()
-            .map(|u| u.name.as_str())
-            .filter(|n| !n.is_empty())
-            .unwrap_or("User");
-        let window: Vec<crate::user_narration_anchor::NarrationWindowRow<'_>> = selected_messages
+    let narration_user_name = input
+        .user_character
+        .as_ref()
+        .map(|u| u.name.as_str())
+        .filter(|n| !n.is_empty())
+        .unwrap_or("User");
+    // v4's inline `nameForParticipant`: the seat by id among ALL participants
+    // (removed seats included), then its character's name.
+    let name_for_participant = |participant_id: &str| -> Option<String> {
+        let seat = input
+            .all_participants
+            .as_ref()?
+            .iter()
+            .find(|p| p.id == participant_id)?;
+        let character_id = seat.character_id.as_deref().filter(|c| !c.is_empty())?;
+        input
+            .participant_characters
+            .as_ref()?
+            .get(character_id)
+            .map(|c| c.name.clone())
+    };
+    // v4 `narrationAnchorFor(historyWindow)` — computed TWICE (bug 263): a
+    // draft over every row that may ride, for the budget, and the final over
+    // the packed rows, for the message.
+    let narration_anchor_for = |history_window: &[SelectableMessage]| -> String {
+        let window: Vec<crate::user_narration_anchor::NarrationWindowRow<'_>> = history_window
             .iter()
             .map(|m| crate::user_narration_anchor::NarrationWindowRow {
                 role: &m.role,
@@ -3048,28 +3198,13 @@ where
                 participant_id: m.participant_id.as_deref(),
             })
             .collect();
-        // v4's inline `nameForParticipant`: the seat by id among ALL
-        // participants (removed seats included), then its character's name.
-        let name_for_participant = |participant_id: &str| -> Option<String> {
-            let seat = input
-                .all_participants
-                .as_ref()?
-                .iter()
-                .find(|p| p.id == participant_id)?;
-            let character_id = seat.character_id.as_deref().filter(|c| !c.is_empty())?;
-            input
-                .participant_characters
-                .as_ref()?
-                .get(character_id)
-                .map(|c| c.name.clone())
-        };
         crate::user_narration_anchor::build_user_narration_anchor(
             &crate::user_narration_anchor::BuildUserNarrationAnchorInput {
                 is_multi_character,
                 has_new_user_message: new_user_message.is_some(),
                 history_window: &window,
                 human_turn_message_ids: input.human_turn_message_ids.as_ref(),
-                user_name,
+                user_name: narration_user_name,
                 name_for_participant: Some(&name_for_participant),
             },
         )
@@ -3108,13 +3243,25 @@ where
     }
     // === end P4.D254 ===
 
-    // The trailing sections, in their one order: who the character is (Core
-    // whisper), what it remembers (recall), what arrived for it (mail), what it
-    // is carrying (progressions, then the Inventory), what the operator says is
-    // so (inform), the turn note, and the yield note after it (P4.D335). Built ONCE and used by both branches below — two
-    // hand-kept copies of this list is how recall, mail and the Core whisper
-    // went missing from turns with no new user message while their side effects
-    // (whisper posted, rows stamped, cadence advanced) still ran (bug 199).
+    // The referent ledger and the closing echo (v4 `buildReferentSections`,
+    // `f7a1789df` / `9a88f862f`): who the last few spoken lines were about, and
+    // the line being answered, repeated after recall so it is the last thing
+    // the model reads about the conversation. Reads only, never fails the turn.
+    let (referent_ledger, closing_echo) =
+        build_referent_sections(db, input, new_user_message, &mut cadence_events);
+
+    // The trailing sections, in their one order (v4 `turn-trailing.ts:42-72`):
+    // who the character is (Core whisper), what it remembers (recall), what
+    // arrived for it (mail), what it is carrying (progressions, then the
+    // Inventory), what the operator says is so (inform — after recall, so a
+    // memory that contradicts it comes first), who the conversation is about
+    // (the referent ledger), the line being answered (the closing echo), the
+    // turn notes, and the Storyteller's section last of all (C1). Built ONCE
+    // and composed by ONE closure for both the draft and the final message —
+    // two hand-kept copies of this list is how recall, mail and the Core
+    // whisper went missing from turns with no new user message while their
+    // side effects (whisper posted, rows stamped, cadence advanced) still ran
+    // (bug 199). Empty-is-absent: an empty section adds nothing.
     let trailing_context_sections: Vec<String> = [
         core_whisper_llm_context.clone(),
         llm_recall_text.clone(),
@@ -3122,117 +3269,234 @@ where
         progressions_llm_context.clone(),
         inventory_llm_context.clone(),
         inform_block.clone().unwrap_or_default(),
+        referent_ledger,
+        closing_echo,
         turn_skip_instruction.clone(),
         turn_yield_instruction.clone(),
+        input.storyteller_section.clone().unwrap_or_default(),
     ]
     .into_iter()
     .filter(|s| !s.is_empty())
     .collect();
 
-    // New user message with the trailing sections.
-    let mut messages_included = selected_messages.len();
-    if let Some(new_user_message) = new_user_message {
-        let new_user_msg_name = if is_multi_character {
-            let all = input.all_participants.as_ref().unwrap();
-            let pc = input.participant_characters.as_ref().unwrap();
-            let attr_participants: Vec<AttributionParticipant> = all
-                .iter()
-                .map(|p| AttributionParticipant {
-                    id: p.id.clone(),
-                    participant_type: p.participant_type.clone(),
-                    character_id: p.character_id.clone(),
-                    controlled_by: p.controlled_by.clone(),
-                    status: parse_attr_status(&p.status),
-                })
-                .collect();
-            let name_map: HashMap<String, String> = pc
-                .iter()
-                .map(|(k, v)| (k.clone(), v.name.clone()))
-                .collect();
-            find_user_participant_name(
-                &attr_participants,
-                &name_map,
-                input.active_user_participant_id.as_deref(),
-                Some(&input.chat.impersonating_participant_ids),
-            )
-        } else {
-            None
-        };
-
-        let composed = if trailing_context_sections.is_empty() {
-            new_user_message.to_string()
-        } else {
-            format!(
-                "{new_user_message}\n\n---\n\n{}",
-                trailing_context_sections.join("\n\n---\n\n")
-            )
-        };
-        context_messages.push(ContextMessage {
-            role: "user",
-            content: composed,
-            // The attachment anchor's tier-1 flag (bug 95): THIS turn's user
-            // input, however many role=user whispers follow it.
-            metadata: Some(ContextMessageMetadata {
-                is_user_turn: Some(true),
-                ..Default::default()
-            }),
-            thought_signature: None,
-            name: new_user_msg_name,
-            cache_control: None,
-        });
-        messages_included += 1;
-    } else {
-        // Chained / continue / autonomous turns carry no new user message, so
-        // the sections ride as their own trailing user message, in the same
-        // order, with the scene note leading: it is about the scene, the
-        // others about the character. Anthropic 4.6+ rejects role=assistant
-        // tails, so 'user' is required.
-        //
-        // This message may follow a user-role line: in a multi-character chat
-        // every other seat's line is attributed as `user`, so a chained turn's
-        // history routinely ends in one. That shape predates bug 199 (the scene
-        // note, progressions and informs have always ridden here). OpenAI-
-        // compatible APIs accept adjacent user messages, Anthropic's Messages
-        // API combines them into one turn, and the Google plugin merges them
-        // before sending.
-        if !llm_recall_text.is_empty() {
-            match &input.responding_participant {
-                Some(rp) => tracing::debug!(
-                    target: "quilltap::commonplace",
-                    chatId = %input.chat.id,
-                    participantId = %rp.id,
-                    length = crate::jsstr::utf16_len(&llm_recall_text),
-                    "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
-                ),
-                None => tracing::debug!(
-                    target: "quilltap::commonplace",
-                    chatId = %input.chat.id,
-                    length = crate::jsstr::utf16_len(&llm_recall_text),
-                    "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
-                ),
-            }
-        }
-        let trailing_only: Vec<String> = std::iter::once(user_narration_anchor)
-            .chain(trailing_context_sections.iter().cloned())
-            .filter(|s| !s.is_empty())
+    let new_user_msg_name = if new_user_message.is_some() && is_multi_character {
+        let all = input.all_participants.as_ref().unwrap();
+        let pc = input.participant_characters.as_ref().unwrap();
+        let attr_participants: Vec<AttributionParticipant> = all
+            .iter()
+            .map(|p| AttributionParticipant {
+                id: p.id.clone(),
+                participant_type: p.participant_type.clone(),
+                character_id: p.character_id.clone(),
+                controlled_by: p.controlled_by.clone(),
+                status: parse_attr_status(&p.status),
+            })
             .collect();
-        if !trailing_only.is_empty() {
-            context_messages.push(ContextMessage {
+        let name_map: HashMap<String, String> = pc
+            .iter()
+            .map(|(k, v)| (k.clone(), v.name.clone()))
+            .collect();
+        find_user_participant_name(
+            &attr_participants,
+            &name_map,
+            input.active_user_participant_id.as_deref(),
+            Some(&input.chat.impersonating_participant_ids),
+        )
+    } else {
+        None
+    };
+
+    // v4 `composeTrailingMessage` (`turn-trailing.ts:94-110`): with a new user
+    // message the sections follow it in the same message; without one (a
+    // chained speaker, a continue, a nudge, an autonomous turn) they ride their
+    // own trailing `user` message — Anthropic 4.6+ rejects an assistant tail —
+    // led by the scene note, which is about the scene where the rest are about
+    // the character. That message may follow a user-role line (every other
+    // seat's line is attributed `user` in a multi-character chat);
+    // OpenAI-compatible APIs accept adjacent user messages, Anthropic's
+    // combines them, and the Google plugin merges them before sending. `None`
+    // when there is neither a new user message nor any section.
+    let compose_trailing = |narration_anchor: &str| -> Option<ContextMessage> {
+        if let Some(new_user_message) = new_user_message {
+            let content = std::iter::once(new_user_message.to_string())
+                .chain(trailing_context_sections.iter().cloned())
+                .collect::<Vec<_>>()
+                .join("\n\n---\n\n");
+            return Some(ContextMessage {
                 role: "user",
-                content: trailing_only.join("\n\n---\n\n"),
-                metadata: None,
+                content,
+                // The attachment anchor's tier-1 flag (bug 95): THIS turn's user
+                // input, however many role=user whispers follow it.
+                metadata: Some(ContextMessageMetadata {
+                    is_user_turn: Some(true),
+                    ..Default::default()
+                }),
                 thought_signature: None,
-                name: None,
+                name: new_user_msg_name.clone(),
                 cache_control: None,
             });
         }
+        let trailing_only: Vec<String> = std::iter::once(narration_anchor.to_string())
+            .chain(trailing_context_sections.iter().cloned())
+            .filter(|s| !s.is_empty())
+            .collect();
+        (!trailing_only.is_empty()).then(|| ContextMessage {
+            role: "user",
+            content: trailing_only.join("\n\n---\n\n"),
+            metadata: None,
+            thought_signature: None,
+            name: None,
+            cache_control: None,
+        })
+    };
+
+    // 8. History, packed into what is left under `safe_input_limit` once every
+    // other part of the request is measured — and whatever the caller adds
+    // afterwards (`reserved_outgoing_tokens`: tool schemas, agent-mode
+    // instructions, the tool-change notice). Every part is counted by the one
+    // per-message rule the pre-send check uses (`count_messages_tokens`). The
+    // scene note depends on which history rides, so its room is measured over
+    // every row that may ride: the packed history is a suffix of those rows,
+    // so the note built for it is never larger. (Bug 263, v4 `bdd09b75b`,
+    // `context-manager.ts:787-853`: the old budget counted the system prompt,
+    // block 3, the memory sections and the inform block by bare estimates, and
+    // missed block 2, every role token, the per-message envelopes, the new user
+    // message and every other trailing section — so history overfilled the
+    // input it was packed into.)
+    let draft_anchor = narration_anchor_for(&history_rows);
+    let trailing_draft = compose_trailing(&draft_anchor);
+    let outside_history = |trailing: Option<&ContextMessage>| -> Vec<(String, String)> {
+        system_blocks
+            .iter()
+            .chain(timestamp_line.iter())
+            .chain(trailing)
+            .map(|m| (m.role.to_string(), m.content.clone()))
+            .collect()
+    };
+    let reserved_outgoing_tokens = input.reserved_outgoing_tokens.unwrap_or(0);
+    let fixed_tokens = count_messages_tokens(&outside_history(trailing_draft.as_ref()), cpt)
+        + reserved_outgoing_tokens;
+    let remaining_tokens = budget.safe_input_limit - fixed_tokens;
+    if remaining_tokens <= 0 {
+        // The symptom is a character with no apparent memory of the exchange,
+        // indistinguishable from routine trimming unless said out loud.
+        warnings.push(format!(
+            "No room left for conversation history: the system prompt, memories, trailing sections and reserved payload ({fixed_tokens} tokens) fill the {}-token input budget. Raise Max Context on the connection profile, or trim the character.",
+            budget.safe_input_limit
+        ));
+        tracing::warn!(
+            safeInputLimit = budget.safe_input_limit,
+            fixedTokens = fixed_tokens,
+            reservedOutgoingTokens = reserved_outgoing_tokens,
+            remainingTokens = remaining_tokens,
+            "[ContextManager] Message budget exhausted before any history"
+        );
     }
+
+    // v4 `packTurnHistory`: newest-first into the smaller of what is left and
+    // the history budget.
+    let recent_budget = remaining_tokens
+        .min(budget.recent_messages_budget.floor() as i64)
+        .max(0);
+    let selection = select_recent_messages(&history_rows, recent_budget, cpt);
+    let selected_messages = selection.messages;
+    let messages_tokens = selection.token_count;
+    let truncated = selection.truncated;
+    if truncated {
+        let all_pairs: Vec<(String, String)> = history_rows
+            .iter()
+            .map(|m| (m.role.clone(), m.content.clone()))
+            .collect();
+        let total_message_tokens = count_messages_tokens(&all_pairs, cpt);
+        if should_summarize_conversation(
+            history_rows.len() as i64,
+            total_message_tokens,
+            budget.total_limit,
+        ) {
+            warnings.push(
+                "Conversation is getting long. Consider generating a summary for better context management."
+                    .to_string(),
+            );
+        }
+    }
+
+    // The draft is the message unless packing dropped the human line the
+    // scene note pointed at.
+    let final_anchor = narration_anchor_for(&selected_messages);
+    let trailing = if final_anchor == draft_anchor {
+        trailing_draft
+    } else {
+        compose_trailing(&final_anchor)
+    };
+    if new_user_message.is_none() && !llm_recall_text.is_empty() {
+        match &input.responding_participant {
+            Some(rp) => tracing::debug!(
+                target: "quilltap::commonplace",
+                chatId = %input.chat.id,
+                participantId = %rp.id,
+                length = crate::jsstr::utf16_len(&llm_recall_text),
+                "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
+            ),
+            None => tracing::debug!(
+                target: "quilltap::commonplace",
+                chatId = %input.chat.id,
+                length = crate::jsstr::utf16_len(&llm_recall_text),
+                "[CommonplaceWhisper] Delivering recall in the trailing-only message (no new user message)"
+            ),
+        }
+    }
+
+    // The request: `[system blocks, history, timestamp line?, trailing?]`.
+    let mut context_messages: Vec<ContextMessage> = system_blocks.clone();
+    // Selected conversation messages, with the summary-head cache breakpoint.
+    let mut summary_breakpoint_placed = false;
+    for msg in &selected_messages {
+        let is_summary_head =
+            !summary_breakpoint_placed && msg.content.starts_with(SUMMARY_CONTENT_PREFIX);
+        let role: &'static str = if msg.role.to_lowercase() == "assistant" {
+            "assistant"
+        } else {
+            "user"
+        };
+        context_messages.push(ContextMessage {
+            role,
+            content: msg.content.clone(),
+            // Carried so the attachment anchor can tell the user's own
+            // historical turn from a staff whisper wearing role=user (bug 95).
+            // v4 `msg.id ? { messageId: msg.id } : undefined` — an empty
+            // string is falsy.
+            metadata: msg.id.as_ref().filter(|id| !id.is_empty()).map(|id| {
+                ContextMessageMetadata {
+                    message_id: Some(id.clone()),
+                    ..Default::default()
+                }
+            }),
+            thought_signature: msg.thought_signature.clone(),
+            name: msg.name.clone(),
+            cache_control: if is_summary_head {
+                Some(CacheControl { kind: "ephemeral" })
+            } else {
+                None
+            },
+        });
+        if is_summary_head {
+            summary_breakpoint_placed = true;
+        }
+    }
+
+    context_messages.extend(timestamp_line.iter().cloned());
+    context_messages.extend(trailing.iter().cloned());
+    let messages_included = selected_messages.len() + usize::from(new_user_message.is_some());
 
     // Recall delivery: the request body is built, compression has had its
     // say, so what the model will read is settled. Only now are rows stamped
     // accessed, the head recorded in the anti-repetition ring and the debug
     // record composed — and only for lines whose memory is still in the text.
-    let recall_delivery = if !input.character.id.is_empty() && !llm_recall_text.is_empty() {
+    // A bid delivers nothing: it is a plan, not a turn (C1, v4 `:858`).
+    let recall_delivery = if !input.character.id.is_empty()
+        && !llm_recall_text.is_empty()
+        && input.purpose != ContextPurpose::Bid
+    {
         Some(
             crate::services::recall::deliver::deliver_recall(
                 db,
@@ -3252,13 +3516,22 @@ where
     };
 
     // Token accounting.
+    // v4 `tokenUsage` (`context-manager.ts:868-874`): the system prompt is
+    // blocks 1–3 by the per-message rule, `recentMessages` the packed history
+    // plus the new user message as a `user` message, `total` the whole request.
     let total_memory_tokens = memory_recap_tokens + memory_tokens + inter_character_memory_tokens;
-    let total_used = effective_system_prompt_tokens
-        + total_memory_tokens
-        + knowledge_tokens
-        + summary_tokens
-        + messages_tokens
-        + new_user_message_tokens;
+    let system_prompt_tokens: i64 = system_blocks
+        .iter()
+        .map(|b| crate::token_estimation::count_message_tokens(b.role, &b.content, cpt))
+        .sum();
+    let new_user_message_tokens = new_user_message
+        .map(|m| crate::token_estimation::count_message_tokens("user", m, cpt))
+        .unwrap_or(0);
+    let context_pairs: Vec<(String, String)> = context_messages
+        .iter()
+        .map(|m| (m.role.to_string(), m.content.clone()))
+        .collect();
+    let total_used = count_messages_tokens(&context_pairs, cpt);
     let total_memories_included = memories_included + inter_character_memories_included;
 
     let debug_system_prompt = match &compressed_history_block {
@@ -3273,15 +3546,13 @@ where
         mail_alerts_owed,
         messages: context_messages,
         token_usage: TokenUsage {
-            system_prompt: effective_system_prompt_tokens,
+            system_prompt: system_prompt_tokens,
             memories: total_memory_tokens,
             knowledge: knowledge_tokens,
-            summary: summary_tokens,
             recent_messages: messages_tokens + new_user_message_tokens,
             total: total_used,
         },
         budget,
-        included_summary: summary_tokens > 0,
         memories_included: total_memories_included,
         messages_included,
         messages_truncated: truncated,
@@ -3734,6 +4005,8 @@ mod distill_latency_tests {
             // turn's own distill runs.
             pre_recall: None,
             human_turn_message_ids: None,
+            purpose: ContextPurpose::Turn,
+            storyteller_section: None,
         }
     }
 
@@ -3990,6 +4263,11 @@ mod inter_character_log_tests {
 
     /// `multi` drives [`is_multi_character`]: two character seats (plus the
     /// participant map and the message view) or none at all.
+    /// P4.D347: a plain single-character turn for the capture pins next door.
+    pub(super) fn a_turn_for_capture() -> BuildContextInput {
+        a_turn(false, true)
+    }
+
     fn a_turn(multi: bool, skip_memories: bool) -> BuildContextInput {
         let mut pcs: HashMap<String, ContextCharacter> = HashMap::new();
         pcs.insert(
@@ -4062,6 +4340,8 @@ mod inter_character_log_tests {
             offer_yield: false,
             pre_recall: None,
             human_turn_message_ids: None,
+            purpose: ContextPurpose::Turn,
+            storyteller_section: None,
         }
     }
 
@@ -4302,7 +4582,10 @@ mod inter_character_log_tests {
             assert_eq!(last.role, "user");
             assert!(last.content.starts_with(SCENE), "{}", last.content);
             assert!(last.metadata.is_none() && last.name.is_none() && last.cache_control.is_none());
-            assert_eq!(anchor_lines(&lines), 1, "{lines:?}");
+            // Twice: the draft over every row that may ride (the budget) and
+            // the final over the packed rows (the message) — v4 `bdd09b75b`
+            // builds the note twice and its DEBUG fires on each.
+            assert_eq!(anchor_lines(&lines), 2, "{lines:?}");
         }
 
         /// v4's order: the scene note FIRST, then the turn-skip note, joined
@@ -4367,7 +4650,8 @@ mod inter_character_log_tests {
             let mut t = chained(Some(&["h1"]));
             t.new_user_message = Some(String::new());
             let (out, lines) = build(&t).await;
-            assert_eq!(anchor_lines(&lines), 1, "{lines:?}");
+            // The draft and the final note (bug 263's two computations).
+            assert_eq!(anchor_lines(&lines), 2, "{lines:?}");
 
             let last = out.messages.last().unwrap();
             assert_eq!(last.role, "user");
@@ -4430,9 +4714,16 @@ mod inter_character_log_tests {
                 out.token_usage,
                 none.token_usage
             );
+            // v4 `recentMessages = history.tokens + countMessageTokens({role:
+            // 'user', content: newUserMessage})` — the same history, plus the
+            // whitespace line priced as a `user` message.
             assert_eq!(
-                out.token_usage.total - none.token_usage.total,
-                out.token_usage.recent_messages - none.token_usage.recent_messages
+                out.token_usage.recent_messages - none.token_usage.recent_messages,
+                crate::token_estimation::count_message_tokens(
+                    "user",
+                    "   ",
+                    crate::token_estimation::DEFAULT_CHARS_PER_TOKEN
+                )
             );
         }
     }
@@ -4466,6 +4757,7 @@ mod cadence_memo_tests {
             db: &db,
             chat_id: "chat-1".to_string(),
             cached: None,
+            rows: Vec::new(),
             reads: 0,
         };
 
@@ -4512,6 +4804,7 @@ mod cadence_memo_tests {
             db: &db,
             chat_id: "chat-1".to_string(),
             cached: None,
+            rows: Vec::new(),
             reads: 0,
         };
         assert_eq!(cadence.load().expect("v4's fallback `[]`").len(), 0);
@@ -4519,6 +4812,204 @@ mod cadence_memo_tests {
         assert_eq!(
             cadence.reads, 1,
             "v4's `??=` assigns the fallback `[]`, so the second caller reads the memo"
+        );
+    }
+}
+
+#[cfg(test)]
+mod p4d347_capture_tests {
+    //! P4.D347: the capture pins this lane's lines owe (§R.5) that the tier-3
+    //! differential cannot reach — the sweep's INFO with its silence leg and
+    //! the unreachable read-failure WARN, and the referent ledger's failure
+    //! WARN (the tier-3 corpus pins the ledger's silence: no op logs it).
+    use super::*;
+    use crate::test_support::CaptureLayer;
+    use std::sync::{Arc, Mutex};
+
+    const PEPPER: &str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+
+    fn provisioned() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().expect("tempdir");
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER)
+            .expect("provision a fresh instance");
+        let db = Db::open_main(dir.path().join("quilltap.db"), PEPPER).expect("open main");
+        (dir, db)
+    }
+
+    fn plant(dir: &tempfile::TempDir, rows: &[(&str, &str, &str, Option<&str>)]) {
+        let w = crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER)
+            .expect("writable open");
+        for (id, sender, kind, targets) in rows {
+            w.connection()
+                .execute(
+                    "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, \
+                     createdAt, systemSender, systemKind, targetParticipantIds) VALUES \
+                     (?, 'chat-1', 'message', 'ASSISTANT', 'w', '[]', '2026-01-01T00:00:00.000Z', ?, ?, ?)",
+                    rusqlite::params![id, sender, kind, targets],
+                )
+                .expect("plant a whisper");
+        }
+    }
+
+    async fn sweep_core(db: &Db, keep: &str, target: Option<&str>) -> (i64, Vec<String>) {
+        use tracing_subscriber::layer::SubscriberExt;
+        let logs = Arc::new(Mutex::new(Vec::<String>::new()));
+        let subscriber = tracing_subscriber::registry().with(CaptureLayer(logs.clone()));
+        let removed = {
+            let _guard = tracing::subscriber::set_default(subscriber);
+            sweep_stale_whispers(db, "chat-1", keep, target, "[CoreWhisper]", |m| {
+                m.get("systemSender").and_then(Value::as_str) == Some("aurora")
+            })
+            .await
+        };
+        let lines = logs.lock().unwrap().clone();
+        (removed, lines)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_sweep_logs_v4s_info_and_a_quiet_one_logs_nothing() {
+        let (dir, db) = provisioned();
+        plant(
+            &dir,
+            &[
+                (
+                    "a1000000-0000-4000-8000-000000000001",
+                    "aurora",
+                    "core-whisper",
+                    Some(r#"["p1"]"#),
+                ),
+                (
+                    "a1000000-0000-4000-8000-000000000002",
+                    "aurora",
+                    "core-whisper",
+                    Some(r#"["p1"]"#),
+                ),
+                (
+                    "a1000000-0000-4000-8000-000000000003",
+                    "aurora",
+                    "core-whisper",
+                    Some(r#"["p2"]"#),
+                ),
+            ],
+        );
+        let (removed, lines) =
+            sweep_core(&db, "a1000000-0000-4000-8000-000000000001", Some("p1")).await;
+        assert_eq!(removed, 1);
+        let info: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("Swept stale whispers"))
+            .collect();
+        assert_eq!(info.len(), 1, "{lines:#?}");
+        let l = info[0];
+        assert!(l.starts_with("INFO "), "{l}");
+        for key in [
+            "[CoreWhisper] Swept stale whispers",
+            "chatId=chat-1",
+            "messageId=a1000000-0000-4000-8000-000000000001",
+            "targetParticipantIdJson=\"p1\"",
+            "deletedCount=1",
+        ] {
+            assert!(l.contains(key), "{key} in {l}");
+        }
+        // Silence leg: nothing stale left → no line at all.
+        let (removed, lines) =
+            sweep_core(&db, "a1000000-0000-4000-8000-000000000001", Some("p1")).await;
+        assert_eq!(removed, 0);
+        assert!(lines.is_empty(), "{lines:#?}");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_empty_target_array_is_swept_with_the_public_scope() {
+        let (dir, db) = provisioned();
+        plant(
+            &dir,
+            &[
+                (
+                    "a1000000-0000-4000-8000-000000000001",
+                    "aurora",
+                    "core-whisper",
+                    None,
+                ),
+                (
+                    "a1000000-0000-4000-8000-000000000004",
+                    "aurora",
+                    "core-whisper",
+                    Some("[]"),
+                ),
+                (
+                    "a1000000-0000-4000-8000-000000000005",
+                    "aurora",
+                    "core-whisper",
+                    Some(r#"["p1"]"#),
+                ),
+            ],
+        );
+        let (removed, lines) = sweep_core(&db, "a1000000-0000-4000-8000-000000000001", None).await;
+        assert_eq!(
+            removed, 1,
+            "the `[]` row is public; the targeted one is not"
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("targetParticipantIdJson=null") && l.contains("deletedCount=1")),
+            "{lines:#?}"
+        );
+    }
+
+    /// v4's `Failed to sweep stale whispers` catch is unreachable on the read:
+    /// `getMessages` is a fallback (`[]` on a broken table) on both sides, so a
+    /// sweep over a dropped table finds nothing, logs no WARN and answers 0.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_broken_transcript_reads_empty_and_never_reaches_the_warn() {
+        let (dir, db) = provisioned();
+        {
+            let w = crate::db::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER)
+                .expect("writable open");
+            w.connection()
+                .execute_batch("DROP TABLE chat_messages")
+                .expect("drop");
+        }
+        let (removed, lines) =
+            sweep_core(&db, "a1000000-0000-4000-8000-000000000001", Some("p1")).await;
+        assert_eq!(removed, 0);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to sweep stale whispers")),
+            "{lines:#?}"
+        );
+    }
+
+    /// The ledger never fails the turn: with no mount index the overlaid
+    /// characters read refuses, and v4's WARN is logged with both sections
+    /// empty (`turn-trailing.ts:220-223`).
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_failed_ledger_read_logs_v4s_warn_and_both_sections_are_empty() {
+        let (_dir, db) = provisioned();
+        let mut input = super::inter_character_log_tests::a_turn_for_capture();
+        input.chat.id = "chat-1".to_string();
+        let mut cadence = CadenceEvents {
+            db: &db,
+            chat_id: "chat-1".to_string(),
+            cached: None,
+            rows: Vec::new(),
+            reads: 0,
+        };
+        let (out, lines) = crate::test_support::captured_with(|| {
+            build_referent_sections(&db, &input, Some("hello"), &mut cadence)
+        });
+        assert_eq!(out, (String::new(), String::new()));
+        let warn: Vec<&String> = lines
+            .iter()
+            .filter(|l| {
+                l.contains("[ReferentLedger] Could not build the referent ledger; turn continues")
+            })
+            .collect();
+        assert_eq!(warn.len(), 1, "{lines:#?}");
+        assert!(warn[0].starts_with("WARN "), "{}", warn[0]);
+        assert!(
+            warn[0].contains("chatId=chat-1") && warn[0].contains("error="),
+            "{}",
+            warn[0]
         );
     }
 }

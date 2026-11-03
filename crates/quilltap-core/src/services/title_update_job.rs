@@ -274,6 +274,11 @@ where
                 .and_then(Value::as_str)
                 .map(str::to_string),
             // === end P4.D205 ===
+            // === P4.D347 (v4 `d68c1af88`) — the off-scene rule reads it ===
+            system_sender: m
+                .get("systemSender")
+                .and_then(Value::as_str)
+                .map(str::to_string),
         })
         .collect();
     let visible = crate::chat_tasks::extract_visible_conversation(&raw);

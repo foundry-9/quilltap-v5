@@ -5816,6 +5816,16 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
+            // === P4.D347 ===
+            // v4 `actions/absent-mentions.ts` (`9a88f862f`).
+            Request::ChatAbsentMentions { chat_id } => match self.ready_db() {
+                Ok(db) => {
+                    super::chat_absent_mentions::chat_absent_mentions(&db, &chat_id, SINGLE_USER_ID)
+                        .await
+                }
+                Err(r) => r,
+            },
+            // === end P4.D347 ===
             // === end P4.D288 ===
             // === P4.D279: the 4a38222e6 round's wire (C2) — each arm the agreed
             // refusal (§R.14), replaced by P4.D281 this round ===

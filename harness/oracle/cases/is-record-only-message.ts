@@ -24,7 +24,7 @@ import { isRecordOnlyMessage } from '@/lib/services/chat-message/context-builder
 
 interface Case {
   id: string;
-  input: { systemSender?: string | null; systemKind?: string | null };
+  input: { systemSender?: string | null; systemKind?: string | null; content?: string | null };
 }
 
 const here = dirname(fileURLToPath(import.meta.url));

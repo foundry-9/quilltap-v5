@@ -1,9 +1,10 @@
 //! Tier-1 differential test (chat-orchestration wave 1.3; RE-AIMED by
-//! P4.D291): the scene-state + summary context formatters, from v4's
+//! P4.D291): the scene-state context formatter, from v4's
 //! lib/chat/context/scene-state.ts.
 //!
-//! Covers formatCurrentSceneState and formatSummaryForContext — the two
-//! formatters `memory_injector.rs` keeps byte-for-byte (R-L14). Every memory
+//! Covers formatCurrentSceneState — the formatter `memory_injector.rs` keeps
+//! byte-for-byte (R-L14). `formatSummaryForContext` is gone at v4 `bdd09b75b`
+//! and its rows with it (P4.D347). Every memory
 //! formatter this family once drove moved with v4 Phase E to
 //! `lib/memory/recall/render.ts` and is pinned by `recall_render_equivalence`.
 //! Every string / count / hash is compared exactly.
@@ -17,8 +18,7 @@
 //!     cargo test -p quilltap-harness --test memory_injector_equivalence
 
 use quilltap_core::memory_injector::{
-    format_current_scene_state, format_summary_for_context, SceneState, SceneStateCharacter,
-    SceneStateEmissionEntry,
+    format_current_scene_state, SceneState, SceneStateCharacter, SceneStateEmissionEntry,
 };
 use serde::Deserialize;
 
@@ -77,13 +77,6 @@ struct WireSceneOut {
 }
 
 #[derive(Deserialize)]
-struct WireSummaryOut {
-    content: String,
-    #[serde(rename = "tokenCount")]
-    token_count: i64,
-}
-
-#[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum Row {
     #[serde(rename = "scene")]
@@ -99,14 +92,6 @@ enum Row {
         prior_emission: Vec<WirePriorEmission>,
         out: WireSceneOut,
     },
-    #[serde(rename = "summary")]
-    Summary {
-        id: String,
-        summary: String,
-        #[serde(rename = "maxTokens")]
-        max_tokens: i64,
-        out: WireSummaryOut,
-    },
 }
 
 #[test]
@@ -121,7 +106,6 @@ fn memory_injector_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut scene_rows = 0usize;
-    let mut summary_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         let row: Row = serde_json::from_str(line)
             .unwrap_or_else(|e| panic!("parse error on line: {e}\n{line}"));
@@ -194,23 +178,11 @@ fn memory_injector_matches_oracle() {
                 }
                 scene_rows += 1;
             }
-            Row::Summary {
-                id,
-                summary,
-                max_tokens,
-                out,
-            } => {
-                let (content, token_count) = format_summary_for_context(&summary, max_tokens);
-                assert_eq!(content, out.content, "summary '{id}' content");
-                assert_eq!(token_count, out.token_count, "summary '{id}' tokenCount");
-                summary_rows += 1;
-            }
         }
     }
 
-    // 13 scene rows (incl. the unchanged / changed emission-cache pair) + 6
-    // summary rows: a regenerated oracle that lost an arm must not pass.
+    // 13 scene rows (incl. the unchanged / changed emission-cache pair): a
+    // regenerated oracle that lost an arm must not pass.
     assert!(scene_rows >= 13, "scene rows lost: {scene_rows} < 13");
-    assert!(summary_rows >= 6, "summary rows lost: {summary_rows} < 6");
-    eprintln!("OK: scene-state matched oracle ({scene_rows} scene, {summary_rows} summary rows).");
+    eprintln!("OK: scene-state matched oracle ({scene_rows} scene rows).");
 }

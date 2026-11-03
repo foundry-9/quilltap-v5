@@ -16,8 +16,11 @@
 import {
   buildOffSceneCharactersContent,
   buildOffSceneCharactersOpaqueContent,
-  findIntroducedOffSceneCharacterIds,
+  offSceneCardFields,
+  renderOffSceneCard,
 } from '@/lib/services/host-notifications/writer';
+// P4.D347 (v4 `d68c1af88` / `bdd09b75b`) — REQUIRE a pin at or after `236c04e35`.
+import { isOffSceneMentionIntroduction } from '@/lib/services/host-notifications/off-scene-kinds';
 import {
   resolveCoreWhisperConfig,
   buildCoreWhisperContent,
@@ -29,7 +32,7 @@ import { buildSuparnaMailLLMContext } from '@/lib/services/suparna-notifications
 import { renderRelevantConversationsBlock } from '@/lib/memory/recall/conversations';
 import { capClothingSummary } from '@/lib/memory/cheap-llm-tasks/image-scene-tasks';
 // P4.D233 (v4 `acadcc7cd`, bug 172) — REQUIRES a pin at or after `acadcc7cd`.
-import { operatorSpeaksWithoutSeat } from '@/lib/schemas/chat.types';
+import { operatorSpeaksWithoutSeat, hasWhisperTargets, isInWhisperScope } from '@/lib/schemas/chat.types';
 
 interface OffCard {
   id: string;
@@ -111,35 +114,38 @@ const offSceneCases: Array<{
   },
 ];
 
-// ---- findIntroducedOffSceneCharacterIds ----
-const introducedCases: Array<{ id: string; messages: unknown[] }> = [
-  {
-    id: 'mixed-host-and-others',
-    messages: [
-      {
-        type: 'message',
-        systemSender: 'host',
-        systemKind: 'off-scene-characters',
-        hostEvent: { introducedCharacterIds: ['c1', 'c2'] },
-      },
-      { type: 'message', systemSender: 'aurora', systemKind: 'core-whisper' },
-      { type: 'message', role: 'USER', content: 'hi' },
-      {
-        type: 'message',
-        systemSender: 'host',
-        systemKind: 'off-scene-characters',
-        hostEvent: { introducedCharacterIds: ['c2', 'c3'] },
-      },
-      // Wrong systemKind — ignored.
-      {
-        type: 'message',
-        systemSender: 'host',
-        systemKind: 'add',
-        hostEvent: { introducedCharacterIds: ['c9'] },
-      },
-    ],
-  },
-  { id: 'empty', messages: [] },
+// ---- P4.D347: the whisper scope (an EMPTY target array is the room) ----
+// `findIntroducedOffSceneCharacterIds` is GONE at the pin (`9a88f862f` deleted
+// the per-turn scan it served); its rows were deleted with it.
+const scopeShapes: Array<{ id: string; message: Record<string, unknown> }> = [
+  { id: 'null', message: { targetParticipantIds: null } },
+  { id: 'absent', message: {} },
+  { id: 'empty', message: { targetParticipantIds: [] } },
+  { id: 'x', message: { targetParticipantIds: ['x'] } },
+  { id: 'xy', message: { targetParticipantIds: ['x', 'y'] } },
+];
+const scopeTargets: Array<string | null> = [null, 'x', 'z'];
+
+// ---- P4.D347: which Host rows are a "spoken of" introduction ----
+const mentionIntroCases: Array<{ id: string; input: Record<string, unknown> }> = [
+  { id: 'mention-card', input: { systemSender: 'host', systemKind: 'off-scene-characters', content: 'The Host begs leave to introduce a person spoken of.' } },
+  { id: 'legacy-left-behind', input: { systemSender: 'host', systemKind: 'off-scene-characters', content: 'The Host observes that one member of the previous company did not make the journey.' } },
+  { id: 'new-kind', input: { systemSender: 'host', systemKind: 'off-scene-left-behind', content: 'The Host observes that one member of the previous company did not make the journey.' } },
+  { id: 'non-host', input: { systemSender: 'lantern', systemKind: 'off-scene-characters', content: 'x' } },
+  { id: 'absent-content', input: { systemSender: 'host', systemKind: 'off-scene-characters' } },
+  { id: 'null-content', input: { systemSender: 'host', systemKind: 'off-scene-characters', content: null } },
+];
+
+// ---- P4.D347: the one card (offSceneCardFields + renderOffSceneCard) ----
+const cardCases: Array<{ id: string; card: OffCard; user: string | null }> = [
+  { id: 'identity', card: { id: 'c1', name: 'Ada', aliases: ['A', 'Ace'], pronouns: { subject: 'she', object: 'her', possessive: 'hers' }, identity: '  Ada keeps the ledgers.  ', description: 'ignored' }, user: 'Charlie' },
+  { id: 'description-only', card: { id: 'c2', name: 'Bea', description: '  A gentle beekeeper.  ' }, user: null },
+  { id: 'neither', card: { id: 'c3', name: 'Cy', aliases: ['C'] }, user: null },
+  { id: 'no-aliases', card: { id: 'c4', name: 'Di', pronouns: { subject: 'they', object: 'them', possessive: 'theirs' }, identity: 'Di.' }, user: null },
+  { id: 'no-pronouns', card: { id: 'c5', name: 'Ed', aliases: ['Eddie'], identity: 'Ed.', pronouns: null }, user: null },
+  { id: 'templates', card: { id: 'c6', name: 'Flo', identity: '{{char}} keeps {{user}} honest.' }, user: 'Charlie' },
+  { id: 'templates-no-user', card: { id: 'c7', name: 'Gus', identity: '{{char}} keeps {{user}} honest.' }, user: null },
+  { id: 'blank-identity-falls-through', card: { id: 'c8', name: 'Hal', identity: '   ', description: 'Hal hums.' }, user: null },
 ];
 
 // ---- core-whisper config precedence ----
@@ -281,8 +287,18 @@ async function main(): Promise<void> {
       buildOffSceneCharactersOpaqueContent(c.chars as never, c.user, c.reason),
     );
   }
-  for (const c of introducedCases) {
-    emit('introduced_ids', c.id, [...findIntroducedOffSceneCharacterIds(c.messages)].sort());
+  for (const m of scopeShapes) {
+    emit('has_whisper_targets', m.id, hasWhisperTargets(m.message as never));
+    for (const t of scopeTargets) {
+      emit('whisper_scope', `${m.id}|${t ?? 'null'}`, isInWhisperScope(m.message as never, t));
+    }
+  }
+  for (const c of mentionIntroCases) {
+    emit('mention_intro', c.id, isOffSceneMentionIntroduction(c.input as never));
+  }
+  for (const c of cardCases) {
+    emit('card_fields', c.id, offSceneCardFields(c.card as never, c.user));
+    emit('render_card', c.id, renderOffSceneCard(c.card as never, c.user));
   }
   for (const c of coreConfigCases) {
     emit('core_config', c.id, resolveCoreWhisperConfig(c.chat as never, c.character as never, c.global as never));

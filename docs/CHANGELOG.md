@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — CONTEXT: the context builder at `236c04e35` — bugs 259 / 263 / 264 / 265, the referent ledger and closing echo, absent-character mentions, C1 (P4.D347)
+
+_Versions: core 0.0.1381, web 0.0.252._
+
+The history budget is now measured the way the pre-send check measures: the system blocks, the timestamp line and the composed trailing message are counted per message (role tokens, the per-message envelope, the array envelope), and every history row is priced the same way, so history no longer overfills the input (bug 263). The keep-the-last fallback keeps the row's `id`, the scene note is computed for the budget and again for the packed rows, and the exhausted-budget warning names the trailing sections. A multi-character chat's history is cut to the compression window (bug 264), the verbatim window is counted with the visible-conversation rule (bug 265), and every character now gets every attachment whole (bug 259). Two new trailing sections, between the inform block and the turn notes: the referent ledger (who the last six spoken lines named, with their pronouns, where they were last named and, for anyone absent, their card) and the closing echo of the line being answered. The Host no longer posts a "spoken of" card each turn; old cards are records only, Continue Elsewhere's notice is written as `off-scene-left-behind`, and the new `chatAbsentMentions` request (the `?action=absent-mentions` chat GET) lists the first mention of each absent character with their card. An empty whisper target list is the public scope for every sweep and dedup, and the three sweeps log v4's `Swept stale whispers` line. `BuildContextInput` gains `purpose` (a bid delivers no recall) and `storyteller_section` (emitted last) for P4.D343. Retired with v4: the per-turn off-scene scan, `mentioned_characters`, `should_apply_compression`, `format_summary_for_context` and the summary budget slot.
+
 #### 2026-11-03 — test(restore): the preserve-arm backfill writes v4's eight / six vault keys (P4.D349)
 
 _No crate versions bumped._

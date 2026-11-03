@@ -2939,7 +2939,12 @@ fn is_route_identifier(field: &str) -> bool {
 // census gains NO row (the order's "+2 rows" premise, measured). Red at 489
 // against 487 first.
 // **Union (P4.D325 + P4.D335): 487 + 25 + 2 = 514.**
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 514;
+//
+// **P4.D347 (+1): 514 → 515** — `Request::ChatAbsentMentions.chat_id`, the ONE
+// typed field the new verb carries: v4's `[id]` path segment on `GET
+// /api/v1/chats/[id]?action=absent-mentions`, so the route-identifier rule drops
+// it. The verb has no body. Measured red at 515 against 514 first.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 515;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

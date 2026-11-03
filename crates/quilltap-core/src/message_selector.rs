@@ -31,6 +31,32 @@ pub struct MessageSelectionResult {
     pub truncated: bool,
 }
 
+/// v4 `selectableMessageTokens` (`message-selector.ts:78-86`, bug 263): a
+/// history message's cost in the request — the shared per-message rule
+/// (`countMessageTokens`, which the pre-send check also uses) plus the name
+/// prefix a provider without a `name` field renders it under. The role tokens
+/// are the ROW's role as stored (`USER` / `ASSISTANT`), exactly what v4's
+/// `countMessageTokens(msg)` reads. An empty `name` is JS-falsy: no prefix.
+pub fn selectable_message_tokens(msg: &SelectableMessage, chars_per_token: f64) -> i64 {
+    let name_overhead = match msg.name.as_deref().filter(|n| !n.is_empty()) {
+        Some(name) => {
+            crate::token_estimation::estimate_tokens(&format!("[{name}] "), chars_per_token)
+        }
+        None => 0,
+    };
+    crate::token_estimation::count_message_tokens(&msg.role, &msg.content, chars_per_token)
+        + name_overhead
+}
+
+/// v4 `keepFields` (`message-selector.ts:88-102`): every field the request
+/// needs, `id` included — it is the source chat_messages row, which the
+/// attachment anchor uses to tell the user's own turn from a staff whisper
+/// wearing role=user (bug 95). Both arms keep it since `bdd09b75b` (the
+/// force-include used to drop it).
+fn keep_fields(msg: &SelectableMessage) -> SelectableMessage {
+    msg.clone()
+}
+
 /// Select recent messages to fit within a token budget. Supports both
 /// single-character and multi-character message formats.
 ///
@@ -63,62 +89,22 @@ pub fn select_recent_messages(
 
     // Work backwards from most recent.
     for msg in messages.iter().rev() {
-        // Account for potential name prefix in token count.
-        let name_overhead = match &msg.name {
-            Some(name) => {
-                crate::token_estimation::estimate_tokens(&format!("[{name}] "), chars_per_token)
-            }
-            None => 0,
-        };
-        let msg_tokens = crate::token_estimation::estimate_tokens(&msg.content, chars_per_token)
-            + name_overhead
-            + 4; // +4 for message overhead
+        let msg_tokens = selectable_message_tokens(msg, chars_per_token);
 
         if total_tokens + msg_tokens > max_tokens {
             truncated = true;
             break;
         }
 
-        // Preserve all fields including id, name and participantId. `id` is
-        // the source chat_messages row — the attachment anchor needs it to
-        // tell the user's own turn from a staff whisper wearing role=user
-        // (v4 a14a1811, bug 95).
-        selected_messages.insert(
-            0,
-            SelectableMessage {
-                role: msg.role.clone(),
-                content: msg.content.clone(),
-                id: msg.id.clone(),
-                thought_signature: msg.thought_signature.clone(),
-                name: msg.name.clone(),
-                participant_id: msg.participant_id.clone(),
-            },
-        );
+        selected_messages.insert(0, keep_fields(msg));
         total_tokens += msg_tokens;
     }
 
-    // Ensure we have at least the last message if possible. (v4's
-    // force-include object literal still OMITS `id` — a quirk preserved: only
-    // the main-loop copy carries it since a14a1811.)
+    // Ensure we have at least the last message if possible.
     if selected_messages.is_empty() && !messages.is_empty() {
         let last_msg = &messages[messages.len() - 1];
-        selected_messages.push(SelectableMessage {
-            role: last_msg.role.clone(),
-            content: last_msg.content.clone(),
-            id: None,
-            thought_signature: last_msg.thought_signature.clone(),
-            name: last_msg.name.clone(),
-            participant_id: last_msg.participant_id.clone(),
-        });
-        let name_overhead = match &last_msg.name {
-            Some(name) => {
-                crate::token_estimation::estimate_tokens(&format!("[{name}] "), chars_per_token)
-            }
-            None => 0,
-        };
-        total_tokens = crate::token_estimation::estimate_tokens(&last_msg.content, chars_per_token)
-            + name_overhead
-            + 4;
+        selected_messages.push(keep_fields(last_msg));
+        total_tokens = selectable_message_tokens(last_msg, chars_per_token);
         truncated = true;
     }
 

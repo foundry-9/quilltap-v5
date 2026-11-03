@@ -937,45 +937,8 @@
   }
  ],
  "triggers": [
-  "CREATE TRIGGER \"p4d233_poison_left_behind\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '76200000-0000-4000-8000-000000000062' AND NEW.\"systemKind\" = 'off-scene-characters' BEGIN SELECT RAISE(ABORT, 'p4d233 poisoned off-scene post'); END",
+  "CREATE TRIGGER \"p4d233_poison_left_behind\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '76200000-0000-4000-8000-000000000062' AND NEW.\"systemKind\" = 'off-scene-left-behind' BEGIN SELECT RAISE(ABORT, 'p4d233 poisoned off-scene post'); END",
   "CREATE TRIGGER \"p4124_refuse_replay\" BEFORE INSERT ON chat_messages WHEN NEW.\"chatId\" = '88000001-0000-4000-8000-0000000000d1' AND NEW.\"systemSender\" IS NULL BEGIN SELECT RAISE(ABORT, 'p4124 refused replay'); END",
   "CREATE TRIGGER \"p4124_refuse_turn_state\" BEFORE UPDATE ON chats WHEN NEW.\"id\" = '89000001-0000-4000-8000-0000000000d1' AND NEW.\"lastTurnParticipantId\" IS NOT OLD.\"lastTurnParticipantId\" BEGIN SELECT RAISE(ABORT, 'p4124 refused turn state'); END"
- ],
- "scanProbeUserCharacterName": "Percival",
- "scanProbes": [
-  {
-   "afterCase": "left_behind_one",
-   "chatId": "71200000-0000-4000-8000-000000000012",
-   "note": "stamped by the left-behind notice: the next turn's scan stays quiet",
-   "expect": null
-  },
-  {
-   "afterCase": "left_behind_post_poisoned",
-   "chatId": "76200000-0000-4000-8000-000000000062",
-   "note": "trap (a): the failed post stamped nothing, so the next turn's scan introduces her",
-   "expect": [
-    "c1000000-0000-4000-8000-0000000000c1"
-   ]
-  },
-  {
-   "afterCase": "persona_stays_unseated",
-   "chatId": "73200000-0000-4000-8000-000000000032",
-   "note": "a Salon room: the unseated persona is excluded by NAME",
-   "expect": null
-  },
-  {
-   "afterCase": "nobody_left_behind_autonomous",
-   "chatId": "77100000-0000-4000-8000-000000000071",
-   "note": "bug 172: an autonomous room does not exclude the unseated persona by name",
-   "expect": [
-    "9e000000-0000-4000-8000-00000000009e"
-   ]
-  },
-  {
-   "afterCase": "persona_named_in_autonomous_room",
-   "chatId": "74100000-0000-4000-8000-000000000041",
-   "note": "a SEATED persona in an autonomous room is still excluded by id",
-   "expect": null
-  }
  ]
 }

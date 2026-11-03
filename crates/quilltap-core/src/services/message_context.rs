@@ -84,8 +84,9 @@ pub struct WhisperMessage {
 
 /// v4 `isRecordOnlyMessage` (`context-builder.service.ts:847`, `e7d77bb60`):
 /// true for a row that DOCUMENTS a delivery rather than being part of the
-/// conversation — the Host's `inform` record (whatever its sender) and every
-/// Commonplace Book whisper bar `relevant-conversations`. Exact, case-sensitive
+/// conversation — the Host's `inform` record (whatever its sender), a Host
+/// "spoken of" card (`d68c1af88`), and every Commonplace Book whisper bar
+/// `relevant-conversations`. Exact, case-sensitive
 /// string matches, as v4's `===`.
 ///
 /// P4.106 OUT-OF-MANDATE (§R.10(j)) — lifted from the inline closure in
@@ -94,6 +95,16 @@ pub struct WhisperMessage {
 /// strip there (section A) is still its ONLY production caller.
 pub fn is_record_only_message(m: &WhisperMessage) -> bool {
     if m.system_kind.as_deref() == Some("inform") {
+        return true;
+    }
+    // A Host "spoken of" card (v4 `d68c1af88`, `context-builder.service.ts:
+    // 861`): the Salon shows it, the model hears about absent people from the
+    // referent ledger instead. A left-behind notice is not a record.
+    if crate::services::off_scene_kinds::is_off_scene_mention_introduction(
+        m.system_sender.as_deref(),
+        m.system_kind.as_deref(),
+        m.content.as_deref(),
+    ) {
         return true;
     }
     m.system_sender.as_deref() == Some("commonplaceBook")
@@ -609,19 +620,6 @@ pub fn collect_unseen_user_attachments_for_character(
 /// a character that has never spoken and so has no previous turn to stop at.
 pub const USER_ATTACHMENT_LOOKBACK: usize = 20;
 
-/// Ceiling on the re-hydrated text a single turn may carry, in characters (v4
-/// `REHYDRATED_ATTACHMENT_CHAR_BUDGET`).
-///
-/// The walk already bounds *how many* uploads come back (one pass per character,
-/// per upload), but not how large they are, and a user may attach a novel. Files
-/// are taken oldest-first until the budget is spent; what does not fit is skipped
-/// with a warning rather than silently truncated mid-document, because half a
-/// transcript is a worse input than none and a model given one has no way to tell.
-/// ~80k characters is roughly 20k tokens — comfortably inside a modern window, and
-/// `build_context` still compresses and trims what this produces like any other
-/// message body.
-pub const REHYDRATED_ATTACHMENT_CHAR_BUDGET: usize = 80_000;
-
 // ===========================================================================
 // The K file-loading seam (unported wave-4 file subsystem).
 // ===========================================================================
@@ -748,8 +746,9 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
         return out;
     }
 
-    let mut budget_left = REHYDRATED_ATTACHMENT_CHAR_BUDGET;
-    let mut skipped_for_budget = 0usize;
+    // v4's `charactersUsed` — a running sum of what was re-sent (UTF-16 units,
+    // JS `text.length`), reported by the DEBUG below.
+    let mut characters_used = 0usize;
 
     for row in &unseen {
         let loaded = match mc_seams
@@ -784,16 +783,11 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
             if file.prefix.is_empty() {
                 continue;
             }
-            // v4's `text.length` is UTF-16 units; the budget is a JS string
-            // length, so count the same units.
-            let len = file.prefix.encode_utf16().count();
-            if len > budget_left {
-                // Skipped WHOLE, never truncated: half a transcript is a worse
-                // input than none, and a model given one cannot tell.
-                skipped_for_budget += 1;
-                continue;
-            }
-            budget_left -= len;
+            // No size cap (bug 259, v4 `fa126bde8`): the first character to
+            // answer is handed every file whole by `load_and_process_files`,
+            // and each later one must see exactly what it saw. `build_context`
+            // budgets the result like any other message body.
+            characters_used += file.prefix.encode_utf16().count();
             prefix.push_str(&file.prefix);
         }
 
@@ -803,19 +797,11 @@ async fn rehydrate_user_attachments<MCS: MessageContextSeams>(
         }
     }
 
-    if skipped_for_budget > 0 {
-        tracing::warn!(
-            skipped_for_budget,
-            budget = REHYDRATED_ATTACHMENT_CHAR_BUDGET,
-            character_participant_id,
-            "Re-hydrated attachments exceeded the per-turn budget; some were not re-sent"
-        );
-    }
     if !out.content_by_message_id.is_empty() || !out.attachments_to_keep.is_empty() {
         tracing::debug!(
             messages_expanded = out.content_by_message_id.len(),
             raw_attachments_kept = out.attachments_to_keep.len(),
-            characters_used = REHYDRATED_ATTACHMENT_CHAR_BUDGET - budget_left,
+            characters_used,
             character_participant_id,
             "Re-hydrated user attachments from history"
         );
@@ -1420,6 +1406,8 @@ where
             // so the reason is on the record.
             system_kind: None,
             // === end P4.D205 ===
+            // Likewise `None`: a Host "spoken of" card is record-only (P4.D347).
+            system_sender: None,
         })
         .collect();
     build_input.messages_with_participants = if is_multi { mwp } else { None };
@@ -1823,13 +1811,13 @@ mod tests {
         );
     }
 
-    /// The budget SKIPS a file whole rather than truncating it, and a later
-    /// smaller file still lands. The arithmetic counts UTF-16 units, as v4's
-    /// `text.length` does.
+    /// No size cap (bug 259, v4 `fa126bde8`): two files whose combined length
+    /// exceeds the old 80,000-character ceiling both land whole, in order, and
+    /// the DEBUG reports the running sum. No budget WARN exists any more.
     #[test]
-    fn the_budget_skips_a_file_whole_and_the_next_smaller_one_still_lands() {
-        let big = "A".repeat(REHYDRATED_ATTACHMENT_CHAR_BUDGET - 4);
-        let over = "B".repeat(8); // 8 > the 4 left after `big`
+    fn every_file_lands_whole_with_no_size_cap() {
+        let big = "A".repeat(79_996);
+        let over = "B".repeat(8);
         let small = "C".repeat(4);
         let seams = CannedSeams::new(&[
             ("big", false, false, &big),
@@ -1848,19 +1836,15 @@ mod tests {
             ))
         });
         let spliced = out.content_by_message_id.get("m1").cloned().unwrap();
-        assert_eq!(
-            spliced,
-            format!("{big}{small}"),
-            "the overflowing file is skipped WHOLE (never truncated) and the smaller one still lands"
+        assert_eq!(spliced, format!("{big}{over}{small}"));
+        let debug = line_with(&lines, "Re-hydrated user attachments from history");
+        assert!(debug.contains("characters_used=80008"), "{debug}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("exceeded the per-turn budget")),
+            "{lines:#?}"
         );
-        let warn = line_with(
-            &lines,
-            "Re-hydrated attachments exceeded the per-turn budget; some were not re-sent",
-        );
-        assert!(warn.starts_with("WARN"), "budget line is a warn: {warn}");
-        assert!(warn.contains("skipped_for_budget=1"), "{warn}");
-        assert!(warn.contains("budget=80000"), "{warn}");
-        assert!(warn.contains("character_participant_id=\"cp\""), "{warn}");
     }
 
     /// The debug line fires when anything came back, and counts what did.
@@ -1890,13 +1874,6 @@ mod tests {
         assert!(debug.contains("messages_expanded=1"), "{debug}");
         assert!(debug.contains("raw_attachments_kept=1"), "{debug}");
         assert!(debug.contains("characters_used=5"), "{debug}");
-        // The budget warn must NOT fire when nothing overflowed.
-        assert!(
-            !lines
-                .iter()
-                .any(|l| l.contains("exceeded the per-turn budget")),
-            "{lines:#?}"
-        );
     }
 
     /// Nothing unseen → no seam call, no logs, nothing spliced. And an absent
@@ -2493,6 +2470,8 @@ mod tests {
                 offer_yield: false,
                 pre_recall: None,
                 human_turn_message_ids: None,
+                purpose: crate::services::build_context::ContextPurpose::Turn,
+                storyteller_section: None,
             }
         }
 

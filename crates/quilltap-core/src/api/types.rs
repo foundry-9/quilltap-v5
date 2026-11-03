@@ -2171,6 +2171,15 @@ pub enum Request {
     ChatGallery {
         chat_id: String,
     },
+    // === P4.D347 ===
+    /// v4 `GET /chats/[id]?action=absent-mentions` (`9a88f862f`) → the BARE
+    /// `{mentions:[{messageId, characterId, text, card:{name, aliases, pronouns, body}}]}`
+    /// (`successResponse({ mentions })` = `NextResponse.json`, never nested under `data`).
+    #[serde(rename_all = "camelCase")]
+    ChatAbsentMentions {
+        chat_id: String,
+    },
+    // === end P4.D347 ===
     /// v4 `POST /chats/[id]?action=save-image` (`{fileId, mountPointId,
     /// caption?, tags?}`) → `{saved, mountPoint, relativePath, linkId, keptAt,
     /// fileId, sha256}` — the chat-scoped twin of [`Request::MessageSaveImage`],
@@ -5181,6 +5190,8 @@ pub enum Response {
     /// `GET ?action=informs` → **200** `{ batches }`. v4 answers this one with a
     /// plain `NextResponse.json`, not its `success` envelope.
     ChatInforms(serde_json::Value),
+    /// P4.D347: `GET ?action=absent-mentions`'s bare `{mentions: […]}`.
+    ChatAbsentMentions(serde_json::Value),
     /// `POST ?action=cancel-inform` → **200** `{ success, removed, recordDeleted }`.
     ChatInformCancelled(serde_json::Value),
     // === end P4.D205 ===

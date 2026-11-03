@@ -21,15 +21,17 @@
 //! # Callers
 //! - `add` / `remove` / `status-change` / `silent-mode` / `join-scenario`: the
 //!   Phase-4 participant-lifecycle routes (participant add/remove/status ops).
-//! - `scenario` / `user-character` / `multi-character-roster` / `timestamp` /
-//!   `off-scene-characters`: the chat-orchestration `buildContext` seams (this
-//!   unit closes the POST half of W4.6a's `BuildContextSeams`).
+//! - `scenario` / `user-character` / `multi-character-roster` / `timestamp`:
+//!   the chat-orchestration `buildContext` seams (this unit closes the POST half
+//!   of W4.6a's `BuildContextSeams`).
+//! - `off-scene-characters` / `off-scene-left-behind`: Continue Elsewhere's
+//!   left-behind notice (the per-turn "spoken of" post is gone — v4 `9a88f862f`).
 //! - `continuation-from` / `continuation-to` / `merge-from` / `merge-to`: the
 //!   Salon change-of-venue / Merge-In routes (Phase-4).
 //! - `no-user-character`: the auto-memory pipeline.
 //!
 //! # Reused W4.6a builders
-//! The off-scene content builders + the introduced-id scan live in
+//! The off-scene content builders + the card fields live in
 //! [`crate::services::off_scene`] and are re-exported here; the multi-character
 //! roster section lives in [`crate::message_formatter`]. This module does NOT
 //! re-transcribe them.
@@ -53,8 +55,8 @@ use crate::jsstr::{js_trim, js_trim_end};
 // Reuse — do not re-transcribe (W4.6a).
 pub use crate::services::off_scene::{
     apply_host_templates, build_off_scene_characters_content,
-    build_off_scene_characters_opaque_content, find_introduced_off_scene_character_ids,
-    OffSceneCharacterCard, OffSceneIntroductionReason,
+    build_off_scene_characters_opaque_content, off_scene_card_fields, render_off_scene_card,
+    OffSceneCardFields, OffSceneCharacterCard, OffSceneIntroductionReason,
 };
 
 // ===========================================================================
@@ -1201,25 +1203,15 @@ pub struct HostOffSceneCharactersAnnouncement {
     pub characters: Vec<OffSceneCharacterCard>,
 }
 
-/// v4 `postHostOffSceneCharactersAnnouncement` with no `reason` — the default
-/// `'mentioned'` (the per-turn scan's caller).
-pub async fn post_host_off_scene_characters_announcement(
-    db: &Db,
-    params: HostOffSceneCharactersAnnouncement,
-) -> Option<PostedHostMessage> {
-    post_host_off_scene_characters_announcement_with_reason(
-        db,
-        params,
-        OffSceneIntroductionReason::Mentioned,
-    )
-    .await
-}
-
 /// v4 `postHostOffSceneCharactersAnnouncement` (`acadcc7cd`). Empty input →
 /// `None`. Stamps the introduced character ids into
 /// `hostEvent.introducedCharacterIds` (public, untargeted) whatever the
-/// `reason`, so a left-behind notice also stops the per-turn scan from
-/// introducing the same people a second time.
+/// `reason`. Continue Elsewhere's `LeftBehind` notice is the live caller; the
+/// default `Mentioned`, which the per-turn scan posted, nothing posts any more
+/// (v4 `9a88f862f` — an absent character named in a chat gets a name chip in
+/// the Salon and a card in the model's referent ledger instead). The row's
+/// `systemKind` follows the reason ([`OffSceneIntroductionReason::system_kind`],
+/// v4 `d68c1af88`, `writer.ts:989`).
 ///
 /// v4 carries `reason?` on the params object; v5 keeps
 /// [`HostOffSceneCharactersAnnouncement`]'s two fields (its struct-literal
@@ -1271,7 +1263,7 @@ pub async fn post_host_off_scene_characters_announcement_with_reason(
         "createdAt": now,
         "participantId": Value::Null,
         "systemSender": "host",
-        "systemKind": "off-scene-characters",
+        "systemKind": reason.system_kind(),
         "hostEvent": { "introducedCharacterIds": introduced_character_ids },
     });
 

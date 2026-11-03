@@ -27,6 +27,24 @@ pub fn is_js_ws(c: char) -> bool {
 /// for building patterns whose `\s` must match JS semantics.
 pub const JS_WS_CLASS: &str = "[\t\n\u{0B}\u{0C}\r \u{A0}\u{1680}\u{2000}-\u{200A}\u{2028}\u{2029}\u{202F}\u{205F}\u{3000}\u{FEFF}]";
 
+/// Port of v4 `escapeRegex` (`lib/utils/regex.ts:5-7`) — JS
+/// `input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`: escape every regex
+/// metacharacter so a literal matches literally. The one home for the set
+/// (P4.D347 lifted it out of `message_formatter` for `name_mentions`).
+pub fn escape_regexp(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        if matches!(
+            ch,
+            '.' | '*' | '+' | '?' | '^' | '$' | '{' | '}' | '(' | ')' | '|' | '[' | ']' | '\\'
+        ) {
+            out.push('\\');
+        }
+        out.push(ch);
+    }
+    out
+}
+
 /// Trim leading/trailing JS-whitespace, matching JS `String.prototype.trim`.
 pub fn js_trim(s: &str) -> &str {
     s.trim_matches(is_js_ws)

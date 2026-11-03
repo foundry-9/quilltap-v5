@@ -55,12 +55,11 @@ use quilltap_core::services::cost_events::{
     create_context_summary_event, create_title_generation_event, TokenUsage,
 };
 use quilltap_core::services::host_notifications::{
-    post_host_add_announcement, post_host_off_scene_characters_announcement,
-    post_host_off_scene_characters_announcement_with_reason, post_host_scenario_announcement,
-    post_host_status_change_announcement, post_host_turn_pass_announcement, HostAddAnnouncement,
-    HostCharacter, HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement,
-    HostStatusChangeAnnouncement, HostTurnPassAnnouncement, OffSceneCharacterCard,
-    OffSceneIntroductionReason, TurnPassSource,
+    post_host_add_announcement, post_host_off_scene_characters_announcement_with_reason,
+    post_host_scenario_announcement, post_host_status_change_announcement,
+    post_host_turn_pass_announcement, HostAddAnnouncement, HostCharacter,
+    HostOffSceneCharactersAnnouncement, HostScenarioAnnouncement, HostStatusChangeAnnouncement,
+    HostTurnPassAnnouncement, OffSceneCharacterCard, OffSceneIntroductionReason, TurnPassSource,
 };
 use quilltap_core::services::librarian_notifications::{
     post_librarian_open_announcement, post_librarian_summary_announcement,
@@ -444,7 +443,14 @@ async fn run_case(db: &Db, spec: &Spec, c: &Case) {
             // no-reason call shape (the default), not an explicit `mentioned`.
             match c.off_scene_reason.as_deref() {
                 None => {
-                    post_host_off_scene_characters_announcement(db, params).await;
+                    post_host_off_scene_characters_announcement_with_reason(
+                        db,
+                        params,
+                        // v4's `reason ?? 'mentioned'` default — the no-reason
+                        // wrapper went with its one production caller (P4.D347).
+                        OffSceneIntroductionReason::Mentioned,
+                    )
+                    .await;
                 }
                 Some(r) => {
                     let reason = match r {

@@ -64,6 +64,9 @@ interface CharacterSpec {
   description?: string;
   manifesto?: string;
   personality?: string;
+  /** P4.D347: the referent ledger / absent-mention card reads these. */
+  aliases?: string[];
+  pronouns?: { subject: string; object: string; possessive: string };
   controlledBy: string;
   knowledgeFiles: KnowledgeFile[];
   knowledgeChunks: KnowledgeChunk[];
@@ -282,6 +285,10 @@ async function main(): Promise<void> {
         description: c.description ?? null,
         manifesto: c.manifesto ?? null,
         personality: c.personality ?? null,
+        // P4.D347: the vault carries them, so the overlaid read the ledger and
+        // the name chips use sees them (absent → v4's defaults).
+        ...(c.aliases ? { aliases: c.aliases } : {}),
+        ...(c.pronouns ? { pronouns: c.pronouns } : {}),
         controlledBy: c.controlledBy,
       } as never,
       { id: c.id }

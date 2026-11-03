@@ -82,6 +82,7 @@ fn chat_tasks_match_oracle() {
                         role: m.role,
                         content: m.content,
                         system_kind: m.system_kind,
+                        system_sender: None,
                     })
                     .collect();
                 let got = extract_visible_conversation(&raw);

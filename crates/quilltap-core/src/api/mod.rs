@@ -117,6 +117,7 @@ pub mod help_docs;
 // === P4.80: the chat DELETE handler (dogfood finding #117) ===
 pub mod chat_delete;
 // === P4.D205 ===
+pub mod chat_absent_mentions;
 pub mod chat_informs;
 pub mod chat_interrupt; // P4.D335
                         // === end P4.D205 ===

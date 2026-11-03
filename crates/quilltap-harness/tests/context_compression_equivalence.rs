@@ -1,10 +1,12 @@
 //! Tier-1 differential test #6: context-compression sizing (pure subset).
 //!
-//! Covers shouldApplyCompression / shouldApplyBudgetCompression /
+//! Covers shouldApplyBudgetCompression /
 //! splitMessagesForCompression / buildCompressedHistoryBlock. The Rust side
 //! reconstructs the same inputs from each row and compares: bools exact, the
 //! split exact (message structure + order), the history block exact string
-//! (incl. the empty/undefined → null branch).
+//! (incl. the empty/undefined → null branch). The count-driven
+//! `shouldApplyCompression` is gone at v4 `bdd09b75b` and its rows with it
+//! (P4.D347).
 //!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
@@ -15,7 +17,7 @@
 //!     cargo test -p quilltap-harness --test context_compression_equivalence
 
 use quilltap_core::context_compression::{
-    build_compressed_history_block, should_apply_budget_compression, should_apply_compression,
+    build_compressed_history_block, should_apply_budget_compression,
     split_messages_for_compression, CompressibleMessage, CompressionSettings,
 };
 use serde::Deserialize;
@@ -23,17 +25,6 @@ use serde::Deserialize;
 #[derive(Deserialize)]
 #[serde(tag = "kind")]
 enum OracleRow {
-    #[serde(rename = "shouldApply")]
-    ShouldApply {
-        id: String,
-        #[serde(rename = "messageCount")]
-        message_count: i64,
-        enabled: bool,
-        #[serde(rename = "windowSize")]
-        window_size: i64,
-        bypass: bool,
-        out: bool,
-    },
     #[serde(rename = "budget")]
     Budget {
         id: String,
@@ -81,28 +72,9 @@ fn context_compression_matches_oracle() {
     };
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
-    let mut counts = [0usize; 4];
+    let mut counts = [0usize; 3];
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
-            OracleRow::ShouldApply {
-                id,
-                message_count,
-                enabled,
-                window_size,
-                bypass,
-                out,
-            } => {
-                let settings = CompressionSettings {
-                    enabled,
-                    window_size,
-                };
-                assert_eq!(
-                    should_apply_compression(message_count, &settings, bypass),
-                    out,
-                    "shouldApply '{id}'"
-                );
-                counts[0] += 1;
-            }
             OracleRow::Budget {
                 id,
                 total,
@@ -121,7 +93,7 @@ fn context_compression_matches_oracle() {
                     out,
                     "budget '{id}'"
                 );
-                counts[1] += 1;
+                counts[0] += 1;
             }
             OracleRow::Split {
                 id,
@@ -138,12 +110,12 @@ fn context_compression_matches_oracle() {
                     got.window_messages, out.window_messages,
                     "split '{id}' window"
                 );
-                counts[2] += 1;
+                counts[1] += 1;
             }
             OracleRow::Block { id, input, out } => {
                 let got = build_compressed_history_block(input.as_deref());
                 assert_eq!(got, out, "block '{id}'");
-                counts[3] += 1;
+                counts[2] += 1;
             }
         }
     }
@@ -153,7 +125,7 @@ fn context_compression_matches_oracle() {
         "oracle file looks empty/partial: {counts:?}"
     );
     eprintln!(
-        "OK: context-compression matched oracle ({} shouldApply, {} budget, {} split, {} block).",
-        counts[0], counts[1], counts[2], counts[3]
+        "OK: context-compression matched oracle ({} budget, {} split, {} block).",
+        counts[0], counts[1], counts[2]
     );
 }

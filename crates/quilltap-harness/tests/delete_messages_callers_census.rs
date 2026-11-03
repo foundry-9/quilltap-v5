@@ -12,10 +12,15 @@
 //! |---|---|---|
 //! | `api/chat_informs.rs` (cancel) | `chats/[id]/actions/inform.ts:228` | the line, `record_deleted = false` (P4.156) |
 //! | `api/salon.rs` (message DELETE) | `messages/[id]/route.ts:196` | the line, touch + invalidate, 200 |
-//! | `services/commonplace_notifications.rs` | `relevant-conversations-refresh.ts:167` | the line; its WARN unreachable |
 //! | `services/context_summary.rs` | `context-summary.ts:490` | the line, INFO `removed: 0`, the fresh whisper posts |
 //! | `services/courier_transport.rs` (cancel) | `chats/[id]/messages/[messageId]/route.ts:271` | the line, unpause, `{cancelled: true}` |
 //! | `services/build_context.rs` (whisper sweeps) | `context-manager.ts:2276, 2566` | the line; both sweep catches unreachable |
+//!
+//! P4.D347 (v4 `bdd09b75b`): the fold refresh's own sweep in
+//! `services/commonplace_notifications.rs` folded into the ONE shared
+//! `build_context::sweep_stale_whispers` (v4's `whisper-sweep.ts`), so the
+//! `relevant-conversations-refresh.ts` row now rides the `build_context.rs` site
+//! and five files remain.
 //!
 //! So R-A's "convert only where v4 falls back" converts all six. Before P4.163
 //! five bypassed the home: the Salon DELETE answered 500, the courier cancel
@@ -44,7 +49,6 @@ const SITES: &[(&str, usize)] = &[
     ("api/chat_informs.rs", 1),
     ("api/salon.rs", 1),
     ("services/build_context.rs", 1),
-    ("services/commonplace_notifications.rs", 1),
     ("services/context_summary.rs", 1),
     ("services/courier_transport.rs", 1),
 ];

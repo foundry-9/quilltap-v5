@@ -51,6 +51,23 @@
       "controlledBy": "user",
       "knowledgeFiles": [],
       "knowledgeChunks": []
+    },
+    {
+      "id": "ca000000-0000-4000-8000-0000000000a4",
+      "name": "Abigail",
+      "aliases": [
+        "Abby"
+      ],
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "identity": "{{char}} keeps {{user}}'s ledgers and documents everything.",
+      "description": "A meticulous clerk.",
+      "controlledBy": "llm",
+      "knowledgeFiles": [],
+      "knowledgeChunks": []
     }
   ],
   "seedMemories": [
@@ -981,6 +998,28 @@
       "compressionEnabled": false,
       "timestampMode": null,
       "perTurnConversationSummaries": true
+    },
+    {
+      "_comment": "P4.D347 (v4 bdd09b75b, isInWhisperScope): the standing fold whisper carries targetParticipantIds = [] \u2014 the whole room, as every other reader treats it. The fold dedup now reads it as the public scope and drops its conversation id from the per-turn list; before, an empty array was invisible to the dedup (and to the sweeps).",
+      "name": "p4d347_empty_target_ids_is_the_public_scope",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "I'm curious about your engines."
+        }
+      ],
+      "skipMemories": false,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "perTurnConversationSummaries": true,
+      "plantSql": [
+        "UPDATE chat_messages SET targetParticipantIds = '[]' WHERE id = 'cf000000-0000-4000-8000-0000000000e1'"
+      ],
+      "unplantSql": [
+        "UPDATE chat_messages SET targetParticipantIds = NULL WHERE id = 'cf000000-0000-4000-8000-0000000000e1'"
+      ]
     },
     {
       "_comment": "P4.D95: the OTHER memory path \u2014 the proactive pre-searched head. The vector arrives as options.preSearchedQueryEmbedding rather than from a search of our own; a port that drops the thread lists nothing.",
@@ -5179,6 +5218,1114 @@
       "offerYield": true,
       "userCharacterName": "Zo\u00eb \u014ckami",
       "_comment": "P4.D335: the note names the persona."
+    },
+    {
+      "_comment": "P4.D347 (v4 f7a1789df / d68c1af88): the referent ledger and the closing echo. The transcript names Abigail (by her alias, then by name) and Bea; the new user line leans on 'she'. Single-character, so nobody is seated (the chat row carries no participants) and the persona Charlie is in the room by name in a Salon. Abigail and Bea are absent and bring their cards (Abigail's identity binds {{char}} / {{user}}; Bea's falls back to her description); the latest line's author and the responder are left out.",
+      "name": "p4d347_referent_ledger_and_absent_cards",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "When she's not scolding Vergil, she is counting bees.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Abby will absolutely make that a formal finding. You've seen how she documents."
+        },
+        {
+          "role": "assistant",
+          "content": "Bea mentioned the hives again; Abigail was not pleased, and the bees hummed."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null,
+      "plantSql": [
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId) VALUES ('e3470000-0000-4000-8000-000000000001', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'USER', 'Abby will absolutely make that a formal finding. You''ve seen how she documents.', '[]', '2024-06-15T13:00:00.000Z', NULL)",
+        "INSERT INTO chat_messages (id, chatId, type, role, content, attachments, createdAt, participantId) VALUES ('e3470000-0000-4000-8000-000000000002', 'cc000000-0000-4000-8000-0000000000c1', 'message', 'ASSISTANT', 'Bea mentioned the hives again; Abigail was not pleased, and the bees hummed.', '[]', '2024-06-15T13:01:00.000Z', NULL)"
+      ],
+      "unplantSql": [
+        "DELETE FROM chat_messages WHERE id IN ('e3470000-0000-4000-8000-000000000001', 'e3470000-0000-4000-8000-000000000002')"
+      ]
+    },
+    {
+      "_comment": "P4.D347 (v4 f7a1789df): the closing echo of a user line over 1,500 characters \u2014 echoed by its closing paragraphs only, under the 'closing part' lead.",
+      "name": "p4d347_closing_echo_long_message",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine. First paragraph about the engine.\n\nSecond paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger. Second paragraph, where Abigail checks the ledger.\n\nThird and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased. Third and closing paragraph: she will not be pleased.",
+      "existingMessages": [
+        {
+          "role": "user",
+          "content": "Tell me about your work."
+        },
+        {
+          "role": "assistant",
+          "content": "I design engines of thought."
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": false,
+      "timestampMode": null
+    },
+    {
+      "name": "p4d347_bug265_window_counts_visible_rows",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "How does the analytical engine work?",
+      "existingMessagesRepeat": {
+        "count": 40,
+        "userContent": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+        "assistantContent": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+        "tail": [
+          {
+            "role": "user",
+            "content": "Window row A: tell me about the cards."
+          },
+          {
+            "role": "assistant",
+            "content": "[Tool call made]"
+          },
+          {
+            "role": "assistant",
+            "content": "The Host handed Ada a note.",
+            "systemKind": "inform",
+            "systemSender": "host"
+          },
+          {
+            "role": "assistant",
+            "content": "Summary of the earlier talk.",
+            "type": "context-summary"
+          },
+          {
+            "role": "assistant",
+            "content": "The Host begs leave to introduce a person spoken of in this conversation but not presently in the Salon.\n\n### Abigail",
+            "systemSender": "host",
+            "systemKind": "off-scene-characters"
+          },
+          {
+            "role": "user",
+            "content": "Window row B: and the loops?"
+          },
+          {
+            "role": "assistant",
+            "content": "Window row C: the loops repeat the cards, as a weaver's do."
+          }
+        ]
+      },
+      "skipMemories": true,
+      "compressionEnabled": true,
+      "timestampMode": null,
+      "cachedCompression": {
+        "compressedHistory": "[Cached summary] Ada and the narrator reviewed the analytical engine, its card-loop mechanism, and general computation.",
+        "messageCount": 83,
+        "warnings": []
+      },
+      "_comment": "P4.D347 (bug 265, v4 bdd09b75b): the verbatim window is counted by the visible-conversation rule. The tail after the forty repeated pairs carries a tool-only assistant turn, an inform record, a context-summary row and a Host 'spoken of' card between three visible rows; with a five-message window they ride inside it but never count toward it (the old type + role walk counted the tool-only, inform and card rows and started the window too late)."
+    },
+    {
+      "name": "p4d347_bug264_cast_window_by_id",
+      "characterId": "ca000000-0000-4000-8000-0000000000a1",
+      "newUserMessage": "Bea, tell Ada about the bees.",
+      "existingMessages": [
+        {
+          "id": "e3470000-0000-4000-8000-000000000100",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000101",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000102",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000103",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000104",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000105",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000106",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000107",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000108",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000109",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000110",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000111",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000112",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000113",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000114",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000115",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000116",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000117",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000118",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000119",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000120",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000121",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000122",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000123",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000124",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000125",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000126",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000127",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000128",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000129",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000130",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000131",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000132",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000133",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000134",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000135",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000136",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000137",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000138",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000139",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000140",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000141",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000142",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000143",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000144",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000145",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000146",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000147",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000148",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000149",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000150",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000151",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000152",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000153",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000154",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000155",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000156",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000157",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000158",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000159",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000160",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000161",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000162",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000163",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000164",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000165",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000166",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000167",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000168",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000169",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000170",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000171",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000172",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000173",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000174",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000175",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000176",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000177",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000178",
+          "role": "user",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget."
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000179",
+          "role": "assistant",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables."
+        }
+      ],
+      "respondingParticipantId": "ba000000-0000-4000-8000-0000000000f1",
+      "activeUserParticipantId": "ba000000-0000-4000-8000-0000000000f3",
+      "participants": [
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f1",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a1",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f2",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a2",
+          "controlledBy": "llm",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        },
+        {
+          "id": "ba000000-0000-4000-8000-0000000000f3",
+          "type": "CHARACTER",
+          "characterId": "ca000000-0000-4000-8000-0000000000a3",
+          "controlledBy": "user",
+          "status": "active",
+          "hasHistoryAccess": true,
+          "createdAt": "2024-01-01T00:00:00.000Z"
+        }
+      ],
+      "messagesWithParticipants": [
+        {
+          "id": "e3470000-0000-4000-8000-000000000100",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:00.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000101",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:01.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000102",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:02.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000103",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:03.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000104",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:04.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000105",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:05.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000106",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:06.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000107",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:07.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000108",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:08.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000109",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:09.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000110",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:10.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000111",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:11.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000112",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:12.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000113",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:13.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000114",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:14.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000115",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:15.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000116",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:16.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000117",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:17.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000118",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:18.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000119",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:19.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000120",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:20.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000121",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:21.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000122",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:22.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000123",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:23.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000124",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:24.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000125",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:25.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000126",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:26.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000127",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:27.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000128",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:28.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000129",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:29.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000130",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:30.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000131",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:31.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000132",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:32.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000133",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:33.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000134",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:34.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000135",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:35.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000136",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:36.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000137",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:37.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000138",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:38.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000139",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:39.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000140",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:40.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000141",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:41.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000142",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:42.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000143",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:43.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000144",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:44.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000145",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:45.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000146",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:46.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000147",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:47.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000148",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:48.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000149",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:49.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000150",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:50.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000151",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:51.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000152",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:52.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000153",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:53.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000154",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:54.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000155",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:55.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000156",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:56.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000157",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:00:57.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000158",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:00:58.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000159",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:00:59.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000160",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:00.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000161",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:01:01.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000162",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:02.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000163",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:01:03.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000164",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:04.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000165",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:01:05.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000166",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:06.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000167",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:01:07.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000168",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:08.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000169",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:01:09.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000170",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:10.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000171",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:01:11.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000172",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:12.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000173",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:01:13.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000174",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:14.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000175",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:01:15.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000176",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:16.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000177",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f1",
+          "createdAt": "2024-01-03T00:01:17.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000178",
+          "role": "USER",
+          "content": "This is a long historical exchange about the analytical engine, its card-loop mechanism, and Ada's dreams of general computation, repeated to blow past the compression history budget.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f3",
+          "createdAt": "2024-01-03T00:01:18.000Z"
+        },
+        {
+          "id": "e3470000-0000-4000-8000-000000000179",
+          "role": "ASSISTANT",
+          "content": "Indeed, the analytical engine could compute any function expressible in its card language, and I foresaw its poetical possibilities well beyond mere calculation of tables.",
+          "participantId": "ba000000-0000-4000-8000-0000000000f2",
+          "createdAt": "2024-01-03T00:01:19.000Z"
+        }
+      ],
+      "skipMemories": true,
+      "compressionEnabled": true,
+      "timestampMode": null,
+      "_comment": "P4.D347 (bug 264, v4 bdd09b75b): a multi-character chat under a cached compression summary. The cast history is cut to the compression window by the id of the window's first row (the two sequences are built row for row); before the fix the whole cast history rode verbatim AND as block 3.",
+      "cachedCompression": {
+        "compressedHistory": "[Cached summary] The salon reviewed the analytical engine at length.",
+        "messageCount": 80,
+        "warnings": []
+      }
     }
   ],
   "vaultConversationSummaries": [

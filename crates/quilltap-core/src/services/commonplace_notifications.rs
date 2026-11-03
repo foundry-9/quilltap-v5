@@ -439,78 +439,20 @@ pub async fn refresh_relevant_conversations_on_fold<E: EmbeddingProvider>(
         };
 
         // Sweep the character's prior relevant-conversations whisper(s) so only
-        // the freshest one survives.
-        sweep_prior_relevant_conversation_whispers(
+        // the freshest one survives (v4 `bdd09b75b`: the one shared sweep, under
+        // this writer's own tag — which gains the INFO it never had).
+        crate::services::build_context::sweep_stale_whispers(
             db,
             &input.chat_id,
             &posted.id,
             target_participant_id.as_deref(),
+            "[RelevantConversationsRefresh]",
+            |m| {
+                m.get("systemSender").and_then(serde_json::Value::as_str) == Some("commonplaceBook")
+                    && m.get("systemKind").and_then(serde_json::Value::as_str)
+                        == Some("relevant-conversations")
+            },
         )
         .await;
     }
-}
-
-/// v4 `sweepPriorRelevantConversationWhispers` — remove every prior
-/// `relevant-conversations` whisper for the same target, leaving the just-posted
-/// one (`keep_id`). Matched on the same target scope the consolidated sweep uses
-/// (`None` → untargeted; otherwise the whisper's `targetParticipantIds` must
-/// include the target id). Best-effort — a failure is swallowed.
-async fn sweep_prior_relevant_conversation_whispers(
-    db: &Db,
-    chat_id: &str,
-    keep_id: &str,
-    target_participant_id: Option<&str>,
-) {
-    let chat_id_read = chat_id.to_string();
-    let messages = match db
-        .read_main(move |conn| crate::db::chats_messages_read::get_messages(conn, &chat_id_read))
-    {
-        Ok(m) => m,
-        Err(_) => return,
-    };
-
-    let stale: Vec<String> = messages
-        .iter()
-        .filter(|m| m.get("type").and_then(serde_json::Value::as_str) == Some("message"))
-        .filter(|m| {
-            m.get("systemSender").and_then(serde_json::Value::as_str) == Some("commonplaceBook")
-                && m.get("systemKind").and_then(serde_json::Value::as_str)
-                    == Some("relevant-conversations")
-                && m.get("id").and_then(serde_json::Value::as_str) != Some(keep_id)
-        })
-        .filter(|m| {
-            let ids = m.get("targetParticipantIds");
-            match target_participant_id {
-                // Untargeted scope: the whisper carries a null / absent target set.
-                None => ids.is_none() || ids == Some(&serde_json::Value::Null),
-                // Targeted scope: the array must include the target id.
-                Some(target) => ids
-                    .and_then(serde_json::Value::as_array)
-                    .is_some_and(|arr| arr.iter().any(|v| v.as_str() == Some(target))),
-            }
-        })
-        .filter_map(|m| {
-            m.get("id")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string)
-        })
-        .collect();
-
-    if stale.is_empty() {
-        return;
-    }
-    // P4.163: v4's `deleteMessagesByIds` is a FALLBACK `safeQuery(…, 0)` — a
-    // failed delete logs `Failed to delete messages from chat {chatId, count}`
-    // and answers 0, so `relevant-conversations-refresh.ts:167`'s own catch
-    // WARN is unreachable (v5 had swallowed the failure silently).
-    let (chat_id_owned, count) = (chat_id.to_string(), stale.len());
-    let outcome = db
-        .write(move |writers| {
-            writers
-                .main()
-                .chat_messages()
-                .delete_messages_by_ids(&chat_id_owned, &stale)
-        })
-        .await;
-    crate::db::fallback::messages_deleted_or_zero(chat_id, count, || outcome);
 }

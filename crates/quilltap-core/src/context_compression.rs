@@ -1,6 +1,6 @@
 //! Port of the pure sizing subset of lib/chat/context/compression.ts — the
-//! sliding-window context-compression triggers, message split, and the
-//! compressed-history block builder.
+//! budget-driven context-compression trigger, message split, the verbatim
+//! window, and the compressed-history block builder.
 //!
 //! Only the side-effect-free functions are ported here: the async LLM
 //! orchestrator (`applyContextCompression`) is a Phase-3 mocked-LLM target, not
@@ -9,7 +9,8 @@
 
 /// The compression settings fields these functions read. (The full v4
 /// `ContextCompressionSettings` carries token targets too, but the sizing
-/// predicates only consult `enabled` and `windowSize`.)
+/// predicate only consults `enabled`.) v4's count-driven
+/// `shouldApplyCompression` is gone at `bdd09b75b`, and so is its port.
 #[derive(Clone, Copy, Debug)]
 pub struct CompressionSettings {
     pub enabled: bool,
@@ -21,24 +22,6 @@ pub struct CompressionSettings {
 pub struct CompressibleMessage {
     pub role: String,
     pub content: String,
-}
-
-/// Determines if compression should be applied based on message count and
-/// settings — the legacy count-driven trigger. Disabled or bypassed short-circuit
-/// to false; otherwise compress only when there are MORE messages than the window
-/// (messages 1..=windowSize get full context).
-pub fn should_apply_compression(
-    message_count: i64,
-    settings: &CompressionSettings,
-    bypass_compression: bool,
-) -> bool {
-    if !settings.enabled {
-        return false;
-    }
-    if bypass_compression {
-        return false;
-    }
-    message_count > settings.window_size
 }
 
 /// Determines if budget-driven compression should be applied: when the total
@@ -91,6 +74,58 @@ pub fn split_messages_for_compression(
         messages_to_compress: messages[..split].to_vec(),
         window_messages: messages[split..].to_vec(),
     }
+}
+
+/// v4 `effectiveWindowSize` (`turn-compression.ts:243-257`): how many visible
+/// messages stay verbatim. A cache computed for fewer messages than the chat now
+/// has summarises only up to its own window, so every message since must ride
+/// verbatim too or it would be in neither. Counted in visible messages, the
+/// domain the async pre-compression counts in. A zero `standard` falls back to
+/// v4's `DEFAULT_WINDOW_SIZE` (5) — JS `||`.
+///
+/// v4 logs INFO `[ContextManager] Using dynamic window size for fallback cache`
+/// on the widening arm; the line is unchanged across `bdd09b75b` and v5 never
+/// carried it (recorded by P4.D347, not ported here).
+pub fn effective_window_size(
+    standard_window_size: i64,
+    visible_count: i64,
+    cached_message_count: Option<i64>,
+) -> i64 {
+    let standard = if standard_window_size == 0 {
+        5
+    } else {
+        standard_window_size
+    };
+    match cached_message_count {
+        Some(cached) if cached < visible_count => standard + (visible_count - cached),
+        _ => standard,
+    }
+}
+
+/// v4 `verbatimWindowStart(messages, windowCount)` (`turn-compression.ts:
+/// 268-282`, bug 265): the index at which the last `window_count` *visible*
+/// messages begin. Counted with the same rule
+/// [`crate::chat_tasks::extract_visible_conversation`] keeps rows by
+/// ([`crate::chat_tasks::to_visible_conversation_message`]), so the window holds
+/// exactly the messages the summary left out — a row that rule drops (an
+/// assistant turn that was only tool markup, an `inform` record, a Host
+/// "spoken of" card, an empty row) is carried along when it falls inside the
+/// window but never counted toward it. `messages.len()` when nothing counts.
+pub fn verbatim_window_start(
+    messages: &[crate::chat_tasks::RawMessage],
+    window_count: usize,
+) -> usize {
+    let mut found = 0usize;
+    let mut start = messages.len();
+    let mut i = messages.len();
+    while i > 0 && found < window_count {
+        i -= 1;
+        if crate::chat_tasks::to_visible_conversation_message(&messages[i]).is_some() {
+            found += 1;
+            start = i;
+        }
+    }
+    start
 }
 
 /// Build the compressed-history system block, or `None` when there's nothing to

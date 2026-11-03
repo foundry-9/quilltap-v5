@@ -2533,6 +2533,11 @@ where
                         .and_then(Value::as_str)
                         .map(str::to_string),
                     // === end P4.D205 ===
+                    // === P4.D347 (v4 d68c1af88 / bdd09b75b) ===
+                    system_sender: m
+                        .get("systemSender")
+                        .and_then(Value::as_str)
+                        .map(str::to_string),
                 })
                 .collect();
             let actual_message_count =
@@ -5328,6 +5333,9 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
         turn_skip: args.turn_skip,
+        // === C1 (P4.D347) — P4.D343 rewires both to args.* ===
+        purpose: build_context::ContextPurpose::Turn,
+        storyteller_section: None,
         offer_yield: args.offer_yield,
         pre_recall: args.pre_recall,
         provider: args.provider,

@@ -15,9 +15,7 @@
 //! calls [`crate::token_estimation::estimate_tokens`] with
 //! [`crate::token_estimation::DEFAULT_CHARS_PER_TOKEN`].
 
-use crate::token_estimation::{
-    estimate_tokens as est_tokens_rate, truncate_to_token_limit, DEFAULT_CHARS_PER_TOKEN,
-};
+use crate::token_estimation::{estimate_tokens as est_tokens_rate, DEFAULT_CHARS_PER_TOKEN};
 use sha2::{Digest, Sha256};
 
 /// v4 `estimateTokens(text)` with no provider → default chars-per-token.
@@ -227,36 +225,4 @@ pub fn format_current_scene_state(
         token_count,
         emitted_by_character,
     }
-}
-
-// ---------------------------------------------------------------------------
-// formatSummaryForContext
-// ---------------------------------------------------------------------------
-
-/// Format conversation summary for context. Returns `(content, token_count)`.
-pub fn format_summary_for_context(summary: &str, max_tokens: i64) -> (String, i64) {
-    if summary.is_empty() || js_trim(summary).is_empty() {
-        return (String::new(), 0);
-    }
-
-    let header = "## Previous Conversation Summary";
-    let full_content = format!("{header}\n{summary}");
-    let full_tokens = estimate_tokens(&full_content);
-
-    if full_tokens <= max_tokens {
-        return (full_content, full_tokens);
-    }
-
-    let header_tokens = estimate_tokens(&format!("{header}\n"));
-    let available_for_summary = max_tokens - header_tokens;
-    let truncated_summary = truncate_to_token_limit(
-        summary,
-        available_for_summary,
-        DEFAULT_CHARS_PER_TOKEN,
-        "...",
-    );
-
-    let content = format!("{header}\n{truncated_summary}");
-    let token_count = estimate_tokens(&content);
-    (content, token_count)
 }

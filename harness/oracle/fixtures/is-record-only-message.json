@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.106 item 4 — the tier-1 corpus for v4's isRecordOnlyMessage (lib/services/chat-message/context-builder.service.ts:847, e7d77bb60). Rows 'v4-*' are the ten expectations of v4's six shipped cases (__tests__/unit/lib/services/chat-message/context-builder.service.test.ts:29-56), as INPUTS only — the outputs are recorded from the real export, never transcribed. Rows 'edge-*' probe the predicate's axes v4's tests do not name: exact-match case sensitivity, an empty string vs null, the relevant-conversations exemption under a non-Commonplace sender, and the inform kind outranking the relevant-conversations exemption's sender.",
+  "_comment": "P4.106 item 4 — the tier-1 corpus for v4's isRecordOnlyMessage (lib/services/chat-message/context-builder.service.ts:847, e7d77bb60). Rows 'v4-*' are the ten expectations of v4's six shipped cases (__tests__/unit/lib/services/chat-message/context-builder.service.test.ts:29-56), as INPUTS only — the outputs are recorded from the real export, never transcribed. Rows 'edge-*' probe the predicate's axes v4's tests do not name: exact-match case sensitivity, an empty string vs null, the relevant-conversations exemption under a non-Commonplace sender, and the inform kind outranking the relevant-conversations exemption's sender. Rows 'p4d347-*' (P4.D347, v4 d68c1af88): the off-scene mention-introduction arm — a Host 'spoken of' card (true), a legacy left-behind notice told apart by its 'The Host observes that' prefix (false), and the new 'off-scene-left-behind' kind (false).",
   "cases": [
     { "id": "v4-inform-host", "input": { "systemSender": "host", "systemKind": "inform" } },
     { "id": "v4-inform-no-sender", "input": { "systemKind": "inform" } },
@@ -22,6 +22,9 @@
     { "id": "edge-host-relevant-conversations", "input": { "systemSender": "host", "systemKind": "relevant-conversations" } },
     { "id": "edge-lantern-sender", "input": { "systemSender": "lantern", "systemKind": "relevant-memories" } },
     { "id": "edge-kind-only-relevant-memories", "input": { "systemKind": "relevant-memories" } },
-    { "id": "edge-inform-with-content", "input": { "type": "message", "role": "ASSISTANT", "content": "The Host handed Leilani a note.", "systemSender": "host", "systemKind": "inform" } }
+    { "id": "edge-inform-with-content", "input": { "type": "message", "role": "ASSISTANT", "content": "The Host handed Leilani a note.", "systemSender": "host", "systemKind": "inform" } },
+    { "id": "p4d347-host-mention-card", "input": { "systemSender": "host", "systemKind": "off-scene-characters", "content": "Spoken of, though not present:\n\n### Vergil\nA tall man." } },
+    { "id": "p4d347-host-legacy-left-behind", "input": { "systemSender": "host", "systemKind": "off-scene-characters", "content": "The Host observes that Vergil and Ada were left behind when the company moved on." } },
+    { "id": "p4d347-host-left-behind-kind", "input": { "systemSender": "host", "systemKind": "off-scene-left-behind", "content": "The Host observes that Vergil was left behind." } }
   ]
 }

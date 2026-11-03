@@ -108,6 +108,7 @@ pub mod memory_index_backfill; // P4.D292 (L-3)
                                // === P4.9K0 ===
 pub mod generator_progress;
 // === end P4.9K0 ===
+pub mod absent_mentions;
 pub mod admission; // P4.D290 (C1-B) — v4 `lib/memory/admission/` (the stateful half)
 pub mod carriers; // P4.D288 (C1-11)
 pub mod commonplace_mirror; // P4.D288 (C1-7, L-3)
@@ -149,6 +150,7 @@ pub mod mount_index;
 pub mod multi_character_prefill;
 pub mod native_tool_loop;
 pub mod off_scene;
+pub mod off_scene_kinds;
 pub mod orchestrator;
 pub mod outfit_change_effects;
 pub mod outfit_displacement;
@@ -179,6 +181,7 @@ pub mod quilltap_import;
 pub mod recall;
 pub mod recall_replay;
 pub mod recovery;
+pub mod referent_ledger;
 pub mod regenerate_swipe;
 pub mod resolve_equipped;
 pub mod scenario_builder;

@@ -46,6 +46,37 @@ pub fn operator_speaks_without_seat(chat_type: Option<&str>) -> bool {
     chat_type != Some("autonomous")
 }
 
+/// Whether a message is a whisper — addressed to one or more specific
+/// participants (`targetParticipantIds` non-empty) rather than the whole room
+/// (v4 `hasWhisperTargets`). Whispers never advance the turn rotation.
+pub fn has_whisper_targets(message: &serde_json::Value) -> bool {
+    message
+        .get("targetParticipantIds")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|ids| !ids.is_empty())
+}
+
+/// Whether a message is addressed to one whisper scope (v4 `isInWhisperScope`,
+/// `bdd09b75b`): `None` is the whole room (an untargeted message), a participant
+/// id is a whisper naming that participant. The scope a Staff writer posts a
+/// per-recipient whisper to, and the one its sweep of the recipient's prior
+/// whispers must match.
+///
+/// An empty `targetParticipantIds` array is the whole room, as it is to
+/// [`has_whisper_targets`] and to the visibility filter
+/// (`filter_whisper_messages`): a row everyone is shown belongs to the public
+/// scope. (Before `bdd09b75b` the sweeps tested `null`/absent only, so an
+/// empty-array row was invisible to them and was never swept.)
+pub fn is_in_whisper_scope(message: &serde_json::Value, target: Option<&str>) -> bool {
+    match target {
+        None => !has_whisper_targets(message),
+        Some(t) => message
+            .get("targetParticipantIds")
+            .and_then(serde_json::Value::as_array)
+            .is_some_and(|ids| ids.iter().any(|v| v.as_str() == Some(t))),
+    }
+}
+
 /// Whether a participant is present in the scene (active or silent) — both
 /// perceive and take turns.
 pub fn is_participant_present(status: ParticipantStatus) -> bool {
@@ -207,5 +238,35 @@ mod status_from_str_tests {
         assert!(operator_speaks_without_seat(Some("brahma")));
         assert!(operator_speaks_without_seat(Some("")));
         assert!(operator_speaks_without_seat(None));
+    }
+}
+
+#[cfg(test)]
+mod whisper_scope_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn whisper_scope_treats_an_empty_array_as_the_room() {
+        let shapes = [
+            json!({ "targetParticipantIds": null }),
+            json!({}),
+            json!({ "targetParticipantIds": [] }),
+            json!({ "targetParticipantIds": ["x"] }),
+            json!({ "targetParticipantIds": ["x", "y"] }),
+        ];
+        let targets: Vec<bool> = shapes.iter().map(has_whisper_targets).collect();
+        assert_eq!(targets, [false, false, false, true, true]);
+        let public: Vec<bool> = shapes
+            .iter()
+            .map(|m| is_in_whisper_scope(m, None))
+            .collect();
+        assert_eq!(public, [true, true, true, false, false]);
+        let x: Vec<bool> = shapes
+            .iter()
+            .map(|m| is_in_whisper_scope(m, Some("x")))
+            .collect();
+        assert_eq!(x, [false, false, false, true, true]);
+        assert!(!is_in_whisper_scope(&shapes[4], Some("z")));
     }
 }

@@ -68,64 +68,88 @@ pub struct RawMessage {
     /// record can be skipped. See [`extract_visible_conversation`].
     pub system_kind: Option<String>,
     // === end P4.D205 ===
+    // === P4.D347 (v4 `d68c1af88` / `bdd09b75b`) ===
+    /// `systemSender`, read by the off-scene rule in
+    /// [`to_visible_conversation_message`]: a Host "spoken of" card is a record,
+    /// never conversation (v4 `VisibleConversationCandidate.systemSender`).
+    pub system_sender: Option<String>,
+    // === end P4.D347 ===
 }
 
 /// Extract only the visible user/assistant conversational messages from a
-/// message-like array — the standard filter for cheap LLM tasks. Skips
-/// non-`message` typed entries, empty content, and non-user/assistant roles;
-/// runs [`strip_tool_artifacts`] on assistant text and drops it when nothing
-/// survives. Mirrors v4's `extractVisibleConversation`.
+/// message-like array — the standard filter for cheap LLM tasks: one
+/// [`to_visible_conversation_message`] per row. Mirrors v4's
+/// `extractVisibleConversation`.
 pub fn extract_visible_conversation(messages: &[RawMessage]) -> Vec<ChatMessage> {
-    let mut result = Vec::new();
-    for m in messages {
-        // Skip non-message entries (system / context-summary events).
-        if let Some(t) = &m.type_ {
-            if t != "message" {
-                continue;
-            }
-        }
-        // === P4.D205 (v4 `e7d77bb60`, `chat-tasks.ts:254`) ===
-        // Record-only: documents a delivery, is not part of the conversation.
-        //
-        // This is the back door, and it was open on both sides until v4 closed
-        // it. The filter below selects by ROLE, and the Host's inform record
-        // wears `ASSISTANT` — so without this guard the record would be folded
-        // into a rolling summary by the async pre-compression and handed back to
-        // the model as system block 3 on every turn thereafter. v5 reproduced
-        // the hole exactly (`RawMessage` did not even carry the field);
-        // measured red-first against v4's post-fix oracle.
-        //
-        // The guard is deliberately narrow: every OTHER Staff announcement stays,
-        // because that is deliberate context.
-        if m.system_kind.as_deref() == Some("inform") {
-            continue;
-        }
-        // === end P4.D205 ===
-        // Skip entries without content (falsy: absent or empty).
-        let content = match &m.content {
-            Some(c) if !c.is_empty() => c,
-            _ => continue,
-        };
-        // Only USER / ASSISTANT roles (case-insensitive).
-        let role = m.role.as_deref().unwrap_or("").to_uppercase();
-        if role != "USER" && role != "ASSISTANT" {
-            continue;
-        }
-        let lower_role = role.to_lowercase();
-        if lower_role == "assistant" {
-            match strip_tool_artifacts(content) {
-                Some(cleaned) => result.push(ChatMessage {
-                    role: lower_role,
-                    content: cleaned,
-                }),
-                None => continue,
-            }
-        } else {
-            result.push(ChatMessage {
-                role: lower_role,
-                content: content.clone(),
-            });
+    messages
+        .iter()
+        .filter_map(to_visible_conversation_message)
+        .collect()
+}
+
+/// One row of [`extract_visible_conversation`]: the clean user/assistant line, or
+/// `None` when the row is not part of the visible conversation (v4
+/// `toVisibleConversationMessage`, `bdd09b75b`). The one rule for what counts —
+/// anything that must agree with that function's output row for row (the
+/// compression window, [`crate::context_compression::verbatim_window_start`])
+/// asks this rather than re-deriving it.
+///
+/// Skips non-`message` typed entries, the record-only rows (the Host's `inform`
+/// record, a Host "spoken of" card), empty content and non-user/assistant roles;
+/// runs [`strip_tool_artifacts`] on assistant text and drops it when nothing
+/// survives.
+pub fn to_visible_conversation_message(m: &RawMessage) -> Option<ChatMessage> {
+    // Skip non-message entries (system / context-summary events).
+    if let Some(t) = &m.type_ {
+        if t != "message" {
+            return None;
         }
     }
-    result
+    // === P4.D205 (v4 `e7d77bb60`, `chat-tasks.ts:254`) ===
+    // Record-only: documents a delivery, is not part of the conversation.
+    //
+    // This is the back door, and it was open on both sides until v4 closed
+    // it. The filter below selects by ROLE, and the Host's inform record
+    // wears `ASSISTANT` — so without this guard the record would be folded
+    // into a rolling summary by the async pre-compression and handed back to
+    // the model as system block 3 on every turn thereafter. v5 reproduced
+    // the hole exactly (`RawMessage` did not even carry the field);
+    // measured red-first against v4's post-fix oracle.
+    //
+    // The guard is deliberately narrow: every OTHER Staff announcement stays,
+    // because that is deliberate context.
+    if m.system_kind.as_deref() == Some("inform") {
+        return None;
+    }
+    // === end P4.D205 ===
+    // Record-only too: the Host's "spoken of" card. Folded into a compression
+    // summary it would come back into every prompt as system block 3 (v4
+    // `d68c1af88`, `chat-tasks.ts:279`).
+    if crate::services::off_scene_kinds::is_off_scene_mention_introduction(
+        m.system_sender.as_deref(),
+        m.system_kind.as_deref(),
+        m.content.as_deref(),
+    ) {
+        return None;
+    }
+    // Skip entries without content (falsy: absent or empty).
+    let content = match &m.content {
+        Some(c) if !c.is_empty() => c,
+        _ => return None,
+    };
+    // Only USER / ASSISTANT roles (case-insensitive).
+    let role = m.role.as_deref().unwrap_or("").to_uppercase();
+    if role == "USER" {
+        return Some(ChatMessage {
+            role: "user".to_string(),
+            content: content.clone(),
+        });
+    }
+    if role != "ASSISTANT" {
+        return None;
+    }
+    strip_tool_artifacts(content).map(|cleaned| ChatMessage {
+        role: "assistant".to_string(),
+        content: cleaned,
+    })
 }

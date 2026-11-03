@@ -47,9 +47,9 @@
 //!   * `message_attribution` — the per-character context shaping (history-access
 //!     gate, presence windows, whisper visibility, role/name attribution);
 //!     oracle-verified.
-//!   * `mentioned_characters` — scanning a chat corpus for non-participant
-//!     character mentions (ASCII-`\b` alternation, longest-token-first,
-//!     lowercased token→ids map); oracle-verified.
+//!   * `name_mentions` — finding a character's name in text (case-sensitive,
+//!     Unicode-letter-bounded, longest-token-first; UTF-16 offsets) for the
+//!     referent ledger and the absent-character chips; oracle-verified.
 //!   * `chat_tasks` / `chat_utils` — cheap-LLM-task text shaping: tool-artifact
 //!     stripping, visible-conversation extraction, and the chat-card preview;
 //!     oracle-verified. `jsstr` holds the shared JS string-semantics primitives
@@ -218,9 +218,9 @@ pub mod memory_scoring;
 pub mod memory_settings; // P4.D288 (C1-5)
 pub mod memory_tasks;
 pub mod memory_time;
-pub mod mentioned_characters;
 pub mod message_attribution;
 pub mod message_formatter;
+pub mod name_mentions;
 // === P4.120 ===
 pub mod background;
 // === /P4.120 ===

@@ -753,6 +753,8 @@ const CHAT_GET_ACTIONS: &[&str] = &[
     "get-background",
     "gallery",
     "scenario-source",
+    // P4.D347 (v4 `9a88f862f`, `get.ts:93`): the absent-character name chips.
+    "absent-mentions",
     "cost",
 ];
 
@@ -1255,6 +1257,19 @@ mod p4d316_tests {
                 .unwrap()
         };
         assert_eq!(at("wardrobe-rollback"), at("equip") + 1, "v4's map order");
+    }
+
+    #[test]
+    fn the_absent_mentions_key_sits_at_v4s_position() {
+        // v4 `get.ts:92-94`: between `scenario-source` and `cost`.
+        let get = |a: &str| {
+            super::CHAT_GET_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        assert_eq!(get("absent-mentions"), get("scenario-source") + 1);
+        assert_eq!(get("cost"), get("absent-mentions") + 1);
     }
 
     /// P4.D325: v4's Inventory keys at their map positions (`get.ts:76-78`,

@@ -2,11 +2,14 @@
  * Oracle case #6: context-compression sizing (the pure subset).
  *
  * Drives the REAL pure functions from the v4 server's
- * lib/chat/context/compression.ts — the two compression-trigger predicates, the
+ * lib/chat/context/compression.ts — the budget compression-trigger predicate, the
  * sliding-window message split, and the compressed-history block builder. The
  * async LLM orchestrator (`applyContextCompression`) is deliberately NOT ported
  * here — it's a Phase-3 mocked-LLM target; only the side-effect-free sizing
  * logic is tier-1 material.
+ *
+ * P4.D347 (v4 `bdd09b75b`): the count-driven `shouldApplyCompression` is GONE at
+ * the pin (its rows died at import), so its rows are deleted with its Rust port.
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
@@ -15,7 +18,6 @@
  */
 
 import {
-  shouldApplyCompression,
   shouldApplyBudgetCompression,
   splitMessagesForCompression,
   buildCompressedHistoryBlock,
@@ -23,8 +25,8 @@ import {
 } from '@/lib/chat/context/compression';
 import type { ContextCompressionSettings } from '@/lib/schemas/settings.types';
 
-// The two predicates read only `enabled` (+ `windowSize` for the count trigger);
-// build a partial settings object cast to the full type — faithful at runtime.
+// The predicate reads only `enabled`; build a partial settings object cast to
+// the full type — faithful at runtime.
 function settings(enabled: boolean, windowSize = 5): ContextCompressionSettings {
   return { enabled, windowSize } as unknown as ContextCompressionSettings;
 }
@@ -32,32 +34,11 @@ function settings(enabled: boolean, windowSize = 5): ContextCompressionSettings 
 type Msg = { role: 'user' | 'assistant' | 'system'; content: string };
 
 type Row =
-  | { kind: 'shouldApply'; id: string; messageCount: number; enabled: boolean; windowSize: number; bypass: boolean; out: boolean }
   | { kind: 'budget'; id: string; total: number; maxAvailable: number; enabled: boolean; bypass: boolean; out: boolean }
   | { kind: 'split'; id: string; messages: Msg[]; windowSize: number; out: { messagesToCompress: Msg[]; windowMessages: Msg[] } }
   | { kind: 'block'; id: string; input: string | null; out: string | null };
 
 const rows: Row[] = [];
-
-// ---------------------------------------------------------------------------
-// shouldApplyCompression(messageCount, settings, bypass) — count trigger.
-// ---------------------------------------------------------------------------
-const shouldCases: Array<[string, number, boolean, number, boolean]> = [
-  // [id, messageCount, enabled, windowSize, bypass]
-  ['disabled', 10, false, 5, false],
-  ['bypass', 10, true, 5, true],
-  ['under-window', 3, true, 5, false],
-  ['at-window', 5, true, 5, false],
-  ['over-window', 6, true, 5, false],
-  ['disabled-over', 10, false, 5, false],
-  ['bypass-over', 10, true, 5, true],
-];
-for (const [id, messageCount, enabled, windowSize, bypass] of shouldCases) {
-  rows.push({
-    kind: 'shouldApply', id, messageCount, enabled, windowSize, bypass,
-    out: shouldApplyCompression(messageCount, settings(enabled, windowSize), bypass),
-  });
-}
 
 // ---------------------------------------------------------------------------
 // shouldApplyBudgetCompression(total, maxAvailable, settings, bypass).

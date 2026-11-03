@@ -62,6 +62,9 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("api/brahma.rs", "message_count", F),
     ("api/brahma.rs", "brahma_console_messages", F),
     ("api/characters.rs", "character_chats", F),
+    // P4.D347 (v4 `9a88f862f`): `?action=absent-mentions` reads the chat
+    // through v4's `repos.chats.getMessages` — the FALLBACK read.
+    ("api/chat_absent_mentions.rs", "chat_absent_mentions", F),
     ("api/chat_media.rs", "message_save_image", F),
     ("api/chat_media.rs", "chat_files_list", F),
     // P4.D228 (v4 `ce2f1dabf`, #77): "Try uncensored"'s picture arm finds the
@@ -201,11 +204,6 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         F,
     ),
     ("services/chat_export.rs", "chat_export", F),
-    (
-        "services/commonplace_notifications.rs",
-        "sweep_prior_relevant_conversation_whispers",
-        F,
-    ),
     // P4.D226: the retired kinds' read-path pin reads the transcript once.
     (
         "services/concierge_notifications.rs",
@@ -282,7 +280,6 @@ const CENSUS: &[(&str, &str, Variant)] = &[
     ("services/message_finalizer.rs", "calculate_next_speaker", F),
     ("services/message_reattribute.rs", "message_reattribute", F),
     ("services/message_reattribute.rs", "message_reattribute", F),
-    ("services/off_scene.rs", "scan_off_scene_newcomers_inner", F),
     // P4.D301: the body moved under `process_message_with_ledger` (the
     // forwarder `process_message` reads nothing itself).
     ("services/orchestrator.rs", "process_message_with_ledger", F),
@@ -507,8 +504,13 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // events`), and three files left the census while one joined: 79 and 50.
     // P4.D341 added ONE unit-test fallback call in an existing file (the
     // `storytellerBid` slot pin in `db/chats_messages_read.rs`): 80 and 50.
-    assert_eq!((swallowing, strict), (80, 7), "census totals");
-    assert_eq!(file_count, 50, "census files");
+    // P4.D347 retired TWO fallback sites with their files' callers — the fold
+    // refresh's own sweep (now the one shared `sweep_stale_whispers`, already
+    // counted in `build_context.rs`) and the per-turn off-scene scan (deleted
+    // with v4 `9a88f862f`) — and added ONE in a new file
+    // (`api/chat_absent_mentions.rs`): 79 and 49.
+    assert_eq!((swallowing, strict), (79, 7), "census totals");
+    assert_eq!(file_count, 49, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

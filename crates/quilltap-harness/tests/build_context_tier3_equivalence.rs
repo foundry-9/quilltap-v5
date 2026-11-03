@@ -289,6 +289,14 @@ struct SpecMsg {
     id: Option<String>,
     role: String,
     content: String,
+    /// P4.D347 (bug 265): a row's `type` / `systemKind` / `systemSender`, so a
+    /// window can carry the rows the visible-conversation rule drops.
+    #[serde(default, rename = "type")]
+    message_type: Option<String>,
+    #[serde(default, rename = "systemKind")]
+    system_kind: Option<String>,
+    #[serde(default, rename = "systemSender")]
+    system_sender: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -365,6 +373,9 @@ struct SpecRepeat {
     count: usize,
     user_content: String,
     assistant_content: String,
+    /// P4.D347: rows appended after the repeated pairs.
+    #[serde(default)]
+    tail: Vec<SpecMsg>,
 }
 
 #[derive(Deserialize)]
@@ -440,6 +451,18 @@ fn sys_char_from_json(v: &Value) -> SysChar {
     }
 }
 
+fn spec_existing(m: &SpecMsg) -> ExistingMessage {
+    ExistingMessage {
+        role: m.role.clone(),
+        content: m.content.clone(),
+        id: m.id.clone(),
+        message_type: m.message_type.clone(),
+        system_kind: m.system_kind.clone(),
+        system_sender: m.system_sender.clone(),
+        ..Default::default()
+    }
+}
+
 fn build_existing(op: &SpecOp) -> Vec<ExistingMessage> {
     if let Some(rep) = &op.existing_messages_repeat {
         let mut out = Vec::with_capacity(rep.count * 2);
@@ -455,17 +478,10 @@ fn build_existing(op: &SpecOp) -> Vec<ExistingMessage> {
                 ..Default::default()
             });
         }
+        out.extend(rep.tail.iter().map(spec_existing));
         out
     } else {
-        op.existing_messages
-            .iter()
-            .map(|m| ExistingMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-                id: m.id.clone(),
-                ..Default::default()
-            })
-            .collect()
+        op.existing_messages.iter().map(spec_existing).collect()
     }
 }
 
@@ -598,6 +614,10 @@ async fn build_context_tier3_matches_oracle() {
     // P4.D335: v4's `[TurnYield]` note DEBUG, per op.
     let mut oracle_yield_logs: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
+    // P4.D347: v4's context-builder lines (budget, cast window, ledger, Core
+    // arm, sweeps), per op.
+    let mut oracle_p4d347_logs: std::collections::HashMap<String, Value> =
+        std::collections::HashMap::new();
     for line in oracle_text.lines() {
         let line = line.trim();
         if line.is_empty() {
@@ -619,6 +639,10 @@ async fn build_context_tier3_matches_oracle() {
                         "unalertedMail": v["unalertedMail"].clone(),
                     }),
                 );
+            }
+            Some("p4d347Log") => {
+                oracle_p4d347_logs
+                    .insert(v["op"].as_str().unwrap().to_string(), v["lines"].clone());
             }
             Some("informLog") => {
                 oracle_inform_logs
@@ -712,6 +736,8 @@ async fn build_context_tier3_matches_oracle() {
 
     let mut inform_lines_seen = 0usize;
     let mut yield_lines_seen = 0usize;
+    let mut p4d347_lines_seen: std::collections::BTreeMap<String, usize> =
+        std::collections::BTreeMap::new();
     let mut delivery_lines_seen: std::collections::HashMap<&'static str, usize> =
         std::collections::HashMap::new();
     for (op, (oracle_op, oracle_result)) in spec.ops.iter().zip(&oracle_results) {
@@ -1110,6 +1136,8 @@ async fn build_context_tier3_matches_oracle() {
                 .human_turn_message_ids
                 .as_ref()
                 .map(|v| v.iter().cloned().collect()),
+            purpose: quilltap_core::services::build_context::ContextPurpose::Turn,
+            storyteller_section: None,
         };
 
         // P4.D50: seed `instance_settings['taboo']` for THIS op through the real
@@ -1294,6 +1322,12 @@ async fn build_context_tier3_matches_oracle() {
             .get(&op.name)
             .unwrap_or_else(|| panic!("{}: no 'yieldLog' oracle row — regenerate", op.name));
         yield_lines_seen += assert_yield_note_lines(&op.name, &lines, want_yield_log);
+        let want_p4d347_log = oracle_p4d347_logs
+            .get(&op.name)
+            .unwrap_or_else(|| panic!("{}: no 'p4d347Log' oracle row — regenerate", op.name));
+        for (msg, n) in assert_p4d347_lines(&op.name, &lines, want_p4d347_log) {
+            *p4d347_lines_seen.entry(msg).or_default() += n;
+        }
         if let Some(prior) = prior_chat_type {
             set_chat_type(&db, &spec.chat.id, prior).await;
         }
@@ -1460,6 +1494,18 @@ async fn build_context_tier3_matches_oracle() {
             .unwrap_or_else(|e| panic!("{}: unplant failed: {e}", op.name));
         }
     }
+    // P4.D347: the context builder's comparands are non-vacuous — the ledger,
+    // the echo and the exhausted-budget WARN each fire somewhere in the corpus.
+    for msg in [
+        "[ReferentLedger] Ledger built",
+        "[ReferentLedger] Closing echo built",
+        "[ContextManager] Message budget exhausted before any history",
+    ] {
+        assert!(
+            p4d347_lines_seen.get(msg).copied().unwrap_or(0) > 0,
+            "no `{msg}` line in the oracle — the capture seam broke: {p4d347_lines_seen:?}"
+        );
+    }
     // P4.D335: the yield-note comparand is non-vacuous (four `offerYield` ops).
     assert_eq!(
         yield_lines_seen, 4,
@@ -1490,6 +1536,75 @@ async fn build_context_tier3_matches_oracle() {
     drop(db);
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+}
+
+/// P4.D347: the context builder's own lines — `[ContextManager] Message budget
+/// exhausted before any history`, `[ContextManager] Could not place the
+/// compression window …`, `[ReferentLedger] …` (three), `[CoreWhisper] Failed to
+/// offer Core packet`, and the two sweeps' `Swept stale whispers` / `Failed to
+/// sweep stale whispers` — compared as a MULTISET per op (v4 builds the ledger
+/// inside a `Promise.all` group; v5 is sequential, so line ORDER is masked): the
+/// level, the message, and every v4 field as `key=value` (strings unquoted,
+/// numbers / booleans bare) or, for an array / object / `null`, as the `…Json`
+/// file-layer form. `messageId` (a minted whisper id) and `error` (driver text)
+/// are masked. An op where v4 logged none of them is the silence leg. Returns
+/// the per-message counts matched.
+fn assert_p4d347_lines(op: &str, lines: &[String], want: &Value) -> Vec<(String, usize)> {
+    const PREFIXES: [&str; 8] = [
+        "[ContextManager] Message budget exhausted",
+        "[ContextManager] Could not place the compression window",
+        "[ReferentLedger] ",
+        "[CoreWhisper] Failed to offer",
+        "[CoreWhisper] Swept stale whispers",
+        "[CoreWhisper] Failed to sweep",
+        "[CommonplaceWhisper] Swept stale whispers",
+        "[CommonplaceWhisper] Failed to sweep",
+    ];
+    let mut got: Vec<&String> = lines
+        .iter()
+        .filter(|l| PREFIXES.iter().any(|p| l.contains(p)))
+        .collect();
+    let want = want.as_array().expect("p4d347Log lines array");
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "{op}: P4.D347 lines (v5 {got:#?}, v4 {want:#?})"
+    );
+    let mut seen: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for w in want {
+        let message = w["message"].as_str().expect("message");
+        let level = w["level"].as_str().expect("level").to_uppercase();
+        let mut needles: Vec<Vec<String>> = Vec::new();
+        for (k, v) in w["fields"].as_object().expect("fields object") {
+            if matches!(k.as_str(), "messageId" | "error") {
+                continue;
+            }
+            // A nullable v4 field (`targetParticipantId: string | null`) is
+            // logged in the `…Json` form on BOTH arms, so a value matches
+            // either spelling.
+            let json_form = format!(" {k}Json={}", serde_json::to_string(v).unwrap());
+            needles.push(match v {
+                Value::String(s) => vec![format!(" {k}={s}"), json_form],
+                Value::Number(_) | Value::Bool(_) => vec![format!(" {k}={v}")],
+                _ => vec![json_form],
+            });
+        }
+        let at = got
+            .iter()
+            .position(|g| {
+                g.starts_with(&format!("{level} "))
+                    && g.contains(message)
+                    && needles
+                        .iter()
+                        .all(|alts| alts.iter().any(|n| g.contains(n.as_str())))
+            })
+            .unwrap_or_else(|| {
+                panic!("{op}: no v5 line for v4 {level} {message:?} {needles:?} in {got:#?}")
+            });
+        got.remove(at);
+        *seen.entry(message.to_string()).or_default() += 1;
+    }
+    seen.into_iter().collect()
 }
 
 /// P4.D335 (v4 `2b5e8ee24`, `context-manager.ts:2206-2214`): the `[TurnYield]

@@ -41,12 +41,11 @@
 //! the NEW chat's identity decides); an unreadable vault (v4's WARN, skipped);
 //! a poisoned post (a planted trigger — the ids are NOT stamped); nobody left
 //! behind in an autonomous room. Every `[ChatContinuation]`/`[HostNotification]`
-//! line is capture-pinned per case with its silence legs (`expected_lines`),
-//! and five v5-side SCAN PROBES run the per-turn off-scene scan on the case's
-//! copy afterwards: a stamped absentee stays quiet, an un-stamped one (the
-//! poisoned post) is introduced on the next turn, the unseated persona is
-//! excluded by name in a Salon room and NOT in an autonomous one (bug 172), and
-//! a seated persona is excluded by id in either.
+//! line is capture-pinned per case with its silence legs (`expected_lines`).
+//! (The five v5-side SCAN PROBES that ran the per-turn off-scene scan on each
+//! case's copy RETIRED with the scan itself — v4 `9a88f862f` deleted it, and
+//! P4.D347 with it; bug 172's persona gate lives on in
+//! `absent_mentions::presence_of`, pinned by `absent_mentions_equivalence`.)
 //!
 //! # What it does NOT cover
 //!
@@ -83,7 +82,6 @@
 use quilltap_core::db::dump_table_json_conn;
 use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::chat_continuation::apply_chat_continuation;
-use quilltap_core::services::off_scene::{scan_off_scene_newcomers, OffSceneParticipant};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
@@ -251,29 +249,7 @@ struct CaseW {
 struct SpecW {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
-    #[serde(rename = "userId")]
-    user_id: String,
-    #[serde(rename = "characterA")]
-    character_a: String,
     cases: Vec<CaseW>,
-    #[serde(rename = "scanProbeUserCharacterName")]
-    scan_probe_user_character_name: String,
-    #[serde(rename = "scanProbes")]
-    scan_probes: Vec<ScanProbeW>,
-}
-
-/// P4.D233: a per-turn off-scene scan run on the case's DB copy AFTER the
-/// continuation — v5-side (v4's scan is inline in `buildContext` and has no
-/// callable seam), the expectation written from v4's `acadcc7cd` semantics and
-/// held by the two mutation proofs M1/M2 (see the lane record).
-#[derive(serde::Deserialize)]
-struct ScanProbeW {
-    #[serde(rename = "afterCase")]
-    after_case: String,
-    #[serde(rename = "chatId")]
-    chat_id: String,
-    note: String,
-    expect: Option<Vec<String>>,
 }
 
 /// P4.D233: the log lines each case must (and must not) emit — v4's
@@ -532,149 +508,6 @@ fn chat_continuation_matches_oracle() {
             );
         }
 
-        // P4.D233: the per-turn off-scene scan on the NEXT turn (bug 172's gate,
-        // and trap (a)'s other half) — run on this case's DB copy.
-        for probe in spec.scan_probes.iter().filter(|p| p.after_case == c.name) {
-            let chat = {
-                let id = probe.chat_id.clone();
-                db.read_main(move |conn| quilltap_core::db::chats_read::find_by_id(conn, &id))
-            }
-            .expect("read probe chat")
-            .expect("probe chat exists");
-            let participants: Vec<OffSceneParticipant> = chat["participants"]
-                .as_array()
-                .expect("participants")
-                .iter()
-                .map(|p| OffSceneParticipant {
-                    participant_type: p["type"].as_str().unwrap_or_default().to_string(),
-                    character_id: p["characterId"].as_str().map(str::to_string),
-                    controlled_by: p["controlledBy"].as_str().unwrap_or("llm").to_string(),
-                    status: p["status"].as_str().unwrap_or("active").to_string(),
-                })
-                .collect();
-            let (newcomers, scan_lines) = quilltap_core::test_support::captured_with(|| {
-                scan_off_scene_newcomers(
-                    &db,
-                    &probe.chat_id,
-                    chat["chatType"].as_str().unwrap_or("salon"),
-                    &spec.user_id,
-                    &spec.character_a,
-                    Some(spec.scan_probe_user_character_name.as_str()),
-                    &participants,
-                )
-            });
-            let got: Option<Vec<String>> =
-                newcomers.map(|cards| cards.into_iter().map(|c| c.id).collect());
-            assert_eq!(
-                got, probe.expect,
-                "scan probe after {}: {}",
-                c.name, probe.note
-            );
-            // The `[ContextManager]` DEBUG: `excludesPersonaByName` follows the
-            // room, not the chat type alone (trap (e)).
-            let autonomous = chat["chatType"].as_str() == Some("autonomous");
-            let want = format!(
-                "[ContextManager] Off-scene persona exclusion chatId={} chatType={} excludesPersonaByName={}",
-                probe.chat_id,
-                chat["chatType"].as_str().unwrap_or_default(),
-                !autonomous
-            );
-            assert!(
-                scan_lines.iter().any(|l| l.contains(&want)),
-                "scan probe after {}: want {want:?} in {scan_lines:#?}",
-                c.name
-            );
-            // Trap (e)'s other half (added at the round's unification): v4 logs
-            // `Boolean(userCharacterNameLower)`, so NO persona name and a name
-            // that trims EMPTY are both `false` in EVERY room — the flag follows
-            // the gated name, not the room alone.
-            for name in [None, Some("  ")] {
-                let (_, lines) = quilltap_core::test_support::captured_with(|| {
-                    scan_off_scene_newcomers(
-                        &db,
-                        &probe.chat_id,
-                        chat["chatType"].as_str().unwrap_or("salon"),
-                        &spec.user_id,
-                        &spec.character_a,
-                        name,
-                        &participants,
-                    )
-                });
-                let want = format!(
-                    "[ContextManager] Off-scene persona exclusion chatId={} chatType={} excludesPersonaByName=false",
-                    probe.chat_id,
-                    chat["chatType"].as_str().unwrap_or_default(),
-                );
-                assert!(
-                    lines.iter().any(|l| l.contains(&want)),
-                    "scan probe after {} (name {name:?}): want {want:?} in {lines:#?}",
-                    c.name
-                );
-            }
-
-            // P4.124 (P4.D233 (b)): a NULL `chatType` cell is v4's schema
-            // default — `ChatTypeEnum.default('salon')` over a NULL read as
-            // `undefined` — so the DEBUG logs `chatType=salon` (and the operator
-            // speaks), never an omitted field. Planted on this case's copy and
-            // restored before the table dump below.
-            let original: Option<String> = {
-                let id = probe.chat_id.clone();
-                db.read_main(move |conn| {
-                    conn.query_row(
-                        r#"SELECT "chatType" FROM chats WHERE id = ?1"#,
-                        [&id],
-                        |row| row.get(0),
-                    )
-                    .map_err(Into::into)
-                })
-                .expect("read the raw chatType cell")
-            };
-            let set_type = |t: Option<String>| {
-                let id = probe.chat_id.clone();
-                db.write_blocking(move |ws| {
-                    ws.main()
-                        .connection()
-                        .execute(
-                            r#"UPDATE chats SET "chatType" = ?1 WHERE id = ?2"#,
-                            rusqlite::params![t, id],
-                        )
-                        .map_err(Into::into)
-                })
-                .expect("plant chatType")
-            };
-            assert_eq!(set_type(None), 1, "the NULL plant hit the probe chat");
-            // The orchestrator hands the scan the chat it READ (`ContextChat.
-            // chat_type`, P4.124 item 6 unified); re-read the planted row the way
-            // it does, so the marshal's `salon` default is what reaches the scan.
-            let replanted = {
-                let id = probe.chat_id.clone();
-                db.read_main(move |conn| quilltap_core::db::chats_read::find_by_id(conn, &id))
-                    .expect("re-read the probe chat")
-                    .expect("probe chat exists")
-            };
-            let (_, lines) = quilltap_core::test_support::captured_with(|| {
-                scan_off_scene_newcomers(
-                    &db,
-                    &probe.chat_id,
-                    replanted["chatType"].as_str().unwrap_or("salon"),
-                    &spec.user_id,
-                    &spec.character_a,
-                    Some(spec.scan_probe_user_character_name.as_str()),
-                    &participants,
-                )
-            });
-            let want = format!(
-                "[ContextManager] Off-scene persona exclusion chatId={} chatType=salon excludesPersonaByName=true",
-                probe.chat_id,
-            );
-            assert!(
-                lines.iter().any(|l| l.contains(&want)),
-                "NULL chatType after {}: want {want:?} in {lines:#?}",
-                c.name
-            );
-            assert_eq!(set_type(original), 1, "restore the probe chat's chatType");
-        }
-
         let dump = |t: &'static str| -> Value {
             table_section(
                 &db.read_main(move |conn| dump_table_json_conn(conn, t, "id"))
@@ -773,7 +606,6 @@ fn chat_continuation_matches_oracle() {
     }
 
     // Shape guard: a corpus that silently loses an arm must not read as green.
-    assert_eq!(spec.scan_probes.len(), 5, "the P4.D233 scan probes");
     assert!(
         spec.cases.len() >= 13,
         "corpus shrank: {} cases",

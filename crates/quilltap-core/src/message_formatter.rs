@@ -28,6 +28,8 @@
 //!     (`jsstr::utf16_truncate` / `utf16_len`).
 
 use crate::jsstr;
+// The JS escape set v4 uses inline throughout this module (one home since P4.D347).
+use crate::jsstr::escape_regexp;
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -561,23 +563,6 @@ pub fn truncate_at_foreign_speaker(
 /// the same set), reused via `jsstr`.
 fn trim_trailing_js_ws(s: &str) -> String {
     jsstr::js_trim_end(s).to_string()
-}
-
-/// Port of JS `String.prototype.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')` —
-/// escape every regex metacharacter in a literal so it matches literally. This
-/// is the exact escape set v4 uses inline throughout this module.
-fn escape_regexp(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        if matches!(
-            ch,
-            '.' | '*' | '+' | '?' | '^' | '$' | '{' | '}' | '(' | ')' | '|' | '[' | ']' | '\\'
-        ) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
 }
 
 /// `^\[\s*\{\s*'type'\s*:\s*'text'\s*,\s*'text'\s*:\s*"([\s\S]*)"\s*\}\s*\]$`
