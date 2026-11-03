@@ -193888,6 +193888,174 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D346 — lane record (2026-11-02/03): Pascal operator intervention, the SPA half — LANE COMPLETE
+
+Branch `claude/p4.d346-pascal-intervention-spa-8976915ea`, cut from `main` `8976915ea` (the orders' commit). The session started on the main checkout and moved into the order's worktree `.claude/worktrees/p4d346`. Authored BLIND (R-1); nothing stacks on this lane.
+
+### Pin and probe
+
+- **§2 probe (an observation, never a STOP):** v4 `main` = `604a082c4` at 2026-11-02 22:45 CST, 46 commits past the pin. Branch `main`, tree CLEAN.
+- **Pin:** `/tmp/qt-v4-pin-p4d346-236c04e35` at `236c04e35ab23…`, `"version": "4.12.0-dev.0"`. Root `npm ci --offline` rc 0 (the cache had been populated by P4.D341's online run). `zod` 4.6.7 — the only package the two recorders load.
+- **⚖ The human's pin ruling (2026-11-02), applied:** the order's symlink classes (2) (the CLI `node_modules`) and (3) (the plugin `node_modules`) were NOT used, because live v4 re-installed both past the pin. After the root `npm ci --offline`, `.claude/pin-plugin-sdks.sh "$PIN"` ran (rc 0). Results: CLI driver 12.11.1 / SQLite 3.53.2 / chacha20; openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1. Neither recorder reaches the plugin or CLI trees.
+
+### Red-first (on unported `main`)
+
+- `custom-tool-types.corpus.spec.ts`: GREEN, 716 rows. It stayed green and untouched through the lane.
+- **The `tool-draft-grammar` corpus, re-recorded at the pin with the recorder as it stood, then run against main's twin:** 11 red / 233 green.
+  - The 11 red are every `definition` row that parses; v4's draft now carries `intervention`.
+  - Rows whose content moved against the `322a5488e` copy: 178 (159 draft, 4 rename, 4 find, 11 definition).
+  - All 159 `draft` rows changed their INPUT but not their `out`.
+  - **The key-stripped diff (the `intervention` key removed from both sides) is ZERO over all 244 ids.** `839575d89` is the only writer of v4 `tool-draft.ts` in the span (confirmed).
+- **The grammar twin's new spec, against main's twin through a scratch shim:** 35 red / 1 green.
+  - The real spec does not type-check on main (module absent).
+  - **Correction to §E:** main does not REFUSE an `intervention` key. It TOLERATES it as an unknown top-level key, so `draftFromDefinition` does not return `null` — it carries the block in `unknownKeys`.
+- The other new specs (summary, toggle, dialog, Workbench hands, Automation row, library mark, realtime arm) fail on main as "red: module / symbol absent" (type-check). The red was counted per file, not shimmed.
+- `npm run lint`: green on main.
+
+### Measured sentences (item 2, v4's real `QtapCustomToolSchema` at the pin)
+
+Twenty-seven rows are pinned as literals in `custom-tool-types.intervention.spec.ts`. The refusals:
+
+| input | sentence |
+|---|---|
+| `intervention: {}` | `intervention.enabled: Invalid input: expected boolean, received undefined` |
+| `{enabled: null}` | `intervention.enabled: Invalid input: expected boolean, received null` |
+| `{enabled: 'yes'}` | `intervention.enabled: Invalid input: expected boolean, received string` |
+| `fields: {dice: false}` | `intervention.fields: Unrecognized key: "dice"` |
+| `fields: null` | `intervention.fields: Invalid input: expected object, received null` |
+| `intervention: 'yes'` | `intervention: Invalid input: expected object, received string` |
+| param `intervene: 'no'` / `null` | `parameters.bonus.intervene: Invalid input: expected boolean, received string` / `… null` |
+| effect `intervene: 'no'` | `effects.0.intervene: Invalid input: expected boolean, received string` |
+| effect + unknown key | `effects.0: Unrecognized key: "bogus"` |
+| two bad + unknown | `intervention.enabled: … received number; intervention.fields.roll: … received string; intervention.fields: Unrecognized key: "dice"` |
+| unknown at two levels | `intervention.fields: Unrecognized keys: "dice", "foo"; intervention: Unrecognized key: "bogus"` |
+
+- **Accepted:** `{enabled: true}`; `{enabled: true, fields: {roll: false, value: false}}`; `{enabled: false, fields: {title: false}}`; `llmAnswer: false` with no `llm` block; parameter `intervene` true or false; all four effect kinds with `intervene: false`.
+- **Key order:** the parsed key order is `announceAsCharacter` → `intervention` → `parameters`. `fields` comes back in schema order (`{announcer, roll}` → `{roll, announcer}`, and a `true` flag is kept).
+- **Unknown-key report:** `["bogus"]`.
+- **⚠ PRE-EXISTING divergence, found while measuring and NOT fixed (outside this lane's hunks):** v4's `CustomToolParameterSchema` is a plain `z.object`, so it STRIPS an unknown key inside a parameter (`{…, intervene: false, bogus: 1}` parses). The v5 twin's `parseParameter` refuses with `parameters.bonus: Unrecognized key: "bogus"`. The spec records this and skips the row by name (`PREEXISTING_PARAMETER_STRIP_DIVERGENCE`). It is a follow-up for the grammar twin.
+
+### The corpora
+
+- **`tool-draft-grammar.oracle.ndjson`: RE-RECORDED WHOLE at `236c04e35` (R-8).**
+  - 244 → 274 rows: 10 groupsOf, 182 draft, 5 rename, 5 find, 17 definition, 55 direct.
+  - By `needs`: 212 live, 62 `P4D333`. The 30 new rows are all `needs: []`.
+  - sha256 `3b8aa25a3e7dece768151886f9b7468dfedcea194f81708633d0f22dd0528306`.
+  - Markers: `"id":"intervention` = 30; bare `intervene` = 9.
+  - The 244 old rows are byte-identical to the pre-rows re-record; the key-stripped diff against the `322a5488e` copy is zero.
+  - Regen: the recorder header's recipe with `PIN` = a detached `236c04e35` worktree with its own `npm ci --offline`, run under Node 24.13.1.
+- **NEW `intervention-summary.oracle.ndjson`:**
+  - 38 rows: 24 `getInterventionSummary` (v4's twelve cases + twelve edges) and 14 `describeSpan`.
+  - sha256 `52d90e1aa20edb639d5a698bddbe43aed179b1f83171ca2105b0d53eaafbc7e9`.
+  - Markers: `Adjusted before it was dealt:` 18; `the oracle's answer replaced` 1.
+  - Recorder `apps/web/oracle/intervention-summary.recorder.ts` (same recipe). `describeSpan` rides this corpus because the dialog needs v4's client-safe `spans.ts` phrasing, ported as `chat/intervention-spans.ts`; the order named no home for it.
+- `announcement-sender-name.recorder.ts` still resolves at the pin (read-only check; not re-recorded).
+- **Fixtures changed:** only those two NDJSONs. They invalidate no other oracle. The definition corpus (716) was not touched.
+
+### What landed (Tier 1 items 2–12, Tier 2 items 13–14)
+
+- Item 2: `754e99ef2`. The SPA grammar twin (`intervene` ×2, `INTERVENTION_FIELD_KEYS`, `CustomToolIntervention`, the strict block, the eighteenth known key) and the new topical spec (36 cases).
+- Item 3: `654e93504`. The draft twin, the recorder's fenced P4.D346 block, the re-record, the spec counts, the README row, and the three `the Workbench draft` cases.
+- Item 4: `75e47f363`. `getInterventionSummary`, `PascalMeta.intervention` (fenced), `intervention-spans.ts`, the new corpus and recorder, and the twelve cases by name.
+- Item 5: `3ae161718`. `intervention-toggle.ts` and the hands in `builder-form.ts`, `outcomes-section.ts` and `side-effects-section.ts`. The eleven v4 `workbench-intervention` cases are carried by name: 8 in the builder spec (one v5-authored on the titles), 2 in the side-effects spec, 7 in the toggle spec.
+- Item 6: `e78822130`. The library mark and `CustomToolLibraryEntry.intervention` (fenced).
+- Item 7: `30c8cabb9`. The third Automation row, `DEFAULT_CUSTOM_TOOL_INTERVENTION`, `qt-checkbox mt-1` (`2041bb875`), the settings DTO key (fenced), and 5 new cases plus the three-row copy case.
+- Item 8: `9c709b2e1`. `custom-tool-interventions.api.ts`; the core-contract fence (the four requests and their union lines, `RunSpan`, `RecordedDraw`, `EffectPin`, `InterventionOverrides`, `InterventionDecision`, and the run result's five keys type-only per R-12 — declared OPTIONAL so pre-existing bench fixtures stay valid; v4 marks them required); `customToolsKeys.all` / `.interventions`; the topic (ninth on this branch); the arm and the sweep prefix; spec counts 9 / 9.
+- Item 9: `72854d34d`. The hold dialog, with 34 spec cases: v4's 19 by name under v4's five describes, plus 15 v5-authored.
+  - **A deviation from the order's suggestion: no `RealtimeService.onTopic` call.** v5's `RealtimeService.acceptFrame` already invalidates every topic's keys through `queryKeysForTopic` — the same route v4 takes. A second subscription would double-invalidate on every hint and every reconnect. The spec proves the hint re-reads the holds through the REAL service, and that another chat's hint is ignored.
+- Item 10: `e1580eb68`. `_intervention.css`, byte-equal to the pin (`cmp`), and the `_index.css` import. Lint 974 classes, every guarded reference resolves.
+- Item 11: `586973f58`. The gated e2e file.
+- Tier 2 items 13 and 14 are in the closing commit: the gated beats (E) and (F), and the twelve-shape `summarizeWhen` table. Item 14 is recorded as a "v4-untested helper, v5 table-spec'd" — no corpus.
+- Tier 2 item 15: the 💸 rows below.
+- Tier 3, recorded:
+  - (16) `useChatSettings.ts` / `ChatTabContent.tsx`: NO-PORT. The partial body and v4's failure text are ported.
+  - (17) The mount is H1.
+  - (18) The three-state dismissal table below.
+  - (19) `HOLDS_UNKNOWN_VARIANT_EMPTY`.
+  - (20) The theme-storybook mirror: NO-PORT.
+  - (21) Theirs.
+
+### Dismissal (Tier 3 item 18)
+
+| | ✕ | backdrop | Escape |
+|---|---|---|---|
+| v4 `BaseModal` | rendered, `onClose` a no-op | `closeOnClickOutside={false}` | `closeOnEscape={false}` |
+| v5 on this branch (`qt-modal`) | rendered, `(close)` a no-op (spec `the ✕ and the backdrop do not dismiss a held roll`) | `[closeOnBackdrop]="false"` | `qt-modal` handles none |
+| the union | same | same | H3: `[closeOnEscape]="false"` once P4.D358's R-K input lands |
+
+### `HOLDS_UNKNOWN_VARIANT_EMPTY` (R-6; H9)
+
+The holds `queryFn` maps an `/unknown variant/i` dispatch refusal to `{holds: []}` with no toast; any other error is left to TanStack, and no toast is shown either. Spec: `an unknown-variant refusal reads as no holds and raises no toast`. Measured live on main's server: a Salon with the dialog would get the serde refusal for `chatCustomToolInterventionsList`. The arm is harmless once P4.D345 lands, so retiring it is the unifier's call.
+
+### Gates
+
+- **SPA:**
+  - `npm run lint`: clean.
+  - Touched specs first, every file green.
+  - Full suite: **572 files / 13,302 tests passed** (planning count 568 / 13,121).
+  - `npm run build`: clean.
+- **`cargo build --workspace`** (once, after `apps/web/dist` existed; `CARGO_INCREMENTAL=0`, a cloned warm `target/`): **rc 0**. The Rust workspace gate is not owed (the lane touches no crate).
+- **Playwright, by file, one run at a time machine-wide (announced in the shared notes):**
+  - `salon-intervention-flow.spec.ts`, every flag `false`: **2 passed (W1, S1) / 6 skipped.** The re-run with (E) and (F) added is in the addendum below.
+  - The server was the worktree's fresh DEBUG bins. The cloned `target/release/quilltap{,-web}` were deleted first.
+  - **Every flag forced `true` against main's server** (one scratch copy with the Salon describe un-serialised, so that no beat's failure skips the next; never committed): each gated beat fails at its gate premise and nowhere else:
+    - (W2) at `:260`, the library's `Holds each roll for you` img not found. Main SAVED and LISTED the file: the Rust loader tolerates `intervention` as an unknown key, so the order's guess that main refuses it is wrong.
+    - (S2) at `:318`: the reload reads ticked again (main drops the PUT key).
+    - (A) at `:393`, (B) at `:415`, (C) at `:436` and (D) at `:453`: no hold dialog. The page snapshot shows `Let us cut the deck.` and a Pascal **Croupier** bubble `Low card: 1.` — main dealt the planted tool straight through. This also MEASURES that a Quilltap General tool reaches "Group Expedition" by trigger phrase.
+  - `workbench-flow` 7 passed / 2 skipped; `workbench-triggers-effects-flow` 6 passed.
+  - `salon-custom-tools-flow` 4 passed / 1 failed. The red is the file's first beat waiting 5 s for the Salon list's "Chats" heading right after a cold boot — not a surface this lane renders. Its re-run is in the addendum.
+- Spelling: the forbidden misspelling appears 0 times in the diff.
+
+### R1–R12 per owned file (H10, for P4.D358's census)
+
+- `chat/custom-tool-intervention-dialog.ts`: R1 inherited from `qt-modal`. Every control is named by v4's bytes (`Die n`, `Answer`, `Message`, `State`, `Effect n mode` / `value` / `items` / `log line`); `Prompt`, `Heard by`, `Announced by`, `Title`, `Chip label`, `Raw draw` and `Value after modifiers` sit inside `<label>`s, as in v4. Outcome rows carry `aria-pressed`. The "The oracle answered" checkbox sits inside its label.
+- `screens/custom-tools/intervention-toggle.ts`: a named button with `aria-pressed`; the icon is `aria-hidden`.
+- `builder-form.ts`: the master checkbox sits inside its label, and every hand is named. The two unnamed controls the WCAG census counted are unchanged — v4's `BuilderForm.tsx` names neither at the pin (R-10).
+- `outcomes-section.ts`, `side-effects-section.ts`: the hands are named.
+- `workbench-library.ts`: the mark is `role="img"` with an `aria-label`.
+- `automation-settings.ts`: the checkbox sits inside its label; `2041bb875` is applied.
+
+### HANDOFFs
+
+- **H1 → P4.D344** (`screens/salon/salon-conversation.ts`). After the `<qt-run-tool-modal …/>` block: `@if (chat(); as c) { <qt-custom-tool-intervention-dialog [chatId]="c.id" /> }`. Import `CustomToolInterventionDialog` from `../../chat/custom-tool-intervention-dialog` beside `RunToolModal`. State: OPEN, the owner's or the unifier's.
+- **H2 → P4.D353** (`chat/message-row.ts`). `protected readonly interventionSummary = computed(() => getInterventionSummary(this.message()));` beside `staffKind`, and between the kind span and the whisper names:
+
+  ```
+  @if (interventionSummary(); as adjusted) {
+    <span class="qt-intervention-badge" [title]="adjusted">
+      <qt-icon name="hand-raised" class="w-3 h-3" />
+      <span class="sr-only">{{ adjusted }}</span>
+    </span>
+  }
+  ```
+
+  Add the spec case `wears the adjusted hand with its tooltip on a Pascal row the operator changed, and not otherwise`. State: OPEN.
+- **H3** (the unifier, after R-K): `[closeOnEscape]="false"` on the `<qt-modal>` in `HeldRun`, plus a spec case `Escape does not dismiss a held roll`. State: OPEN.
+- **H4** (P4.D345 + the unifier): the definition corpus copy, `custom-tool-types.corpus.spec.ts` green over it, and the header count. State: OPEN. This lane's twin is ready; nothing measured against P4.D345's copy (none existed on its branch when item 2 landed).
+- **H5** (the unifier): `REALTIME_TOPICS` = ten (`…, inventory, storytellerRounds, customToolInterventions`), the positional last-topic assertion restored, and the prefix count re-measured. State: OPEN.
+- **H6** (the unifier): `CustomToolLibraryEntry` `…, triggerCount, intervention, effect, …`, and both badges on one row. State: OPEN.
+- **H7** (the unifier): the `_index.css` order `_chat`, `_roleplay`, `_storyteller`, `_intervention`, `_content`. State: OPEN.
+- **H8** (the unifier, §S.9): flip `P4D345_SERVER_LANDED` (W2, A, B, D, E, F), `P4D345_STOP_VETO_LANDED` (C, only in P4.D345's outcome a / b) and `P4D341_P4D356_SETTINGS_LANDED` (S2), then run the file by itself. State: OPEN.
+- **H9:** `HOLDS_UNKNOWN_VARIANT_EMPTY` — retire it or keep it, the unifier's call.
+- **H10:** the R-state table above.
+
+### 💸 for the dogfood pass (Tier 2 item 15)
+
+The order's twelve rows (its "💸 for the dogfood pass" section), unchanged. One addition: row 2's phrase reaches a Quilltap General tool (measured above).
+
+### Versions at close
+
+SPA **0.5.918**. No crate was bumped; `quilltap-harness` stays frozen.
+
+### Addendum — the closing re-runs (2026-11-03)
+
+- `salon-intervention-flow.spec.ts`, by itself, with (E) and (F) added: **2 passed / 8 skipped** (W1 and S1 live; W2, S2 and A–F gated).
+- `salon-custom-tools-flow.spec.ts` by itself: 4 passed / 1 failed again — the same beat at the same line (`:46`, the "Chats" heading, 5 s).
+  - **Attributed NOT this lane's:** the same beat, run alone with MAIN's built SPA (`8976915ea`'s `apps/web/dist`) swapped into the worktree, fails identically at `:46`.
+  - What both runs share is the server: this worktree's fresh DEBUG `quilltap-web`, because the cloned release bins were deleted per the order. The unifier's full suite uses release bins.
+  - Recorded for the unifier, not fixed: the beat's first post-unlock heading wait has no timeout of its own.
+- Cleanup: the pin worktree was removed, `/tmp/p4d346/` was removed, and the lane's `target/` was deleted. Nothing was pushed.
+
 ## P4.D344 — Storyteller mode SPA: the board, the bids, the turn-mode control, keepOrder without drag (v4 `b15fe9404` / `946a50a04` at the pin's shape, pin `236c04e35`) (lane record, 2026-11-02)
 
 **Branch:** `claude/p4.d344-storyteller-spa-897691` (worktree `.claude/worktrees/p4d344`), cut from `main` `8976915ea`. The session began in main's checkout; it moved to the new worktree before the first edit. **Status: LANE COMPLETE.** Tier 1 landed whole. Tier 2 landed whole (item 15, the arrangement; item 16, the concurrent bubbles). Tier 3 is recorded below. Nothing was pushed to `main`.

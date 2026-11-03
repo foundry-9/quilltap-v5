@@ -474,6 +474,101 @@ test.describe('P4.D346 — Pascal holds a roll in the Salon', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Tier 2 — the spans and the hidden consult (v4 `8ae8a127c`, `b02d902f3`)
+// ---------------------------------------------------------------------------
+
+test.describe('P4.D346 — what the dialog says about the deal', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let mountId = '';
+  let triggersBefore: boolean | undefined;
+
+  async function plant(path: string, definition: Record<string, unknown>): Promise<void> {
+    const listed = (await dispatch({ type: 'mountPointList' })) as { mountPoints?: Array<{ id: string; name: string }> };
+    mountId = (listed.mountPoints ?? []).find((m) => m.name === 'Quilltap General')?.id ?? '';
+    expect(mountId, 'the boot should have provisioned Quilltap General').toBeTruthy();
+    await dispatch({ type: 'mountFileWrite', mountPointId: mountId, path, content: `${JSON.stringify(definition, null, 2)}\n` });
+    const settings = (await dispatch({ type: 'chatSettings' })) as Record<string, unknown>;
+    triggersBefore = settings['customToolTriggers'] as boolean | undefined;
+    await dispatch({ type: 'chatSettingsUpdate', settings: { customToolTriggers: true } });
+  }
+
+  async function unplant(path: string): Promise<void> {
+    if (mountId) await dispatch({ type: 'mountFileDelete', mountPointId: mountId, path }).catch(() => {});
+    await dispatch({ type: 'chatSettingsUpdate', settings: { customToolTriggers: triggersBefore ?? false } }).catch(() => {});
+  }
+
+  async function say(page: Page, words: string): Promise<void> {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, CHAT_TITLE);
+    await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({ timeout: 30_000 });
+    await page.locator('.qt-chat-composer-input .qt-rich-editor-content').click();
+    await page.keyboard.type(words);
+    await page.keyboard.press('Enter');
+  }
+
+  test("(E) the roll's and the value's bounds are spelled out under their controls", async ({ page }) => {
+    test.skip(!P4D345_SERVER_LANDED, P4D345_GATE_REASON);
+    test.setTimeout(90_000);
+    const path = 'Tools/span_reader_e2e.tool.json';
+    await plant(path, {
+      $schema: '/schemas/qtap-custom-tool.schema.json',
+      name: 'span_reader_e2e',
+      title: 'Span Reader',
+      description: 'Reads its own span for the e2e walk.',
+      triggers: ['read the span'],
+      intervention: { enabled: true },
+      roll: { min: 1, max: 10, round: true, multiplier: 2 },
+      outcomes: [{ when: true, message: 'Read {{value}}.', state: 'info' }],
+    });
+    try {
+      await say(page, 'Please read the span.');
+      const dialog = page.getByTestId('custom-tool-intervention');
+      await expect(dialog).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByTestId('intervention-roll-span')).toHaveText(/^The table draws .+\.$/);
+      await expect(page.getByTestId('intervention-value-span')).toHaveText(/^After the modifiers, it comes to .+\.$/);
+      await page.getByRole('button', { name: 'Set the table aside', exact: true }).click();
+      await page.getByRole('button', { name: 'Set it aside', exact: true }).click();
+      await expect(dialog).toHaveCount(0, { timeout: 15_000 });
+    } finally {
+      await unplant(path);
+    }
+  });
+
+  test('(F) a hidden consult still offers Re-ask from the compact oracle section', async ({ page }) => {
+    test.skip(!P4D345_SERVER_LANDED, P4D345_GATE_REASON);
+    test.setTimeout(90_000);
+    const path = 'Tools/hidden_oracle_e2e.tool.json';
+    await plant(path, {
+      $schema: '/schemas/qtap-custom-tool.schema.json',
+      name: 'hidden_oracle_e2e',
+      title: 'Hidden Oracle',
+      description: 'Consults an oracle the operator may not read.',
+      triggers: ['ask the oracle'],
+      intervention: { enabled: true, fields: { llmPrompt: false, llmAnswer: false } },
+      roll: { min: 1, max: 10, round: true },
+      llm: { prompt: 'The roll came up {{value}}. Say YES or NO.', errorMessage: 'The wire crackles.' },
+      outcomes: [{ when: true, message: '{{llm}}', state: 'info' }],
+    });
+    try {
+      await say(page, 'Let us ask the oracle.');
+      const hidden = page.getByTestId('intervention-hidden-consult');
+      await expect(hidden).toBeVisible({ timeout: 30_000 });
+      await expect(hidden).toContainText('The oracle’s answer still fits the question.');
+      // 💸 one mock completion.
+      await hidden.getByRole('button', { name: 'Re-ask' }).click();
+      await expect(hidden).toContainText('Asked 2 times.', { timeout: 15_000 });
+      await page.getByRole('button', { name: 'Set the table aside', exact: true }).click();
+      await page.getByRole('button', { name: 'Set it aside', exact: true }).click();
+      await expect(page.getByTestId('custom-tool-intervention')).toHaveCount(0, { timeout: 15_000 });
+    } finally {
+      await unplant(path);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // helpers (copied — R-7)
 // ---------------------------------------------------------------------------
 

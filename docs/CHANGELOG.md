@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(spa): Tier 2 intervention beats, the summarizeWhen table, and the P4.D346 lane record
+
+_Versions: SPA 0.5.918._
+
+P4.D346 Tier 2 and the lane close. `e2e/salon-intervention-flow.spec.ts` gains two beats gated `P4D345_SERVER_LANDED` (item 13): (E) the roll's and the value's span hints under their controls, and (F) a hidden consult's compact oracle section, its Re-ask, and `Asked 2 times.`. The dialog spec's `summarizeWhen` table grows to twelve shapes (item 14 — a v4-untested helper, table-spec'd, no corpus). The order's status header reads LANE COMPLETE, and `status-log.md` carries the lane record: probe, pin ruling, red-first counts, measured sentences, corpora, gates, R-states, HANDOFFs H1–H10 and the 💸 rows.
+
 #### 2026-11-02 — test(e2e): the Pascal intervention walk, gated (P4.D346)
 
 _Versions: SPA 0.5.917._

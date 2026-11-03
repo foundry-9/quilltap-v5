@@ -742,7 +742,7 @@ describe('CustomToolInterventionDialog — v5-authored sections', () => {
 });
 
 describe('the pure helpers', () => {
-  it('summarizeWhen over true, one group, two groups, $param, a string operand, the llm pair and the other tests', () => {
+  it('summarizeWhen over twelve shapes: true, one group, two groups, $param, a string operand, the llm pair, the other tests, and their mixes', () => {
     expect(summarizeWhen(true)).toBe('otherwise');
     expect(summarizeWhen({ gte: 50 })).toBe('value ≥ 50');
     expect(summarizeWhen([{ gte: 50 }, { lt: 0.25 }])).toBe('value ≥ 50 or value < 0.25');
@@ -760,6 +760,9 @@ describe('the pure helpers', () => {
     );
     expect(summarizeWhen({ metadata: { mood: { neq: true } } } as never)).toBe('metadata.mood ≠ true');
     expect(summarizeWhen({} as never)).toBe('always');
+    expect(summarizeWhen({ gt: { $param: 'floor' }, params: { luck: { eq: true } }, progress: { 'p.percent': { gte: 50 } } } as never)).toBe(
+      '(value > params.floor and params.luck = true and progress tests)',
+    );
   });
 
   it('literalFrom over the five shapes', () => {
