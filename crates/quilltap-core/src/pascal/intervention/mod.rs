@@ -14,6 +14,7 @@
 pub mod eligibility;
 pub mod overrides;
 pub mod recompute;
+pub mod registry;
 pub mod spans;
 pub mod veto_result;
 pub mod view;

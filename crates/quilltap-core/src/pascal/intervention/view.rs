@@ -162,3 +162,121 @@ pub fn preview_parts(
     m.insert("warnings".into(), serde_json::json!(warnings));
     Value::Object(m)
 }
+
+/// One held run, as `GET ?action=interventions` lists it (v4 `holdView` →
+/// `InterventionHoldView`): `{id, tool, title, characterName, entrance,
+/// triggerPhrase?, createdAt, eligible, hasCharacter, definition, baseline,
+/// consults}`.
+///
+/// `definition.parameters` / `outcomes` / `effects` are v4's Zod-PARSED JSON,
+/// taken from the definition's own `Serialize` — the projection the
+/// definition corpus's `data` column holds byte-equal to v4's — never a
+/// hand-rebuilt shape.
+pub fn hold_view(pending: &super::registry::PendingIntervention) -> Value {
+    use super::eligibility::intervention_eligibility;
+    use super::recompute::presentation_for;
+
+    let hold = &pending.hold;
+    let definition = &hold.definition;
+    let baseline = &hold.baseline;
+    let presentation = presentation_for(definition, baseline.visibility, None, None);
+    let parsed = serde_json::to_value(definition).unwrap_or(Value::Null);
+
+    let mut m = Map::new();
+    m.insert("id".into(), Value::String(pending.id.clone()));
+    m.insert("tool".into(), Value::String(definition.name.clone()));
+    m.insert("title".into(), Value::String(presentation.title.clone()));
+    m.insert(
+        "characterName".into(),
+        hold.character_name
+            .clone()
+            .map(Value::String)
+            .unwrap_or(Value::Null),
+    );
+    m.insert(
+        "entrance".into(),
+        Value::String(hold.entrance.as_str().into()),
+    );
+    // `...(pending.triggerPhrase ? { triggerPhrase } : {})` — truthy.
+    if let Some(phrase) = hold.trigger_phrase.as_ref().filter(|p| !p.is_empty()) {
+        m.insert("triggerPhrase".into(), Value::String(phrase.clone()));
+    }
+    m.insert("createdAt".into(), Value::from(pending.created_at));
+    m.insert(
+        "eligible".into(),
+        intervention_eligibility(definition, baseline.roll_form).to_wire(),
+    );
+    m.insert(
+        "hasCharacter".into(),
+        Value::Bool(hold.character_id.is_some()),
+    );
+
+    let mut d = Map::new();
+    d.insert(
+        "parameters".into(),
+        parsed
+            .get("parameters")
+            .cloned()
+            .unwrap_or_else(|| Value::Object(Map::new())),
+    );
+    let outcomes = parsed
+        .get("outcomes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|o| {
+            let mut out = Map::new();
+            for key in ["when", "state", "message"] {
+                out.insert(key.into(), o.get(key).cloned().unwrap_or(Value::Null));
+            }
+            if let Some(brief) = o.get("brief") {
+                out.insert("brief".into(), brief.clone());
+            }
+            Value::Object(out)
+        })
+        .collect();
+    d.insert("outcomes".into(), Value::Array(outcomes));
+    d.insert(
+        "effects".into(),
+        parsed
+            .get("effects")
+            .cloned()
+            .unwrap_or_else(|| Value::Array(Vec::new())),
+    );
+    d.insert(
+        "revealOdds".into(),
+        Value::Bool(definition.reveal_odds != Some(false)),
+    );
+    d.insert("hasLlm".into(), Value::Bool(definition.llm.is_some()));
+    // `baseline.notation ? parseDiceNotation(notation) : null` → `diceSides`.
+    if let Some(notation) = baseline
+        .notation
+        .as_deref()
+        .filter(|n| !n.is_empty())
+        .and_then(crate::pascal::dice::parse_dice_notation)
+    {
+        d.insert("diceSides".into(), Value::from(notation.sides));
+    }
+    m.insert("definition".into(), Value::Object(d));
+
+    m.insert(
+        "baseline".into(),
+        preview_parts(
+            run_view(definition, baseline, &presentation),
+            false,
+            baseline.llm_prompt_rendered.as_deref(),
+            &[],
+            &[],
+        ),
+    );
+    m.insert(
+        "consults".into(),
+        Value::Array(
+            hold.consults
+                .iter()
+                .map(|c| serde_json::json!({ "ok": c.ok, "output": c.output, "prompt": c.prompt }))
+                .collect(),
+        ),
+    );
+    Value::Object(m)
+}

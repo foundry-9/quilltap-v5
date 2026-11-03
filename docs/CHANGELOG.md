@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): the hold registry and the hold view (P4.D345)
+
+_Versions: core 0.0.1389._
+
+`pascal::intervention::registry` ports v4 `registry.ts` as a process-global `Mutex` + `oneshot` (ruling R-10). `hold` registers the hold, logs `Custom tool run held for the operator`, publishes `customToolInterventions` for the chat, and hands back the receiver; the await lives in the run service. `settle_intervention` is first-wins: it remembers 200 settled ids, logs `Custom tool hold resolve refused` on a miss and `Custom tool hold resolved` with `decision` and `cause`, then publishes again. Also: `intervention_status`, `get_intervention`, `list_interventions` (oldest first, stable on ties), `add_consult`, and `reset_intervention_registry_for_tests`. There is no keep-alive (R-M). `view::hold_view` builds v4's `InterventionHoldView` from the definition's own parsed JSON. Unit tests cover first-wins, the ring's trim, the list order, and the two publish pins with a silence leg for a late settle.
+
 #### 2026-11-03 — feat(realtime): the customToolInterventions topic (P4.D345)
 
 _Versions: core 0.0.1388._
