@@ -930,6 +930,7 @@ fn message_finalizer_tier3_matches_oracle() {
             consult: None,
             turn_stopped: call.turn_stopped,
             turn_control: None,
+            storyteller: None, // P4.D343
         };
 
         let result = rt

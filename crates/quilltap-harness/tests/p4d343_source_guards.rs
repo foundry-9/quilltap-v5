@@ -92,3 +92,21 @@ fn dead_b15fe9404_lines_are_not_ported() {
         assert!(h.is_empty(), "`{needle}` ported: {h:?}");
     }
 }
+
+/// Unit S: `turnMode` is PATCH-ONLY in v4 (`patchOnlyFields`) — its one
+/// writer is `set_turn_mode`. v5's whole-row `ChatUpdate` must never gain a
+/// `turn_mode` field, or a stale snapshot could carry a mode back.
+#[test]
+fn chat_update_has_no_turn_mode_field() {
+    let path = repo_root().join("crates/quilltap-core/src/db/chats.rs");
+    let text = std::fs::read_to_string(&path).expect("chats.rs");
+    let start = text
+        .find("pub struct ChatUpdate {")
+        .expect("ChatUpdate struct");
+    let body = &text[start..start + text[start..].find("\n}\n").expect("struct end")];
+    let field = ["turn", "_mode"].concat();
+    assert!(
+        !body.contains(&format!("pub {field}")),
+        "ChatUpdate gained a `{field}` field — turnMode is patch-only (set_turn_mode)"
+    );
+}

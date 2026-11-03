@@ -599,7 +599,9 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // body or a core refusal answers, and the item PUT probes
     // `WardrobeItemGet { item_id }` before its body parse (typed-only, no
     // tri-state).
-    ("wardrobe_routes.rs", 32),
+    // P4.D343 (+1): `GET ?action=storyteller-round`'s `ChatStorytellerRound`
+    // (path id only — no body, no tri-state key).
+    ("wardrobe_routes.rs", 33),
 ];
 
 #[test]
@@ -636,8 +638,9 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 152,
-        "152 = 150 + P4.170's two (`wardrobe_routes.rs`'s chat-first `ChatInformsList` probe and \
+        total, 153,
+        "153 = 152 + P4.D343's one (`wardrobe_routes.rs`'s `ChatStorytellerRound`, the chat GET's `?action=storyteller-round`, v4 `b15fe9404` — its three POST arms go through `request_envelope` and add none). \
+         152 = 150 + P4.170's two (`wardrobe_routes.rs`'s chat-first `ChatInformsList` probe and \
          the item PUT's item-first `WardrobeItemGet` probe, v4's handler ordering). \
          150 = 149 + P4.D338's one (`photos_routes.rs`'s `PhotoAlbumsList`, the \
          `?action=albums` GET, v4 `680b71044`). \

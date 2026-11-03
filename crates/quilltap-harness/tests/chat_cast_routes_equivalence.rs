@@ -1606,6 +1606,7 @@ fn chat_cast_routes_match_oracle() {
                 upd.as_ref(),
                 add.as_ref(),
                 rm,
+                None, // P4.D343 turn_mode
             ));
             let tables = dump.then(|| cast_tables(&db, chat));
             check(name, &r, tables);

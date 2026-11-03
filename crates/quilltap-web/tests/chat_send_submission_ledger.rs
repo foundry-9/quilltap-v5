@@ -246,6 +246,7 @@ impl SpineFactory for LedgerSpineFactory {
             consult: None,
             brahma_console_send: Some(Arc::clone(&spine) as _),
             help_chat_send: None,
+            storyteller: None, // P4.D343
             recall_replay: None,
             announcement_preview: None,
             in_scene_voice: None,

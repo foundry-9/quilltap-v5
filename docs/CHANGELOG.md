@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(storyteller): Storyteller mode server — rounds, bids, the run, the turn-mode PUT — v4 `b15fe9404` / `946a50a04` unit S at `236c04e35` (P4.D343)
+
+_Versions: core 0.0.1384, host 0.0.220, web 0.0.253._
+
+A chat whose turn mode is `storyteller` now holds every public operator post and opens a round instead of a reply: every present LLM character seat (or, with the chat's talkativeness filter on, a weighted draw of them) is asked in parallel for a bid — a full in-character call built by the ordinary turn path with the bid section trailing, the tools offered with `tool_choice: "none"`, logged as `STORYTELLER_BID` with the round id, writing nothing else. Each bid streams as a `storytellerBid` frame; after 45 s or when all are in, the send closes with `roundOpen` and `chainComplete round_open`. New actions: `GET ?action=storyteller-round`, `POST ?action=storyteller-run` (sequential; `simultaneous` answers `not_available: storyteller simultaneous`), `storyteller-ask`, `storyteller-lie`, with v4's 400 / 404 / 409 texts. A chosen speaking turn runs under its bid's tier as the effect ceiling, carries a plan section, stores its bid record on the message, and defers memory extraction / danger classification to one round housekeeping. The chat PUT takes `turnMode` (leaving storyteller mode closes the open round), the bag takes `storytellerInviteFilter`, and the chat GET answers both after `isPaused`. Swipes re-roll under the stored plan. New realtime topic `storytellerRounds`; `replace` restores truncate `storyteller_rounds`; deleting a chat deletes its rounds.
+
 #### 2026-11-03 — feat(tools): declared tool effects + the turn's effect ceiling — v4 `b15fe9404` unit E at `236c04e35` (P4.D343)
 
 _Versions: core 0.0.1383._

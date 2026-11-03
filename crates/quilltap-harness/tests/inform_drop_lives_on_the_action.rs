@@ -15,7 +15,7 @@
 //! `bag_remove_participant` pair:
 //!
 //!   - `chat_cast::chat_remove_participant` → the pending row is GONE;
-//!   - `salon::chat_update(..., remove_participant_id)` → the pending row
+//!   - `salon::chat_update(..., remove_participant_id, None)` → the pending row
 //!     SURVIVES.
 //!
 //! A consumed row is seeded alongside the pending one in the action case, so the
@@ -220,6 +220,7 @@ fn the_chat_put_bag_twin_leaves_them_alone() {
             None, // updateParticipant
             None, // addParticipant
             Some(target.as_str()),
+            None, // P4.D343 turn_mode
         )
         .await;
         assert!(

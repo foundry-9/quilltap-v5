@@ -596,6 +596,12 @@ pub struct ProcessMessageResult {
     /// [`super::turn_holds::finish_held_post`]'s storyteller arm; the spine
     /// reads it (P4.D343's `open_round_on_send`).
     pub storyteller_hold: Option<StorytellerHold>,
+    // === P4.D343 ===
+    /// Storyteller (v4 `ProcessMessageResult.bid`): a BID build's outcome —
+    /// the one call's text and the menu it offered, or why it failed. Set only
+    /// by the orchestrator's bid short-circuit (and the Courier refusal); a bid
+    /// streams, saves and finalises nothing.
+    pub bid: Option<crate::storyteller::types::StorytellerBidCallOutcome>,
 }
 
 /// v4 `ProcessMessageResult.storytellerHold` — what the spine needs to open a
@@ -689,6 +695,12 @@ pub struct FinalizeOptions {
     /// the reply trigger site so a stop reaches a triggered tool. `None` off a
     /// registered Salon send (the enclave, the canned differentials).
     pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
+    // === P4.D343 (v4 `FinalizeMessageResponseOptions.storyteller`) ===
+    /// A storyteller speaking turn: the bid record stored on the message, the
+    /// ceiling the reply's triggered tools run under, and the housekeeping
+    /// deferred to the round's end. `None` on every other turn.
+    pub storyteller: Option<crate::storyteller::types::StorytellerTurnContext>,
+    // === end P4.D343 ===
 }
 
 /// The answer-confirmation inputs the finalizer forwards to the runner (v4's
@@ -765,6 +777,7 @@ where
         consult,
         turn_stopped,
         turn_control,
+        storyteller,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -1095,6 +1108,34 @@ where
     })
     .await?;
 
+    // === P4.D343 (v4 `message-finalizer.service.ts:305-317`): a storyteller
+    // turn records the bid it carried out, so a swipe re-runs it under the same
+    // plan. Never model-facing. Soft: a failure is WARN and the turn stands.
+    if let Some(st) = &storyteller {
+        let bid_chat_id = chat_id.clone();
+        let bid_message_id = assistant_message_id.clone();
+        let updates = serde_json::json!({ "storytellerBid": st.bid_record });
+        if let Err(error) = db
+            .write(move |writers| {
+                writers
+                    .main()
+                    .chat_messages()
+                    .update_message(&bid_chat_id, &bid_message_id, &updates)
+                    .map(|_| ())
+            })
+            .await
+        {
+            tracing::warn!(
+                target: "quilltap::message_finalizer",
+                chatId = %chat_id,
+                messageId = %assistant_message_id,
+                error = %error,
+                "Failed to record the storyteller bid on its message"
+            );
+        }
+    }
+    // === end P4.D343 ===
+
     // === P4.D291 (v4 `584d28164`, `message-finalizer.service.ts:290-300`) ===
     // The turn's recall record (stage trace, delivered pools, the ring line the
     // replay reads back) rides on the message it shaped. v4's catch WARN
@@ -1387,9 +1428,8 @@ where
                 chat_settings: trigger_settings,
                 now_ms: crate::clock::now_unix_ms(),
                 turn_control: turn_control.as_ref(),
-                // === P4.D343 (T1): v4 `effectCeiling: storyteller?.effectCeiling`
-                // — no Storyteller turn reaches the finalizer in this build yet.
-                effect_ceiling: None,
+                // === P4.D343 (T1): v4 `effectCeiling: storyteller?.effectCeiling`.
+                effect_ceiling: storyteller.as_ref().map(|s| s.effect_ceiling),
             },
             consult.as_deref(),
             &mut on_posted,
@@ -1543,7 +1583,17 @@ where
     }
 
     // --- Background triggers (message-finalizer.service.ts:496–549) ---
-    if let Some(settings) = &chat_settings {
+    // === P4.D343: a storyteller turn leaves the round's housekeeping to the
+    // round's end (v4 `:567-572`); `run_storyteller_round_housekeeping` runs it
+    // ONCE after the last speaking turn.
+    if let (Some(_), Some(st)) = (&chat_settings, &storyteller) {
+        tracing::debug!(
+            target: "quilltap::message_finalizer",
+            chatId = %chat_id,
+            roundId = %st.bid_record.round_id,
+            "Storyteller turn: housekeeping deferred to the end of the round"
+        );
+    } else if let Some(settings) = &chat_settings {
         // Per-turn memory extraction — fire when the turn closes OR autonomous.
         // v4 enqueues with `connectionProfile.id` (the ORIGINAL profile), not the
         // rerouted `effectiveProfile.id` (W4.2u).
@@ -1590,6 +1640,7 @@ where
         skipped_participant_id: None,
         yielded: false,
         storyteller_hold: None,
+        bid: None,
     })
 }
 
@@ -1648,6 +1699,34 @@ async fn run_assistant_carina<Q, P>(
 /// v4 `triggerTurnMemoryExtraction`: resolve the turn opener (or, when none, the
 /// latest non-system non-silent ASSISTANT message id as the anchor), then enqueue
 /// a single MEMORY_EXTRACTION job.
+/// A storyteller round's housekeeping, run ONCE after its last speaking turn
+/// (v4 `runStorytellerRoundHousekeeping`, P4.D343): memory extraction, the
+/// context-summary check and the danger classification — what each turn of a
+/// rotation chain triggers from the finalizer, but once for the whole round.
+///
+/// `ROUND_HOUSEKEEPING_SUMMARY_DEFERRAL`: the context-summary check inherits
+/// v5's documented finalizer deferral (the fold is its own verified unit; the
+/// finalizer's contribution is the gate) — recorded, not stubbed. Extraction
+/// keeps the finalizer's `cheapLLMSettings` gate (`cheap_llm_settings_present`).
+pub async fn run_storyteller_round_housekeeping(
+    db: &Db,
+    chat_id: &str,
+    user_id: &str,
+    connection_profile_id: &str,
+    cheap_llm_settings_present: bool,
+) -> Result<(), DbError> {
+    tracing::debug!(
+        target: "quilltap::message_finalizer",
+        chatId = %chat_id,
+        "Storyteller round housekeeping"
+    );
+    if cheap_llm_settings_present {
+        trigger_turn_memory_extraction(db, chat_id, user_id, connection_profile_id).await?;
+    }
+    trigger_chat_danger_classification(db, chat_id, user_id, connection_profile_id).await?;
+    Ok(())
+}
+
 pub(crate) async fn trigger_turn_memory_extraction(
     db: &Db,
     chat_id: &str,

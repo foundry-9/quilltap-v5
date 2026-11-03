@@ -194,6 +194,7 @@ impl SpineFactory for CreateSpineFactory {
             brahma_console_send: None,
             // P4.9I2A: the help-chat send driver — none in this canned bundle.
             help_chat_send: None,
+            storyteller: None, // P4.D343
             recall_replay: None,
             announcement_preview: None,
             in_scene_voice: None,

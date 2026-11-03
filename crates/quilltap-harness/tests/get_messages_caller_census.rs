@@ -314,6 +314,9 @@ const CENSUS: &[(&str, &str, Variant)] = &[
         F,
     ),
     ("services/title_update_job.rs", "handle_title_update", F),
+    // P4.D343 (v4 `planStorytellerRun` → `repos.chats.getMessages`, a fallback
+    // read): the rotation the run order is ranked by.
+    ("services/storyteller_rounds.rs", "rotation_order", F),
     ("services/turn_orchestrator.rs", "should_chain_next", F),
     ("services/turn_orchestrator.rs", "handle_turn_action", F),
     // P4.D296: the ONE extraction pipeline's message read (v4
@@ -509,8 +512,10 @@ fn every_get_messages_call_site_has_chosen_its_variant() {
     // counted in `build_context.rs`) and the per-turn off-scene scan (deleted
     // with v4 `9a88f862f`) — and added ONE in a new file
     // (`api/chat_absent_mentions.rs`): 79 and 49.
-    assert_eq!((swallowing, strict), (79, 7), "census totals");
-    assert_eq!(file_count, 49, "census files");
+    // P4.D343 added ONE fallback site in a new file
+    // (`services/storyteller_rounds.rs::rotation_order`): 80 and 50.
+    assert_eq!((swallowing, strict), (80, 7), "census totals");
+    assert_eq!(file_count, 50, "census files");
 }
 
 /// The scanner itself: comments skipped, definitions are declarations not

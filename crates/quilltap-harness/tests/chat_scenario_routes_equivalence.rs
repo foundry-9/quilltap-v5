@@ -1703,6 +1703,7 @@ fn chat_update_surface_cannot_reach_scenario_text() {
         None,
         None,
         None,
+        None, // P4.D343 turn_mode
     ));
     assert!(
         !matches!(r, Response::Error(_)),

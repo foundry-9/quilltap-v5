@@ -673,6 +673,16 @@ pub async fn chat_action_get(
             }
         }
         // === end P4.D205 ===
+        // === P4.D343 (v4 `b15fe9404`): `GET ?action=storyteller-round` — the
+        // chat's active round, else its latest, else `null`. ===
+        Some("storyteller-round") => {
+            let req = CoreRequest::ChatStorytellerRound { chat_id: path.0 };
+            match dispatch_core(&state.0, req).await {
+                Ok(resp) => unwrap_to_http(resp, StatusCode::OK),
+                Err(r) => r,
+            }
+        }
+        // === end P4.D343 ===
         // The SillyTavern-JSONL byte download (P4.9E3B — v4 get.ts:46–127).
         // Headers live at this edge: `application/x-ndjson` + v4's exact
         // attachment filename (the characters_routes.rs byte-leg precedent).
@@ -747,6 +757,8 @@ const CHAT_GET_ACTIONS: &[&str] = &[
     "inventory",
     "photo-albums",
     "informs",
+    // P4.D343 (v4 `handlers/get.ts:81`).
+    "storyteller-round",
     "group-stores",
     "mailbox",
     "accessible-stores",
@@ -820,6 +832,10 @@ const CHAT_POST_ACTIONS: &[&str] = &[
     "merge-conversation",
     "scenario",
     "save-image",
+    // P4.D343 (v4 `handlers/post.ts:141-143`) — appended LAST.
+    "storyteller-run",
+    "storyteller-ask",
+    "storyteller-lie",
 ];
 
 // ===========================================================================
@@ -1030,6 +1046,34 @@ pub async fn chat_action_post(
             }
         }
         // === end P4.D335 ===
+        // === P4.D343 (v4 `actions/storyteller.ts`): the three Storyteller
+        // POSTs through the shared envelope. The handlers run v4's chat 404 and
+        // ZodError arms (`Invalid request`); a body that does not parse to an
+        // object carries no keys, so it reaches that same arm. `storyteller-run`
+        // answers an EMPTY reply — its frames ride the chat-scoped event stream
+        // exactly like a `turn` (R-8). ===
+        "storyteller-run" | "storyteller-ask" | "storyteller-lie" => {
+            let parsed: serde_json::Value = serde_json::from_str(&body)
+                .unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+            let (kind, keys): (&str, &[&str]) = match action {
+                "storyteller-run" => (
+                    "chatStorytellerRun",
+                    &["roundId", "participantIds", "order", "keepOrder"],
+                ),
+                "storyteller-ask" => ("chatStorytellerAsk", &["roundId", "participantId"]),
+                _ => ("chatStorytellerLie", &["roundId"]),
+            };
+            match crate::request_envelope::request_envelope(
+                kind,
+                &parsed,
+                keys,
+                &[("chatId", serde_json::Value::String(chat_id.clone()))],
+            ) {
+                Some(r) => r,
+                None => return error_json(StatusCode::BAD_REQUEST, "Invalid request"),
+            }
+        }
+        // === end P4.D343 ===
         // Only these POST actions are served on this REST edge; the other
         // v4-known chat actions ride POST /api/dispatch (a loud pointer, not a
         // silent 404 — the mount-point-action precedent — and never the
@@ -1038,7 +1082,8 @@ pub async fn chat_action_post(
             return error_json(
                 StatusCode::BAD_REQUEST,
                 "Only the equip, wardrobe-rollback, regenerate-avatar, inform, \
-                 cancel-inform, stop-turn and raise-hand actions are served on this \
+                 cancel-inform, stop-turn, raise-hand, storyteller-run, \
+                 storyteller-ask and storyteller-lie actions are served on this \
                  route; the other chat actions ride POST /api/dispatch",
             )
         }
@@ -1274,6 +1319,31 @@ mod p4d316_tests {
 
     /// P4.D325: v4's Inventory keys at their map positions (`get.ts:76-78`,
     /// `post.ts:112-116`).
+    /// P4.D343: the Storyteller keys at v4's map positions — the GET key
+    /// right after `informs` (`get.ts:81`), the three POST keys LAST
+    /// (`post.ts:141-143`).
+    #[test]
+    fn the_storyteller_keys_sit_at_v4s_positions() {
+        let get = |a: &str| {
+            super::CHAT_GET_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        assert_eq!(get("storyteller-round"), get("informs") + 1);
+        assert_eq!(get("group-stores"), get("storyteller-round") + 1);
+        let post = |a: &str| {
+            super::CHAT_POST_ACTIONS
+                .iter()
+                .position(|x| *x == a)
+                .unwrap()
+        };
+        let len = super::CHAT_POST_ACTIONS.len();
+        assert_eq!(post("storyteller-run"), post("save-image") + 1);
+        assert_eq!(post("storyteller-ask"), post("storyteller-run") + 1);
+        assert_eq!(post("storyteller-lie"), len - 1);
+    }
+
     #[test]
     fn the_inventory_keys_sit_at_v4s_positions() {
         let get = |a: &str| {

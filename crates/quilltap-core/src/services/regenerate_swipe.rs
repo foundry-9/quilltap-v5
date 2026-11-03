@@ -685,6 +685,12 @@ where
         // Regenerate-as-swipe never offers the "nothing to add" pass (v4 passes
         // no `turnSkip`).
         turn_skip: None,
+        // === P4.D343 (v4 `regenerate-swipe.service.ts:206-216`): a storyteller
+        // line re-rolls under the plan it carried out — the reroll form (no
+        // tools, no pass). A swipe is a turn, never a bid.
+        purpose: crate::services::build_context::ContextPurpose::Turn,
+        storyteller_section: storyteller_reroll_section(&target_message),
+        // === end P4.D343 ===
         offer_yield: false,
         // Regenerate-swipe does not run the proactive pre-compute pass (P4.19);
         // its rebuild assembles recall with the turn's own query, as before.
@@ -1120,6 +1126,16 @@ where
     if let Some(trail) = route_trail.filter(|t| !t.is_empty()) {
         swipe.insert("routeTrail".into(), Value::Array(trail));
     }
+    // === P4.D343 (v4 `:346-347`): the variant carries out the same bid as the
+    // line it re-rolls — `...(targetMessage.storytellerBid ? {…} : {})`, after
+    // the trail.
+    if let Some(bid) = target_message
+        .get("storytellerBid")
+        .filter(|v| !v.is_null())
+    {
+        swipe.insert("storytellerBid".into(), bid.clone());
+    }
+    // === end P4.D343 ===
     let new_swipe = Value::Object(swipe);
 
     let write_chat_id = chat_id.clone();
@@ -1174,6 +1190,24 @@ where
 
     Ok(new_swipe)
 }
+
+// === P4.D343 ===
+/// The reroll plan section for a target carrying a `storytellerBid` (v4
+/// `buildPlanSection({…, spokenSince: [], allowedTools: [], reroll: true})`);
+/// `None` for an ordinary line or a record the schema does not read.
+fn storyteller_reroll_section(target_message: &Value) -> Option<String> {
+    let record: crate::storyteller::types::StorytellerBidRecord =
+        serde_json::from_value(target_message.get("storytellerBid")?.clone()).ok()?;
+    Some(crate::storyteller::prompts::build_plan_section(
+        &record.plan,
+        record.tier,
+        &record.tools_named,
+        &[],
+        &[],
+        true,
+    ))
+}
+// === end P4.D343 ===
 
 #[cfg(test)]
 mod tests {

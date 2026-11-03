@@ -196,6 +196,7 @@ pub mod sillytavern;
 pub mod speaker_names;
 pub mod startup_scenarios;
 pub mod story_background_job;
+pub mod storyteller_rounds; // P4.D343
 pub mod suparna_mail;
 pub mod suparna_notifications;
 pub mod system_prompt_compiler;

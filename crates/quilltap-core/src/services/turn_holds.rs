@@ -168,6 +168,7 @@ pub async fn finish_held_post<SNK: EventSink + Sync>(
                 carina: !params.content.is_empty()
                     && crate::carina_parser::parse_carina_query(Some(params.content)).is_some(),
             }),
+            bid: None,
         });
     }
 
@@ -195,6 +196,7 @@ pub async fn finish_held_post<SNK: EventSink + Sync>(
         skipped_participant_id: None,
         yielded: false,
         storyteller_hold: None,
+        bid: None,
     })
 }
 

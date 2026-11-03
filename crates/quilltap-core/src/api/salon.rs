@@ -422,6 +422,21 @@ fn assemble_chat_get(
             .unwrap_or(json!("[]")),
     );
     out.insert("isPaused".into(), json!(bool_or("isPaused", false)));
+    // === P4.D343 (v4 `handlers/get.ts:377-379`): the two Storyteller keys right
+    // after `isPaused` — `turnMode ?? 'rotation'` (NEVER null on the wire; the
+    // reader keeps a NULL cell absent) and `storytellerInviteFilter ?? false`.
+    out.insert(
+        "turnMode".into(),
+        json!(chat
+            .get("turnMode")
+            .and_then(Value::as_str)
+            .unwrap_or("rotation")),
+    );
+    out.insert(
+        "storytellerInviteFilter".into(),
+        json!(bool_or("storytellerInviteFilter", false)),
+    );
+    // === end P4.D343 ===
     // v4 `bd419ae9` (bug 37): surfaced so the client can explain a silent
     // all-LLM pause (opens AllLLMPauseModal). `?? 0` (materialized f64; the
     // harness's canon_numbers collapses an integer-valued float).
@@ -1603,6 +1618,7 @@ pub async fn chat_update(
     update_participant: Option<&Value>,
     add_participant: Option<&Value>,
     remove_participant_id: Option<&str>,
+    turn_mode: Option<&Value>,
 ) -> Response {
     let chat_id_owned = chat_id.to_string();
     let existing = match db.read_main(move |conn| chats_read::find_by_id(conn, &chat_id_owned)) {
@@ -1627,6 +1643,16 @@ pub async fn chat_update(
         },
         Some(_) => return bad_request("Validation error"),
     };
+    // === P4.D343: `turnMode` (`ChatTurnModeSchema.optional()`) — part of the
+    // same whole-request parse, so a `null` or an unknown mode refuses the PUT
+    // with nothing written (the bag included).
+    let requested_turn_mode: Option<&'static str> = match turn_mode {
+        None => None,
+        Some(Value::String(m)) if m == "rotation" => Some("rotation"),
+        Some(Value::String(m)) if m == "storyteller" => Some("storyteller"),
+        Some(_) => return bad_request("Validation error"),
+    };
+    // === end P4.D343 ===
 
     // Existence gates (v4 `processChatUpdates`): a non-null roleplayTemplateId /
     // projectId in the bag must resolve, else 404.
@@ -1868,6 +1894,54 @@ pub async fn chat_update(
             }
         }
     }
+    // === P4.D343: the turn mode (v4 `helpers.ts:592-603`) — AFTER the bag and
+    // the participant families, BEFORE the Concierge flip. Patch-only: its own
+    // setter. Leaving storyteller mode closes whatever round was still open.
+    if let Some(mode) = requested_turn_mode {
+        let before = chat
+            .get("turnMode")
+            .and_then(Value::as_str)
+            .unwrap_or("rotation")
+            .to_string();
+        let cid = chat_id.to_string();
+        if let Err(e) = db
+            .write(move |w| {
+                Ok(
+                    crate::db::chats::ChatsRepository::new(w.main().connection())
+                        .set_turn_mode(&cid, mode),
+                )
+            })
+            .await
+        {
+            return internal(e);
+        }
+        if before == "storyteller" && mode != "storyteller" {
+            if let Err(e) = crate::services::storyteller_rounds::abandon_storyteller_round(
+                db,
+                chat_id,
+                crate::storyteller::types::StorytellerClosedReason::Abandoned,
+            )
+            .await
+            {
+                return internal(e);
+            }
+        }
+        let cid = chat_id.to_string();
+        match db.read_main(move |conn| chats_read::find_by_id(conn, &cid)) {
+            Ok(Some(refetched)) => chat = refetched,
+            Ok(None) => {}
+            Err(e) => return internal(e),
+        }
+        tracing::info!(
+            target: "quilltap::chats",
+            chatId = %chat_id,
+            from = %before,
+            to = %mode,
+            "[Chats v1] Turn mode set"
+        );
+    }
+    // === end P4.D343 ===
+
     // Per-chat Concierge state (Moderated / Unmoderated / Locked). Routed through
     // the one transition chokepoint so each change does the right DB writes and
     // posts the Concierge's announcement in one place. v4 runs this AFTER `addParticipant` and BEFORE
@@ -2035,6 +2109,14 @@ fn build_chat_update_columns(
             _ => return Err("Validation error".to_string()),
         }
     }
+    // === P4.D343: `storytellerInviteFilter` (`z.boolean().optional()`): a
+    // non-boolean fails v4's whole-request Zod parse → 400 `Validation error`
+    // (v4's bytes, not the per-column `Invalid <col>` below).
+    if let Some(v) = obj.get("storytellerInviteFilter") {
+        let b = v.as_bool().ok_or_else(|| "Validation error".to_string())?;
+        out.push(("storytellerInviteFilter", SqlValue::Integer(b as i64)));
+    }
+    // === end P4.D343 ===
     // Boolean columns (non-nullable → INTEGER 0/1).
     for col in [
         "isPaused",

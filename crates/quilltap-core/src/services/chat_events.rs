@@ -465,7 +465,139 @@ pub enum ChatEvent {
         #[serde(flatten)]
         payload: Box<TurnDonePayload>,
     },
+    // === P4.D343 (v4 `b15fe9404` — R-9: the Storyteller frames, ONE block) ===
+    /// `{storytellerRound: StorytellerRound}` (v4 `encodeStorytellerRoundEvent`)
+    /// — the round a storyteller post opened, with its pending cards.
+    StorytellerRound {
+        #[serde(rename = "storytellerRound")]
+        storyteller_round: serde_json::Value,
+    },
+    /// `{storytellerBid: {roundId, bid}}` (v4 `encodeStorytellerBidEvent`) —
+    /// one seat's bid landed (or failed, or passed).
+    StorytellerBid {
+        #[serde(rename = "storytellerBid")]
+        storyteller_bid: StorytellerBidFrame,
+    },
+    /// `{roundOpen: true, roundId}` (v4 `encodeRoundOpenEvent`) — the board is
+    /// the operator's; the send closes after it.
+    RoundOpen {
+        #[serde(rename = "roundOpen")]
+        round_open: TrueBool,
+        #[serde(rename = "roundId")]
+        round_id: String,
+    },
+    /// A frame a CONCURRENT storyteller turn wrote (v4 `taggingController`):
+    /// the inner frame's keys, then `participantId` (only when the frame lacks
+    /// one), then `concurrent: true` — v4's spread order. A non-object frame
+    /// (none exists today) passes through untouched.
+    Tagged(TaggedEvent),
+    // === end P4.D343 ===
 }
+
+// === P4.D343 ===
+/// The `storytellerBid` frame's payload (v4 `{ roundId, bid }`).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorytellerBidFrame {
+    pub round_id: String,
+    pub bid: serde_json::Value,
+}
+
+/// [`ChatEvent::Tagged`]'s body: the inner frame and the seat it belongs to.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaggedEvent {
+    pub inner: Box<ChatEvent>,
+    pub participant_id: String,
+}
+
+impl Serialize for TaggedEvent {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let inner = serde_json::to_value(&*self.inner).map_err(serde::ser::Error::custom)?;
+        crate::storyteller::sse_tag::tag_frame(inner, &self.participant_id).serialize(s)
+    }
+}
+
+/// A sink that tags every frame with one concurrent turn's participant and
+/// forwards it (v4 `taggingController`). Closing is the round's, not a turn's.
+pub struct TaggingSink<'a> {
+    pub inner: &'a dyn EventSink,
+    pub participant_id: String,
+}
+
+impl EventSink for TaggingSink<'_> {
+    fn emit(&self, event: ChatEvent) {
+        self.inner.emit(ChatEvent::Tagged(TaggedEvent {
+            inner: Box::new(event),
+            participant_id: self.participant_id.clone(),
+        }));
+    }
+}
+
+/// A sink that discards everything — a bid streams nothing (v4
+/// `sinkController`).
+pub struct DiscardSink;
+
+impl EventSink for DiscardSink {
+    fn emit(&self, _event: ChatEvent) {}
+}
+
+#[cfg(test)]
+mod storyteller_frame_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn the_three_frames_and_the_tag_in_bytes() {
+        let round = ChatEvent::StorytellerRound {
+            storyteller_round: json!({"id": "r1", "bids": []}),
+        };
+        assert_eq!(
+            serde_json::to_string(&round).unwrap(),
+            r#"{"storytellerRound":{"id":"r1","bids":[]}}"#
+        );
+        let bid = ChatEvent::StorytellerBid {
+            storyteller_bid: StorytellerBidFrame {
+                round_id: "r1".into(),
+                bid: json!({"participantId": "p1"}),
+            },
+        };
+        assert_eq!(
+            serde_json::to_string(&bid).unwrap(),
+            r#"{"storytellerBid":{"roundId":"r1","bid":{"participantId":"p1"}}}"#
+        );
+        let open = ChatEvent::RoundOpen {
+            round_open: TrueBool,
+            round_id: "r1".into(),
+        };
+        assert_eq!(
+            serde_json::to_string(&open).unwrap(),
+            r#"{"roundOpen":true,"roundId":"r1"}"#
+        );
+        let tagged = ChatEvent::Tagged(TaggedEvent {
+            inner: Box::new(ChatEvent::Content {
+                content: "hi".into(),
+            }),
+            participant_id: "p1".into(),
+        });
+        assert_eq!(
+            serde_json::to_string(&tagged).unwrap(),
+            r#"{"content":"hi","participantId":"p1","concurrent":true}"#
+        );
+        let already = ChatEvent::Tagged(TaggedEvent {
+            inner: Box::new(ChatEvent::turn_start(TurnStartPayload {
+                participant_id: "p0".into(),
+                character_name: "Ada".into(),
+                chain_depth: 0,
+            })),
+            participant_id: "p1".into(),
+        });
+        assert_eq!(
+            serde_json::to_string(&already).unwrap(),
+            r#"{"turnStart":true,"participantId":"p0","characterName":"Ada","chainDepth":0,"concurrent":true}"#
+        );
+    }
+}
+// === end P4.D343 ===
 
 /// One `fileProcessing` row — v4 `encodeFallbackInfo`'s `fallbackInfo` element
 /// (`streaming.service.ts:569-574`). Field order = v4's object literal

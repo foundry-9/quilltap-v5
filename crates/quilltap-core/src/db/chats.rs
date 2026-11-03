@@ -1619,6 +1619,21 @@ impl<'c> ChatsRepository<'c> {
             );
         }
         // === end P4.D205 ===
+        // === P4.D343 (C-2) ===
+        // Sweep the chat's `storyteller_rounds` rows. On v4 the migration's FK
+        // (`ON DELETE CASCADE`) does it; a v5-provisioned instance carries no
+        // FK (the generateDDL surface), so this call IS the cascade.
+        // Best-effort with a warn, the informs sweep's shape.
+        if let Err(e) = super::storyteller_rounds::StorytellerRoundsRepository::new(self.conn)
+            .delete_by_chat_id(id)
+        {
+            tracing::warn!(
+                chatId = %id,
+                error = %e,
+                "[Chats] Failed to delete storyteller rounds for chat"
+            );
+        }
+        // === end P4.D343 ===
         Ok(true)
     }
 
@@ -1896,6 +1911,47 @@ impl<'c> ChatsRepository<'c> {
         );
         written
     }
+
+    // === P4.D343 (v4 `b15fe9404`, contract K / C-2 consumer) ===
+    /// Write a chat's turn mode (v4 `ChatsRepository.setTurnMode`). The ONE
+    /// writer of `turnMode` — patch-only in v4, so no whole-row update can
+    /// carry a stale copy back (v5's [`ChatUpdate`] has no `turn_mode` field at
+    /// all). `'rotation'` is stored as NULL. STAMPS `updatedAt` (unlike
+    /// [`Self::set_concierge_mode`]). A failed write logs v4's `safeQuery` line
+    /// and answers `false`; DEBUG `Turn mode write` either way. Returns whether
+    /// a row was written.
+    pub fn set_turn_mode(&self, chat_id: &str, mode: &str) -> bool {
+        let stored = (mode != "rotation").then_some(mode);
+        let now = crate::clock::now_iso();
+        let written = match self.conn.execute(
+            r#"UPDATE chats SET "turnMode" = ?1, "updatedAt" = ?2 WHERE id = ?3"#,
+            params![stored, now, chat_id],
+        ) {
+            Ok(n) => n > 0,
+            Err(e) => {
+                tracing::error!(
+                    target: "quilltap::db",
+                    collection = "chats",
+                    chatId = %chat_id,
+                    mode = %mode,
+                    context = "storyteller",
+                    error = %e,
+                    "Failed to write turn mode"
+                );
+                false
+            }
+        };
+        tracing::debug!(
+            target: "quilltap::db",
+            chatId = %chat_id,
+            mode = %mode,
+            written,
+            context = "storyteller",
+            "Turn mode write"
+        );
+        written
+    }
+    // === end P4.D343 ===
 
     // P4.D288 (v4 `ac6348c5f`, the human's 2026-10-13 RETIRE ruling): the
     // OTHER-pass watermark COLUMN and its one writer

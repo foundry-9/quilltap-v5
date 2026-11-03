@@ -1063,6 +1063,12 @@ impl PostProsperoCarinaError for ThreadedProspero {
 /// The [`EventSink`] adapter: wraps each [`ChatEvent`] in
 /// `Event::chat(chat_id, frame)` and publishes on the engine broadcast. A
 /// send with no subscribers is fine (fire-and-forget, per the sink contract).
+// === P4.D343: the Storyteller host half (a child module — it reuses this
+// file's private per-call assembly types). ===
+#[path = "storyteller_spine.rs"]
+mod storyteller_spine;
+// === end P4.D343 ===
+
 pub struct BroadcastSink {
     pub chat_id: String,
     pub tx: tokio::sync::broadcast::Sender<Event>,
@@ -1693,6 +1699,25 @@ where
                 }
             };
 
+        // === P4.D343 (S2, v4 `handleSendMessage:172-178`): the post is
+        // recorded; open a round of bids instead of a reply. The stream carries
+        // the bids as they land and ends with `roundOpen`; no chain, no
+        // after-turns housekeeping. The reply is the hold's result.
+        if let Some(hold) = initial.storyteller_hold.clone() {
+            self.open_round_on_send(&chat_id, hold, &sink).await?;
+            return Ok(ChatSendResultDto {
+                message_id: initial.message_id.clone(),
+                has_content: initial.has_content,
+                is_multi_character: initial.is_multi_character,
+                is_paused: initial.is_paused,
+                user_participant_id: initial.user_participant_id.clone(),
+            });
+        }
+        // Storyteller mode never chains: a nudge (or Continue) runs one turn,
+        // with no ceiling, and the floor returns to the operator (v4 `:182-184`,
+        // a SECOND chat read).
+        let storyteller_single_turn = self.storyteller_single_turn(&chat_id, req.continue_mode);
+        // === end P4.D343 ===
         let dto = ChatSendResultDto {
             message_id: initial.message_id.clone(),
             has_content: initial.has_content,
@@ -1760,8 +1785,8 @@ where
                 never_pause_for_user: false,
                 // A whisper's target answers once; the floor then goes back to
                 // the operator (bug 258).
-                // S2: P4.D343 appends `|| storyteller_single_turn`
-                single_turn: is_whisper,
+                // S2: P4.D343 appends `|| storyteller_single_turn`.
+                single_turn: is_whisper || storyteller_single_turn,
                 chain_start_time_ms: now_ms,
                 config: ChainConfig::default(),
             },
@@ -3661,6 +3686,9 @@ pub struct SpineBundle {
     /// The help-chat send driver (P4.9I2A — the help orchestrator; `None` for
     /// canned test factories — the arm answers its NAMED refusal). ⚠ LIVE spend.
     pub help_chat_send: Option<Arc<dyn quilltap_core::api::help_chats::HelpChatSendDriver>>,
+    /// The Storyteller driver (P4.D343 — the run + ask verbs; `None` for canned
+    /// test factories, whose engines answer the named not-assembled refusal).
+    pub storyteller: Option<Arc<dyn quilltap_core::api::chat_storyteller::StorytellerDriver>>,
     /// The recall-replay runner (P4.d13 — episodic recall §3; `None` for canned
     /// test factories — the arm answers the loud not-assembled error).
     pub recall_replay: Option<Arc<dyn quilltap_core::api::recall_replay::RecallReplayDriver>>,
@@ -4070,6 +4098,7 @@ impl SpineFactory for ProductionSpineFactory {
             // (streaming + tool runner + pricing + the summary-check seam), on
             // real spend. 💸 One streamed call per help character per send.
             help_chat_send: Some(Arc::clone(&spine) as _),
+            storyteller: Some(Arc::clone(&spine) as _), // P4.D343
             // P4.9E2A (the unification wire): the in-character announcement
             // rewriter, LIVE. The lane shipped the runner and its seam but owned
             // neither `spine.rs` nor the host's assembly, so it left the seam

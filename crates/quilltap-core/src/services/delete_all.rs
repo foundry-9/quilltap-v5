@@ -225,6 +225,10 @@ const FORMAT3_MAIN_TABLES: &[&str] = &[
     // ids it is about to recreate (the per-timeline unique indexes)."
     "chat_wardrobe_history",
     // === end P4.D317 ===
+    // === P4.D343 (v4 `b15fe9404`, `delete-service.ts:60-65`) ===
+    // The storyteller rounds: not backed up, so a `replace` restore clears them.
+    "storyteller_rounds",
+    // === end P4.D343 ===
 ];
 
 /// ## ⚠ DELIBERATE DIVERGENCE (dogfood #57, 2026-08-03) — v5 wipes what v4 leaks
@@ -653,6 +657,7 @@ mod p4d293_truncate_list_tests {
                 "text_replacement_rules",
                 "wardrobe_wear_stats",
                 "chat_wardrobe_history",
+                "storyteller_rounds",
             ]
         );
         assert_eq!(super::V5_EXTRA_MAIN_TABLES, &["conversation_annotations"]);

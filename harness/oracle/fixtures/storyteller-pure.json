@@ -1,0 +1,848 @@
+{
+  "_comment": "P4.D343 storyteller_pure_equivalence corpus: inputs for v4's REAL lib/storyteller/{bid-parse,tiers,cards,invite,prompts,sse-tag,bid-call(buildBidOffer)}.ts at the pin 236c04e35. Both sides read this file.",
+  "replies": [
+    "BID: speak\nTIER: lookup\nTOOLS: doc_read_file, run_custom:peek\nPLAN: I check the ledger, then tell them.",
+    "```\n**plan** - I say hello\n   and wave.\n*bid*: Speak\ntier = SIMPLE\ntools: none\n```",
+    "BID: pass\nPLAN: Nothing to add.",
+    "BID: speak\nTIER: write",
+    "BID: speak\nTIER: read-only lookup",
+    "",
+    "   \n  ",
+    "I would love to speak!",
+    "BID: maybe later",
+    "```text\nBID: speak\nTIER: act\nTOOLS: doc_write_file\nPLAN: Write it down.\n```",
+    "__BID__: speak\n__TIER__: lookup\nPLAN: Fine.",
+    "PLAN: First the plan.\nTIER: simple\nBID: speak",
+    "TOOL: state\nBID: speak\nTIER: act\nPLAN: Set the flag.",
+    "BID = speak\nTIER = lookup\nTOOLS = search\nPLAN = Look.",
+    "BID \u2013 speak\nTIER \u2013 act\nPLAN \u2013 En dash.",
+    "BID \u2014 speak\nTIER \u2014 destroy\nTOOLS \u2014 doc_delete_file\nPLAN \u2014 Em dash.",
+    "BID: Speak!\nTIER: simple\nPLAN: Exclaim.",
+    "BID: pass \u2014 nothing to add",
+    "BID: speak\nTIER: reply\nPLAN: r",
+    "BID: speak\nTIER: look up\nPLAN: l",
+    "BID: speak\nTIER: delete\nPLAN: d",
+    "BID: speak\nTIER: action\nPLAN: a",
+    "BID: speak\nTIER: speak\nPLAN: s",
+    "BID: speak\nTOOLS: run_custom:coin, doc_read_file and state()\nPLAN: Three tools.",
+    "BID: speak\nTOOLS: none\nPLAN: No tools.",
+    "BID: speak\nTOOLS: n/a\nPLAN: x",
+    "BID: speak\nTOOLS: -\nPLAN: x",
+    "BID: speak\nTOOLS: \u2014\nPLAN: x",
+    "BID: speak\nTOOLS: search; search, state\nPLAN: dup",
+    "BID: speak\nTOOLS: `search`, \"state\", 'doc_grep'.\nPLAN: wrapped",
+    "BID: speak\nPLAN: line one\nline two\n\nline three",
+    "BID: speak\r\nTIER: lookup\r\nPLAN: crlf\r\n",
+    "BID\u00a0: speak\nPLAN: nbsp before the colon",
+    "> BID: speak\n> TIER: act\n> PLAN: quoted",
+    "- BID: speak\n- TIER: lookup\n- PLAN: bulleted",
+    "* **BID**: yes\n* **TIER**: lookup\n* **PLAN**: \"quoted plan\"",
+    "BID: no\nTIER: act",
+    "BID: decline\nPLAN:",
+    "BID: skip",
+    "BID: none",
+    "BID: respond\nTIER: ACT\nPLAN: upper",
+    "BID: act now\nPLAN: act is a speak word",
+    "bid: speak\ntier: destroyer\nplan: prefix synonym",
+    "BID: speakers\nPLAN: no word boundary",
+    "BID:\nPLAN: empty bid",
+    "Some preamble\nBID: speak\nTIER: simple\nPLAN: after preamble",
+    "BID: speak\nTIER: lookup\nTIER: act\nPLAN: last tier wins",
+    "BID: speak\nPLAN: **bold plan**",
+    "BID: speak\nPLAN: \u2028 odd separator",
+    "BID: speak\rTIER: act\rPLAN: lone CR"
+  ],
+  "offers": {
+    "basic": {
+      "tools": [
+        [
+          "doc_read_file",
+          "read"
+        ],
+        [
+          "search",
+          "read"
+        ],
+        [
+          "state",
+          "write"
+        ],
+        [
+          "doc_write_file",
+          "write"
+        ]
+      ],
+      "customTools": [
+        [
+          "peek",
+          "read"
+        ],
+        [
+          "coin",
+          "read"
+        ],
+        [
+          "ledger",
+          "write"
+        ]
+      ],
+      "destroyOffered": false,
+      "silent": false
+    },
+    "destroy": {
+      "tools": [
+        [
+          "doc_read_file",
+          "read"
+        ],
+        [
+          "doc_delete_file",
+          "destroy"
+        ],
+        [
+          "state",
+          "write"
+        ]
+      ],
+      "customTools": [],
+      "destroyOffered": true,
+      "silent": true
+    },
+    "empty": {
+      "tools": [],
+      "customTools": [],
+      "destroyOffered": false,
+      "silent": false
+    },
+    "localeOrder": {
+      "tools": [
+        [
+          "search",
+          "read"
+        ],
+        [
+          "doc_grep",
+          "read"
+        ],
+        [
+          "Zeta_read",
+          "read"
+        ]
+      ],
+      "customTools": [
+        [
+          "zebra",
+          "read"
+        ],
+        [
+          "Apple",
+          "write"
+        ],
+        [
+          "apple",
+          "read"
+        ],
+        [
+          "\u00e9clair",
+          "write"
+        ],
+        [
+          "Banana",
+          "read"
+        ]
+      ],
+      "destroyOffered": false,
+      "silent": false
+    }
+  },
+  "tierCases": [
+    [
+      "keep-claim",
+      {
+        "speak": true,
+        "statedTier": "lookup",
+        "tools": [
+          "doc_read_file"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "raise",
+      {
+        "speak": true,
+        "statedTier": "simple",
+        "tools": [
+          "state"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "never-lower",
+      {
+        "speak": true,
+        "statedTier": "act",
+        "tools": [
+          "doc_read_file"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "infer-no-claim",
+      {
+        "speak": true,
+        "statedTier": null,
+        "tools": [
+          "run_custom:ledger"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "drop-unknown",
+      {
+        "speak": true,
+        "statedTier": "lookup",
+        "tools": [
+          "doc_read_file",
+          "teleport",
+          "run_custom:nope"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "destroy-capped",
+      {
+        "speak": true,
+        "statedTier": "destroy",
+        "tools": [],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "destroy-offered",
+      {
+        "speak": true,
+        "statedTier": "destroy",
+        "tools": [
+          "doc_delete_file"
+        ],
+        "plan": "x"
+      },
+      "destroy"
+    ],
+    [
+      "destroy-tool-raises",
+      {
+        "speak": true,
+        "statedTier": "simple",
+        "tools": [
+          "doc_delete_file"
+        ],
+        "plan": "x"
+      },
+      "destroy"
+    ],
+    [
+      "bare-custom-name",
+      {
+        "speak": true,
+        "statedTier": null,
+        "tools": [
+          "coin"
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "prefixed-spaced",
+      {
+        "speak": true,
+        "statedTier": null,
+        "tools": [
+          "run_custom: ledger "
+        ],
+        "plan": "x"
+      },
+      "basic"
+    ],
+    [
+      "empty-offer",
+      {
+        "speak": true,
+        "statedTier": "lookup",
+        "tools": [
+          "search"
+        ],
+        "plan": "x"
+      },
+      "empty"
+    ]
+  ],
+  "cardBase": {
+    "participantId": "p-1",
+    "characterId": "c-1",
+    "characterName": "Ada",
+    "status": "pending",
+    "statedTier": null,
+    "tier": null,
+    "tierRaised": false,
+    "tools": [],
+    "plan": null,
+    "reason": null,
+    "talkativeness": 0.5,
+    "silent": false,
+    "askedAt": "2026-11-03T00:00:00.000Z",
+    "answeredAt": null
+  },
+  "cardAnsweredAt": "2026-11-03T00:00:05.000Z",
+  "cardCases": [
+    [
+      "error",
+      {
+        "ok": false,
+        "reason": "provider exploded"
+      },
+      "basic"
+    ],
+    [
+      "unreadable",
+      {
+        "ok": true,
+        "text": "no idea"
+      },
+      "basic"
+    ],
+    [
+      "pass-with-plan",
+      {
+        "ok": true,
+        "text": "BID: pass\nPLAN: Nothing to add."
+      },
+      "basic"
+    ],
+    [
+      "pass-bare",
+      {
+        "ok": true,
+        "text": "BID: pass"
+      },
+      "basic"
+    ],
+    [
+      "bid-no-plan",
+      {
+        "ok": true,
+        "text": "BID: speak\nTIER: lookup\nTOOLS: search"
+      },
+      "basic"
+    ],
+    [
+      "bid-unknown-tools",
+      {
+        "ok": true,
+        "text": "BID: speak\nTIER: act\nTOOLS: teleport, state, warp\nPLAN: Go."
+      },
+      "basic"
+    ],
+    [
+      "bid-raised",
+      {
+        "ok": true,
+        "text": "BID: speak\nTIER: simple\nTOOLS: run_custom:ledger\nPLAN: Count."
+      },
+      "basic"
+    ],
+    [
+      "bid-destroy-capped",
+      {
+        "ok": true,
+        "text": "BID: speak\nTIER: destroy\nPLAN: Delete."
+      },
+      "basic"
+    ]
+  ],
+  "seats": {
+    "participants": [
+      {
+        "id": "a",
+        "type": "CHARACTER",
+        "status": "active",
+        "characterId": "ca",
+        "controlledBy": "llm",
+        "talkativeness": null
+      },
+      {
+        "id": "b",
+        "type": "CHARACTER",
+        "status": "silent",
+        "characterId": "cb",
+        "controlledBy": "llm",
+        "talkativeness": 0.9
+      },
+      {
+        "id": "u",
+        "type": "CHARACTER",
+        "status": "active",
+        "characterId": "cu",
+        "controlledBy": "user",
+        "talkativeness": null
+      },
+      {
+        "id": "i",
+        "type": "CHARACTER",
+        "status": "active",
+        "characterId": "ci",
+        "controlledBy": "llm",
+        "talkativeness": null
+      },
+      {
+        "id": "x",
+        "type": "CHARACTER",
+        "status": "absent",
+        "characterId": "cx",
+        "controlledBy": "llm",
+        "talkativeness": null
+      },
+      {
+        "id": "r",
+        "type": "CHARACTER",
+        "status": "active",
+        "characterId": "cr",
+        "controlledBy": "llm",
+        "talkativeness": null
+      },
+      {
+        "id": "m",
+        "type": "CHARACTER",
+        "status": "active",
+        "characterId": "cm",
+        "controlledBy": "llm",
+        "talkativeness": 0.0
+      }
+    ],
+    "characters": [
+      [
+        "ca",
+        {
+          "name": "Ada",
+          "talkativeness": 0.2,
+          "archivedAt": null
+        }
+      ],
+      [
+        "cb",
+        {
+          "name": "Bea",
+          "talkativeness": 0.4,
+          "archivedAt": null
+        }
+      ],
+      [
+        "cu",
+        {
+          "name": "Uma",
+          "talkativeness": 0.5,
+          "archivedAt": null
+        }
+      ],
+      [
+        "ci",
+        {
+          "name": "Ivo",
+          "talkativeness": 0.7,
+          "archivedAt": null
+        }
+      ],
+      [
+        "cx",
+        {
+          "name": "Xan",
+          "talkativeness": 0.5,
+          "archivedAt": null
+        }
+      ],
+      [
+        "cr",
+        {
+          "name": "Rex",
+          "talkativeness": 0.5,
+          "archivedAt": "2026-01-01T00:00:00.000Z"
+        }
+      ]
+    ],
+    "impersonating": [
+      "i"
+    ]
+  },
+  "inviteCases": [
+    [
+      "filter-off",
+      false,
+      [
+        0.99,
+        0.99,
+        0.99
+      ]
+    ],
+    [
+      "filter-on-low",
+      true,
+      [
+        0.1,
+        0.1,
+        0.1
+      ]
+    ],
+    [
+      "filter-on-mixed",
+      true,
+      [
+        0.3,
+        0.95,
+        0.2
+      ]
+    ],
+    [
+      "filter-on-high",
+      true,
+      [
+        0.99,
+        0.99,
+        0.99
+      ]
+    ]
+  ],
+  "inviteProbability": [
+    0,
+    0.1,
+    0.5,
+    0.85,
+    1,
+    1.5,
+    -1
+  ],
+  "dispositions": [
+    0.1,
+    0.29,
+    0.3,
+    0.59,
+    0.6,
+    0.84,
+    0.85,
+    1.0
+  ],
+  "bidSections": [
+    {
+      "characterName": "Ada",
+      "talkativeness": 0.2,
+      "offer": "basic"
+    },
+    {
+      "characterName": "Bea",
+      "talkativeness": 0.9,
+      "offer": "destroy"
+    },
+    {
+      "characterName": "Cy",
+      "talkativeness": 0.5,
+      "offer": "empty"
+    },
+    {
+      "characterName": "Dee",
+      "talkativeness": 0.85,
+      "offer": "localeOrder"
+    }
+  ],
+  "planSections": [
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [],
+      "spokenSince": [],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [
+        "search",
+        "state"
+      ],
+      "spokenSince": [],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [],
+      "spokenSince": [
+        "Ada"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [
+        "search",
+        "state"
+      ],
+      "spokenSince": [
+        "Ada"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [],
+      "spokenSince": [
+        "Ada",
+        "Bea"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [
+        "search",
+        "state"
+      ],
+      "spokenSince": [
+        "Ada",
+        "Bea"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [],
+      "spokenSince": [
+        "Ada",
+        "Bea",
+        "Cy"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "I check the ledger.",
+      "tier": "lookup",
+      "toolsNamed": [
+        "search",
+        "state"
+      ],
+      "spokenSince": [
+        "Ada",
+        "Bea",
+        "Cy"
+      ],
+      "allowedTools": [
+        "search",
+        "doc_read_file"
+      ],
+      "reroll": false
+    },
+    {
+      "plan": "Re-roll me.",
+      "tier": "act",
+      "toolsNamed": [
+        "state"
+      ],
+      "spokenSince": [
+        "Ada"
+      ],
+      "allowedTools": [],
+      "reroll": true
+    }
+  ],
+  "allowances": [
+    [
+      "simple",
+      []
+    ],
+    [
+      "simple",
+      [
+        "search",
+        "state"
+      ]
+    ],
+    [
+      "lookup",
+      []
+    ],
+    [
+      "lookup",
+      [
+        "search",
+        "state"
+      ]
+    ],
+    [
+      "act",
+      []
+    ],
+    [
+      "act",
+      [
+        "search",
+        "state"
+      ]
+    ],
+    [
+      "destroy",
+      []
+    ],
+    [
+      "destroy",
+      [
+        "search",
+        "state"
+      ]
+    ]
+  ],
+  "sse": [
+    "data: {\"content\":\"hi\"}\n\n",
+    "data: {\"content\":\"a\"}\n\ndata: {\"status\":\"x\",\"participantId\":\"other\"}\n\n",
+    "data: not json\n\n",
+    "data: [1,2,3]\n\n",
+    "data: {\"participantId\":null,\"concurrent\":false,\"z\":1}\n\n",
+    ": comment\ndata: {\"done\":true}\n\n",
+    "data: null\n\n"
+  ],
+  "slates": [
+    {
+      "id": "slate-basic",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "doc_read_file"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "run_custom"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "submit_final_response"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "doc_delete_file"
+          }
+        },
+        {
+          "name": "top_level_read"
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": ""
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "state"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "mcp_thing"
+          }
+        }
+      ],
+      "customToolEffects": [
+        [
+          "coin",
+          "read"
+        ],
+        [
+          "ledger",
+          "write"
+        ]
+      ],
+      "pluginToolEffects": [
+        [
+          "mcp_thing",
+          "read"
+        ]
+      ],
+      "silent": true
+    },
+    {
+      "id": "slate-no-run-custom",
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "search"
+          }
+        },
+        {
+          "type": "function",
+          "function": {
+            "name": "search"
+          }
+        }
+      ],
+      "customToolEffects": [
+        [
+          "coin",
+          "read"
+        ]
+      ],
+      "pluginToolEffects": [],
+      "silent": false
+    }
+  ]
+}

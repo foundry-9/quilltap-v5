@@ -2944,7 +2944,14 @@ fn is_route_identifier(field: &str) -> bool {
 // typed field the new verb carries: v4's `[id]` path segment on `GET
 // /api/v1/chats/[id]?action=absent-mentions`, so the route-identifier rule drops
 // it. The verb has no body. Measured red at 515 against 514 first.
-const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 515;
+//
+// **P4.D343 (+4): 515 → 519** — the four Storyteller verbs' `chat_id` (v4's
+// `[id]` path segment on `GET/POST /api/v1/chats/[id]?action=storyteller-*`).
+// Their body keys (`roundId`, `participantIds`, `participantId`, `order`,
+// `keepOrder`) ride as RAW `Value`s so the core answers v4's ZodError arm —
+// untyped, so the census sees none of them; `ChatUpdate.turn_mode` is a
+// `double_option` `Value` too. Measured red at 519 against 515 first.
+const EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE: usize = 519;
 
 /// **P4.115 item 5 — the field [`strip_noise`] hides, pinned both ways.** The
 /// shared module's rule finds every field this census's walk finds, plus

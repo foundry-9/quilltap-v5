@@ -319,6 +319,49 @@ pub enum Request {
         raised: Option<Option<serde_json::Value>>,
     },
     // === end P4.D335 ===
+    // === P4.D343 (v4 `b15fe9404` — contract W1: the Storyteller actions) ===
+    /// v4 `GET /api/v1/chats/{id}?action=storyteller-round` → `{ round }`.
+    #[serde(rename_all = "camelCase")]
+    ChatStorytellerRound {
+        chat_id: String,
+    },
+    /// v4 `POST …?action=storyteller-run` (`StorytellerRunRequestSchema`). The
+    /// body fields are carried RAW so the core answers v4's ZodError arm (a
+    /// plain 400 `Invalid request`) for a missing or mistyped one, rather than
+    /// a transport deserialisation failure: `roundId` a string,
+    /// `participantIds` a string array, `order` `sequential | simultaneous`
+    /// (absent → `sequential`), `keepOrder` a boolean. The reply is EMPTY
+    /// (`Response::StorytellerRun(Value::Null)`, R-8); the frames ride the
+    /// chat-scoped `Event` channel exactly like `ChatSend`'s.
+    #[serde(rename_all = "camelCase")]
+    ChatStorytellerRun {
+        chat_id: String,
+        #[serde(default)]
+        round_id: serde_json::Value,
+        #[serde(default)]
+        participant_ids: serde_json::Value,
+        #[serde(default)]
+        order: Option<serde_json::Value>,
+        #[serde(default)]
+        keep_order: Option<serde_json::Value>,
+    },
+    /// v4 `POST …?action=storyteller-ask` → `{ bid }` (the ANSWERED card).
+    #[serde(rename_all = "camelCase")]
+    ChatStorytellerAsk {
+        chat_id: String,
+        #[serde(default)]
+        round_id: serde_json::Value,
+        #[serde(default)]
+        participant_id: serde_json::Value,
+    },
+    /// v4 `POST …?action=storyteller-lie` → `{ closed: true }`.
+    #[serde(rename_all = "camelCase")]
+    ChatStorytellerLie {
+        chat_id: String,
+        #[serde(default)]
+        round_id: serde_json::Value,
+    },
+    // === end P4.D343 ===
     /// Edit a message's content (v4 `PUT /api/v1/messages/{id}`).
     #[serde(rename_all = "camelCase")]
     MessageEdit {
@@ -401,6 +444,22 @@ pub enum Request {
             skip_serializing_if = "Option::is_none"
         )]
         concierge_state: Option<Option<serde_json::Value>>,
+        // === P4.D343 (contract W1) ===
+        /// v4 `chatUpdateRequestSchema.turnMode` (`ChatTurnModeSchema.optional()`
+        /// — a SIBLING of `chat`): absent → untouched; `"rotation"` /
+        /// `"storyteller"` → the patch-only setter (+ the open round closed
+        /// `abandoned` on leaving storyteller mode); an explicit `null` or any
+        /// other value → the whole PUT refused (`Validation error`, nothing
+        /// written). The `double_option` tri-state keeps `null` distinct from
+        /// absent, the `conciergeState` precedent.
+        #[serde(
+            default,
+            deserialize_with = "double_option",
+            skip_serializing_if = "Option::is_none",
+            rename = "turnMode"
+        )]
+        turn_mode: Option<Option<serde_json::Value>>,
+        // === end P4.D343 ===
         // ── P4.9E1A: the bag's participant families (additive, all defaulted) ──
         // v4's `chatUpdateRequestSchema` carries these as SIBLINGS of `chat`, and
         // `processChatUpdates` runs them in this order after the `chat` bag. They
@@ -4827,6 +4886,16 @@ pub enum Response {
     StopTurn(StopTurnResultDto),
     /// P4.D335: `chatRaiseHand`'s bare `{raised, active}` body.
     RaiseHand(RaiseHandResultDto),
+    // === P4.D343 (contract W1) ===
+    /// `chatStorytellerRound`: `{ round: StorytellerRound | null }`.
+    StorytellerRound(serde_json::Value),
+    /// `chatStorytellerRun`: EMPTY (`Value::Null`) — the frames are the reply.
+    StorytellerRun(serde_json::Value),
+    /// `chatStorytellerAsk`: `{ bid: StorytellerBid }`.
+    StorytellerAsk(serde_json::Value),
+    /// `chatStorytellerLie`: `{ closed: true }`.
+    StorytellerLie(serde_json::Value),
+    // === end P4.D343 ===
     /// v4 `GET .../custom-tools` body (`{tools, errors, droppedForCap?}`).
     CustomToolsList(serde_json::Value),
     /// v4 `POST .../custom-tools?action=run` body (`{messages, result}`).

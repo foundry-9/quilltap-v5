@@ -581,6 +581,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -615,6 +616,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -631,7 +633,8 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
-                ))
+                None, // P4.D343 turn_mode
+            ))
             }),
         ),
         (
@@ -646,6 +649,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -661,6 +665,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -676,6 +681,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -691,6 +697,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -706,6 +713,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -722,6 +730,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -738,6 +747,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -754,6 +764,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -770,6 +781,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -786,6 +798,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -801,6 +814,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -816,6 +830,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -831,6 +846,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -846,6 +862,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -861,6 +878,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -876,6 +894,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -891,6 +910,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -906,6 +926,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -921,6 +942,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -936,6 +958,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -951,6 +974,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     None,
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),
@@ -984,6 +1008,7 @@ fn salon_mutations_match_oracle() {
                     None,
                     None,
                     Some(LLM_P),
+                    None, // P4.D343 turn_mode
                 ))
             }),
         ),

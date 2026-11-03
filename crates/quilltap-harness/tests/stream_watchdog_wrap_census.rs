@@ -127,6 +127,18 @@ const CENSUS: &[(&str, usize, usize, usize, &str)] = &[
         "`stream_turn` — v4 help-chat/orchestrator.service.ts:361",
     ),
     (
+        // P4.D343 (v4 `b15fe9404`): the storyteller BID call — v4
+        // `bid-call.ts` `callForBid` → `streamMessage`, the ONE funnel, so the
+        // watchdog wraps it. A bid builds outside any registered turn (v4's
+        // `runStorytellerBid` opens no turn stream), so its stop is `None`.
+        "storyteller/bid_call.rs",
+        1,
+        1,
+        0,
+        "`call_for_bid` — v4 lib/storyteller/bid-call.ts:61 (`streamMessage` with \
+         `logType: 'STORYTELLER_BID'`, `toolChoice: 'none'`); no turn stop",
+    ),
+    (
         // P4.D216 OUT-OF-MANDATE — the census owner preserves. v4 `d1c06cd9d`
         // moved the Brahma one-shot's loop (and so its ONE stream call) into the
         // shared `agent-loop/one-shot-loop.ts`; the port moved the row with it.

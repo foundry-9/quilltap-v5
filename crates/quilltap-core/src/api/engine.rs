@@ -313,6 +313,9 @@ pub struct EngineAssembly {
     /// NAMED refusal, never a silent no-op. ⚠ LIVE once the host wires it: one
     /// streamed model call per help character per send, plus tool calls.
     pub help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
+    /// The Storyteller driver (P4.D343 — the run + ask verbs; `None` for
+    /// read-only embedders, which answer the named not-assembled refusal).
+    pub storyteller: Option<Arc<dyn super::chat_storyteller::StorytellerDriver>>,
     // === end P4.9I2A ===
     // === P4.9K1: the per-character generator driver (§B.2) ===
     /// The optimizer / external-prompt driver — the composing host holds the
@@ -399,6 +402,7 @@ impl EngineAssembly {
             // === end P4.9E4A ===
             // === P4.9I2A ===
             help_chat_send: None,
+            storyteller: None, // P4.D343
             // === end P4.9I2A ===
             // === P4.9K1 ===
             generators_detail: None,
@@ -631,6 +635,8 @@ struct ReadyEngine {
     /// The help-chat send driver (P4.9I2A; `None` for read-only embedders — the
     /// `HelpChatSend` arm answers the named not-assembled refusal).
     help_chat_send: Option<Arc<dyn super::help_chats::HelpChatSendDriver>>,
+    /// The Storyteller driver (P4.D343).
+    storyteller: Option<Arc<dyn super::chat_storyteller::StorytellerDriver>>,
     // === end P4.9I2A ===
     // === P4.9K1 ===
     /// The per-character generator driver (P4.9K1; `None` for read-only
@@ -1107,6 +1113,54 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === end P4.D335 ===
+            // === P4.D343 (v4 `b15fe9404` — contract W1: the Storyteller actions) ===
+            Request::ChatStorytellerRound { chat_id } => match self.ready_db() {
+                Ok(db) => super::chat_storyteller::chat_storyteller_round(&db, &chat_id),
+                Err(r) => r,
+            },
+            Request::ChatStorytellerRun {
+                chat_id,
+                round_id,
+                participant_ids,
+                order,
+                keep_order,
+            } => match self.ready_db_and_storyteller() {
+                Ok((db, driver)) => {
+                    super::chat_storyteller::chat_storyteller_run(
+                        &db,
+                        driver.as_deref(),
+                        &chat_id,
+                        &round_id,
+                        &participant_ids,
+                        &order,
+                        &keep_order,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatStorytellerAsk {
+                chat_id,
+                round_id,
+                participant_id,
+            } => match self.ready_db_and_storyteller() {
+                Ok((db, driver)) => {
+                    super::chat_storyteller::chat_storyteller_ask(
+                        &db,
+                        driver.as_deref(),
+                        &chat_id,
+                        &round_id,
+                        &participant_id,
+                    )
+                    .await
+                }
+                Err(r) => r,
+            },
+            Request::ChatStorytellerLie { chat_id, round_id } => match self.ready_db() {
+                Ok(db) => super::chat_storyteller::chat_storyteller_lie(&db, &chat_id, &round_id).await,
+                Err(r) => r,
+            },
+            // === end P4.D343 ===
             // P4.D267 (C1 §12): the arm honours the four R7 growth fields —
             // P4.D265's present-field refusal gate is REPLACED, not just its
             // refusal (the route validates the raw values, v4's bytes).
@@ -2010,6 +2064,8 @@ impl CoreEngine {
                 chat,
                 // ── P4.D141: the per-chat Concierge four-state ──
                 concierge_state,
+                // ── P4.D343: the turn mode sibling ──
+                turn_mode,
                 // ── P4.9E1A: the bag's participant families ──
                 update_participant,
                 add_participant,
@@ -2030,6 +2086,11 @@ impl CoreEngine {
                         update_participant.as_ref(),
                         add_participant.as_ref(),
                         remove_participant_id.as_deref(),
+                        // P4.D343: an explicit `null` reaches the handler as
+                        // `Value::Null` (v4's 400), as `concierge_state` does.
+                        turn_mode
+                            .map(|v| v.unwrap_or(serde_json::Value::Null))
+                            .as_ref(),
                     )
                     .await
                 }
@@ -6807,6 +6868,27 @@ impl CoreEngine {
         }
     }
 
+    // === P4.D343 ===
+    /// The `Db` + the (optional) Storyteller driver under the readiness gate.
+    /// `None` is handed through so the handler runs v4's 404 + Zod arms BEFORE
+    /// the not-assembled refusal.
+    #[allow(clippy::type_complexity)]
+    fn ready_db_and_storyteller(
+        &self,
+    ) -> Result<
+        (
+            Db,
+            Option<Arc<dyn super::chat_storyteller::StorytellerDriver>>,
+        ),
+        Response,
+    > {
+        match &*self.inner.state.lock().unwrap() {
+            EngineState::Ready(r) => Ok((r.db.clone(), r.storyteller.clone())),
+            EngineState::Locked { pepper_state, .. } => Err(Response::locked(*pepper_state)),
+        }
+    }
+    // === end P4.D343 ===
+
     // === P4.9K1 ===
     /// The `Db` + the (optional) per-character generator driver under the
     /// readiness gate. `None` is handed through so the handler can run v4's
@@ -8050,6 +8132,7 @@ fn open_ready(
         // === end P4.9E4A ===
         // === P4.9I2A ===
         help_chat_send: assembly.help_chat_send,
+        storyteller: assembly.storyteller, // P4.D343
         // === end P4.9I2A ===
         // === P4.9K1 ===
         generators_detail: assembly.generators_detail,

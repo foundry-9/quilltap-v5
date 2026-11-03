@@ -22,6 +22,17 @@ use std::path::PathBuf;
 /// `(repo-relative file, needle, expected count, why)`.
 const CENSUS: &[(&str, &str, usize, &str)] = &[
     (
+        "crates/quilltap-core/src/services/storyteller_rounds.rs",
+        "publish_realtime(RealtimeTopic::StorytellerRounds, Some(chat_id));",
+        6,
+        "P4.D343 (v4 `round.service.ts`, `b15fe9404` — `RealtimeTopicAppend`): \
+         the six `storytellerRounds` publishes, each scoped by CHAT id and fired \
+         after its writer commit — `recordCard` (when a row came back), \
+         `abandonStorytellerRound`, `openStorytellerRound` (after create), \
+         `letStorytellerRoundLie`, and `runStorytellerRound` twice (after \
+         `markRunning`, after `markClosed`).",
+    ),
+    (
         "crates/quilltap-core/src/enclave/lifecycle.rs",
         "publish_realtime(RealtimeTopic::AutonomousRooms, None);",
         7,

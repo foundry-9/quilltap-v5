@@ -169,7 +169,8 @@ pub mod llm_logs_storyteller_round_id_repair;
 pub mod memory_keystone_repair;
 pub mod roleplay_templates_unmarked_repair;
 pub mod storyteller_mode_repair;
-// === end P4.D341 ===
+pub mod storyteller_rounds; // P4.D343
+                            // === end P4.D341 ===
 pub mod text_compression;
 pub mod text_replacement_rules;
 pub mod tfidf_vocabulary;

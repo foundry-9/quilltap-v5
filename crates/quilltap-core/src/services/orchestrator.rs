@@ -400,6 +400,16 @@ pub struct SendMessageOptions {
     /// from the turn orchestrator into chained `process_message` calls; `None`
     /// on the initial (non-chained) turn.
     pub chain_selection_reason: Option<turn_orchestrator::ChainSelectionReason>,
+    // === P4.D343 (v4 `SendMessageOptions.storytellerBid / storyteller`) ===
+    /// Build a storyteller BID for this seat instead of a turn: the same
+    /// context a turn would see with the bid section trailing, ONE call with
+    /// the tools offered and none callable, nothing streamed or saved (the
+    /// host's `run_storyteller_bid`).
+    pub storyteller_bid: Option<crate::storyteller::types::StorytellerBidRequest>,
+    /// A storyteller SPEAKING turn: the bid it carries out, its tier's effect
+    /// ceiling and who has spoken since (the host's round runner).
+    pub storyteller: Option<crate::storyteller::types::StorytellerTurnContext>,
+    // === end P4.D343 ===
 }
 
 /// The wall-clock + RNG values injected into one `process_message` call (v4's
@@ -1038,6 +1048,7 @@ where
         skipped_participant_id: None,
         yielded: false,
         storyteller_hold: None,
+        bid: None,
     }))
 }
 
@@ -1190,6 +1201,12 @@ where
     // `turn_holds_equivalence` the whole resolve; every later reference reads
     // this local (P4.D348: v4 `a8214b253`'s `resolveTurnHold`, which adds the
     // storyteller arm).
+    // === P4.D343: a storyteller bid (a dry, plan-only build for one seat) and
+    // a storyteller speaking turn (v4 `processMessage`'s `isBid` /
+    // `storytellerTurn`).
+    let is_bid = input.options.storyteller_bid.is_some();
+    let storyteller_turn = input.options.storyteller.clone();
+    // === end P4.D343 ===
     let hold = super::turn_holds::resolve_turn_hold(&chat, &input.options);
     if let Some(h) = hold {
         tracing::info!(
@@ -1693,36 +1710,46 @@ where
     // false — the branches differ (a sentinel without the offer routes to the
     // empty-response branch).
     let chat_participants = turn_orchestrator::participants_array(&chat);
-    let turn_skip: Option<build_context::TurnSkip> =
-        if crate::skip_signal::qualifies_for_turn_skipping(&chat_participants)
-            && json_str(&character_participant, "controlledBy").as_deref() != Some("user")
-        {
-            let responding = crate::skip_signal::RespondingCharacter {
-                id: character_id.clone(),
-                name: character_name.clone(),
-                aliases: json_str_array(&character, "aliases"),
-            };
-            let eligibility = crate::skip_signal::compute_skip_eligibility(
-                &crate::skip_signal::ComputeSkipEligibilityOptions {
-                    events: &existing_messages,
-                    participants: &chat_participants,
-                    responding_participant_id: &character_participant_id,
-                    responding_character: &responding,
-                    summoned: input.options.nudge == Some(true)
-                        || input.options.chain_selection_reason
-                            == Some(turn_orchestrator::ChainSelectionReason::Queue),
-                    turn_skipping_enabled: chat.get("turnSkippingEnabled").and_then(Value::as_bool)
-                        != Some(false),
-                },
-            );
-            Some(build_context::TurnSkip {
-                offer_skip: eligibility.offer_skip,
-                recently_addressed: eligibility.recently_addressed,
-                character_name: character_name.clone(),
-            })
-        } else {
-            None
+    // === P4.D343 (v4 `resolveTurnSkipOffer`'s two storyteller arms): a
+    // storyteller speaking turn is always offered the pass (its plan may have
+    // gone stale — the plan section carries the instruction); a bid never is.
+    let turn_skip: Option<build_context::TurnSkip> = if storyteller_turn.is_some() {
+        Some(build_context::TurnSkip {
+            offer_skip: true,
+            recently_addressed: false,
+            character_name: character_name.clone(),
+        })
+    } else if !is_bid
+        && crate::skip_signal::qualifies_for_turn_skipping(&chat_participants)
+        && json_str(&character_participant, "controlledBy").as_deref() != Some("user")
+    // === end P4.D343 ===
+    {
+        let responding = crate::skip_signal::RespondingCharacter {
+            id: character_id.clone(),
+            name: character_name.clone(),
+            aliases: json_str_array(&character, "aliases"),
         };
+        let eligibility = crate::skip_signal::compute_skip_eligibility(
+            &crate::skip_signal::ComputeSkipEligibilityOptions {
+                events: &existing_messages,
+                participants: &chat_participants,
+                responding_participant_id: &character_participant_id,
+                responding_character: &responding,
+                summoned: input.options.nudge == Some(true)
+                    || input.options.chain_selection_reason
+                        == Some(turn_orchestrator::ChainSelectionReason::Queue),
+                turn_skipping_enabled: chat.get("turnSkippingEnabled").and_then(Value::as_bool)
+                    != Some(false),
+            },
+        );
+        Some(build_context::TurnSkip {
+            offer_skip: eligibility.offer_skip,
+            recently_addressed: eligibility.recently_addressed,
+            character_name: character_name.clone(),
+        })
+    } else {
+        None
+    };
 
     // === P4.D335: raised hand — the operator wants to cut in ===
     // (v4 `orchestrator.service.ts:659-674`, `2b5e8ee24`.) The first LLM-voiced
@@ -1733,6 +1760,8 @@ where
     // take, so the hand stays up for the next LLM turn.
     let offer_yield = json_str(&character_participant, "controlledBy").as_deref() != Some("user")
         && hold.is_none()
+        // P4.D343: a bid is not a turn — it never takes the raised hand.
+        && !is_bid
         && deps
             .turn_control
             .as_ref()
@@ -1762,7 +1791,9 @@ where
     let should_inject_context = reinject_interval > 0
         && message_count > 0
         && message_count % reinject_interval == 0
-        && hold.is_none();
+        && hold.is_none()
+        // P4.D343: a bid waits for a real turn too (v4 `if (!hold && !isBid)`).
+        && !is_bid;
     if should_inject_context {
         // === P4.D348 (v4 `a8214b253`) ===
         // v4's `[TurnPreparation] Failed to post Prospero group-context whisper`
@@ -1952,7 +1983,9 @@ where
     // never consumed OR cleared, so a chat that had it set carried it forever.
     let tool_settings_changed =
         chat.get("forceToolsOnNextMessage").and_then(Value::as_bool) == Some(true);
-    if tool_settings_changed {
+    // P4.D343 (R-1, `DRY_SCOPE_BY_GATES`): a bid builds dry — v4's dry scope
+    // discards this spend, so the flag stays for the real turn.
+    if tool_settings_changed && !is_bid {
         let write_chat_id = chat_id.clone();
         db.write(move |w| {
             w.main()
@@ -2074,8 +2107,8 @@ where
     // passed INTO `build_tools`, which applies it last. The user-level
     // `destructiveToolPolicy` is a CEILING (`'always_refuse'` overrides any
     // per-room grant); the per-room `runDestructiveToolsAllowed === 1` is a raw
-    // integer read, not coerced. No Storyteller turn exists yet in this build,
-    // so the storyteller ceiling is absent.
+    // integer read, not coerced. A storyteller speaking turn starts at its
+    // bid's tier.
     let effect_ceiling = {
         let policy = chat_settings
             .as_ref()
@@ -2089,7 +2122,7 @@ where
             chat.get("chatType").and_then(Value::as_str).unwrap_or(""),
             &policy,
             allowed_at_room,
-            None,
+            storyteller_turn.as_ref().map(|s| s.effect_ceiling),
             &chat_id,
         )
     };
@@ -2256,6 +2289,46 @@ where
         }
     }
     // === end P4.D348 ===
+    // === P4.D343 (v4 `buildStorytellerSection`): the bid section (a bid — the
+    // menu its turn would get) or a speaking turn's plan, trailing the context.
+    let (bid_offer, storyteller_section) = if is_bid {
+        let offer = crate::storyteller::bid_call::build_bid_offer(
+            &tools,
+            &effect_slate.custom_tool_effects,
+            &effect_slate.plugin_tool_effects,
+            json_str(&character_participant, "status").as_deref() == Some("silent"),
+        );
+        let talkativeness = character_participant
+            .get("talkativeness")
+            .and_then(Value::as_f64)
+            .or_else(|| character.get("talkativeness").and_then(Value::as_f64))
+            .unwrap_or(0.5);
+        let section =
+            crate::storyteller::prompts::build_bid_section(&character_name, talkativeness, &offer);
+        (Some(offer), Some(section))
+    } else if let Some(st) = &storyteller_turn {
+        tracing::debug!(
+            target: "quilltap::storyteller",
+            chatId = %chat_id,
+            participantId = %character_participant_id,
+            roundId = %st.bid_record.round_id,
+            tier = st.bid_record.tier.as_str(),
+            ceiling = effect_slate.effect_ceiling.map(|c| c.as_str()),
+            "[Storyteller] Speaking turn carries its bid"
+        );
+        let section = crate::storyteller::prompts::build_plan_section(
+            &st.bid_record.plan,
+            st.bid_record.tier,
+            &st.bid_record.tools_named,
+            &st.spoken_since,
+            &super::turn_extras::extract_tool_names(&tools),
+            false,
+        );
+        (None, Some(section))
+    } else {
+        (None, None)
+    };
+    // === end P4.D343 ===
     // Under a pseudo-tool surface the native slate is suppressed (`actualTools = []`).
     let actual_tools: Vec<Value> = if use_text_block_tools {
         Vec::new()
@@ -2590,9 +2663,26 @@ where
         // "Nothing to add" turn-skipping — per-turn ephemeral instruction control
         // (v4 orchestrator.service.ts:1030 threads `turnSkip` through
         // `buildMessageContext` into buildContext).
-        turn_skip: turn_skip.clone(),
+        // P4.D343 (R-10, the SPLIT): a storyteller turn's plan section carries
+        // its own pass instruction, so the context gets no turn-skip note —
+        // while the sentinel handling below keeps `turn_skip`, so a `[NOTHING
+        // TO ADD]` reply is still honoured (v4's two reads of one value).
+        turn_skip: if storyteller_turn.is_some() {
+            None
+        } else {
+            turn_skip.clone()
+        },
         // P4.D335: raised hand — the yield Turn note (same ephemeral footing).
         offer_yield,
+        // === P4.D343 (C1): a bid builds dry — recall assembled, never
+        // delivered — and the bid or plan section trails everything else.
+        purpose: if is_bid {
+            build_context::ContextPurpose::Bid
+        } else {
+            build_context::ContextPurpose::Turn
+        },
+        storyteller_section: storyteller_section.clone(),
+        // === end P4.D343 ===
         // The proactive pass's recall (v4 `preRecall`, `584d28164`): its query,
         // distilled and embedded once, and what that query found — reused, never
         // re-distilled or re-embedded.
@@ -2793,6 +2883,30 @@ where
     // inert for a courier chat (the corpus keeps agent mode off), matching v4 (which
     // returns before its agent-mode block).
     if is_effective_courier {
+        // === P4.D343: the Courier is a person with a clipboard; there is
+        // nobody to ask for a bid.
+        if is_bid {
+            return Ok(ProcessMessageResult {
+                is_multi_character,
+                has_content: false,
+                message_id: String::new(),
+                user_participant_id: user_participant_id.clone(),
+                is_paused: chat
+                    .get("isPaused")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                scene_tracking_character_ids: None,
+                skipped: false,
+                skipped_participant_id: None,
+                yielded: false,
+                storyteller_hold: None,
+                bid: Some(crate::storyteller::types::StorytellerBidCallOutcome::Err {
+                    reason: "This character answers through the Courier, which cannot bid."
+                        .to_string(),
+                }),
+            });
+        }
+        // === end P4.D343 ===
         return super::courier_transport::dispatch_courier_transport(
             db,
             sink,
@@ -2868,7 +2982,8 @@ where
         );
         let estimated_input_tokens = message_tokens + turn_extras.tool_schema_tokens;
         let safe_input_limit = built_context.budget.safe_input_limit;
-        if estimated_input_tokens > safe_input_limit {
+        // P4.D343: v4's bid returns before `warnIfOverSafeInputLimit`.
+        if estimated_input_tokens > safe_input_limit && !is_bid {
             tracing::warn!(
                 chat_id = %chat_id,
                 character_id = %character_id,
@@ -3037,6 +3152,62 @@ where
         request_timeout_ms: None,
         tool_choice: None,
     };
+
+    // === P4.D343: a storyteller bid — ONE call, nothing saved or streamed
+    // (v4 `orchestrator.service.ts:836-850`). v4 returns before the fallback
+    // frame / `validating` status / the over-limit check; here the frames went
+    // to the bid's discarding sink, the check is gated, and nothing between
+    // the Courier branch and this point writes. `callForBid` passes the turn's
+    // messages, effective profile, model params and slate (`actualTools`),
+    // with `useNativeWebSearch: false`, no stop sequences and no chaining id;
+    // the call adds `toolChoice: 'none'` and logs `STORYTELLER_BID` with no
+    // message id.
+    if let (true, Some(offer)) = (is_bid, bid_offer.clone()) {
+        let mut bid_params = params.clone();
+        bid_params.web_search_enabled = false;
+        bid_params.stop = Vec::new();
+        bid_params.previous_response_id = None;
+        let started_at_ms = crate::clock::now_unix_ms();
+        let outcome = crate::storyteller::bid_call::call_for_bid(
+            crate::storyteller::bid_call::BidCall {
+                streaming: deps.streaming,
+                profile: &effective_profile,
+                base_url: effective_profile.base_url.as_deref(),
+                api_key: &streaming_state.effective_api_key,
+                params: bid_params,
+                log: primary_stream::StreamLogCtx {
+                    db,
+                    user_id: &user_id,
+                    chat_id: &chat_id,
+                    message_id: "",
+                    character_id: Some(&character_id),
+                    log_context: &input.log_context,
+                    started_at_ms,
+                },
+                chat_id: &chat_id,
+                character_id: &character_id,
+            },
+            offer,
+        )
+        .await;
+        return Ok(ProcessMessageResult {
+            is_multi_character,
+            has_content: false,
+            message_id: String::new(),
+            user_participant_id: user_participant_id.clone(),
+            is_paused: chat
+                .get("isPaused")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            scene_tracking_character_ids: None,
+            skipped: false,
+            skipped_participant_id: None,
+            yielded: false,
+            storyteller_hold: None,
+            bid: Some(outcome),
+        });
+    }
+    // === end P4.D343 ===
 
     let is_paused = chat
         .get("isPaused")
@@ -3240,6 +3411,7 @@ where
             skipped_participant_id: None,
             yielded: false,
             storyteller_hold: None,
+            bid: None,
         });
     }
 
@@ -3876,6 +4048,7 @@ where
                 consult: deps.consult.clone(),
                 turn_stopped,
                 turn_control: deps.turn_control.clone(),
+                storyteller: input.options.storyteller.clone(), // P4.D343
             },
             deps.confirmation,
             deps.compression,
@@ -3998,6 +4171,7 @@ where
             skipped_participant_id: None,
             yielded: false,
             storyteller_hold: None,
+            bid: None,
         };
         Ok(finish_yielded_turn(
             db,
@@ -4043,6 +4217,7 @@ where
             skipped_participant_id: None,
             yielded: false,
             storyteller_hold: None,
+            bid: None,
         })
         // === end P4.D335 ===
     } else {
@@ -4122,6 +4297,7 @@ where
             skipped_participant_id: None,
             yielded: false,
             storyteller_hold: None,
+            bid: None,
         })
     }
     // === P4.D328: the Inventory drain AFTER the saved turn (v4 finally, 102a23648) ===
@@ -4331,6 +4507,7 @@ async fn handle_turn_skip(
         skipped_participant_id: Some(params.character_participant_id.to_string()),
         yielded: false,
         storyteller_hold: None,
+        bid: None,
     })
 }
 
@@ -4413,6 +4590,7 @@ async fn finish_yielded_turn(
     ProcessMessageResult {
         yielded: true,
         storyteller_hold: None,
+        bid: None,
         ..result
     }
 }
@@ -4486,6 +4664,7 @@ async fn handle_turn_yield(
         skipped_participant_id: None,
         yielded: true,
         storyteller_hold: None,
+        bid: None,
     })
 }
 
@@ -5113,6 +5292,12 @@ pub(crate) struct BuildContextArgs<'a> {
     /// control (v4 `turnSkip`, b90cd1f5). `None` for the sibling entry points
     /// (regenerate-swipe) that never offer the pass.
     pub turn_skip: Option<build_context::TurnSkip>,
+    // === P4.D343 (C1) ===
+    /// `Bid` for a storyteller bid build (no recall delivery); `Turn` otherwise.
+    pub purpose: build_context::ContextPurpose,
+    /// The storyteller bid / plan section, trailing LAST.
+    pub storyteller_section: Option<String>,
+    // === end P4.D343 ===
     /// P4.D335: the operator's raised hand landed on this turn — the `[YIELD]`
     /// Turn note (v4 `offerYield`). `false` for the sibling entry points.
     pub offer_yield: bool,
@@ -5263,9 +5448,9 @@ pub(crate) fn build_context_input(args: BuildContextArgs<'_>) -> BuildContextInp
         minutes_since_last_timestamp_announcement: None,
         autonomous_context_cap: args.autonomous_context_cap,
         turn_skip: args.turn_skip,
-        // === C1 (P4.D347) — P4.D343 rewires both to args.* ===
-        purpose: build_context::ContextPurpose::Turn,
-        storyteller_section: None,
+        // === C1 (P4.D347) — rewired to args.* by P4.D343 ===
+        purpose: args.purpose,
+        storyteller_section: args.storyteller_section,
         offer_yield: args.offer_yield,
         pre_recall: args.pre_recall,
         provider: args.provider,
@@ -5864,6 +6049,7 @@ mod tests {
                             skipped_participant_id: None,
                             yielded: false,
                             storyteller_hold: None,
+                            bid: None,
                         },
                         initial_continue_mode: false,
                         never_pause_for_user: false,

@@ -167,6 +167,9 @@ fn topic_id_fields(topic: RealtimeTopic) -> &'static [&'static str] {
         // Collection-wide — v4 `TOPIC_ID_FIELDS.inventory = []`; a write batch
         // announces it through `INVENTORY_PATH_PATTERN` instead (P4.D328).
         RealtimeTopic::Inventory => &[],
+        // P4.D343: v4 `job-topics.ts` `storytellerRounds: []` — no job child
+        // publishes it (the round service runs in the request path).
+        RealtimeTopic::StorytellerRounds => &[],
     }
 }
 

@@ -720,6 +720,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             consult: None,
             turn_stopped: false,
             turn_control: None,
+            storyteller: None, // P4.D343
         };
 
         let sink = RecordingSink::new();
