@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(e2e): the SPA riders flow on its own instance (P4.D359)
+
+_Versions: SPA 0.5.927._
+
+New `e2e/spa-riders-flow.spec.ts` runs on its own instance (port 4358, mock LLM 45356) over the `characters-main.db` / `characters-mount.db` pair. Tables are materialised from `fresh_schema.json` using the `inventory-flow.spec.ts` recipe. The shared llm-logs fixture gets two planted rows, and one connection profile is created on the mock.
+
+LIVE beats:
+- (a) the launcher toggles the floating console over a `qt-modal`. A click in the console leaves the modal open, Escape in the console closes only the console, and the dragged geometry survives a reload.
+- (b) the tab and the floating console keep two conversations under their own keys.
+- (e) the About credits.
+- (f) the Inspector's derived Other filter and the `Image` badge.
+- (j) a default-template change holding across a tab round trip. It skips when the fixture has no template to choose.
+
+GATED beats, flipped at unification: (a′) the modal's own Escape (P4.D358), and (c) keystones, (d) chips, (g) Humanoid, (h) pronoun guidance, (i) the Inventory publish (P4.D341 / P4.D347 / P4.D349 / P4.D350).
+
 #### 2026-11-03 — fix(spa): portal the floating console and its launcher to document.body (v4 99463fc56)
 
 _Versions: SPA 0.5.926._
