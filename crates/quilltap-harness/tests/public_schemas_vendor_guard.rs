@@ -54,7 +54,8 @@ const SCHEMAS: &[Vendored] = &[
     Vendored {
         v5: "apps/web/public/schemas/qtap-custom-tool.schema.json",
         v4: "public/schemas/qtap-custom-tool.schema.json",
-        bytes: 63_595,
+        // P4.D345: 63,595 -> 66,469 at the `236c04e35` pin (v4 `839575d89`).
+        bytes: 66_469,
         id: "https://quilltap.ai/schemas/qtap-custom-tool.schema.json",
     },
     Vendored {

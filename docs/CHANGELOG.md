@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): re-vendor the custom-tool JSON Schema at the 236c04e35 pin (P4.D345)
+
+_Versions: core 0.0.1384, SPA 0.5.909._
+
+Both v5 copies of `qtap-custom-tool.schema.json` (the embedded specimen `edit_custom_tool`'s `schema` action serves, and the SPA asset) now carry v4's pin bytes: 66,469 B, md5 `454fa04e7a11caa98becd877212f20e2`. That adds the `intervention` object and the two `intervene` flags. `custom_tool_schema_embed_guard` and `public_schemas_vendor_guard` move to 66,469; the SPEC specimens are unchanged. `pascal_edit_custom_tool_equivalence` was re-recorded from the pin and is green.
+
 #### 2026-11-03 — feat(pascal): operator-intervention grammar — the intervention block, intervene flags, the one definition-corpus regen (P4.D345)
 
 _Versions: core 0.0.1383, SPA 0.5.908._

@@ -27,7 +27,10 @@ use std::path::PathBuf;
 
 mod common;
 
-const SCHEMA_BYTES: usize = 63_595;
+// P4.D345: 63,595 -> 66,469 at the `236c04e35` pin (v4 `839575d89` — the
+// `intervention` object and the two `intervene` flags; md5
+// `454fa04e7a11caa98becd877212f20e2`). The two SPEC specimens are unmoved.
+const SCHEMA_BYTES: usize = 66_469;
 const SPEC_BYTES: usize = 12_660;
 const DICE_BYTES: usize = 1_951;
 
