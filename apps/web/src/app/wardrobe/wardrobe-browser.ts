@@ -50,6 +50,8 @@ import {
 import type { WardrobeItemActions } from './wardrobe-item-actions';
 import { WardrobeItemRow } from './wardrobe-item-row';
 import type { WardrobeListData } from './wardrobe-list-data';
+import { PronounAwareToggle } from './pronoun-aware-toggle';
+import type { PronounGuidanceFilter } from './pronoun-guidance-filter';
 import { sortAndFilterWardrobeItems, WARDROBE_LIST_SORTS, type WardrobeListSort } from './wear-display';
 
 type SlotFilter = 'all' | WardrobeSlotType;
@@ -113,6 +115,7 @@ const EMPTY_SELECTION: ReadonlySet<string> = new Set();
     ItemFolderRow,
     WardrobeFolderPickerDialog,
     WardrobeItemRow,
+    PronounAwareToggle,
   ],
   template: `
     <section class="flex flex-col min-h-0 relative">
@@ -207,6 +210,9 @@ const EMPTY_SELECTION: ReadonlySet<string> = new Set();
             />
             Never worn
           </label>
+          @if (isCharacterScope() && pronounFilter(); as filter) {
+            <qt-pronoun-aware-toggle [filter]="filter" [items]="data().listItems()" />
+          }
         </div>
 
         <!-- Folder bar: where we are, and the filing controls (the shared
@@ -378,6 +384,12 @@ export class WardrobeBrowser {
   readonly data = input.required<WardrobeListData>();
   readonly actions = input.required<WardrobeItemActions>();
   readonly showArchived = input(false);
+  /**
+   * Character view only: the pronoun-aware filter — owned by the caller so the
+   * composers beside the list share its switch (v4 `eb90d9ed8`,
+   * `WardrobeBrowser.tsx:100-102`).
+   */
+  readonly pronounFilter = input<PronounGuidanceFilter | null>(null);
   readonly wear = input<WardrobeRowWearControls | undefined>(undefined);
   /** Cap the list's height (the dialog) instead of letting it grow (a card). */
   readonly scrollList = input(true);
@@ -498,8 +510,19 @@ export class WardrobeBrowser {
     if (!checked && !wasInOwnTier) this.navigate(OWN_TIER, '');
   }
 
-  protected readonly filteredItems = computed(() => {
+  /**
+   * Pronoun guidance narrows the pool itself (character view, switch on), so
+   * tier and folder counts agree with the rows beneath them (v4 `eb90d9ed8`,
+   * `WardrobeBrowser.tsx:192-197`).
+   */
+  protected readonly offeredItems = computed(() => {
     const listItems = this.data().listItems();
+    const filter = this.pronounFilter();
+    return this.isCharacterScope() && filter ? filter.offer(listItems) : listItems;
+  });
+
+  protected readonly filteredItems = computed(() => {
+    const listItems = this.offeredItems();
     const sorted = sortAndFilterWardrobeItems(listItems, {
       sort: this.listSort(),
       neverWornOnly: this.neverWornOnly(),
@@ -529,9 +552,7 @@ export class WardrobeBrowser {
   // count and what "nothing hangs here" is judged against.
   private readonly tierItems = computed(() => {
     const tier = this.currentTier();
-    return this.data()
-      .listItems()
-      .filter((i) => this.tierOf(i) === tier);
+    return this.offeredItems().filter((i) => this.tierOf(i) === tier);
   });
 
   protected readonly folderRows = computed<FolderRowView[]>(() =>
@@ -550,7 +571,7 @@ export class WardrobeBrowser {
     !this.searching() &&
     this.currentFolder() === '' &&
     this.showShared()
-      ? tierRows(this.data().listItems(), this.tierOf)
+      ? tierRows(this.offeredItems(), this.tierOf)
       : [],
   );
 

@@ -168,3 +168,21 @@ describe('OutfitComposer (v4 outfit-composer.tsx)', () => {
     expect(offered).not.toContain('Aunt Dahlia’s Pearls');
   });
 });
+
+describe('OutfitComposer — pickableItems (v4 eb90d9ed8, outfit-composer.tsx)', () => {
+  it('the slot pickers and the quick pick take pickableItems; without it they take items', () => {
+    const tee = item({ id: 'tee', title: 'Plain Tee', types: ['top'] });
+    const gown = item({ id: 'gown', title: 'Ball Gown', types: ['top'] });
+    const slots = { top: [], bottom: [], footwear: [], accessories: [], hair: [] };
+    const fixture = render({ items: [tee, gown], slots });
+    const rows = () =>
+      fixture.debugElement.queryAll((d) => d.name === 'qt-equipped-slot-row');
+    expect(rows()[0].componentInstance.pickableItems()).toBeNull();
+    fixture.componentRef.setInput('pickableItems', [tee]);
+    fixture.detectChanges();
+    expect(rows()[0].componentInstance.pickableItems()).toEqual([tee]);
+    const quick = fixture.debugElement.query((d) => d.name === 'qt-outfit-quick-pick');
+    expect(quick.componentInstance.items()).toEqual([tee]);
+  });
+});
+

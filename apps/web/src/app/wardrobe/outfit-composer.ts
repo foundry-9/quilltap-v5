@@ -31,7 +31,7 @@ import { OutfitQuickPick } from './outfit-quick-pick';
   imports: [EquippedBundleCard, EquippedSlotRow, OutfitQuickPick],
   template: `
     <div class="space-y-2 mb-3">
-      <qt-outfit-quick-pick [items]="items()" (wear)="wearOutfit($event)" />
+      <qt-outfit-quick-pick [items]="pickableItems() ?? items()" (wear)="wearOutfit($event)" />
       @for (bundle of grouped().bundles; track bundle.compositeId) {
         <qt-equipped-bundle-card
           [bundle]="bundle"
@@ -45,6 +45,7 @@ import { OutfitQuickPick } from './outfit-quick-pick';
           [slot]="slot"
           [equippedIds]="grouped().slotRemainders[slot]"
           [allItems]="items()"
+          [pickableItems]="pickableItems()"
           (add)="addToSlot.emit($event)"
           (remove)="removeFromSlot.emit($event)"
           (clear)="clearSlot.emit($event)"
@@ -56,6 +57,12 @@ import { OutfitQuickPick } from './outfit-quick-pick';
 export class OutfitComposer {
   /** All wardrobe items available to the character (personal + archetypes). */
   readonly items = input.required<WardrobeItemDto[]>();
+  /**
+   * What the outfit pull-down and slot pickers offer. Defaults to `items`; the
+   * pronoun-aware filter narrows it. Equipped chips always resolve against the
+   * whole of `items` (v4 `eb90d9ed8`, `outfit-composer.tsx`).
+   */
+  readonly pickableItems = input<WardrobeItemDto[] | null>(null);
   /** Current equipped (or staged) slots. */
   readonly slots = input.required<EquippedSlots>();
 

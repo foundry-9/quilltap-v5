@@ -9,6 +9,8 @@ import { WardrobeBrowser } from './wardrobe-browser';
 import type { WardrobeContainer } from './wardrobe-container';
 import { createWardrobeItemActions, type WardrobeItemActions } from './wardrobe-item-actions';
 import type { WardrobeListData } from './wardrobe-list-data';
+import { fitsPronounGuidance } from './pronoun-guidance';
+import type { PronounGuidanceFilter } from './pronoun-guidance-filter';
 
 /**
  * P4.D285 — v4 `__tests__/unit/components/wardrobe/wardrobe-browser.folders.
@@ -101,6 +103,7 @@ function makeData(
           [data]="data()"
           [actions]="actions()"
           [showArchived]="showArchived()"
+          [pronounFilter]="pronounFilter()"
           (showArchivedChange)="showArchived.set($event)"
         />
       </div>
@@ -112,6 +115,7 @@ class BrowserHost {
   readonly data = signal<WardrobeListData>(makeData([], () => true));
   readonly actions = signal<WardrobeItemActions>(null as unknown as WardrobeItemActions);
   readonly showArchived = signal(false);
+  readonly pronounFilter = signal<PronounGuidanceFilter | null>(null);
   readonly dialogClosed = vi.fn();
   readonly overlayOpen = computed(() => this.actions().overlayOpen());
 
@@ -949,3 +953,54 @@ describe('WardrobeBrowser — copy to folder + the components ask (v4 `bbbcd2388
     );
   });
 });
+
+/** A pronoun-aware filter for a `he` character (v4 `usePronounGuidanceFilter`'s shape). */
+function heFilter(): PronounGuidanceFilter {
+  const HE = { subject: 'he', object: 'him', possessive: 'his' };
+  const aware = signal(true);
+  const shows = (i: { pronounGuidance?: readonly string[] | null }) =>
+    !aware() || fitsPronounGuidance(i, HE);
+  return {
+    applies: signal(true),
+    aware,
+    setAware: (v) => aware.set(v),
+    shows,
+    offer: (items) => items.filter(shows),
+    countHeldBack: (items) => items.filter((i) => !fitsPronounGuidance(i, HE)).length,
+  };
+}
+
+describe('WardrobeBrowser — the pronoun-aware filter (v4 eb90d9ed8, WardrobeBrowser.tsx:192-197, :509-511)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  const toggle = (el: HTMLElement) => el.querySelector('qt-pronoun-aware-toggle label');
+
+  it('offers the toggle only in a character view with a filter', async () => {
+    const data = makeData([COAT, BORROWED], ownOnly);
+    const plain = await renderBrowser(characterContainer, data);
+    expect(toggle(plain.el)).toBeNull();
+    plain.fixture.componentInstance.pronounFilter.set(heFilter());
+    await settle(plain.fixture);
+    expect(toggle(plain.el)).not.toBeNull();
+
+    const shared = await renderBrowser(projectContainer, makeData([BORROWED], () => true));
+    shared.fixture.componentInstance.pronounFilter.set(heFilter());
+    await settle(shared.fixture);
+    expect(toggle(shared.el)).toBeNull();
+  });
+
+  it('narrows the rows AND the tier counts; unticking brings them back', async () => {
+    const cape = { ...BORROWED, pronounGuidance: ['she'] } as WardrobeItemDto;
+    const { fixture, el } = await renderBrowser(characterContainer, makeData([COAT, cape], ownOnly));
+    expect(tierRowsShown(el)).toHaveLength(1);
+    const filter = heFilter();
+    fixture.componentInstance.pronounFilter.set(filter);
+    await settle(fixture);
+    expect(tierRowsShown(el)).toHaveLength(0);
+    expect(toggle(el)!.textContent!.replace(/\s+/g, ' ').trim()).toBe('Pronoun-aware (1 hidden)');
+    filter.setAware(false);
+    await settle(fixture);
+    expect(tierRowsShown(el)).toHaveLength(1);
+  });
+});
+

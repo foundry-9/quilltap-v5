@@ -239,3 +239,28 @@ describe('EquippedSlotRow picker — thumbnails (v4 wardrobe-item-images-ui.test
     expect(el.querySelector('[data-testid="wardrobe-item-thumbnail-open"]')).toBeNull();
   });
 });
+
+describe('EquippedSlotRow — pickableItems (v4 eb90d9ed8, equipped-slot-row.tsx)', () => {
+  it('the picker offers pickableItems ?? allItems; the chips still resolve against allItems', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ imports: [EquippedSlotRow] });
+    const fixture = TestBed.createComponent(EquippedSlotRow);
+    const vest = item({ id: 'vest', title: 'Brocade Vest', types: ['top'] });
+    fixture.componentRef.setInput('slot', 'top');
+    fixture.componentRef.setInput('equippedIds', ['dress']);
+    fixture.componentRef.setInput('allItems', [blouse, dress, vest]);
+    fixture.componentRef.setInput('pickableItems', [vest]);
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Green Dress');
+    expect(pickerTitles(openPicker(fixture))).toEqual(['Brocade Vest']);
+  });
+});
+
+describe('EquippedSlotRow — the picker search is named (WCAG R6, v4 equipped-slot-row.tsx:147)', () => {
+  it('names the search by its slot', () => {
+    const fixture = render({ slot: 'top', equippedIds: [], allItems: [blouse] });
+    const el = openPicker(fixture);
+    expect(el.querySelector('input[type="search"]')!.getAttribute('aria-label')).toBe('Search top items');
+  });
+});
+

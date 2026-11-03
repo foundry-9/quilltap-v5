@@ -193,6 +193,8 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
       isDefault: false,
       componentItemIds: [],
       replace: false,
+      // v4 `eb90d9ed8` (`item-draft.ts:104`): guidance rides every payload.
+      pronounGuidance: [],
       folder: '',
     });
   });
@@ -979,3 +981,39 @@ describe('the editor’s Folder field (v4 4a38222e6)', () => {
     });
   });
 });
+
+describe('WardrobeItemEditor — pronoun guidance (v4 eb90d9ed8, wardrobe-item-editor.tsx:148-151, :401, :736-737)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('renders the field after Appropriateness, seeded from the item, and the payload carries it', async () => {
+    const { fixture, component } = await render({ item: item({ pronounGuidance: ['she'] }) });
+    const el = fixture.nativeElement as HTMLElement;
+    const field = el.querySelector('qt-wardrobe-pronoun-guidance-field')!;
+    expect(field).not.toBeNull();
+    const appropriateness = el.querySelector('#wardrobe-appropriateness')!;
+    expect(appropriateness.compareDocumentPosition(field) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const boxes = [...field.querySelectorAll('input')] as HTMLInputElement[];
+    expect(boxes.map((b) => b.checked)).toEqual([false, true, false, false]);
+    boxes[2].checked = true;
+    boxes[2].dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(
+      ((component.buildSaveRequest() as { item: Record<string, unknown> }).item)['pronounGuidance'],
+    ).toEqual(['she', 'they']);
+  });
+});
+
+describe('WardrobeItemEditor — dialog semantics (WCAG R1, v4 dff76ebef)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('is a modal dialog labelled by its title', async () => {
+    const { fixture } = await render({ item: item() });
+    const el = fixture.nativeElement as HTMLElement;
+    const dialog = el.querySelector('[role="dialog"]')!;
+    expect(dialog.getAttribute('aria-modal')).toBe('true');
+    expect(dialog.getAttribute('tabindex')).toBe('-1');
+    const title = el.querySelector(`#${dialog.getAttribute('aria-labelledby')}`)!;
+    expect(title.textContent!.trim()).toBe('Edit Wardrobe Item');
+  });
+});
+

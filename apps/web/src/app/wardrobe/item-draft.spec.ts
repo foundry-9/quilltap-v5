@@ -38,9 +38,20 @@ describe('item drafts', () => {
       componentItemIds: [],
       // A leaf always replaces its slots; the flag is composite-only.
       replace: false,
+      // An item read without guidance offers itself to everyone (v4 `eb90d9ed8`).
+      pronounGuidance: [],
       // An item read without a folder sits at the top level.
       folder: '',
     });
+  });
+
+  it('round-trips pronounGuidance (v4 eb90d9ed8 — item-draft.ts:36, :84, :104)', () => {
+    const guided = { ...coat, pronounGuidance: ['she', 'they'] } as WardrobeItemDto;
+    const draft = draftFromItem(guided);
+    expect(draft.pronounGuidance).toEqual(['she', 'they']);
+    expect(draft.pronounGuidance).not.toBe(guided.pronounGuidance);
+    expect(draftToPayload(draft).pronounGuidance).toEqual(['she', 'they']);
+    expect(emptyDraft().pronounGuidance).toEqual([]);
   });
 
   it('keeps replace for a composite and sends blank text as null', () => {

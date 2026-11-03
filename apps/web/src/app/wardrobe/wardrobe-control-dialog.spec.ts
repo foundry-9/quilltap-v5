@@ -408,6 +408,9 @@ describe('WardrobeControlDialogInner — chat-aware behavior', () => {
           'characterWardrobeInstructionsGet',
           // P4.D285: the browser reads its container's folder tree. A READ.
           'wardrobeFoldersList',
+          // P4.D359: the pronoun-aware filter reads the character's pronouns
+          // through the character detail (v4 `usePronounGuidanceFilter`). A READ.
+          'characterGet',
         ].includes(r.type as string),
       ),
     ).toBe(true);
@@ -651,6 +654,9 @@ describe('the asTab chrome switch (v4 WardrobeShell :128-164 / WardrobeView :105
           'characterWardrobeInstructionsGet',
           // P4.D285: the browser reads its container's folder tree. A READ.
           'wardrobeFoldersList',
+          // P4.D359: the pronoun-aware filter reads the character's pronouns
+          // through the character detail (v4 `usePronounGuidanceFilter`). A READ.
+          'characterGet',
         ].includes(r.type as string),
       ),
     ).toBe(true);

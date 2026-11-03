@@ -520,6 +520,8 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
           isDefault: true,
           componentItemIds: ['x'],
           replace: true,
+          // v4 `eb90d9ed8`: the copy carries the original's guidance.
+          pronounGuidance: [],
           folder: 'Formal/Evening',
         },
       },
@@ -535,6 +537,8 @@ describe('the tier-routed row mutations (v4 wardrobe-control-dialog.tsx at d7263
           isDefault: true,
           componentItemIds: ['x'],
           replace: true,
+          // v4 `eb90d9ed8`: the copy carries the original's guidance.
+          pronounGuidance: [],
           folder: 'Formal/Evening',
         },
       },

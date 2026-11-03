@@ -75,6 +75,7 @@ import type { CandidateGroup, CandidateItem } from './types';
         (input)="componentSearchChange.emit($any($event.target).value)"
         (blur)="componentsBlur.emit()"
         placeholder="Search items to add as components…"
+        aria-label="Search items to add as components"
         class="qt-input mb-2"
       />
 

@@ -18,6 +18,7 @@ import { isComposite } from './equipped-slots';
 import { WARDROBE_SLOT_META } from './slot-meta';
 import { SlotBadge } from './slot-ui';
 import { wardrobeOriginLabel } from './wardrobe-container';
+import { formatPronounGuidance } from './pronoun-guidance';
 import { formatWearLine, wearOf } from './wear-display';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 
@@ -162,6 +163,15 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
           @if (item().appropriateness) {
             <div class="qt-text-xs qt-text-secondary truncate mt-0.5">
               {{ item().appropriateness }}
+            </div>
+          }
+          <!-- Pronoun guidance (v4 eb90d9ed8, wardrobe-item-row.tsx:289-293). -->
+          @if ((item().pronounGuidance?.length ?? 0) > 0) {
+            <div
+              class="qt-text-xs qt-text-secondary truncate mt-0.5"
+              data-testid="wardrobe-pronoun-guidance"
+            >
+              For {{ pronounGuidanceText() }}
             </div>
           }
         </div>
@@ -402,6 +412,11 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 })
 export class WardrobeItemRow {
   readonly item = input.required<WardrobeItemDto>();
+
+  /** v4 `formatPronounGuidance(item.pronounGuidance)` — the `For …` note's labels. */
+  protected readonly pronounGuidanceText = computed(() =>
+    formatPronounGuidance(this.item().pronounGuidance),
+  );
   /** All items in the cache (this character + shared archetypes) — used to
    *  render composite components inline. */
   readonly allItems = input.required<WardrobeItemDto[]>();

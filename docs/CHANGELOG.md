@@ -12,6 +12,30 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): wardrobe pronoun guidance — the field, the For note, the Pronoun-aware switch and pickableItems (v4 eb90d9ed8)
+
+_Versions: SPA 0.5.918._
+
+The wardrobe UI takes the client half of v4 `eb90d9ed8`, consuming C6's `pronounGuidance`; P4.D349 owns the server.
+
+New pieces:
+- `wardrobe/pronoun-guidance-filter.ts`: `createPronounGuidanceFilter` reads the character's pronouns through the character detail query and holds an "aware" switch that starts on.
+- `wardrobe/pronoun-aware-toggle.ts`: v4's `Pronoun-aware` checkbox with the `(n hidden)` count.
+- `wardrobe/item-editor/wardrobe-pronoun-guidance-field.ts`: four boxes in picker order plus v4's paragraph; it emits the normalised list.
+
+Wiring:
+- The item draft and payload carry `pronounGuidance`. Duplicates keep the original's guidance, as v4's do.
+- The item editor shows the field after Appropriateness.
+- A row notes `For She/Her/Her, …`.
+- In character view, the browser offers the toggle and narrows its rows and tier counts through `offeredItems`.
+- The control dialog owns one filter. It hands the filter to the browser and `pickableItems` to both outfit composers, whose quick pick and slot pickers take `pickableItems ?? items`. Worn chips still resolve against every item.
+
+The chat-start composer's toggle is recorded against v5's deferred Compose mode.
+
+WCAG on these files:
+- R1: the item editor is a modal dialog labelled by its title.
+- R6: the slot search, the outfit search and the component search are named with v4's bytes.
+
 #### 2026-11-03 — feat(spa): the Humanoid checkbox and the head-and-shoulders hint pair (v4 b27e5089a)
 
 _Versions: SPA 0.5.917._

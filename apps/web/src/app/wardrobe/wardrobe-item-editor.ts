@@ -13,7 +13,7 @@ import {
 } from '@angular/core';
 
 import { CoreClient } from '../core/core-client';
-import type { WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
+import type { PronounGuidance, WardrobeItemDto, WardrobeSlotType } from '../core/core-contract';
 import { MarkdownField } from '../editor/markdown-field';
 import { buildCompositeTypes } from './composite-types';
 import { isComposite } from './equipped-slots';
@@ -48,6 +48,7 @@ import { WardrobeModeChangePrompt } from './item-editor/wardrobe-mode-change-pro
 import { WardrobeWearHistorySection } from './item-editor/wear-history-section';
 import { WardrobeItemImageSection } from './item-editor/wardrobe-item-image-section';
 import { WardrobeFolderField } from './item-editor/wardrobe-folder-field';
+import { WardrobePronounGuidanceField } from './item-editor/wardrobe-pronoun-guidance-field';
 import { ToastService } from '../ui/toast.service';
 
 type EditorMode = 'single' | 'bundle';
@@ -63,6 +64,9 @@ function charCountClass(current: number, max: number): string {
   if (current > max * 0.9) return 'qt-text-warning';
   return 'qt-text-secondary';
 }
+
+/** Module counter behind {@link WardrobeItemEditor.titleId}. */
+let editorTitleCounter = 0;
 
 /**
  * The tier-routed wardrobe item editor — a port of v4
@@ -99,6 +103,7 @@ function charCountClass(current: number, max: number): string {
     WardrobeWearHistorySection,
     WardrobeItemImageSection,
     WardrobeFolderField,
+    WardrobePronounGuidanceField,
   ],
   template: `
     <!-- Overlay — z values sit above the qt-dialog-overlay (z-[60]) so this
@@ -114,12 +119,20 @@ function charCountClass(current: number, max: number): string {
       class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[80] pointer-events-auto"
       style="width: min(var(--qt-page-max-width), calc(100vw - 2rem))"
     >
-      <div class="qt-dialog qt-dialog-wide max-h-[90vh] overflow-y-auto flex flex-col">
+      <!-- WCAG R1 (v4 dff76ebef, wardrobe-item-editor.tsx:484-492). The focus
+           directive (P4.D358's qtDialogFocus) is a unifier HANDOFF. -->
+      <div
+        class="qt-dialog qt-dialog-wide max-h-[90vh] overflow-y-auto flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        [attr.aria-labelledby]="titleId"
+        tabindex="-1"
+      >
         <div
           class="qt-dialog-header sticky top-0 flex-shrink-0 qt-bg-default border-b qt-border-default"
         >
           <div class="flex items-center justify-between">
-            <h2 class="qt-dialog-title">
+            <h2 [id]="titleId" class="qt-dialog-title">
               {{ isEditing() ? 'Edit Wardrobe Item' : 'New Wardrobe Item' }}
             </h2>
             <button
@@ -347,6 +360,12 @@ function charCountClass(current: number, max: number): string {
             </p>
           </div>
 
+          <!-- Pronoun guidance — who the piece is offered to (v4 eb90d9ed8, :736-737). -->
+          <qt-wardrobe-pronoun-guidance-field
+            [value]="pronounGuidance()"
+            (valueChange)="pronounGuidance.set($event)"
+          />
+
           <!-- Portrait cue — plain-text phrase handed to the image-makers (v4 :638-664). -->
           <div>
             <div class="flex items-center justify-between mb-1">
@@ -555,12 +574,17 @@ export class WardrobeItemEditor {
     }
   });
 
+  /** The title's id — per instance (v4 `useId`). */
+  protected readonly titleId = `qt-wardrobe-item-editor-title-${++editorTitleCounter}`;
+
   // Form state (v4 useFormState, :70-76).
   protected readonly title = signal('');
   protected readonly description = signal('');
   protected readonly imagePrompt = signal('');
   protected readonly appropriateness = signal('');
   protected readonly isDefault = signal(false);
+  /** Pronoun guidance: who the item is offered to. Empty = everyone (v4 `eb90d9ed8` `:148-151`). */
+  protected readonly pronounGuidance = signal<PronounGuidance[]>([]);
   /** Folder under `Wardrobe/` (`''` = root) — the item's own on edit,
    *  `initialFolder` on create (v4 `4a38222e6` `:135`). */
   protected readonly folder = signal('');
@@ -620,6 +644,7 @@ export class WardrobeItemEditor {
         this.imagePrompt.set(draft.imagePrompt);
         this.appropriateness.set(draft.appropriateness);
         this.isDefault.set(draft.isDefault);
+        this.pronounGuidance.set(draft.pronounGuidance);
         this.selectedTypes.set(draft.types);
         this.folder.set(item ? draft.folder : this.initialFolder());
         const seedComponents = initialComponents ?? draft.componentItemIds;
@@ -906,6 +931,7 @@ export class WardrobeItemEditor {
       types: isBundle ? this.effectiveTypes() : this.selectedTypes(),
       componentItemIds: isBundle ? this.componentItemIds() : [],
       replace: this.replace(),
+      pronounGuidance: this.pronounGuidance(),
       folder: this.folder(),
     };
   }

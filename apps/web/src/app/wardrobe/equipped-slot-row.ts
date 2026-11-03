@@ -87,6 +87,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
               [value]="search()"
               (input)="search.set($any($event.target).value)"
               [placeholder]="'Search ' + lowerLabel() + ' items…'"
+              [attr.aria-label]="'Search ' + lowerLabel() + ' items'"
               class="qt-input qt-input-sm w-full"
             />
           </div>
@@ -131,6 +132,12 @@ export class EquippedSlotRow {
    * composites the picker itself won't offer.
    */
   readonly allItems = input.required<WardrobeItemDto[]>();
+  /**
+   * What the picker offers, when narrower than `allItems` (the pronoun-aware
+   * filter — v4 `eb90d9ed8`, `equipped-slot-row.tsx`). The chips above still
+   * resolve against `allItems`.
+   */
+  readonly pickableItems = input<WardrobeItemDto[] | null>(null);
 
   readonly add = output<{ slot: WardrobeSlotType; itemId: string }>();
   readonly remove = output<{ slot: WardrobeSlotType; itemId: string }>();
@@ -166,7 +173,7 @@ export class EquippedSlotRow {
   protected readonly candidates = computed(() => {
     const equipped = new Set(this.equippedIds());
     const term = this.search().trim().toLowerCase();
-    return selectGarments(this.allItems())
+    return selectGarments(this.pickableItems() ?? this.allItems())
       .filter((i) => i.types.includes(this.slot()))
       .filter((i) => !equipped.has(i.id))
       .filter((i) => (term ? i.title.toLowerCase().includes(term) : true));

@@ -69,6 +69,7 @@ import { wardrobeOriginLabel } from './wardrobe-container';
                 [value]="search()"
                 (input)="search.set($any($event.target).value)"
                 placeholder="Search outfits…"
+                aria-label="Search outfits"
                 class="qt-input qt-input-sm w-full"
               />
             </div>

@@ -40,6 +40,7 @@ import {
 } from './staged-live-outfits';
 import { OutfitComposer } from './outfit-composer';
 import { OutfitHistoryTab } from './outfit-history-tab';
+import { createPronounGuidanceFilter } from './pronoun-guidance-filter';
 import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeBrowser, type WardrobeRowWearControls } from './wardrobe-browser';
 import { WardrobeItemOverlays } from './wardrobe-item-overlays';
@@ -285,6 +286,7 @@ type RightTab = 'live' | 'builder' | 'history';
               [actions]="actions"
               [showArchived]="showArchived()"
               (showArchivedChange)="showArchived.set($event)"
+              [pronounFilter]="pronounFilter"
               [wear]="wearControls()"
             />
 
@@ -344,6 +346,7 @@ type RightTab = 'live' | 'builder' | 'history';
                     </p>
                     <qt-outfit-composer
                       [items]="items()"
+                      [pickableItems]="pickableItems()"
                       [slots]="liveDisplaySlots()"
                       (addToSlot)="liveHandlers.onAddToSlot($event.slot, $event.itemId)"
                       (removeFromSlot)="liveHandlers.onRemoveFromSlot($event.slot, $event.itemId)"
@@ -433,6 +436,7 @@ type RightTab = 'live' | 'builder' | 'history';
                     </div>
                     <qt-outfit-composer
                       [items]="items()"
+                      [pickableItems]="pickableItems()"
                       [slots]="fittingSlots()"
                       (addToSlot)="fittingHandlers.onAddToSlot($event.slot, $event.itemId)"
                       (removeFromSlot)="fittingHandlers.onRemoveFromSlot($event.slot, $event.itemId)"
@@ -517,6 +521,15 @@ export class WardrobeControlDialogInner {
   });
   /** The character's wearable pool (empty in a shared view) — v4 `items` (`:238`). */
   protected readonly items = this.data.characterItems;
+
+  /**
+   * The pronoun-aware filter for the selected character (v4 `eb90d9ed8`,
+   * `:244-245`) — shared by the browser's switch and both composers' pickers.
+   * Worn chips still resolve against every item (`items`).
+   */
+  protected readonly pronounFilter = createPronounGuidanceFilter(this.selectedCharacterId, this.core);
+  /** What the composers' pull-downs and slot pickers offer. */
+  protected readonly pickableItems = computed(() => this.pronounFilter.offer(this.items()));
 
   /**
    * v4 `useWardrobeItemActions(…)` (`:254-259`). v4's imperative

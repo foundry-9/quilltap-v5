@@ -712,3 +712,27 @@ describe('WardrobeItemRow — folders, select mode, slot labels (v4 4a38222e6)',
     expect(host.querySelector('.min-w-\\[10rem\\]')).toBeNull();
   });
 });
+
+describe('WardrobeItemRow — pronoun guidance (v4 eb90d9ed8, wardrobe-item-row.tsx:289-293)', () => {
+  it('notes For … with the picker labels after the appropriateness line', async () => {
+    const fixture = await render(
+      dto({ id: 'gown', appropriateness: 'formal', pronounGuidance: ['they', 'she'] }),
+    );
+    const note = (fixture.nativeElement as HTMLElement).querySelector(
+      '[data-testid="wardrobe-pronoun-guidance"]',
+    )!;
+    expect(note.textContent!.trim()).toBe('For She/Her/Her, They/Them/Their');
+    expect(note.className).toBe('qt-text-xs qt-text-secondary truncate mt-0.5');
+    expect(note.previousElementSibling!.textContent!.trim()).toBe('formal');
+  });
+
+  it('is absent with no guidance', async () => {
+    for (const pronounGuidance of [undefined, []]) {
+      const fixture = await render(dto({ id: 'cloak', pronounGuidance }));
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector('[data-testid="wardrobe-pronoun-guidance"]'),
+      ).toBeNull();
+    }
+  });
+});
+
