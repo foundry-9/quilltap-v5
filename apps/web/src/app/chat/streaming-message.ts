@@ -31,6 +31,8 @@ import { ThinkingBlock } from './thinking-block';
  * `ChatComposer`'s status strip, `PendingToolCalls`), all of which v5 folds into
  * this one. See the comment at each site for the mapping.
  */
+const STREAMING_DIAGRAMS = { style: 'clean', streaming: true } as const;
+
 @Component({
   selector: 'qt-streaming-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -98,6 +100,7 @@ import { ThinkingBlock } from './thinking-block';
                 [content]="state().content"
                 [renderingPatterns]="renderingPatterns()"
                 [dialogueDetection]="dialogueDetection()"
+                [diagrams]="STREAMING_DIAGRAMS"
               />
             }
             <!--
@@ -163,6 +166,11 @@ import { ThinkingBlock } from './thinking-block';
  */
 export class StreamingMessage {
   readonly state = input.required<ChatStreamState>();
+  /**
+   * v4 `StreamingMessage.tsx:15` — a reply still arriving keeps its diagram
+   * fences as code (clean, streaming) until the settled row draws them.
+   */
+  protected readonly STREAMING_DIAGRAMS = STREAMING_DIAGRAMS;
   /**
    * The chat's roleplay-template patterns — v4 passes the very same pair into
    * `StreamingMessage` that it passes into each settled row

@@ -3515,6 +3515,14 @@ export interface DetailCharacter {
    * is absent until rehydration, and the card badges it ALONGSIDE Absent.
    */
   archivedAt?: string | null;
+  // === P4.D353 — diagrams (C6 reads) ===
+  /**
+   * v4 `6588972d5`: the seat's character's diagram hand, read by the Salon's
+   * `resolveMessageDiagramStyle`. Optional until P4.D349 carries it on the
+   * wire; read through `diagramStyleOrDefault` (absent → `handDrawn`).
+   */
+  diagramStyle?: 'handDrawn' | 'clean';
+  // === end P4.D353 ===
   /**
    * The character's NAMED system prompts (v4 `EnrichedCharacterSystemPrompt`,
    * `chat-enrichment.service.ts:296-300`). The server has always projected these
@@ -3783,6 +3791,16 @@ export interface CharacterListItem {
    * optional in TS so pre-server-lane responses read defensively (`?? false`).
    */
   canChooseOutfit?: boolean;
+  // === P4.D353 — diagrams (C6 reads) ===
+  /**
+   * v4 `6588972d5`: the vault `properties.json` "Draws diagrams" grant and the
+   * hand they are drawn in. The server never sends null (C6, P4.D349); optional
+   * in TS so a pre-server-lane response reads defensively (`?? false` /
+   * `?? 'handDrawn'`).
+   */
+  canDrawDiagrams?: boolean;
+  diagramStyle?: 'handDrawn' | 'clean';
+  // === end P4.D353 ===
   /**
    * P4.D64 §1: the archive tombstone's ISO timestamp, ALWAYS present on the
    * list DTO (`?? null`) once P4.D63 lands the chokepoint. Optional in TS so
@@ -3843,6 +3861,16 @@ export interface CharacterDetail {
    * in TS so pre-server-lane responses read defensively (`?? false`).
    */
   canChooseOutfit?: boolean;
+  // === P4.D353 — diagrams (C6 reads) ===
+  /**
+   * v4 `6588972d5`: the vault `properties.json` "Draws diagrams" grant and the
+   * hand they are drawn in. The server never sends null (C6, P4.D349); optional
+   * in TS so a pre-server-lane response reads defensively (`?? false` /
+   * `?? 'handDrawn'`).
+   */
+  canDrawDiagrams?: boolean;
+  diagramStyle?: 'handDrawn' | 'clean';
+  // === end P4.D353 ===
   /**
    * P4.D64 §1 (v4 `[id]/handlers/get.ts`, `view/types.ts:88-90`): the archive
    * tombstone. `archivedAt` non-null ⇒ the whole page is read-only and the

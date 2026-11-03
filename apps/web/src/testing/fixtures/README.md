@@ -513,3 +513,16 @@ first).
 | Corpus | Rows | sha256 | v4 code | Consumer |
 |---|---|---|---|---|
 | `intervention-summary.oracle.ndjson` | 38 — 24 `getInterventionSummary`, 14 `describeSpan` | `52d90e1aa20edb639d5a698bddbe43aed179b1f83171ca2105b0d53eaafbc7e9` | `app/salon/[id]/components/system-message-labels.ts` (`839575d89`) + `lib/pascal/intervention/spans.ts` (`8ae8a127c`); pin `236c04e35` | `app/chat/system-message-labels.intervention.oracle.spec.ts` |
+
+## P4.D353 — diagrams (no fixture)
+
+This lane vendors no NDJSON: v4 proved the diagram feature with a jsdom suite only,
+so the corpora are its ten test files transcribed case for case into vitest specs
+(`diagrams.test.ts` 112 lines, `sanitize-svg` 97, `render-svg` 30, `DiagramBlock` 197,
+`DiagramLightbox` 113, `lightbox-geometry` 83, `scroll-anchor` 84, `export-png` 158,
+`LazyMessageContent.diagrams` 50 — the arms that survive v5's lack of a fast path —
+and `message-row-diagram-style` 37), the renderers stood in through the
+`DIAGRAM_RENDERERS` / `DIAGRAM_PNG_COPY` tokens as v4 mocks the modules.
+`e2e/diagrams-flow.spec.ts` seeds four Aria rows into Solo Voyage on its own copy of
+the salon pair (a mermaid flowchart, a dot graph, a mermaid fence that does not parse,
+a reasoning-only mermaid fence) and streams one through `startMockLlm`. R-B: (A).

@@ -1,7 +1,21 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  ViewContainerRef,
+  afterRenderEffect,
+  computed,
+  inject,
+  input,
+  type ComponentRef,
+} from '@angular/core';
 import { DomSanitizer, type SafeHtml } from '@angular/platform-browser';
 
 import { SmartTypographySettings } from '../smart-typography/settings';
+import { DiagramBlock } from './diagrams/diagram-block';
+import { listClosedDiagramFences, type DiagramStyle } from './diagrams/diagram-fences';
+import { applyDiagramSlots, type DiagramSlot } from './diagrams/diagram-slots';
 import { injectImagesHidden } from './hidden-image/images-hidden';
 import { renderMarkdownCached } from './render/render-cache';
 import type { DialogueDetection, RenderingPattern } from './render/roleplay-rendering';
@@ -46,6 +60,14 @@ export class MessageContent {
    * a NULLISH value, never on an "empty-looking" object.
    */
   readonly dialogueDetection = input<DialogueDetection | null | undefined>(undefined);
+  /**
+   * Draw closed diagram fences (v4 `MessageContent.tsx:74` `diagrams`), in the
+   * authoring character's style. Only the Salon passes it — the Brahma
+   * console, thinking blocks, announcements and every other surface keep their
+   * diagram fences as code blocks. `streaming` keeps them as code too (a
+   * half-received fence would flash the error state at every token).
+   */
+  readonly diagrams = input<{ style: DiagramStyle; streaming?: boolean } | null>(null);
 
   private readonly sanitizer = inject(DomSanitizer);
   /**
@@ -67,15 +89,73 @@ export class MessageContent {
    */
   private readonly imagesHidden = injectImagesHidden();
 
-  protected readonly html = computed<SafeHtml>(() =>
-    this.sanitizer.bypassSecurityTrustHtml(
-      renderMarkdownCached(this.content(), {
-        blobMountPointId: this.blobMountPointId(),
-        renderingPatterns: this.renderingPatterns(),
-        dialogueDetection: this.dialogueDetection(),
-        displayQuotes: this.displayQuotes(),
-        imagesHidden: this.imagesHidden(),
-      }),
-    ),
+  private readonly rendered = computed(() =>
+    renderMarkdownCached(this.content(), {
+      blobMountPointId: this.blobMountPointId(),
+      renderingPatterns: this.renderingPatterns(),
+      dialogueDetection: this.dialogueDetection(),
+      displayQuotes: this.displayQuotes(),
+      imagesHidden: this.imagesHidden(),
+    }),
   );
+
+  /**
+   * The diagram post-pass (P4.D353 R-1) over the CACHED render: the renderer
+   * and its cache are untouched; the Nth closed diagram fence's code block
+   * becomes an empty `qt-diagram-slot` that the effect below mounts a
+   * {@link DiagramBlock} into. A message with no closed diagram fence (or one
+   * rendered without `diagrams`, or still streaming) passes through as is.
+   */
+  private readonly slotPass = computed<{ html: string; slots: DiagramSlot[] }>(() => {
+    const html = this.rendered();
+    const diagrams = this.diagrams();
+    if (!diagrams || diagrams.streaming) return { html, slots: [] };
+    const fences = listClosedDiagramFences(this.content());
+    if (fences.length === 0) return { html, slots: [] };
+    return applyDiagramSlots(html, fences);
+  });
+
+  protected readonly html = computed<SafeHtml>(() =>
+    this.sanitizer.bypassSecurityTrustHtml(this.slotPass().html),
+  );
+
+  /** The rendered message's host element (the P4.D359 hook reads it). */
+  protected readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly vcr = inject(ViewContainerRef);
+  private mounted: ComponentRef<DiagramBlock>[] = [];
+
+  constructor() {
+    afterRenderEffect(() => {
+      const { slots } = this.slotPass();
+      const style = this.diagrams()?.style ?? 'clean';
+
+      // The [innerHTML] reassign has already dropped the previous blocks'
+      // hosts from the DOM; their views must still be destroyed, or they leak.
+      this.destroyMounted();
+      const root = this.host.nativeElement;
+      for (const slot of slots) {
+        const slotEl = root.querySelector(`.qt-diagram-slot[data-slot-index="${slot.index}"]`);
+        if (!slotEl) continue;
+        const ref = this.vcr.createComponent(DiagramBlock);
+        ref.setInput('engine', slot.fence.engine);
+        ref.setInput('language', slot.fence.language);
+        ref.setInput('source', slot.fence.source);
+        ref.setInput('style', style);
+        ref.setInput('streaming', false);
+        ref.setInput('fallbackHtml', slot.fallbackHtml);
+        slotEl.replaceWith(ref.location.nativeElement);
+        ref.changeDetectorRef.detectChanges();
+        this.mounted.push(ref);
+      }
+
+      // === P4.D359 — absent-character name chips (delegation hook; P4.D359 fills this fence, nothing else in this file is theirs) ===
+      // === end P4.D359 ===
+    });
+    inject(DestroyRef).onDestroy(() => this.destroyMounted());
+  }
+
+  private destroyMounted(): void {
+    for (const ref of this.mounted) ref.destroy();
+    this.mounted = [];
+  }
 }

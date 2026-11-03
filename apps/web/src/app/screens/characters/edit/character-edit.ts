@@ -20,6 +20,7 @@ import { Icon } from '../../../ui/icon';
 import { LoadingState } from '../../../ui/loading-state';
 import { ToastService } from '../../../ui/toast.service';
 import { characterAvatarSrc, characterKeys, fetchCharacter } from '../characters.api';
+import { CanDrawDiagramsCard } from '../can-draw-diagrams-card';
 import { CharacterChooseOutfitCard } from '../choose-outfit-card';
 import { WardrobeDialogService } from '../../../wardrobe/wardrobe-dialog.service';
 import { CharacterDeleteDialog, type DeleteChoice } from '../list/character-delete-dialog';
@@ -83,6 +84,7 @@ const EDIT_TABS: Tab[] = [
     AvatarPickerModal,
     CharacterDeleteDialog,
     CharacterChooseOutfitCard,
+    CanDrawDiagramsCard,
     CharacterLlmLogsSection,
     CharacterRenameReplaceTab,
     AiWizardModal,
@@ -158,6 +160,7 @@ const EDIT_TABS: Tab[] = [
                     [form]="formData()"
                     (fieldChange)="formData.set($event)"
                   />
+                  <qt-can-draw-diagrams-card class="mt-6" [characterId]="character() ? characterId() : null" [canDrawDiagrams]="character()?.canDrawDiagrams ?? false" [diagramStyle]="character()?.diagramStyle ?? 'handDrawn'" />
                 }
                 @case ('system-prompts') {
                   <qt-character-system-prompts-tab

@@ -19,6 +19,7 @@ import { ConfirmationBadge } from './confirmation-badge';
 import { HiddenImageTile } from './hidden-image/hidden-image-tile';
 import { injectImagesHidden } from './hidden-image/images-hidden';
 import { CourierBubble } from './courier-bubble';
+import { resolveMessageDiagramStyle } from './diagrams/message-diagram-style';
 import { MessageContent } from './message-content';
 import { QuillAnimation } from './quill-animation';
 import type { RegenerationState } from './regeneration.state';
@@ -185,7 +186,7 @@ export interface ImageClickEvent {
           [attr.aria-busy]="regeneration() ? true : null"
         >
           @if (variant() === 'whisper') {
-            <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}</div>
+            <div class="qt-chat-whisper-label">whispered to {{ whisperTargets() }}{{ isOverheardWhisper() ? ' (overheard)' : '' }}</div>
           } @else if (variant() === 'silent') {
             <div class="qt-chat-silent-label">Silent — inner thoughts</div>
           }
@@ -238,6 +239,7 @@ export interface ImageClickEvent {
                     [blobMountPointId]="blobMountPointId()"
                     [renderingPatterns]="renderingPatterns()"
                     [dialogueDetection]="dialogueDetection()"
+                    [diagrams]="settledDiagrams()"
                   />
                 </div>
                 <div class="qt-chat-regenerating-plate" role="status" aria-live="polite">
@@ -269,6 +271,7 @@ export interface ImageClickEvent {
                   [blobMountPointId]="blobMountPointId()"
                   [renderingPatterns]="renderingPatterns()"
                   [dialogueDetection]="dialogueDetection()"
+                  [diagrams]="regeneratingDiagrams()"
                 />
                 <qt-quill-animation size="sm" class="inline-block ml-2 qt-text-secondary" />
               }
@@ -279,6 +282,7 @@ export interface ImageClickEvent {
               [blobMountPointId]="blobMountPointId()"
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
+              [diagrams]="settledDiagrams()"
             />
           }
 
@@ -651,6 +655,20 @@ export class MessageRow {
   );
   /** The kind chip — for a roll, the tool title (`toolTitle ?? tool`). */
   protected readonly staffKind = computed(() => getSystemKindDisplayLabel(this.message()));
+
+  /**
+   * Whose hand this row's diagrams are drawn in (v4 `MessageRow.tsx:210-212`,
+   * `resolveMessageDiagramStyle`). The two bindings are memoised objects, not
+   * template literals, so change detection sees a stable input.
+   */
+  protected readonly diagramStyle = computed(() =>
+    resolveMessageDiagramStyle(this.message(), this.chat().participants),
+  );
+  protected readonly settledDiagrams = computed(() => ({ style: this.diagramStyle() }));
+  protected readonly regeneratingDiagrams = computed(() => ({
+    style: this.diagramStyle(),
+    streaming: true,
+  }));
   /**
    * The outcome a Pascal roll landed on (v4 `getAnnouncementOutcomeState`,
    * `231be14c`), or null for every other Staff row — and for a record that

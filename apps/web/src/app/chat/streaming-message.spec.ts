@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import { singleTurnTrace, FIXTURE_CHAT_ID } from '../core/__fixtures__/frame-trace';
 import { foldChatFrames } from '../core/chat-stream.reducer';
+import { By } from '@angular/platform-browser';
+
+import { MessageContent } from './message-content';
 import { StreamingMessage } from './streaming-message';
 
 /**
@@ -293,5 +296,19 @@ describe('StreamingMessage — the responding avatar column (v4 :85-96)', () => 
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.qt-chat-desktop-avatar')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.qt-thinking-indicator')).not.toBeNull();
+  });
+
+  it('v5: a streamed diagram fence stays a code block (STREAMING_DIAGRAMS, v4 StreamingMessage.tsx:15)', () => {
+    const fixture = renderWith({
+      state: foldChatFrames([{ content: 'Look:\n\n```mermaid\ngraph TD; A-->B\n```' }]),
+    });
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('qt-diagram-block')).toBeNull();
+    expect(el.querySelector('pre > code.language-mermaid')?.textContent).toContain('graph TD; A-->B');
+    const content = fixture.debugElement.query(By.directive(MessageContent));
+    expect((content.componentInstance as { diagrams: () => unknown }).diagrams()).toEqual({
+      style: 'clean',
+      streaming: true,
+    });
   });
 });

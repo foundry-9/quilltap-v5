@@ -58,6 +58,7 @@ import { CharacterAppearanceTab } from './tabs/character-appearance-tab';
 import { CharacterConversationsTab } from './tabs/conversations-tab';
 import { CharacterDefaultsTab } from './tabs/defaults-tab';
 import { CharacterDetailsTab } from './tabs/details-tab';
+import { CanDrawDiagramsCard } from '../can-draw-diagrams-card';
 import { CharacterGalleryTab } from './tabs/gallery-tab';
 import { CharacterMemoriesTab } from './tabs/memories-tab';
 import { CharacterSystemPromptsTab } from './tabs/system-prompts-tab';
@@ -103,6 +104,7 @@ const CHARACTER_TABS: Tab[] = [
     ExternalPromptResultDialog,
     CharacterHeader,
     CharacterDetailsTab,
+    CanDrawDiagramsCard,
     CharacterSystemPromptsTab,
     CharacterConversationsTab,
     CharacterMemoriesTab,
@@ -219,6 +221,7 @@ const CHARACTER_TABS: Tab[] = [
                   [defaultPartnerName]="defaultPartnerName()"
                   [userControlledCharacters]="userControlledCharacters()"
                 />
+                <qt-can-draw-diagrams-card class="mt-6" [characterId]="id()" [canDrawDiagrams]="character.canDrawDiagrams ?? false" [diagramStyle]="character.diagramStyle ?? 'handDrawn'" [disabled]="isArchived()" />
               }
               @case ('system-prompts') {
                 <qt-character-system-prompts-tab

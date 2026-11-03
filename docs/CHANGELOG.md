@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): diagrams in the Salon — the slot post-pass, the per-message hand, the Aurora card (v4 6588972d5 + 9faed0c7e)
+
+_Versions: SPA 0.5.910._
+
+Wires v4's diagrams into the Salon (`6588972d5` + `9faed0c7e`, at `236c04e35`). `qt-message-content` gains v4's `diagrams` input. When it is set, the message is not streaming, and the content holds a closed diagram fence, a post-pass over the cached render swaps the Nth diagram code block for a slot. An `afterRenderEffect` then mounts a `DiagramBlock` into each slot and destroys the previous ones first. The renderer and its cache key are untouched. Every other surface (Brahma, thinking blocks, announcements) keeps its fences as code. The effect also carries P4.D359's empty fenced hook for the absent-character chips.
+
+`qt-message-row` resolves each message's diagram hand as v4's `resolveMessageDiagramStyle` does: Staff senders and the operator draw clean, a seat takes its character's `diagramStyle`, and an absent value reads as hand-drawn. The row passes it as a memoised binding to its settled and preparing content and as `streaming: true` to the live regenerating content. The streaming bubble passes v4's `STREAMING_DIAGRAMS`. P4.D358's R10 hunk lands as a HANDOFF: an overheard whisper's label now ends in ` (overheard)`.
+
+The Aurora card `qt-can-draw-diagrams-card` (**Draws diagrams** + the **Drawing style** fieldset, v4's four success toasts) mounts on the Details tab of both character views. It saves on change through `characterUpdate`. `core-contract.ts` gains the C6 reads (`canDrawDiagrams` / `diagramStyle`) inside a P4.D353 fence; until P4.D349 lands the server keys they read defensively. `e2e/diagrams-flow.spec.ts` (own server 4356 / mock 45354) proves real Mermaid, WASM Graphviz, the lightbox, Copy PNG and the streaming hold in Chromium. Its two Aurora beats wait behind `P4D349_SERVER_LANDED = false`.
+
 #### 2026-11-03 — feat(spa): DiagramBlock, the diagram lightbox and Copy PNG (v4 6588972d5 + 9faed0c7e)
 
 _Versions: SPA 0.5.909._

@@ -11,6 +11,9 @@ import type {
   ParticipantDetail,
 } from '../core/core-contract';
 import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
+import { By } from '@angular/platform-browser';
+
+import { MessageContent } from './message-content';
 import { MessageRow, type ImageClickEvent } from './message-row';
 import { clearRenderCache } from './render/render-cache';
 
@@ -519,6 +522,90 @@ describe('MessageRow — whisper label (P4.17 unit 3)', () => {
     // replacement for the whisper variant.
     expect(bubble().classList.contains('qt-chat-message-whisper')).toBe(true);
     expect(fixture.nativeElement.querySelector('.qt-chat-whisper-label')).not.toBeNull();
+  });
+});
+
+describe('MessageRow — P4.D358 R10 overheard whisper label (HANDOFF; v4 MessageRow.tsx:388, 10e09b7c3)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it("v5: an overheard whisper's label ends in ' (overheard)'", () => {
+    const fixture = render(message({ targetParticipantIds: ['p1'] }), { isOverheardWhisper: true });
+    const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
+    expect(label.textContent.trim()).toBe('whispered to Lorian (overheard)');
+  });
+
+  it('v5: a whisper the operator is party to does not', () => {
+    const fixture = render(message({ targetParticipantIds: ['p1'] }));
+    const label = fixture.nativeElement.querySelector('.qt-chat-whisper-label');
+    expect(label.textContent.trim()).toBe('whispered to Lorian');
+  });
+});
+
+describe('MessageRow — diagram style threading (P4.D353; v4 MessageRow.tsx:210-212, :413-495)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  /** Every `qt-message-content` the row renders, with its `diagrams` binding. */
+  function diagramBindings(fixture: ComponentFixture<MessageRow>): unknown[] {
+    return fixture.debugElement
+      .queryAll(By.directive(MessageContent))
+      .map((d) => (d.componentInstance as { diagrams: () => unknown }).diagrams());
+  }
+
+  function chatWith(style: unknown): ChatDetail {
+    const chat = chatDetail();
+    chat.participants = [
+      participant({
+        id: 'p1',
+        character: {
+          id: 'char1',
+          name: 'Lorian',
+          title: null,
+          avatarUrl: null,
+          defaultImageId: null,
+          defaultImage: null,
+          ...(style === undefined ? {} : { diagramStyle: style as 'clean' }),
+        },
+      }),
+    ];
+    return chat;
+  }
+
+  it("v5: a seat whose character draws clean renders its content with a clean diagrams binding", () => {
+    const fixture = render(message({ content: 'x' }), { chat: chatWith('clean') });
+    expect(diagramBindings(fixture)).toEqual([{ style: 'clean' }]);
+  });
+
+  it('v5: a seat whose character has no diagramStyle on the wire draws hand-drawn (the C6 defensive default)', () => {
+    const fixture = render(message({ content: 'x' }), { chat: chatWith(undefined) });
+    expect(diagramBindings(fixture)).toEqual([{ style: 'handDrawn' }]);
+  });
+
+  it('v5: a Staff row (systemSender) draws clean', () => {
+    const fixture = render(message({ content: 'x', systemSender: 'carina', systemKind: 'carina-answer' }), {
+      chat: chatWith('handDrawn'),
+    });
+    expect(diagramBindings(fixture).every((b) => (b as { style: string }).style === 'clean')).toBe(true);
+  });
+
+  it('v5: the live regenerating content passes streaming: true; the preparing original does not', () => {
+    const live = render(message({ id: 'm', content: 'x' }), {
+      chat: chatWith('clean'),
+      regeneration: { messageId: 'm', stage: 'streaming', content: 'new', reasoning: '' },
+    });
+    expect(diagramBindings(live)).toEqual([{ style: 'clean', streaming: true }]);
+    TestBed.resetTestingModule();
+    const preparing = render(message({ id: 'm', content: 'x' }), {
+      chat: chatWith('clean'),
+      regeneration: { messageId: 'm', stage: 'preparing', content: '', reasoning: '' },
+    });
+    expect(diagramBindings(preparing)).toEqual([{ style: 'clean' }]);
+  });
+
+  it('v5: the binding is one memoised object across change detection', () => {
+    const fixture = render(message({ content: 'x' }), { chat: chatWith('clean') });
+    const before = diagramBindings(fixture)[0];
+    fixture.detectChanges();
+    expect(diagramBindings(fixture)[0]).toBe(before);
   });
 });
 
