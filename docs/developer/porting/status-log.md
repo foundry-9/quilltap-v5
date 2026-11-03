@@ -194618,6 +194618,45 @@ Every family regenerates through the sweep driver from the pin (`--run-all --for
 - **Carves:** `ZOD_DETAILS` (400 bodies' `details`), `SIBLING_DIAGRAM_STYLE` (self-retiring), `BACKEND_CORRUPT_JSON_LINE`, `ZOD_ERROR_TEXT` (presence only), `CYCLE_PERSIST_DEBUG_SILENT_IN_V4` (v5's `[Turn Manager] Cycle order persisted` DEBUG has no v4 line — v4's turn-manager logger is a no-op), `CONCURRENT_GROUP_IS_THE_HOSTS` (plan-only compare for concurrent plans).
 - **Censuses re-measured:** `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 515 → 519; typed-only hand-built constructions 152 → 153 (`wardrobe_routes.rs` 33); `get_messages` census 80 / 50 files (`rotation_order`, F); the stall-watchdog census row for `storyteller/bid_call.rs` (`watch_stream`, no turn stop).
 
+## P4.D343 — Storyteller mode SERVER + declared tool effects (v4 `b15fe9404` / `946a50a04` at the pin's shape, pin `236c04e35`) — LANE CLOSE
+
+Branch `claude/p4.d343-storyteller-server-effects-8dac8f39b` (cut from `SPINE` `8dac8f39b`). Commits: unit E `b01da538e`, unit S `56424b31b` (records above: `## P4.D343 unit E`, `## P4.D343 unit S`). **⚖ Pin ruling (human, 2026-11-02) applied:** no plugin-dir symlinks (class 3); `.claude/pin-plugin-sdks.sh "$PIN"` floor-installed the pin's plugin SDKs offline (openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1) — the 13 `toolChoice` vectors were recorded from those.
+
+### OPEN (deferred loudly — not landed in this lane)
+- **Item 32 `storyteller_round_tier3`** (the orchestrator tier-3 rows: the send's frame order, the two `STORYTELLER_BID` rows, the **R-1 table-delta proof**, R-5's aggregates-unchanged assert, the run's depths + plan section in the canned key, keepOrder / destroy-alone / ask / lie / leave / supersede, `toolChoice` in the canned key) and **item 43** (the Courier bid row). The code paths landed; their end-to-end differential did NOT. The corpus is shared and re-recorded at unification (P4.D347 → P4.D348 → P4.D343). Until it exists, the dry scope rests on the gate list in `storyteller_spine.rs`'s module doc, not on a measured delta.
+- **Item 22's +2 `message_finalizer_tier3` rows and item 23's +1 `regenerate_swipe_tier3` row** — code landed, rows not grown.
+- **Item 29** — `.qtap` import ACCEPTANCE of `turnMode` / `storytellerInviteFilter` / `storytellerBid` rides the KEYSTONE's plumbing (`ChatCreate.turn_mode`, the message column); v4's `ChatMetadataSchema` / message-schema REFUSALS of a bad value at import (an unknown mode, a non-boolean filter, a malformed bid record) are NOT ported — v5 accepts them. Unmeasured by `qtap_import_*`.
+- **Item 41 (Tier 2) `simultaneous`** — refused loudly (item 44's `not_available: storyteller simultaneous`); `TaggingSink` / `Tagged` exist and are byte-tested, but no concurrent group runs and `concurrent_follower`'s Prospero split is unreached.
+- **Item 10's `llm_logs_routes` row** — not grown (the type is pinned by `llm_logs_tier2`'s new op).
+- **Item 5's roster row in `tool_build_equivalence`** (a `run_custom` roster's `customToolEffects` map + the `run_custom` note under `read` through `buildTools`) — v4's jest env resolves no roster; the map and the note are pinned by `tool_effects` / unit tests, not through `build_tools`.
+- 💸 dogfood rows (survey §11) — owed to the dogfood pass; the board timeout is env-shortenable (`QT_STORYTELLER_BOARD_TIMEOUT_MS`) for walks.
+
+### HANDOFFs
+- **P4.D360:** `help/storyteller-mode.md` + the five edited help pages + `docs/v4/` (API.md `:2650-2669`, DDL.md, FEATURES.md, the spec under `features/complete/`). Nothing embedded here.
+- **P4.D344 (W1 as landed):** `ChatUpdate.turnMode` (top-level sibling of `chat`; `null`/unknown → 400 `Validation error`), `chat.storytellerInviteFilter`; dispatch `chatStorytellerRound` → `{round}`; `chatStorytellerRun` (raw body fields; ZodError arm `Invalid request`) → EMPTY reply, frames on the chat event stream; `chatStorytellerAsk` → `{bid}`; `chatStorytellerLie` → `{closed: true}`; REST `GET ?action=storyteller-round`, `POST ?action=storyteller-run|ask|lie`. **`GET storyteller-round` answers `{round: null}` for a missing chat (v4's `handleGet` runs before any chat lookup — measured; W1's "after the chat 404" is wrong for the GET).** Frames: `{"storytellerRound":…}`, `{"storytellerBid":{"roundId","bid"}}`, `{"roundOpen":true,"roundId"}`, `chainComplete round_open`; `simultaneous` → `Unprocessable` `not_available: storyteller simultaneous`. **A round's `selection` / `closedReason` / `closedAt` are ABSENT (not `null`) when unset** — the TS types' `?:` covers it. The e2e mock reply must be bid-formatted.
+- **P4.D345:** v4's RUNTIME Workbench key order puts `intervention` right after `disabled`, NOT between `triggerCount` and `effect` (measured). Realtime topic TENTH after `storytellerRounds`.
+- **P4.D355:** its `terminal_sessions` DELETE appends after the `// === P4.D343 (C-2) ===` round sweep in `ChatsRepository::delete`.
+- **The unifier:** restore the positional realtime assert at ten; `tool_build_equivalence`'s `CATALOG_DRIFT` carve dies with `CATALOG` (it fails once a carved tool matches); re-record `request-envelopes` ONCE with P4.D356's vectors (13 P4.D343 stream vectors appended); fold `spine.rs::run_send`'s per-call deps assembly onto `storyteller_spine::process_storyteller` (a copy — `run_send` is P4.D348's region); the orchestrator tier-3 re-record order.
+- **Possible v4 issue (NOT drafted/filed):** a storyteller round written with a NULL `triggerMessageId` (an attachments-only post) cannot be read back — `StorytellerRoundSchema.triggerMessageId` is `.nullable()` but not `.optional()`, and the reader turns NULL into `undefined`.
+
+### Gate (closing tree, after both commits)
+- fmt clean; clippy `--workspace --all-targets -D warnings` clean, and with `--features quilltap-core/native-transport` clean (after `npm --prefix apps/web run build`).
+- `cargo test --workspace --no-fail-fast` with the lane's env block (`/tmp/p4d343/gate-env.sh`, `TZ=UTC`, `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): **888 binaries, 9 red — every one a named union-expected red, none caused by this lane.**
+  - `cli_differential`: recall-replay help ×2 (P4.D342).
+  - `custom_tool_schema_embed_guard` and `public_schemas_vendor_guard`: P4.D345's schema.
+  - `pascal_workbench_equivalence` / `_route_`: `intervention` only (P4.D345).
+  - `realtime_topics_equivalence`: `customToolInterventions` (P4.D345).
+  - `query_param_semantics_equivalence`: the custom-tools `intervention-*` actions (P4.D345); the chat GET/POST lists match.
+  - `provider_sdk_version_guard`: `INSTALLED_ROOT_*` (P4.D360).
+  - `salon_reads_equivalence`: `diagramStyle` (P4.D349) and `punctuationWarnings` (P4.D352 / P4.D356); `turnMode` / `storytellerInviteFilter` green.
+- Zero SKIP for this lane's families: each was confirmed by name with `--nocapture`. `tool_effects` 144, `tool_executor_ceiling` 13, `tool_build` 51, `storyteller_pure` 119, `storyteller_rounds_tier2` 57, `plan_storyteller_run` 23, `chat_turn_mode_routes` 47, `pascal_trigger_runner` 30, `llm_logs_tier2` 7.
+- An earlier unit-E gate (`/tmp/p4d343/workspace-gate-E.log`, 883 binaries) found four censuses red. They were re-measured for unit S's new sites before that commit.
+- No Tier R / SPA / Playwright (none in scope).
+- **Every regen recipe is the family's own `//!` header.** The oracle NDJSONs and /tmp fixtures for this lane are under `/tmp/p4d343/` (the env block names each path).
+
+### Versions at close
+core 0.0.1384, host 0.0.220, web 0.0.253 (harness frozen).
+
 ## P4.D347 — the context builder: bugs 259 / 263 / 264 / 265, the referent ledger, absent mentions (lane `claude/p4.d347-context-builder-c2c28c031`, pin `236c04e35`, 2026-11-02) — LANE RECORD (Tier 1 → `CONTEXT` `8d7f99e8f`)
 
 **`CONTEXT`:** `8d7f99e8f`. Versions: core 0.0.1381, web 0.0.252 (host, cli, tauri, harness untouched).

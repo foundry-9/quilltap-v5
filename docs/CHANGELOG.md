@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D343 lane close — the gate, the OPEN items, the hand-offs
+
+_Docs-only change._
+
+The P4.D343 lane record gains its close: the closing workspace gate (888 binaries, nine named union-expected reds from sibling lanes), the items left open (the Storyteller tier-3 rows including the dry-scope table-delta proof, two finalizer / swipe tier-3 rows, the `.qtap` import refusals, two smaller rows), and the hand-offs to P4.D344 / P4.D345 / P4.D355 / P4.D360 and the unifier. The work order's status header reads LANE COMPLETE.
+
 #### 2026-11-03 — feat(storyteller): Storyteller mode server — rounds, bids, the run, the turn-mode PUT — v4 `b15fe9404` / `946a50a04` unit S at `236c04e35` (P4.D343)
 
 _Versions: core 0.0.1384, host 0.0.220, web 0.0.253._
