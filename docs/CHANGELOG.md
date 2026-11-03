@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Pascal hold dialog (v4 839575d89, 8ae8a127c, b02d902f3)
+
+_Versions: SPA 0.5.915._
+
+P4.D346 item 9. NEW `chat/custom-tool-intervention-dialog.ts` ports v4's `CustomToolInterventionDialog` at the pin (`839575d89` + `8ae8a127c`'s two span hints + `b02d902f3`'s compact "The oracle" section). The host reads the chat's held runs through TanStack Query on `customToolsKeys.interventions(chatId)`, refreshed by the `customToolInterventions` topic through the topic map (as v4's is) with a 5 s offline poll, and shows the oldest hold re-created per hold id. `qt-held-run` renders every section v4 renders, in v4's order and bytes: intro with the queue count; Parameters through `qt-custom-tool-params-form`; the roll with the dice faces or the raw draw and its span; the value and its span; the consult or the compact oracle with Re-ask; the outcome rows; the message; the verdict; the consequences by kind; presentation; the warnings; and the announcement preview with the pins count. Each edit is a pin sent to the preview verb after a 300 ms debounce. It has the three exits, the veto confirm and v4's three error toasts. It sits in `qt-modal` with the backdrop and the ✕ inert (R-3; Escape is H3 once `qt-modal` gains `closeOnEscape`). v5-only `HOLDS_UNKNOWN_VARIANT_EMPTY` (R-6): an engine without the hold verbs reads as no holds, with no toast. NEW spec: v4's nineteen cases by name under v4's five describes, plus fifteen v5-authored cases (the realtime hint both ways, the degradation, the failed resolve / preview / re-ask toasts, the dice bounds, the announcer, the effect boxes and their pins, the pins count, the announcement line, the trigger intro, the inert ✕, and the pure helpers). The Salon mount is P4.D344's file (H1).
+
 #### 2026-11-02 — feat(spa): the intervention wire, keys and realtime map (v4 839575d89)
 
 _Versions: SPA 0.5.914._
