@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the About credits at v4's 4.11.0 vintage — Diagrams, Terminals & Realtime (v4 a4945d8d9)
+
+_Versions: SPA 0.5.912._
+
+The About page's acknowledgments follow v4 `a4945d8d9` (`AboutView.tsx:373-383` at `236c04e35`), still verbatim (ruling R-5). The `Markdown & Documents` line is replaced whole: it gains remark-math, rehype-katex, remark-breaks, remark-smartypants, KaTeX and jsonrepair, and drops pdf-parse. New `Diagrams` and `Terminals & Realtime` lines are added in v4's positions. A new `about-page.spec.ts` pins the ten labels in order and the three changed bodies byte for byte.
+
 #### 2026-11-03 — feat(spa): the LLM Inspector's derived Other filter and exhaustive type tables (v4 eb2d87788)
 
 _Versions: SPA 0.5.911._

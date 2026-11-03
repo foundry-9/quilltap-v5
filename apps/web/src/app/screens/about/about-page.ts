@@ -431,7 +431,7 @@ export class AboutPage {
     { label: 'Containers', value: 'Docker' },
   ];
 
-  /** v4 `:362-369`, verbatim. */
+  /** v4 `AboutView.tsx:373-383` at `236c04e35`, verbatim. */
   protected readonly acknowledgments = [
     {
       label: 'Core',
@@ -447,12 +447,14 @@ export class AboutPage {
     },
     {
       label: 'Markdown & Documents',
-      body: 'unified, remark-parse, remark-gfm, remark-rehype, rehype-stringify, rehype-highlight, react-markdown, react-syntax-highlighter, mammoth, pdf-parse, PDF.js, yaml, MessagePack',
+      body: 'unified, remark-parse, remark-gfm, remark-math, remark-rehype, rehype-stringify, rehype-highlight, rehype-katex, remark-breaks, remark-smartypants, KaTeX, react-markdown, react-syntax-highlighter, mammoth, PDF.js, yaml, jsonrepair, MessagePack',
     },
+    { label: 'Diagrams', body: 'Mermaid, Graphviz (@hpcc-js/wasm-graphviz), svg2roughjs, DOMPurify' },
     {
       label: 'UI & Interaction',
       body: 'Tailwind CSS, dnd-kit, @tanstack/react-virtual, @svar-ui/react-filemanager, sharp, Lucide Icons',
     },
+    { label: 'Terminals & Realtime', body: 'xterm.js, node-pty, ws, croner' },
     { label: 'Filesystem & Archives', body: 'chokidar, tar, yauzl, semver' },
     { label: 'Desktop & Infrastructure', body: 'Electron, Docker' },
     { label: 'Testing', body: 'Jest, Playwright, Storybook, Testing Library' },
