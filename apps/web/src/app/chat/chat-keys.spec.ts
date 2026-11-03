@@ -28,6 +28,7 @@ describe('chatKeys (the swept chat query-key spellings)', () => {
       chatKeys.gallery('chat-1'),
       chatKeys.informs('chat-1'),
       chatKeys.scenarioSource('chat-1'),
+      chatKeys.absentMentions('chat-1'),
       chatKeys.wardrobeHistories('chat-1'),
       chatKeys.wardrobeHistory('chat-1', 'char-1'),
     ]) {

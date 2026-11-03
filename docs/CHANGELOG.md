@@ -12,6 +12,26 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the name-chip markers, the absent-mentions read, recorded from v4 (v4 9a88f862f)
+
+_Versions: SPA 0.5.923._
+
+The client half of v4 `9a88f862f`'s name chips for absent characters, consuming contract C5. P4.D347 carries the server arm.
+
+New pure modules under `chat/absent-mentions/`:
+- `name-mentions.ts`: the case-sensitive, letter-bounded `buildNameMatcher` plus `firstNameMatch` / `lastNameMatch`.
+- `mention-markers.ts`: v4's three private-use markers (U+E000–E002), `rehypeMentionMarkers` kept over a minimal hast shape, `splitMentionMarkers` and `assignMentionsToRuns`. It also adds v5's post-render pass, `markMentionsInElement` / `markMentionsInHtml`. v5 renders to an HTML string, so the pass walks the rendered DOM and sees through the roleplay tokenizer's spans (`MENTION_MARKERS_POST_RENDER`, ruling R-2). It emits v4's chip bytes and is idempotent.
+- `off-scene-kinds.ts`: `isOffSceneMentionIntroduction`.
+
+New recorder `tooling/record-mention-markers.mts` drives v4's real modules at the `236c04e35` pin into the committed `mention-markers.oracle.ndjson` (59 rows). `mention-markers.corpus.spec.ts` replays every row byte for byte. `mention-markers.spec.ts` transcribes v4's four describes and proves the post-render pass on v4's `MentionChip` shapes through v5's real renderer.
+
+Data layer:
+- The `chatAbsentMentions` verb joins the `CoreRequest` union; its types are in the P4.D359 fence.
+- `chatKeys.absentMentions(id)` sits under the detail prefix, so the `chats` topic reaches it; a spec asserts that, where v4 adds a topic-map row.
+- `injectAbsentMentions` makes one read per chat with a per-message, memoised split, and polls only while realtime is down.
+
+Also: the dead `findMentionedCharacterIds` twin is retired from `skip-signal-helpers.ts` (P4.D347's R-8 handoff).
+
 #### 2026-11-03 — test(spa): two spec premises follow v4's isDefault picker shape and isInContainer
 
 _Versions: SPA 0.5.922._

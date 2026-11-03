@@ -63,6 +63,17 @@ describe('queryKeysForTopic (v4 lib/realtime/topic-map.ts)', () => {
     expect(informs.slice(0, other.length)).not.toEqual([...other]);
   });
 
+  it('the row-scoped chats prefix reaches the absent-mentions key (P4.D359)', () => {
+    // v4 `9a88f862f` spends a topic-map ROW on `queryKeys.chats.absentMentions`
+    // (`topic-map.ts:77`); v5 spends this assertion — the chips refresh when a
+    // turn lands, and another chat's hint does not reach them.
+    const [prefix] = queryKeysForTopic('chats', 'chat-7') as readonly (readonly unknown[])[];
+    const mentions = chatKeys.absentMentions('chat-7');
+    expect(mentions.slice(0, prefix.length)).toEqual([...prefix]);
+    const [other] = queryKeysForTopic('chats', 'other-chat') as readonly (readonly unknown[])[];
+    expect(mentions.slice(0, other.length)).not.toEqual([...other]);
+  });
+
   it('a row-scoped chats hint must NOT reach the collection reads', () => {
     const [prefix] = queryKeysForTopic('chats', 'chat-7') as readonly (readonly unknown[])[];
     expect(prefix[0]).not.toBe(chatKeys.all[0]);

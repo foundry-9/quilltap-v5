@@ -78,6 +78,14 @@ export const chatKeys = {
    * ASSERTION in the spec, no `realtime-topic-map.ts` hunk).
    */
   scenarioSource: (chatId: string) => ['chat', chatId, 'scenario-source'] as const,
+  /**
+   * Which absent characters this chat names, and where (v4
+   * `queryKeys.chats.absentMentions`, `9a88f862f`) — the Salon's name chips
+   * read it through `chatAbsentMentions` (C5). v4 spends a topic-map ROW on it
+   * (`topic-map.ts:77`); v5 spends an assertion: it sits under {@link detail}'s
+   * prefix, so the `chats` topic already reaches it (P4.D359).
+   */
+  absentMentions: (chatId: string) => ['chat', chatId, 'absent-mentions'] as const,
   // === P4.D318: outfit history (R-H) ===
   /**
    * The prefix of every character's outfit timeline in one conversation (v4

@@ -5,15 +5,16 @@
  *
  *   - `normalizeContentBlockFormat` / `stripCharacterNamePrefix`
  *       (`lib/llm/response-normalizer.ts`)
- *   - `findMentionedCharacterIds` (`lib/chat/context/mentioned-characters.ts`)
  *   - `escapeRegex` (`lib/utils/regex.ts`) — the direct-address regex builder's
  *       token escape since v4 `e22f7b36`
  *   - `isParticipantPresent` (`lib/schemas/chat.types.ts`)
  *
  * Kept apart from `skip-signal.ts` so that module stays a faithful mirror of
  * v4's `lib/chat/turn-manager/skip-signal.ts`. The Rust ports
- * (`crate::message_formatter`, `crate::mentioned_characters`,
- * `crate::skip_signal`) are the second reference.
+ * (`crate::message_formatter`, `crate::skip_signal`) are the second reference.
+ *
+ * `findMentionedCharacterIds` is gone: v4 `9a88f862f` deleted the module it
+ * mirrored, and it had no client consumer (P4.D347's R-8 HANDOFF).
  */
 
 /** A minimal character shape for the mention scan (v4 `Character`, loosened). */
@@ -134,76 +135,3 @@ export function stripCharacterNamePrefix(
   return result;
 }
 
-/**
- * Build a single case-insensitive, word-boundary regex over every candidate's
- * names/aliases (longer tokens first), or null when there is nothing to match.
- */
-function buildCandidateNameRegex(candidates: MentionCharacter[]): RegExp | null {
-  const tokens = new Set<string>();
-  for (const character of candidates) {
-    if (character.name && character.name.trim().length > 0) {
-      tokens.add(character.name.trim());
-    }
-    for (const alias of character.aliases ?? []) {
-      if (alias && alias.trim().length > 0) {
-        tokens.add(alias.trim());
-      }
-    }
-  }
-
-  if (tokens.size === 0) return null;
-
-  const sorted = Array.from(tokens).sort((a, b) => b.length - a.length);
-  const alternation = sorted.map(escapeRegex).join('|');
-  return new RegExp(`\\b(?:${alternation})\\b`, 'gi');
-}
-
-/**
- * Scan a corpus for whole-word, case-insensitive mentions of any candidate's
- * name or alias, returning the set of matched character IDs (v4
- * `findMentionedCharacterIds`).
- *
- * No client consumer since v4 `e22f7b36` moved `isRecentlyAddressed` onto
- * direct address; kept as the faithful mirror of v4's still-shipping
- * `lib/chat/context/mentioned-characters.ts` (whose Rust twin
- * `crate::mentioned_characters` keeps its own consumer in `services::off_scene`).
- */
-export function findMentionedCharacterIds(
-  scanCorpus: string,
-  candidates: MentionCharacter[],
-): Set<string> {
-  const matched = new Set<string>();
-  if (!scanCorpus || candidates.length === 0) return matched;
-
-  const regex = buildCandidateNameRegex(candidates);
-  if (!regex) return matched;
-
-  const tokenToCharacterIds = new Map<string, Set<string>>();
-  const addToken = (token: string, characterId: string) => {
-    const key = token.trim().toLowerCase();
-    if (!key) return;
-    let set = tokenToCharacterIds.get(key);
-    if (!set) {
-      set = new Set<string>();
-      tokenToCharacterIds.set(key, set);
-    }
-    set.add(characterId);
-  };
-  for (const character of candidates) {
-    if (character.name) addToken(character.name, character.id);
-    for (const alias of character.aliases ?? []) {
-      addToken(alias, character.id);
-    }
-  }
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(scanCorpus)) !== null) {
-    const hit = match[0].toLowerCase();
-    const ids = tokenToCharacterIds.get(hit);
-    if (ids) {
-      for (const id of ids) matched.add(id);
-    }
-  }
-
-  return matched;
-}

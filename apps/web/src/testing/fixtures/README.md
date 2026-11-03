@@ -553,3 +553,32 @@ erased by tsx; no `zod` is loaded).
   ```
 - **Cross-check (free):** P4.D349's Rust `pronoun_guidance` family records its own
   oracle from the same two modules; the unifier may diff the `normalize` rows.
+
+## P4.D359 — `mention-markers.oracle.ndjson` (the Salon's name chips)
+
+Recorded 2026-11-03 at the pin `236c04e35` through v4's REAL
+`lib/chat/mention-markers.ts` + `lib/chat/name-mentions.ts` (`9a88f862f`), whose
+import graph is v4's own `lib/` only (`lib/utils/regex.ts`).
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `mention-markers.oracle.ndjson` | 59 — 27 `matcher`, 19 `rehype`, 7 `split`, 6 `assign` | `1cad4bd4764e60bc07c688a928787146ed83dfc256171e23c0b2e8f5cfd7536e` | `lib/chat/mention-markers.ts` + `lib/chat/name-mentions.ts` (`9a88f862f`) | `app/chat/absent-mentions/mention-markers.corpus.spec.ts` |
+
+- **Row shape:** `{kind, input, expected}`, `expected` the `JSON.stringify`'d
+  output (`matcher` → `{usable, first, last}`; `rehype` → the hast tree after
+  v4's plugin; `split` → the runs; `assign` → per-run mentions, `undefined` as
+  `null`).
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  cd <pin> && QT_V4_ROOT=$PWD PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx <V5>/apps/web/tooling/record-mention-markers.mts \
+    > <V5>/apps/web/src/testing/fixtures/mention-markers.oracle.ndjson
+  ```
+- **The post-render pass is not in the corpus.** `markMentionsInElement`
+  (`MENTION_MARKERS_POST_RENDER`, ruling R-2) is v5's own walk over the
+  rendered DOM; `mention-markers.spec.ts` proves it on v4's `MentionChip.test.tsx`
+  shapes through v5's real renderer.
+- **Cross-check (free):** P4.D347's Rust `name_mentions_equivalence` records its
+  own oracle from the same `name-mentions.ts`; the unifier may diff the `matcher`
+  rows.

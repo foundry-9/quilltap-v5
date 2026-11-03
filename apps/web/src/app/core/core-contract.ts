@@ -3083,6 +3083,7 @@ export type CoreRequest =
   | ChatFileDeleteRequest
   // --- The Salon chat gallery (P4.D176; P4.D174 server side; §C.3) ---
   | ChatGalleryRequest
+  | ChatAbsentMentionsRequest // P4.D359 (C5)
   | ChatSaveGalleryImageRequest
   // --- The general files family (P4.6af; p4.6ae server side) ---
   | FilesFamilyRequest
