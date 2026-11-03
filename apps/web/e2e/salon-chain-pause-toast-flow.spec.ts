@@ -322,19 +322,31 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
     // is the shared helper that expands it and opens the card. Reaching for the
     // drawer header by role alone found nothing, which is what this beat's
     // first live run said.
+    //
+    // P4.D344: the expanded drawer's control is the Turn mode radiogroup (v4
+    // `ChatSidebar.tsx:852-858` replaced the Pause button); "pause" is its
+    // Paused radio, "resume" its Normal one (v4 `setTurnPosition('normal')`).
     await openSidebarSection(page, 'Participants');
-    const button = page.locator('qt-chat-sidebar .qt-chat-pause-button');
-    await expect(button).toBeVisible({ timeout: 15_000 });
-    return button;
+    const group = page.getByRole('radiogroup', { name: 'Turn mode' });
+    const paused = group.getByRole('radio', { name: 'Paused' });
+    const normal = group.getByRole('radio', { name: 'Normal' });
+    await expect(paused).toBeVisible({ timeout: 15_000 });
+    return {
+      paused,
+      normal,
+      pause: () => paused.click(),
+      resume: () => normal.click(),
+      isPaused: async () => (await paused.getAttribute('aria-checked')) === 'true',
+    };
   }
 
   async function ensurePaused(page: Page) {
-    const button = await pauseControl(page);
-    if (((await button.textContent()) ?? '').includes('Pause')) {
-      await button.click();
+    const control = await pauseControl(page);
+    if (!(await control.isPaused())) {
+      await control.pause();
     }
-    await expect(button).toContainText('Resume');
-    return button;
+    await expect(control.paused).toHaveAttribute('aria-checked', 'true');
+    return control;
   }
 
   async function sendAMessage(page: Page, text: string) {
@@ -374,8 +386,8 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
     } finally {
       // In a `finally` deliberately: a chat left paused by a failed beat is a
       // chat every later beat sends into and gets nothing back from.
-      await button.click();
-      await expect(button).toContainText('Pause');
+      await button.resume();
+      await expect(button.paused).toHaveAttribute('aria-checked', 'false');
     }
   });
 
@@ -392,18 +404,18 @@ test.describe('P4.D187 — a held turn in a paused room explains itself', () => 
       await expect(heldToasts(page)).toHaveCount(1, { timeout: 20_000 });
 
       // Resume — which is what clears the latch — then pause again.
-      await button.click();
-      await expect(button).toContainText('Pause');
+      await button.resume();
+      await expect(button.paused).toHaveAttribute('aria-checked', 'false');
       // Let the first notice expire, so a second one is unambiguous.
       await expect(heldToasts(page)).toHaveCount(0, { timeout: 30_000 });
-      await button.click();
-      await expect(button).toContainText('Resume');
+      await button.pause();
+      await expect(button.paused).toHaveAttribute('aria-checked', 'true');
 
       await sendAMessage(page, 'The second pause speaks too.');
       await expect(heldToasts(page)).toHaveCount(1, { timeout: 20_000 });
     } finally {
-      if (((await button.textContent()) ?? '').includes('Resume')) await button.click();
-      await expect(button).toContainText('Pause');
+      if (await button.isPaused()) await button.resume();
+      await expect(button.paused).toHaveAttribute('aria-checked', 'false');
     }
   });
 

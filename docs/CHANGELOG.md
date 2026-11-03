@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(e2e): the turn-mode radiogroup in the Salon flows, and the storyteller flow
+
+_Versions: SPA 0.5.915._
+
+The five e2e sites that drove the drawer's old Pause button now drive the Turn mode radiogroup (`m4b-salon`, `salon-composer-modes`, `salon-paused-hold-flow`, `salon-chain-pause-toast-flow`). Adds `e2e/salon-storyteller-flow.spec.ts` (own server 4353, bid-aware mock 45351): four ungated beats, plus seven beats gated on `P4D343_SERVER_LANDED = false` until the server half lands. Teardown retries the instance-dir removal while the stopped server flushes. The storyteller board's move arrows now sit on each card's foot line; in the head they squeezed the character's name to one letter at phone width. Lane record for P4.D344.
+
 #### 2026-11-02 — feat(spa): the storyteller's all-at-once bubbles — one live bubble per concurrent turn
 
 _Versions: SPA 0.5.914._

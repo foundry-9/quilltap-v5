@@ -193888,6 +193888,159 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D344 — Storyteller mode SPA: the board, the bids, the turn-mode control, keepOrder without drag (v4 `b15fe9404` / `946a50a04` at the pin's shape, pin `236c04e35`) (lane record, 2026-11-02)
+
+**Branch:** `claude/p4.d344-storyteller-spa-897691` (worktree `.claude/worktrees/p4d344`), cut from `main` `8976915ea`. The session began in main's checkout; it moved to the new worktree before the first edit. **Status: LANE COMPLETE.** Tier 1 landed whole. Tier 2 landed whole (item 15, the arrangement; item 16, the concurrent bubbles). Tier 3 is recorded below. Nothing was pushed to `main`.
+
+**Commits (SPA 0.5.907 → 0.5.915; no crate bumps):**
+
+| sha | unit | SPA |
+|---|---|---|
+| `1fb6f6ee0` | W1 contract types, `chatKeys.storytellerRound`, the ninth realtime topic | 0.5.908 |
+| `73058c6db` | the board + `storyteller-board.pure.ts` + `_storyteller.css` | 0.5.909 |
+| `0d1d1fd2c` | the Turn mode radiogroup (replaces the drawer's Pause button) + the invite checkbox | 0.5.910 |
+| `4af3e8e21` | the Inspector's `Storyteller Rounds` filter, `Bid` badge, round chip | 0.5.911 |
+| `c8493de40` | the Salon wiring: `setTurnPosition`, `toggleStorytellerInviteFilter`, the carried reducer slots, `runStorytellerSelection` | 0.5.912 |
+| `d24861f9a` | Tier 2 item 15: arrangement by buttons and arrow keys, badges, `Reset order`, `keepOrder` | 0.5.913 |
+| `560491e55` | Tier 2 item 16: the concurrent fold + the message list's `concurrentStreams` input | 0.5.914 |
+| (this) | the five e2e Pause-site rewrites, `e2e/salon-storyteller-flow.spec.ts`, the fixtures README section, this record | 0.5.915 |
+
+**§2 probe (an observation, not a gate).** At 12:59 CST 2026-11-02, v4 `main` was 40 commits past the pin and its tree was clean; the `4.11.0` bugfix branch was 53. The lane continued under the standing pin rule. Every v4 read went through `git show 236c04e35:<path>` / `git show b15fe9404|946a50a04 -- <paths>`, or through the read-only pin worktree `/tmp/qt-v4-pin-p4d344-236c04e35`. **`npm ci` was NOT run in the pin. No oracle was run:** this lane has no harness family (item 26).
+
+**Red-first (item 1).**
+- Baseline on main's tree: `npm test` reported 568 files / 13,121 tests, matching the planning count.
+- The three new specs (`storyteller-board.pure.spec.ts`, `storyteller-board.spec.ts`, `participants-section.spec.ts`) are red by construction, because their subjects did not exist.
+- The Inspector rows were red with the sources reverted: 3 failed / 83 passed of 86 (`llm-inspector-panel.spec.ts` + `llm-inspector-entry.spec.ts`).
+- Each Salon / reducer / topic / message-list row was written before its hunk and watched fail. The one exception is the two migrated Pause-button cases in `salon-turn-controls.spec.ts`: they moved with the control.
+- Final suite: **571 files / 13,196 tests**, all green (+3 files, +75 tests).
+
+**Live degradations against main's server (item 1c; own instance 4353, measured by a temporary beat that was deleted before commit):**
+- `chatStorytellerRound` → `{"type":"error","data":{"kind":"bad-request","message":"Invalid request: unknown variant \`chatStorytellerRound\`, expected one of …"}}`.
+- `chatStorytellerRun` refuses with the same text, naming `chatStorytellerRun`.
+- `chatGet` on Group Expedition carries neither `turnMode` nor `storytellerInviteFilter`; `isPaused` is `false`.
+- `chatUpdate {chat:{isPaused:false}, turnMode:'storyteller'}` is **silently accepted**: `{"type":"chat",…}`, with no error. A refetched `chatGet` still has no `turnMode` key.
+- So against a pre-P4.D343 server, the radio snaps back on the end-of-change detail invalidation and no board mounts. Beat (I) pins exactly that.
+
+**`_storyteller.css`.** It is a byte copy of the pin: `cmp` reports IDENTICAL. `cce44e098`'s ink `var(--qt-alert-error-fg)` is present at `:184`. `_index.css` imports it after `_roleplay.css` (v4 `:39`). The pin's theme packs carry **0** storyteller overrides (`grep -rl storyteller $PIN/public/themes` → none; item 27).
+
+**Classes (`check-qt-classes`).** `--self-test` and the gate are green: 984 classes (+23).
+- Every `qt-storyteller-*` class the templates emit resolves to a rule in the sheet.
+- The board's host class is `block` (R-12).
+- `qt-bg-muted` / `qt-text-secondary` / `qt-bg-primary/15` / `qt-text-primary` resolve.
+- `-draggable` / `-dragging` exist only in the pure `cardClass` table (v4's shape). No template emits them, because there is no drag (R-L).
+
+**`turnModeOf` (R-4).** There is ONE helper in `storyteller-board.pure.ts`. Its non-spec callers are the Salon's board `@if` and its sidebar binding (2), plus the pure spec.
+
+**e2e Pause sites → the radiogroup (item 12).** All are `qt-chat-sidebar .qt-chat-pause-button` → `getByRole('radiogroup', {name:'Turn mode'})` radios:
+- `m4b-salon.spec.ts:58` → `:61-63`
+- `salon-composer-modes.spec.ts:392` → `:394-400`
+- `salon-paused-hold-flow.spec.ts:100` (`pauseControl`) → `:105-112`; `ensurePaused` at `:115-121` now reads `{ paused, normal }`
+- `salon-chain-pause-toast-flow.spec.ts:326` → `:330-340`; `pauseControl` now returns `{ paused, normal, pause, resume, isPaused }`
+
+P4.D358's first commit `5b9ed38dc` was **NOT cherry-picked**: it carries sibling source, a version bump and a changelog entry. The hunks were verified distinct (theirs: the toast selectors near chain-pause `:348` and hold `:212`), so H11 goes to the unifier.
+
+**Spec counts (cases before → after).**
+
+| file | before → after | origin |
+|---|---|---|
+| `storyteller-board.pure.spec.ts` | 0 → 23 | transcribed: v4 `storyteller-board-arrange`'s four `arrangeBids` cases by name; v5-authored: the rest |
+| `storyteller-board.spec.ts` | 0 → 16 | v5-authored |
+| `participants-section.spec.ts` | 0 → 6 | v5-authored |
+| `chat-sidebar.spec.ts` | 18 → 19 | v5-authored |
+| `chat-stream.reducer.spec.ts` | 38 → 46 | v5-authored |
+| `realtime-topic-map.spec.ts` | 23 → 25 | v5-authored |
+| `salon-turn-controls.spec.ts` | 51 → 57 | v5-authored |
+| `salon-conversation.spec.ts` | 186 → 194 | v5-authored |
+| `llm-inspector-panel.spec.ts` | 26 → 27 | v5-authored |
+| `llm-inspector-entry.spec.ts` | 39 → 41 | v5-authored |
+| `message-list.spec.ts` | 39 → 41 | v5-authored |
+
+**Other gates.**
+- `npm run lint` rc 0.
+- `npm run build` rc 0. It type-checks the contract fences.
+- `cargo build --workspace` rc 0 (3 m 38 s, `CARGO_INCREMENTAL=0`), run after the SPA build. The embed still builds.
+- No Rust gate is owed (the order's gate).
+
+**Playwright (by file, one run at a time machine-wide, queued behind P4.D357's runs via a shared-notes note):**
+- `salon-storyteller-flow.spec.ts`, flag `false`: **4 passed / 7 skipped** — (G), (H), (I), (J) green. The run also included one temporary measurement beat, deleted before commit.
+- `salon-storyteller-flow.spec.ts`, flag locally `true`: (G)/(H)/(J) green and (I) self-skips. **Every gated beat failed at its premise:**
+  - (A): the Storyteller radio snapped back (`aria-checked` `"false"`).
+  - (B)/(D): no board `section[aria-label="The storyteller's board"]`.
+  - (C): `Let it lie` not found.
+  - (E): no invite checkbox.
+  - (F2): 0 bid rows (`>= 2` expected).
+  - (K): no bid checkboxes.
+
+  The flag was restored to `false`.
+- That run also exposed a teardown race: `rmSync` of the instance dir hit `ENOTEMPTY` while the SIGTERMed server was still flushing. It is fixed with `maxRetries: 5, retryDelay: 200`.
+- Sibling files: `m4b-salon` 1 passed; `salon-composer-modes` 8 passed; `salon-chain-pause-toast-flow` 2 passed / 3 skipped (standing parks); `salon-sidebar-flow` 6 passed; `salon-interrupt-flow` 8 passed / 1 skipped.
+- ⚠ `salon-paused-hold-flow`: **0 passed / 2 skipped**. Both of its beats sit behind the standing `SHARED_FIXTURE_TITLE_CHECKPOINT_PARK`, so this lane's rewrite of its `pauseControl` / `ensurePaused` helpers is type-checked but **not exercised live**. The same helper shape IS exercised live in `salon-chain-pause-toast-flow`.
+
+**Screenshots** are in `/tmp/p4d344/`: `radiogroup-sidebar.png`, `board-desktop.png`, `board-phone.png`, `phone-full.png`, and `board-phone-columns.txt` (the computed `grid-template-columns` at 375 px). They were taken by a temporary route-intercepted beat that served a canned three-bid round and `turnMode: 'storyteller'`; the beat was deleted before commit.
+
+**Tier 2.**
+- **Item 15 LANDED** (`d24861f9a`). Each live card has `Move <name> earlier` / `Move <name> later` arrow buttons. A focused card also takes ArrowUp/ArrowLeft (earlier) and ArrowDown/ArrowRight (later), but only when the card itself is the event target. Order badges, `Reset order`, and `keepOrder` = arranged are in. **Layout fix found by the phone screenshot:** in the card head, the two arrows squeezed the name to one letter at 375 px (and to `Brann…` on the desktop). The arrows now sit at the right of the card's `Talkativeness` foot line, using existing utility classes (`flex items-center justify-between gap-2` / `gap-1`); the byte-copied sheet is untouched. This rides in the closing commit. `BOARD_ARRANGE_HINT_WITHOUT_DRAG`, both ways:
+
+  | | the hint, when more than one card has bid (`biddable.length > 1`, v4 `:387`) |
+  |---|---|
+  | v4 (`StorytellerBoard.tsx`, dnd-kit pointer + touch + keyboard sensors) | `Drag the cards to set the running order; left alone, the room’s rotation decides.` |
+  | v5 (no drag — R-L) | `Use a card’s arrows to set the running order; left alone, the room’s rotation decides.` |
+
+  When arranged, both say `Chosen bids run in the order shown.`. The v5 sentence is a planner-ruled rewording; the human may reword it.
+- **Item 16 LANDED** (`560491e55`).
+  - The reducer folds `concurrent: true` frames into `concurrentStreams`. `turnStart` / `content` / `done` go to an assistant bubble marked `intermediate`, unless the frame is skipped, stopped or posted.
+  - The message list renders one extra `<qt-streaming-message>` per concurrent slot after the ordinary one.
+  - A recorded timing difference: a concurrent turn's `error` frame lands in `state.error` immediately, where v4 surfaces it after the reader drains. The visible toast is the same.
+
+**Tier 3 (items 18–28), each recorded:**
+- 18: the drag library is NO-PORT under R-L; the arrangement is Tier 2's (above).
+- 19: there is no REST call or REST arm; the four dispatch variants only.
+- 20: there is no `AbortController` twin; `busy()` refuses with `One moment — the room is still speaking.`
+- 21: `chatStorytellerRun`'s reply `null` is never read; frames only.
+- 22: the round key `['chat', id, 'storytellerRound']` sits under the detail prefix (the `informs` precedent), commented in place. **Item 3's sweep-prefix question:** the key is NOT added to `ALL_REALTIME_PREFIXES`, like `informs`. The `storytellerRounds` topic maps to the key for an id, or to `chatKeys.all` without one. A `chats` invalidation also refetches the board (a harmless superset, R-6).
+- 23: no help sentence is named here.
+- 24: ` (all at once)` / `Speaking now:` render whatever the wire says.
+- 25: toasts are asserted by text only.
+- 26: there is no Rust, harness family, Tier R or oracle.
+- 27: theme overrides: 0 at the pin.
+- 28: the Workbench badge and the logs-card label are HANDOFFs (H1/H2).
+
+**Correction 7 (the realtime `refetchInterval` idiom), measured.** The board's query uses `refetchInterval: realtime.refetchInterval(60_000)`, the same call the informs and gallery queries make. It polls only when the realtime stream is down.
+
+**Deviation (item 2h).** `CustomToolLibraryEntry.effect` is typed OPTIONAL (`effect?: 'read' | 'write'`), not required. P4.D346's `workbench-library.spec.ts` fixture lacks the key, and a required key would turn their spec red on the union (TS2322). The unifier may tighten it once both land.
+
+**HANDOFF table at close:**
+
+| # | state |
+|---|---|
+| H1 | handed off to P4.D346. The `workbench-library.ts` effect badge, exact bytes from item 10a: `read` / `write` with v4's two titles, between `:303-306` and `:308`, plus two spec rows. Fallback: the unifier, from this record. |
+| H2 | handed off to P4.D358: `STORYTELLER_BID: 'Storyteller Bid',` after `SCENARIO_BUILDER` in `llm-logs-card.ts:24`. |
+| H3 | the `<h1 class="sr-only">{{ chat()?.title \|\| 'The Salon' }}</h1>` is APPLIED as `.qt-chat-main`'s first child (spec-pinned). The `<qt-reply-announcer>` is ANCHORED with the fenced comment. |
+| H4 | ANCHORED: the composer tag + the template effect (P4.D352 prose mode). |
+| H5 | ANCHORED: `displayMessages` (P4.D359 off-scene filter). |
+| (P4.D346) | the hold dialog is ANCHORED beside `run-tool-modal`. |
+| H6 | applied to this lane's files: R4 (the invite `<label>`); R6 (the radiogroup `aria-label="Turn mode"` + each radio's label and `title`); R3 (the arrows' `aria-label`s); the board checkbox `aria-label="Let <name> go ahead"`; the H3 `<h1>`. R1/R2/R9 n/a. |
+| H7 | for the unifier: `storytellerRounds` is ninth. The spec asserts `toContain` plus its index right after `inventory` (§R.10(f)), so P4.D346's tenth topic unions cleanly. |
+| H8, H9 | for the unifier (fenced blocks). |
+| H10 | for the unifier: `_intervention.css` follows `_storyteller.css`. |
+| H11 | for the unifier (distinct lines, not cherry-picked). |
+| H12 | for the unifier: flip `P4D343_SERVER_LANDED` to `true`; (I) then self-skips. |
+| H13 | none. |
+
+**💸 Dogfood rows for the Friday copy:**
+- the board on a three-seat chat: `Considering…` → tiers and plans;
+- `Run in order` → two replies, then `Last round: A, B`;
+- `All at once` → two bubbles plus ` (all at once)`;
+- `Invite by talkativeness` with a 0.1 seat → `Kept quiet this round` + `Ask anyway`;
+- leaving the mode with a round open folds the board;
+- `Let it lie` → `The last round was let lie.`;
+- the Inspector's `Storyteller Rounds` filter and its chips;
+- the radiogroup at phone width;
+- `Paused` keeps the turn mode: a paused storyteller chat records posts without opening a round, and `Storyteller` then re-opens rounds;
+- the arrow / key arrangement and `Reset order`.
+
+**Close:** SPA **0.5.915**. The order's status header reads `LANE COMPLETE`. The pin worktree was removed and the lane's `target/` deleted. `/tmp/p4d344/` is left for the unifier.
+
 
 ## P4.D357 — the WCAG tokens / CSS / theme packs / legibility lane (lane record)
 

@@ -154,28 +154,6 @@ export interface StorytellerRunRequest {
                   @if (bid.status === 'bid' && bid.tier) {
                     <span [attr.class]="'qt-badge ' + tierBadge[bid.tier]">{{ tierLabels[bid.tier] }}</span>
                   }
-                  @if (movable) {
-                    <!-- R-1: v4 drags the card (dnd-kit); v5 moves it by button
-                         or arrow key — the same arrangement state, no dependency. -->
-                    <button
-                      type="button"
-                      class="qt-button-ghost qt-button-sm"
-                      [attr.aria-label]="'Move ' + bid.characterName + ' earlier'"
-                      [title]="'Move ' + bid.characterName + ' earlier'"
-                      (click)="move(bid, -1)"
-                    >
-                      <qt-icon name="arrow-left" class="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      class="qt-button-ghost qt-button-sm"
-                      [attr.aria-label]="'Move ' + bid.characterName + ' later'"
-                      [title]="'Move ' + bid.characterName + ' later'"
-                      (click)="move(bid, 1)"
-                    >
-                      <qt-icon name="arrow-right" class="w-3.5 h-3.5" />
-                    </button>
-                  }
                 </div>
 
                 @if (bid.status === 'bid' && bid.plan) {
@@ -203,8 +181,36 @@ export interface StorytellerRunRequest {
                   <div class="qt-storyteller-meta">{{ bid.reason }}</div>
                 }
 
-                <div class="qt-storyteller-meta">
-                  Talkativeness {{ bid.talkativeness.toFixed(2) }}{{ bid.silent ? ' · silent' : '' }}
+                <!-- The arrows sit on the foot line, not the head: in the head
+                     they squeezed the name to one letter at a phone width. -->
+                <div class="flex items-center justify-between gap-2">
+                  <div class="qt-storyteller-meta">
+                    Talkativeness {{ bid.talkativeness.toFixed(2) }}{{ bid.silent ? ' · silent' : '' }}
+                  </div>
+                  @if (movable) {
+                    <span class="flex items-center gap-1">
+                      <!-- R-1: v4 drags the card (dnd-kit); v5 moves it by button
+                           or arrow key — the same arrangement state, no dependency. -->
+                      <button
+                        type="button"
+                        class="qt-button-ghost qt-button-sm"
+                        [attr.aria-label]="'Move ' + bid.characterName + ' earlier'"
+                        [title]="'Move ' + bid.characterName + ' earlier'"
+                        (click)="move(bid, -1)"
+                      >
+                        <qt-icon name="arrow-left" class="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        class="qt-button-ghost qt-button-sm"
+                        [attr.aria-label]="'Move ' + bid.characterName + ' later'"
+                        [title]="'Move ' + bid.characterName + ' later'"
+                        (click)="move(bid, 1)"
+                      >
+                        <qt-icon name="arrow-right" class="w-3.5 h-3.5" />
+                      </button>
+                    </span>
+                  }
                 </div>
 
                 @if (bid.status === 'kept-quiet' || bid.status === 'error') {

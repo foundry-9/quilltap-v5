@@ -54,15 +54,20 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
     // --- Pause round-trip: a new control exercised end-to-end (chatUpdate). ---
     // The pause control lives in the sidebar's Participants drawer since P4.9H1
     // (v4's home for it — the turn-controls bar keeps only the paused notice).
+    // P4.D344: the expanded drawer's control is the Turn mode radiogroup (v4
+    // `ChatSidebar.tsx:852-858` replaced the Pause button). "Pause" is its
+    // Paused radio, "Resume" its Normal one; the state reads off aria-checked.
     await openSidebarSection(page, 'Participants');
-    const pauseButton = page.locator('qt-chat-sidebar .qt-chat-pause-button');
+    const turnMode = page.getByRole('radiogroup', { name: 'Turn mode' });
+    const pausedRadio = turnMode.getByRole('radio', { name: 'Paused' });
+    const normalRadio = turnMode.getByRole('radio', { name: 'Normal' });
     const pausedBanner = page.locator('.qt-chat-paused-banner');
-    await expect(pauseButton).toBeVisible();
-    const startedPaused = ((await pauseButton.textContent()) ?? '').includes('Resume');
-    await pauseButton.click();
+    await expect(pausedRadio).toBeVisible();
+    const startedPaused = (await pausedRadio.getAttribute('aria-checked')) === 'true';
+    await (startedPaused ? normalRadio : pausedRadio).click();
     if (startedPaused) {
       await expect(pausedBanner).toHaveCount(0);
-      await expect(pauseButton).toContainText('Pause');
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'false');
     } else {
       // Pin the CLAIM, not the opening words. Dogfood #118: the notice kept the
       // pre-bug-137 promise that "whoever's turn it is will still answer a
@@ -72,11 +77,11 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
         'a message you send is recorded without an answer',
       );
       await expect(pausedBanner).not.toContainText('will still answer a message you send');
-      await expect(pauseButton).toContainText('Resume');
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'true');
     }
     // Toggle back to the original state.
-    await pauseButton.click();
-    await expect(pauseButton).toContainText(startedPaused ? 'Resume' : 'Pause');
+    await (startedPaused ? pausedRadio : normalRadio).click();
+    await expect(pausedRadio).toHaveAttribute('aria-checked', startedPaused ? 'true' : 'false');
 
     // --- Guarded: the user-turn Skip banner → Host turn-pass chip. ---
     //
@@ -90,8 +95,8 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
     if (await skip.count()) {
       const chipsBefore = await page.locator('.qt-chat-announcement-chip').count();
       // Pause first, so the skip has a pause it could wrongly lift.
-      await pauseButton.click();
-      await expect(pauseButton).toContainText('Resume');
+      await pausedRadio.click();
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'true');
       await skip.click();
       // A successful skip posts a Host turn-pass chip ("nothing to add").
       await expect(page.locator('.qt-chat-announcement-chip')).toHaveCount(chipsBefore + 1, {
@@ -99,10 +104,11 @@ test.describe('M4b — Salon turn controls (pause / Speaking-As / skip)', () => 
       });
       // THE GUARD: the pause the operator set is still standing. Before bug 137
       // this read "Pause", because the skip had quietly resumed the room.
-      await expect(pauseButton).toContainText('Resume');
+      // (P4.D344: the Paused radio is that witness now.)
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'true');
       // Put the room back as it was found.
-      await pauseButton.click();
-      await expect(pauseButton).toContainText('Pause');
+      await normalRadio.click();
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'false');
     } else {
       test.info().annotations.push({
         type: 'note',

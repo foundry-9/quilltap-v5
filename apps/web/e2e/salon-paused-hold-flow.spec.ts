@@ -96,22 +96,31 @@ async function pauseControl(page: Page) {
   // is the shared helper that expands it and opens the card. Reaching for the
   // drawer header by role alone found nothing, which is what this beat's
   // first live run said.
+  //
+  // P4.D344: the expanded drawer's control is the Turn mode radiogroup (v4
+  // `ChatSidebar.tsx:852-858` replaced the Pause button); "pause" is its
+  // Paused radio, "resume" its Normal one (v4 `setTurnPosition('normal')` —
+  // on a rotation chat the same net state the old Resume produced).
   await openSidebarSection(page, 'Participants');
-  const button = page.locator('qt-chat-sidebar .qt-chat-pause-button');
-  await expect(button).toBeVisible({ timeout: 15_000 });
-  return button;
+  const group = page.getByRole('radiogroup', { name: 'Turn mode' });
+  const paused = group.getByRole('radio', { name: 'Paused' });
+  const normal = group.getByRole('radio', { name: 'Normal' });
+  await expect(paused).toBeVisible({ timeout: 15_000 });
+  return { paused, normal };
 }
+
+type PauseControl = Awaited<ReturnType<typeof pauseControl>>;
 
 async function ensurePaused(page: Page) {
-  const button = await pauseControl(page);
-  if (((await button.textContent()) ?? '').includes('Pause')) await button.click();
-  await expect(button).toContainText('Resume');
-  return button;
+  const control = await pauseControl(page);
+  if ((await control.paused.getAttribute('aria-checked')) !== 'true') await control.paused.click();
+  await expect(control.paused).toHaveAttribute('aria-checked', 'true');
+  return control;
 }
 
-async function restore(button: ReturnType<typeof pauseControl> extends Promise<infer T> ? T : never) {
-  if (((await button.textContent()) ?? '').includes('Resume')) await button.click();
-  await expect(button).toContainText('Pause');
+async function restore(control: PauseControl) {
+  if ((await control.paused.getAttribute('aria-checked')) === 'true') await control.normal.click();
+  await expect(control.paused).toHaveAttribute('aria-checked', 'false');
 }
 
 /**
@@ -183,7 +192,7 @@ test.describe('P4.D187 — a summons leaves the pause standing', () => {
         timeout: 25_000,
       });
       // THE GUARD: the room is still paused, and nothing announced otherwise.
-      await expect(button).toContainText('Resume');
+      await expect(button.paused).toHaveAttribute('aria-checked', 'true');
       await expect(page.getByText('Auto-responses resumed')).toHaveCount(0);
     } finally {
       await restore(button);
@@ -223,7 +232,7 @@ test.describe('P4.D187 — the server holds a user turn in a paused room', () =>
         await page.waitForTimeout(250);
       }
       expect(peak).toBe(repliesBefore);
-      await expect(button).toContainText('Resume');
+      await expect(button.paused).toHaveAttribute('aria-checked', 'true');
     } finally {
       await restore(button);
     }

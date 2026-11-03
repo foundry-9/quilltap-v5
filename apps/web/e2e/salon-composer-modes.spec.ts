@@ -388,12 +388,16 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // ever runs. (The m4b pause round-trip proves the toggle end-to-end.)
     // The pause control lives in the sidebar's Participants drawer since P4.9H1
     // (v4's home for it — the turn-controls bar keeps only the paused notice).
+    // P4.D344: the drawer's control is the Turn mode radiogroup now (v4
+    // `ChatSidebar.tsx:852-858` replaced the Pause button); Paused / Normal.
     await openSidebarSection(page, 'Participants');
-    const pauseButton = page.locator('qt-chat-sidebar .qt-chat-pause-button');
-    await expect(pauseButton).toBeVisible();
-    if (!(((await pauseButton.textContent()) ?? '').includes('Resume'))) {
-      await pauseButton.click();
-      await expect(pauseButton).toContainText('Resume');
+    const turnMode = page.getByRole('radiogroup', { name: 'Turn mode' });
+    const pausedRadio = turnMode.getByRole('radio', { name: 'Paused' });
+    const normalRadio = turnMode.getByRole('radio', { name: 'Normal' });
+    await expect(pausedRadio).toBeVisible();
+    if ((await pausedRadio.getAttribute('aria-checked')) !== 'true') {
+      await pausedRadio.click();
+      await expect(pausedRadio).toHaveAttribute('aria-checked', 'true');
     }
 
     // A display block: `$$` / `E = mc^2` / `$$` on their own lines (Shift+Enter
@@ -447,8 +451,8 @@ test.describe('Salon composer modes (P4.6ak∥al∥am unification)', () => {
     // Restore the running state for sibling specs, then let the resumed chain
     // (if the turn pointer sits on an AI participant) drain: poll until the
     // canned-reply count stops growing.
-    await pauseButton.click();
-    await expect(pauseButton).toContainText('Pause');
+    await normalRadio.click();
+    await expect(pausedRadio).toHaveAttribute('aria-checked', 'false');
     await expect
       .poll(
         async () => {

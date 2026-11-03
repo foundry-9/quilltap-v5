@@ -471,3 +471,21 @@ not a Stop button, while this participant is generating", is transcribed name fo
 name. `e2e/salon-interrupt-flow.spec.ts` carries a spec-local sequenced mock
 (`createServer`; `/models`, then SSE word deltas `plan.delayMs` apart, the reply
 taken from `plan.replies[callIndex]`); `e2e/support/mock-llm.ts` is untouched.
+
+
+## P4.D344 — Storyteller mode SPA (no fixture)
+
+This lane vendors no NDJSON. v4 shipped ONE client test for Storyteller mode,
+`__tests__/unit/components/chat/storyteller-board-arrange.test.ts` (four
+`arrangeBids` cases), transcribed name for name into
+`chat/storyteller-board.pure.spec.ts`. Every other surface — the board, the
+Turn mode radiogroup, the turn-mode hooks, the frame fold, the Inspector filter
+— is a v5 spec written from the `b15fe9404` / `946a50a04` hunks at the pin
+`236c04e35` with v4's strings byte for byte, against wire contract W1 stubbed.
+
+`e2e/salon-storyteller-flow.spec.ts` carries a spec-local BID-AWARE mock
+(`createServer`; `/models`; on `/chat/completions` a message carrying both
+`[Turn note from the Salon — not spoken by any character]` and `answer only
+with your bid` streams the four bid lines, one carrying `The storyteller chose
+you to go ahead` streams `plan.turnReply`, anything else `plan.reply`; SSE word
+deltas `plan.delayMs` apart). `e2e/support/mock-llm.ts` is untouched.
