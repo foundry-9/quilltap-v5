@@ -40,6 +40,15 @@ import { describeInventoryRefusal } from './inventory-refusal';
 import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
 import { isInFloatingLayer } from '../ui/floating-layer';
 
+/**
+ * Gate (C16): P4.D350's R-1 — the server's location-level `inventory` publish
+ * on every Inventory write, the operator's own included. Until it is in the
+ * tree, an operator write publishes nothing, so skipping the dialog's own
+ * refresh while the socket is up would leave the list stale (measured: the
+ * `inventory-flow` beats (d) / (e) red). The unifier flips this with P4.D350.
+ */
+export const P4D350_PUBLISH_LANDED = false;
+
 /** Two containers name the same tier (by their encoded value — the select's own key). */
 function sameContainer(a: InventoryContainer | null, b: InventoryContainer | null): boolean {
   return a === b || (!!a && !!b && encodeInventoryContainer(a) === encodeInventoryContainer(b));
@@ -226,6 +235,8 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
 export class InventoryControlDialogInner {
   private readonly core = inject(CoreClient);
   private readonly realtime = inject(RealtimeService);
+  /** True once the server publishes the dialog's own writes (the gate above). */
+  protected ownWritesPublished = P4D350_PUBLISH_LANDED;
   /** Bumped per `inventory` hint — the open instantiate dialog's archetype re-read. */
   protected readonly archetypesReloadKey = signal(0);
   private readonly toasts = inject(ToastService);
@@ -375,7 +386,7 @@ export class InventoryControlDialogInner {
    * if that ruling falls, this refresh must go back to unconditional.
    */
   private async refreshUnlessRealtime(): Promise<void> {
-    if (this.realtime.connected()) return;
+    if (this.ownWritesPublished && this.realtime.connected()) return;
     await this.reloadAll();
   }
 

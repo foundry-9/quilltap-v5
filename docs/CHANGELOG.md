@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — fix(web): gate the Inventory dialog's own-write refresh skip on P4.D350's publish
+
+_Versions: SPA 0.5.928._
+
+The dialog's own-write skip (v4 `refreshUnlessRealtime`) assumes P4.D350's
+location-level `inventory` publish. That publish is not in this lane's tree,
+so an operator write refreshed nothing while the socket was up. Measured as
+`inventory-flow` beats (d) / (e) red. The skip now sits behind
+`P4D350_PUBLISH_LANDED` (C16); the unifier flips it with P4.D350.
+
 #### 2026-11-03 — test(e2e): the SPA riders flow on its own instance (P4.D359)
 
 _Versions: SPA 0.5.927._
