@@ -389,6 +389,14 @@ pub struct WardrobeItem {
     #[serde(rename = "isDefault")]
     pub is_default: bool,
     pub replace: bool,
+    /// v4 `eb90d9ed8`: the standard pronoun sets the item is meant for
+    /// (`PronounGuidanceListSchema.optional()`, declared after `replace` and
+    /// before `migratedFromClothingRecordId`). `None` = v4's absent key (a READ
+    /// item whose file names no guidance); `Some(vec![])` = an explicit empty
+    /// list, which only a CREATED item carries (`wardrobeItemFromCreateBody`
+    /// always sets the normalised list).
+    #[serde(rename = "pronounGuidance", skip_serializing_if = "Option::is_none")]
+    pub pronoun_guidance: Option<Vec<String>>,
     #[serde(
         rename = "migratedFromClothingRecordId",
         skip_serializing_if = "Option::is_none"
@@ -442,6 +450,15 @@ impl WardrobeItem {
         fn opt(v: &Value, k: &str) -> Option<Option<String>> {
             Some(v.get(k).and_then(Value::as_str).map(str::to_string))
         }
+        fn arr_of(v: &Value) -> Vec<String> {
+            v.as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|e| e.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        }
         WardrobeItem {
             id: s(v, "id"),
             character_id: opt(v, "characterId"),
@@ -453,6 +470,8 @@ impl WardrobeItem {
             appropriateness: opt(v, "appropriateness"),
             is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
             replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
+            // Present on a read item only when non-empty (the parser's spread).
+            pronoun_guidance: v.get("pronounGuidance").map(|g| arr_of(g)),
             migrated_from_clothing_record_id: opt(v, "migratedFromClothingRecordId"),
             image_file_id: opt(v, "imageFileId"),
             archived_at: opt(v, "archivedAt"),
@@ -569,6 +588,25 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
         Some(_) => return None,
     };
 
+    // pronounGuidance: `PronounGuidanceListSchema.optional()` (`eb90d9ed8`) —
+    // absent → absent; else an array whose EVERY element is one of the four
+    // standard subjects (NOT normalised: the schema is a strict enum list).
+    let pronoun_guidance = match obj.get("pronounGuidance") {
+        None => None,
+        Some(Value::Array(a)) => {
+            let mut out = Vec::with_capacity(a.len());
+            for e in a {
+                let s = e.as_str()?;
+                if !crate::characters::pronoun_presets::STANDARD_PRONOUN_SUBJECTS.contains(&s) {
+                    return None;
+                }
+                out.push(s.to_string());
+            }
+            Some(out)
+        }
+        Some(_) => return None,
+    };
+
     // createdAt / updatedAt: required ISO datetime strings (the transform passes a
     // string through unchanged, so we store as-is).
     let created_at = obj.get("createdAt")?.as_str()?;
@@ -591,6 +629,7 @@ fn validate_wardrobe_item(v: &Value) -> Option<WardrobeItem> {
         appropriateness,
         is_default,
         replace,
+        pronoun_guidance,
         migrated_from_clothing_record_id,
         image_file_id,
         archived_at,
@@ -1157,6 +1196,11 @@ pub struct WardrobeItemFromFile {
     #[serde(rename = "isDefault")]
     pub is_default: bool,
     pub replace: bool,
+    /// v4 `eb90d9ed8` (`parsers.ts:386-387, 452`): the normalised frontmatter
+    /// `pronounGuidance`, spread into the literal between `replace` and
+    /// `componentItemIds` ONLY when non-empty — `None` omits the key.
+    #[serde(rename = "pronounGuidance", skip_serializing_if = "Option::is_none")]
+    pub pronoun_guidance: Option<Vec<String>>,
     #[serde(rename = "componentItemIds")]
     pub component_item_ids: Vec<String>,
     #[serde(rename = "migratedFromClothingRecordId")]
@@ -1249,6 +1293,15 @@ pub fn parse_wardrobe_item_file(
         || fm_get(&fm, "isDefault") == Some(&Value::Bool(true));
     let replace = fm_get(&fm, "replace") == Some(&Value::Bool(true));
 
+    // Unknown values are dropped; an item left with none is offered to everyone.
+    let pronoun_guidance = Some(
+        crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(fm_get(
+            &fm,
+            "pronounGuidance",
+        )),
+    )
+    .filter(|g| !g.is_empty());
+
     // archivedAt: a non-empty string wins; else `archived: true` → doc.updatedAt.
     let archived_at = match fm_get(&fm, "archivedAt").and_then(Value::as_str) {
         Some(s) if !s.is_empty() => Some(s.to_string()),
@@ -1320,6 +1373,7 @@ pub fn parse_wardrobe_item_file(
         appropriateness,
         is_default,
         replace,
+        pronoun_guidance,
         component_item_ids,
         migrated_from_clothing_record_id,
         image_file_id,
@@ -2460,6 +2514,17 @@ pub fn build_wardrobe_item_file(
     if item.replace {
         data.push(("replace", FmVal::True));
     }
+    // v4 `eb90d9ed8` (`character-vault.ts:354-357`): normalised AGAIN at write
+    // (a hand-edited `[She, xe]` on a read item writes back `- she`), emitted as
+    // a YAML list only when non-empty, after `replace` and before `archived`.
+    let guidance = item
+        .pronoun_guidance
+        .as_ref()
+        .map(|g| Value::Array(g.iter().cloned().map(Value::String).collect()));
+    let guidance = crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(guidance.as_ref());
+    if !guidance.is_empty() {
+        data.push(("pronounGuidance", FmVal::Seq(guidance)));
+    }
     if let Some(Some(at)) = &item.archived_at {
         if !at.is_empty() {
             data.push(("archived", FmVal::True));
@@ -2854,6 +2919,7 @@ mod tests {
             appropriateness: None,
             is_default: false,
             replace: false,
+            pronoun_guidance: None,
             migrated_from_clothing_record_id: None,
             image_file_id: None,
             archived_at: None,

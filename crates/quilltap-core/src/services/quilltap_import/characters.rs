@@ -561,6 +561,15 @@ fn import_character_wardrobe_items(
                 .get("replace")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
+            // v4 spreads the record into `globalRepos.wardrobe.create`
+            // (`import-characters.ts:310-337`), so an exported `pronounGuidance`
+            // reaches the item file through `buildWardrobeItemFile`'s
+            // normaliser — the same bytes as normalising here.
+            pronoun_guidance: Some(
+                crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(
+                    item.get("pronounGuidance"),
+                ),
+            ),
             migrated_from_clothing_record_id: Some(None),
             image_file_id: None,
             archived_at: Some(opt_string(item, "archivedAt")),

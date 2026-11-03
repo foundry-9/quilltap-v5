@@ -198,6 +198,7 @@ fn new_item(
         appropriateness: Some(None),
         is_default: false,
         replace: false,
+        pronoun_guidance: None,
         migrated_from_clothing_record_id: Some(None),
         image_file_id: None,
         archived_at: Some(None),

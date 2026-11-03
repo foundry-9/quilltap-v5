@@ -3550,6 +3550,85 @@
       },
       "thenHistory": "c1000000-0000-4000-8000-000000000001",
       "historyDropIndex": 1
+    },
+    {
+      "name": "p4d349_create_pronoun_guided",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "Tea gown",
+        "types": [
+          "top"
+        ],
+        "pronounGuidance": [
+          "they",
+          "she",
+          "she"
+        ]
+      },
+      "normalize": [
+        "wardrobeItem.id",
+        "wardrobeItem.createdAt",
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "p4d349_create_pronoun_unknown",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "Tea gown",
+        "types": [
+          "top"
+        ],
+        "pronounGuidance": [
+          "xe"
+        ]
+      }
+    },
+    {
+      "name": "p4d349_create_pronoun_label",
+      "kind": "wardrobeCreate",
+      "body": {
+        "title": "Tea gown",
+        "types": [
+          "top"
+        ],
+        "pronounGuidance": [
+          "He/Him/His"
+        ]
+      }
+    },
+    {
+      "name": "p4d349_update_pronoun_guidance",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "pronounGuidance": [
+          "they",
+          "she"
+        ]
+      },
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "p4d349_update_pronoun_clear",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "pronounGuidance": []
+      },
+      "normalize": [
+        "wardrobeItem.updatedAt"
+      ]
+    },
+    {
+      "name": "p4d349_update_pronoun_string",
+      "kind": "wardrobeUpdate",
+      "itemId": "e2000000-0000-4000-8000-000000000002",
+      "body": {
+        "pronounGuidance": "she"
+      }
     }
   ],
   "$p4d256Comment": "P4.D256: every case reads the committed pair with wardrobe_wear_stats ensured (v4's migration DDL; v5 ensure_wear_ledger_on) unless `preRound`; `plants` add ledger rows. The wh_* rows are the ?action=wear-history arms on the General and character item GETs (the 404s run BEFORE the ledger is read); cw_item_get* the character item GET. The ledger rows: gCoat worn by aria (chat1, most recent), an unattributed row, a departed wearer; wTop's last-worn chat deleted (chatMissing); gLivery and gHat worn."

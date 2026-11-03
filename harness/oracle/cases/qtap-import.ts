@@ -482,6 +482,21 @@ async function main(): Promise<void> {
 
     const after = wardrobePaths();
     const added = (was: string[], now: string[]) => now.filter((p) => !was.includes(p)).sort();
+    // P4.D349 (v4 `eb90d9ed8`): the record's `pronounGuidance` rides the spread
+    // into `wardrobe.create`, whose writer normalises it — each added item
+    // file's `pronounGuidance:` frontmatter block (absent → no entry).
+    const guidance: Record<string, string> = {};
+    for (const rel of added(before.links, after.links)) {
+      const row = midb5
+        .prepare(
+          `SELECT d.content AS c FROM doc_mount_file_links l
+             JOIN doc_mount_documents d ON d.fileId = l.fileId
+            WHERE l.relativePath = ?`,
+        )
+        .get(rel) as { c: string } | undefined;
+      const m = row?.c.match(/\npronounGuidance:\n(?:  - [^\n]*\n)*/);
+      if (m) guidance[rel] = m[0];
+    }
     closeMountIndexSQLiteClient();
     await closeDatabase();
     return {
@@ -489,6 +504,7 @@ async function main(): Promise<void> {
       warnings: rFolders.warnings,
       links: added(before.links, after.links),
       folders: added(before.folders, after.folders),
+      guidance,
     };
   })();
 

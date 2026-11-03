@@ -2821,6 +2821,15 @@ fn restore_mount_family(
                 appropriateness: Some(os(item, "appropriateness")),
                 is_default: b(item, "isDefault", false),
                 replace: b(item, "replace", false),
+                // P4.D349 (v4 `eb90d9ed8`): the row's `pronounGuidance` rides
+                // `...itemData` into `wardrobe.create`, whose writer normalises
+                // it (`buildWardrobeItemFile`) — the same bytes as normalising
+                // here.
+                pronoun_guidance: Some(
+                    crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(
+                        item.get("pronounGuidance"),
+                    ),
+                ),
                 migrated_from_clothing_record_id: Some(os(item, "migratedFromClothingRecordId")),
                 // P4.D264: v4 hands `wardrobe.create` the row's `...itemData`,
                 // so a legacy row's `imageFileId` (remapped with the files in

@@ -135,6 +135,7 @@ fn body_from_json(v: &Value) -> WardrobeCreateBody {
         component_item_ids: str_array(v, "componentItemIds"),
         replace: v.get("replace").and_then(Value::as_bool),
         folder: opt_str(v, "folder"),
+        pronoun_guidance: v.get("pronounGuidance").cloned(),
     }
 }
 
@@ -163,6 +164,7 @@ fn patch_from_json(v: &Value) -> ItemPatch {
         migrated_from_clothing_record_id: nullable(v, "migratedFromClothingRecordId"),
         folder: opt_str(v, "folder"),
         archived: v.get("archived").and_then(Value::as_bool),
+        pronoun_guidance: str_array(v, "pronounGuidance"),
     }
 }
 

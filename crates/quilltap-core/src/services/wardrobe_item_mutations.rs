@@ -162,6 +162,10 @@ pub struct WardrobeCreateBody {
     pub component_item_ids: Option<Vec<String>>,
     pub replace: Option<bool>,
     pub folder: Option<String>,
+    /// v4 `eb90d9ed8`: the RAW `pronounGuidance` (the REST parser has already
+    /// enum-checked it; the tools hand a validated array; the importer and the
+    /// transfers hand the record's value) — normalised into the stored item.
+    pub pronoun_guidance: Option<Value>,
 }
 
 /// v4 `prose(value)` — a prose field as stored: trimmed-empty reads as absent.
@@ -206,6 +210,13 @@ pub fn wardrobe_item_from_create_body(
         appropriateness: Some(prose(body.appropriateness.as_deref())),
         is_default: body.is_default.unwrap_or(false),
         replace: body.replace.unwrap_or(false),
+        // v4 `pronounGuidance: normalizePronounGuidance(body.pronounGuidance)` —
+        // ALWAYS a list on a created item (`[]` when none).
+        pronoun_guidance: Some(
+            crate::wardrobe::pronoun_guidance::normalize_pronoun_guidance(
+                body.pronoun_guidance.as_ref(),
+            ),
+        ),
         migrated_from_clothing_record_id: Some(None),
         image_file_id: Some(None),
         archived_at: Some(None),
@@ -238,6 +249,11 @@ pub(crate) fn item_as_create_body(
         component_item_ids: Some(component_item_ids),
         replace: Some(item.replace),
         folder: Some(folder),
+        // v4's `{ ...item }` spread carries the item's guidance.
+        pronoun_guidance: item
+            .pronoun_guidance
+            .as_ref()
+            .map(|g| Value::Array(g.iter().cloned().map(Value::String).collect())),
     }
 }
 
@@ -333,6 +349,9 @@ pub struct ItemPatch {
     pub migrated_from_clothing_record_id: Option<Option<String>>,
     pub folder: Option<String>,
     pub archived: Option<bool>,
+    /// v4 `eb90d9ed8`: `pronounGuidance` (the route's enum-checked list, or the
+    /// tool's normalised one).
+    pub pronoun_guidance: Option<Vec<String>>,
 }
 
 /// Which caller built an [`ItemPatch`] (contract C3, P4.170 — ruling P-7,
@@ -356,7 +375,7 @@ impl PatchOrigin {
     /// The caller's key order. Each list ends with the keys that caller never
     /// sends, so every [`ItemPatch`] field has a slot whatever the origin
     /// (`migratedFromClothingRecordId` is the migration's alone).
-    fn key_order(self) -> &'static [&'static str; 11] {
+    fn key_order(self) -> &'static [&'static str; 12] {
         match self {
             PatchOrigin::Route => &[
                 "title",
@@ -367,6 +386,8 @@ impl PatchOrigin {
                 "isDefault",
                 "componentItemIds",
                 "replace",
+                // `wardrobeItemFieldsSchema` declares it after `replace`.
+                "pronounGuidance",
                 "folder",
                 "imageFileId",
                 "migratedFromClothingRecordId",
@@ -376,6 +397,9 @@ impl PatchOrigin {
                 "description",
                 "imagePrompt",
                 "appropriateness",
+                // `wardrobe-update-handler.ts:106` assigns it after
+                // `appropriateness`, before `types`.
+                "pronounGuidance",
                 "types",
                 "isDefault",
                 "replace",
@@ -412,6 +436,7 @@ fn patch_keys(
         "migratedFromClothingRecordId" => next.migrated_from_clothing_record_id.is_some(),
         "folder" => next.folder.is_some(),
         "archivedAt" => next.archived_at.is_some(),
+        "pronounGuidance" => next.pronoun_guidance.is_some(),
         _ => false,
     };
     let mut keys: Vec<&'static str> = origin
@@ -458,6 +483,7 @@ pub fn update_item_with_origin(
         image_file_id: patch.image_file_id.clone(),
         folder: None,
         migrated_from_clothing_record_id: patch.migrated_from_clothing_record_id.clone(),
+        pronoun_guidance: patch.pronoun_guidance.clone(),
     };
 
     if let Some(folder) = &patch.folder {

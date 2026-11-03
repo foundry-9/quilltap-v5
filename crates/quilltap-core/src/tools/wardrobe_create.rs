@@ -411,6 +411,7 @@ fn run(
             component_item_ids: Some(component_item_ids.clone()),
             replace: Some(input.replace.unwrap_or(false)),
             folder: None,
+            pronoun_guidance: None,
         },
         CreateItemOptions {
             lookup: Some(pool.by_id()),

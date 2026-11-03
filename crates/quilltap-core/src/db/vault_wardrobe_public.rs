@@ -119,6 +119,9 @@ pub struct WardrobePatch {
     /// v4's `migratedFromClothingRecordId` is a plain item key a
     /// `Partial<WardrobeItem>` may carry (the restore pass does).
     pub migrated_from_clothing_record_id: Option<Option<String>>,
+    /// v4 `eb90d9ed8`: the item's pronoun guidance. `Some(vec![])` clears it;
+    /// the writer normalises again (`buildWardrobeItemFile`).
+    pub pronoun_guidance: Option<Vec<String>>,
 }
 
 impl WardrobePatch {
@@ -157,6 +160,9 @@ impl WardrobePatch {
         }
         if let Some(v) = &self.migrated_from_clothing_record_id {
             item.migrated_from_clothing_record_id = Some(v.clone());
+        }
+        if let Some(v) = &self.pronoun_guidance {
+            item.pronoun_guidance = Some(v.clone());
         }
     }
 }
@@ -814,6 +820,7 @@ mod tests {
             appropriateness: None,
             is_default: false,
             replace: false,
+            pronoun_guidance: None,
             migrated_from_clothing_record_id: None,
             image_file_id: None,
             archived_at: None,

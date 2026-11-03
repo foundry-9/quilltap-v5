@@ -1109,14 +1109,50 @@ fn qtap_import_tier2_matches_oracle() {
         assert_eq!(got_links, want["links"], "wardrobe-folders link paths");
         assert_eq!(got_folders, want["folders"], "wardrobe-folders folder rows");
 
+        // P4.D349 (v4 `eb90d9ed8`): each added item file's `pronounGuidance:`
+        // frontmatter block — the record's value, normalised by the writer.
+        let block = regex::Regex::new(r"\npronounGuidance:\n(?:  - [^\n]*\n)*").unwrap();
+        let mut got_guidance = serde_json::Map::new();
+        for rel in got_links.as_array().unwrap() {
+            let rel = rel.as_str().unwrap();
+            let content: String = mount5
+                .connection()
+                .query_row(
+                    "SELECT d.content FROM doc_mount_file_links l \
+                     JOIN doc_mount_documents d ON d.fileId = l.fileId \
+                     WHERE l.relativePath = ?1",
+                    [rel],
+                    |r| r.get(0),
+                )
+                .expect("read an imported item file");
+            if let Some(m) = block.find(&content) {
+                got_guidance.insert(rel.to_string(), Value::String(m.as_str().to_string()));
+            }
+        }
+        assert_eq!(
+            Value::Object(got_guidance.clone()),
+            want["guidance"],
+            "wardrobe-folders pronounGuidance blocks"
+        );
+        assert_eq!(
+            Value::Object(got_guidance),
+            serde_json::json!({
+                "Wardrobe/Ball Gown.md": "\npronounGuidance:\n  - she\n",
+                "Wardrobe/Tea Gown.md": "\npronounGuidance:\n  - she\n  - they\n",
+            }),
+            "the imported guidance, normalised"
+        );
+
         // The floor, on v5's own dump: the filed item, the `../x` fallback at
         // the root, and R-M's refusal.
         assert_eq!(
             got_links,
             serde_json::json!([
+                "Wardrobe/Ball Gown.md",
                 "Wardrobe/Everyday Scarf.md",
                 "Wardrobe/Formal/Evening/Opera Cloak.md",
                 "Wardrobe/Stage Spats.md",
+                "Wardrobe/Tea Gown.md",
             ]),
             "filed / fallback / root"
         );

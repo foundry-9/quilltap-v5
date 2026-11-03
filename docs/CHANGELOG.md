@@ -12,6 +12,17 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(wardrobe): keep v4's pronounGuidance on every wardrobe item write (P4.D349)
+
+_Versions: core 0.0.1383._
+
+v4 `eb90d9ed8` added `pronounGuidance` to wardrobe item files, and every v5 projection dropped it. That covered a title edit, an archive, a folder move and a picture link. `WardrobeItem` now carries `pronoun_guidance` after `replace`. The item-file parser reads it normalised and keeps the key only when non-empty. The emitter normalises it again and writes it as a YAML list after `replace`, before `archived`.
+
+- **Create.** The create body and `wardrobe_item_from_create_body` always set the normalised list, so a REST create answers `pronounGuidance` (`[]` when none).
+- **Update.** The REST item fields accept `pronounGuidance` as v4's strict enum list: a preset label, a capitalised subject, a non-string or a bare string is the existing Zod 400. A PUT patches it (`[]` clears), and the `Updated wardrobe item` line's `fields` list carries it in each caller's order.
+- **Carriers.** The legacy `wardrobe.json` item validation reads it as v4's schema does. The `.qtap` importer and the backup restore carry the record's value through the normaliser. v4 spreads the record into `wardrobe.create`, whose writer normalises; the bytes are the same.
+- **Oracles.** `vault-wardrobe-item-file` +6 rows; `vault-wardrobe-emit` +1 case; `wardrobe-routes` +6 cases; the `.qtap` wardrobe-folders bundle gains two guided items and compares their frontmatter blocks.
+
 #### 2026-11-03 — feat(wardrobe): port v4's pronoun presets and pronoun-guidance rules (P4.D349)
 
 _Versions: core 0.0.1382._

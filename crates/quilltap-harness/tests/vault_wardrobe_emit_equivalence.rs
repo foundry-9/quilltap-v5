@@ -81,6 +81,12 @@ fn item_from_json(v: &Value) -> WardrobeItem {
         appropriateness: opt_opt(v.get("appropriateness")),
         is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
         replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
+        // P4.D349: the corpus item's `pronounGuidance` RAW (absent → None);
+        // the emitter normalises it, as v4's does.
+        pronoun_guidance: v
+            .get("pronounGuidance")
+            .and_then(Value::as_array)
+            .map(|_| str_array(v, "pronounGuidance")),
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
         image_file_id: opt_opt(v.get("imageFileId")),
         archived_at: opt_opt(v.get("archivedAt")),

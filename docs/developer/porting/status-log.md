@@ -193934,6 +193934,33 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
 - **First run: 110 / 110 exact — no row needed a fix.** The family did not exist before, so the first run IS the red-first (order item 18).
 - Unit fuzz (Tier 2 item 26): `random_values_never_panic_and_non_standard_input_is_empty`, plus `diagram_style_or_default`'s in commit A.
 
+### Commit C — `pronounGuidance` on the wardrobe item file (items 3, 19, 22)
+
+- **Landed:**
+  - `WardrobeItem.pronoun_guidance: Option<Vec<String>>` after `replace` (`None` = v4's absent key; `Some(vec![])` only on a created item).
+  - `from_read_value` and the legacy `validate_wardrobe_item` (v4's strict enum list) read it.
+  - `WardrobeItemFromFile` + `parse_wardrobe_item_file`: normalised; `Some` only when non-empty.
+  - `build_wardrobe_item_file`: normalised again; the YAML list after `replace`, before `archived`.
+  - `WardrobeCreateBody.pronoun_guidance: Option<Value>` (RAW) → `wardrobe_item_from_create_body` ALWAYS `Some(normalize(…))`; `item_as_create_body` carries the item's list (v4's `{ ...item }` spread).
+  - `WardrobePatch` / `ItemPatch.pronoun_guidance` + `apply`; `PatchOrigin`'s key orders gain `pronounGuidance` (Route: after `replace`, `wardrobeItemFieldsSchema`'s shape; Tool: after `appropriateness`, `wardrobe-update-handler.ts:106`).
+  - REST `ItemFields.pronoun_guidance` (strict enum list, else the existing Zod 400 path).
+  - `item_read_value` inserts it between `replace` and `componentItemIds` when `Some` (a read item only when non-empty; a PUT echo carries what the patch set, incl. `[]`).
+  - `item_create_value` always (between `replace` and `migratedFromClothingRecordId`).
+  - The `.qtap` importer + the backup restore carry `Some(normalize(record value))`.
+- **Order correction (measured at the pin):** v4's import (`import-characters.ts:310-337`) and restore (`restore.ts:938`) call `repos.wardrobe.create`, which does NOT go through `wardrobeItemFromCreateBody`. The normaliser that applies is `buildWardrobeItemFile`'s at write, so the item FILE carries the same bytes as normalising up front.
+- `tools/wardrobe_create.rs` passes `pronoun_guidance: None` until item 20 wires the tool param. This equals v4 for an absent param: `normalize(undefined)` = `[]`.
+- **Families (from the pin):**
+  - `vault_wardrobe_item_file` 37 cases OK (+6 `w-pronoun-*`: list → `["she","they"]`, string, label → `["he"]`, `[She, xe]` → `["she"]`, `[]` → absent, `[5, true]` → absent).
+  - `vault_wardrobe_emit` 114 items / 9 cases OK (+1 case: `['they','she']` → `- she\n  - they`; `[She, xe]` with `replace` + archived → `- she` between them; `[]` → no key).
+  - `vault_wardrobe_write` / `_read` / `_public`, `group_wardrobe_routes`, `wardrobe_folder_writes_tier2`, `item_mutations_tier2` OK.
+  - `qtap_import` OK (the wardrobe-folders bundle +2 items: `["she","they"]` → `- she\n  - they`; `["xe","she"]` → `- she`; the new `guidance` comparand on both sides).
+  - `characters_mutations`: `wardrobe_create` now OK (`pronounGuidance: []`).
+  - `wardrobe_routes` (the WEB crate's test, corpus +6): every P4.D349 row and `create_ok` / `create_full` match (the 201 with `["she","they"]` from `["they","she","she"]`, the PUT echo `["they","she"]`, the PUT `[]`, the three Zod 400s).
+- **Union reds (not this commit's):**
+  - `wardrobe_routes`' `eq_*` / `rb_*` / `delete_*__outfit` cases: v4 at the pin answers `Failed to equip wardrobe slot` 500 on this base's fixture pair.
+  - `characters_mutations`' `tag_delete` / `character_delete_cascade`: the same class.
+  - P4.D341 re-widened 57 fixture pairs incl. `wardrobe-routes-main.db` and the characters pair (`git diff --stat 8ab640259 claude/p4.d341-… -- crates/quilltap-web/tests/fixtures/`). These are green on the union, where the keystone's pairs meet this lane's code.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

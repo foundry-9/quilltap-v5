@@ -342,6 +342,12 @@ pub fn item_read_value(item: &WardrobeItem) -> Value {
     m.insert("appropriateness".into(), nullable(&item.appropriateness));
     m.insert("isDefault".into(), json!(item.is_default));
     m.insert("replace".into(), json!(item.replace));
+    // v4 `eb90d9ed8` (`parsers.ts:452`): the parser spreads `pronounGuidance`
+    // here only when non-empty, so a read item carries it only then; a PUT's
+    // `{ ...before, ...patch }` echo carries what the patch set.
+    if let Some(g) = &item.pronoun_guidance {
+        m.insert("pronounGuidance".into(), json!(g));
+    }
     m.insert("componentItemIds".into(), json!(item.component_item_ids));
     m.insert(
         "migratedFromClothingRecordId".into(),
@@ -370,6 +376,11 @@ pub fn item_create_value(item: &WardrobeItem) -> Value {
     m.insert("appropriateness".into(), nullable(&item.appropriateness));
     m.insert("isDefault".into(), json!(item.is_default));
     m.insert("replace".into(), json!(item.replace));
+    // `wardrobeItemFromCreateBody` always sets the normalised list.
+    m.insert(
+        "pronounGuidance".into(),
+        json!(item.pronoun_guidance.clone().unwrap_or_default()),
+    );
     m.insert(
         "migratedFromClothingRecordId".into(),
         nullable(&item.migrated_from_clothing_record_id),
@@ -414,6 +425,7 @@ struct ItemFields {
     is_default: Option<bool>,
     component_item_ids: Option<Vec<String>>,
     replace: Option<bool>,
+    pronoun_guidance: Option<Vec<String>>,
     folder: Option<String>,
     archived: Option<bool>,
     image_file_id: Option<Option<String>>,
@@ -478,6 +490,28 @@ fn parse_item_fields(body: &Value, partial: bool) -> Result<ItemFields, ()> {
         _ => return Err(()),
     };
     let replace = boolean("replace")?;
+    // pronounGuidance: `PronounGuidanceListSchema.optional()` — an array whose
+    // EVERY element is one of the four standard subjects (NOT normalised: a
+    // preset label, a capitalised subject or a non-string is a Zod failure).
+    let pronoun_guidance = match get("pronounGuidance") {
+        None => None,
+        Some(Value::Array(a)) => {
+            let mut out = Vec::with_capacity(a.len());
+            for v in a {
+                match v.as_str() {
+                    Some(s)
+                        if crate::characters::pronoun_presets::STANDARD_PRONOUN_SUBJECTS
+                            .contains(&s) =>
+                    {
+                        out.push(s.to_string())
+                    }
+                    _ => return Err(()),
+                }
+            }
+            Some(out)
+        }
+        _ => return Err(()),
+    };
     // folder: WardrobeFolderInputSchema.optional() = z.string().max(900).
     let folder = match get("folder") {
         None => None,
@@ -498,6 +532,7 @@ fn parse_item_fields(body: &Value, partial: bool) -> Result<ItemFields, ()> {
         is_default,
         component_item_ids,
         replace,
+        pronoun_guidance,
         folder,
         archived,
         image_file_id,
@@ -1306,6 +1341,7 @@ pub async fn create(
         component_item_ids: fields.component_item_ids,
         replace: fields.replace,
         folder: fields.folder,
+        pronoun_guidance: fields.pronoun_guidance.map(|g| json!(g)),
     };
     let (id, uid) = (id.map(str::to_string), user_id.to_string());
     let out = with_both_conns_maybe_for(
@@ -1513,6 +1549,7 @@ pub async fn item_update(
                 migrated_from_clothing_record_id: None,
                 folder: fields.folder,
                 archived,
+                pronoun_guidance: fields.pronoun_guidance,
             };
             let item = match update_item_with_origin(
                 main,

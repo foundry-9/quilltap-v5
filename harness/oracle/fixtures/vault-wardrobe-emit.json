@@ -2038,6 +2038,71 @@
         "updatedAt": "2026-01-01T00:00:00.000Z",
         "characterId": null
       }
+    ],
+    [
+      {
+        "id": "00000000-0000-4000-8000-000000000301",
+        "title": "Tea Gown",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null,
+        "pronounGuidance": [
+          "they",
+          "she"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000302",
+        "title": "Ball Gown",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": true,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": "2026-01-02T00:00:00.000Z",
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null,
+        "pronounGuidance": [
+          "She",
+          "xe"
+        ]
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000303",
+        "title": "Scarf",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "appropriateness": null,
+        "imagePrompt": null,
+        "isDefault": false,
+        "replace": false,
+        "migratedFromClothingRecordId": null,
+        "archivedAt": null,
+        "description": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "updatedAt": "2026-01-01T00:00:00.000Z",
+        "characterId": null,
+        "pronounGuidance": []
+      }
     ]
   ]
 }

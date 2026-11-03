@@ -113,6 +113,16 @@ wCase('w-folder-fm-key-nonstring', '---\ntitle: Boater\ntypes: [accessories]\nfo
 wCase('w-folder-root', '---\ntitle: Root Coat\ntypes: [top]\n---\nb');
 wCase('w-folder-nested-no-types-null', '---\ntitle: Note\n---\nnot an item', 'todo.md', 'Notes');
 
+// ── P4.D349 (v4 `eb90d9ed8`): `pronounGuidance` — normalised (known subjects,
+// picker order, de-duplicated; a string or a preset label reads as its
+// subject); spread into the item ONLY when non-empty (parsers.ts:386-387, 452).
+wCase('w-pronoun-list', '---\ntitle: Tea Gown\ntypes: [top]\npronounGuidance:\n  - they\n  - she\n---\nb');
+wCase('w-pronoun-string', '---\ntitle: Tea Gown\ntypes: [top]\npronounGuidance: she\n---\nb');
+wCase('w-pronoun-label', '---\ntitle: Frock Coat\ntypes: [top]\npronounGuidance: He/Him/His\n---\nb');
+wCase('w-pronoun-junk', '---\ntitle: Ball Gown\ntypes: [top]\npronounGuidance: [She, xe]\n---\nb');
+wCase('w-pronoun-empty', '---\ntitle: Scarf\ntypes: [accessories]\npronounGuidance: []\n---\nb');
+wCase('w-pronoun-nonstring', '---\ntitle: Scarf\ntypes: [accessories]\npronounGuidance: [5, true]\n---\nb');
+
 for (const row of rows) {
   process.stdout.write(JSON.stringify(row) + '\n');
 }

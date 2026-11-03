@@ -105,6 +105,10 @@ fn item_for_create(data: &Value, options: &Value) -> WardrobeItem {
             .get("replace")
             .and_then(Value::as_bool)
             .unwrap_or(false),
+        pronoun_guidance: data
+            .get("pronounGuidance")
+            .and_then(Value::as_array)
+            .map(|_| str_array(data, "pronounGuidance")),
         migrated_from_clothing_record_id: None,
         image_file_id: None,
         archived_at: str_field_opt(data, "archivedAt"),
@@ -129,6 +133,8 @@ fn patch_from_json(patch: &Value) -> WardrobePatch {
     let obj = patch.as_object();
     let has = |k: &str| obj.map(|o| o.contains_key(k)).unwrap_or(false);
     WardrobePatch {
+        // P4.D349: the item's pronoun guidance (a string list).
+        pronoun_guidance: has("pronounGuidance").then(|| str_array(patch, "pronounGuidance")),
         // P4.D255: the item's picture pointer (a nullable string, as the
         // nullable siblings below).
         image_file_id: has("imageFileId").then(|| {

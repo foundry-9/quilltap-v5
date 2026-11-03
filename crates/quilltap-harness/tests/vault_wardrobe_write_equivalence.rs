@@ -168,6 +168,7 @@ fn item_from_json(v: &Value) -> WardrobeItem {
         appropriateness: opt_opt(v.get("appropriateness")),
         is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
         replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
+        pronoun_guidance: None,
         migrated_from_clothing_record_id: opt_opt(v.get("migratedFromClothingRecordId")),
         image_file_id: None,
         archived_at: opt_opt(v.get("archivedAt")),
