@@ -50,7 +50,16 @@ test('inventory-image-description tier-1 oracle', async () => {
       carryingDescription?: string;
       genderPrefix: string;
     }>;
-    expansion: Array<{ label: string; appearance: Record<string, unknown> }>;
+    /** P4.D349: `pronouns` rides the placeholder; `rawDescription` (with no
+     *  `appearance`) drives the no-resolved-appearance arm. */
+    expansion: Array<{
+      label: string;
+      appearance?: Record<string, unknown>;
+      pronouns?: Record<string, string>;
+      rawDescription?: Record<string, unknown>;
+      characterId?: string;
+      characterName?: string;
+    }>;
     avatar: Array<{ label: string; character: Record<string, unknown>; carrying: string | null }>;
   };
   const outPath = process.env.QT_ORACLE_OUT;
@@ -69,21 +78,34 @@ test('inventory-image-description tier-1 oracle', async () => {
     );
   }
   for (const e of spec.expansion) {
-    const a = e.appearance as { characterId: string; characterName: string };
+    const a = (e.appearance ?? { characterId: e.characterId, characterName: e.characterName }) as {
+      characterId: string;
+      characterName: string;
+    };
     const placeholder = `{{${a.characterName}}}`;
     const context = buildExpansionContext(
       `Paint ${placeholder}`,
-      [{ placeholder, name: a.characterName, entityId: a.characterId, descriptions: [] } as never],
+      [
+        {
+          placeholder,
+          name: a.characterName,
+          entityId: a.characterId,
+          descriptions: e.rawDescription ? [e.rawDescription] : [],
+          ...(e.pronouns ? { pronouns: e.pronouns } : {}),
+        } as never,
+      ],
       'OPENAI',
-      [e.appearance as never]
+      e.appearance ? [e.appearance as never] : undefined
     );
-    const ph = context.placeholders[0] as { clothing?: unknown };
+    const ph = context.placeholders[0] as { clothing?: unknown; nonHumanoid?: boolean; gender?: string };
     lines.push(
       JSON.stringify({
         kind: 'expansion',
         label: e.label,
         hasClothing: Object.prototype.hasOwnProperty.call(ph, 'clothing'),
         clothing: ph.clothing ?? null,
+        nonHumanoid: ph.nonHumanoid ?? false,
+        gender: ph.gender ?? null,
       })
     );
   }

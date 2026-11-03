@@ -73,7 +73,6 @@ use crate::image_gen::params_builder::{
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
 use crate::model::image::{ImageProvider, ImageTranscoder};
-use crate::pronoun_gender::gender_from_pronouns;
 use crate::services::activity_kinds::ActivityKind;
 use crate::services::activity_registry::track_activity;
 use crate::services::appearance_resolution::{
@@ -1075,20 +1074,35 @@ pub fn build_expansion_context(
     let placeholders = resolved
         .iter()
         .map(|ph| {
-            let gender = gender_from_pronouns(
-                ph.pronouns
-                    .as_ref()
-                    .and_then(|p| p.get("subject"))
-                    .and_then(Value::as_str),
-            )
-            .map(str::to_string);
-
             // A resolved appearance for this character?
             let resolved_app = resolved_appearances.and_then(|apps| {
                 ph.entity_id
                     .as_deref()
                     .and_then(|eid| apps.iter().find(|a| a.character_id == eid))
             });
+
+            // A character with no humanoid body takes no gender hint — its
+            // pronouns don't give it a man's or a woman's body — and is flagged
+            // instead (v4 `b27e5089a`). When a resolved appearance exists, ONLY
+            // its `humanoid === false` marks it (a resolved humanoid ignores the
+            // raw description's flag); otherwise the raw description decides.
+            let humanoid = match resolved_app {
+                Some(app) => app.humanoid,
+                None => crate::characters::physical_description::is_humanoid(
+                    ph.physical_description
+                        .as_ref()
+                        .map(crate::characters::physical_description::PhysicalDescriptionVariants::from_value)
+                        .as_ref(),
+                ),
+            };
+            let gender = crate::pronoun_gender::figure_gender(
+                ph.pronouns
+                    .as_ref()
+                    .and_then(|p| p.get("subject"))
+                    .and_then(Value::as_str),
+                humanoid,
+            )
+            .map(str::to_string);
 
             if let Some(app) = resolved_app {
                 let mut clothing = Vec::new();
@@ -1127,6 +1141,7 @@ pub fn build_expansion_context(
                         ..Default::default()
                     },
                     clothing,
+                    non_humanoid: !humanoid,
                 }
             } else {
                 // No resolved appearance — raw description data.
@@ -1148,6 +1163,7 @@ pub fn build_expansion_context(
                         complete: desc_tier(d, "completePrompt"),
                     },
                     clothing: Vec::new(),
+                    non_humanoid: !humanoid,
                 }
             }
         })

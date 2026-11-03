@@ -677,6 +677,20 @@
     {
       "id": "null",
       "physical": null
+    },
+    {
+      "id": "p4d349_non_humanoid",
+      "physical": {
+        "id": "pd-1",
+        "name": "Aria's look",
+        "fullDescription": "Auburn hair cut short; grey eyes.",
+        "headAndShouldersPrompt": "auburn bob, grey eyes",
+        "shortPrompt": "short",
+        "mediumPrompt": "medium",
+        "longPrompt": "long",
+        "completePrompt": "complete",
+        "humanoid": false
+      }
     }
   ],
   "wardrobes": [

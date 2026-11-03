@@ -604,6 +604,18 @@ pub fn get_physical_description_suggestion_prompt(
         .join("\n"),
         _ => "(this character has no physical description yet)".to_string(),
     };
+    // v4 `isHumanoid(pd)` (`b27e5089a`) — a null / absent description is
+    // humanoid; only an explicit `humanoid: false` adds the rule.
+    let non_humanoid_rule = if crate::characters::physical_description::is_humanoid(
+        physical
+            .filter(|pd| js_truthy(Some(pd)))
+            .map(crate::characters::physical_description::PhysicalDescriptionVariants::from_value)
+            .as_ref(),
+    ) {
+        ""
+    } else {
+        "\n- THIS CHARACTER IS NOT HUMANOID: it has no head, face, neck, shoulders, torso or limbs. Never give any sub-field a body part it lacks, and do not suggest a headAndShouldersPrompt at all — it is unused for a non-humanoid character."
+    };
 
     format!(
         r#"Focus solely on the character's PHYSICAL DESCRIPTION — their appearance. Decide whether any of its sub-fields should be refined to reflect concrete appearance details established in the memories. This is about how the character LOOKS, not how they behave; ignore behavioural patterns unless they imply a visible, physical trait (a habitual posture, a recurring article of dress, an acquired scar).
@@ -633,7 +645,7 @@ Additional rules specific to physical-description refinement:
 - currentValue must be the existing text of that sub-field (empty string if it has none).
 - proposedValue must be the complete new text for that sub-field.
 - Keep the image prompts (headAndShoulders/short/medium/long/complete) in the comma-or-phrase style image models expect; keep fullDescription in prose.
-- For headAndShouldersPrompt specifically: describe ONLY what a head-and-shoulders crop shows (face, hair, expression, neckline, visible upper attire). Never describe breasts, torso, waist, hips, legs, or any anatomy below the shoulders.
+- For headAndShouldersPrompt specifically: describe ONLY what a head-and-shoulders crop shows (face, hair, expression, neckline, visible upper attire). Never describe breasts, torso, waist, hips, legs, or any anatomy below the shoulders.{non_humanoid_rule}
 
 Respond with a JSON array of suggestion objects (may be empty)."#,
         analysis_json = pretty(analysis)

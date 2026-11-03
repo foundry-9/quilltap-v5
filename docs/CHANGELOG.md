@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(images): draw a non-humanoid character as its whole form, never a body (P4.D349)
+
+_Versions: core 0.0.1389._
+
+The image side of v4 `b27e5089a`. For a character whose `physical-prompts.json` says `humanoid: false`:
+
+- **Avatar.** The portrait is "a single non-humanoid entity … its whole form in frame", ends "Only one subject in the image", carries v4's `Not humanoid: …` direction, and never takes a pronoun-derived "man" / "woman". It always has an appearance, even with no prompt text. Its outfit lists only the slots in use and never falls back to "completely naked". The figure identity block gains `humanoid`.
+- **Worn wardrobe picture.** Frames the whole form, the item "Bearing …" on it. This wins over a hair-only item.
+- **The Lantern, the image tool and the cheap-LLM prompts.**
+  - The Lantern's scene descriptions drop the gender prefix and add the direction without doubling a period (`ResolvedCharacterAppearance.humanoid`, set at all three build sites).
+  - The image tool's expansion context flags `nonHumanoid` and gives no gender; a resolved appearance decides alone when there is one.
+  - The prompt crafter's placeholder block and the appearance resolver's character line carry `[not humanoid]` and v4's `Form:` lines.
+  - The regenerated `prompt_text.rs` gains v4's two guideline lines.
+  - The scene-state baseline gains its `Form:` line; there is no production caller.
+  - The story-background job's fallback and enumeration render through the same parts.
+- **Backfill and optimizer.** The head-and-shoulders backfill skips a non-humanoid at both the job and the startup scan, with the job's `[HeadShouldersBackfill] Character is not humanoid, skipping` DEBUG. The optimizer adds v4's `THIS CHARACTER IS NOT HUMANOID` rule.
+
 #### 2026-11-03 — feat(wardrobe): pronoun guidance in the four wardrobe tools and the green room (P4.D349)
 
 _Versions: core 0.0.1388._

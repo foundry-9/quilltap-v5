@@ -14,7 +14,8 @@
 //! injected model seams.
 
 use crate::characters::physical_description::{
-    pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
+    is_humanoid, pick_physical_description, PhysicalDescriptionProfile,
+    PhysicalDescriptionVariants, NON_HUMANOID_IMAGE_DIRECTION,
 };
 use serde_json::Value;
 
@@ -109,6 +110,30 @@ pub struct ResolvedCharacterAppearance {
     /// writes `true` or leaves the key absent, so `false` here is "absent".
     /// Never persisted; only the story-background description builder reads it.
     pub needs_concealment: bool,
+    /// v4 `humanoid?` (`b27e5089a`): `true` = v4's ABSENT key (the character
+    /// can be drawn as a body); `false` only for a non-humanoid — set at the
+    /// three build sites from the description the appearance came from.
+    pub humanoid: bool,
+}
+
+impl ResolvedCharacterAppearance {
+    /// v4's three-key `Pick` the story-background job hands
+    /// `sceneDescriptionParts` (`{ physicalDescription, clothingDescription:
+    /// '', humanoid }`): everything else blank / absent.
+    pub fn bare(physical_description: &str, humanoid: bool) -> Self {
+        ResolvedCharacterAppearance {
+            character_id: String::new(),
+            character_name: String::new(),
+            physical_description: physical_description.to_string(),
+            physical_description_name: String::new(),
+            clothing_description: String::new(),
+            clothing_source: String::new(),
+            carrying_description: None,
+            was_sanitized: false,
+            needs_concealment: false,
+            humanoid,
+        }
+    }
 }
 
 /// The resolution result (v4 `AppearanceResolutionResult`).
@@ -235,6 +260,7 @@ fn build_default_appearances(
             let primary = char.physical_description.as_ref();
             let phys_desc = select_phys_desc(primary, &char.character_name);
             let has_wardrobe = !char.equipped_wardrobe_items.is_empty();
+            let humanoid = is_humanoid(primary.map(PhysicalDescription::variants).as_ref());
             ResolvedCharacterAppearance {
                 character_id: char.character_id.clone(),
                 character_name: char.character_name.clone(),
@@ -258,6 +284,7 @@ fn build_default_appearances(
                 carrying_description: None,
                 was_sanitized: false,
                 needs_concealment: false,
+                humanoid,
             }
         })
         .collect()
@@ -274,6 +301,7 @@ fn map_resolution_results(
             let resolved = items.iter().find(|i| i.character_id == char.character_id);
             let selected = char.physical_description.as_ref();
             let phys_desc = select_phys_desc(selected, &char.character_name);
+            let humanoid = is_humanoid(selected.map(PhysicalDescription::variants).as_ref());
             ResolvedCharacterAppearance {
                 character_id: char.character_id.clone(),
                 character_name: char.character_name.clone(),
@@ -293,6 +321,7 @@ fn map_resolution_results(
                 carrying_description: None,
                 was_sanitized: false,
                 needs_concealment: false,
+                humanoid,
             }
         })
         .collect()
@@ -428,6 +457,7 @@ pub(crate) async fn resolve_appearances_without_inventory<C: CompletionProvider>
             .map(|char| {
                 let scene_char = scene.iter().find(|sc| sc.character_id == char.character_id);
                 let primary = char.physical_description.as_ref();
+                let humanoid = is_humanoid(primary.map(PhysicalDescription::variants).as_ref());
                 let phys_desc = scene_char
                     .and_then(|sc| sc.appearance.clone())
                     .filter(|s| !s.is_empty())
@@ -453,6 +483,7 @@ pub(crate) async fn resolve_appearances_without_inventory<C: CompletionProvider>
                     carrying_description: None,
                     was_sanitized: false,
                     needs_concealment: false,
+                    humanoid,
                 }
             })
             .collect();
@@ -499,6 +530,13 @@ pub(crate) async fn resolve_appearances_without_inventory<C: CompletionProvider>
                     image_prompt: w.image_prompt.clone(),
                 })
                 .collect(),
+            // v4 `...(isHumanoid(char.physicalDescription) ? {} : { nonHumanoid: true })`.
+            non_humanoid: !is_humanoid(
+                char.physical_description
+                    .as_ref()
+                    .map(PhysicalDescription::variants)
+                    .as_ref(),
+            ),
         })
         .collect();
 
@@ -787,7 +825,22 @@ pub fn scene_description_parts(
     resolved: &ResolvedCharacterAppearance,
     gender_prefix: &str,
 ) -> Vec<String> {
-    let mut parts = vec![format!("{gender_prefix}{}", resolved.physical_description)];
+    // A non-humanoid character takes no gender prefix (pronouns don't give it
+    // a body) and gets the non-humanoid direction right after its description
+    // — trailing punctuation off, so the caller's `. ` join can't make
+    // "spheres..", and a blank description drops out (v4 `.filter(Boolean)`).
+    let mut parts = if resolved.humanoid {
+        vec![format!("{gender_prefix}{}", resolved.physical_description)]
+    } else {
+        let desc = crate::services::avatar_prompt::strip_trailing_terminal_punct(js_trim(
+            &resolved.physical_description,
+        ))
+        .to_string();
+        [desc, NON_HUMANOID_IMAGE_DIRECTION.to_string()]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect()
+    };
     if !resolved.clothing_description.is_empty() {
         parts.push(format!("Wearing: {}", resolved.clothing_description));
     }

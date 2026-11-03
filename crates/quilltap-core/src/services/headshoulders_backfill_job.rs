@@ -204,6 +204,21 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
         return Ok(());
     };
 
+    // A non-humanoid character has no head and shoulders to describe; its
+    // portrait reads the medium prompt instead (v4 `b27e5089a`, BEFORE the
+    // idempotency check).
+    if !crate::characters::physical_description::is_humanoid(Some(
+        &crate::characters::physical_description::PhysicalDescriptionVariants::from_value(pd),
+    )) {
+        tracing::debug!(
+            context = CONTEXT,
+            job_id = %job_id,
+            character_id = %payload.character_id,
+            "[HeadShouldersBackfill] Character is not humanoid, skipping"
+        );
+        return Ok(());
+    }
+
     // Idempotent: another path (or a prior attempt) may have filled it.
     if head_prompt_is_filled(pd) {
         return Ok(());

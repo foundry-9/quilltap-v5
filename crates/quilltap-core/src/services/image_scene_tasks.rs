@@ -51,6 +51,8 @@ pub struct ExpansionPlaceholder {
     pub tiers: ExpansionTiers,
     /// Present clothing/outfit hints (v4 `p.clothing`).
     pub clothing: Vec<ExpansionClothing>,
+    /// v4 `nonHumanoid?: true` (`b27e5089a`) — the figure has no humanoid body.
+    pub non_humanoid: bool,
 }
 
 /// The four description tiers (v4 `p.tiers`).
@@ -202,12 +204,25 @@ pub async fn craft_image_prompt<C: CompletionProvider>(
 
 /// v4's `craftImagePrompt` placeholder formatter — one detail block per person.
 fn format_placeholder(p: &ExpansionPlaceholder) -> String {
-    let gender_hint = match p.gender.as_deref() {
-        Some("male") => " [man]",
-        Some("female") => " [woman]",
-        _ => "",
+    let gender_hint = if p.non_humanoid {
+        " [not humanoid]"
+    } else {
+        match p.gender.as_deref() {
+            Some("male") => " [man]",
+            Some("female") => " [woman]",
+            _ => "",
+        }
     };
     let mut parts: Vec<String> = vec![format!("{} ({}{}):", p.placeholder, p.name, gender_hint)];
+
+    // v4 `b27e5089a`: before the gender line (which cannot co-occur —
+    // `figureGender` is `null` for a non-humanoid).
+    if p.non_humanoid {
+        parts.push(format!(
+            "  Form: {}",
+            crate::characters::physical_description::NON_HUMANOID_IMAGE_DIRECTION
+        ));
+    }
 
     if let Some(gender) = p.gender.as_deref() {
         let term = if gender == "male" { "man" } else { "woman" };
@@ -284,6 +299,8 @@ pub struct CharacterAppearanceInput {
     pub physical_descriptions: Vec<PhysicalDescriptionInput>,
     /// Equipped wardrobe items (per-slot leaf items).
     pub equipped_wardrobe_items: Vec<EquippedWardrobeItem>,
+    /// v4 `nonHumanoid?: true` (`b27e5089a`).
+    pub non_humanoid: bool,
 }
 
 /// One physical-description tier bundle the resolver sees (v4
@@ -366,6 +383,64 @@ fn wardrobe_items_to_slot_values(items: &[EquippedWardrobeItem]) -> OutfitSlotVa
     })
 }
 
+/// v4 `resolveAppearance`'s per-character block (extracted so its bytes,
+/// incl. the P4.D349 `[not humanoid]` form lines, are unit-pinned).
+fn format_appearance_character(char: &CharacterAppearanceInput) -> String {
+    let desc_parts: Vec<String> = char
+        .physical_descriptions
+        .iter()
+        .map(|d| {
+            let context = match d.usage_context.as_deref() {
+                Some(u) => format!(" (context: {u})"),
+                None => String::new(),
+            };
+            // v4 `pickPhysicalDescription(d, 'scene') || '(no description
+            // text)'` (`9ecebf986` — was `medium || short`).
+            let picked =
+                pick_physical_description(Some(&d.variants()), PhysicalDescriptionProfile::Scene);
+            let preview = if picked.is_empty() {
+                "(no description text)"
+            } else {
+                picked
+            };
+            format!(
+                "    - ID: {}, Name: \"{}\"{context}: {preview}",
+                d.id, d.name
+            )
+        })
+        .collect();
+
+    let wardrobe_section = if char.equipped_wardrobe_items.is_empty() {
+        String::new()
+    } else {
+        let outfit = describe_outfit(&wardrobe_items_to_slot_values(
+            &char.equipped_wardrobe_items,
+        ));
+        format!(
+            "\n  Equipped Wardrobe (stored items the character currently has on — summarize as a brief visual sentence):\n{outfit}"
+        )
+    };
+
+    let descs = if desc_parts.is_empty() {
+        "    (none)".to_string()
+    } else {
+        desc_parts.join("\n")
+    };
+
+    // v4 `b27e5089a`: a non-humanoid is flagged on its character line.
+    let form = if char.non_humanoid {
+        " [not humanoid]\n  Form: NOT HUMANOID — no head, face, neck, shoulders, torso or limbs. Describe anything it wears or bears without naming a body part it lacks."
+    } else {
+        ""
+    };
+    format!(
+        "  Character: {name} (ID: {id}){form}\n  Physical Descriptions:\n{descs}{wardrobe}",
+        name = char.character_name,
+        id = char.character_id,
+        wardrobe = wardrobe_section,
+    )
+}
+
 /// v4 `resolveAppearance`: build the character + message sections, run the
 /// cheap-LLM task, and parse the JSON array.
 #[allow(clippy::too_many_arguments)]
@@ -381,54 +456,7 @@ pub async fn resolve_appearance<C: CompletionProvider>(
 ) -> CheapLlmTaskResult<Vec<AppearanceResolutionItem>> {
     let character_section = characters
         .iter()
-        .map(|char| {
-            let desc_parts: Vec<String> = char
-                .physical_descriptions
-                .iter()
-                .map(|d| {
-                    let context = match d.usage_context.as_deref() {
-                        Some(u) => format!(" (context: {u})"),
-                        None => String::new(),
-                    };
-                    // v4 `pickPhysicalDescription(d, 'scene') || '(no description
-                    // text)'` (`9ecebf986` — was `medium || short`).
-                    let picked = pick_physical_description(
-                        Some(&d.variants()),
-                        PhysicalDescriptionProfile::Scene,
-                    );
-                    let preview = if picked.is_empty() {
-                        "(no description text)"
-                    } else {
-                        picked
-                    };
-                    format!("    - ID: {}, Name: \"{}\"{context}: {preview}", d.id, d.name)
-                })
-                .collect();
-
-            let wardrobe_section = if char.equipped_wardrobe_items.is_empty() {
-                String::new()
-            } else {
-                let outfit = describe_outfit(&wardrobe_items_to_slot_values(
-                    &char.equipped_wardrobe_items,
-                ));
-                format!(
-                    "\n  Equipped Wardrobe (stored items the character currently has on — summarize as a brief visual sentence):\n{outfit}"
-                )
-            };
-
-            let descs = if desc_parts.is_empty() {
-                "    (none)".to_string()
-            } else {
-                desc_parts.join("\n")
-            };
-
-            format!(
-                "  Character: {name} (ID: {id})\n  Physical Descriptions:\n{descs}{wardrobe}",
-                name = char.character_name,
-                id = char.character_id,
-                wardrobe = wardrobe_section,
-            )
-        })
+        .map(format_appearance_character)
         .collect::<Vec<_>>()
         .join("\n\n");
 
@@ -1005,16 +1033,74 @@ fn is_js_falsy(v: &serde_json::Value) -> bool {
 mod tests {
     use super::*;
 
+    /// P4.D349 (v4 `b27e5089a`, `image-scene-tasks.ts:519-530`): the crafter's
+    /// placeholder block for a non-humanoid — `[not humanoid]` in place of a
+    /// gender hint and the `Form:` line before any gender line; a humanoid's
+    /// block unchanged. (No family drives `craftImagePrompt`'s block directly;
+    /// this pins the bytes against v4's source.)
+    #[test]
+    fn a_non_humanoid_placeholder_is_flagged_with_its_form_line() {
+        let p = ExpansionPlaceholder {
+            placeholder: "{{Orrery}}".into(),
+            name: "Orrery".into(),
+            gender: None,
+            non_humanoid: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            format_placeholder(&p),
+            format!(
+                "{{{{Orrery}}}} (Orrery [not humanoid]):\n  Form: {}",
+                crate::characters::physical_description::NON_HUMANOID_IMAGE_DIRECTION
+            )
+        );
+        let humanoid = ExpansionPlaceholder {
+            gender: Some("female".into()),
+            non_humanoid: false,
+            ..p
+        };
+        assert_eq!(
+            format_placeholder(&humanoid),
+            "{{Orrery}} (Orrery [woman]):\n  Gender: woman — always refer to this person as a woman in the prompt"
+        );
+    }
+
+    /// P4.D349 (v4 `image-scene-tasks.ts:947-953`): the resolver's character
+    /// line for a non-humanoid.
+    #[test]
+    fn a_non_humanoid_resolver_line_carries_v4s_form_text() {
+        let c = CharacterAppearanceInput {
+            character_id: "c1".into(),
+            character_name: "Orrery".into(),
+            non_humanoid: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            format_appearance_character(&c),
+            "  Character: Orrery (ID: c1) [not humanoid]\n  Form: NOT HUMANOID — no head, face, neck, shoulders, torso or limbs. Describe anything it wears or bears without naming a body part it lacks.\n  Physical Descriptions:\n    (none)"
+        );
+        let humanoid = CharacterAppearanceInput {
+            non_humanoid: false,
+            ..c
+        };
+        assert_eq!(
+            format_appearance_character(&humanoid),
+            "  Character: Orrery (ID: c1)\n  Physical Descriptions:\n    (none)"
+        );
+    }
+
     /// [decd8ef9] The concealed (default) assembly is byte-identical to the
     /// pre-split `STORY_BACKGROUND_PROMPT` constant. The length pin was 5114
     /// UTF-16 code units at the split; [97b25fc53] the moderated intimacy block
     /// gained the PER-CHARACTER REQUIREMENT paragraph (1968 → 2505), so the
     /// assembly is now 5114 + 537 = 5651 (the generator's own stderr summary
-    /// reports the same number from v4's source).
+    /// reports the same number from v4's source). [P4.D349 / `b27e5089a`] the
+    /// shared head gained the "Not humanoid" guideline line (168 units + its
+    /// newline): 5651 + 169 = 5820, the regen's own summary.
     #[test]
     fn concealed_assembly_matches_the_pre_split_constant_length() {
         let concealed = build_story_background_prompt(false);
-        assert_eq!(concealed.encode_utf16().count(), 5651);
+        assert_eq!(concealed.encode_utf16().count(), 5820);
         assert!(concealed.starts_with(
             "You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds."
         ));

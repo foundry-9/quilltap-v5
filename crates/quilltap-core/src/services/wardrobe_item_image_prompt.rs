@@ -170,7 +170,12 @@ pub fn build_wardrobe_item_image_prompt(
                 FigureFraming::FullLength
             },
         );
-        let framing = if hair_only {
+        // A non-humanoid owner has no head to crop to and nothing to stand on:
+        // its whole form is framed and the item is shown on it, never on a body
+        // (v4 `b27e5089a` — `!figure.humanoid` wins over `hairOnly`).
+        let framing = if !figure.humanoid {
+            "Its whole form in frame, the item clearly visible on it"
+        } else if hair_only {
             "Head-and-shoulders portrait, facing the viewer, showing the hairstyle clearly"
         } else {
             "Full-length, standing, facing the viewer, head to toe in frame"
@@ -185,12 +190,16 @@ pub fn build_wardrobe_item_image_prompt(
         } else {
             format!(" {}", figure.phys_block)
         };
-        let wearing = if hair_only {
+        let wearing = if !figure.humanoid {
+            format!("Bearing {cue_inline}")
+        } else if hair_only {
             format!("Wearing their hair as {cue_inline}")
         } else {
             format!("Wearing {cue_inline}")
         };
-        let rest = if hair_only {
+        let rest = if !figure.humanoid {
+            "The item is the subject; neutral studio backdrop; even light. Only one subject in the image."
+        } else if hair_only {
             "The hairstyle is the subject; neutral studio backdrop; even light."
         } else {
             "The rest of the attire plain and unremarkable so the garment is the subject; neutral studio backdrop; even light. Only one person in the image."

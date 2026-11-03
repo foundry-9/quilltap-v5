@@ -310,6 +310,8 @@ fn appearances_for(spec: &Spec, case: &CaseSpec) -> Vec<ResolvedCharacterAppeara
             carrying_description: case.carrying.get(&ch.character_id).cloned(),
             was_sanitized: false,
             needs_concealment: false,
+            // P4.D349: the gate's corpus characters are all humanoid.
+            humanoid: true,
         })
         .collect()
 }

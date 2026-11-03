@@ -70,6 +70,8 @@ fn appearance(v: &Value) -> ResolvedCharacterAppearance {
             .map(str::to_string),
         was_sanitized: false,
         needs_concealment: false,
+        // P4.D349: v4's `humanoid?` — only an explicit `false` is non-humanoid.
+        humanoid: v.get("humanoid") != Some(&Value::Bool(false)),
     }
 }
 
@@ -133,23 +135,44 @@ fn inventory_image_description_matches_oracle() {
     // --- the image tool's expansion context ---
     for row in spec["expansion"].as_array().expect("expansion") {
         let label = row["label"].as_str().unwrap();
-        let app = appearance(&row["appearance"]);
-        let placeholder = format!("{{{{{}}}}}", app.character_name);
+        // P4.D349: a row without `appearance` drives the raw-description arm.
+        let resolved_app = row.get("appearance").map(appearance);
+        let (character_id, character_name) = match &resolved_app {
+            Some(a) => (a.character_id.clone(), a.character_name.clone()),
+            None => (
+                row["characterId"].as_str().unwrap_or_default().to_string(),
+                row["characterName"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .to_string(),
+            ),
+        };
+        let placeholder = format!("{{{{{character_name}}}}}");
         let context = build_expansion_context(
             &format!("Paint {placeholder}"),
             &[ResolvedPlaceholder {
                 placeholder: placeholder.clone(),
-                name: app.character_name.clone(),
-                entity_id: Some(app.character_id.clone()),
-                physical_description: None,
-                pronouns: None,
+                name: character_name.clone(),
+                entity_id: Some(character_id.clone()),
+                physical_description: row.get("rawDescription").cloned(),
+                pronouns: row.get("pronouns").cloned(),
             }],
             "OPENAI",
             None,
-            Some(std::slice::from_ref(&app)),
+            resolved_app.as_ref().map(std::slice::from_ref),
+        );
+        let o = want("expansion", label);
+        assert_eq!(
+            json!(context.placeholders[0].non_humanoid),
+            o["nonHumanoid"],
+            "expansion {label}: nonHumanoid"
+        );
+        assert_eq!(
+            json!(context.placeholders[0].gender),
+            o["gender"],
+            "expansion {label}: gender"
         );
         let clothing = &context.placeholders[0].clothing;
-        let o = want("expansion", label);
         assert_eq!(
             !clothing.is_empty(),
             o["hasClothing"].as_bool().unwrap(),

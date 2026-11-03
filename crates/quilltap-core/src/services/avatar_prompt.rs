@@ -11,12 +11,13 @@ use rusqlite::Connection;
 use serde_json::Value;
 
 use crate::characters::physical_description::{
-    pick_physical_description_value, PhysicalDescriptionProfile,
+    is_humanoid, pick_physical_description_value, PhysicalDescriptionProfile,
+    PhysicalDescriptionVariants, NON_HUMANOID_IMAGE_DIRECTION,
 };
 use crate::db::doc_mount_documents::DocMountDocumentsRepository;
 use crate::db::DbError;
 use crate::jsstr::{js_trim_end, utf16_len, utf16_truncate};
-use crate::pronoun_gender::gender_noun_from_pronouns;
+use crate::pronoun_gender::figure_gender_noun;
 use crate::wardrobe::{
     decorate_outfit_items_title_only, describe_outfit_with_omit, OutfitSlotName, Slots,
 };
@@ -93,6 +94,7 @@ pub fn build_character_avatar_prompt(
     // `avatar_job_tier3_equivalence` + `wardrobe_tools_avatar_trigger_equivalence`.
     let figure = build_figure_identity_block(character, FigureFraming::HeadAndShoulders);
     let physical_text = figure.physical_text.clone();
+    let humanoid = figure.humanoid;
 
     let mut outfit_text = String::new();
     // Whether the character's upper body is bare (no item bubbles up into the
@@ -117,61 +119,88 @@ pub fn build_character_avatar_prompt(
             crate::services::resolve_equipped::resolve_equipped_outfit_for_character(&pool, slots)
                 .leaf_items_by_slot;
 
-        top_is_bare = resolved.top.is_empty();
-        let accessories = decorate_outfit_items_title_only(&resolved.accessories);
-        // A hairdo is the most visible thing in a head-and-shoulders portrait,
-        // so it rides along on BOTH branches below.
-        let hair = decorate_outfit_items_title_only(&resolved.hair);
-
-        if top_is_bare {
-            // Bare-topped character. Deliberately do NOT emit "topless"/"naked"
-            // wardrobe language: it trips SFW image-provider moderation. The
-            // tighter collarbone crop in the intro conveys the exposure; here we
-            // only list accessories at or above the collar, plus a styled
-            // hairdo. Also avoid describeOutfit's "completely naked and
-            // unadorned" fallback (which would fire, reintroducing nudity
-            // language, when accessories AND hair are both empty) — hence the
-            // explicit empty `''` branch. (The guard keying on accessories
-            // alone was v4's likeliest silent-drop bug in the whole feature —
-            // `4423ad10` widened it to `accessories || hair`.)
-            outfit_text = if accessories.is_empty() && hair.is_empty() {
-                String::new()
-            } else {
-                let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
-                    "accessories" => accessories.clone(),
-                    "hair" => hair.clone(),
-                    _ => Vec::new(),
-                });
-                js_trim_end(&describe_outfit_with_omit(
-                    &slots,
-                    &[
-                        OutfitSlotName::Top,
-                        OutfitSlotName::Bottom,
-                        OutfitSlotName::Footwear,
-                    ],
-                ))
-                .to_string()
-            };
-        } else {
-            let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
-                "accessories" => accessories.clone(),
-                "hair" => hair.clone(),
-                _ => decorate_outfit_items_title_only(resolved.slot(slot)),
-            });
-            // Hair is deliberately NOT omitted — the hairdo belongs in a
-            // portrait.
-            outfit_text = js_trim_end(&describe_outfit_with_omit(
-                &slots,
-                &[OutfitSlotName::Bottom, OutfitSlotName::Footwear],
-            ))
-            .to_string();
-        }
-
+        // v4 moved the leaf-count fill ABOVE the humanoid branch (`b27e5089a`),
+        // so the non-humanoid arm reports them too.
         leaf_counts.top = resolved.top.len();
         leaf_counts.bottom = resolved.bottom.len();
         leaf_counts.footwear = resolved.footwear.len();
         leaf_counts.accessories = resolved.accessories.len();
         leaf_counts.hair = resolved.hair.len();
+
+        if !humanoid {
+            // No head, shoulders or torso to crop to, so no slot is cut off at
+            // the frame and no bare-chest framing applies: whatever it has on is
+            // listed, empty slots omitted. Nothing on at all → no outfit text,
+            // never describeOutfit's "completely naked" fallback for a thing
+            // with no body.
+            let slot_values = crate::wardrobe::build_outfit_slot_values(|slot| {
+                decorate_outfit_items_title_only(resolved.slot(slot))
+            });
+            let omit: Vec<OutfitSlotName> = [
+                OutfitSlotName::Top,
+                OutfitSlotName::Bottom,
+                OutfitSlotName::Footwear,
+                OutfitSlotName::Accessories,
+                OutfitSlotName::Hair,
+            ]
+            .into_iter()
+            .filter(|slot| slot_values.slot(slot.as_str()).is_empty())
+            .collect();
+            if omit.len() < crate::wardrobe::WARDROBE_SLOT_TYPES.len() {
+                outfit_text =
+                    js_trim_end(&describe_outfit_with_omit(&slot_values, &omit)).to_string();
+            }
+        } else {
+            top_is_bare = resolved.top.is_empty();
+            let accessories = decorate_outfit_items_title_only(&resolved.accessories);
+            // A hairdo is the most visible thing in a head-and-shoulders portrait,
+            // so it rides along on BOTH branches below.
+            let hair = decorate_outfit_items_title_only(&resolved.hair);
+
+            if top_is_bare {
+                // Bare-topped character. Deliberately do NOT emit "topless"/"naked"
+                // wardrobe language: it trips SFW image-provider moderation. The
+                // tighter collarbone crop in the intro conveys the exposure; here we
+                // only list accessories at or above the collar, plus a styled
+                // hairdo. Also avoid describeOutfit's "completely naked and
+                // unadorned" fallback (which would fire, reintroducing nudity
+                // language, when accessories AND hair are both empty) — hence the
+                // explicit empty `''` branch. (The guard keying on accessories
+                // alone was v4's likeliest silent-drop bug in the whole feature —
+                // `4423ad10` widened it to `accessories || hair`.)
+                outfit_text = if accessories.is_empty() && hair.is_empty() {
+                    String::new()
+                } else {
+                    let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
+                        "accessories" => accessories.clone(),
+                        "hair" => hair.clone(),
+                        _ => Vec::new(),
+                    });
+                    js_trim_end(&describe_outfit_with_omit(
+                        &slots,
+                        &[
+                            OutfitSlotName::Top,
+                            OutfitSlotName::Bottom,
+                            OutfitSlotName::Footwear,
+                        ],
+                    ))
+                    .to_string()
+                };
+            } else {
+                let slots = crate::wardrobe::build_outfit_slot_values(|slot| match slot {
+                    "accessories" => accessories.clone(),
+                    "hair" => hair.clone(),
+                    _ => decorate_outfit_items_title_only(resolved.slot(slot)),
+                });
+                // Hair is deliberately NOT omitted — the hairdo belongs in a
+                // portrait.
+                outfit_text = js_trim_end(&describe_outfit_with_omit(
+                    &slots,
+                    &[OutfitSlotName::Bottom, OutfitSlotName::Footwear],
+                ))
+                .to_string();
+            }
+        }
     }
 
     // The carrying sentence: the trimmed phrase with its first UTF-16 unit
@@ -187,12 +216,20 @@ pub fn build_character_avatar_prompt(
         Some(carrying) => carrying_sentence(carrying),
         None => String::new(),
     };
-    let has_appearance = !physical_text.is_empty() || !outfit_text.is_empty();
+    // A non-humanoid character always has something to say — that it is not
+    // humanoid — even before any prompt text or outfit exists.
+    let has_appearance = !physical_text.is_empty() || !outfit_text.is_empty() || !humanoid;
     let mut prompt = String::new();
     if has_appearance {
         let subject_noun = figure.subject_noun.as_str();
+        // A non-humanoid character has no head and shoulders to crop to: its
+        // whole form is the portrait, and it is a "subject", never a "person".
         // Bare-topped → crop higher (collarbone) so the chest is out of frame.
-        let intro = if top_is_bare {
+        let intro = if !humanoid {
+            format!(
+                "Solo portrait of a single {subject_noun}: {character_name}. Show exactly one figure, its whole form in frame."
+            )
+        } else if top_is_bare {
             format!(
                 "Solo portrait of a single {subject_noun}: {character_name}. Show exactly one figure. Close-up headshot cropped at the collarbone — only the face, neck, and bare shoulders are visible; the chest and torso are outside the frame."
             )
@@ -201,7 +238,11 @@ pub fn build_character_avatar_prompt(
                 "Solo portrait of a single {subject_noun}: {character_name}. Show exactly one figure, head-and-shoulders crop, three-quarter view."
             )
         };
-        let outro = "Character portrait, detailed, high quality, natural lighting. Only one person in the image.";
+        let outro = if humanoid {
+            "Character portrait, detailed, high quality, natural lighting. Only one person in the image."
+        } else {
+            "Character portrait, detailed, high quality, natural lighting. Only one subject in the image."
+        };
         let phys_block = figure.phys_block.as_str();
         // Outfit is a markdown list; a blank line before the first list item is
         // required, so it's separated from neighbors by `\n\n` on each side.
@@ -281,12 +322,22 @@ pub enum FigureFraming {
 pub struct FigureIdentityBlock {
     /// "woman" / "man" from the character's pronouns, else "person" — never a
     /// binary presentation forced onto a character who hasn't declared one.
+    /// A non-humanoid character is a "non-humanoid entity" whatever its
+    /// pronouns: "he" says nothing about having a man's body (`b27e5089a`).
     pub subject_noun: String,
+    /// False when the character has no humanoid body (`is_humanoid`).
+    pub humanoid: bool,
     /// The chosen physical-description text, trimmed (`''` when none).
     pub physical_text: String,
-    /// `physical_text` with exactly one closing period (`''` when none).
+    /// `physical_text` with exactly one closing period (`''` when none),
+    /// followed for a non-humanoid character by
+    /// [`NON_HUMANOID_IMAGE_DIRECTION`] — which is therefore never `''` for one.
     pub phys_block: String,
 }
+
+/// v4 `NON_HUMANOID_SUBJECT_NOUN` — the subject noun for a character with no
+/// humanoid body.
+pub const NON_HUMANOID_SUBJECT_NOUN: &str = "non-humanoid entity";
 
 /// v4 `buildFigureIdentityBlock(character, framing)` (`avatar-prompt.ts:71-95`,
 /// `7c8572869`) — the identity block every picture of a character opens with:
@@ -314,21 +365,42 @@ pub fn build_figure_identity_block(
     // Anchor the figure's apparent sex from the character's pronouns. Without
     // it, a gender-neutral physical description plus an outfit cue (e.g. a
     // "men's" shirt) can make the generator render the wrong sex.
-    // `they`/neopronouns/unset → no anchor, leaving "person".
-    let subject_noun = gender_noun_from_pronouns(pronoun_subject(character))
-        .unwrap_or("person")
-        .to_string();
+    // `they`/neopronouns/unset → no anchor, leaving "person". A non-humanoid
+    // character takes no anchor: its pronouns name it, they don't give it a body.
+    let humanoid = is_humanoid(
+        character
+            .get("physicalDescription")
+            .map(PhysicalDescriptionVariants::from_value)
+            .as_ref(),
+    );
+    let subject_noun = if humanoid {
+        figure_gender_noun(pronoun_subject(character), true)
+            .unwrap_or("person")
+            .to_string()
+    } else {
+        NON_HUMANOID_SUBJECT_NOUN.to_string()
+    };
 
     // Strip any trailing terminal punctuation off the physical description so
     // we don't end up with "background.." once we re-append a period.
-    let phys_block = if physical_text.is_empty() {
+    let phys_sentence = if physical_text.is_empty() {
         String::new()
     } else {
         format!("{}.", strip_trailing_terminal_punct(&physical_text))
     };
+    let phys_block = if humanoid {
+        phys_sentence
+    } else {
+        [phys_sentence, format!("{NON_HUMANOID_IMAGE_DIRECTION}.")]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
 
     FigureIdentityBlock {
         subject_noun,
+        humanoid,
         physical_text,
         phys_block,
     }
@@ -343,6 +415,6 @@ fn pronoun_subject(character: &Value) -> Option<&str> {
 }
 
 /// v4 `text.replace(/[.!?]+$/, '')` — strip a trailing run of `.` / `!` / `?`.
-fn strip_trailing_terminal_punct(text: &str) -> &str {
+pub(crate) fn strip_trailing_terminal_punct(text: &str) -> &str {
     text.trim_end_matches(['.', '!', '?'])
 }

@@ -194044,6 +194044,32 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
 - **R-6, the pronoun-read WARN's plant:** the differential plant was NOT attempted (the both-sides throwing plant was not measured). The arm is pinned by `an_unreadable_character_warns_and_lists_unfiltered` over a main partition with no `characters` table. The pre-existing `the_validation_line_is_v4s_and_the_catch_is_unreachable` now expects the WARN before the INFO on its empty partition (v4's `findById` throws there too).
 - **Lib:** `p4d349_green_room_tests` (2: the line with its keys; silent when nothing is hidden), `the_hidden_note_closes_the_list_and_the_empty_case`. `cargo test -p quilltap-core --lib` 4,009 / 0.
 
+### Commit I — the image side (items 8–12)
+
+- **Item 8 (avatar).**
+  - `FigureIdentityBlock.humanoid`; NEW `NON_HUMANOID_SUBJECT_NOUN`. `build_figure_identity_block` reads `is_humanoid` and uses `figure_gender_noun`. For a non-humanoid the block is `[sentence, DIRECTION.]` joined, never `''`.
+  - `build_character_avatar_prompt`: the leaf counts moved ABOVE the branch (v4's move); the non-humanoid arm lists the used slots only (no naked fallback); `has_appearance ||= !humanoid`; the whole-form intro; the "Only one subject" outro.
+- **Item 9 (worn picture):** the three `!figure.humanoid` arms evaluated before `hair_only`.
+- **Item 10 (the resolver and its prompts):**
+  - `ResolvedCharacterAppearance.humanoid` (`true` = absent) at the three build sites, plus NEW `ResolvedCharacterAppearance::bare`.
+  - `CharacterAppearanceInput.non_humanoid` at the LLM input; `scene_description_parts`' non-humanoid arm (trim, strip the terminal run, `filter(Boolean)`); `ExpansionPlaceholder.non_humanoid` + `build_expansion_context`'s v4 rule (a resolved appearance decides alone; else the raw description); `figure_gender`.
+  - `format_placeholder`'s `[not humanoid]` + `Form:` line. NEW extracted `format_appearance_character` (same bytes) with the resolver's form text.
+  - `scene_state_tracking`: `CharacterBaseline.non_humanoid` + the `Form:` line, via the extracted `character_baselines`.
+  - `story_background_job`: `figure_gender_prefix`, the fallback + `build_basic_enumeration` through `scene_description_parts`.
+- **`prompt_text.rs` REGEN** (`gen-image-scene-prompts.mjs` at the pin): EXACTLY the two guideline lines (`- If an entity is marked [not humanoid], …` in `IMAGE_PROMPT_CRAFTING_PROMPT`; `- If a character description says it is "Not humanoid", …` in `STORY_BACKGROUND_PROMPT_HEAD`), and the two moved UTF-16 counts (3565→3815, 1379→1548). `grep -c` = 1 each; no third hunk (the generator's one-line `CLOSING` wrap is reflowed by `cargo fmt`). The lib pin `concealed_assembly_matches_the_pre_split_constant_length` moved 5651 → 5820 (+169, the regen's own summary).
+- **Item 11:** the job's skip + DEBUG before the idempotency check; the enqueue scan's `!is_humanoid(pd) || filled` arm.
+- **Item 12:** the optimizer's `{non_humanoid_rule}` slot (`""` for a humanoid, a null / absent description included).
+- **Families (sweep from the pin):**
+  - OK: `inventory_image_description` (+4 scene, +4 expansion, +2 avatar rows; the expansion rows now also compare `nonHumanoid` + `gender`, and can drive the raw-description arm); `wardrobe_item_image_prompt` (+3 cases; the figure comparand gains `humanoid`); `character_optimizer_prompts` (+1 `p4d349_non_humanoid`); `character_optimizer_tier3`; `headshoulders_backfill_tier3` / `_enqueue`; `image_gen_leaves`; `wardrobe_tools_avatar_trigger`; `appearance_sanitize_gate_tier3` (after its literal gained `humanoid: true`).
+  - Markers: `non-humanoid entity` ≥ 1, `Only one subject in the image` 2, `Bearing` 3, `Not humanoid:` 5, `THIS CHARACTER IS NOT HUMANOID` 1.
+  - **RED on this base, the keystone's column (not this lane's):** `wardrobe_item_image_generation_tier3`, `image_generation_tier3`, `story_background_job_tier3`, `avatar_job_tier3`. Each diverges first on `llm_logs.storytellerRoundId` (P4.D341's D23 column, rendered by the pin's DDL into the oracle's llm-logs partition and absent from v5's on this base). Green on the union, where the keystone's column plumbing meets these rows. The first failing assertion stops these runs before their prompt bytes, so the story-background guideline line is proven here only by the REGEN diff and on the union.
+- **Lib pins:** `a_non_humanoid_baseline_carries_v4s_form_line` (R-8), `a_non_humanoid_placeholder_is_flagged_with_its_form_line`, `a_non_humanoid_resolver_line_carries_v4s_form_text`, and `a_non_humanoid_character_is_skipped_not_enqueued` (over a copy of the committed pair; Eligible Esme flipped through the real physical write: enqueued −1, skipped +1).
+- **NOT landed (named deferrals):**
+  - The `build-headshoulders-fixture.ts` widen (a fresh non-humanoid Orrery): P4.D341 re-widened the committed `headshoulders-*.db` pair this round, so a rebuild here would collide at the union. **HANDOFF to the unifier:** add Orrery to the spec on the union pair and regenerate both backfill oracles.
+  - The job-side DEBUG has no capture pin (the async job needs a completion seam; the enqueue arm is pinned).
+  - The tier-1 rows `image-gen-leaves` (+1) / `appearance-sanitize-gate` (+1) the order named. No family drives `craftImagePrompt`'s placeholder block or `resolveAppearance`'s character line directly (`image-gen-leaves` covers `parsePlaceholders` only); both blocks are pinned by lib unit tests against v4's source bytes instead.
+  - The avatar's outfit rows (two slots on / nothing on): `inventory-image-description`'s avatar rows run with no equipped slots. The arm is ported, not differentially proven.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

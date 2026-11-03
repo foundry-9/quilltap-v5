@@ -152,7 +152,12 @@ pub fn enqueue_headshoulders_backfill(
             result.skipped += 1;
             continue;
         };
-        if head_prompt_is_filled(pd) {
+        // v4 `!isHumanoid(pd) || headAndShouldersPrompt filled` (`b27e5089a`):
+        // a non-humanoid has no head-and-shoulders prompt to write.
+        if !crate::characters::physical_description::is_humanoid(Some(
+            &crate::characters::physical_description::PhysicalDescriptionVariants::from_value(pd),
+        )) || head_prompt_is_filled(pd)
+        {
             result.skipped += 1;
             continue;
         }
@@ -260,4 +265,65 @@ pub fn flag_value(main: &Connection) -> Option<String> {
         |row| row.get::<_, String>(0),
     )
     .ok()
+}
+
+#[cfg(test)]
+mod p4d349_tests {
+    //! v4 `enqueue-headshoulders-backfill.ts:70-73` (`b27e5089a`): a
+    //! non-humanoid character is SKIPPED by the startup scan — it has no head
+    //! and shoulders to describe. Over a COPY of the committed head-and-
+    //! shoulders pair: Eligible Esme (an enqueued character) flipped
+    //! `humanoid: false` through the real physical write moves one count from
+    //! `enqueued` to `skipped`. (The pair is P4.D341's to re-widen this round,
+    //! so the builder widen with a fresh non-humanoid character is the
+    //! unifier's — HANDOFF; this pins the arm meanwhile.)
+    use super::*;
+    use crate::db::Writer;
+    use serde_json::json;
+
+    const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const ESME: &str = "b3000082-0000-4000-8000-000000000007";
+
+    fn scan(flip: bool) -> HeadShouldersBackfillEnqueueResult {
+        let dir = tempfile::tempdir().unwrap();
+        let fx = |n: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../quilltap-web/tests/fixtures")
+                .join(n)
+        };
+        let main = dir.path().join("main.db");
+        let mount = dir.path().join("mount.db");
+        std::fs::copy(fx("headshoulders-main.db"), &main).unwrap();
+        std::fs::copy(fx("headshoulders-mount.db"), &mount).unwrap();
+        let main = Writer::open_writable(&main, TEST_PEPPER).unwrap();
+        let mount = Writer::open_writable(&mount, TEST_PEPPER).unwrap();
+        if flip {
+            let patch = json!({"physicalDescription": {
+                "name": "Standard",
+                "shortPrompt": "young woman, dark hair, goggles",
+                "humanoid": false
+            }});
+            crate::db::vault_character_update::update_character(
+                main.connection(),
+                mount.connection(),
+                ESME,
+                patch.as_object().unwrap(),
+            )
+            .unwrap();
+        }
+        enqueue_headshoulders_backfill(main.connection(), mount.connection())
+    }
+
+    #[test]
+    fn a_non_humanoid_character_is_skipped_not_enqueued() {
+        let base = scan(false);
+        let flipped = scan(true);
+        assert_eq!(flipped.scanned, base.scanned);
+        assert_eq!(
+            flipped.enqueued + 1,
+            base.enqueued,
+            "{base:?} → {flipped:?}"
+        );
+        assert_eq!(flipped.skipped, base.skipped + 1, "{base:?} → {flipped:?}");
+    }
 }

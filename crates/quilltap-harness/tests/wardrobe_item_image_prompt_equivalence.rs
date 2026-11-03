@@ -87,6 +87,8 @@ fn wardrobe_item_image_prompt_matches_oracle() {
             let b = build_figure_identity_block(owner.unwrap(), f);
             json!({
                 "subjectNoun": b.subject_noun,
+                // P4.D349 (v4 `b27e5089a`): the block gains `humanoid`.
+                "humanoid": b.humanoid,
                 "physicalText": b.physical_text,
                 "physBlock": b.phys_block,
             })

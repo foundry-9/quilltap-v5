@@ -771,6 +771,84 @@
       ],
       "owner": null,
       "aesthetic": "Watercolour"
+    },
+    {
+      "name": "p4d349_non_humanoid_owner_garment",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "The Orrery",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "a face of brass",
+          "mediumPrompt": "seven interlocking brass spheres.",
+          "humanoid": false
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "p4d349_non_humanoid_owner_hair_only",
+      "item": {
+        "id": "item-chignon",
+        "title": "Chignon",
+        "types": [
+          "hair"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "an elegant chignon"
+      },
+      "components": [],
+      "owner": {
+        "name": "The Orrery",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "archivedAt": null,
+        "physicalDescription": {
+          "headAndShouldersPrompt": "a face of brass",
+          "mediumPrompt": "seven interlocking brass spheres.",
+          "humanoid": false
+        }
+      },
+      "aesthetic": null
+    },
+    {
+      "name": "p4d349_non_humanoid_owner_no_text",
+      "item": {
+        "id": "item-velvet-coat",
+        "title": "Velvet Coat",
+        "types": [
+          "top"
+        ],
+        "componentItemIds": [],
+        "imagePrompt": "a burgundy velvet coat"
+      },
+      "components": [],
+      "owner": {
+        "name": "The Orrery",
+        "pronouns": null,
+        "archivedAt": null,
+        "physicalDescription": {
+          "humanoid": false
+        }
+      },
+      "aesthetic": null
     }
   ]
 }

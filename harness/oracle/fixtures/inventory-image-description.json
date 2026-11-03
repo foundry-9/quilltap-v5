@@ -10,7 +10,8 @@
     "fold, ties keep input order), a title over a name, 40 items. `scene` mirrors appearance-carrying.test.ts's strings",
     "plus the one-UTF-16-unit capitalisation edges (ß → SS, an astral first character unchanged, ǆ → Ǆ, a leading",
     "combining mark unchanged), `expansion` the `Carried` entry, `avatar` the portrait's carrying sentence on the no-outfit branch (the",
-    "with-outfit spacing needs equippedSlots — pinned by avatar_job_tier3's carried row)."
+    "with-outfit spacing needs equippedSlots — pinned by avatar_job_tier3's carried row).",
+    "P4.D349 (v4 b27e5089a, non-humanoid-scene.test.ts + avatar-prompt.test.ts:222-240): the Lantern drops the gender prefix and adds the direction, never doubling the period; the image tool flags a non-humanoid and gives no gender, from raw descriptions AND from a resolved appearance (a resolved humanoid ignores the raw flag); the avatar's whole-form portrait and its hasAppearance with no text."
   ],
   "phrases": [
     {
@@ -599,6 +600,35 @@
       "clothingDescription": "",
       "carryingDescription": "́accented charm",
       "genderPrefix": ""
+    },
+    {
+      "label": "p4d349_non_humanoid_drops_prefix",
+      "physicalDescription": "seven interlocking brass spheres.",
+      "clothingDescription": "a velvet sash",
+      "carryingDescription": "bearing a lantern",
+      "genderPrefix": "A woman. ",
+      "humanoid": false
+    },
+    {
+      "label": "p4d349_non_humanoid_trailing_punct_run",
+      "physicalDescription": "  a cluster of spheres!?.  ",
+      "clothingDescription": "",
+      "genderPrefix": "A man. ",
+      "humanoid": false
+    },
+    {
+      "label": "p4d349_non_humanoid_blank_description",
+      "physicalDescription": "   ",
+      "clothingDescription": "",
+      "genderPrefix": "",
+      "humanoid": false
+    },
+    {
+      "label": "p4d349_humanoid_flag_true_unchanged",
+      "physicalDescription": "a tall woman",
+      "clothingDescription": "a green cloak",
+      "genderPrefix": "A woman. ",
+      "humanoid": true
     }
   ],
   "expansion": [
@@ -649,6 +679,74 @@
         "physicalDescriptionName": "Portrait",
         "clothingDescription": "",
         "clothingSource": "default",
+        "wasSanitized": false
+      }
+    },
+    {
+      "label": "p4d349_raw_non_humanoid",
+      "characterId": "c0000000-0000-4000-8000-0000000003c1",
+      "characterName": "Orrery",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "rawDescription": {
+        "name": "Spheres",
+        "mediumPrompt": "seven brass spheres",
+        "humanoid": false
+      }
+    },
+    {
+      "label": "p4d349_raw_humanoid",
+      "characterId": "c0000000-0000-4000-8000-0000000003c2",
+      "characterName": "Vivienne",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "rawDescription": {
+        "name": "Portrait",
+        "mediumPrompt": "a tall woman"
+      }
+    },
+    {
+      "label": "p4d349_resolved_non_humanoid",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000003c1",
+        "characterName": "Orrery",
+        "physicalDescription": "seven brass spheres",
+        "physicalDescriptionName": "Spheres",
+        "clothingDescription": "",
+        "clothingSource": "default",
+        "wasSanitized": false,
+        "humanoid": false
+      }
+    },
+    {
+      "label": "p4d349_resolved_humanoid_ignores_raw_flag",
+      "pronouns": {
+        "subject": "she",
+        "object": "her",
+        "possessive": "her"
+      },
+      "rawDescription": {
+        "name": "Spheres",
+        "humanoid": false
+      },
+      "appearance": {
+        "characterId": "c0000000-0000-4000-8000-0000000003c2",
+        "characterName": "Vivienne",
+        "physicalDescription": "a tall woman",
+        "physicalDescriptionName": "Portrait",
+        "clothingDescription": "a green cloak",
+        "clothingSource": "stored",
         "wasSanitized": false
       }
     }
@@ -745,6 +843,37 @@
         "name": "Vivienne"
       },
       "carrying": "carrying a lute"
+    },
+    {
+      "label": "p4d349_non_humanoid_with_text",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000003c1",
+        "name": "Orrery",
+        "pronouns": {
+          "subject": "he",
+          "object": "him",
+          "possessive": "his"
+        },
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000003d1",
+          "headAndShouldersPrompt": "a face of brass",
+          "mediumPrompt": "Seven interlocking brass spheres!",
+          "humanoid": false
+        }
+      },
+      "carrying": null
+    },
+    {
+      "label": "p4d349_non_humanoid_no_text",
+      "character": {
+        "id": "c0000000-0000-4000-8000-0000000003c1",
+        "name": "Orrery",
+        "physicalDescription": {
+          "id": "d0000000-0000-4000-8000-0000000003d1",
+          "humanoid": false
+        }
+      },
+      "carrying": "bearing a lantern"
     }
   ]
 }

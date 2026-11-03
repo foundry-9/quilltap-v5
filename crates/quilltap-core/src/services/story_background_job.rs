@@ -35,7 +35,7 @@ use crate::image_gen::image_attempt::{decode_provider_image, DecodedProviderImag
 use crate::image_gen::Orientation;
 use crate::model::completion::CompletionProvider;
 use crate::model::image::{ImageGenResponse, ImageProvider, ImageTranscoder};
-use crate::pronoun_gender::gender_prefix_from_pronouns;
+use crate::pronoun_gender::figure_gender_prefix;
 use crate::services::aesthetics::{
     get_project_official_mount_point_id, resolve_aesthetic, resolve_depiction_guidelines,
     AestheticKind, DepictedCharacter,
@@ -631,7 +631,8 @@ where
         .map(|char| {
             let char_id = common::str_field(char, "id").unwrap_or("");
             let name = common::str_field(char, "name").unwrap_or("").to_string();
-            let gender_prefix = gender_prefix_from_pronouns(pronoun_subject(char));
+            // '' for a non-humanoid character (v4 `figureGenderPrefix`).
+            let gender_prefix = figure_gender_prefix(pronoun_subject(char), humanoid_of(char));
             let resolved = resolved_appearances
                 .as_ref()
                 .and_then(|list| list.iter().find(|a| a.character_id == char_id));
@@ -674,7 +675,18 @@ where
                     } else {
                         &picked
                     };
-                    format!("{gender_prefix}{fallback}")
+                    // v4 renders the fallback through `sceneDescriptionParts`
+                    // too (`b27e5089a`): a humanoid's bytes are unchanged
+                    // (`genderPrefix + desc`); a non-humanoid's become
+                    // `<desc-sans-trailing-punct>. <DIRECTION>`.
+                    crate::services::appearance_resolution::scene_description_parts(
+                        &crate::services::appearance_resolution::ResolvedCharacterAppearance::bare(
+                            fallback,
+                            humanoid_of(char),
+                        ),
+                        &gender_prefix,
+                    )
+                    .join(". ")
                 }
             };
             StoryBackgroundCharacter { name, description }
@@ -1549,8 +1561,22 @@ fn build_basic_enumeration(char: &Value) -> String {
     } else {
         picked.as_str()
     };
-    let prefix = gender_prefix_from_pronouns(pronoun_subject(char));
-    crate::jsstr::js_trim(&format!("{prefix}{desc}")).to_string()
+    let humanoid = humanoid_of(char);
+    let prefix = figure_gender_prefix(pronoun_subject(char), humanoid);
+    let parts = crate::services::appearance_resolution::scene_description_parts(
+        &crate::services::appearance_resolution::ResolvedCharacterAppearance::bare(desc, humanoid),
+        &prefix,
+    );
+    crate::jsstr::js_trim(&parts.join(". ")).to_string()
+}
+
+/// v4 `isHumanoid(char.physicalDescription)`.
+fn humanoid_of(char: &Value) -> bool {
+    crate::characters::physical_description::is_humanoid(
+        char.get("physicalDescription")
+            .map(crate::characters::physical_description::PhysicalDescriptionVariants::from_value)
+            .as_ref(),
+    )
 }
 
 /// The character's subject pronoun (`character.pronouns.subject`).

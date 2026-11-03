@@ -61,6 +61,10 @@ pub struct CharacterBaseline {
     pub physical_description: String,
     pub clothing_description: String,
     pub scenario: Option<String>,
+    /// v4 `nonHumanoid?: true` (`b27e5089a`). NO v5 production builder
+    /// constructs a `SceneStateInput` (ruling R-8 — the job handler is
+    /// NO-COUNTERPART), so this lands with the model-visible line only.
+    pub non_humanoid: bool,
 }
 
 /// v4 `SceneStateInput`.
@@ -86,6 +90,36 @@ pub fn cap_clothing_summary(value: Option<&Value>) -> String {
     }
     let sliced = crate::jsstr::utf16_truncate(&text, SCENE_CLOTHING_MAX_CHARS - 1);
     format!("{}…", crate::jsstr::js_trim_end(&sliced))
+}
+
+/// v4's character baseline section of `updateSceneState`'s prompt — one block
+/// per character, `\n\n`-joined (extracted so the bytes are unit-pinned).
+fn character_baselines(characters: &[CharacterBaseline]) -> String {
+    characters
+        .iter()
+        .map(|char| {
+            let scenario = char
+                .scenario
+                .as_ref()
+                .map(|s| format!("\n  - Scenario context: {s}"))
+                .unwrap_or_default();
+            // A non-humanoid character's flag rides on its own line, so the
+            // appearance snapshot never has to carry (and later re-carry) it.
+            let form = if char.non_humanoid {
+                "\n  - Form: NOT HUMANOID — no head, face, shoulders, torso or limbs; never describe a body part it lacks"
+            } else {
+                ""
+            };
+            format!(
+                "{} (ID: {}):\n  - Appearance: {}{form}\n  - Clothing: {}{scenario}",
+                char.character_name,
+                char.character_id,
+                char.physical_description,
+                char.clothing_description
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 /// v4 `updateSceneState`: format the recent messages + character baselines, call
@@ -114,25 +148,7 @@ pub async fn update_scene_state<C: CompletionProvider>(
         .join("\n\n");
 
     // Character baseline section.
-    let character_baselines = input
-        .characters
-        .iter()
-        .map(|char| {
-            let scenario = char
-                .scenario
-                .as_ref()
-                .map(|s| format!("\n  - Scenario context: {s}"))
-                .unwrap_or_default();
-            format!(
-                "{} (ID: {}):\n  - Appearance: {}\n  - Clothing: {}{scenario}",
-                char.character_name,
-                char.character_id,
-                char.physical_description,
-                char.clothing_description
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n");
+    let character_baselines = character_baselines(&input.characters);
 
     // Optional scenario section.
     let scenario_section = match &input.chat_scenario {
@@ -212,6 +228,33 @@ fn parse_scene_state_response(content: &str) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_non_humanoid_baseline_carries_v4s_form_line() {
+        // P4.D349 (v4 `b27e5089a`, `image-scene-tasks.ts:727-736`): the bytes,
+        // and a humanoid's block unchanged (ruling R-8: no family drives
+        // `updateSceneState`, so this unit pin is the proof).
+        let base = CharacterBaseline {
+            character_id: "c1".into(),
+            character_name: "The Orrery".into(),
+            physical_description: "seven brass spheres".into(),
+            clothing_description: "a velvet sash".into(),
+            scenario: None,
+            non_humanoid: true,
+        };
+        assert_eq!(
+            character_baselines(std::slice::from_ref(&base)),
+            "The Orrery (ID: c1):\n  - Appearance: seven brass spheres\n  - Form: NOT HUMANOID — no head, face, shoulders, torso or limbs; never describe a body part it lacks\n  - Clothing: a velvet sash"
+        );
+        let humanoid = CharacterBaseline {
+            non_humanoid: false,
+            ..base
+        };
+        assert_eq!(
+            character_baselines(&[humanoid]),
+            "The Orrery (ID: c1):\n  - Appearance: seven brass spheres\n  - Clothing: a velvet sash"
+        );
+    }
 
     #[test]
     fn cap_clothing_summary_variants() {

@@ -4,7 +4,7 @@
 //! Extracted mechanically from the v4 source; do not hand-edit. Regenerate with
 //! `harness/oracle/cases/gen-image-scene-prompts.mjs` if the source changes.
 
-/// v4 `IMAGE_PROMPT_CRAFTING_PROMPT` (3565 UTF-16 code units, no trailing newline).
+/// v4 `IMAGE_PROMPT_CRAFTING_PROMPT` (3815 UTF-16 code units, no trailing newline).
 pub const IMAGE_PROMPT_CRAFTING_PROMPT: &str = r##"You are an expert image prompt writer. Your job is to craft coherent, well-structured image generation prompts by integrating physical descriptions of people into a scene description.
 
 You will receive:
@@ -23,6 +23,7 @@ Your task is to write a SINGLE COHERENT PARAGRAPH that:
 CRITICAL WRITING GUIDELINES:
 - Write in a cinematic, descriptive style suitable for image generation
 - If a person's gender is specified (e.g., [man] or [woman]), ALWAYS refer to them using that gender term (e.g., "a man with...", "a woman with...")
+- If an entity is marked [not humanoid], it has NO head, face, neck, shoulders, torso, arms, legs or any human or humanoid body. Describe only the form its description gives, never call it a man, woman or person, and never imply a body part it lacks
 - Introduce people with phrases like "A young woman with...", "Beside her, a middle-aged man with..."
 - NEVER just concatenate descriptions - write flowing prose that a human would write
 - Use transitional phrases to connect people: "sitting on the lap of", "next to", "holding hands with", etc.
@@ -153,7 +154,7 @@ Respond with ONLY the scene description - no explanations, no quotes, no formatt
 /// v4 `CONCEALMENT_MARKER` — a single-quoted literal, resolved inline once into `STORY_BACKGROUND_CONCEALED_INTIMACY` [97b25fc53] (59 UTF-16 code units).
 pub const CONCEALMENT_MARKER: &str = r"Undressed in this scene; depict with cinematic concealment.";
 
-/// v4 `STORY_BACKGROUND_PROMPT_HEAD` — the shared opening (both variants) (1379 UTF-16 code units, no trailing newline).
+/// v4 `STORY_BACKGROUND_PROMPT_HEAD` — the shared opening (both variants) (1548 UTF-16 code units, no trailing newline).
 pub const STORY_BACKGROUND_PROMPT_HEAD: &str = r##"You are a skilled visual artist and prompt engineer specializing in atmospheric landscape scenes for story backgrounds.
 
 You will receive:
@@ -171,6 +172,7 @@ CRITICAL GUIDELINES:
 - This is for a BACKGROUND image, not a portrait - the scene/environment is primary
 - Characters should be toward the left and right of the frame, not centered
 - If a character description begins with a gender term like "A man" or "A woman", always include that term when describing the character in the prompt
+- If a character description says it is "Not humanoid", it has no head, face, shoulders or human body; describe only the form given and never imply a body part it lacks
 - Characters should be described briefly, focusing on visual traits (hair color, clothing style, notable features)
 - Focus on atmospheric qualities: lighting, weather, time of day, mood
 - Include environmental details: location type, architectural elements, nature
