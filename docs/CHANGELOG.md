@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — test(e2e): the Pascal intervention walk, gated (P4.D346)
+
+_Versions: SPA 0.5.917._
+
+P4.D346 item 11. NEW `e2e/salon-intervention-flow.spec.ts` runs on its own instance (server 4354, mock LLM 45352), using the `workbench-triggers-effects-flow` recipe with helpers copied (R-7). LIVE: (W1) the master tick raises every hand, a click strikes the title's hand through, and the live JSON carries `"intervention": {"enabled": true, "fields": {"title": false}}`; unticking keeps `"enabled": false` with the field. (S1) the Automation row is ticked by default, wears `qt-checkbox mt-1`, and is dead while Custom Tools is off. GATED behind three named constants (R-11): `P4D345_SERVER_LANDED` for (W2) the library mark and reopened hands, and (A) / (B) / (D) the Salon hold (as rolled, a forced row dealt with the badge, the reload reopening it and the veto); `P4D345_STOP_VETO_LANDED` for (C) Stop while held; `P4D341_P4D356_SETTINGS_LANDED` for (S2) the row persisting. By file: 2 passed / 6 skipped. With every flag forced `true` against main's server, each gated beat fails at its gate premise and nowhere else: main saves and lists the file without the mark, the reload reads ticked again, and the phrase deals the planted Croupier straight to the transcript with no hold.
+
 #### 2026-11-02 — feat(spa): _intervention.css from the pin (v4 839575d89 + cce44e098)
 
 _Versions: SPA 0.5.916._
