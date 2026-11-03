@@ -18,10 +18,13 @@
  * dialogs stay `qt-modal` (the `status-log.md` "No `FloatingDialog`" ruling is
  * overturned for the console alone).
  *
- * **Recorded divergence `FLOATING_DIALOG_IN_PLACE`:** v4 portals the dialog
- * into `document.body`; v5 renders it IN PLACE inside its host (v5's
- * convention — no portal). The element is `position: fixed`, so where the host
- * sits does not move it. v4's `useId` is a module counter here
+ * **Portalled, as v4's is.** v4 `createPortal`s the dialog into
+ * `document.body`; here the component's HOST element is moved there after its
+ * first render (`ui/tooltip.ts`'s bubble precedent) and removed on destroy.
+ * Rendering in place was tried first and failed live: `position: fixed` with
+ * `z-index: 1000` still loses to a modal's overlay when an ancestor (the
+ * shell's rail) forms a stacking context — the floating layer must be a child
+ * of `body` to sit above every modal. v4's `useId` is a module counter here
  * (`qt-floating-dialog-title-<n>`), and `floatingLayerProps` a bound attribute.
  *
  * The body and the header actions are projected (`<ng-content>` and
@@ -36,6 +39,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   afterNextRender,
@@ -166,6 +170,7 @@ let titleCounter = 0;
 })
 export class FloatingDialog {
   private readonly injector = inject(Injector);
+  private readonly hostEl = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
 
   readonly open = input.required<boolean>();
   readonly title = input.required<string>();
@@ -189,6 +194,11 @@ export class FloatingDialog {
   private dragOffset = { x: 0, y: 0 };
 
   constructor() {
+    // v4 `createPortal(…, document.body)` — see the module doc.
+    afterNextRender(() => {
+      if (this.hostEl.parentElement !== document.body) document.body.appendChild(this.hostEl);
+    });
+    inject(DestroyRef).onDestroy(() => this.hostEl.remove());
     effect((onCleanup) => {
       if (!this.open()) return;
       untracked(() => this.openSession(onCleanup));

@@ -133,7 +133,7 @@ describe('BrahmaEntry (v4 sidebar-footer.tsx)', () => {
     const el = fixture.nativeElement as HTMLElement;
     // CONSOLE_FIRST_MOUNT_DEFERRED: no dialog before the first open…
     expect(el.querySelector('qt-brahma-console-dialog')).toBeNull();
-    const launcher = el.querySelector('qt-brahma-console-launcher button') as HTMLButtonElement;
+    const launcher = document.querySelector('qt-brahma-console-launcher button') as HTMLButtonElement;
     expect(launcher).not.toBeNull();
     // …and the launcher is never disabled, even with no profile.
     expect(launcher.disabled).toBe(false);
@@ -145,7 +145,7 @@ describe('BrahmaEntry (v4 sidebar-footer.tsx)', () => {
     service.closeConsole();
     await settle(fixture);
     expect(el.querySelector('qt-brahma-console-dialog')).not.toBeNull();
-    expect(el.querySelector('qt-brahma-console-launcher button')!.getAttribute('aria-pressed')).toBe('false');
+    expect(document.querySelector('qt-brahma-console-launcher button')!.getAttribute('aria-pressed')).toBe('false');
   });
 });
 

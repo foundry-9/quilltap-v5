@@ -26,7 +26,7 @@ function render() {
   });
   const fixture = TestBed.createComponent(BrahmaConsoleLauncher);
   fixture.detectChanges();
-  const button = (fixture.nativeElement as HTMLElement).querySelector('button')!;
+  const button = document.querySelector('button.qt-brahma-launcher') as HTMLButtonElement;
   return { fixture, button, service: TestBed.inject(BrahmaConsoleService) };
 }
 

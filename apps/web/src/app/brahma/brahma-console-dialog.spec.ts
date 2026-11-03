@@ -96,7 +96,7 @@ describe('BrahmaConsoleDialog (v4 BrahmaConsoleDialog.tsx at 236c04e35)', () => 
     const fixture = TestBed.createComponent(BrahmaConsoleDialog);
     fixture.detectChanges();
     await settle(fixture);
-    const el = fixture.nativeElement as HTMLElement;
+    const el = document;
     expect(el.querySelector('.qt-floating-dialog')).toBeNull();
     TestBed.inject(BrahmaConsoleService).openConsole();
     await settle(fixture);
@@ -122,15 +122,15 @@ describe('BrahmaConsoleDialog (v4 BrahmaConsoleDialog.tsx at 236c04e35)', () => 
     service.openConsole();
     fixture.detectChanges();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('in float-1');
+    expect(document.querySelector('qt-floating-dialog')?.textContent).toContain('in float-1');
     const reads = () => seen.filter((r) => r.type === 'brahmaConsoleMessages').length;
     const before = reads();
     service.closeConsole();
     await settle(fixture);
-    expect((fixture.nativeElement as HTMLElement).querySelector('.qt-floating-dialog')).toBeNull();
+    expect(document.querySelector('.qt-floating-dialog')).toBeNull();
     service.openConsole();
     await settle(fixture);
-    expect(fixture.nativeElement.textContent).toContain('in float-1');
+    expect(document.querySelector('qt-floating-dialog')?.textContent).toContain('in float-1');
     expect(reads()).toBe(before);
   });
 
@@ -145,7 +145,7 @@ describe('BrahmaConsoleDialog (v4 BrahmaConsoleDialog.tsx at 236c04e35)', () => 
     view.detectChanges();
     await settle(dialog);
     await settle(view);
-    expect(dialog.nativeElement.textContent).toContain('in float-1');
+    expect(document.querySelector('qt-floating-dialog')?.textContent).toContain('in float-1');
     expect(view.nativeElement.textContent).toContain('in tab-1');
     // The tab renders bare with its inline header row.
     expect((view.nativeElement as HTMLElement).querySelector('.qt-floating-dialog')).toBeNull();

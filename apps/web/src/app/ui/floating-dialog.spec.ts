@@ -79,7 +79,7 @@ class Host {
 
 let fixture: ComponentFixture<Host>;
 const el = (): HTMLElement => fixture.nativeElement as HTMLElement;
-const dialog = (): HTMLElement => el().querySelector('.qt-floating-dialog') as HTMLElement;
+const dialog = (): HTMLElement => document.querySelector('.qt-floating-dialog') as HTMLElement;
 const modalCloses = () =>
   (
     fixture.debugElement.query((d) => d.name === 'qt-stand-in-modal')
@@ -119,7 +119,7 @@ afterEach(() => {
 describe('FloatingDialog topmost (transcribed — v4 FloatingDialog-topmost.test.tsx:39-65)', () => {
   it('carries the topmost class and the floating-layer marker', () => {
     mount();
-    const d = el()
+    const d = document
       .querySelector('[aria-label="console composer"]')!
       .closest('.qt-floating-dialog')!;
     expect(d.classList.contains('qt-floating-dialog-topmost')).toBe(true);
@@ -128,7 +128,7 @@ describe('FloatingDialog topmost (transcribed — v4 FloatingDialog-topmost.test
 
   it('clicking inside it leaves the modal beneath open', () => {
     mount();
-    el()
+    document
       .querySelector('[aria-label="console composer"]')!
       .dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     expect(modalCloses()).not.toHaveBeenCalled();
@@ -137,7 +137,7 @@ describe('FloatingDialog topmost (transcribed — v4 FloatingDialog-topmost.test
 
   it('Escape inside it closes only the dialog', () => {
     mount();
-    key(el().querySelector('[aria-label="console composer"]')!);
+    key(document.querySelector('[aria-label="console composer"]')!);
     expect(fixture.componentInstance.closes).toHaveBeenCalledTimes(1);
     expect(modalCloses()).not.toHaveBeenCalled();
   });
@@ -160,8 +160,10 @@ describe('FloatingDialog — chrome and semantics (v4 :198-243, dff76ebef R2)', 
     expect(document.getElementById(d.getAttribute('aria-labelledby')!)!.textContent!.trim()).toBe(
       'Console',
     );
-    // FLOATING_DIALOG_IN_PLACE — a descendant of its host, not portalled.
-    expect(el().querySelector('qt-floating-dialog')!.contains(d)).toBe(true);
+    // Portalled, as v4's `createPortal(…, document.body)`: the host element
+    // moved to body (in place, a rail's stacking context lost to a modal).
+    expect(d.closest('qt-floating-dialog')!.parentElement).toBe(document.body);
+    expect(el().contains(d)).toBe(false);
     // Not topmost: no topmost class, no floating-layer marker.
     expect(d.classList.contains('qt-floating-dialog-topmost')).toBe(false);
     expect(d.hasAttribute('data-qt-floating-layer')).toBe(false);
@@ -313,7 +315,7 @@ describe('FloatingDialog — focus and Escape (v4 useDialogFocus + :172-196)', (
     mount({ open: false, withModal: false });
     fixture.componentInstance.open.set(true);
     fixture.detectChanges();
-    const composer = el().querySelector('[aria-label="console composer"]') as HTMLElement;
+    const composer = document.querySelector('[aria-label="console composer"]') as HTMLElement;
     composer.focus();
     await fixture.whenStable();
     await frame();
@@ -322,7 +324,7 @@ describe('FloatingDialog — focus and Escape (v4 useDialogFocus + :172-196)', (
 
   it('traps nothing — Tab from the last focusable is never prevented', () => {
     mount({ withModal: false });
-    const last = el().querySelector('#last') as HTMLElement;
+    const last = document.querySelector('#last') as HTMLElement;
     const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     last.dispatchEvent(tab);
     expect(tab.defaultPrevented).toBe(false);
@@ -339,14 +341,14 @@ describe('FloatingDialog — focus and Escape (v4 useDialogFocus + :172-196)', (
 
   it('skips an Escape already handled (defaultPrevented), inside and out', () => {
     mount({ withModal: false });
-    key(el().querySelector('[aria-label="console composer"]')!, 'Escape', { cancelable: true });
+    key(document.querySelector('[aria-label="console composer"]')!, 'Escape', { cancelable: true });
     const handled = new KeyboardEvent('keydown', {
       key: 'Escape',
       bubbles: true,
       cancelable: true,
     });
     handled.preventDefault();
-    el().querySelector('[aria-label="console composer"]')!.dispatchEvent(handled);
+    document.querySelector('[aria-label="console composer"]')!.dispatchEvent(handled);
     const outside = new KeyboardEvent('keydown', {
       key: 'Escape',
       bubbles: true,
@@ -362,7 +364,7 @@ describe('FloatingDialog — focus and Escape (v4 useDialogFocus + :172-196)', (
     const spy = vi.fn();
     document.addEventListener('keydown', spy);
     try {
-      key(el().querySelector('[aria-label="console composer"]')!);
+      key(document.querySelector('[aria-label="console composer"]')!);
       expect(spy).toHaveBeenCalledTimes(1);
       expect(fixture.componentInstance.closes).toHaveBeenCalledTimes(1);
     } finally {

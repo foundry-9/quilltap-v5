@@ -6,14 +6,22 @@
  * NEVER disabled — "with no connection profile the console opens to a note
  * saying so" (v4 `:9-10`).
  *
- * v4 portals it into `document.body`; here it renders in place inside
- * `brahma-entry.ts` (the shell's one Brahma mount), `position: fixed` like the
- * floating dialog (`FLOATING_DIALOG_IN_PLACE`).
+ * Mounted by `brahma-entry.ts` (the shell's one Brahma mount) and, as v4
+ * portals it, moved to `document.body` after its first render: in place, the
+ * rail's stacking context let a modal's overlay cover it (measured live).
  *
  * @module brahma/brahma-console-launcher
  */
 
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  DestroyRef,
+  ElementRef,
+  afterNextRender,
+  computed,
+  inject,
+} from '@angular/core';
 
 import { Icon } from '../ui/icon';
 import { BrahmaConsoleService } from './brahma-console.service';
@@ -45,6 +53,15 @@ export class BrahmaConsoleLauncher {
   protected readonly label = computed(() =>
     this.isOpen() ? 'Hide the Brahma Console' : 'Open the Brahma Console',
   );
+
+  constructor() {
+    // v4 `createPortal(<button …>, document.body)`.
+    const host = inject<ElementRef<HTMLElement>>(ElementRef).nativeElement;
+    afterNextRender(() => {
+      if (host.parentElement !== document.body) document.body.appendChild(host);
+    });
+    inject(DestroyRef).onDestroy(() => host.remove());
+  }
 
   protected toggle(): void {
     this.service.toggleConsole();

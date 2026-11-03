@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — fix(spa): portal the floating console and its launcher to document.body (v4 99463fc56)
+
+_Versions: SPA 0.5.926._
+
+The floating console and its launcher are now portalled into `document.body`, as v4 portals them. Each moves its host element there after the first render and removes it on destroy, following `ui/tooltip.ts`'s bubble.
+
+Rendering in place failed its first live walk: a modal's overlay covered the launcher despite `z-index: 1000`, because the shell's rail forms a stacking context. The floating layer has to be a child of `body` to sit above every modal. The recorded `FLOATING_DIALOG_IN_PLACE` divergence is retired, and specs that read the dialog or launcher from the host subtree now read `document`.
+
 #### 2026-11-03 — feat(spa): the name chips on the settled Salon render — the message-content hook and the row binding (v4 9a88f862f)
 
 _Versions: SPA 0.5.925._
