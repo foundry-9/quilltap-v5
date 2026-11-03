@@ -8,12 +8,14 @@
 //! `regenerate-swipe.service.ts` never mentions the runner. The cheapest twin
 //! of a source-text assertion is a source-text assertion, over v5's sources:
 //!
-//! - `services/orchestrator.rs`: the USER-ROW persist's
-//!   `user_message_persisted: true` (the one followed by the `[Orchestrator]
-//!   User message persisted` DEBUG — NOT the fair-rotation pause's) precedes
-//!   `run_user_message_triggers(`, which precedes the paused-chat hold's
-//!   `if hold_for_paused_chat {` (v4's paused return is BELOW its site, so a
-//!   held turn still fires);
+//! - `services/operator_post.rs` (P4.D348 — v4 `a8214b253` moved the site into
+//!   `recordOperatorPost`): the USER-ROW persist's `user_message_persisted:
+//!   true` (the one followed by the `[OperatorPost] User message persisted`
+//!   DEBUG) precedes `run_user_message_triggers(`, which precedes the Carina
+//!   markup pass `run_carina_markup_query(`; and `services/orchestrator.rs`
+//!   records the post (`record_operator_post(`) BEFORE the held-post return
+//!   (`finish_held_post(` — v4's held return is BELOW its recorder, so a held
+//!   turn still fires);
 //! - `services/message_finalizer.rs`: `save_assistant_message(` precedes
 //!   `run_reply_triggers(`, which precedes both `run_assistant_carina(` and
 //!   `ChatEvent::done(`;
@@ -45,37 +47,51 @@ fn only(text: &str, needle: &str, file: &str) -> usize {
     hits[0]
 }
 
-/// The orchestrator's user-row persist literal: the LAST
+/// The recorder's user-row persist literal: the LAST
 /// `user_message_persisted: true` before the persist's own DEBUG text.
 fn persist_literal(text: &str) -> usize {
     let debug = only(
         text,
-        "\"[Orchestrator] User message persisted\",",
-        "orchestrator.rs",
+        "\"[OperatorPost] User message persisted\",",
+        "operator_post.rs",
     );
     text[..debug]
         .rfind("user_message_persisted: true")
-        .expect("orchestrator.rs: the user-row persist flips `user_message_persisted`")
+        .expect("operator_post.rs: the user-row persist flips `user_message_persisted`")
 }
 
 #[test]
-fn the_user_message_site_follows_the_persist_and_precedes_the_hold() {
-    let text = source("services/orchestrator.rs");
+fn the_user_message_site_follows_the_persist_and_precedes_carina() {
+    let text = source("services/operator_post.rs");
     let persisted = persist_literal(&text);
-    let site = only(&text, "run_user_message_triggers(", "orchestrator.rs");
-    // The hold that follows the site (the fair-rotation pause has its own,
-    // earlier `if hold_for_paused_chat` above the persist).
-    let hold = text[site..]
-        .find("if hold_for_paused_chat {")
-        .map(|i| site + i)
-        .expect("orchestrator.rs: the paused-chat hold below the trigger site");
+    let site = only(&text, "run_user_message_triggers(", "operator_post.rs");
+    let carina = only(&text, "run_carina_markup_query(", "operator_post.rs");
     assert!(
         persisted < site,
         "the trigger site must follow the user-row persist"
     );
     assert!(
-        site < hold,
-        "the trigger site must precede the paused-chat hold"
+        site < carina,
+        "the trigger site must precede the Carina markup pass"
+    );
+}
+
+#[test]
+fn the_orchestrator_records_the_post_before_the_held_return() {
+    let text = source("services/orchestrator.rs");
+    // The main path's recorder call is the LAST of the two (the fair-rotation
+    // pause records earlier, in `maybe_pause_for_user_seat_turn`).
+    let recorded = text
+        .rfind("record_operator_post(")
+        .expect("orchestrator.rs: the main path records the post");
+    let held = only(&text, "finish_held_post(", "orchestrator.rs");
+    assert!(
+        recorded < held,
+        "the post must be recorded before the held-post return"
+    );
+    assert!(
+        !text.contains("run_user_message_triggers("),
+        "the trigger site lives in the recorder, not the orchestrator"
     );
 }
 

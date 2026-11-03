@@ -2948,6 +2948,83 @@
      "participantId": "d1650040-0000-4000-8000-00000000d165"
     }
    ]
+  },
+  {
+   "id": "c2580001-0000-4000-8000-000000000258",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "c258000a-0000-4000-8000-0000000002a1",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "c258000b-0000-4000-8000-0000000002b2",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": []
+  },
+  {
+   "id": "c2620001-0000-4000-8000-000000000261",
+   "chatType": "salon",
+   "contextSummary": null,
+   "impersonatingParticipantIds": [
+    "c262001b-0000-4000-8000-0000000002b2"
+   ],
+   "participants": [
+    {
+     "id": "c262001a-0000-4000-8000-0000000002a1",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    },
+    {
+     "id": "c262001b-0000-4000-8000-0000000002b2",
+     "character": "a990117b-2f44-466f-a853-6b4d4c2db52d",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "c262001c-0000-4000-8000-0000000002c3",
+     "character": "969a21df-73ad-465f-8f6c-2bc52d90ddc6",
+     "controlledBy": "llm",
+     "status": "active"
+    }
+   ],
+   "messages": [
+    {
+     "id": "c2621001-0000-4000-8000-000000000101",
+     "role": "ASSISTANT",
+     "content": "Kumar surveys the room and waits.",
+     "participantId": "c262001c-0000-4000-8000-0000000002c3"
+    }
+   ]
+  },
+  {
+   "id": "c2620002-0000-4000-8000-000000000262",
+   "chatType": "salon",
+   "contextSummary": null,
+   "participants": [
+    {
+     "id": "c262002a-0000-4000-8000-0000000002a2",
+     "character": "b1330104-0000-4000-8000-000000000144",
+     "controlledBy": "llm",
+     "status": "active"
+    },
+    {
+     "id": "c262002b-0000-4000-8000-0000000002b2",
+     "character": "44a9e2ba-e4c1-5a71-a091-60ea6fd8ada1",
+     "controlledBy": "user",
+     "status": "active"
+    }
+   ],
+   "messages": [],
+   "isPaused": true
   }
  ],
  "calls": [
@@ -4168,6 +4245,61 @@
    "summaryCheck": false,
    "respondingParticipant": "d1650040-0000-4000-8000-00000000d165",
    "defaultProfile": "cb110001-0000-4000-8000-000000000c11"
+  },
+  {
+   "name": "whisper_single_reply",
+   "kind": "chain",
+   "chatId": "c2580001-0000-4000-8000-000000000258",
+   "content": "A private word, if you please.",
+   "continueMode": false,
+   "streamLabel": "whisper_single_reply",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "targetParticipantIds": [
+    "c258000b-0000-4000-8000-0000000002b2"
+   ],
+   "_comment": "P4.D348 (v4 036b32a78, bug 258): a whisper to the SECOND seat of a two-LLM room draws its one reply and NO chain — the corpus queues a single stream, so a chained second speaker would miss it."
+  },
+  {
+   "name": "pause_rich_fair_rotation",
+   "kind": "single",
+   "chatId": "c2620001-0000-4000-8000-000000000261",
+   "content": "Roll 2d6 for initiative.",
+   "continueMode": false,
+   "streamLabel": "pause_rich_fair_rotation",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "pendingToolResults": [
+    {
+     "tool": "roll_dice",
+     "success": true,
+     "result": "Rolled 2d6: [3, 5] = 8",
+     "prompt": "roll 2d6",
+     "arguments": {
+      "notation": "2d6"
+     },
+     "createdAt": "2026-01-02T03:04:05.000Z"
+    }
+   ],
+   "fileIds": [
+    "1f151001-0000-4000-8000-000000000001"
+   ],
+   "rngBytes": [
+    3,
+    4
+   ],
+   "_comment": "P4.D348 (v4 a8214b253, bug 262): the fair-rotation pause records through the ONE recorder — the staged TOOL row, the auto-rolled dice, the USER row, the image link and the Librarian's upload note, the Pascal/Carina passes — where it used to write a bare USER row."
+  },
+  {
+   "name": "pause_keyless_records_post",
+   "kind": "single",
+   "chatId": "c2620002-0000-4000-8000-000000000262",
+   "content": "Recorded even without a key.",
+   "continueMode": false,
+   "streamLabel": "pause_keyless_records_post",
+   "cheapLLMSettings": false,
+   "summaryCheck": false,
+   "_comment": "P4.D348 (v4 a8214b253, bug 262): a held post is recorded even when the responder's profile has lost its key — the requires gate exempts a held send; the paused chain-complete answers, not an error frame."
   }
  ],
  "streams": {
@@ -4253,7 +4385,7 @@
    ],
    [
     {
-     "content": "partial reply that"
+     "content": "partial staged reply"
     },
     {
      "error": "upstream connection reset"
@@ -6399,7 +6531,24 @@
      "error": "socket hang up"
     }
    ]
-  ]
+  ],
+  "whisper_single_reply": [
+   [
+    {
+     "content": "Of course — between us."
+    },
+    {
+     "done": true,
+     "usage": {
+      "promptTokens": 10,
+      "completionTokens": 5,
+      "totalTokens": 15
+     }
+    }
+   ]
+  ],
+  "pause_rich_fair_rotation": [],
+  "pause_keyless_records_post": []
  },
  "detection": {
   "failover_native_call": [

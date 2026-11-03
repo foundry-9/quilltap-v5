@@ -1034,7 +1034,7 @@ pub(crate) async fn log_chat_message_call(
     usage: Option<StreamUsage>,
     cache_usage: Option<StreamCacheUsage>,
     raw_provider_usage: Option<Value>,
-    raw_response: Option<Value>,
+    outcome: StreamOutcome,
 ) {
     log_stream_message_call(
         log,
@@ -1045,10 +1045,55 @@ pub(crate) async fn log_chat_message_call(
         usage,
         cache_usage,
         raw_provider_usage,
-        raw_response,
+        outcome,
     )
     .await;
 }
+
+/// How one provider call ended — v4 `streamMessage`'s `record(outcome)`
+/// (`eb2d87788`): ONE `llm_logs` row per call, whatever becomes of it. A call
+/// that fails, stalls, is stopped by the operator or is abandoned by its
+/// consumer was still asked, and the Inspector is where the operator goes to
+/// see what was asked — so the row is written on the terminal chunk when there
+/// is one, and from the end of the consumer's loop when there is not.
+///
+/// Built at the CONSUMER (R-3): the watchdog stays a pure chunk relay; the
+/// consumer knows whether IT stopped reading early.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum StreamOutcome {
+    /// The terminal chunk arrived — v4
+    /// `record({ finishReason: extractFinishReason(chunk.rawResponse) })`.
+    Done { raw_response: Option<Value> },
+    /// The call failed mid-stream (a provider error or the stall watchdog):
+    /// the partial content, `finishReason: null`, the error text.
+    Failed { error: String, chunk_count: u64 },
+    /// The loop ended without a terminal chunk and without an error — the
+    /// provider's channel closed, or the operator's stop ended the stream
+    /// quietly (the watchdog's stop arm; v4's generator likewise just returns,
+    /// so `exhausted` is true there too): `finishReason: null`, no error.
+    Exhausted { chunk_count: u64 },
+    /// The consumer stopped reading before the provider finished (v4's
+    /// `finally` with neither `exhausted` nor a failure).
+    Abandoned { chunk_count: u64 },
+}
+
+impl StreamOutcome {
+    /// The outcome of a loop that ended without a terminal chunk: `Failed` on
+    /// an `Err` item, else `Exhausted`.
+    pub(crate) fn at_end(error: Option<&StreamError>, chunk_count: u64) -> Self {
+        match error {
+            Some(e) => StreamOutcome::Failed {
+                error: e.message.clone(),
+                chunk_count,
+            },
+            None => StreamOutcome::Exhausted { chunk_count },
+        }
+    }
+}
+
+/// v4's abandoned-stream text (`streaming.service.ts`, `eb2d87788`).
+pub(crate) const STREAM_ABANDONED_ERROR: &str =
+    "The stream was closed before the provider finished";
 
 /// [`log_chat_message_call`] with the row's `type` supplied by the caller —
 /// v4 `streamMessage`'s `logType` option (`d1c06cd9d`, "Defaults to
@@ -1068,8 +1113,31 @@ pub(crate) async fn log_stream_message_call(
     usage: Option<StreamUsage>,
     cache_usage: Option<StreamCacheUsage>,
     raw_provider_usage: Option<Value>,
-    raw_response: Option<Value>,
+    outcome: StreamOutcome,
 ) {
+    // The non-terminal arms (v4's `finally`): one DEBUG, then the row with
+    // `finishReason: null` and the arm's error.
+    let (finish_reason, error) = match outcome {
+        StreamOutcome::Done { raw_response } => {
+            (raw_response.as_ref().and_then(extract_finish_reason), None)
+        }
+        StreamOutcome::Failed {
+            ref error,
+            chunk_count,
+        } => {
+            log_unterminated_stream(log, row_log_type, chunk_count, false, true);
+            (None, Some(error.clone()))
+        }
+        StreamOutcome::Exhausted { chunk_count } => {
+            log_unterminated_stream(log, row_log_type, chunk_count, true, false);
+            (None, None)
+        }
+        StreamOutcome::Abandoned { chunk_count } => {
+            log_unterminated_stream(log, row_log_type, chunk_count, false, false);
+            (None, Some(STREAM_ABANDONED_ERROR.to_string()))
+        }
+    };
+
     // v4 passes `tools.length > 0 ? tools : undefined` to both the log request and
     // `computeRequestPrefixHashes`.
     let tools_nonempty: Option<Vec<Value>> = params
@@ -1121,8 +1189,6 @@ pub(crate) async fn log_stream_message_call(
         .collect();
     let request_hashes = compute_request_prefix_hashes(&prefix_messages, tools_nonempty.as_deref());
 
-    let finish_reason = raw_response.as_ref().and_then(extract_finish_reason);
-
     let params_log = LogLlmCallParams {
         user_id: log.user_id.to_string(),
         log_type: row_log_type.to_string(),
@@ -1147,7 +1213,7 @@ pub(crate) async fn log_stream_message_call(
         },
         response: LogResponse {
             content,
-            error: None,
+            error,
             finish_reason,
             tool_calls: None,
         },
@@ -1165,6 +1231,40 @@ pub(crate) async fn log_stream_message_call(
         duration_ms: Some((crate::clock::now_unix_ms() - log.started_at_ms) as f64),
     };
     let _ = log_llm_call(log.db, params_log, log.log_context).await;
+}
+
+/// v4's `finally` DEBUG before an unterminated call's row (`eb2d87788`). A
+/// call with no message id (the help / Brahma / Carina consults) logs v4's
+/// `undefined` — the key absent from the bag.
+fn log_unterminated_stream(
+    log: &StreamLogCtx<'_>,
+    row_log_type: &str,
+    chunk_count: u64,
+    exhausted: bool,
+    failed: bool,
+) {
+    if log.message_id.is_empty() {
+        tracing::debug!(
+            target: "quilltap::streaming",
+            chatId = %log.chat_id,
+            logType = %row_log_type,
+            chunkCount = chunk_count,
+            exhausted = exhausted,
+            failed = failed,
+            "Recording an LLM stream that ended without a terminal chunk",
+        );
+    } else {
+        tracing::debug!(
+            target: "quilltap::streaming",
+            chatId = %log.chat_id,
+            messageId = %log.message_id,
+            logType = %row_log_type,
+            chunkCount = chunk_count,
+            exhausted = exhausted,
+            failed = failed,
+            "Recording an LLM stream that ended without a terminal chunk",
+        );
+    }
 }
 
 /// The LAST non-null usage / cache usage / `rawProviderUsage` a single provider
@@ -1225,7 +1325,7 @@ pub(crate) async fn log_loop_leg(
     params: &StreamParams,
     content: String,
     leg: &LegUsage,
-    raw_response: Option<Value>,
+    outcome: StreamOutcome,
 ) {
     if ids.user_id.is_empty() {
         return;
@@ -1248,7 +1348,7 @@ pub(crate) async fn log_loop_leg(
         leg.usage,
         leg.cache_usage,
         leg.raw_provider_usage.clone(),
-        raw_response,
+        outcome,
     )
     .await;
 }
@@ -1319,10 +1419,16 @@ where
         ),
         stop.as_ref(),
     );
+    // v4 `logged`: ONE row per call, the terminal chunk's or the end's.
+    let mut logged = false;
+    let mut stream_error: Option<StreamError> = None;
     while let Some(item) = rx.recv().await {
         let chunk = match item {
             Ok(c) => c,
-            Err(e) => return Some(e),
+            Err(e) => {
+                stream_error = Some(e);
+                break;
+            }
         };
         // Capture + live-forward reasoning on any chunk. DISPLAY ONLY.
         apply_reasoning_chunk(state, &chunk, sink);
@@ -1357,8 +1463,9 @@ where
             flush_reasoning_segment(state);
 
             // v4 logs on `chunk.done` when a userId was provided.
-            if let Some(log) = log {
-                if let Some(profile) = state.effective_profile.clone() {
+            if !logged {
+                logged = true;
+                if let (Some(log), Some(profile)) = (log, state.effective_profile.clone()) {
                     log_chat_message_call(
                         log,
                         &profile,
@@ -1367,14 +1474,33 @@ where
                         leg_usage.usage,
                         leg_usage.cache_usage,
                         leg_usage.raw_provider_usage.clone(),
-                        chunk.raw_response.clone(),
+                        StreamOutcome::Done {
+                            raw_response: chunk.raw_response.clone(),
+                        },
                     )
                     .await;
                 }
             }
         }
     }
-    None
+    // v4's `finally`: a call that ended without a terminal chunk — thrown,
+    // stopped or exhausted — still writes its row.
+    if !logged {
+        if let (Some(log), Some(profile)) = (log, state.effective_profile.clone()) {
+            log_chat_message_call(
+                log,
+                &profile,
+                params,
+                state.full_response.clone(),
+                leg_usage.usage,
+                leg_usage.cache_usage,
+                leg_usage.raw_provider_usage.clone(),
+                StreamOutcome::at_end(stream_error.as_ref(), rx.chunks_received()),
+            )
+            .await;
+        }
+    }
+    stream_error
 }
 
 pub(crate) fn attachment_results_to_value(
@@ -1670,6 +1796,9 @@ where
                 error_message: err.message.clone(),
                 character_participant_id: participant_id.clone(),
                 turn_control: state.turn_control.clone(),
+                user_id: user_id.clone(),
+                character_id: character_id.clone(),
+                log_context: log_context.clone(),
             },
         )
         .await;
@@ -1837,6 +1966,25 @@ mod tests {
                 crate::llm_fallback::FallbackError::from_stream_error(&out)
             ),
             Some(crate::llm_fallback::FallbackTrigger::ModerationRefusal)
+        );
+    }
+    /// P4.D348 (v4 `eb2d87788`): a loop that ends without a terminal chunk is
+    /// `Failed` (the error text, chunk count kept) on an `Err` item, else
+    /// `Exhausted` — never `Abandoned`, which only the consumer's early stop
+    /// constructs.
+    #[test]
+    fn a_stream_without_a_terminal_chunk_fails_or_exhausts() {
+        let err = StreamError::new("HTTP 500: boom");
+        assert_eq!(
+            StreamOutcome::at_end(Some(&err), 3),
+            StreamOutcome::Failed {
+                error: "HTTP 500: boom".to_string(),
+                chunk_count: 3,
+            }
+        );
+        assert_eq!(
+            StreamOutcome::at_end(None, 7),
+            StreamOutcome::Exhausted { chunk_count: 7 }
         );
     }
     use crate::model::stream::StreamChunkResult;
@@ -2866,7 +3014,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            StreamOutcome::Done { raw_response: None },
         )
         .await;
         log_stream_message_call(
@@ -2878,7 +3026,7 @@ mod tests {
             None,
             None,
             None,
-            None,
+            StreamOutcome::Done { raw_response: None },
         )
         .await;
         let rows: Vec<(String, String)> = db

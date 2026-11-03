@@ -22,6 +22,17 @@
 //!
 //! Each call's throw/no-throw is also asserted (the `not_assistant` error path).
 //!
+//! ## P4.D348 (v4 `eb2d87788`): the swipe streams through the logged funnel
+//!
+//! v4's swipe now calls `streamMessage`, so every swipe writes ONE
+//! `CHAT_MESSAGE` `llm_logs` row whose `messageId` is the NEW swipe's id (minted
+//! before the call), and the request carries the character's prompt-cache key
+//! (`quilltap:char:<id>:v<N>`). The fixture opens a fresh llm-logs partition on
+//! both sides; the rows diff whole (their `messageId` read through the same
+//! first-appearance map as `chat_messages`, so a row that does not point at the
+//! saved swipe fails), and each canned stream's recorded `cacheKey` is compared
+//! with what the port put on the wire.
+//!
 //! ## P4.D207 (v4 `f564b0de3`): the generation is a STREAM, and the frames are
 //! a comparand
 //!
@@ -86,6 +97,7 @@
 //!   cargo test -p quilltap-harness --test regenerate_swipe_tier3_equivalence \
 //!     -- --test-threads=1
 
+mod common;
 mod sampling_capture;
 
 use std::collections::HashMap;
@@ -182,6 +194,40 @@ struct CannedStreamW {
     sampling: Value,
     /// The chunk sequence v4's mocked `streamMessage` yielded.
     chunks: Vec<CannedChunkW>,
+    /// P4.D348: the request's `cacheKey` (v4's funnel `buildCharacterCacheKey`).
+    #[serde(rename = "cacheKey", default)]
+    cache_key: Option<String>,
+}
+
+/// P4.D348: records the `cache_key` the port put on each stream call, keyed as
+/// the canned streams are.
+struct CacheKeyCapture<P> {
+    inner: P,
+    recorded: std::sync::Mutex<HashMap<String, Option<String>>>,
+}
+
+impl<P: quilltap_core::model::stream::StreamingCompletionProvider>
+    quilltap_core::model::stream::StreamingCompletionProvider for CacheKeyCapture<P>
+{
+    fn stream_message(
+        &self,
+        provider: &str,
+        base_url: Option<&str>,
+        params: &quilltap_core::model::stream::StreamParams,
+    ) -> impl std::future::Future<Output = tokio::sync::mpsc::Receiver<StreamChunkResult>> + Send
+    {
+        let key = quilltap_core::model::stream::canned_stream_key(
+            provider,
+            &params.model,
+            params.temperature,
+            &params.messages,
+        );
+        self.recorded
+            .lock()
+            .unwrap()
+            .insert(key, params.cache_key.clone());
+        self.inner.stream_message(provider, base_url, params)
+    }
 }
 
 /// The oracle's ordered per-call WIRE frames (P4.D207) — v4's own encoders'
@@ -459,8 +505,11 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
     std::fs::create_dir_all(&scratch).expect("scratch dir");
     let work_main = scratch.join("regen-main.db");
     let work_mount = scratch.join("regen-mount.db");
+    let work_logs = scratch.join("regen-llm-logs.db");
     let _ = std::fs::remove_file(&work_main);
     let _ = std::fs::remove_file(&work_mount);
+    let _ = std::fs::remove_file(&work_logs);
+    common::materialize_llm_logs(&work_logs, &spec.test_pepper_base64);
     std::fs::copy(&fixture_main, &work_main).expect("copy main");
     std::fs::copy(&fixture_mount, &work_mount).expect("copy mount");
 
@@ -468,7 +517,8 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
         DbPaths {
             main: work_main.clone(),
             mount_index: Some(work_mount.clone()),
-            llm_logs: None,
+            // P4.D348: the swipe's funnel row lands here.
+            llm_logs: Some(work_logs.clone()),
         },
         &spec.test_pepper_base64,
     )
@@ -480,6 +530,7 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
         .expect("tokio runtime");
 
     let mut expected_sampling: HashMap<String, Value> = HashMap::new();
+    let mut expected_cache_keys: HashMap<String, Option<String>> = HashMap::new();
     let mut streaming = CannedStreamingProvider::new();
     for row in &canned_streams {
         let messages = to_completion_messages(&row.messages);
@@ -509,6 +560,10 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
             &messages,
             chunks,
         );
+        expected_cache_keys.insert(
+            canned_completion_key(&row.provider, &row.model, row.temperature, &messages),
+            row.cache_key.clone(),
+        );
         expected_sampling.insert(
             canned_completion_key(&row.provider, &row.model, row.temperature, &messages),
             if row.sampling.is_object() {
@@ -521,6 +576,10 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
     // P4.D83: record what the PORT put on each call, so the three knobs are a
     // comparand rather than an unmeasured field. The STREAM twin now — the one
     // visible generation moved to the streaming seam (P4.D207).
+    let streaming = CacheKeyCapture {
+        inner: streaming,
+        recorded: std::sync::Mutex::new(HashMap::new()),
+    };
     let streaming = sampling_capture::SamplingStreamCapture::new(streaming, |provider, params| {
         quilltap_core::model::stream::canned_stream_key(
             provider,
@@ -680,6 +739,7 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
     let mut got_mem = dump("memories");
     // P4.106 item 3: a swipe never consumes — the planted rows are unchanged.
     let got_informs = dump("chat_informs");
+    let got_logs = common::dump_llm_logs(&db);
     drop(db);
     let _ = std::fs::remove_dir_all(&scratch);
 
@@ -698,6 +758,59 @@ fn run_corpus(label: &str, emit_progress: bool) -> Option<[Value; 3]> {
 
     // --- the SAMPLING knobs AT THE WIRE (P4.D83, v4 `d89babc4`) ---
     streaming.assert_matches(&expected_sampling, "regenerate-swipe");
+
+    // --- P4.D348: the prompt-cache key at the wire, and the funnel's rows ---
+    {
+        let recorded = streaming.inner().recorded.lock().unwrap().clone();
+        assert!(!recorded.is_empty(), "no stream call recorded a cache key");
+        for (key, got) in &recorded {
+            let want = expected_cache_keys
+                .get(key)
+                .unwrap_or_else(|| panic!("no oracle cacheKey for key:\n{key}"));
+            assert_eq!(got, want, "cacheKey at the wire for key:\n{key}");
+            assert!(
+                want.as_deref()
+                    .is_some_and(|k| k.starts_with("quilltap:char:")),
+                "v4's swipe must send the character cache key, got {want:?}"
+            );
+        }
+    }
+    let oracle_logs: Vec<Value> = oracle_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .find(|v| v.get("kind").and_then(Value::as_str) == Some("llmlogs"))
+        .map(|v| common::oracle_llm_logs(&v))
+        .expect("the oracle dumped no llmlogs line — re-record it from the pin");
+    let tokenize_logs = |rows: Vec<Value>, map: &HashMap<String, String>| -> Vec<Value> {
+        let mut rows: Vec<Value> = rows
+            .into_iter()
+            .map(|mut r| {
+                let obj = r.as_object_mut().unwrap();
+                let raw = obj.get("messageId").and_then(Value::as_str).unwrap_or("");
+                // The row must point at a message the dump carries (the swipe).
+                let tok = map
+                    .get(raw)
+                    .cloned()
+                    .unwrap_or_else(|| format!("<unmapped:{raw}>"));
+                obj.insert("messageId".into(), Value::String(tok));
+                r
+            })
+            .collect();
+        common::sort_by_canonical_json(&mut rows);
+        rows
+    };
+    let got_logs = tokenize_logs(got_logs, &idmap_g);
+    let want_logs = tokenize_logs(oracle_logs, &idmap_w);
+    assert!(
+        !want_logs.is_empty()
+            && want_logs
+                .iter()
+                .all(|r| !r["messageId"].as_str().unwrap().starts_with("<unmapped")),
+        "every v4 swipe row must point at a saved swipe: {want_logs:#?}"
+    );
+    common::write_diff_dump("regenerate_swipe_llm_logs", &got_logs, &want_logs);
+    assert_eq!(got_logs, want_logs, "llm_logs rows diverge");
 
     assert_rows_eq("chats", &got_chats, &want_chats);
     assert_rows_eq("chat_messages", &got_msgs, &want_msgs);

@@ -40,8 +40,8 @@
  *
  * Emits per case: { kind: 'case', name, frames, streams: [{ logType,
  * toolNames }], loggedTypes, lines } — `loggedTypes` being the type of each
- * row v4's real `streamMessage` would have written (one per call that reaches
- * its terminal chunk) and at the end one { kind: 'cannedStream', … } per
+ * row v4's real `streamMessage` would have written (one per call, whatever ends
+ * it — P4.D348, v4 `eb2d87788`) and at the end one { kind: 'cannedStream', … } per
  * served call. `lines` are the `ScenarioBuilder`, `OneShotToolLoop` and
  * `ScenarioBuilderMountPool` services' log lines.
  *
@@ -143,7 +143,8 @@ async function main(): Promise<void> {
   let currentAbort: AbortController | null = null;
   let streamRecords: Array<{ logType: string; toolNames: string[] }> = [];
   // v4's real `streamMessage` writes its `llm_logs` row as the TERMINAL chunk
-  // passes through, before yielding it — typed `opts.logType ?? 'CHAT_MESSAGE'`.
+  // passes through, before yielding it — typed `opts.logType ?? 'CHAT_MESSAGE'`
+  // — and, since `eb2d87788`, from its `finally` for a call that never got one.
   let loggedTypes: string[] = [];
   const logLines: Array<{ service: string; level: string; message: string; context: unknown }> = [];
   const cannedRows: Array<{
@@ -216,9 +217,15 @@ async function main(): Promise<void> {
           // P4.114: every message's signature as v4 threaded it (null = absent).
           thoughtSignatures: opts.messages.map((m) => m.thoughtSignature ?? null),
         });
+        // P4.D348 (v4 `eb2d87788`): the REAL funnel's `record` — ONE row per
+        // call, the terminal chunk's when there is one, else from its
+        // `finally` (a throw, a stop, a consumer that broke off early).
+        let logged = false;
+        try {
         for (const chunk of seq) {
           if (chunk.error) throw new Error(chunk.error);
           if (chunk.done) {
+            logged = true;
             loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
             yield {
               done: true,
@@ -234,6 +241,9 @@ async function main(): Promise<void> {
               ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
             };
           }
+        }
+        } finally {
+          if (!logged) loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
         }
       },
     };

@@ -324,6 +324,10 @@ pub struct VisionRequestInput<'a> {
     pub timeout_ms: u64,
     /// The `llm_logs` type the call is recorded under.
     pub log_type: &'static str,
+    /// The chat the picture is being read for, when there is one (v4
+    /// `chatId?`, `eb2d87788`). Without it the log row is an orphan the
+    /// Salon's LLM Inspector can never find.
+    pub chat_id: Option<&'a str>,
     /// Refuse (rather than send keyless) when the profile has no API key.
     /// Ollama is exempt.
     pub require_api_key: bool,
@@ -549,8 +553,7 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
         Ok(Err(e)) => {
             record(
                 db,
-                input.user_id,
-                input.log_type,
+                &input,
                 &provider,
                 &model_name,
                 logged_request(),
@@ -559,6 +562,7 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
                     error: Some(e.message.clone()),
                     ..Default::default()
                 },
+                None,
                 None,
                 started_at,
             )
@@ -569,8 +573,7 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
             let message = format!("Vision request timed out after {}ms", input.timeout_ms);
             record(
                 db,
-                input.user_id,
-                input.log_type,
+                &input,
                 &provider,
                 &model_name,
                 logged_request(),
@@ -579,6 +582,7 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
                     error: Some(message.clone()),
                     ..Default::default()
                 },
+                None,
                 None,
                 started_at,
             )
@@ -589,8 +593,7 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
 
     record(
         db,
-        input.user_id,
-        input.log_type,
+        &input,
         &provider,
         &model_name,
         logged_request(),
@@ -605,6 +608,13 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
             completion_tokens: Some(u.completion_tokens),
             total_tokens: Some(u.total_tokens),
         }),
+        // v4 passes `cacheUsage: response.cacheUsage` (`eb2d87788`).
+        response
+            .cache_usage
+            .map(|c| crate::services::llm_logging::LogCacheUsage {
+                cache_creation_input_tokens: c.cache_creation_input_tokens,
+                cache_read_input_tokens: c.cache_read_input_tokens,
+            }),
         started_at,
     )
     .await;
@@ -650,31 +660,37 @@ pub async fn send_vision_request<CMP: CompletionProvider>(
 #[allow(clippy::too_many_arguments)]
 async fn record(
     db: &Db,
-    user_id: &str,
-    log_type: &'static str,
+    input: &VisionRequestInput<'_>,
     provider: &str,
     model_name: &str,
     request: LogRequest,
     response: LogResponse,
     usage: Option<LogUsage>,
+    cache_usage: Option<crate::services::llm_logging::LogCacheUsage>,
     started_at: i64,
 ) {
     let _ = log_llm_call(
         db,
         LogLlmCallParams {
-            user_id: user_id.to_string(),
-            log_type: log_type.to_string(),
+            user_id: input.user_id.to_string(),
+            log_type: input.log_type.to_string(),
             message_id: None,
-            chat_id: None,
+            // v4 `chatId: input.chatId ?? undefined` (`eb2d87788`).
+            chat_id: input.chat_id.map(str::to_string),
             character_id: None,
             provider: provider.to_string(),
             model_name: model_name.to_string(),
-            connection_profile_id: None,
+            // v4 `connectionProfileId: profile.id` (`eb2d87788`).
+            connection_profile_id: input
+                .profile
+                .get("id")
+                .and_then(Value::as_str)
+                .map(str::to_string),
             image_profile_id: None,
             request,
             response,
             usage,
-            cache_usage: None,
+            cache_usage,
             raw_provider_usage: None,
             request_hashes: None,
             duration_ms: Some((crate::clock::now_unix_ms() - started_at) as f64),

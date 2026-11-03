@@ -18,6 +18,14 @@
 //! Gateway`, the arm that proves the port does not over-classify a failure as a
 //! silence.
 //!
+//! P4.D348 (v4 `eb2d87788`): every case now passes a `userId` and the route's
+//! `connectionProfileId`, so v4 writes its `llm_logs` row; the oracle records
+//! `logLLMCall`'s REAL arguments (the write alone is mocked), projected onto
+//! the row's cells, and this side runs with a [`GreetingLog`] on a fresh
+//! llm-logs DB and reads its own row back — `connectionProfileId`,
+//! `finishReason` (a `done` chunk's; `null` without one — the silence leg),
+//! `cacheUsage`, `rawProviderUsage`, the error on a failure.
+//!
 //! ⚠ The oracle imports `@/lib/llm/stream-watchdog`, which does not exist at the
 //! `31436bae4` baseline — every regen of this family runs from a worktree pinned
 //! at `ffb6b3119` or later.
@@ -44,8 +52,11 @@ use quilltap_core::model::stream::{
     CannedStreamingProvider, StreamChunk, StreamChunkResult, StreamError, StreamUsage,
 };
 use quilltap_core::services::initial_greeting::{
-    generate_greeting_message, GreetingRequest, ParticipantMemory, ProjectContext,
+    generate_greeting_message, GreetingLog, GreetingRequest, ParticipantMemory, ProjectContext,
 };
+use quilltap_core::services::llm_logging::LogContext;
+
+mod common;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -87,6 +98,10 @@ struct CaseSpec {
     trailing_context_sections: Vec<String>,
     #[serde(rename = "chatId", default)]
     chat_id: Option<String>,
+    /// P4.D348: a terminal `done` chunk (`rawResponse` / `cacheUsage` /
+    /// `rawProviderUsage`).
+    #[serde(rename = "cannedDone", default)]
+    canned_done: Option<Value>,
 }
 
 #[derive(Deserialize)]
@@ -135,6 +150,29 @@ struct OracleRow {
     /// section survives the blank filter).
     #[serde(rename = "greetingDebug", default)]
     greeting_debug: Vec<OracleDebug>,
+    /// P4.D348: v4's `logLLMCall` arguments, projected (see the case's
+    /// `projectLogCall`).
+    #[serde(rename = "logCalls", default)]
+    log_calls: Vec<Value>,
+}
+
+/// v5's own `llm_logs` row projected onto the oracle's `projectLogCall` keys.
+fn project_v5_row(row: &Value) -> Value {
+    let response = &row["response"];
+    serde_json::json!({
+        "type": row["type"],
+        "chatId": row.get("chatId").cloned().unwrap_or(Value::Null),
+        "characterId": row.get("characterId").cloned().unwrap_or(Value::Null),
+        "provider": row["provider"],
+        "modelName": row["modelName"],
+        "connectionProfileId": row.get("connectionProfileId").cloned().unwrap_or(Value::Null),
+        "content": response.get("content").cloned().unwrap_or(Value::Null),
+        "finishReason": response.get("finishReason").cloned().unwrap_or(Value::Null),
+        "error": response.get("error").cloned().unwrap_or(Value::Null),
+        "usage": row.get("usage").cloned().unwrap_or(Value::Null),
+        "cacheUsage": row.get("cacheUsage").cloned().unwrap_or(Value::Null),
+        "rawProviderUsage": row.get("rawProviderUsage").cloned().unwrap_or(Value::Null),
+    })
 }
 
 #[derive(Deserialize)]
@@ -261,7 +299,26 @@ async fn initial_greeting_matches_oracle() {
                 completion_tokens: u.completion_tokens,
                 total_tokens: u.total_tokens,
             });
-            chunks.push(Ok(StreamChunk::done(usage)));
+            if let Some(u) = usage {
+                chunks.push(Ok(StreamChunk {
+                    usage: Some(u),
+                    ..Default::default()
+                }));
+            }
+            // P4.D348: v4's mock yields `done` ONLY when the case poses one.
+            if let Some(d) = &c.canned_done {
+                let mut chunk = StreamChunk::done(None);
+                chunk.raw_response = d.get("rawResponse").cloned();
+                chunk.cache_usage =
+                    d.get("cacheUsage")
+                        .map(|cu| quilltap_core::model::stream::StreamCacheUsage {
+                            cache_creation_input_tokens: cu["cacheCreationInputTokens"].as_i64(),
+                            cache_read_input_tokens: cu["cacheReadInputTokens"].as_i64(),
+                            ..Default::default()
+                        });
+                chunk.raw_provider_usage = d.get("rawProviderUsage").cloned();
+                chunks.push(Ok(chunk));
+            }
         }
         let provider = CannedStreamingProvider::new().with_stream(
             &row.request.provider,
@@ -299,6 +356,15 @@ async fn initial_greeting_matches_oracle() {
             character_id: Some("char-1".to_string()),
             chat_id: c.chat_id.clone(),
             trailing_context_sections: c.trailing_context_sections.clone(),
+            connection_profile_id: Some("profile-1".to_string()),
+        };
+        let (log_db, _log_dir) =
+            common::open_main_and_llm_logs_db("dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=");
+        let greeting_log = GreetingLog {
+            db: &log_db,
+            user_id: "user-1",
+            chat_id: c.chat_id.as_deref(),
+            log_context: LogContext::none(),
         };
 
         // P4.D324: the DEBUG comparand (this runtime is current-thread, so a
@@ -311,8 +377,23 @@ async fn initial_greeting_matches_oracle() {
                     .with(quilltap_core::test_support::CaptureLayer(logs.clone())),
             )
         };
-        let outcome = generate_greeting_message(&provider, &req, None).await;
+        let outcome = generate_greeting_message(&provider, &req, Some(&greeting_log)).await;
         drop(guard);
+        // P4.D348: the row, against v4's `logLLMCall` arguments.
+        let got_rows: Vec<Value> = log_db
+            .read_llm_logs(|conn| {
+                quilltap_core::db::llm_logs::LLMLogsRepository::new(conn)
+                    .find_recent("user-1", 10.0)
+            })
+            .expect("read the greeting row")
+            .iter()
+            .map(|r| project_v5_row(&serde_json::to_value(r).unwrap()))
+            .collect();
+        assert_eq!(
+            got_rows, row.log_calls,
+            "case {}: the greeting's llm_logs row",
+            c.id
+        );
         let got_debug: Vec<String> = logs
             .lock()
             .unwrap()
@@ -371,6 +452,20 @@ async fn initial_greeting_matches_oracle() {
         }
     }
     assert_eq!(oracle.len(), cases.len(), "oracle case count drifted");
+    // P4.D348: every case writes its row, and the `done` case carries the
+    // three cells `eb2d87788` added — a stale oracle has no `logCalls`.
+    assert!(
+        oracle.values().all(|r| r.log_calls.len() == 1),
+        "every case must log one row — regenerate the oracle from the pin"
+    );
+    assert!(
+        oracle
+            .values()
+            .any(|r| r.log_calls[0]["finishReason"] == "stop"
+                && !r.log_calls[0]["cacheUsage"].is_null()
+                && !r.log_calls[0]["rawProviderUsage"].is_null()),
+        "no case recorded a finishReason / cacheUsage / rawProviderUsage"
+    );
     // P4.D324: a stale oracle (or a spec that lost the cases) would compare
     // empty DEBUG lists and pass vacuously.
     assert!(

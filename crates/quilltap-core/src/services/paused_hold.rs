@@ -95,34 +95,43 @@ mod tests {
 
     /// A production-zone census: the spine consults this predicate EXACTLY ONCE.
     ///
-    /// v4's `processMessage` computes `holdForPausedChat` off the FRESH chat read
-    /// at the top of the turn and then reads the LOCAL four more times. A port
-    /// that re-evaluated the predicate at the seam instead would be invisible to
-    /// every differential — the corpus cannot change a chat row mid-turn, so both
-    /// spellings agree on every case that can be written. The single consultation
-    /// is therefore pinned structurally, in the `db_error_key_guard` idiom.
+    /// v4's `processMessage` resolves the hold off the FRESH chat read at the
+    /// top of the turn (`resolveTurnHold`, `a8214b253`) and then reads the
+    /// LOCAL. A port that re-evaluated the predicate at the seam instead would
+    /// be invisible to every differential — the corpus cannot change a chat row
+    /// mid-turn, so both spellings agree on every case that can be written. The
+    /// single consultation is therefore pinned structurally, in the
+    /// `db_error_key_guard` idiom: the predicate is called once, inside
+    /// `turn_holds::resolve_turn_hold`, which the orchestrator calls once.
     #[test]
     fn the_spine_consults_the_predicate_once() {
-        let src = include_str!("orchestrator.rs");
-        let zone = src.split("\n#[cfg(test)]\n").next().unwrap_or(src);
+        fn zone(src: &str) -> &str {
+            src.split("\n#[cfg(test)]\n").next().unwrap_or(src)
+        }
+        let holds = zone(include_str!("turn_holds.rs"));
         assert_eq!(
-            zone.matches("should_hold_user_turn_for_pause(").count(),
+            holds.matches("should_hold_user_turn_for_pause(").count(),
             1,
-            "the orchestrator must call the predicate exactly once (v4 computes \
-             `holdForPausedChat` once and reads the local thereafter)"
+            "resolve_turn_hold must call the predicate exactly once"
         );
-        // …and the local is what the guards + the seam read: the binding, the
-        // log branch, the four `!hold` conjuncts (P4.D335 added v4 `2b5e8ee24`'s
-        // `offerYield` one — a held turn builds no reply to ask in), and the
-        // seam's own `if`.
-        let reads = zone
-            .lines()
-            .filter(|l| l.contains("hold_for_paused_chat") && !l.trim_start().starts_with("//"))
-            .count();
+        let spine = zone(include_str!("orchestrator.rs"));
         assert_eq!(
-            reads, 7,
-            "expected the binding plus six reads of the local (log branch, four \
-             `!hold` conjuncts, the seam); found {reads}"
+            spine.matches("should_hold_user_turn_for_pause(").count(),
+            0,
+            "the orchestrator reads the hold through resolve_turn_hold"
+        );
+        assert_eq!(
+            spine.matches("turn_holds::resolve_turn_hold(").count(),
+            1,
+            "the orchestrator must resolve the hold exactly once"
+        );
+        // …and the local is what the guards read: the four `hold.is_none()`
+        // conjuncts (the bypass spend, the raised hand, the Prospero cadence,
+        // the API-key gate's `held` exemption).
+        let reads = spine.matches("hold.is_none()").count();
+        assert_eq!(
+            reads, 4,
+            "expected four `hold.is_none()` reads; found {reads}"
         );
     }
 

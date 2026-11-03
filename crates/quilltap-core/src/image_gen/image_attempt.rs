@@ -231,26 +231,87 @@ async fn run_attempt<'a, P: ImageProvider>(
     let result = provider
         .generate_image(&profile.provider, &api_key, &params)
         .await;
-    let (content, error) = match &result {
-        Ok(response) => (success_content(response, rerouted), None),
+    record_image_call(
+        db,
+        ImageCallRecord {
+            user_id,
+            log_type,
+            prompt,
+            chat_id,
+            character_id,
+            profile_key: LoggedImageProfileKey::ImageProfile(&profile.id),
+            provider: &profile.provider,
+            model_name: &profile.model_name,
+            started_at,
+            rerouted,
+        },
+        result.as_ref(),
+    )
+    .await;
+    result
+}
+
+/// Which profile id a picture's row carries — ONE recorder, two key shapes
+/// (P4.D348, measured against v4's two callers): `makeLoggedImageAttempt`
+/// (the tool and the jobs) writes `imageProfileId`; the Images route's own
+/// `record` (`app/api/v1/images/route.ts`, `eb2d87788`) writes
+/// `connectionProfileId` and no character.
+#[derive(Clone, Copy, Debug)]
+pub enum LoggedImageProfileKey<'a> {
+    ImageProfile(&'a str),
+    ConnectionProfile(&'a str),
+}
+
+/// The fields of one picture's `llm_logs` row.
+pub struct ImageCallRecord<'a> {
+    pub user_id: &'a str,
+    pub log_type: &'static str,
+    /// The final prompt — what the provider is sent and what the log records.
+    pub prompt: &'a str,
+    pub chat_id: Option<String>,
+    pub character_id: Option<String>,
+    pub profile_key: LoggedImageProfileKey<'a>,
+    pub provider: &'a str,
+    pub model_name: &'a str,
+    /// v4's `startedAt`, read just before the provider call.
+    pub started_at: i64,
+    /// A Concierge reroute (the success text says so).
+    pub rerouted: bool,
+}
+
+/// v4's `record(response)` for one image-provider call — the row on either
+/// arm: the success text, or `{content: "", error}`. Never fails the call
+/// (`log_llm_call` swallows its own errors, so v4's two `Failed to record the
+/// image call in llm_logs` WARNs are unreachable here — see the module note).
+pub async fn record_image_call(
+    db: &Db,
+    rec: ImageCallRecord<'_>,
+    result: Result<&ImageGenResponse, &ImageGenError>,
+) {
+    let (content, error) = match result {
+        Ok(response) => (success_content(response, rec.rerouted), None),
         Err(e) => (String::new(), Some(e.message.clone())),
+    };
+    let (connection_profile_id, image_profile_id) = match rec.profile_key {
+        LoggedImageProfileKey::ImageProfile(id) => (None, Some(id.to_string())),
+        LoggedImageProfileKey::ConnectionProfile(id) => (Some(id.to_string()), None),
     };
     log_llm_call(
         db,
         LogLlmCallParams {
-            user_id: user_id.to_string(),
-            log_type: log_type.to_string(),
+            user_id: rec.user_id.to_string(),
+            log_type: rec.log_type.to_string(),
             message_id: None,
-            chat_id,
-            character_id,
-            provider: profile.provider.clone(),
-            model_name: profile.model_name.clone(),
-            connection_profile_id: None,
-            image_profile_id: Some(profile.id.clone()),
+            chat_id: rec.chat_id,
+            character_id: rec.character_id,
+            provider: rec.provider.to_string(),
+            model_name: rec.model_name.to_string(),
+            connection_profile_id,
+            image_profile_id,
             request: LogRequest {
                 messages: vec![LogRequestMessage {
                     role: "user".to_string(),
-                    content: prompt.to_string(),
+                    content: rec.prompt.to_string(),
                     attachments: None,
                 }],
                 ..Default::default()
@@ -264,12 +325,11 @@ async fn run_attempt<'a, P: ImageProvider>(
             cache_usage: None,
             raw_provider_usage: None,
             request_hashes: None,
-            duration_ms: Some((crate::clock::now_unix_ms() - started_at) as f64),
+            duration_ms: Some((crate::clock::now_unix_ms() - rec.started_at) as f64),
         },
         &LogContext::none(),
     )
     .await;
-    result
 }
 
 /// v4 `response.images?.[0]?.revisedPrompt || \`Generated ${n} image(s)${rerouted

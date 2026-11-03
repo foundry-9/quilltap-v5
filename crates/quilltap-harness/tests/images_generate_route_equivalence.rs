@@ -75,6 +75,8 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
+mod common;
+
 use serde_json::{json, Map, Value};
 
 use quilltap_core::api::images::{
@@ -353,13 +355,16 @@ fn fresh_db(spec: &Spec, tag: &str) -> ScratchDb {
         .expect("tempdir");
     let main = scratch.path().join("main.db");
     let mount = scratch.path().join("mount.db");
+    let logs = scratch.path().join("llm-logs.db");
     std::fs::copy(fixtures_dir().join("images-main.db"), &main).unwrap();
     std::fs::copy(fixtures_dir().join("images-mount.db"), &mount).unwrap();
+    // P4.D348: the route's IMAGE_GENERATION rows land here.
+    common::materialize_llm_logs(&logs, &spec.test_pepper_base64);
     let db = Db::open(
         DbPaths {
             main,
             mount_index: Some(mount),
-            llm_logs: None,
+            llm_logs: Some(logs),
         },
         &spec.test_pepper_base64,
     )
@@ -979,6 +984,8 @@ fn images_generate_matches_oracle() {
         .build()
         .unwrap();
     let mut failed: Vec<String> = Vec::new();
+    // P4.D348: the IMAGE_GENERATION rows' non-vacuity counters.
+    let (mut logged_cases, mut rerouted_rows, mut failed_rows) = (0usize, 0usize, 0usize);
     let mut driven: Vec<String> = Vec::new();
 
     for c in cases() {
@@ -1140,6 +1147,48 @@ fn images_generate_matches_oracle() {
             continue;
         }
 
+        // P4.D348 (v4 `eb2d87788`): ONE `IMAGE_GENERATION` row per profile
+        // tried — failures included — with the ROUTE's keys
+        // (`connectionProfileId`, no `imageProfileId`, no character).
+        let mut got_logs: Vec<Value> = db
+            .read_llm_logs(|conn| {
+                quilltap_core::db::llm_logs::LLMLogsRepository::new(conn).find_recent(USER_A, 100.0)
+            })
+            .expect("read the route's rows")
+            .iter()
+            .map(|r| {
+                let row = serde_json::to_value(r).unwrap();
+                json!({
+                    "type": row["type"],
+                    "chatId": row.get("chatId").cloned().unwrap_or(Value::Null),
+                    "characterId": row.get("characterId").cloned().unwrap_or(Value::Null),
+                    "provider": row["provider"],
+                    "modelName": row["modelName"],
+                    "connectionProfileId": row.get("connectionProfileId").cloned().unwrap_or(Value::Null),
+                    "imageProfileId": row.get("imageProfileId").cloned().unwrap_or(Value::Null),
+                    "content": row["response"]["content"],
+                    "error": row["response"].get("error").cloned().unwrap_or(Value::Null),
+                })
+            })
+            .collect();
+        let mut want_logs: Vec<Value> = want["logCalls"]
+            .as_array()
+            .cloned()
+            .expect("the oracle recorded no logCalls — regenerate it from the pin");
+        common::sort_by_canonical_json(&mut got_logs);
+        common::sort_by_canonical_json(&mut want_logs);
+        logged_cases += usize::from(!want_logs.is_empty());
+        // A reroute: a second profile tried after the first (one row each).
+        rerouted_rows += usize::from(want_logs.len() >= 2);
+        failed_rows += want_logs.iter().filter(|r| !r["error"].is_null()).count();
+        if got_logs != want_logs {
+            failed.push(format!(
+                "{}: llm_logs\n  want {want_logs:#?}\n  got  {got_logs:#?}",
+                c.name
+            ));
+            continue;
+        }
+
         let got_classify = canon(&Value::Array(classify_calls.lock().unwrap().clone()));
         let want_classify = canon(&want["classifyCalls"]);
         if got_classify != want_classify {
@@ -1197,6 +1246,14 @@ fn images_generate_matches_oracle() {
         "images generate FAILED ({}):\n{}",
         failed.len(),
         failed.join("\n\n")
+    );
+    eprintln!(
+        "[llm_logs] {logged_cases} case(s) logged, {rerouted_rows} rerouted case(s), {failed_rows} failed row(s)"
+    );
+    assert!(
+        logged_cases > 0 && rerouted_rows > 0 && failed_rows > 0,
+        "the IMAGE_GENERATION rows must reach a logged case, a two-profile reroute and a \
+         failure (logged {logged_cases}, rerouted {rerouted_rows}, failed {failed_rows})"
     );
 
     // Coverage by SHAPE, both directions (`harness-corpus-shape-constants-rot`).

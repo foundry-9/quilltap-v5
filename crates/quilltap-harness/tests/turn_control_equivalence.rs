@@ -13,6 +13,12 @@
 //! The watchdog rows are event-driven (no clock), incl. the measured
 //! `stop-vs-buffered-chunk` (v4 abandons a buffered chunk once stopped).
 //!
+//! P4.D348 (`036b32a78`, bug 258) grows two kinds: `wait` — five
+//! `waitForEarlierTurns` scenarios replayed the same way (v5's explicit-handle
+//! `wait_for_earlier_turns`; observation order + the two new `[TurnControl]`
+//! DEBUGs), and `whisper` — `isOperatorWhisperSend` over `{continueMode} ×
+//! {targetParticipantIds}` (v5's `whisper_send::is_operator_whisper_send`).
+//!
 //! Generate the oracle output:
 //!   cd ~/source/quilltap-server
 //!   npx tsx ~/source/quilltap-v5/harness/oracle/cases/turn-control.ts \
@@ -29,8 +35,10 @@ use quilltap_core::model::stream_watchdog::{
     watch_stream_with_stop, StallBudgets, StallWatchdogContext,
 };
 use quilltap_core::services::turn_control::{
-    has_active_turn, register_active_turn, set_hand_raised, stop_active_turns, TurnControlHandle,
+    has_active_turn, register_active_turn, set_hand_raised, stop_active_turns,
+    wait_for_earlier_turns, TurnControlHandle,
 };
+use quilltap_core::services::whisper_send::is_operator_whisper_send;
 use quilltap_core::skip_signal::matches_sentinel_line;
 use quilltap_core::test_support::global_capture;
 use quilltap_core::yield_signal::{
@@ -87,6 +95,21 @@ enum OracleRow {
         id: String,
         seen: Vec<String>,
         logs: Vec<LogLine>,
+    },
+    #[serde(rename = "wait")]
+    Wait {
+        id: String,
+        obs: Vec<Value>,
+        logs: Vec<LogLine>,
+    },
+    #[serde(rename = "whisper")]
+    Whisper {
+        id: String,
+        #[serde(rename = "continueMode", default)]
+        continue_mode: Option<bool>,
+        #[serde(rename = "targetParticipantIds", default)]
+        target_participant_ids: Option<Vec<String>>,
+        out: bool,
     },
 }
 
@@ -260,6 +283,117 @@ async fn registry_scenario(id: &str) -> (Vec<Value>, String) {
         other => panic!("no Rust replay for registry scenario {other}"),
     }
     (obs, chat)
+}
+
+/// Replay one v4 `waitForEarlierTurns` scenario on this thread (a spawned task
+/// is v4's second `runWithTurnControl`; `yield_now` lets it reach its wait,
+/// as v4's synchronous body does before its first `await`).
+async fn wait_scenario(id: &str) -> (Vec<Value>, String) {
+    use std::sync::{Arc, Mutex};
+    let chat = unique(id);
+    let c = chat.as_str();
+    let obs = Arc::new(Mutex::new(Vec::<Value>::new()));
+    let push = |o: &Arc<Mutex<Vec<Value>>>, v: Value| o.lock().unwrap().push(v);
+    match id {
+        "wait-two-streams" => {
+            let a = register_active_turn(c);
+            push(&obs, json!("A registered"));
+            let b = register_active_turn(c);
+            push(&obs, json!("B registered"));
+            let (o, cc) = (Arc::clone(&obs), chat.clone());
+            let task = tokio::spawn(async move {
+                let n = wait_for_earlier_turns(&cc, Some(&b.handle())).await;
+                o.lock().unwrap().push(json!("B proceeds"));
+                o.lock().unwrap().push(json!(n));
+                drop(b);
+            });
+            tokio::task::yield_now().await;
+            push(&obs, json!("A releasing"));
+            push(&obs, json!("A done"));
+            drop(a);
+            task.await.unwrap();
+        }
+        "wait-outside" => {
+            let a = register_active_turn(c);
+            let b = register_active_turn(c);
+            let cc = chat.clone();
+            let task = tokio::spawn(async move { wait_for_earlier_turns(&cc, None).await });
+            tokio::task::yield_now().await;
+            drop(a);
+            drop(b);
+            push(&obs, json!(task.await.unwrap()));
+        }
+        "wait-nothing-open" => {
+            push(&obs, json!(wait_for_earlier_turns(c, None).await));
+            let reg = register_active_turn(c);
+            push(
+                &obs,
+                json!(wait_for_earlier_turns(c, Some(&reg.handle())).await),
+            );
+            drop(reg);
+        }
+        "wait-back-to-back" => {
+            let chain = register_active_turn(c);
+            let mut tasks = Vec::new();
+            for name in ["w1", "w2"] {
+                let w = register_active_turn(c);
+                let (o, cc) = (Arc::clone(&obs), chat.clone());
+                tasks.push(tokio::spawn(async move {
+                    let n = wait_for_earlier_turns(&cc, Some(&w.handle())).await;
+                    o.lock().unwrap().push(json!(name));
+                    o.lock().unwrap().push(json!(n));
+                    drop(w);
+                }));
+                tokio::task::yield_now().await;
+            }
+            push(&obs, json!("chain"));
+            drop(chain);
+            for t in tasks {
+                t.await.unwrap();
+            }
+        }
+        "wait-later-unblocked" => {
+            let a = register_active_turn(c);
+            let w = register_active_turn(c);
+            let (o, cc) = (Arc::clone(&obs), chat.clone());
+            let task = tokio::spawn(async move {
+                let n = wait_for_earlier_turns(&cc, Some(&w.handle())).await;
+                o.lock().unwrap().push(json!("W proceeds"));
+                o.lock().unwrap().push(json!(n));
+                drop(w);
+            });
+            tokio::task::yield_now().await;
+            let later = register_active_turn(c);
+            push(&obs, json!("L runs"));
+            push(&obs, json!(has_active_turn(c)));
+            drop(later);
+            push(&obs, json!("L finished"));
+            push(&obs, json!("A done"));
+            drop(a);
+            task.await.unwrap();
+        }
+        "wait-middle-ignores-later" => {
+            let a = register_active_turn(c);
+            let b = register_active_turn(c);
+            let later = register_active_turn(c);
+            let (o, cc) = (Arc::clone(&obs), chat.clone());
+            let task = tokio::spawn(async move {
+                let n = wait_for_earlier_turns(&cc, Some(&b.handle())).await;
+                o.lock().unwrap().push(json!("B proceeds"));
+                o.lock().unwrap().push(json!(n));
+                drop(b);
+            });
+            tokio::task::yield_now().await;
+            drop(a);
+            task.await.unwrap();
+            push(&obs, json!("C still open"));
+            push(&obs, json!(has_active_turn(c)));
+            drop(later);
+        }
+        other => panic!("no Rust replay for wait scenario {other}"),
+    }
+    let got = obs.lock().unwrap().clone();
+    (got, chat)
 }
 
 fn ctx() -> StallWatchdogContext<'static> {
@@ -438,6 +572,39 @@ fn turn_control_equivalence() {
                     ));
                 }
             }
+            OracleRow::Wait { id, obs, logs } => {
+                *counts.entry("wait").or_default() += 1;
+                let bounded = rt.block_on(global_capture::capture_async(async {
+                    tokio::time::timeout(Duration::from_secs(10), wait_scenario(&id)).await
+                }));
+                let (Ok((got, chat)), lines) = bounded else {
+                    failures.push(format!("wait {id}: timed out (a deadlock)"));
+                    continue;
+                };
+                if got != obs {
+                    failures.push(format!("wait {id}: obs v5 {got:?} != v4 {obs:?}"));
+                }
+                let want: Vec<String> = logs.iter().map(v4_line).collect();
+                let have = v5_lines(&lines, "[TurnControl]", Some(&chat));
+                if want != have {
+                    failures.push(format!("wait {id}: logs\n  v5 {have:#?}\n  v4 {want:#?}"));
+                }
+            }
+            OracleRow::Whisper {
+                id,
+                continue_mode,
+                target_participant_ids,
+                out,
+            } => {
+                *counts.entry("whisper").or_default() += 1;
+                let got = is_operator_whisper_send(
+                    continue_mode == Some(true),
+                    target_participant_ids.as_deref(),
+                );
+                if got != out {
+                    failures.push(format!("whisper {id}: v5 {got} != v4 {out}"));
+                }
+            }
             OracleRow::Watchdog { id, seen, logs } => {
                 *counts.entry("watchdog").or_default() += 1;
                 let (got, lines) =
@@ -466,6 +633,8 @@ fn turn_control_equivalence() {
     );
     assert_eq!(counts.get("sentinelLine"), Some(&40), "{counts:?}");
     assert_eq!(counts.get("note"), Some(&4), "{counts:?}");
+    assert_eq!(counts.get("wait"), Some(&6), "{counts:?}");
+    assert_eq!(counts.get("whisper"), Some(&15), "{counts:?}");
     assert!(
         failures.is_empty(),
         "{} divergence(s):\n{}",

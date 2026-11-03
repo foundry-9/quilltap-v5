@@ -42,19 +42,16 @@
 //!   [`crate::tools::rng`] executor run inline, writing a TOOL message per
 //!   detected pattern and appending it to the context (the byte source injected
 //!   via [`OrchestratorDeps::rng_bytes`]).
-//! * **Pending tool results / carina markup on the user message**: gated on
-//!   `!continueMode && content`. The corpus keeps the user content free of carina
-//!   markup and passes no pending tool results, so each detector returns "none"
-//!   and writes nothing (the [`OrchestratorSeams`] `user_message_carina` method).
-//!   ⚠ This seam has TWO call sites in v4, both deferred: the MAIN send path
-//!   (here) AND the Bug-50 fair-rotation pause path
-//!   ([`maybe_pause_for_user_seat_turn`], which in v4 fires the same
-//!   `runCarinaMarkupQuery` after persisting the paused user message). The pause
-//!   path omits it for the same reason and its corpus cases use non-`@Name`
-//!   content — wiring it on only one path would be an asymmetric divergence.
-//!   P4.165: once wired, this path inherits the operator's stop for free —
-//!   pass the send's `turn_control` handle into `CarinaQueryDeps.turn_control`,
-//!   the ONE source `answer_as_brahma` reads.
+//! * **The operator's post** (P4.D348, v4 `a8214b253` bug 262): staged tool
+//!   results, auto-rolled dice, the USER row, its attachment links, the
+//!   Librarian's upload note, Pascal's trigger phrases and the inline
+//!   `@Name:` / `@Name?` Carina markup pass are recorded by ONE recorder,
+//!   [`super::operator_post::record_operator_post`], on BOTH the main send
+//!   path and the fair-rotation pause ([`maybe_pause_for_user_seat_turn`]).
+//!   The Carina pass is WIRED on both (R-1 — never one-sided) over the turn's
+//!   own `carina_query` / `prospero` seams; it inherits the operator's stop
+//!   because the host passes the send's handle into
+//!   `CarinaQueryDeps.turn_control`, the ONE source `answer_as_brahma` reads.
 //! * **Agent mode** (W4.4, real): the cascade resolver runs on the spine
 //!   (`resolve_agent_mode_setting` over chat / project / character / global
 //!   settings). The corpus's `agent_mode_on` chat opts in at the Chat level, so
@@ -114,12 +111,11 @@ use crate::db::{chats_messages_read, chats_read, connection_profiles, DbError};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
 use crate::model::stream::{StreamMessage, StreamParams, StreamingCompletionProvider};
-use crate::rng_patterns::detect_and_convert_rng_patterns;
 use crate::services::build_context::{self, BuildContextInput, BuildContextSeams, BuiltContext};
 use crate::services::carina_runner::{PostProsperoCarinaError, RunCarinaQuery};
 use crate::services::chat_events::{
-    ChainCompletePayload, ChatEvent, DonePayload, EventSink, StatusPayload, TurnCompletePayload,
-    TurnStartPayload,
+    ChainCompletePayload, ChatEvent, EventSink, StatusPayload, TurnCompletePayload,
+    TurnDonePayload, TurnStartPayload,
 };
 use crate::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use crate::services::dangerous_content::chat_override::{
@@ -168,39 +164,9 @@ use crate::services::turn_orchestrator::{
 use crate::tools::ask_carina::ErasedAskCarina;
 use crate::tools::executor::BuiltInToolRunner;
 use crate::tools::pseudo_tool_support::{ResolvedToolMode, ToolMode};
-use crate::tools::rng::{
-    execute_rng_tool, format_rng_results, RandomBytes, RngToolContext, RngType,
-};
+use crate::tools::rng::RandomBytes;
 use crate::tools::self_inventory::{ClientShell, SelfInventoryEnv};
 use crate::weighted_random::DrawSource;
-
-/// The TOOL-message `content` JSON for an auto-detected RNG execution (v4's
-/// `JSON.stringify({ tool, initiatedBy, success, result, prompt, arguments })`).
-/// A typed struct in v4's field order so the stored bytes are byte-identical.
-#[derive(serde::Serialize)]
-struct RngToolMessageContent<'a> {
-    tool: &'static str,
-    #[serde(rename = "initiatedBy")]
-    initiated_by: &'static str,
-    success: bool,
-    result: &'a str,
-    prompt: &'a str,
-    arguments: RngArguments,
-}
-
-/// The `arguments` object of an RNG TOOL message (v4
-/// `{ type, rolls, modifier: pattern.modifier ?? 0 }`).
-///
-/// `modifier` is NOT optional here, unlike on the `RngToolCall` it comes from:
-/// v4's `?? 0` runs at this site, so a coin-flip pattern — which carries no
-/// modifier at all — still persists `modifier: 0` in its TOOL row.
-#[derive(serde::Serialize)]
-struct RngArguments {
-    #[serde(rename = "type")]
-    type_: RngType,
-    rolls: u32,
-    modifier: i64,
-}
 
 /// The `self_inventory` host environment the tool runner carries. In production
 /// this is populated by the host (Quilltap version, runtime mode, client shell,
@@ -712,6 +678,9 @@ pub(crate) struct TurnToolContextArgs<'a> {
     /// off the send path (an out-of-prompt tool invocation), which is what yields
     /// `self_inventory`'s `Unavailable` arm.
     pub loaded_memories: Option<&'a LoadedMemoriesContext>,
+    /// The send's turn-control handle (P4.D348 `TurnStopReach`) — copied onto
+    /// the context so a tool reaches the operator's Stop.
+    pub turn_control: Option<&'a crate::services::turn_control::TurnControlHandle>,
 }
 
 /// Convert the built context's debug memory bags into the [`LoadedMemoriesContext`]
@@ -784,7 +753,7 @@ fn loaded_memories_from_debug(
 /// at `_image_profile_id`): `browser_user_agent` — v5's request path carries no
 /// User-Agent at all.
 pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionContext {
-    create_tool_context(
+    let mut ctx = create_tool_context(
         args.chat_id,
         args.user_id,
         args.character_id,
@@ -794,94 +763,94 @@ pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionC
         args.project_id.map(String::from),
         None,
         args.loaded_memories.cloned(),
-    )
-}
-
-/// Close out a user turn that a paused chat held (v4 `finishHeldUserTurn`,
-/// `orchestrator.service.ts:1830–1874`).
-///
-/// The message and its side effects are already persisted by the time this is
-/// called; all that remains is to leave the floor empty and tell the Salon why
-/// the room said nothing. The `paused` chain-complete is the same event a
-/// mid-chain pause emits, so the client reconciles its pause flag through the one
-/// path it already has (bug 123) — it just arrives at depth 0, before any
-/// character has spoken.
-async fn finish_held_user_turn<SNK>(
-    db: &Db,
-    sink: &SNK,
-    chat_id: &str,
-    is_multi_character: bool,
-    user_message_id: Option<String>,
-    user_participant_id: Option<String>,
-) -> Result<ProcessMessageResult, DbError>
-where
-    SNK: EventSink + Sync,
-{
-    // Nobody is on deck: the rotation resumes from wherever the user left it, and
-    // a stale pending seat would have the Salon announce a turn that isn't coming.
-    turn_orchestrator::write_last_turn_participant_id(db, chat_id, None).await?;
-
-    sink.emit(ChatEvent::chain_complete(ChainCompletePayload {
-        reason: "paused".to_string(),
-        next_speaker_id: None,
-        chain_depth: 0,
-        paused: Some(true),
-        // The ONE site in the whole crate that sets this key
-        // (`only_one_site_sets_held_user_turn` in `chat_events.rs` is the census).
-        held_user_turn: Some(true),
-    }));
-
-    Ok(ProcessMessageResult {
-        is_multi_character,
-        // No character took the floor, so the turn chain stops before it starts and
-        // neither scene tracking nor the Scriptorium render fires for this message.
-        has_content: false,
-        // v4's field is `string | null`; v5's is a bare `String`, so an absent id
-        // reads as `""` — the same mapping the courier and fair-rotation returns
-        // already use. A held send always has content or attachments in practice.
-        message_id: user_message_id.unwrap_or_default(),
-        user_participant_id,
-        is_paused: true,
-        scene_tracking_character_ids: None,
-        skipped: false,
-        skipped_participant_id: None,
-        yielded: false,
-    })
+    );
+    // P4.D348 `TurnStopReach`: set after `create_tool_context` returns, so its
+    // positional signature stays unchanged for its other callers.
+    ctx.turn_control = args.turn_control.cloned();
+    ctx
 }
 
 /// Fair-rotation pause for rooms where the human drives two or more seats (v4
-/// `maybePauseForUserSeatTurn`, orchestrator.service.ts:1703–1853, Bug 50).
+/// `maybePauseForUserSeatTurn`, `turn-holds.service.ts`, Bug 50).
 ///
 /// Called on a fresh, non-whisper user send before any responder is resolved.
 /// Returns `Some(terminal ProcessMessageResult)` — so the caller returns
 /// immediately and the turn chain does not run — when the rotation's next speaker
-/// after this post is ANOTHER seat the human drives: it persists the user's
-/// message and pauses for that seat. Returns `None` in every other case (single
-/// user seat, or an LLM is genuinely up next), letting the normal generation path
-/// proceed untouched.
+/// after this post is ANOTHER seat the human drives: it records the post and
+/// pauses for that seat. Returns `None` in every other case (single user seat,
+/// or an LLM is genuinely up next), letting the normal generation path proceed
+/// untouched.
 ///
-/// ⚠ **Carina markup side effect deferred (loud seam).** v4's pause path also
-/// fires the inline `@Name` / `@Name?` markup query (`runCarinaMarkupQuery`) as a
-/// side effect, mirroring the MAIN path. v5's `process_message` has NEVER wired
-/// the user-message markup pass — it is the standing [`OrchestratorSeams`]
-/// `user_message_carina` deferral (see the seam note atop this module). Wiring it
-/// only on the pause path would be an asymmetric divergence from the still-unwired
-/// main path, so this port omits it too; the corpus's pause cases use non-`@Name`
-/// content so the missing side effect cannot silently diverge a differential case.
-#[allow(clippy::too_many_arguments)]
-async fn maybe_pause_for_user_seat_turn<SNK>(
-    db: &Db,
-    sink: &SNK,
+/// The post is recorded through the SAME recorder the main path uses
+/// ([`super::operator_post::record_operator_post`], v4 `a8214b253` bug 262) —
+/// staged tool results, dice, the Librarian's upload note, Pascal's triggers
+/// and the Carina markup pass included — so a paused post is never a thinner
+/// copy. Nobody answers it this turn, so nothing is spliced into a context
+/// (the recorder's context is a discarded `Vec`), and its status lines name no
+/// character. The chat settings are read here (a NEW read on this path, as
+/// v4's `repos.chatSettings.findByUserId`).
+#[allow(
+    clippy::too_many_arguments,
+    clippy::too_many_lines,
+    clippy::type_complexity
+)]
+async fn maybe_pause_for_user_seat_turn<
+    EMB,
+    CMP,
+    STR,
+    SNK,
+    BCS,
+    ORC,
+    RTR,
+    CONF,
+    ACOMP,
+    COST,
+    CARQ,
+    PROS,
+    PF,
+>(
+    deps: &mut OrchestratorDeps<
+        '_,
+        EMB,
+        CMP,
+        STR,
+        SNK,
+        BCS,
+        ORC,
+        RTR,
+        CONF,
+        ACOMP,
+        COST,
+        CARQ,
+        PROS,
+        PF,
+    >,
     chat_id: &str,
+    user_id: &str,
     chat: &Value,
     options: &SendMessageOptions,
     speaking_as: Option<&str>,
     now_ms: i64,
     draws: &crate::weighted_random::DrawSource,
+    ledger: &std::cell::Cell<SubmissionLedger>,
 ) -> Result<Option<ProcessMessageResult>, DbError>
 where
+    EMB: EmbeddingProvider,
+    CMP: CompletionProvider + Sync,
+    STR: StreamingCompletionProvider,
     SNK: EventSink + Sync,
+    BCS: BuildContextSeams,
+    ORC: OrchestratorSeams,
+    RTR: DangerousContentRouter,
+    CONF: AnswerConfirmationRunner,
+    ACOMP: AsyncCompressionTrigger,
+    COST: CostTracker,
+    CARQ: RunCarinaQuery,
+    PROS: PostProsperoCarinaError,
+    PF: PricingFetch + Send + Sync,
 {
+    let db = deps.db;
+    let sink = deps.sink;
     use super::participant_resolver::{
         is_active_character, participants_of, to_filter_participant, to_speaker_participant,
     };
@@ -975,41 +944,51 @@ where
         .unwrap_or_default()
         .to_string();
 
-    // The floor after this post belongs to another seat the human drives. Persist
-    // the message (which advances the persisted cycle via add_message) and pause.
-    let user_message_id = uuid::Uuid::new_v4().to_string();
-    let now = crate::clock::iso_from_unix_ms(now_ms);
-    let mut msg = serde_json::Map::new();
-    msg.insert("id".into(), json!(user_message_id));
-    msg.insert("type".into(), json!("message"));
-    msg.insert("role".into(), json!("USER"));
-    msg.insert("content".into(), json!(options.content));
-    msg.insert("createdAt".into(), json!(now));
-    msg.insert("attachments".into(), json!(options.file_ids));
-    msg.insert("participantId".into(), json!(poster_id));
-    msg.insert("targetParticipantIds".into(), Value::Null);
-    let write_chat_id = chat_id.to_string();
-    let event: crate::db::chats_messages::ChatEventInput =
-        serde_json::from_value(Value::Object(msg))
-            .map_err(|e| DbError::Internal(format!("paused user message marshal: {e}")))?;
-    db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
-        .await?;
-
-    // Link file attachments (warn-on-fail, like v4; corpus keeps this empty).
-    for fid in &options.file_ids {
-        let fid = fid.clone();
-        let mid = user_message_id.clone();
-        if let Err(error) = db
-            .write(move |w| w.main().files().add_link(&fid, &mid).map(|_| ()))
-            .await
-        {
-            tracing::warn!(
-                chat_id = %chat_id,
-                error = %format!("{error:?}"),
-                "[TurnFairness] Failed to link attachment on paused user turn",
-            );
-        }
-    }
+    // The floor after this post belongs to another seat the human drives. Record
+    // the post in full (the persist advances the cycle via add_message) — nobody
+    // answers it this turn, so nothing is spliced into a context.
+    let chat_settings = deps.orchestrator_seams.chat_settings(user_id);
+    let attached_files =
+        super::operator_post::find_attached_files(db, chat_id, &options.file_ids).await?;
+    let poster_participant = participants
+        .iter()
+        .find(|p| p.get("id").and_then(Value::as_str) == Some(poster_id.as_str()));
+    let mut discarded_context: Vec<Value> = Vec::new();
+    // Boxed: the recorder (Carina pass included) nested inline overflows the
+    // compiler's layout-depth limit for the whole turn's future (P4.D348; the
+    // `CoreEngine::dispatch` precedent).
+    let recorded = Box::pin(super::operator_post::record_operator_post(
+        db,
+        super::operator_post::OperatorPostParams {
+            chat_id,
+            user_id,
+            project_id: chat.get("projectId").and_then(Value::as_str),
+            chat_settings: chat_settings.as_ref(),
+            content: &options.content,
+            file_ids: &options.file_ids,
+            attached_files: &attached_files,
+            pending_tool_results: &options.pending_tool_results,
+            target_participant_ids: None,
+            poster: super::operator_post::Poster {
+                participant: poster_participant,
+                participant_id: Some(&poster_id),
+            },
+            context: &mut discarded_context,
+            ledger,
+            sink,
+            now_ms,
+            rng_bytes: &mut *deps.rng_bytes,
+            consult: deps.consult.as_deref(),
+            carina: Some(super::operator_post::OperatorPostCarina {
+                query: &mut *deps.carina_query,
+                prospero: &mut *deps.prospero,
+            }),
+            status_character: None,
+            turn_control: deps.turn_control.as_ref(),
+        },
+    ))
+    .await?;
+    let user_message_id = recorded.user_message_id.unwrap_or_default();
 
     // Persist the pending turn and tell the client whose floor it is (the client's
     // own recompute lands on the same seat; the frame settles its streaming state).
@@ -1035,6 +1014,7 @@ where
         skipped: false,
         skipped_participant_id: None,
         yielded: false,
+        storyteller_hold: None,
     }))
 }
 
@@ -1183,22 +1163,19 @@ where
     // The predicate is consulted ONCE, here, off the FRESH chat row read above —
     // never the caller's copy and never re-evaluated at the seam, so a row that
     // changes underneath the turn cannot make the spine hold half a message.
-    // `paused_hold_equivalence` pins the predicate; the five references below
-    // (the log branch, three `!hold` conjuncts, the seam) are to this local.
-    let hold_for_paused_chat = crate::services::paused_hold::should_hold_user_turn_for_pause(
-        crate::services::paused_hold::PausedHoldInput {
-            is_continue_mode,
-            chat_is_paused: chat.get("isPaused").and_then(Value::as_bool) == Some(true),
-            never_pause_for_user: Some(input.options.never_pause_for_user),
-        },
-    );
-    if hold_for_paused_chat {
+    // `paused_hold_equivalence` pins the paused predicate and
+    // `turn_holds_equivalence` the whole resolve; every later reference reads
+    // this local (P4.D348: v4 `a8214b253`'s `resolveTurnHold`, which adds the
+    // storyteller arm).
+    let hold = super::turn_holds::resolve_turn_hold(&chat, &input.options);
+    if let Some(h) = hold {
         tracing::info!(
-            chat_id = %chat_id,
-            user_id = %user_id,
-            has_content = !input.options.content.is_empty(),
-            attachment_count = input.options.file_ids.len(),
-            "[Orchestrator] Chat paused — recording the user message without a reply",
+            chatId = %chat_id,
+            userId = %user_id,
+            hold = h.as_str(),
+            hasContent = !input.options.content.is_empty(),
+            attachmentCount = input.options.file_ids.len(),
+            "[Orchestrator] Recording the operator post without a reply",
         );
     }
 
@@ -1231,55 +1208,25 @@ where
     // theirs: persist the message and pause for that seat. A whisper, a nudge, an
     // explicit responding participant, or a continue-mode turn all bypass this
     // (they name their own speaker), as does any single-user-seat room.
-    let multi_character_for_guard = {
-        let filter_parts: Vec<crate::participant_filters::ParticipantView> =
-            super::participant_resolver::participants_of(&chat)
-                .iter()
-                .map(super::participant_resolver::to_filter_participant)
-                .collect();
-        crate::participant_filters::is_multi_character_chat(&filter_parts)
-    };
-    if !is_continue_mode
-        // A paused chat already holds every user post below — and holds it more
-        // completely (staged tool results, auto-detected rolls, danger flags). The
-        // fairness guard would persist a thinner copy of the same message first.
-        && !hold_for_paused_chat
-        && input.options.responding_participant_id.is_none()
-        && input
-            .options
-            .target_participant_ids
-            .as_ref()
-            .is_none_or(|t| t.is_empty())
-        && input.options.nudge != Some(true)
-        && !input.options.content.is_empty()
-        && multi_character_for_guard
-    {
+    if super::turn_holds::qualifies_for_fair_rotation_check(
+        &super::participant_resolver::participants_of(&chat),
+        &input.options,
+        hold,
+    ) {
         if let Some(pause_result) = maybe_pause_for_user_seat_turn(
-            db,
-            sink,
+            deps,
             &chat_id,
+            &user_id,
             &chat,
             &input.options,
             speaking_as.as_deref(),
             input.clock.now_ms,
             &input.clock.random01,
+            ledger,
         )
         .await?
         {
-            // === P4.D301: the submission ledger ===
-            // The fairness pause returns only after it has saved the user's
-            // message (v4 `:376-381` — flipped here, at the caller, as v4 does:
-            // a failure inside the pause after its write leaves the ledger
-            // unflipped, v4's own semantics).
-            ledger.set(SubmissionLedger {
-                user_message_persisted: true,
-                ..ledger.get()
-            });
-            tracing::debug!(
-                chatId = %chat_id,
-                "[Orchestrator] User message persisted (fair-rotation pause)",
-            );
-            // === end P4.D301 ===
+            // The recorder flipped the ledger as the post landed (v4 `:95`).
             return Ok(pause_result);
         }
     }
@@ -1378,8 +1325,12 @@ where
         let raw_api_key = resolution.api_key.clone().unwrap_or_default();
         let mut api_key = String::new();
         if !is_courier_transport {
+            // A held post is recorded even when the responder's profile has lost
+            // its key (P4.D348, v4 `resolveTurnApiKey`'s `held` — bug 262): it
+            // calls no provider.
             if super::api_key_service::provider_requires_api_key(&provider)
                 && raw_api_key.is_empty()
+                && hold.is_none()
             {
                 return Err(DbError::Internal(
                     "No API key configured for this connection profile".into(),
@@ -1489,7 +1440,7 @@ where
         .get("requestFullContextOnNextMessage")
         .and_then(Value::as_bool)
         == Some(true)
-        && !hold_for_paused_chat;
+        && hold.is_none();
     // The cheap-LLM selection (compression / danger / recall) is resolved above
     // the seam and threaded via the settings' `cheap_llm_settings_present` flag;
     // the corpus keeps a selection present whenever settings are present.
@@ -1758,7 +1709,7 @@ where
     // binding: a user-controlled seat or a held turn short-circuits BEFORE the
     // take, so the hand stays up for the next LLM turn.
     let offer_yield = json_str(&character_participant, "controlledBy").as_deref() != Some("user")
-        && !hold_for_paused_chat
+        && hold.is_none()
         && deps
             .turn_control
             .as_ref()
@@ -1788,8 +1739,19 @@ where
     let should_inject_context = reinject_interval > 0
         && message_count > 0
         && message_count % reinject_interval == 0
-        && !hold_for_paused_chat;
+        && hold.is_none();
     if should_inject_context {
+        // === P4.D348 (v4 `a8214b253`) ===
+        // v4's `[TurnPreparation] Failed to post Prospero group-context whisper`
+        // WARN guards a throw v5's whisper writer cannot raise (it answers
+        // `Option`) — unreachable, the `image_attempt.rs` class.
+        tracing::debug!(
+            chatId = %chat_id,
+            messageCount = message_count,
+            reinjectInterval = reinject_interval,
+            "[TurnPreparation] Prospero context refresh due",
+        );
+        // === end P4.D348 ===
         use crate::services::prospero_notifications as prospero;
         // v4 loads the project + general Prospero context (best-effort), posts the
         // public context announcement (pushing it into `existing_messages` so this
@@ -1872,239 +1834,77 @@ where
         .await
     };
 
-    // --- Pending tool results → TOOL messages (orchestrator.service.ts:601–624) ---
-    // Save each user-initiated pending tool result as a TOOL message BEFORE the
-    // user message, and append to `existing_messages` so the model turn sees it.
-    // The content JSON is byte-exact in v4's field order.
-    if !is_continue_mode && !input.options.pending_tool_results.is_empty() {
-        for tr in &input.options.pending_tool_results {
-            let content_str = serde_json::to_string(&serde_json::json!({
-                "tool": tr.tool,
-                "initiatedBy": "user",
-                "success": tr.success,
-                "result": tr.result,
-                "prompt": tr.prompt,
-                "arguments": tr.arguments,
-            }))
-            .map_err(|e| DbError::Internal(format!("pending tool result marshal: {e}")))?;
-            let tool_id = uuid::Uuid::new_v4().to_string();
-            let mut msg = serde_json::Map::new();
-            msg.insert("id".into(), json!(tool_id));
-            msg.insert("type".into(), json!("message"));
-            msg.insert("role".into(), json!("TOOL"));
-            msg.insert("content".into(), json!(content_str));
-            msg.insert("createdAt".into(), json!(tr.created_at));
-            msg.insert("attachments".into(), json!([]));
-            let msg_value = Value::Object(msg);
-            let write_chat_id = chat_id.clone();
-            let event: crate::db::chats_messages::ChatEventInput =
-                serde_json::from_value(msg_value.clone())
-                    .map_err(|e| DbError::Internal(format!("pending tool message marshal: {e}")))?;
-            db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
-                .await?;
-            existing_messages.push(msg_value);
-        }
-        // === P4.D301: the submission ledger ===
-        // v4 `:750-756` — once, after the loop, inside the non-empty guard.
-        ledger.set(SubmissionLedger {
-            pending_tool_results_persisted: true,
-            ..ledger.get()
-        });
-        tracing::debug!(
-            chatId = %chat_id,
-            count = input.options.pending_tool_results.len(),
-            "[Orchestrator] Pending tool results persisted",
-        );
-        // === end P4.D301 ===
-    }
-
-    // --- RNG auto-detect on the user message (orchestrator.service.ts:587–625) ---
-    // Gated on `autoDetectRng ?? true`, `!continueMode`, and non-empty content.
-    // Each detected pattern is executed and written as a TOOL message, then
-    // appended to `existing_messages` so the model turn sees the results in
-    // context (v4 appends to `existingMessages`, which was loaded above).
-    let auto_detect_rng = chat_settings
-        .as_ref()
-        .map(|s| s.auto_detect_rng)
-        .unwrap_or(true);
-    if auto_detect_rng && !is_continue_mode && !input.options.content.is_empty() {
-        let rng_calls = detect_and_convert_rng_patterns(&input.options.content);
-        for call in &rng_calls {
-            let rng_ctx = RngToolContext {
-                user_id: user_id.clone(),
-                chat_id: chat_id.clone(),
-            };
-            // v4 `{ type, rolls, modifier: pattern.modifier ?? 0 }` — the same
-            // shape reaches the executor AND the persisted TOOL row below.
-            let call_modifier = call.modifier.unwrap_or(0);
-            let rng_input =
-                json!({ "type": call.type_, "rolls": call.rolls, "modifier": call_modifier });
-            let output = execute_rng_tool(db, &rng_input, &rng_ctx, deps.rng_bytes)?;
-            let formatted = format_rng_results(&output);
-
-            // The TOOL message content — byte-exact JSON in v4's field order.
-            let content_str = serde_json::to_string(&RngToolMessageContent {
-                tool: "rng",
-                initiated_by: "auto-detect",
-                success: output.success,
-                result: &formatted,
-                prompt: &call.match_text,
-                arguments: RngArguments {
-                    type_: call.type_,
-                    rolls: call.rolls,
-                    modifier: call_modifier,
-                },
-            })
-            .map_err(|e| DbError::Internal(format!("rng tool content marshal: {e}")))?;
-
-            let tool_id = uuid::Uuid::new_v4().to_string();
-            let now = crate::clock::iso_from_unix_ms(input.clock.now_ms);
-            let mut msg = serde_json::Map::new();
-            msg.insert("id".into(), json!(tool_id));
-            msg.insert("type".into(), json!("message"));
-            msg.insert("role".into(), json!("TOOL"));
-            msg.insert("content".into(), json!(content_str));
-            msg.insert("createdAt".into(), json!(now));
-            msg.insert("attachments".into(), json!([]));
-            let msg_value = Value::Object(msg);
-
-            let write_chat_id = chat_id.clone();
-            let event: crate::db::chats_messages::ChatEventInput =
-                serde_json::from_value(msg_value.clone())
-                    .map_err(|e| DbError::Internal(format!("rng tool message marshal: {e}")))?;
-            db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
-                .await?;
-            // Include in context building (existing_messages was loaded above).
-            existing_messages.push(msg_value);
-        }
-    }
-
-    // --- Save the user message (orchestrator.service.ts:627–685) ---
-    let mut content = String::new();
-    let mut user_message_id: Option<String> = None;
-    if !is_continue_mode && !input.options.content.is_empty() {
-        content = input.options.content.clone();
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = crate::clock::iso_from_unix_ms(input.clock.now_ms);
-        let attachments: Vec<String> = input.options.file_ids.clone();
-        let mut msg = serde_json::Map::new();
-        msg.insert("id".into(), json!(id));
-        msg.insert("type".into(), json!("message"));
-        msg.insert("role".into(), json!("USER"));
-        msg.insert("content".into(), json!(content));
-        msg.insert("createdAt".into(), json!(now));
-        msg.insert("attachments".into(), json!(attachments));
-        if let Some(pid) = &user_participant_id {
-            msg.insert("participantId".into(), json!(pid));
-        }
-        if let Some(t) = &input.options.target_participant_ids {
-            msg.insert("targetParticipantIds".into(), json!(t));
-        }
-        let write_chat_id = chat_id.clone();
-        let msg_value = Value::Object(msg);
-        let event: crate::db::chats_messages::ChatEventInput = serde_json::from_value(msg_value)
-            .map_err(|e| DbError::Internal(format!("user message marshal: {e}")))?;
-        db.write(move |w| w.main().chat_messages().add_message(&write_chat_id, &event))
-            .await?;
-        // === P4.D301: the submission ledger ===
-        // v4 `:826-828` — right after the row lands, BEFORE the file links.
-        ledger.set(SubmissionLedger {
-            user_message_persisted: true,
-            ..ledger.get()
-        });
-        tracing::debug!(
-            chatId = %chat_id,
-            userMessageId = %id,
-            "[Orchestrator] User message persisted",
-        );
-        // === end P4.D301 ===
-
-        // Link file attachments (corpus keeps this empty).
-        for fid in &file_processing.attached_file_ids {
-            let fid = fid.clone();
-            let mid = id.clone();
-            db.write(move |w| w.main().files().add_link(&fid, &mid).map(|_| ()))
-                .await?;
-        }
-        user_message_id = Some(id);
-    }
-
-    // --- The dangerFlags attach (orchestrator.service.ts:673–685) is RETIRED ---
-    // v4's attach step stays in its source guarded on a non-empty list, but after
-    // `ce2f1dabf` (#77) only the classifier PRE-SCREEN writes flags, and v5 has
-    // no pre-screen branch (the classify is an injected seam). The synthesized
-    // Unmoderated flags were v5's ONLY writer, so the attach had no input left
-    // and is deleted rather than kept dead.
-    let _ = user_message_id;
-
-    // === P4.D305: user-message trigger site ===
-    // v4 `orchestrator.service.ts:881-892` (`362426c8f`): after the user message
-    // persists (and after the RNG auto-detect, whose TOOL rows already precede
-    // it), a phrase the operator's seat said runs its custom tool. v4's call
-    // sits ABOVE its paused-chat return, so a HELD turn still fires — this site
-    // sits above the hold for the same reason. (v4's next neighbour, the Carina
-    // user-message path, is the standing `user_message_carina` deferral — see
-    // the module note — so nothing here depends on its order.) The runner reads
-    // the ONE settings read above and the seat the resolver already returned;
-    // it adds no read of its own. Pascal's posts are spliced onto
-    // `existing_messages` so the responding model hears them, and each surfaces
-    // live on the existing `pascalResult` event. The consult seam: the turn's
-    // `deps.consult` (the host's runner — v4 builds the invoker for every
-    // entrance), so a consult-bearing trigger tool consults for real.
-    {
-        let trigger_settings =
-            chat_settings
-                .as_ref()
-                .map(|s| crate::pascal::trigger_runner::TriggerSettings {
-                    custom_tools: Some(s.custom_tools),
-                    custom_tool_triggers: Some(s.custom_tool_triggers),
-                });
-        let mut on_posted = |message: &Value| sink.emit(ChatEvent::pascal_result(message.clone()));
-        super::trigger_phrase_sites::run_user_message_triggers(
+    // ========================================================================
+    // Record — the operator's post (nothing to record in continue mode)
+    // (v4 `a8214b253` bug 262: `recordOperatorPost`)
+    // ========================================================================
+    // Staged tool results, auto-rolled dice, the USER row, its attachment links,
+    // the Librarian's upload note, Pascal's trigger phrases and the inline
+    // Carina markup pass — the ONE recorder the fair-rotation pause uses too.
+    // The links take the chat's own matched files (`file_processing` already
+    // read them — reused rather than re-read through `find_attached_files`).
+    let content = if is_continue_mode {
+        String::new()
+    } else {
+        input.options.content.clone()
+    };
+    let user_message_id: Option<String> = if is_continue_mode {
+        None
+    } else {
+        // Boxed for the layout-depth reason given at the pause path's call.
+        Box::pin(super::operator_post::record_operator_post(
             db,
-            super::trigger_phrase_sites::UserMessageTriggerParams {
-                user_id: &user_id,
+            super::operator_post::OperatorPostParams {
                 chat_id: &chat_id,
+                user_id: &user_id,
                 // `chat.projectId ?? null`.
                 project_id: chat.get("projectId").and_then(Value::as_str),
+                chat_settings: chat_settings.as_ref(),
                 content: &content,
-                is_continue_mode,
-                user_participant: resolution.user_participant.as_ref(),
-                user_participant_id: user_participant_id.as_deref(),
-                chat_settings: trigger_settings,
+                file_ids: &input.options.file_ids,
+                attached_files: &file_processing.attached_files,
+                pending_tool_results: &input.options.pending_tool_results,
+                target_participant_ids: input.options.target_participant_ids.as_deref(),
+                poster: super::operator_post::Poster {
+                    participant: resolution.user_participant.as_ref(),
+                    participant_id: user_participant_id.as_deref(),
+                },
+                context: &mut existing_messages,
+                ledger,
+                sink,
                 now_ms: input.clock.now_ms,
+                rng_bytes: &mut *deps.rng_bytes,
+                consult: deps.consult.as_deref(),
+                carina: Some(super::operator_post::OperatorPostCarina {
+                    query: &mut *deps.carina_query,
+                    prospero: &mut *deps.prospero,
+                }),
+                status_character: Some(super::operator_post::StatusCharacter {
+                    name: &character_name,
+                    id: &character_id,
+                }),
+                turn_control: deps.turn_control.as_ref(),
             },
-            deps.consult.as_deref(),
-            &mut existing_messages,
-            &mut on_posted,
-        )
-        .await;
-    }
-    // === end P4.D305 ===
+        ))
+        .await?
+        .user_message_id
+    };
 
-    // ============================================================================
-    // Paused chat — the user's turn is recorded; nobody answers it
-    // (orchestrator.service.ts:872–887)
-    // ============================================================================
-    // Everything above belongs to the message the user just wrote. Everything
-    // below belongs to a character's turn, and a paused room grants none. Stop
-    // here, before a single token is spent on tools, context or the model.
-    //
-    // ⚠ MEASURED against v4's seam placement: v4's `:869` sits after the inline
-    // Carina markup pass (`:836–870`), which v5 has NEVER wired on the
-    // user-message path — it is the standing `OrchestratorSeams`
-    // `user_message_carina` deferral (see the module note). So the side effect v4
-    // runs above its seam does not exist above or below v5's, and the seam goes
-    // where the remaining order agrees: after the danger flags are attached to the
-    // saved row, before the tool build.
-    if hold_for_paused_chat {
-        return finish_held_user_turn(
+    // Everything above belongs to the message the operator just wrote;
+    // everything below to a character's turn, which a held post grants none.
+    // Stop here, before a single token is spent on tools, context or the model.
+    if let Some(hold) = hold {
+        return super::turn_holds::finish_held_post(
             db,
             sink,
-            &chat_id,
-            is_multi_character,
-            user_message_id.clone(),
-            user_participant_id.clone(),
+            super::turn_holds::FinishHeldPostParams {
+                chat_id: &chat_id,
+                hold,
+                is_multi_character,
+                user_message_id: user_message_id.clone(),
+                user_participant_id: user_participant_id.clone(),
+                content: &content,
+            },
         )
         .await;
     }
@@ -2171,12 +1971,22 @@ where
     {
         Some(project_id) => {
             let pid = project_id.to_string();
-            db.read_mount_index(move |c| {
+            match db.read_mount_index(move |c| {
                 crate::db::project_doc_mount_links::ProjectDocMountLinksRepository::new(c)
                     .find_by_project_id(&pid)
-            })
-            .map(|links| !links.is_empty())
-            .unwrap_or(false)
+            }) {
+                Ok(links) => !links.is_empty(),
+                // === P4.D348 (v4 `a8214b253`: the catch was silent) ===
+                Err(error) => {
+                    tracing::warn!(
+                        chatId = %chat_id,
+                        projectId = %project_id,
+                        error = %error,
+                        "Failed to read project store links; doc tools withheld",
+                    );
+                    false
+                } // === end P4.D348 ===
+            }
         }
         None => false,
     };
@@ -2203,7 +2013,10 @@ where
     // overlay-free raw read — `canBeCarina` is a DB column, not a vault field —
     // to keep this per-turn probe cheap. v4 orchestrator.service.ts:795–806;
     // the cheap-probe comment is load-bearing (carry it). Error-swallowed.
-    let ask_carina_enabled = {
+    // === P4.D348 (v4 `a8214b253` `isAskCarinaOffered`): a transparent
+    // character is offered the tool WITHOUT the probe (a throwing probe used to
+    // withhold it even then). ===
+    let ask_carina_enabled = character_is_transparent || {
         let raw = db
             .read_main(crate::db::characters_read::find_all_raw)
             .unwrap_or_default();
@@ -2215,8 +2028,9 @@ where
             !crate::api::characters::is_archived(c)
                 && c.get("canBeCarina").and_then(Value::as_bool) == Some(true)
         });
-        any_can_be_carina || character_is_transparent
+        any_can_be_carina
     };
+    // === end P4.D348 ===
 
     // Build the tool slate (orchestrator.service.ts:807–834). The Courier exposes
     // NO tools and injects no tool instructions (the external LLM cannot reach
@@ -2382,6 +2196,22 @@ where
     };
     let use_text_block_tools =
         !is_effective_courier && resolved_tool_mode != ResolvedToolMode::Native;
+    // === P4.D348 (v4 `a8214b253` `resolveTurnToolSlate`) ===
+    // The Courier returns before this line in v4. `effectCeiling` is ABSENT
+    // until P4.D343's ceiling exists (R-7): v4's value is `undefined` — so the
+    // key is dropped — on every non-autonomous, non-storyteller turn.
+    if !is_effective_courier {
+        tracing::debug!(
+            target: "quilltap::turn_tools",
+            chatId = %chat_id,
+            characterId = %character_id,
+            toolCount = tools.len(),
+            resolvedToolMode = resolved_tool_mode.as_str(),
+            toolSettingsChanged = tool_settings_changed,
+            "[TurnTools] Tool slate resolved",
+        );
+    }
+    // === end P4.D348 ===
     // Under a pseudo-tool surface the native slate is suppressed (`actualTools = []`).
     let actual_tools: Vec<Value> = if use_text_block_tools {
         Vec::new()
@@ -3364,6 +3194,7 @@ where
             skipped: false,
             skipped_participant_id: None,
             yielded: false,
+            storyteller_hold: None,
         });
     }
 
@@ -3445,6 +3276,8 @@ where
         built_context.debug_inter_character_memories.as_deref(),
         built_context.debug_memory_recap.as_deref(),
     );
+    // P4.D348 `TurnStopReach`: both loops' contexts carry the send's handle.
+    let turn_control_handle = deps.turn_control.clone();
     let mut loop_tool_context = turn_tool_context(TurnToolContextArgs {
         chat_id: &chat_id,
         user_id: &user_id,
@@ -3453,6 +3286,7 @@ where
         image_profile_id: _image_profile_id.as_deref(),
         project_id: json_str(&chat, "projectId").as_deref(),
         loaded_memories: Some(&turn_loaded_memories),
+        turn_control: turn_control_handle.as_ref(),
     });
     loop_tool_context.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
     loop_tool_context.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
@@ -3521,6 +3355,7 @@ where
             image_profile_id: _image_profile_id.as_deref(),
             project_id: json_str(&chat, "projectId").as_deref(),
             loaded_memories: Some(&turn_loaded_memories),
+            turn_control: turn_control_handle.as_ref(),
         });
         c.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
         c.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
@@ -3769,6 +3604,7 @@ where
             );
             // … while the gate is `.trim().length === 0` (T5).
             if crate::jsstr::js_trim(cleaned).is_empty() && tool_messages.is_empty() {
+                log_turn_settled(&chat_id, &character_id, &character_participant_id, "bare-yield", true);
                 return handle_turn_yield(
                     db,
                     sink,
@@ -3827,6 +3663,7 @@ where
                 streaming_state.full_response = String::new();
             }
             SentinelAction::HandleSkip => {
+                log_turn_settled(&chat_id, &character_id, &character_participant_id, "pass", false);
                 return handle_turn_skip(
                     db,
                     sink,
@@ -3855,6 +3692,24 @@ where
 
     // --- Terminal branches (orchestrator.service.ts:1408–1515) ---
     let has_response = !crate::jsstr::js_trim(&streaming_state.full_response).is_empty();
+
+    // P4.D348 (v4 `a8214b253` `logOutcome`): the one line every close logs.
+    let settled_kind = if has_response {
+        "reply"
+    } else if !tool_messages.is_empty() {
+        "tools-only"
+    } else if turn_stopped {
+        "stopped"
+    } else {
+        "empty"
+    };
+    log_turn_settled(
+        &chat_id,
+        &character_id,
+        &character_participant_id,
+        settled_kind,
+        yielded_floor,
+    );
 
     if has_response {
         // Finalize the successful response.
@@ -3973,6 +3828,7 @@ where
                 draws: input.clock.random01.clone(),
                 consult: deps.consult.clone(),
                 turn_stopped,
+                turn_control: deps.turn_control.clone(),
             },
             deps.confirmation,
             deps.compression,
@@ -4067,9 +3923,9 @@ where
         )
         .await?;
 
-        sink.emit(ChatEvent::done(DonePayload {
+        sink.emit(ChatEvent::turn_done(TurnDonePayload {
             message_id: save_result.first_tool_message_id.clone(),
-            participant_id: Some(character_participant_id.clone()),
+            participant_id: character_participant_id.clone(),
             usage: streaming_state.usage.map(to_done_usage),
             cache_usage: streaming_state.cache_usage.map(to_done_cache_usage),
             attachment_results: Some(
@@ -4079,8 +3935,8 @@ where
                     .unwrap_or(Value::Null),
             ),
             tools_executed: true,
-            provider: Some(effective_profile.provider.clone()),
-            model_name: Some(effective_profile.model_name.clone()),
+            provider: effective_profile.provider.clone(),
+            model_name: effective_profile.model_name.clone(),
             ..Default::default()
         }));
 
@@ -4094,6 +3950,7 @@ where
             skipped: false,
             skipped_participant_id: None,
             yielded: false,
+            storyteller_hold: None,
         };
         Ok(finish_yielded_turn(
             db,
@@ -4111,9 +3968,9 @@ where
         // Stopped before a word streamed and before any tool ran: nothing to
         // keep, and nothing to apologise for — it is what the operator asked.
         // No `Empty response` WARN, no recovery, no retry.
-        sink.emit(ChatEvent::done(DonePayload {
+        sink.emit(ChatEvent::turn_done(TurnDonePayload {
             message_id: None,
-            participant_id: Some(character_participant_id.clone()),
+            participant_id: character_participant_id.clone(),
             usage: streaming_state.usage.map(to_done_usage),
             cache_usage: streaming_state.cache_usage.map(to_done_cache_usage),
             attachment_results: Some(
@@ -4124,8 +3981,8 @@ where
             ),
             tools_executed: false,
             stopped: Some(true),
-            provider: Some(effective_profile.provider.clone()),
-            model_name: Some(effective_profile.model_name.clone()),
+            provider: effective_profile.provider.clone(),
+            model_name: effective_profile.model_name.clone(),
             ..Default::default()
         }));
         Ok(ProcessMessageResult {
@@ -4138,6 +3995,7 @@ where
             skipped: false,
             skipped_participant_id: None,
             yielded: false,
+            storyteller_hold: None,
         })
         // === end P4.D335 ===
     } else {
@@ -4188,9 +4046,9 @@ where
             model = %effective_profile.model_name,
             "Empty response"
         );
-        sink.emit(ChatEvent::done(DonePayload {
+        sink.emit(ChatEvent::turn_done(TurnDonePayload {
             message_id: None,
-            participant_id: Some(character_participant_id.clone()),
+            participant_id: character_participant_id.clone(),
             usage: streaming_state.usage.map(to_done_usage),
             cache_usage: streaming_state.cache_usage.map(to_done_cache_usage),
             attachment_results: Some(
@@ -4202,8 +4060,8 @@ where
             tools_executed: false,
             empty_response: Some(true),
             empty_response_reason: Some(empty_reason),
-            provider: Some(effective_profile.provider.clone()),
-            model_name: Some(effective_profile.model_name.clone()),
+            provider: effective_profile.provider.clone(),
+            model_name: effective_profile.model_name.clone(),
             ..Default::default()
         }));
         Ok(ProcessMessageResult {
@@ -4216,6 +4074,7 @@ where
             skipped: false,
             skipped_participant_id: None,
             yielded: false,
+            storyteller_hold: None,
         })
     }
     // === P4.D328: the Inventory drain AFTER the saved turn (v4 finally, 102a23648) ===
@@ -4228,6 +4087,27 @@ where
     .await;
     turn_outcome
     // === end P4.D328 ===
+}
+
+/// v4 `logOutcome`'s closing DEBUG (`turn-outcome.service.ts`, `a8214b253`):
+/// once per turn close, with the close's `kind` (`bare-yield` / `pass` /
+/// `reply` / `tools-only` / `stopped` / `empty`).
+fn log_turn_settled(
+    chat_id: &str,
+    character_id: &str,
+    participant_id: &str,
+    kind: &str,
+    yielded: bool,
+) {
+    tracing::debug!(
+        target: "quilltap::turn_outcome",
+        chatId = %chat_id,
+        characterId = %character_id,
+        participantId = %participant_id,
+        kind = kind,
+        yielded = yielded,
+        "[TurnOutcome] Turn settled",
+    );
 }
 
 /// What the sentinel handling does with the streamed response (the decision half
@@ -4379,17 +4259,17 @@ async fn handle_turn_skip(
     if let Some(posted) = &host_message {
         sink.emit(ChatEvent::host_announcement(posted.message.clone()));
     }
-    sink.emit(ChatEvent::done(DonePayload {
+    sink.emit(ChatEvent::turn_done(TurnDonePayload {
         message_id: None,
-        participant_id: Some(params.character_participant_id.to_string()),
+        participant_id: params.character_participant_id.to_string(),
         usage: params.usage.map(to_done_usage),
         cache_usage: params.cache_usage.map(to_done_cache_usage),
         attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
         tools_executed: false,
         skipped: Some(true),
         skipped_participant_id: Some(params.character_participant_id.to_string()),
-        provider: Some(params.provider),
-        model_name: Some(params.model_name),
+        provider: params.provider,
+        model_name: params.model_name,
         ..Default::default()
     }));
 
@@ -4403,6 +4283,7 @@ async fn handle_turn_skip(
         skipped: true,
         skipped_participant_id: Some(params.character_participant_id.to_string()),
         yielded: false,
+        storyteller_hold: None,
     })
 }
 
@@ -4484,6 +4365,7 @@ async fn finish_yielded_turn(
     .await;
     ProcessMessageResult {
         yielded: true,
+        storyteller_hold: None,
         ..result
     }
 }
@@ -4523,9 +4405,9 @@ async fn handle_turn_yield(
     )
     .await;
 
-    sink.emit(ChatEvent::done(DonePayload {
+    sink.emit(ChatEvent::turn_done(TurnDonePayload {
         message_id: None,
-        participant_id: Some(params.character_participant_id.to_string()),
+        participant_id: params.character_participant_id.to_string(),
         usage: params.usage.map(to_done_usage),
         cache_usage: params.cache_usage.map(to_done_cache_usage),
         attachment_results: Some(params.attachment_results.unwrap_or(Value::Null)),
@@ -4533,8 +4415,8 @@ async fn handle_turn_yield(
         skipped: Some(true),
         skipped_participant_id: Some(params.character_participant_id.to_string()),
         yielded: Some(true),
-        provider: Some(params.provider),
-        model_name: Some(params.model_name),
+        provider: params.provider,
+        model_name: params.model_name,
         ..Default::default()
     }));
 
@@ -4556,6 +4438,7 @@ async fn handle_turn_yield(
         skipped: false,
         skipped_participant_id: None,
         yielded: true,
+        storyteller_hold: None,
     })
 }
 
@@ -5933,6 +5816,7 @@ mod tests {
                             skipped: false,
                             skipped_participant_id: None,
                             yielded: false,
+                            storyteller_hold: None,
                         },
                         initial_continue_mode: false,
                         never_pause_for_user: false,
@@ -6093,6 +5977,7 @@ mod tests {
             image_profile_id,
             project_id,
             loaded_memories: None,
+            turn_control: None,
         }
     }
 
@@ -6142,6 +6027,24 @@ mod tests {
         assert_eq!(native.image_profile_id, text.image_profile_id);
         assert_eq!(native.chat_id, text.chat_id);
         assert_eq!(native.calling_participant_id, text.calling_participant_id);
+    }
+
+    /// P4.D348 `TurnStopReach`: a `Some` handle is copied onto the context (the
+    /// SAME stream — `TurnControlHandle: PartialEq` compares identity); `None`
+    /// stays `None`.
+    #[test]
+    fn turn_tool_context_copies_the_turn_control_handle() {
+        let reg = crate::services::turn_control::register_active_turn(&format!(
+            "turn-tool-context-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let handle = reg.handle();
+        let ctx = turn_tool_context(TurnToolContextArgs {
+            turn_control: Some(&handle),
+            ..ctx_args(None, None)
+        });
+        assert_eq!(ctx.turn_control, Some(handle));
+        assert_eq!(turn_tool_context(ctx_args(None, None)).turn_control, None);
     }
 
     // --- finding #22 carry-out: the loadedMemories threading -------------------

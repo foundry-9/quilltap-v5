@@ -426,7 +426,7 @@ fn five_key_frame(details: &str, user: bool, tools: bool) -> String {
 }
 
 /// The ERROR line's two flags (R-L4: P4.18's text, v4's two fields after
-/// `chat_id`) and v4's `[Orchestrator] Emitting error frame` DEBUG, in v4's
+/// `chat_id`) and v4's `[TurnStream] Emitting error frame` DEBUG, in v4's
 /// order: the ERROR first, then the DEBUG.
 fn assert_shell_lines(lines: &[String], error_text: &str, user: bool, tools: bool) {
     let error_line = only_line(lines, error_text);
@@ -440,18 +440,18 @@ fn assert_shell_lines(lines: &[String], error_text: &str, user: bool, tools: boo
         )),
         "{error_line}"
     );
-    let debug_line = only_line(lines, "[Orchestrator] Emitting error frame");
+    let debug_line = only_line(lines, "[TurnStream] Emitting error frame");
     assert!(debug_line.starts_with("DEBUG"), "{debug_line}");
     assert!(
         debug_line.ends_with(&format!(
-            "[Orchestrator] Emitting error frame chatId={CHAT_ID} errorType=Error \
+            "[TurnStream] Emitting error frame chatId={CHAT_ID} errorType=Error \
              userMessagePersisted={user} pendingToolResultsPersisted={tools}"
         )),
         "{debug_line}"
     );
     let at = |n: &str| lines.iter().position(|l| l.contains(n)).unwrap();
     assert!(
-        at(error_text) < at("[Orchestrator] Emitting error frame"),
+        at(error_text) < at("[TurnStream] Emitting error frame"),
         "v4's order"
     );
 }
@@ -482,8 +482,8 @@ async fn a_send_refused_before_any_write_says_nothing_was_saved() {
     assert_rejection(&o, refusal, false, false);
     assert_eq!(o.frame_body, five_key_frame(refusal, false, false));
     assert!(o.new_rows.is_empty(), "nothing written: {:?}", o.new_rows);
-    assert!(lines_with(&o.lines, "[Orchestrator] User message persisted").is_empty());
-    assert!(lines_with(&o.lines, "[Orchestrator] Pending tool results persisted").is_empty());
+    assert!(lines_with(&o.lines, "[OperatorPost] User message persisted").is_empty());
+    assert!(lines_with(&o.lines, "[OperatorPost] Pending tool results persisted").is_empty());
     assert_shell_lines(
         &o.lines,
         "Chat send failed while streaming the initial turn",
@@ -513,7 +513,7 @@ async fn a_stream_failure_after_the_user_row_says_the_message_was_saved() {
     assert_eq!(users.len(), 1, "{:?}", o.new_rows);
     assert_eq!(users[0].2, "Hello after the key check");
     assert!(o.new_rows.iter().all(|r| r.1 != "TOOL"), "{:?}", o.new_rows);
-    let flip = only_line(&o.lines, "[Orchestrator] User message persisted chatId=");
+    let flip = only_line(&o.lines, "[OperatorPost] User message persisted chatId=");
     assert!(flip.starts_with("DEBUG"), "{flip}");
     assert!(
         flip.contains(&format!("chatId={CHAT_ID} userMessageId=")),
@@ -521,7 +521,7 @@ async fn a_stream_failure_after_the_user_row_says_the_message_was_saved() {
     );
     let id = flip.rsplit("userMessageId=").next().unwrap().trim();
     assert_eq!(id, users[0].0, "the DEBUG names the saved row");
-    assert!(lines_with(&o.lines, "[Orchestrator] Pending tool results persisted").is_empty());
+    assert!(lines_with(&o.lines, "[OperatorPost] Pending tool results persisted").is_empty());
     assert!(lines_with(&o.lines, "(fair-rotation pause)").is_empty());
     assert_shell_lines(
         &o.lines,
@@ -565,19 +565,19 @@ async fn a_stream_failure_after_staged_tool_rows_says_both_were_saved() {
         "{:?}",
         o.new_rows
     );
-    let flip = only_line(&o.lines, "[Orchestrator] Pending tool results persisted");
+    let flip = only_line(&o.lines, "[OperatorPost] Pending tool results persisted");
     assert!(flip.starts_with("DEBUG"), "{flip}");
     assert!(
         flip.ends_with(&format!(
-            "[Orchestrator] Pending tool results persisted chatId={CHAT_ID} count=2"
+            "[OperatorPost] Pending tool results persisted chatId={CHAT_ID} count=2"
         )),
         "{flip}"
     );
     // The TOOL rows land (and flip) before the user row (v4's order).
     let at = |n: &str| o.lines.iter().position(|l| l.contains(n)).unwrap();
     assert!(
-        at("[Orchestrator] Pending tool results persisted")
-            < at("[Orchestrator] User message persisted chatId=")
+        at("[OperatorPost] Pending tool results persisted")
+            < at("[OperatorPost] User message persisted chatId=")
     );
     assert_shell_lines(
         &o.lines,
@@ -610,8 +610,8 @@ async fn a_continue_mode_failure_never_flips_the_ledger() {
         "{:?}",
         o.new_rows
     );
-    assert!(lines_with(&o.lines, "[Orchestrator] User message persisted").is_empty());
-    assert!(lines_with(&o.lines, "[Orchestrator] Pending tool results persisted").is_empty());
+    assert!(lines_with(&o.lines, "[OperatorPost] User message persisted").is_empty());
+    assert!(lines_with(&o.lines, "[OperatorPost] Pending tool results persisted").is_empty());
     assert_shell_lines(
         &o.lines,
         "Chat send failed while streaming the initial turn",
@@ -660,7 +660,7 @@ async fn the_brahma_console_failure_frame_stays_three_keys() {
         .collect();
     assert_eq!(keys, ["error", "errorType", "details"], "{}", o.frame_body);
     assert_eq!(frame["errorType"], "fatal_error");
-    assert!(lines_with(&o.lines, "[Orchestrator] Emitting error frame").is_empty());
+    assert!(lines_with(&o.lines, "[TurnStream] Emitting error frame").is_empty());
     assert!(
         lines_with(&o.lines, "Persisted=").is_empty(),
         "{:#?}",
@@ -672,13 +672,13 @@ async fn the_brahma_console_failure_frame_stays_three_keys() {
 /// room the human drives two seats of, so its two-LLM-seat room (`c89ee722`)
 /// has BOTH seats turned user-controlled: the poster is the first, and the only
 /// other seat — the next speaker, with no random draw to make — is a user seat.
-/// A plain send then hits the fairness guard: the pause saves the user's message and
-/// returns `Ok` — v4 `:376-381`'s flip + DEBUG at the CALLER. The pause cannot
+/// A plain send then hits the fairness guard: the pause records the user's
+/// message through the ONE recorder (P4.D348, v4 `a8214b253` bug 262), which
+/// flips the ledger and logs its own DEBUG as the row lands. The pause cannot
 /// be followed by a failure in the same request (it returns, and the chain's
 /// guard stops on `is_paused`), so no consumer ever reads this ledger value;
-/// the row pins v4's DEBUG (the flip's twin, one statement apart) and the
-/// saved row, and that the turn neither reached the user-row site nor logged
-/// its DEBUG.
+/// the row pins the recorder's DEBUG naming the saved row, and that the old
+/// `(fair-rotation pause)` line is gone.
 #[tokio::test(flavor = "multi_thread")]
 async fn the_fair_rotation_pause_logs_its_user_row_flip() {
     const ROOM: &str = "c89ee722-b555-40db-9e02-bbd0e82ee56b";
@@ -770,14 +770,13 @@ async fn the_fair_rotation_pause_logs_its_user_row_flip() {
         new_rows.iter().all(|r| r.1 != "ASSISTANT"),
         "no reply: {new_rows:?}"
     );
-    let flip = only_line(&lines, "(fair-rotation pause)");
+    // P4.D348 (v4 `a8214b253`, bug 262): the pause records through the ONE
+    // recorder, so its flip is the recorder's own DEBUG — the old
+    // `(fair-rotation pause)` line is gone.
+    assert!(lines_with(&lines, "(fair-rotation pause)").is_empty());
+    let flip = only_line(&lines, "[OperatorPost] User message persisted chatId=");
     assert!(flip.starts_with("DEBUG"), "{flip}");
-    assert!(
-        flip.ends_with(&format!(
-            "[Orchestrator] User message persisted (fair-rotation pause) chatId={ROOM}"
-        )),
-        "{flip}"
-    );
-    assert!(lines_with(&lines, "[Orchestrator] User message persisted chatId=").is_empty());
-    assert!(lines_with(&lines, "[Orchestrator] Emitting error frame").is_empty());
+    let id = flip.rsplit("userMessageId=").next().unwrap().trim();
+    assert_eq!(id, users[0].0, "the DEBUG names the saved row");
+    assert!(lines_with(&lines, "[TurnStream] Emitting error frame").is_empty());
 }

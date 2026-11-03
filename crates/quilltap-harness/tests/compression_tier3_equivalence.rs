@@ -221,7 +221,9 @@ async fn compression_tier3_matches_oracle() {
                 failure,
             )
         } else {
-            completion.with_response(
+            // P4.D348: v4's mock answers `finishReason: 'stop'`, which the
+            // cheap row logs since `eb2d87788`.
+            completion.with_response_finish(
                 &row.provider,
                 &row.model,
                 row.temperature,
@@ -232,6 +234,7 @@ async fn compression_tier3_matches_oracle() {
                     completion_tokens: u.completion_tokens,
                     total_tokens: u.total_tokens,
                 }),
+                Some("stop"),
             )
         };
     }
@@ -345,17 +348,17 @@ async fn compression_tier3_matches_oracle() {
     // written rows against v4's byte-for-byte (id/createdAt/updatedAt
     // placeholdered, sorted by canonical JSON).
     //
-    // The corpus contains a failing provider arm, so v5 ALSO writes P4.13 unit
-    // 6's ruled error row, which v4 never writes. That row is split off and
-    // asserted in both directions (`assert_ruled_failed_call_divergence`) — it
-    // must be present on the v5 side and absent on v4's — and everything else
-    // is diffed byte-for-byte. Two sweeps counted this family's 7-vs-6 as an
-    // unexplained content divergence (P4.D32, P4.D42).
-    let got_logs = common::assert_ruled_failed_call_divergence(
+    // The corpus contains a failing provider arm. P4.13 unit 6 ruled v5's
+    // error row for it as a divergence; v4 `eb2d87788` CONVERGED onto the row
+    // (P4.D348), so it now diffs byte-for-byte with the rest, and
+    // `assert_failed_call_rows_converged` keeps the arm non-vacuous on both
+    // sides.
+    let got_logs = common::assert_failed_call_rows_converged(
         common::dump_llm_logs(&db),
         &oracle_llm_logs,
         "compression_tier3",
     );
+    common::write_diff_dump("compression_llm_logs", &got_logs, &oracle_llm_logs);
     assert_eq!(
         got_logs,
         oracle_llm_logs,

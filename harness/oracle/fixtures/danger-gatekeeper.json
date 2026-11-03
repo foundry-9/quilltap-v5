@@ -152,6 +152,13 @@
       "chatType": "salon",
       "messageCount": 2,
       "scenarioText": "A scene at the pool, before anyone has said anything. token=scenario-only"
+    },
+    {
+      "id": "d0000000-0000-4000-8000-00000000000e",
+      "user": "A",
+      "chatType": "salon",
+      "messageCount": 4,
+      "contextSummary": "The classifier's line drops mid-send. token=send-failure-llm"
     }
   ],
   "llmRules": {
@@ -193,6 +200,14 @@
         "promptTokens": 90,
         "completionTokens": 8,
         "totalTokens": 98
+      }
+    },
+    "send-failure-llm": {
+      "throw": "classifier upstream unavailable",
+      "usage": {
+        "promptTokens": 0,
+        "completionTokens": 0,
+        "totalTokens": 0
       }
     }
   },
@@ -295,6 +310,13 @@
       "chatId": "d0000000-0000-4000-8000-00000000000d",
       "user": "A",
       "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1"
+    },
+    {
+      "name": "send-failure-llm",
+      "chatId": "d0000000-0000-4000-8000-00000000000e",
+      "user": "A",
+      "connectionProfileId": "c0000000-0000-4000-8000-0000000000a1",
+      "_comment": "P4.D348 (v4 eb2d87788): the classifier's send THROWS — v4 logs a DANGER_CLASSIFICATION row {content:'', error} then rethrows (the safe fallback stands in)."
     }
   ],
   "moderationWire": {

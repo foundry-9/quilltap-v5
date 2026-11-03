@@ -555,8 +555,10 @@ async function main(): Promise<void> {
   });
 
   // W4.11b: run the REAL `logLLMCall` so the wrapper's CHAT_MESSAGE rows land in
-  // the llm-logs DB (dumped below). Recovery's `streamMessage` passes no userId, so
-  // it does not log (faithful).
+  // the llm-logs DB (dumped below). P4.D348: since v4 `eb2d87788` recovery's
+  // `streamMessage` passes `userId`, `messageId`, `chatId` and `characterId`, so
+  // the recovery call writes its row too (and the funnel logs every call
+  // however it ends — a throw, a stop, an exhausted stream).
   jest.doMock('@/lib/services/llm-logging.service', () =>
     jest.requireActual('@/lib/services/llm-logging.service')
   );

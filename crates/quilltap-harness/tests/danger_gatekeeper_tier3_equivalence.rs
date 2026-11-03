@@ -103,6 +103,10 @@ struct CannedRow {
     messages: Vec<CannedMsg>,
     response: String,
     usage: CannedUsage,
+    /// P4.D348: the rule's send THROWS with this message (v4 logs a row with
+    /// it, then rethrows).
+    #[serde(default)]
+    error: Option<String>,
 }
 #[derive(Deserialize)]
 struct CannedMsg {
@@ -119,7 +123,7 @@ struct CannedUsage {
     total_tokens: i64,
 }
 
-struct CannedCompletion(HashMap<String, CompletionResponse>);
+struct CannedCompletion(HashMap<String, Result<CompletionResponse, String>>);
 impl CompletionProvider for CannedCompletion {
     fn send_message(
         &self,
@@ -137,7 +141,8 @@ impl CompletionProvider for CannedCompletion {
             .0
             .get(&key)
             .cloned()
-            .ok_or_else(|| CompletionError::new(format!("no canned completion for key {key}")));
+            .unwrap_or_else(|| Err(format!("no canned completion for key {key}")))
+            .map_err(CompletionError::new);
         async move { result }
     }
 }
@@ -321,7 +326,7 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
 
     // Build the canned completion provider from the recorded rows + collect the
     // two table dumps.
-    let mut completions: HashMap<String, CompletionResponse> = HashMap::new();
+    let mut completions: HashMap<String, Result<CompletionResponse, String>> = HashMap::new();
     let mut oracle_tables: Vec<Value> = Vec::new();
     let mut oracle_llm_logs: Option<Vec<Value>> = None;
     for line in oracle_text.lines().filter(|l| !l.trim().is_empty()) {
@@ -340,20 +345,23 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
                     .collect();
                 let key =
                     canned_completion_key(&row.provider, &row.model, row.temperature, &messages);
-                completions.insert(
-                    key,
-                    CompletionResponse {
+                let answer = match row.error {
+                    Some(error) => Err(error),
+                    None => Ok(CompletionResponse {
                         content: row.response,
                         usage: Some(CompletionUsage {
                             prompt_tokens: row.usage.prompt_tokens,
                             completion_tokens: row.usage.completion_tokens,
                             total_tokens: row.usage.total_tokens,
                         }),
-                        finish_reason: None,
+                        // v4's mock answers `finishReason: 'stop'`, which the
+                        // classification row logs since `eb2d87788` (P4.D348).
+                        finish_reason: Some("stop".to_string()),
                         attachment_results: None,
                         cache_usage: None,
-                    },
-                );
+                    }),
+                };
+                completions.insert(key, answer);
             }
             Some("table") => oracle_tables.push(v),
             _ => {}
@@ -506,6 +514,14 @@ async fn danger_gatekeeper_tier3_matches_oracle() {
 
     drop(db);
 
+    common::write_diff_dump("danger_gatekeeper_llm_logs", &got_logs, &want_logs);
+    // P4.D348: the failed classifier send writes its own row on both sides.
+    assert!(
+        want_logs.iter().any(|r| r["response"]
+            .as_str()
+            .is_some_and(|resp| resp.contains("classifier upstream unavailable"))),
+        "the oracle carries no failed-send row — regenerate it from the pin"
+    );
     assert_eq!(
         got_logs,
         want_logs,

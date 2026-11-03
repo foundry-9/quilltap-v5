@@ -135,6 +135,8 @@ interface CallSpec {
   /** P4.D186 (v4 bug 137): attachment ids on the send. A held post still
    *  persists them, so the corpus needed a way to hang one on a call. */
   fileIds?: string[];
+  /** P4.D348 (v4 `036b32a78`, bug 258): whisper targets — one reply, no chain. */
+  targetParticipantIds?: string[];
   /** P4.D186 (v4 bug 137): `options.neverPauseForUser` — the autonomous-room
    *  opt-out the hold predicate consults. `undefined` on every other call, so
    *  the key is absent exactly as it is in production. */
@@ -639,7 +641,9 @@ async function main(): Promise<void> {
     return {
       __esModule: true,
       ...actual,
-      postLibrarianUploadAnnouncement: async () => null,
+      // P4.D348 (v4 `a8214b253`): `postLibrarianUploadAnnouncement` runs LIVE —
+      // v5's ONE `record_operator_post` posts the upload note on both the main
+      // path and the fair-rotation pause, so both sides write the row.
       // The summary fold's Librarian announcement is a default-no-op
       // `ContextSummarySeams` on the Rust side (tracked deferral).
       postLibrarianSummaryAnnouncement: async () => undefined,
@@ -739,12 +743,19 @@ async function main(): Promise<void> {
   // harness mirrors v4's post-cycle placement (after the chain, gated on the
   // INITIAL result's `hasContent`), so the render enqueues belong in the diffed
   // `background_jobs` dump.
-  jest.doMock('@/lib/services/chat-message/memory-trigger.service', () => {
-    const actual = jest.requireActual('@/lib/services/chat-message/memory-trigger.service');
+  //
+  // P4.D348 (v4 `a8214b253`): the scene-tracking trigger is now called from
+  // INSIDE its own module (`triggerAfterTurnsHousekeeping`), where a mocked
+  // export no longer intercepts it (the GARBLE: v4 enqueued 70
+  // SCENE_STATE_TRACKING jobs through the dead mock). The no-op moves one
+  // level down, to the queue function the trigger enqueues through, so the
+  // REAL `triggerAfterTurnsHousekeeping` (and its DEBUG) still runs.
+  jest.doMock('@/lib/background-jobs/queue-service', () => {
+    const actual = jest.requireActual('@/lib/background-jobs/queue-service');
     return {
       __esModule: true,
       ...actual,
-      triggerSceneStateTracking: async () => undefined,
+      enqueueSceneStateTracking: async () => undefined,
     };
   });
 
@@ -809,6 +820,41 @@ async function main(): Promise<void> {
       ) {
         if (CARINA_BRAHMA_MESSAGES.has(message)) {
           carinaLines.push({ level, message, context: context ?? null });
+        }
+        return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
+      } as never;
+    }
+  }
+
+  // P4.D348 (v4 `036b32a78` / `a8214b253` / `eb2d87788`): the turn spine's
+  // new and retagged lines, every level, off the `Logger` prototype — message
+  // + context verbatim, per call. A silence leg for every call that does not
+  // fire them.
+  const SPINE_MESSAGES = new Set([
+    '[Orchestrator] Recording the operator post without a reply',
+    '[OperatorPost] User message persisted',
+    '[OperatorPost] Pending tool results persisted',
+    '[OperatorPost] Failed to link attachment to user message',
+    'Auto-detected RNG patterns in user message',
+    '[TurnOutcome] Turn settled',
+    '[TurnTools] Tool slate resolved',
+    '[TurnPreparation] Prospero context refresh due',
+    'Failed to read project store links; doc tools withheld',
+    'Recording an LLM stream that ended without a terminal chunk',
+  ]);
+  let spineLines: Array<Record<string, unknown>> = [];
+  {
+    const { Logger } = await import('@/lib/logger');
+    for (const level of ['info', 'debug', 'warn'] as const) {
+      const original = Logger.prototype[level];
+      Logger.prototype[level] = function (
+        this: unknown,
+        message: string,
+        context?: Record<string, unknown>,
+        ...rest: unknown[]
+      ) {
+        if (SPINE_MESSAGES.has(message)) {
+          spineLines.push({ level, message, context: JSON.parse(JSON.stringify(context ?? {})) });
         }
         return (original as (...a: unknown[]) => void).call(this, message, context, ...rest);
       } as never;
@@ -1067,6 +1113,7 @@ async function main(): Promise<void> {
         pendingToolResults: call.pendingToolResults,
         fileIds: call.fileIds,
         neverPauseForUser: call.neverPauseForUser,
+        ...(call.targetParticipantIds ? { targetParticipantIds: call.targetParticipantIds } : {}),
       } as never);
       // Drain the ReadableStream.
       const reader = stream.getReader();
@@ -1089,6 +1136,8 @@ async function main(): Promise<void> {
     lines.push(JSON.stringify({ kind: 'interruptLog', call: call.name, lines: interruptLines }));
     lines.push(JSON.stringify({ kind: 'carinaLog', call: call.name, lines: carinaLines }));
     carinaLines = [];
+    lines.push(JSON.stringify({ kind: 'spineLog', call: call.name, lines: spineLines }));
+    spineLines = [];
     interruptRaises = [];
     interruptStops = [];
     interruptLines = [];

@@ -476,6 +476,8 @@ fn vision_request_tier3_matches_oracle() {
                     },
                     timeout_ms: c["timeoutMs"].as_u64().unwrap(),
                     log_type,
+                    // P4.D348 (v4 `eb2d87788`): the row's `chatId`.
+                    chat_id: c.get("chatId").and_then(Value::as_str),
                     require_api_key: c["requireApiKey"].as_bool().unwrap_or(false),
                     transcoder,
                 },

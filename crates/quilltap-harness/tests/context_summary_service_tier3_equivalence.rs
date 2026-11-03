@@ -37,10 +37,9 @@
 //! 17-vs-11 stale red actually was). The corpus now answers `kind: 'fold-episode'`
 //! per op, so both sides run the pass to completion on all six folds.
 //!
-//! The ONE residual is the RULED P4.13 divergence: `title_failure`'s failed cheap
-//! call writes an `llm_logs` error row in v5 and nothing in v4. It is split off by
-//! `common::assert_ruled_failed_call_divergence` and asserted in BOTH directions
-//! (the `compression_tier3` pin's shape) — a convergence retires the pin loudly.
+//! `title_failure`'s failed cheap call writes an `llm_logs` error row on BOTH
+//! sides since v4 `eb2d87788` converged onto P4.13's ruled row (P4.D348): it
+//! diffs straight, kept non-vacuous by `common::assert_failed_call_rows_converged`.
 //!
 //! P4.36 also diffs what the pass DOES, not just that it called the model:
 //!
@@ -1099,7 +1098,7 @@ async fn context_summary_service_tier3_matches_oracle() {
         0,
         "fold_hand_renamed: v5 made a title LLM call for a hand-renamed chat (bug 164)"
     );
-    let got_logs = common::assert_ruled_failed_call_divergence(
+    let got_logs = common::assert_failed_call_rows_converged(
         got_logs,
         &want_logs,
         "context_summary_service_tier3",

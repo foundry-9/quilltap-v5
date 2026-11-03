@@ -547,6 +547,29 @@ impl CannedCompletionProvider {
         self
     }
 
+    /// [`Self::with_response`] carrying the `finish_reason` the oracle's mock
+    /// answered with — the cheap-LLM and gatekeeper rows log it since v4
+    /// `eb2d87788` (P4.D348), so a family whose v4 mock returns
+    /// `finishReason: 'stop'` registers it here.
+    #[allow(clippy::too_many_arguments)]
+    pub fn with_response_finish(
+        self,
+        provider: &str,
+        model: &str,
+        temperature: Option<f64>,
+        messages: &[CompletionMessage],
+        content: impl Into<String>,
+        usage: Option<CompletionUsage>,
+        finish_reason: Option<&str>,
+    ) -> Self {
+        let mut this = self.with_response(provider, model, temperature, messages, content, usage);
+        let key = canned_completion_key(provider, model, temperature, messages);
+        if let Some(r) = this.responses.get_mut(&key) {
+            r.finish_reason = finish_reason.map(str::to_string);
+        }
+        this
+    }
+
     /// Register a full response for a call keyed WITH its attachments (the W4.4b
     /// image-description vision call), carrying `finish_reason`.
     #[allow(clippy::too_many_arguments)]

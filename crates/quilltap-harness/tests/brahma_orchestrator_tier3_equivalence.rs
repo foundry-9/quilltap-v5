@@ -225,11 +225,13 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, VecDeque<Vec<StreamChunkResult>>>>,
-    /// Served sequences that ran to `done` (no scripted throw) — the number of
-    /// `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written
-    /// (dogfood finding #111's other half — the streaming orchestrator wrote
-    /// none where v4 logs every call).
+    /// Every served sequence — the number of `CHAT_MESSAGE` rows v4's
+    /// `streamMessage` funnel writes (one per call, `done` or thrown, since
+    /// `eb2d87788`; P4.D348).
     completed_streams: Mutex<i64>,
+    /// Of those, the sequences that end in a scripted throw — each one a row
+    /// carrying the error since v4 `eb2d87788` (P4.D348).
+    failed_streams: Mutex<i64>,
 }
 impl QueuedStreamingProvider {
     fn from_oracle(rows: &[CannedStreamW]) -> Self {
@@ -245,6 +247,7 @@ impl QueuedStreamingProvider {
         Self {
             queues: Mutex::new(queues),
             completed_streams: Mutex::new(0),
+            failed_streams: Mutex::new(0),
         }
     }
 }
@@ -265,8 +268,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some(seq) => {
-                    if !seq.iter().any(Result::is_err) {
-                        *self.completed_streams.lock().unwrap() += 1;
+                    // P4.D348 (v4 `eb2d87788`): the funnel logs EVERY call,
+                    // whatever ends it — a scripted throw is a row too (its
+                    // partial content and the error).
+                    *self.completed_streams.lock().unwrap() += 1;
+                    if seq.iter().any(Result::is_err) {
+                        *self.failed_streams.lock().unwrap() += 1;
                     }
                     seq
                 }
@@ -625,8 +632,9 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
         }
     }
 
-    // Finding #111's pin: one CHAT_MESSAGE row per completed Brahma stream call
-    // (a scripted mid-stream throw logs nothing — v4 logs on `chunk.done`), v4's
+    // Finding #111's pin: one CHAT_MESSAGE row per Brahma stream call (a
+    // scripted mid-stream throw is a row too since v4 `eb2d87788` — P4.D348,
+    // its error on the row), v4's
     // console shape — `messageId` NULL (the console carries none) and
     // `characterId` NULL (no character at all), `connectionProfileId` the
     // resolved profile's, a MEASURED duration (finding #100). Mutations: remove
@@ -646,10 +654,28 @@ async fn brahma_orchestrator_tier3_matches_oracle() {
         })
         .unwrap();
     let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
+    let error_rows: i64 = db
+        .read_llm_logs(|c| {
+            Ok(c.query_row(
+                "SELECT count(*) FROM llm_logs WHERE type = 'CHAT_MESSAGE' \
+                 AND CAST(response AS TEXT) LIKE '%\"error\":\"%'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    let failed_streams = *streaming.failed_streams.lock().unwrap();
+    if error_rows != failed_streams || failed_streams == 0 {
+        eprintln!(
+            "LLM_LOGS ERROR ROWS: got {error_rows}, want {failed_streams} (one per thrown \
+             Brahma stream; the corpus must throw at least one)"
+        );
+        failed.push("llm_logs_error_rows".to_string());
+    }
     if rows != expected_chat_message_rows {
         eprintln!(
             "LLM_LOGS ROW COUNT MISMATCH: got {rows}, want {expected_chat_message_rows} \
-             (one CHAT_MESSAGE row per completed Brahma stream call)"
+             (one CHAT_MESSAGE row per Brahma stream call)"
         );
         failed.push("llm_logs_row_count".to_string());
     }

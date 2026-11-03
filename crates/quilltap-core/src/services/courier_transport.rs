@@ -297,6 +297,7 @@ pub async fn dispatch_courier_transport<S: EventSink>(
         skipped: false,
         skipped_participant_id: None,
         yielded: false,
+        storyteller_hold: None,
     })
 }
 

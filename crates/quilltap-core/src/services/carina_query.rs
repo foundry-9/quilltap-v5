@@ -1406,37 +1406,72 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     let mut answer = String::new();
     let mut raw: Option<Value> = None;
     let mut leg = crate::services::primary_stream::LegUsage::default();
+    // v4's funnel `logged` (`eb2d87788`): one row per call, whatever ends it.
+    let mut outcome: Option<crate::services::primary_stream::StreamOutcome> = None;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
                 leg.observe(&c);
                 answer.push_str(&c.content);
-                if c.done {
+                if c.done && outcome.is_none() {
                     raw = c.raw_response;
-                    crate::services::primary_stream::log_loop_leg(
-                        ctx.db,
-                        &crate::services::primary_stream::LegLogIds {
-                            user_id: ctx.user_id,
-                            chat_id: ctx.chat_id,
-                            // No `messageId` (v4 passes none) → a NULL cell.
-                            message_id: "",
-                            character_id: Some(ctx.answerer_id),
-                            log_context: &crate::services::llm_logging::LogContext::none(),
-                        },
-                        started_at_ms,
-                        Some(&ctx.profile),
-                        &params,
-                        answer.clone(),
-                        &leg,
-                        raw.clone(),
-                    )
-                    .await;
+                    let done = crate::services::primary_stream::StreamOutcome::Done {
+                        raw_response: raw.clone(),
+                    };
+                    log_carina_leg(ctx, started_at_ms, &params, &answer, &leg, done.clone()).await;
+                    outcome = Some(done);
                 }
             }
-            Err(_) => break,
+            Err(e) => {
+                let failed = crate::services::primary_stream::StreamOutcome::at_end(
+                    Some(&e),
+                    rx.chunks_received(),
+                );
+                if outcome.is_none() {
+                    log_carina_leg(ctx, started_at_ms, &params, &answer, &leg, failed.clone())
+                        .await;
+                    outcome = Some(failed);
+                }
+                break;
+            }
         }
     }
+    if outcome.is_none() {
+        let exhausted =
+            crate::services::primary_stream::StreamOutcome::at_end(None, rx.chunks_received());
+        log_carina_leg(ctx, started_at_ms, &params, &answer, &leg, exhausted).await;
+    }
     (answer, raw)
+}
+
+/// The consultation's ONE funnel row (v4 `streamMessage`'s `record`), on
+/// whatever ended the call.
+async fn log_carina_leg(
+    ctx: &StreamCtx<'_>,
+    started_at_ms: i64,
+    params: &StreamParams,
+    answer: &str,
+    leg: &crate::services::primary_stream::LegUsage,
+    outcome: crate::services::primary_stream::StreamOutcome,
+) {
+    crate::services::primary_stream::log_loop_leg(
+        ctx.db,
+        &crate::services::primary_stream::LegLogIds {
+            user_id: ctx.user_id,
+            chat_id: ctx.chat_id,
+            // No `messageId` (v4 passes none) → a NULL cell.
+            message_id: "",
+            character_id: Some(ctx.answerer_id),
+            log_context: &crate::services::llm_logging::LogContext::none(),
+        },
+        started_at_ms,
+        Some(&ctx.profile),
+        params,
+        answer.to_string(),
+        leg,
+        outcome,
+    )
+    .await;
 }
 
 // ===========================================================================

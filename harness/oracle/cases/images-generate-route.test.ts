@@ -162,6 +162,11 @@ function mockGeneratePost(body: unknown): unknown {
 
 /** The per-case recorders, reset by `runCase`. */
 let providerCalls: Array<Record<string, unknown>> = [];
+/**
+ * P4.D348 (v4 `eb2d87788`): the route's `IMAGE_GENERATION` row per profile
+ * tried — `logLLMCall`'s REAL arguments, projected (the write alone is mocked).
+ */
+let logCalls: Array<Record<string, unknown>> = [];
 let classifyCalls: Array<Record<string, unknown>> = [];
 let providerMode: ProviderMode = 'webp';
 let cannedClassification: CannedClassification = SAFE;
@@ -321,7 +326,20 @@ function applyMocks(spec: Spec): void {
 
   jest.doMock('@/lib/services/llm-logging.service', () => ({
     __esModule: true,
-    logLLMCall: async () => undefined,
+    logLLMCall: async (p: Record<string, any>) => {
+      logCalls.push({
+        type: p.type,
+        chatId: p.chatId ?? null,
+        characterId: p.characterId ?? null,
+        provider: p.provider,
+        modelName: p.modelName,
+        connectionProfileId: p.connectionProfileId ?? null,
+        imageProfileId: p.imageProfileId ?? null,
+        content: p.response?.content ?? null,
+        error: p.response?.error ?? null,
+      });
+      return undefined;
+    },
   }));
 }
 
@@ -694,6 +712,7 @@ async function runCase(
   jest.resetModules();
   providerCalls = [];
   classifyCalls = [];
+  logCalls = [];
   providerMode = c.provider ?? 'webp';
   cannedClassification = c.classify ?? SAFE;
   applyMocks(spec);
@@ -788,6 +807,7 @@ async function runCase(
       body,
       providerCalls,
       classifyCalls,
+      logCalls,
       tables: await dumpTables(spec),
     };
     if (providerMode === 'lossless') {

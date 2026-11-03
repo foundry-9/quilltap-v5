@@ -60,13 +60,17 @@ pub const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
 /// `provisioning/fresh_schema.json` first.
 pub const LLM_LOGS_DDL: &str = "CREATE TABLE llm_logs (\
     id TEXT PRIMARY KEY, userId TEXT, type TEXT, messageId TEXT, \
-    chatId TEXT, characterId TEXT, autonomousRunId TEXT, provider TEXT, \
+    chatId TEXT, characterId TEXT, autonomousRunId TEXT, storytellerRoundId TEXT, provider TEXT, \
     modelName TEXT, connectionProfileId TEXT, imageProfileId TEXT, \
     request TEXT, response TEXT, usage TEXT, \
     cacheUsage TEXT, rawProviderUsage TEXT, requestHashes TEXT, \
     durationMs REAL, createdAt TEXT, updatedAt TEXT);";
 
-/// The `llm_logs` columns in schema order.
+/// The `llm_logs` columns in schema order. `storytellerRoundId` (P4.D341's
+/// keystone column, v4 `b15fe9404`) sits after `autonomousRunId` in v4's
+/// fresh schema — every oracle regenerated at the `236c04e35` pin dumps it;
+/// [`dump_llm_logs`] selects it only when the table carries it (a committed
+/// pre-keystone llm-logs fixture does not), as v4's `SELECT *` does (P4.D348).
 pub const LLM_LOGS_COLUMNS: &[&str] = &[
     "id",
     "userId",
@@ -75,6 +79,7 @@ pub const LLM_LOGS_COLUMNS: &[&str] = &[
     "chatId",
     "characterId",
     "autonomousRunId",
+    "storytellerRoundId",
     "provider",
     "modelName",
     "connectionProfileId",
@@ -112,10 +117,12 @@ fn js_num(f: f64) -> Value {
     }
 }
 
-/// Split a dumped `llm_logs` row list into `(byte-faithful, ruled-divergence)`.
+/// Split a dumped `llm_logs` row list into `(answered, failed-cheap-call)`.
 ///
-/// The second half is P4.13 unit 6's RULED deliberate divergence: **v4 logs
-/// NOTHING when a cheap-LLM call fails, and v5 writes an error row anyway**
+/// History: the second half was P4.13 unit 6's RULED deliberate divergence
+/// (**v4 then logged NOTHING when a cheap-LLM call failed, and v5 wrote an
+/// error row anyway**) — v4 `eb2d87788` CONVERGED onto the row (P4.D348; see
+/// [`assert_failed_call_rows_converged`])
 /// (`cheap_llm_exec::log_failed_call` — findings #23/#26 cost hours of
 /// invisible failure arms, and v5 has no console to fall back on). No oracle
 /// differential is possible for a deliberate divergence, so any family that
@@ -152,38 +159,34 @@ fn is_ruled_failed_call_row(row: &Value) -> bool {
         .is_some_and(|e| !e.is_null())
 }
 
-/// Assert the ruled failed-call divergence in both directions, then hand back
-/// the rows that MUST match v4 byte-for-byte.
-///
-/// - v5 must still be writing the error row (else the corpus stopped
-///   exercising the failed cheap call and this pin has gone vacuous);
-/// - v4 must still be writing none (else the divergence has CONVERGED and the
-///   pin must be retired, not silently widened).
-pub fn assert_ruled_failed_call_divergence(
+/// The failed-cheap-call rows have CONVERGED (P4.D348): v4 `eb2d87788` logs a
+/// row for every cheap `send` that throws, exactly the shape P4.13 unit 6 had
+/// ruled for v5 alone — so the rows now diff straight. This guard keeps the
+/// families that carried the old both-directions pin non-vacuous: BOTH sides
+/// must still write at least one failed row (else the corpus lost its failing
+/// provider arm), and their counts must agree. Returns `got` unchanged for the
+/// caller's whole-multiset compare.
+pub fn assert_failed_call_rows_converged(
     got: Vec<Value>,
     oracle: &[Value],
     family: &str,
 ) -> Vec<Value> {
-    let (got_faithful, got_ruled) = split_ruled_failed_call_rows(got);
-    assert!(
-        !got_ruled.is_empty(),
-        "{family}: v5 wrote no failed-cheap-call error row, so the P4.13 ruled \
-         divergence is no longer exercised by this corpus — the pin is vacuous. \
-         Either the corpus lost its failing provider arm or `log_failed_call` \
-         stopped firing; find out which before relaxing this."
-    );
-    let oracle_ruled: Vec<&Value> = oracle
+    let got_failed = got.iter().filter(|r| is_ruled_failed_call_row(r)).count();
+    let oracle_failed = oracle
         .iter()
         .filter(|r| is_ruled_failed_call_row(r))
-        .collect();
+        .count();
     assert!(
-        oracle_ruled.is_empty(),
-        "{family}: v4 now logs {} failed-cheap-call row(s) too — the P4.13 \
-         deliberate divergence has CONVERGED. RETIRE this pin and diff the \
-         rows straight, rather than filtering v5's rows away: {oracle_ruled:?}",
-        oracle_ruled.len()
+        got_failed > 0 && oracle_failed > 0,
+        "{family}: the failed-cheap-call rows are no longer exercised (v5 {got_failed}, \
+         v4 {oracle_failed}) — the corpus lost its failing provider arm, or the oracle \
+         predates v4 `eb2d87788` (regenerate from the pin)"
     );
-    got_faithful
+    assert_eq!(
+        got_failed, oracle_failed,
+        "{family}: failed-cheap-call row counts differ (v5 {got_failed}, v4 {oracle_failed})"
+    );
+    got
 }
 
 /// Dump every `llm_logs` row as a normalized `serde_json::Value` object keyed by
@@ -200,12 +203,21 @@ pub fn assert_ruled_failed_call_divergence(
 pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
     let mut rows: Vec<Value> = db
         .read_llm_logs(|conn| {
-            let select = LLM_LOGS_COLUMNS.join(", ");
+            let present: Vec<String> = conn
+                .prepare("SELECT name FROM pragma_table_info('llm_logs')")?
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<Result<_, _>>()?;
+            let columns: Vec<&str> = LLM_LOGS_COLUMNS
+                .iter()
+                .copied()
+                .filter(|c| present.iter().any(|p| p == c))
+                .collect();
+            let select = columns.join(", ");
             let mut stmt = conn.prepare(&format!("SELECT {select} FROM llm_logs"))?;
             let out = stmt
                 .query_map([], |row| {
                     let mut m = Map::new();
-                    for (i, col) in LLM_LOGS_COLUMNS.iter().enumerate() {
+                    for (i, col) in columns.iter().enumerate() {
                         let v = if *col == "durationMs" {
                             match row.get::<_, Option<f64>>(i)? {
                                 Some(f) => js_num(f),
@@ -260,6 +272,24 @@ pub fn dump_llm_logs(db: &Db) -> Vec<Value> {
     }
     sort_by_canonical_json(&mut rows);
     rows
+}
+
+/// When `QT_DIFF_DIR` is set, write both sides of a row-list comparand to
+/// `<dir>/<name>.{got,want}.json` (pretty, one value per array element) so a
+/// mismatch can be diffed structurally rather than read off a panic's Debug.
+/// A no-op otherwise; never fails the test.
+pub fn write_diff_dump(name: &str, got: &[Value], want: &[Value]) {
+    let Ok(dir) = std::env::var("QT_DIFF_DIR") else {
+        return;
+    };
+    let _ = std::fs::create_dir_all(&dir);
+    for (side, rows) in [("got", got), ("want", want)] {
+        let path = std::path::Path::new(&dir).join(format!("{name}.{side}.json"));
+        let _ = std::fs::write(
+            &path,
+            serde_json::to_string_pretty(rows).unwrap_or_default(),
+        );
+    }
 }
 
 /// Collapse a row's `durationMs` to a presence marker.

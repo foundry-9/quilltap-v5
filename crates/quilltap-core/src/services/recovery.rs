@@ -66,6 +66,15 @@ pub struct RecoveryContext {
     /// The Salon send's turn-control handle (P4.D335): the recovery stream ends
     /// quietly at the operator's stop, as v4's funnel call does. `None` = never.
     pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
+    /// v4 `RecoveryContext.userId` (`eb2d87788`): the recovery call goes through
+    /// the funnel with it, so it writes a `CHAT_MESSAGE` row. Empty = no row
+    /// (the funnel's `if (userId)` gate).
+    pub user_id: String,
+    /// The responding character (v4 `character.id`) — the row's `characterId`,
+    /// the watchdog's id and the prompt-cache key.
+    pub character_id: String,
+    /// The turn's run-id context for the row (the request path's `none`).
+    pub log_context: super::llm_logging::LogContext,
 }
 
 /// The result of a recovery attempt (v4 `RecoveryResult`).
@@ -286,9 +295,9 @@ where
     };
 
     let profile = ctx.connection_profile.clone();
-    let (provider_name, model, base_url) = match &profile {
-        Some(p) => (p.provider.clone(), p.model_name.clone(), p.base_url.clone()),
-        None => (String::new(), String::new(), None),
+    let (model, base_url) = match &profile {
+        Some(p) => (p.model_name.clone(), p.base_url.clone()),
+        None => (String::new(), None),
     };
 
     // v4: modelParams { temperature: 0.7, maxTokens: 1000 }, tools: [].
@@ -301,7 +310,11 @@ where
         tools: None,
         web_search_enabled: false,
         profile_parameters: None,
-        cache_key: None,
+        // v4's funnel derives the character's prompt-cache key from the
+        // `characterId` the recovery call now passes (`eb2d87788`).
+        cache_key: crate::cheap_llm::build_character_cache_key(
+            Some(ctx.character_id.as_str()).filter(|s| !s.is_empty()),
+        ),
         previous_response_id: None,
         stop: Vec::new(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
@@ -309,9 +322,14 @@ where
     };
 
     let mut full_response = String::new();
+    // Minted up front so the recovery call's LLM log row points at the message
+    // it produces — the Inspector's per-message button finds it by this id (v4
+    // `eb2d87788`).
+    let message_id = uuid::Uuid::new_v4().to_string();
     let stream_result = drain_recovery_stream(
+        db,
         provider,
-        &provider_name,
+        profile.as_ref(),
         base_url.as_deref(),
         // v4 `apiKey` from its ctx (`recovery.service.ts:303`) — the turn's
         // `streaming.effectiveApiKey` (P4.133).
@@ -319,14 +337,14 @@ where
         &params,
         sink,
         &mut full_response,
-        ctx.turn_control.as_ref(),
+        &ctx,
+        &message_id,
     )
     .await;
 
     match stream_result {
         Ok(()) => {
             // Save the recovery response.
-            let message_id = uuid::Uuid::new_v4().to_string();
             let now = crate::clock::now_iso();
             let chat_id = ctx.chat_id.clone();
             let participant_id = ctx.character_participant_id.clone();
@@ -370,49 +388,117 @@ where
 
 /// Drain the recovery stream: content deltas → [`ChatEvent::Content`] + the
 /// accumulator. A mid-stream (or pre-first-chunk) error surfaces as `Err`.
+///
+/// Since `eb2d87788` v4's recovery call passes `userId`, `messageId`, `chatId`
+/// and `characterId` to the funnel, so it writes ONE `CHAT_MESSAGE` row however
+/// it ends (the funnel's `record`) and the watchdog names all four.
 #[allow(clippy::too_many_arguments)]
 async fn drain_recovery_stream<P, S>(
+    db: &Db,
     provider: &P,
-    provider_name: &str,
+    profile: Option<&EffectiveProfile>,
     base_url: Option<&str>,
     api_key: &str,
     params: &StreamParams,
     sink: &S,
     full_response: &mut String,
-    turn_control: Option<&crate::services::turn_control::TurnControlHandle>,
+    ctx: &RecoveryContext,
+    message_id: &str,
 ) -> Result<(), StreamError>
 where
     P: StreamingCompletionProvider,
     S: EventSink,
 {
+    let provider_name = profile.map(|p| p.provider.as_str()).unwrap_or("");
+    let character_id = Some(ctx.character_id.as_str()).filter(|s| !s.is_empty());
+    let user_id = Some(ctx.user_id.as_str()).filter(|s| !s.is_empty());
     // A provider that answers with headers and then goes silent would otherwise
     // hold this loop open forever — the SDK's own timeout stops at the headers.
-    // The watchdog turns that into an ordinary `Err`, which the fallback engine
-    // reads as `network` and routes to the understudy (v4 `f90144ac4`, bug 141;
+    // The watchdog turns that into an ordinary `Err` (v4 `f90144ac4`, bug 141;
     // v4 wraps its ONE `streamMessage` funnel, v5 wraps each of its own
-    // consumers).
-    //
-    // v4's recovery call (`recovery.service.ts:303`) passes NONE of the four ids
-    // — no `userId`, no `chatId`, no `characterId`, no `messageId` — which is
-    // also why it writes no `llm_logs` row. The warn carries `context` alone.
-    // P4.D335: the operator's stop (v4's funnel — this call inherits it too).
-    let stop = turn_control.map(|h| h.stop_signal());
+    // consumers). P4.D335: the operator's stop (v4's funnel — this call
+    // inherits it too).
+    let stop = ctx.turn_control.as_ref().map(|h| h.stop_signal());
+    let started_at_ms = crate::clock::now_unix_ms();
     let mut rx = watch_stream_with_stop(
         provider
             .stream_message_keyed(provider_name, base_url, api_key, params)
             .await,
         StallBudgets::default(),
-        StallWatchdogContext::streaming_service(provider_name, &params.model),
+        StallWatchdogContext::streaming_service(provider_name, &params.model).with_ids(
+            user_id,
+            Some(&ctx.chat_id),
+            character_id,
+            Some(message_id),
+        ),
         stop.as_ref(),
     );
+    let log = user_id.map(|uid| super::primary_stream::StreamLogCtx {
+        db,
+        user_id: uid,
+        chat_id: &ctx.chat_id,
+        message_id,
+        character_id,
+        log_context: &ctx.log_context,
+        started_at_ms,
+    });
+    let mut leg_usage = super::primary_stream::LegUsage::default();
+    let mut logged = false;
+    let mut stream_error: Option<StreamError> = None;
     while let Some(item) = rx.recv().await {
-        let chunk = item?;
+        let chunk = match item {
+            Ok(c) => c,
+            Err(e) => {
+                stream_error = Some(e);
+                break;
+            }
+        };
+        leg_usage.observe(&chunk);
         if !chunk.content.is_empty() {
             full_response.push_str(&chunk.content);
             sink.emit(ChatEvent::content(chunk.content.clone()));
         }
+        if chunk.done && !logged {
+            logged = true;
+            if let (Some(log), Some(profile)) = (&log, profile) {
+                super::primary_stream::log_chat_message_call(
+                    log,
+                    profile,
+                    params,
+                    full_response.clone(),
+                    leg_usage.usage,
+                    leg_usage.cache_usage,
+                    leg_usage.raw_provider_usage.clone(),
+                    super::primary_stream::StreamOutcome::Done {
+                        raw_response: chunk.raw_response.clone(),
+                    },
+                )
+                .await;
+            }
+        }
     }
-    Ok(())
+    if !logged {
+        if let (Some(log), Some(profile)) = (&log, profile) {
+            super::primary_stream::log_chat_message_call(
+                log,
+                profile,
+                params,
+                full_response.clone(),
+                leg_usage.usage,
+                leg_usage.cache_usage,
+                leg_usage.raw_provider_usage.clone(),
+                super::primary_stream::StreamOutcome::at_end(
+                    stream_error.as_ref(),
+                    rx.chunks_received(),
+                ),
+            )
+            .await;
+        }
+    }
+    match stream_error {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 /// v4 `streamStaticFallback` — stream the static message in 50-char chunks, save

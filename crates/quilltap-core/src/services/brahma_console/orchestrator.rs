@@ -1003,9 +1003,11 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
     let mut cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
     let mut raw_provider_usage: Option<Value> = None;
     let mut error: Option<String> = None;
+    let mut saw_done = false;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
+                saw_done |= c.done;
                 // v4: `if (chunk.reasoningContent && chunk.reasoningContent !== turnReasoning)`
                 // — cumulative, last-wins; emit the growing run-level chain (client replaces).
                 if let Some(rc) = &c.reasoning_content {
@@ -1042,8 +1044,21 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
             }
         }
     }
-    // v4 logs the call on `chunk.done` (a thrown stream logs nothing).
-    if error.is_none() {
+    // v4's funnel writes ONE row per call whatever ends it (`eb2d87788`): the
+    // terminal chunk's, or — for a thrown or unterminated stream — the end's.
+    let outcome = match (&error, saw_done) {
+        (Some(message), _) => crate::services::primary_stream::StreamOutcome::Failed {
+            error: message.clone(),
+            chunk_count: rx.chunks_received(),
+        },
+        (None, true) => crate::services::primary_stream::StreamOutcome::Done {
+            raw_response: raw.clone(),
+        },
+        (None, false) => crate::services::primary_stream::StreamOutcome::Exhausted {
+            chunk_count: rx.chunks_received(),
+        },
+    };
+    {
         if let Some(l) = log {
             let ctx = crate::services::primary_stream::StreamLogCtx {
                 db: l.db,
@@ -1062,7 +1077,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
                 usage,
                 cache_usage,
                 raw_provider_usage,
-                raw.clone(),
+                outcome,
             )
             .await;
         }

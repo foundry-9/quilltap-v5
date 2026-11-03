@@ -68,6 +68,8 @@ interface SendCase {
   sampling: { temperature?: number; maxTokens?: number; topP?: number };
   timeoutMs: number;
   logType: string;
+  /** P4.D348 (v4 `eb2d87788`): the chat the picture is read for (the row's `chatId`). */
+  chatId?: string;
   requireApiKey: boolean;
   /** The bug-151 scripted encoder for THIS case's original (`originalBuffer(originalLen)` is the attachment's data). */
   shrink?: { originalLen: number; script: ShrinkScript };
@@ -269,6 +271,7 @@ async function main(): Promise<void> {
           sampling: c.sampling,
           timeoutMs: c.timeoutMs,
           logType: c.logType as never,
+          ...(c.chatId !== undefined ? { chatId: c.chatId } : {}),
           ...(c.requireApiKey ? { requireApiKey: true } : {}),
         });
         result = sent.ok

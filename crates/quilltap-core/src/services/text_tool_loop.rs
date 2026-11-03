@@ -68,7 +68,7 @@ use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::llm_logging::LogContext;
 use super::primary_stream::{
     apply_reasoning_chunk, log_loop_leg, LegLogIds, LegUsage, PreservePartialOnError,
-    StreamingState,
+    StreamOutcome, StreamingState,
 };
 use super::tool_call_threading::{to_stream_message, ThreadedMessage};
 use super::tool_execution::{
@@ -740,10 +740,31 @@ where
         ),
         stop.as_ref(),
     );
+    // v4's funnel `logged` (`eb2d87788`): one row per call, whatever ends it.
+    let mut leg_logged = false;
     while let Some(item) = rx.recv().await {
         let chunk = match item {
             Ok(c) => c,
-            Err(e) => return Err(e),
+            Err(e) => {
+                log_loop_leg(
+                    watchdog.db,
+                    &LegLogIds {
+                        user_id: watchdog.user_id,
+                        chat_id: watchdog.chat_id,
+                        message_id: watchdog.message_id,
+                        character_id: None,
+                        log_context: watchdog.log_context,
+                    },
+                    leg_started_at_ms,
+                    state.effective_profile.as_ref(),
+                    &params,
+                    raw_responses[idx].clone(),
+                    &leg_usage,
+                    StreamOutcome::at_end(Some(&e), rx.chunks_received()),
+                )
+                .await;
+                return Err(e);
+            }
         };
         // Capture + live-forward reasoning. This pseudo-tool path doesn't grow
         // `full_response` live (chunks accumulate in `raw_responses` and the prose
@@ -762,6 +783,7 @@ where
             // WIRE params, not the row: the logged request projection is
             // `{messages, temperature, maxTokens, tools}` on both sides
             // (`streaming.service.ts:488-497`).
+            leg_logged = true;
             log_loop_leg(
                 watchdog.db,
                 &LegLogIds {
@@ -776,7 +798,9 @@ where
                 &params,
                 raw_responses[idx].clone(),
                 &leg_usage,
-                chunk.raw_response.clone(),
+                StreamOutcome::Done {
+                    raw_response: chunk.raw_response.clone(),
+                },
             )
             .await;
             // OVERWRITE (not accumulate): a done with no usage NULLS them (v4's
@@ -788,6 +812,25 @@ where
                 state.thought_signature = Some(ts.clone());
             }
         }
+    }
+    if !leg_logged {
+        log_loop_leg(
+            watchdog.db,
+            &LegLogIds {
+                user_id: watchdog.user_id,
+                chat_id: watchdog.chat_id,
+                message_id: watchdog.message_id,
+                character_id: None,
+                log_context: watchdog.log_context,
+            },
+            leg_started_at_ms,
+            state.effective_profile.as_ref(),
+            &params,
+            raw_responses[idx].clone(),
+            &leg_usage,
+            StreamOutcome::at_end(None, rx.chunks_received()),
+        )
+        .await;
     }
     Ok(())
 }

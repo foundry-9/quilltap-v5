@@ -204,6 +204,7 @@
       "cannedUsage": { "promptTokens": 40, "completionTokens": 3, "totalTokens": 43 },
       "chatId": "chat-1",
       "trailingContextSections": ["   ", "\u00a0"]
-    }
+    },
+    {"id": "done-finish-cache-raw", "_comment": "P4.D348 (v4 eb2d87788): a terminal done chunk — the greeting row's finishReason, cacheUsage and rawProviderUsage.", "systemPrompt": "You are Aria, a knight.", "characterName": "Aria", "provider": "ANTHROPIC", "model": "claude-sonnet-5", "temperature": 0.7, "memories": [], "project": null, "recentConversationsBlock": null, "cannedContent": "Good evening, and welcome.", "cannedUsage": {"promptTokens": 12, "completionTokens": 7, "totalTokens": 19}, "chatId": "chat-greet-1", "cannedDone": {"rawResponse": {"choices": [{"finish_reason": "stop"}]}, "cacheUsage": {"cacheCreationInputTokens": 3, "cacheReadInputTokens": 5}, "rawProviderUsage": {"prompt_tokens": 12, "prompt_tokens_details": {"cached_tokens": 5}}}}
   ]
 }

@@ -47,6 +47,10 @@
 //!     which a bare `Notify::notify_waiters` would lose), so the engine's
 //!     runtime and the send thread's current-thread runtime both reach them.
 //!     No new dependency (R-J).
+//!   - **`wait_for_earlier_turns` takes the handle explicitly** (P4.D348, bug
+//!     258): v4 reads `self` from the ambient store; v5's caller (the spine's
+//!     send thread) passes its own registration's handle, or `None` to wait on
+//!     every open stream.
 //!   - **Tests use UNIQUE chat ids and never clear the static** — it is one
 //!     process-global, shared by every parallel test in a binary.
 
@@ -253,6 +257,59 @@ pub fn register_active_turn(chat_id: &str) -> TurnControlRegistration {
 /// — exported with no production caller; test-facing.)
 pub fn has_active_turn(chat_id: &str) -> bool {
     lock().get(chat_id).is_some_and(|e| !e.is_empty())
+}
+
+/// Wait until every stream that opened for this chat BEFORE the calling one has
+/// finished (v4 `waitForEarlierTurns`, `036b32a78`). A whisper uses this to
+/// queue behind a chain already running rather than start a second speaker
+/// beside it (bug 258).
+///
+/// Only earlier streams are awaited (the per-chat `Vec` is insertion-ordered,
+/// as v4's `Set` iterates), so two waiting streams can never wait on each
+/// other. A stream opened later is none of this one's business. Called with
+/// `None` (outside a registered stream) it waits on every open stream for the
+/// chat. Returns how many streams it waited on.
+///
+/// v5 has no `AsyncLocalStorage`: the caller passes its own handle explicitly
+/// (`me`), and the cut is by identity (`Arc::ptr_eq`), never by state.
+pub async fn wait_for_earlier_turns(chat_id: &str, me: Option<&TurnControlHandle>) -> usize {
+    let earlier: Vec<Arc<TurnControlEntry>> = {
+        let map = lock();
+        let mut earlier = Vec::new();
+        for entry in map.get(chat_id).map(Vec::as_slice).unwrap_or_default() {
+            if me.is_some_and(|me| Arc::ptr_eq(entry, &me.0)) {
+                break;
+            }
+            earlier.push(Arc::clone(entry));
+        }
+        earlier
+    };
+    if earlier.is_empty() {
+        return 0;
+    }
+
+    tracing::debug!(
+        target: TARGET,
+        chat_id = %chat_id,
+        streams = earlier.len(),
+        "[TurnControl] Waiting for earlier stream(s) to finish"
+    );
+    futures_util::future::join_all(earlier.iter().map(|entry| {
+        let mut rx = entry.settled.subscribe();
+        async move {
+            // `wait_for` reads the current value first, so a stream that settled
+            // between the snapshot and here counts at once.
+            let _ = rx.wait_for(|settled| *settled).await;
+        }
+    }))
+    .await;
+    tracing::debug!(
+        target: TARGET,
+        chat_id = %chat_id,
+        streams = earlier.len(),
+        "[TurnControl] Earlier stream(s) finished"
+    );
+    earlier.len()
 }
 
 /// Raise (or lower) the operator's hand on every open stream for the chat (v4
@@ -502,6 +559,123 @@ mod tests {
                 settled: true
             }
         );
+    }
+
+    // ── waitForEarlierTurns (bug 258) — v4's four `it`s, then a v5 guard ──
+
+    #[tokio::test]
+    async fn wait_returns_at_once_when_no_earlier_stream_is_open() {
+        let chat = cid("w1");
+        let reg = register_active_turn(&chat);
+        assert_eq!(wait_for_earlier_turns(&chat, Some(&reg.handle())).await, 0);
+    }
+
+    #[tokio::test]
+    async fn wait_waits_for_a_stream_opened_earlier_to_finish() {
+        let chat = cid("w2");
+        let order = Arc::new(Mutex::new(Vec::<&str>::new()));
+        let chain = register_active_turn(&chat);
+        let whisper = register_active_turn(&chat);
+        let (o, c) = (Arc::clone(&order), chat.clone());
+        let waiter = tokio::spawn(async move {
+            let waited = wait_for_earlier_turns(&c, Some(&whisper.handle())).await;
+            o.lock().unwrap().push("whisper runs");
+            waited
+        });
+        tokio::task::yield_now().await;
+        assert!(order.lock().unwrap().is_empty());
+        order.lock().unwrap().push("chain done");
+        drop(chain);
+        assert_eq!(waiter.await.unwrap(), 1);
+        assert_eq!(*order.lock().unwrap(), vec!["chain done", "whisper runs"]);
+    }
+
+    #[tokio::test]
+    async fn wait_never_waits_on_a_stream_opened_after_it() {
+        let chat = cid("w3");
+        let chain = register_active_turn(&chat);
+        let first = register_active_turn(&chat);
+        let second = register_active_turn(&chat);
+        let (c1, c2) = (chat.clone(), chat.clone());
+        let first_task = tokio::spawn(async move {
+            let n = wait_for_earlier_turns(&c1, Some(&first.handle())).await;
+            drop(first);
+            n
+        });
+        let second_task = tokio::spawn(async move {
+            let n = wait_for_earlier_turns(&c2, Some(&second.handle())).await;
+            drop(second);
+            n
+        });
+        // Let both reach their snapshot before the chain settles.
+        tokio::task::yield_now().await;
+        drop(chain);
+        let bounded = Duration::from_secs(5);
+        assert_eq!(
+            tokio::time::timeout(bounded, first_task)
+                .await
+                .unwrap()
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            tokio::time::timeout(bounded, second_task)
+                .await
+                .unwrap()
+                .unwrap(),
+            2
+        );
+    }
+
+    #[tokio::test]
+    async fn wait_ignores_streams_in_other_chats() {
+        let chat = cid("w4");
+        let other = register_active_turn(&cid("w4-other"));
+        let reg = register_active_turn(&chat);
+        assert_eq!(wait_for_earlier_turns(&chat, Some(&reg.handle())).await, 0);
+        drop(other);
+    }
+
+    #[tokio::test]
+    async fn wait_outside_a_registered_stream_waits_on_every_open_stream() {
+        let chat = cid("w5");
+        let a = register_active_turn(&chat);
+        let b = register_active_turn(&chat);
+        let c = chat.clone();
+        let waiter = tokio::spawn(async move { wait_for_earlier_turns(&c, None).await });
+        tokio::task::yield_now().await;
+        drop(a);
+        drop(b);
+        assert_eq!(waiter.await.unwrap(), 2);
+    }
+
+    /// Beyond v4's suite (P4.D348 Tier 2 item 25): with three streams the
+    /// middle waiter settles before the last one proceeds — a regression guard
+    /// on the `ptr_eq` cut.
+    #[tokio::test]
+    async fn wait_three_streams_the_middle_settles_before_the_last() {
+        let chat = cid("w6");
+        let order = Arc::new(Mutex::new(Vec::<&str>::new()));
+        let chain = register_active_turn(&chat);
+        let middle = register_active_turn(&chat);
+        let last = register_active_turn(&chat);
+        let (o1, c1) = (Arc::clone(&order), chat.clone());
+        let mid_task = tokio::spawn(async move {
+            wait_for_earlier_turns(&c1, Some(&middle.handle())).await;
+            o1.lock().unwrap().push("middle");
+            drop(middle);
+        });
+        let (o2, c2) = (Arc::clone(&order), chat.clone());
+        let last_task = tokio::spawn(async move {
+            let n = wait_for_earlier_turns(&c2, Some(&last.handle())).await;
+            o2.lock().unwrap().push("last");
+            n
+        });
+        tokio::task::yield_now().await;
+        drop(chain);
+        mid_task.await.unwrap();
+        assert_eq!(last_task.await.unwrap(), 2);
+        assert_eq!(*order.lock().unwrap(), vec!["middle", "last"]);
     }
 
     #[test]

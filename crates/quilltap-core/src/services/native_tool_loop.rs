@@ -49,7 +49,7 @@ use super::chat_events::{ChatEvent, EventSink, StatusPayload};
 use super::llm_logging::LogContext;
 use super::primary_stream::{
     apply_reasoning_chunk, flush_reasoning_segment, log_loop_leg, LegLogIds, LegUsage,
-    PreservePartialOnError, StreamingState,
+    PreservePartialOnError, StreamOutcome, StreamingState,
 };
 use super::tool_call_threading::{
     build_assistant_tool_call_message, build_tool_result_messages, to_stream_messages,
@@ -515,11 +515,30 @@ where
             ),
             stop.as_ref(),
         );
+        // v4's funnel `logged` (`eb2d87788`): one row per call, whatever ends it.
+        let mut leg_logged = false;
         loop {
             let Some(item) = rx.recv().await else { break };
             let chunk = match item {
                 Ok(c) => c,
                 Err(e) => {
+                    log_loop_leg(
+                        db,
+                        &LegLogIds {
+                            user_id: &tool_context.user_id,
+                            chat_id: &chat_id,
+                            message_id: &watchdog_message_id,
+                            character_id: Some(&character_id),
+                            log_context: &log_context,
+                        },
+                        leg_started_at_ms,
+                        state.effective_profile.as_ref(),
+                        &params,
+                        current_response.clone(),
+                        &leg_usage,
+                        StreamOutcome::at_end(Some(&e), rx.chunks_received()),
+                    )
+                    .await;
                     preserve.preserve(db, state, &e.message).await;
                     return Err(e);
                 }
@@ -546,6 +565,7 @@ where
                 // v4 passes `characterId` on this call (`:340-350`). Logged
                 // BEFORE the loop consumes the result, so a later throw still
                 // leaves the row.
+                leg_logged = true;
                 log_loop_leg(
                     db,
                     &LegLogIds {
@@ -560,7 +580,9 @@ where
                     &params,
                     current_response.clone(),
                     &leg_usage,
-                    chunk.raw_response.clone(),
+                    StreamOutcome::Done {
+                        raw_response: chunk.raw_response.clone(),
+                    },
                 )
                 .await;
                 state.usage = chunk.usage;
@@ -573,6 +595,25 @@ where
                 }
                 flush_reasoning_segment(state);
             }
+        }
+        if !leg_logged {
+            log_loop_leg(
+                db,
+                &LegLogIds {
+                    user_id: &tool_context.user_id,
+                    chat_id: &chat_id,
+                    message_id: &watchdog_message_id,
+                    character_id: Some(&character_id),
+                    log_context: &log_context,
+                },
+                leg_started_at_ms,
+                state.effective_profile.as_ref(),
+                &params,
+                current_response.clone(),
+                &leg_usage,
+                StreamOutcome::at_end(None, rx.chunks_received()),
+            )
+            .await;
         }
 
         // Silent tool use (raw response but no streamed text) → an explicit status
@@ -660,11 +701,29 @@ where
                 ),
                 stop.as_ref(),
             );
+            let mut leg_logged = false;
             loop {
                 let Some(item) = rx.recv().await else { break };
                 let chunk = match item {
                     Ok(c) => c,
                     Err(e) => {
+                        log_loop_leg(
+                            db,
+                            &LegLogIds {
+                                user_id: &tool_context.user_id,
+                                chat_id: &chat_id,
+                                message_id: &watchdog_message_id,
+                                character_id: None,
+                                log_context: &log_context,
+                            },
+                            leg_started_at_ms,
+                            state.effective_profile.as_ref(),
+                            &params,
+                            leg_content.clone(),
+                            &leg_usage,
+                            StreamOutcome::at_end(Some(&e), rx.chunks_received()),
+                        )
+                        .await;
                         preserve.preserve(db, state, &e.message).await;
                         return Err(e);
                     }
@@ -679,6 +738,7 @@ where
                 }
                 if chunk.done {
                     // v4 passes NO `characterId` on this call.
+                    leg_logged = true;
                     log_loop_leg(
                         db,
                         &LegLogIds {
@@ -693,7 +753,9 @@ where
                         &params,
                         leg_content.clone(),
                         &leg_usage,
-                        chunk.raw_response.clone(),
+                        StreamOutcome::Done {
+                            raw_response: chunk.raw_response.clone(),
+                        },
                     )
                     .await;
                     state.usage = chunk.usage;
@@ -729,6 +791,25 @@ where
                         }
                     }
                 }
+            }
+            if !leg_logged {
+                log_loop_leg(
+                    db,
+                    &LegLogIds {
+                        user_id: &tool_context.user_id,
+                        chat_id: &chat_id,
+                        message_id: &watchdog_message_id,
+                        character_id: None,
+                        log_context: &log_context,
+                    },
+                    leg_started_at_ms,
+                    state.effective_profile.as_ref(),
+                    &params,
+                    leg_content.clone(),
+                    &leg_usage,
+                    StreamOutcome::at_end(None, rx.chunks_received()),
+                )
+                .await;
             }
         }
         // Non-agent mode just logs the cap (host-side).

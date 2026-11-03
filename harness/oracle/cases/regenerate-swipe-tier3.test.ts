@@ -23,6 +23,14 @@
  * The memory cascade (`deleteMemoriesBySourceMessageWithVectors`) touches no LLM
  * — it runs against the REAL DB + vector store.
  *
+ * **The swipe's `llm_logs` row is a comparand (P4.D348, v4 `eb2d87788`).** The
+ * swipe now streams through the REAL `streamMessage` funnel, which writes ONE
+ * `CHAT_MESSAGE` row per call (the terminal chunk's, or a throw's) against the
+ * NEW swipe's id (minted first), with the character's prompt-cache key. A
+ * fresh llm-logs partition is opened, the real `logLLMCall` runs, and the rows
+ * are dumped as `kind: 'llmlogs'`; the recorded canned-stream entry carries the
+ * request's `cacheKey`.
+ *
  * **The progress frames are a comparand (P4.D207).** Each call is driven with
  * an `onProgress` that runs every event through v4's OWN SSE encoders
  * (`encodeStatusEvent` / `encodeContentChunk` / `encodeReasoningChunk`,
@@ -123,6 +131,8 @@ async function main(): Promise<void> {
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = workMain;
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
+  // P4.D348: a fresh llm-logs DB so the funnel's REAL `logLLMCall` lands rows.
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
@@ -135,6 +145,7 @@ async function main(): Promise<void> {
       temperature: number | null;
       messages: unknown[];
       sampling: Record<string, number>;
+      cacheKey: string | null;
       chunks: unknown[];
     }
   >();
@@ -155,6 +166,10 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/embedding/vector-store', () =>
     jest.requireActual('@/lib/embedding/vector-store')
   );
+  // P4.D348: the REAL `logLLMCall`, so the funnel's row lands in the partition.
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service')
+  );
 
   // ---- createLLMProvider (the single generation, READ AS A STREAM) ----
   // v4 `f564b0de3` swapped `sendMessage` for `streamMessage`; the corpus's
@@ -174,6 +189,7 @@ async function main(): Promise<void> {
             temperature?: number;
             maxTokens?: number;
             topP?: number;
+            cacheKey?: string;
           },
           _apiKey: string
         ) {
@@ -195,6 +211,8 @@ async function main(): Promise<void> {
                 ...(params.maxTokens !== undefined ? { maxTokens: params.maxTokens } : {}),
                 ...(params.topP !== undefined ? { topP: params.topP } : {}),
               },
+              // P4.D348: the funnel's `buildCharacterCacheKey(characterId)`.
+              cacheKey: params.cacheKey ?? null,
               chunks: spec.completion.stream,
             });
           }
@@ -439,6 +457,33 @@ async function main(): Promise<void> {
   for (const table of ['chats', 'chat_messages', 'memories', 'chat_informs']) {
     lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable(table)) }));
   }
+
+  // P4.D348: the funnel's `llm_logs` rows (fire-and-forget writes drained
+  // first). `messageId` is the minted swipe id — the Rust side remaps it.
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import(
+    '@/lib/database/backends/sqlite/llm-logs-client'
+  );
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map(
+    (c) => c.name,
+  );
+  const llRows = (lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>)
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   closeMountIndexSQLiteClient();
   await closeDatabase();

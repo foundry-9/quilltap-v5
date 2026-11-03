@@ -26,14 +26,15 @@
 //!   `initial-greeting.ts` passes `withStallWatchdog` its own options. (P4.D189
 //!   listed it at zero wraps; the `ffb6b3119` round's unification moved the row
 //!   when P4.D190 landed beside it.)
-//! * `services/regenerate_swipe.rs` (P4.D207, v4 `f564b0de3`) — own context
-//!   (`"regenerate-swipe.service"`) but the SALON's default 240 s/120 s. This
-//!   pairing is a THIRD class the census could not express before: it had a
-//!   `GREETING_SITE` special case, so "own context, default budgets" would
-//!   have had to fail one check or the other. `OWN_CONTEXT_SITES` below is that
-//!   fix — a table of (site, context, budgets-are-default).
+//! * `services/regenerate_swipe.rs` (P4.D207, v4 `f564b0de3`) WAS the second
+//!   — own context (`"regenerate-swipe.service"`) on the SALON's default
+//!   240 s/120 s, the third class `OWN_CONTEXT_SITES` was built for. v4
+//!   `eb2d87788` routed the swipe through the logged funnel, so it now stamps
+//!   `context: 'streaming.service'` like every Salon-side site (P4.D348) and
+//!   its row moved to the funnel class; the table keeps its shape for the
+//!   next own-context consumer.
 //!
-//! The count census treats both like any other consumer.
+//! The count census treats the greeting like any other consumer.
 //!
 //! **The operator's stop (P4.D335, v4 `2b5e8ee24`).** v4 hands the stop to its
 //! ONE funnel (`streamMessage`'s `abortSignal: currentTurnStopSignal()`), so
@@ -354,21 +355,13 @@ fn every_production_stream_message_call_wears_the_watchdog() {
 /// 'initial-greeting'`).
 const GREETING_SITE: &str = "services/initial_greeting.rs";
 
-/// The swipe is the SECOND consumer outside the funnel (P4.D207, v4
-/// `f564b0de3`) — and the first of a THIRD class the census did not have:
-/// v4's `regenerate-swipe.service.ts:233-241` passes the Salon's DEFAULT
-/// budgets with its OWN `logContext.context`. Before this row the budget
-/// census had exactly two shapes ("the funnel" and "the greeting"), and a
-/// Salon-budgeted site with its own context could not be expressed.
-const SWIPE_SITE: &str = "services/regenerate_swipe.rs";
-
 /// Every site that does NOT stamp the funnel's `context: 'streaming.service'`,
 /// with the exact `context:` line it stamps instead and whether its budgets are
 /// [`StallBudgets::default()`]. v4's own `logContext` decides both columns
 /// independently, which is the whole reason this is a table and not a flag.
 const OWN_CONTEXT_SITES: &[(&str, &str, bool)] = &[
     (GREETING_SITE, "context: \"initial-greeting\"", false),
-    (SWIPE_SITE, "context: \"regenerate-swipe.service\"", true),
+    // P4.D348 (v4 `eb2d87788`): the swipe left this table for the funnel class.
 ];
 
 /// The wrap is only a wrap if the budgets are v4's. A site that passed its own

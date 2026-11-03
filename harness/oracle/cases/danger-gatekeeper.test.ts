@@ -68,7 +68,7 @@ interface Spec {
   testPepperBase64: string;
   userA: string;
   userB: string;
-  llmRules: Record<string, { response: string; usage: Usage }>;
+  llmRules: Record<string, { response?: string; usage: Usage; throw?: string }>;
   moderationResults: Record<string, { flagged: boolean; categories: Array<{ category: string; score: number }> } | 'fail'>;
   // W4.7f: the moderation provider is UN-MOCKED down to the canned WIRE payload
   // (the real `moderationPlugin.moderate` runs `fetch`, which we mock to this).
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
-  const cannedRecorded = new Map<string, { provider: string; model: string; temperature: number | null; messages: Array<{ role: string; content: string }>; response: string; usage: Usage }>();
+  const cannedRecorded = new Map<string, { provider: string; model: string; temperature: number | null; messages: Array<{ role: string; content: string }>; response: string; usage: Usage; error?: string }>();
 
   jest.resetModules();
   const cipherDriverPath = require('node:path').join(process.cwd(), 'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers');
@@ -129,8 +129,14 @@ async function main(): Promise<void> {
           if (!rule) throw new Error(`no llm rule for token ${mt[1]}`);
           const key = `${provider}|${params.model}|${params.temperature ?? '-'}|${JSON.stringify(messages)}`;
           if (!cannedRecorded.has(key)) {
-            cannedRecorded.set(key, { provider, model: params.model, temperature: params.temperature ?? null, messages, response: rule.response, usage: rule.usage });
+            cannedRecorded.set(key, {
+              provider, model: params.model, temperature: params.temperature ?? null, messages,
+              response: rule.response ?? '', usage: rule.usage,
+              // P4.D348: a rule that THROWS (the classifier's send fails).
+              ...(rule.throw ? { error: rule.throw } : {}),
+            });
           }
+          if (rule.throw) throw new Error(rule.throw);
           return { content: rule.response, finishReason: 'stop', usage: rule.usage };
         },
       }),

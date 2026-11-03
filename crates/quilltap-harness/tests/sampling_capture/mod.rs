@@ -153,6 +153,11 @@ impl<P: StreamingCompletionProvider> SamplingStreamCapture<P> {
         }
     }
 
+    /// The wrapped provider (a family that stacks a second capture reads it).
+    pub fn inner(&self) -> &P {
+        &self.inner
+    }
+
     pub fn assert_matches(&self, expected: &HashMap<String, Value>, what: &str) {
         let recorded = self.recorded.lock().unwrap();
         assert!(

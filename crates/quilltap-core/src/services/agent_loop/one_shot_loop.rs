@@ -390,6 +390,8 @@ async fn run_stream<STR: StreamingCompletionProvider>(
     let mut log_cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
     let mut log_raw_provider_usage: Option<Value> = None;
     let mut saw_done = false;
+    // The consumer broke off before the provider finished (v4's abandoned arm).
+    let mut abandoned = false;
     while let Some(chunk) = rx.recv().await {
         match chunk {
             Ok(c) => {
@@ -419,6 +421,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                 // The loop side. "Leaving the for-await closes the provider
                 // stream where the SDK allows."
                 if is_aborted(signal) {
+                    abandoned = true;
                     break;
                 }
                 // Reasoning is request-local continuation state for providers
@@ -454,16 +457,32 @@ async fn run_stream<STR: StreamingCompletionProvider>(
             }
         }
     }
-    // v4 logs the call as the terminal chunk passes through the generator (a
-    // thrown stream logs nothing; a consumer that broke off BEFORE the terminal
-    // chunk was produced never let the generator reach its log). P4.165: so
-    // the rule is v4's done-ONLY one — a stream the operator's stop abandoned
-    // never passed a `done` and writes no row (`streaming.service.ts:487-528`).
-    // Measured before the change: no committed `brahma_console_tier3` /
-    // `scenario_builder_tier3` sequence closes without `done` except through an
-    // `error` chunk (3 of 95), so the old `!aborted` disjunct logged nothing
-    // the corpus reached.
-    if error.is_none() && saw_done {
+    // v4's funnel writes ONE row per call whatever ends it (`eb2d87788`): the
+    // terminal chunk's when one passed through the generator; else — from the
+    // generator's `finally` — a thrown stream's (its error), a consumer that
+    // broke off first (v4's abandoned-stream text: the operator's abort
+    // signal here), or a stream that simply ran out (the turn's stop ends the
+    // watchdog quietly, so a stopped consult reads as run out, no error).
+    // P4.165's done-ONLY rule is overtaken by v4's own change.
+    let outcome = if let Some(message) = &error {
+        crate::services::primary_stream::StreamOutcome::Failed {
+            error: message.clone(),
+            chunk_count: rx.chunks_received(),
+        }
+    } else if saw_done {
+        crate::services::primary_stream::StreamOutcome::Done {
+            raw_response: log_raw,
+        }
+    } else if abandoned {
+        crate::services::primary_stream::StreamOutcome::Abandoned {
+            chunk_count: rx.chunks_received(),
+        }
+    } else {
+        crate::services::primary_stream::StreamOutcome::Exhausted {
+            chunk_count: rx.chunks_received(),
+        }
+    };
+    {
         if let Some(l) = log {
             let ctx = crate::services::primary_stream::StreamLogCtx {
                 db: l.db,
@@ -483,7 +502,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
                 log_usage,
                 log_cache_usage,
                 log_raw_provider_usage,
-                log_raw,
+                outcome,
             )
             .await;
         }

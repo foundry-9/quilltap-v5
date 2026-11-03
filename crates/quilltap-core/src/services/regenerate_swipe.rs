@@ -840,6 +840,11 @@ where
         &character_id,
     );
 
+    // Minted before the call so its LLM log row points at the swipe it produces
+    // — the Inspector's per-message button finds a reply's calls by this id (v4
+    // `eb2d87788`).
+    let new_swipe_id = uuid::Uuid::new_v4().to_string();
+
     let params = StreamParams {
         messages,
         model: model.clone(),
@@ -852,8 +857,9 @@ where
         tools: None,
         web_search_enabled: false,
         profile_parameters: Some(params_value),
-        // The P4.95 per-character prompt-cache key — v4 `cacheKey: character.id`.
-        cache_key: Some(character_id.clone()),
+        // The swipe streams through v4's funnel since `eb2d87788`, which derives
+        // the character's prompt-cache key (`buildCharacterCacheKey`).
+        cache_key: crate::cheap_llm::build_character_cache_key(Some(&character_id)),
         previous_response_id: None,
         stop: Vec::new(),
         // A visible regeneration, not cheap-LLM work: v4 sets no
@@ -864,27 +870,37 @@ where
     let rx = streaming
         .stream_message_keyed(&provider, base_url.as_deref(), &api_key, &params)
         .await;
-    // The stall watchdog is NOT optional on any `stream_message` consumer (bug
-    // 141) — v4 says so in this very function. The budgets are the Salon's
-    // defaults (240 s / 120 s); the `context` is v4's own
-    // `'regenerate-swipe.service'`, NOT the funnel's `'streaming.service'`,
-    // because v4's swipe passes its own `logContext` (:233-241). That pairing —
-    // default budgets, own context — is a third class in
-    // `stream_watchdog_wrap_census`; the greeting is the first (its own 90/60).
+    // The shared stream (v4 `eb2d87788`): the stall watchdog, the character's
+    // prompt-cache key and the LLM log row all come with it, the same as an
+    // ordinary turn — a re-roll used to be the one Salon reply the Inspector
+    // could not see. The watchdog therefore takes the FUNNEL's context and the
+    // Salon's default budgets, naming the new swipe as its message (bug 141:
+    // the watchdog is not optional on any `stream_message` consumer).
     let mut rx = watch_stream(
         rx,
         StallBudgets::default(),
-        StallWatchdogContext {
-            provider: &provider,
-            model_name: &model,
-            context: "regenerate-swipe.service",
-            // v4's five `logContext` fields, all present on this call.
-            user_id: Some(&user_id),
-            chat_id: Some(&chat_id),
-            character_id: Some(&character_id),
-            message_id: Some(&target_message_id),
-        },
+        StallWatchdogContext::streaming_service(&provider, &model).with_ids(
+            Some(&user_id),
+            Some(&chat_id),
+            Some(&character_id),
+            Some(&new_swipe_id),
+        ),
     );
+    // The funnel's per-call log state (v4 `streamMessage`'s `record`).
+    let started_at_ms = crate::clock::now_unix_ms();
+    let log_profile = super::orchestrator::to_effective_profile(&connection_profile);
+    let log_context = super::llm_logging::LogContext::none();
+    let log_ctx = super::primary_stream::StreamLogCtx {
+        db,
+        user_id: &user_id,
+        chat_id: &chat_id,
+        message_id: &new_swipe_id,
+        character_id: Some(&character_id),
+        log_context: &log_context,
+        started_at_ms,
+    };
+    let mut leg_usage = super::primary_stream::LegUsage::default();
+    let mut logged = false;
 
     let mut content = String::new();
     let mut usage: Option<StreamUsage> = None;
@@ -897,6 +913,7 @@ where
     while let Some(item) = rx.recv().await {
         match item {
             Ok(chunk) => {
+                leg_usage.observe(&chunk);
                 // v4 `if (chunk.content)` — JS truthiness, so an empty delta
                 // neither announces nor appends nor reports.
                 if !chunk.content.is_empty() {
@@ -941,6 +958,23 @@ where
                 if let Some(ts) = chunk.thought_signature.as_deref().filter(|s| !s.is_empty()) {
                     thought_signature = Some(ts.to_string());
                 }
+                // The funnel's row on the terminal chunk.
+                if chunk.done && !logged {
+                    logged = true;
+                    super::primary_stream::log_chat_message_call(
+                        &log_ctx,
+                        &log_profile,
+                        &params,
+                        content.clone(),
+                        leg_usage.usage,
+                        leg_usage.cache_usage,
+                        leg_usage.raw_provider_usage.clone(),
+                        super::primary_stream::StreamOutcome::Done {
+                            raw_response: chunk.raw_response.clone(),
+                        },
+                    )
+                    .await;
+                }
             }
             Err(e) => {
                 // v4's `for await` THROWS here, which unwinds the whole function
@@ -952,6 +986,30 @@ where
                 break;
             }
         }
+    }
+    // The funnel's `finally`: a call that threw or ran out without a terminal
+    // chunk still writes its row — BEFORE the all-or-nothing error returns.
+    if !logged {
+        let outcome = match &stream_error {
+            Some(message) => super::primary_stream::StreamOutcome::Failed {
+                error: message.clone(),
+                chunk_count: rx.chunks_received(),
+            },
+            None => super::primary_stream::StreamOutcome::Exhausted {
+                chunk_count: rx.chunks_received(),
+            },
+        };
+        super::primary_stream::log_chat_message_call(
+            &log_ctx,
+            &log_profile,
+            &params,
+            content.clone(),
+            leg_usage.usage,
+            leg_usage.cache_usage,
+            leg_usage.raw_provider_usage.clone(),
+            outcome,
+        )
+        .await;
     }
     if let Some(message) = stream_error {
         return Err(RegenError::Generation(message));
@@ -1001,7 +1059,6 @@ where
         .unwrap_or(0)
         + 1;
 
-    let new_swipe_id = uuid::Uuid::new_v4().to_string();
     let mut swipe = Map::new();
     swipe.insert("type".into(), json!("message"));
     swipe.insert("id".into(), json!(new_swipe_id));

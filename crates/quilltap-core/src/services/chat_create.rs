@@ -2862,6 +2862,11 @@ where
         character_id: Some(character_id.clone()),
         chat_id: Some(chat_id.to_string()),
         trailing_context_sections: opener_trailing.clone(),
+        // v4 `connectionProfileId: connectionProfile.id` (`eb2d87788`).
+        connection_profile_id: connection_profile
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::to_string),
     };
 
     let recent_block_opt = |block: &str| -> Option<String> {
@@ -3246,6 +3251,8 @@ where
         character_id: Some(character_id.to_string()),
         chat_id: Some(chat_id.to_string()),
         trailing_context_sections: trailing_context_sections.to_vec(),
+        // v4 `routeResult.connectionProfile.id` (`eb2d87788`).
+        connection_profile_id: Some(route.connection_profile.id.clone()),
     };
 
     let res = generate_greeting_message(deps.streaming, &request, log).await?;

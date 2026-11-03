@@ -83,7 +83,37 @@ interface CaseSpec {
    */
   trailingContextSections?: string[];
   chatId?: string;
+  /**
+   * P4.D348 (v4 `eb2d87788`): a terminal `done` chunk carrying the
+   * `rawResponse` the row's `finishReason` is read from, plus `cacheUsage` /
+   * `rawProviderUsage`. Absent → the stream ends without `done`, so the row
+   * logs `finishReason: null` (the silence leg).
+   */
+  cannedDone?: { rawResponse?: unknown; cacheUsage?: unknown; rawProviderUsage?: unknown };
 }
+
+/**
+ * P4.D348: the `llm_logs` row v4 writes, as the `logLLMCall` argument
+ * projected onto the cells `eb2d87788` touched (and their neighbours). The
+ * mock replaces only the write; the arguments are v4's own.
+ */
+function projectLogCall(p: Record<string, any>) {
+  return {
+    type: p.type,
+    chatId: p.chatId ?? null,
+    characterId: p.characterId ?? null,
+    provider: p.provider,
+    modelName: p.modelName,
+    connectionProfileId: p.connectionProfileId ?? null,
+    content: p.response?.content ?? null,
+    finishReason: p.response?.finishReason ?? null,
+    error: p.response?.error ?? null,
+    usage: p.usage ?? null,
+    cacheUsage: p.cacheUsage ?? null,
+    rawProviderUsage: p.rawProviderUsage ?? null,
+  };
+}
+const logLLMCallMock = jest.fn(async (..._args: unknown[]) => undefined);
 
 const here = dirname(fileURLToPath(import.meta.url));
 const spec = JSON.parse(
@@ -100,7 +130,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
 
   jest.doMock('@/lib/services/llm-logging.service', () => {
     const actual = jest.requireActual('@/lib/services/llm-logging.service');
-    return { __esModule: true, ...actual, logLLMCall: jest.fn(async () => undefined) };
+    return { __esModule: true, ...actual, logLLMCall: logLLMCallMock };
   });
 
   jest.doMock('@/lib/llm', () => {
@@ -136,6 +166,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
           if (c.error) throw new Error(c.error);
           if (c.cannedContent) yield { content: c.cannedContent };
           if (c.cannedUsage) yield { usage: c.cannedUsage };
+          if (c.cannedDone) yield { done: true, ...c.cannedDone };
         },
       }),
     };
@@ -158,6 +189,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
   for (const c of spec.cases) {
     currentCase = c;
     greetingDebug = [];
+    logLLMCallMock.mockClear();
     // P4.D190: v4 rethrows a stream failure out of `generateGreetingMessage`
     // (after logging it), so a case can REJECT. Record the rejection's `name`
     // — the byte v4's ladder reads with `instanceof` and v5 reads as
@@ -176,6 +208,9 @@ it('generates greetings (records prompt bytes + result)', async () => {
         projectContext: c.project,
         recentConversationsBlock: c.recentConversationsBlock ?? undefined,
         characterId: 'char-1',
+        // P4.D348: a user (so the row is written) and the route's profile id.
+        userId: 'user-1',
+        connectionProfileId: 'profile-1',
         ...(c.chatId ? { chatId: c.chatId } : {}),
         ...(c.trailingContextSections ? { trailingContextSections: c.trailingContextSections } : {}),
       });
@@ -198,6 +233,7 @@ it('generates greetings (records prompt bytes + result)', async () => {
           : null,
         error,
         greetingDebug,
+        logCalls: logLLMCallMock.mock.calls.map((call) => projectLogCall(call[0] as Record<string, any>)),
       }),
     );
   }

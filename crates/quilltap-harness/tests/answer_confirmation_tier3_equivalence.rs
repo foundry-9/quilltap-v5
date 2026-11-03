@@ -719,6 +719,7 @@ fn answer_confirmation_tier3_matches_oracle() {
             draws: DrawSource::sequence(vec![0.0]),
             consult: None,
             turn_stopped: false,
+            turn_control: None,
         };
 
         let sink = RecordingSink::new();

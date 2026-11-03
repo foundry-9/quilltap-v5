@@ -87,7 +87,7 @@
   ],
   "send": [
     {
-      "name": "ok_image_arrived",
+      "name": "ok_image_arrived", "chatId": "c1500000-0000-4000-8000-0000000000c1",
       "profile": "30000000-0000-4000-8000-0000000000d1",
       "attachment": {
         "id": "f0f0f0f0-0001-4000-8000-000000000001",
@@ -274,7 +274,7 @@
       }
     },
     {
-      "name": "cache_read_added_back",
+      "name": "cache_read_added_back", "chatId": "c1500000-0000-4000-8000-0000000000c1",
       "profile": "30000000-0000-4000-8000-0000000000d1",
       "attachment": {
         "id": "f0f0f0f0-0001-4000-8000-000000000001",
@@ -413,7 +413,7 @@
       }
     },
     {
-      "name": "provider_throws",
+      "name": "provider_throws", "chatId": "c1500000-0000-4000-8000-0000000000c1",
       "profile": "30000000-0000-4000-8000-0000000000d1",
       "attachment": {
         "id": "f0f0f0f0-0001-4000-8000-000000000001",

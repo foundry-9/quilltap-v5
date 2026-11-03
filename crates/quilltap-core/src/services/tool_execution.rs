@@ -46,7 +46,7 @@
 //! The TOOL-row `content` JSON here is the GENERIC shape (`toolName, success,
 //! result, arguments, callId, [anchorOffset], [seq], provider, model, prompt` — v4
 //! order). It is deliberately DIFFERENT from W4.1a's auto-detect RNG content
-//! (`orchestrator::RngToolMessageContent`: `{tool, initiatedBy, success, result,
+//! (`operator_post::RngToolMessageContent`: `{tool, initiatedBy, success, result,
 //! prompt, arguments}`). v4 itself writes two different TOOL-row shapes on the two
 //! paths; both are byte-faithful and must stay separate.
 
@@ -313,6 +313,12 @@ pub struct ToolExecutionContext {
     /// exclusive with `operator_surface`: the executor refuses a context that
     /// sets both.
     pub mount_pool: Option<crate::db::tiered_mount_pool::TieredMountPool>,
+    /// The send's turn-control handle (P4.D348 `TurnStopReach`): the operator's
+    /// Stop reaches a tool through it (v4 reads the ambient
+    /// `currentTurnStopSignal()`). Set by the orchestrator's
+    /// `turn_tool_context` AFTER [`create_tool_context`] returns; `None` off a
+    /// registered Salon send. P4.D345 consumes it in `tools/run_custom.rs`.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints
@@ -354,6 +360,8 @@ pub fn create_tool_context(
         operator_surface: false,
         // v4's `createToolContext` never sets `mountPool` either (`d1c06cd9d`).
         mount_pool: None,
+        // P4.D348 `TurnStopReach`: the orchestrator sets it afterwards.
+        turn_control: None,
     }
 }
 

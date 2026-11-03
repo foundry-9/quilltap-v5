@@ -14,6 +14,7 @@
 
 use serde_json::Value;
 
+use super::turn_control::TurnControlHandle;
 use crate::db::runtime::Db;
 use crate::pascal::llm_consult::ConsultRunner;
 use crate::pascal::trigger_runner::{
@@ -36,6 +37,11 @@ pub struct UserMessageTriggerParams<'a> {
     pub chat_settings: Option<TriggerSettings>,
     /// The spine's ONE clock reading for the message.
     pub now_ms: i64,
+    /// The send's turn-control handle (`TurnStopReach`, P4.D348): the operator's
+    /// Stop reaches a triggered tool through it. P4.D345 threads it on into
+    /// `RunTriggeredCustomToolsParams`; until then it is carried, populated and
+    /// read by nobody (the contract's defined state).
+    pub turn_control: Option<&'a TurnControlHandle>,
 }
 
 /// The operator's message (v4 `runUserMessageTriggers`). The seat speaks for
@@ -99,6 +105,9 @@ pub struct ReplyTriggerParams<'a> {
     pub character_id: &'a str,
     pub chat_settings: Option<TriggerSettings>,
     pub now_ms: i64,
+    /// The send's turn-control handle (`TurnStopReach`, P4.D348) — as on
+    /// [`UserMessageTriggerParams::turn_control`].
+    pub turn_control: Option<&'a TurnControlHandle>,
 }
 
 /// A character's reply, from that character's own perspective (v4
@@ -186,6 +195,7 @@ mod tests {
                         user_participant_id: None,
                         chat_settings: on,
                         now_ms: 0,
+                        turn_control: None,
                     },
                     None,
                     &mut existing,
@@ -207,6 +217,7 @@ mod tests {
                     character_id: "char-1",
                     chat_settings: on,
                     now_ms: 0,
+                    turn_control: None,
                 },
                 None,
                 &mut sink,
@@ -245,6 +256,7 @@ mod tests {
                         custom_tool_triggers: Some(true),
                     }),
                     now_ms: 0,
+                    turn_control: None,
                 },
                 None,
                 &mut existing,
@@ -267,5 +279,41 @@ mod tests {
             "{}",
             warns[0]
         );
+    }
+
+    /// P4.D348 `TurnStopReach`: both params structs carry the send's handle
+    /// (compile-level — P4.D345 consumes it).
+    #[test]
+    fn both_trigger_params_carry_the_turn_control_handle() {
+        let reg = crate::services::turn_control::register_active_turn(&format!(
+            "trigger-sites-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let handle = reg.handle();
+        let user = UserMessageTriggerParams {
+            user_id: "u",
+            chat_id: "c",
+            project_id: None,
+            content: "",
+            is_continue_mode: false,
+            user_participant: None,
+            user_participant_id: None,
+            chat_settings: None,
+            now_ms: 0,
+            turn_control: Some(&handle),
+        };
+        let reply = ReplyTriggerParams {
+            user_id: "u",
+            chat_id: "c",
+            project_id: None,
+            content: "",
+            character_participant_id: "p",
+            character_id: "ch",
+            chat_settings: None,
+            now_ms: 0,
+            turn_control: Some(&handle),
+        };
+        assert_eq!(user.turn_control, Some(&handle));
+        assert_eq!(reply.turn_control, Some(&handle));
     }
 }

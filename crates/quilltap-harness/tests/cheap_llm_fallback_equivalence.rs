@@ -519,8 +519,8 @@ fn cheap_llm_refusal_matches_oracle() {
     let cases = spec["cases"].as_array().unwrap();
     assert_eq!(
         oracle.len(),
-        cases.len() + 3,
-        "the policy + one row per case + two dumps"
+        cases.len() + 4,
+        "the policy + one row per case + two dumps + the llm_logs dump (P4.D348)"
     );
 
     // v4 `3b463d6b1` (#76): the fallback's Concierge policy, resolved from the
@@ -706,6 +706,7 @@ fn cheap_llm_refusal_matches_oracle() {
     let got_msgs = db
         .read_main(|c| dump_table_json_conn(c, "chat_messages", "chatId"))
         .expect("dump chat_messages");
+    let mut got_logs = common::dump_llm_logs(&db);
     drop(db);
     drop(rt);
 
@@ -733,5 +734,73 @@ fn cheap_llm_refusal_matches_oracle() {
         want_msgs,
         "chat_messages rows diverge"
     );
+
+    // P4.D348 (v4 `eb2d87788`): every cheap call's `llm_logs` row — a failed
+    // attempt is its OWN row (the P4.13-unit-6 divergence CONVERGED), the
+    // temperature complaint's `0.3` attempt before its retry, the success rows
+    // carrying `finishReason`. A `throwsHttp` row's error carries v5's
+    // transport bytes where v4 logs its SDK error's rendering — P4.118's
+    // standing divergence, pinned both ways on the rows as on the results.
+    let mut want_logs = oracle
+        .iter()
+        .find(|v| v.get("kind").and_then(Value::as_str) == Some("llmlogs"))
+        .map(common::oracle_llm_logs)
+        .expect("the oracle dumped no llmlogs line — regenerate it from the pin");
+    let mut rewritten = 0usize;
+    // EVERY `throwsHttp` step's row — a task the chain recovered still logs the
+    // failed call that preceded the answer.
+    let http_steps = cases.iter().flat_map(|case| {
+        let provider = case["selection"]["provider"].as_str().unwrap().to_string();
+        case["script"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(move |step| {
+                step.get("throwsHttp")
+                    .map(|h| (provider.clone(), h.clone()))
+            })
+    });
+    for (provider, http) in http_steps {
+        let provider = provider.as_str();
+        let status = http["status"].as_u64().unwrap() as u16;
+        let body = http["body"].as_str().unwrap();
+        let bytes = serde_json::to_string(&format!("HTTP {status}: {body}")).unwrap();
+        let rendering = serde_json::to_string(
+            &text_http_refusal(provider, status, body)
+                .expect("known provider")
+                .message,
+        )
+        .unwrap();
+        for row in got_logs.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            if let Some(Value::String(resp)) = obj.get("response").cloned() {
+                let needle = format!("\"error\":{bytes}");
+                if resp.contains(&needle) {
+                    rewritten += 1;
+                    obj.insert(
+                        "response".into(),
+                        Value::String(resp.replace(&needle, &format!("\"error\":{rendering}"))),
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        rewritten > 0,
+        "no v5 row carried a throwsHttp case's transport bytes — the pin went vacuous"
+    );
+    common::sort_by_canonical_json(&mut got_logs);
+    common::sort_by_canonical_json(&mut want_logs);
+    let temperature_rows: Vec<&Value> = want_logs
+        .iter()
+        .filter(|r| r["modelName"] == "gemini-temperature-fussy")
+        .collect();
+    assert_eq!(
+        temperature_rows.len(),
+        2,
+        "the temperature complaint logs the failed 0.3 attempt AND the retry"
+    );
+    common::write_diff_dump("cheap_refusal_llm_logs", &got_logs, &want_logs);
+    assert_eq!(got_logs, want_logs, "llm_logs rows diverge");
     eprintln!("OK cheap-llm refusal: {} cases", cases.len());
 }

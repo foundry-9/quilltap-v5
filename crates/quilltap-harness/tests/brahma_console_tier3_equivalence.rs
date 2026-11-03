@@ -312,10 +312,9 @@ struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, std::collections::VecDeque<Queued>>>,
     /// P4.114: served calls whose messages' thought signatures differ from v4's.
     signature_mismatches: Mutex<Vec<String>>,
-    /// Served sequences that ran to `done` (no scripted throw) — the number of
-    /// `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written
-    /// (dogfood finding #111's other half — the one-shot engine wrote none where
-    /// v4 logs every call).
+    /// Every served sequence — the number of `CHAT_MESSAGE` rows v4's
+    /// `streamMessage` funnel writes (one per call, `done`, thrown or broken
+    /// off, since `eb2d87788`; P4.D348 — dogfood finding #111's other half).
     completed_streams: Mutex<i64>,
     /// Every key the engine handed the wire (`stream_message_keyed`), in call
     /// order — the P4.136 thaw's proof (see the pin after the cases).
@@ -381,9 +380,7 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
                             ));
                         }
                     }
-                    if !seq.iter().any(Result::is_err) {
-                        *self.completed_streams.lock().unwrap() += 1;
-                    }
+                    *self.completed_streams.lock().unwrap() += 1;
                     seq
                 }
                 None => vec![Err(StreamError::new(format!(
@@ -791,8 +788,8 @@ async fn brahma_console_tier3_matches_oracle() {
         assert_lines_match(&case.name, &got_lines, &want_lines, &mut log_failures);
     }
 
-    // Finding #111's pin: one CHAT_MESSAGE row per completed one-shot stream
-    // call (a scripted mid-stream throw logs nothing — v4 logs on `chunk.done`),
+    // Finding #111's pin: one CHAT_MESSAGE row per one-shot stream call (a
+    // scripted mid-stream throw is a row too since v4 `eb2d87788`, P4.D348),
     // v4's console shape — `messageId` NULL (the engine carries none) and
     // `characterId` NULL (no character at all), `connectionProfileId` the
     // resolved profile's, a MEASURED duration. Mutations: remove
@@ -814,7 +811,7 @@ async fn brahma_console_tier3_matches_oracle() {
     let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
     assert_eq!(
         rows, expected_chat_message_rows,
-        "one CHAT_MESSAGE row per completed one-shot stream call"
+        "one CHAT_MESSAGE row per one-shot stream call"
     );
 
     // P4.136's thaw, end to end through `run_brahma_query` (found at

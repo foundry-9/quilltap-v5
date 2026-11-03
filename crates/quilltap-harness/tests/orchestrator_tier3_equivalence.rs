@@ -12,10 +12,10 @@
 //!
 //!   1. each call's ordered event trace (decoded to JSON) is compared
 //!      byte-for-byte against v4's recorded SSE frames — INCLUDING the
-//!      `turnStart` / `turnComplete` / `chainComplete` chain frames and the
-//!      `debugLLMRequest` frame (which v4 emits but the Rust port does not: the
-//!      harness DROPS every `debugLLMRequest` / `debugContext` / `keep-alive`
-//!      frame + the many pre-send `status` frames v4's tool/validate/gather
+//!      `turnStart` / `turnComplete` / `chainComplete` chain frames (the
+//!      harness DROPS every `debugContext` / `keep-alive` frame — v4's
+//!      `debugLLMRequest` frame is GONE at the pin, `cb94e6e99`, and its drop
+//!      retired with it (P4.D348) — + the many pre-send `status` frames v4's tool/validate/gather
 //!      pipeline emits that the seamed Rust path does not — the diffed vocabulary
 //!      is the load-bearing set: `status(initializing/resolving/sending/streaming/
 //!      preparing/gathering)`, `turnStart`, `content`, `reasoning`, `done`,
@@ -229,6 +229,10 @@ struct CallW {
     /// frozen zero every pre-rotation row was written against.
     #[serde(default)]
     draws: Option<Vec<f64>>,
+    /// P4.D348 (v4 `036b32a78`, bug 258): whisper targets — a send carrying
+    /// them is an operator whisper, which draws ONE reply and no chain.
+    #[serde(default)]
+    target_participant_ids: Option<Vec<String>>,
 }
 
 /// A corpus `pendingToolResults` element.
@@ -1393,8 +1397,9 @@ impl quilltap_core::services::carina_runner::PostProsperoCarinaError for Harness
 // ---------------------------------------------------------------------------
 
 /// The load-bearing event vocabulary the differential compares. v4 emits many
-/// pre-send `status` frames (loading_tools / validating / warning / …) + a
-/// `debugLLMRequest` frame that the seamed Rust orchestrator does not; the Rust
+/// pre-send `status` frames (loading_tools / validating / warning / …) that the
+/// seamed Rust orchestrator does not (v4's `debugLLMRequest` frame is gone at
+/// the pin, `cb94e6e99` — its drop retired, P4.D348); the Rust
 /// path emits the initializing/resolving/gathering/preparing/sending/streaming
 /// statuses + the turn/content/done/chain frames. To compare the two, both traces
 /// are filtered to the shared vocabulary: every non-status frame is kept; a
@@ -1435,10 +1440,7 @@ fn filter_events(events: &[Value]) -> Vec<Value> {
             // `{fileProcessing: …}` (`streaming.service.ts:575`), which v5 emits
             // since P4.140 (`ChatEvent::FileProcessing`) — it is KEPT and
             // compared in order.
-            if obj.contains_key("debugLLMRequest")
-                || obj.contains_key("debugContext")
-                || obj.contains_key("error")
-            {
+            if obj.contains_key("debugContext") || obj.contains_key("error") {
                 return false;
             }
             if let Some(status) = obj.get("status").and_then(Value::as_object) {
@@ -1646,6 +1648,8 @@ fn orchestrator_tier3_matches_oracle() {
     let mut want_interrupt_log: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.165: Carina's three Brahma lines, per call.
     let mut want_carina_log: HashMap<String, Vec<Value>> = HashMap::new();
+    // P4.D348: the turn spine's new and retagged lines, per call.
+    let mut want_spine_log: HashMap<String, Vec<Value>> = HashMap::new();
     // P4.133: v4's transport-shell `error` frame `details` per case (the
     // filtered event comparison drops the frame; the requires-gate arms compare
     // its message against `process_message`'s `Err`).
@@ -1813,6 +1817,15 @@ fn orchestrator_tier3_matches_oracle() {
                     .expect("carinaLog carries `lines`");
                 want_carina_log.insert(parsed.call.clone().unwrap(), lines);
             }
+            "spineLog" => {
+                let lines = parsed
+                    .rest
+                    .get("lines")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .expect("spineLog carries `lines`");
+                want_spine_log.insert(parsed.call.clone().unwrap(), lines);
+            }
             other => panic!("unknown oracle line kind: {other}"),
         }
     }
@@ -1874,7 +1887,9 @@ fn orchestrator_tier3_matches_oracle() {
     for row in &canned_completions {
         let messages = to_completion_messages(&row.messages);
         let _key = canned_completion_key(&row.provider, &row.model, row.temperature, &messages);
-        completion = completion.with_response(
+        // P4.D348: v4's mock answers `finishReason: 'stop'`, which the cheap
+        // rows log since `eb2d87788`.
+        completion = completion.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -1885,6 +1900,7 @@ fn orchestrator_tier3_matches_oracle() {
                 completion_tokens: u.completion_tokens,
                 total_tokens: u.total_tokens,
             }),
+            Some("stop"),
         );
     }
     // v4's mock answers EVERY text with `[0.1, 0.2, 0.3]` (`canned`); since
@@ -2246,6 +2262,15 @@ fn orchestrator_tier3_matches_oracle() {
         // P4.D186: the send's attachments and the autonomous-room opt-out.
         let call_file_ids = call.file_ids.clone();
         let call_never_pause = call.never_pause_for_user;
+        // P4.D348 S2: the spine's whisper decision, mirrored (the harness drives
+        // `process_message` + the chain directly, as the spine's `run_send`
+        // does): the targets ride the initial turn, and a whisper's chain is
+        // single-turn.
+        let call_targets = call.target_participant_ids.clone();
+        let call_is_whisper = quilltap_core::services::whisper_send::is_operator_whisper_send(
+            call.continue_mode,
+            call_targets.as_deref(),
+        );
         let call_ptrs: Vec<orchestrator::PendingToolResult> = call
             .pending_tool_results
             .iter()
@@ -2289,6 +2314,12 @@ fn orchestrator_tier3_matches_oracle() {
                     // (`orchestrator.service.ts:218`), so this one is not gated
                     // on `continue_mode`.
                     never_pause_for_user: call_never_pause,
+                    // P4.D348: the whisper targets ride the INITIAL turn only.
+                    target_participant_ids: if continue_mode {
+                        None
+                    } else {
+                        call_targets.clone()
+                    },
                     ..Default::default()
                 },
                 clock: ProcessClock {
@@ -2397,7 +2428,8 @@ fn orchestrator_tier3_matches_oracle() {
                                 // `options.neverPauseForUser === true` straight
                                 // into `executeTurnChain` (`:226`).
                                 never_pause_for_user: call_never_pause,
-                                single_turn: false,
+                                // P4.D348 S2: `single_turn: is_whisper`.
+                                single_turn: call_is_whisper,
                                 chain_start_time_ms: frozen,
                                 config: ChainConfig::default(),
                             },
@@ -2860,6 +2892,9 @@ fn orchestrator_tier3_matches_oracle() {
     // keys snake_cased, `elapsedMs` masked, the target dropped. Every call is a
     // silence leg for the lines it does not fire.
     let mut interrupt_lines_seen = 0usize;
+    // P4.D348: the spine lines, gathered so every call's divergence shows.
+    let mut spine_lines_seen = 0usize;
+    let mut spine_failures: Vec<String> = Vec::new();
     let elapsed = regex::Regex::new(r"elapsed_ms=\d+").unwrap();
     // The pre-generated assistant message id is minted per run on each side.
     let minted = regex::Regex::new(r"message_id=[0-9a-f-]{36}").unwrap();
@@ -2867,6 +2902,11 @@ fn orchestrator_tier3_matches_oracle() {
         let line = elapsed.replace_all(line, "elapsed_ms=<ms>");
         minted.replace_all(&line, "message_id=<msgid>").into_owned()
     };
+    // P4.D348: the spine lines' minted-id mask (compiled once, used per call).
+    let spine_minted = regex::Regex::new(
+        r"(userMessageId|messageId)=[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+    )
+    .unwrap();
     for call in &spec.calls {
         let want = want_interrupts
             .get(&call.name)
@@ -2972,7 +3012,72 @@ fn orchestrator_tier3_matches_oracle() {
             "{}: Carina's Brahma lines",
             call.name
         );
+
+        // P4.D348: the turn spine's lines — v4's bag VERBATIM (camelCase on
+        // both sides), the target dropped, minted ids masked. A silence leg for
+        // every call that fires none.
+        let spine_mask = |line: &str| spine_minted.replace_all(line, "$1=<minted>").into_owned();
+        let want_spine: Vec<String> = want_spine_log
+            .get(&call.name)
+            .unwrap_or_else(|| panic!("{}: no `spineLog` oracle row — regenerate", call.name))
+            .iter()
+            .map(|l| {
+                let mut line = format!(
+                    "{} {}",
+                    l["level"].as_str().unwrap().to_uppercase(),
+                    l["message"].as_str().unwrap()
+                );
+                for (k, v) in l["context"].as_object().into_iter().flatten() {
+                    let v = match v {
+                        Value::String(s) => s.clone(),
+                        other => other.to_string(),
+                    };
+                    line.push_str(&format!(" {k}={v}"));
+                }
+                spine_mask(&line)
+            })
+            .collect();
+        const SPINE_TAGS: [&str; 10] = [
+            "[Orchestrator] Recording the operator post without a reply",
+            "[OperatorPost] User message persisted",
+            "[OperatorPost] Pending tool results persisted",
+            "[OperatorPost] Failed to link attachment to user message",
+            "Auto-detected RNG patterns in user message",
+            "[TurnOutcome] Turn settled",
+            "[TurnTools] Tool slate resolved",
+            "[TurnPreparation] Prospero context refresh due",
+            "Failed to read project store links; doc tools withheld",
+            "Recording an LLM stream that ended without a terminal chunk",
+        ];
+        let got_spine: Vec<String> = initial_logs[&call.name]
+            .iter()
+            .chain(chain_logs.get(&call.name).into_iter().flatten())
+            .filter(|l| SPINE_TAGS.iter().any(|t| l.contains(t)))
+            .map(|l| {
+                let mut parts = l.splitn(3, ' ');
+                let level = parts.next().unwrap_or_default();
+                let _target = parts.next();
+                spine_mask(&format!("{level} {}", parts.next().unwrap_or_default()))
+            })
+            .collect();
+        spine_lines_seen += want_spine.len();
+        if got_spine != want_spine {
+            spine_failures.push(format!(
+                "{}: the spine lines\n  v5 {got_spine:#?}\n  v4 {want_spine:#?}",
+                call.name
+            ));
+        }
     }
+    assert!(
+        spine_failures.is_empty(),
+        "{} call(s) with spine-line divergences:\n{}",
+        spine_failures.len(),
+        spine_failures.join("\n")
+    );
+    assert!(
+        spine_lines_seen > 0,
+        "the spine corpus logged nothing — regenerate"
+    );
     if ran("interrupt_yield_bare") {
         assert!(
             interrupt_lines_seen > 0,
@@ -3072,6 +3177,9 @@ fn orchestrator_tier3_matches_oracle() {
         "paused_hold_keeps_full_context_flag",
         "paused_hold_cadence_boundary",
         "paused_hold_two_user_seats",
+        // P4.D348 (v4 `a8214b253`): a held post whose responder has lost its key
+        // — the requires gate exempts a held send.
+        "pause_keyless_records_post",
     ];
     let held_frame = json!({
         "chainComplete": true,
@@ -3132,8 +3240,9 @@ fn orchestrator_tier3_matches_oracle() {
     }
 
     // --- P4.D186: the ONE info line, capture-pinned ---
-    // v4 `logger.info('[Orchestrator] Chat paused — recording the user message
-    // without a reply', { chatId, userId, hasContent, attachmentCount })`. A
+    // P4.D348 (v4 `a8214b253`): the paused and storyteller INFOs merged into
+    // `logger.info('[Orchestrator] Recording the operator post without a
+    // reply', { chatId, userId, hold, hasContent, attachmentCount })`. A
     // log-only line is invisible to every frame and row comparand above, and its
     // silence on the sibling branches is half the contract.
     for call in &spec.calls {
@@ -3142,7 +3251,7 @@ fn orchestrator_tier3_matches_oracle() {
             .unwrap_or_else(|| panic!("no captured initial log for {}", call.name));
         let hits: Vec<&String> = lines
             .iter()
-            .filter(|l| l.contains("[Orchestrator] Chat paused"))
+            .filter(|l| l.contains("[Orchestrator] Recording the operator post without a reply"))
             .collect();
         if held_cases.contains(&call.name.as_str()) {
             assert_eq!(
@@ -3152,9 +3261,9 @@ fn orchestrator_tier3_matches_oracle() {
                 call.name
             );
             let want_line = format!(
-                "INFO quilltap_core::services::orchestrator [Orchestrator] Chat paused — \
-                 recording the user message without a reply chat_id={} user_id={} \
-                 has_content={} attachment_count={}",
+                "INFO quilltap_core::services::orchestrator [Orchestrator] Recording the \
+                 operator post without a reply chatId={} userId={} hold=paused \
+                 hasContent={} attachmentCount={}",
                 call.chat_id,
                 spec.user_id,
                 !call.content.is_empty(),
@@ -4521,6 +4630,18 @@ fn assert_events_eq(name: &str, got: &[Value], want: &[Value]) {
         let g = serde_json::to_string_pretty(got).unwrap();
         let w = serde_json::to_string_pretty(want).unwrap();
         panic!("event trace mismatch for {name}\n--- got ---\n{g}\n--- want ---\n{w}");
+    } // P4.D348 (R-N): `Value` equality is ORDER-BLIND under `preserve_order`
+      // (an `IndexMap`), so the `done` frames' key order — which v4 `a8214b253`
+      // moved for the five non-finalizer closes (`encodeTurnDoneEvent`) — is
+      // pinned by BYTES here, frame for frame.
+    for (i, (g, w)) in got.iter().zip(want).enumerate() {
+        if g.get("done").is_some() {
+            let (gb, wb) = (
+                serde_json::to_string(g).unwrap(),
+                serde_json::to_string(w).unwrap(),
+            );
+            assert_eq!(gb, wb, "{name}: done frame #{i} key order (bytes)");
+        }
     }
 }
 
@@ -4565,6 +4686,11 @@ fn assert_table_eq(name: &str, got: &Value, want: &Value) {
     let got_rows = got.get("rows").cloned().unwrap_or(Value::Null);
     let want_rows = want.get("rows").cloned().unwrap_or(Value::Null);
     if got_rows != want_rows {
+        common::write_diff_dump(
+            &format!("orchestrator_{name}"),
+            got_rows.as_array().map(Vec::as_slice).unwrap_or_default(),
+            want_rows.as_array().map(Vec::as_slice).unwrap_or_default(),
+        );
         let g = serde_json::to_string_pretty(&got_rows).unwrap();
         let w = serde_json::to_string_pretty(&want_rows).unwrap();
         panic!("table {name} mismatch\n--- got ---\n{g}\n--- want ---\n{w}");

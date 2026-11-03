@@ -111,7 +111,7 @@ pub use super::carina_runner::{ClosureProspero, ClosureRunQuery};
 /// ASSISTANT response (v4 `JSON.stringify({ tool, initiatedBy, success, result,
 /// prompt, arguments, ...(anchorOffset) })`). A typed struct in v4's field order so
 /// the stored bytes are byte-identical. NOTE the two differences from the
-/// user-message path ([`crate::services::orchestrator`]'s `RngToolMessageContent`):
+/// user-message path ([`crate::services::operator_post`]'s `RngToolMessageContent`):
 /// `initiatedBy` is `"auto-detect-response"` (not `"auto-detect"`), and it carries
 /// an optional trailing `anchorOffset` placing the result after the notation.
 #[derive(serde::Serialize)]
@@ -591,6 +591,22 @@ pub struct ProcessMessageResult {
     /// chat is not paused. Stream-internal — `ChatSendResultDto` projects
     /// nothing new (R-17).
     pub yielded: bool,
+    /// Storyteller (P4.D348 S1, v4 `a8214b253`): the post was recorded and a
+    /// round of bids opens instead of a reply. Set only by
+    /// [`super::turn_holds::finish_held_post`]'s storyteller arm; the spine
+    /// reads it (P4.D343's `open_round_on_send`).
+    pub storyteller_hold: Option<StorytellerHold>,
+}
+
+/// v4 `ProcessMessageResult.storytellerHold` — what the spine needs to open a
+/// storyteller round for a recorded operator post.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorytellerHold {
+    /// The operator post the round answers (`null` for an attachments-only post).
+    pub trigger_message_id: Option<String>,
+    /// The post was an `@Name:` / `@Name?` query — answered as in every mode, so
+    /// no round opens.
+    pub carina: bool,
 }
 
 /// Everything [`finalize_message_response`] needs (v4's `FinalizeMessageResponseOptions`
@@ -669,6 +685,10 @@ pub struct FinalizeOptions {
     /// or act on its half-finished words (dice, trigger phrases, Carina
     /// markup).
     pub turn_stopped: bool,
+    /// The send's turn-control handle (P4.D348 `TurnStopReach`) — handed to
+    /// the reply trigger site so a stop reaches a triggered tool. `None` off a
+    /// registered Salon send (the enclave, the canned differentials).
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// The answer-confirmation inputs the finalizer forwards to the runner (v4's
@@ -744,6 +764,7 @@ where
         draws,
         consult,
         turn_stopped,
+        turn_control,
     } = opts;
 
     // --- Content cleaning (message-finalizer.service.ts:96–133) ---
@@ -1365,6 +1386,7 @@ where
                 character_id: &character.id,
                 chat_settings: trigger_settings,
                 now_ms: crate::clock::now_unix_ms(),
+                turn_control: turn_control.as_ref(),
             },
             consult.as_deref(),
             &mut on_posted,
@@ -1564,6 +1586,7 @@ where
         skipped: false,
         skipped_participant_id: None,
         yielded: false,
+        storyteller_hold: None,
     })
 }
 

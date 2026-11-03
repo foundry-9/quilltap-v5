@@ -17,7 +17,8 @@
  *
  * Run from inside the server checkout:
  *   cd ~/source/quilltap-server
- *   npx tsx ~/source/quilltap-v5/harness/oracle/cases/turn-control.ts \
+ *   V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   npx tsx $V5W/harness/oracle/cases/turn-control.ts \
  *     > /tmp/oracle-turn-control.ndjson
  */
 
@@ -30,7 +31,9 @@ type Row =
   | { kind: 'note'; id: string; operatorName: string; out: string }
   | { kind: 'constants'; id: string; out: { YIELD_SENTINEL: string; TURN_YIELD_SYSTEM_KIND: string } }
   | { kind: 'sentinelLine'; id: string; line: string; phrase: string; out: boolean }
-  | { kind: 'watchdog'; id: string; seen: string[]; logs: LogLine[] };
+  | { kind: 'watchdog'; id: string; seen: string[]; logs: LogLine[] }
+  | { kind: 'wait'; id: string; obs: unknown[]; logs: LogLine[] }
+  | { kind: 'whisper'; id: string; continueMode?: boolean; targetParticipantIds?: string[] | null; out: boolean };
 
 const rows: Row[] = [];
 const MASK = '<chat>';
@@ -63,6 +66,7 @@ async function main() {
   const ys = await import('@/lib/chat/turn-manager/yield-signal');
   const ss = await import('@/lib/chat/turn-manager/skip-signal');
   const wd = await import('@/lib/llm/stream-watchdog');
+  const ws = await import('@/lib/services/chat-message/whisper-send');
 
   const latch = () => {
     let open: () => void = () => {};
@@ -195,6 +199,135 @@ async function main() {
     await runB;
     obs.push(tc.hasActiveTurn('chat-h'));
   });
+
+  // ---- waitForEarlierTurns (P4.D348, bug 258) -------------------------------
+  const waitScenario = async (id: string, chats: string[], body: (obs: unknown[]) => Promise<void>) => {
+    chatIds = chats;
+    captured.length = 0;
+    const obs: unknown[] = [];
+    await body(obs);
+    rows.push({ kind: 'wait', id, obs: obs.map(mask), logs: captured.splice(0) });
+  };
+
+  // (a) the later stream waits for the earlier one.
+  await waitScenario('wait-two-streams', ['chat-w1'], async (obs) => {
+    const gate = latch();
+    const runA = tc.runWithTurnControl('chat-w1', async () => {
+      obs.push('A registered');
+      await gate.promise;
+      obs.push('A done');
+    });
+    const runB = tc.runWithTurnControl('chat-w1', async () => {
+      obs.push('B registered');
+      const n = await tc.waitForEarlierTurns('chat-w1');
+      obs.push('B proceeds', n);
+    });
+    await Promise.resolve();
+    obs.push('A releasing');
+    gate.open();
+    await runA;
+    await runB;
+  });
+
+  // (b) outside a registered stream it waits on every open stream.
+  await waitScenario('wait-outside', ['chat-w2'], async (obs) => {
+    const ga = latch();
+    const gb = latch();
+    const runA = tc.runWithTurnControl('chat-w2', () => ga.promise);
+    const runB = tc.runWithTurnControl('chat-w2', () => gb.promise);
+    const waiting = tc.waitForEarlierTurns('chat-w2');
+    ga.open();
+    await runA;
+    gb.open();
+    await runB;
+    obs.push(await waiting);
+  });
+
+  // (c) nothing earlier open → 0, no line (outside, then as the only stream).
+  await waitScenario('wait-nothing-open', ['chat-w3'], async (obs) => {
+    obs.push(await tc.waitForEarlierTurns('chat-w3'));
+    obs.push(await tc.runWithTurnControl('chat-w3', () => tc.waitForEarlierTurns('chat-w3')));
+  });
+
+  // (d) back-to-back whispers: the second waits on the chain and the first,
+  // never on itself.
+  await waitScenario('wait-back-to-back', ['chat-w4'], async (obs) => {
+    const gate = latch();
+    const chain = tc.runWithTurnControl('chat-w4', async () => {
+      await gate.promise;
+      obs.push('chain');
+    });
+    const w1 = tc.runWithTurnControl('chat-w4', async () => {
+      const n = await tc.waitForEarlierTurns('chat-w4');
+      obs.push('w1', n);
+    });
+    const w2 = tc.runWithTurnControl('chat-w4', async () => {
+      const n = await tc.waitForEarlierTurns('chat-w4');
+      obs.push('w2', n);
+    });
+    gate.open();
+    await Promise.all([chain, w1, w2]);
+  });
+
+  // (e) the waiter does not block a stream opened after it.
+  await waitScenario('wait-later-unblocked', ['chat-w5'], async (obs) => {
+    const gate = latch();
+    const a = tc.runWithTurnControl('chat-w5', async () => {
+      await gate.promise;
+      obs.push('A done');
+    });
+    const w = tc.runWithTurnControl('chat-w5', async () => {
+      const n = await tc.waitForEarlierTurns('chat-w5');
+      obs.push('W proceeds', n);
+    });
+    await Promise.resolve();
+    await tc.runWithTurnControl('chat-w5', async () => {
+      obs.push('L runs', tc.hasActiveTurn('chat-w5'));
+    });
+    obs.push('L finished');
+    gate.open();
+    await Promise.all([a, w]);
+  });
+
+  // (f) a stream opened AFTER the waiter is already open when it starts to wait
+  // (the mutation-run's corpus gap): it is never waited on.
+  await waitScenario('wait-middle-ignores-later', ['chat-w6'], async (obs) => {
+    const gateA = latch();
+    const bGo = latch();
+    const gateC = latch();
+    const runA = tc.runWithTurnControl('chat-w6', () => gateA.promise);
+    const runB = tc.runWithTurnControl('chat-w6', async () => {
+      await bGo.promise;
+      const n = await tc.waitForEarlierTurns('chat-w6');
+      obs.push('B proceeds', n);
+    });
+    const runC = tc.runWithTurnControl('chat-w6', () => gateC.promise);
+    bGo.open();
+    await Promise.resolve();
+    gateA.open();
+    await runA;
+    await runB;
+    obs.push('C still open', tc.hasActiveTurn('chat-w6'));
+    gateC.open();
+    await runC;
+  });
+
+  // ---- isOperatorWhisperSend (P4.D348) ---------------------------------------
+  const continueModes: Array<boolean | undefined> = [undefined, true, false];
+  const targetSets: Array<string[] | null | undefined> = [undefined, null, [], ['a'], ['a', 'b']];
+  for (const continueMode of continueModes) {
+    for (const targetParticipantIds of targetSets) {
+      const opts: { continueMode?: boolean; targetParticipantIds?: string[] | null } = {};
+      if (continueMode !== undefined) opts.continueMode = continueMode;
+      if (targetParticipantIds !== undefined) opts.targetParticipantIds = targetParticipantIds;
+      rows.push({
+        kind: 'whisper',
+        id: `whisper-${String(continueMode)}-${JSON.stringify(targetParticipantIds ?? 'absent')}`,
+        ...opts,
+        out: ws.isOperatorWhisperSend(opts),
+      });
+    }
+  }
 
   // ---- detectYieldSentinel --------------------------------------------------
   const detect = (id: string, response: string, characterName?: string, aliases?: string[]) => {

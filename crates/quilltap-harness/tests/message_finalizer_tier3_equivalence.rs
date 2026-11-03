@@ -929,6 +929,7 @@ fn message_finalizer_tier3_matches_oracle() {
             draws: DrawSource::sequence(vec![0.0]),
             consult: None,
             turn_stopped: call.turn_stopped,
+            turn_control: None,
         };
 
         let result = rt

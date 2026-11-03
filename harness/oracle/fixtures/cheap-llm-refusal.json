@@ -363,6 +363,26 @@
           }
         }
       ]
+    },
+    {
+      "name": "temperature-complaint-retries-without",
+      "_comment": "P4.D348 (v4 eb2d87788): the 0.3 attempt is REJECTED for its temperature — v4 now logs that failed attempt as its OWN row (temperature 0.3, the error) BEFORE the retry's row (temperature absent). The P4.13-unit-6 ruled divergence converged. A model name no other case uses, so the module-level no-custom-temperature cache touches nothing else.",
+      "chatId": "c0000e01-0000-4000-8000-000000000001",
+      "selection": {
+        "provider": "GOOGLE",
+        "modelName": "gemini-temperature-fussy",
+        "connectionProfileId": "c90000e1-0000-4000-8000-000000000001"
+      },
+      "uncensored": false,
+      "script": [
+        {
+          "throws": "Unsupported parameter: 'temperature' is not supported with this model."
+        },
+        {
+          "content": "A tidy summary of the scene.",
+          "finishReason": "stop"
+        }
+      ]
     }
   ]
 }

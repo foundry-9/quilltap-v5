@@ -467,6 +467,9 @@ impl<'a, CMP: CompletionProvider> ProcessFilesDeps<'a, CMP> {
 pub struct ProcessedFiles {
     /// The `matched` file ids (chat-linked ∩ requested) — the `addLink` targets.
     pub attached_file_ids: Vec<String>,
+    /// The same `matched` rows as v4's `AttachedFile`s (P4.D348) — what
+    /// `operator_post::record_operator_post` links and announces.
+    pub attached_files: Vec<super::operator_post::AttachedFile>,
     /// v4 `messageContentPrefix` — `None` when empty (byte-identical downstream).
     pub message_content_prefix: Option<String>,
     /// v4 `attachmentsToSend` — the kept (provider-supported) attachments.
@@ -551,6 +554,16 @@ pub async fn load_and_process_files<CMP: CompletionProvider>(
 
     ProcessedFiles {
         attached_file_ids: matched.iter().map(|f| f.id.clone()).collect(),
+        attached_files: matched
+            .iter()
+            .map(|f| super::operator_post::AttachedFile {
+                id: f.id.clone(),
+                filepath: format!("api/files/{}", f.id),
+                filename: f.original_filename.clone(),
+                mime_type: f.mime_type.clone(),
+                size: f.size,
+            })
+            .collect(),
         message_content_prefix: if message_content_prefix.is_empty() {
             None
         } else {

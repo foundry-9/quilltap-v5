@@ -151,6 +151,7 @@ pub mod multi_character_prefill;
 pub mod native_tool_loop;
 pub mod off_scene;
 pub mod off_scene_kinds;
+pub mod operator_post; // P4.D348
 pub mod orchestrator;
 pub mod outfit_change_effects;
 pub mod outfit_displacement;
@@ -207,6 +208,7 @@ pub mod tool_execution;
 pub mod trigger_phrase_sites;
 pub mod turn_control; // P4.D335
 pub mod turn_extras;
+pub mod turn_holds; // P4.D348
 pub mod turn_orchestrator;
 pub mod turn_transcript;
 pub mod user_identity_resolver;
@@ -224,7 +226,8 @@ pub mod wardrobe_item_mutations;
 pub mod wardrobe_item_route_steps;
 pub mod wardrobe_transfers;
 pub mod wardrobe_wear_history;
-// ── P4.9E2A ──
+pub mod whisper_send; // P4.D348
+                      // ── P4.9E2A ──
 pub mod announcer;
 // ── end P4.9E2A ──
 // ── P4.9E1A: the chat cast + avatar-override service layer ──

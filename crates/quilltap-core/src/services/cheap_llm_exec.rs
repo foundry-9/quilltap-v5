@@ -543,15 +543,9 @@ impl CheapLlmTaskExecutor {
     /// v4 `logCall` (core-execution.ts:93): summarize the just-completed
     /// provider call and write one `llm_logs` row (no-op when logging is off).
     ///
-    /// **The failure arms now write a row too — RULED 2026-07-23 (P4.13
-    /// unit 6), a deliberate divergence from v4.** v4 calls `logCall` only on
-    /// `sendToProvider`'s success arms (core-execution.ts:131 / :141 / :153);
-    /// a throw logs nothing, so a provider outage leaves the LLM Inspector
-    /// empty and reads as "the task never ran" — exactly how dogfood finding
-    /// #23 stayed invisible through a whole dogfood pass (finding #26 repeated
-    /// the lesson). The human ruling the P4.11 record requested came back YES:
-    /// see [`Self::log_failed_call`]. The SUCCESS arms below stay byte-faithful
-    /// to v4.
+    /// Every arm logs its own row — answered here, thrown through
+    /// [`Self::log_failed_call`] (v4 `eb2d87788` converged onto the failure row
+    /// v5 had ruled for itself at P4.13 unit 6; that divergence is RETIRED).
     /// `duration_ms` is the wall-clock of the provider call this row describes
     /// (v4 `0cde7fbc` made it a REQUIRED `logCall` argument). This shared path
     /// covers MEMORY_EXTRACTION, TITLE_GENERATION, SUMMARIZATION,
@@ -559,8 +553,8 @@ impl CheapLlmTaskExecutor {
     /// large share of all `llm_logs` rows — so leaving it null used to hollow out
     /// every latency average the Almanack draws.
     ///
-    /// The cheap path sets no `cacheUsage`/`rawProviderUsage`/
-    /// `requestHashes`; the request carries `temperature` only when one was sent
+    /// The cheap path sets no `rawProviderUsage`/`requestHashes` (`cacheUsage`
+    /// and `finishReason` since `eb2d87788`); the request carries `temperature` only when one was sent
     /// (v4 spreads `...(temperature !== undefined ? { temperature } : {})`, which
     /// `summarizeRequest` collapses to `temperature: null` when absent —
     /// reproduced by `None`).
@@ -607,7 +601,8 @@ impl CheapLlmTaskExecutor {
             response: LogResponse {
                 content: response.content.clone(),
                 error: None,
-                finish_reason: None,
+                // v4 `finishReason: response.finishReason ?? null` (`eb2d87788`).
+                finish_reason: response.finish_reason.clone(),
                 tool_calls: None,
             },
             usage: response.usage.map(|u| LogUsage {
@@ -615,7 +610,13 @@ impl CheapLlmTaskExecutor {
                 completion_tokens: Some(u.completion_tokens),
                 total_tokens: Some(u.total_tokens),
             }),
-            cache_usage: None,
+            // v4 `cacheUsage: response?.cacheUsage` (`eb2d87788`).
+            cache_usage: response.cache_usage.map(|c| {
+                crate::services::llm_logging::LogCacheUsage {
+                    cache_creation_input_tokens: c.cache_creation_input_tokens,
+                    cache_read_input_tokens: c.cache_read_input_tokens,
+                }
+            }),
             raw_provider_usage: None,
             request_hashes: None,
             duration_ms: Some(duration_ms),
@@ -625,13 +626,17 @@ impl CheapLlmTaskExecutor {
         let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
     }
 
-    /// The failed-call error row — a DELIBERATE divergence from v4, RULED
-    /// 2026-07-23 (P4.13 unit 6): v4 logs NOTHING when a cheap-LLM call fails,
-    /// which made findings #23/#26 cost hours of invisible failure arms — and
-    /// v5 has no console to fall back on. The row is a normal cheap-LLM row
-    /// whose response is `{content: "", error: <text>, …}` with no usage —
-    /// distinguishable from every success row (those always log `error: null`).
-    /// The success arms above stay byte-faithful to v4.
+    /// The failed-call error row (v4 `logCall({ error }, temperature,
+    /// durationMs)`). Ruled for v5 alone at P4.13 unit 6 (2026-07-23) as a
+    /// deliberate divergence — v4 then logged NOTHING when a cheap-LLM call
+    /// failed, which made findings #23/#26 cost hours of invisible failure
+    /// arms. v4 `eb2d87788` CONVERGED onto it: every `send` arm logs its own
+    /// row, answered or thrown, so a refusal, a timeout or an
+    /// unsupported-temperature rejection shows beside the retry that followed
+    /// it. The divergence record is RETIRED (P4.D348). The row is a normal
+    /// cheap-LLM row whose response is `{content: "", error: <text>}` with no
+    /// usage; the text is v4's `getErrorMessage(error, 'Unknown error')` — an
+    /// `Error`'s own message, empty or not (the fallback is for non-errors).
     #[allow(clippy::too_many_arguments)]
     async fn log_failed_call(
         &self,
@@ -642,6 +647,7 @@ impl CheapLlmTaskExecutor {
         effective_max_tokens: i64,
         character_id: Option<&str>,
         error_text: &str,
+        duration_ms: Option<f64>,
     ) {
         // The event beside the DB error row (P4.18). Emitted BEFORE the config
         // guard so a failed cheap call is visible even when no llm-logs context
@@ -668,8 +674,7 @@ impl CheapLlmTaskExecutor {
             character_id: character_id.map(str::to_string),
             provider: selection.provider.clone(),
             model_name: selection.model_name.clone(),
-            // The failure row is v5's own (v4 logs nothing here), so it carries
-            // the same attribution the success rows do.
+            // v4 `selection.connectionProfileId ?? null`, as on the success rows.
             connection_profile_id: selection.connection_profile_id.clone(),
             image_profile_id: None,
             request: LogRequest {
@@ -695,7 +700,7 @@ impl CheapLlmTaskExecutor {
             cache_usage: None,
             raw_provider_usage: None,
             request_hashes: None,
-            duration_ms: None,
+            duration_ms,
         };
         let _ = log_llm_call(&cfg.db, params, &cfg.ctx).await;
     }
@@ -815,7 +820,7 @@ impl CheapLlmTaskExecutor {
                 match Self::send_once(completion, selection, api_key, &params(None)).await {
                     Ok(r) => r,
                     Err(error) => {
-                        // The ruled error row (see `log_failed_call`).
+                        // The failed row (see `log_failed_call`).
                         self.log_failed_call(
                             task_type,
                             selection,
@@ -824,6 +829,7 @@ impl CheapLlmTaskExecutor {
                             effective_max_tokens,
                             character_id,
                             &error.message,
+                            Some((crate::clock::now_unix_ms() - started_at) as f64),
                         )
                         .await;
                         return Err(error);
@@ -871,6 +877,20 @@ impl CheapLlmTaskExecutor {
                 })
             }
             Err(error) => {
+                // v4 `eb2d87788`: the failing `0.3` attempt logs its OWN row —
+                // BEFORE the retry, so the Inspector shows the rejection beside
+                // the retry that followed it.
+                self.log_failed_call(
+                    task_type,
+                    selection,
+                    messages,
+                    Some(0.3),
+                    effective_max_tokens,
+                    character_id,
+                    &error.message,
+                    Some((crate::clock::now_unix_ms() - first_attempt_started_at) as f64),
+                )
+                .await;
                 // If temperature is unsupported, cache that and retry without.
                 if error.message.contains("temperature")
                     || error.message.contains("does not support")
@@ -890,7 +910,7 @@ impl CheapLlmTaskExecutor {
                     {
                         Ok(r) => r,
                         Err(retry_error) => {
-                            // The ruled error row (see `log_failed_call`).
+                            // The retry's own failed row (see `log_failed_call`).
                             self.log_failed_call(
                                 task_type,
                                 selection,
@@ -899,6 +919,7 @@ impl CheapLlmTaskExecutor {
                                 effective_max_tokens,
                                 character_id,
                                 &retry_error.message,
+                                Some((crate::clock::now_unix_ms() - retry_started_at) as f64),
                             )
                             .await;
                             return Err(retry_error);
@@ -921,18 +942,7 @@ impl CheapLlmTaskExecutor {
                         finish_reason: response.finish_reason,
                     })
                 } else {
-                    // The ruled error row (see `log_failed_call`) — the
-                    // temperature actually sent on the failing call was 0.3.
-                    self.log_failed_call(
-                        task_type,
-                        selection,
-                        messages,
-                        Some(0.3),
-                        effective_max_tokens,
-                        character_id,
-                        &error.message,
-                    )
-                    .await;
+                    // Not a temperature complaint: the row above is the call's.
                     Err(error)
                 }
             }
@@ -1016,10 +1026,12 @@ impl CheapLlmTaskExecutor {
                     elapsed = started_at.elapsed().as_millis() as u64,
                     "[CheapLLM] Abandoned a stalled provider call",
                 );
-                // A timeout IS a failed call, so it takes the standing ruled
-                // divergence's error row (see `log_failed_call`) — v4 writes no
-                // row here either way, since it writes none for ANY unfinished
-                // or failed cheap call.
+                // A timeout IS a failed call, so it writes the failed row now
+                // (see `log_failed_call`). ⚠ v4's row for an abandoned call
+                // lands LATER — when the provider's own request budget aborts
+                // the in-flight `send`, with that abort's text and the send's
+                // own duration; v5 drops the abandoned future, so it records
+                // the deadline here instead (a recorded residue).
                 self.log_failed_call(
                     task_type,
                     selection,
@@ -1028,6 +1040,7 @@ impl CheapLlmTaskExecutor {
                     effective_max_tokens(max_tokens),
                     character_id,
                     &message,
+                    Some(started_at.elapsed().as_millis() as f64),
                 )
                 .await;
                 Err(CompletionError::new(message))

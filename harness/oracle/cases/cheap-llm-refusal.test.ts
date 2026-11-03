@@ -102,6 +102,9 @@ async function main(): Promise<void> {
 
   process.env.ENCRYPTION_MASTER_PEPPER = spec.testPepperBase64;
   process.env.SQLITE_PATH = work;
+  // P4.D348: a fresh llm-logs DB so the REAL `logLLMCall` lands every cheap
+  // call's row (a failed one too since v4 `eb2d87788`).
+  process.env.SQLITE_LLM_LOGS_PATH = join(scratch, 'data', 'llm-logs.db');
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
   delete process.env.QUILLTAP_JOB_CHILD;
@@ -137,6 +140,9 @@ async function main(): Promise<void> {
     'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
   );
   jest.doMock('better-sqlite3', () => jest.requireActual(cipherDriverPath));
+  jest.doMock('@/lib/services/llm-logging.service', () =>
+    jest.requireActual('@/lib/services/llm-logging.service'),
+  );
   jest.doMock('@/lib/database/manager', () => jest.requireActual('@/lib/database/manager'));
   jest.doMock('@/lib/database/repositories', () => jest.requireActual('@/lib/database/repositories'));
   jest.doMock('@/lib/repositories/factory', () => jest.requireActual('@/lib/repositories/factory'));
@@ -242,6 +248,28 @@ async function main(): Promise<void> {
   };
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chats', 'id')) }));
   lines.push(JSON.stringify({ kind: 'table', ...(await dumpTable('chat_messages', 'chatId')) }));
+
+  // P4.D348: the cheap calls' `llm_logs` rows (fire-and-forget, drained first).
+  await new Promise((r) => setTimeout(r, 300));
+  const { getRawLLMLogsDatabase } = await import('@/lib/database/backends/sqlite/llm-logs-client');
+  const lldb = getRawLLMLogsDatabase();
+  if (!lldb) throw new Error('llm-logs DB handle unavailable (degraded open?)');
+  const llColumns = (lldb.pragma('table_info(llm_logs)') as Array<{ name: string }>).map((c) => c.name);
+  const llRows = (lldb.prepare('SELECT * FROM llm_logs').all() as Array<Record<string, unknown>>)
+    .map((r) => {
+      const out: Record<string, unknown> = {};
+      for (const col of llColumns) out[col] = canonValue(r[col]);
+      out.id = '<id>';
+      out.createdAt = '<ts>';
+      out.updatedAt = '<ts>';
+      return out;
+    })
+    .sort((a, b) => {
+      const sa = JSON.stringify(a);
+      const sb = JSON.stringify(b);
+      return sa < sb ? -1 : sa > sb ? 1 : 0;
+    });
+  lines.push(JSON.stringify({ kind: 'llmlogs', columns: llColumns, rows: llRows }));
 
   await closeDatabase();
   fs.writeFileSync(outPath, lines.join('\n') + '\n');

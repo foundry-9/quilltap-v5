@@ -1179,8 +1179,18 @@ where
         ),
         stop.as_ref(),
     );
+    // v4's funnel `logged` (`eb2d87788`): ONE row per call — the terminal
+    // chunk's, or the end's for a call that threw, was stopped or ran out.
+    let mut logged = false;
+    let mut stream_error: Option<StreamError> = None;
     while let Some(item) = rx.recv().await {
-        let chunk = item?;
+        let chunk = match item {
+            Ok(c) => c,
+            Err(e) => {
+                stream_error = Some(e);
+                break;
+            }
+        };
         apply_reasoning_chunk(state, &chunk, sink);
         if chunk.usage.is_some() {
             last_usage = chunk.usage;
@@ -1231,22 +1241,48 @@ where
             flush_reasoning_segment(state);
 
             // v4's wrapper logs on `chunk.done` (userId is passed by restreamInto).
-            if let Some(log) = log {
-                log_chat_message_call(
-                    log,
-                    profile,
-                    params,
-                    accumulated.clone(),
-                    last_usage,
-                    last_cache_usage,
-                    last_raw_provider_usage.clone(),
-                    chunk.raw_response.clone(),
-                )
-                .await;
+            if !logged {
+                logged = true;
+                if let Some(log) = log {
+                    log_chat_message_call(
+                        log,
+                        profile,
+                        params,
+                        accumulated.clone(),
+                        last_usage,
+                        last_cache_usage,
+                        last_raw_provider_usage.clone(),
+                        crate::services::primary_stream::StreamOutcome::Done {
+                            raw_response: chunk.raw_response.clone(),
+                        },
+                    )
+                    .await;
+                }
             }
         }
     }
-    Ok(())
+    if !logged {
+        if let Some(log) = log {
+            log_chat_message_call(
+                log,
+                profile,
+                params,
+                accumulated.clone(),
+                last_usage,
+                last_cache_usage,
+                last_raw_provider_usage.clone(),
+                crate::services::primary_stream::StreamOutcome::at_end(
+                    stream_error.as_ref(),
+                    rx.chunks_received(),
+                ),
+            )
+            .await;
+        }
+    }
+    match stream_error {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
 }
 
 // ============================================================================

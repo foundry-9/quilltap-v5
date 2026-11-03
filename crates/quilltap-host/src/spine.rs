@@ -137,6 +137,7 @@ use quilltap_core::services::dangerous_content::provider_routing::{
     DangerContentRouter, DbApiKeys,
 };
 use quilltap_core::services::turn_control;
+use quilltap_core::services::whisper_send;
 // === P4.6BL ===
 use quilltap_core::services::embedding_generate_job::{
     handle_embedding_generate, EmbeddingGeneratePayload,
@@ -1467,6 +1468,25 @@ where
         // however it ends — which unregisters and settles it.
         let turn_registration = turn_control::register_active_turn(&chat_id);
         let turn_handle = turn_registration.handle();
+        // P4.D348 S2 (v4 `036b32a78`, bug 258): a whisper is an aside, not a
+        // round — it waits, inside its own registration, for every EARLIER
+        // open stream of the chat to settle (never a later one, so two waiters
+        // cannot deadlock; the send runs on its own thread, so the wait blocks
+        // no other send), then draws its one reply with no chain.
+        let is_whisper = whisper_send::is_operator_whisper_send(
+            req.continue_mode,
+            req.target_participant_ids.as_deref(),
+        );
+        if is_whisper {
+            let waited_on =
+                turn_control::wait_for_earlier_turns(&chat_id, Some(&turn_handle)).await;
+            tracing::debug!(
+                target: "quilltap::chat",
+                chatId = %chat_id,
+                waitedOn = waited_on,
+                "[Orchestrator] Whisper send: single reply, no chain",
+            );
+        }
         let sink = BroadcastSink {
             chat_id: chat_id.clone(),
             tx: self.events.clone(),
@@ -1722,6 +1742,11 @@ where
         // chain options take by value below — capture it first.
         let initial_had_content = initial.has_content;
         // === end P4.6BM ===
+        // P4.D348: v4's `sceneTracking: !!result.sceneTrackingContext` — the
+        // context rides the result whenever chat settings exist (v5's
+        // `scene_tracking_character_ids`), though the tracking job itself stays
+        // unported.
+        let initial_scene_tracking = initial.scene_tracking_character_ids.is_some();
         let chain_result = orchestrator::execute_turn_chain(
             &mut deps,
             ExecuteTurnChainOptions {
@@ -1733,7 +1758,10 @@ where
                 initial_result: initial,
                 initial_continue_mode: req.continue_mode,
                 never_pause_for_user: false,
-                single_turn: false,
+                // A whisper's target answers once; the floor then goes back to
+                // the operator (bug 258).
+                // S2: P4.D343 appends `|| storyteller_single_turn`
+                single_turn: is_whisper,
                 chain_start_time_ms: now_ms,
                 config: ChainConfig::default(),
             },
@@ -1771,6 +1799,13 @@ where
         // without it only the manual button and the boot reconcile ever render. (v4's sibling scene-state
         // trigger stays unported — SCENE_STATE_TRACKING has no handler.)
         if initial_had_content {
+            // P4.D348 (v4 `a8214b253` `triggerAfterTurnsHousekeeping`).
+            tracing::debug!(
+                target: "quilltap::chat",
+                chatId = %chat_id,
+                sceneTracking = initial_scene_tracking,
+                "After-turns housekeeping",
+            );
             quilltap_core::services::conversation_render_job::trigger_conversation_render(
                 &self.db,
                 quilltap_core::api::SINGLE_USER_ID,
@@ -2467,7 +2502,8 @@ where
 
 // === P4.D301: the submission ledger ===
 /// v4 `handleStreamError`'s tail (`orchestrator.service.ts:2208-2221`) for the
-/// Salon send's two shells: the `[Orchestrator] Emitting error frame` DEBUG,
+/// Salon send's two shells: the `[TurnStream] Emitting error frame` DEBUG (v4
+/// `turn-stream.ts`, retagged by `a8214b253`),
 /// then the FIVE-key frame carrying the ledger (v4's one `encodeErrorEvent`
 /// caller passing extras). Every other `chat_error` emitter (brahma, help,
 /// scenario builder, swipe) keeps the three-key frame. `errorType` stays v5's
@@ -2484,7 +2520,7 @@ fn emit_send_error_frame(
         errorType = error_type,
         userMessagePersisted = submission.user_message_persisted,
         pendingToolResultsPersisted = submission.pending_tool_results_persisted,
-        "[Orchestrator] Emitting error frame",
+        "[TurnStream] Emitting error frame",
     );
     let _ = events.send(Event::chat_error(
         chat_id,

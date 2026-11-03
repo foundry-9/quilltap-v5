@@ -589,7 +589,51 @@ where
     // v4 `0cde7fbc` gatekeeper.service.ts:384/398 — the classifier's send is
     // bracketed by `Date.now()`; the row had no `durationMs` before.
     let classification_started_at = crate::clock::now_unix_ms();
-    let response = completion
+    // v4 `recordClassification` (`eb2d87788`): the DANGER_CLASSIFICATION row,
+    // fire-and-forget (temperature 0.1, maxTokens 500) — a FAILED send too, so
+    // the Inspector shows the attempt the safe fallback stood in for. Awaited
+    // here (the writer never throws — the watermark precedent; v4's
+    // `[Gatekeeper] Failed to log classification call` WARN is unreachable);
+    // LogContext::none() on the request path.
+    let record_classification =
+        |response: LogResponse,
+         usage: Option<LogUsage>,
+         cache_usage: Option<crate::services::llm_logging::LogCacheUsage>| {
+            LogLlmCallParams {
+                user_id: user_id.to_string(),
+                log_type: log_type::DANGER_CLASSIFICATION.to_string(),
+                message_id: None,
+                chat_id: chat_id.map(str::to_string),
+                character_id: None,
+                provider: cheap_llm_selection.provider.clone(),
+                model_name: cheap_llm_selection.model_name.clone(),
+                // v4 `0cde7fbc` gatekeeper.service.ts:407 —
+                // `cheapLLMSelection.connectionProfileId ?? null`.
+                connection_profile_id: cheap_llm_selection.connection_profile_id.clone(),
+                image_profile_id: None,
+                request: LogRequest {
+                    messages: params
+                        .messages
+                        .iter()
+                        .map(|m| LogRequestMessage {
+                            role: m.role.as_str().to_string(),
+                            content: m.content.clone(),
+                            attachments: None,
+                        })
+                        .collect(),
+                    temperature: Some(0.1),
+                    max_tokens: Some(500),
+                    tools: None,
+                },
+                response,
+                usage,
+                cache_usage,
+                raw_provider_usage: None,
+                request_hashes: None,
+                duration_ms: Some((crate::clock::now_unix_ms() - classification_started_at) as f64),
+            }
+        };
+    let response = match completion
         .send_message_keyed(
             &cheap_llm_selection.provider,
             cheap_llm_selection.base_url.as_deref(),
@@ -597,57 +641,44 @@ where
             &params,
         )
         .await
-        .map_err(|_| ())?;
-    let classification_duration_ms =
-        (crate::clock::now_unix_ms() - classification_started_at) as f64;
-
-    // v4 logLLMCall (gatekeeper.service.ts:396): fire-and-forget
-    // DANGER_CLASSIFICATION row on the cheap-LLM classify path (temperature 0.1,
-    // maxTokens 500, the completion response + usage). Awaited here (writer never
-    // throws — the watermark precedent); LogContext::none() on the request path.
-    let log_params = LogLlmCallParams {
-        user_id: user_id.to_string(),
-        log_type: log_type::DANGER_CLASSIFICATION.to_string(),
-        message_id: None,
-        chat_id: chat_id.map(str::to_string),
-        character_id: None,
-        provider: cheap_llm_selection.provider.clone(),
-        model_name: cheap_llm_selection.model_name.clone(),
-        // v4 `0cde7fbc` gatekeeper.service.ts:407 —
-        // `cheapLLMSelection.connectionProfileId ?? null`.
-        connection_profile_id: cheap_llm_selection.connection_profile_id.clone(),
-        image_profile_id: None,
-        request: LogRequest {
-            messages: params
-                .messages
-                .iter()
-                .map(|m| LogRequestMessage {
-                    role: m.role.as_str().to_string(),
-                    content: m.content.clone(),
-                    attachments: None,
-                })
-                .collect(),
-            temperature: Some(0.1),
-            max_tokens: Some(500),
-            tools: None,
-        },
-        response: LogResponse {
+    {
+        Ok(response) => response,
+        Err(send_error) => {
+            let failed = record_classification(
+                LogResponse {
+                    content: String::new(),
+                    error: Some(send_error.message.clone()),
+                    finish_reason: None,
+                    tool_calls: None,
+                },
+                None,
+                None,
+            );
+            let _ = log_llm_call(db, failed, &LogContext::none()).await;
+            return Err(());
+        }
+    };
+    let answered = record_classification(
+        LogResponse {
             content: response.content.clone(),
             error: None,
-            finish_reason: None,
+            // v4 `finishReason: answered.finishReason ?? null` (`eb2d87788`).
+            finish_reason: response.finish_reason.clone(),
             tool_calls: None,
         },
-        usage: response.usage.map(|u| LogUsage {
+        response.usage.map(|u| LogUsage {
             prompt_tokens: Some(u.prompt_tokens),
             completion_tokens: Some(u.completion_tokens),
             total_tokens: Some(u.total_tokens),
         }),
-        cache_usage: None,
-        raw_provider_usage: None,
-        request_hashes: None,
-        duration_ms: Some(classification_duration_ms),
-    };
-    let _ = log_llm_call(db, log_params, &LogContext::none()).await;
+        response
+            .cache_usage
+            .map(|c| crate::services::llm_logging::LogCacheUsage {
+                cache_creation_input_tokens: c.cache_creation_input_tokens,
+                cache_read_input_tokens: c.cache_read_input_tokens,
+            }),
+    );
+    let _ = log_llm_call(db, answered, &LogContext::none()).await;
 
     let mut result =
         parse_classification_response(&response.content, concierge_policy.pre_screen.threshold);

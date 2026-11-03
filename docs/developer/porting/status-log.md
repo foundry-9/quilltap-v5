@@ -194511,6 +194511,88 @@ The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
 
 **Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).
 
+## P4.D348 — the `236c04e35` SPINE: bug 258 whispers, bug 262's one operator-post recorder, every Salon LLM call logged, S1 / S2 / TurnStopReach (lane `claude/p4.d348-turn-spine-8d7f99e8f`, pin `236c04e35`, 2026-11-03) — LANE RECORD
+
+**Venue.** The session was started by the round's parent session and worked in the worktree `.claude/worktrees/p4d348`, on `claude/p4.d348-turn-spine-8d7f99e8f`. That branch was cut from P4.D347's `CONTEXT` commit `8d7f99e8f` (Wave B; confirmed as an ancestor of HEAD before the first edit). `target/` was an APFS clone of main's.
+
+**§2 probe.** v4 `main` was 46 commits past the pin, and the tree was clean in `lib/` / `app/` / `packages/` / `plugins/`. Both branches were re-probed. The ledger records that span, so the probe was RECORDED, not a STOP. Every regen ran from the lane-unique pin `/tmp/qt-v4-pin-p4d348-236c04e35`.
+
+**Pin ruling (human, 2026-11-02).** The order's symlink classes (2) and (3), the CLI and plugin `node_modules`, were NOT used. The root `npm ci --offline` succeeded (1,159 packages). After it, `.claude/pin-plugin-sdks.sh "$PIN"` floor-installed the plugin and CLI dirs.
+
+### Tier 1 — what landed (the `SPINE` commit)
+
+- **S1, the operator post.**
+  - NEW `services/operator_post.rs`: `record_operator_post` runs v4 `operator-post.service.ts`'s order. Staged TOOL rows → dice → the USER row → the ledger flip → links (`find_attached_files` only; `add_link` is SOFT, with v4's WARN) → the Librarian upload note → Pascal user-message triggers, ALWAYS → the Carina markup pass when there is content. It throws only on a TOOL or USER row write.
+  - It runs under BOTH the main path and the fair-rotation pause. The Librarian upload note is new on both paths; v5 never posted it before.
+  - R-1: the Carina pass is wired on both paths, never one-sided.
+  - NEW `services/turn_holds.rs`: `TurnHold`, `resolve_turn_hold`, `qualifies_for_fair_rotation_check`, `finish_held_post`, and `ProcessMessageResult.storyteller_hold`. All 13 `ProcessMessageResult` literal sites were updated (the order counted 14).
+  - A held post is recorded with NO API key, because the requires gate exempts a held send. The paused and storyteller INFOs merge into v4's one `Recording the operator post without a reply` line.
+- **S2, the whisper.**
+  - NEW `services/whisper_send.rs` holds `is_operator_whisper_send`.
+  - `spine.rs::run_send` adds the `is_whisper` wait (`turn_control::wait_for_earlier_turns` plus two DEBUGs), `single_turn: is_whisper`, and the `Whisper send: single reply, no chain` DEBUG.
+  - `ChatSendRequest.target_participant_ids` carries the targets. `FinalizeOptions` had only `turn_stopped` before.
+- **TurnStopReach.** `ToolExecutionContext.turn_control` is filled from `deps.turn_control`, and so are the two trigger-site param structs.
+- **`done` frames.** The five turn-outcome frames serialize through a second payload, `TurnDonePayload` (R-Q), in v4's new key order. The finalizer, recovery and Courier frames keep the old order. The frame compare was order-blind (`serde_json::Map ==`), so a byte leg was added.
+- **New lines.** `[TurnTools] Tool slate resolved`, `[TurnOutcome] Turn settled` (every close, with v4's `kind`), `[TurnPreparation] Prospero context refresh due`, `After-turns housekeeping`, and `Failed to read project store links; doc tools withheld`.
+  - Tier 3 items 26–30: `sceneTracking` logs PRESENCE, not `false`.
+  - A transparent character is offered `ask_carina` without the probe.
+- **`eb2d87788`, every Salon LLM call logged exactly once.**
+  - `StreamOutcome { Finished, Failed, Stopped, Exhausted, Abandoned }` is derived from the `WatchedStream` at all six `log_*_message_call` callers. A throw, a stop, an abandon and an exhausted stream each write a row, the last with `The stream was closed before the provider finished`.
+  - The swipe now runs through the logged funnel: `new_swipe_id` is minted FIRST, with the character cache key and the funnel's `streaming.service` watchdog context.
+  - Recovery mints its id first. The greeting row gains `connectionProfileId` / `finishReason` / `cacheUsage` / `rawProviderUsage`, and the vision row gains `chatId` / `connectionProfileId` / `cacheUsage`.
+  - The cheap-LLM failed `0.3` attempt writes its own row, retiring the P4.13-unit-6 divergence (`assert_ruled_failed_call_divergence` → `assert_failed_call_rows_converged`).
+  - The gatekeeper's failed send writes a row. The Images route writes one `IMAGE_GENERATION` row per profile tried, through ONE recorder in `image_gen/image_attempt.rs`, which serves both key shapes.
+  - The Brahma console's stopped legs now write their own row. The two P4.165 unit tests that pinned "no row for the stopped leg" were re-premised: the mid-stream stop now writes 2 rows (the control plus the stopped leg), and a stop before the first chunk writes 1.
+- **`cb94e6e99` rider.** The vacuous `debugLLMRequest` drop is retired, and `determine_enabled_tool_options` is kept.
+- **`skip-signal.ts`.** The IMPORT-DEAD specifier was re-aimed.
+- **Census.** `stream_watchdog_wrap_census`: the swipe LEFT the own-context class for the funnel class. `OWN_CONTEXT_SITES` now holds only the greeting.
+- **Interim.** The `effectCeiling` read stays at its pre-round shape until P4.D343 retires `tool_build.rs:757-810`. That region was not touched.
+
+### Harness changes (union-relevant)
+
+- `common/mod.rs`: `LLM_LOGS_DDL` / `LLM_LOGS_COLUMNS` gain `storytellerRoundId`, after `autonomousRunId`. Every llm-logs dump at the pin carries it, and it had been RED for every llm-logs-dumping family since KEYSTONE. `dump_llm_logs` selects only the columns present. There is also `write_diff_dump` (debug aid, `$QT_DIFF_DIR`).
+- core `CannedCompletionProvider::with_response_finish` exists because cheap and gatekeeper rows log `finishReason` since `eb2d87788`.
+- A GARBLE fix in the orchestrator family's minted-id mask. The `spine_minted` regex is compiled once (clippy `regex_creation_in_loops`).
+- `orchestrator-tier3.json` gains three chats with fresh seat ids (`c258…` / `c262…`) and three calls: `whisper_single_reply`, `pause_rich_fair_rotation` (a staged tool result, auto-detected dice, a file link) and `pause_keyless_records_post`. The last is in `held_cases`.
+- `orchestrator-tier3.test.ts`: the `postLibrarianUploadAnnouncement` stub is LIFTED. The note runs live because v5's one recorder posts it on both paths. `postLibrarianSummaryAnnouncement` stays stubbed.
+- The recovery row's premise was re-aimed. The P4.118 transport-bytes divergence is now visible in the funnel's error row (recorded, unchanged).
+- NEW `turn_holds_equivalence` (`cases/turn-holds.ts`). `turn_control_equivalence` grows the whisper wait rows.
+
+**Red-first and mutation.** Every new row was red on the pre-lane tree. Mutations in `/tmp/p4d348/mut-*`:
+- m1, the whisper DEBUG's position: stayed green. It is a log-order-only move inside one await, recorded as equivalent.
+- m1b (no wait), m2 (no `single_turn`) and m3 (the hold exemption dropped): each turned `turn_control_equivalence` red.
+
+### Gate (2026-11-03)
+
+- fmt is clean. clippy is clean on both feature sets. `recipe_sweep.py --self-test`: 0 failures.
+- `cargo test --workspace` with the lane env (`/tmp/p4d348/gate-env.sh`, 59 exports, pin-aimed): **881 binaries / 5,833 passed / 10 failed / 3 ignored**. Every red is classified:
+  - **Lane-caused, fixed:** the two `brahma_console::tests` stop rows (re-premised above; 32/32 green by name).
+  - **P4.D345:** `message_finalizer_tier3` `trigger-phrase-reply` (v4's `mayHold: true` at the trigger runner). Also `custom_tool_schema_embed_guard` and `public_schemas_vendor_guard`: the pin's `qtap-custom-tool.schema.json` is 66,469 B against the vendored 63,595 B.
+  - **P4.D342:** `memory_pipeline_jobs_tier3`, `context_summary_service_tier3`, and `cli_differential`'s two `recall-replay` help rows (`recall_replay_help.txt`).
+  - **P4.D350:** `orchestrator_tier3`. The pseudo-tool CATALOG descriptions sit in the text-block system prompt, so `simple_json_then_native_tool_call`'s second canned key misses (`key-textblock` once against v4's twice).
+    - With a temporary CATALOG overlay plus a `debugMemoryLogs` mask (both reverted before commit), the family passed every check except case `c860cf74`. That case's cheap extraction and summary canned prompts miss (P4.D342), and its `debugMemoryLogs` inner-circle keys are also P4.D342's. 289 spine lines across 91 calls matched, and the `done` byte leg passed.
+  - **P4.D360, by design at the pin:** `provider_sdk_version_guard`.
+  - SKIP lines: none for this lane's families.
+
+### HANDOFF
+
+- P4.D343 consumes S1 (`resolve_turn_hold`, `finish_held_post`, `record_operator_post`) and S2 (`single_turn: is_whisper`).
+- P4.D345 consumes `TurnStopReach` (`ToolExecutionContext.turn_control` and the trigger params' `turn_control`).
+- P4.D359 owns the Inspector hunk: a stopped turn's row shows partial content with no error.
+
+### 💸 Dogfood rows
+
+- A whisper sent mid-stream waits, then draws one reply with no chain.
+- A paused chat's post with an attachment and a staged roll records the TOOL rows, the dice, the link and the Librarian note.
+- A keyless responder's held post is recorded.
+- Every Salon turn appears in the Inspector: a stopped turn, a provider error, a swipe, the greeting, a vision call, a failed cheap call, and an image-generation attempt per profile.
+
+### Regen
+
+Every family regenerates through the sweep driver from the pin (`--run-all --force --v4 <pin> --v5w <spaceless worktree> --families …`), using the recipe in each test header. `orchestrator_tier3` needs `TZ=UTC`.
+
+**Versions:** core 0.0.1382, host 0.0.219. web is untouched in src (tests only, not bumped); harness is frozen.
+
 ## P4.D347 — the context builder: bugs 259 / 263 / 264 / 265, the referent ledger, absent mentions (lane `claude/p4.d347-context-builder-c2c28c031`, pin `236c04e35`, 2026-11-02) — LANE RECORD (Tier 1 → `CONTEXT` `8d7f99e8f`)
 
 **`CONTEXT`:** `8d7f99e8f`. Versions: core 0.0.1381, web 0.0.252 (host, cli, tauri, harness untouched).

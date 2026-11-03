@@ -548,7 +548,7 @@ async fn stopped_signal(
 }
 
 #[tokio::test]
-async fn a_stop_mid_stream_keeps_the_partial_and_logs_no_llm_logs_row() {
+async fn a_stop_mid_stream_keeps_the_partial_and_logs_the_stopped_leg() {
     let (_dir, db) = provisioned_db_with_default_profile().await;
     // The positive control first: the same rig, no stop, a `done` — ONE row.
     let control = ScriptedStream::new(vec![text_stream("There are three.")]);
@@ -602,8 +602,9 @@ async fn a_stop_mid_stream_keeps_the_partial_and_logs_no_llm_logs_row() {
     assert!(r.ok, "{:?}", r.detail);
     assert_eq!(r.answer, "There are");
     assert!(!r.threw);
-    // v4's funnel logs only as `done` passes — the stopped leg wrote nothing.
-    assert_eq!(llm_log_rows(&db), 1, "no llm_logs row for the stopped leg");
+    // P4.D348 (v4 `eb2d87788`): the funnel records every call terminal or
+    // not, so the stopped leg writes its own row beside the control's.
+    assert_eq!(llm_log_rows(&db), 2, "one llm_logs row for the stopped leg");
 }
 
 #[tokio::test]
@@ -630,7 +631,8 @@ async fn a_stop_before_the_first_chunk_is_an_empty_response() {
     assert!(!r.ok);
     assert_eq!(r.detail.as_deref(), Some("empty response"));
     assert!(!r.threw);
-    assert_eq!(llm_log_rows(&db), 0);
+    // P4.D348 (v4 `eb2d87788`): a stopped call is still logged — one row.
+    assert_eq!(llm_log_rows(&db), 1);
 }
 
 #[test]

@@ -17,6 +17,7 @@
 //! | `{content}` | [`ChatEvent::Content`] | each content delta |
 //! | `{reasoning}` | [`ChatEvent::Reasoning`] | live "thinking" (cumulative) |
 //! | `{done:true, messageId, usage, cacheUsage, attachmentResults, toolsExecuted}` | [`ChatEvent::Done`] | recovery / static-fallback close |
+//! | `{done:true, usage, cacheUsage, attachmentResults, provider, modelName, messageId, participantId, toolsExecuted, …}` | [`ChatEvent::TurnDone`] | the five non-finalizer turn closes (P4.D348) |
 //! | `{fileProcessing:[{filename,type,usedImageDescriptionLLM,error?}]}` | [`ChatEvent::FileProcessing`] | `process_message`, once per streamed turn that loaded ≥ 1 attachment, before the `validating` status (P4.140) |
 //!
 //! Every other v4 SSE frame (`turnStart`, `turnComplete`, `chainComplete`,
@@ -254,6 +255,46 @@ pub struct DonePayload {
     pub reasoning_segments: Omittable<Vec<DoneReasoningSegment>>,
 }
 
+/// The done event of a Salon turn that reached the provider but did not close
+/// through the finalizer (P4.D348, R-N — v4 `a8214b253`'s
+/// `encodeTurnDoneEvent`): the bare yield, the pass, the tools-only turn, the
+/// stopped-empty turn and the empty response.
+///
+/// v4 builds these as `{ done: true, usage, cacheUsage, attachmentResults,
+/// provider, modelName, ...data }` — the streaming state's five keys FIRST,
+/// each `null` when unset, then the close's own `messageId, participantId,
+/// toolsExecuted` and its extras. A second payload (rather than a reordered
+/// [`DonePayload`]) because the finalizer's reply `done`, the recovery frames
+/// and the Courier's keep the OLD order (`messageId` first).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TurnDonePayload {
+    pub usage: Option<DoneUsage>,
+    pub cache_usage: Option<DoneCacheUsage>,
+    pub attachment_results: Option<serde_json::Value>,
+    pub provider: String,
+    pub model_name: String,
+    pub message_id: Option<String>,
+    pub participant_id: String,
+    pub tools_executed: bool,
+    /// The pass and the bare yield.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skipped_participant_id: Option<String>,
+    /// The bare yield.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yielded: Option<bool>,
+    /// The stopped-empty turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stopped: Option<bool>,
+    /// The empty response.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_response: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub empty_response_reason: Option<String>,
+}
+
 /// A reasoning segment as it appears in the done event (v4 `ReasoningSegment` —
 /// `anchorOffset` / `content` / `seq`). Separate from
 /// [`crate::services::primary_stream::ReasoningSegment`] so the event layer owns
@@ -416,6 +457,13 @@ pub enum ChatEvent {
         done: DoneBool,
         #[serde(flatten)]
         payload: Box<DonePayload>,
+    },
+    /// `{done:true, usage, …}` — a non-finalizer turn close on v4's
+    /// `encodeTurnDoneEvent` key order ([`TurnDonePayload`], P4.D348 R-N).
+    TurnDone {
+        done: DoneBool,
+        #[serde(flatten)]
+        payload: Box<TurnDonePayload>,
     },
 }
 
@@ -587,6 +635,14 @@ impl ChatEvent {
     /// A done event.
     pub fn done(payload: DonePayload) -> Self {
         ChatEvent::Done {
+            done: DoneBool,
+            payload: Box::new(payload),
+        }
+    }
+
+    /// A non-finalizer turn-close done event (v4 `encodeTurnDoneEvent`, P4.D348).
+    pub fn turn_done(payload: TurnDonePayload) -> Self {
+        ChatEvent::TurnDone {
             done: DoneBool,
             payload: Box::new(payload),
         }
@@ -984,74 +1040,104 @@ mod tests {
         );
     }
 
-    #[test]
-    fn skip_done_frame_matches_v4_handle_turn_skip_key_order() {
-        // The "nothing to add" skip-path done frame (v4 `handleTurnSkip`'s
-        // `encodeDoneEvent` call): `skipped`/`skippedParticipantId` sit between
-        // `toolsExecuted` and `provider`, `messageId` is an explicit null, and
-        // none of the finalizer-only keys appear. Asserted on the serialized
-        // STRING (the SSE wire is byte-level).
-        let ev = ChatEvent::done(DonePayload {
-            message_id: None,
-            participant_id: Some("p9".into()),
+    // --- P4.D335 (v4 `2b5e8ee24`): the interrupt frames, by bytes ---
+
+    // --- P4.D348 (R-N, v4 `a8214b253` `encodeTurnDoneEvent`): the five
+    // non-finalizer turn closes, by BYTES — the streaming state's five keys
+    // first (each `null` when unset), then `messageId, participantId,
+    // toolsExecuted` and the close's extras. ---
+
+    fn turn_done_base(message_id: Option<&str>, tools_executed: bool) -> TurnDonePayload {
+        TurnDonePayload {
             usage: None,
             cache_usage: None,
-            attachment_results: Some(serde_json::Value::Null),
-            tools_executed: false,
+            attachment_results: None,
+            provider: "ANTHROPIC".into(),
+            model_name: "claude".into(),
+            message_id: message_id.map(str::to_string),
+            participant_id: "p9".into(),
+            tools_executed,
+            ..Default::default()
+        }
+    }
+
+    const TURN_DONE_HEAD: &str = "{\"done\":true,\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\",";
+
+    #[test]
+    fn turn_done_pass_frame_matches_v4_close_pass_bytes() {
+        let ev = ChatEvent::turn_done(TurnDonePayload {
             skipped: Some(true),
             skipped_participant_id: Some("p9".into()),
-            provider: Some("ANTHROPIC".into()),
-            model_name: Some("claude".into()),
-            ..Default::default()
+            ..turn_done_base(None, false)
         });
         assert_eq!(
             serde_json::to_string(&ev).unwrap(),
-            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\"}}")
         );
     }
 
-    // --- P4.D335 (v4 `2b5e8ee24`): the interrupt frames, by bytes ---
-
     #[test]
-    fn bare_yield_done_frame_matches_v4_handle_turn_yield_key_order() {
-        let ev = ChatEvent::done(DonePayload {
-            message_id: None,
-            participant_id: Some("p9".into()),
-            usage: None,
-            cache_usage: None,
-            attachment_results: Some(serde_json::Value::Null),
-            tools_executed: false,
+    fn turn_done_bare_yield_frame_matches_v4_close_bare_yield_bytes() {
+        let ev = ChatEvent::turn_done(TurnDonePayload {
             skipped: Some(true),
             skipped_participant_id: Some("p9".into()),
             yielded: Some(true),
-            provider: Some("ANTHROPIC".into()),
-            model_name: Some("claude".into()),
-            ..Default::default()
+            ..turn_done_base(None, false)
         });
         assert_eq!(
             serde_json::to_string(&ev).unwrap(),
-            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"yielded\":true,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"skipped\":true,\"skippedParticipantId\":\"p9\",\"yielded\":true}}")
         );
     }
 
     #[test]
-    fn stopped_empty_done_frame_matches_v4_key_order() {
-        let ev = ChatEvent::done(DonePayload {
-            message_id: None,
-            participant_id: Some("p9".into()),
-            usage: None,
-            cache_usage: None,
-            attachment_results: Some(serde_json::Value::Null),
-            tools_executed: false,
+    fn turn_done_tools_only_frame_matches_v4_close_tools_only_bytes() {
+        let ev = ChatEvent::turn_done(turn_done_base(Some("t1"), true));
+        assert_eq!(
+            serde_json::to_string(&ev).unwrap(),
+            format!("{TURN_DONE_HEAD}\"messageId\":\"t1\",\"participantId\":\"p9\",\"toolsExecuted\":true}}")
+        );
+    }
+
+    #[test]
+    fn turn_done_stopped_frame_matches_v4_close_stopped_bytes() {
+        let ev = ChatEvent::turn_done(TurnDonePayload {
             stopped: Some(true),
-            provider: Some("ANTHROPIC".into()),
-            model_name: Some("claude".into()),
-            ..Default::default()
+            ..turn_done_base(None, false)
         });
         assert_eq!(
             serde_json::to_string(&ev).unwrap(),
-            "{\"done\":true,\"messageId\":null,\"participantId\":\"p9\",\"usage\":null,\"cacheUsage\":null,\"attachmentResults\":null,\"toolsExecuted\":false,\"stopped\":true,\"provider\":\"ANTHROPIC\",\"modelName\":\"claude\"}"
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"stopped\":true}}")
         );
+    }
+
+    #[test]
+    fn turn_done_empty_frame_matches_v4_close_empty_bytes() {
+        let ev = ChatEvent::turn_done(TurnDonePayload {
+            empty_response: Some(true),
+            empty_response_reason: Some("empty".into()),
+            ..turn_done_base(None, false)
+        });
+        assert_eq!(
+            serde_json::to_string(&ev).unwrap(),
+            format!("{TURN_DONE_HEAD}\"messageId\":null,\"participantId\":\"p9\",\"toolsExecuted\":false,\"emptyResponse\":true,\"emptyResponseReason\":\"empty\"}}")
+        );
+    }
+
+    /// The streaming state's usage rides first, as v4's spread puts it.
+    #[test]
+    fn turn_done_carries_real_usage_in_the_head() {
+        let ev = ChatEvent::turn_done(TurnDonePayload {
+            usage: Some(DoneUsage {
+                prompt_tokens: Some(1),
+                completion_tokens: Some(2),
+                total_tokens: Some(3),
+            }),
+            ..turn_done_base(None, false)
+        });
+        assert!(serde_json::to_string(&ev)
+            .unwrap()
+            .starts_with("{\"done\":true,\"usage\":{\"promptTokens\":1,\"completionTokens\":2,\"totalTokens\":3},\"cacheUsage\":null,"));
     }
 
     #[test]
@@ -1219,7 +1305,8 @@ mod tests {
     }
 
     /// A production-zone census: `held_user_turn` is constructed as anything but
-    /// `None` at exactly ONE site in the crate — `finish_held_user_turn`. v4
+    /// `None` at exactly ONE site in the crate — `turn_holds::finish_held_post`
+    /// (P4.D348; `orchestrator::finish_held_user_turn` before). v4
     /// passes the key from one of its six `encodeChainCompleteEvent` callers and
     /// omits it at the other five, and no differential can see a SIXTH site that
     /// started sending it: the extra key would only ever surface on a frame no
@@ -1227,6 +1314,7 @@ mod tests {
     #[test]
     fn only_one_site_sets_held_user_turn() {
         let sources = [
+            ("turn_holds.rs", include_str!("turn_holds.rs")),
             ("orchestrator.rs", include_str!("orchestrator.rs")),
             (
                 "help_chat/orchestrator.rs",
@@ -1289,54 +1377,21 @@ mod tests {
         assert_eq!(
             setters.len(),
             1,
-            "expected exactly one non-None held_user_turn site (finish_held_user_turn); found {setters:?}"
+            "expected exactly one non-None held_user_turn site (finish_held_post); found {setters:?}"
         );
         assert!(
-            setters[0].starts_with("orchestrator.rs:"),
-            "the one setter must live in orchestrator.rs, found {:?}",
+            setters[0].starts_with("turn_holds.rs:"),
+            "the one setter must live in turn_holds.rs, found {:?}",
             setters[0]
         );
         // Non-vacuity: the PRODUCTION ZONE of both files must name the field —
         // a rename, or a zone that stops short of the emit site, would otherwise
         // let the census pass on zero matches.
         assert_eq!(
-            zone_mentions, 2,
-            "both orchestrators' production zones should name the field"
+            zone_mentions, 3,
+            "the holds' and both orchestrators' production zones should name the field"
         );
     }
-    #[test]
-    fn empty_response_done_carries_the_reason() {
-        let ev = ChatEvent::done(DonePayload {
-            message_id: None,
-            participant_id: Some("p1".into()),
-            usage: None,
-            cache_usage: None,
-            attachment_results: None,
-            tools_executed: false,
-            empty_response: Some(true),
-            empty_response_reason: Some("empty".into()),
-            provider: Some("ANTHROPIC".into()),
-            model_name: Some("claude".into()),
-            ..Default::default()
-        });
-        assert_eq!(
-            serde_json::to_value(&ev).unwrap(),
-            json!({
-                "done": true,
-                "messageId": null,
-                "participantId": "p1",
-                "usage": null,
-                "cacheUsage": null,
-                "attachmentResults": null,
-                "toolsExecuted": false,
-                "emptyResponse": true,
-                "emptyResponseReason": "empty",
-                "provider": "ANTHROPIC",
-                "modelName": "claude"
-            })
-        );
-    }
-
     #[test]
     fn tool_frames_serialize_as_v4_bare_and_single_key_frames() {
         // Detection frame: a bare object, not a single-key wrapper.

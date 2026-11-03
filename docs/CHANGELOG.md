@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — SPINE: the turn spine at `236c04e35` — bug 258 whispers, bug 262 one operator-post recorder, every Salon LLM call logged, S1 / S2 / TurnStopReach (P4.D348)
+
+_Versions: core 0.0.1382, host 0.0.219._
+
+A whisper sent while an earlier turn is still streaming now waits for that turn, then draws exactly one reply with no chain (bug 258). The host logs v4's `Whisper send: single reply, no chain` line. Every operator post is recorded through one recorder, `record_operator_post`, on both the main path and the fair-rotation pause (bug 262). Staged tool results, auto-detected dice, the USER row, attachment links (now soft, with v4's WARN), the Librarian's upload note (which v5 never posted before), Pascal's trigger phrases and Carina's markup pass all run in v4's order on both paths. A paused or held post is recorded even when the responder's profile has no API key. The paused and storyteller INFOs merge into `Recording the operator post without a reply`. The hold decision and the fair-rotation check move into `turn_holds.rs`, and `ProcessMessageResult` gains `storyteller_hold` for P4.D343. The five turn-outcome `done` frames carry v4's new key order (`TurnDonePayload`). New lines: `[TurnTools] Tool slate resolved`, `[TurnOutcome] Turn settled`, `[TurnPreparation] Prospero context refresh due`, `After-turns housekeeping`, `Failed to read project store links; doc tools withheld`. A transparent character is offered `ask_carina` without the probe. Every Salon-side LLM call now writes exactly one `llm_logs` row whether it finishes, fails, is stopped or is abandoned: the primary stream, the tool loops, recovery, the swipe (now through the logged funnel, with its new swipe id minted first), the greeting, vision, Carina, help chat, the Brahma console, the one-shot loop, the cheap-LLM failed 0.3 attempt, the gatekeeper's failed send and the Images route's `IMAGE_GENERATION` rows. The cheap-LLM failed-call divergence (P4.13 unit 6) is retired. `ToolExecutionContext.turn_control` and the two trigger-site param structs carry the turn's stop for P4.D345.
+
 #### 2026-11-02 — docs(porting): P4.D347's `CONTEXT` sha, landed contract spellings and lane record
 
 _Docs-only change._

@@ -533,6 +533,8 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
             },
             timeout_ms: IMAGE_DESCRIPTION_TIMEOUT_MS as u64,
             log_type: log_type::IMAGE_DESCRIPTION,
+            // v4 threads the chat through every describer (`eb2d87788`).
+            chat_id: deps.chat_id,
             require_api_key: false,
             transcoder: deps.transcoder,
         },

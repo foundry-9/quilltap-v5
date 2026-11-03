@@ -261,16 +261,28 @@ async function main(): Promise<void> {
         if (currentCase.realStreamMessage) {
           // P4.114: v4's REAL generator over the scripted provider.
           realProviderSeq = seq;
+          // P4.D348 (v4 `eb2d87788`): the funnel records ONE row per call,
+          // whatever ends it.
+          let realLogged = false;
           try {
             for await (const chunk of actual.streamMessage(opts as never)) {
-              if ((chunk as { done?: boolean }).done) loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
+              if ((chunk as { done?: boolean }).done) {
+                realLogged = true;
+                loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
+              }
               yield chunk;
             }
           } finally {
+            if (!realLogged) loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
             realProviderSeq = null;
           }
           return;
         }
+        // P4.D348 (v4 `eb2d87788`): the REAL funnel's `record` — the terminal
+        // chunk's row, else one from its `finally` (a throw, a stop, an early
+        // break).
+        let logged = false;
+        try {
         for (const chunk of seq) {
           // A scripted mid-stream throw: v4's `for await` propagates it out of
           // `runBrahmaQuery` itself (no internal try/catch there) — the same
@@ -280,6 +292,7 @@ async function main(): Promise<void> {
             // v4's real `streamMessage` writes its `llm_logs` row HERE — as the
             // terminal chunk passes through, before it is yielded — typed by
             // the `logType = 'CHAT_MESSAGE'` destructure default (P4.D216).
+            logged = true;
             loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
             yield {
               done: true,
@@ -295,6 +308,9 @@ async function main(): Promise<void> {
               ...(chunk.thoughtSignature !== undefined ? { thoughtSignature: chunk.thoughtSignature } : {}),
             };
           }
+        }
+        } finally {
+          if (!logged) loggedTypes.push(opts.logType ?? 'CHAT_MESSAGE');
         }
       },
     };

@@ -1294,6 +1294,10 @@ async fn primary_stream_tier3_matches_oracle() {
                     error_message: call.error_message.clone().unwrap_or_default(),
                     character_participant_id: call.participant_id.clone().unwrap(),
                     turn_control: None,
+                    // P4.D348 (v4 `eb2d87788`): the funnel's ids — the row.
+                    user_id: spec.user_id.clone(),
+                    character_id: spec.character.id.clone(),
+                    log_context: quilltap_core::services::llm_logging::LogContext::none(),
                 };
                 let rr = recovery::attempt_request_limit_recovery(&db, &provider, &sink, ctx).await;
                 json!({
@@ -1737,6 +1741,124 @@ async fn primary_stream_tier3_matches_oracle() {
     // by the shared dump; durationMs collapsed to the `"<ms>"` presence marker on
     // both sides; requestHashes asserted as part of the row). Both sides sorted by
     // canonical JSON.
+    //
+    // P4.D348 (v4 `eb2d87788`): the recovery call now logs a row whose
+    // `messageId` is the recovery message it produced — minted on both sides —
+    // so a row's id is read through the SAME shared map the results and
+    // `chat_messages` were tokenized with (a lookup only: an id no message
+    // carries stays literal), which also proves the row points at the saved
+    // recovery message.
+    let tokenize_logs = |rows: &mut Vec<Value>, map: &HashMap<String, String>| {
+        for row in rows.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            if let Some(t) = obj
+                .get("messageId")
+                .and_then(Value::as_str)
+                .and_then(|raw| map.get(raw))
+                .cloned()
+            {
+                obj.insert("messageId".into(), Value::String(t));
+            }
+        }
+        common::sort_by_canonical_json(rows);
+    };
+    let mut got_logs = got_logs;
+    let mut oracle_llm_logs = oracle_llm_logs;
+    // A recovery call with no message to show for itself (its stream failed,
+    // so the static fallback saved its OWN message) points at an id minted for
+    // nothing: masked on both sides once the lookup above has had its chance.
+    let mask_unsaved = |rows: &mut Vec<Value>, map: &HashMap<String, String>| {
+        for row in rows.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            let unsaved = obj
+                .get("messageId")
+                .and_then(Value::as_str)
+                .is_some_and(|raw| !map.contains_key(raw) && !spec_text.contains(raw));
+            if unsaved {
+                obj.insert("messageId".into(), json!("<unsaved-recovery>"));
+            }
+        }
+    };
+    // Two pre-existing seams the funnel's error rows now SHOW (P4.D348):
+    //   - a canned leg neither side queued fails with each MOCK's own text
+    //     (v4's `exhausted attempts`, v5's `no canned stream queued`) — a
+    //     harness artifact, collapsed to one token on both sides;
+    //   - P4.118's standing divergence: an `sdkError` surfaces v5's transport
+    //     bytes (`HTTP {status}: {body}`) where v4 surfaces its `APIError`'s
+    //     rendering. Pinned both ways on the rows as on the results: v5's row
+    //     must carry exactly the bytes, v4's exactly the rendering.
+    let mock_exhausted = regex::Regex::new(
+        r#""error":"(streamMessage mock: exhausted attempts[^"]*|no canned stream queued[^"]*)""#,
+    )
+    .unwrap();
+    let mut sdk_pairs: Vec<(String, String)> = Vec::new();
+    for (label, legs) in spec_streams.as_object().unwrap() {
+        let Some(posed) = legs.pointer("/0/0/sdkError") else {
+            continue;
+        };
+        let (status, body) = (
+            posed["status"].as_u64().unwrap() as u16,
+            posed["body"].as_str().unwrap().to_string(),
+        );
+        let provider = spec
+            .calls
+            .iter()
+            .find(|c| c.stream_label.as_deref() == Some(label.as_str()))
+            .map(|c| primary_of(&spec, c).provider.clone())
+            .unwrap_or_else(|| "OPENAI".to_string());
+        let rendering =
+            quilltap_core::model::provider_error::text_http_refusal(&provider, status, &body)
+                .expect("known provider")
+                .message;
+        sdk_pairs.push((format!("HTTP {status}: {body}"), rendering));
+    }
+    let mut sdk_rows_seen = (0usize, 0usize);
+    for (rows, is_v5) in [(&mut got_logs, true), (&mut oracle_llm_logs, false)] {
+        for row in rows.iter_mut() {
+            let obj = row.as_object_mut().unwrap();
+            let Some(Value::String(resp)) = obj.get("response").cloned() else {
+                continue;
+            };
+            let mut resp = mock_exhausted
+                .replace_all(&resp, r#""error":"<mock-exhausted>""#)
+                .into_owned();
+            for (bytes, rendering) in &sdk_pairs {
+                let (from, to) = if is_v5 {
+                    (bytes, rendering)
+                } else {
+                    (rendering, rendering)
+                };
+                let needle = format!("\"error\":{}", serde_json::to_string(from).unwrap());
+                if resp.contains(&needle) {
+                    if is_v5 {
+                        sdk_rows_seen.0 += 1;
+                    } else {
+                        sdk_rows_seen.1 += 1;
+                    }
+                    resp = resp.replace(
+                        &needle,
+                        &format!("\"error\":{}", serde_json::to_string(to).unwrap()),
+                    );
+                    break;
+                }
+            }
+            obj.insert("response".into(), Value::String(resp));
+        }
+    }
+    assert!(
+        sdk_rows_seen.0 > 0 && sdk_rows_seen.0 == sdk_rows_seen.1,
+        "the sdkError rows: v5 rows carrying the transport bytes {} vs v4 rows carrying \
+         the rendering {} — both must be present and agree",
+        sdk_rows_seen.0,
+        sdk_rows_seen.1
+    );
+    tokenize_logs(&mut got_logs, &got_map);
+    tokenize_logs(&mut oracle_llm_logs, &want_map);
+    mask_unsaved(&mut got_logs, &got_map);
+    mask_unsaved(&mut oracle_llm_logs, &want_map);
+    common::sort_by_canonical_json(&mut got_logs);
+    common::sort_by_canonical_json(&mut oracle_llm_logs);
+    common::write_diff_dump("primary_stream_llm_logs", &got_logs, &oracle_llm_logs);
     assert_eq!(
         got_logs,
         oracle_llm_logs,

@@ -82,6 +82,9 @@ pub struct GreetingRequest {
     /// "Carried and equipped"). Never folded into the system prompt (v4
     /// `trailingContextSections`, `4fbdad186`; P4.D324).
     pub trailing_context_sections: Vec<String>,
+    /// v4 `connectionProfileId` (`eb2d87788`) — the greeting row's profile, so
+    /// the Inspector can tell which profile answered. `None` logs `null`.
+    pub connection_profile_id: Option<String>,
 }
 
 /// v4 `GreetingResult`.
@@ -256,6 +259,9 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
     // a concatenation. The same contract the Salon's streaming path relies on.
     let mut accumulated_reasoning = String::new();
     let mut final_usage: Option<StreamUsage> = None;
+    let mut final_cache_usage: Option<crate::model::stream::StreamCacheUsage> = None;
+    let mut final_raw_usage: Option<Value> = None;
+    let mut finish_reason: Option<String> = None;
     let mut stream_error: Option<StreamError> = None;
 
     // v4 `f90144ac4` (bug 141): the greeting is the ONE streaming consumer that
@@ -310,6 +316,23 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
                 if let Some(u) = chunk.usage {
                     final_usage = Some(u);
                 }
+                // `eb2d87788`: the row reports what the Salon's rows do.
+                if chunk.cache_usage.is_some() {
+                    final_cache_usage = chunk.cache_usage;
+                }
+                if chunk
+                    .raw_provider_usage
+                    .as_ref()
+                    .is_some_and(Value::is_object)
+                {
+                    final_raw_usage = chunk.raw_provider_usage.clone();
+                }
+                if chunk.done {
+                    finish_reason = chunk
+                        .raw_response
+                        .as_ref()
+                        .and_then(crate::finish_reason::extract_finish_reason);
+                }
             }
             Err(e) => {
                 stream_error = Some(e);
@@ -334,9 +357,8 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
             character_id: req.character_id.clone(),
             provider: req.provider.clone(),
             model_name: req.model_name.clone(),
-            // v4 `0cde7fbc` did NOT touch `lib/chat/initial-greeting.ts` — this
-            // call site sets no profile id on either side.
-            connection_profile_id: None,
+            // v4 `connectionProfileId ?? null` (`eb2d87788`).
+            connection_profile_id: req.connection_profile_id.clone(),
             image_profile_id: None,
             request: LogRequest {
                 messages: messages
@@ -354,12 +376,15 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
             response: LogResponse {
                 content: accumulated.clone(),
                 error: stream_error.as_ref().map(|e| e.message.clone()),
-                finish_reason: None,
+                finish_reason: finish_reason.clone(),
                 tool_calls: None,
             },
             usage,
-            cache_usage: None,
-            raw_provider_usage: None,
+            cache_usage: final_cache_usage.map(|c| llm_logging::LogCacheUsage {
+                cache_creation_input_tokens: c.cache_creation_input_tokens,
+                cache_read_input_tokens: c.cache_read_input_tokens,
+            }),
+            raw_provider_usage: final_raw_usage.clone(),
             request_hashes: None,
             duration_ms: Some(duration_ms as f64),
         };

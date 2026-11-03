@@ -1904,6 +1904,14 @@ async fn run_images_generate(
     // no message to carry it. A failure escapes to the middleware's flat 500,
     // as v4's unwrapped throw does.
     let (prompt, overrides, orientation) = (&body.prompt, &body.overrides, body.orientation);
+    // v4 `primaryProfileId = profile.id` — any other profile tried is a reroute.
+    let primary_profile_id = profile
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let primary_profile_id = &primary_profile_id;
+    let chat_for_log = body.chat_id.as_deref();
     let attempt =
         |candidate: crate::services::dangerous_content::image_failover::FailoverProfile,
          key: String| async move {
@@ -1925,10 +1933,40 @@ async fn run_images_generate(
                     ..Default::default()
                 },
             );
-            seams
+            // One LLM log row per profile tried (v4 `eb2d87788`), so the call
+            // — and any Concierge reroute — shows in the chat's Inspector when
+            // a chat asked for it, and in the Almanack's image spend.
+            let rerouted = candidate.id != *primary_profile_id;
+            let started_at = crate::clock::now_unix_ms();
+            let result = seams
                 .provider
                 .generate_image(&candidate_provider, &key, &built.params)
-                .await
+                .await;
+            crate::image_gen::image_attempt::record_image_call(
+                db,
+                crate::image_gen::image_attempt::ImageCallRecord {
+                    user_id,
+                    log_type: crate::services::llm_logging::log_type::IMAGE_GENERATION,
+                    prompt,
+                    chat_id: chat_for_log.map(str::to_string),
+                    character_id: None,
+                    profile_key:
+                        crate::image_gen::image_attempt::LoggedImageProfileKey::ConnectionProfile(
+                            &candidate.id,
+                        ),
+                    provider: &candidate_provider,
+                    model_name: candidate
+                        .row
+                        .get("modelName")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    started_at,
+                    rerouted,
+                },
+                result.as_ref(),
+            )
+            .await;
+            result
         };
     let understudy = DialogUnderstudy {
         db,

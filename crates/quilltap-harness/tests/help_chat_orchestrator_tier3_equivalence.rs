@@ -227,9 +227,13 @@ fn chunk_to_result(c: &ChunkW) -> StreamChunkResult {
 struct QueuedStreamingProvider {
     queues: Mutex<HashMap<String, VecDeque<Vec<StreamChunkResult>>>>,
     misses: Mutex<Vec<String>>,
-    /// Served sequences that ran to `done` (no scripted throw) — the number
-    /// of `CHAT_MESSAGE` rows v4's `streamMessage` logger would have written.
+    /// Every served sequence — the number of `CHAT_MESSAGE` rows v4's
+    /// `streamMessage` funnel writes (one per call, `done` or thrown, since
+    /// `eb2d87788`; P4.D348).
     completed_streams: Mutex<i64>,
+    /// Of those, the sequences that end in a scripted throw — each one a row
+    /// carrying the error since v4 `eb2d87788` (P4.D348).
+    failed_streams: Mutex<i64>,
     /// Every slate this provider was handed, in call order — bug 124's
     /// comparand, diffed against the oracle's recorded `slate` rows.
     received_slates: Mutex<Vec<Value>>,
@@ -253,6 +257,7 @@ impl QueuedStreamingProvider {
             queues: Mutex::new(queues),
             misses: Mutex::new(Vec::new()),
             completed_streams: Mutex::new(0),
+            failed_streams: Mutex::new(0),
             received_slates: Mutex::new(Vec::new()),
         }
     }
@@ -277,8 +282,12 @@ impl StreamingCompletionProvider for QueuedStreamingProvider {
             let mut queues = self.queues.lock().unwrap();
             match queues.get_mut(&key).and_then(|q| q.pop_front()) {
                 Some(seq) => {
-                    if !seq.iter().any(Result::is_err) {
-                        *self.completed_streams.lock().unwrap() += 1;
+                    // P4.D348 (v4 `eb2d87788`): the funnel logs EVERY call,
+                    // whatever ends it — a scripted throw is a row too (its
+                    // partial content and the error).
+                    *self.completed_streams.lock().unwrap() += 1;
+                    if seq.iter().any(Result::is_err) {
+                        *self.failed_streams.lock().unwrap() += 1;
                     }
                     seq
                 }
@@ -815,7 +824,7 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
         }
     }
 
-    // Finding #111's pin: one CHAT_MESSAGE row per completed help turn, with
+    // Finding #111's pin: one CHAT_MESSAGE row per help stream call (a throw too), with
     // v4's help shape — `messageId` NULL (the loop's `streamMessage` carries
     // none), `characterId` the seat's, `connectionProfileId` the profile's, a
     // measured duration. Mutation: remove the `log_chat_message_call` in
@@ -833,11 +842,31 @@ async fn help_chat_orchestrator_tier3_matches_oracle() {
             )?)
         })
         .unwrap();
-    // v4 logs on `chunk.done`; a scripted throw logs nothing.
+    // P4.D348 (v4 `eb2d87788`): one row per stream call, `done` or thrown; a
+    // scripted throw's row carries the error.
     let expected_chat_message_rows = *streaming.completed_streams.lock().unwrap();
     assert_eq!(
         rows, expected_chat_message_rows,
-        "one CHAT_MESSAGE row per completed help turn"
+        "one CHAT_MESSAGE row per help stream call"
+    );
+    let error_rows: i64 = db
+        .read_llm_logs(|c| {
+            Ok(c.query_row(
+                "SELECT count(*) FROM llm_logs WHERE type = 'CHAT_MESSAGE' \
+                 AND CAST(response AS TEXT) LIKE '%\"error\":\"%'",
+                [],
+                |r| r.get(0),
+            )?)
+        })
+        .unwrap();
+    let failed_streams = *streaming.failed_streams.lock().unwrap();
+    assert_eq!(
+        error_rows, failed_streams,
+        "one error-carrying row per thrown help stream"
+    );
+    assert!(
+        failed_streams > 0,
+        "the corpus must throw at least one help stream (the row's pin)"
     );
     assert!(rows > 0, "the pin must see at least one turn");
     assert_eq!(null_mid, rows, "the help loop passes no messageId → NULL");

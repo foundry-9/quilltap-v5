@@ -22,7 +22,7 @@ import {
   isRecentlyAddressed,
   computeSkipEligibility,
 } from '@/lib/chat/turn-manager/skip-signal';
-import { buildTurnSkipInstruction } from '@/lib/chat/context-manager';
+import { buildTurnSkipInstruction } from '@/lib/chat/turn-manager/skip-signal';
 import type { ChatEvent, ChatParticipantBase, Character } from '@/lib/schemas/types';
 
 type Row =
@@ -269,7 +269,7 @@ recently('bom-after-name', said('Hey Alice\ufeff'), 'p-alice', alice);
 recently('nel-after-name', said('Hey Alice\u0085'), 'p-alice', alice);
 recently('nbsp-after-name', said('Hey Alice\u00a0'), 'p-alice', alice);
 
-// ---- buildTurnSkipInstruction (v4 lib/chat/context-manager.ts) --------------
+// ---- buildTurnSkipInstruction (v4 lib/chat/turn-manager/skip-signal.ts) -----
 // The ephemeral Turn note's exact bytes — both the base (which e22f7b36 grew a
 // closing paragraph) and the reworded caution.
 const note = (id: string, characterName: string, recentlyAddressed: boolean) =>
