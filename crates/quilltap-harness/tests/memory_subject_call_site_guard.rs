@@ -81,9 +81,11 @@ fn the_per_turn_build_spans_both_pools_in_one_lookup() {
         .find("render_archive(")
         .expect("the archive render no longer follows the subject build");
     let call = &src[at..at + end];
+    // P4.D342 (v4 `a5efdbb97`): the frozen archive is `{anchors, circle}` —
+    // v4 spreads `[...circleMemories, ...archive.anchors, ...bundle.pool]`.
     assert!(
-        call.contains("archive_memories"),
-        "the union must carry the frozen archive:\n{call}"
+        call.contains("circle_memories") && call.contains("archive.anchors"),
+        "the union must carry the frozen archive (the circle and the anchors):\n{call}"
     );
     assert!(
         call.contains("bundle.pool"),

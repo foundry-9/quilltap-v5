@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D342 lane record + guard follow-up
+
+_Versions: none (harness and docs only)._
+
+`memory_subject_call_site_guard` now requires the per-turn subject lookup to span the inner circle and the anchors (the frozen archive's new shape). The P4.D342 lane record is appended to `status-log.md`, and the order's status is set to LANE COMPLETE.
+
 #### 2026-11-02 — feat(recall): the group inner circle and the keystone placement in the frozen archive (P4.D342, v4 `a5efdbb97` + `8cb584eff`)
 
 _Versions: core 0.0.1383._

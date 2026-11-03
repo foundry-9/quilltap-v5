@@ -194511,6 +194511,197 @@ The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
 
 **Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).
 
+## P4.D342 — the memory lane of the `236c04e35` catch-up: the importance rubric, the group inner circle, the keystone recall placement (lane `claude/p4.d342-memory-rubric-inner-circle-c2c28c031`, pin `236c04e35`, 2026-11-02) — LANE RECORD
+
+**Venue.** The session opened in the main checkout on `main` at `8976915ea`. It moved to the worktree `.claude/worktrees/p4d342` on `claude/p4.d342-memory-rubric-inner-circle-c2c28c031`, cut from **`KEYSTONE` `c2c28c031`**. The sha was found with `git log --all … | grep '^[0-9a-f]+ KEYSTONE:'` and confirmed against the status header of P4.D341's order on `claude/p4.d341-keystone-d23-17-21-8976915ea`. **No pre-start:** `KEYSTONE` had landed, so every commit sits on it and there was no mid-lane rebase. `target/` was cloned from main's (`cp -cR`). `apps/web` got `npm ci` + `npm run build`; the dist is for clippy only, since this lane has no SPA change, and the SPA lint / vitest / Playwright were not re-run.
+
+**§2 probe (an observation, §R.2; 2026-11-02 19:28 CST).** v4 `main` was at `25a20221c`, **41 commits past the pin**, on branch `main` with a clean tree (`status --short` empty). `log 73b334af3..bugfix` was empty. Nothing past the pin was read or copied.
+
+**The pin, and the 2026-11-02 pin ruling (human).** The pin is `/tmp/qt-v4-pin-p4d342-236c04e35`; `rev-parse` = `236c04e35ab23ccc604fd188e5b73d0141066697` and `package.json` reads `"version": "4.12.0-dev.0",`.
+- **Symlink classes (2) and (3) — the CLI and plugin `node_modules` — were NOT used, by the human's ruling of 2026-11-02:** live v4 re-installed both past the pin.
+- Class (1) was replaced by the pin's own `npm ci --offline --no-audit --no-fund`, rc 0 ("added 1159 packages"; no `ENOTCACHED`).
+- Then `.claude/pin-plugin-sdks.sh "$PIN"` floor-installed the plugin and CLI deps offline inside the pin: openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1. The CLI driver is **12.11.1, SQLite 3.53.2, cipher `chacha20`**.
+- Pin reads: `zod` 4.6.7; `better-sqlite3` (the cipher alias) 12.11.1; `openai` 7.45.0; `pdfjs-dist` 6.4.299; `@quilltap/plugin-types` 2.9.0.
+
+**Contract C-1 as consumed (H-2).** The spellings are exactly the header's: `db::memories_read::{KeystoneSubjects::{SelfSubject, About(&[String])}, find_keystones}`; `count_keystones` is not called (recall never counts). `find_keystones` itself answers through the fallback home `db::fallback::keystones_or_empty` (`Error finding keystones`, `[]`). The two call sites in `services/frozen_archive.rs` therefore call it UNWRAPPED; an outer wrap would double-log under a strict scope. `grep -n find_keystones crates/quilltap-core/src/services/frozen_archive.rs` matches the header.
+
+### Commits
+
+| commit | what | versions |
+|---|---|---|
+| `5a7fd7881` | the importance rubric in the four memory-writing prompts (`6fd2d5ffb`) | core 0.0.1381 |
+| `901e023cf` | the inner circle's two tuning knobs (`a5efdbb97`) | core 0.0.1382 |
+| `2e9247765` | `recall-replay --help` names the knobs (Tier R) | cli 0.0.37 |
+| `5a09ad5df` | the group inner circle + the keystone placement (`a5efdbb97` + `8cb584eff`) | core 0.0.1383 |
+| (this record) | the status header + this record | docs |
+
+### (A) The prompts — Tier 1 #2 / #3
+
+- **The extractors were taught, not hand-edited.** The file headers' "no byte transcribed by hand" claim still holds.
+  - `extract-memory-task-prompts.py` resolves the two `shared.ts` notes. `IMPORTANCE_WORK_CEILING_NOTE` carries the ONE taught expression form `${CONST.toFixed(n)}`, over a `const NAME = <decimal>` read from the source. Padding is exact, and a literal that would ROUND aborts.
+  - It gains `--print-blocks <dir>`, which prints the substituted blocks as JSON.
+  - `extract-consolidation-prompt.py` substitutes the names on its `@/lib/memory/extraction/prompts/shared` import line through `--print-blocks`, so both generated modules share ONE evaluation of `shared.ts`. Any other interpolation still aborts.
+- **The regenerated diff is EXACTLY the rubric:** the SELF / OTHER ladders, the two notes in the NO-blank / ONE-blank layout, the re-scored examples (SELF 0.85 → 0.65; OTHER 0.85 → 0.55 and 0.65 → 0.45), the two new pregnancy items, and the episode field's five lines + blank + notes. The consolidation tail is the paragraph, the ceiling note with no blank, a blank, then the fact note, closing at the backtick.
+- **Red-first (unported `KEYSTONE` tip, oracles from the pin):**
+  - `memory_tasks_equivalence`: **10 divergences, not the order's 12.** They are 3 SELF (`self_simple_utc`, `self_userchar_autonomous_orienting`, `self_prior_new_speaker`), 2 other-turn, 2 other-fold and 3 episode. The corpus carries 3 SELF rows, not 5 — a correction.
+  - `consolidation_tasks_equivalence`: the `constants` row red.
+  - `memory_maintenance_consolidate_tier3_equivalence`: red; every cluster misses with `no canned completion registered …` under the old bytes.
+- **After:** `memory_tasks` 135 rows OK; `consolidation_tasks` OK; `memory_maintenance_consolidate_tier3` green.
+- **Mutation:** the blank line before `IMPORTANCE_FACT_NOT_TELLING_NOTE` dropped in SELF reddened exactly the three SELF rows.
+- **`orchestrator_tier3_equivalence` (UNION — R-7 / H-1).** Regenerated from the pin (1181 NDJSON lines) and A/B'd against the pre-rubric prompt bytes.
+  - **This lane's bytes own three rows:** `inventory_equip_then_unequip_nets_none`, `inventory_equip_two_one_turn` and `wardrobe_rollback_in_turn`. They are red on the old bytes and green on the new.
+  - **The 33 residual reds are UNION-PENDING**, owned by P4.D347 / P4.D348 / P4.D343 / P4.D345. Every one fails on a main-turn stream miss (`no canned stream queued …`, a system prompt from the context build), never on a cheap-completion miss (0 `no canned completion registered`):
+    `agent_force_final`, `agent_mode_on`, `carina_markup`, `danger_live_reroute`, `danger_off_short_circuit`, `danger_uncensored_no_enqueue`, `dangling_key_refuses`, `empty_retry`, `inactive_key_still_sent`, `inform_already_consumed_is_left_alone`, `inform_consume_fails_on_a_poisoned_row`, `inform_consumed_by_preserved_partial`, `inform_consumed_by_saved_turn`, `inventory_equip_then_skip_sentinel_ignored`, `keyless_oac_sends_empty`, `keyless_requires_refuses`, `mid_stream_error`, `mid_stream_error_staged_tools`, `moderation_refusal`, `noncontinue_single_user_chain`, `noncontinue_two_llm_maxdepth`, `paused_never_pause_for_user_runs`, `pending_tool_results`, `rng_dice`, `rng_modifier`, `rng_no_fire`, `rng_two_patterns`, `route_via_concierge`, `simple_json_text_tool_continuation`, `simple_json_then_native_tool_call`, `textblock_mode`, `trigger_phrase`, `two_keys_profile_bound`.
+  - The first panic reported is `event trace mismatch for trigger_phrase`.
+
+### (B) The knobs — Tier 1 #5
+
+- `recall_tags.rs` gains `INNER_CIRCLE_ARCHIVE_SHARE = 1/3` and `INNER_CIRCLE_ALLOWANCE = [3, 2, 1]`.
+- `recall_tuning.rs`: `inner_circle_share: f64` and `inner_circle_allowance: Cow<'static, [i64]>` (R-1). Each goes through the input, resolve, describe (the allowance compared by its JOINED JS text) and `TUNING_SHAPE` (13).
+- The validator's catch-all is now an explicit `"backgroundReserve"` arm.
+- The allowance arm is `zod_int_table`, measured at the pin's Zod 4.6.7:
+  - `capSize`: an array over 10 answers ONE `too_big` before any element;
+  - every bad element is then reported through the int number arm;
+  - `[]` answers `too_small` (`origin: array`, `Too small: expected array to have >=1 items`).
+- **Red-first:** `recall_tuning_equivalence` was GREEN before the corpus grew. That was a corpus gap: the test did not read the new keys. After the growth (6 resolve and 19 parse rows) it was red at `full-candidate` (`unrecognized_keys`).
+- **After:** 1 default, 42 resolve, 13 select, 58 tuningParse, 26 signalsParse OK. The resolved key SET is now checked whole, so a key v4 grows reddens instead of passing unread.
+- **Mutations:** a length-compare `describe` flips `inner-circle-whole` (`[20,0,7]`). The order's planned `[3,2,1,1]` row does NOT flip under a length compare, so the same-length row was added. A dropped `max(1)` flips `share-over`.
+
+### (C) The inner circle, the frozen archive, render, assemble, replay — Tier 1 #4, #6–#8
+
+- **CORRECTION to the order (Tier 1 #4 / R-8), measured at the pin:**
+  - v4's `findByCharacterId` / `findByGroupId` each wrap the base `findByFilter`, which is ITSELF a `safeQuery` fallback (`base.repository.ts:283-297`). A DB failure therefore logs `Error finding entities by filter {collection: group_character_members, error}` and answers `[]` before the outer `Error finding group memberships by character ID` / `… by group ID` can fire. **The outer lines are UNREACHABLE** (the P4.142 class).
+  - The resolver reads through the EXISTING home `db::fallback::find_by_filter_or_empty("group_character_members", …)`. No new home and no `db/fallback.rs` edit; `fallback_home_guard` is unmoved.
+  - The oracle's failure op proves it: a generated `groupId` that cannot evaluate yields `Error finding entities by filter` with `collection: group_character_members` and `error: malformed JSON` on both sides, and the archive is computed with an empty circle.
+  - A degraded or absent mount index (`PartitionUnavailable`) answers the same line and `[]`.
+- **`services/inner_circle.rs`** (NEW; `pub mod inner_circle` in `services/mod.rs`) ports `inner-circle.ts` line for line:
+  - first-seen dedups;
+  - the missing-group skip;
+  - the tightest map with insertion order kept;
+  - `compare_groups` / the circle sort over `crate::collation::locale_compare`;
+  - the DEBUG `[InnerCircle] Resolved inner circle {holderId, groups, tiers, excluded, members}`, silent on the two early returns.
+  
+  A non-string, non-null group `name` reads as `''`. v4 would throw there; it is unreachable through v4's Zod writer, recorded and not special-cased.
+- **`db/characters_read.rs::find_names_by_ids_with(main, ids, exclude_archived)`.** The truthy `archivedAt` rule (NULL / `""` not archived); `find_names_by_ids` delegates with `false` and its callers are untouched. A unit test pins it. The differential home is the frozen family's archived Xavier: the mutation that ignores the flag reddens **34 ops**.
+- **`services/frozen_archive.rs`:**
+  - `FrozenArchive { anchors, circle }`;
+  - `InnerCircleOptions { share, allowance: Cow }` with `Default` = the two consts;
+  - `CacheEntry.circle` + `archive`;
+  - the circle resolved on EVERY call before the `exclude` arm and the lookup (R-2), outside the lock;
+  - the circle key `"{share}|{allowance}|{signature}"` in JS number text;
+  - P4.168's lock-only-around-lookup-and-insert + the epoch skip KEPT, with a new unit test that the circle key does not loosen the stamp (and that same key hits / changed key misses);
+  - steps 1–4 as `archive.ts:221-361` — the lifting `continue`, `group_by_subject`, `draw_inner_circle` with the tier-boundary break, the stable circle-order sort and the index-set trim;
+  - both DEBUGs carry v4's keys in v4's order.
+  
+  `get_or_compute_frozen_archive` gains the trailing `inner_circle: Option<&InnerCircleOptions>`; its only production caller is `assemble.rs`.
+- **`services/recall/types.rs`:** `InnerCircleEntry`, plus `inner_circle_trim_order` / `_by`, which return the INDICES in trim order (a stable sort).
+- **`services/recall/render.rs`:**
+  - the third body helper `content_first_body_trimmed` (R-5);
+  - `archive_body` — a keystone renders in full in `render_archive` / `render_head` (a JSON `keystone: true`);
+  - NEW `render_inner_circle`: no age tag; the walk BREAKS at the first row that does not fit; output in circle order.
+- **`services/recall/assemble.rs` step 2:** the tuning (`plan.replay.tuning` or `DEFAULT_RECALL_TUNING`) feeds the knobs. The subject context is built over circle + anchors + pool. `circle_budget = floor(archive_token_budget × share)`; the anchors render in what the circle leaves. There is ONE `Archive` pool entry (circle then anchors), and the detail is `size, held, circleHeld, circleRendered, circleMembers (distinct), circleTokenBudget, rendered, cutByBudget, tokenBudget`.
+- **`services/recall_replay.rs`:** `warnings` sits between `pools` and `trace` (field order = wire key order).
+
+### (D) The harness — Tier 1 #9–#13
+
+- **`frozen_archive_tier2` — the RUNTIME-DEAD re-aim (R-4).**
+  - At the pin, the committed case crashes: `TypeError: archive.map is not a function`, NO NDJSON written (the empty-file trap, recorded rather than counted green).
+  - Re-aimed: `returned` = the anchors, plus a per-op `circle`; the case still covers its 103 ops.
+  - Regenerated BEFORE the corpus grew and run against the UNPORTED tree: **0 `returned` divergences across all 103 ops** (proves R-4: the anchors equal the old flat list) and **81 line divergences** (the new `Composed` / `Computed` keys). That is the red-first.
+  - **Measured:** the committed `memories-{main,mount}.db` pair carries NO `groups` (main) and NO tables at all in the mount. The CREATE-if-absent path was taken, with `fresh_schema.json`'s DDL text on both sides; the committed pair is untouched.
+  - **The mechanics:** `plantMountSql` runs on the mount copy (the oracle through a keyed connection BEFORE the manager opens it; v5 through `Writer::open_writable`), and the new op kinds `plantMain` / `plantMount` run mid-sequence.
+  - **The corpus:** 113 main / 23 mount plants, **123 ops**. Holder H; Family 3 / Crew 4 / Club 6 / Lodge 6 (the size-6 name tie-break); eight members copied from the fixture's Mnemo row (Xavier archived); a member with no `characters` row; a duplicate membership; an orphan membership; four hot digests per member, two self digests and a filler; six keystones (two about Abigail, self, Laura, a COLD one, one about no one).
+  - **The ops:** the full draw (16-row circle incl. 3 keystones), a hit, the size-21 trim (cap 7), a knob change (miss then hit), Laura present, Abigail present (lifted), the `asOf` exclude twice (Abigail's SECOND, then FIRST keystone), cap 0, a membership plant and a rename (each a miss), share 0, allowance `[0]`, and the failure leg.
+  - The `[InnerCircle]` and `Error finding entities by filter` lines join the compared set; the hit count now counts gets with no `Computed` line; a value with spaces (an error text) parses whole.
+  - Green: `OK: frozen-archive tier-2 matched v4 over 123 ops.`
+  - **Mutations (each restored):**
+
+    | mutation | result |
+    |---|---|
+    | the lifting's `continue` → `break` | first SURVIVED (a corpus gap); after the first-keystone exclude op was added, it flips op 111 |
+    | `filled` without the lifted count | flips ops 108–110 |
+    | `cap` ignoring what steps 1+2 took | flips ops 0 and 119 |
+    | `excludeArchived` ignored | flips 34 ops |
+    | the tier-boundary break counting digests only | **SURVIVES — an EQUIVALENT MUTANT**, recorded |
+
+    Why the last one is equivalent: when keystones + earlier digests already reach the cap, every looser-tier row the extra read would add is cut by the trim (keystones and tighter tiers sort first). Only the read COUNT differs, and no oracle observes reads.
+- **`recall_render` (#10):**
+  - Three keystones join the shared corpus (content ≠ summary; empty content; blank content), plus 55 NEW `innerCircle` rows (two circles × three providers × nine budgets + the empty one) and 2 `trimOrder` rows. The circles: a three-tier one with a padded / empty body, provenance and keywords, and old `createdAt` (no age tag); and one whose keystones outlast every digest.
+  - Before the growth the family was GREEN (a corpus gap, as the order expected).
+  - The keystone arm dropped in `render_archive` (= the unported rule) reddens `row 38: renderArchive`.
+  - **Mutations:** `break` → `continue` flips `keystones/default/20`; an age tag flips `tiers/default/20`; `content_first_body` (summary untrimmed) for the circle flips `tiers/default/90`.
+  - 234 rows green.
+- **`recall_assemble_tier3` (#11, R-3 — in-case plants, the committed main file untouched).**
+  - **Measured:** `recall-assemble-main.db` carries NO `characters` and NO `groups` table. `circlePlants` (in `recall-assemble.json`, run on both sides' per-case copies) CREATEs both from `fresh_schema.json` and adds Juniper, the Family group, `group_character_members` (Lyra / Iris / Juniper) in a real scratch mount, a digest about Juniper, and keystones about Iris (lifted), Lyra (an anchor) and Juniper (the circle).
+  - **NEW cases:** `inner_circle_absent_groupmate` (+ deliver: circle rows delivered under `archive` and stamped with the anchors in one call); `inner_circle_tight_budget` (`memoryBudget` 450 — anchors cut by what the circle leaves: `cutByBudget` 4); `inner_circle_share_zero`; `inner_circle_allowance_zero` (keystones only); `inner_circle_retro_turn` (byte-identical archive across the retro turn). The replay knobs ride `plan.replay.tuning` = `resolveRecallTuning(…)` on both sides.
+  - The trace's `archive` detail is compared whole for all 17 cases. Dropping the four new keys (= the unported trace) reddens `ordinary_turn`.
+  - **Mutations:** `circleMembers` as an entry count flips `inner_circle_absent_groupmate`. Anchors under the FULL budget first SURVIVED (no case cut the anchors); with `inner_circle_tight_budget` added, it flips that case.
+  - `OK: recall-assemble matched the oracle (17 cases)`.
+- **`recall_replay` (#13 / #17).** The family compares the whole result, key order included. `warnings` is pinned `[]` on the 33 success cases; a `warnings` mutation reddens `retro_full`. Added `tuning_inner_circle` (the summary `innerCircleShare=0.5, innerCircleAllowance=[2]`) and `tuning_inner_circle_empty_allowance` (400 `Validation error` with Zod's `too_small` details). 46 cases green.
+- **The no-hunk neighbours**, each regenerated from the pin under `/tmp/p4d342/` and run by name with `--nocapture`, no SKIP: `recall_deliver` (35), `recall_history` (48), `recall_tags` (199, 2 tests), `recall_rank` (143), `recall_query_tier3` (15), `recall_probe_fixture` (9) — all green.
+
+### (E) Tier R — #14
+
+`recall_replay_help.txt` takes the pin's three `--tuning` lines. `cli_differential` from the pin (`QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin, with the floor-installed CLI deps): **422 cases, 0 failures**. The `recall-replay help` and `recall-replay no chat` rows were the two reds P4.D341's addendum measured.
+
+### Tier 2
+
+- **#15, the silence legs — pinned by the differential, not by named host-capture tests:**
+  - every one of the 103 original ops (holders with no membership) logs no `[InnerCircle]` line, compared on both sides;
+  - op 104 (a hit) logs `[InnerCircle]` and no `Computed archive`;
+  - ops 110 / 111 (the `exclude` arm) log `Composed` and never `Computed`.
+- **#16, the per-turn read count (code-derived; v4 pays the same, R-2):** one archive call = 1 mount read (the memberships) + per group (1 main read for the group row + 1 mount read for the roster) + 1 main read for the names. A holder in three groups costs **8 reads**; an orphan membership costs one main read and is skipped.
+- **#17:** see `recall_replay` above.
+
+### Deferred, loudly
+
+- **The keystone read's failure leg at this lane's two call sites (R-9) has no differential plant.** The fallback lives INSIDE C-1's reader (P4.D341's `keystones_or_empty` home, pinned in that lane), and these sites consume it unwrapped. A generated-column plant on `memories.keystone` would fail every memory read on both sides, not the keystone read alone (every read selects the column). A dedicated plant shape is still owed if the unifier wants this leg pinned at the call sites.
+- **v4's `frozen-archive-cache.test.ts:288-440` group shapes as Rust unit tests: not written.** Their cases are covered by the tier-2 differential over the REAL repositories (the Family / Crew / Club draw, the trim, the lift, the signature misses, the archived and present members).
+
+### Recorded divergences
+
+None.
+
+### Censuses this lane moves
+
+None. `dispatch_wrong_type_census` and the web action lists / `COLLAPSE_CENSUS` are unmoved: no `Request`, no route. `last_accessed_at_writer_census` is unmoved: the circle rows ride the same `pools.archive`. `fallback_home_guard` is unmoved, `host_zone` is unmoved (core reads no ambient zone), and the LANE-REMOVE census has no shim.
+
+### HANDOFFs
+
+- **H-1:** `orchestrator_tier3` on the union build. The three owned rows are green here; the 33 residuals are above.
+- **H-2:** recorded above.
+- **H-3:** P4.D360 (`help/`).
+- **H-4:** the 💸 rows below.
+
+### 💸 for the dogfood pass (UNION build, a Friday COPY)
+
+The order's five rows, unchanged:
+1. a keystone's subject present / absent-in-a-group / self;
+2. the tiers and the archive-drops-on-next-turn;
+3. the rubric A/B on one transcript;
+4. `quilltap recall-replay --tuning '{"innerCircleShare":0.5,"innerCircleAllowance":[2]}'`;
+5. the read count on Friday's biggest group holder.
+
+### Regen recipes (lane-private outputs; the committed headers stay canonical)
+
+Every oracle is regenerated from the pin with `N=~/.nvm/versions/node/v24.13.1/bin`; the scripts are kept at `/tmp/p4d342/scripts/`.
+- `extraction-pure-tier1.ts`, `consolidation-tasks.ts`, `recall-tuning.ts`, `recall-render.ts`, `recall-history.ts`, `recall-tags.ts`, `recall-rank.ts`: `cd $PIN && $N/npx tsx $V5W/harness/oracle/cases/<case>.ts > /tmp/p4d342/<out>`.
+- `frozen-archive-tier2`, `recall-assemble-tier3`, `recall-replay`, the consolidate tier-3, `orchestrator-tier3`, `recall-deliver`, `recall-query-tier3`, `recall-probe-fixture`: each committed header's jest recipe, with the `/tmp` stage / out paths under `/tmp/p4d342/`.
+
+### Fixtures
+
+No committed `.db` was changed. The JSON corpora that grew: `frozen-archive-tier2.json`, `recall-assemble.json` (`circlePlants`) and `recall-replay-cases.json` (+2). They invalidate only this lane's oracles.
+
+**Versions at close:** core 0.0.1383, cli 0.0.37. No host / web / tauri / SPA bump; harness frozen.
+
+**Gate:** fmt clean; `cargo clippy --workspace --all-targets -- -D warnings` and the same with `--features quilltap-core/native-transport` — both clean. `cargo test --workspace --no-fail-fast` with the lane's harvested env block (every family above plus `QT_V4_CHECKOUT` / `QT_V4_ROOT` = the pin): **877 binaries / 5,795 passed / 5 failed / 3 ignored, zero `SKIP`.** The five reds:
+- **`memory_subject_call_site_guard::the_per_turn_build_spans_both_pools_in_one_lookup` — THIS lane's; FIXED in the record commit.** The source-text guard required the old variable name `archive_memories`. It now requires `circle_memories` AND `archive.anchors` (v4 spreads `[...circleMemories, ...archive.anchors, ...bundle.pool]`). It is 3/3 green; a mutation dropping the anchors from the union reddens it.
+- `custom_tool_schema_embed_guard::the_embeds_equal_the_v4_checkouts` and `public_schemas_vendor_guard::the_vendored_schemas_equal_the_v4_checkouts` — P4.D345's re-vendor (R-4), red at the pin by design.
+- `provider_sdk_version_guard::every_installed_provider_sdk_matches_the_recorded_version` — P4.D360's constants.
+- `orchestrator_tier3_equivalence` — the UNION family (H-1); its 33 residuals are listed above.
+
+**Cleanup:** the pin worktree has been removed and the lane's `target/` deleted. The `/tmp/p4d342/` scratch (oracles, regen scripts) is left for the unifier's reference. Nothing pushed, nothing merged.
+
 ## P4.D348 — the `236c04e35` SPINE: bug 258 whispers, bug 262's one operator-post recorder, every Salon LLM call logged, S1 / S2 / TurnStopReach (lane `claude/p4.d348-turn-spine-8d7f99e8f`, pin `236c04e35`, 2026-11-03) — LANE RECORD
 
 **Venue.** The session was started by the round's parent session and worked in the worktree `.claude/worktrees/p4d348`, on `claude/p4.d348-turn-spine-8d7f99e8f`. That branch was cut from P4.D347's `CONTEXT` commit `8d7f99e8f` (Wave B; confirmed as an ancestor of HEAD before the first edit). `target/` was an APFS clone of main's.
