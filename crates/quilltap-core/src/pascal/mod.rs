@@ -11,6 +11,8 @@ pub mod bench_inventory;
 pub mod inventory_aggregate;
 pub mod inventory_effects;
 pub mod inventory_subjects;
+// === P4.D345: operator intervention (v4 `839575d89`) ===
+pub mod intervention;
 pub mod js_value;
 pub mod llm_consult;
 pub mod metadata_match;

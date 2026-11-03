@@ -1186,7 +1186,7 @@ fn bench_character_id(metadata: Option<&Value>) -> Option<&str> {
 /// (`custom-tools.ts:431-451`) exactly: `notation`, `diceRolls`, and
 /// `metadataTested` are TypeScript-optional, so `JSON.stringify` OMITS them when
 /// absent rather than emitting `null`.
-fn run_result_to_value(r: &CustomToolRunResult) -> Value {
+pub fn run_result_to_value(r: &CustomToolRunResult) -> Value {
     let mut m = Map::new();
     m.insert("tool".into(), json!(r.tool));
     m.insert(

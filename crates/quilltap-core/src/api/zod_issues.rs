@@ -597,6 +597,50 @@ impl ZodIssue {
     }
     // === end P4.D324 ===
 
+    // === P4.D345: operator intervention's body sentences (append-only) ===
+    /// `z.array(...).min(n)` — `Too small: expected array to have >=1 items`
+    /// (measured at zod 4.6.7 through v4 `InterventionOverridesSchema.dice`).
+    pub fn too_small_array(minimum: Value, path: Vec<Value>) -> Self {
+        let message = format!("Too small: expected array to have >={minimum} items");
+        Self::TooSmall {
+            origin: "array",
+            code: "too_small",
+            minimum,
+            inclusive: true,
+            path,
+            message,
+        }
+    }
+
+    /// A `z.record(keySchema, …)` key the key schema refuses — zod 4.6.7's
+    /// `Invalid key in record` (measured through the overrides' `effects`
+    /// record). Only the MESSAGE is pinned: the one consumer (v4
+    /// `interventions.ts` `readBody`) joins messages, never the issue body.
+    pub fn invalid_record_key(path: Vec<Value>) -> Self {
+        Self::Custom {
+            code: "invalid_key",
+            path,
+            message: "Invalid key in record".to_string(),
+        }
+    }
+
+    /// A `z.discriminatedUnion` whose discriminator matches no option — zod
+    /// 4.6.7's `Invalid discriminator value. Expected 'a' | 'b'` (measured
+    /// through v4 `InterventionDecisionSchema`). Message-only, as above.
+    pub fn invalid_discriminator(options: &[&str], path: Vec<Value>) -> Self {
+        let listed = options
+            .iter()
+            .map(|o| format!("'{o}'"))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        Self::Custom {
+            code: "invalid_union",
+            path,
+            message: format!("Invalid discriminator value. Expected {listed}"),
+        }
+    }
+    // === end P4.D345 ===
+
     // === P4.D267: unrecognized_keys (append-only) ===
     /// A `.strict()` object's unknown keys: `Unrecognized key: "k"` for one,
     /// `Unrecognized keys: "a", "b"` for several (zod 4's own sentences).

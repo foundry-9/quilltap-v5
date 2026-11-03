@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): operator intervention's pure half — eligibility, overrides, recompute, spans, veto texts, views (P4.D345)
+
+_Versions: core 0.0.1386._
+
+New `pascal::intervention` module, ported from v4 `lib/pascal/intervention/*` at the `236c04e35` pin:
+- `is_intervenable` / `intervention_eligibility`;
+- the overrides / decision / body parses (Zod 4.6.7's sentences, joined as v4's `readBody` joins them) and `check_overrides`'s refusals in v4's order;
+- `pins_from_overrides`, `presentation_for` and `recompute_run`. The recompute replays the recorded draw and the consult in use, never draws a byte and never calls a model; it reports the stale answer, the clamped parameters and the four advisory warnings;
+- `facts_of` / `summarize_effects` / `changed_fields` (a byte compare);
+- `describe_span` / `within_span`, the two veto texts, and the run / effect / preview views.
+
+`api/zod_issues.rs` gains `too_small_array`, `invalid_record_key` and `invalid_discriminator`. New tier-1 family `pascal_intervention_pure_equivalence` over a new tsx oracle driving v4's real modules: 228 rows, green. Five mutations (span flags kept after rounding, `exactly` on `<=`, effects compared by `fired` alone, the dice-count check before the hidden roll, faces clamped to 0) each turn it red.
+
 #### 2026-11-03 — feat(pascal): the run engine records its draw, spans and replay inputs; the range unit is always drawn (P4.D345)
 
 _Versions: core 0.0.1385._
