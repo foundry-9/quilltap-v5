@@ -246,7 +246,9 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 content: m.content.clone(),
             })
             .collect();
-        provider = provider.with_response(
+        // v4's mock answers `finishReason: 'stop'`, which the consult's
+        // `llm_logs` row records since v4 `eb2d87788` (P4.D348's funnel).
+        provider = provider.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -257,6 +259,7 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 completion_tokens: row.usage.completion_tokens,
                 total_tokens: row.usage.total_tokens,
             }),
+            Some("stop"),
         );
     }
     provider
@@ -321,6 +324,22 @@ fn canon(v: &Value) -> Value {
                         k.clone(),
                         if k == "reason" {
                             canon_reason(x)
+                        } else if k == "draw"
+                            && x.get("form").and_then(Value::as_str) == Some("range")
+                        {
+                            // P4.D345: the preview's range draw is LIVE crypto on
+                            // both sides (v4 `839575d89` records it as `draw.unit`)
+                            // — the one legitimately nondeterministic key, masked
+                            // to its presence and type; `form` stays compared.
+                            let mut d = x.clone();
+                            if let Some(u) = d.get_mut("unit") {
+                                assert!(
+                                    u.as_f64().is_some_and(|f| (0.0..1.0).contains(&f)),
+                                    "draw.unit is not a unit fraction: {u}"
+                                );
+                                *u = Value::String("<unit>".into());
+                            }
+                            d
                         } else {
                             canon(x)
                         },

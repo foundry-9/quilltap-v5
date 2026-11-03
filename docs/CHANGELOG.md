@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): the run engine records its draw, spans and replay inputs; the range unit is always drawn (P4.D345)
+
+_Versions: core 0.0.1385._
+
+`execute_custom_tool` ports v4 `839575d89` / `8ae8a127c`'s engine. Every run result now carries `draw` (the range unit or the dice faces), `rollSpan` and `valueSpan` (what the draw and the value could have been), `llmPromptRendered`, and `tableOutcomeIndex` when the outcome is pinned. These are appended after `effects` on the chat POST `result` and the Workbench preview. A 13th positional, `Option<&ReplayInputs>` (ruling R-2), replays a recorded draw, a consult in use, and the operator's pins (roll, faces, value, answer, outcome row, message, state, chip label, per-effect on/off/literal). `pose_llm_consult` is the Re-ask door. `transform_span` / `dice_span` / `dice_from_faces` port v4's span math and face clamp. The range form now ALWAYS draws its six-byte unit, even for a degenerate `min === max` range, as v4 does at the pin (R-3; 90 execution rows moved by +6 bytes, and the audit draws per deal). The execution, custom-tools-route and Workbench-route families were re-recorded from the pin; the two route families and the `run_custom` handler family now register v4's `finishReason: 'stop'` on their canned consult (SPINE's `eb2d87788` funnel). The Workbench preview masks the live `draw.unit`. The handler and simulate families feed the six bytes a dealt range run now draws.
+
 #### 2026-11-03 — feat(pascal): re-vendor the custom-tool JSON Schema at the 236c04e35 pin (P4.D345)
 
 _Versions: core 0.0.1384, SPA 0.5.909._

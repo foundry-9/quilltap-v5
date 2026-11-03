@@ -228,7 +228,9 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 content: m.content.clone(),
             })
             .collect();
-        provider = provider.with_response(
+        // v4's mock answers `finishReason: 'stop'`, which the consult's
+        // `llm_logs` row records since v4 `eb2d87788` (P4.D348's funnel).
+        provider = provider.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -239,6 +241,7 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 completion_tokens: row.usage.completion_tokens,
                 total_tokens: row.usage.total_tokens,
             }),
+            Some("stop"),
         );
     }
     provider

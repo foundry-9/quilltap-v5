@@ -1254,6 +1254,18 @@ fn run_result_to_value(r: &CustomToolRunResult) -> Value {
             serde_json::to_value(effects).unwrap_or(Value::Null),
         );
     }
+    // === P4.D345: the replay record (v4 `839575d89` / `8ae8a127c`) — after
+    // `effects`, in `CustomToolRunResult`'s declaration order: `draw`,
+    // `rollSpan`, `valueSpan`, then the two optionals, OMITTED when absent.
+    m.insert("draw".into(), r.draw.to_wire());
+    m.insert("rollSpan".into(), r.roll_span.to_wire());
+    m.insert("valueSpan".into(), r.value_span.to_wire());
+    if let Some(prompt) = &r.llm_prompt_rendered {
+        m.insert("llmPromptRendered".into(), json!(prompt));
+    }
+    if let Some(i) = r.table_outcome_index {
+        m.insert("tableOutcomeIndex".into(), json!(i));
+    }
     Value::Object(m)
 }
 
@@ -1447,6 +1459,8 @@ pub async fn custom_tool_preview(
         character_name.as_deref(),
         // P4.D329: `body.inventory ? mockInventoryContext(…) : null`.
         inventory.as_ref().map(|b| b as &dyn InventoryContext),
+        // P4.D345: the bench never replays.
+        None,
     )
     .await
     {

@@ -69,7 +69,7 @@ use quilltap_core::pascal::custom_tool_types::{
     OutcomeState, PutOnMode, Visibility, WardrobeEffectAction,
 };
 use quilltap_core::pascal::custom_tools::{
-    CustomToolRunResult, ResolvedEffect, ResolvedWardrobeGesture, RollForm,
+    CustomToolRunResult, RecordedDraw, ResolvedEffect, ResolvedWardrobeGesture, RollForm, RunSpan,
 };
 use quilltap_core::pascal::side_effects::apply_effects_for_run;
 use quilltap_core::services::outfit_change_effects::{
@@ -229,6 +229,22 @@ fn run_result(tool: &str, gestures: &[Value]) -> CustomToolRunResult {
                 })
                 .collect(),
         ),
+        // P4.D345: the replay record — unread by the applier.
+        draw: RecordedDraw::Range { unit: 0.0 },
+        roll_span: RunSpan {
+            min: 1.0,
+            max: 1.0,
+            min_exclusive: None,
+            max_exclusive: None,
+        },
+        value_span: RunSpan {
+            min: 1.0,
+            max: 1.0,
+            min_exclusive: None,
+            max_exclusive: None,
+        },
+        llm_prompt_rendered: None,
+        table_outcome_index: None,
     }
 }
 

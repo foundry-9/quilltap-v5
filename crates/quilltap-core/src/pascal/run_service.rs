@@ -271,8 +271,11 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         Some(&progress),
         now_ms,
         character_name.as_deref(),
-        // P4.D329: the LAST positional.
+        // P4.D329: the twelfth positional.
         inventory.as_deref().map(|i| i as &dyn InventoryContext),
+        // P4.D345: a fresh deal — the hold's recompute replays through
+        // `pascal::intervention::recompute`, never through here.
+        None,
     )
     .await
     {
@@ -655,7 +658,7 @@ mod tests {
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
             },
-            &mut crate::tools::rng::FixedBytes::new(vec![]),
+            &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
             None,
         ))
         .await;
@@ -731,10 +734,11 @@ mod tests {
                 None,
                 None,
                 None,
-                &mut crate::tools::rng::FixedBytes::new(vec![]),
+                &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
                 None,
                 None,
                 0,
+                None,
                 None,
                 None,
             ))
@@ -784,10 +788,11 @@ mod tests {
                 None,
                 None,
                 None,
-                &mut crate::tools::rng::FixedBytes::new(vec![]),
+                &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
                 None,
                 None,
                 0,
+                None,
                 None,
                 None,
             ))
@@ -1058,7 +1063,7 @@ mod rolling_character_tests {
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
             },
-            &mut crate::tools::rng::FixedBytes::new(vec![]),
+            &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
             None,
         ))
         .await;

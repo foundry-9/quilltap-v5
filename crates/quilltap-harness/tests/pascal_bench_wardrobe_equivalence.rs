@@ -106,12 +106,16 @@ fn pascal_bench_wardrobe_matches_oracle() {
                         None,
                         None,
                         None,
-                        &mut FixedBytes::new(vec![]),
+                        // P4.D345: six bytes — the range form ALWAYS draws its
+                        // unit now (v4 `839575d89`), degenerate range or not.
+                        &mut FixedBytes::new(vec![0; 6]),
                         None,
                         None,
                         NOW_MS,
                         row["character"].as_str(),
                         // P4.D329: the lens rows read no bag.
+                        None,
+                        // P4.D345: no replay.
                         None,
                     ))
                     .unwrap_or_else(|e| panic!("lens '{id}': deal refused: {}", e.0));

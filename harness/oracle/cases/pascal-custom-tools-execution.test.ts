@@ -11,7 +11,8 @@
  *
  * `crypto.randomBytes` is mocked over a scripted pool, per case, and the cursor
  * is reported as `bytesConsumed` — which is the point: it pins that a degenerate
- * `min === max` range short-circuits WITHOUT drawing, and that the dice path's
+ * `min === max` range still draws its six-byte unit (v4 `839575d89`; it drew
+ * nothing before), and that the dice path's
  * rejection sampling draws exactly what v5's `FixedBytes` draws. The mock THROWS
  * when the pool runs dry, mirroring `FixedBytes`' panic, so a byte shortage
  * surfaces loudly instead of quietly diverging.
@@ -888,7 +889,8 @@ describe('executeCustomTool', () => {
         {},
         undefined,
       ],
-      // A degenerate range must NOT draw — bytesConsumed pins it.
+      // A degenerate range STILL draws the unit at the `236c04e35` pin (v4
+      // `839575d89` — six bytes, the fraction discarded); bytesConsumed pins it.
       [
         'min-equals-max-short-circuits',
         { name: 'probe', description: 'd', roll: { min: 7, max: 7 }, outcomes: [{ when: true, message: '{{value}}', state: 'info' }] },
@@ -2178,7 +2180,8 @@ describe('executeCustomTool', () => {
         llmPromptSeen: seen.prompt,
         llmOptionsSeen: seen.options,
         poolHex: p.toString('hex'),
-        // The cursor is the point: a degenerate range draws NOTHING.
+        // The cursor is the point: a degenerate range draws its six bytes too
+        // (since v4 `839575d89`).
         bytesConsumed: mockRngState.cursor,
         out,
         error,

@@ -1,8 +1,12 @@
 //! Tier-1 differential (P4.6ay unit 12): the Workbench outcome-table audit
 //! (`pascal::custom_tools::simulate_outcomes`) vs v4's real `simulateOutcomes`.
-//! DETERMINISTIC corpus (min===max ranges — no draw), so `runs`/`hits`/`share`/
-//! min/max/mean match exactly (floats within 1e-9 for the accumulated mean); the
-//! injected `FixedBytes` source is never consumed. Stochastic spread is covered
+//! DETERMINISTIC corpus (min===max ranges), so `runs`/`hits`/`share`/
+//! min/max/mean match exactly (floats within 1e-9 for the accumulated mean). At
+//! the `236c04e35` pin v4's `simulateOutcomes` draws through `rollRange`, which
+//! ALWAYS takes its six-byte unit — even for a degenerate range, discarding the
+//! fraction (v4 `839575d89`, P4.D345 R-3) — so a range-form row consumes exactly
+//! `runs × 6` bytes of the injected `FixedBytes` source (zeros: the fraction is
+//! never read), and a dice-form row none. Stochastic spread is covered
 //! by the in-crate statistical tests in `pascal::custom_tools`.
 //!
 //! Generate the oracle (v4 @ d68638b4, Node 24):
@@ -12,7 +16,7 @@
 //!   QT_ORACLE_PASCAL_SIMULATE=/tmp/oracle-pascal-simulate.ndjson \
 //!     cargo test -p quilltap-harness --test pascal_simulate_equivalence
 
-use quilltap_core::pascal::custom_tool_types::safe_parse;
+use quilltap_core::pascal::custom_tool_types::{safe_parse, Roll};
 use quilltap_core::pascal::custom_tools::{simulate_outcomes, LlmSubject};
 use quilltap_core::tools::rng::FixedBytes;
 use serde_json::Value;
@@ -60,7 +64,13 @@ fn simulate_outcomes_matches_oracle() {
             quilltap_core::pascal::bench_inventory::parse_mock_inventory(row.get("inventory"))
                 .unwrap_or_else(|e| panic!("case '{id}': bad mock inventory: {e:?}"))
                 .map(|rows| quilltap_core::pascal::bench_inventory::mock_inventory_context(&rows));
-        let mut rng = FixedBytes::new(vec![]);
+        // P4.D345: the always-drawn unit — six bytes per deal on the range form.
+        let draws_per_deal = match definition.roll {
+            Some(Roll::Dice(_)) | Some(Roll::Inventory(_)) => 0,
+            _ => 6,
+        };
+        let expected_bytes = runs * draws_per_deal;
+        let mut rng = FixedBytes::new(vec![0; expected_bytes]);
         let got = simulate_outcomes(
             &definition,
             params.as_ref(),
@@ -76,7 +86,7 @@ fn simulate_outcomes_matches_oracle() {
                 .map(|b| b as &dyn quilltap_core::inventory::refs::InventoryContext),
         )
         .unwrap_or_else(|e| panic!("case '{id}': simulate failed: {e:?}"));
-        assert_eq!(rng.consumed(), 0, "case '{id}' consumed bytes");
+        assert_eq!(rng.consumed(), expected_bytes, "case '{id}' consumed bytes");
 
         let want = &row["result"];
         assert_eq!(

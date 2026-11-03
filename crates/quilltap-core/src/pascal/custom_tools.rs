@@ -28,7 +28,9 @@ use super::custom_tool_types::{
     is_inventory_ref_value, CustomToolInventoryGesture, InventoryEffectAction, InventoryRef,
     InventoryStateOperand,
 };
-use super::dice::{format_dice_breakdown, parse_dice_notation, roll_notation, RandomBytes};
+use super::dice::{
+    format_dice_breakdown, parse_dice_notation, roll_notation, DiceRollResult, RandomBytes,
+};
 use super::expressions::{evaluate_expression, parse_expression};
 use super::inventory_aggregate::{describe_aggregate_value, inventory_aggregate_holds};
 use super::inventory_subjects::{
@@ -248,6 +250,150 @@ impl LlmConsultResult {
     }
 }
 
+// === P4.D345: operator intervention — the replay record (v4 `839575d89`) ===
+
+/// The random draw a run used, recorded so a held run can be recomputed with
+/// the same luck (operator intervention). For the range form it is the UNIT
+/// draw `u ∈ [0, 1)` that is scaled into `[min, max)` — so a parameter change
+/// that moves the bounds keeps a top-10% draw in the top 10% of the new range.
+/// For the dice form it is the faces (v4 `RecordedDraw`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum RecordedDraw {
+    Range { unit: f64 },
+    Dice { faces: Vec<i64> },
+}
+
+impl RecordedDraw {
+    /// `{form: 'range', unit}` / `{form: 'dice', faces}` — v4's key order.
+    pub fn to_wire(&self) -> Value {
+        let mut m = Map::new();
+        match self {
+            RecordedDraw::Range { unit } => {
+                m.insert("form".into(), Value::String("range".into()));
+                m.insert("unit".into(), crate::db::js_number_to_json(*unit));
+            }
+            RecordedDraw::Dice { faces } => {
+                m.insert("form".into(), Value::String("dice".into()));
+                m.insert(
+                    "faces".into(),
+                    Value::Array(faces.iter().map(|f| Value::from(*f)).collect()),
+                );
+            }
+        }
+        Value::Object(m)
+    }
+}
+
+/// What a draw could have produced, given the run's resolved parameters: the
+/// low and high ends, each inclusive unless flagged. The range form's raw draw
+/// is half-open (`[min, max)`); after rounding both ends are reachable values.
+/// A flag is present only when set (v4 spreads it), so `None` — never
+/// `Some(false)` — is the closed end.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RunSpan {
+    pub min: f64,
+    pub max: f64,
+    pub min_exclusive: Option<bool>,
+    pub max_exclusive: Option<bool>,
+}
+
+impl RunSpan {
+    /// `{min, max, minExclusive?, maxExclusive?}` — v4's key order.
+    pub fn to_wire(&self) -> Value {
+        let mut m = Map::new();
+        m.insert("min".into(), crate::db::js_number_to_json(self.min));
+        m.insert("max".into(), crate::db::js_number_to_json(self.max));
+        if let Some(b) = self.min_exclusive {
+            m.insert("minExclusive".into(), Value::Bool(b));
+        }
+        if let Some(b) = self.max_exclusive {
+            m.insert("maxExclusive".into(), Value::Bool(b));
+        }
+        Value::Object(m)
+    }
+}
+
+/// One effect's operator setting for a held run (v4 `EffectPin['mode']`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectPinMode {
+    /// Follows the effect's own `when`.
+    Auto,
+    /// Fires it regardless.
+    On,
+    /// Suppresses it.
+    Off,
+}
+
+impl EffectPinMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            EffectPinMode::Auto => "auto",
+            EffectPinMode::On => "on",
+            EffectPinMode::Off => "off",
+        }
+    }
+}
+
+/// One effect's operator setting for a held run. Edited fields are literals,
+/// never expressions (v4 `EffectPin`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectPin {
+    pub mode: EffectPinMode,
+    /// A write's value, taken literally.
+    pub value: Option<ResolvedValue>,
+    /// A wardrobe or inventory gesture's references, taken literally.
+    pub items: Option<Vec<String>>,
+    /// A log line, taken literally.
+    pub log: Option<String>,
+}
+
+/// A pinned consult answer (v4 `RunPins['llmAnswer']`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct PinnedAnswer {
+    pub ok: bool,
+    pub output: String,
+}
+
+/// Fields of a run the operator has pinned in the hold dialog. Each present key
+/// replaces what the engine would have computed; everything downstream that is
+/// not pinned is recomputed from it. Absent everywhere outside a held run (v4
+/// `RunPins`).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct RunPins {
+    /// Range form: the raw draw, taken as given.
+    pub roll: Option<f64>,
+    /// Dice form: the faces, one per die, clamped to `[1, sides]`.
+    pub dice: Option<Vec<f64>>,
+    /// Range form: the value after modifiers.
+    pub value: Option<f64>,
+    /// The consult's answer, in place of any consult result.
+    pub llm_answer: Option<PinnedAnswer>,
+    /// This outcome row wins, whatever the table says.
+    pub outcome_index: Option<usize>,
+    /// The rendered message, taken literally — no placeholders re-rendered.
+    pub message: Option<String>,
+    pub state: Option<OutcomeState>,
+    /// The rendered chip label, taken literally.
+    pub chip_label: Option<String>,
+    /// Per effect index (file order).
+    pub effects: Option<std::collections::BTreeMap<usize, EffectPin>>,
+}
+
+/// What a held run replays (ruling R-2 — v4 `executeCustomTool`'s `draw` /
+/// `consult` / `pins` overrides, which travel together or not at all). Every
+/// production caller outside the intervention module passes `None`.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReplayInputs<'a> {
+    /// The random draw to replay instead of fresh randomness. `None` = a fresh
+    /// draw.
+    pub draw: Option<&'a RecordedDraw>,
+    /// The consult result to use instead of calling the invoker; when supplied
+    /// the invoker is never called.
+    pub consult: Option<&'a LlmConsultResult>,
+    /// The fields the operator pinned.
+    pub pins: Option<&'a RunPins>,
+}
+
 /// Everything a run produced — enough to post the message and fill `pascalMeta`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomToolRunResult {
@@ -281,6 +427,22 @@ pub struct CustomToolRunResult {
     /// [`super::side_effects::apply_custom_tool_effects`]; the Proving Bench
     /// only ever shows them. `None` when the definition declares none.
     pub effects: Option<Vec<ResolvedEffect>>,
+    // === P4.D345: the replay record (v4 `839575d89` / `8ae8a127c`) ===
+    /// The random draw this run used — what a held run replays.
+    pub draw: RecordedDraw,
+    /// What the raw draw could have been (dice: the total). Independent of any
+    /// pin.
+    pub roll_span: RunSpan,
+    /// What the value could have been after modifiers (dice: the total).
+    /// Independent of any pin.
+    pub value_span: RunSpan,
+    /// The consult prompt as rendered for THIS run. Equal to `llm.prompt` on an
+    /// ordinary run; on a replay it may differ from the prompt that produced
+    /// the answer in use, which is how a held run knows its answer is out of
+    /// date.
+    pub llm_prompt_rendered: Option<String>,
+    /// When the outcome was pinned: the row the table itself would have picked.
+    pub table_outcome_index: Option<usize>,
 }
 
 /// Validate and coerce caller-supplied parameters against the declarations.
@@ -507,22 +669,38 @@ fn resolve_roll_field(
     }
 }
 
-/// A uniform float in [min, max), drawn from crypto-strength randomness.
+/// A uniform unit fraction in [0, 1), drawn from crypto-strength randomness
+/// (v4 `cryptoUnit`).
 ///
 /// `randomInt` only deals in integers, so the fraction comes from 6 random bytes
 /// (48 bits — comfortably more precision than a double's 52-bit mantissa needs
-/// for this, and far beyond what any outcome table can distinguish).
-fn crypto_uniform(min: f64, max: f64, rng: &mut dyn RandomBytes) -> f64 {
+/// for this, and far beyond what any outcome table can distinguish). The
+/// scaling into the range lives in [`roll_range`].
+fn crypto_unit(rng: &mut dyn RandomBytes) -> f64 {
     let bytes = rng.random_bytes(6);
     let mut scaled = 0f64;
     for byte in bytes {
         scaled = scaled * 256.0 + byte as f64;
     }
-    let fraction = scaled / 2f64.powi(48);
-    min + fraction * (max - min)
+    scaled / 2f64.powi(48)
+}
+
+/// What [`roll_range`] drew (v4's `{raw, value, unit, rollSpan, valueSpan}`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RangeDraw {
+    pub raw: f64,
+    pub value: f64,
+    pub unit: f64,
+    pub roll_span: RunSpan,
+    pub value_span: RunSpan,
 }
 
 /// Draw the raw value for Form A, honouring `$param` bounds.
+///
+/// The unit draw is always taken (or replayed), even for a degenerate range, so
+/// a held run whose parameters later widen the range still has luck to scale.
+/// A pinned `roll` replaces the raw draw and a pinned `value` the transform.
+#[allow(clippy::too_many_arguments)]
 fn roll_range(
     definition: &QtapCustomTool,
     range: &RollRange,
@@ -530,7 +708,9 @@ fn roll_range(
     state: Option<&Value>,
     inventory: Option<&dyn InventoryContext>,
     rng: &mut dyn RandomBytes,
-) -> Result<(f64, f64), CustomToolRunError> {
+    unit_draw: Option<f64>,
+    pins: Option<&RunPins>,
+) -> Result<RangeDraw, CustomToolRunError> {
     let name = &definition.name;
     let min = resolve_roll_field(
         name,
@@ -577,12 +757,15 @@ fn roll_range(
         )));
     }
 
-    // A degenerate range short-circuits WITHOUT drawing — it consumes no bytes,
-    // which the differential's `FixedBytes::consumed()` pins.
-    let raw = if min == max {
-        min
-    } else {
-        crypto_uniform(min, max, rng)
+    // The unit is taken ALWAYS — six bytes even for a degenerate `min === max`
+    // range, whose fraction is then discarded (v4 `839575d89`; until then a
+    // degenerate range drew nothing). The execution family's `bytesConsumed`
+    // pins it (R-3).
+    let unit = unit_draw.unwrap_or_else(|| crypto_unit(rng));
+    let raw = match pins.and_then(|p| p.roll) {
+        Some(pinned) => pinned,
+        None if min == max => min,
+        None => min + unit * (max - min),
     };
 
     // The transform order is fixed and load-bearing: multiply, then offset, then
@@ -592,6 +775,9 @@ fn roll_range(
     if range.round == Some(true) {
         value = js_round(value);
     }
+    if let Some(pinned) = pins.and_then(|p| p.value) {
+        value = pinned;
+    }
 
     if !value.is_finite() {
         return Err(err(format!(
@@ -599,7 +785,123 @@ fn roll_range(
         )));
     }
 
-    Ok((raw, value))
+    let roll_span = if min == max {
+        RunSpan {
+            min,
+            max,
+            min_exclusive: None,
+            max_exclusive: None,
+        }
+    } else {
+        RunSpan {
+            min,
+            max,
+            min_exclusive: None,
+            max_exclusive: Some(true),
+        }
+    };
+    Ok(RangeDraw {
+        raw,
+        value,
+        unit,
+        roll_span,
+        value_span: transform_span(roll_span, multiplier, offset, range.round == Some(true)),
+    })
+}
+
+/// Carry a raw span through the range form's transform (multiply, offset,
+/// round) — v4 `transformSpan` (`8ae8a127c`). A negative multiplier swaps the
+/// ends, and with them which end is open. Rounding makes both ends reachable
+/// values: the largest rounding of a value strictly below `t` is
+/// `ceil(t - 0.5)`, the smallest of one strictly above is `Math.round(t)`
+/// (which rounds halves up). Rounding drops BOTH flags — a swapped span's
+/// `minExclusive` too, as v4 writes it.
+pub fn transform_span(span: RunSpan, multiplier: f64, offset: f64, round: bool) -> RunSpan {
+    let low = span.min * multiplier + offset;
+    let high = span.max * multiplier + offset;
+    let open = span.max_exclusive == Some(true);
+    let out = if multiplier == 0.0 {
+        RunSpan {
+            min: offset,
+            max: offset,
+            min_exclusive: None,
+            max_exclusive: None,
+        }
+    } else if multiplier < 0.0 {
+        RunSpan {
+            min: high,
+            max: low,
+            min_exclusive: open.then_some(true),
+            max_exclusive: None,
+        }
+    } else {
+        RunSpan {
+            min: low,
+            max: high,
+            min_exclusive: None,
+            max_exclusive: open.then_some(true),
+        }
+    };
+    if !round {
+        return out;
+    }
+    RunSpan {
+        min: js_round(out.min),
+        max: if out.max_exclusive == Some(true) {
+            (out.max - 0.5).ceil()
+        } else {
+            js_round(out.max)
+        },
+        min_exclusive: None,
+        max_exclusive: None,
+    }
+}
+
+/// A dice notation's reachable totals: every die low, every die high (v4
+/// `diceSpan`).
+pub fn dice_span(notation: &super::dice::DiceNotation) -> RunSpan {
+    let count = notation.count as f64;
+    let modifier = notation.modifier as f64;
+    RunSpan {
+        min: count + modifier,
+        max: count * notation.sides as f64 + modifier,
+        min_exclusive: None,
+        max_exclusive: None,
+    }
+}
+
+/// A dice result from given faces (a replayed draw or the operator's pin): each
+/// face clamped to `[1, sides]`, the total their sum plus the notation's
+/// modifier. The count must match the notation — a held run's notation cannot
+/// change (v4 `diceFromFaces`). Faces arrive as JS numbers; `Math.round` then
+/// the clamp make them integers.
+pub fn dice_from_faces(
+    tool_name: &str,
+    notation: &super::dice::DiceNotation,
+    faces: &[f64],
+) -> Result<DiceRollResult, CustomToolRunError> {
+    if faces.len() != notation.count as usize {
+        return Err(err(format!(
+            "{tool_name}: {} dice given for {}d{}",
+            faces.len(),
+            notation.count,
+            notation.sides
+        )));
+    }
+    let sides = notation.sides as f64;
+    let results: Vec<i64> = faces
+        .iter()
+        .map(|face| sides.min(1f64.max(js_round(*face))) as i64)
+        .collect();
+    let subtotal: i64 = results.iter().sum();
+    Ok(DiceRollResult {
+        count: notation.count,
+        sides: notation.sides,
+        modifier: notation.modifier,
+        results,
+        subtotal,
+        total: subtotal + notation.modifier,
+    })
 }
 
 /// Everything an outcome test may be posed about.
@@ -1798,7 +2100,13 @@ fn effect_target_to_value(target: &EffectTarget) -> Value {
 /// a recorded reason — a broken effect never sinks a roll. Parse failures are
 /// load-time rejections and only reach here as regressions, handled the same
 /// fail-soft way.
-fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Vec<ResolvedEffect> {
+fn resolve_effects(
+    definition: &QtapCustomTool,
+    subjects: &EffectSubjects,
+    // === P4.D345: a held run's per-effect settings (operator intervention).
+    // `None` everywhere else.
+    pins: Option<&std::collections::BTreeMap<usize, EffectPin>>,
+) -> Vec<ResolvedEffect> {
     // Mirrors `render_template`'s lookups exactly — the grammar admits no name
     // the template does not already substitute. v4 `0506517d3` made that literal
     // rather than a promise: both readers now classify with
@@ -1845,19 +2153,44 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
         .flatten()
         .enumerate()
         .map(|(index, effect)| {
-            let holds = match matches_effect_when(effect.when.as_ref(), subjects, &definition.name)
-            {
-                Ok(h) => h,
-                // A comparator regression past load-time validation. An outcome
-                // row in this state fails the run; an effect never does — it
-                // just doesn't fire.
-                Err(e) => {
-                    return skipped(index, format!("condition could not be evaluated: {}", e.0))
-                }
-            };
-            if !holds {
-                return skipped(index, "condition did not hold".to_string());
+            let pin = pins.and_then(|p| p.get(&index));
+            if pin.is_some_and(|p| p.mode == EffectPinMode::Off) {
+                return skipped(index, "switched off for this run".to_string());
             }
+
+            // A forced effect fires whatever its condition says; it can never
+            // add an effect the definition lacks, only override this one's
+            // `when`.
+            if !pin.is_some_and(|p| p.mode == EffectPinMode::On) {
+                let holds =
+                    match matches_effect_when(effect.when.as_ref(), subjects, &definition.name) {
+                        Ok(h) => h,
+                        // A comparator regression past load-time validation. An
+                        // outcome row in this state fails the run; an effect
+                        // never does — it just doesn't fire.
+                        Err(e) => {
+                            return skipped(
+                                index,
+                                format!("condition could not be evaluated: {}", e.0),
+                            )
+                        }
+                    };
+                if !holds {
+                    return skipped(index, "condition did not hold".to_string());
+                }
+            }
+
+            // An edited gesture's references, or an edited log line, are
+            // literals — the operator is editing what gets written, not the
+            // template. (v4 trims each and drops the empty ones.)
+            let literal_items: Option<Vec<String>> =
+                pin.and_then(|p| p.items.as_ref()).map(|items| {
+                    items
+                        .iter()
+                        .map(|i| js_trim(i).to_string())
+                        .filter(|i| !i.is_empty())
+                        .collect()
+                });
 
             // v4 then guards `effect is neither a complete write, a wardrobe
             // or inventory gesture, nor a log line` (`custom-tools.ts:1560-1562`
@@ -1865,30 +2198,58 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
             // unrepresentable (`CustomToolEffectBody`), so there is no arm.
             let (target, value) = match &effect.body {
                 CustomToolEffectBody::Wardrobe(gesture) => {
+                    let edited;
+                    let gesture = match &literal_items {
+                        Some(items) => {
+                            edited = CustomToolWardrobeGesture {
+                                items: Some(items.clone()),
+                                ..gesture.clone()
+                            };
+                            &edited
+                        }
+                        None => gesture,
+                    };
                     return resolve_wardrobe_gesture(
                         &definition.name,
                         index,
                         gesture,
                         &template_vars,
                         &skipped,
-                    )
+                        literal_items.is_some(),
+                    );
                 }
                 // === P4.D329: after the wardrobe arm, before the write ===
                 CustomToolEffectBody::Inventory(gesture) => {
+                    let edited;
+                    let gesture = match &literal_items {
+                        Some(items) => {
+                            edited = CustomToolInventoryGesture {
+                                items: items.clone(),
+                                ..gesture.clone()
+                            };
+                            &edited
+                        }
+                        None => gesture,
+                    };
                     return resolve_inventory_gesture(
                         &definition.name,
                         index,
                         gesture,
                         &template_vars,
                         &skipped,
-                    )
+                        literal_items.is_some(),
+                    );
                 }
                 // === P4.D331: the log line ===
                 // A template, like an outcome message — not an expression. The
                 // SAME renderer and vars (an unknown placeholder stays as
                 // written), then JS-trimmed; an empty line is skipped.
                 CustomToolEffectBody::Log(template) => {
-                    let line = js_trim(&render_template(template, &template_vars)).to_string();
+                    // P4.D345: a pinned line is the operator's literal.
+                    let line = match pin.and_then(|p| p.log.as_ref()) {
+                        Some(literal) => js_trim(literal).to_string(),
+                        None => js_trim(&render_template(template, &template_vars)).to_string(),
+                    };
                     return if line.is_empty() {
                         skipped(index, "log line rendered empty".to_string())
                     } else {
@@ -1902,6 +2263,16 @@ fn resolve_effects(definition: &QtapCustomTool, subjects: &EffectSubjects) -> Ve
                 Ok(t) => t,
                 Err(reason) => return skipped(index, format!("target {reason}")),
             };
+
+            // P4.D345: a pinned value is the operator's literal, before the
+            // expression path.
+            if let Some(value) = pin.and_then(|p| p.value.clone()) {
+                return ResolvedEffect::Applicable {
+                    index,
+                    target,
+                    value,
+                };
+            }
 
             let EffectValue::Str(source) = value else {
                 let value = match value {
@@ -1946,10 +2317,17 @@ fn resolve_wardrobe_gesture(
     gesture: &CustomToolWardrobeGesture,
     vars: &TemplateVars,
     skipped: &dyn Fn(usize, String) -> ResolvedEffect,
+    // P4.D345: the references are the operator's literals — not rendered as
+    // templates.
+    literal: bool,
 ) -> ResolvedEffect {
     let mut items: Vec<String> = Vec::new();
     for raw in gesture.items.iter().flatten() {
-        let rendered = js_trim(&render_template(raw, vars)).to_string();
+        let rendered = if literal {
+            js_trim(raw).to_string()
+        } else {
+            js_trim(&render_template(raw, vars)).to_string()
+        };
         if rendered.is_empty() {
             // Keys follow this file's sibling `Custom tool effect skipped`
             // line (`effect_index`, snake_case — P4.D306 R-15).
@@ -1992,10 +2370,17 @@ fn resolve_inventory_gesture(
     gesture: &CustomToolInventoryGesture,
     vars: &TemplateVars,
     skipped: &dyn Fn(usize, String) -> ResolvedEffect,
+    // P4.D345: the references are the operator's literals — not rendered as
+    // templates.
+    literal: bool,
 ) -> ResolvedEffect {
     let mut items: Vec<String> = Vec::new();
     for raw in &gesture.items {
-        let rendered = js_trim(&render_template(raw, vars)).to_string();
+        let rendered = if literal {
+            js_trim(raw).to_string()
+        } else {
+            js_trim(&render_template(raw, vars)).to_string()
+        };
         if rendered.is_empty() {
             tracing::debug!(
                 target: "quilltap::pascal",
@@ -2800,6 +3185,24 @@ async fn resolve_llm_consult(
     }
 }
 
+/// Pose a definition's consult once, with a prompt given whole — the hold
+/// dialog's Re-ask (operator intervention, v4 `poseLlmConsult`). The same
+/// fail-soft resolution as a run's own consult; the one refusal is a
+/// definition with no consult to pose.
+pub async fn pose_llm_consult(
+    definition: &QtapCustomTool,
+    prompt: String,
+    invoke: Option<&dyn LlmInvoker>,
+) -> Result<LlmConsultResult, CustomToolRunError> {
+    let Some(spec) = &definition.llm else {
+        return Err(err(format!(
+            "{}: this tool consults no model",
+            definition.name
+        )));
+    };
+    Ok(resolve_llm_consult(spec, prompt, invoke).await)
+}
+
 /// Run a definition: validate params, roll, transform, consult (when declared),
 /// evaluate, render.
 ///
@@ -2886,16 +3289,32 @@ pub async fn execute_custom_tool(
     // The rolling character's name, for `{{character}}`. `None` for a run
     // nobody made (v4 `overrides.character`, `a05c6f755`).
     character: Option<&str>,
-    // === P4.D329: the LAST positional (R-Q) ===
+    // === P4.D329: the twelfth positional (R-Q) ===
     // The rolling character's Inventory for this chat, loaded once by the
     // entrance. `None` for a run nobody made — inventory tests decline,
     // `$inventory` operands fall back, `{{inventory.*}}` renders as written.
     inventory: Option<&dyn InventoryContext>,
+    // === P4.D345: the THIRTEENTH positional (ruling R-2) ===
+    // Operator intervention's replay — the recorded draw, the consult in use,
+    // the operator's pins. `None` on every run outside a held one.
+    replay: Option<&ReplayInputs<'_>>,
 ) -> Result<CustomToolRunResult, CustomToolRunError> {
     // v4 `overrides?.character?.trim() || undefined` — whitespace alone is
     // nobody, and the trim is JS's (`js_trim`, never `str::trim`).
     let character = character.map(js_trim).filter(|c| !c.is_empty());
+    let pins = replay.and_then(|r| r.pins);
+    let replay_draw = replay.and_then(|r| r.draw);
+    let replay_consult = replay.and_then(|r| r.consult);
     let params = resolve_params(definition, supplied_params, state, inventory)?;
+
+    if let Some(i) = pins.and_then(|p| p.outcome_index) {
+        if i >= definition.outcomes.len() {
+            return Err(err(format!(
+                "{}: there is no outcome row {i}",
+                definition.name
+            )));
+        }
+    }
 
     let raw: f64;
     let value: f64;
@@ -2903,6 +3322,9 @@ pub async fn execute_custom_tool(
     let mut notation: Option<String> = None;
     let mut dice_rolls: Option<Vec<i64>> = None;
     let mut dice_breakdown = String::new();
+    let draw: RecordedDraw;
+    let roll_span: RunSpan;
+    let value_span: RunSpan;
 
     match &definition.roll {
         Some(Roll::Dice(spec)) => {
@@ -2915,14 +3337,20 @@ pub async fn execute_custom_tool(
                     definition.name
                 )));
             };
-            let rolled = roll_notation(&parsed, rng);
+            let rolled = draw_dice(definition, &parsed, rng, pins, replay_draw)?;
             notation = Some(spec.clone());
             dice_rolls = Some(rolled.results.clone());
             dice_breakdown = format_dice_breakdown(&rolled);
             // Dice carry their own modifier; Form A's multiplier/offset/round do
-            // not apply, so raw and value are the same total.
+            // not apply, so raw and value are the same total — a pinned total
+            // without its faces would make `{{dice}}` lie.
             raw = rolled.total as f64;
             value = rolled.total as f64;
+            draw = RecordedDraw::Dice {
+                faces: rolled.results.clone(),
+            };
+            roll_span = dice_span(&parsed);
+            value_span = roll_span;
         }
         // === P4.D329: a whole roll drawn from an object's metadata ===
         // The run's form is `dice` and its notation the RESOLVED string —
@@ -2930,12 +3358,17 @@ pub async fn execute_custom_tool(
         Some(Roll::Inventory(r)) => {
             roll_form = RollForm::Dice;
             let (spec, parsed) = prepare_inventory_roll(definition, r, inventory)?;
-            let rolled = roll_notation(&parsed, rng);
+            let rolled = draw_dice(definition, &parsed, rng, pins, replay_draw)?;
             notation = Some(spec);
             dice_rolls = Some(rolled.results.clone());
             dice_breakdown = format_dice_breakdown(&rolled);
             raw = rolled.total as f64;
             value = rolled.total as f64;
+            draw = RecordedDraw::Dice {
+                faces: rolled.results.clone(),
+            };
+            roll_span = dice_span(&parsed);
+            value_span = roll_span;
         }
         other => {
             roll_form = RollForm::Range;
@@ -2944,10 +3377,18 @@ pub async fn execute_custom_tool(
                 Some(Roll::Range(r)) => r,
                 _ => &default,
             };
-            let (drawn_raw, drawn_value) =
-                roll_range(definition, range, &params, state, inventory, rng)?;
-            raw = drawn_raw;
-            value = drawn_value;
+            let unit = match replay_draw {
+                Some(RecordedDraw::Range { unit }) => Some(*unit),
+                _ => None,
+            };
+            let drawn = roll_range(
+                definition, range, &params, state, inventory, rng, unit, pins,
+            )?;
+            raw = drawn.raw;
+            value = drawn.value;
+            draw = RecordedDraw::Range { unit: drawn.unit };
+            roll_span = drawn.roll_span;
+            value_span = drawn.value_span;
         }
     }
 
@@ -2987,24 +3428,41 @@ pub async fn execute_custom_tool(
         inventory,
     };
 
+    // P4.D345: a pinned outcome row wins, whatever the table says; the table's
+    // own pick is kept as `table_outcome_index`. The consult goes through
+    // [`replay_or_resolve_consult`].
+    let pinned_index = pins.and_then(|p| p.outcome_index);
+
     let llm: Option<LlmConsultResult>;
     let outcome_index: usize;
+    let mut llm_prompt_rendered: Option<String> = None;
+    let mut table_outcome_index: Option<usize> = None;
     // The brief the prompt was told, when the table dealt first (v4 `briefs`).
     let mut dealt_brief: Option<String> = None;
     match &definition.llm {
         Some(spec) if consult_first => {
             let prompt = render_template(&spec.prompt, &template_vars);
-            let consult = resolve_llm_consult(spec, prompt, llm_invoke).await;
+            llm_prompt_rendered = Some(prompt.clone());
+            let consult =
+                replay_or_resolve_consult(spec, prompt, pins, replay_consult, llm_invoke).await;
             let subject = consult.subject();
             let subjects = OutcomeSubjects {
                 llm: Some(&subject),
                 ..base_subjects
             };
-            outcome_index = pick_outcome(definition, &subjects, value)?;
+            let table_pick = pick_outcome(definition, &subjects, value)?;
+            outcome_index = pinned_index.unwrap_or(table_pick);
+            if pinned_index.is_some() {
+                table_outcome_index = Some(table_pick);
+            }
             llm = Some(consult);
         }
         spec => {
-            outcome_index = pick_outcome(definition, &base_subjects, value)?;
+            let table_pick = pick_outcome(definition, &base_subjects, value)?;
+            outcome_index = pinned_index.unwrap_or(table_pick);
+            if pinned_index.is_some() {
+                table_outcome_index = Some(table_pick);
+            }
             match spec {
                 Some(spec) => {
                     let winner = &definition.outcomes[outcome_index];
@@ -3037,7 +3495,11 @@ pub async fn execute_custom_tool(
                         },
                     );
                     dealt_brief = brief;
-                    llm = Some(resolve_llm_consult(spec, prompt, llm_invoke).await);
+                    llm_prompt_rendered = Some(prompt.clone());
+                    llm = Some(
+                        replay_or_resolve_consult(spec, prompt, pins, replay_consult, llm_invoke)
+                            .await,
+                    );
                 }
                 None => llm = None,
             }
@@ -3055,8 +3517,10 @@ pub async fn execute_custom_tool(
             .as_ref()
             .map(|b| render_template(b, &template_vars))
     });
+    // A pinned state is the state the run announces, and the one effects test.
+    let final_state = pins.and_then(|p| p.state).unwrap_or(outcome.state);
     let winning = WinningOutcome {
-        state: outcome.state,
+        state: final_state,
         index: outcome_index,
         brief: winning_brief,
     };
@@ -3066,16 +3530,23 @@ pub async fn execute_custom_tool(
         ..template_vars.clone()
     };
 
-    let message = render_template(&outcome.message, &after_vars);
+    // A pinned message is the operator's literal text: no placeholders
+    // re-rendered in it.
+    let message = match pins.and_then(|p| p.message.as_ref()) {
+        Some(literal) => literal.clone(),
+        None => render_template(&outcome.message, &after_vars),
+    };
     let metadata_tested = collect_metadata_tested(&outcome.when, metadata);
 
     // F1 — the chip label, rendered AFTER the outcome is chosen so it may quote
     // everything the message may. This is the one render site; both entrances
     // copy the result, so the chip and the bubble header can never drift.
-    let chip_label = definition
-        .chip_label
-        .as_ref()
-        .map(|template| render_template(template, &after_vars));
+    let chip_label = definition.chip_label.as_ref().map(|template| {
+        match pins.and_then(|p| p.chip_label.as_ref()) {
+            Some(literal) => literal.clone(),
+            None => render_template(template, &after_vars),
+        }
+    });
 
     // F3 — effects, resolved pure against the finished run. Nothing is written
     // here; the entrances decide whether (and where) the writes land.
@@ -3090,7 +3561,11 @@ pub async fn execute_custom_tool(
                 dice: &dice_breakdown,
                 now: now_ms,
             };
-            Some(resolve_effects(definition, &effect_subjects))
+            Some(resolve_effects(
+                definition,
+                &effect_subjects,
+                pins.and_then(|p| p.effects.as_ref()),
+            ))
         }
         _ => None,
     };
@@ -3109,7 +3584,7 @@ pub async fn execute_custom_tool(
         raw,
         dice_rolls,
         value,
-        state: outcome.state,
+        state: final_state,
         outcome_index,
         message,
         dice_breakdown,
@@ -3118,7 +3593,58 @@ pub async fn execute_custom_tool(
         llm,
         chip_label,
         effects,
+        draw,
+        roll_span,
+        value_span,
+        llm_prompt_rendered,
+        table_outcome_index,
     })
+}
+
+/// P4.D345: a held run never calls the model from here — a pinned answer, or
+/// the consult it was handed, stands in. Only a Re-ask spends a call, and that
+/// goes through the dialog's own action (v4 `executeCustomTool`'s `consult`
+/// closure). A pinned answer carries `{ok, output, prompt}` and nothing else.
+async fn replay_or_resolve_consult(
+    spec: &CustomToolLlm,
+    prompt: String,
+    pins: Option<&RunPins>,
+    replay_consult: Option<&LlmConsultResult>,
+    llm_invoke: Option<&dyn LlmInvoker>,
+) -> LlmConsultResult {
+    if let Some(answer) = pins.and_then(|p| p.llm_answer.as_ref()) {
+        return LlmConsultResult {
+            ok: answer.ok,
+            output: answer.output.clone(),
+            prompt,
+            reason: None,
+            provider: None,
+            model: None,
+        };
+    }
+    if let Some(given) = replay_consult {
+        return given.clone();
+    }
+    resolve_llm_consult(spec, prompt, llm_invoke).await
+}
+
+/// v4 `drawRoll`'s dice arm: the faces a pin or a replayed draw names (via
+/// [`dice_from_faces`]), else a fresh roll.
+fn draw_dice(
+    definition: &QtapCustomTool,
+    parsed: &super::dice::DiceNotation,
+    rng: &mut (dyn RandomBytes + Send),
+    pins: Option<&RunPins>,
+    replay_draw: Option<&RecordedDraw>,
+) -> Result<DiceRollResult, CustomToolRunError> {
+    let replayed: Option<Vec<f64>> = match replay_draw {
+        Some(RecordedDraw::Dice { faces }) => Some(faces.iter().map(|f| *f as f64).collect()),
+        _ => None,
+    };
+    match pins.and_then(|p| p.dice.clone()).or(replayed) {
+        Some(faces) => dice_from_faces(&definition.name, parsed, &faces),
+        None => Ok(roll_notation(parsed, rng)),
+    }
 }
 
 /// The first outcome whose `when` holds (v4 `pickOutcome`). The schema's
@@ -3231,7 +3757,14 @@ pub fn simulate_outcomes(
                 let rolled = roll_notation(notation, rng);
                 (rolled.total as f64, rolled.total as f64)
             }
-            None => roll_range(definition, range_roll, &params, state, inventory, rng)?,
+            // The unit is drawn on every deal now, degenerate range or not
+            // (v4 `839575d89` — `simulateOutcomes` draws through `rollRange`).
+            None => {
+                let d = roll_range(
+                    definition, range_roll, &params, state, inventory, rng, None, None,
+                )?;
+                (d.raw, d.value)
+            }
         };
 
         let subjects = OutcomeSubjects {
@@ -3432,8 +3965,9 @@ mod wardrobe_gesture_tests {
             WardrobeEffectAction::TakeOff,
             &["{{params.garment}}", "Gloves"],
         );
-        let (out, lines) =
-            captured_with(|| resolve_wardrobe_gesture("blank", 3, &g, &vars(&params), &skipped));
+        let (out, lines) = captured_with(|| {
+            resolve_wardrobe_gesture("blank", 3, &g, &vars(&params), &skipped, false)
+        });
         let ResolvedEffect::Wardrobe { index, wardrobe } = out else {
             panic!("{out:?}")
         };
@@ -3462,8 +3996,9 @@ mod wardrobe_gesture_tests {
     fn every_item_empty_skips_through_the_shared_helper_and_clear_slot_never_does() {
         let params: ResolvedParams = vec![("garment".into(), ResolvedValue::String("  ".into()))];
         let wear = gesture(WardrobeEffectAction::Wear, &["{{params.garment}}"]);
-        let (out, _) =
-            captured_with(|| resolve_wardrobe_gesture("blank", 0, &wear, &vars(&params), &skipped));
+        let (out, _) = captured_with(|| {
+            resolve_wardrobe_gesture("blank", 0, &wear, &vars(&params), &skipped, false)
+        });
         assert_eq!(
             out,
             ResolvedEffect::Skipped {
@@ -3478,7 +4013,7 @@ mod wardrobe_gesture_tests {
             mode: None,
             slot: Some("hair".into()),
         };
-        let out = resolve_wardrobe_gesture("blank", 1, &clear, &vars(&params), &skipped);
+        let out = resolve_wardrobe_gesture("blank", 1, &clear, &vars(&params), &skipped, false);
         assert_eq!(
             serde_json::to_string(&out).unwrap(),
             r#"{"index":1,"wardrobe":{"action":"clear_slot","items":[],"slot":"hair"}}"#
@@ -3495,8 +4030,9 @@ mod wardrobe_gesture_tests {
             &["  {{params.garment}} ", "Hat"],
         );
         g.mode = Some(PutOnMode::Replace);
-        let (out, lines) =
-            captured_with(|| resolve_wardrobe_gesture("dress", 0, &g, &vars(&params), &skipped));
+        let (out, lines) = captured_with(|| {
+            resolve_wardrobe_gesture("dress", 0, &g, &vars(&params), &skipped, false)
+        });
         assert!(
             !lines.iter().any(|l| l.contains("rendered empty")),
             "{lines:?}"
@@ -3664,10 +4200,11 @@ mod any_of_and_outcome_debug_tests {
                 None,
                 None,
                 None,
-                &mut crate::tools::rng::FixedBytes::new(vec![]),
+                &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
                 Some(invoker),
                 None,
                 0,
+                None,
                 None,
                 None,
             ))
@@ -3735,6 +4272,7 @@ mod any_of_and_outcome_debug_tests {
                 Some(&invoker),
                 None,
                 0,
+                None,
                 None,
                 None,
             ))

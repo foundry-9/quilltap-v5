@@ -6,9 +6,15 @@
 //! `crypto.randomBytes` over a scripted pool and reports the cursor, and this
 //! side replays the same pool through `FixedBytes` and asserts
 //! `FixedBytes::consumed()` equals it. That is what pins the two byte-stream
-//! facts inspection cannot: a degenerate `min === max` range short-circuits
-//! WITHOUT drawing, and the dice path's rejection sampling draws exactly what v4
-//! draws.
+//! facts inspection cannot: at the `236c04e35` pin v4 ALWAYS draws the unit —
+//! six bytes — even for a degenerate `min === max` range, and discards the
+//! fraction (v4 `839575d89`, ruling R-3 of P4.D345; until then a degenerate
+//! range drew nothing); and the dice path's rejection sampling draws exactly
+//! what v4 draws.
+//!
+//! P4.D345: the run result's replay record — `draw`, `rollSpan`, `valueSpan`,
+//! `llmPromptRendered`, `tableOutcomeIndex` — is COMPARED against `out`, never
+//! masked (`result_to_json` below projects it in v4's key order).
 //!
 //! Definitions travel as the ORACLE'S OWN parsed data and are re-parsed here
 //! through `safe_parse`, so every case also re-exercises unit 1 and no case can
@@ -247,6 +253,16 @@ fn result_to_json(r: &CustomToolRunResult) -> Value {
     if let Some(effects) = &r.effects {
         m.insert("effects".into(), serde_json::to_value(effects).unwrap());
     }
+    // === P4.D345: the replay record, after `effects` (v4 `839575d89`) ===
+    m.insert("draw".into(), r.draw.to_wire());
+    m.insert("rollSpan".into(), r.roll_span.to_wire());
+    m.insert("valueSpan".into(), r.value_span.to_wire());
+    if let Some(prompt) = &r.llm_prompt_rendered {
+        m.insert("llmPromptRendered".into(), Value::String(prompt.clone()));
+    }
+    if let Some(i) = r.table_outcome_index {
+        m.insert("tableOutcomeIndex".into(), json!(i));
+    }
     Value::Object(m)
 }
 
@@ -470,6 +486,8 @@ fn pascal_custom_tools_execution_matches_oracle() {
                         // applies `trim() || undefined` itself.
                         row["overrides"].get("character").and_then(Value::as_str),
                         bag.as_dyn(),
+                        // P4.D345: no replay — the pure family drives that.
+                        None,
                     ));
 
                     // The byte cursor is the assertion inspection cannot make.

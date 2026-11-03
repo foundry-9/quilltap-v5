@@ -242,7 +242,9 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 content: m.content.clone(),
             })
             .collect();
-        provider = provider.with_response(
+        // v4's mock answers `finishReason: 'stop'`, which the consult's
+        // `llm_logs` row records since v4 `eb2d87788` (P4.D348's funnel).
+        provider = provider.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -253,6 +255,7 @@ fn canned_provider(want: &Value) -> CannedCompletionProvider {
                 completion_tokens: row.usage.completion_tokens,
                 total_tokens: row.usage.total_tokens,
             }),
+            Some("stop"),
         );
     }
     provider
@@ -1026,7 +1029,9 @@ fn run_custom_handler_matches_oracle() {
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
             };
-            let mut rng = FixedBytes::new(vec![]);
+            // P4.D345: six bytes — the one run a case deals ALWAYS draws its
+            // range unit now (v4 `839575d89`, R-3), degenerate range or not.
+            let mut rng = FixedBytes::new(vec![0; 6]);
             // The REAL consult invoker, exactly as v4's handler builds one. For the
             // profile-free cases the resolution stops at v4's `no connection
             // profiles are configured` (proving the invoker is wired past v5's
@@ -1053,8 +1058,15 @@ fn run_custom_handler_matches_oracle() {
                     ),
                 ));
 
-            // min === max never draws.
-            assert_eq!(rng.consumed(), 0, "case '{}' consumed bytes", case.name);
+            // The corpus is min === max ranges: a dealt run draws its six-byte
+            // unit (the fraction discarded); a refused one draws nothing. The
+            // six-byte pool makes any extra consumer a loud panic.
+            assert!(
+                matches!(rng.consumed(), 0 | 6),
+                "case '{}' consumed {} bytes",
+                case.name,
+                rng.consumed()
+            );
 
             let msgs = db
                 .read_main(|conn| dump_table_json_conn(conn, "chat_messages", "id"))
