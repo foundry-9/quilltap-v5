@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the Inventory dialog's inventory-topic reloads, refreshUnlessRealtime, isInContainer (v4 0276d10d9)
+
+_Versions: SPA 0.5.915._
+
+The Inventory dialog takes the client half of v4 `0276d10d9`; P4.D350 owns the server half.
+- An `inventory` realtime hint now re-reads the four stores v4 refreshes: the list, the folder tree, the open instantiate dialog's archetype picker (through a new `reloadKey` input) and the Carrying-now pane's carried read.
+- The dialog's own writes go through `refreshUnlessRealtime`. It refreshes nothing while the realtime socket is connected, because the server's publish refreshes the same stores, and reloads everything while the socket is down. Tab activation still reloads unconditionally.
+- New `isInContainer` in `inventory-container.ts` (v4 `container.ts:73-81`). It backs the Workbench vantage loader's `pool.owns`, which had counted another character's object as owned, and the list data's `canManage`, which now manages only its own scope in a shared tier.
+- The topic map's `inventory` comment names the four re-reads.
+
 #### 2026-11-03 — feat(spa): the memory keystone UI — pill, editor checkbox, Keystones only (v4 8cb584eff)
 
 _Versions: SPA 0.5.914._

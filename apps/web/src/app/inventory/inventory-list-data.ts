@@ -29,7 +29,7 @@ import { computed, effect, signal, untracked, type Signal } from '@angular/core'
 
 import type { CoreClient } from '../core/core-client';
 import type { ResolvedInventoryItem } from '../core/core-contract';
-import { inventoryTierKey, type InventoryContainer } from './inventory-container';
+import { inventoryTierKey, isInContainer, type InventoryContainer } from './inventory-container';
 import { listInventory } from './inventory.api';
 
 export interface InventoryListData {
@@ -114,11 +114,10 @@ export function createInventoryListData(core: CoreClient, opts: InventoryListDat
     untracked(() => void reload());
   });
 
+  /** True when the object lives in the tier being browsed (v4 `0276d10d9`: `isInContainer`). */
   const canManage = (item: ResolvedInventoryItem): boolean => {
     const container = opts.container();
-    if (!container) return false;
-    if (container.scope !== 'character') return true;
-    return !item.origin || (item.origin.scope === 'character' && item.origin.id === container.id);
+    return container !== null && isInContainer(item, container);
   };
 
   return {

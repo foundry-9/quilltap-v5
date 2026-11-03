@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../core/core-client';
 import { coreStreamStub, type CoreStreamStub } from '../core/core-client.testing';
 import { CoreDispatchError, type ScopedEvent } from '../core/core-contract';
+import { RealtimeService } from '../core/realtime.service';
 import { AlertModalService } from '../ui/alert-modal.service';
 import { ToastService } from '../ui/toast.service';
 import { WORKSPACE_TAB_VISIBLE } from '../workspace/workspace-contract';
@@ -345,19 +346,52 @@ describe('InventoryControlDialogInner', () => {
     expect(seen.slice(before)).toEqual([]);
   });
 
-  it('the inventory realtime topic reloads the list and the tree; chats (this chat) the carried read', async () => {
-    const { fixture, seen, stream } = await inner({ chatId: 'chat-1', initial: { scope: 'character', id: 'c-viv' } });
+  it('the inventory realtime topic reloads the list, the tree, the archetype picker and the carried read; chats (this chat) the carried read', async () => {
+    // v4 `0276d10d9` (`topic-map.ts:134-146` at `236c04e35`): the `inventory`
+    // topic re-reads the lists, the folders, the archetype pickers AND every
+    // Carrying-now pane ("which shows the objects resolved").
+    const route: Route = (req) => (req['type'] === 'inventoryArchetypes' ? { items: [BOW] } : LISTS(req));
+    const { fixture, el, seen, stream } = await inner(
+      { chatId: 'chat-1', initial: { scope: 'character', id: 'c-viv' } },
+      route,
+    );
+    const open = [...el.querySelectorAll('button')].find((b) => b.textContent!.includes('From archetype'))!;
+    open.click();
+    await settle(fixture);
     const count = (type: string) => seen.filter((r) => r['type'] === type).length;
-    const before = [count('inventoryList'), count('inventoryFolders'), count('chatInventoryGet')];
+    const kinds = ['inventoryList', 'inventoryFolders', 'inventoryArchetypes', 'chatInventoryGet'];
+    const before = kinds.map(count);
     stream.frames.next(hint('inventory'));
     await settle(fixture);
-    expect([count('inventoryList'), count('inventoryFolders')]).toEqual([before[0] + 1, before[1] + 1]);
+    expect(kinds.map(count)).toEqual(before.map((n) => n + 1));
     stream.frames.next(hint('chats', 'other-chat'));
     await settle(fixture);
-    expect(count('chatInventoryGet')).toBe(before[2]);
+    expect(count('chatInventoryGet')).toBe(before[3] + 1);
     stream.frames.next(hint('chats', 'chat-1'));
     await settle(fixture);
-    expect(count('chatInventoryGet')).toBe(before[2] + 1);
+    expect(count('chatInventoryGet')).toBe(before[3] + 2);
+  });
+
+  it('the dialog’s own write refreshes nothing while the socket is up — the publish will — and everything while it is down', async () => {
+    // v4 `refreshUnlessRealtime` (`use-inventory.ts` at `236c04e35`).
+    const { fixture, seen } = await inner({ chatId: 'chat-1', initial: { scope: 'character', id: 'c-viv' } });
+    const realtime = TestBed.inject(RealtimeService);
+    const refresh = () =>
+      (fixture.componentInstance as unknown as { actions: { refresh(): Promise<void> } }).actions.refresh();
+    const kinds = ['inventoryList', 'inventoryFolders', 'chatInventoryGet'];
+    const count = () => kinds.map((k) => seen.filter((r) => r['type'] === k).length);
+
+    realtime.connected.set(true);
+    const up = count();
+    await refresh();
+    await settle(fixture);
+    expect(count()).toEqual(up);
+
+    realtime.connected.set(false);
+    const down = count();
+    await refresh();
+    await settle(fixture);
+    expect(count()).toEqual(down.map((n) => n + 1));
   });
 
   it('as a tab: the bare qt-inventory-tab chrome, no Escape close; the panel: no select, a plain column', async () => {

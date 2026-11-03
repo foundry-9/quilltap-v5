@@ -125,6 +125,12 @@ export class InventoryInstantiateDialog {
   readonly archetype = input<ResolvedInventoryItem | null>(null);
   /** The project tier a character's archetypes may come from. */
   readonly projectId = input<string | null>(null);
+  /**
+   * Bumped by the host on every `inventory` realtime hint, so the archetype
+   * picker re-reads (v4 `0276d10d9`: the topic "also refreshes archetype
+   * pickers" — `queryKeys.inventory.archetypeLists`).
+   */
+  readonly reloadKey = input(0);
   readonly catalogue = input.required<InventoryCatalogue>();
   readonly actions = input.required<InventoryItemActions>();
   readonly closed = output<void>();
@@ -160,6 +166,7 @@ export class InventoryInstantiateDialog {
     effect(() => {
       const container = this.destination()?.container ?? null;
       const projectId = this.effectiveProjectId();
+      this.reloadKey();
       untracked(() => {
         if (!container) {
           this.archetypes.set([]);

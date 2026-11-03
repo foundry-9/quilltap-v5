@@ -67,7 +67,10 @@ describe('createInventoryListData (v4 useInventoryListData)', () => {
     ]);
   });
 
-  it('canManage: own (or origin-less) rows in a character view; everything in a shared tier', async () => {
+  // v4 `0276d10d9` (`useInventoryListData.ts:16` at `236c04e35`): `canManage`
+  // is `isInContainer` — a shared tier manages only ITS scope's objects (the
+  // pre-fix rule answered true for everything there).
+  it('canManage: own (or origin-less) rows in a character view; only its own scope in a shared tier', async () => {
     const { core } = fakeCore(async () => ({ items: [] }));
     const { data, c } = mount(core, VIV);
     await settle();
@@ -76,7 +79,9 @@ describe('createInventoryListData (v4 useInventoryListData)', () => {
     expect(data.canManage(BOW)).toBe(false);
     expect(data.canManage(obj('other', { origin: { scope: 'character', id: 'c-bert', name: 'Bertie' } }))).toBe(false);
     c.set(QUEST);
-    expect(data.canManage(SWORD)).toBe(true);
+    expect(data.canManage(BOW)).toBe(true);
+    expect(data.canManage(SWORD)).toBe(false);
+    expect(data.canManage(obj('loose', { origin: undefined }))).toBe(true);
     c.set(null);
     expect(data.canManage(BOW)).toBe(false);
   });

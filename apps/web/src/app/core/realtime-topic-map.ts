@@ -155,13 +155,16 @@ export function queryKeysForTopic(topic: string, id?: string): readonly QueryKey
       return [chatKeys.all, id ? memoryKeys.chatCount(id) : memoryKeys.all];
 
     case 'inventory':
-      // ⚠ NO v5 TARGET (P4.D330 R-2). v4 invalidates `queryKeys.inventory.lists`
-      // and `.folderLists` (`topic-map.ts:83-86`); v5's Inventory lists and
-      // folder trees are signal-held (the wardrobe's idiom, R-1), so the
-      // Inventory dialog subscribes to this topic DIRECTLY through
-      // `RealtimeService.onTopic` and reloads its stores — the `characters`
-      // row's precedent. Nothing to sweep on reconnect either, so
-      // `ALL_REALTIME_PREFIXES` is unchanged (v4 adds two).
+      // ⚠ NO v5 TARGET (P4.D330 R-2). v4 invalidates FOUR keys —
+      // `inventory.lists`, `.folderLists`, `.archetypeLists` and
+      // `.equippedLists` (`0276d10d9`, `topic-map.ts:134-146` at `236c04e35`).
+      // v5's Inventory stores are signal-held (the wardrobe's idiom, R-1), so
+      // the Inventory dialog subscribes to this topic DIRECTLY through
+      // `RealtimeService.onTopic` and performs the same four re-reads — its
+      // list, its folder tree, the open archetype picker, and the Carrying-now
+      // pane's carried read (P4.D359) — the `characters` row's precedent.
+      // Nothing to sweep on reconnect either, so `ALL_REALTIME_PREFIXES` is
+      // unchanged (v4's reconnect sweep adds all four).
       return [];
 
     // === P4.D344: Storyteller mode ===

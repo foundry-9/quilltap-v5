@@ -215,6 +215,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
           [projectId]="effectiveProjectId()"
           [catalogue]="catalogue()"
           [actions]="actions"
+          [reloadKey]="archetypesReloadKey()"
           (closed)="actions.closeInstantiate()"
         />
       }
@@ -223,6 +224,9 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
 })
 export class InventoryControlDialogInner {
   private readonly core = inject(CoreClient);
+  private readonly realtime = inject(RealtimeService);
+  /** Bumped per `inventory` hint — the open instantiate dialog's archetype re-read. */
+  protected readonly archetypesReloadKey = signal(0);
   private readonly toasts = inject(ToastService);
   private readonly alerts = inject(AlertModalService);
 
@@ -288,7 +292,7 @@ export class InventoryControlDialogInner {
     core: this.core,
     toasts: this.toasts,
     container: this.container,
-    refresh: () => this.refresh(),
+    refresh: () => this.refreshUnlessRealtime(),
     requestConfirmation: (message) => this.requestConfirmation(message),
     requestAlert: (message, buttons) => this.requestAlert(message, buttons),
   });
@@ -340,20 +344,38 @@ export class InventoryControlDialogInner {
     void this.loadCatalogue();
     // v4 `useOnTabActivated(() => invalidate(inventory.all))` (trap 9).
     onTabActivated(() => {
-      void this.refresh();
+      void this.reloadAll();
     });
-    const realtime = inject(RealtimeService);
     // R-2: the lists and trees are signal-held, so the dialog subscribes itself.
-    realtime.onTopic('inventory', () => {
+    // v4 `0276d10d9` (`topic-map.ts:134-146` at `236c04e35`): "an open dialog's
+    // lists, folders and archetype pickers re-read, and so does every
+    // Carrying-now pane, which shows the objects resolved. The dialog leaves
+    // its own writes' refresh to this."
+    this.realtime.onTopic('inventory', () => {
       void this.data.reload();
       void this.folders.reload();
+      this.archetypesReloadKey.update((n) => n + 1);
+      void this.chat.reload();
     });
-    realtime.onTopic('chats', () => void this.chat.reload(), () => this.chatId());
+    this.realtime.onTopic('chats', () => void this.chat.reload(), () => this.chatId());
   }
 
-  /** Every read a write may have changed (v4's mutation `onSettled`). */
-  private async refresh(): Promise<void> {
+  /** Every read a write may have changed (v4's mutation `onSettled` keys). */
+  private async reloadAll(): Promise<void> {
     await Promise.all([this.data.reload(), this.folders.reload(), this.chat.reload()]);
+  }
+
+  /**
+   * After this dialog's own write (v4 `refreshUnlessRealtime`, `use-inventory.ts`
+   * at `236c04e35`): "refresh `keys` only while the realtime socket is down.
+   * While it is up, the server's publish for that write refreshes the same
+   * keys, and refreshing here as well would fetch everything twice." The
+   * server half is P4.D350's R-1 (every location write publishes `inventory`);
+   * if that ruling falls, this refresh must go back to unconditional.
+   */
+  private async refreshUnlessRealtime(): Promise<void> {
+    if (this.realtime.connected()) return;
+    await this.reloadAll();
   }
 
   /** v4 `:52-77` — three LIST reads, each failing soft; characters settle the fallback. */

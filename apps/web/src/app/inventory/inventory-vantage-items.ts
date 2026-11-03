@@ -22,7 +22,7 @@ import { computed, signal } from '@angular/core';
 import type { CoreClient } from '../core/core-client';
 import type { ResolvedInventoryItem } from '../core/core-contract';
 import type { WardrobeVantage } from '../pascal/tool-draft';
-import { encodeInventoryContainer, type InventoryContainer } from './inventory-container';
+import { encodeInventoryContainer, isInContainer, type InventoryContainer } from './inventory-container';
 import { listInventory } from './inventory.api';
 
 /** v4 `ResolvedInventoryPool` (`lib/inventory/refs.ts`) as the loader answers it. */
@@ -43,13 +43,21 @@ export class InventoryVantageItemsLoader {
   readonly loading = signal(false);
   /** True once the read has settled; false for the `none` vantage. */
   readonly fetched = signal(false);
-  private readonly scope = signal<InventoryContainer['scope'] | null>(null);
+  /** The vantage's whole container — not just its scope (v4 `0276d10d9`). */
+  private readonly container = signal<InventoryContainer | null>(null);
 
-  /** v4 `:44-52` — own = the vantage's own tier (an origin-less object counts). */
+  /**
+   * v4 `:44-52` — own = what lives in the vantage's own container
+   * (`isInContainer`; an origin-less object counts). The pre-`0276d10d9`
+   * predicate compared scopes only, so a character vantage owned another
+   * character's object.
+   */
   readonly pool = computed<InventoryVantagePool>(() => {
-    const scope = this.scope();
+    const container = this.container();
     const items = this.items();
-    const own = new Set(items.filter((item) => (item.origin ? item.origin.scope === scope : true)).map((i) => i.id));
+    const own = new Set(
+      container ? items.filter((item) => isInContainer(item, container)).map((i) => i.id) : [],
+    );
     return { items, owns: (id) => own.has(id) };
   });
 
@@ -62,7 +70,7 @@ export class InventoryVantageItemsLoader {
     const container = vantageContainer(vantage);
     const key = container ? encodeInventoryContainer(container) : 'null';
     this.current = key;
-    this.scope.set(container?.scope ?? null);
+    this.container.set(container);
     if (!container) {
       this.items.set([]);
       this.loading.set(false);

@@ -58,6 +58,21 @@ export function containerOfOrigin(
 }
 
 /**
+ * True when an object lives in the tier being browsed (v4 `0276d10d9`,
+ * `container.ts:73-81` at `236c04e35`). A shared tier lists only its own
+ * objects; a character's merged view also lists what it borrows from groups,
+ * the project and General, tagged with their origin.
+ */
+export function isInContainer(
+  item: { origin?: InventoryOrigin | null },
+  container: InventoryContainer,
+): boolean {
+  if (!item.origin) return true;
+  if (container.scope !== 'character') return item.origin.scope === container.scope;
+  return item.origin.scope === 'character' && item.origin.id === container.id;
+}
+
+/**
  * A short label for the tier an object came from (v4 `:74-79`). NOT the
  * wardrobe's `Shared · …` / `Project · X` spelling — the two stay apart
  * (survey trap 4).
