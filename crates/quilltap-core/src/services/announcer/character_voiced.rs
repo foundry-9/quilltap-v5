@@ -131,6 +131,9 @@ fn to_sys_character(c: &Value) -> Character {
             long_prompt: s(p, "longPrompt"),
             complete_prompt: s(p, "completePrompt"),
             full_description: s(p, "fullDescription"),
+            // === P4.D349: humanoid === (the exhaustive-literal compile fix)
+            humanoid: p.get("humanoid").and_then(Value::as_bool),
+            // === end P4.D349 ===
         })
     });
     Character {

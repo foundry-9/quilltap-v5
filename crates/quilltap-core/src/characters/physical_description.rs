@@ -157,6 +157,10 @@ pub struct PhysicalDescriptionVariants<'a> {
     pub long_prompt: Option<&'a str>,
     pub complete_prompt: Option<&'a str>,
     pub full_description: Option<&'a str>,
+    /// v4 `b27e5089a`: `humanoid` rides the Pick (`PhysicalDescriptionVariants`
+    /// gains `'humanoid'`). `None` = absent (humanoid); only `Some(false)` marks
+    /// a character with no humanoid body.
+    pub humanoid: Option<bool>,
 }
 
 impl<'a> PhysicalDescriptionVariants<'a> {
@@ -172,6 +176,10 @@ impl<'a> PhysicalDescriptionVariants<'a> {
             long_prompt: s(VariantKey::LongPrompt),
             complete_prompt: s(VariantKey::CompletePrompt),
             full_description: s(VariantKey::FullDescription),
+            // A non-boolean `humanoid` on a JSON character is `undefined !==
+            // false` in v4 → humanoid; `as_bool` reads it as absent — the same
+            // answer.
+            humanoid: desc.get("humanoid").and_then(Value::as_bool),
         }
     }
 
@@ -187,6 +195,34 @@ impl<'a> PhysicalDescriptionVariants<'a> {
     }
 }
 
+/// v4 `NON_HUMANOID_HEAD_AND_SHOULDERS_ORDER` — the order for a character with
+/// no humanoid body (`humanoid: false`). There is no head and no shoulders to
+/// crop to, so the head-and-shoulders prompt is never read — a stale one would
+/// only describe a body the character lacks — and a portrait takes the
+/// mid-length prompt of the whole form instead.
+pub const NON_HUMANOID_HEAD_AND_SHOULDERS_ORDER: [VariantKey; 5] = [
+    VariantKey::MediumPrompt,
+    VariantKey::LongPrompt,
+    VariantKey::ShortPrompt,
+    VariantKey::CompletePrompt,
+    VariantKey::FullDescription,
+];
+
+/// v4 `isHumanoid(desc)` — whether the character can be drawn as a body (head,
+/// shoulders, torso, limbs). `humanoid` is optional and absent means true; only
+/// an explicit `false` (set in the vault's `physical-prompts.json`) marks a
+/// character such as a cluster of interlocking spheres. Every image reader asks
+/// this rather than reading the field. A `None` description is humanoid.
+pub fn is_humanoid(desc: Option<&PhysicalDescriptionVariants<'_>>) -> bool {
+    desc.and_then(|d| d.humanoid) != Some(false)
+}
+
+/// v4 `NON_HUMANOID_IMAGE_DIRECTION` — the direction every image prompt carries
+/// for a non-humanoid character, so no provider gives it a face, a head or a
+/// pair of shoulders. One sentence (no closing period), shared by the avatar,
+/// the wardrobe picture and the Lantern's scenes.
+pub const NON_HUMANOID_IMAGE_DIRECTION: &str = "Not humanoid: no head, face, neck, shoulders, torso, arms, legs or any human or humanoid body; depict its form exactly as described and do not anthropomorphize it";
+
 /// v4 `pickPhysicalDescription(desc, profile)` — the first non-blank variant
 /// in the profile's order, TRIMMED; `""` when the character has none (or no
 /// description at all). Callers supply their own fallback — usually the
@@ -198,7 +234,13 @@ pub fn pick_physical_description<'a>(
     let Some(desc) = desc else {
         return "";
     };
-    for key in profile.order() {
+    let order: &[VariantKey] =
+        if profile == PhysicalDescriptionProfile::HeadAndShoulders && !is_humanoid(Some(desc)) {
+            &NON_HUMANOID_HEAD_AND_SHOULDERS_ORDER
+        } else {
+            profile.order()
+        };
+    for key in order {
         // `desc[key]?.trim()` then `if (text)` — a whitespace-only variant
         // trims to '' and falls through.
         if let Some(text) = desc.get(*key).map(js_trim) {

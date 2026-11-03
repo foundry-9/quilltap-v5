@@ -1473,6 +1473,9 @@ fn to_sys_char(c: &Value) -> crate::system_prompt::Character {
             long_prompt: json_str(pd, "longPrompt"),
             complete_prompt: json_str(pd, "completePrompt"),
             full_description: json_str(pd, "fullDescription"),
+            // === P4.D349: humanoid ===
+            humanoid: pd.get("humanoid").and_then(Value::as_bool),
+            // === end P4.D349 ===
         });
 
     let scenarios = c

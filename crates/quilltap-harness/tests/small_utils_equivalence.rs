@@ -18,7 +18,8 @@ use quilltap_core::chat_predicates::{
     is_participant_present, migrate_is_active_to_status, ParticipantStatus,
 };
 use quilltap_core::pronoun_gender::{
-    gender_from_pronouns, gender_noun_from_pronouns, gender_prefix_from_pronouns,
+    figure_gender, figure_gender_noun, figure_gender_prefix, gender_from_pronouns,
+    gender_noun_from_pronouns, gender_prefix_from_pronouns,
 };
 use quilltap_core::semver::{compare_versions, parse_version};
 use quilltap_core::tag_style::{merge_with_default_tag_style, PartialTagVisualStyle};
@@ -128,6 +129,15 @@ enum OracleRow {
         subject: Option<String>,
         out: WireGender,
     },
+    /// P4.D349 (v4 `b27e5089a`): the `figure*` twins; `humanoid: null` = no
+    /// physical description (humanoid).
+    #[serde(rename = "figureGender")]
+    FigureGender {
+        id: String,
+        subject: Option<String>,
+        humanoid: Option<bool>,
+        out: WireGender,
+    },
     #[serde(rename = "tagStyle")]
     TagStyle {
         id: String,
@@ -155,6 +165,7 @@ fn small_utils_matches_oracle() {
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read {path}: {e}"));
 
     let mut counts = [0usize; 8];
+    let mut figure_rows = 0usize;
     for line in text.lines().filter(|l| !l.trim().is_empty()) {
         match serde_json::from_str::<OracleRow>(line).unwrap() {
             OracleRow::ChatPred {
@@ -236,6 +247,32 @@ fn small_utils_matches_oracle() {
                 );
                 counts[5] += 1;
             }
+            OracleRow::FigureGender {
+                id,
+                subject,
+                humanoid,
+                out,
+            } => {
+                let subj = subject.as_deref();
+                // v4 `isHumanoid(figure.physicalDescription)` — `?.humanoid !== false`.
+                let humanoid = humanoid != Some(false);
+                assert_eq!(
+                    figure_gender(subj, humanoid),
+                    out.gender.as_deref(),
+                    "figure '{id}' gender"
+                );
+                assert_eq!(
+                    figure_gender_noun(subj, humanoid),
+                    out.noun.as_deref(),
+                    "figure '{id}' noun"
+                );
+                assert_eq!(
+                    figure_gender_prefix(subj, humanoid),
+                    out.prefix,
+                    "figure '{id}' prefix"
+                );
+                figure_rows += 1;
+            }
             OracleRow::TagStyle { id, style, out } => {
                 let partial = style.map(|s| PartialTagVisualStyle {
                     emoji: s.emoji,
@@ -285,5 +322,6 @@ fn small_utils_matches_oracle() {
         counts.iter().all(|&c| c > 0),
         "oracle file looks empty/partial: {counts:?}"
     );
-    eprintln!("OK: small-utils matched oracle (counts {counts:?}).");
+    assert_eq!(figure_rows, 12, "the twelve P4.D349 figure rows ran");
+    eprintln!("OK: small-utils matched oracle (counts {counts:?}, figure rows {figure_rows}).");
 }

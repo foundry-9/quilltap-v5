@@ -34,3 +34,28 @@ pub fn gender_prefix_from_pronouns(subject: Option<&str>) -> String {
         None => String::new(),
     }
 }
+
+/// v4 `figureGender(figure)` (`b27e5089a`) — [`gender_from_pronouns`], or
+/// `None` for a non-humanoid character: its pronouns name it, they don't give
+/// it a body. `humanoid` is [`crate::characters::physical_description::is_humanoid`]'s answer.
+pub fn figure_gender(subject: Option<&str>, humanoid: bool) -> Option<&'static str> {
+    humanoid.then(|| gender_from_pronouns(subject)).flatten()
+}
+
+/// v4 `figureGenderNoun(figure)` — [`gender_noun_from_pronouns`], or `None` for
+/// a non-humanoid character.
+pub fn figure_gender_noun(subject: Option<&str>, humanoid: bool) -> Option<&'static str> {
+    humanoid
+        .then(|| gender_noun_from_pronouns(subject))
+        .flatten()
+}
+
+/// v4 `figureGenderPrefix(figure)` — [`gender_prefix_from_pronouns`], or `""`
+/// for a non-humanoid character.
+pub fn figure_gender_prefix(subject: Option<&str>, humanoid: bool) -> String {
+    if humanoid {
+        gender_prefix_from_pronouns(subject)
+    } else {
+        String::new()
+    }
+}

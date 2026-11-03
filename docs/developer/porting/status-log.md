@@ -193961,6 +193961,20 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
   - `characters_mutations`' `tag_delete` / `character_delete_cascade`: the same class.
   - P4.D341 re-widened 57 fixture pairs incl. `wardrobe-routes-main.db` and the characters pair (`git diff --stat 8ab640259 claude/p4.d341-… -- crates/quilltap-web/tests/fixtures/`). These are green on the union, where the keystone's pairs meet this lane's code.
 
+### Commit D — the `humanoid` pure helpers (item 7)
+
+- `characters/physical_description.rs`: `PhysicalDescriptionVariants.humanoid: Option<bool>` (still `Copy`; `from_value` reads `as_bool`), `NON_HUMANOID_HEAD_AND_SHOULDERS_ORDER`, `is_humanoid`, `NON_HUMANOID_IMAGE_DIRECTION` (no closing period), and `pick_physical_description`'s branch. `has_physical_description` follows the pick, as v4's does (`physical-description.ts:121-127` — measured).
+- `pronoun_gender.rs`: `figure_gender` / `figure_gender_noun` / `figure_gender_prefix(subject, humanoid)`.
+- `system_prompt::PhysicalDescription.humanoid` and `appearance_resolution::PhysicalDescription.humanoid` (passed through `variants()`). `image_scene_tasks::PhysicalDescriptionInput::variants` keeps `humanoid: None`, which is v4-faithful: v4's `CharacterAppearanceInput.physicalDescriptions[]` carries no `humanoid`.
+- **Populators read `humanoid`:**
+  - `system_prompt_compiler.rs::character_from_value`, `story_background_job.rs::physical_description_from_value`, `generate_image.rs::physical_description_from_value`.
+  - **Exhaustive-literal compile fixes in sibling files, fenced `// === P4.D349: humanoid ===`:** `services/announcer/character_voiced.rs:126` and `services/announcer/in_scene_voiced.rs:173`. These are not named in the order (measured by the compiler). The pick they feed is `self-image`, so their output is unchanged.
+  - The order's granted fence in `tools/self_inventory.rs` (`to_sys_char`'s `PhysicalDescription` literal, now `:1337-1349`).
+- **Families:**
+  - `physical_description_equivalence` 165 rows (33 cases × 5 profiles) OK. Corpus +5: the non-humanoid with every variant picks the MEDIUM prompt under head-and-shoulders; the non-humanoid with only an H&S prompt answers `''` / `has: false`; `true`, the STRING `"false"` and `null` are humanoid on both sides.
+  - `small_utils_equivalence` OK (+12 `figureGender` rows: he / she / they / unset × humanoid / non-humanoid / no description; asserted by count).
+- **Red-first (inferred, not run):** the base has no `humanoid` read, so `p4d349-non-humanoid-every-variant / head-and-shoulders` would pick `a face of brass`.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

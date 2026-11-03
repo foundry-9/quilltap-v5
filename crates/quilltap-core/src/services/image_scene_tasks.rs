@@ -313,6 +313,9 @@ impl PhysicalDescriptionInput {
             long_prompt: None,
             complete_prompt: None,
             full_description: None,
+            // v4's input object carries no `humanoid` (the character-level
+            // `nonHumanoid` flag rides beside it instead).
+            humanoid: None,
         }
     }
 }

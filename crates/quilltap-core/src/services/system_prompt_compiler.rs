@@ -76,6 +76,7 @@ fn character_from_value(c: &Value) -> Character {
             long_prompt: s(pd, "longPrompt"),
             complete_prompt: s(pd, "completePrompt"),
             full_description: s(pd, "fullDescription"),
+            humanoid: pd.get("humanoid").and_then(Value::as_bool),
         })
     });
     let scenarios = c

@@ -1575,6 +1575,7 @@ fn physical_description_from_value(v: &Value) -> PhysicalDescription {
         complete_prompt: s("completePrompt"),
         full_description: s("fullDescription"),
         head_and_shoulders_prompt: s("headAndShouldersPrompt"),
+        humanoid: v.get("humanoid").and_then(Value::as_bool),
     }
 }
 

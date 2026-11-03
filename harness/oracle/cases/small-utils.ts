@@ -29,6 +29,9 @@ import {
   genderFromPronouns,
   genderNounFromPronouns,
   genderPrefixFromPronouns,
+  figureGender,
+  figureGenderNoun,
+  figureGenderPrefix,
 } from '@/lib/characters/pronoun-gender';
 import { mergeWithDefaultTagStyle } from '@/lib/tags/styles';
 import { charCountClass } from '@/lib/utils/char-count';
@@ -54,6 +57,7 @@ type Row =
   | { kind: 'parseVer'; id: string; version: string; out: { major: number; minor: number; patch: number } | null }
   | { kind: 'compareVer'; id: string; a: string; b: string; out: number }
   | { kind: 'gender'; id: string; subject: string | null; out: { gender: string | null; noun: string | null; prefix: string } }
+  | { kind: 'figureGender'; id: string; subject: string | null; humanoid: boolean | null; out: { gender: string | null; noun: string | null; prefix: string } }
   | { kind: 'tagStyle'; id: string; style: Partial<WireStyle> | null; out: WireStyle }
   | { kind: 'charCount'; id: string; current: number; max: number; out: string };
 
@@ -144,6 +148,29 @@ for (const [id, subject] of gCases) {
       prefix: genderPrefixFromPronouns(pronouns),
     },
   });
+}
+
+// P4.D349 (v4 `b27e5089a`): the `figure*` twins — the pronoun derivations, or
+// none at all for a non-humanoid figure. `humanoid: null` = no physical
+// description (humanoid by `isHumanoid`'s `?.humanoid !== false`).
+for (const [sid, subject] of [['he', 'he'], ['she', 'she'], ['they', 'they'], ['unset', null]] as const) {
+  for (const [hid, humanoid] of [['humanoid', true], ['non-humanoid', false], ['no-desc', null]] as const) {
+    const figure = {
+      pronouns: subject === null ? null : pron(subject),
+      physicalDescription: humanoid === null ? null : { humanoid },
+    };
+    rows.push({
+      kind: 'figureGender',
+      id: `figure-${sid}-${hid}`,
+      subject,
+      humanoid,
+      out: {
+        gender: figureGender(figure as never),
+        noun: figureGenderNoun(figure as never),
+        prefix: figureGenderPrefix(figure as never),
+      },
+    });
+  }
 }
 
 // mergeWithDefaultTagStyle

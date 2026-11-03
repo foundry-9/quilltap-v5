@@ -17,7 +17,12 @@
     "prompt's bytes move on this); JS-whitespace edges beyond ASCII (NBSP, the ideographic",
     "space, a BOM, the line/paragraph separators — JS `trim` strips them all); an empty",
     "string; interior whitespace kept; an empty object; and the head-and-shoulders crop",
-    "alone, which `scene` / `self-image` / `fullest` must NEVER answer."
+    "alone, which `scene` / `self-image` / `fullest` must NEVER answer.",
+    "",
+    "P4.D349 (v4 b27e5089a): five `humanoid` descs. A non-humanoid with every variant (head-and-",
+    "shoulders skips the H&S prompt for the medium one); a non-humanoid with ONLY an H&S prompt",
+    "('' under head-and-shoulders); and `true`, the STRING \"false\" and null, all humanoid",
+    "(v4 `!== false`; v5 `as_bool()` reads the string as absent — the same answer)."
   ],
   "cases": [
     { "name": "all-present", "desc": { "headAndShouldersPrompt": "H&S", "shortPrompt": "SHORT", "mediumPrompt": "MEDIUM", "longPrompt": "LONG", "completePrompt": "COMPLETE", "fullDescription": "FULL" } },
@@ -47,6 +52,11 @@
     { "name": "long-and-head-only", "desc": { "longPrompt": "LONG", "headAndShouldersPrompt": "H&S" } },
     { "name": "short-blank-medium-real", "desc": { "shortPrompt": "", "mediumPrompt": "MEDIUM" } },
     { "name": "self-image-corpus-row", "desc": { "shortPrompt": "", "mediumPrompt": "", "longPrompt": "A long prompt.", "completePrompt": "A complete prompt.", "fullDescription": "A full description." } },
-    { "name": "extra-keys-ignored", "desc": { "id": "pd-1", "name": "Primary", "usageContext": "default", "imagePrompt": "ignored", "mediumPrompt": "MEDIUM" } }
+    { "name": "extra-keys-ignored", "desc": { "id": "pd-1", "name": "Primary", "usageContext": "default", "imagePrompt": "ignored", "mediumPrompt": "MEDIUM" } },
+    { "name": "p4d349-non-humanoid-every-variant", "desc": { "headAndShouldersPrompt": "a face of brass", "shortPrompt": "spheres", "mediumPrompt": "a cluster of interlocking brass spheres", "longPrompt": "a cluster of interlocking brass spheres, humming", "completePrompt": "a cluster of interlocking brass spheres, humming, ringed in lamplight", "fullDescription": "Seven brass spheres that turn about one another.", "humanoid": false } },
+    { "name": "p4d349-non-humanoid-hs-only", "desc": { "headAndShouldersPrompt": "a face of brass", "humanoid": false } },
+    { "name": "p4d349-humanoid-true", "desc": { "headAndShouldersPrompt": "a face of brass", "shortPrompt": "spheres", "mediumPrompt": "a cluster of interlocking brass spheres", "longPrompt": "a cluster of interlocking brass spheres, humming", "completePrompt": "a cluster of interlocking brass spheres, humming, ringed in lamplight", "fullDescription": "Seven brass spheres that turn about one another.", "humanoid": true } },
+    { "name": "p4d349-humanoid-string-false", "desc": { "headAndShouldersPrompt": "a face of brass", "shortPrompt": "spheres", "mediumPrompt": "a cluster of interlocking brass spheres", "longPrompt": "a cluster of interlocking brass spheres, humming", "completePrompt": "a cluster of interlocking brass spheres, humming, ringed in lamplight", "fullDescription": "Seven brass spheres that turn about one another.", "humanoid": "false" } },
+    { "name": "p4d349-humanoid-null", "desc": { "headAndShouldersPrompt": "a face of brass", "shortPrompt": "spheres", "mediumPrompt": "a cluster of interlocking brass spheres", "longPrompt": "a cluster of interlocking brass spheres, humming", "completePrompt": "a cluster of interlocking brass spheres, humming, ringed in lamplight", "fullDescription": "Seven brass spheres that turn about one another.", "humanoid": null } }
   ]
 }

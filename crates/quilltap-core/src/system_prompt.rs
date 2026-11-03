@@ -112,6 +112,10 @@ pub struct PhysicalDescription {
     pub long_prompt: Option<String>,
     pub complete_prompt: Option<String>,
     pub full_description: Option<String>,
+    /// v4 `b27e5089a`: `PhysicalDescriptionSchema.humanoid` — absent-or-set.
+    /// Only `Some(false)` marks a character with no humanoid body (the
+    /// identity stack's form note).
+    pub humanoid: Option<bool>,
 }
 
 impl PhysicalDescription {
@@ -125,6 +129,7 @@ impl PhysicalDescription {
             long_prompt: self.long_prompt.as_deref(),
             complete_prompt: self.complete_prompt.as_deref(),
             full_description: self.full_description.as_deref(),
+            humanoid: self.humanoid,
         }
     }
 }

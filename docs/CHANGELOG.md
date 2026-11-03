@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(characters): port v4's isHumanoid, the non-humanoid portrait order and the figure* gender twins (P4.D349)
+
+_Versions: core 0.0.1384._
+
+Ports the pure half of v4 `b27e5089a`. `PhysicalDescriptionVariants` gains `humanoid` (read with `as_bool`, so a non-boolean reads as absent, as v4's `!== false` does). New items: `is_humanoid` (only an explicit `false` is non-humanoid), `NON_HUMANOID_IMAGE_DIRECTION`, and `NON_HUMANOID_HEAD_AND_SHOULDERS_ORDER`. A non-humanoid's head-and-shoulders pick skips the head-and-shoulders prompt and starts at the medium prompt. `pronoun_gender` gains `figure_gender`, `figure_gender_noun` and `figure_gender_prefix`, which give no gender for a non-humanoid figure. The typed `PhysicalDescription` structs in `system_prompt` and `appearance_resolution` carry `humanoid`, and all six JSON populators read it. Two are exhaustive literals in other lanes' files (`announcer/character_voiced.rs`, `announcer/in_scene_voiced.rs`) plus the fenced `self_inventory.rs` hunk. Oracle growth: `physical-description.json` +5 descs; `small-utils` +12 `figureGender` rows.
+
 #### 2026-11-03 — feat(wardrobe): keep v4's pronounGuidance on every wardrobe item write (P4.D349)
 
 _Versions: core 0.0.1383._
