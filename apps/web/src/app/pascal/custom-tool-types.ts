@@ -340,6 +340,12 @@ export interface CustomToolParameter {
   description?: string;
   min?: number;
   max?: number;
+  /**
+   * Operator intervention only: false hides this parameter from the hold
+   * dialog. Absent or true shows it. Ignored unless the tool's intervention
+   * block is enabled (v4 `839575d89`).
+   */
+  intervene?: boolean;
 }
 
 /**
@@ -756,6 +762,12 @@ export interface CustomToolEffect {
    * write. A template, like an outcome message.
    */
   log?: string;
+  /**
+   * Operator intervention only: false hides this effect from the hold dialog.
+   * Absent or true shows it. Ignored unless the tool's intervention block is
+   * enabled (v4 `839575d89`).
+   */
+  intervene?: boolean;
 }
 
 /** An effect that writes one value. */
@@ -1016,6 +1028,40 @@ export function outcomeTableTestsLlm(outcomes: ReadonlyArray<Pick<CustomToolOutc
 }
 
 /**
+ * Operator intervention — the hold dialog's tool-level fields, in v4's order
+ * (`custom-tool.types.ts:1303-1315`). Parameters and effects carry their own
+ * `intervene` flag. Closed: an unknown key is rejected at load.
+ */
+export const INTERVENTION_FIELD_KEYS = [
+  'roll',
+  'value',
+  'llmPrompt',
+  'llmAnswer',
+  'outcome',
+  'message',
+  'state',
+  'chipLabel',
+  'title',
+  'visibility',
+  'announcer',
+] as const;
+
+export type InterventionFieldKey = (typeof INTERVENTION_FIELD_KEYS)[number];
+
+/**
+ * v4 `CustomToolInterventionSchema` (`:1328-1343`) — a STRICT object: `enabled`
+ * is required (an empty block is ambiguous), `fields` is an optional STRICT
+ * object of optional booleans. Flags on a tool that is not intervenable, and
+ * keys naming something the tool lacks (`llmAnswer` with no `llm` block), are
+ * accepted and ignored — they can never mislead a run, and switching the
+ * master toggle off and on keeps them.
+ */
+export interface CustomToolIntervention {
+  enabled: boolean;
+  fields?: Partial<Record<InterventionFieldKey, boolean>>;
+}
+
+/**
  * The custom-tool definition.
  *
  * Unknown TOP-LEVEL keys are tolerated, which reserves room for future keys (as
@@ -1071,6 +1117,12 @@ export interface QtapCustomTool {
    * `custom-tool.types.ts:1013-1019`.)
    */
   announceAsCharacter?: boolean;
+  /**
+   * Operator intervention: hold each run a model's `run_custom` or a trigger
+   * phrase reaches for the operator before it is announced (v4 `839575d89`,
+   * `custom-tool.types.ts:1415-1419`).
+   */
+  intervention?: CustomToolIntervention;
   parameters?: Record<string, CustomToolParameter>;
   roll?: Roll;
   llm?: CustomToolLlm;
@@ -1768,7 +1820,15 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   const min = numField('min');
   const max = numField('max');
 
-  issues.push(...unrecognizedKeys(input, ['type', 'default', 'description', 'min', 'max']));
+  // v4 `839575d89`: `intervene: z.boolean().optional()`, LAST in the shape.
+  let intervene: boolean | undefined;
+  if (hasKey(input, 'intervene')) {
+    const r = parseBool(input['intervene']);
+    issues.push(...prefix('intervene', r.issues));
+    intervene = r.value;
+  }
+
+  issues.push(...unrecognizedKeys(input, ['type', 'default', 'description', 'min', 'max', 'intervene']));
 
   if (ty.value === undefined || defaultValue === undefined) return { value: undefined, issues };
   if (aborted(issues)) return { value: undefined, issues };
@@ -1813,6 +1873,7 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
   if (description !== undefined) value.description = description;
   if (min !== undefined) value.min = min;
   if (max !== undefined) value.max = max;
+  if (intervene !== undefined) value.intervene = intervene;
   return { value, issues };
 }
 
@@ -1833,6 +1894,47 @@ function parseRollDice(input: unknown): Res<string> {
     );
   }
   return { value: r.value, issues };
+}
+
+/**
+ * v4 `CustomToolInterventionSchema` (`839575d89`): a strict object whose
+ * children's issues precede its own unrecognized-key issue, and whose output
+ * follows the SCHEMA's key order (`enabled`, then `fields` in
+ * `INTERVENTION_FIELD_KEYS` order), not the file's.
+ */
+function parseIntervention(input: unknown): Res<CustomToolIntervention> {
+  if (!isPlainObject(input)) return resHard(invalidType('object', input));
+
+  const issues: Issue[] = [];
+  const enabled = parseBool(input['enabled']);
+  issues.push(...prefix('enabled', enabled.issues));
+
+  let fields: Partial<Record<InterventionFieldKey, boolean>> | undefined;
+  if (hasKey(input, 'fields')) {
+    const raw = input['fields'];
+    if (isPlainObject(raw)) {
+      const fieldIssues: Issue[] = [];
+      const out: Partial<Record<InterventionFieldKey, boolean>> = {};
+      for (const key of INTERVENTION_FIELD_KEYS) {
+        if (!hasKey(raw, key)) continue;
+        const r = parseBool(raw[key]);
+        fieldIssues.push(...prefix(key, r.issues));
+        if (r.value !== undefined) out[key] = r.value;
+      }
+      fieldIssues.push(...unrecognizedKeys(raw, INTERVENTION_FIELD_KEYS));
+      issues.push(...prefix('fields', fieldIssues));
+      fields = out;
+    } else {
+      issues.push(...prefix('fields', [hardIssue(invalidType('object', raw))]));
+    }
+  }
+
+  issues.push(...unrecognizedKeys(input, ['enabled', 'fields']));
+
+  if (enabled.value === undefined || aborted(issues)) return { value: undefined, issues };
+  const value: CustomToolIntervention = { enabled: enabled.value };
+  if (fields !== undefined) value.fields = fields;
+  return { value, issues };
 }
 
 function parseRollRange(input: unknown): Res<RollRange> {
@@ -2228,7 +2330,17 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
     log = r.value;
   }
 
-  issues.push(...unrecognizedKeys(input, ['when', 'target', 'value', 'wardrobe', 'inventory', 'log']));
+  // v4 `839575d89`: `intervene: z.boolean().optional()`, LAST in the shape.
+  let intervene: boolean | undefined;
+  if (hasKey(input, 'intervene')) {
+    const r = parseBool(input['intervene']);
+    issues.push(...prefix('intervene', r.issues));
+    intervene = r.value;
+  }
+
+  issues.push(
+    ...unrecognizedKeys(input, ['when', 'target', 'value', 'wardrobe', 'inventory', 'log', 'intervene']),
+  );
 
   if (aborted(issues)) return { value: undefined, issues };
 
@@ -2260,6 +2372,7 @@ function parseCustomToolEffect(input: unknown): Res<CustomToolEffect> {
   if (wardrobe !== undefined) effect.wardrobe = wardrobe;
   if (inventory !== undefined) effect.inventory = inventory;
   if (log !== undefined) effect.log = log;
+  if (intervene !== undefined) effect.intervene = intervene;
   return { value: effect, issues };
 }
 
@@ -2402,6 +2515,15 @@ export function safeParse(raw: unknown): SafeParseResult {
   // there. `optional()`, not `nullable()`: a `null` is refused.
   const announceAsCharacter = optBool('announceAsCharacter');
 
+  // Between `announceAsCharacter` and `parameters` in the schema's declaration
+  // order (v4 `839575d89`). `optional()`, not `nullable()`.
+  let intervention: CustomToolIntervention | undefined;
+  if (hasKey(obj, 'intervention')) {
+    const r = parseIntervention(obj['intervention']);
+    issues.push(...prefix('intervention', r.issues));
+    intervention = r.value;
+  }
+
   let parameters: Record<string, CustomToolParameter> | undefined;
   if (hasKey(obj, 'parameters')) {
     const raw2 = obj['parameters'];
@@ -2479,6 +2601,7 @@ export function safeParse(raw: unknown): SafeParseResult {
   if (revealOdds !== undefined) tool.revealOdds = revealOdds;
   if (defaultVisibility !== undefined) tool.defaultVisibility = defaultVisibility;
   if (announceAsCharacter !== undefined) tool.announceAsCharacter = announceAsCharacter;
+  if (intervention !== undefined) tool.intervention = intervention;
   if (parameters !== undefined) tool.parameters = parameters;
   if (roll !== undefined) tool.roll = roll;
   if (llm !== undefined) tool.llm = llm;
@@ -3201,7 +3324,7 @@ function flattenIssues(issues: readonly Issue[]): string[] {
 /**
  * Top-level keys the v1 format knows about, in schema order. Anything else is
  * reserved for v2. v4 derives it from `QtapCustomToolSchema.shape`; the SPA has
- * no schema object, so it is written out (17 since `a05c6f755`'s `announceAsCharacter`).
+ * no schema object, so it is written out (18 since `839575d89`'s `intervention`).
  */
 export const KNOWN_TOP_LEVEL_KEYS: readonly string[] = [
   '$schema',
@@ -3216,6 +3339,7 @@ export const KNOWN_TOP_LEVEL_KEYS: readonly string[] = [
   'revealOdds',
   'defaultVisibility',
   'announceAsCharacter',
+  'intervention',
   'parameters',
   'roll',
   'llm',

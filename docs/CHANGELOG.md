@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the intervention block in the SPA grammar twin (v4 839575d89)
+
+_Versions: SPA 0.5.908._
+
+P4.D346 item 2. The browser schema twin (`pascal/custom-tool-types.ts`) learns v4 4.11's operator-intervention grammar: the tool's strict `intervention` block (`enabled` required, an optional strict `fields` object of the eleven `INTERVENTION_FIELD_KEYS`, output in schema order), parsed and serialized between `announceAsCharacter` and `parameters`; the optional `intervene` boolean last on every parameter and effect; and `intervention` as the eighteenth known top-level key. Authored blind against v4's Zod at the pin `236c04e35` (ruling R-1): the new `custom-tool-types.intervention.spec.ts` pins 27 rows measured through v4's real `QtapCustomToolSchema` / `formatDefinitionIssues` / `collectUnknownKeys` plus v4's five `intervention-format.test.ts` cases by name. Main tolerated the block as an unknown top-level key (35 of 36 red there). The committed 716-row definition corpus is untouched and green; P4.D345 brings its regenerated copy at the unification. One pre-existing divergence is recorded, not fixed: v4 strips an unknown key inside a parameter, the twin refuses it.
+
+## November 2026
+
 #### 2026-11-02 — test(e2e): the turn-mode radiogroup in the Salon flows, and the storyteller flow
 
 _Versions: SPA 0.5.915._
