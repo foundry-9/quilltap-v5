@@ -12,6 +12,24 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the scoped floating dialog and the topmost floating layer (v4 99463fc56 + dff76ebef)
+
+_Versions: SPA 0.5.919._
+
+Builds the scoped floating-dialog primitive that v4 `99463fc56` and `dff76ebef` hang the always-on Brahma Console on (ruling R-1, the round's R-K). The Brahma Console is its only host this round.
+
+- `ui/floating-layer.ts`: `FLOATING_LAYER_ATTR` and `isInFloatingLayer`, v4's bytes.
+- `ui/floating-dialog.ts`: `qt-floating-dialog`, ported from `FloatingDialog.tsx`:
+  - the pure `loadGeometry` / `saveGeometry` / `constrainToViewport` functions;
+  - header drag that ignores the header's buttons;
+  - a `ResizeObserver` with the 2 px threshold;
+  - v4's two Escape listeners: the element listener swallows the key when `topmost`, and the document listener defers to any `[aria-modal="true"]`;
+  - the R2 semantics (`role="dialog" aria-modal="false"`, labelled by its title, `tabindex="-1"`, focus in after a frame, back to the opener on close, no Tab trap, a close button named `Close`);
+  - the `qt-floating-dialog-topmost` class and floating-layer marker when `topmost`.
+- It renders in place, `position: fixed` (`FLOATING_DIALOG_IN_PLACE`). Its body and header actions are projected, so a host's state survives it being hidden.
+- CSS: fenced appends of v4's ten launcher and floating-layer tokens in `_variables.css`; the `.qt-floating-dialog-topmost` rule and the `.qt-brahma-launcher` family as two new fenced blocks in `_surfaces.css`.
+- The spec transcribes v4's four `FloatingDialog-topmost` cases over a stand-in modal, plus geometry, drag, resize, focus and Escape cases.
+
 #### 2026-11-03 — feat(spa): wardrobe pronoun guidance — the field, the For note, the Pronoun-aware switch and pickableItems (v4 eb90d9ed8)
 
 _Versions: SPA 0.5.918._
