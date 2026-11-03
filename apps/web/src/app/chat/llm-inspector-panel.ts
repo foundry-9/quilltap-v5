@@ -14,38 +14,55 @@ import {
 import { Icon } from '../ui/icon';
 import { SlideOverPanel } from '../ui/slide-over-panel';
 import { LLMInspectorEntry } from './llm-inspector-entry';
-import type { LlmLogDto } from './llm-logs.api';
+import { LLM_LOG_TYPES, type LlmLogDto, type LlmLogType } from './llm-logs.api';
 
-/** The filter categories (v4 `LLMInspectorPanel.tsx:9`). */
+/**
+ * The filter categories (v4 `LLMInspectorPanel.tsx:10` at `236c04e35`, with
+ * P4.D344's `'storyteller'` — contract I1).
+ */
 type FilterCategory = 'all' | 'chat' | 'storyteller' | 'memory' | 'system' | 'image' | 'safety' | 'other';
 
 /**
- * Which log types each filter admits (v4 `:11-19`) — VERBATIM. `all` is null,
- * meaning "no filtering at all", NOT "every type": several of v4's nineteen log
- * types appear in no group, so they are reachable ONLY under `all`.
+ * The named groups (v4 `eb2d87788`, `LLMInspectorPanel.tsx:12-28`) — VERBATIM,
+ * one key per line so P4.D344's `storyteller` entry (between `chat` and
+ * `memory`) merges beside them.
  */
-const FILTER_GROUPS: Record<FilterCategory, string[] | null> = {
-  all: null,
+const NAMED_FILTER_GROUPS = {
   chat: ['CHAT_MESSAGE', 'TOOL_CONTINUATION'],
   // === P4.D344: Storyteller mode (v4 `b15fe9404`, `:15`) ===
   // Bids, plus every call a round ran (matched on storytellerRoundId below)
   storyteller: ['STORYTELLER_BID'],
   // === end P4.D344 ===
   memory: ['MEMORY_EXTRACTION'],
-  system: ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION'],
-  image: ['IMAGE_PROMPT_CRAFTING', 'IMAGE_DESCRIPTION', 'APPEARANCE_RESOLUTION'],
-  safety: ['DANGER_CLASSIFICATION'],
-  other: [
-    'CHARACTER_WIZARD',
-    'AI_IMPORT',
-    'CUSTOM_TOOL_CONSULT',
-    'VOICE_REWRITE',
-    // The Host's Scenario Builder (v4 `d1c06cd9d`, `LLMInspectorPanel.tsx:18`).
-    'SCENARIO_BUILDER',
+  system: ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION', 'SCENE_STATE_TRACKING'],
+  image: [
+    'IMAGE_PROMPT_CRAFTING',
+    'IMAGE_DESCRIPTION',
+    'APPEARANCE_RESOLUTION',
+    'IMAGE_GENERATION',
+    'WARDROBE_IMAGE_ANALYSIS',
+    'WARDROBE_ITEM_IMAGE',
+    'INVENTORY_ITEM_IMAGE',
   ],
+  safety: ['DANGER_CLASSIFICATION'],
+} satisfies Record<Exclude<FilterCategory, 'all' | 'other'>, LlmLogType[]>;
+
+// "Other" is everything no named group claims — derived, so a new log type is
+// never reachable only through "All". (v4 `:30-31`)
+const CLAIMED_TYPES = new Set<string>(Object.values(NAMED_FILTER_GROUPS).flat());
+
+/**
+ * Which log types each filter admits (v4 `:33-37`). `all` is null — "no
+ * filtering at all" — so a type outside the union (a newer server's) is
+ * reachable only there.
+ */
+const FILTER_GROUPS: Record<FilterCategory, readonly string[] | null> = {
+  all: null,
+  ...NAMED_FILTER_GROUPS,
+  other: LLM_LOG_TYPES.filter((type) => !CLAIMED_TYPES.has(type)),
 };
 
-/** Filter copy (v4 `:21-29`) — VERBATIM. */
+/** Filter copy (v4 `:39-48`) — VERBATIM. */
 const FILTER_LABELS: Record<FilterCategory, string> = {
   all: 'All',
   chat: 'Chat Messages',

@@ -1,63 +1,72 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
 
 import { Icon } from '../ui/icon';
-import type { LlmLogDto, LlmLogMessageSummary } from './llm-logs.api';
+import type { LlmLogDto, LlmLogMessageSummary, LlmLogType } from './llm-logs.api';
 
 /** The expanded-detail tabs (v4 `TabType`). */
 type TabType = 'request' | 'response' | 'usage';
 
 /**
- * Badge tint per log type (v4 `LLMInspectorEntry.tsx:14-27`) — VERBATIM.
- *
- * Twelve of v4's nineteen `LLMLogTypeEnum` members appear here; the rest
- * (SCENE_STATE_TRACKING, CHARACTER_OPTIMIZER, EXTERNAL_PROMPT, AUTO_CONFIGURE,
- * IMAGE_GENERATION, WARDROBE_IMAGE_ANALYSIS, ANSWER_CONFIRMATION) fall through to
- * the muted default and render their RAW type string. That is v4's behavior, not
- * an omission — do not "complete" the table.
+ * Badge tint per log type (v4 `LLMInspectorEntry.tsx:14-41` at `236c04e35`) —
+ * VERBATIM. Exhaustive over the log-type enum (v4 `eb2d87788`): "a new type does
+ * not compile until it has a badge and a label here".
  */
-const TYPE_BADGE_CLASSES: Record<string, string> = {
+const TYPE_BADGE_CLASSES: Record<LlmLogType, string> = {
   CHAT_MESSAGE: 'qt-bg-primary/15 qt-text-primary',
   TOOL_CONTINUATION: 'qt-bg-primary/15 qt-text-primary',
   MEMORY_EXTRACTION: 'qt-bg-info/15 qt-text-info',
   TITLE_GENERATION: 'qt-bg-secondary/50 qt-text-secondary',
   SUMMARIZATION: 'qt-bg-secondary/50 qt-text-secondary',
   CONTEXT_COMPRESSION: 'qt-bg-secondary/50 qt-text-secondary',
+  SCENE_STATE_TRACKING: 'qt-bg-secondary/50 qt-text-secondary',
   IMAGE_PROMPT_CRAFTING: 'qt-bg-warning/15 qt-text-warning',
   IMAGE_DESCRIPTION: 'qt-bg-warning/15 qt-text-warning',
   APPEARANCE_RESOLUTION: 'qt-bg-warning/15 qt-text-warning',
+  IMAGE_GENERATION: 'qt-bg-warning/15 qt-text-warning',
+  WARDROBE_IMAGE_ANALYSIS: 'qt-bg-warning/15 qt-text-warning',
+  WARDROBE_ITEM_IMAGE: 'qt-bg-warning/15 qt-text-warning',
+  INVENTORY_ITEM_IMAGE: 'qt-bg-warning/15 qt-text-warning',
   DANGER_CLASSIFICATION: 'qt-bg-destructive/15 qt-text-destructive',
   CHARACTER_WIZARD: 'qt-bg-success/15 qt-text-success',
   AI_IMPORT: 'qt-bg-success/15 qt-text-success',
+  CHARACTER_OPTIMIZER: 'qt-bg-success/15 qt-text-success',
+  EXTERNAL_PROMPT: 'qt-bg-success/15 qt-text-success',
+  AUTO_CONFIGURE: 'qt-bg-success/15 qt-text-success',
+  ANSWER_CONFIRMATION: 'qt-bg-info/15 qt-text-info',
   CUSTOM_TOOL_CONSULT: 'qt-bg-info/15 qt-text-info',
   VOICE_REWRITE: 'qt-bg-info/15 qt-text-info',
-  // The Host's Scenario Builder (v4 `d1c06cd9d`, `LLMInspectorEntry.tsx:29`).
   SCENARIO_BUILDER: 'qt-bg-info/15 qt-text-info',
-  // === P4.D344: a storyteller seat's bid (v4 `b15fe9404`, `:41`) ===
   STORYTELLER_BID: 'qt-bg-primary/15 qt-text-primary',
-  // === end P4.D344 ===
 };
 
-/** Badge copy per log type (v4 `:29-42`) — VERBATIM; same twelve-of-nineteen note. */
-const TYPE_LABELS: Record<string, string> = {
+/** Badge copy per log type (v4 `:43-69`) — VERBATIM; exhaustive likewise. */
+const TYPE_LABELS: Record<LlmLogType, string> = {
   CHAT_MESSAGE: 'Chat',
   TOOL_CONTINUATION: 'Tool',
   MEMORY_EXTRACTION: 'Memory',
   TITLE_GENERATION: 'Title',
   SUMMARIZATION: 'Summary',
   CONTEXT_COMPRESSION: 'Compress',
+  SCENE_STATE_TRACKING: 'Scene',
   IMAGE_PROMPT_CRAFTING: 'Img Prompt',
   IMAGE_DESCRIPTION: 'Img Desc',
   APPEARANCE_RESOLUTION: 'Appearance',
+  IMAGE_GENERATION: 'Image',
+  WARDROBE_IMAGE_ANALYSIS: 'Wardrobe Scan',
+  WARDROBE_ITEM_IMAGE: 'Wardrobe Img',
+  INVENTORY_ITEM_IMAGE: 'Inventory Img',
   DANGER_CLASSIFICATION: 'Safety',
   CHARACTER_WIZARD: 'Wizard',
   AI_IMPORT: 'Import',
+  CHARACTER_OPTIMIZER: 'Optimizer',
+  EXTERNAL_PROMPT: 'Ext Prompt',
+  AUTO_CONFIGURE: 'Auto-Config',
+  ANSWER_CONFIRMATION: 'Confirm',
   CUSTOM_TOOL_CONSULT: 'Consult',
   VOICE_REWRITE: 'Voice',
   // v4 `d1c06cd9d` (`:47`) — "Scenario" here; Wire Records says "Scenario Builder".
   SCENARIO_BUILDER: 'Scenario',
-  // === P4.D344 (v4 `:69`) ===
   STORYTELLER_BID: 'Bid',
-  // === end P4.D344 ===
 };
 
 /** UI truncation threshold for display (v4 `:243` — full content is stored in the DB). */
@@ -400,9 +409,13 @@ export class LLMInspectorEntry {
   protected readonly tabs: readonly TabType[] = ['request', 'response', 'usage'] as const;
 
   protected readonly badgeClass = computed(
-    () => TYPE_BADGE_CLASSES[this.log().type] || 'qt-bg-muted qt-text-secondary',
+    () => TYPE_BADGE_CLASSES[this.log().type as LlmLogType] ?? 'qt-bg-muted qt-text-secondary',
   );
-  protected readonly typeLabel = computed(() => TYPE_LABELS[this.log().type] || this.log().type);
+  // `??` (v4 `eb2d87788`, `:92-93`) — the tables are exhaustive, so only a type
+  // outside the union (a newer server's) reaches the fallback.
+  protected readonly typeLabel = computed(
+    () => TYPE_LABELS[this.log().type as LlmLogType] ?? this.log().type,
+  );
 
   /** v4 `formatTimestamp` (`:54-57`). */
   protected readonly timestamp = computed(() =>

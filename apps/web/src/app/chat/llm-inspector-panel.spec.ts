@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LLMInspectorPanel } from './llm-inspector-panel';
-import type { LlmLogDto } from './llm-logs.api';
+import { LLM_LOG_TYPES, type LlmLogDto } from './llm-logs.api';
 
 function log(overrides: Partial<LlmLogDto> = {}): LlmLogDto {
   return {
@@ -134,35 +134,66 @@ describe('LLMInspectorPanel — the filter (v4 :11-29, :57-62, :94-104)', () => 
   it.each([
     ['chat', ['CHAT_MESSAGE', 'TOOL_CONTINUATION']],
     ['memory', ['MEMORY_EXTRACTION']],
-    ['system', ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION']],
-    ['image', ['IMAGE_PROMPT_CRAFTING', 'IMAGE_DESCRIPTION', 'APPEARANCE_RESOLUTION']],
+    // v4 `eb2d87788` grows `system` and `image` (`LLMInspectorPanel.tsx:17-27` at `236c04e35`).
+    [
+      'system',
+      ['TITLE_GENERATION', 'SUMMARIZATION', 'CONTEXT_COMPRESSION', 'SCENE_STATE_TRACKING'],
+    ],
+    [
+      'image',
+      [
+        'IMAGE_PROMPT_CRAFTING',
+        'IMAGE_DESCRIPTION',
+        'APPEARANCE_RESOLUTION',
+        'IMAGE_GENERATION',
+        'WARDROBE_IMAGE_ANALYSIS',
+        'WARDROBE_ITEM_IMAGE',
+        'INVENTORY_ITEM_IMAGE',
+      ],
+    ],
     ['safety', ['DANGER_CLASSIFICATION']],
-    ['other', ['CHARACTER_WIZARD', 'AI_IMPORT']],
   ])('the %s group admits exactly its v4 types', (filter, types) => {
-    const every = [
-      'CHAT_MESSAGE',
-      'TOOL_CONTINUATION',
-      'MEMORY_EXTRACTION',
-      'TITLE_GENERATION',
-      'SUMMARIZATION',
-      'CONTEXT_COMPRESSION',
-      'IMAGE_PROMPT_CRAFTING',
-      'IMAGE_DESCRIPTION',
-      'APPEARANCE_RESOLUTION',
-      'DANGER_CLASSIFICATION',
-      'CHARACTER_WIZARD',
-      'AI_IMPORT',
-    ];
-    const fixture = render({ logs: every.map((t) => log({ id: t, type: t })).reverse() });
+    const fixture = render({ logs: LLM_LOG_TYPES.map((t) => log({ id: t, type: t })).reverse() });
     setFilter(fixture, filter);
     expect(entryIds(fixture).sort()).toEqual([...types].sort());
   });
 
-  it('all does NOT filter — a type in no group is reachable only there', () => {
-    // FILTER_GROUPS.all is null ("skip filtering"), not a list of every type;
-    // SCENE_STATE_TRACKING belongs to no group, so `other` must not show it.
-    const fixture = render({ logs: [log({ id: 'scene', type: 'SCENE_STATE_TRACKING' })] });
-    expect(entryIds(fixture)).toEqual(['scene']);
+  it('other is DERIVED — every log type no named group claims, in the enum’s order (v4 `eb2d87788`)', () => {
+    // v4 `:30-37`: `other: LLMLogTypeEnum.options.filter(type => !CLAIMED_TYPES.has(type))`.
+    // STORYTELLER_BID is claimed by P4.D344's `storyteller` group on the union
+    // (contract I1); before that group lands it falls to `other`, so it is
+    // set aside here and the remaining nine are v4's derived `other` at the pin.
+    const fixture = render({ logs: LLM_LOG_TYPES.map((t) => log({ id: t, type: t })).reverse() });
+    setFilter(fixture, 'other');
+    const shown = entryIds(fixture).filter((t) => t !== 'STORYTELLER_BID');
+    expect(shown).toEqual([
+      'CHARACTER_WIZARD',
+      'AI_IMPORT',
+      'CHARACTER_OPTIMIZER',
+      'EXTERNAL_PROMPT',
+      'AUTO_CONFIGURE',
+      'ANSWER_CONFIRMATION',
+      'CUSTOM_TOOL_CONSULT',
+      'VOICE_REWRITE',
+      'SCENARIO_BUILDER',
+    ]);
+  });
+
+  it('every log type is reachable through a named group or other — none only through all', () => {
+    const fixture = render({ logs: LLM_LOG_TYPES.map((t) => log({ id: t, type: t })) });
+    const reached = new Set<string>();
+    for (const option of Array.from(select(fixture).options) as HTMLOptionElement[]) {
+      if (option.value === 'all') continue;
+      setFilter(fixture, option.value);
+      for (const id of entryIds(fixture)) reached.add(id);
+    }
+    expect([...reached].sort()).toEqual([...LLM_LOG_TYPES].sort());
+  });
+
+  it('all does NOT filter — a type outside the union is reachable only there', () => {
+    // FILTER_GROUPS.all is null ("skip filtering"), not a list of every type.
+    const fixture = render({ logs: [log({ id: 'future', type: 'SOME_FUTURE_TYPE' })] });
+    expect(entryIds(fixture)).toEqual(['future']);
     setFilter(fixture, 'other');
     expect(entryIds(fixture)).toEqual([]);
   });

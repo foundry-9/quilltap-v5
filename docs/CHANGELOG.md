@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the LLM Inspector's derived Other filter and exhaustive type tables (v4 eb2d87788)
+
+_Versions: SPA 0.5.911._
+
+The LLM Inspector takes v4 `eb2d87788`'s filter shape (contract I1). `LlmLogType` is now derived from an `LLM_LOG_TYPES` value list holding v4's 25 log types in v4's enum order; it gains `INVENTORY_ITEM_IMAGE`, `CUSTOM_TOOL_CONSULT`, `VOICE_REWRITE` and `STORYTELLER_BID`, and the old lag note is retired. The panel's named groups match the pin (`system` gains `SCENE_STATE_TRACKING`, `image` gains the four image-call types), and `other` is derived as every type no named group claims, so no type is reachable only through `All`. The entry's badge and label tables are exhaustive `Record<LlmLogType, string>` maps (nine new labels such as `Image`, `Wardrobe Scan`, `Inventory Img`, `Confirm`), and the fallbacks use `??`. P4.D344 adds the `storyteller` group on the union.
+
 #### 2026-11-03 — docs(porting): P4.D353 lane record — diagrams SPA
 
 _Docs-only change._

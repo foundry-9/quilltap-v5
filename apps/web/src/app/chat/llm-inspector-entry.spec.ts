@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { LLMInspectorEntry } from './llm-inspector-entry';
-import type { LlmLogDto } from './llm-logs.api';
+import { LLM_LOG_TYPES, type LlmLogDto } from './llm-logs.api';
 
 function log(overrides: Partial<LlmLogDto> = {}): LlmLogDto {
   return {
@@ -97,30 +97,53 @@ describe('LLMInspectorEntry — the type badge (v4 :14-42, :64-65, :85-87)', () 
     return render(l).nativeElement.querySelectorAll('button[aria-expanded] > span')[1];
   }
 
+  // v4 `LLMInspectorEntry.tsx:14-68` at `236c04e35` — the tables are now
+  // EXHAUSTIVE over the 25-member enum (`eb2d87788`): "a new type does not
+  // compile until it has a badge and a label here".
   it.each([
-    ['CHAT_MESSAGE', 'Chat', 'qt-bg-primary/15'],
-    ['TOOL_CONTINUATION', 'Tool', 'qt-bg-primary/15'],
-    ['MEMORY_EXTRACTION', 'Memory', 'qt-bg-info/15'],
-    ['TITLE_GENERATION', 'Title', 'qt-bg-secondary/50'],
-    ['SUMMARIZATION', 'Summary', 'qt-bg-secondary/50'],
-    ['CONTEXT_COMPRESSION', 'Compress', 'qt-bg-secondary/50'],
-    ['IMAGE_PROMPT_CRAFTING', 'Img Prompt', 'qt-bg-warning/15'],
-    ['IMAGE_DESCRIPTION', 'Img Desc', 'qt-bg-warning/15'],
-    ['APPEARANCE_RESOLUTION', 'Appearance', 'qt-bg-warning/15'],
-    ['DANGER_CLASSIFICATION', 'Safety', 'qt-bg-destructive/15'],
-    ['CHARACTER_WIZARD', 'Wizard', 'qt-bg-success/15'],
-    ['AI_IMPORT', 'Import', 'qt-bg-success/15'],
+    ['CHAT_MESSAGE', 'Chat', 'qt-bg-primary/15 qt-text-primary'],
+    ['TOOL_CONTINUATION', 'Tool', 'qt-bg-primary/15 qt-text-primary'],
+    ['MEMORY_EXTRACTION', 'Memory', 'qt-bg-info/15 qt-text-info'],
+    ['TITLE_GENERATION', 'Title', 'qt-bg-secondary/50 qt-text-secondary'],
+    ['SUMMARIZATION', 'Summary', 'qt-bg-secondary/50 qt-text-secondary'],
+    ['CONTEXT_COMPRESSION', 'Compress', 'qt-bg-secondary/50 qt-text-secondary'],
+    ['SCENE_STATE_TRACKING', 'Scene', 'qt-bg-secondary/50 qt-text-secondary'],
+    ['IMAGE_PROMPT_CRAFTING', 'Img Prompt', 'qt-bg-warning/15 qt-text-warning'],
+    ['IMAGE_DESCRIPTION', 'Img Desc', 'qt-bg-warning/15 qt-text-warning'],
+    ['APPEARANCE_RESOLUTION', 'Appearance', 'qt-bg-warning/15 qt-text-warning'],
+    ['IMAGE_GENERATION', 'Image', 'qt-bg-warning/15 qt-text-warning'],
+    ['WARDROBE_IMAGE_ANALYSIS', 'Wardrobe Scan', 'qt-bg-warning/15 qt-text-warning'],
+    ['WARDROBE_ITEM_IMAGE', 'Wardrobe Img', 'qt-bg-warning/15 qt-text-warning'],
+    ['INVENTORY_ITEM_IMAGE', 'Inventory Img', 'qt-bg-warning/15 qt-text-warning'],
+    ['DANGER_CLASSIFICATION', 'Safety', 'qt-bg-destructive/15 qt-text-destructive'],
+    ['CHARACTER_WIZARD', 'Wizard', 'qt-bg-success/15 qt-text-success'],
+    ['AI_IMPORT', 'Import', 'qt-bg-success/15 qt-text-success'],
+    ['CHARACTER_OPTIMIZER', 'Optimizer', 'qt-bg-success/15 qt-text-success'],
+    ['EXTERNAL_PROMPT', 'Ext Prompt', 'qt-bg-success/15 qt-text-success'],
+    ['AUTO_CONFIGURE', 'Auto-Config', 'qt-bg-success/15 qt-text-success'],
+    ['ANSWER_CONFIRMATION', 'Confirm', 'qt-bg-info/15 qt-text-info'],
+    ['CUSTOM_TOOL_CONSULT', 'Consult', 'qt-bg-info/15 qt-text-info'],
+    ['VOICE_REWRITE', 'Voice', 'qt-bg-info/15 qt-text-info'],
+    ['SCENARIO_BUILDER', 'Scenario', 'qt-bg-info/15 qt-text-info'],
+    ['STORYTELLER_BID', 'Bid', 'qt-bg-primary/15 qt-text-primary'],
   ])('labels and tints %s as "%s"', (type, label, tint) => {
     const el = badge(log({ type }));
     expect(text(el)).toBe(label);
     expect(el.className).toContain(tint);
   });
 
-  it('falls back to the RAW type string + muted tint for a type outside the table', () => {
-    // v4's tables cover 12 of the 19 LLMLogTypeEnum members; the rest land here
-    // BY DESIGN (v4 :64-65) — this is ported behavior, not a gap to fill in.
-    const el = badge(log({ type: 'SCENE_STATE_TRACKING' }));
-    expect(text(el)).toBe('SCENE_STATE_TRACKING');
+  it('covers every member of the 25-type union — each with a label that is not its raw name', () => {
+    expect(LLM_LOG_TYPES).toHaveLength(25);
+    for (const type of LLM_LOG_TYPES) {
+      const el = badge(log({ type }));
+      expect(text(el)).not.toBe(type);
+      expect(el.className).not.toContain('qt-bg-muted');
+    }
+  });
+
+  it('falls back (`??`) to the RAW type string + muted tint for a type outside the union', () => {
+    const el = badge(log({ type: 'SOME_FUTURE_TYPE' }));
+    expect(text(el)).toBe('SOME_FUTURE_TYPE');
     expect(el.className).toContain('qt-bg-muted');
     expect(el.className).toContain('qt-text-secondary');
   });

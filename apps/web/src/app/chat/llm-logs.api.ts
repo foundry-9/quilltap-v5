@@ -19,45 +19,42 @@ import type { LlmLogsListRequest } from '../core/core-contract';
 export type { LlmLogsListRequest } from '../core/core-contract';
 
 /**
- * The log types (v4 `LLMLogTypeEnum`, `llm-log.types.ts`) — nineteen, plus
- * `SCENARIO_BUILDER` (v4 `d1c06cd9d`), plus `WARDROBE_ITEM_IMAGE` (v4
- * `7c8572869`, `llm-log.types.ts:36` at `f5e953a3f` — P4.D261): 21 here.
- * ⚠ v4's enum ALSO carries `CUSTOM_TOOL_CONSULT` and `VOICE_REWRITE`, which
- * this union has never picked up (23 in v4 at `f5e953a3f`); nothing narrows on
- * it today, so the lag is recorded for a housekeeping pass rather than widened
- * here (P4.D218; P4.D261 keeps that rule — it adds only its own type).
- *
- * Note the Inspector's badge/filter tables cover only twelve of them — the other
- * seven fall through to the unknown-type arms BY DESIGN (see
- * {@link import('./llm-inspector-entry').LLMInspectorEntry}); v4 is the same.
+ * The log types — v4 `LLMLogTypeEnum` (`lib/schemas/llm-log.types.ts:17-44` at
+ * `236c04e35`), all twenty-five, IN v4's ORDER. A VALUE list, not just a type:
+ * the Inspector derives its `other` filter from it (v4 `eb2d87788`,
+ * `LLMInspectorPanel.tsx:30-37` — `LLMLogTypeEnum.options.filter(…)`), so the
+ * order of the list is the order `other` lists its types in.
  */
-export type LlmLogType =
-  | 'CHAT_MESSAGE'
-  | 'TOOL_CONTINUATION'
-  | 'MEMORY_EXTRACTION'
-  | 'TITLE_GENERATION'
-  | 'CONTEXT_COMPRESSION'
-  | 'SUMMARIZATION'
-  | 'IMAGE_PROMPT_CRAFTING'
-  | 'CHARACTER_WIZARD'
-  | 'IMAGE_DESCRIPTION'
-  | 'DANGER_CLASSIFICATION'
-  | 'APPEARANCE_RESOLUTION'
-  | 'AI_IMPORT'
-  | 'SCENE_STATE_TRACKING'
-  | 'CHARACTER_OPTIMIZER'
-  | 'EXTERNAL_PROMPT'
-  | 'AUTO_CONFIGURE'
-  | 'IMAGE_GENERATION'
-  | 'WARDROBE_IMAGE_ANALYSIS'
-  // A wardrobe item's picture — the provider's image call itself, success or
-  // failure (v4 `7c8572869`, `lib/wardrobe/item-image-generation.ts:233, 249`).
-  | 'WARDROBE_ITEM_IMAGE'
-  | 'ANSWER_CONFIRMATION'
-  // The Host's Scenario Builder (v4 `d1c06cd9d` adds it to `LLMLogTypeEnum`).
-  | 'SCENARIO_BUILDER'
-  // === P4.D344: a storyteller seat's bid call (v4 `b15fe9404`, appended last) ===
-  | 'STORYTELLER_BID';
+export const LLM_LOG_TYPES = [
+  'CHAT_MESSAGE',
+  'TOOL_CONTINUATION',
+  'MEMORY_EXTRACTION',
+  'TITLE_GENERATION',
+  'CONTEXT_COMPRESSION',
+  'SUMMARIZATION',
+  'IMAGE_PROMPT_CRAFTING',
+  'CHARACTER_WIZARD',
+  'IMAGE_DESCRIPTION',
+  'DANGER_CLASSIFICATION',
+  'APPEARANCE_RESOLUTION',
+  'AI_IMPORT',
+  'SCENE_STATE_TRACKING',
+  'CHARACTER_OPTIMIZER',
+  'EXTERNAL_PROMPT',
+  'AUTO_CONFIGURE',
+  'IMAGE_GENERATION',
+  'WARDROBE_IMAGE_ANALYSIS',
+  'WARDROBE_ITEM_IMAGE',
+  'INVENTORY_ITEM_IMAGE',
+  'ANSWER_CONFIRMATION',
+  'CUSTOM_TOOL_CONSULT',
+  'VOICE_REWRITE',
+  'SCENARIO_BUILDER',
+  'STORYTELLER_BID',
+] as const;
+
+/** One member of {@link LLM_LOG_TYPES} (v4 `LLMLogType`). */
+export type LlmLogType = (typeof LLM_LOG_TYPES)[number];
 
 /** One prompt message in a logged request (v4 `LLMLogMessageSummarySchema` :44-49). */
 export interface LlmLogMessageSummary {
