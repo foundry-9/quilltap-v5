@@ -18,6 +18,12 @@
 //! control against that same v4 source — byte-identical both ways (P4.D211's
 //! discharge of `zod_version_guard` for the `6b0615807` bump).
 //!
+//! P4.D345 (the `236c04e35` round's ONE regen, R-F): +31 `definition` rows for
+//! v4 `839575d89`'s `intervention` block and `intervene` flags; the 716
+//! pre-existing rows re-recorded byte-identical at the pin. The copy the SPA
+//! replays is `apps/web/src/testing/fixtures/pascal-custom-tool-definition.
+//! oracle.ndjson` (byte-equal).
+//!
 //! Generate the oracle output (v4 @ 231be14c, Node 24
 //! `~/.nvm/versions/node/v24.13.1/bin`; the pinned detached worktree):
 //!   cd ~/source/quilltap-server

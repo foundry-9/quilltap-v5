@@ -880,6 +880,54 @@ const corpus: Array<[string, unknown]> = [
   ['inventory-effect-unknown-key-list', withEffects([{ inventory: { action: 'equip', items: ['x'] }, colour: 'red' }])],
   // === end P4.D329 rows ===
 
+  // === P4.D345 rows (append-only; the round's ONE regen — R-F) ===
+  // v4 `839575d89` at the `236c04e35` pin: the tool-level `intervention` block
+  // (`z.strictObject({enabled: z.boolean(), fields: z.strictObject({…eleven
+  // keys…}).optional()})`, between `announceAsCharacter` and `parameters` —
+  // the 18th known top-level key) and `intervene: z.boolean().optional()` on a
+  // parameter (after `max`) and on an effect (after `log`). Flags on a
+  // non-intervenable tool, and keys naming something the tool lacks, are
+  // accepted and inert.
+  ['intervention-enabled-bare', { ...BASE, intervention: { enabled: true } }],
+  ['intervention-with-fields', { ...BASE, intervention: { enabled: true, fields: {
+    roll: false, value: false, llmPrompt: false, llmAnswer: false, outcome: false, message: false,
+    state: false, chipLabel: false, title: false, visibility: false, announcer: false,
+  } } }],
+  ['intervention-fields-author-order', { ...BASE, intervention: { fields: { announcer: true, roll: false }, enabled: true } }],
+  ['intervention-disabled-kept', { ...BASE, intervention: { enabled: false, fields: { title: false } } }],
+  ['intervention-empty-block', { ...BASE, intervention: {} }],
+  ['intervention-enabled-null', { ...BASE, intervention: { enabled: null } }],
+  ['intervention-enabled-string', { ...BASE, intervention: { enabled: 'yes' } }],
+  ['intervention-unknown-field-key', { ...BASE, intervention: { enabled: true, fields: { bogus: true } } }],
+  ['intervention-unknown-field-keys-two', { ...BASE, intervention: { enabled: true, fields: { bogus: true, roll: 'no', other: 1 } } }],
+  ['intervention-fields-null', { ...BASE, intervention: { enabled: true, fields: null } }],
+  ['intervention-field-flag-string', { ...BASE, intervention: { enabled: true, fields: { roll: 'no' } } }],
+  ['intervention-flags-inert', { ...BASE, intervention: { enabled: true, fields: { llmAnswer: false } } }],
+  ['intervention-not-object', { ...BASE, intervention: 'yes' }],
+  ['intervention-null', { ...BASE, intervention: null }],
+  ['intervention-unknown-key-in-block', { ...BASE, intervention: { enabled: true, colour: 'red' } }],
+  ['intervention-issue-order', { ...BASE, announceAsCharacter: 'yes', intervention: { enabled: 'no' }, parameters: 5 }],
+  ['parameter-intervene-false', { ...BASE, parameters: { scale: { type: 'number', default: 1, intervene: false } } }],
+  ['parameter-intervene-true', { ...BASE, parameters: { scale: { type: 'number', default: 1, max: 9, intervene: true } } }],
+  ['parameter-intervene-string', { ...BASE, parameters: { scale: { type: 'number', default: 1, intervene: 'no' } } }],
+  ['parameter-intervene-null', { ...BASE, parameters: { scale: { type: 'number', default: 1, intervene: null } } }],
+  ['parameter-intervene-unknown-beside', { ...BASE, parameters: { scale: { type: 'number', default: 1, intervene: false, bogus: 1 } } }],
+  ['effect-intervene-false-write', withEffects([{ target: 'state.x', value: 1, intervene: false }])],
+  ['effect-intervene-false-wardrobe', withEffects([{ wardrobe: { action: 'wear', items: ['Hat'] }, intervene: false }])],
+  ['effect-intervene-false-inventory', withEffects([{ inventory: { action: 'equip', items: ['lantern'] }, intervene: false }])],
+  ['effect-intervene-false-log', withEffects([{ log: 'a line', intervene: false }])],
+  ['effect-intervene-true-key-order', withEffects([{ intervene: true, when: { outcome: { eq: 'info' } }, target: 'state.x', value: 1 }])],
+  ['effect-intervene-string', withEffects([{ target: 'state.x', value: 1, intervene: 'no' }])],
+  ['effect-intervene-unknown-beside', withEffects([{ target: 'state.x', value: 1, intervene: false, colour: 'red' }])],
+  ['intervention-whole-tool', { ...BASE, ...LLM_BLOCK, chipLabel: 'Chip', announceAsCharacter: true,
+    intervention: { enabled: true, fields: { chipLabel: false } },
+    parameters: { scale: { type: 'number', default: 1, intervene: false }, mood: { type: 'string', default: 'calm' } },
+    effects: [{ target: 'state.x', value: 1 }, { log: 'line', intervene: false }],
+  }],
+  ['unknown-keys-intervention-known', { ...BASE, intervention: { enabled: true }, bogus: 1 }],
+  ['unknown-keys-intervention-bogus-inside', { ...BASE, intervention: { enabled: true, bogus: 1 }, persist: true }],
+  // === end P4.D345 rows ===
+
   // ---- effects: accepted --------------------------------------------------
   ['effect-literal-number', withEffects([{ target: 'state.encounter.count', value: 3 }])],
   ['effect-literal-negative-number', withEffects([{ target: 'state.debt', value: -12.5 }])],

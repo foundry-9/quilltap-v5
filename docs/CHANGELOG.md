@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): operator-intervention grammar — the intervention block, intervene flags, the one definition-corpus regen (P4.D345)
+
+_Versions: core 0.0.1383, SPA 0.5.908._
+
+The custom-tool definition parser accepts v4 `839575d89`'s `intervention` block (`{enabled, fields?}` with eleven optional boolean field flags, both strict) between `announceAsCharacter` and `parameters`, and an `intervene` boolean on parameters and effects. `intervention` is the 18th known top-level key. A parameter declaration now strips unknown keys instead of refusing them, matching v4's plain `z.object`. The definition corpus was regenerated once at the `236c04e35` pin: +31 rows, 747 total, with the 716 existing rows byte-identical. The SPA fixture copy is byte-equal.
+
 #### 2026-11-03 — docs(porting): P4.D343 lane close — the gate, the OPEN items, the hand-offs
 
 _Docs-only change._

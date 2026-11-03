@@ -585,6 +585,12 @@ pub struct CustomToolParameter {
         serialize_with = "ser_opt_js_number"
     )]
     pub max: Option<f64>,
+    // === P4.D345: operator intervention (v4 `839575d89`) ===
+    /// Operator intervention only: `false` hides this parameter from the hold
+    /// dialog. Absent or `true` shows it. Ignored unless the tool's
+    /// `intervention` block is enabled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intervene: Option<bool>,
 }
 
 /// Form A — a uniform roll over a numeric range, with an optional transform.
@@ -1322,6 +1328,10 @@ pub struct CustomToolEffect {
     /// run.
     pub when: Option<EffectCondition>,
     pub body: CustomToolEffectBody,
+    // === P4.D345: operator intervention (v4 `839575d89`) ===
+    /// Operator intervention only: `false` hides this effect from the hold
+    /// dialog. Absent or `true` shows it.
+    pub intervene: Option<bool>,
 }
 
 /// The two halves an effect may be (see [`CustomToolEffect`]).
@@ -1390,6 +1400,10 @@ impl Serialize for CustomToolEffect {
             CustomToolEffectBody::Log(line) => {
                 m.serialize_entry("log", line)?;
             }
+        }
+        // === P4.D345: `intervene` — the shape's LAST key ===
+        if let Some(intervene) = self.intervene {
+            m.serialize_entry("intervene", &intervene)?;
         }
         m.end()
     }
@@ -1481,6 +1495,8 @@ struct EffectParts {
     inventory: Option<CustomToolInventoryGesture>,
     // === P4.D331: the log line ===
     log: Option<String>,
+    // === P4.D345: operator intervention ===
+    intervene: Option<bool>,
 }
 
 impl EffectParts {
@@ -1511,6 +1527,7 @@ impl EffectParts {
         Some(CustomToolEffect {
             when: self.when.clone(),
             body,
+            intervene: self.intervene,
         })
     }
 }
@@ -1657,7 +1674,9 @@ pub fn parse_effect_target(target: &str) -> Result<EffectTarget, String> {
 /// notably `persist` — without breaking older builds. [`collect_unknown_keys`]
 /// surfaces them for a debug log.
 ///
-/// That tolerance stops at the top level: every nested object below is strict.
+/// That tolerance stops at the top level: every nested object below is strict
+/// (bar a parameter declaration, a plain `z.object` whose unknown keys are
+/// stripped — P4.D345).
 /// The forward-compatibility argument does not reach them, and inside a `when`
 /// an unrecognised key is overwhelmingly a misspelled comparator — which, if
 /// tolerated, silently drops the test and leaves a row of the outcome table
@@ -1709,6 +1728,12 @@ pub struct QtapCustomTool {
         skip_serializing_if = "Option::is_none"
     )]
     pub announce_as_character: Option<bool>,
+    // === P4.D345: operator intervention (v4 `839575d89`) ===
+    /// Hold each run a model's `run_custom` or a trigger phrase reaches, so the
+    /// operator can adjust, force or veto it before it is announced. Between
+    /// `announceAsCharacter` and `parameters` in v4's shape.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub intervention: Option<CustomToolIntervention>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "ser_opt_parameters"
@@ -1727,6 +1752,148 @@ pub struct QtapCustomTool {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effects: Option<Vec<CustomToolEffect>>,
     pub outcomes: Vec<CustomToolOutcome>,
+}
+
+// === P4.D345: operator intervention (v4 `839575d89`) =========================
+
+/// The parts of a run that are not objects in the file — so their intervention
+/// flags live in the tool-level `intervention.fields` block rather than on the
+/// member itself (parameters and effects carry their own `intervene` flag).
+/// Closed: an unknown key is rejected at load. The ORDER is load-bearing — the
+/// hold's eligibility walks it (v4 `INTERVENTION_FIELD_KEYS`).
+pub const INTERVENTION_FIELD_KEYS: [&str; 11] = [
+    "roll",
+    "value",
+    "llmPrompt",
+    "llmAnswer",
+    "outcome",
+    "message",
+    "state",
+    "chipLabel",
+    "title",
+    "visibility",
+    "announcer",
+];
+
+/// The per-field flags of an `intervention` block, one `Option<bool>` per
+/// [`INTERVENTION_FIELD_KEYS`] entry (in that order). Serialized in that
+/// order, present keys only — Zod's strict-object output.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InterventionFields {
+    flags: [Option<bool>; 11],
+}
+
+impl InterventionFields {
+    /// The flag for one field key; `None` for an absent flag or a key outside
+    /// [`INTERVENTION_FIELD_KEYS`].
+    pub fn get(&self, key: &str) -> Option<bool> {
+        INTERVENTION_FIELD_KEYS
+            .iter()
+            .position(|k| *k == key)
+            .and_then(|i| self.flags[i])
+    }
+}
+
+impl Serialize for InterventionFields {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut m = s.serialize_map(None)?;
+        for (key, flag) in INTERVENTION_FIELD_KEYS.iter().zip(self.flags.iter()) {
+            if let Some(flag) = flag {
+                m.serialize_entry(key, flag)?;
+            }
+        }
+        m.end()
+    }
+}
+
+/// Operator intervention: an intervenable tool's run, reached by a model's
+/// `run_custom` or a trigger phrase, is held for the operator before it is
+/// announced. Flags on a tool that is not intervenable, and keys naming
+/// something the tool lacks (`llmAnswer` with no `llm` block), are accepted and
+/// ignored (v4 `CustomToolInterventionSchema`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CustomToolIntervention {
+    pub enabled: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields: Option<InterventionFields>,
+}
+
+/// v4 `CustomToolInterventionSchema` — `z.strictObject({enabled: z.boolean(),
+/// fields: z.strictObject({<key>: z.boolean().optional()}).optional()})`.
+fn parse_custom_tool_intervention(input: Option<&Value>) -> Res<CustomToolIntervention> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+    let mut issues = Vec::new();
+
+    let enabled = parse_bool(obj.get("enabled"));
+    issues.extend(prefix("enabled", enabled.issues));
+
+    let fields = match obj.get("fields") {
+        Some(v) => {
+            let r = parse_intervention_fields(Some(v));
+            issues.extend(prefix("fields", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    issues.extend(unrecognized_keys(obj, &["enabled", "fields"]));
+
+    let Some(enabled) = enabled.value else {
+        return Res {
+            value: None,
+            issues,
+        };
+    };
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    Res {
+        value: Some(CustomToolIntervention { enabled, fields }),
+        issues,
+    }
+}
+
+fn parse_intervention_fields(input: Option<&Value>) -> Res<InterventionFields> {
+    let obj = match as_object(input) {
+        Ok(o) => o,
+        Err(e) => {
+            return Res {
+                value: None,
+                issues: e.issues,
+            }
+        }
+    };
+    let mut issues = Vec::new();
+    let mut fields = InterventionFields::default();
+    for (i, key) in INTERVENTION_FIELD_KEYS.iter().enumerate() {
+        if let Some(v) = obj.get(*key) {
+            let r = parse_bool(Some(v));
+            issues.extend(prefix(key, r.issues));
+            fields.flags[i] = r.value;
+        }
+    }
+    issues.extend(unrecognized_keys(obj, &INTERVENTION_FIELD_KEYS));
+    if aborted(&issues) {
+        return Res {
+            value: None,
+            issues,
+        };
+    }
+    Res {
+        value: Some(fields),
+        issues,
+    }
 }
 
 impl QtapCustomTool {
@@ -3087,11 +3254,21 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
     };
     let min = num_field("min", &mut issues);
     let max = num_field("max", &mut issues);
+    // === P4.D345: `intervene: z.boolean().optional()` — after `max` ===
+    let intervene = match obj.get("intervene") {
+        Some(v) => {
+            let r = parse_bool(Some(v));
+            issues.extend(prefix("intervene", r.issues));
+            r.value
+        }
+        None => None,
+    };
 
-    issues.extend(unrecognized_keys(
-        obj,
-        &["type", "default", "description", "min", "max"],
-    ));
+    // NO strict tail: v4's `CustomToolParameterSchema` is a plain `z.object`
+    // (measured at the `236c04e35` pin AND at `322a5488e`), so an unknown key
+    // beside a parameter's own is STRIPPED, not refused — the one nested object
+    // in the format that is not strict. Found by P4.D345's
+    // `parameter-intervene-unknown-beside` row (v5 had refused it since P4.6ay).
 
     let (Some(param_type), Some(default)) = (ty.value, default) else {
         return Res {
@@ -3165,6 +3342,7 @@ fn parse_parameter(input: Option<&Value>) -> Res<CustomToolParameter> {
             description,
             min,
             max,
+            intervene,
         }),
         issues,
     }
@@ -3769,10 +3947,28 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
         None => None,
     };
 
-    // The pin's six keys (R-G).
+    // === P4.D345: `intervene: z.boolean().optional()` — after `log` ===
+    let intervene = match obj.get("intervene") {
+        Some(v) => {
+            let r = parse_bool(Some(v));
+            issues.extend(prefix("intervene", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
+    // The pin's seven keys (R-G; `intervene` by P4.D345).
     issues.extend(unrecognized_keys(
         obj,
-        &["when", "target", "value", "wardrobe", "inventory", "log"],
+        &[
+            "when",
+            "target",
+            "value",
+            "wardrobe",
+            "inventory",
+            "log",
+            "intervene",
+        ],
     ));
 
     if aborted(&issues) {
@@ -3813,6 +4009,7 @@ fn parse_custom_tool_effect(input: Option<&Value>) -> Res<EffectParts> {
             wardrobe,
             inventory,
             log,
+            intervene,
         }),
         issues,
     }
@@ -4089,6 +4286,16 @@ fn safe_parse_v8_ordered(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues
     // `z.boolean().optional()` — `null` is refused (optional is not nullable).
     let announce_as_character = opt_bool("announceAsCharacter", &mut issues);
 
+    // === P4.D345: `intervention: CustomToolInterventionSchema.optional()` ===
+    let intervention = match obj.get("intervention") {
+        Some(v) => {
+            let r = parse_custom_tool_intervention(Some(v));
+            issues.extend(prefix("intervention", r.issues));
+            r.value
+        }
+        None => None,
+    };
+
     let parameters = match obj.get("parameters") {
         Some(Value::Object(p)) => {
             let r = parse_record(p, identifier_key, |v| parse_parameter(Some(v)));
@@ -4257,6 +4464,7 @@ fn safe_parse_v8_ordered(raw: &Value) -> Result<QtapCustomTool, DefinitionIssues
         reveal_odds,
         default_visibility,
         announce_as_character,
+        intervention,
         parameters,
         roll,
         llm,
@@ -5395,8 +5603,9 @@ fn flatten_issues(issues: &[Issue]) -> Vec<String> {
 /// key is known for free there; here it is written by hand, and the definition
 /// corpus's `unknown-keys-triggers-known` row is the tripwire for a key added
 /// to the shape but not to this list (as is `unknown-keys-announce-as-
-/// character-known`, for the seventeenth — v4 `a05c6f755`).
-const KNOWN_TOP_LEVEL_KEYS: [&str; 17] = [
+/// character-known`, for the seventeenth — v4 `a05c6f755`; and `unknown-keys-
+/// intervention-known`, for the eighteenth — v4 `839575d89`).
+const KNOWN_TOP_LEVEL_KEYS: [&str; 18] = [
     "$schema",
     "name",
     "title",
@@ -5409,6 +5618,8 @@ const KNOWN_TOP_LEVEL_KEYS: [&str; 17] = [
     "revealOdds",
     "defaultVisibility",
     "announceAsCharacter",
+    // === P4.D345: the eighteenth (v4 `839575d89`) ===
+    "intervention",
     "parameters",
     "roll",
     "llm",
@@ -5441,6 +5652,28 @@ pub fn collect_unknown_keys(raw: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// P4.D345: `intervention` is the eighteenth known top-level key (v4
+    /// `839575d89`) — never reported as unknown, beside a key that is.
+    #[test]
+    fn collect_unknown_keys_knows_the_eighteenth_key() {
+        assert_eq!(KNOWN_TOP_LEVEL_KEYS.len(), 18);
+        assert_eq!(
+            KNOWN_TOP_LEVEL_KEYS
+                .iter()
+                .position(|k| *k == "intervention"),
+            KNOWN_TOP_LEVEL_KEYS
+                .iter()
+                .position(|k| *k == "announceAsCharacter")
+                .map(|i| i + 1)
+        );
+        let raw = serde_json::json!({
+            "name": "probe",
+            "intervention": {"enabled": true},
+            "bogus": 1,
+        });
+        assert_eq!(collect_unknown_keys(&raw), vec!["bogus".to_string()]);
+    }
 
     /// The ACCEPT half of `parseEffectTarget`. The rejection sentences are
     /// byte-pinned by the definition differential (they surface verbatim as

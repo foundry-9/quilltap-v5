@@ -6,6 +6,19 @@ and investigate the diff — do not patch the fixture.
 
 ## `pascal-custom-tool-definition.oracle.ndjson`
 
+_Refreshed 2026-11-03 at the `236c04e35` pin (P4.D345 — the round's ONE
+regen, R-F): 31 `definition` rows for v4 `839575d89`'s operator intervention
+(the `intervention` block — the 18th known top-level key — and `intervene` on a
+parameter and on an effect; 15 accepted, 16 refused), in the fenced
+`=== P4.D345 rows ===` block after the P4.D329 rows. The 716 pre-existing rows
+re-recorded byte-identical at the pin. 716 → **747 rows** (10 `title` + 638
+`definition` [224 accept / 414 reject] + 99 `gate`); md5
+`99a010307e9c4602e7786d6cfb5db473`, sha256
+`4ab4d8fd8ab5c7523a2d5e4d75a2d6933e7107187a9730d6a33e268898167f14`. One row
+(`parameter-intervene-unknown-beside`) records that v4's parameter schema is a
+plain `z.object` — an unknown key beside a parameter is STRIPPED, not refused
+(the SPA twin's parameter parse must agree — P4.D346)._
+
 _Refreshed 2026-09-09 at v4 `25f534c0b` (the progressions round's unification,
 from a pinned worktree): the Pascal lane (P4.D169) grew the shared generator by
 40 `definition` + 21 `gate` rows for the `progress` family, and the round's
