@@ -25,7 +25,8 @@ use serde_json::{Map, Value};
 use crate::api::zod_issues::{key, ZodIssue, MAX_SAFE_INTEGER};
 use crate::recall_tags::{
     BoostGate, ContextTag, RecallMultiplierTable, TemporalTag, TimeWindow, CONTEXT_VALUES,
-    RECALL_MULTIPLIERS, RECALL_MULTIPLIER_KEYS, TEMPORAL_VALUES,
+    INNER_CIRCLE_ALLOWANCE, INNER_CIRCLE_ARCHIVE_SHARE, RECALL_MULTIPLIERS, RECALL_MULTIPLIER_KEYS,
+    TEMPORAL_VALUES,
 };
 
 /// R4 — order among the eligible entity anchors.
@@ -83,6 +84,14 @@ pub struct ResolvedRecallTuning {
     /// filter. 0 = off. Inert while the gate is off (the gate defines
     /// "clears").
     pub background_reserve: f64,
+    /// Share of the frozen archive — entries and tokens — the inner circle may
+    /// take (v4 `a5efdbb97`).
+    pub inner_circle_share: f64,
+    /// Digests per inner-circle member by tier, tightest first; the last entry
+    /// covers every looser tier. A `Cow` so [`DEFAULT_RECALL_TUNING`] stays a
+    /// `const` (borrowing [`INNER_CIRCLE_ALLOWANCE`]) while a replay's tuning
+    /// owns its table (P4.D342 R-1).
+    pub inner_circle_allowance: std::borrow::Cow<'static, [i64]>,
 }
 
 /// v4 `DEFAULT_RECALL_TUNING` (`{ multipliers: {...RECALL_MULTIPLIERS},
@@ -102,6 +111,8 @@ pub const DEFAULT_RECALL_TUNING: ResolvedRecallTuning = ResolvedRecallTuning {
     anchor_min_hits: 1,
     anchor_order: AnchorOrder::Rarest,
     background_reserve: 0.0,
+    inner_circle_share: INNER_CIRCLE_ARCHIVE_SHARE,
+    inner_circle_allowance: std::borrow::Cow::Borrowed(&INNER_CIRCLE_ALLOWANCE),
 };
 
 /// A validated `tuning` body field (v4 `RecallTuningInput`). The three gate
@@ -121,6 +132,8 @@ pub struct RecallTuningInput {
     pub anchor_min_hits: Option<i64>,
     pub anchor_order: Option<AnchorOrder>,
     pub background_reserve: Option<f64>,
+    pub inner_circle_share: Option<f64>,
+    pub inner_circle_allowance: Option<Vec<i64>>,
 }
 
 /// A validated `signals` body field (v4 `RecallReplaySignalsSchema`'s output
@@ -195,6 +208,13 @@ pub fn resolve_recall_tuning(input: Option<&RecallTuningInput>) -> ResolvedRecal
         background_reserve: input
             .background_reserve
             .unwrap_or(DEFAULT_RECALL_TUNING.background_reserve),
+        inner_circle_share: input
+            .inner_circle_share
+            .unwrap_or(DEFAULT_RECALL_TUNING.inner_circle_share),
+        inner_circle_allowance: match &input.inner_circle_allowance {
+            Some(table) => std::borrow::Cow::Owned(table.clone()),
+            None => DEFAULT_RECALL_TUNING.inner_circle_allowance,
+        },
     }
 }
 
@@ -296,6 +316,16 @@ pub fn describe_recall_tuning(tuning: &ResolvedRecallTuning) -> String {
             n(tuning.background_reserve)
         ));
     }
+    if tuning.inner_circle_share != d.inner_circle_share {
+        parts.push(format!("innerCircleShare={}", n(tuning.inner_circle_share)));
+    }
+    // v4 compares the two tables by their `,`-joined TEXT, so a restated
+    // default is "defaults" and a longer table with the same head is not.
+    let joined = |t: &[i64]| t.iter().map(|v| n(*v as f64)).collect::<Vec<_>>().join(",");
+    let allowance = joined(&tuning.inner_circle_allowance);
+    if allowance != joined(&d.inner_circle_allowance) {
+        parts.push(format!("innerCircleAllowance=[{allowance}]"));
+    }
     if parts.is_empty() {
         "defaults".into()
     } else {
@@ -394,6 +424,39 @@ fn zod_string_array(
     (issues.len() == before).then_some(out)
 }
 
+/// `z.array(z.number().int().min(0).max(20)).min(1).max(10)` at `path` — the
+/// inner-circle allowance table (see the caller).
+fn zod_int_table(got: &Value, path: &[Value], issues: &mut Vec<ZodIssue>) -> Option<Vec<i64>> {
+    let Value::Array(items) = got else {
+        issues.push(ZodIssue::invalid_type("array", path.to_vec(), Some(got)));
+        return None;
+    };
+    if items.len() > 10 {
+        issues.push(ZodIssue::too_big_array(Value::from(10), path.to_vec()));
+        return None;
+    }
+    let before = issues.len();
+    let mut out = Vec::with_capacity(items.len());
+    for (i, item) in items.iter().enumerate() {
+        let mut p = path.to_vec();
+        p.push(Value::from(i));
+        if let Some(v) = zod_number(item, &p, true, 0.0, 20.0, issues) {
+            out.push(v as i64);
+        }
+    }
+    if items.is_empty() {
+        issues.push(ZodIssue::TooSmall {
+            origin: "array",
+            code: "too_small",
+            minimum: Value::from(1),
+            inclusive: true,
+            path: path.to_vec(),
+            message: "Too small: expected array to have >=1 items".to_string(),
+        });
+    }
+    (issues.len() == before).then_some(out)
+}
+
 /// `z.enum(values)` at `path` (no separate type gate — a non-string misses
 /// the domain the same way).
 fn zod_enum<'v>(
@@ -422,7 +485,7 @@ fn unrecognized(obj: &Map<String, Value>, shape: &[&str], path: Vec<Value>) -> O
     (!extra.is_empty()).then(|| ZodIssue::unrecognized_keys(extra, path))
 }
 
-const TUNING_SHAPE: [&str; 11] = [
+const TUNING_SHAPE: [&str; 13] = [
     "boostGateAbs",
     "boostGateMargin",
     "boostGateRamp",
@@ -434,6 +497,8 @@ const TUNING_SHAPE: [&str; 11] = [
     "anchorMinHits",
     "anchorOrder",
     "backgroundReserve",
+    "innerCircleShare",
+    "innerCircleAllowance",
 ];
 
 /// v4 `RecallTuningInputSchema.optional().safeParse(value)` over a PRESENT
@@ -523,9 +588,22 @@ pub fn validate_recall_tuning_input(
                     .and_then(AnchorOrder::parse);
                 input.anchor_order.is_some()
             }
-            _ => {
+            "backgroundReserve" => {
                 input.background_reserve = zod_number(got, &path, false, 0.0, 0.5, &mut issues);
                 input.background_reserve.is_some()
+            }
+            "innerCircleShare" => {
+                input.inner_circle_share = zod_number(got, &path, false, 0.0, 1.0, &mut issues);
+                input.inner_circle_share.is_some()
+            }
+            // `z.array(z.number().int().min(0).max(20)).min(1).max(10)` (v4
+            // `a5efdbb97`). Zod 4.6.7's `capSize`: a table past the cap answers
+            // ONE `too_big` before any element is parsed; otherwise every bad
+            // element is reported (the int gate aborting that element), then
+            // the `.min(1)` length check.
+            _ => {
+                input.inner_circle_allowance = zod_int_table(got, &path, &mut issues);
+                input.inner_circle_allowance.is_some()
             }
         };
         if ok {

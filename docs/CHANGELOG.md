@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(recall): the inner circle's two tuning knobs (P4.D342, v4 `a5efdbb97`)
+
+_Versions: core 0.0.1382._
+
+The recall tuning gains `innerCircleShare` (0–1, default 1/3) and `innerCircleAllowance` (an integer table of 1–10 entries, each 0–20, default `[3, 2, 1]`), as v4's `INNER_CIRCLE_ARCHIVE_SHARE` / `INNER_CIRCLE_ALLOWANCE` in `recall_tags.rs`. They resolve, describe (`innerCircleShare=…`, `innerCircleAllowance=[…]`, the table compared by its joined text) and validate with Zod 4.6.7's bytes, incl. `capSize`'s single `too_big` for an over-long table. The strict validator's last arm is now an explicit `backgroundReserve` match. The tier-1 oracle grows six resolve and nineteen parse rows, and the resolved key set is now checked whole.
+
 #### 2026-11-02 — feat(memory): the importance rubric in the four memory-writing prompts (P4.D342, v4 `6fd2d5ffb`)
 
 _Versions: core 0.0.1381._

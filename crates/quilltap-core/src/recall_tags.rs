@@ -296,6 +296,16 @@ pub const MULTIPLIER_CLAMP_MAX: f64 = 4.0;
 pub const RELATED_EXPANSION_MAX_PER_HIT: usize = 3;
 pub const RELATED_EXPANSION_MAX_TOTAL: usize = 10;
 
+/// Share of the frozen archive (its entry count and its token budget) the
+/// inner circle may take (v4 `INNER_CIRCLE_ARCHIVE_SHARE`, `a5efdbb97`;
+/// inner-circle-recall.md B2/B3): 20 of 60 at the largest size.
+pub const INNER_CIRCLE_ARCHIVE_SHARE: f64 = 1.0 / 3.0;
+
+/// Hot digests drawn per inner-circle member, by tier (v4
+/// `INNER_CIRCLE_ALLOWANCE`): the tightest group's members get the first
+/// entry, the next tier the second, and every looser tier the last.
+pub const INNER_CIRCLE_ALLOWANCE: [i64; 3] = [3, 2, 1];
+
 /// An absolute `{from, to}` ISO time window (v4's structural
 /// `{ from: string; to: string }` — the distill's `timeRange` and the recall
 /// context's `occurredWithin` share this shape).

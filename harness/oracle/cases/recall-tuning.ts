@@ -1,6 +1,7 @@
 /**
  * Oracle case: recall tuning (P4.D267 — v4 `f7d8064be`'s recall multiplier
- * retuning, pinned at `01a83539d`).
+ * retuning, pinned at `01a83539d`; P4.D342 — `a5efdbb97`'s two inner-circle
+ * knobs, `innerCircleShare` / `innerCircleAllowance`, pinned at `236c04e35`).
  *
  * Drives the REAL pure functions of v4's lib/memory/recall-tuning.ts —
  * `DEFAULT_RECALL_TUNING`, `resolveRecallTuning`, `selectSpecificAnchors`,
@@ -106,6 +107,8 @@ const resolveCases: Array<[string, unknown]> = [
       multipliers: { freshEvent24h: 1.3, freshEvent48h: 1.15 },
       specificAnchors: true,
       backgroundReserve: 0.33,
+      innerCircleShare: 0.25,
+      innerCircleAllowance: [4, 2],
     },
   ],
   [
@@ -125,6 +128,15 @@ const resolveCases: Array<[string, unknown]> = [
     },
   ],
   ['small-number', { boostGateAbs: 0.0000001 }],
+  // P4.D342 (v4 `a5efdbb97`): the inner circle's two knobs. `describe` compares
+  // the allowance by its JOINED text, so a restated default reads `defaults`
+  // and a longer table with the same head does not.
+  ['inner-circle-half', { innerCircleShare: 0.5 }],
+  ['inner-circle-allowance', { innerCircleAllowance: [2] }],
+  ['inner-circle-default-restated', { innerCircleShare: 1 / 3, innerCircleAllowance: [3, 2, 1] }],
+  ['inner-circle-longer', { innerCircleAllowance: [3, 2, 1, 1] }],
+  ['inner-circle-zero', { innerCircleShare: 0, innerCircleAllowance: [0] }],
+  ['inner-circle-whole', { innerCircleShare: 1, innerCircleAllowance: [20, 0, 7] }],
 ];
 for (const [id, raw] of resolveCases) {
   const parsed = RecallTuningInputSchema.optional().safeParse(raw);
@@ -174,7 +186,7 @@ const T = RecallTuningInputSchema.optional();
 const tuningParseCases: Array<[string, unknown]> = [
   ['undefined', undefined],
   ['full-candidate', resolveCases.find(([id]) => id === 'full-candidate')![1]],
-  ['scrambled', { backgroundReserve: 0.1, boostGateAbs: 0.5, multipliers: { freshEvent48h: 1, scopeNarrowSameProject: 2 }, anchorOrder: 'distiller' }],
+  ['scrambled', { backgroundReserve: 0.1, innerCircleAllowance: [1, 2], boostGateAbs: 0.5, multipliers: { freshEvent48h: 1, scopeNarrowSameProject: 2 }, anchorOrder: 'distiller' }],
   ['gate-nulls', { boostGateRamp: null, boostGateAbs: null }],
   ['unknown-one', { boostGateMarginX: 0.1 }],
   ['unknown-two', { zz: 1, aa: 2 }],
@@ -211,6 +223,26 @@ const tuningParseCases: Array<[string, unknown]> = [
   ['root-array', []],
   ['root-string', 'x'],
   ['root-bool', true],
+  // P4.D342 (v4 `a5efdbb97`): the two inner-circle knobs' bounds.
+  ['inner-circle-ok', { innerCircleShare: 0.5, innerCircleAllowance: [3, 0, 1] }],
+  ['share-over', { innerCircleShare: 1.5 }],
+  ['share-negative', { innerCircleShare: -0.1 }],
+  ['share-string', { innerCircleShare: '0.5' }],
+  ['share-null', { innerCircleShare: null }],
+  ['allowance-empty', { innerCircleAllowance: [] }],
+  ['allowance-eleven', { innerCircleAllowance: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] }],
+  ['allowance-eleven-bad', { innerCircleAllowance: [1, 'x', 1, 1, 1, 1, 1, 1, 1, 1, 1.5] }],
+  ['allowance-ten', { innerCircleAllowance: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] }],
+  ['allowance-float', { innerCircleAllowance: [1.5] }],
+  ['allowance-over', { innerCircleAllowance: [21] }],
+  ['allowance-negative', { innerCircleAllowance: [-1] }],
+  ['allowance-not-array', { innerCircleAllowance: 3 }],
+  ['allowance-null', { innerCircleAllowance: null }],
+  ['allowance-object', { innerCircleAllowance: { 0: 1 } }],
+  ['allowance-string-item', { innerCircleAllowance: [1, '2'] }],
+  ['allowance-mixed-bad', { innerCircleAllowance: [1.5, 21, 'x', null] }],
+  ['allowance-unsafe', { innerCircleAllowance: [1e300] }],
+  ['both-bad-plus-unknown', { innerCircleAllowance: [], zz: 1, innerCircleShare: 2 }],
 ];
 for (const [id, input] of tuningParseCases) parseRow('tuningParse', id, T, input);
 

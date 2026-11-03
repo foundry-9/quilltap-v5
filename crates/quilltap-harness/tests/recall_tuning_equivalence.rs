@@ -1,5 +1,6 @@
 //! Tier-1 differential (P4.D267): recall tuning — v4 `lib/memory/recall-tuning.ts`
-//! (`f7d8064be`, the recall multiplier retuning; pinned at `01a83539d`).
+//! (`f7d8064be`, the recall multiplier retuning; pinned at `01a83539d`); P4.D342
+//! adds `a5efdbb97`'s two inner-circle knobs (pinned at `236c04e35`).
 //!
 //! Every oracle row carries its INPUT; this side recomputes from the same bytes
 //! through v5's REAL `quilltap_core::recall_tuning` and compares:
@@ -114,6 +115,49 @@ fn assert_tuning(got: &ResolvedRecallTuning, want: &Value, id: &str) {
         want["backgroundReserve"].as_f64().unwrap(),
         &format!("{id}: backgroundReserve"),
     );
+    // P4.D342 (v4 `a5efdbb97`): the inner circle's two knobs.
+    feq(
+        got.inner_circle_share,
+        want["innerCircleShare"].as_f64().unwrap(),
+        &format!("{id}: innerCircleShare"),
+    );
+    let table: Vec<i64> = want["innerCircleAllowance"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{id}: innerCircleAllowance array"))
+        .iter()
+        .map(|v| v.as_i64().unwrap())
+        .collect();
+    assert_eq!(
+        got.inner_circle_allowance.as_ref(),
+        table.as_slice(),
+        "{id}: innerCircleAllowance"
+    );
+    // Every resolved key is compared: a key v4 grows without a port reddens
+    // here instead of passing unread.
+    // (A SET: v4's `resolveRecallTuning` spreads its keys in a different order
+    // from `DEFAULT_RECALL_TUNING`'s — no v5 wire carries the resolved object.)
+    let mut keys: Vec<&str> = want
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    let mut expected = [
+        "multipliers",
+        "boostGate",
+        "boostCap",
+        "freshBypassesGate",
+        "windowBypassesGate",
+        "specificAnchors",
+        "anchorMinHits",
+        "anchorOrder",
+        "backgroundReserve",
+        "innerCircleShare",
+        "innerCircleAllowance",
+    ];
+    expected.sort_unstable();
+    assert_eq!(keys, expected, "{id}: the resolved tuning's key set");
 }
 
 fn order_of(v: &Value) -> Option<AnchorOrder> {
