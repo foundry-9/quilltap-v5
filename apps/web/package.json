@@ -1,6 +1,6 @@
 {
   "name": "quilltap-spa",
-  "version": "0.5.943",
+  "version": "0.5.944",
   "scripts": {
     "ng": "ng",
     "lint": "node scripts/check-qt-classes.mjs --self-test && node scripts/check-qt-classes.mjs",
@@ -34,14 +34,17 @@
     "@angular/forms": "^21.0.0",
     "@angular/platform-browser": "^21.0.0",
     "@angular/router": "^21.0.0",
+    "@hpcc-js/wasm-graphviz": "1.30.0",
     "@tanstack/angular-query-experimental": "^5.101.2",
     "@tanstack/angular-virtual": "5.0.7",
     "@tauri-apps/api": "^2.11.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "croner": "^10.0.1",
+    "dompurify": "3.4.17",
     "katex": "0.18.4",
     "markdown-it": "^14.3.0",
+    "mermaid": "12.2.0",
     "prosemirror-commands": "^1.7.1",
     "prosemirror-history": "^1.5.0",
     "prosemirror-inputrules": "^1.5.1",
@@ -61,6 +64,7 @@
     "remark-rehype": "11.1.2",
     "remark-smartypants": "3.0.3",
     "rxjs": "~7.8.0",
+    "svg2roughjs": "3.2.3",
     "tslib": "^2.3.0",
     "unified": "11.0.5"
   },

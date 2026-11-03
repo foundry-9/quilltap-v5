@@ -12,6 +12,18 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): diagram fence walker, render queue, SVG sanitizer, palette and the three renderers (v4 6588972d5 + 9faed0c7e)
+
+_Versions: SPA 0.5.908._
+
+Ports the pure half of v4's Salon diagrams (`6588972d5` + `9faed0c7e`, at `236c04e35`) into `apps/web/src/app/chat/diagrams/`: the fence walker (`diagram-fences.ts` — v4's `lib/markdown/diagrams.ts` byte-for-byte plus `listClosedDiagramFences`, which returns the closed diagram fences in document order with their sources), the serialized render queue and FNV seed, the private-DOMPurify SVG sanitizer, the palette reader over the `--color-*` tokens, the three renderers (Mermaid and WASM Graphviz + the svg2roughjs sketch behind dynamic `import()`s, raw SVG), the lightbox geometry, the scroll anchor, the font-embedding PNG export, the per-message style resolver, the 64-entry render cache, and the HTML post-pass (`diagram-slots.ts`) that swaps the Nth diagram code block for an empty slot.
+
+Adds `mermaid` 12.2.0, `@hpcc-js/wasm-graphviz` 1.30.0, `svg2roughjs` 3.2.3 and `dompurify` 3.4.17 as exact dependencies (117 packages; one `katex`, 0.18.4, shared with mermaid). The engines load as lazy chunks; the `initial` bundle does not carry them. Mermaid's five CommonJS transitives (`@braintree/sanitize-url`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `dayjs`, `elkjs`), all inside its lazy diagram chunks, join `allowedCommonJsDependencies`.
+
+v4's jsdom tests for these modules are transcribed case for case into vitest specs; v5-authored cases cover the fence list, the queue, the palette and the post-pass over the renderer's real output.
+
+## November 2026
+
 #### 2026-11-03 — docs(porting): P4.D352 lane record and status header — LANE COMPLETE
 
 _Docs-only change._
