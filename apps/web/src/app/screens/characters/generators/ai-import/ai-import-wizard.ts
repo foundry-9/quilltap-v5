@@ -13,6 +13,7 @@ import {
   WIZARD_STEP_LABELS,
 } from './ai-import.types';
 import type { AIImportStepName, StepStatus } from './ai-import.types';
+import { isInFloatingLayer } from '../../../../ui/floating-layer';
 
 /**
  * `AiImportWizard` — v4 `components/settings/ai-import/AIImportWizard.tsx`
@@ -50,7 +51,7 @@ import type { AIImportStepName, StepStatus } from './ai-import.types';
   providers: [AiImportState],
   imports: [Icon],
   host: {
-    '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div class="qt-dialog-overlay" (click)="onBackdrop()">
@@ -760,7 +761,8 @@ export class AiImportWizard {
   protected onBackdrop(): void {
     this.requestClose();
   }
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.requestClose();
   }
 }

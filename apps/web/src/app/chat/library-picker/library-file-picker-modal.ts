@@ -34,6 +34,7 @@ import {
   type PickerStoreSummary,
 } from './library-picker.model';
 import { ToastService } from '../../ui/toast.service';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /** A legacy library file linked to the chat. */
 export interface LinkedLibraryFile {
@@ -78,7 +79,7 @@ type Step = 'scope' | 'browse-project' | 'browse-gallery' | 'browse-mount';
 @Component({
   selector: 'qt-library-file-picker-modal',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   imports: [Modal, LibraryBrowsePanel],
   template: `
     <qt-modal
@@ -409,7 +410,8 @@ export class LibraryFilePickerModal {
   }
 
   /** v4 passes `closeOnEscape={!linking}` (`:366`). */
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.onClose();
   }
 

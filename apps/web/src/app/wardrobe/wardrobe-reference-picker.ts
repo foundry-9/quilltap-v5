@@ -26,6 +26,7 @@ import { WardrobeDialogService } from './wardrobe-dialog.service';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 import { WardrobeVantageItemsLoader } from './wardrobe-vantage-items';
 import { formatWearLine, wearOf } from './wear-display';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** How a picked item is written down: by its title (default) or its exact id. */
 export type WardrobeReferenceForm = 'title' | 'id';
@@ -78,7 +79,7 @@ interface PickerRow {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, Modal, NgTemplateOutlet, QtAutofocus, SlotBadge, WardrobeItemThumbnail],
   host: {
-    '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     @if (open()) {
@@ -419,7 +420,8 @@ export class WardrobeReferencePicker {
     this.closed.emit();
   }
 
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (this.open()) this.closed.emit();
   }
 

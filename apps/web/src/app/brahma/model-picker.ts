@@ -22,6 +22,7 @@ import {
 
 import { Icon } from '../ui/icon';
 import type { BrahmaConnectionProfile } from './brahma-console.service';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 @Component({
   selector: 'qt-brahma-model-picker',
@@ -29,7 +30,7 @@ import type { BrahmaConnectionProfile } from './brahma-console.service';
   imports: [Icon],
   host: {
     '(document:mousedown)': 'onDocumentMousedown($event)',
-    '(document:keydown.escape)': 'close()',
+    '(document:keydown.escape)': 'onDocumentEscape($event)',
   },
   template: `
     <div class="relative">
@@ -109,7 +110,14 @@ export class ModelPicker {
     this.open.set(false);
   }
 
+  /** The document Escape — but never one pressed in the topmost floating layer. */
+  protected onDocumentEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
+    this.close();
+  }
+
   protected onDocumentMousedown(event: MouseEvent): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.open()) return;
     if (!this.rootEl.nativeElement.contains(event.target as Node)) {
       this.open.set(false);

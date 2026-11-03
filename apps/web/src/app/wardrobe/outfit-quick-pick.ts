@@ -17,6 +17,7 @@ import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
 import { selectComposedOutfits } from './composed-outfits';
 import { formatSlotLabels } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * Outfit Quick Pick — a port of v4 `components/wardrobe/outfit-quick-pick.tsx`
@@ -178,6 +179,7 @@ export class OutfitQuickPick implements OnDestroy {
 
   /** v4 `:41-51` — close on outside mousedown, measured against the container. */
   private readonly onDocMouseDown = (event: MouseEvent): void => {
+    if (isInFloatingLayer(event.target)) return;
     const container = this.container()?.nativeElement;
     if (container && !container.contains(event.target as Node)) {
       this.open.set(false);
@@ -187,6 +189,7 @@ export class OutfitQuickPick implements OnDestroy {
 
   /** v4 `:55-66`. */
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (isInFloatingLayer(event.target)) return;
     if (event.key !== 'Escape') return;
     event.stopPropagation();
     event.preventDefault();

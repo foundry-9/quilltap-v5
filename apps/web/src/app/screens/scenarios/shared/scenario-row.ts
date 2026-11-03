@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 
 import type { ScenarioDto } from '../../../core/core-contract';
+import { isInFloatingLayer } from '../../../ui/floating-layer';
 
 /**
  * ScenarioRow (v4 `components/scenarios/ScenarioRow.tsx`) — one width-adaptive
@@ -179,12 +180,14 @@ export class ScenarioRow implements OnDestroy {
   protected readonly kebabOpen = signal(false);
 
   private readonly onDocMouseDown = (e: MouseEvent): void => {
+    if (isInFloatingLayer(e.target)) return;
     if (!this.host.nativeElement.contains(e.target as Node)) {
       this.kebabOpen.set(false);
     }
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
+    if (isInFloatingLayer(e.target)) return;
     if (e.key !== 'Escape') {
       return;
     }

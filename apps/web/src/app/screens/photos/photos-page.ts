@@ -35,6 +35,7 @@ import {
   linkerBadge,
   removeGalleryEntry,
 } from './photos.api';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * The "My Photos" screen at `/photos` (v4 `app/photos/PhotosView.tsx`) — by
@@ -79,7 +80,7 @@ import {
   // v4's detail modal binds Escape on `window` (`:394-400`). The listener is
   // declared on the page rather than the modal because the modal is inline
   // control flow here, not a child component with its own lifecycle.
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <div class="qt-page-container text-foreground">
       <header
@@ -662,7 +663,8 @@ export class PhotosPage implements OnDestroy {
   }
 
   /** v4's modal closes on Escape (`:394-400`). */
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.selected.set(null);
   }
 }

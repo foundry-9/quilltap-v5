@@ -13,6 +13,7 @@ import type { RngKind } from './chat-cast.api';
 import { requestRngPendingResult, type RngPendingResult } from './rng-request';
 import { CoreClient } from '../core/core-client';
 import { Icon } from '../ui/icon';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The chip type moved to `rng-request.ts` with v4 `4877fc2da` (shared with the
@@ -268,6 +269,7 @@ export class RngDropdown {
    * — closes the menu AND the custom panel.
    */
   protected onDocumentMouseDown(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.open()) return;
     if (this.host.nativeElement.contains(event.target as Node)) return;
     this.open.set(false);

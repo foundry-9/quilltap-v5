@@ -17,6 +17,7 @@ import { searchPaged } from './search.api';
 import { appendDeduped } from './search.logic';
 import { ALL_SEARCH_TYPES } from './search.types';
 import type { SearchResult, SearchType } from './search.types';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * v4's dialog reads the shared constant rather than keeping its own copy
@@ -43,7 +44,7 @@ const DEBOUNCE_MS = 300;
 @Component({
   selector: 'qt-search-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   imports: [Icon, SearchResults],
   template: `
     @if (isOpen()) {
@@ -238,7 +239,8 @@ export class SearchDialog {
     return type.charAt(0).toUpperCase() + type.slice(1);
   }
 
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (this.isOpen()) this.close.emit();
   }
 

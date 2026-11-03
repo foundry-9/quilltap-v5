@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): every document-level dismiss listener ignores the topmost floating layer (v4 99463fc56)
+
+_Versions: SPA 0.5.921._
+
+Every document-level dismiss listener now steps aside for the topmost floating layer, as v4 `99463fc56`'s `useClickOutside` does (ruling R-4). v4 puts one `isInFloatingLayer(event.target)` early return in the hook all its sites share. v5 has 43 hand-rolled handlers, so the same line opens each one:
+- the 36 sites of the planning census (32 files);
+- seven keydown sites the census missed: the tooltip's Escape, the outfit quick-pick's and scenario row's capture-phase Escape, the chat sidebar's drawer Escape, the image modal, image navigation, and the Almanack report dialog.
+
+Handlers bound without `$event` now take it, and three bindings that called `close()` / `close.emit()` / `onClose()` directly route through a guarded `onDocumentEscape`. A click or an Escape inside the Brahma Console therefore no longer dismisses a popover, menu or modal beneath it.
+
+The new `ui/floating-layer-guards.spec.ts` keeps it that way:
+- a committed table of every guarded handler, read from source, with a self-test negative;
+- a completeness tripwire over every document `mousedown` / `pointerdown` / `click` / `keydown` listener in `src/app`;
+- v4's three "topmost floating layer" cases, transcribed against the model picker and the pinned tooltip.
+
+Three rows are sibling HANDOFFs and stay skipped until the unifier flips their gates: `ui/modal.ts` and `ui/slide-over-panel.ts` (P4.D358), and the Salon's Inspector Escape (P4.D344).
+
 #### 2026-11-03 — feat(spa): the always-on floating Brahma Console — launcher, per-surface sessions, the panel (v4 99463fc56)
 
 _Versions: SPA 0.5.920._

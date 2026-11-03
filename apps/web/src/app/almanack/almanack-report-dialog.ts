@@ -13,6 +13,7 @@ import { apiUrl } from '../core/api-url';
 import { Icon } from '../ui/icon';
 import { renderAlmanackMarkdown } from './almanack-markdown';
 import { ALMANACK_TITLE } from './almanack-phases';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The Almanack report viewer — a port of v4
@@ -126,6 +127,7 @@ export class AlmanackReportDialog {
     // effect, `capabilities-report-dialog.tsx:29-46`). The dialog is created
     // only while open, so mount/teardown IS v4's `isOpen` transition.
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isInFloatingLayer(e.target)) return;
       if (e.key === 'Escape') this.close.emit();
     };
     if (typeof document !== 'undefined') {

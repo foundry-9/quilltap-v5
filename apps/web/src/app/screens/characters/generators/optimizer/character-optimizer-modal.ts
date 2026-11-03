@@ -16,6 +16,7 @@ import { AnalysisSummary } from './analysis-summary';
 import { ApplyConfirmation, type OptimizerAcceptedChangeView } from './apply-confirmation';
 import { OptimizerState } from './optimizer-state';
 import { SuggestionCard } from './suggestion-card';
+import { isInFloatingLayer } from '../../../../ui/floating-layer';
 
 /**
  * v4's own three progress segments (`components/characters/optimizer/
@@ -46,7 +47,7 @@ const SEGMENTS: ProgressSegment[] = [
   providers: [OptimizerState],
   imports: [Icon, ProgressBar, AnalysisSummary, SuggestionCard, ApplyConfirmation],
   host: {
-    '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div class="qt-dialog-overlay" (click)="onBackdrop()">
@@ -572,7 +573,8 @@ export class CharacterOptimizerModal {
   protected onBackdrop(): void {
     this.requestClose();
   }
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.requestClose();
   }
 }

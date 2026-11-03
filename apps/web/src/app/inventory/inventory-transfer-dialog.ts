@@ -14,6 +14,7 @@ import {
 import type { InventoryItemActions } from './inventory-item-actions';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { transferInventoryItem } from './inventory.api';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 `InventoryCatalogue` (`InventoryTransferDialog.tsx:25-29`) — the select's three LIST reads. */
 export interface InventoryCatalogue {
@@ -67,7 +68,7 @@ export function catalogueGroups(
   selector: 'qt-inventory-transfer-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <qt-modal
       [title]="verb() + ' &quot;' + label() + '&quot; to another inventory'"
@@ -149,7 +150,8 @@ export class InventoryTransferDialog {
     }
   }
 
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (!this.working()) this.closed.emit();
   }
 }

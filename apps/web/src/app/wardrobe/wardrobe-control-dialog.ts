@@ -57,6 +57,7 @@ import { dispatchWardrobe } from './wardrobe.api';
 import { WardrobeInstructionsSection } from './wardrobe-instructions-section';
 import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 interface CharacterSummary {
   id: string;
@@ -138,7 +139,7 @@ type RightTab = 'live' | 'builder' | 'history';
   ],
   host: {
     '(document:keydown.escape)': 'onEscape($event)',
-    '(document:mousedown)': 'onDocumentMouseDown()',
+    '(document:mousedown)': 'onDocumentMouseDown($event)',
   },
   template: `
     <!-- The chrome switch (v4 WardrobeShell, :128-164). asTab renders bare in a
@@ -1296,6 +1297,7 @@ export class WardrobeControlDialogInner {
   }
 
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (this.resetMenuOpen()) {
       event.stopPropagation();
       event.preventDefault();
@@ -1312,7 +1314,8 @@ export class WardrobeControlDialogInner {
   }
 
   /** Close the Reset menu on outside click (v4 :846-866). */
-  protected onDocumentMouseDown(): void {
+  protected onDocumentMouseDown(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (this.resetMenuOpen()) this.resetMenuOpen.set(false);
   }
 }

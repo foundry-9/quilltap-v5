@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { isInFloatingLayer } from './floating-layer';
 
 /**
  * A tooltip that Quilltap draws itself, rather than deferring to the native
@@ -181,9 +182,11 @@ export class Tooltip {
         });
       };
       const onKeyDown = (event: KeyboardEvent) => {
+        if (isInFloatingLayer(event.target)) return;
         if (event.key === 'Escape') this.closeNow();
       };
       const onPointerDown = (event: Event) => {
+        if (isInFloatingLayer(event.target)) return;
         // Reads pinned OUTSIDE the reactive context, as v4 reads pinnedRef.
         if (!untracked(this.pinned)) return;
         const target = event.target as Node;

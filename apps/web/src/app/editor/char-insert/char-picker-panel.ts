@@ -14,6 +14,7 @@ import {
 import { readRecents } from './recents-storage';
 import { findByCodePoint, searchChars } from './search';
 import type { CharEntry, CharIndex, CharProfile } from './types';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /** Cells per row. Arrow-key navigation is computed from this, so keep them in step. */
 const COLUMNS = 8;
@@ -81,7 +82,7 @@ function cells(entries: CharEntry[], start: number): CharCell[][] {
   host: {
     class: 'absolute bottom-full left-0 z-50 mb-1',
     '(document:mousedown)': 'onDocumentMouseDown($event)',
-    '(document:keydown.escape)': 'close.emit()',
+    '(document:keydown.escape)': 'onDocumentEscape($event)',
   },
   template: `
     <div class="qt-popover qt-emoji-picker">
@@ -243,7 +244,14 @@ export class CharPickerPanel {
     this.close.emit();
   }
 
+  /** The document Escape — but never one pressed in the topmost floating layer. */
+  protected onDocumentEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
+    this.close.emit();
+  }
+
   protected onDocumentMouseDown(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     // The toggling button lives outside this component; the toolbar closes on
     // its own click, so anything outside this panel dismisses.
     if (this.host.nativeElement.contains(event.target as Node)) return;

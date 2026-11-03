@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, Injectable, inject, signal } from '@angular/core';
+import { isInFloatingLayer } from './floating-layer';
 
 /** One open alert: its message, its labelled buttons, and who is waiting. */
 interface AlertRequest {
@@ -89,6 +90,7 @@ export class AlertModalHost {
 
   /** Escape dismisses the alert — and only the alert. */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.alerts.current()) return;
     event.stopImmediatePropagation();
     this.alerts.answer(null);

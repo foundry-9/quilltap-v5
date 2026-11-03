@@ -8,6 +8,7 @@ import { WizardGenerationStep } from './generation-step';
 import { WizardProfileSelectionStep } from './profile-selection-step';
 import { WizardState, type WizardStep } from './wizard-state';
 import type { WizardCharacterData } from './wizard-types';
+import { isInFloatingLayer } from '../../../../ui/floating-layer';
 
 /** v4 `STEP_TITLES` (`AIWizardModal.tsx:20-25`). */
 const STEP_TITLES: Record<WizardStep, string> = {
@@ -38,7 +39,7 @@ const STEP_TITLES: Record<WizardStep, string> = {
     WizardGenerationStep,
   ],
   host: {
-    '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div
@@ -170,7 +171,8 @@ export class AiWizardModal {
     }
   }
 
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.handleClose();
   }
 

@@ -13,6 +13,7 @@ import { SearchDialog } from './search-dialog';
 import { SearchResults } from './search-results';
 import { searchInline } from './search.api';
 import type { SearchResult, SearchType } from './search.types';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 300ms debounce (`search-bar.tsx:105-107`). */
 const DEBOUNCE_MS = 300;
@@ -135,6 +136,7 @@ export class SearchBar {
 
   /** v4 :33-58 — Cmd+K on macOS, Ctrl+K elsewhere; never both. */
   protected onGlobalKeydown(event: KeyboardEvent): void {
+    if (isInFloatingLayer(event.target)) return;
     const isMac =
       typeof navigator !== 'undefined' && navigator.platform.toUpperCase().indexOf('MAC') >= 0;
     const isShortcutPressed = isMac
@@ -153,6 +155,7 @@ export class SearchBar {
 
   /** v4 `useClickOutside` on the container (mousedown, per the house idiom). */
   protected onDocumentMouseDown(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.showDropdown()) return;
     const container = this.container()?.nativeElement;
     if (container && container.contains(event.target as Node)) return;

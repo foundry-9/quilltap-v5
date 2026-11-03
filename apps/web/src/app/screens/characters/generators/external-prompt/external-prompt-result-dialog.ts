@@ -3,6 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, input, output, signal } fro
 import { MessageContent } from '../../../../chat/message-content';
 import { Icon } from '../../../../ui/icon';
 import { ToastService } from '../../../../ui/toast.service';
+import { isInFloatingLayer } from '../../../../ui/floating-layer';
 
 /**
  * `ExternalPromptResultDialog` — v4 `app/aurora/[id]/view/components/
@@ -24,7 +25,7 @@ import { ToastService } from '../../../../ui/toast.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Icon, MessageContent],
   host: {
-    '(document:keydown.escape)': 'onClose()',
+    '(document:keydown.escape)': 'onDocumentEscape($event)',
   },
   template: `
     <div class="bg-background/80 fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -116,6 +117,12 @@ export class ExternalPromptResultDialog {
     } finally {
       URL.revokeObjectURL(url);
     }
+  }
+
+  /** The document Escape — but never one pressed in the topmost floating layer. */
+  protected onDocumentEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
+    this.onClose();
   }
 
   protected onClose(): void {

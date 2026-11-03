@@ -20,6 +20,7 @@ import { Icon } from '../../ui/icon';
 import { fetchCharacterList } from '../characters/characters.api';
 import { insertPlaceholderAt, type PlaceholderInsert } from './placeholder-insert';
 import { ToastService } from '../../ui/toast.service';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /** One generated image (v4 `GenerateImageView` `GeneratedImage`, `:27-34`). */
 export interface GeneratedImage {
@@ -330,6 +331,7 @@ export class GenerateImagePage implements OnInit {
   }
 
   private readonly onDocumentClick = (event: MouseEvent): void => {
+    if (isInFloatingLayer(event.target)) return;
     const host = this.dropdownRef()?.nativeElement;
     if (host && !host.contains(event.target as Node)) this.dropdownOpen.set(false);
   };

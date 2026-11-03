@@ -33,6 +33,7 @@ import type { ConnectionProfileOption } from './participant-card';
 import { ParticipantsSection, type TurnPosition } from './participants-section';
 import { shouldDismissSidebarOverlay } from './sidebar-overlay-dismiss';
 import { VisibilitySection, type VisibilityState } from './visibility-section';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 const STORAGE_KEY = 'quilltap.chat-sidebar.collapsed';
 const WIDTH_STORAGE_KEY = 'quilltap.chat-sidebar.width';
@@ -529,11 +530,13 @@ export class ChatSidebar implements OnInit {
     effect((onCleanup) => {
       if (!this.isOverlay()) return;
       const onPointerDown = (e: PointerEvent) => {
+        if (isInFloatingLayer(e.target)) return;
         if (shouldDismissSidebarOverlay(this.host.nativeElement, e.target)) {
           this.narrowOpen.set(false);
         }
       };
       const onKeyDown = (e: KeyboardEvent) => {
+        if (isInFloatingLayer(e.target)) return;
         if (e.key === 'Escape') this.narrowOpen.set(false);
       };
       document.addEventListener('pointerdown', onPointerDown, true);

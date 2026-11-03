@@ -1,3 +1,4 @@
+import { isInFloatingLayer } from '../ui/floating-layer';
 /**
  * Keyboard navigation for image modals/viewers — the port of v4
  * `hooks/useImageNavigation.ts` (81 lines).
@@ -51,6 +52,7 @@ export function applyImageNavigation(options: ImageNavigationOptions): () => voi
   // v4 `:52-63` — the handler reads the CURRENT options (a fresh closure per
   // effect run, which is how "callback updates" behave in the hook).
   const handleKeyDown = (e: KeyboardEvent): void => {
+    if (isInFloatingLayer(e.target)) return;
     if (e.key === 'Escape' && handleEscape) {
       onClose();
     } else if (e.key === 'ArrowLeft' && onPrev) {

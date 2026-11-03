@@ -21,6 +21,7 @@ import { listWardrobeSaveTargets, saveWardrobeImageToStore } from '../wardrobe/i
 import type { WardrobeContainer } from '../wardrobe/wardrobe-container';
 import { listInventorySaveTargets, saveInventoryImageToStore } from '../inventory/inventory.api';
 import { fileUrl } from './image-urls';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 const ALBUM_KIND_LABEL: Record<AlbumKind, string> = {
   character: 'Character',
@@ -96,7 +97,7 @@ export type SaveImageTarget =
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal],
   // R-C — v4 BaseModal's `closeOnEscape` (default true; `BaseModal.tsx:97-100`).
-  host: { '(document:keydown.escape)': 'close.emit()' },
+  host: { '(document:keydown.escape)': 'onDocumentEscape($event)' },
   template: `
     <qt-modal
       title="Save image to album"
@@ -217,6 +218,12 @@ export type SaveImageTarget =
   `,
 })
 export class SaveImageDialog {
+  /** The document Escape — but never one pressed in the topmost floating layer. */
+  protected onDocumentEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
+    this.close.emit();
+  }
+
   private readonly core = inject(CoreClient);
 
   readonly target = input.required<SaveImageTarget>();

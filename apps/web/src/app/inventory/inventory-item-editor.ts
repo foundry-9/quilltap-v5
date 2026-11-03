@@ -26,6 +26,7 @@ import type { InventoryItemActions } from './inventory-item-actions';
 import { InventoryPicturesSection } from './inventory-pictures-section';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { clearInventoryOverrides, createInventoryItem, listInventory, updateInventoryItem } from './inventory.api';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 `Draft` (`:62-76`). */
 export interface InventoryDraft {
@@ -121,7 +122,7 @@ export function svgByteLength(svg: string): number {
   selector: 'qt-inventory-item-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, NgTemplateOutlet, InventoryPicture, InventoryPicturesSection],
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <qt-modal
       [title]="title()"
@@ -638,7 +639,8 @@ export class InventoryItemEditor {
   }
 
   /** v4 `BaseModal` `closeOnEscape` with `closeOnClickOutside={!saving}` — and not over the viewer. */
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (this.saving() || this.viewing()) return;
     this.closed.emit();
   }

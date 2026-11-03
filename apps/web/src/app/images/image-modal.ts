@@ -13,6 +13,7 @@ import { CoreClient } from '../core/core-client';
 import { downloadImageUrl } from '../core/download-utils';
 import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The in-chat image lightbox — a port of v4 `components/chat/ImageModal.tsx`.
@@ -142,6 +143,7 @@ export class ImageModal {
   constructor() {
     // Escape closes; lock body scroll while open (v4's keydown + overflow effect).
     const onKeyDown = (e: KeyboardEvent) => {
+      if (isInFloatingLayer(e.target)) return;
       if (e.key === 'Escape') this.close.emit();
     };
     if (typeof document !== 'undefined') {

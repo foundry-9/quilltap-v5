@@ -7,6 +7,7 @@ import type {
 } from '../../../../core/core-contract';
 import { CoreClient } from '../../../../core/core-client';
 import { dispatchGenerateExternalPrompt } from '../detail-generators.api';
+import { isInFloatingLayer } from '../../../../ui/floating-layer';
 
 /**
  * `ExternalPromptDialog` — v4 `app/aurora/[id]/view/components/
@@ -21,7 +22,7 @@ import { dispatchGenerateExternalPrompt } from '../detail-generators.api';
   selector: 'qt-external-prompt-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: {
-    '(document:keydown.escape)': 'onEscape()',
+    '(document:keydown.escape)': 'onEscape($event)',
   },
   template: `
     <div
@@ -237,7 +238,8 @@ export class ExternalPromptDialog {
   protected onBackdrop(): void {
     this.requestClose();
   }
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     this.requestClose();
   }
 }

@@ -19,6 +19,7 @@ import { fetchCharacterList } from '../screens/characters/characters.api';
 import { insertPlaceholderAt } from '../screens/generate-image/placeholder-insert';
 import type { GeneratedImage } from './generate-image-dialog';
 import { ToastService } from '../ui/toast.service';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** One insertable character (v4 `useEntitySearch` `EntityOption`, `:9-13`). */
 interface EntityOption {
@@ -258,6 +259,7 @@ export class StandaloneGenerateImageDialog implements OnInit {
 
   /** v4 `useEntitySearch:46-48` closes the dropdown on an outside click. */
   private readonly onDocumentClick = (event: MouseEvent): void => {
+    if (isInFloatingLayer(event.target)) return;
     const host = this.dropdownRef()?.nativeElement;
     if (host && !host.contains(event.target as Node)) this.dropdownOpen.set(false);
   };

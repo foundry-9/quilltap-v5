@@ -5,6 +5,7 @@ import { formatSlotLabels, WARDROBE_SLOT_META } from './slot-meta';
 import { wardrobeOriginLabel } from './wardrobe-container';
 import { selectGarments } from './composed-outfits';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * One slot in the dialog's "Wearing now" column (v4
@@ -195,6 +196,7 @@ export class EquippedSlotRow {
    *  modal (capture + stopPropagation there; here we stop propagation when
    *  the picker is open). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.pickerOpen()) return;
     event.stopPropagation();
     event.preventDefault();

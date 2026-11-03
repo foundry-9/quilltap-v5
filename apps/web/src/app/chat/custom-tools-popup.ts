@@ -34,6 +34,7 @@ import {
   type CustomToolRosterEntry,
 } from './custom-tools.api';
 import { ToastService } from '../ui/toast.service';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The composer's wand and the two-phase modal it opens — a port of v4
@@ -683,6 +684,7 @@ export class CustomToolsPopup {
   /** Escape dismisses (v4 `BaseModal`'s `closeOnEscape`). Stopped so an outer
    *  Escape handler doesn't also fire on the same keystroke. */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (!this.isOpen()) return;
     event.stopPropagation();
     this.close();

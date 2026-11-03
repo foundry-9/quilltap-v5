@@ -54,6 +54,7 @@ import { WorkspaceBackdrop } from './workspace-backdrop';
 import { applyWorkspaceShortcut } from './workspace-shortcuts';
 import { interpretWorkspaceLinkClick } from './link-interceptor';
 import { applyOpenIntent, parseOpenIntent } from './workspace-intent';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /** Divider column thickness (px). */
 const DIVIDER_PX = 8;
@@ -198,6 +199,7 @@ export class WorkspaceHost implements OnInit {
     // One delegated capture-phase click interceptor — keep every in-app link
     // keep-alive-safe while in the workspace.
     const onClick = (e: MouseEvent) => {
+      if (isInFloatingLayer(e.target)) return;
       const intent = interpretWorkspaceLinkClick(e);
       if (!intent) return;
       // preventDefault for anchors; stopImmediatePropagation so RouterLink's own

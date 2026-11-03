@@ -38,6 +38,7 @@ import { InventoryItemEditor } from './inventory-item-editor';
 import { createInventoryListData } from './inventory-list-data';
 import { describeInventoryRefusal } from './inventory-refusal';
 import { InventoryTransferDialog, catalogueGroups, type InventoryCatalogue } from './inventory-transfer-dialog';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** Two containers name the same tier (by their encoded value — the select's own key). */
 function sameContainer(a: InventoryContainer | null, b: InventoryContainer | null): boolean {
@@ -90,7 +91,7 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
     InventoryTransferDialog,
     InventoryInstantiateDialog,
   ],
-  host: { '(document:keydown.escape)': 'onEscape()' },
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     @if (asTab()) {
       <div [attr.class]="fixedContainer() ? 'flex flex-col min-h-0' : 'qt-inventory-tab flex flex-col h-full min-h-0 overflow-y-auto p-4'">
@@ -521,7 +522,8 @@ export class InventoryControlDialogInner {
   }
 
   /** v4 `BaseModal` `closeOnEscape={!overlayOpen && !confirming}`; a tab never closes. */
-  protected onEscape(): void {
+  protected onEscape(event?: Event): void {
+    if (isInFloatingLayer(event?.target ?? null)) return;
     if (this.asTab() || this.overlayOpen() || this.confirming()) return;
     this.closed.emit();
   }
