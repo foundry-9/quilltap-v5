@@ -3,9 +3,11 @@
  * `left-sidebar/sidebar-footer.tsx:213-226`).
  *
  * A self-contained sidebar-footer button that opens the console, plus the
- * floating console dialog it hosts (so the shell mounts ONE component at the
- * p4.9i1 unification — §W.2). Eligibility-gated (disabled without a connection
- * profile). In the workspace it opens a `brahma` tab; otherwise it opens the
+ * floating console dialog and the always-on launcher (v4 `99463fc56`) it hosts
+ * (so the shell mounts ONE component at the p4.9i1 unification — §W.2). The
+ * rail button stays eligibility-gated (disabled without a connection profile —
+ * still v4's rule at `236c04e35`, `sidebar-footer.tsx:214-226`); the launcher
+ * never is. In the workspace it opens a `brahma` tab; otherwise it opens the
  * floating dialog (v4's `inWorkspace ? openTab('brahma') : openConsole()`).
  *
  * @module brahma/brahma-entry
@@ -18,12 +20,13 @@ import { Icon } from '../ui/icon';
 import { WorkspaceService } from '../workspace/workspace.service';
 import { isWorkspaceTabsEnabled } from '../workspace/workspace-flag';
 import { BrahmaConsoleDialog } from './brahma-console-dialog';
+import { BrahmaConsoleLauncher } from './brahma-console-launcher';
 import { BrahmaConsoleService } from './brahma-console.service';
 
 @Component({
   selector: 'qt-brahma-entry',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, BrahmaConsoleDialog],
+  imports: [Icon, BrahmaConsoleDialog, BrahmaConsoleLauncher],
   template: `
     <button
       type="button"
@@ -50,6 +53,11 @@ import { BrahmaConsoleService } from './brahma-console.service';
     @defer (when isConsoleOpen()) {
       <qt-brahma-console-dialog />
     }
+
+    <!-- The always-on launcher (v4 99463fc56, app-layout.tsx:141-142: the
+         dialog, then the launcher). Mounted here so the shell keeps its one
+         Brahma mount; it is NOT deferred — it must be on screen from the start. -->
+    <qt-brahma-console-launcher />
   `,
 })
 export class BrahmaEntry {

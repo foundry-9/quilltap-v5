@@ -13,8 +13,8 @@ import type { BrahmaConnectionProfile } from './brahma-console.service';
 import { ModelPicker } from './model-picker';
 
 const PROFILES: BrahmaConnectionProfile[] = [
-  { id: 'p1', name: 'Everyday', provider: 'OPENAI', modelName: 'gpt-4o' },
-  { id: 'p2', name: 'Deep', provider: 'ANTHROPIC', modelName: 'claude-opus-4-8' },
+  { id: 'p1', name: 'Everyday', provider: 'OPENAI', modelName: 'gpt-4o', isDefault: true },
+  { id: 'p2', name: 'Deep', provider: 'ANTHROPIC', modelName: 'claude-opus-4-8', isDefault: false },
 ];
 
 async function render(

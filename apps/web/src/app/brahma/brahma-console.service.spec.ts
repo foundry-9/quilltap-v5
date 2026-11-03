@@ -1,8 +1,8 @@
 /**
  * BrahmaConsoleService — asserted against v4 `brahma-console-provider.tsx`'s
- * observable behavior: the exact localStorage key + persistence rules, the
- * launcher-reset on open, the optimistic-then-PATCH setModel (which no-ops
- * without a current chat), and `isEligible = profiles.length > 0`.
+ * observable behavior at `236c04e35`: open / close / toggle (no conversation
+ * state — that moved to `brahma-console-session.ts`), `isDefault` on the
+ * picker profile, and `isEligible = profiles.length > 0`.
  */
 
 import { TestBed } from '@angular/core/testing';
@@ -10,7 +10,8 @@ import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-exper
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
-import { BrahmaConsoleService, STORAGE_KEY_LAST_CHAT } from './brahma-console.service';
+import type { ConnectionProfileDto } from '../core/core-contract';
+import { BrahmaConsoleService, mapBrahmaConnectionProfiles } from './brahma-console.service';
 import { BrahmaConsoleApi } from './brahma-wire';
 
 interface Profile {
@@ -47,64 +48,32 @@ async function settle(ticks = 6): Promise<void> {
   }
 }
 
-describe('BrahmaConsoleService (v4 brahma-console-provider.tsx)', () => {
+describe('BrahmaConsoleService (v4 brahma-console-provider.tsx at 236c04e35)', () => {
   afterEach(() => {
     localStorage.clear();
     TestBed.resetTestingModule();
   });
 
-  it('uses the exact v4 localStorage key', () => {
-    expect(STORAGE_KEY_LAST_CHAT).toBe('quilltap:brahma-console-last-id');
-  });
-
-  it('hydrates currentChatId from localStorage on construction', () => {
-    localStorage.setItem(STORAGE_KEY_LAST_CHAT, 'chat-9');
-    const svc = makeService();
-    expect(svc.currentChatId()).toBe('chat-9');
-  });
-
-  it('openConsole resets to the launcher (currentChatId null) and opens', () => {
-    localStorage.setItem(STORAGE_KEY_LAST_CHAT, 'chat-9');
+  it('openConsole only opens — it no longer resets a conversation (v4 99463fc56)', () => {
+    localStorage.setItem('quilltap:brahma-floating-last-id', 'chat-9');
+    localStorage.setItem('quilltap:brahma-console-last-id', 'chat-8');
     const svc = makeService();
     svc.openConsole();
     expect(svc.isOpen()).toBe(true);
-    expect(svc.currentChatId()).toBeNull();
-    // Persistence cleared to match.
-    expect(localStorage.getItem(STORAGE_KEY_LAST_CHAT)).toBeNull();
+    // The regression fence for the pre-99463fc56 reset: both surfaces' ids stand.
+    expect(localStorage.getItem('quilltap:brahma-floating-last-id')).toBe('chat-9');
+    expect(localStorage.getItem('quilltap:brahma-console-last-id')).toBe('chat-8');
   });
 
-  it('closeConsole closes without touching the chat id', () => {
+  it('closeConsole closes; toggleConsole flips', () => {
     const svc = makeService();
-    svc.setCurrentChatId('chat-1');
-    svc.isOpen.set(true);
+    svc.toggleConsole();
+    expect(svc.isOpen()).toBe(true);
+    svc.toggleConsole();
+    expect(svc.isOpen()).toBe(false);
+    svc.openConsole();
     svc.closeConsole();
     expect(svc.isOpen()).toBe(false);
-    expect(svc.currentChatId()).toBe('chat-1');
-  });
-
-  it('setCurrentChatId persists an id and removes it on null', () => {
-    const svc = makeService();
-    svc.setCurrentChatId('chat-2');
-    expect(localStorage.getItem(STORAGE_KEY_LAST_CHAT)).toBe('chat-2');
-    svc.setCurrentChatId(null);
-    expect(localStorage.getItem(STORAGE_KEY_LAST_CHAT)).toBeNull();
-  });
-
-  it('setModel optimistically sets the active profile even without a current chat, and does NOT PATCH', async () => {
-    const setModel = vi.fn(async () => null);
-    const svc = makeService([], { setModel });
-    await svc.setModel('prof-1');
-    expect(svc.activeConnectionProfileId()).toBe('prof-1');
-    expect(setModel).not.toHaveBeenCalled();
-  });
-
-  it('setModel PATCHes when a chat is active (same chat continues)', async () => {
-    const setModel = vi.fn(async () => null);
-    const svc = makeService([], { setModel });
-    svc.setCurrentChatId('chat-3');
-    await svc.setModel('prof-2');
-    expect(svc.activeConnectionProfileId()).toBe('prof-2');
-    expect(setModel).toHaveBeenCalledWith('chat-3', 'prof-2');
   });
 
   it('isEligible is false with no profiles and true once ≥1 loads', async () => {
@@ -117,5 +86,14 @@ describe('BrahmaConsoleService (v4 brahma-console-provider.tsx)', () => {
     await settle();
     expect(svc2.profiles()).toHaveLength(1);
     expect(svc2.isEligible()).toBe(true);
+  });
+
+  it('mapBrahmaConnectionProfiles carries isDefault (v4 99463fc56)', () => {
+    const rows = [
+      { id: 'a', name: 'A', provider: 'OPENAI', modelName: 'm', isDefault: true },
+      { id: 'b', name: 'B', provider: 'OPENAI', modelName: 'm', isDefault: false },
+      { id: 'c', name: 'C', provider: 'OPENAI', modelName: 'm' },
+    ] as unknown as ConnectionProfileDto[];
+    expect(mapBrahmaConnectionProfiles(rows).map((p) => p.isDefault)).toEqual([true, false, false]);
   });
 });

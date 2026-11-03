@@ -12,6 +12,19 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the always-on floating Brahma Console — launcher, per-surface sessions, the panel (v4 99463fc56)
+
+_Versions: SPA 0.5.920._
+
+The Brahma Console becomes v4 `99463fc56`'s always-on floating console. It lives in the new `qt-floating-dialog` primitive (R-1), rendered topmost, non-modal and draggable.
+- The console body moves out of `brahma-console-dialog.ts` into NEW `brahma/brahma-console-panel.ts`. The panel takes a per-surface session, and its header chrome is a separate `qt-brahma-console-header-actions` component. That component shows the model picker whenever the console is eligible, pre-selecting the default profile on the launcher, and with a chat open adds `Past conversations` then `New conversation`. Both buttons return to the launcher and refocus its composer after 50 ms.
+- A chat deleted elsewhere (`not-found`) falls back to the launcher.
+- NEW `brahma-console-session.ts` gives the floating dialog and the workspace tab their own conversations, under two localStorage keys (`quilltap:brahma-floating-last-id`, `quilltap:brahma-console-last-id`).
+- `brahma-console-dialog.ts` is now the floating host. The panel is projected into it, so its state and any reply in flight survive the console being hidden. `brahma-console-view.ts` hosts the panel bare with the tab's own session; `asTab` is gone.
+- The service drops all conversation and model state. `openConsole()` no longer resets anything, and the service gains `toggleConsole()` and `isDefault` on the picker profile.
+- NEW `brahma-console-launcher.ts` is the always-on round button beside the rail (`aria-pressed`, `Open` / `Hide the Brahma Console`, never disabled, in the floating layer). It is mounted in `brahma-entry.ts` after the deferred dialog. The rail button keeps v4's eligibility gate.
+- The dialog's first mount stays deferred to the first open (`CONSOLE_FIRST_MOUNT_DEFERRED`).
+
 #### 2026-11-03 — feat(spa): the scoped floating dialog and the topmost floating layer (v4 99463fc56 + dff76ebef)
 
 _Versions: SPA 0.5.919._

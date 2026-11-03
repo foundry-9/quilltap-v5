@@ -88,28 +88,28 @@ describe('BrahmaEntry (v4 sidebar-footer.tsx)', () => {
 
   it('disables the button without a connection profile', async () => {
     const { fixture } = await render([], '/salon/1');
-    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector('button.qt-collapsed-nav-button') as HTMLButtonElement;
     expect(button.disabled).toBe(true);
     expect(button.getAttribute('title')).toContain('requires a connection profile');
   });
 
   it('enables the button once a profile exists', async () => {
     const { fixture } = await render(PROFILES, '/salon/1');
-    const button = fixture.nativeElement.querySelector('button') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector('button.qt-collapsed-nav-button') as HTMLButtonElement;
     expect(button.disabled).toBe(false);
     expect(button.getAttribute('title')).toBe('Brahma Console');
   });
 
   it('opens the floating console when not in the workspace', async () => {
     const { fixture, service, openTab } = await render(PROFILES, '/salon/1');
-    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('button.qt-collapsed-nav-button') as HTMLButtonElement).click();
     expect(openTab).not.toHaveBeenCalled();
     expect(service.isOpen()).toBe(true);
   });
 
   it('opens a brahma tab when in the workspace', async () => {
     const { fixture, service, openTab } = await render(PROFILES, '/workspace');
-    (fixture.nativeElement.querySelector('button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('button.qt-collapsed-nav-button') as HTMLButtonElement).click();
     expect(openTab).toHaveBeenCalledWith('brahma');
     expect(service.isOpen()).toBe(false);
   });
@@ -127,4 +127,25 @@ describe('BrahmaEntry (v4 sidebar-footer.tsx)', () => {
     // component — §W.2), so it appears here rather than beside the shell.
     expect(fixture.nativeElement.querySelector('qt-brahma-console-dialog')).not.toBeNull();
   });
+
+  it('mounts the always-on launcher whether or not the deferred dialog has (v4 app-layout.tsx:141-142)', async () => {
+    const { fixture, service } = await render([], '/salon/1');
+    const el = fixture.nativeElement as HTMLElement;
+    // CONSOLE_FIRST_MOUNT_DEFERRED: no dialog before the first open…
+    expect(el.querySelector('qt-brahma-console-dialog')).toBeNull();
+    const launcher = el.querySelector('qt-brahma-console-launcher button') as HTMLButtonElement;
+    expect(launcher).not.toBeNull();
+    // …and the launcher is never disabled, even with no profile.
+    expect(launcher.disabled).toBe(false);
+    launcher.click();
+    await settle(fixture);
+    expect(service.isOpen()).toBe(true);
+    expect(el.querySelector('qt-brahma-console-dialog')).not.toBeNull();
+    // After a close the dialog STAYS mounted (v4's shape from then on).
+    service.closeConsole();
+    await settle(fixture);
+    expect(el.querySelector('qt-brahma-console-dialog')).not.toBeNull();
+    expect(el.querySelector('qt-brahma-console-launcher button')!.getAttribute('aria-pressed')).toBe('false');
+  });
 });
+
