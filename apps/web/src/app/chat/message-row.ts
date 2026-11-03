@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  inject,
   input,
   output,
   signal,
@@ -37,6 +38,8 @@ import { ThinkingBlock } from './thinking-block';
 import { TokenBadge } from './token-badge';
 import { ToolMessage } from './tool-message';
 import type { ConciergeRetryHandlers } from './concierge-retry';
+import { AbsentMentionsSlot } from './absent-mentions/absent-mentions.api';
+import { MentionChipHost } from './absent-mentions/mention-chip-host';
 
 /** The bubble variant for a message (drives the qt-chat-message-* class). */
 type Variant = 'user' | 'assistant' | 'whisper' | 'silent';
@@ -66,6 +69,7 @@ export interface ImageClickEvent {
     CourierBubble,
     HiddenImageTile,
     MessageContent,
+    MentionChipHost,
     ProviderModelBadge,
     QuillAnimation,
     RouteTrailBadge,
@@ -283,6 +287,7 @@ export interface ImageClickEvent {
               [renderingPatterns]="renderingPatterns()"
               [dialogueDetection]="dialogueDetection()"
               [diagrams]="settledDiagrams()"
+              [mentions]="mentions()"
             />
           }
 
@@ -529,6 +534,13 @@ export class MessageRow {
   protected readonly imagesHidden = injectImagesHidden();
   readonly message = input.required<MessageDto>();
   readonly chat = input.required<ChatDetail>();
+  // === P4.D359: absent-character name chips (v4 9a88f862f, MessageRow.tsx:207-208, :495) ===
+  /** The Salon's absent mentions, when a Salon provides them (the settled render only). */
+  private readonly absentMentions = inject(AbsentMentionsSlot, { optional: true });
+  protected readonly mentions = computed(
+    () => this.absentMentions?.mentionsFor(this.message().id) ?? null,
+  );
+  // === end P4.D359 ===
   readonly swipeState = input<SwipeState | null>(null);
   readonly settings = input<ChatSettingsDto | null>(null);
   readonly showAvatar = input(true);

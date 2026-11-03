@@ -149,6 +149,10 @@ export class MessageContent {
       }
 
       // === P4.D359 — absent-character name chips (delegation hook; P4.D359 fills this fence, nothing else in this file is theirs) ===
+      // The chips' directive (`chat/absent-mentions/mention-chip-host.ts`, on
+      // `qt-message-content[mentions]`) marks the render now that every
+      // post-pass above has run — LAST, so a chip is never inside a slot.
+      root.dispatchEvent(new CustomEvent('qt-message-rendered'));
       // === end P4.D359 ===
     });
     inject(DestroyRef).onDestroy(() => this.destroyMounted());

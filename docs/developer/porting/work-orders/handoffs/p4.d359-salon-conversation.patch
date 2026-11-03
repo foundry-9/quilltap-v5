@@ -1,0 +1,90 @@
+diff --git a/apps/web/src/app/screens/salon/salon-conversation.spec.ts b/apps/web/src/app/screens/salon/salon-conversation.spec.ts
+index c72f45898..44297f5ee 100644
+--- a/apps/web/src/app/screens/salon/salon-conversation.spec.ts
++++ b/apps/web/src/app/screens/salon/salon-conversation.spec.ts
+@@ -750,6 +750,39 @@ describe('SalonConversation (read path)', () => {
+     expect(fixture.nativeElement.textContent).toContain('The Commonplace Book');
+   });
+ 
++  it('the feed hides a Host spoken-of introduction and keeps a left-behind notice (v4 9a88f862f)', async () => {
++    const chat: ChatDetail = {
++      ...chatDetail(),
++      messages: [
++        message({ id: 'm0', role: 'USER', participantId: 'pu', content: 'Good morning.', createdAt: '2024-01-01T00:00:01.000Z' }),
++        message({
++          id: 'intro',
++          role: 'ASSISTANT',
++          systemSender: 'host',
++          systemKind: 'off-scene-characters',
++          participantId: null,
++          content: 'Abigail is spoken of, though not present.',
++          createdAt: '2024-01-01T00:00:02.000Z',
++        }),
++        message({
++          id: 'left',
++          role: 'ASSISTANT',
++          systemSender: 'host',
++          systemKind: 'off-scene-characters',
++          participantId: null,
++          content: 'The Host observes that Abigail stayed behind.',
++          createdAt: '2024-01-01T00:00:03.000Z',
++        }),
++      ],
++    };
++    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
++    // Two Host off-scene rows in the transcript; ONE card in the feed — the
++    // left-behind notice (a Host card shows its kind; its body stays folded).
++    const text = fixture.nativeElement.textContent as string;
++    expect(text.match(/off scene characters/g)).toHaveLength(1);
++    expect(text).not.toContain('Abigail is spoken of, though not present.');
++  });
++
+   it('does not set the story-background var when the chat has no background (finding #9)', async () => {
+     const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+     const layout = fixture.nativeElement.querySelector('.qt-chat-layout') as HTMLElement;
+diff --git a/apps/web/src/app/screens/salon/salon-conversation.ts b/apps/web/src/app/screens/salon/salon-conversation.ts
+index 93bf11e2c..a5c93e5eb 100644
+--- a/apps/web/src/app/screens/salon/salon-conversation.ts
++++ b/apps/web/src/app/screens/salon/salon-conversation.ts
+@@ -194,6 +194,11 @@ import {
+   WORKSPACE_BACKDROP_REGISTRY,
+   WORKSPACE_TAB_ID,
+ } from '../../workspace/workspace-contract';
++import {
++  AbsentMentionsSlot,
++  bindAbsentMentions,
++} from '../../chat/absent-mentions/absent-mentions.api';
++import { isOffSceneMentionIntroduction } from '../../chat/absent-mentions/off-scene-kinds';
+ 
+ /**
+  * v4 `setImpersonatingParticipantIds(data.impersonatingParticipantIds || [])`
+@@ -286,6 +291,8 @@ interface CascadePrompt {
+   host: { class: 'block h-full' },
+   changeDetection: ChangeDetectionStrategy.OnPush,
+   providers: [
++    // P4.D359 (v4 9a88f862f): the name chips' one read per chat, handed to the rows.
++    AbsentMentionsSlot,
+     TerminalModeController,
+     DocumentModeController,
+     DocumentApi,
+@@ -931,6 +938,8 @@ export class SalonConversation {
+   protected readonly chatId = computed(
+     () => this.chatIdInput() ?? this.routeParams?.().get('id') ?? null,
+   );
++  /** The absent-character name chips' one read per chat (v4 `useAbsentMentions`). */
++  private readonly absentMentions = bindAbsentMentions(this.chatId);
+ 
+   /** The terminal pane is showing when a session is bound and mode isn't normal (v4). */
+   protected readonly terminalActive = computed(
+@@ -2278,7 +2287,10 @@ export class SalonConversation {
+       })
+       .filter((m) =>
+         isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
+-      );
++      )
++      // v4 `9a88f862f` (`SalonView.tsx:409`): the Host's old "spoken of" cards
++      // leave the FEED — the name chips replace them; they stay in the transcript.
++      .filter((m) => !isOffSceneMentionIntroduction(m));
+   });
+ 
+   /**

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import type {
+  AbsentMention,
   ChatDetail,
   ChatSettingsDto,
   MessageAttachment,
@@ -14,6 +15,7 @@ import { IMAGES_HIDDEN } from './hidden-image/images-hidden';
 import { By } from '@angular/platform-browser';
 
 import { MessageContent } from './message-content';
+import { AbsentMentionsSlot } from './absent-mentions/absent-mentions.api';
 import { MessageRow, type ImageClickEvent } from './message-row';
 import { clearRenderCache } from './render/render-cache';
 
@@ -1419,6 +1421,41 @@ describe('MessageRow — a character-announced Pascal outcome (P4.D320)', () => 
     const fixture = render(outcome({ kind: 'character', characterId: 'char1' }));
     const author = (fixture.componentInstance as unknown as { author: () => { name: string } }).author();
     expect(author.name).toBe('Lorian');
+  });
+});
+
+/** P4.D359 — the settled render carries the Salon's absent mentions (v4 `MessageRow.tsx:207-208, :495`). */
+describe('MessageRow — absent-character name chips (v4 9a88f862f)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('binds the message’s mentions from the Salon’s slot; none without a Salon', async () => {
+    const msg = message({ id: 'm-chip', content: 'Abby came by.' });
+    const mentions: AbsentMention[] = [
+      {
+        messageId: 'm-chip',
+        characterId: 'abigail',
+        text: 'Abby',
+        card: { name: 'Abigail', aliases: [], pronouns: null, body: '' },
+      },
+    ];
+    TestBed.configureTestingModule({
+      imports: [MessageRow],
+      providers: [{ provide: CoreClient, useValue: { dispatch: vi.fn() } }, AbsentMentionsSlot],
+    });
+    TestBed.inject(AbsentMentionsSlot).set({
+      all: signal(mentions),
+      mentionsFor: (id: string) => signal(id === 'm-chip' ? mentions : []),
+    });
+    const fixture = TestBed.createComponent(MessageRow);
+    fixture.componentRef.setInput('message', msg);
+    fixture.componentRef.setInput('chat', chatDetail());
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.qt-mention-chip')).toHaveLength(1);
+
+    TestBed.resetTestingModule();
+    expect(render(msg).nativeElement.querySelector('.qt-mention-chip')).toBeNull();
   });
 });
 

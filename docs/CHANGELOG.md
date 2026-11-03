@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the name chips on the settled Salon render — the message-content hook and the row binding (v4 9a88f862f)
+
+_Versions: SPA 0.5.925._
+
+Wires the name chips into the rendered Salon message, stacked on P4.D353's Tier-1 commit `c1da5c4de` (§R.14).
+- `message-content.ts`: P4.D353's fenced hook gets its one statement. At the end of the component's `afterRenderEffect`, after the diagram mount, it dispatches `qt-message-rendered` on the host. On that event the chips' directive re-marks the rendered DOM, last, so a chip is never inside a diagram slot.
+- `message-row.ts`: the settled render binds `[mentions]` (the directive owns that input). The binding reads the Salon's absent mentions through an optional `AbsentMentionsSlot` (v4 `MessageRow.tsx:207-208, :495`); the regenerating and streaming copies pass none. A row rendered outside a Salon carries no query.
+- `bindAbsentMentions` fills the slot. The Salon's provider and call, plus v4's feed filter `!isOffSceneMentionIntroduction(m)`, live in P4.D344's `salon-conversation.ts`. They ship as a HANDOFF patch, `work-orders/handoffs/p4.d359-salon-conversation.patch`, validated by applying it and running the Salon spec (187/187).
+- `mention-chips.spec.ts` transcribes v4's three `MentionChip.test.tsx` cases over the real renderer, hook and directive, and pins the delegated behaviour: hover delay, grace, pin and unpin, Escape, Enter / Space, one shared card, re-render, and late mentions.
+
 #### 2026-11-03 — feat(spa): the name-chip card and its host directive (v4 9a88f862f)
 
 _Versions: SPA 0.5.924._

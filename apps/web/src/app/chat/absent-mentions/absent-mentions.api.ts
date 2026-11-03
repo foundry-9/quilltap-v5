@@ -12,7 +12,7 @@
  * @module chat/absent-mentions/absent-mentions.api
  */
 
-import { computed, inject, type Signal } from '@angular/core';
+import { Injectable, computed, inject, signal, type Signal } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../core/core-client';
@@ -85,4 +85,35 @@ function sameMentions(a: readonly AbsentMention[], b: readonly AbsentMention[]):
     a === b ||
     (a.length === b.length && a.every((m, i) => JSON.stringify(m) === JSON.stringify(b[i])))
   );
+}
+
+/**
+ * Where a Salon hands its {@link AbsentMentions} to the rows below it. The
+ * Salon provides it (`providers: [AbsentMentionsSlot]`) and fills it once in
+ * its constructor (`inject(AbsentMentionsSlot).set(injectAbsentMentions(…))`
+ * — P4.D344's file, this lane's HANDOFF); each `qt-message-row` reads it
+ * OPTIONALLY, so every surface that renders rows without a Salon (the specs,
+ * the Brahma console) carries no query at all.
+ */
+@Injectable()
+export class AbsentMentionsSlot {
+  private readonly current = signal<AbsentMentions | null>(null);
+  set(mentions: AbsentMentions): void {
+    this.current.set(mentions);
+  }
+  /** One message's mentions, or null when no Salon has filled the slot. */
+  mentionsFor(messageId: string): readonly AbsentMention[] | null {
+    return this.current()?.mentionsFor(messageId)() ?? null;
+  }
+}
+
+/**
+ * The Salon's one call: read the chat's absent mentions AND hand them to the
+ * rows through the {@link AbsentMentionsSlot} the Salon provides. A field
+ * initializer (`private readonly absentMentions = bindAbsentMentions(this.chatId);`).
+ */
+export function bindAbsentMentions(chatId: Signal<string | null | undefined>): AbsentMentions {
+  const mentions = injectAbsentMentions(chatId);
+  inject(AbsentMentionsSlot).set(mentions);
+  return mentions;
 }
