@@ -30,11 +30,13 @@ use std::collections::HashMap;
 
 use quilltap_core::services::recall::render::{
     format_keywords_tag, format_memory_subject_prefix, human_keywords, is_targeting_keyword,
-    render_archive, render_head, render_inter_character, render_relevant,
+    render_archive, render_head, render_inner_circle, render_inter_character, render_relevant,
     DebugInterCharacterMemoryInfo, DebugMemoryInfo, MemorySubjectContext, RenderHeadOptions,
     RenderedSection,
 };
-use quilltap_core::services::recall::types::{RecallAdjustment, RecallCandidate};
+use quilltap_core::services::recall::types::{
+    inner_circle_trim_order, InnerCircleEntry, RecallAdjustment, RecallCandidate,
+};
 use serde_json::{json, Value};
 
 fn f(v: &Value) -> f64 {
@@ -226,6 +228,36 @@ fn recall_render_matches_oracle() {
                     row["id"]
                 );
             }
+            // P4.D342 (v4 `a5efdbb97` + `8cb584eff`): the inner circle.
+            "innerCircle" => {
+                let entries = circle_entries(&input["entries"]);
+                let got = render_inner_circle(
+                    &entries,
+                    input["maxTokens"].as_i64().unwrap(),
+                    provider(&input["provider"]),
+                    &subject(&input["subject"]),
+                );
+                assert_eq!(
+                    bytes(&section_json(&got, DebugMemoryInfo::to_json)),
+                    bytes(&row["output"]),
+                    "row {n} ({}): renderInnerCircle",
+                    row["id"]
+                );
+            }
+            "trimOrder" => {
+                let entries = circle_entries(&row["input"]);
+                let got: Vec<&str> = inner_circle_trim_order(&entries)
+                    .into_iter()
+                    .map(|i| entries[i].memory["id"].as_str().unwrap())
+                    .collect();
+                let want: Vec<&str> = row["order"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap())
+                    .collect();
+                assert_eq!(got, want, "row {n} ({}): innerCircleTrimOrder", row["id"]);
+            }
             "meta" => continue,
             other => panic!("unknown kind {other}"),
         }
@@ -236,4 +268,22 @@ fn recall_render_matches_oracle() {
     assert_eq!(counts.get("head"), Some(&30));
     assert_eq!(counts.get("relevant"), Some(&10));
     assert_eq!(counts.get("inter"), Some(&48));
+    assert_eq!(counts.get("innerCircle"), Some(&55));
+    assert_eq!(counts.get("trimOrder"), Some(&2));
+}
+
+/// The oracle's `{memory, characterId, tier, rank, order, keystone}` rows.
+fn circle_entries(v: &Value) -> Vec<InnerCircleEntry> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|e| InnerCircleEntry {
+            memory: e["memory"].clone(),
+            character_id: e["characterId"].as_str().unwrap().to_string(),
+            tier: e["tier"].as_i64().unwrap(),
+            rank: e["rank"].as_u64().unwrap() as usize,
+            order: e["order"].as_u64().unwrap() as usize,
+            keystone: e["keystone"].as_bool().unwrap(),
+        })
+        .collect()
 }

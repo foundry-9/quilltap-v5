@@ -1,7 +1,11 @@
 /**
  * @jest-environment node
  *
- * Tier-2 ORACLE (P4.D268): v4's frozen memory archive at `01a83539d` —
+ * Tier-2 ORACLE (P4.D268; re-aimed and grown by P4.D342 at `236c04e35` — the
+ * archive returns `{ anchors, circle }` since `a5efdbb97`, so `returned` is the
+ * anchors and each `get` also emits its `circle` rows; the spec gains
+ * `plantMountSql` and the mid-sequence `plantMain` / `plantMount` ops, and a
+ * `get` may carry `innerCircle` knobs): v4's frozen memory archive at `01a83539d` —
  * `lib/memory/frozen-archive-cache.ts` (`3f7320138` F5's (character, chat) key,
  * generation + size + presence freshness, the LRU bound of 64;
  * `d58548051`'s digests-first composition) and the job dispatcher's REAL
@@ -48,7 +52,7 @@ import { tmpdir } from 'node:os';
 import { applyMemoryTiersMigration } from '../fixtures/apply-memory-tiers-migration';
 
 interface Op {
-  kind: 'get' | 'invalidate' | 'invalidateAll' | 'hook';
+  kind: 'get' | 'invalidate' | 'invalidateAll' | 'hook' | 'plantMain' | 'plantMount';
   characterId?: string;
   chatId?: string;
   generation?: number;
@@ -59,15 +63,34 @@ interface Op {
   jobId?: string;
   type?: string;
   payload?: Record<string, unknown>;
+  /** P4.D342: the inner circle's knobs (the replay's tuning). */
+  innerCircle?: { share: number; allowance: number[] };
+  /** P4.D342: `plantMain` / `plantMount` — statements run mid-sequence. */
+  sql?: string[];
 }
 interface Spec {
   testPepperBase64: string;
   nowMs: number;
   plantSql: string[];
+  /** P4.D342: statements run on the MOUNT-INDEX copy before the first op. */
+  plantMountSql?: string[];
   ops: Op[];
 }
 
-const CAPTURED_PREFIXES = ['[FrozenArchive] ', 'Invalidated frozen memory archives after job', 'Failed to invalidate frozen memory archives after job'];
+const CAPTURED_PREFIXES = [
+  '[FrozenArchive] ',
+  'Invalidated frozen memory archives after job',
+  'Failed to invalidate frozen memory archives after job',
+  // P4.D342 (v4 `a5efdbb97` / `8cb584eff`): the circle's DEBUG and the two
+  // read-failure legs this lane's call sites answer (the repository-fallback
+  // class — v4's `findByFilter` line for a membership read, `findKeystones`'
+  // own line for a keystone read).
+  '[InnerCircle] ',
+  'Error finding entities by filter',
+  'Error finding keystones',
+  'Error finding hot digests',
+  'Error finding most important memories',
+];
 
 async function main(): Promise<void> {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -96,6 +119,25 @@ async function main(): Promise<void> {
     process.env.LOG_LEVEL = 'debug';
 
     await applyMemoryTiersMigration(mainWork, { pepperBase64: spec.testPepperBase64 });
+    // P4.D342: the mount copy's plants, through a keyed connection of its own
+    // BEFORE the manager opens it (the raw client is a cross-case singleton —
+    // memory note `jest-oracle-in-case-plants`). The same keyed open serves the
+    // mid-sequence `plantMount` ops (the manager's mount connection stays open;
+    // SQLite sees the second connection's committed writes).
+    const cipherDriver = require('node:path').join(
+      process.cwd(),
+      'packages/quilltap/node_modules/better-sqlite3-multiple-ciphers',
+    );
+    const keyHex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+    const runKeyed = (file: string, statements: string[]) => {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Driver = require(cipherDriver);
+      const db = new Driver(file);
+      db.pragma(`key = "x'${keyHex}'"`);
+      for (const sql of statements) db.exec(sql);
+      db.close();
+    };
+    runKeyed(mountWork, spec.plantMountSql ?? []);
     process.env.SQLITE_PATH = mainWork;
     process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
 
@@ -156,21 +198,46 @@ async function main(): Promise<void> {
       for (const [i, op] of spec.ops.entries()) {
         captured = [];
         let returned: string[] | null = null;
+        let circle: unknown[] | null = null;
         switch (op.kind) {
           case 'get': {
-            const options: { size?: number; presentCharacterIds?: string[]; exclude?: Set<string> } = {};
+            const options: {
+              size?: number;
+              presentCharacterIds?: string[];
+              exclude?: Set<string>;
+              innerCircle?: { share: number; allowance: number[] };
+            } = {};
             if (op.size !== undefined) options.size = op.size;
             if (op.present !== undefined) options.presentCharacterIds = op.present;
             if (op.exclude !== undefined) options.exclude = new Set(op.exclude);
+            if (op.innerCircle !== undefined) options.innerCircle = op.innerCircle;
             const archive = await cache.getOrComputeFrozenArchive(
               op.characterId as string,
               op.chatId as string,
               op.generation as number,
               options,
             );
-            returned = archive.map((m) => m.id);
+            // P4.D342 (RUNTIME-DEAD re-aim — at `236c04e35` the archive is
+            // `{ anchors, circle }`): `returned` keeps its meaning (the anchors,
+            // id-sorted — the old flat list wherever no circle and no keystone
+            // is planted) and the circle rides beside it in circle order.
+            returned = archive.anchors.map((m) => m.id);
+            circle = archive.circle.map((e) => ({
+              id: e.memory.id,
+              characterId: e.characterId,
+              tier: e.tier,
+              rank: e.rank,
+              order: e.order,
+              keystone: e.keystone,
+            }));
             break;
           }
+          case 'plantMain':
+            for (const sql of op.sql ?? []) await rawQuery(sql);
+            break;
+          case 'plantMount':
+            runKeyed(mountWork, op.sql ?? []);
+            break;
           case 'invalidate':
             cache.invalidateFrozenArchive(op.characterId as string);
             break;
@@ -187,7 +254,7 @@ async function main(): Promise<void> {
           default:
             throw new Error(`unknown op ${(op as Op).kind}`);
         }
-        lines.push(JSON.stringify({ i, kind: op.kind, returned, lines: captured }));
+        lines.push(JSON.stringify({ i, kind: op.kind, returned, circle, lines: captured }));
       }
     } finally {
       (global as { Date: DateConstructor }).Date = RealDate;

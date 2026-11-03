@@ -59,6 +59,7 @@ use quilltap_core::db::runtime::{Db, DbPaths};
 use quilltap_core::services::frozen_archive::{
     get_or_compute_frozen_archive, invalidate_all_frozen_archives, invalidate_frozen_archive,
     invalidate_frozen_archives_for_completed_job, reset_frozen_archive_cache_for_tests,
+    InnerCircleOptions,
 };
 use quilltap_core::test_support::global_capture;
 use serde::Deserialize;
@@ -70,7 +71,17 @@ struct Spec {
     test_pepper_base64: String,
     now_ms: f64,
     plant_sql: Vec<String>,
+    /// P4.D342: statements on the MOUNT-INDEX copy before the first op.
+    #[serde(default)]
+    plant_mount_sql: Vec<String>,
     ops: Vec<Op>,
+}
+
+/// P4.D342: a `get`'s inner-circle knobs.
+#[derive(Deserialize)]
+struct Knobs {
+    share: f64,
+    allowance: Vec<i64>,
 }
 
 #[derive(Deserialize)]
@@ -96,6 +107,12 @@ struct Op {
     job_type: Option<String>,
     #[serde(default)]
     payload: Option<Value>,
+    /// P4.D342: the inner circle's knobs for a `get`.
+    #[serde(default)]
+    inner_circle: Option<Knobs>,
+    /// P4.D342: a `plantMain` / `plantMount` op's statements.
+    #[serde(default)]
+    sql: Option<Vec<String>>,
 }
 
 /// v4's per-op row.
@@ -104,16 +121,25 @@ struct OracleRow {
     i: usize,
     kind: String,
     returned: Option<Vec<String>>,
+    /// P4.D342: a `get`'s circle rows (`{id, characterId, tier, rank, order,
+    /// keystone}`), in circle order.
+    #[serde(default)]
+    circle: Option<Vec<Value>>,
     lines: Vec<Value>,
 }
 
 /// The messages this family compares (the oracle captures the same set).
-const MESSAGES: [&str; 5] = [
+const MESSAGES: [&str; 7] = [
     "[FrozenArchive] Composed archive",
     "[FrozenArchive] Computed archive",
     "[FrozenArchive] Invalidated archives for character",
     "[FrozenArchive] Invalidated all archives",
     "Invalidated frozen memory archives after job",
+    // P4.D342 (v4 `a5efdbb97`): the circle's DEBUG and the membership read's
+    // failure leg (v4's `findByFilter` line — the outer `Error finding group
+    // memberships by …` is unreachable).
+    "[InnerCircle] Resolved inner circle",
+    "Error finding entities by filter",
 ];
 
 fn spec_path() -> PathBuf {
@@ -135,16 +161,21 @@ fn v5_lines(lines: &[String]) -> Vec<Line> {
             let msg = MESSAGES.iter().find(|m| l.contains(*m))?;
             let (head, rest) = l.split_once(*msg)?;
             let level = head.split(' ').next().unwrap_or("").to_lowercase();
-            let fields = rest
-                .split(' ')
-                .filter(|kv| !kv.is_empty())
-                .map(|kv| {
-                    let (k, v) = kv
-                        .split_once('=')
-                        .unwrap_or_else(|| panic!("bad field {kv:?} in {l}"));
-                    (k.to_string(), v.to_string())
-                })
-                .collect();
+            // A value with spaces (an error text) continues past its first
+            // token: a token without `=` belongs to the previous field.
+            let mut fields: Vec<(String, String)> = Vec::new();
+            for kv in rest.split(' ').filter(|kv| !kv.is_empty()) {
+                match kv.split_once('=') {
+                    Some((k, v)) if !k.contains(':') => fields.push((k.to_string(), v.to_string())),
+                    _ => {
+                        let last = fields
+                            .last_mut()
+                            .unwrap_or_else(|| panic!("bad field {kv:?} in {l}"));
+                        last.1.push(' ');
+                        last.1.push_str(kv);
+                    }
+                }
+            }
             Some((level, msg.to_string(), fields))
         })
         .collect()
@@ -214,10 +245,20 @@ fn frozen_archive_tier2_matches_oracle() {
                 .unwrap_or_else(|e| panic!("plant failed: {e}\n{sql}"));
         }
     }
+    let plant = |file: &std::path::Path, statements: &[String]| {
+        let w = quilltap_core::db::Writer::open_writable(file, &spec.test_pepper_base64)
+            .expect("open a fixture copy writable");
+        for sql in statements {
+            w.connection()
+                .execute_batch(sql)
+                .unwrap_or_else(|e| panic!("plant failed: {e}\n{sql}"));
+        }
+    };
+    plant(&mount, &spec.plant_mount_sql);
     let db = Db::open(
         DbPaths {
-            main,
-            mount_index: Some(mount),
+            main: main.clone(),
+            mount_index: Some(mount.clone()),
             llm_logs: None,
         },
         &spec.test_pepper_base64,
@@ -234,10 +275,14 @@ fn frozen_archive_tier2_matches_oracle() {
             (i, op.kind.as_str()),
             "op order mismatch"
         );
-        let (returned, lines) = global_capture::capture(|| match op.kind.as_str() {
+        let ((returned, circle), lines) = global_capture::capture(|| match op.kind.as_str() {
             "get" => {
                 let exclude: Option<std::collections::HashSet<String>> =
                     op.exclude.as_ref().map(|e| e.iter().cloned().collect());
+                let knobs = op.inner_circle.as_ref().map(|k| InnerCircleOptions {
+                    share: k.share,
+                    allowance: k.allowance.clone().into(),
+                });
                 let archive = get_or_compute_frozen_archive(
                     &db,
                     op.character_id.as_deref().unwrap(),
@@ -247,22 +292,42 @@ fn frozen_archive_tier2_matches_oracle() {
                     op.present.as_deref().unwrap_or(&[]),
                     spec.now_ms,
                     exclude.as_ref(),
+                    knobs.as_ref(),
                 )
                 .unwrap_or_else(|e| panic!("op {i}: {e}"));
-                Some(
-                    archive
-                        .iter()
-                        .map(|m| m["id"].as_str().unwrap().to_string())
-                        .collect::<Vec<_>>(),
+                (
+                    Some(
+                        archive
+                            .anchors
+                            .iter()
+                            .map(|m| m["id"].as_str().unwrap().to_string())
+                            .collect::<Vec<_>>(),
+                    ),
+                    Some(
+                        archive
+                            .circle
+                            .iter()
+                            .map(|e| {
+                                serde_json::json!({
+                                    "id": e.memory["id"],
+                                    "characterId": e.character_id,
+                                    "tier": e.tier,
+                                    "rank": e.rank,
+                                    "order": e.order,
+                                    "keystone": e.keystone,
+                                })
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
                 )
             }
             "invalidate" => {
                 invalidate_frozen_archive(op.character_id.as_deref().unwrap());
-                None
+                (None, None)
             }
             "invalidateAll" => {
                 invalidate_all_frozen_archives();
-                None
+                (None, None)
             }
             "hook" => {
                 invalidate_frozen_archives_for_completed_job(
@@ -270,10 +335,28 @@ fn frozen_archive_tier2_matches_oracle() {
                     op.job_type.as_deref().unwrap(),
                     op.payload.as_ref().unwrap_or(&Value::Null),
                 );
-                None
+                (None, None)
+            }
+            "plantMain" => {
+                plant(&main, op.sql.as_deref().unwrap());
+                (None, None)
+            }
+            "plantMount" => {
+                plant(&mount, op.sql.as_deref().unwrap());
+                (None, None)
             }
             other => panic!("unknown op kind {other}"),
         });
+        // The circle is compared as BYTES (key order included).
+        let to_s = |v: &Option<Vec<Value>>| serde_json::to_string(v).unwrap();
+        if to_s(&circle) != to_s(&want.circle) {
+            failures.push(format!(
+                "op {i} ({}) circle diverges\n  v5 {}\n  v4 {}",
+                op.kind,
+                to_s(&circle),
+                to_s(&want.circle)
+            ));
+        }
         if returned != want.returned {
             failures.push(format!(
                 "op {i} ({}) returned diverges\n  v5 {returned:?}\n  v4 {:?}",
@@ -295,7 +378,11 @@ fn frozen_archive_tier2_matches_oracle() {
                 .expect("known message");
             *seen.entry(key).or_default() += 1;
         }
-        if op.kind == "get" && wl.is_empty() {
+        if op.kind == "get"
+            && !wl
+                .iter()
+                .any(|(_, m, _)| m == "[FrozenArchive] Computed archive")
+        {
             hits += 1;
         }
     }

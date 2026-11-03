@@ -104,6 +104,7 @@ pub mod file_fallback;
 pub mod file_storage;
 pub mod first_message_context;
 pub mod frozen_archive;
+pub mod inner_circle; // P4.D342 — v4 `lib/memory/recall/inner-circle.ts` (`a5efdbb97`)
 pub mod memory_index_backfill; // P4.D292 (L-3)
                                // === P4.9K0 ===
 pub mod generator_progress;

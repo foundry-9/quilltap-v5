@@ -429,6 +429,20 @@ pub fn find_by_avatar_override_image_id(
 /// the turn. (v4's `withStrictRepositoryFailures` scope, which suspends that
 /// fallback, is not on this path.)
 pub fn find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String, String> {
+    find_names_by_ids_with(main, ids, false)
+}
+
+/// v4 `findNamesByIds(ids, { excludeArchived })` (`characters.repository.ts:
+/// 204-224` at `236c04e35` — `a5efdbb97`): [`find_names_by_ids`] with the
+/// option. `exclude_archived` drops a row whose `archivedAt` is TRUTHY (v4
+/// `if (options.excludeArchived && row.archivedAt) continue` — a NULL or `""`
+/// `archivedAt` is not archived). v4's only caller of the option is the inner
+/// circle (`inner-circle.ts:83`); every other caller keeps archived rows.
+pub fn find_names_by_ids_with(
+    main: &Connection,
+    ids: &[String],
+    exclude_archived: bool,
+) -> HashMap<String, String> {
     let mut unique: Vec<String> = Vec::new();
     let mut seen: HashSet<&str> = HashSet::new();
     for id in ids {
@@ -464,6 +478,19 @@ pub fn find_names_by_ids(main: &Connection, ids: &[String]) -> HashMap<String, S
             Some(o) => o,
             None => continue,
         };
+        // v4 `row.archivedAt` truthiness (the row is Zod-hydrated there, so in
+        // practice a non-empty string or null).
+        if exclude_archived
+            && match obj.get("archivedAt") {
+                None | Some(Value::Null) => false,
+                Some(Value::String(s)) => !s.is_empty(),
+                Some(Value::Bool(b)) => *b,
+                Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0 && !f.is_nan()),
+                Some(_) => true,
+            }
+        {
+            continue;
+        }
         let id = match obj.get("id").and_then(Value::as_str) {
             Some(s) if !s.is_empty() => s,
             _ => continue,
@@ -700,5 +727,31 @@ mod tests {
             lines,
             vec!["ERROR quilltap::db Error finding entities by filter collection=characters error=no such table: characters".to_string()]
         );
+    }
+
+    /// P4.D342 (v4 `a5efdbb97`): `excludeArchived` drops a TRUTHY `archivedAt`
+    /// only — `NULL` and `""` are not archived — and only under the option.
+    #[test]
+    fn exclude_archived_drops_only_truthy_archived_rows() {
+        let main = main_db();
+        insert(&main, "c-live", "Live", None);
+        insert(&main, "c-arch", "Gone", None);
+        insert(&main, "c-blank", "Blank", None);
+        main.execute_batch(
+            "UPDATE characters SET archivedAt = '2026-09-06T00:00:00.000Z' WHERE id = 'c-arch';
+             UPDATE characters SET archivedAt = '' WHERE id = 'c-blank';",
+        )
+        .unwrap();
+        let ids: Vec<String> = ["c-live", "c-arch", "c-blank"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let all = find_names_by_ids(&main, &ids);
+        assert_eq!(all.len(), 3, "the plain read keeps archived rows: {all:?}");
+        let live = find_names_by_ids_with(&main, &ids, true);
+        assert_eq!(live.get("c-live").map(String::as_str), Some("Live"));
+        assert_eq!(live.get("c-blank").map(String::as_str), Some("Blank"));
+        assert!(!live.contains_key("c-arch"), "{live:?}");
+        assert_eq!(find_names_by_ids_with(&main, &ids, false), all);
     }
 }

@@ -1,23 +1,31 @@
 //! Frozen memory archive cache (v4 `lib/memory/recall/archive.ts` at the
-//! `83334b9a5` pin — `3f7320138` F5 + `d58548051`'s digest composition, Phase
-//! A's salience fill, Phase E's `exclude` — moved from
-//! `frozen-archive-cache.ts`).
+//! `236c04e35` pin — `3f7320138` F5 + `d58548051`'s digest composition, Phase
+//! A's salience fill, Phase E's `exclude`, `a5efdbb97`'s inner circle and
+//! `8cb584eff`'s keystone placement; P4.D342).
 //!
 //! Per-character memory pool that stays byte-stable across turns within a
 //! single `compactionGeneration`. The archive is the cache-friendly bulk of
-//! what a character "remembers" generally. Composition (consolidation spec §5):
-//! the top hot digests about each *other* character present this turn, the top
-//! self digests, then a fill of the most SALIENT hot rows (reinforced
-//! importance × time decay, no floor) up to the budget-sized N — finally
-//! sorted by memory id so the formatted output is deterministic. Cold rows
-//! never enter (the repository reads are hot-only).
+//! what a character "remembers" generally. Composition (consolidation spec §5,
+//! inner-circle-recall.md): (1 + 2) the keystones and top hot digests about
+//! each *other* character present this turn — a present character's keystones
+//! LIFTED into the circle section at tier −1 — then the self keystones and the
+//! top self digests; (3) the INNER CIRCLE ([`crate::services::inner_circle`]):
+//! each member's keystones, then their hot digests up to their tier's
+//! allowance, capped at the circle's share of the archive; (4) a fill of the
+//! most SALIENT hot rows (reinforced importance × time decay, no floor) up to
+//! the budget-sized N. The result is `{anchors, circle}`: the anchors sorted
+//! by memory id, the circle in circle order, so the formatted output is
+//! deterministic. Cold rows never enter (the repository reads are hot-only).
 //!
 //! An `exclude` set (the recall replay's `asOf` corpus) computes WITHOUT
 //! touching the cache — a live turn never passes one.
 //!
 //! Cache key: `(characterId, chatId)`, with the chat's `compactionGeneration`
-//! (and the archive size, and the set of other characters present) as the
-//! freshness check. Keying on the chat matters: every new chat starts at
+//! (and the archive size, the set of other characters present, and the inner
+//! circle's knobs + signature) as the freshness check. The circle is resolved
+//! on EVERY call, before the lookup (v4 `archive.ts:145`; P4.D342 R-2): "a
+//! membership change, a rename that reorders the circle, or an archived member
+//! reaches the next turn without an explicit invalidation". Keying on the chat matters: every new chat starts at
 //! generation 0, so a character-only key handed a new chat whatever
 //! generation-0 archive an earlier chat had cached. Within one chat and
 //! generation the archive is byte-stable. Presence is a FRESHNESS check, not
@@ -46,16 +54,23 @@
 //! `lock().unwrap_or_else(PoisonError::into_inner)`, never `.expect`, so the job
 //! pump's completion hook can never panic here (P4.D268 R-B).
 //!
-//! Returns the raw memory `Value` rows (v4's `Memory[]`); the caller
-//! (build_context) converts them into its own injector type.
+//! Returns a [`FrozenArchive`] of raw memory `Value` rows (v4's `Memory[]`);
+//! the recall assembler renders the circle and the anchors.
 //!
 //! ## Lines (v4's root `logger`; every key camelCase, v4's order)
 //!
+//! - DEBUG `[InnerCircle] Resolved inner circle` — every call whose holder has
+//!   a circle ([`crate::services::inner_circle`]), hit or miss.
 //! - DEBUG `[FrozenArchive] Composed archive` `{characterId, size,
-//!   presentCharacters, digests, filled}` — every compute, BEFORE the next.
+//!   presentCharacters, presentKeystones, digests, circleMembers, circle,
+//!   circleKeystones, circleCap, filled}` — every compute, BEFORE the next.
 //! - DEBUG `[FrozenArchive] Computed archive` `{characterId, chatId,
-//!   compactionGeneration, size, presentCharacters, returned, cacheEntries}` —
-//!   every MISS, after the LRU eviction. A hit logs nothing.
+//!   compactionGeneration, size, presentCharacters, circleMembers, anchors,
+//!   circle, cacheEntries}` — every MISS, after the LRU eviction. A hit logs
+//!   nothing (but the circle's own line).
+//! - The keystone reads answer v4's `findKeystones` fallback (`Error finding
+//!   keystones`, `[]` — `db::fallback::keystones_or_empty`, P4.D342 R-9): a
+//!   failed read costs the keystones, never the archive.
 //! - DEBUG `[FrozenArchive] Invalidated archives for character` `{characterId,
 //!   dropped}` / `[FrozenArchive] Invalidated all archives` `{dropped}` — only
 //!   when something was dropped.
@@ -66,15 +81,51 @@
 //!   invalidate frozen memory archives after job` guards a dynamic `import()`
 //!   v5 does not have — unreachable, pinned NEGATIVE.
 
+use std::borrow::Cow;
+use std::collections::HashSet;
 use std::sync::{Mutex, OnceLock, PoisonError};
 
 use serde_json::Value;
 
 use crate::collation::locale_compare;
-use crate::db::memories_read::{self, DigestSubject};
+use crate::db::memories_read::{self, DigestSubject, KeystoneSubjects};
 use crate::db::runtime::Db;
 use crate::db::DbError;
 use crate::memory_scoring::sort_by_salience;
+use crate::recall_tags::{INNER_CIRCLE_ALLOWANCE, INNER_CIRCLE_ARCHIVE_SHARE};
+use crate::services::inner_circle::{
+    inner_circle_allowance_for, inner_circle_signature, resolve_inner_circle, InnerCircleMember,
+};
+use crate::services::recall::types::{inner_circle_trim_order, InnerCircleEntry};
+
+/// The frozen archive (v4 `FrozenArchive`, `a5efdbb97`).
+#[derive(Clone, Debug, Default)]
+pub struct FrozenArchive {
+    /// Everything but the circle, sorted ascending by `memory.id` — self
+    /// keystones among them.
+    pub anchors: Vec<Value>,
+    /// The inner circle, in circle order: keystones about those present (tier
+    /// −1), then the circle (tier, group, member; each member's keystones
+    /// before their digests).
+    pub circle: Vec<InnerCircleEntry>,
+}
+
+/// The inner circle's knobs (v4 `InnerCircleOptions`) — the replay's tuning,
+/// else the shipped defaults.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InnerCircleOptions {
+    pub share: f64,
+    pub allowance: Cow<'static, [i64]>,
+}
+
+impl Default for InnerCircleOptions {
+    fn default() -> Self {
+        InnerCircleOptions {
+            share: INNER_CIRCLE_ARCHIVE_SHARE,
+            allowance: Cow::Borrowed(&INNER_CIRCLE_ALLOWANCE),
+        }
+    }
+}
 
 /// Default size of the frozen archive (callers normally pass a budget-sized one).
 pub const FROZEN_ARCHIVE_SIZE: usize = 25;
@@ -104,7 +155,9 @@ struct CacheEntry {
     size: usize,
     /// Sorted, joined ids of the other characters present when computed.
     presence: String,
-    memories: Vec<Value>,
+    /// The knobs and [`inner_circle_signature`] the circle was drawn with.
+    circle: String,
+    archive: FrozenArchive,
 }
 
 /// v4's insertion-ordered `Map`: index 0 is the least recently used. At most
@@ -158,29 +211,37 @@ impl FrozenArchiveCache {
         compaction_generation: i64,
         size: Option<usize>,
         present_character_ids: &[String],
-        compute: impl FnOnce(usize, &[String]) -> Result<Vec<Value>, DbError>,
-    ) -> Result<Vec<Value>, DbError> {
+        compute: impl FnOnce(usize, &[String]) -> Result<FrozenArchive, DbError>,
+    ) -> Result<FrozenArchive, DbError> {
         let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
         let present = normalize_present(character_id, present_character_ids);
-        if let Some(hit) = self.lookup(character_id, chat_id, compaction_generation, size, &present)
-        {
+        if let Some(hit) = self.lookup(
+            character_id,
+            chat_id,
+            compaction_generation,
+            size,
+            &present,
+            "",
+        ) {
             return Ok(hit);
         }
-        let memories = compute(size, &present)?;
+        let archive = compute(size, &present)?;
         self.insert(
             character_id,
             chat_id,
             compaction_generation,
             size,
             &present,
-            memories.clone(),
+            "",
+            0,
+            archive.clone(),
         );
-        Ok(memories)
+        Ok(archive)
     }
 
-    /// v4's `cache.get(key)` + the validity check (`archive.ts:104-111`): a
-    /// hit at the same generation / size / presence refreshes recency and
-    /// answers the cached rows. `present` is already normalized.
+    /// v4's `cache.get(key)` + the validity check (`archive.ts:153-159`): a
+    /// hit at the same generation / size / presence / circle refreshes recency
+    /// and answers the cached archive. `present` is already normalized.
     fn lookup(
         &mut self,
         character_id: &str,
@@ -188,25 +249,29 @@ impl FrozenArchiveCache {
         compaction_generation: i64,
         size: usize,
         present: &[String],
-    ) -> Option<Vec<Value>> {
+        circle: &str,
+    ) -> Option<FrozenArchive> {
         let idx = self.position(&cache_key(character_id, chat_id))?;
         let cached = &self.entries[idx].1;
         if cached.generation != compaction_generation
             || cached.size != size
             || cached.presence != present.join(",")
+            || cached.circle != circle
         {
             return None;
         }
         // Refresh recency.
         let entry = self.entries.remove(idx);
-        let memories = entry.1.memories.clone();
+        let archive = entry.1.archive.clone();
         self.entries.push(entry);
-        Some(memories)
+        Some(archive)
     }
 
     /// v4's `cache.set(key, …)` after the compute (`archive.ts:115`): replace
     /// the key's entry, trim to [`FROZEN_ARCHIVE_CACHE_MAX_ENTRIES`] (least
-    /// recent first), and log the DEBUG.
+    /// recent first), and log the DEBUG. `circle_members` is the resolved
+    /// circle's size (the line's `circleMembers`).
+    #[allow(clippy::too_many_arguments)]
     fn insert(
         &mut self,
         character_id: &str,
@@ -214,13 +279,15 @@ impl FrozenArchiveCache {
         compaction_generation: i64,
         size: usize,
         present: &[String],
-        memories: Vec<Value>,
+        circle: &str,
+        circle_members: usize,
+        archive: FrozenArchive,
     ) {
         let key = cache_key(character_id, chat_id);
         if let Some(idx) = self.position(&key) {
             self.entries.remove(idx);
         }
-        let returned = memories.len();
+        let (anchors, circle_rows) = (archive.anchors.len(), archive.circle.len());
         self.entries.push((
             key,
             CacheEntry {
@@ -228,7 +295,8 @@ impl FrozenArchiveCache {
                 generation: compaction_generation,
                 size,
                 presence: present.join(","),
-                memories,
+                circle: circle.to_string(),
+                archive,
             },
         ));
         while self.entries.len() > FROZEN_ARCHIVE_CACHE_MAX_ENTRIES {
@@ -242,7 +310,9 @@ impl FrozenArchiveCache {
             compactionGeneration = compaction_generation,
             size = size as u64,
             presentCharacters = present.len() as u64,
-            returned = returned as u64,
+            circleMembers = circle_members as u64,
+            anchors = anchors as u64,
+            circle = circle_rows as u64,
             cacheEntries = self.entries.len() as u64,
             "[FrozenArchive] Computed archive"
         );
@@ -292,15 +362,20 @@ fn cache() -> std::sync::MutexGuard<'static, FrozenArchiveCache> {
 
 /// Look up (or compute and cache) the frozen memory archive for a character in
 /// a chat at a given compaction generation (v4 `getOrComputeFrozenArchive`).
-/// Returns at most `size` memories (default [`FROZEN_ARCHIVE_SIZE`]), sorted
-/// ascending by `memory.id` so the formatted output is deterministic across
-/// turns. `present_character_ids` are the characters present this turn (the
-/// responder is ignored if listed).
+/// Holds at most `size` memories in all (default [`FROZEN_ARCHIVE_SIZE`]): the
+/// anchors sorted ascending by `memory.id` and the circle in circle order, so
+/// the formatted output is deterministic across turns. `present_character_ids`
+/// are the characters present this turn (the responder is ignored if listed).
 ///
 /// `now_ms` is the clock the salience re-rank uses (v4's implicit `Date.now()`
 /// inside `sortBySalience`), injected so the caller owns the clock. `exclude`
 /// (the replay's `asOf` corpus) leaves those rows out and computes WITHOUT
-/// touching the cache (v4 `options.exclude`).
+/// touching the cache (v4 `options.exclude`). `inner_circle` carries the
+/// replay's knobs; `None` → the shipped defaults.
+///
+/// The circle is resolved on EVERY call — before the `exclude` arm and before
+/// the lookup, as v4's `archive.ts:145` does (P4.D342 R-2) — and its reads run
+/// OUTSIDE the cache lock.
 #[allow(clippy::too_many_arguments)]
 pub fn get_or_compute_frozen_archive(
     db: &Db,
@@ -310,20 +385,63 @@ pub fn get_or_compute_frozen_archive(
     size: Option<usize>,
     present_character_ids: &[String],
     now_ms: f64,
-    exclude: Option<&std::collections::HashSet<String>>,
-) -> Result<Vec<Value>, DbError> {
+    exclude: Option<&HashSet<String>>,
+    inner_circle: Option<&InnerCircleOptions>,
+) -> Result<FrozenArchive, DbError> {
+    let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
+    let present = normalize_present(character_id, present_character_ids);
+    let knobs = inner_circle.cloned().unwrap_or_default();
+    let members = resolve_inner_circle(db, character_id, &present.iter().cloned().collect());
     if let Some(exclude) = exclude {
-        let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
-        let present = normalize_present(character_id, present_character_ids);
-        return compute_frozen_archive(db, character_id, size, &present, now_ms, Some(exclude));
+        return compute_frozen_archive(
+            db,
+            character_id,
+            size,
+            &present,
+            &members,
+            &knobs,
+            now_ms,
+            Some(exclude),
+        );
     }
+    let circle = circle_key(&knobs, &members);
     get_or_compute_global(
         character_id,
         chat_id,
         compaction_generation,
-        size,
-        present_character_ids,
-        |size, present| compute_frozen_archive(db, character_id, size, present, now_ms, None),
+        Some(size),
+        &present,
+        &circle,
+        members.len(),
+        |size, present| {
+            compute_frozen_archive(
+                db,
+                character_id,
+                size,
+                present,
+                &members,
+                &knobs,
+                now_ms,
+                None,
+            )
+        },
+    )
+}
+
+/// v4 `` `${knobs.share}|${knobs.allowance.join(',')}|${innerCircleSignature(members)}` ``
+/// — the numbers in their JS text.
+fn circle_key(knobs: &InnerCircleOptions, members: &[InnerCircleMember]) -> String {
+    let n = crate::pascal::js_value::number_to_string;
+    format!(
+        "{}|{}|{}",
+        n(knobs.share),
+        knobs
+            .allowance
+            .iter()
+            .map(|v| n(*v as f64))
+            .collect::<Vec<_>>()
+            .join(","),
+        inner_circle_signature(members)
     )
 }
 
@@ -341,26 +459,37 @@ pub fn get_or_compute_frozen_archive(
 /// runs unlocked on a pool thread beside the job runner. The lookup captures
 /// the character's invalidation stamp; the insert is skipped if it moved, so
 /// the stale archive is answered to this turn only and the next turn
-/// recomputes, as in v4.
+/// recomputes, as in v4. The circle key (P4.D342) is a freshness input like
+/// presence; it does not loosen the stamp.
+#[allow(clippy::too_many_arguments)]
 fn get_or_compute_global(
     character_id: &str,
     chat_id: &str,
     compaction_generation: i64,
     size: Option<usize>,
     present_character_ids: &[String],
-    compute: impl FnOnce(usize, &[String]) -> Result<Vec<Value>, DbError>,
-) -> Result<Vec<Value>, DbError> {
+    circle: &str,
+    circle_members: usize,
+    compute: impl FnOnce(usize, &[String]) -> Result<FrozenArchive, DbError>,
+) -> Result<FrozenArchive, DbError> {
     let size = size.unwrap_or(FROZEN_ARCHIVE_SIZE);
     let present = normalize_present(character_id, present_character_ids);
     let (hit, epoch) = {
         let mut c = cache();
-        let hit = c.lookup(character_id, chat_id, compaction_generation, size, &present);
+        let hit = c.lookup(
+            character_id,
+            chat_id,
+            compaction_generation,
+            size,
+            &present,
+            circle,
+        );
         (hit, c.epoch(character_id))
     };
     if let Some(hit) = hit {
         return Ok(hit);
     }
-    let memories = compute(size, &present)?;
+    let archive = compute(size, &present)?;
     let mut c = cache();
     if c.epoch(character_id) == epoch {
         c.insert(
@@ -369,10 +498,12 @@ fn get_or_compute_global(
             compaction_generation,
             size,
             &present,
-            memories.clone(),
+            circle,
+            circle_members,
+            archive.clone(),
         );
     }
-    Ok(memories)
+    Ok(archive)
 }
 
 /// Drop every chat's cached archive for a character (v4
@@ -447,22 +578,45 @@ pub fn reset_frozen_archive_cache_for_tests() {
     cache().clear();
 }
 
-/// v4 `computeFrozenArchive(characterId, size, presentCharacterIds, exclude)`
-/// over the real repository reads.
+/// v4 `computeFrozenArchive(characterId, size, presentCharacterIds, members,
+/// knobs, exclude)` over the real repository reads. The keystone reads are
+/// contract C-1's `find_keystones`, which answers v4's `findKeystones`
+/// fallback itself (`[]` + `Error finding keystones` through
+/// `db::fallback::keystones_or_empty`; P4.D342 R-9) — a failed read costs the
+/// keystones, never the archive.
+#[allow(clippy::too_many_arguments)]
 fn compute_frozen_archive(
     db: &Db,
     character_id: &str,
     size: usize,
     present: &[String],
+    members: &[InnerCircleMember],
+    knobs: &InnerCircleOptions,
     now_ms: f64,
-    exclude: Option<&std::collections::HashSet<String>>,
-) -> Result<Vec<Value>, DbError> {
+    exclude: Option<&HashSet<String>>,
+) -> Result<FrozenArchive, DbError> {
     compose_frozen_archive(
         character_id,
         size,
         present,
+        members,
+        knobs,
         now_ms,
         exclude,
+        |subjects| {
+            let cid = character_id.to_string();
+            let owned: Option<Vec<String>> = match subjects {
+                KeystoneSubjects::SelfSubject => None,
+                KeystoneSubjects::About(list) => Some(list.to_vec()),
+            };
+            db.read_main(move |conn| {
+                let subjects = match &owned {
+                    None => KeystoneSubjects::SelfSubject,
+                    Some(list) => KeystoneSubjects::About(list),
+                };
+                memories_read::find_keystones(conn, &cid, subjects)
+            })
+        },
         |subject, limit| {
             let cid = character_id.to_string();
             db.read_main(move |conn| memories_read::find_hot_digests(conn, &cid, subject, limit))
@@ -474,67 +628,164 @@ fn compute_frozen_archive(
     )
 }
 
+fn id_of(m: &Value) -> &str {
+    m.get("id").and_then(Value::as_str).unwrap_or("")
+}
+
+/// v4 `groupBySubject`: keystones by `aboutCharacterId`, first-seen order; a
+/// row with a falsy `aboutCharacterId` is skipped.
+fn group_by_subject(memories: Vec<Value>) -> Vec<(String, Vec<Value>)> {
+    let mut by_subject: Vec<(String, Vec<Value>)> = Vec::new();
+    for memory in memories {
+        let Some(about) = memory
+            .get("aboutCharacterId")
+            .and_then(Value::as_str)
+            .filter(|a| !a.is_empty())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        match by_subject.iter_mut().find(|(k, _)| *k == about) {
+            Some((_, rows)) => rows.push(memory),
+            None => by_subject.push((about, vec![memory])),
+        }
+    }
+    by_subject
+}
+
+fn rows_about<'a>(grouped: &'a [(String, Vec<Value>)], subject: &str) -> &'a [Value] {
+    grouped
+        .iter()
+        .find(|(k, _)| k == subject)
+        .map_or(&[][..], |(_, rows)| rows.as_slice())
+}
+
+/// v4's `chosen: Map<id, Memory>` — insertion-ordered.
+struct Chosen {
+    rows: Vec<Value>,
+    ids: HashSet<String>,
+}
+
+impl Chosen {
+    fn len(&self) -> usize {
+        self.rows.len()
+    }
+    fn has(&self, id: &str) -> bool {
+        self.ids.contains(id)
+    }
+    fn set(&mut self, memory: Value) {
+        if self.ids.insert(id_of(&memory).to_string()) {
+            self.rows.push(memory);
+        }
+    }
+}
+
 /// The composition, over injected reads (so the unit tests can drive v4's
-/// mocked-repository cases): digests first — what the character knows about
-/// each person in the room (in the SORTED present order), then about themself;
-/// each fetch is hot-only and ordered by reinforced importance, so membership
-/// is deterministic. Then the fill: the cheap top-by-reinforced-importance
-/// pull, re-ranked by salience (reinforced importance × time decay), skipping
-/// what is already in. An `exclude`d row is never taken. Digests are fetched even when `size` is 0 (`take`
-/// returns at once; the fill is skipped).
+/// mocked-repository cases) — v4 `computeFrozenArchive` (`archive.ts:221-293`).
+/// Keystones and digests first — what the character knows about each person
+/// in the room (in the SORTED present order), then about themself; keystones
+/// come in creation order and digests by reinforced importance, so membership
+/// is deterministic. Then the inner circle, capped at its share of the
+/// archive; then the fill: the cheap top-by-reinforced-importance pull,
+/// re-ranked by salience (reinforced importance × time decay), skipping what
+/// is already in. An `exclude`d row is never taken. Digests are fetched even
+/// when `size` is 0 (`take` returns at once; the fill is skipped).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn compose_frozen_archive(
     character_id: &str,
     size: usize,
     present: &[String],
+    members: &[InnerCircleMember],
+    knobs: &InnerCircleOptions,
     now_ms: f64,
-    exclude: Option<&std::collections::HashSet<String>>,
+    exclude: Option<&HashSet<String>>,
+    mut find_keystones: impl FnMut(KeystoneSubjects<'_>) -> Result<Vec<Value>, DbError>,
     mut find_hot_digests: impl FnMut(DigestSubject, i64) -> Result<Vec<Value>, DbError>,
     find_most_important: impl FnOnce(i64) -> Result<Vec<Value>, DbError>,
-) -> Result<Vec<Value>, DbError> {
+) -> Result<FrozenArchive, DbError> {
     // `Math.max(size, size * FROZEN_ARCHIVE_POOL_FACTOR)`.
     let pool_size = size.max(size * FROZEN_ARCHIVE_POOL_FACTOR);
 
-    let mut chosen: Vec<Value> = Vec::new();
-    let mut chosen_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut take = |memories: Vec<Value>, chosen: &mut Vec<Value>| {
+    let mut chosen = Chosen {
+        rows: Vec::new(),
+        ids: HashSet::new(),
+    };
+    let excluded = |m: &Value| exclude.is_some_and(|e| e.contains(id_of(m)));
+    let take = |memories: Vec<Value>, chosen: &mut Chosen| {
         for m in memories {
             if chosen.len() >= size {
                 return;
             }
-            let id = m
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if exclude.is_some_and(|e| e.contains(&id)) {
-                continue;
-            }
-            if chosen_ids.insert(id) {
-                chosen.push(m);
+            if !chosen.has(id_of(&m)) && !excluded(&m) {
+                chosen.set(m);
             }
         }
     };
-    for other_id in present {
+
+    // A keystone about someone present is LIFTED into the circle section: it
+    // always renders in full (inner-circle-recall.md C3). ONE read for all.
+    let present_keystones = group_by_subject(find_keystones(KeystoneSubjects::About(present))?);
+    let mut lifted: Vec<InnerCircleEntry> = Vec::new();
+    for (order, other_id) in present.iter().enumerate() {
+        let mut rank = 0usize;
+        for memory in rows_about(&present_keystones, other_id) {
+            // CONTINUE, not return: a later present character's lift is still
+            // tested (v4 `:250`).
+            if chosen.len() >= size || chosen.has(id_of(memory)) || excluded(memory) {
+                continue;
+            }
+            chosen.set(memory.clone());
+            lifted.push(InnerCircleEntry {
+                memory: memory.clone(),
+                character_id: other_id.clone(),
+                tier: -1,
+                rank,
+                order,
+                keystone: true,
+            });
+            rank += 1;
+        }
         let digests = find_hot_digests(
             DigestSubject::About(other_id.clone()),
             FROZEN_ARCHIVE_DIGESTS_PER_PRESENT,
         )?;
         take(digests, &mut chosen);
     }
+    // Self keystones stay among the anchors, rendered in full there.
+    let self_keystones = find_keystones(KeystoneSubjects::SelfSubject)?;
+    take(self_keystones, &mut chosen);
     let self_digests = find_hot_digests(DigestSubject::SelfSubject, FROZEN_ARCHIVE_SELF_DIGESTS)?;
     take(self_digests, &mut chosen);
     let digest_count = chosen.len();
 
+    // 3: the inner circle, capped at its share of the archive. `size −
+    // chosen.size` is never negative: `take` stops at `size`.
+    let cap = ((size as f64 * knobs.share).floor() as usize).min(size - chosen.len());
+    let drawn = draw_inner_circle(
+        members,
+        &knobs.allowance,
+        cap,
+        &chosen,
+        exclude,
+        &mut find_keystones,
+        &mut find_hot_digests,
+    )?;
+    for entry in &drawn {
+        chosen.set(entry.memory.clone());
+    }
+    let drawn_len = drawn.len();
+    let circle_keystones = drawn.iter().filter(|e| e.keystone).count();
+    let lifted_len = lifted.len();
+    let mut circle = lifted;
+    circle.extend(drawn);
+
+    // 4: fill with the cheap top-by-reinforced-importance pull, re-ranked by
+    // salience (reinforced importance × time decay), skipping what is already in.
     if chosen.len() < size {
         let candidates = find_most_important(pool_size as i64)?;
         let fresh: Vec<Value> = candidates
             .into_iter()
-            .filter(|m| {
-                let id = m.get("id").and_then(Value::as_str).unwrap_or("");
-                !chosen
-                    .iter()
-                    .any(|c| c.get("id").and_then(Value::as_str).unwrap_or("") == id)
-            })
+            .filter(|m| !chosen.has(id_of(m)))
             .collect();
         take(
             sort_by_salience(
@@ -546,23 +797,139 @@ pub(crate) fn compose_frozen_archive(
         );
     }
 
+    let circle_ids: HashSet<&str> = circle.iter().map(|e| id_of(&e.memory)).collect();
+    let mut anchors: Vec<Value> = chosen
+        .rows
+        .iter()
+        .filter(|m| !circle_ids.contains(id_of(m)))
+        .cloned()
+        .collect();
+    // Ascending by id via `a.id.localeCompare(b.id)`.
+    anchors.sort_by(|a, b| locale_compare(id_of(a), id_of(b)));
+
     tracing::debug!(
         target: "quilltap::memory",
         characterId = %character_id,
         size = size as u64,
         presentCharacters = present.len() as u64,
+        presentKeystones = lifted_len as u64,
         digests = digest_count as u64,
-        filled = (chosen.len() - digest_count) as u64,
+        circleMembers = members.len() as u64,
+        circle = drawn_len as u64,
+        circleKeystones = circle_keystones as u64,
+        circleCap = cap as u64,
+        filled = (anchors.len() + lifted_len) as i64 - digest_count as i64,
         "[FrozenArchive] Composed archive"
     );
 
-    // Ascending by id via `a.id.localeCompare(b.id)`.
-    chosen.sort_by(|a, b| {
-        let ai = a.get("id").and_then(Value::as_str).unwrap_or("");
-        let bi = b.get("id").and_then(Value::as_str).unwrap_or("");
-        locale_compare(ai, bi)
+    Ok(FrozenArchive { anchors, circle })
+}
+
+/// Step 3 (v4 `drawInnerCircle`, `archive.ts:312-361`): each circle member's
+/// keystones, then their hot digests up to their tier's allowance, in circle
+/// order. When the draw exceeds `cap` the rows are cut in
+/// [`inner_circle_trim_order`]: every keystone outlasts every digest, and
+/// among digests the loosest tier gives up rows first, each member's later
+/// digests before anyone's first. A tier's digests are not read at all once the
+/// keystones and the tighter tiers already fill the cap — they would be cut
+/// whole (the test runs only on a tier CHANGE: a member of the current tier is
+/// still read past the cap, and the trim cuts it).
+#[allow(clippy::too_many_arguments)]
+fn draw_inner_circle(
+    members: &[InnerCircleMember],
+    allowance: &[i64],
+    cap: usize,
+    chosen: &Chosen,
+    exclude: Option<&HashSet<String>>,
+    find_keystones: &mut impl FnMut(KeystoneSubjects<'_>) -> Result<Vec<Value>, DbError>,
+    find_hot_digests: &mut impl FnMut(DigestSubject, i64) -> Result<Vec<Value>, DbError>,
+) -> Result<Vec<InnerCircleEntry>, DbError> {
+    if cap == 0 || members.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut seen: HashSet<String> = HashSet::new();
+    let usable = |m: &Value, seen: &HashSet<String>| {
+        let id = id_of(m);
+        !chosen.has(id) && !seen.contains(id) && !exclude.is_some_and(|e| e.contains(id))
+    };
+
+    let member_ids: Vec<String> = members.iter().map(|m| m.character_id.clone()).collect();
+    let keystones = group_by_subject(find_keystones(KeystoneSubjects::About(&member_ids))?);
+    let mut keystone_entries: Vec<InnerCircleEntry> = Vec::new();
+    for (order, member) in members.iter().enumerate() {
+        let mut rank = 0usize;
+        for memory in rows_about(&keystones, &member.character_id) {
+            if !usable(memory, &seen) {
+                continue;
+            }
+            seen.insert(id_of(memory).to_string());
+            keystone_entries.push(InnerCircleEntry {
+                memory: memory.clone(),
+                character_id: member.character_id.clone(),
+                tier: member.tier,
+                rank,
+                order,
+                keystone: true,
+            });
+            rank += 1;
+        }
+    }
+
+    let mut digest_entries: Vec<InnerCircleEntry> = Vec::new();
+    let mut tier = -1i64;
+    for (order, member) in members.iter().enumerate() {
+        if member.tier != tier {
+            if keystone_entries.len() + digest_entries.len() >= cap {
+                break;
+            }
+            tier = member.tier;
+        }
+        let limit = inner_circle_allowance_for(member.tier, allowance);
+        if limit <= 0 {
+            continue;
+        }
+        let digests = find_hot_digests(DigestSubject::About(member.character_id.clone()), limit)?;
+        let mut rank = 0usize;
+        for memory in digests {
+            if !usable(&memory, &seen) {
+                continue;
+            }
+            seen.insert(id_of(&memory).to_string());
+            digest_entries.push(InnerCircleEntry {
+                memory,
+                character_id: member.character_id.clone(),
+                tier: member.tier,
+                rank,
+                order,
+                keystone: false,
+            });
+            rank += 1;
+        }
+    }
+
+    // Circle order: by member, each member's keystones before their digests
+    // (Rust's `sort_by` is stable, as V8's is).
+    let mut drawn = keystone_entries;
+    drawn.extend(digest_entries);
+    drawn.sort_by(|a, b| {
+        a.order
+            .cmp(&b.order)
+            .then_with(|| b.keystone.cmp(&a.keystone))
+            .then_with(|| a.rank.cmp(&b.rank))
     });
-    Ok(chosen)
+    if drawn.len() <= cap {
+        return Ok(drawn);
+    }
+    let kept: HashSet<usize> = inner_circle_trim_order(&drawn)
+        .into_iter()
+        .take(cap)
+        .collect();
+    Ok(drawn
+        .into_iter()
+        .enumerate()
+        .filter(|(i, _)| kept.contains(i))
+        .map(|(_, e)| e)
+        .collect())
 }
 
 #[cfg(test)]
@@ -648,8 +1015,11 @@ mod tests {
                         character_id,
                         size,
                         present,
+                        &[],
+                        &InnerCircleOptions::default(),
                         NOW_MS,
                         None,
+                        |_| Ok(Vec::new()),
                         |subject, limit| {
                             repo.digest_calls.borrow_mut().push((
                                 character_id.to_string(),
@@ -668,9 +1038,17 @@ mod tests {
                 },
             )
             .unwrap()
+            .anchors
             .iter()
             .map(|m| m["id"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    fn anchors(rows: Vec<Value>) -> FrozenArchive {
+        FrozenArchive {
+            anchors: rows,
+            circle: Vec::new(),
+        }
     }
 
     // ---- the eleven top-level `frozen-archive-cache.test.ts` cases ----
@@ -977,10 +1355,12 @@ mod tests {
             lines,
             vec![
                 "DEBUG quilltap::memory [FrozenArchive] Composed archive characterId=char-1 size=10 \
-                 presentCharacters=1 digests=1 filled=1"
+                 presentCharacters=1 presentKeystones=0 digests=1 circleMembers=0 circle=0 \
+                 circleKeystones=0 circleCap=3 filled=1"
                     .to_string(),
                 "DEBUG quilltap::memory [FrozenArchive] Computed archive characterId=char-1 chatId=chat-1 \
-                 compactionGeneration=2 size=10 presentCharacters=1 returned=2 cacheEntries=1"
+                 compactionGeneration=2 size=10 presentCharacters=1 circleMembers=0 anchors=2 \
+                 circle=0 cacheEntries=1"
                     .to_string(),
             ]
         );
@@ -997,7 +1377,7 @@ mod tests {
     fn seed_global(character_id: &str, chat_id: &str) {
         cache()
             .get_or_compute_with(character_id, chat_id, 0, None, &[], |_, _| {
-                Ok(vec![memory("seed", 0.5)])
+                Ok(anchors(vec![memory("seed", 0.5)]))
             })
             .unwrap();
     }
@@ -1018,7 +1398,7 @@ mod tests {
         // Probe with `try_lock` from inside the compute: a held lock answers
         // `WouldBlock` (the assertion fails) where a blocking `lock` would
         // deadlock the binary on a regression.
-        let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], |_, _| {
+        let got = get_or_compute_global("fa-lock-char", "chat-1", 0, None, &[], "", 0, |_, _| {
             // Retried: another module's test in this binary may hold the lock
             // for an instant (its own invalidation); a regression holds it for
             // the whole compute, so every attempt fails.
@@ -1029,11 +1409,14 @@ mod tests {
                 }
                 ok
             });
-            Ok(vec![memory(if free { "free" } else { "held" }, 0.5)])
+            Ok(anchors(vec![memory(
+                if free { "free" } else { "held" },
+                0.5,
+            )]))
         })
         .expect("the compute succeeds");
         assert_eq!(
-            got[0]["id"], "free",
+            got.anchors[0]["id"], "free",
             "the compute must not run under the cache lock"
         );
         assert!(
@@ -1050,30 +1433,81 @@ mod tests {
     #[test]
     fn an_invalidation_during_the_compute_is_not_overwritten() {
         let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
-        let got = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], |_, _| {
+        let got = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], "", 0, |_, _| {
             invalidate_frozen_archive("fa-race-char");
-            Ok(vec![memory("stale", 0.5)])
+            Ok(anchors(vec![memory("stale", 0.5)]))
         })
         .unwrap();
-        assert_eq!(got[0]["id"], "stale", "this call is answered its compute");
+        assert_eq!(
+            got.anchors[0]["id"], "stale",
+            "this call is answered its compute"
+        );
         assert!(
             !global_has("fa-race-char", "chat-1"),
             "the pre-invalidation archive must not be cached"
         );
-        let fresh = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], |_, _| {
-            Ok(vec![memory("fresh", 0.5)])
+        let fresh = get_or_compute_global("fa-race-char", "chat-1", 0, None, &[], "", 0, |_, _| {
+            Ok(anchors(vec![memory("fresh", 0.5)]))
         })
         .unwrap();
-        assert_eq!(fresh[0]["id"], "fresh", "the next call recomputes");
+        assert_eq!(fresh.anchors[0]["id"], "fresh", "the next call recomputes");
         assert!(global_has("fa-race-char", "chat-1"));
 
         invalidate_frozen_archive("fa-race-char");
-        get_or_compute_global("fa-race-all", "chat-1", 0, None, &[], |_, _| {
+        get_or_compute_global("fa-race-all", "chat-1", 0, None, &[], "", 0, |_, _| {
             invalidate_all_frozen_archives();
-            Ok(vec![memory("stale", 0.5)])
+            Ok(anchors(vec![memory("stale", 0.5)]))
         })
         .unwrap();
         assert!(!global_has("fa-race-all", "chat-1"), "the sweep wins too");
+    }
+
+    /// P4.D342: the circle key is a freshness input like presence — it does
+    /// not loosen the invalidation stamp (an invalidation during the compute
+    /// still skips the insert), and a changed key misses.
+    #[test]
+    fn the_circle_key_keeps_the_invalidation_stamp() {
+        let _s = GLOBAL_SERIAL.lock().unwrap_or_else(PoisonError::into_inner);
+        get_or_compute_global(
+            "fa-circle-char",
+            "chat-1",
+            0,
+            None,
+            &[],
+            "0.5|1|a:0",
+            1,
+            |_, _| {
+                invalidate_frozen_archive("fa-circle-char");
+                Ok(anchors(vec![memory("stale", 0.5)]))
+            },
+        )
+        .unwrap();
+        assert!(
+            !global_has("fa-circle-char", "chat-1"),
+            "the stamp still wins"
+        );
+        let first =
+            get_or_compute_global("fa-circle-char", "chat-1", 0, None, &[], "k1", 1, |_, _| {
+                Ok(anchors(vec![memory("one", 0.5)]))
+            })
+            .unwrap();
+        let hit =
+            get_or_compute_global("fa-circle-char", "chat-1", 0, None, &[], "k1", 1, |_, _| {
+                Ok(anchors(vec![memory("two", 0.5)]))
+            })
+            .unwrap();
+        let miss =
+            get_or_compute_global("fa-circle-char", "chat-1", 0, None, &[], "k2", 1, |_, _| {
+                Ok(anchors(vec![memory("three", 0.5)]))
+            })
+            .unwrap();
+        assert_eq!(first.anchors[0]["id"], "one");
+        assert_eq!(hit.anchors[0]["id"], "one", "the same circle key hits");
+        assert_eq!(
+            miss.anchors[0]["id"], "three",
+            "a changed circle key misses"
+        );
+        invalidate_frozen_archive("fa-circle-char");
     }
 
     #[test]

@@ -168,6 +168,53 @@ pub struct RenderedLine {
     pub body: String,
 }
 
+/// One inner-circle row in a frozen archive: the memory and where it sits in
+/// the circle (v4 `InnerCircleEntry`, `a5efdbb97` + `8cb584eff`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct InnerCircleEntry {
+    pub memory: Value,
+    /// The circle member the memory is about.
+    pub character_id: String,
+    /// The member's tier (0 = the holder's tightest group; −1 = a present
+    /// character's lifted keystone).
+    pub tier: i64,
+    /// The row's rank within its member's draw (0 = the member's first).
+    pub rank: usize,
+    /// The member's position in circle order (or the present character's, for
+    /// a lifted keystone).
+    pub order: usize,
+    /// An operator-marked standing fact (inner-circle-recall.md Part C).
+    pub keystone: bool,
+}
+
+/// Circle rows from most to least protected (v4 `innerCircleTrimOrder`):
+/// keystones before digests, then the tighter tier, then a member's earlier
+/// rows, then circle order. The archive's cap and the renderer's token budget
+/// both cut from the END of this order, so the loosest tier's digests give up
+/// lines first and keystones last. Answers the INDICES of `entries` in that
+/// order — a stable sort, as V8's is.
+pub fn inner_circle_trim_order(entries: &[InnerCircleEntry]) -> Vec<usize> {
+    inner_circle_trim_order_by(entries, |e| e)
+}
+
+/// [`inner_circle_trim_order`] over rows that each carry an entry (the
+/// renderer's built lines).
+pub fn inner_circle_trim_order_by<T>(
+    rows: &[T],
+    entry: impl Fn(&T) -> &InnerCircleEntry,
+) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..rows.len()).collect();
+    order.sort_by(|&i, &j| {
+        let (a, b) = (entry(&rows[i]), entry(&rows[j]));
+        b.keystone
+            .cmp(&a.keystone)
+            .then_with(|| a.tier.cmp(&b.tier))
+            .then_with(|| a.rank.cmp(&b.rank))
+            .then_with(|| a.order.cmp(&b.order))
+    });
+    order
+}
+
 /// Which section a delivered row was in (v4 `RecallPool`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize)]
 pub enum RecallPool {

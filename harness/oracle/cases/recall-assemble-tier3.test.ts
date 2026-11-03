@@ -58,6 +58,8 @@ interface Spec {
   iris: string;
   chat: { id: string };
   memories: Array<{ id: string; summary: string; aboutCharacterId?: string }>;
+  /** P4.D342: the `inner_circle_*` cases' in-case plants (main / mount). */
+  circlePlants: { main: string[]; mount: string[] };
 }
 
 type Step =
@@ -81,6 +83,8 @@ interface PreSpec {
 interface CaseSpec {
   name: string;
   steps: Step[];
+  /** P4.D342: run `spec.circlePlants` on this case's fresh copies. */
+  circle?: boolean;
 }
 
 const RECAP_TEXT = 'Lyra remembers a great deal.';
@@ -179,6 +183,24 @@ async function main(): Promise<void> {
         { op: 'assemble', plan: {}, pre: { text: 'w', signals: { keywords: ['x'], paraphrase: 'Remember the bridge?', retrospective: true }, empty: true } },
       ],
     },
+    // P4.D342 (v4 `a5efdbb97` + `8cb584eff`): the inner circle and the keystone
+    // placement. Juniper shares Lyra's Family group and is absent: her digest
+    // and keystone render IN FULL under `## Those Closest to You`, ahead of the
+    // anchors; Iris is present, so her keystone is LIFTED into the circle
+    // section at tier -1; Lyra's own keystone is an anchor, in full.
+    { name: 'inner_circle_absent_groupmate', circle: true, steps: [{ op: 'assemble', plan: {} }, { op: 'deliver', of: 0, text: 'everything' }] },
+    // A tight budget: the anchors render in what the circle LEAVES.
+    { name: 'inner_circle_tight_budget', circle: true, steps: [{ op: 'assemble', plan: { memoryBudget: 450 } }] },
+    { name: 'inner_circle_share_zero', circle: true, steps: [{ op: 'assemble', plan: { tuning: { innerCircleShare: 0 } } }] },
+    { name: 'inner_circle_allowance_zero', circle: true, steps: [{ op: 'assemble', plan: { tuning: { innerCircleAllowance: [0] } } }] },
+    {
+      name: 'inner_circle_retro_turn',
+      circle: true,
+      steps: [
+        { op: 'assemble', plan: {} },
+        { op: 'assemble', plan: {}, pre: { text: 'w', signals: { keywords: ['x'], paraphrase: 'Remember the bridge?', retrospective: true }, empty: true } },
+      ],
+    },
   ];
 
   const RealDate = Date;
@@ -211,6 +233,22 @@ async function main(): Promise<void> {
     delete process.env.SQLITE_WAL_MODE;
     process.env.LOG_LEVEL = 'debug';
 
+    if (c.circle) {
+      // Keyed connections of their own, BEFORE the manager opens either file
+      // (memory note `jest-oracle-in-case-plants`).
+      const keyHex = Buffer.from(spec.testPepperBase64, 'base64').toString('hex');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Driver = require(cipherDriverPath);
+      for (const [file, statements] of [
+        [mainWork, spec.circlePlants.main],
+        [process.env.SQLITE_MOUNT_INDEX_PATH as string, spec.circlePlants.mount],
+      ] as const) {
+        const conn = new Driver(file);
+        conn.pragma(`key = "x'${keyHex}'"`);
+        for (const sql of statements) conn.exec(sql);
+        conn.close();
+      }
+    }
     const embedTexts: string[] = [];
     const canned = new Map<string, Record<string, unknown>>();
     jest.resetModules();
@@ -360,7 +398,12 @@ async function main(): Promise<void> {
           if (step.pre.ranked) preRecall.ranked = ranked;
         }
         const over = step.plan as Record<string, any>;
-        const plan: Record<string, any> = { ...basePlan, ...over };
+        const { tuning: tuningInput, ...rest } = over;
+        const plan: Record<string, any> = { ...basePlan, ...rest };
+        if (tuningInput) {
+          const { resolveRecallTuning } = await import('@/lib/memory/recall/tuning');
+          plan.replay = { tuning: resolveRecallTuning(tuningInput) };
+        }
         plan.conversations = { maxContext: 32000, standingIds: async () => new Set() };
         if (over.recap) plan.recap = { selection: SELECTION, fallbackQuery: over.recap.fallbackQuery };
         if (preRecall) plan.preRecall = preRecall;

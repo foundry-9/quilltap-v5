@@ -1,6 +1,8 @@
 /**
  * Oracle case: the recall renderers (P4.D291 — v4 `lib/memory/recall/render.ts`,
- * `584d28164`, pinned at `83334b9a5`).
+ * `584d28164`, pinned at `83334b9a5`; P4.D342 — `a5efdbb97`'s
+ * `renderInnerCircle` + `innerCircleTrimOrder` and `8cb584eff`'s keystone
+ * body rule, pinned at `236c04e35`).
  *
  * Drives the REAL `renderArchive`, `renderHead`, `renderRelevant`,
  * `renderInterCharacter`, `formatMemorySubjectPrefix`, `humanKeywords`,
@@ -83,6 +85,12 @@ async function main() {
     mem('a1000000-0000-4000-8000-000000000008', { aboutCharacterId: BLANK, occurredAt: iso(9 * DAY), lastReinforcedAt: iso(1 * DAY) }),
     mem('a1000000-0000-4000-8000-000000000009', { aboutCharacterId: BO, createdAt: iso(40 * DAY), keywords: [7, 'moment', 'trivia', 'harbour'] }),
     mem('a1000000-0000-4000-8000-000000000010', { createdAt: 'not a date' }),
+    // P4.D342 (v4 `8cb584eff`): keystones render in FULL in the archive and the
+    // head — content first, both trimmed; an empty or blank content falls back
+    // to the (trimmed) summary.
+    mem('a1000000-0000-4000-8000-000000000011', { keystone: true, aboutCharacterId: AMY, content: 'Amy is engaged to Charlie, and the wedding is in June.', summary: 'amy engaged' }),
+    mem('a1000000-0000-4000-8000-000000000012', { keystone: true, content: '', summary: '  keystone summary only  ' }),
+    mem('a1000000-0000-4000-8000-000000000013', { keystone: true, content: '   ', summary: 'blank-content keystone', keystoneNote: 'x' }),
   ]
 
   const out: unknown[] = []
@@ -134,7 +142,7 @@ async function main() {
   const adj = (after: number) => ({ multiplier: 1.1, fired: ['narrow✓'], blendedBefore: after / 1.1, blendedAfter: after })
   const headPools: Record<string, unknown[]> = {
     blend: memories.map((m, i) => cand(m, 0.5 + i / 50, 0.3 + (i % 3) / 10, adj(0.4 + ((i * 7) % 10) / 20))),
-    salience: memories.map((m, i) => cand(m, 0.9 - i / 40, [0.6, 0.62, 0.3, 0.64, NaN, 0.66, 0.2, 0.7, 0.55, 0.5][i])),
+    salience: memories.map((m, i) => cand(m, 0.9 - i / 40, [0.6, 0.62, 0.3, 0.64, NaN, 0.66, 0.2, 0.7, 0.55, 0.5, 0.95, 0.94, 0.93][i])),
     mixed: memories.map((m, i) => cand(m, 0.7, 0.5, i % 2 === 0 ? adj(0.5 + i / 30) : undefined)),
   }
   for (const [poolName, pool] of Object.entries(headPools)) {
@@ -204,6 +212,48 @@ async function main() {
       }
     }
   }
+
+  // ---- inner circle (P4.D342 — v4 `a5efdbb97` + `8cb584eff`) ------------------
+  // `renderInnerCircle` and `innerCircleTrimOrder`: full text (content first,
+  // both trimmed), NO age tag (the rows are planted old), subject prefixes, the
+  // budget cut in trim order — keystones last, the loosest tier first, a
+  // member's later rows before anyone's first — the rest in CIRCLE order, the
+  // walk BREAKING at the first row that does not fit.
+  const types = await import('@/lib/memory/recall/types')
+  const ent = (m: Record<string, unknown>, characterId: string, tier: number, rank: number, order: number, keystone = false) =>
+    ({ memory: m, characterId, tier, rank, order, keystone })
+  const old = { createdAt: iso(400 * DAY), updatedAt: iso(400 * DAY) }
+  const circles: Record<string, unknown[]> = {
+    tiers: [
+      ent(mem('d1000000-0000-4000-8000-000000000001', { ...old, aboutCharacterId: AMY, content: 'Amy is my sister.' }), AMY, 0, 0, 0),
+      ent(mem('d1000000-0000-4000-8000-000000000002', { ...old, aboutCharacterId: AMY, content: 'Amy keeps bees on the roof of the east wing.' }), AMY, 0, 1, 0),
+      ent(mem('d1000000-0000-4000-8000-000000000003', { ...old, aboutCharacterId: BO, source: 'CONSOLIDATED', consolidatedFrom: ['p', 'q'], content: '  Bo sails the Kittiwake.  ', keywords: ['harbour'] }), BO, 1, 0, 1),
+      ent(mem('d1000000-0000-4000-8000-000000000004', { ...old, aboutCharacterId: BO, content: '' , summary: '  bo summary only  ' }), BO, 1, 1, 1),
+      ent(mem('d1000000-0000-4000-8000-000000000005', { ...old, aboutCharacterId: GHOST, content: 'The quiet one from the club reads in the library.' }), GHOST, 2, 0, 2),
+      ent(mem('d1000000-0000-4000-8000-000000000006', { ...old, aboutCharacterId: GHOST, content: '   ', summary: '' }), GHOST, 2, 1, 2),
+    ],
+    keystones: [
+      ent(mem('d2000000-0000-4000-8000-000000000001', { ...old, aboutCharacterId: AMY, content: 'Amy is expecting in the spring.' }), AMY, -1, 0, 0, true),
+      ent(mem('d2000000-0000-4000-8000-000000000002', { ...old, aboutCharacterId: BO, content: 'Bo is my oldest friend.' }), BO, 0, 0, 0),
+      ent(mem('d2000000-0000-4000-8000-000000000003', { ...old, aboutCharacterId: GHOST, content: 'The quiet one is my godchild, and I promised to look after them.', keystone: true }), GHOST, 2, 0, 1, true),
+      ent(mem('d2000000-0000-4000-8000-000000000004', { ...old, aboutCharacterId: BO, content: 'Bo mends nets on Sundays.' }), BO, 0, 1, 0),
+      ent(mem('d2000000-0000-4000-8000-000000000005', { ...old, aboutCharacterId: GHOST, content: 'The quiet one plays the oboe.' }), GHOST, 2, 1, 1),
+    ],
+  }
+  for (const [label, entries] of Object.entries(circles)) {
+    out.push({ kind: 'trimOrder', id: label, input: entries, order: types.innerCircleTrimOrder(entries as never).map(e => (e as { memory: { id: string } }).memory.id) })
+    for (const provider of [undefined, 'OPENAI', 'GOOGLE']) {
+      for (const budget of [0, 8, 20, 40, 60, 61, 62, 90, 1000]) {
+        out.push({
+          kind: 'innerCircle',
+          id: `${label}/${provider ?? 'default'}/${budget}`,
+          input: { entries, maxTokens: budget, provider: provider ?? null, subject: subjects.named },
+          output: section(r.renderInnerCircle(entries as never, budget, provider as never, toSubject(subjects.named))),
+        })
+      }
+    }
+  }
+  out.push({ kind: 'innerCircle', id: 'empty', input: { entries: [], maxTokens: 1000, provider: null, subject: subjects.named }, output: section(r.renderInnerCircle([], 1000, undefined, toSubject(subjects.named))) })
 
   out.push({ kind: 'meta', nowMs: NOW })
   for (const row of out) process.stdout.write(JSON.stringify(row) + '\n')

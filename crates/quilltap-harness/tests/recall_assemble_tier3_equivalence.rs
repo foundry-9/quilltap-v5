@@ -48,12 +48,13 @@ use quilltap_core::model::embedding::{
     EmbeddingCallOptions, EmbeddingError, EmbeddingProvider, EmbeddingResult,
 };
 use quilltap_core::recall_tags::ScopePolicy;
+use quilltap_core::recall_tuning::{resolve_recall_tuning, RecallTuningInput};
 use quilltap_core::services::cheap_llm_exec::CheapLlmTaskExecutor;
 use quilltap_core::services::frozen_archive::reset_frozen_archive_cache_for_tests;
 use quilltap_core::services::memory_recap::distill::{DistillTimeRange, DistilledSearch};
 use quilltap_core::services::recall::assemble::{
     assemble_recall, empty_recall_bundle, PlanConversations, PlanRecallSettings, PlanRecap,
-    PreRecall, RecallBundle, RecallChat, RecallPlan,
+    PlanReplay, PreRecall, RecallBundle, RecallChat, RecallPlan,
 };
 use quilltap_core::services::recall::context::{
     build_turn_recall_context, TurnRecallContextInput, TurnRecallSettings,
@@ -270,6 +271,19 @@ fn recall_assemble_matches_oracle() {
         let dir = tempfile::tempdir().unwrap();
         let main = dir.path().join("main.db");
         std::fs::copy(fixture_main(), &main).unwrap();
+        // P4.D342: the `inner_circle_*` cases' in-case plants (R-3), on the SAME
+        // fresh copies the oracle plants — the main copy and a real scratch mount.
+        if name.starts_with("inner_circle_") {
+            for (file, part) in [(&main, "main"), (&dir.path().join("mount.db"), "mount")] {
+                let w = quilltap_core::db::Writer::open_writable(file, &pepper)
+                    .unwrap_or_else(|e| panic!("{name}: open {part} writable: {e}"));
+                for sql in spec["circlePlants"][part].as_array().unwrap() {
+                    w.connection()
+                        .execute_batch(sql.as_str().unwrap())
+                        .unwrap_or_else(|e| panic!("{name}: plant failed: {e}\n{sql}"));
+                }
+            }
+        }
         let db = Db::open(
             DbPaths {
                 main,
@@ -367,7 +381,7 @@ fn recall_assemble_matches_oracle() {
             let iso = |ms: f64| quilltap_core::clock::iso_from_unix_ms(ms as i64);
             match name.as_str() {
                 "ordinary_turn" | "deliver_compression_cut" | "deliver_ring_head_only"
-                | "deliver_nothing" => {
+                | "deliver_nothing" | "inner_circle_absent_groupmate" => {
                     bundles.push(assemble_recall(&db, &embedding, &completion, &executor, plan(false, true, None)).await);
                 }
                 "recap_rows_kept_in_head" => {
@@ -439,7 +453,30 @@ fn recall_assemble_matches_oracle() {
                     let pre = PreRecall { query: q, candidates: head, ranked: Some(out.ranked), trace: Vec::new() };
                     bundles.push(assemble_recall(&db, &embedding, &completion, &executor, plan(false, true, Some(pre))).await);
                 }
-                "archive_still_on_retro_turn" => {
+                // P4.D342: the replay's tuning carries the circle's knobs.
+                "inner_circle_share_zero" | "inner_circle_allowance_zero" => {
+                    let input = if name == "inner_circle_share_zero" {
+                        RecallTuningInput { inner_circle_share: Some(0.0), ..Default::default() }
+                    } else {
+                        RecallTuningInput { inner_circle_allowance: Some(vec![0]), ..Default::default() }
+                    };
+                    let p = RecallPlan {
+                        replay: Some(PlanReplay {
+                            tuning: Some(resolve_recall_tuning(Some(&input))),
+                            ..Default::default()
+                        }),
+                        ..plan(false, true, None)
+                    };
+                    bundles.push(assemble_recall(&db, &embedding, &completion, &executor, p).await);
+                }
+                "inner_circle_tight_budget" => {
+                    let p = RecallPlan {
+                        memory_budget: 450,
+                        ..plan(false, true, None)
+                    };
+                    bundles.push(assemble_recall(&db, &embedding, &completion, &executor, p).await);
+                }
+                "archive_still_on_retro_turn" | "inner_circle_retro_turn" => {
                     bundles.push(assemble_recall(&db, &embedding, &completion, &executor, plan(false, true, None)).await);
                     let sig = signals("Remember the bridge?", &["x"], &[], None);
                     let (q, _) = pre_query("w", Some(sig)).await;
@@ -465,7 +502,9 @@ fn recall_assemble_matches_oracle() {
             };
             let how = match name.as_str() {
                 "deliver_compression_cut" => Some("cutFirstHead"),
-                "deliver_ring_head_only" | "deliver_recap_turn" => Some("everything"),
+                "deliver_ring_head_only" | "deliver_recap_turn" | "inner_circle_absent_groupmate" => {
+                    Some("everything")
+                }
                 "deliver_nothing" => Some("nothing"),
                 _ => None,
             };
@@ -589,6 +628,6 @@ fn recall_assemble_matches_oracle() {
         assert_eq!(ring, want["ring"], "{name}: the chat's ring");
         cases += 1;
     }
-    assert_eq!(cases, 12, "the oracle lost cases");
+    assert_eq!(cases, 17, "the oracle lost cases");
     eprintln!("OK: recall-assemble matched the oracle ({cases} cases).");
 }

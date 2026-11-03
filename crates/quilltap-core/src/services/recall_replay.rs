@@ -214,6 +214,9 @@ pub struct RecallReplayResult {
     pub ring_source: RingSource,
     /// What each pool of the turn's assemble rendered (ids).
     pub pools: Value,
+    /// The assemble's warnings (v4 `a5efdbb97`, `replay.ts:124` — between
+    /// `pools` and `trace`; field order is the wire's key order).
+    pub warnings: Vec<String>,
     /// The stage trace: query, the new path's search stages, then assemble.
     pub trace: RecallTrace,
 }
@@ -870,6 +873,7 @@ pub async fn run_recall_replay<C: CompletionProvider, E: EmbeddingProvider>(
         ring: ordered_ring(&ring_history),
         ring_source,
         pools: bundle.pools.to_json(),
+        warnings: bundle.warnings.clone(),
         trace,
     };
     serde_json::to_value(&result).map_err(|e| e.to_string())

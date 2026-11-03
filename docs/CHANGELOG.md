@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(recall): the group inner circle and the keystone placement in the frozen archive (P4.D342, v4 `a5efdbb97` + `8cb584eff`)
+
+_Versions: core 0.0.1383._
+
+A character's frozen memory archive now holds an inner circle: everyone who shares a group with them (archived characters and those present left out), tiered by the size of the tightest shared group. Each member's keystones and up to `[3, 2, 1]` hot digests by tier are drawn, capped at a third of the archive and cut loosest-tier-first. The circle renders in full under `## Those Closest to You` ahead of `## Memory Anchors`, with at most its share of the archive token budget and the anchors in what it leaves. Keystones about someone present are lifted to the head of that section, self keystones stay among the anchors, and a keystone always renders in full (the archive, the head and the circle). The circle is resolved on every turn before the cache lookup, so a membership change, a rename that reorders it, or an archived member reaches the next turn without an invalidation. New: `services/inner_circle.rs`, `characters_read::find_names_by_ids_with` (the `excludeArchived` option), `FrozenArchive { anchors, circle }`, `render_inner_circle`, the assemble trace's `circleHeld` / `circleRendered` / `circleMembers` / `circleTokenBudget`, the recall replay's `warnings`, and the `[InnerCircle] Resolved inner circle` DEBUG plus the two `[FrozenArchive]` DEBUGs' new keys. The frozen-archive oracle is re-aimed at the new return shape (it crashed at the pin) and grows a group and keystone corpus (123 ops); the render, assemble (17 cases) and replay (46 cases) oracles grow the circle and keystone rows.
+
 #### 2026-11-02 — feat(cli): recall-replay --help names the inner circle's knobs (P4.D342, v4 `a5efdbb97`)
 
 _Versions: cli 0.0.37._

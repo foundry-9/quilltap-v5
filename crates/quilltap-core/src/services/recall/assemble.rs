@@ -40,7 +40,7 @@ use crate::db::{memories_read, DbError};
 use crate::memory_pools::{size_memory_pools, MemoryPoolSizing};
 use crate::model::completion::CompletionProvider;
 use crate::model::embedding::EmbeddingProvider;
-use crate::recall_tuning::ResolvedRecallTuning;
+use crate::recall_tuning::{ResolvedRecallTuning, DEFAULT_RECALL_TUNING};
 use crate::services::cheap_llm_exec::{CheapLlmTaskExecutor, CheapLlmTaskOptions};
 use crate::services::memory_recap::distill::{DistillMessage, ExtractionClock};
 use crate::services::memory_recap::{
@@ -54,7 +54,7 @@ use crate::token_estimation::estimate_tokens;
 use super::context::{build_turn_recall_context, TurnRecallContextInput, TurnRecallSettings};
 use super::query::{build_recall_query, BuildRecallQueryInput, RecallDistill, RecallQuery};
 use super::render::{
-    chars_per_token, render_archive, render_head, render_inter_character,
+    chars_per_token, render_archive, render_head, render_inner_circle, render_inter_character,
     DebugInterCharacterMemoryInfo, DebugMemoryInfo, MemorySubjectContext, RenderHeadOptions,
 };
 use super::search::{search_recall, RecallSearchOptions};
@@ -478,7 +478,9 @@ where
         ordinary_sizing
     };
 
-    // 2. The frozen archive, rendered under the ordinary archive budget.
+    // 2. The frozen archive, rendered under the turn's archive budget: the inner
+    // circle first (at most its share), the anchors in what it leaves (v4
+    // `a5efdbb97`).
     let mut archive_ids: HashSet<String> = HashSet::new();
     let mut subject = MemorySubjectContext {
         self_character_id: character_id.to_string(),
@@ -487,6 +489,11 @@ where
     let mut archive_tokens = 0i64;
     let mut archive_content = String::new();
     if !plan.skip_memories {
+        let tuning = plan
+            .replay
+            .as_ref()
+            .and_then(|r| r.tuning.as_ref())
+            .unwrap_or(&DEFAULT_RECALL_TUNING);
         let others: Vec<String> = present_ids
             .iter()
             .filter(|id| id.as_str() != character_id)
@@ -501,19 +508,29 @@ where
             &others,
             now_ms,
             exclude_ids.as_ref(),
+            Some(&crate::services::frozen_archive::InnerCircleOptions {
+                share: tuning.inner_circle_share,
+                allowance: tuning.inner_circle_allowance.clone(),
+            }),
         ) {
-            Ok(archive_memories) => {
-                archive_ids = archive_memories
+            Ok(archive) => {
+                let circle_memories: Vec<&Value> =
+                    archive.circle.iter().map(|e| &e.memory).collect();
+                archive_ids = circle_memories
                     .iter()
+                    .copied()
+                    .chain(archive.anchors.iter())
                     .map(|m| memory_id(m).to_string())
                     .collect();
                 // Every self-facing line names a subject that is not the
-                // character (bug 122) — ONE lookup over archive + pool.
+                // character (bug 122) — ONE lookup over circle + anchors + pool.
                 subject = crate::services::memory_subject::build_memory_subject_context(
                     db,
                     character_id,
-                    archive_memories
+                    circle_memories
                         .iter()
+                        .copied()
+                        .chain(archive.anchors.iter())
                         .chain(bundle.pool.iter().map(|c| &c.memory))
                         .map(|m| {
                             m.get("aboutCharacterId")
@@ -525,25 +542,52 @@ where
                 // Always the ordinary budget: a retrospective turn's larger head
                 // never trims the archive, so its bytes hold for the whole
                 // generation.
-                let archive = render_archive(
-                    &archive_memories,
-                    ordinary_sizing.archive_token_budget,
+                let circle_budget = (ordinary_sizing.archive_token_budget as f64
+                    * tuning.inner_circle_share)
+                    .floor() as i64;
+                let circle =
+                    render_inner_circle(&archive.circle, circle_budget, plan.provider, &subject);
+                let anchors = render_archive(
+                    &archive.anchors,
+                    ordinary_sizing.archive_token_budget - circle.token_count,
                     plan.provider,
                     &subject,
                 );
-                archive_content = archive.content;
-                archive_tokens = archive.token_count;
-                bundle.pools.archive = archive.lines.iter().map(|l| l.memory_id.clone()).collect();
-                let rendered = archive.lines.len();
-                bundle.lines.push((RecallPool::Archive, archive.lines));
-                bundle.debug_memories.extend(archive.debug_memories);
+                archive_content = [circle.content.as_str(), anchors.content.as_str()]
+                    .into_iter()
+                    .filter(|c| !c.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                archive_tokens = circle.token_count + anchors.token_count;
+                let circle_rendered = circle.lines.len();
+                let rendered = anchors.lines.len();
+                let mut lines = circle.lines;
+                lines.extend(anchors.lines);
+                // ONE `archive` pool: v4's `bundle.lines.archive` is the circle
+                // then the anchors (no fifth pool).
+                bundle.pools.archive = lines.iter().map(|l| l.memory_id.clone()).collect();
+                bundle.lines.push((RecallPool::Archive, lines));
+                bundle.debug_memories.extend(circle.debug_memories);
+                bundle.debug_memories.extend(anchors.debug_memories);
+                let circle_members: HashSet<&str> = archive
+                    .circle
+                    .iter()
+                    .map(|e| e.character_id.as_str())
+                    .collect();
                 let mut detail = Map::new();
                 detail.insert("size".into(), num(ordinary_sizing.archive_size as f64));
-                detail.insert("held".into(), num(archive_memories.len() as f64));
+                detail.insert(
+                    "held".into(),
+                    num((archive.anchors.len() + archive.circle.len()) as f64),
+                );
+                detail.insert("circleHeld".into(), num(archive.circle.len() as f64));
+                detail.insert("circleRendered".into(), num(circle_rendered as f64));
+                detail.insert("circleMembers".into(), num(circle_members.len() as f64));
+                detail.insert("circleTokenBudget".into(), num(circle_budget as f64));
                 detail.insert("rendered".into(), num(rendered as f64));
                 detail.insert(
                     "cutByBudget".into(),
-                    num(archive_memories.len() as f64 - rendered as f64),
+                    num(archive.anchors.len() as f64 - rendered as f64),
                 );
                 detail.insert(
                     "tokenBudget".into(),

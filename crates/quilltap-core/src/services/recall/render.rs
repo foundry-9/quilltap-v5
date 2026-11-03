@@ -27,7 +27,9 @@ use crate::recall_tags::{CONTEXT_VALUES, SCOPE_VALUES, TEMPORAL_VALUES};
 use crate::token_estimation::{estimate_tokens, DEFAULT_CHARS_PER_TOKEN};
 
 use super::rank::salience_of;
-use super::types::{memory_id, num, RecallCandidate, RenderedLine};
+use super::types::{
+    inner_circle_trim_order_by, memory_id, num, InnerCircleEntry, RecallCandidate, RenderedLine,
+};
 
 /// v4 `estimateTokens(text, provider)`'s rate: the provider's registry value
 /// (the plugin manifests — GOOGLE 3.8), or the default 3.5 with no provider.
@@ -299,6 +301,39 @@ fn content_first_body(memory: &Value) -> String {
     s(memory, "summary").unwrap_or("").to_string()
 }
 
+/// `memory.content?.trim() || memory.summary?.trim() || ''` — BOTH trimmed
+/// (v4 `a5efdbb97` / `8cb584eff`: the inner circle's body, and a keystone's in
+/// the archive and the head). A third rule beside [`summary_first_body`] and
+/// [`content_first_body`] (whose summary is untrimmed — `renderRelevant`'s),
+/// P4.D342 R-5.
+fn content_first_body_trimmed(memory: &Value) -> String {
+    let content = s(memory, "content")
+        .map(crate::jsstr::js_trim)
+        .unwrap_or("");
+    if !content.is_empty() {
+        return content.to_string();
+    }
+    s(memory, "summary")
+        .map(crate::jsstr::js_trim)
+        .unwrap_or("")
+        .to_string()
+}
+
+/// The archive's / head's body: a keystone renders in FULL (content first),
+/// every other row by its summary (v4 `memory.keystone ? … : …`). The hydrated
+/// row carries `keystone` as a JSON boolean (contract C-1).
+fn archive_body(memory: &Value) -> String {
+    if memory
+        .get("keystone")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        content_first_body_trimmed(memory)
+    } else {
+        summary_first_body(memory)
+    }
+}
+
 fn opt_summary(memory: &Value) -> Option<String> {
     s(memory, "summary").map(str::to_string)
 }
@@ -313,7 +348,8 @@ fn opt_id(memory: &Value) -> Option<String> {
 
 /// v4 `renderArchive` — `## Memory Anchors`. Byte-stable within a compaction
 /// generation: input order verbatim (the archive arrives id-sorted),
-/// summaries only, and nothing that moves with the clock or the query.
+/// summaries only — a keystone excepted, which always renders in full — and
+/// nothing that moves with the clock or the query.
 pub fn render_archive(
     memories: &[Value],
     max_tokens: i64,
@@ -329,7 +365,7 @@ pub fn render_archive(
     let mut tokens = estimate_tokens(&format!("{header}\n"), cpt);
     let mut section = RenderedSection::<DebugMemoryInfo>::empty();
     for memory in memories {
-        let body = summary_first_body(memory);
+        let body = archive_body(memory);
         if body.is_empty() {
             continue;
         }
@@ -371,6 +407,96 @@ pub fn render_archive(
     section
 }
 
+/// v4 `renderInnerCircle` — `## Those Closest to You` (inner-circle-recall.md
+/// B3, `a5efdbb97`). Full text, because these are the lines a character must
+/// not get wrong about the people nearest them; byte-stable within a
+/// compaction generation like the anchors: circle order verbatim and NO age
+/// tags. Lines past `max_tokens` are cut in [`inner_circle_trim_order_by`] —
+/// keystones last, the loosest tier first — and the rest keep circle order.
+/// The walk BREAKS at the first row that does not fit (a later, smaller row is
+/// not tried — v4's `break`); the header's tokens count from the start, so a
+/// first row that does not fit leaves the section empty.
+pub fn render_inner_circle(
+    entries: &[InnerCircleEntry],
+    max_tokens: i64,
+    provider: Option<&str>,
+    subject: &MemorySubjectContext,
+) -> RenderedSection<DebugMemoryInfo> {
+    if entries.is_empty() {
+        return RenderedSection::empty();
+    }
+    let cpt = chars_per_token(provider);
+    let header = "## Those Closest to You";
+    let header_tokens = estimate_tokens(&format!("{header}\n"), cpt);
+    struct Built<'e> {
+        entry: &'e InnerCircleEntry,
+        body: String,
+        line: String,
+        tokens: i64,
+    }
+    let built: Vec<Built<'_>> = entries
+        .iter()
+        .filter_map(|entry| {
+            let memory = &entry.memory;
+            let body = content_first_body_trimmed(memory);
+            if body.is_empty() {
+                return None;
+            }
+            let prefix = format_memory_subject_prefix(s(memory, "aboutCharacterId"), subject);
+            let line = format!(
+                "- {prefix}{body}{}{}",
+                format_digest_provenance(memory),
+                format_keywords_tag(memory.get("keywords"))
+            );
+            let tokens = estimate_tokens(&format!("{line}\n"), cpt);
+            Some(Built {
+                entry,
+                body,
+                line,
+                tokens,
+            })
+        })
+        .collect();
+    let mut tokens = header_tokens;
+    let mut kept = vec![false; built.len()];
+    for i in inner_circle_trim_order_by(&built, |b| b.entry) {
+        if tokens + built[i].tokens > max_tokens {
+            break;
+        }
+        kept[i] = true;
+        tokens += built[i].tokens;
+    }
+    if !kept.iter().any(|k| *k) {
+        return RenderedSection::empty();
+    }
+    let mut section = RenderedSection::<DebugMemoryInfo>::empty();
+    let mut parts: Vec<String> = vec![header.to_string()];
+    for (b, _) in built.into_iter().zip(kept).filter(|(_, k)| *k) {
+        let memory = &b.entry.memory;
+        parts.push(b.line.clone());
+        section.lines.push(RenderedLine {
+            memory_id: memory_id(memory).to_string(),
+            line: b.line,
+            body: b.body,
+        });
+        section.debug_memories.push(DebugMemoryInfo {
+            memory_id: opt_id(memory),
+            summary: opt_summary(memory),
+            importance: opt_importance(memory),
+            score: 0.0,
+            salience: 0.0,
+            recall_multiplier: None,
+            recall_fired: None,
+            blended_before: None,
+            blended_after: None,
+        });
+    }
+    section.content = parts.join("\n");
+    section.token_count = tokens;
+    section.memories_used = section.lines.len();
+    section
+}
+
 /// v4 `renderHead`'s options.
 #[derive(Clone, Copy, Debug)]
 pub struct RenderHeadOptions {
@@ -394,7 +520,7 @@ fn salience_then_score(a: &RecallCandidate, b: &RecallCandidate) -> f64 {
 /// turn:`. Ranked by the post-adjustment blend when a recall context drove the
 /// search, else by salience with relevance breaking near-ties; capped by
 /// entries and tokens. Every line is dated: the age label, and any narrative
-/// time.
+/// time. Summaries, but a keystone in full.
 pub fn render_head(
     candidates: &[RecallCandidate],
     provider: Option<&str>,
@@ -423,7 +549,7 @@ pub fn render_head(
     let mut section = RenderedSection::<DebugMemoryInfo>::empty();
     for c in ranked {
         let memory = &c.memory;
-        let body = summary_first_body(memory);
+        let body = archive_body(memory);
         if body.is_empty() {
             continue;
         }

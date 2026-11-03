@@ -1,5 +1,5 @@
 {
-  "$comment": "P4.D268 (v4 01a83539d: 3f7320138 F5 + d58548051): the frozen archive over the committed memories-{main,mount}.db pair. `plantSql` is executed identically on both sides (explicit uuids + timestamps): R holds four digests about A (the cap of 3 bites), three about B, six self digests (the cap of 5 bites), a COLD digest about A and a cold shard (never selected), a NULL-tier row (v4's hydrateRawRows drops it), a reinforcedImportance tie (the id ASC tie-break), an old-but-important vs fresh-and-middling pair (effective-weight order differs from reinforcedImportance order), an UPPER-CASE id (localeCompare vs code-unit order) and ten fillers; O holds two rows. `ops` run in order against ONE process-global cache per side (reset at case start). Comparands per op: the returned ids (ORDER) and every [FrozenArchive] / job-hook line. P4.D291 (v4 584d28164 + e0ac7493a): the fill re-ranks by SALIENCE (reinforced importance x decay, no floor) \u2014 S holds a year-old weighty note and yesterday's light one, and a one-row archive takes the light one; `exclude` computes WITHOUT touching the cache (ops 99 and 101, the replay's asOf corpus \u2014 an EMPTY exclude still bypasses, v4's truthy Set), and op 100 proves the cache entry op 98 left is still served. The hook ops name MEMORY_MAINTENANCE \u2014 v4's ONE invalidating job at the pin (P4.D288's list; the retired MEMORY_HOUSEKEEPING invalidates nothing), so the characterId / scheduled / dryRun / empty-id arms stay exercised; MEMORY_CONSOLIDATION and MEMORY_EXTRACTION are the non-invalidating legs.",
+  "$comment": "P4.D268 (v4 01a83539d: 3f7320138 F5 + d58548051): the frozen archive over the committed memories-{main,mount}.db pair. `plantSql` is executed identically on both sides (explicit uuids + timestamps): R holds four digests about A (the cap of 3 bites), three about B, six self digests (the cap of 5 bites), a COLD digest about A and a cold shard (never selected), a NULL-tier row (v4's hydrateRawRows drops it), a reinforcedImportance tie (the id ASC tie-break), an old-but-important vs fresh-and-middling pair (effective-weight order differs from reinforcedImportance order), an UPPER-CASE id (localeCompare vs code-unit order) and ten fillers; O holds two rows. `ops` run in order against ONE process-global cache per side (reset at case start). Comparands per op: the returned ids (ORDER) and every [FrozenArchive] / job-hook line. P4.D291 (v4 584d28164 + e0ac7493a): the fill re-ranks by SALIENCE (reinforced importance x decay, no floor) \u2014 S holds a year-old weighty note and yesterday's light one, and a one-row archive takes the light one; `exclude` computes WITHOUT touching the cache (ops 99 and 101, the replay's asOf corpus \u2014 an EMPTY exclude still bypasses, v4's truthy Set), and op 100 proves the cache entry op 98 left is still served. The hook ops name MEMORY_MAINTENANCE \u2014 v4's ONE invalidating job at the pin (P4.D288's list; the retired MEMORY_HOUSEKEEPING invalidates nothing), so the characterId / scheduled / dryRun / empty-id arms stay exercised; MEMORY_CONSOLIDATION and MEMORY_EXTRACTION are the non-invalidating legs. P4.D342 (v4 236c04e35: a5efdbb97 the inner circle + 8cb584eff the keystone placement): the oracle returns `{anchors, circle}` \u2014 `returned` is the anchors and each get carries its `circle` rows. `plantSql` grows the `groups` table (fresh_schema.json's DDL, CREATE-if-absent \u2014 the committed pair carries none), eight member characters copied from the fixture's Mnemo row (Xavier archived), four groups (Family 3 / Crew 4 / Club 6 / Lodge 6 \u2014 the size-6 name tie-break) and holder H's memories (four hot digests about each member, two self digests, a filler, six keystones: two about Abigail, one self, one about Laura, a COLD one, one about no one); `plantMountSql` creates `group_character_members` (likewise) with the rosters, a duplicate row and a membership whose group row is missing. The ops: the full draw, a hit (the circle still resolved), the size-21 trim, a knob change (miss, then hit), a present member out of the circle, a present Abigail's keystones lifted, the asOf exclude, cap 0, a membership change and a rename (each a miss with nothing else moved), share 0, allowance [0], and a membership read that fails on both sides. The asOf arm runs twice: once excluding Abigail's SECOND keystone, once her FIRST (the lift CONTINUES past an excluded keystone \u2014 v4 `continue`, not `break`).",
   "testPepperBase64": "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
   "nowMs": 1780272000000,
   "plantSql": [
@@ -37,7 +37,85 @@
     "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000f0001', 'f2680000-0000-4000-8000-000000000004', NULL, 'Content of Other one.', 'Other one', '[]', '[]', 0.6, 'AUTO', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
     "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-0000000f0002', 'f2680000-0000-4000-8000-000000000004', 'f2680000-0000-4000-8000-000000000004', 'Content of Other self digest.', 'Other self digest', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f2680000-0000-4000-8000-0000000e0008\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
     "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-000000510001', 'f2680000-0000-4000-8000-000000000005', NULL, 'Content of Year-old weighty note.', 'Year-old weighty note', '[]', '[]', 0.95, 'AUTO', 1, '[]', 0.95, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2025-06-01T00:00:00.000Z', '2025-06-01T00:00:00.000Z')",
-    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-000000510002', 'f2680000-0000-4000-8000-000000000005', NULL, 'Content of Yesterday light note.', 'Yesterday light note', '[]', '[]', 0.35, 'AUTO', 1, '[]', 0.35, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-31T00:00:00.000Z', '2026-05-31T00:00:00.000Z')"
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f2680000-0000-4000-8000-000000510002', 'f2680000-0000-4000-8000-000000000005', NULL, 'Content of Yesterday light note.', 'Yesterday light note', '[]', '[]', 0.35, 'AUTO', 1, '[]', 0.35, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-31T00:00:00.000Z', '2026-05-31T00:00:00.000Z')",
+    "CREATE TABLE IF NOT EXISTS \"groups\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"name\" TEXT NOT NULL, \"officialMountPointId\" TEXT, \"createdAt\" TEXT NOT NULL, \"updatedAt\" TEXT NOT NULL, \"description\" TEXT, \"instructions\" TEXT, \"state\" TEXT DEFAULT '{}', \"color\" TEXT, \"icon\" TEXT)",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a1', name = 'Abigail', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a2', name = 'Laura', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a3', name = 'Vera', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a4', name = 'Arthur', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a5', name = 'Sam', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a6', name = 'Gus', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a7', name = 'Mabel', archivedAt = NULL",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "CREATE TEMP TABLE qt_char_copy AS SELECT * FROM characters WHERE id = 'b1000000-0000-4000-8000-000000000001'",
+    "UPDATE qt_char_copy SET id = 'f3420000-0000-4000-8000-0000000000a8', name = 'Xavier', archivedAt = '2026-05-02T00:00:00.000Z'",
+    "INSERT INTO characters SELECT * FROM qt_char_copy",
+    "DROP TABLE qt_char_copy",
+    "INSERT INTO \"groups\" (id, name, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000000b1', 'Family', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO \"groups\" (id, name, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000000b2', 'Crew', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO \"groups\" (id, name, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000000b3', 'Club', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO \"groups\" (id, name, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000000b4', 'Lodge', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0001', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Digest about Abigail 1.', 'Digest about Abigail 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0002', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Digest about Abigail 2.', 'Digest about Abigail 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0003', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Digest about Abigail 3.', 'Digest about Abigail 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0004', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Digest about Abigail 4.', 'Digest about Abigail 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0005', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Digest about Laura 1.', 'Digest about Laura 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0006', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Digest about Laura 2.', 'Digest about Laura 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0007', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Digest about Laura 3.', 'Digest about Laura 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0008', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Digest about Laura 4.', 'Digest about Laura 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0009', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a3', 'Content of Digest about Vera 1.', 'Digest about Vera 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000a', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a3', 'Content of Digest about Vera 2.', 'Digest about Vera 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000b', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a3', 'Content of Digest about Vera 3.', 'Digest about Vera 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000c', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a3', 'Content of Digest about Vera 4.', 'Digest about Vera 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000d', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a4', 'Content of Digest about Arthur 1.', 'Digest about Arthur 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000e', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a4', 'Content of Digest about Arthur 2.', 'Digest about Arthur 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d000f', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a4', 'Content of Digest about Arthur 3.', 'Digest about Arthur 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0010', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a4', 'Content of Digest about Arthur 4.', 'Digest about Arthur 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0011', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a5', 'Content of Digest about Sam 1.', 'Digest about Sam 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0012', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a5', 'Content of Digest about Sam 2.', 'Digest about Sam 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0013', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a5', 'Content of Digest about Sam 3.', 'Digest about Sam 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0014', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a5', 'Content of Digest about Sam 4.', 'Digest about Sam 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0015', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a6', 'Content of Digest about Gus 1.', 'Digest about Gus 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0016', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a6', 'Content of Digest about Gus 2.', 'Digest about Gus 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0017', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a6', 'Content of Digest about Gus 3.', 'Digest about Gus 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0018', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a6', 'Content of Digest about Gus 4.', 'Digest about Gus 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0019', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a7', 'Content of Digest about Mabel 1.', 'Digest about Mabel 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001a', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a7', 'Content of Digest about Mabel 2.', 'Digest about Mabel 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001b', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a7', 'Content of Digest about Mabel 3.', 'Digest about Mabel 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001c', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a7', 'Content of Digest about Mabel 4.', 'Digest about Mabel 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001d', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a8', 'Content of Digest about Xavier 1.', 'Digest about Xavier 1', '[]', '[]', 0.9, 'CONSOLIDATED', 1, '[]', 0.9, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001e', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a8', 'Content of Digest about Xavier 2.', 'Digest about Xavier 2', '[]', '[]', 0.8, 'CONSOLIDATED', 1, '[]', 0.8, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d001f', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a8', 'Content of Digest about Xavier 3.', 'Digest about Xavier 3', '[]', '[]', 0.7, 'CONSOLIDATED', 1, '[]', 0.7, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0020', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a8', 'Content of Digest about Xavier 4.', 'Digest about Xavier 4', '[]', '[]', 0.6, 'CONSOLIDATED', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0021', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-000000000001', 'Content of Self digest 1.', 'Self digest 1', '[]', '[]', 0.95, 'CONSOLIDATED', 1, '[]', 0.95, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0022', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-000000000001', 'Content of Self digest 2.', 'Self digest 2', '[]', '[]', 0.85, 'CONSOLIDATED', 1, '[]', 0.85, 'semantic', '[]', 'hot', NULL, '[\"f3420000-0000-4000-8000-0000000e0001\"]', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000d0023', 'f3420000-0000-4000-8000-000000000001', NULL, 'Content of An important loose note.', 'An important loose note', '[]', '[]', 0.5, 'AUTO', 1, '[]', 0.5, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0024', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Abigail is engaged to Charlie.', 'Abigail is engaged to Charlie', '[]', '[]', 0.6, 'AUTO', 1, '[]', 0.6, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-01T00:00:00.000Z', '2026-04-01T00:00:00.000Z', 1)",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0025', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a1', 'Content of Abigail is expecting in the spring.', 'Abigail is expecting in the spring', '[]', '[]', 0.5, 'AUTO', 1, '[]', 0.5, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-02T00:00:00.000Z', '2026-04-02T00:00:00.000Z', 1)",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0026', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-000000000001', 'Content of I am the eldest of the household.', 'I am the eldest of the household', '[]', '[]', 0.4, 'AUTO', 1, '[]', 0.4, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-03T00:00:00.000Z', '2026-04-03T00:00:00.000Z', 1)",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0027', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Laura is my sister.', 'Laura is my sister', '[]', '[]', 0.3, 'AUTO', 1, '[]', 0.3, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-04T00:00:00.000Z', '2026-04-04T00:00:00.000Z', 1)",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0028', 'f3420000-0000-4000-8000-000000000001', 'f3420000-0000-4000-8000-0000000000a2', 'Content of Laura once lived abroad.', 'Laura once lived abroad', '[]', '[]', 0.3, 'AUTO', 1, '[]', 0.3, 'semantic', '[]', 'cold', NULL, '[]', NULL, '2026-04-05T00:00:00.000Z', '2026-04-05T00:00:00.000Z', 1)",
+    "INSERT INTO memories (id, characterId, aboutCharacterId, content, summary, keywords, tags, importance, source, reinforcementCount, relatedMemoryIds, reinforcedImportance, kind, entities, tier, supersededById, consolidatedFrom, consolidatedAt, createdAt, updatedAt, keystone) VALUES ('f3420000-0000-4000-8000-0000000d0029', 'f3420000-0000-4000-8000-000000000001', NULL, 'Content of The household keeps a ledger.', 'The household keeps a ledger', '[]', '[]', 0.2, 'AUTO', 1, '[]', 0.2, 'semantic', '[]', 'hot', NULL, '[]', NULL, '2026-04-06T00:00:00.000Z', '2026-04-06T00:00:00.000Z', 1)"
   ],
   "ops": [
     {
@@ -890,6 +968,227 @@
       "generation": 0,
       "size": 1,
       "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 21,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [],
+      "innerCircle": {
+        "share": 0.5,
+        "allowance": [
+          1
+        ]
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [],
+      "innerCircle": {
+        "share": 0.5,
+        "allowance": [
+          1
+        ]
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [
+        "f3420000-0000-4000-8000-0000000000a2"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [
+        "f3420000-0000-4000-8000-0000000000a1"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [
+        "f3420000-0000-4000-8000-0000000000a1"
+      ],
+      "exclude": [
+        "f3420000-0000-4000-8000-0000000d0005",
+        "f3420000-0000-4000-8000-0000000d0025"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [
+        "f3420000-0000-4000-8000-0000000000a1"
+      ],
+      "exclude": [
+        "f3420000-0000-4000-8000-0000000d0024"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 2,
+      "present": [
+        "f3420000-0000-4000-8000-0000000000a4"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
+    },
+    {
+      "kind": "plantMount",
+      "sql": [
+        "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0017', 'f3420000-0000-4000-8000-0000000000b1', 'f3420000-0000-4000-8000-0000000000a3', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
+    },
+    {
+      "kind": "plantMain",
+      "sql": [
+        "UPDATE \"groups\" SET name = 'Zebras' WHERE id = 'f3420000-0000-4000-8000-0000000000b3'"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [],
+      "innerCircle": {
+        "share": 0,
+        "allowance": [
+          3,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": [],
+      "innerCircle": {
+        "share": 1,
+        "allowance": [
+          0
+        ]
+      }
+    },
+    {
+      "kind": "invalidate",
+      "characterId": "f3420000-0000-4000-8000-000000000001"
+    },
+    {
+      "kind": "plantMount",
+      "sql": [
+        "ALTER TABLE group_character_members RENAME TO qt_gcm_old",
+        "CREATE TABLE group_character_members (\"id\" TEXT PRIMARY KEY NOT NULL, \"characterId\" TEXT NOT NULL, \"createdAt\" TEXT NOT NULL, \"updatedAt\" TEXT NOT NULL)",
+        "INSERT INTO group_character_members (id, characterId, createdAt, updatedAt) SELECT id, characterId, createdAt, updatedAt FROM qt_gcm_old",
+        "ALTER TABLE group_character_members ADD COLUMN \"groupId\" TEXT GENERATED ALWAYS AS (json('{bad')) VIRTUAL"
+      ]
+    },
+    {
+      "kind": "get",
+      "characterId": "f3420000-0000-4000-8000-000000000001",
+      "chatId": "chat-ic",
+      "generation": 0,
+      "size": 60,
+      "present": []
     }
+  ],
+  "plantMountSql": [
+    "CREATE TABLE IF NOT EXISTS \"group_character_members\" (\"id\" TEXT PRIMARY KEY NOT NULL, \"groupId\" TEXT NOT NULL, \"characterId\" TEXT NOT NULL, \"createdAt\" TEXT NOT NULL, \"updatedAt\" TEXT NOT NULL)",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0001', 'f3420000-0000-4000-8000-0000000000b1', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0002', 'f3420000-0000-4000-8000-0000000000b1', 'f3420000-0000-4000-8000-0000000000a1', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0003', 'f3420000-0000-4000-8000-0000000000b1', 'f3420000-0000-4000-8000-0000000000a2', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0004', 'f3420000-0000-4000-8000-0000000000b2', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0005', 'f3420000-0000-4000-8000-0000000000b2', 'f3420000-0000-4000-8000-0000000000a1', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0006', 'f3420000-0000-4000-8000-0000000000b2', 'f3420000-0000-4000-8000-0000000000a3', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0007', 'f3420000-0000-4000-8000-0000000000b2', 'f3420000-0000-4000-8000-0000000000a4', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0008', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0009', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-0000000000a5', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000a', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-0000000000a6', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000b', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-0000000000a7', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000c', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-0000000000a4', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000d', 'f3420000-0000-4000-8000-0000000000b3', 'f3420000-0000-4000-8000-0000000000a2', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000e', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c000f', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-0000000000a8', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0010', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-0000000000a5', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0011', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-0000000000a6', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0012', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-0000000000a9', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0013', 'f3420000-0000-4000-8000-0000000000b4', 'f3420000-0000-4000-8000-0000000000a2', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0014', 'f3420000-0000-4000-8000-0000000000b1', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0015', 'f3420000-0000-4000-8000-0000000000b9', 'f3420000-0000-4000-8000-000000000001', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')",
+    "INSERT INTO group_character_members (id, groupId, characterId, createdAt, updatedAt) VALUES ('f3420000-0000-4000-8000-0000000c0016', 'f3420000-0000-4000-8000-0000000000b9', 'f3420000-0000-4000-8000-0000000000a7', '2026-05-01T00:00:00.000Z', '2026-05-01T00:00:00.000Z')"
   ]
 }
