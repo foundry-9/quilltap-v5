@@ -12,6 +12,16 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): DiagramBlock, the diagram lightbox and Copy PNG (v4 6588972d5 + 9faed0c7e)
+
+_Versions: SPA 0.5.909._
+
+Ports v4's `DiagramBlock` and the whole lightbox (`6588972d5` + `9faed0c7e`, at `236c04e35`) as Angular standalone components. `qt-diagram-block` dispatches to the engine, holds a fixed placeholder while it draws, swaps in the SVG, and carries v4's five-button `Diagram actions` toolbar (View/Hide source, Enlarge, Copy source, Copy SVG, Download SVG) and the clickable `role="button"` canvas. A fence that cannot be drawn shows v4's blot note, the engine's own message and the original code block. While streaming it shows the code only. The renderer's own `<pre><code>` block stands in for v4's `CodeBlockWithCopy` in every fallback arm. The theme key is `activeThemeId|resolvedColorMode`, so a theme switch re-draws after one frame.
+
+The lightbox opens through a root service onto a body-level host, so it outlives a virtualized row. It has wheel and pinch zoom about the pointer, drag pan, Fit / 100%, the Transparent toggle remembered for the page's life, and Copy PNG at 2× through the font-embedding rasterizer with v4's four failure toasts. Escape is captured on `window` before the Salon behind can hear it, and the transcript is put back where it was. `core/clipboard-utils.ts` gains `copyPngBlobToClipboard` (browser arm), which hands `ClipboardItem` the promised blob.
+
+`_content.css` and `_variables.css` gain v4's DIAGRAMS block and its 24 `--qt-diagram-*` tokens as fenced appends, plus host rules for the three new hosts. No existing line changes.
+
 #### 2026-11-03 — feat(spa): diagram fence walker, render queue, SVG sanitizer, palette and the three renderers (v4 6588972d5 + 9faed0c7e)
 
 _Versions: SPA 0.5.908._

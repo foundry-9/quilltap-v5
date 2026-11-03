@@ -595,6 +595,36 @@
   --qt-code-border: var(--color-border);
   --qt-code-font: var(--font-mono);
 
+  /* ==== P4.D353 — diagram tokens (v4 _variables.css:611-637) ==== */
+  /* ==========================================================================
+     DIAGRAM VARIABLES
+     ========================================================================== */
+  --qt-diagram-radius: var(--radius-md);
+  --qt-diagram-bg: var(--color-card);
+  --qt-diagram-fg: var(--color-foreground);
+  --qt-diagram-border: var(--color-border);
+  --qt-diagram-muted-fg: var(--color-muted-foreground);
+  --qt-diagram-toolbar-fg: var(--color-muted-foreground);
+  --qt-diagram-toolbar-hover-bg: var(--color-muted);
+  --qt-diagram-error-fg: var(--color-muted-foreground);
+  --qt-diagram-placeholder-height: 8rem;
+  /* The face diagrams are lettered in, and the hand a hand-drawn one is
+     lettered in (Mermaid's hand-drawn look and sketched Graphviz alike). */
+  --qt-diagram-font: var(--font-sans);
+  --qt-diagram-hand-font: "Segoe Print", "Bradley Hand", "Chalkboard SE", "Marker Felt", cursive;
+  /* The lightbox: the overlay's backdrop and glass buttons, a lifted sheet,
+     and the checkerboard behind a transparent copy. */
+  --qt-diagram-lightbox-backdrop: var(--qt-overlay-bg);
+  --qt-diagram-lightbox-fg: var(--qt-overlay-fg);
+  --qt-diagram-lightbox-muted-fg: var(--qt-overlay-muted-fg);
+  --qt-diagram-lightbox-button-bg: var(--qt-overlay-btn-bg);
+  --qt-diagram-lightbox-button-hover-bg: var(--qt-overlay-btn-hover-bg);
+  --qt-diagram-lightbox-pressed-border: var(--qt-overlay-muted-fg);
+  --qt-diagram-lightbox-shadow: 0 10px 40px rgb(0 0 0 / 0.45);
+  --qt-diagram-lightbox-check-a: #ffffff;
+  --qt-diagram-lightbox-check-b: #d4d4d8;
+  /* ==== end P4.D353 ==== */
+
   /* ==========================================================================
      LINK VARIABLES
      ========================================================================== */
