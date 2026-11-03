@@ -80,10 +80,10 @@ describe('AutomationSettings', () => {
     expect(checkboxes(fixture)[0].checked).toBe(true);
   });
 
-  it('renders v4\'s two AUTOMATION_OPTIONS rows with their copy (v4 362426c8f added the second)', async () => {
+  it('renders v4\'s three AUTOMATION_OPTIONS rows with their copy (v4 362426c8f added the second, 839575d89 the third)', async () => {
     const stub = cardStub(settingsRow());
     const fixture = await mountCard(AutomationSettings, stub);
-    expect(checkboxes(fixture)).toHaveLength(2);
+    expect(checkboxes(fixture)).toHaveLength(3);
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
     expect(text).toContain('Auto-Detect RNG Calls');
     expect(text).toContain(
@@ -92,6 +92,10 @@ describe('AutomationSettings', () => {
     expect(text).toContain('Auto-Run Custom Tools on Trigger Phrases');
     expect(text).toContain(
       "When anyone in a chat says a phrase one of Pascal's custom tools declares, run that tool automatically with its defaults. Requires Custom Tools.",
+    );
+    expect(text).toContain('Hold intervenable rolls for me');
+    expect(text).toContain(
+      'A custom tool marked for intervention pauses for your say-so before Pascal announces it. A held roll waits for you indefinitely; switch this off and every roll goes ahead as dealt, which is how a chat may be left to run unattended. Requires Custom Tools.',
     );
   });
 
@@ -169,6 +173,46 @@ describe('AutomationSettings', () => {
     const fixture = await mountCard(AutomationSettings, stub);
     await toggle(fixture, checkboxes(fixture)[1], true);
     expect((fixture.nativeElement as HTMLElement).textContent).toContain('Failed to update trigger phrase setting');
+  });
+
+  // ---- v4 `839575d89` (pinned at `236c04e35`): the intervention row ----
+  it('renders the intervention row ticked by default (v4 defaults to on)', async () => {
+    const fixture = await mountCard(AutomationSettings, cardStub(settingsRow()));
+    expect(checkboxes(fixture)[2].checked).toBe(true);
+    expect(rowLabel(fixture, 2).textContent).toContain('Hold intervenable rolls for me');
+    const off = await mountCard(AutomationSettings, cardStub(settingsRow({ customToolIntervention: false })));
+    expect(checkboxes(off)[2].checked).toBe(false);
+  });
+
+  it('the intervention row is dead while Custom Tools is off, like the trigger row', async () => {
+    const fixture = await mountCard(AutomationSettings, cardStub(settingsRow({ customTools: false })));
+    const label = rowLabel(fixture, 2);
+    expect(checkboxes(fixture)[2].disabled).toBe(true);
+    expect(label.classList.contains('opacity-50')).toBe(true);
+    expect(label.classList.contains('cursor-not-allowed')).toBe(true);
+    const live = await mountCard(AutomationSettings, cardStub(settingsRow({ customTools: true })));
+    expect(checkboxes(live)[2].disabled).toBe(false);
+  });
+
+  it('PUTs the bare customToolIntervention scalar on toggle', async () => {
+    const stub = cardStub(settingsRow());
+    const fixture = await mountCard(AutomationSettings, stub);
+    await toggle(fixture, checkboxes(fixture)[2], false);
+    expect(stub.updates).toEqual([{ customToolIntervention: false }]);
+  });
+
+  it('surfaces a failed intervention save in v4\'s words', async () => {
+    const stub = cardStub(settingsRow(), true);
+    const fixture = await mountCard(AutomationSettings, stub);
+    await toggle(fixture, checkboxes(fixture)[2], false);
+    expect((fixture.nativeElement as HTMLElement).textContent).toContain('Failed to update roll intervention setting');
+  });
+
+  it("every row's checkbox wears qt-checkbox (v4 2041bb875)", async () => {
+    const fixture = await mountCard(AutomationSettings, cardStub(settingsRow()));
+    for (const box of checkboxes(fixture)) {
+      expect(box.className).toBe('qt-checkbox mt-1');
+    }
   });
 });
 

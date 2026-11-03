@@ -4012,6 +4012,10 @@ export interface ChatSettingsDto {
   /** Whether `/` opens the slash-command menu in the Salon composer (the gutter buttons and sidebar are not gated by this) (v4 `4877fc2da`; default true). */
   composerSlashCommands?: boolean;
   // === end P4.D307 ===
+  // === P4.D346: the intervention master switch (v4 839575d89) ===
+  /** Whether a custom tool marked for intervention holds each run for the operator before it is announced (v4 default true; P4.D341 hydrates it, P4.D356 writes it). */
+  customToolIntervention?: boolean;
+  // === end P4.D346 ===
   [key: string]: unknown;
 }
 

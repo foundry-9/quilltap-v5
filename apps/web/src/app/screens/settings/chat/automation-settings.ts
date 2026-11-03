@@ -5,6 +5,7 @@ import { ChatSettingsCard } from './chat-settings.api';
 import {
   AUTOMATION_OPTIONS,
   DEFAULT_AUTO_DETECT_RNG,
+  DEFAULT_CUSTOM_TOOL_INTERVENTION,
   DEFAULT_CUSTOM_TOOL_TRIGGERS,
   DEFAULT_CUSTOM_TOOLS,
   type AutomationKey,
@@ -27,6 +28,9 @@ interface AutomationRow {
  *   scalar; default **false** (overhearing is a surprise the first time), and
  *   DEAD while Custom Tools is off (`customTools ?? true`) — a client rule; the
  *   server stores the value regardless.
+ * - **Hold intervenable rolls for me** — the `customToolIntervention` scalar
+ *   (v4 `839575d89`); default **true** (a held roll is the safe state), and
+ *   dead while Custom Tools is off, like the trigger row.
  *
  * v4 threads each handler down from `useChatSettings` through
  * `ChatTabContent`; v5's cards are self-contained, so each row's write is one
@@ -62,7 +66,7 @@ interface AutomationRow {
             >
               <input
                 type="checkbox"
-                class="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-primary"
+                class="qt-checkbox mt-1"
                 [checked]="row.value"
                 [disabled]="saving() || row.disabled"
                 (change)="onChange(option.key, $any($event.target).checked)"
@@ -95,6 +99,10 @@ export class AutomationSettings extends ChatSettingsCard {
         value: settings?.customToolTriggers ?? DEFAULT_CUSTOM_TOOL_TRIGGERS,
         disabled: !customToolsOn,
       },
+      customToolIntervention: {
+        value: settings?.customToolIntervention ?? DEFAULT_CUSTOM_TOOL_INTERVENTION,
+        disabled: !customToolsOn,
+      },
     };
   });
 
@@ -105,6 +113,9 @@ export class AutomationSettings extends ChatSettingsCard {
         return;
       case 'customToolTriggers':
         await this.save({ customToolTriggers: value }, 'Failed to update trigger phrase setting');
+        return;
+      case 'customToolIntervention':
+        await this.save({ customToolIntervention: value }, 'Failed to update roll intervention setting');
         return;
     }
   }

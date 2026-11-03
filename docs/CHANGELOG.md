@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the "Hold intervenable rolls for me" row (v4 839575d89, 2041bb875)
+
+_Versions: SPA 0.5.913._
+
+P4.D346 item 7. The Automation card gains v4's third row, "Hold intervenable rolls for me", on by default (`DEFAULT_CUSTOM_TOOL_INTERVENTION = true` — a held roll is the safe state) and dead while Custom Tools is off, writing the bare `{customToolIntervention: value}` with v4's failure text "Failed to update roll intervention setting". Every row's checkbox now wears `qt-checkbox mt-1` (v4 `2041bb875`). The settings DTO declares `customToolIntervention?` in a fenced region. Until P4.D341 hydrates the key and P4.D356 lands the PUT arm, main's server omits it on the GET and drops it on the PUT, so the row reads the default. `scalar-toggle-cards.spec.ts`: the three-row copy case plus five new cases.
+
 #### 2026-11-02 — feat(spa): the Workbench library's hand mark (v4 839575d89)
 
 _Versions: SPA 0.5.912._

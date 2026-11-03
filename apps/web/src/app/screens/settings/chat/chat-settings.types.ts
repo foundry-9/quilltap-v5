@@ -136,7 +136,9 @@ export const DEFAULT_CONTEXT_COMPRESSION_SETTINGS: ContextCompressionSettings = 
 // ---------------------------------------------------------------------------
 
 export const AUTOMATION_OPTIONS: readonly {
-  key: 'autoDetectRng' | 'customToolTriggers';
+  // === P4.D346: the intervention row (v4 839575d89) ===
+  key: 'autoDetectRng' | 'customToolTriggers' | 'customToolIntervention';
+  // === end P4.D346 ===
   label: string;
   description: string;
 }[] = [
@@ -153,6 +155,14 @@ export const AUTOMATION_OPTIONS: readonly {
     description:
       "When anyone in a chat says a phrase one of Pascal's custom tools declares, run that tool automatically with its defaults. Requires Custom Tools.",
   },
+  // === P4.D346: the intervention row (v4 839575d89, `types.ts:510-514` at `236c04e35`) ===
+  {
+    key: 'customToolIntervention',
+    label: 'Hold intervenable rolls for me',
+    description:
+      'A custom tool marked for intervention pauses for your say-so before Pascal announces it. A held roll waits for you indefinitely; switch this off and every roll goes ahead as dealt, which is how a chat may be left to run unattended. Requires Custom Tools.',
+  },
+  // === end P4.D346 ===
 ];
 
 /** One Automation row's settings key (v4 `types.ts:513-514`). */
@@ -168,6 +178,14 @@ export const DEFAULT_CUSTOM_TOOLS = true;
 
 /** Default trigger-phrase setting — off: overhearing is a surprise the first time (v4 `types.ts:526-529`). */
 export const DEFAULT_CUSTOM_TOOL_TRIGGERS = false;
+
+// === P4.D346: the intervention row (v4 839575d89) ===
+/**
+ * Default intervention setting — on: a held roll is the safe state, and the
+ * operator opts out to run unattended (v4 `types.ts:541-544` at `236c04e35`).
+ */
+export const DEFAULT_CUSTOM_TOOL_INTERVENTION = true;
+// === end P4.D346 ===
 
 // ---------------------------------------------------------------------------
 // Agent mode (v4 types.ts L443-459, MAX_TURNS_OPTIONS from AgentModeSettings.tsx L14-20)
