@@ -27,6 +27,7 @@ function tool(over: Partial<api.GatedLibraryEntry> = {}): api.GatedLibraryEntry 
     rollForm: 'range',
     llm: false,
     triggerCount: 0,
+    intervention: false,
     parameterCount: 0,
     outcomeCount: 2,
     mountPointId: 'm1',
@@ -284,6 +285,24 @@ describe('WorkbenchLibrary (v4 WorkbenchLibrary.tsx)', () => {
     const older = tool() as Partial<CustomToolLibraryEntry>;
     delete older.triggerCount;
     expect(text(await render(stubClient([older as CustomToolLibraryEntry])))).not.toContain('phrase');
+  });
+
+  // v4 `839575d89` (`WorkbenchLibrary.tsx:169-175`): the hand mark beside the title.
+  it('shows the hand mark, named "Holds each roll for you", on an intervenable tool', async () => {
+    const fixture = await render(stubClient([tool({ intervention: true })]));
+    const mark = (fixture.nativeElement as HTMLElement).querySelector('span.qt-intervention-mark');
+    expect(mark?.getAttribute('role')).toBe('img');
+    expect(mark?.getAttribute('aria-label')).toBe('Holds each roll for you');
+    expect(mark?.getAttribute('data-icon')).toBe('hand-raised');
+  });
+
+  it('omits the mark for a tool that does not hold, and for a server that omits the key', async () => {
+    const plain = await render(stubClient([tool({ intervention: false })]));
+    expect((plain.nativeElement as HTMLElement).querySelector('.qt-intervention-mark')).toBeNull();
+    const older = tool() as Partial<CustomToolLibraryEntry>;
+    delete older.intervention;
+    const old = await render(stubClient([older as CustomToolLibraryEntry]));
+    expect((old.nativeElement as HTMLElement).querySelector('.qt-intervention-mark')).toBeNull();
   });
 
   it('omits the parameter badge entirely at zero (v4 renders it only when > 0)', async () => {

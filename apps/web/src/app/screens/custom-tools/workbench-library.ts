@@ -228,7 +228,17 @@ interface OverCapStore {
             (click)="open.emit({ mountPointId: tool.mountPointId, path: tool.definitionPath })"
             title="Open on the workbench"
           >
-            <span class="block text-sm font-medium truncate">{{ tool.title }}</span>
+            <!-- v4 \`839575d89\` (\`WorkbenchLibrary.tsx:169-175\`): the hand mark beside the title. -->
+            <span class="flex items-center gap-1 text-sm font-medium">
+              <span class="truncate">{{ tool.title }}</span>
+              @if (tool.intervention) {
+                <qt-icon
+                  name="hand-raised"
+                  class="qt-intervention-mark w-3.5 h-3.5"
+                  title="Holds each roll for you"
+                />
+              }
+            </span>
             <span class="block text-xs font-mono qt-text-secondary truncate">{{ tool.name }}</span>
             @if (tool.description) {
               <span class="block text-xs qt-text-secondary mt-1 line-clamp-2">{{

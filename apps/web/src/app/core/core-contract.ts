@@ -7727,6 +7727,10 @@ export interface CustomToolLibraryEntry {
   llm: boolean;
   /** How many trigger phrases the tool listens for (0 = none) (v4 `362426c8f`). */
   triggerCount: number;
+  // === P4.D346: the library's hand mark (LibraryEntryKeys; v4 839575d89) ===
+  /** True when the definition holds each roll for the operator (`intervention.enabled`). An older server omits it. */
+  intervention: boolean;
+  // === end P4.D346 ===
   // === P4.D344: declared tool effects (W1; v4 `b15fe9404`) ===
   /**
    * The tool's declared effect: `write` touches state, wardrobe, inventory or

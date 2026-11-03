@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): the Workbench library's hand mark (v4 839575d89)
+
+_Versions: SPA 0.5.912._
+
+P4.D346 item 6. The Workbench library shows v4's hand mark beside an intervenable tool's title — a `qt-intervention-mark` icon named "Holds each roll for you" — and `CustomToolLibraryEntry` gains `intervention: boolean` after `triggerCount` (the `LibraryEntryKeys` contract; P4.D345 serves the key, P4.D344 inserts `effect` after it at the union). An older server that omits the key shows no mark. Two specs in `workbench-library.spec.ts`.
+
 #### 2026-11-02 — feat(spa): the Workbench's intervention hands (v4 839575d89)
 
 _Versions: SPA 0.5.911._
