@@ -2641,6 +2641,7 @@ mod tests {
             appropriateness: None,
             is_default: false,
             replace: false,
+            pronoun_guidance: None,
             component_item_ids: refs.iter().map(|s| s.to_string()).collect(),
             migrated_from_clothing_record_id: None,
             image_file_id: None,

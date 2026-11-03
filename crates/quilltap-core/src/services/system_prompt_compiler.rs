@@ -120,6 +120,8 @@ fn character_from_value(c: &Value) -> Character {
         example_dialogues: s(c, "exampleDialogues"),
         scenarios,
         system_prompts,
+        // v4 gates the diagram note on `character.canDrawDiagrams === true`.
+        can_draw_diagrams: c.get("canDrawDiagrams") == Some(&Value::Bool(true)),
     }
 }
 

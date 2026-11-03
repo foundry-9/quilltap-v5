@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(prompt): the non-humanoid form note and the [FORMATTING: DIAGRAMS] note (P4.D349)
+
+_Versions: core 0.0.1385._
+
+Two system-prompt additions from v4. The identity stack's Physical Appearance section gains v4's form note for a character whose `physical-prompts.json` says `humanoid: false` (`b27e5089a`). It adds the line `You have no humanoid body: …`; with no prompt text the section is just that note, and a humanoid with no text still gets no section. `build_system_prompt` pushes v4's `[FORMATTING: DIAGRAMS]` note (`6588972d5`) directly after the math note, and before the Taboo section and the tool instructions. The note appears only when the character's vault says `canDrawDiagrams: true` (`system_prompt::Character.can_draw_diagrams`, read `=== true`). It never enters the identity stack, so a precompiled stack still gets it and the stack's builder version does not move. The four `Character` populators read the flag: the compiler, the fenced `self_inventory.rs` hunk, and the two announcer literals. This also fixes a lib-test literal that commit C left without `pronoun_guidance`. Oracle growth: `system-prompt` +11 rows (98 total).
+
 #### 2026-11-03 — feat(characters): port v4's isHumanoid, the non-humanoid portrait order and the figure* gender twins (P4.D349)
 
 _Versions: core 0.0.1384._

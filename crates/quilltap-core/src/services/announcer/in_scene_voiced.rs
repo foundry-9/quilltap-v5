@@ -219,6 +219,11 @@ fn to_sys_character(c: &Value) -> Character {
                     .collect()
             })
             .unwrap_or_default(),
+        // === P4.D349: can_draw_diagrams === (the exhaustive-literal compile fix;
+        // v4 hands the whole character to `buildSystemPrompt`, so the diagram
+        // note follows the vault flag here too)
+        can_draw_diagrams: c.get("canDrawDiagrams") == Some(&Value::Bool(true)),
+        // === end P4.D349 ===
     }
 }
 

@@ -247,6 +247,30 @@ function phys(overrides: Record<string, any>): any {
       undefined,
       undefined,
     ],
+    // P4.D349 (v4 `b27e5089a`, `non-humanoid-appearance.test.ts`): the form
+    // note rides the section for a non-humanoid; with no text the section is
+    // JUST the note; a humanoid with no text still gets no section.
+    [
+      'phys-nonhumanoid-with-text',
+      ch({ name: 'Orrery', physicalDescription: phys({ name: 'Spheres', shortPrompt: 'seven interlocking brass spheres', usageContext: 'always', humanoid: false }) }),
+      null,
+      undefined,
+      undefined,
+    ],
+    [
+      'phys-nonhumanoid-no-text',
+      ch({ name: 'Orrery', physicalDescription: phys({ name: 'Spheres', humanoid: false }) }),
+      null,
+      undefined,
+      undefined,
+    ],
+    [
+      'phys-humanoid-no-text',
+      ch({ name: 'Ada', physicalDescription: phys({ name: 'Empty', humanoid: true }) }),
+      null,
+      undefined,
+      undefined,
+    ],
     [
       'scenario-from-array',
       ch({ name: 'Ada', personality: 'Scene: {{scenario}}', scenarios: [{ id: 's1', title: 'T', content: 'array scenario body', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }] as any }),
@@ -464,6 +488,58 @@ pushSystemPrompt(
   { character: ch({ name: 'Ada', personality: 'ignored because precompiled' }), precompiledIdentityStack: '## Precompiled\nStable prefix for Ada.' },
   T_MAIN,
 )
+// P4.D349 (v4 `6588972d5`, `diagram-formatting.test.ts`): the
+// `[FORMATTING: DIAGRAMS]` note — absent for a character without the flag
+// (whatever the style), present directly after the math note for a drawing
+// character, before the Taboo section and the tool instructions, never in the
+// identity stack, and still present with a precompiled stack.
+pushSystemPrompt('diagram-off', { character: ch({ name: 'Ada' }) }, T_MAIN)
+pushSystemPrompt(
+  'diagram-off-with-style',
+  { character: ch({ name: 'Ada', canDrawDiagrams: false, diagramStyle: 'clean' } as never) },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'diagram-on',
+  { character: ch({ name: 'Ada', canDrawDiagrams: true, diagramStyle: 'clean' } as never) },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'diagram-on-roleplay',
+  {
+    character: ch({ name: 'Ada', canDrawDiagrams: true } as never),
+    roleplayTemplate: { systemPrompt: 'Prose only.' },
+  },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'diagram-before-taboo-and-tools',
+  {
+    character: ch({ name: 'Ada', canDrawDiagrams: true, diagramStyle: 'handDrawn' } as never),
+    tabooPhrases: ['as an AI'],
+    toolInstructions: 'Use the workspace tools when needed.',
+  },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'diagram-precompiled-stack',
+  {
+    character: ch({ name: 'Ada', canDrawDiagrams: true } as never),
+    precompiledIdentityStack: '## Precompiled\nStable prefix for Ada.',
+  },
+  T_MAIN,
+)
+pushSystemPrompt(
+  'diagram-truthy-non-boolean',
+  { character: ch({ name: 'Ada', canDrawDiagrams: 'yes' } as never) },
+  T_MAIN,
+)
+{
+  const character = ch({ name: 'Ada', personality: 'Sketches constantly.', canDrawDiagrams: true } as never)
+  const out = buildIdentityStack({ character, userCharacter: null, scenarioText: undefined, selectedSystemPromptId: undefined })
+  rows.push({ kind: 'identityStack', id: 'diagram-never-in-identity-stack', character, userCharacter: null, scenarioText: undefined, selectedSystemPromptId: undefined, out })
+}
+
 // P4.D164: on the read-through fallback the block renders inside the identity
 // stack; a precompiled stack WINS and the subprompts are ignored (v4's
 // "already carries them"); the Tier-2 order proof — subprompts + Taboo +

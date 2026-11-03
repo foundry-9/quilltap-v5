@@ -65,6 +65,10 @@ struct WirePhysical {
     complete_prompt: Option<String>,
     #[serde(rename = "fullDescription", default)]
     full_description: Option<String>,
+    /// P4.D349 (v4 `b27e5089a`): RAW — a non-boolean reads as absent, as the
+    /// production populator's `as_bool` does.
+    #[serde(default)]
+    humanoid: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -92,6 +96,9 @@ struct WireCharacter {
     scenarios: Vec<WireScenario>,
     #[serde(rename = "systemPrompts", default)]
     system_prompts: Vec<WireSystemPrompt>,
+    /// P4.D349 (v4 `6588972d5`): RAW — the note is gated on `=== true`.
+    #[serde(rename = "canDrawDiagrams", default)]
+    can_draw_diagrams: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -268,6 +275,7 @@ fn to_char(w: &WireCharacter) -> Character {
                 long_prompt: p.long_prompt.clone(),
                 complete_prompt: p.complete_prompt.clone(),
                 full_description: p.full_description.clone(),
+                humanoid: p.humanoid.as_ref().and_then(serde_json::Value::as_bool),
             }),
         example_dialogues: w.example_dialogues.clone(),
         scenarios: w
@@ -287,6 +295,7 @@ fn to_char(w: &WireCharacter) -> Character {
                 is_default: p.is_default,
             })
             .collect(),
+        can_draw_diagrams: w.can_draw_diagrams == Some(serde_json::Value::Bool(true)),
     }
 }
 

@@ -193975,6 +193975,23 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
   - `small_utils_equivalence` OK (+12 `figureGender` rows: he / she / they / unset × humanoid / non-humanoid / no description; asserted by count).
 - **Red-first (inferred, not run):** the base has no `humanoid` read, so `p4d349-non-humanoid-every-variant / head-and-shoulders` would pick `a face of brass`.
 
+### Commit E — the form note and the diagram note (items 13, 14)
+
+- `system_prompt.rs`: the `form_note` (`is_humanoid` over the description's `variants()`), appended to the Physical Appearance line, or alone (`\n## Physical Appearance{form_note}`) when there is no text.
+- NEW `DIAGRAM_FORMATTING_INSTRUCTION` after `MATH_FORMATTING_INSTRUCTION`, with v4's doc-comment carried.
+- `Character.can_draw_diagrams: bool`; the push between the math note and the Taboo section.
+- **Populators of `can_draw_diagrams` (`== Some(&Value::Bool(true))`):**
+  - `system_prompt_compiler::character_from_value`.
+  - The fenced `self_inventory.rs` `to_sys_char` literal (`// === P4.D349: can_draw_diagrams ===`; R-7).
+  - **Measured (the order said `..Default::default()`, wrongly): `announcer/character_voiced.rs:139` and `announcer/in_scene_voiced.rs:186` are EXHAUSTIVE `Character` literals.** Both got the fenced one-line fix. v4's announcers hand the whole character to `buildSystemPrompt`, so the note follows the flag there too.
+  - `carina_query.rs`, `orchestrator.rs`, `message_context.rs`, `build_context.rs` use `..Default::default()`; they compiled untouched (no edit).
+- **Family:** `system_prompt_equivalence` 98 rows OK (+11).
+  - The three `non-humanoid-appearance.test.ts` rows: `phys-nonhumanoid-with-text`, `phys-nonhumanoid-no-text` (the section is just the note), `phys-humanoid-no-text` (no section).
+  - The eight diagram rows from `diagram-formatting.test.ts`: off; off-with-style; on; on with a roleplay template; before Taboo and the tools; a precompiled stack; a truthy non-boolean `'yes'` (no note — `=== true`); the identity stack of a drawing character (no note).
+  - `grep -c "FORMATTING: DIAGRAMS"` = 4, `grep -c "no humanoid body"` = 2.
+- Unit: `a_drawing_character_gets_the_diagram_note_right_after_the_math_note` (the bytes, the position, never in the stack). `cargo test -p quilltap-core --lib` 4,003 / 0.
+- **Fix carried:** commit C left one `#[cfg(test)]` `WardrobeItemFromFile` literal (`vault_overlay.rs`, `wif`) without `pronoun_guidance`. The lib-test target did not compile between C and E. Fixed here.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

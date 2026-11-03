@@ -1518,6 +1518,9 @@ fn to_sys_char(c: &Value) -> crate::system_prompt::Character {
         example_dialogues: json_str(c, "exampleDialogues"),
         scenarios,
         system_prompts,
+        // === P4.D349: can_draw_diagrams ===
+        can_draw_diagrams: c.get("canDrawDiagrams") == Some(&Value::Bool(true)),
+        // === end P4.D349 ===
     }
 }
 

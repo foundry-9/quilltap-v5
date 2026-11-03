@@ -38,7 +38,7 @@
 //! `.trim()` on a JS string is [`crate::jsstr::js_trim`] (Unicode whitespace).
 
 use crate::characters::physical_description::{
-    pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
+    is_humanoid, pick_physical_description, PhysicalDescriptionProfile, PhysicalDescriptionVariants,
 };
 use crate::chat_timestamp::{
     calculate_current_timestamp, should_inject_timestamp, InvalidTimezone, TimestampConfig,
@@ -158,6 +158,9 @@ pub struct Character {
     pub example_dialogues: Option<String>,
     pub scenarios: Vec<ScenarioEntry>,
     pub system_prompts: Vec<SystemPromptEntry>,
+    /// v4 `6588972d5`: the vault `properties.json` `canDrawDiagrams` flag —
+    /// gates the `[FORMATTING: DIAGRAMS]` note (v4 `=== true`).
+    pub can_draw_diagrams: bool,
 }
 
 /// JS `value || ''` for an `Option<String>` field: `None` or an empty string is
@@ -390,11 +393,23 @@ pub fn build_identity_stack(options: &BuildIdentityStackOptions<'_>) -> String {
             Some(&desc.variants()),
             PhysicalDescriptionProfile::SelfImage,
         );
+        // A non-humanoid character (`humanoid: false` in physical-prompts.json)
+        // is told so, lest it narrate a shrug or a nod it has no body for. Only
+        // that flag adds the line, so no existing character's stack changes
+        // (v4 `b27e5089a`).
+        let form_note = if is_humanoid(Some(&desc.variants())) {
+            ""
+        } else {
+            "\nYou have no humanoid body: no head, face, shoulders, hands or limbs. Never describe yourself as having or using one."
+        };
         if !desc_text.is_empty() {
             parts.push(format!(
-                "\n## Physical Appearance\nThis is how you look — \"{}\"{context_note}: {desc_text}",
+                "\n## Physical Appearance\nThis is how you look — \"{}\"{context_note}: {desc_text}{form_note}",
                 desc.name
             ));
+        } else if !form_note.is_empty() {
+            // Flag set before any prompt is written: the reminder still goes out.
+            parts.push(format!("\n## Physical Appearance{form_note}"));
         }
     }
 
@@ -532,6 +547,17 @@ pub struct BuildSystemPromptOptions<'a> {
 /// literal AFTER escape resolution (single-backslash LaTeX).
 const MATH_FORMATTING_INSTRUCTION: &str = "[FORMATTING: MATHEMATICAL NOTATION]\nResponses render as Markdown with KaTeX math support. To display a formula, wrap the LaTeX in DOUBLE dollar signs — $$...$$ — which renders correctly both inline within a sentence and as its own centered block. Do NOT use single dollar signs ($x$), single quotes, or backticks for math; only $$...$$ is recognized.\n- Inline example: The area of a circle is $$A = \\pi r^2$$ for radius r.\n- Block example:\n$$\n\\int_0^1 x^2 \\, dx = \\frac{1}{3}\n$$";
 
+/// v4 `DIAGRAM_FORMATTING_INSTRUCTION` (`6588972d5`) — the diagram formatting
+/// note, appended right after the math note, but ONLY for a character whose
+/// vault `properties.json` says `canDrawDiagrams: true`. Every other character
+/// hears nothing about diagrams. The Salon renders a closed ```mermaid / ```dot /
+/// ```graphviz / ```svg fence as a picture; this note teaches the format and
+/// nothing more. It does not ask the character to draw often — an operator who
+/// wants a prolific sketcher says so in the character's own prompt — and it
+/// never mentions `diagramStyle`, which is a rendering choice the model doesn't
+/// need. The three backtick runs are literal (v4's template escapes resolved).
+const DIAGRAM_FORMATTING_INSTRUCTION: &str = "[FORMATTING: DIAGRAMS]\nYou can draw diagrams. Write one in a fenced code block and it renders as a picture: ```mermaid for flowcharts, sequences, timelines, mind maps and the like; ```dot for graphs of connections (Graphviz DOT); ```svg for freeform drawings. Put only the diagram source inside the fence.";
+
 /// Preamble of the Taboo section (v4 `TABOO_SECTION_PREAMBLE`, `7df7de8e`) —
 /// the instance-wide list of phrases no character may utter (Settings → Chat →
 /// Taboo, `instance_settings['taboo']`).
@@ -650,6 +676,13 @@ pub fn build_system_prompt(
     // every character regardless of the selected roleplay template, pushed
     // UNCONDITIONALLY between the template and the tool instructions.
     parts.push(MATH_FORMATTING_INSTRUCTION.to_string());
+
+    // Diagram note — per character, gated on the vault's `canDrawDiagrams`.
+    // Same cacheable block as the math note; it is not part of the identity
+    // stack, so neither the stack's builder version nor its goldens move.
+    if character.can_draw_diagrams {
+        parts.push(DIAGRAM_FORMATTING_INSTRUCTION.to_string());
+    }
 
     // Universal Taboo section — instance-wide, character-independent, and stable
     // between edits, so it belongs here with the other universal material rather
@@ -911,6 +944,7 @@ mod tests {
                 complete_prompt: Some(String::new()),
                 full_description: Some(String::new()),
                 usage_context: Some("general".into()),
+                humanoid: None,
             }),
             ..Default::default()
         }
@@ -1002,6 +1036,29 @@ mod tests {
         };
         let s = build_public_identity_card(&ch, None);
         assert_eq!(s, "**Ada**\nA wandering inventor.");
+    }
+
+    #[test]
+    fn a_drawing_character_gets_the_diagram_note_right_after_the_math_note() {
+        // P4.D349 (v4 `6588972d5`): the note's bytes (the backticks literal) and
+        // its place — after the math note, outside the identity stack.
+        assert_eq!(
+            DIAGRAM_FORMATTING_INSTRUCTION,
+            "[FORMATTING: DIAGRAMS]\nYou can draw diagrams. Write one in a fenced code block and it renders as a picture: \u{60}\u{60}\u{60}mermaid for flowcharts, sequences, timelines, mind maps and the like; \u{60}\u{60}\u{60}dot for graphs of connections (Graphviz DOT); \u{60}\u{60}\u{60}svg for freeform drawings. Put only the diagram source inside the fence."
+        );
+        let ch = Character {
+            can_draw_diagrams: true,
+            ..char_named("Ada")
+        };
+        let s = build_system_prompt(&prompt_opts(&ch)).unwrap();
+        assert_eq!(
+            s,
+            format!(
+                "{}\n\n{MATH_FORMATTING_INSTRUCTION}\n\n{DIAGRAM_FORMATTING_INSTRUCTION}",
+                build_identity_stack(&stack_opts(&ch))
+            )
+        );
+        assert!(!build_identity_stack(&stack_opts(&ch)).contains("[FORMATTING: DIAGRAMS]"));
     }
 
     #[test]
