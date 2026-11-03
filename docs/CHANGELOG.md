@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D353 records its Tier-1 commit for P4.D359
+
+_Docs-only change._
+
+The P4.D353 order's status header records the lane branch, the R-B ruling (A) and the Tier-1 commit `c1da5c4de`, which P4.D359's absent-character chips stack on.
+
 #### 2026-11-03 — feat(spa): diagrams in the Salon — the slot post-pass, the per-message hand, the Aurora card (v4 6588972d5 + 9faed0c7e)
 
 _Versions: SPA 0.5.910._
