@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(pascal): an intervenable tool's model-facing text says nothing of the hold (P4.D345)
+
+_Versions: core 0.0.1392._
+
+Ports v4 `intervention-leaks.test.ts:110-129` over this lane's files. Given an intervenable definition (which the control asserts), the `run_custom` description (odds revealed and hidden) and the tool vocabulary carry no `intervention` / `intervene` text. The storyteller roster, the conversation readers and the Courier delta are other lanes' files (H9).
+
 #### 2026-11-03 — feat(api): the four operator-intervention actions on /api/v1/chats/{id}/custom-tools (P4.D345)
 
 _Versions: core 0.0.1391, web 0.0.253._
