@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Map, Value};
 
-use super::custom_tool_types::{display_title, Visibility};
+use super::custom_tool_types::Visibility;
 use super::custom_tools::{
     execute_custom_tool, CustomToolRunError, CustomToolRunResult, LlmInvoker, RollForm,
 };
@@ -51,6 +51,14 @@ use crate::services::pascal_writer::{
     build_pascal_result_content, post_pascal_result, PostPascalResultParams, PostedPascalMessage,
 };
 use crate::state::cascade::{resolve_state_cascade, GroupScope, StateCascadeResult};
+// === P4.D345: operator intervention ===
+use crate::pascal::intervention::overrides::Announcer;
+use crate::pascal::intervention::recompute::{
+    changed_fields, facts_of, presentation_for, RecomputedRun, RunSnapshot,
+};
+use crate::pascal::intervention::registry::{
+    self, Entrance, InterventionDecision, NewHold, VetoCause,
+};
 use crate::tools::rng::RandomBytes;
 
 const CONTEXT: &str = "pascal.run-service";
@@ -134,6 +142,14 @@ pub struct RunCustomToolParams<'a> {
     /// field (R-G); the run's pass-through to the applier is P4.D329's.
     pub pending_inventory_announcements:
         Option<&'a crate::services::inventory_change_effects::PendingInventoryAnnouncements>,
+    // === P4.D345: operator intervention (v4 `839575d89`) — the LAST two ===
+    /// Whether this entrance may hold the run for the operator (v4
+    /// `mayHold`). Entrances decide; the service checks the rest — the
+    /// definition, the chat settings, the process and the chat type.
+    pub may_hold: bool,
+    /// The turn's Stop signal (`TurnStopReach`): a Stop while held vetoes the
+    /// run (I9). `None` outside a turn.
+    pub stop: Option<crate::services::turn_control::StopSignal>,
 }
 
 /// What one run came to (v4 `RunCustomToolOutcome`).
@@ -150,6 +166,10 @@ pub enum RunCustomToolOutcome {
     /// `params.private ?? defaultVisibility === 'whisper'`, for the entrance's
     /// Prospero bubble.
     Refused { reason: String, whisper: bool },
+    // === P4.D345 ===
+    /// The operator set the table aside: nothing was applied and nothing
+    /// posted (v4 `{ ok: 'vetoed' }`).
+    Vetoed,
 }
 
 /// Deal one hand: cascade → execute → effects → Pascal's post (v4
@@ -198,6 +218,10 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         _ => GroupScope::None,
     };
     let held_chat = params.chat;
+    // P4.D345: the chat is RETAINED past the cascade (v4 `let chat =
+    // params.chat ?? null; chat = chat ?? await findById(chatId)`), so the
+    // hold's autonomous check reuses it.
+    let mut read_chat: Option<Value> = None;
     let cascade_read: Result<Option<StateCascadeResult>, DbError> = db.read_main(|main| {
         // `params.chat ?? (await chats.findById(chatId))`. v4's `findById` is
         // a `safeQuery` FALLBACK read: a failed read logs the repository's own
@@ -210,6 +234,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
             None => match crate::db::chats_read::find_by_id_or_none(main, chat_id) {
                 Some(found) => {
                     owned = found;
+                    read_chat = Some(owned.clone());
                     &owned
                 }
                 // No chat → no cascade, SILENTLY (v4 logs nothing here).
@@ -257,7 +282,8 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
     } else {
         Some(metadata)
     };
-    let result: CustomToolRunResult = match execute_custom_tool(
+    let chat: Option<&Value> = held_chat.or(read_chat.as_ref());
+    let mut result: CustomToolRunResult = match execute_custom_tool(
         &entry.definition,
         params.parameters,
         params.private,
@@ -297,6 +323,38 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         }
     };
 
+    // === P4.D345: operator intervention — the deal is done, nothing is
+    // applied or posted yet (v4 `run-service.ts:200-220`) ===
+    let mut presentation = presentation_for(&entry.definition, result.visibility, None, None);
+    let mut intervention: Option<Value> = None;
+    if may_hold_run(db, &params, chat) {
+        let held = hold_for_operator(
+            &params,
+            &result,
+            character_name.clone(),
+            RunSnapshot {
+                params: params.parameters.cloned(),
+                private: params.private,
+                metadata: metadata.clone(),
+                progress: progress.clone(),
+                now_ms,
+                character: character_name.clone(),
+                state: tool_state.clone(),
+                inventory: inventory.clone(),
+            },
+        )
+        .await;
+        match held {
+            HoldOutcome::Veto => return Ok(RunCustomToolOutcome::Vetoed),
+            HoldOutcome::AsRolled => {}
+            HoldOutcome::Deal { run, record } => {
+                result = run.result;
+                presentation = run.presentation;
+                intervention = Some(record);
+            }
+        }
+    }
+
     // The applier never fails the run. `character_id` `None` → metadata,
     // progress and wardrobe effects skip.
     let applied_effects = apply_effects_for_run(
@@ -323,7 +381,7 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         None
     };
 
-    let tool_title = display_title(&entry.definition.name, entry.definition.title.as_deref());
+    let tool_title = presentation.title.clone();
     let body =
         build_pascal_result_content(&tool_title, result.chip_label.as_deref(), &result.message);
 
@@ -335,14 +393,17 @@ pub async fn run_custom_tool<R: RandomBytes + Send>(
         params.invoked_by,
         params.trigger_phrase,
         params.caller_participant_id,
+        intervention.as_ref(),
     );
 
     // `announceAsCharacter`: the rolling character speaks the outcome in
     // Pascal's place. Still Pascal's record (systemSender, pascalMeta, the
     // chip) — only the face and name on the bubble, and the speaker tag the
     // model reads, change. A run nobody made has no one to speak it, so Pascal
-    // does. (v4 `=== true ? characterId : null`, then the truthy spread.)
-    let announcer_character_id = if entry.definition.announce_as_character == Some(true) {
+    // does. (v4 `presentation.announcer === 'character' ? characterId :
+    // null`, then the truthy spread — P4.D345: the PRESENTATION decides, so
+    // the operator's announcer override lands here.)
+    let announcer_character_id = if presentation.announcer == Announcer::Character {
         character_id.filter(|c| !c.is_empty())
     } else {
         None
@@ -446,6 +507,7 @@ fn resolve_character_name(
 /// `llm`; then `invokedBy`, `triggerPhrase` (ONLY on a `'trigger'` run that
 /// carries a phrase — a `'user'` run handed one emits none), and
 /// `callerParticipantId` when set.
+#[allow(clippy::too_many_arguments)]
 fn build_pascal_meta(
     result: &CustomToolRunResult,
     tool_title: &str,
@@ -454,6 +516,8 @@ fn build_pascal_meta(
     invoked_by: InvokedBy,
     trigger_phrase: Option<&str>,
     caller_participant_id: Option<&str>,
+    // P4.D345: `...(intervention ? { intervention } : {})` — the LAST key.
+    intervention: Option<&Value>,
 ) -> Map<String, Value> {
     let mut pascal_meta = Map::new();
     pascal_meta.insert("tool".into(), json!(result.tool));
@@ -526,7 +590,239 @@ fn build_pascal_meta(
     if let Some(caller) = caller_participant_id.filter(|c| !c.is_empty()) {
         pascal_meta.insert("callerParticipantId".into(), json!(caller));
     }
+    if let Some(record) = intervention {
+        pascal_meta.insert("intervention".into(), record.clone());
+    }
     pascal_meta
+}
+
+// === P4.D345: operator intervention — the hold (v4 `run-service.ts:300-410`) ===
+
+/// v4 `process.env.QUILLTAP_JOB_CHILD === '1'` — constantly `false` in v5:
+/// the in-process job runner never forks, so a run never executes in a job
+/// child (the same ruling as `services::dangerous_content::refusal_ledger::
+/// is_job_child`, declared module-local rather than reaching into that
+/// `pub(super)` twin). The reason's bytes are ported, pinned NEGATIVE.
+fn is_job_child() -> bool {
+    false
+}
+
+/// The five reasons a run on an intervenable tool is not held, in v4's order.
+const NOT_HELD_OPERATORS_OWN_RUN: &str = "this entrance never holds (the operator's own run)";
+const NOT_HELD_JOB_CHILD: &str = "running in the job child";
+const NOT_HELD_AUTONOMOUS: &str = "an autonomous room";
+const NOT_HELD_CUSTOM_TOOLS_OFF: &str = "custom tools are off";
+const NOT_HELD_INTERVENTION_OFF: &str = "the operator switched intervention off";
+
+/// Whether this run may be held for the operator (v4 `mayHoldRun`). A tool
+/// that is not intervenable returns `false` SILENTLY; every other "no" is
+/// logged at debug with its reason.
+fn may_hold_run(db: &Db, params: &RunCustomToolParams<'_>, chat: Option<&Value>) -> bool {
+    let definition = &params.entry.definition;
+    if !crate::pascal::intervention::eligibility::is_intervenable(definition) {
+        return false;
+    }
+    let skip = |reason: &str| {
+        tracing::debug!(
+            target: "quilltap::pascal",
+            context = CONTEXT,
+            chatId = params.chat_id,
+            tool = definition.name.as_str(),
+            reason,
+            "Custom tool run not held",
+        );
+        false
+    };
+    if !params.may_hold {
+        return skip(NOT_HELD_OPERATORS_OWN_RUN);
+    }
+    // The job child has nobody watching and cannot wait on the parent's
+    // dialog.
+    if is_job_child() {
+        return skip(NOT_HELD_JOB_CHILD);
+    }
+    if chat.and_then(|c| c.get("chatType")).and_then(Value::as_str) == Some("autonomous") {
+        return skip(NOT_HELD_AUTONOMOUS);
+    }
+
+    // `chatSettings.findByUserId` is a `safeQuery` FALLBACK — a failed row
+    // read logs the repository's own ERROR and answers null (hold). v4's catch
+    // has ONE v5 home: the read connection itself.
+    match db.read_main(|main| {
+        Ok(crate::db::chat_settings::find_by_user_id_or_none(
+            main,
+            params.user_id,
+        ))
+    }) {
+        Ok(settings) => {
+            let flag = |key: &str| {
+                settings
+                    .as_ref()
+                    .and_then(|s| s.get(key))
+                    .and_then(Value::as_bool)
+            };
+            if flag("customTools") == Some(false) {
+                return skip(NOT_HELD_CUSTOM_TOOLS_OFF);
+            }
+            if flag("customToolIntervention") == Some(false) {
+                return skip(NOT_HELD_INTERVENTION_OFF);
+            }
+        }
+        Err(error) => {
+            // Unreadable settings: the default is on, and a held run is
+            // recoverable (the operator can let it stand), where a skipped
+            // hold is not.
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = params.chat_id,
+                error = %crate::db::fallback::error_text(&error),
+                "Custom tool hold: chat settings unreadable, holding by default",
+            );
+        }
+    }
+    true
+}
+
+/// What the hold came to (v4 `HoldOutcome`).
+enum HoldOutcome {
+    Veto,
+    AsRolled,
+    Deal {
+        run: Box<RecomputedRun>,
+        record: Value,
+    },
+}
+
+/// Hold the dealt run until the operator answers (v4 `holdForOperator`). A
+/// deal that changes nothing is an as-rolled deal and records nothing — the
+/// badge marks a change, and "I looked and let it stand" is not one.
+///
+/// Holds NO connection, write batch or lock across the await: the registry
+/// hands back a receiver, and the only thing awaited is it (or the Stop).
+async fn hold_for_operator(
+    params: &RunCustomToolParams<'_>,
+    result: &CustomToolRunResult,
+    character_name: Option<String>,
+    snapshot: RunSnapshot,
+) -> HoldOutcome {
+    let entry = params.entry;
+    let definition = &entry.definition;
+    let (id, mut rx) = registry::hold(
+        NewHold {
+            chat_id: params.chat_id.to_string(),
+            user_id: params.user_id.to_string(),
+            entrance: if params.invoked_by == InvokedBy::Trigger {
+                Entrance::Trigger
+            } else {
+                Entrance::Llm
+            },
+            character_id: params.character_id.map(str::to_string),
+            character_name,
+            trigger_phrase: params
+                .trigger_phrase
+                .filter(|p| !p.is_empty())
+                .map(str::to_string),
+            definition: definition.clone(),
+            definition_tier: entry.tier,
+            definition_mount_id: entry.mount_point_id.clone(),
+            snapshot,
+            draw: result.draw.clone(),
+            baseline: result.clone(),
+            consults: result.llm.iter().cloned().collect(),
+        },
+        crate::clock::now_unix_ms(),
+    );
+
+    // The Stop veto (I9) through `TurnStopReach`: a stop settles the hold as
+    // `Veto { Stop }` through the SAME door as the dialog (one log, one
+    // publish, the ring) — and the receiver then ALWAYS yields: the Stop's
+    // veto, or the operator's earlier decision (first wins). An
+    // already-stopped turn settles right after the add has published (v4's
+    // `queueMicrotask`).
+    let decision = match &params.stop {
+        None => (&mut rx).await,
+        Some(stop) => {
+            let stopped = std::pin::pin!(stop.wait());
+            match futures_util::future::select(&mut rx, stopped).await {
+                futures_util::future::Either::Left((decision, _)) => decision,
+                futures_util::future::Either::Right(((), _pending)) => {
+                    registry::settle_intervention(
+                        &id,
+                        InterventionDecision::Veto {
+                            cause: VetoCause::Stop,
+                        },
+                    );
+                    (&mut rx).await
+                }
+            }
+        }
+    };
+    // A sender dropped without a decision cannot happen (settle always
+    // sends); were the registry reset under a waiting turn (a test seam), the
+    // run stands as rolled — nothing applied twice, nothing lost.
+    let Ok(answer) = decision else {
+        return HoldOutcome::AsRolled;
+    };
+
+    match answer {
+        InterventionDecision::Veto { cause } => {
+            tracing::info!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = params.chat_id,
+                tool = definition.name.as_str(),
+                invokedBy = params.invoked_by.as_str(),
+                cause = cause.as_str(),
+                "Custom tool run set aside by the operator",
+            );
+            HoldOutcome::Veto
+        }
+        InterventionDecision::AsRolled => HoldOutcome::AsRolled,
+        InterventionDecision::Deal { run, reasks, .. } => {
+            let before = facts_of(
+                definition,
+                result,
+                &presentation_for(definition, result.visibility, None, None),
+            );
+            let after = facts_of(definition, &run.result, &run.presentation);
+            let changed = changed_fields(&before, &after);
+            let changed_json = serde_json::to_string(&changed).unwrap_or_default();
+            tracing::info!(
+                target: "quilltap::pascal",
+                context = CONTEXT,
+                chatId = params.chat_id,
+                tool = definition.name.as_str(),
+                changedJson = changed_json.as_str(),
+                reasks = reasks as u64,
+                staleAnswer = run.stale_answer,
+                "Custom tool run dealt by the operator",
+            );
+            if changed.is_empty() {
+                return HoldOutcome::AsRolled;
+            }
+            // `resolvedAt` is stamped at RESOLVE time (v4 `new Date()` after
+            // the await — R-11), never the run's `now_ms`.
+            let mut record = Map::new();
+            record.insert(
+                "resolvedAt".into(),
+                json!(crate::clock::iso_from_unix_ms(crate::clock::now_unix_ms())),
+            );
+            record.insert("decision".into(), json!("deal"));
+            record.insert("changed".into(), json!(changed));
+            record.insert("dealt".into(), before.to_wire());
+            if reasks > 0 {
+                record.insert("reasks".into(), json!(reasks));
+            }
+            if run.stale_answer {
+                record.insert("staleAnswer".into(), json!(true));
+            }
+            HoldOutcome::Deal {
+                run,
+                record: Value::Object(record),
+            }
+        }
+    }
 }
 
 // === P4.D329: the rolling character's bag ===
@@ -657,6 +953,8 @@ mod tests {
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
+                may_hold: false,
+                stop: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
             None,
@@ -752,6 +1050,7 @@ mod tests {
                 by,
                 phrase,
                 Some("p1"),
+                None,
             ))
             .unwrap()
         };
@@ -804,6 +1103,7 @@ mod tests {
                 &entry,
                 &[],
                 InvokedBy::Trigger,
+                None,
                 None,
                 None,
             ))
@@ -1062,6 +1362,8 @@ mod rolling_character_tests {
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
+                may_hold: false,
+                stop: None,
             },
             &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
             None,
@@ -1249,6 +1551,329 @@ mod rolling_character_tests {
         assert_eq!(
             content(&posted),
             "🎲 **For {{character}}**\n\n{{character}} rolls 3"
+        );
+    }
+}
+
+// === P4.D345: the hold's own pins (each line with its silence leg) ===
+#[cfg(test)]
+mod hold_tests {
+    use super::*;
+    use crate::db::tiered_mount_pool::MountTier;
+    use crate::pascal::intervention::registry::{
+        list_interventions, settle_intervention, InterventionDecision, SettleOutcome,
+    };
+    use crate::realtime::publish_sites::HintCapture;
+    use crate::test_support::global_capture;
+    use serde_json::json;
+    use std::time::Duration;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn db() -> (Db, tempfile::TempDir) {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (db, dir)
+    }
+
+    fn entry(intervention: Value) -> DiscoveredCustomTool {
+        let definition = crate::pascal::custom_tool_types::safe_parse(&json!({
+            "name": "coin",
+            "description": "Flip a coin.",
+            "intervention": intervention,
+            "roll": { "min": 0.5, "max": 0.5 },
+            "outcomes": [{ "when": true, "message": "Heads.", "state": "info" }],
+        }))
+        .expect("the definition loads");
+        DiscoveredCustomTool {
+            definition,
+            tier: MountTier::Character,
+            mount_point_id: "m1".into(),
+            mount_name: "Vault".into(),
+            definition_path: "Tools/coin.tool.json".into(),
+        }
+    }
+
+    fn chat_id() -> String {
+        format!("c-{}", uuid::Uuid::new_v4())
+    }
+
+    async fn run(
+        db: &Db,
+        entry: &DiscoveredCustomTool,
+        chat_id: &str,
+        chat: Option<&Value>,
+        may_hold: bool,
+        stop: Option<crate::services::turn_control::StopSignal>,
+    ) -> RunCustomToolOutcome {
+        let metadata = Map::new();
+        run_custom_tool(
+            db,
+            RunCustomToolParams {
+                user_id: "u",
+                chat_id,
+                chat,
+                entry,
+                parameters: None,
+                private: None,
+                character_id: None,
+                metadata: &metadata,
+                character_name: None,
+                whisper_target_ids: Some(vec!["u".into()]),
+                invoked_by: InvokedBy::Llm,
+                caller_participant_id: None,
+                trigger_phrase: None,
+                now_ms: 0,
+                pending_wardrobe_announcements: None,
+                pending_wardrobe_history: None,
+                pending_inventory_announcements: None,
+                may_hold,
+                stop,
+            },
+            &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
+            None,
+        )
+        .await
+        .expect("never Err")
+    }
+
+    fn pascal_lines(lines: Vec<String>) -> Vec<String> {
+        lines
+            .into_iter()
+            .filter(|l| l.contains(" quilltap::pascal ") && !l.contains("Pascal outcome dropped"))
+            .collect()
+    }
+
+    /// Wait (yielding) until the chat shows one hold; its id.
+    async fn held(chat: &str) -> String {
+        for _ in 0..2000 {
+            if let Some(p) = list_interventions(chat).first() {
+                return p.id.clone();
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+        panic!("no hold appeared for {chat}");
+    }
+
+    /// The operator's own run never holds: the entrance's reason, then the
+    /// deal. A NON-intervenable tool says nothing (the silence leg — and the
+    /// service's other pins assert it on every run).
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_operators_own_run_is_not_held_and_says_why() {
+        global_capture::install();
+        let (db, _dir) = db();
+        let chat = chat_id();
+        let (outcome, lines) = global_capture::capture_async(run(
+            &db,
+            &entry(json!({"enabled": true})),
+            &chat,
+            None,
+            false,
+            None,
+        ))
+        .await;
+        assert!(matches!(outcome, RunCustomToolOutcome::Ok { .. }));
+        let lines = pascal_lines(lines);
+        assert_eq!(
+            lines[0],
+            format!(
+                "DEBUG quilltap::pascal Custom tool run not held context=pascal.run-service \
+                 chatId={chat} tool=coin reason={NOT_HELD_OPERATORS_OWN_RUN}"
+            )
+        );
+        assert_eq!(lines.len(), 2, "{lines:?}");
+
+        let (_, silent) = global_capture::capture_async(run(
+            &db,
+            &entry(json!({"enabled": false})),
+            &chat,
+            None,
+            false,
+            None,
+        ))
+        .await;
+        assert!(!pascal_lines(silent).iter().any(|l| l.contains("not held")));
+    }
+
+    /// An autonomous room never holds.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_autonomous_room_is_not_held() {
+        global_capture::install();
+        let (db, _dir) = db();
+        let chat = chat_id();
+        let room = json!({"id": chat, "chatType": "autonomous", "participants": []});
+        let (_, lines) = global_capture::capture_async(run(
+            &db,
+            &entry(json!({"enabled": true})),
+            &chat,
+            Some(&room),
+            true,
+            None,
+        ))
+        .await;
+        assert!(pascal_lines(lines)[0].ends_with(&format!("reason={NOT_HELD_AUTONOMOUS}")),);
+    }
+
+    /// `running in the job child` is unreachable in v5 (the in-process runner
+    /// never forks): the reason's bytes exist and no run can reach them.
+    #[test]
+    fn the_job_child_reason_is_pinned_negative() {
+        assert!(!is_job_child());
+        assert_eq!(NOT_HELD_JOB_CHILD, "running in the job child");
+    }
+
+    /// A held run waits — nothing posted — until the operator lets it stand;
+    /// then it deals as rolled. The hold's INFO and the resolve's INFO, in
+    /// order, on the waiting thread.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_held_run_waits_for_the_operator_and_deals_as_rolled() {
+        global_capture::install();
+        let (db, _dir) = db();
+        let chat = chat_id();
+        let tool = entry(json!({"enabled": true}));
+        let ((outcome, settled), lines) = global_capture::capture_async(async {
+            tokio::join!(run(&db, &tool, &chat, None, true, None), async {
+                let id = held(&chat).await;
+                settle_intervention(&id, InterventionDecision::AsRolled)
+            })
+        })
+        .await;
+        assert_eq!(settled, SettleOutcome::Resolved);
+        assert!(matches!(outcome, RunCustomToolOutcome::Ok { .. }));
+        let lines = pascal_lines(lines);
+        assert!(lines[0].starts_with(
+            "INFO quilltap::pascal Custom tool run held for the operator \
+             context=pascal.intervention.registry"
+        ));
+        assert!(lines[0].ends_with("tool=coin entrance=llm characterId=null"));
+        assert!(lines[1].contains("Custom tool hold resolved"));
+        assert!(lines[1].ends_with("decision=as-rolled cause=dialog"));
+        assert!(lines[2].contains("Custom tool dealt"));
+        assert!(list_interventions(&chat).is_empty());
+    }
+
+    /// The Stop veto (I9) through `TurnStopReach`: a Stop while held settles
+    /// the hold as `Veto { Stop }` through the registry's own door (its line,
+    /// its publish), and the run answers `Vetoed` with the `cause=stop` INFO.
+    #[tokio::test(flavor = "current_thread")]
+    async fn stop_vetoes_a_held_run() {
+        global_capture::install();
+        let mut cap = HintCapture::start();
+        let (db, _dir) = db();
+        let chat = chat_id();
+        let registration = crate::services::turn_control::register_active_turn(&chat);
+        let stop = registration.handle().stop_signal();
+        let tool = entry(json!({"enabled": true}));
+        let ((outcome, ()), lines) = global_capture::capture_async(async {
+            tokio::join!(run(&db, &tool, &chat, None, true, Some(stop)), async {
+                held(&chat).await;
+                crate::services::turn_control::stop_active_turns(
+                    &chat,
+                    Some(Duration::from_millis(5)),
+                )
+                .await;
+            })
+        })
+        .await;
+        drop(registration);
+        assert!(matches!(outcome, RunCustomToolOutcome::Vetoed));
+        let lines = pascal_lines(lines);
+        assert!(lines[1].ends_with("decision=veto cause=stop"), "{lines:?}");
+        assert_eq!(
+            lines[2],
+            format!(
+                "INFO quilltap::pascal Custom tool run set aside by the operator \
+                 context=pascal.run-service chatId={chat} tool=coin invokedBy=llm cause=stop"
+            )
+        );
+        assert_eq!(lines.len(), 3, "nothing dealt, nothing posted: {lines:?}");
+        let hints = cap.drain_expecting(1).await;
+        assert_eq!(
+            hints,
+            vec![("customToolInterventions".to_string(), Some(chat.clone()))]
+        );
+        assert!(list_interventions(&chat).is_empty());
+    }
+
+    /// An ALREADY-stopped turn settles right after the add has been logged and
+    /// published (v4's `queueMicrotask`): the add's line precedes the
+    /// removal's, and the run is vetoed without waiting.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_already_stopped_turn_vetoes_after_the_add() {
+        global_capture::install();
+        let (db, _dir) = db();
+        let chat = chat_id();
+        let registration = crate::services::turn_control::register_active_turn(&chat);
+        crate::services::turn_control::stop_active_turns(&chat, Some(Duration::from_millis(1)))
+            .await;
+        let stop = registration.handle().stop_signal();
+        let (outcome, lines) = global_capture::capture_async(run(
+            &db,
+            &entry(json!({"enabled": true})),
+            &chat,
+            None,
+            true,
+            Some(stop),
+        ))
+        .await;
+        drop(registration);
+        assert!(matches!(outcome, RunCustomToolOutcome::Vetoed));
+        let lines = pascal_lines(lines);
+        assert!(lines[0].contains("Custom tool run held for the operator"));
+        assert!(lines[1].ends_with("decision=veto cause=stop"));
+    }
+
+    /// `pascalMeta.intervention` is the LAST key, after `callerParticipantId`.
+    #[test]
+    fn the_intervention_record_rides_last() {
+        let tool = entry(json!({"enabled": true}));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let result = rt
+            .block_on(crate::pascal::custom_tools::execute_custom_tool(
+                &tool.definition,
+                None,
+                None,
+                None,
+                None,
+                &mut crate::tools::rng::FixedBytes::new(vec![0; 6]),
+                None,
+                None,
+                0,
+                None,
+                None,
+                None,
+            ))
+            .expect("dealt");
+        let record = json!({"resolvedAt": "2026-11-03T00:00:00.000Z", "decision": "deal"});
+        let meta = build_pascal_meta(
+            &result,
+            "Coin",
+            &tool,
+            &[],
+            InvokedBy::Llm,
+            None,
+            Some("p1"),
+            Some(&record),
+        );
+        assert_eq!(
+            meta.keys().rev().take(2).cloned().collect::<Vec<_>>(),
+            vec![
+                "intervention".to_string(),
+                "callerParticipantId".to_string()
+            ]
         );
     }
 }

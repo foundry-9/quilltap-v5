@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(pascal): the run service holds an intervenable run for the operator; the entrances, the veto and the Stop (P4.D345)
+
+_Versions: core 0.0.1390._
+
+`run_custom_tool` now holds an intervenable run between the deal and its effects (v4 `839575d89`, `run-service.ts:200-220`). Nothing is applied, posted, drawn or consulted until the operator answers. `RunCustomToolParams` gains `may_hold` and `stop` as its last fields.
+
+`may_hold_run` checks five reasons in v4's order, each logged as the `Custom tool run not held` DEBUG: the operator's own run, the job child (unreachable in v5 and pinned negative), an autonomous room, custom tools off, intervention off. Unreadable settings log a DEBUG and hold.
+
+`hold_for_operator` registers the hold and awaits the decision or the turn's Stop (`TurnStopReach`, outcome (b)), which settles as `Veto { Stop }` through the registry. It logs the set-aside / dealt INFOs, downgrades an unchanged deal to as-rolled, and writes `pascalMeta.intervention` last; `PascalMetaIn.intervention` is an opaque `Option<Value>` (R-7). The title and the announcer now come from the presentation.
+
+The entrances:
+- `run_custom` holds (`may_hold: true`). A veto is the ordinary failure shape: `The tool did not run.` for a plain caller, or the transparent sentence for a user-driven seat or a `systemTransparency` character, using v4's own two reads. No Prospero bubble.
+- A trigger phrase holds, and a vetoed phrase logs and moves on.
+- The operator's popup run never holds.
+
+`RunTriggeredCustomToolsParams.turn_control` and the two fenced pass-through lines in `trigger_phrase_sites.rs` (H2) carry the Stop. The handler and trigger-runner families are re-recorded from the pin and green.
+
 #### 2026-11-03 — feat(pascal): the hold registry and the hold view (P4.D345)
 
 _Versions: core 0.0.1389._

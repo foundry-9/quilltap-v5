@@ -156,6 +156,8 @@ fn params_of(row: &Value) -> RunTriggeredCustomToolsParams {
         effect_ceiling: p["effectCeiling"]
             .as_str()
             .map(|e| quilltap_core::tools::effects::ToolEffect::from_str(e).expect("ceiling")),
+        // P4.D345: no turn — a held run here waits on the receiver alone.
+        turn_control: None,
     }
 }
 
@@ -404,6 +406,7 @@ fn consult_none_takes_the_no_invoker_arm() {
             custom_tool_triggers: Some(true),
         }),
         effect_ceiling: None,
+        turn_control: None,
     };
     let mut sink = |_: &Value| {};
     let posted = rt.block_on(run_triggered_custom_tools(

@@ -829,6 +829,10 @@ pub async fn chat_custom_tool_run(
             pending_wardrobe_announcements: None,
             pending_wardrobe_history: None,
             pending_inventory_announcements: None,
+            // P4.D345: the operator's own popup run never holds (v4
+            // `route.ts:465` `mayHold: false`).
+            may_hold: false,
+            stop: None,
         },
         &mut rng,
         // The chat run attributes the consult to THIS chat, so a dangerous room
@@ -868,6 +872,11 @@ pub async fn chat_custom_tool_run(
             )
             .await;
             return bad_request(reason);
+        }
+        // P4.D345: unreachable — `may_hold: false` never holds — and ported
+        // as v4 writes it (`route.ts:469-472`): nothing posted, no result.
+        Ok(RunCustomToolOutcome::Vetoed) => {
+            return Response::CustomToolRun(json!({ "messages": [], "result": null }));
         }
         // v4 has no `try` around the service: a rethrow is the middleware's 500.
         Err(e) => return internal(e),

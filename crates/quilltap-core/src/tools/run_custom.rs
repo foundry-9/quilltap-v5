@@ -689,9 +689,14 @@ pub struct RunCustomToolContext {
     /// The turn's pending Inventory changes (v4 `run-custom-handler.ts:58`
     /// `pendingInventoryAnnouncements?`, `e1872c94f`) — the SAME map the
     /// inventory tools get, so a tool's `inventory` gesture and the model's own
-    /// `inventory_*` calls read as one Pascal line. The LAST field (R-G).
+    /// `inventory_*` calls read as one Pascal line. (R-G.)
     pub pending_inventory_announcements:
         Option<crate::services::inventory_change_effects::PendingInventoryAnnouncements>,
+    // === P4.D345: `TurnStopReach` (the LAST field) ===
+    /// The turn's control handle, from `ToolExecutionContext.turn_control`
+    /// (P4.D348): a Stop while this run is held vetoes it (I9). `None`
+    /// outside a turn.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// The compact result handed back to the model (v4 `RunCustomToolOutput`).
@@ -709,6 +714,62 @@ pub struct RunCustomToolOutput {
 /// v4 `run-custom-handler.ts`'s `CONTEXT` — the `context` field of the
 /// handler's own lines (the run service's carry `pascal.run-service`).
 const HANDLER_CONTEXT: &str = "run-custom-handler";
+
+/// Whether the caller may be told the chat is a game (v4
+/// `callerKnowsItIsAGame`, ruling R-6 — v4's OWN two reads, not Carina's
+/// resolver): a user-controlled seat, or a character granted
+/// `systemTransparency`. Any failed read counts as plain, so a failure can
+/// never tell a character it is in a game. Both reads are `safeQuery`
+/// FALLBACKS (a failed row read answers null with the repository's ERROR), so
+/// v4's catch has ONE v5 home: the read connection itself.
+fn caller_knows_it_is_a_game(db: &Db, ctx: &RunCustomToolContext) -> bool {
+    let read = db.read_main(|main| {
+        if let Some(caller) = ctx
+            .caller_participant_id
+            .as_deref()
+            .filter(|c| !c.is_empty())
+        {
+            let chat = crate::db::chats_read::find_by_id_or_none(main, &ctx.chat_id);
+            let seat_is_user = chat
+                .as_ref()
+                .and_then(|c| c.get("participants"))
+                .and_then(Value::as_array)
+                .and_then(|seats| {
+                    seats
+                        .iter()
+                        .find(|p| p.get("id").and_then(Value::as_str) == Some(caller))
+                })
+                .and_then(|seat| seat.get("controlledBy"))
+                .and_then(Value::as_str)
+                == Some("user");
+            if seat_is_user {
+                return Ok(true);
+            }
+        }
+        let Some(character_id) = ctx.character_id.as_deref().filter(|c| !c.is_empty()) else {
+            return Ok(false);
+        };
+        let character = crate::db::characters_read::find_by_id_raw_or_none(main, character_id);
+        Ok(character
+            .as_ref()
+            .and_then(|c| c.get("systemTransparency"))
+            .and_then(Value::as_bool)
+            == Some(true))
+    });
+    match read {
+        Ok(transparent) => transparent,
+        Err(error) => {
+            tracing::debug!(
+                target: "quilltap::pascal",
+                context = HANDLER_CONTEXT,
+                chatId = ctx.chat_id.as_str(),
+                error = %crate::db::fallback::error_text(&error),
+                "run_custom veto: caller transparency unreadable, treating as plain",
+            );
+            false
+        }
+    }
+}
 
 /// Shape the failure the same way whether it was a bad input or a bad roll
 /// (v4 `failure`).
@@ -989,6 +1050,10 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.as_ref(),
             pending_wardrobe_history: ctx.pending_wardrobe_history.as_ref(),
             pending_inventory_announcements: ctx.pending_inventory_announcements.as_ref(),
+            // P4.D345: a model's `run_custom` on an intervenable tool may hold
+            // (v4 `run-custom-handler.ts:217`); the turn's Stop vetoes it.
+            may_hold: true,
+            stop: ctx.turn_control.as_ref().map(|h| h.stop_signal()),
         },
         rng,
         llm_invoke,
@@ -997,6 +1062,27 @@ pub async fn execute_run_custom_tool_with_consult<R: RandomBytes + Send>(
 
     let (result, posted) = match outcome {
         Ok(RunCustomToolOutcome::Ok { result, posted, .. }) => (result, posted),
+        // === P4.D345: the operator set the table aside (v4 `:227-238`). No
+        // Prospero bubble — nothing failed — and nothing in the result says a
+        // run was held or by whom (spec I13): the ORDINARY failure shape.
+        Ok(RunCustomToolOutcome::Vetoed) => {
+            let transparent = caller_knows_it_is_a_game(db, ctx);
+            tracing::info!(
+                target: "quilltap::pascal",
+                context = HANDLER_CONTEXT,
+                chatId = ctx.chat_id.as_str(),
+                tool = tool_name.as_str(),
+                transparent,
+                "run_custom set aside by the operator",
+            );
+            return (
+                failure(
+                    crate::pascal::intervention::veto_result::veto_result_for(transparent),
+                    Some(&tool_name),
+                ),
+                None,
+            );
+        }
         Ok(RunCustomToolOutcome::Refused { reason, whisper }) => {
             return (
                 report_failure(db, ctx, &tool_name, reason, whisper).await,
@@ -1092,6 +1178,29 @@ pub fn format_run_custom_results(output: &RunCustomToolOutput) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// P4.D345: a vetoed run is the ORDINARY failure shape (spec I13), so the
+    /// model reads exactly `Custom tool error: <veto text>` — nothing about a
+    /// table, a hold or anyone deciding, for a plain caller.
+    #[test]
+    fn a_veto_reads_as_an_ordinary_tool_error() {
+        let plain = failure(
+            crate::pascal::intervention::veto_result::veto_result_for(false),
+            Some("wager"),
+        );
+        assert_eq!(
+            format_run_custom_results(&plain),
+            "Custom tool error: The tool did not run."
+        );
+        let transparent = failure(
+            crate::pascal::intervention::veto_result::veto_result_for(true),
+            Some("wager"),
+        );
+        assert_eq!(
+            format_run_custom_results(&transparent),
+            "Custom tool error: The table is closed for the moment; this tool did not run. Carry on without it."
+        );
+    }
+
     use super::*;
     use crate::tools::definitions::definition_json_by_name;
 

@@ -83,6 +83,7 @@ pub async fn run_user_message_triggers(
             chat_settings: params.chat_settings,
             // v4: the user-message site carries no ceiling.
             effect_ceiling: None,
+            turn_control: params.turn_control.cloned(),
         },
         consult,
         params.now_ms,
@@ -142,6 +143,7 @@ pub async fn run_reply_triggers(
             project_id: params.project_id.map(str::to_string),
             chat_settings: params.chat_settings,
             effect_ceiling: params.effect_ceiling,
+            turn_control: params.turn_control.cloned(),
         },
         consult,
         params.now_ms,

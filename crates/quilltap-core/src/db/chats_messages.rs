@@ -348,6 +348,15 @@ pub struct PascalMetaIn {
     pub trigger_phrase: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub caller_participant_id: Option<String>,
+    // === P4.D345: operator intervention (v4 `839575d89`, ruling R-7) ===
+    /// What the operator changed before the run was dealt — `{resolvedAt,
+    /// decision, changed, dealt, reasks?, staleAnswer?}` — the LAST key of
+    /// `pascalMeta`, present only on a run dealt with a change. OPAQUE: v4's
+    /// shape is a non-strict `z.object`, so a typed twin would refuse rows a
+    /// newer v4 writes. (A `null` reads as absent where v4 would refuse the
+    /// row — unreachable from any v4-written carrier; R-7's class.)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub intervention: Option<serde_json::Value>,
 }
 
 /// Deserialize a present JSON value — INCLUDING `null` — as `Some`. Paired with

@@ -747,6 +747,7 @@ impl<F: ToolRunner> BuiltInToolRunner<F> {
             pending_wardrobe_announcements: ctx.pending_wardrobe_announcements.clone(),
             pending_wardrobe_history: ctx.pending_wardrobe_history.clone(),
             pending_inventory_announcements: ctx.pending_inventory_announcements.clone(),
+            turn_control: ctx.turn_control.clone(), // P4.D345: TurnStopReach
         };
         let mut source = rng::OsRandomBytes;
         // The handler posts Pascal's bubble itself — that message is the run's

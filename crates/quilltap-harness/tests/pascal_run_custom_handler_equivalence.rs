@@ -1028,6 +1028,8 @@ fn run_custom_handler_matches_oracle() {
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
+                // P4.D345: no turn — Stop cannot reach a held run here.
+                turn_control: None,
             };
             // P4.D345: six bytes — the one run a case deals ALWAYS draws its
             // range unit now (v4 `839575d89`, R-3), degenerate range or not.

@@ -83,12 +83,14 @@ pub struct RunTriggeredCustomToolsParams {
     pub project_id: Option<String>,
     /// The chat settings already in hand at the call site.
     pub chat_settings: Option<TriggerSettings>,
-    // === P4.D343 (T1): the turn's effect ceiling ===
     /// The turn's effect ceiling (v4 `effectCeiling`, a storyteller turn's
     /// bid tier): a matched tool whose derived effect is above it is skipped
     /// before it runs. Only the REPLY site carries one; the user-message site
     /// never does.
     pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
+    /// The send's turn-control handle, threaded from the trigger site so a Stop
+    /// while a triggered run is held vetoes it. `None` outside a turn.
+    pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
 }
 
 /// Run every tool the message's words fire (v4 `runTriggeredCustomTools`).
@@ -136,6 +138,7 @@ async fn run_triggered(
         chat_id,
         content,
         speaker,
+        turn_control,
         ..
     } = params;
 
@@ -305,6 +308,10 @@ async fn run_triggered(
                 pending_wardrobe_announcements: None,
                 pending_wardrobe_history: None,
                 pending_inventory_announcements: None,
+                // P4.D345: a trigger phrase on an intervenable tool may hold
+                // (v4 `trigger-runner.ts:198`); Stop vetoes it.
+                may_hold: true,
+                stop: turn_control.as_ref().map(|h| h.stop_signal()),
             },
             &mut rng,
             invoker.as_ref().map(|i| i as &dyn LlmInvoker),
@@ -319,6 +326,19 @@ async fn run_triggered(
         };
 
         let (result, message) = match outcome {
+            // === P4.D345: the operator set the table aside — nothing posted,
+            // and on to the next phrase (v4 `:211-220`) ===
+            RunCustomToolOutcome::Vetoed => {
+                tracing::debug!(
+                    target: "quilltap::pascal",
+                    context = CONTEXT,
+                    chatId = chat_id.as_str(),
+                    tool = hit.tool.as_str(),
+                    phrase = hit.phrase.as_str(),
+                    "Triggered custom tool set aside by the operator",
+                );
+                continue;
+            }
             RunCustomToolOutcome::Refused { reason, whisper } => {
                 tracing::debug!(
                     target: "quilltap::pascal",
