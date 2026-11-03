@@ -139,9 +139,16 @@ describe('the connection-profiles cache entry holds the RAW rows (P4.116)', () =
     const brahma = TestBed.inject(BrahmaConsoleService);
     await tick();
     expect(c.profileFetches()).toBe(1);
-    // Brahma's picker still gets its narrow shape — mapped on READ.
+    // Brahma's picker still gets its narrow shape — mapped on READ (with
+    // `isDefault` since v4 `99463fc56`, the launcher's default pick).
     expect(brahma.profiles()).toEqual(
-      ROWS.map(({ id, name, provider, modelName }) => ({ id, name, provider, modelName })),
+      ROWS.map(({ id, name, provider, modelName, isDefault }) => ({
+        id,
+        name,
+        provider,
+        modelName,
+        isDefault: isDefault === true,
+      })),
     );
 
     // Inside the 5 s window the card reads the entry Brahma filled, unfetched.

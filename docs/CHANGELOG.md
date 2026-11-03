@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(spa): two spec premises follow v4's isDefault picker shape and isInContainer
+
+_Versions: SPA 0.5.922._
+
+Two existing specs pinned shapes that v4 changed in commits this lane already ported. Their expectations move to v4's shape:
+- The shared connection-profiles entry spec now expects Brahma's picker profiles to carry `isDefault` (v4 `99463fc56`).
+- The Prospero Inventory card's fixture served character-origin objects from a project tier. The wire never does that, and under `isInContainer` (v4 `0276d10d9`) such rows are correctly not the tier's own. The fixture's objects now carry the project origin.
+
 #### 2026-11-03 — feat(spa): every document-level dismiss listener ignores the topmost floating layer (v4 99463fc56)
 
 _Versions: SPA 0.5.921._

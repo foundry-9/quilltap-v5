@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../../core/core-client';
 import { coreStreamStub } from '../../../core/core-client.testing';
 import type { CoreRequest, ScopedEvent } from '../../../core/core-contract';
-import { LAMP, SWORD } from '../../../inventory/__fixtures__/inventory-ui.fixture';
+import { LAMP, PROJECT, SWORD } from '../../../inventory/__fixtures__/inventory-ui.fixture';
 import { ProjectInventoryCard } from './project-inventory-card';
 
 /**
@@ -31,7 +31,9 @@ async function render(defaultOpen: boolean) {
       seen.push(r);
       switch (r['type']) {
         case 'inventoryList':
-          return { items: [SWORD, LAMP] };
+          // A project tier lists only its own objects (v4 `isInContainer`,
+          // `0276d10d9`): the fixture's character-origin pair re-homed here.
+          return { items: [SWORD, LAMP].map((item) => ({ ...item, origin: PROJECT })) };
         case 'inventoryFolders':
           return { folders: [] };
         default:
