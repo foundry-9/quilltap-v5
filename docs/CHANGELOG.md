@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(web): re-measure the hand-built Request census for the intervention edge (P4.D345)
+
+_No crate versions bumped._
+
+`tri_state_edges_share_the_decoder`: `custom_tools_routes.rs` hand-builds four more `Request` variants (the GET `interventions` arm and the three intervention POSTs), so its count goes 4 → 8 and the total 152 → 156. Their raw `Option<Value>` fields carry no typed value that could arrive wrong-typed. The workspace gate found it.
+
 #### 2026-11-03 — test(pascal): an intervenable tool's model-facing text says nothing of the hold (P4.D345)
 
 _Versions: core 0.0.1392._

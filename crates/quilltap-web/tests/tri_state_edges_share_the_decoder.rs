@@ -516,7 +516,11 @@ const TYPED_ONLY_HAND_BUILT_CONSTRUCTIONS_BY_FILE: &[(&str, usize)] = &[
     // `CharacterWardrobeImages { character_id }` (typed-only; a body-less GET).
     ("characters_routes.rs", 12), // 13 hits minus the 1 CharacterRename exception
     ("chats_routes.rs", 1),
-    ("custom_tools_routes.rs", 4),
+    // P4.D345: +4 — the GET `interventions` arm and the three intervention POSTs
+    // build `ChatCustomToolIntervention*` by hand; their `id` / `overrides` /
+    // `decision` are raw `Option<Value>`s the core Zod twin parses (no typed
+    // field to wrong-type).
+    ("custom_tools_routes.rs", 8),
     ("embedding_profiles_routes.rs", 9),
     ("files_routes.rs", 9),
     ("help_routes.rs", 9),
@@ -638,8 +642,10 @@ fn typed_only_hand_built_construction_count_matches_the_recorded_table() {
 
     let total: usize = by_file.values().sum();
     assert_eq!(
-        total, 153,
-        "153 = 152 + P4.D343's one (`wardrobe_routes.rs`'s `ChatStorytellerRound`, the chat GET's `?action=storyteller-round`, v4 `b15fe9404` — its three POST arms go through `request_envelope` and add none). \
+        total, 157,
+        "157 = 153 + P4.D345's four (`custom_tools_routes.rs`'s GET `interventions` arm and the \
+         three intervention POSTs; summed on the union). \
+         153 = 152 + P4.D343's one (`wardrobe_routes.rs`'s `ChatStorytellerRound`, the chat GET's `?action=storyteller-round`, v4 `b15fe9404` — its three POST arms go through `request_envelope` and add none). \
          152 = 150 + P4.170's two (`wardrobe_routes.rs`'s chat-first `ChatInformsList` probe and \
          the item PUT's item-first `WardrobeItemGet` probe, v4's handler ordering). \
          150 = 149 + P4.D338's one (`photos_routes.rs`'s `PhotoAlbumsList`, the \
