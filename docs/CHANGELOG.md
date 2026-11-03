@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the pronoun presets and wardrobe pronoun-guidance twins, recorded from v4 (v4 eb90d9ed8)
+
+_Versions: SPA 0.5.916._
+
+Adds TS twins of v4 `eb90d9ed8`'s two client-safe pure modules: NEW `characters/pronoun-presets.ts` (`STANDARD_PRONOUNS`, the derived subject list, `standardPronounLabel`, `standardPronounSubjectOf`) and NEW `wardrobe/pronoun-guidance.ts` (normalize / fits / filter / format). The character editor's `PRONOUN_PRESETS` is now built over `STANDARD_PRONOUNS`, as v4's `CharacterBasicInfo.tsx` is; labels and values are unchanged. A new recorder, `tooling/record-pronoun-guidance.mts`, drives v4's real modules from the pinned `236c04e35` worktree into the committed `pronoun-guidance.oracle.ndjson`. That file has 131 rows over six kinds. `pronoun-guidance.corpus.spec.ts` replays every row through the twins and byte-compares the results. Hand specs pin each rule, and the fixture README gains its section.
+
 #### 2026-11-03 — feat(spa): the Inventory dialog's inventory-topic reloads, refreshUnlessRealtime, isInContainer (v4 0276d10d9)
 
 _Versions: SPA 0.5.915._

@@ -1,3 +1,4 @@
+import { STANDARD_PRONOUNS } from '../../../characters/pronoun-presets';
 import type { CharacterDetail, CharacterScenario, Pronouns } from '../../../core/core-contract';
 
 /**
@@ -102,16 +103,13 @@ export function buildCharacterUpdateBag(form: CharacterFormData): Record<string,
   };
 }
 
-/** The pronoun-preset dropdown options (v4 `CharacterBasicInfo.tsx` `PRONOUN_PRESETS`). */
+/**
+ * The pronoun-preset dropdown options (v4 `CharacterBasicInfo.tsx`
+ * `PRONOUN_PRESETS`). The standard sets are shared with the wardrobe's pronoun
+ * guidance (v4 `eb90d9ed8` — `...STANDARD_PRONOUNS`).
+ */
 export const PRONOUN_PRESETS: ReadonlyArray<{ label: string; value: Pronouns | 'custom' | null }> =
-  [
-    { label: 'Not set', value: null },
-    { label: 'He/Him/His', value: { subject: 'he', object: 'him', possessive: 'his' } },
-    { label: 'She/Her/Her', value: { subject: 'she', object: 'her', possessive: 'her' } },
-    { label: 'They/Them/Their', value: { subject: 'they', object: 'them', possessive: 'their' } },
-    { label: 'It/It/Its', value: { subject: 'it', object: 'it', possessive: 'its' } },
-    { label: 'Custom', value: 'custom' },
-  ];
+  [{ label: 'Not set', value: null }, ...STANDARD_PRONOUNS, { label: 'Custom', value: 'custom' }];
 
 /** Resolve which preset label matches the current pronouns (v4 `getPronounPreset`). */
 export function getPronounPreset(pronouns: Pronouns | null): string {

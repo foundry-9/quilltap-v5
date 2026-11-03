@@ -526,3 +526,30 @@ and `message-row-diagram-style` 37), the renderers stood in through the
 `e2e/diagrams-flow.spec.ts` seeds four Aria rows into Solo Voyage on its own copy of
 the salon pair (a mermaid flowchart, a dot graph, a mermaid fence that does not parse,
 a reasoning-only mermaid fence) and streams one through `startMockLlm`. R-B: (A).
+||||||| parent of 45c7f57c6 (feat(spa): the pronoun presets and wardrobe pronoun-guidance twins, recorded from v4 (v4 eb90d9ed8))
+
+
+## P4.D359 — `pronoun-guidance.oracle.ndjson` (the wardrobe pronoun guidance)
+
+Recorded 2026-11-03 at the pin `236c04e35` (a detached worktree, root
+`npm ci --offline`) through v4's REAL `lib/wardrobe/pronoun-guidance.ts` +
+`lib/characters/pronoun-presets.ts` (`eb90d9ed8`). Their import graph is v4's
+own `lib/` only (the `Pronouns` / `PronounGuidance` imports are type-only and
+erased by tsx; no `zod` is loaded).
+
+| Corpus | Rows | sha256 | v4 code | Consumer |
+|---|---|---|---|---|
+| `pronoun-guidance.oracle.ndjson` | 131 — 22 `normalize`, 13 `subjectOf`, 6 `label`, 70 `fits`, 11 `filter`, 9 `format` | `f0450eab48d73d7a8d5a1767da8403006b929ad1c957b4e3dd9f87b81386b7a9` | `lib/wardrobe/pronoun-guidance.ts` + `lib/characters/pronoun-presets.ts` (`eb90d9ed8`) | `app/wardrobe/pronoun-guidance.corpus.spec.ts` |
+
+- **Row shape:** `{kind, args, expected}` — `args` is the argument list as JSON
+  (`"__undefined__"` for an `undefined` argument, `{"$set": [...]}` for a
+  `Set`), `expected` the `JSON.stringify`'d result.
+- **Regenerate** (Node 24 at `~/.nvm/versions/node/v24.13.1/bin`):
+
+  ```bash
+  cd <pin> && QT_V4_ROOT=$PWD PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH \
+    npx tsx <V5>/apps/web/tooling/record-pronoun-guidance.mts \
+    > <V5>/apps/web/src/testing/fixtures/pronoun-guidance.oracle.ndjson
+  ```
+- **Cross-check (free):** P4.D349's Rust `pronoun_guidance` family records its own
+  oracle from the same two modules; the unifier may diff the `normalize` rows.
