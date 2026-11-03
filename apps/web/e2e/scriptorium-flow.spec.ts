@@ -253,7 +253,7 @@ test.describe('P4.6z — the Scriptorium (stores + FileTable)', () => {
     // the error surfaces as the toast v4 raises (P4.25 retired the flash banner).
     const card = page.locator('qt-store-card', { hasText: storeName });
     await expect(card).toBeVisible({ timeout: 15_000 });
-    await card.getByRole('button', { name: 'Convert', exact: false }).click();
+    await card.getByRole('button', { name: 'Convert', exact: true }).click();
     const convertDialog = page.getByRole('dialog');
     await expect(convertDialog).toBeVisible();
     await convertDialog.getByRole('button', { name: 'Convert', exact: true }).click();

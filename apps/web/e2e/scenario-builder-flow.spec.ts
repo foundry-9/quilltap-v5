@@ -82,7 +82,7 @@ async function fillTheInputs(page: Page): Promise<void> {
 async function buildToReview(page: Page): Promise<void> {
   await fillTheInputs(page);
   await builderFooterButton(page, 'Set the scene').click();
-  const scene = builderDialog(page).getByLabel('The scene');
+  const scene = builderDialog(page).getByRole('textbox', { name: 'The scene' });
   await expect(scene).toBeVisible({ timeout: 30_000 });
   await expect(scene).toContainText(MOCK_LLM_REPLY);
   await expect(
@@ -309,11 +309,11 @@ test.describe('P4.D218 — Stop while the Host is out', () => {
     await expect(dialog.locator('#scenario-builder-location')).toHaveValue(
       'the Lantern Inn at Vey’s Crossing',
     );
-    await expect(dialog.getByLabel('The scene')).toHaveCount(0);
+    await expect(dialog.getByRole('textbox', { name: 'The scene' })).toHaveCount(0);
     await expect(dialog.locator('[role="alert"]')).toHaveCount(0);
     // And it stays that way once the slow reply would have finished.
     await page.waitForTimeout(12_000);
-    await expect(dialog.getByLabel('The scene')).toHaveCount(0);
+    await expect(dialog.getByRole('textbox', { name: 'The scene' })).toHaveCount(0);
     await expect(builderFooterButton(page, 'Set the scene')).toBeEnabled();
   });
 });

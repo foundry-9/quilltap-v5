@@ -9,6 +9,8 @@
 
 import { beforeAll, describe, expect, it } from 'vitest';
 
+import { skipToMain } from './shell';
+
 /** The slice of `node:fs` this spec reads (loaded at run time — see `ui/dialog-roles.spec.ts`). */
 interface NodeFs {
   readFileSync(path: string, encoding: 'utf8'): string;
@@ -35,9 +37,11 @@ describe('Shell — skip link + main landmark', () => {
     expect(at).toBeGreaterThan(-1);
     const after = template.slice(at + open.length);
     const firstTag = after.match(/<[a-zA-Z][^>]*>/)!;
-    expect(firstTag[0]).toBe('<a href="#main-content" class="qt-skip-link">');
+    expect(firstTag[0]).toBe(
+      '<a href="#main-content" class="qt-skip-link" (click)="skipToMain($event)">',
+    );
     expect(after.slice(firstTag.index!).startsWith(
-      '<a href="#main-content" class="qt-skip-link">Skip to content</a>',
+      '<a href="#main-content" class="qt-skip-link" (click)="skipToMain($event)">Skip to content</a>',
     )).toBe(true);
     expect(firstTag.index!).toBeLessThan(after.indexOf('<aside'));
   });
@@ -47,5 +51,25 @@ describe('Shell — skip link + main landmark', () => {
     expect(mains).toHaveLength(1);
     expect(mains[0]).toContain('id="main-content"');
     expect(mains[0]).toContain('tabindex="-1"');
+  });
+});
+
+describe('skipToMain (SKIP_LINK_BASE_HREF)', () => {
+  it('focuses <main id="main-content"> and cancels the href navigation', () => {
+    const main = document.createElement('main');
+    main.id = 'main-content';
+    main.tabIndex = -1;
+    document.body.appendChild(main);
+    const event = new MouseEvent('click', { cancelable: true });
+    skipToMain(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(main);
+    main.remove();
+  });
+
+  it('leaves the event alone when there is no landmark', () => {
+    const event = new MouseEvent('click', { cancelable: true });
+    skipToMain(event);
+    expect(event.defaultPrevented).toBe(false);
   });
 });

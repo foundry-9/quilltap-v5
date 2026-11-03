@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — fix(spa): the skip link focuses `<main>` without a navigation, and the axe sweep measures the right pages
+
+_Versions: SPA 0.5.911._
+
+P4.D358. v5's `<base href="/">` resolved the shell's `#main-content` link to `/#main-content`, so pressing Enter on `Skip to content` reloaded the home page instead of moving focus; v4's page has no `<base>`. The link keeps its href and now focuses `<main>` directly on click. The optional axe sweep now opens the Salon and the home dashboard by their real headings and the `Data & System` settings tab by its label, fails a missing control in 30 seconds instead of at the half-hour test timeout, and switches off CSS transitions and animations before each measurement (a settings tab still fading in had read as a contrast failure, differently on every run). `known-violations.json` is baselined: 696 rows over six theme packs in light and dark — 618 colour-contrast rows owned by P4.D357, 66 target-size rows on the participant card's tool buttons sized as v4 sizes them, and 12 on the character card's favourite star, recorded for follow-up. Five e2e specs select the scene, memory-content and Convert controls by role, since the markdown field's frame now carries the same label as its textbox (v4 `68340008b`).
+
 #### 2026-11-02 — fix(spa): every form control named with v4's bytes, a static accessible-name census in lint, the skip link, the reply announcer, and an optional axe sweep
 
 _Versions: SPA 0.5.910._

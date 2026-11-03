@@ -65,7 +65,8 @@ const PAGES: ReadonlyArray<{ name: string; open: (page: Page) => Promise<void> }
     name: 'home',
     open: async (page) => {
       await page.goto('/');
-      await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
+      // The home dashboard (v4's "Welcome back" page); the chats list is /salon.
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     },
   },
   {
@@ -85,11 +86,15 @@ const PAGES: ReadonlyArray<{ name: string; open: (page: Page) => Promise<void> }
       await expect(page.getByRole('dialog').getByText('Rename Chat')).toBeVisible({ timeout: 10_000 });
     },
   },
-  ...(['Chat', 'Appearance', 'System'] as const).map((tab) => ({
-    name: `settings-${tab.toLowerCase()}`,
+  ...([
+    ['chat', 'Chat'],
+    ['appearance', 'Appearance'],
+    ['system', 'Data & System'],
+  ] as const).map(([id, tab]) => ({
+    name: `settings-${id}`,
     open: async (page: Page) => {
       await page.goto('/settings');
-      await page.getByRole('button', { name: tab }).click();
+      await page.getByRole('button', { name: tab, exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
     },
   })),
@@ -104,9 +109,9 @@ const PAGES: ReadonlyArray<{ name: string; open: (page: Page) => Promise<void> }
 
 test.describe('P4.D358 — the shell skip link (v4 app-layout.tsx:113, :116)', () => {
   test('the first Tab stop is "Skip to content", and Enter lands on <main>', async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
-    await page.goto('/');
+    await page.goto('/salon');
     await expect(page.getByRole('heading', { name: 'Chats', exact: true })).toBeVisible();
     await page.locator('body').focus();
     await page.keyboard.press('Tab');
@@ -121,13 +126,15 @@ test.describe('P4.D358 — the shell skip link (v4 app-layout.tsx:113, :116)', (
 test.describe('P4.D358 — axe sweep (WCAG 2.2 AA, every bundled pack, light and dark)', () => {
   test('no violation outside known-violations.json', async ({ page }) => {
     test.setTimeout(30 * 60_000);
+    // A missing control fails in seconds, not at the half-hour test timeout.
+    page.setDefaultTimeout(30_000);
     const known: KnownRow[] = JSON.parse(readFileSync(KNOWN_FILE, 'utf8'));
     const knownKeys = new Set(known.map((r) => r.key));
     const seen: string[] = [];
     const outDir = process.env['QT_AXE_OUT'];
     if (outDir) mkdirSync(outDir, { recursive: true });
 
-    await page.goto('/');
+    await page.goto('/salon');
     await maybeUnlock(page);
 
     try {
@@ -137,6 +144,13 @@ test.describe('P4.D358 — axe sweep (WCAG 2.2 AA, every bundled pack, light and
           await page.emulateMedia({ colorScheme: mode });
           for (const p of PAGES) {
             await p.open(page);
+            // Measure every element at its final colour: a transition still
+            // running (a settings tab fading in) reads as a contrast failure,
+            // and the Salon keeps restarting one, so waiting never settles.
+            await page.addStyleTag({
+              content: '*, *::before, *::after { transition: none !important; animation: none !important; }',
+            });
+            await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve(null))));
             const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
             if (outDir) {
               writeFileSync(

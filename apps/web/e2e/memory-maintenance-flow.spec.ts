@@ -569,7 +569,7 @@ test.describe('P4.D300 — the Maintenance card, dialog and ledger of v4 Phase G
         await expect(dialog).toBeVisible();
         await dialog.getByPlaceholder('Brief summary of this memory').fill(summary);
         await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
-        await dialog.getByLabel('Memory content').fill(content);
+        await dialog.getByRole('textbox', { name: 'Memory content' }).fill(content);
         await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
         const created = dispatchResponse(page, 'memoryCreate');
         await dialog.getByRole('button', { name: 'Create Memory' }).click();

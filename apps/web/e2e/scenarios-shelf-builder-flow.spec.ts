@@ -74,7 +74,7 @@ async function buildToReview(page: Page): Promise<void> {
   await dialog.locator('#scenario-builder-time').fill('a close August afternoon');
   await expect(dialog.locator('#scenario-builder-profile')).not.toHaveValue('');
   await builderFooterButton(page, 'Set the scene').click();
-  const scene = dialog.getByLabel('The scene');
+  const scene = dialog.getByRole('textbox', { name: 'The scene' });
   await expect(scene).toBeVisible({ timeout: 30_000 });
   await expect(scene).toContainText(MOCK_LLM_REPLY);
 }
@@ -219,7 +219,7 @@ test.describe('P4.D231 — the Host on the scenario shelves', () => {
       });
       await expect(save).toHaveCount(0);
       // The builder stays open after a save.
-      await expect(builderDialog(page).getByLabel('The scene')).toBeVisible();
+      await expect(builderDialog(page).getByRole('textbox', { name: 'The scene' })).toBeVisible();
       await builderFooterButton(page, 'Close').click();
       await expect(builderDialog(page)).toHaveCount(0);
 

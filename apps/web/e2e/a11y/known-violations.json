@@ -1,1 +1,2786 @@
-[]
+[
+  {
+    "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|dark|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|light|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-appearance|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-chat|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "art-deco|light|settings-system|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.gap-3.flex-1.min-w-0 > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/characters\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/prospero\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|a[routerlink=\"/salon\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-project-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-project-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-appearance|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|#composer-spellcheck > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|#composition-mode > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-chat|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|#auto-lock > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|#backup-restore > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|#encryption-passphrase > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|dark|settings-system|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-appearance|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-chat|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "earl-grey|light|settings-system|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|dark|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-appearance|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-chat|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|dark|settings-system|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|light|characters|target-size|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .items-start.mb-4.justify-between > .ml-2.gap-1.flex-shrink-0 > .text-2xl.transition-transform.leading-none",
+    "owner": "FOLLOW-UP: v5 character-card.ts:87 adds leading-none (v4 AuroraView.tsx:566 has none); measure v4 target-size first"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|qt-characters-section > .qt-homepage-section > .qt-homepage-section-header > h2",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|qt-projects-section > .qt-homepage-section > .qt-homepage-section-header > h2",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|home|color-contrast|qt-recent-chats-section > .qt-homepage-section > .qt-homepage-section-header > h2",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|#qt-dialog-1",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-card.p-5:nth-child(1) > .qt-text-section",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-card.p-5:nth-child(2) > .qt-text-section",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-appearance|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|#composer-spellcheck > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|#composition-mode > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-chat|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|#auto-lock > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|#backup-restore > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|#encryption-passphrase > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|#import-export > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > h3",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "great-estate|light|settings-system|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "madmans-box|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "old-school|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.gap-3.flex-1.min-w-0 > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-button-primary > .sm\\:inline.hidden",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|a[routerlink=\"/characters\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|a[routerlink=\"/prospero\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|a[routerlink=\"/salon\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-project-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-project-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .gap-3.flex-1.min-w-0 > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(1) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(2) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(3) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(4) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(5) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .flex-1.min-w-0 > .qt-card-subtitle.truncate",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|home|color-contrast|qt-recent-chat-item:nth-child(6) > .hover\\:qt-bg-muted\\/50.p-2.transition-colors > .items-end.shrink-0.flex-col > .qt-meta:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-appearance|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|#composer-spellcheck > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|#composition-mode > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-chat|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|#auto-lock > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|#backup-restore > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|#encryption-passphrase > .qt-collapsible-card-header > .items-center.gap-3.flex > .min-w-0 > .qt-card-description",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|dark|settings-system|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|qt-character-card:nth-child(1) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|qt-character-card:nth-child(2) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|characters|color-contrast|qt-character-card:nth-child(3) > .character-card.qt-entity-card.hover\\:qt-border-primary\\/50 > .character-card-actions.qt-entity-card-actions > .character-card__action--chat.qt-bg-success.qt-text-on-success",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-button-primary > .sm\\:inline.hidden",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|button[title=\"Start a chat with Aria\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|home|color-contrast|button[title=\"Start a chat with Bram\"]",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|rename-dialog|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Open Aria's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Open Aria’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Open Cleo's inventory\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Open Cleo’s wardrobe\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Regenerate avatar for Aria\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|salon|target-size|button[title=\"Regenerate avatar for Cleo\"]",
+    "owner": "RULE v4-faithful: v4 ParticipantCard.tsx:340-375 sizes .qt-participant-avatar-tool-button the same; its CSS is P4.D357's"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-appearance|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-chat|color-contrast|.qt-tab:nth-child(8) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-danger > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-embedding > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-memory > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-story > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-queue-badge-summary > span:nth-child(1)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab-active > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(1) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(2) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(3) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(4) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(5) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(6) > span:nth-child(2)",
+    "owner": "P4.D357"
+  },
+  {
+    "key": "rains|light|settings-system|color-contrast|.qt-tab:nth-child(7) > span:nth-child(2)",
+    "owner": "P4.D357"
+  }
+]

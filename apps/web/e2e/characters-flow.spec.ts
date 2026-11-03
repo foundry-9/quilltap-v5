@@ -573,7 +573,7 @@ test.describe('P4.6t — Memories tab (Commonplace Book)', () => {
     // them, leaving the required field empty and the submit a silent no-op).
     await dialog.getByPlaceholder('Brief summary of this memory').fill(summary);
     await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
-    await dialog.getByLabel('Memory content').fill('A note filed away by the P4.6t e2e walk.');
+    await dialog.getByRole('textbox', { name: 'Memory content' }).fill('A note filed away by the P4.6t e2e walk.');
     await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
     await dialog.getByRole('button', { name: 'Create Memory' }).click();
     await expect(dialog).toBeHidden({ timeout: 10_000 });

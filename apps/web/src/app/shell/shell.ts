@@ -90,6 +90,21 @@ const NAV_ITEMS: NavItem[] = [
  * real screen. Scaffolding for the P4.6 verticals — the nav items are a skeleton
  * (their targets land with each vertical), not live routes yet.
  */
+/**
+ * The skip link's activation. SKIP_LINK_BASE_HREF (P4.D358, v5-only): v4's
+ * Next.js page has no `<base>`, so its bare `#main-content` scrolls in place;
+ * v5's `<base href="/">` resolves it to `/#main-content`, a full navigation
+ * away from the current route. Focus the landmark directly instead (the
+ * `tabindex="-1"` on `<main>` lets it take focus), and keep the href so the
+ * link stays a link to assistive technology.
+ */
+export function skipToMain(event: Event, doc: Document = document): void {
+  const main = doc.getElementById('main-content');
+  if (!main) return;
+  event.preventDefault();
+  main.focus();
+}
+
 @Component({
   selector: 'qt-shell',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -112,8 +127,9 @@ const NAV_ITEMS: NavItem[] = [
   template: `
     <div class="qt-app-layout">
       <!-- v4 app-layout.tsx:113 (10e09b7c3): the first Tab stop skips the rail.
-           The qt-skip-link rule is P4.D357's (_interactive.css). -->
-      <a href="#main-content" class="qt-skip-link">Skip to content</a>
+           The qt-skip-link rule is P4.D357's (_interactive.css). The click
+           handler is v5's: see skipToMain. -->
+      <a href="#main-content" class="qt-skip-link" (click)="skipToMain($event)">Skip to content</a>
       <aside class="qt-left-sidebar qt-left-sidebar-collapsed" aria-label="Main navigation">
         <div class="qt-left-sidebar-content">
           <nav class="qt-collapsed-nav" aria-label="Quick navigation">
@@ -249,6 +265,7 @@ export class Shell implements OnInit {
   private readonly workspace = inject(WorkspaceService);
 
   protected readonly navItems = NAV_ITEMS;
+  protected readonly skipToMain = skipToMain;
   protected readonly showNavThemeSelector = this.theme.showNavThemeSelector;
   /** The `@defer` trigger for the global wardrobe dialog (see the template). */
   protected readonly wardrobeDialogOpen = this.wardrobeDialog.isOpen;
