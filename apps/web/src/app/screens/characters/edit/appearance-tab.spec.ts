@@ -378,3 +378,61 @@ describe('CharacterAppearanceTab (edit) — the no-vault depiction-guidelines hi
     expect(seen.some((r) => r.type === 'characterDepictionGuidelines')).toBe(true);
   });
 });
+
+/**
+ * v4 `b27e5089a` (`DescriptionsTab.tsx:21-53, :112, :218-262` at `236c04e35`) —
+ * the Humanoid checkbox and the Head & Shoulders hint pair (C6's
+ * `physicalDescription.humanoid`; P4.D349 carries the server).
+ */
+describe('CharacterAppearanceTab (edit) — Humanoid (v4 b27e5089a)', () => {
+  const HS_HUMANOID =
+    'Used for avatar generation — describe only the head, face, hair, expression and neckline; nothing below the shoulders.';
+  const HS_NON_HUMANOID =
+    'Not used for a non-humanoid character — its avatar is drawn from the Medium prompt, whole form in frame.';
+
+  function humanoidBox(fixture: ComponentFixture<unknown>): HTMLInputElement {
+    return (fixture.nativeElement as HTMLElement).querySelector('#physical-humanoid') as HTMLInputElement;
+  }
+  function hint(fixture: ComponentFixture<unknown>): string {
+    return (fixture.nativeElement as HTMLElement)
+      .querySelector('[data-testid="physical-headshoulders-hint"]')!
+      .textContent!.trim();
+  }
+
+  it('renders the box labelled Humanoid with v4’s bytes, ticked by default', async () => {
+    const fixture = await render(stubClient([]));
+    const box = humanoidBox(fixture);
+    expect(box).not.toBeNull();
+    expect(box.type).toBe('checkbox');
+    expect(box.className).toBe('h-5 w-5 qt-accent-primary');
+    expect(box.checked).toBe(true);
+    const label = (fixture.nativeElement as HTMLElement).querySelector('label[for="physical-humanoid"]')!;
+    expect(label.textContent!.trim()).toBe('Humanoid');
+    expect(label.nextElementSibling!.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      'Untick for a character with no head, shoulders or body to speak of — a cluster of interlocking spheres, a drifting lattice of light. The Lantern and Aurora will then paint the whole of its form and never so much as hint at a face, a neck or a pair of shoulders, and the character is reminded it has none.',
+    );
+    expect(hint(fixture)).toBe(HS_HUMANOID);
+  });
+
+  it('loads humanoid: false unticked, and the hint reads the non-humanoid sentence', async () => {
+    const fixture = await render(stubClient([], { humanoid: false } as never));
+    expect(humanoidBox(fixture).checked).toBe(false);
+    expect(hint(fixture)).toBe(HS_NON_HUMANOID);
+  });
+
+  it('flips the hint when unticked and sends humanoid in the PUT', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(stubClient(seen));
+    const box = humanoidBox(fixture);
+    box.checked = false;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    expect(hint(fixture)).toBe(HS_NON_HUMANOID);
+    clickButtonWithText(fixture, 'Save Physical Descriptions');
+    await settle(fixture);
+    const update = seen.find((r) => r.type === 'characterUpdate')!;
+    const pd = (update['character'] as Record<string, unknown>)['physicalDescription'] as Record<string, unknown>;
+    expect(pd['humanoid']).toBe(false);
+  });
+});
+

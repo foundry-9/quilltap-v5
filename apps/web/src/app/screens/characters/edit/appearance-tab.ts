@@ -18,6 +18,8 @@ interface PhysicalDescriptionForm {
   longPrompt: string;
   completePrompt: string;
   fullDescription: string;
+  /** v4 `b27e5089a` — false = a figure with no head, shoulders or body to speak of. */
+  humanoid: boolean;
 }
 
 const EMPTY_PHYSICAL_FORM: PhysicalDescriptionForm = {
@@ -28,6 +30,7 @@ const EMPTY_PHYSICAL_FORM: PhysicalDescriptionForm = {
   longPrompt: '',
   completePrompt: '',
   fullDescription: '',
+  humanoid: true,
 };
 
 function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): PhysicalDescriptionForm {
@@ -42,6 +45,8 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
     longPrompt: pd.longPrompt ?? '',
     completePrompt: pd.completePrompt ?? '',
     fullDescription: pd.fullDescription ?? '',
+    // Absent means true (v4 `DescriptionsTab.tsx:52`: `pd.humanoid !== false`).
+    humanoid: pd.humanoid !== false,
   };
 }
 
@@ -94,13 +99,36 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
           <div class="py-6 text-center qt-text-secondary">Loading physical description...</div>
         } @else {
           <div>
-            <label class="block qt-label mb-2">Name</label>
+            <label for="physical-name" class="block qt-label mb-2">Name</label>
             <input
+              id="physical-name"
               type="text"
               class="qt-input"
               [value]="physicalForm().name"
               (input)="setPhysicalField('name', $any($event.target).value)"
             />
+          </div>
+          <!-- Humanoid — whether the figure has a body to draw at all
+               (v4 b27e5089a, DescriptionsTab.tsx:218-241). -->
+          <div class="flex items-start justify-between gap-4">
+            <div class="flex-1">
+              <label for="physical-humanoid" class="block qt-text-label">Humanoid</label>
+              <p class="text-xs qt-text-secondary mt-1">
+                Untick for a character with no head, shoulders or body to speak of — a cluster of
+                interlocking spheres, a drifting lattice of light. The Lantern and Aurora will then
+                paint the whole of its form and never so much as hint at a face, a neck or a pair of
+                shoulders, and the character is reminded it has none.
+              </p>
+            </div>
+            <label class="inline-flex items-center cursor-pointer select-none">
+              <input
+                id="physical-humanoid"
+                type="checkbox"
+                class="h-5 w-5 qt-accent-primary"
+                [checked]="physicalForm().humanoid"
+                (change)="setPhysicalField('humanoid', $any($event.target).checked)"
+              />
+            </label>
           </div>
           <!-- Shared form-of-address note for every prompt variant below —
                attached once here rather than repeated per field
@@ -109,6 +137,16 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
 
           <div>
             <label class="block qt-label mb-2">Head &amp; Shoulders Prompt</label>
+            <!-- v4 b27e5089a (DescriptionsTab.tsx:257-262): the hint follows the
+                 Humanoid box. v5 had no per-field sentence here before, so both
+                 arms are new. -->
+            <p class="text-xs qt-text-secondary mb-2" data-testid="physical-headshoulders-hint">
+              {{
+                physicalForm().humanoid
+                  ? 'Used for avatar generation — describe only the head, face, hair, expression and neckline; nothing below the shoulders.'
+                  : 'Not used for a non-humanoid character — its avatar is drawn from the Medium prompt, whole form in frame.'
+              }}
+            </p>
             <qt-markdown-field
               ariaLabel="Head and shoulders prompt"
               minHeight="4rem"

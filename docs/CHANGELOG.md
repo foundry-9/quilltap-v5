@@ -12,6 +12,15 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the Humanoid checkbox and the head-and-shoulders hint pair (v4 b27e5089a)
+
+_Versions: SPA 0.5.917._
+
+The character editor's Appearance tab takes the SPA half of v4 `b27e5089a`, consuming C6's `physicalDescription.humanoid`; P4.D349 owns the server side.
+- A `Humanoid` checkbox (`#physical-humanoid`, v4's label and sentence) sits before the prompt fields. It is ticked by default, loaded as `humanoid !== false`, and sent as `humanoid` in the physical-description PUT.
+- The Head & Shoulders field gains v4's hint pair, which flips between the avatar-generation sentence and the non-humanoid sentence.
+- WCAG R4: the Name input is now labelled (`for` / `id="physical-name"`, v4's bytes).
+
 #### 2026-11-03 — feat(spa): the pronoun presets and wardrobe pronoun-guidance twins, recorded from v4 (v4 eb90d9ed8)
 
 _Versions: SPA 0.5.916._
