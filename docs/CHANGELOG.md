@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(spa): _intervention.css from the pin (v4 839575d89 + cce44e098)
+
+_Versions: SPA 0.5.916._
+
+P4.D346 item 10. NEW `styles/qt-components/_intervention.css` is v4's file at the pin `236c04e35`, byte-equal (`cmp`; 129 lines, with `cce44e098`'s legibility hunks — the note's ink on `--qt-alert-warning-fg`, the hidden hand struck through). It defines the hold dialog's `qt-intervention*` classes, the Workbench's `qt-intervene-toggle*`, the library's `qt-intervention-mark` and the transcript's `qt-intervention-badge`. v4's header names its theme-storybook mirror; v5 has none (NO-PORT). `_index.css` imports it after `_roleplay.css` with v4's own line (`CssIndexImports`; the unifier places `_storyteller` before it).
+
 #### 2026-11-02 — feat(spa): the Pascal hold dialog (v4 839575d89, 8ae8a127c, b02d902f3)
 
 _Versions: SPA 0.5.915._
