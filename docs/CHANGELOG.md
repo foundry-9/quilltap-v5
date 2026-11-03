@@ -12,6 +12,11 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — docs(porting): P4.D347's `CONTEXT` sha, landed contract spellings and lane record
+
+_Docs-only change._
+
+The P4.D347 order's status header records `CONTEXT` = `8d7f99e8f` and the landed C1 / C5 spellings, with two amendments: a failed Core whisper post still delivers the Core section (v4 catches it), and the referent ledger reads the raw chat rows. The lane record is appended to the status log. 
 #### 2026-11-02 — CONTEXT: the context builder at `236c04e35` — bugs 259 / 263 / 264 / 265, the referent ledger and closing echo, absent-character mentions, C1 (P4.D347)
 
 _Versions: core 0.0.1381, web 0.0.252._

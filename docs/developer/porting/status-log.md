@@ -194511,6 +194511,118 @@ The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
 
 **Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).
 
+## P4.D347 — the context builder: bugs 259 / 263 / 264 / 265, the referent ledger, absent mentions (lane `claude/p4.d347-context-builder-c2c28c031`, pin `236c04e35`, 2026-11-02) — LANE RECORD (Tier 1 → `CONTEXT` `8d7f99e8f`)
+
+**`CONTEXT`:** `8d7f99e8f`. Versions: core 0.0.1381, web 0.0.252 (host, cli, tauri, harness untouched).
+
+**Gate (on the `CONTEXT` tree).** fmt clean; clippy clean on both feature sets; `cargo test --workspace --no-fail-fast` with the lane env block: 880 binaries / 5,811 passed / 10 failed / 3 ignored, zero SKIP for this lane's families (checked by name). The ten: `get_messages_caller_census` + `delete_messages_callers_census` (this lane's moved sites — updated in `CONTEXT` itself, green by name); and eight expected union reds — `build_context_tier3` (P4.D342's archive keys), `compression_tier3` + `orchestrator_tier3` (P4.D348), `query_param_semantics` (P4.D343's `storyteller-round` + P4.D345's rows), `custom_tool_schema_embed_guard` + `public_schemas_vendor_guard` (P4.D345's re-vendor), `provider_sdk_version_guard` (P4.D360), `cli_differential` (`recall-replay` help / no chat — P4.D342).
+
+**Venue.** The session opened in the main checkout on `main` at `8976915ea`. It moved to the worktree `.claude/worktrees/p4d347` on `claude/p4.d347-context-builder-c2c28c031`, cut from P4.D341's `KEYSTONE` `c2c28c031`. That sha was confirmed against P4.D341's lane-branch status header. There was no pre-start. `target/` was cloned from main's (`cp -cR`), and `apps/web/dist` was copied from main's for the Tauri crate.
+
+**§2 probe (2026-11-02 17:07 CST), an observation.** v4 `main` is at `25a20221c`, 41 commits past the pin. `bugfix` is 53 commits past the pin. The tree is clean and on branch `main`.
+- **This slice's files DID move past the pin**, unlike the order's "EMPTY expected": `context-manager.ts`, `turn-trailing.ts`, `chat-tasks.ts`, `chat.types.ts`, `context-builder.service.ts` and `message-attribution.ts`, plus the new `established-fact-reminder.ts`. The commits are `db6190b44` (established facts), `ba6c8fe0f` and `d439f6dc9`.
+- The work follows the pin: every v4 read was taken at `236c04e35`.
+
+**Pin.** `/tmp/qt-v4-pin-p4d347-236c04e35`. `rev-parse` gave `236c04e35ab23…` and `package.json` `4.12.0-dev.0`. The root `node_modules` symlink was not used; `npm ci --offline` **succeeded** (the cache had been populated by P4.D341's approved online run). Versions measured: openai 7.45.0, zod 4.6.7, @openrouter/sdk 1.5.9, plugin-types 2.9.0, @xterm/headless 6.0.0, better-sqlite3 12.11.1, pdf-parse absent.
+- ⚖ **Pin ruling (human, 2026-11-02):** symlink classes (2) and (3) of the order were NOT used. `.claude/pin-plugin-sdks.sh "$PIN"` floor-installed the plugin and CLI deps offline inside the pin: plugins openai 7.23.0 / anthropic 0.115.0 / genai 1.52.0 / openrouter 1.3.28 / plugin-utils 2.7.1; CLI driver 12.11.1 / SQLite 3.53.2 / chacha20.
+
+### Red-first (item 1)
+- `is_record_only_message_equivalence`, with 3 new corpus rows (22 → 25): **RED 1 / 25**, the `p4d347-host-mention-card` row (v4 true, v5 false). The two left-behind rows were green, as predicted.
+- `query_param_semantics_equivalence`, regenerated from the pin: **11 rows red**. Three of them are this lane's: `chat_item_get__empty`, `__unknown` and `__empty_then_known` (v4 lists `absent-mentions`). The other eight are P4.D343 / P4.D345's (`custom_tools` POST, `chat_item_post`), and the refusal count reads 99 against 110. After the fix, v5's list carries `absent-mentions` between `scenario-source` and `cost`. The `chat_item_get` rows stay red only on `storyteller-round` (P4.D343's key) — an expected union red.
+- **Import-dead, recorded verbatim from the pin:**
+  - `context-compression.ts`: `SyntaxError: The requested module '@/lib/chat/context/compression' does not provide an export named 'shouldApplyCompression'`.
+  - `memory-injector.ts`: `… '@/lib/chat/context/scene-state' does not provide an export named 'formatSummaryForContext'`.
+  - `context-feeders-leaves.ts`: `… '@/lib/services/host-notifications/writer' does not provide an export named 'findIntroducedOffSceneCharacterIds'`.
+  - `mentioned-characters.ts`: `Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@/lib'` (the module is gone).
+- `build_context_tier3_equivalence`, over the widened pair: the red was **derived from the regenerated oracle, not run on an unported build** (a deviation, recorded).
+  - 80 of 88 ops carry the closing echo (67) and/or the ledger (25), which KEYSTONE's v5 never emits.
+  - The bug-specific ops were proven by **mutation on the port**, each reddening exactly its op: the old type+role window walk → `p4d347_bug265_window_counts_visible_rows`; `from_window` as identity → `p4d347_bug264_cast_window_by_id`; the null-only whisper scope → `p4d347_empty_target_ids_is_the_public_scope`.
+- **New-family mutation proofs** (each applied, run, reverted):
+
+| Mutation | Red rows |
+|---|---|
+| Matcher with `i` | 3 + 1 |
+| `\b` boundaries | 4 |
+| No sentence carry | 8 |
+| Digit `back` | 6 |
+| Forward pending walk | 3 |
+| No first-paragraph exception | 3 |
+| Presence ignores `operator_speaks_without_seat` | 2 |
+| Selector without role tokens | 29 |
+| Type+role window count | 5 |
+| No by-id arm in `from_window` | 2 |
+| Null-only scope (`context_feeders_leaves`) | 1 |
+
+### Families at close (from the pin; every NDJSON under `/tmp/p4d347/`)
+
+**This lane's own families, all green:**
+- `turn_history` 79 rows
+- `referent_ledger` 48 rows, including the named `ECHO_SLICE_SURROGATE` ×1 and `SENTENCE_SLICE_SURROGATE` ×2 as both-ways tables: v4 must still emit the lone surrogate.
+- `name_mentions` 38 rows
+- `absent_mentions` 34 rows
+- `chat_absent_mentions_routes` 5 cases, with the 404 `{"error":"Chat not found"}`
+- `context_feeders_leaves` 86 rows (`introduced_ids` 0)
+- `is_record_only_message` 25 rows
+- `context_compression`: 5 budget / 5 split / 3 block (`shouldApply` 0)
+- `memory_injector` 13 scene rows (`summary` 0)
+- `chat_tasks` 27 rows
+
+**Touched families:**
+- `message_context_leaves` 22: **green**. Its corpus has no rehydrate rows, so the order's premise is false; bug 259 is pinned in-crate.
+- `chat_continuation_tier2` 15: **green**. The five v5-side scan probes are RETIRED with the scan. The corpus trigger `p4d233_poison_left_behind` was re-keyed to `off-scene-left-behind`, because the old key made the poisoned case vacuous.
+- `post_office_writers_tier3`: **green**.
+- `core_whisper` 56, `chat_context_init` 13, `compression_cache_tier3` 6 and `context_budget` 60: **unmoved**.
+- `build_context_tier3` (88 ops, 534 rows): **green on every op once P4.D342's two comparands are set aside.** Those two are `[FrozenArchive] …` inner-circle keys and `recallDebugLog`'s archive trace (`circleHeld` …). They were masked LOCALLY, uncommitted, to prove the rest — an **expected P4.D342 union red**.
+- `compression_tier3`: RED on P4.D348's convergence tripwire (v4 `eb2d87788` — the P4.13 failed-cheap-call divergence converged). P4.D348's.
+- `orchestrator_tier3`: RED on P4.D348's first op (`simple_json_then_native_tool_call` stream keys). P4.D348's. In v4's oracle, 34 of 120 canned streams carry this lane's sections (union re-mint, a HANDOFF to the unifier).
+
+**Guards, green:** `dispatch_wrong_type_census` (514 → 515, +1 `ChatAbsentMentions.chat_id`), `web_edge_body_parse_guard` (`COLLAPSE_CENSUS` UNMOVED), `web_edge_action_sites_census` (unmoved), `tri_state_edges_share_the_decoder`, `fallback_home_guard`, `zod_issues_home_guard`, `spelling_guard`, `realtime_publish_sites_guard`, `host_zone_sites_census`, and the `wardrobe_routes` position test. `recipe_sweep.py --self-test`: 0 failures.
+
+### Measurements the order asked for
+- **`BuildContextInput.existing_messages`' element type** is `ExistingMessage`, which carried neither `system_sender` nor `participant_id`. `system_sender` was added; the production fill is `None`, because the record-only strip has already run.
+- **The ledger does NOT read `existing_messages`.** It reads the raw chat rows through the turn's one transcript memo (`CadenceEvents`, now also caching the rows), like v4's `transcript.events()`. **Finding against R-4:** `existing_messages` is not the same rows as v4's transcript — it is filtered, whisper-normalized and attachment-rehydrated, so it would put file text and Staff-whisper rewrites into the quoted lines.
+- A single-character build has no participant list, so the ledger reads the chat row for `participants` (v4 `chat.participants`). The read is unobservable.
+- **Summary-anchor filter:** applied after the window cut, on both branches (unchanged).
+- **The real Core seam's failure visibility:** `post_aurora_message` swallows the write failure to `None` without a line. v4's `postCoreWhisper` CATCHES its own `addMessage` failure (ERROR `[CoreWhisper] Failed to post whisper`) and returns `null`, so **a failed post still delivers the Core section in v4**.
+  - **Finding F-1:** the order's R-7 / item 11 premise ("the section is dropped when the post fails") is not v4's code. It is the order-prose-dictating-the-wrong-v4-line class.
+  - Ported instead: the catch arm `[CoreWhisper] Failed to offer Core packet` for the one reachable v5 failure (the transcript read). The settings read keeps reading a failure as "no settings": v4's read tolerates the missing table in the tier-3 fixture and logs nothing. The seam still returns `()`.
+- **The identity-reinforcement block's v5 name:** `build_identity_reinforcement`.
+- **Message order:** the array is now `[blocks 1–3, history, timestamp line?, trailing?]`, as before. The off-scene push between history and the timestamp is gone.
+- **`estimateTokens` rates (R-11):** default / OPENAI / ANTHROPIC / GROK / OLLAMA / OPENROUTER / OPENAI_COMPATIBLE 3.5, GOOGLE 3.8. No provider runs at 4.
+- **Readers of the `build-context-tier3` pair:** `build_context_tier3_equivalence` and the NEW `chat_absent_mentions_routes_equivalence`. (`data_retention_web_routes.rs` only names the builder in a comment.)
+- **A degraded mount index on `absent-mentions`:** the overlaid characters read refuses with `PartitionUnavailable(MountIndex)`, which `db_error_response` answers 500 `Internal server error` (P4.166's mapping). In `build_context`, the same refusal hits the ledger's WARN and both sections are empty, which is pinned in-crate.
+- **`chat_continuation.rs`'s kind assertion:** none exists, so nothing was edited. One doc line there still names "the per-turn off-scene scan". It is left in place, since the file is not this lane's to edit.
+- **The bug-264 cached-compression case** was driven in tier 3 (`p4d347_bug264_cast_window_by_id`, by-id arm). The WARN arm is pinned in `turn_history`.
+- **Item 25:** `Failed to resolve last timestamp announcement` has no v5 line, so the key drop has nothing to land on.
+- **Item 26:** `effectiveWindowSize`'s INFO is unchanged across the span, and v5 never carried it. `context_compression::effective_window_size` was ported (pure). The INFO is recorded, not ported.
+
+### Tier 3 records
+- **27.** The memory-compression strings are recorded in `build_context.rs`'s Phase-2 deferral comment.
+- **28.** The `[TurnTranscript]` pair (DEBUG `Read the chat for this build` `{chatId, events, durationMs}`, WARN `Failed to read the chat; the next reader retries` `{chatId, error}`) is unobservable and not ported. The ledger does share the cadence memo's one read.
+- **29.** v5 stays sequential. The tier-3 comparand for this lane's lines is a multiset, so order is masked.
+- **30.** `lazy-async.ts` needs no twin.
+- **32.** An empty-array whisper is now swept with the public scope, which is v4-faithful (pinned in-crate and in tier 3).
+- **33.** The degraded mount index case is recorded above.
+
+### Other findings
+- **F-2.** Production `orchestrator::to_sys_char` never carries `pronouns` into the system prompt ("the corpus characters carry no pronouns"), and the tier-3 harness's `sys_char_from_json` carries neither aliases nor pronouns. A v4 character with pronouns gets `## Character Pronouns` in v4's system prompt and nothing in v5's. This is pre-existing. `orchestrator.rs` is P4.D348's file and the prompt is P4.D349's, so it is a HANDOFF, not fixed here. Corpus consequence: Bea carries no aliases / pronouns in the widened pair; only Abigail (never a responder) does.
+- **F-3.** `escape_regexp` was lifted to `jsstr` and `message_formatter` now uses it. `services/annotations.rs:25`'s twin is P4.D351's file and was NOT retired: a HANDOFF to P4.D351 / the unifier (three copies → two).
+- **F-4.** The no-reason `post_host_off_scene_characters_announcement` wrapper had a second caller, `post_office_writers_tier3_equivalence`, which now calls `_with_reason(…, Mentioned)` (v4's default).
+- The fixture builders at the pin log `no such column: "transcriptVersion"` noise. It is pre-existing.
+
+### HANDOFFs
+| To | What |
+|---|---|
+| P4.D348 | Keep the two fenced `orchestrator.rs` hunks verbatim: `// === C1 (P4.D347) — P4.D343 rewires both to args.* ===` and `// === P4.D347 (v4 d68c1af88 / bdd09b75b) ===`. `cases/skip-signal.ts:25` is P4.D348's. Also F-2 (`to_sys_char` pronouns, with P4.D349). |
+| P4.D343 | Consume C1 by name: `BuildContextInput.purpose: ContextPurpose { Turn, Bid }` and `storyteller_section: Option<String>` (emitted last). Rewire the two C1 lines to `args.*`. |
+| P4.D359 | Wire C5: `chatAbsentMentions { chatId }` → `{mentions:[{messageId, characterId, text, card:{name, aliases, pronouns, body}}]}` (dispatch envelope `{type:"chatAbsentMentions", data:{…}}`). The chips. The TS `isOffSceneMentionIntroduction` twin. `skip-signal-helpers.ts:164`'s dead `findMentionedCharacterIds`. |
+| P4.D360 | `help/salon-host-introductions.md`, `help/chat-multi-character.md`, `bdd09b75b`'s two help pages, `docs/v4/developer/API.md`'s `absent-mentions` section, and `PROMPT_ARCHITECTURE.md`. |
+| P4.D351 | Retire `annotations.rs`'s `escape_regex` twin to `jsstr::escape_regexp` (F-3). |
+| The unifier | Re-run `build_context_tier3` and `orchestrator_tier3` WHOLE after `CONTEXT` → `SPINE` → P4.D343 (the P4.D342 archive keys, then the canned keys). `query_param_semantics` goes green once P4.D343's `storyteller-round` lands. |
+
+### 💸 for the dogfood pass
+The order's eight rows stand, minus the Core-drop row. A failed Core post keeps the section in v4 and v5 alike (F-1), so that beat should expect `[CoreWhisper] Failed to post whisper`-class behaviour, not a dropped section.
+
 ### P4.D341 addendum — Tier R on a fixed pin (2026-11-02)
 
 Under the human's 2026-11-02 ruling, every pin floor-installs its plugin and CLI deps offline inside the pin (`.claude/pin-plugin-sdks.sh <PIN>`, after the root `npm ci --offline`), instead of symlinking the live v4 trees. The old CLI symlink carried the deferred v13 driver, and every `cli_differential` case failed on "Rebuilding the SQLCipher binding" before any bytes were compared. So this lane's Tier R completion check was masked.
