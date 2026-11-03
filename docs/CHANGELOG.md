@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(cli): recall-replay --help names the inner circle's knobs (P4.D342, v4 `a5efdbb97`)
+
+_Versions: cli 0.0.37._
+
+`quilltap recall-replay --help` lists `innerCircleShare` and `innerCircleAllowance` among the `--tuning` keys (`[3,2,1]` = digests per member by tier), byte-equal to v4's CLI at the pin. Tier R: 422 cases, 0 failures (the `recall-replay help` and `recall-replay no chat` rows were red before).
+
 #### 2026-11-02 — feat(recall): the inner circle's two tuning knobs (P4.D342, v4 `a5efdbb97`)
 
 _Versions: core 0.0.1382._
