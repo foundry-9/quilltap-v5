@@ -12,6 +12,20 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the name-chip card and its host directive (v4 9a88f862f)
+
+_Versions: SPA 0.5.924._
+
+The name chips' UI pieces, from v4 `9a88f862f`'s `MentionChip.tsx`:
+- `chat/absent-mentions/mention-card.ts` (`qt-mention-card`) carries v4's `MentionCard` bytes: the name, `Also known as`, `Pronouns`, the quote, and `Not in this conversation · click to pin`. They sit in the tooltip's own bubble classes with its top-first placement.
+- `chat/absent-mentions/mention-chip-host.ts` is a directive on `qt-message-content[mentions]` that owns the `mentions` binding. It marks the rendered message after each render and whenever its mentions change, then handles the chips by delegation:
+  - hover opens the card after 250 ms and focus opens it at once;
+  - the pointer may cross into the card;
+  - a click, or Enter / Space on the chip (WCAG R8), pins the card;
+  - a pinned card closes on an outside click or Escape, never on one inside the floating layer.
+
+There is one card per message (`MENTION_CARD_SHARED_POPOVER`, ruling R-2), and the directive's two document listeners join the guard census. `_chat.css` gains v4's two `.qt-mention-chip` rules, fenced before the `MARKDOWN ELEMENT SPACING` banner. The `message-content.ts` hook and the Salon row's binding follow in the stacked commit.
+
 #### 2026-11-03 — feat(spa): the name-chip markers, the absent-mentions read, recorded from v4 (v4 9a88f862f)
 
 _Versions: SPA 0.5.923._

@@ -140,6 +140,9 @@ export const GUARDED: readonly GuardRow[] = [
     kind: 'mousedown',
   },
   { file: 'editor/char-insert/char-picker-panel.ts', handler: 'onDocumentEscape', kind: 'escape' },
+  // P4.D359's own name-chip card (a pinned card closes on a click elsewhere / Escape).
+  { file: 'chat/absent-mentions/mention-chip-host.ts', handler: 'onDocumentPointerDown', kind: 'pointerdown' },
+  { file: 'chat/absent-mentions/mention-chip-host.ts', handler: 'onDocumentKeyDown', kind: 'keydown' },
   // HANDOFFs — the sibling applies the one-line guard; the unifier deletes `owner`.
   { file: 'ui/modal.ts', handler: 'onDocumentKeydown', kind: 'escape', owner: 'P4.D358' }, // R-N's new listener
   {
@@ -200,8 +203,8 @@ describe('the floating-layer guard census (ruling R-4)', () => {
     expect(handlerIsGuarded(arrow, 'onPointerDown')).toBe(false);
   });
 
-  it('carries the 36 census rows + the 7 this lane found, and 3 HANDOFF rows (2 found here + ui/modal)', () => {
-    expect(GUARDED.filter((r) => !r.owner)).toHaveLength(43);
+  it('carries the 36 census rows + the 7 this lane found + the 2 chip-card rows, and 3 HANDOFF rows', () => {
+    expect(GUARDED.filter((r) => !r.owner)).toHaveLength(45);
     expect(GUARDED.filter((r) => r.owner)).toHaveLength(3);
   });
 
