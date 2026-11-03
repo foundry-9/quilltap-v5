@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(templates): the formatting prompt hint's three-state narration, wrap notes and double-asterisk bullet (P4.D351)
+
+_Versions: core 0.0.1381._
+
+`template_prompt_hint` follows v4 `778b97b2b` (the Novel template). The narration argument now tells three states apart: absent (no bullet), `null` (a "plain prose with no marks" bullet), or marks. A `wrap` delimiter's `matchCurlyQuotes` and `closeOptional` add capitalised notes to its bullet, and `markdownAsterisks: false` adds a closing "never use double asterisks" bullet. The oracle case grows from 16 to 31 rows, including v4's real `NOVEL_TEMPLATE`, and the harness family reads the row's narration as a three-state and names every mismatching row.
+
 #### 2026-11-02 — docs(porting): P4.D342 lane record + guard follow-up
 
 _Versions: none (harness and docs only)._

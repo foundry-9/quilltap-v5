@@ -9,6 +9,12 @@
 //!
 //! Pure: no clock, no IO. Reproduces [`generate_formatting_prompt_hint`] over
 //! the three delimiter kinds plus the template-wide narration default.
+//!
+//! v4 `778b97b2b` (the Novel template, P4.D351) grew three things: the narration
+//! argument is a THREE-state ([`NarrationHint`] — absent, `null` = unmarked
+//! prose, or marks), a `wrap` delimiter's `matchCurlyQuotes` / `closeOptional`
+//! add capitalised notes to its bullet, and `markdownAsterisks === false` adds a
+//! closing "never use double asterisks" bullet.
 
 /// A template delimiter — v4's discriminated union `TemplateDelimiter` (the
 /// three `kind` variants). Only the fields this generator reads are carried:
@@ -20,6 +26,10 @@ pub enum TemplateDelimiter {
     Wrap {
         name: String,
         delimiters: WrapDelimiters,
+        /// v4 `matchCurlyQuotes` (read as JS truthiness — `false` is no note).
+        match_curly_quotes: bool,
+        /// v4 `closeOptional` (read as JS truthiness — `false` is no note).
+        close_optional: bool,
     },
     /// `linePrefix` — a marker at the START of a line styles the whole line.
     LinePrefix { name: String, marker: String },
@@ -47,6 +57,38 @@ pub enum NarrationDelimiters {
     Pair(String, String),
 }
 
+/// The narration argument — v4's `narrationDelimiters?: NarrationDelimiters |
+/// null`, whose three states the generator tells apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NarrationHint<'a> {
+    /// `undefined` — no narration bullet (and nothing is skipped as restating it).
+    Absent,
+    /// `null` — narration is unmarked prose: the plain-prose bullet, and the
+    /// narration prefix / suffix stay unset (so nothing is skipped).
+    Unmarked,
+    /// A string or `[open, close]` pair. v4 tests it for truthiness, so an empty
+    /// string behaves as [`Self::Absent`].
+    Marks(&'a NarrationDelimiters),
+}
+
+/// v4's `options: { markdownAsterisks?: boolean }`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct HintOptions {
+    /// Only `Some(false)` adds the double-asterisk bullet (v4 `=== false`).
+    pub markdown_asterisks: Option<bool>,
+}
+
+/// v4's `n[0].toUpperCase() + n.slice(1)` — upper-case the first character. The
+/// two notes are fixed ASCII-led strings, so the first UTF-16 unit and the first
+/// `char` coincide.
+fn capitalise_first(note: &str) -> String {
+    let mut chars = note.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
 /// v4 `delimiterToPrefixSuffix`: a delimiter's prefix/suffix pair.
 /// - `wrap` → its open/close (string ⇒ same both sides; tuple ⇒ [open, close]).
 /// - `linePrefix` → `{ prefix: marker, suffix: '' }`.
@@ -67,23 +109,34 @@ fn delimiter_to_prefix_suffix(delimiter: &TemplateDelimiter) -> (String, String)
 /// describe.
 pub fn generate_formatting_prompt_hint(
     delimiters: &[TemplateDelimiter],
-    narration_delimiters: Option<&NarrationDelimiters>,
+    narration_delimiters: NarrationHint<'_>,
+    options: HintOptions,
 ) -> String {
     let mut bullets: Vec<String> = Vec::new();
 
-    // Narration first (it's the template-wide default action style).
+    // Narration first (it's the template-wide default action style). `null`
+    // means narration is unmarked prose.
     let mut narration_prefix: Option<String> = None;
     let mut narration_suffix: Option<String> = None;
-    if let Some(nd) = narration_delimiters {
-        let (prefix, suffix) = match nd {
-            NarrationDelimiters::Same(s) => (s.clone(), s.clone()),
-            NarrationDelimiters::Pair(a, b) => (a.clone(), b.clone()),
-        };
-        bullets.push(format!(
-            "- Narration and action: wrap in {prefix}…{suffix} (e.g. {prefix}she stepped closer{suffix})."
-        ));
-        narration_prefix = Some(prefix);
-        narration_suffix = Some(suffix);
+    match narration_delimiters {
+        NarrationHint::Unmarked => bullets.push(
+            "- Narration and action: plain prose with no marks around it (e.g. She stepped closer.). Never wrap narration in asterisks or brackets."
+                .to_string(),
+        ),
+        // v4 `else if (narrationDelimiters)` — an empty string is falsy.
+        NarrationHint::Marks(NarrationDelimiters::Same(s)) if s.is_empty() => {}
+        NarrationHint::Marks(nd) => {
+            let (prefix, suffix) = match nd {
+                NarrationDelimiters::Same(s) => (s.clone(), s.clone()),
+                NarrationDelimiters::Pair(a, b) => (a.clone(), b.clone()),
+            };
+            bullets.push(format!(
+                "- Narration and action: wrap in {prefix}…{suffix} (e.g. {prefix}she stepped closer{suffix})."
+            ));
+            narration_prefix = Some(prefix);
+            narration_suffix = Some(suffix);
+        }
+        NarrationHint::Absent => {}
     }
 
     for d in delimiters {
@@ -100,7 +153,12 @@ pub fn generate_formatting_prompt_hint(
                     "- {name}: begin the line with a {open}TOKEN{close} tag, where TOKEN is uppercase (e.g. {open}CAPTAIN{close} All hands on deck!). The whole line is styled."
                 ));
             }
-            TemplateDelimiter::Wrap { name, .. } => {
+            TemplateDelimiter::Wrap {
+                name,
+                match_curly_quotes,
+                close_optional,
+                ..
+            } => {
                 let (prefix, suffix) = delimiter_to_prefix_suffix(d);
                 // Skip a wrap delimiter that simply restates the narration default.
                 // v4 compares against `narrationPrefix`/`narrationSuffix`, which are
@@ -114,11 +172,35 @@ pub fn generate_formatting_prompt_hint(
                 {
                     continue;
                 }
+                let mut notes: Vec<String> = Vec::new();
+                if *match_curly_quotes {
+                    notes.push("straight or curly quotation marks are both fine".to_string());
+                }
+                if *close_optional {
+                    notes.push(format!(
+                        "when it runs over several paragraphs, leave {suffix} off every paragraph but the last"
+                    ));
+                }
+                // Each note is capitalised, then `; `-joined, `.`-terminated.
+                let tail = if notes.is_empty() {
+                    String::new()
+                } else {
+                    let capitalised: Vec<String> =
+                        notes.iter().map(|n| capitalise_first(n)).collect();
+                    format!(" {}.", capitalised.join("; "))
+                };
                 bullets.push(format!(
-                    "- {name}: wrap in {prefix}…{suffix} (e.g. {prefix}example{suffix})."
+                    "- {name}: wrap in {prefix}…{suffix} (e.g. {prefix}example{suffix}).{tail}"
                 ));
             }
         }
+    }
+
+    if options.markdown_asterisks == Some(false) {
+        bullets.push(
+            "- Never use double asterisks (**like this**); they have no meaning here and will not display as bold."
+                .to_string(),
+        );
     }
 
     if bullets.is_empty() {
@@ -139,13 +221,20 @@ mod tests {
 
     #[test]
     fn empty_returns_empty() {
-        assert_eq!(generate_formatting_prompt_hint(&[], None), "");
+        assert_eq!(
+            generate_formatting_prompt_hint(&[], NarrationHint::Absent, HintOptions::default()),
+            ""
+        );
     }
 
     #[test]
     fn narration_only() {
-        let out =
-            generate_formatting_prompt_hint(&[], Some(&NarrationDelimiters::Same("*".to_string())));
+        let star = NarrationDelimiters::Same("*".to_string());
+        let out = generate_formatting_prompt_hint(
+            &[],
+            NarrationHint::Marks(&star),
+            HintOptions::default(),
+        );
         assert_eq!(
             out,
             "[FORMATTING GUIDE]\nPlease format your responses as follows:\n- Narration and action: wrap in *…* (e.g. *she stepped closer*)."
@@ -158,6 +247,8 @@ mod tests {
             TemplateDelimiter::Wrap {
                 name: "Thoughts".to_string(),
                 delimiters: WrapDelimiters::Same("_".to_string()),
+                match_curly_quotes: false,
+                close_optional: false,
             },
             TemplateDelimiter::LinePrefix {
                 name: "OOC".to_string(),
@@ -171,11 +262,15 @@ mod tests {
             TemplateDelimiter::Wrap {
                 name: "Aside".to_string(),
                 delimiters: WrapDelimiters::Pair("{".to_string(), "}".to_string()),
+                match_curly_quotes: false,
+                close_optional: false,
             },
         ];
+        let star = NarrationDelimiters::Same("*".to_string());
         let out = generate_formatting_prompt_hint(
             &delims,
-            Some(&NarrationDelimiters::Same("*".to_string())),
+            NarrationHint::Marks(&star),
+            HintOptions::default(),
         );
         let expected = [
             "[FORMATTING GUIDE]",
@@ -196,14 +291,57 @@ mod tests {
         let delims = vec![TemplateDelimiter::Wrap {
             name: "Redundant".to_string(),
             delimiters: WrapDelimiters::Same("*".to_string()),
+            match_curly_quotes: false,
+            close_optional: false,
         }];
+        let star = NarrationDelimiters::Same("*".to_string());
         let out = generate_formatting_prompt_hint(
             &delims,
-            Some(&NarrationDelimiters::Same("*".to_string())),
+            NarrationHint::Marks(&star),
+            HintOptions::default(),
         );
         assert_eq!(
             out,
             "[FORMATTING GUIDE]\nPlease format your responses as follows:\n- Narration and action: wrap in *…* (e.g. *she stepped closer*)."
+        );
+    }
+
+    #[test]
+    fn unmarked_narration_with_both_notes_and_no_markdown_asterisks() {
+        let delims = vec![TemplateDelimiter::Wrap {
+            name: "Dialogue".to_string(),
+            delimiters: WrapDelimiters::Same("\"".to_string()),
+            match_curly_quotes: true,
+            close_optional: true,
+        }];
+        let out = generate_formatting_prompt_hint(
+            &delims,
+            NarrationHint::Unmarked,
+            HintOptions {
+                markdown_asterisks: Some(false),
+            },
+        );
+        let expected = [
+            "[FORMATTING GUIDE]",
+            "Please format your responses as follows:",
+            "- Narration and action: plain prose with no marks around it (e.g. She stepped closer.). Never wrap narration in asterisks or brackets.",
+            "- Dialogue: wrap in \"…\" (e.g. \"example\"). Straight or curly quotation marks are both fine; When it runs over several paragraphs, leave \" off every paragraph but the last.",
+            "- Never use double asterisks (**like this**); they have no meaning here and will not display as bold.",
+        ]
+        .join("\n");
+        assert_eq!(out, expected);
+    }
+
+    #[test]
+    fn empty_string_narration_is_falsy() {
+        let empty = NarrationDelimiters::Same(String::new());
+        assert_eq!(
+            generate_formatting_prompt_hint(
+                &[],
+                NarrationHint::Marks(&empty),
+                HintOptions::default()
+            ),
+            ""
         );
     }
 }
