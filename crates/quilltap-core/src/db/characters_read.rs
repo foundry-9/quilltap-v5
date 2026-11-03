@@ -234,6 +234,14 @@ fn marshal_row(row: &Row) -> Result<Value, rusqlite::Error> {
         Value::Number(serde_json::Number::from_f64(0.5).expect("0.5 is finite")),
     );
     obj.insert("canChooseOutfit".into(), Value::Bool(false));
+    // v4 `6588972d5`: `canDrawDiagrams: z.boolean().default(false)` and
+    // `diagramStyle: z.enum(DIAGRAM_STYLES).default('handDrawn')`, declared right
+    // after `canChooseOutfit` — materialized on every read before the overlay.
+    obj.insert("canDrawDiagrams".into(), Value::Bool(false));
+    obj.insert(
+        "diagramStyle".into(),
+        Value::String(crate::characters::diagrams::DEFAULT_DIAGRAM_STYLE.to_string()),
+    );
 
     Ok(Value::Object(obj))
 }

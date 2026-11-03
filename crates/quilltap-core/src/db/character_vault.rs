@@ -92,18 +92,18 @@ const TOP_LEVEL_FOLDERS: &[&str] = &[
 ];
 
 /// `JSON.stringify(PROPERTIES_JSON, null, 2)` — the default `properties.json`
-/// content (pronouns/aliases/title/firstMessage/talkativeness/canChooseOutfit).
-/// FIXED bytes (they feed the dedup sha); verified against the JS output in the
-/// unit tests.
-const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}";
+/// content (pronouns/aliases/title/firstMessage/talkativeness/canChooseOutfit/
+/// canDrawDiagrams/diagramStyle — eight keys since v4 `6588972d5`). FIXED bytes
+/// (they feed the dedup sha); verified against the JS output in the unit tests.
+const PROPERTIES_JSON_DEFAULT: &str = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}";
 
 /// `JSON.stringify(PHYSICAL_PROMPTS_JSON, null, 2)` — the default
-/// `physical-prompts.json` content. Note this is the **four-key** scaffold default
-/// (`short`/`medium`/`long`/`complete`); the managed-fields writer's
-/// `renderPhysicalPromptsJson` emits a **five-key** variant (adds
-/// `headAndShoulders`) and only when a physical description exists.
-const PHYSICAL_PROMPTS_JSON_DEFAULT: &str =
-    "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}";
+/// `physical-prompts.json` content. Note this is the **five-key** scaffold default
+/// (`short`/`medium`/`long`/`complete` + `humanoid: true`, v4 `b27e5089a` — NO
+/// `headAndShoulders`); the managed-fields writer's `renderPhysicalPromptsJson`
+/// emits a **six-key** variant (adds `headAndShoulders`) and only when a physical
+/// description exists.
+const PHYSICAL_PROMPTS_JSON_DEFAULT: &str = "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null,\n  \"humanoid\": true\n}";
 
 /// `metadata.json`'s relative path.
 const METADATA_JSON_PATH: &str = "metadata.json";
@@ -595,6 +595,8 @@ pub fn backfill_character_vault_managed_files(
             vault.first_message.as_deref(),
             vault.talkativeness.unwrap_or(0.5),
             vault.can_choose_outfit.unwrap_or(false),
+            vault.can_draw_diagrams.unwrap_or(false),
+            crate::characters::diagrams::diagram_style_or_default(vault.diagram_style.as_ref()),
         ),
     )];
     if let Some(metadata) = vault.metadata.as_ref().filter(|m| !m.is_null()) {
@@ -692,6 +694,10 @@ mod tests {
         talkativeness: f64,
         #[serde(rename = "canChooseOutfit")]
         can_choose_outfit: bool,
+        #[serde(rename = "canDrawDiagrams")]
+        can_draw_diagrams: bool,
+        #[serde(rename = "diagramStyle")]
+        diagram_style: crate::characters::diagrams::DiagramStyle,
     }
 
     #[derive(Serialize)]
@@ -700,6 +706,7 @@ mod tests {
         medium: Option<()>,
         long: Option<()>,
         complete: Option<()>,
+        humanoid: bool,
     }
 
     #[test]
@@ -711,6 +718,8 @@ mod tests {
             first_message: String::new(),
             talkativeness: 0.5,
             can_choose_outfit: false,
+            can_draw_diagrams: false,
+            diagram_style: crate::characters::diagrams::DiagramStyle::HandDrawn,
         })
         .unwrap();
         assert_eq!(pretty, PROPERTIES_JSON_DEFAULT);
@@ -723,6 +732,7 @@ mod tests {
             medium: None,
             long: None,
             complete: None,
+            humanoid: true,
         })
         .unwrap();
         assert_eq!(pretty, PHYSICAL_PROMPTS_JSON_DEFAULT);
@@ -889,7 +899,9 @@ mod backfill_tests {
                     Some("The Lamplighter"),
                     None,
                     0.7,
-                    false
+                    false,
+                    false,
+                    crate::characters::diagrams::DiagramStyle::HandDrawn
                 )
                 .as_str()
             )
@@ -927,7 +939,19 @@ mod backfill_tests {
         assert_eq!(read(&mount, "identity.md").as_deref(), Some(""));
         assert_eq!(
             read(&mount, "properties.json").as_deref(),
-            Some(render_properties_json(None, &[], None, None, 0.5, false).as_str())
+            Some(
+                render_properties_json(
+                    None,
+                    &[],
+                    None,
+                    None,
+                    0.5,
+                    false,
+                    false,
+                    crate::characters::diagrams::DiagramStyle::HandDrawn
+                )
+                .as_str()
+            )
         );
     }
 

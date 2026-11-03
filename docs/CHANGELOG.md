@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(vault): keep v4's humanoid and diagram keys on every character vault write (P4.D349)
+
+_Versions: core 0.0.1381._
+
+v4 `b27e5089a` and `6588972d5` added three character vault keys, and every v5 write erased them. Now `physical-prompts.json` is written with six keys, ending with `humanoid` (`primary?.humanoid ?? true`). `properties.json` is written with eight keys, adding `canDrawDiagrams` and `diagramStyle`. This covers the create-time projection, the read-modify-write update, the restore backfill and the scaffold defaults; the scaffold constants (and their content-dedup shas) moved to v4's bytes. A physical write that omits `humanoid` reads the vault's current value back, as v4 does, and logs `[VaultOverlay] Physical write carries no humanoid flag; keeping the vault's`. A write touching either diagram key logs `[VaultOverlay] Writing diagram settings to properties.json`.
+
+The readers follow v4: `canDrawDiagrams` is strict (a non-boolean fails the whole file, like `canChooseOutfit`). `diagramStyle` is lenient (anything but `clean` reads `handDrawn`). `humanoid` is lenient (only `true`/`false`/`"true"`/`"false"` count; anything else reads as absent). Hydration adds the two diagram keys, and appends `physicalDescription.humanoid` (default `true`) after `updatedAt`. Every character read materialises `canDrawDiagrams: false` / `diagramStyle: 'handDrawn'`, and `MANAGED_FIELDS` names both. New `characters::diagrams` (`DiagramStyle`, `diagram_style_or_default`). Oracle growth: `vault-json-parsers` +14 rows; `vault-character-write` +2 ops; `characters-physical` gains four independent scenarios (each from a fresh fixture copy, one child process per run).
+
 #### 2026-11-02 — docs(porting): P4.D350 lane complete — the gate record
 
 _Docs only._

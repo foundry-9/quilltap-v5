@@ -183,6 +183,24 @@ propsCase(
   }),
 );
 
+// P4.D349 (v4 `6588972d5`): `canDrawDiagrams` is STRICT like `canChooseOutfit`
+// (a non-boolean fails the whole parse); `diagramStyle` is LENIENT through
+// `diagramStyleOrDefault` (anything but `clean` reads `handDrawn`, never fails).
+const baseProps = {
+  pronouns: null,
+  aliases: [],
+  title: null,
+  firstMessage: null,
+  talkativeness: 0.5,
+};
+propsCase('p-diagram-clean', J({ ...baseProps, diagramStyle: 'clean' }));
+propsCase('p-diagram-crayon', J({ ...baseProps, diagramStyle: 'crayon' }));
+propsCase('p-diagram-null', J({ ...baseProps, diagramStyle: null }));
+propsCase('p-diagram-number', J({ ...baseProps, diagramStyle: 5 }));
+propsCase('p-can-draw-true', J({ ...baseProps, canDrawDiagrams: true, diagramStyle: 'handDrawn' }));
+propsCase('p-can-draw-string-true', J({ ...baseProps, canDrawDiagrams: 'true' }));
+propsCase('p-can-draw-null', J({ ...baseProps, canDrawDiagrams: null }));
+
 // ── parseVaultPhysicalPrompts ──────────────────────────────────────────────
 physCase(
   'ph-full',
@@ -203,6 +221,17 @@ physCase(
   'ph-extra-stripped',
   J({ short: 's', medium: 'm', long: 'l', complete: 'c', legacyField: 'x' }),
 );
+
+// P4.D349 (v4 `b27e5089a`): `humanoid` is LENIENT — only false / "false" / true /
+// "true" read as a value; anything else reads as ABSENT (no key), never a failure.
+const basePhys = { short: 's', medium: 'm', long: 'l', complete: 'c' };
+physCase('ph-humanoid-false', J({ ...basePhys, humanoid: false }));
+physCase('ph-humanoid-string-false', J({ ...basePhys, humanoid: 'false' }));
+physCase('ph-humanoid-string-true', J({ ...basePhys, humanoid: 'true' }));
+physCase('ph-humanoid-null', J({ ...basePhys, humanoid: null }));
+physCase('ph-humanoid-yes', J({ ...basePhys, humanoid: 'yes' }));
+physCase('ph-humanoid-zero', J({ ...basePhys, humanoid: 0 }));
+physCase('ph-humanoid-capital-false', J({ ...basePhys, humanoid: 'False' }));
 
 // ── parseVaultMetadata ─────────────────────────────────────────────────────
 // The fact sheet: any JSON object passes verbatim; anything else → null.

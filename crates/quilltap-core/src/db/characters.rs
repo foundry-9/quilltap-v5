@@ -114,6 +114,8 @@ pub const MANAGED_FIELDS: &[&str] = &[
     "firstMessage",
     "talkativeness",
     "canChooseOutfit",
+    "canDrawDiagrams",
+    "diagramStyle",
     "physicalDescription",
     "systemPrompts",
     "scenarios",

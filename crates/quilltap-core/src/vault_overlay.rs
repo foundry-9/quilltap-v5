@@ -37,6 +37,8 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
+use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
+
 /// Build a stable, RFC-4122 **v8**-style UUID from a SHA-256 digest of `source`
 /// — v4 `stableUuidFromString` (`vault-overlay/parsers.ts:154`). v8 is the
 /// "custom" version: the exact version byte is not load-bearing, only that the
@@ -98,6 +100,10 @@ pub struct Pronouns {
 /// (serialized as `null` when unset, matching Zod's required-nullable output).
 /// `canChooseOutfit` is optional-with-default `false` (v4: vaults written before
 /// the field existed still parse — an absent key hydrates as `false`).
+/// `canDrawDiagrams` is the same STRICT optional-with-default `false`;
+/// `diagramStyle` is LENIENT — v4 preprocesses it through
+/// `diagramStyleOrDefault`, so any value reads as `handDrawn` unless it is
+/// exactly `clean` (v4 `6588972d5`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CharacterVaultProperties {
     pub pronouns: Option<Pronouns>,
@@ -108,11 +114,18 @@ pub struct CharacterVaultProperties {
     pub talkativeness: f64,
     #[serde(rename = "canChooseOutfit")]
     pub can_choose_outfit: bool,
+    #[serde(rename = "canDrawDiagrams")]
+    pub can_draw_diagrams: bool,
+    #[serde(rename = "diagramStyle")]
+    pub diagram_style: DiagramStyle,
 }
 
 /// `physical-prompts.json`'s validated shape (v4 `CharacterVaultPhysicalPromptsSchema`).
 /// `headAndShoulders` is optional (absent → omitted); the four tiers are required
-/// and nullable (serialized as `null` when unset).
+/// and nullable (serialized as `null` when unset). `humanoid` (v4 `b27e5089a`) is
+/// LENIENT and optional: only `false` / `"false"` / `true` / `"true"` read as a
+/// value, anything else as ABSENT (never a failure) — and absent serializes as no
+/// key, as Zod's `.optional()` output drops it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CharacterVaultPhysicalPrompts {
     #[serde(rename = "headAndShoulders", skip_serializing_if = "Option::is_none")]
@@ -121,6 +134,8 @@ pub struct CharacterVaultPhysicalPrompts {
     pub medium: Option<String>,
     pub long: Option<String>,
     pub complete: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub humanoid: Option<bool>,
 }
 
 /// A required key whose value must be a string or `null` (`z.string().nullable()`).
@@ -191,6 +206,19 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
         Some(_) => return None,
     };
 
+    // canDrawDiagrams: the same STRICT optional-with-default arm — a `"true"`
+    // string fails the whole file, exactly as v4's `z.boolean()` does.
+    let can_draw_diagrams = match obj.get("canDrawDiagrams") {
+        None => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return None,
+    };
+
+    // diagramStyle: `z.preprocess(diagramStyleOrDefault, …)` — LENIENT, never
+    // fails: the file is hand-editable, and an unknown style must not hollow
+    // every managed field.
+    let diagram_style = diagram_style_or_default(obj.get("diagramStyle"));
+
     Some(CharacterVaultProperties {
         pronouns,
         aliases,
@@ -198,6 +226,8 @@ pub fn parse_vault_properties(raw: &str) -> Option<CharacterVaultProperties> {
         first_message,
         talkativeness,
         can_choose_outfit,
+        can_draw_diagrams,
+        diagram_style,
     })
 }
 
@@ -242,6 +272,16 @@ pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalP
         Some(_) => return None, // wrong type → violation
     };
 
+    // humanoid: `z.preprocess((v) => v === false || v === 'false' ? false :
+    // v === true || v === 'true' ? true : undefined, z.boolean().optional())` —
+    // `null`, `0`, `"yes"`, `"False"`, `{}` all read as ABSENT, never a failure.
+    let humanoid = match obj.get("humanoid") {
+        Some(Value::Bool(b)) => Some(*b),
+        Some(Value::String(s)) if s == "false" => Some(false),
+        Some(Value::String(s)) if s == "true" => Some(true),
+        _ => None,
+    };
+
     // (markdownToNullable is defined just below the physical-prompts parser.)
     Some(CharacterVaultPhysicalPrompts {
         head_and_shoulders,
@@ -249,6 +289,7 @@ pub fn parse_vault_physical_prompts(raw: &str) -> Option<CharacterVaultPhysicalP
         medium: nullable_string(obj.get("medium")?)?,
         long: nullable_string(obj.get("long")?)?,
         complete: nullable_string(obj.get("complete")?)?,
+        humanoid,
     })
 }
 

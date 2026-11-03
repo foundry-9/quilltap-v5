@@ -65,8 +65,10 @@ use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::document_store_overlay::OverlayError;
 use super::vault_character_write::{render_physical_prompts_json, render_properties_json};
 use super::DbError;
+use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
 use crate::vault_overlay::{
-    build_scenario_file, build_system_prompt_file, parse_vault_properties, sanitize_file_name,
+    build_scenario_file, build_system_prompt_file, parse_vault_physical_prompts,
+    parse_vault_properties, sanitize_file_name, CharacterVaultPhysicalPrompts,
     CharacterVaultProperties,
 };
 
@@ -96,7 +98,8 @@ const MARKDOWN_FIELDS: &[(&str, &str)] = &[
     ("exampleDialogues", EXAMPLE_DIALOGUES_MD_PATH),
 ];
 
-/// The six `properties.json` keys (in literal order).
+/// The eight `properties.json` keys (in literal order — v4 `propsKeys`,
+/// `managed-fields.ts:422-425`, `6588972d5`).
 const PROPERTY_KEYS: &[&str] = &[
     "pronouns",
     "aliases",
@@ -104,6 +107,8 @@ const PROPERTY_KEYS: &[&str] = &[
     "firstMessage",
     "talkativeness",
     "canChooseOutfit",
+    "canDrawDiagrams",
+    "diagramStyle",
 ];
 
 /// Route the managed fields in `patch` to the character's vault and return the
@@ -207,6 +212,32 @@ pub fn apply_document_store_write_overlay(
         } else {
             current.can_choose_outfit
         };
+        // v4: `'canDrawDiagrams' in patch ? (patch.canDrawDiagrams ?? false) :
+        // current.canDrawDiagrams` — the `canChooseOutfit` arm's coalescing.
+        let can_draw_diagrams = if patch.contains_key("canDrawDiagrams") {
+            patch
+                .get("canDrawDiagrams")
+                .unwrap()
+                .as_bool()
+                .unwrap_or(false)
+        } else {
+            current.can_draw_diagrams
+        };
+        // v4: `'diagramStyle' in patch ? diagramStyleOrDefault(patch.diagramStyle)
+        // : current.diagramStyle`.
+        let diagram_style = if patch.contains_key("diagramStyle") {
+            diagram_style_or_default(patch.get("diagramStyle"))
+        } else {
+            current.diagram_style
+        };
+        if touched.contains(&"canDrawDiagrams") || touched.contains(&"diagramStyle") {
+            tracing::debug!(
+                characterId = %character_id,
+                canDrawDiagrams = can_draw_diagrams,
+                diagramStyle = diagram_style.as_str(),
+                "[VaultOverlay] Writing diagram settings to properties.json"
+            );
+        }
 
         let json = render_properties_json(
             pronouns.as_ref(),
@@ -215,6 +246,8 @@ pub fn apply_document_store_write_overlay(
             first_message.as_deref(),
             talkativeness,
             can_choose_outfit,
+            can_draw_diagrams,
+            diagram_style,
         );
         links.write_database_document(&mount_point_id, PROPERTIES_JSON_PATH, &json)?;
         for k in &touched {
@@ -245,8 +278,22 @@ pub fn apply_document_store_write_overlay(
     // 3. physicalDescription — non-null writes the two files; null leaves them.
     if let Some(incoming) = patch.get("physicalDescription") {
         if !incoming.is_null() {
-            let phys: PhysicalDescriptionWrite = serde_json::from_value(incoming.clone())
+            let mut phys: PhysicalDescriptionWrite = serde_json::from_value(incoming.clone())
                 .map_err(|e| DbError::Internal(format!("physicalDescription parse: {e}")))?;
+            // `humanoid` is a setting, not generated text: a writer that doesn't
+            // name it (the AI Wizard, the optimizer, the head-and-shoulders
+            // backfill) keeps whatever the vault already says rather than
+            // resetting a non-humanoid character to humanoid (v4 `b27e5089a`).
+            if phys.humanoid.is_none() {
+                let current = read_current_physical_prompts(mount, &mount_point_id, character_id);
+                phys.humanoid = current.and_then(|c| c.humanoid);
+                tracing::debug!(
+                    characterId = %character_id,
+                    mountPointId = %mount_point_id,
+                    humanoid = phys.humanoid.unwrap_or(true),
+                    "[VaultOverlay] Physical write carries no humanoid flag; keeping the vault's"
+                );
+            }
             links.write_database_document(
                 &mount_point_id,
                 PHYSICAL_DESCRIPTION_MD_PATH,
@@ -605,7 +652,47 @@ fn empty_properties_default() -> CharacterVaultProperties {
         first_message: None,
         talkativeness: 0.5,
         can_choose_outfit: false,
+        can_draw_diagrams: false,
+        diagram_style: DiagramStyle::HandDrawn,
     }
+}
+
+/// v4 `readCharacterVaultPhysicalPrompts` (`vault-readers.ts:235-246`) for the
+/// physical write's humanoid read-back. LENIENT, unlike
+/// [`read_current_properties`]: v4's `readVaultTextFile` turns any read failure
+/// into `null` (WARN `Failed to read vault file`) and `parseVaultPhysicalPrompts`
+/// turns a malformed file into `null` — so an absent, unreadable or unparseable
+/// file all keep the renderer's `?? true`.
+fn read_current_physical_prompts(
+    mount: &Connection,
+    mount_point_id: &str,
+    character_id: &str,
+) -> Option<CharacterVaultPhysicalPrompts> {
+    use super::database_store::{read_database_document, DbStoreErrorCode, StoreError};
+    let content = match read_database_document(mount, mount_point_id, PHYSICAL_PROMPTS_JSON_PATH) {
+        Ok(doc) => doc.content,
+        Err(StoreError::Store(e)) if e.code == DbStoreErrorCode::NotFound => {
+            // v4 `readDatabaseDocumentIfExists`'s child logger (`module: 'service'`).
+            tracing::debug!(
+                module = "service",
+                mountPointId = %mount_point_id,
+                relativePath = PHYSICAL_PROMPTS_JSON_PATH,
+                "Document absent from database-backed store"
+            );
+            return None;
+        }
+        Err(error) => {
+            tracing::warn!(
+                mountPointId = %mount_point_id,
+                path = PHYSICAL_PROMPTS_JSON_PATH,
+                characterId = %character_id,
+                error = %error,
+                "Failed to read vault file"
+            );
+            return None;
+        }
+    };
+    parse_vault_physical_prompts(&content)
 }
 
 /// A patch `pronouns` value → `Option<Pronouns>` (null → None; an object → parsed
@@ -747,4 +834,141 @@ fn slim_update_from_patch(db_patch: &Map<String, Value>) -> Result<CharacterUpda
         archived_avatar_file_id: p.archived_avatar_file_id,
         updated_at: crate::clock::now_iso(),
     })
+}
+
+#[cfg(test)]
+mod p4d349_log_tests {
+    //! The two P4.D349 write-overlay lines, capture-pinned with their silence
+    //! legs: `[VaultOverlay] Physical write carries no humanoid flag; keeping
+    //! the vault's` (`managed-fields.ts:518-522`, `{characterId, mountPointId,
+    //! humanoid: humanoid ?? true}`) and `[VaultOverlay] Writing diagram
+    //! settings to properties.json` (`:467-473`, `{characterId,
+    //! canDrawDiagrams, diagramStyle}`). Both fire on the caller thread.
+    use super::*;
+    use crate::db::Writer;
+    use crate::test_support::captured_with;
+    use serde_json::json;
+
+    const TEST_PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAR_A: &str = "a1000000-0000-4000-8000-0000000000a1";
+
+    fn open_pair(dir: &tempfile::TempDir) -> (Writer, Writer) {
+        let fx = |n: &str| {
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../quilltap-web/tests/fixtures")
+                .join(n)
+        };
+        let main = dir.path().join("main.db");
+        let mount = dir.path().join("mount.db");
+        std::fs::copy(fx("subprompts-main.db"), &main).unwrap();
+        std::fs::copy(fx("subprompts-mount.db"), &mount).unwrap();
+        (
+            Writer::open_writable(&main, TEST_PEPPER).unwrap(),
+            Writer::open_writable(&mount, TEST_PEPPER).unwrap(),
+        )
+    }
+
+    fn patch(v: Value) -> Map<String, Value> {
+        v.as_object().unwrap().clone()
+    }
+
+    fn physical_prompts(mount: &Connection, mp: &str) -> Value {
+        let raw = DocMountDocumentsRepository::new(mount)
+            .find_by_mount_point_and_path(mp, PHYSICAL_PROMPTS_JSON_PATH)
+            .unwrap()
+            .unwrap();
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    const PHYS_LINE: &str =
+        "[VaultOverlay] Physical write carries no humanoid flag; keeping the vault's";
+    const DIAGRAM_LINE: &str = "[VaultOverlay] Writing diagram settings to properties.json";
+
+    #[test]
+    fn an_omitted_humanoid_flag_keeps_the_vaults_and_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+        let mp = read_vault_fk(main.connection(), CHAR_A).unwrap().unwrap();
+
+        // Explicit `false`: written as given, no read-back, no line.
+        let (_, lines) = captured_with(|| {
+            update_character(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                &patch(
+                    json!({"physicalDescription": {"shortPrompt": "a lantern", "humanoid": false}}),
+                ),
+            )
+            .unwrap()
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains(PHYS_LINE)),
+            "an explicit flag is silent: {lines:?}"
+        );
+        assert_eq!(
+            physical_prompts(mount.connection(), &mp)["humanoid"],
+            json!(false)
+        );
+
+        // Omitted: the vault's `false` is kept, and the DEBUG names it.
+        let (_, lines) = captured_with(|| {
+            update_character(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                &patch(json!({"physicalDescription": {"shortPrompt": "a brighter lantern"}})),
+            )
+            .unwrap()
+        });
+        let l = lines
+            .iter()
+            .find(|l| l.contains(PHYS_LINE))
+            .unwrap_or_else(|| panic!("no physical line in {lines:?}"));
+        assert!(l.contains("DEBUG"), "{l}");
+        assert!(l.contains(&format!("characterId={CHAR_A}")), "{l}");
+        assert!(l.contains(&format!("mountPointId={mp}")), "{l}");
+        assert!(l.contains("humanoid=false"), "{l}");
+        let prompts = physical_prompts(mount.connection(), &mp);
+        assert_eq!(prompts["humanoid"], json!(false));
+        assert_eq!(prompts["short"], json!("a brighter lantern"));
+    }
+
+    #[test]
+    fn the_diagram_line_fires_only_when_a_diagram_key_is_touched() {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount) = open_pair(&dir);
+
+        let (_, lines) = captured_with(|| {
+            update_character(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                &patch(json!({"title": "The Lamplighter"})),
+            )
+            .unwrap()
+        });
+        assert!(
+            !lines.iter().any(|l| l.contains(DIAGRAM_LINE)),
+            "a title-only patch is silent: {lines:?}"
+        );
+
+        let (_, lines) = captured_with(|| {
+            update_character(
+                main.connection(),
+                mount.connection(),
+                CHAR_A,
+                &patch(json!({"canDrawDiagrams": true, "diagramStyle": "crayon"})),
+            )
+            .unwrap()
+        });
+        let l = lines
+            .iter()
+            .find(|l| l.contains(DIAGRAM_LINE))
+            .unwrap_or_else(|| panic!("no diagram line in {lines:?}"));
+        assert!(l.contains("DEBUG"), "{l}");
+        assert!(l.contains(&format!("characterId={CHAR_A}")), "{l}");
+        assert!(l.contains("canDrawDiagrams=true"), "{l}");
+        assert!(l.contains("diagramStyle=handDrawn"), "{l}");
+    }
 }

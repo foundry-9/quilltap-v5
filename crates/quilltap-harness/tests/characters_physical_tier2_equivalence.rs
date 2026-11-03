@@ -4,7 +4,7 @@
 //! Proves the ALREADY-PORTED physical-md/physical-json descriptor branch of
 //! [`vault_character_update::apply_document_store_write_overlay`]: a non-null
 //! `physicalDescription` update writes `physical-description.md` (fullDescription) +
-//! `physical-prompts.json` (`render_physical_prompts_json`, the five-key variant),
+//! `physical-prompts.json` (`render_physical_prompts_json`, the six-key variant),
 //! strips the key from the DB-bound patch, and — because no slim column remains —
 //! skips the slim `_update` so the slim row's `updatedAt` is NOT bumped.
 //!
@@ -14,6 +14,13 @@
 //! slim `characters` row + the mount-index store tables). Minted-values remap with
 //! ONE shared id-map; timestamps → `<ts>`; the link `chunkCount` diffs EXACTLY
 //! since P4.6BK (v5 chunks on write); `doc_mount_chunks` excluded.
+//!
+//! [P4.D349 / v4 `b27e5089a`] The spec's `scenarios` each run from a FRESH copy
+//! of the fixture and compare their own oracle row: a physical write that OMITS
+//! `humanoid` keeps the vault's stored value (`false` stays `false`; the
+//! scaffold flag stays `true`), an explicit value is written as given. The
+//! fixture is built per run by the pin's scaffold (so it carries `humanoid: true`);
+//! an OLD four-key file is the `vault_json_parsers` / overlay families' proof.
 //!
 //! Generate the oracle output + fixtures (Node 24, from the v4 checkout):
 //!   N=~/.nvm/versions/node/v24.13.1/bin
@@ -42,6 +49,16 @@ use serde_json::{Map, Value};
 struct Spec {
     #[serde(rename = "testPepperBase64")]
     test_pepper_base64: String,
+    ops: Vec<Op>,
+    /// P4.D349: independent op lists, each from a FRESH fixture copy — the
+    /// oracle emits one row per scenario (tagged `scenario`) after the base row.
+    #[serde(default)]
+    scenarios: Vec<Scenario>,
+}
+
+#[derive(Deserialize)]
+struct Scenario {
+    label: String,
     ops: Vec<Op>,
 }
 
@@ -163,6 +180,81 @@ fn normalize_all(dumps: &mut [Value]) {
     }
 }
 
+fn run_ops(spec: &Spec, main_fixture: &str, mount_fixture: &str, ops: &[Op]) -> Vec<Value> {
+    let scratch_dir = tempfile::Builder::new()
+        .prefix("qt-charphys-")
+        .tempdir()
+        .expect("tempdir");
+    let main_work = scratch_dir.path().join("qt-charphys-main-rust.db");
+    let mount_work = scratch_dir.path().join("qt-charphys-mount-rust.db");
+    std::fs::copy(main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
+    std::fs::copy(mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
+
+    let main = Writer::open_writable(&main_work, &spec.test_pepper_base64)
+        .unwrap_or_else(|e| panic!("open main: {e}"));
+    let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
+        .unwrap_or_else(|e| panic!("open mount: {e}"));
+
+    let character_id: String = main
+        .connection()
+        .query_row("SELECT id FROM characters LIMIT 1", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .expect("read baked character id");
+
+    for op in ops {
+        update_character(
+            main.connection(),
+            mount.connection(),
+            &character_id,
+            &op.patch,
+        )
+        .unwrap_or_else(|e| panic!("update_character: {e}"));
+    }
+
+    TABLES
+        .iter()
+        .map(|s| {
+            let w = if s.from_mount { &mount } else { &main };
+            w.dump_table_json(s.table, s.order_by)
+                .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
+        })
+        .collect()
+}
+
+fn compare(oracle: &Value, mut got: Vec<Value>, label: &str) {
+    let mut want: Vec<Value> = TABLES
+        .iter()
+        .map(|s| {
+            oracle
+                .get(s.oracle_key)
+                .cloned()
+                .unwrap_or_else(|| panic!("oracle missing dump for {}", s.oracle_key))
+        })
+        .collect();
+
+    normalize_all(&mut got);
+    normalize_all(&mut want);
+
+    for (i, s) in TABLES.iter().enumerate() {
+        assert_eq!(
+            got[i]["table"], want[i]["table"],
+            "[{label}] {}: table name",
+            s.table
+        );
+        assert_eq!(
+            got[i]["columns"], want[i]["columns"],
+            "[{label}] {}: column set / order",
+            s.table
+        );
+        assert_eq!(
+            got[i]["rows"], want[i]["rows"],
+            "[{label}] {}: remapped row state diverged\n  rust:   {}\n  oracle: {}",
+            s.table, got[i]["rows"], want[i]["rows"]
+        );
+    }
+}
+
 #[test]
 fn characters_physical_tier2_matches_oracle() {
     let oracle_path = match std::env::var("QT_ORACLE_CHARPHYS") {
@@ -192,84 +284,38 @@ fn characters_physical_tier2_matches_oracle() {
     )
     .expect("parse spec");
 
-    let oracle: Value = serde_json::from_str(
-        std::fs::read_to_string(&oracle_path)
-            .unwrap_or_else(|e| panic!("read oracle: {e}"))
-            .trim(),
-    )
-    .expect("parse oracle dump");
-
-    let scratch_dir = tempfile::Builder::new()
-        .prefix("qt-charphys-")
-        .tempdir()
-        .expect("tempdir");
-    let main_work = scratch_dir.path().join("qt-charphys-main-rust.db");
-    let mount_work = scratch_dir.path().join("qt-charphys-mount-rust.db");
-    std::fs::copy(&main_fixture, &main_work).unwrap_or_else(|e| panic!("copy main: {e}"));
-    std::fs::copy(&mount_fixture, &mount_work).unwrap_or_else(|e| panic!("copy mount: {e}"));
-
-    let main = Writer::open_writable(&main_work, &spec.test_pepper_base64)
-        .unwrap_or_else(|e| panic!("open main: {e}"));
-    let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64)
-        .unwrap_or_else(|e| panic!("open mount: {e}"));
-
-    let character_id: String = main
-        .connection()
-        .query_row("SELECT id FROM characters LIMIT 1", [], |row| {
-            row.get::<_, String>(0)
-        })
-        .expect("read baked character id");
-
-    for op in &spec.ops {
-        update_character(
-            main.connection(),
-            mount.connection(),
-            &character_id,
-            &op.patch,
-        )
-        .unwrap_or_else(|e| panic!("update_character: {e}"));
-    }
-
-    let mut got: Vec<Value> = TABLES
-        .iter()
-        .map(|s| {
-            let w = if s.from_mount { &mount } else { &main };
-            w.dump_table_json(s.table, s.order_by)
-                .unwrap_or_else(|e| panic!("dump {}: {e}", s.table))
-        })
+    let oracle_text =
+        std::fs::read_to_string(&oracle_path).unwrap_or_else(|e| panic!("read oracle: {e}"));
+    let oracle_rows: Vec<Value> = oracle_text
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|l| serde_json::from_str(l).expect("parse oracle row"))
         .collect();
-    let _ = std::fs::remove_file(&main_work);
-    let _ = std::fs::remove_file(&mount_work);
+    assert_eq!(
+        oracle_rows.len(),
+        1 + spec.scenarios.len(),
+        "one oracle row per run (base + scenarios)"
+    );
+    let oracle = oracle_rows[0].clone();
+    assert!(oracle.get("scenario").is_none(), "row 0 is the base run");
 
-    let mut want: Vec<Value> = TABLES
-        .iter()
-        .map(|s| {
-            oracle
-                .get(s.oracle_key)
-                .cloned()
-                .unwrap_or_else(|| panic!("oracle missing dump for {}", s.oracle_key))
-        })
-        .collect();
-
-    normalize_all(&mut got);
-    normalize_all(&mut want);
-
-    for (i, s) in TABLES.iter().enumerate() {
-        assert_eq!(got[i]["table"], want[i]["table"], "{}: table name", s.table);
+    let got = run_ops(&spec, &main_fixture, &mount_fixture, &spec.ops);
+    compare(&oracle, got.clone(), "base");
+    for (i, sc) in spec.scenarios.iter().enumerate() {
+        let row = &oracle_rows[i + 1];
         assert_eq!(
-            got[i]["columns"], want[i]["columns"],
-            "{}: column set / order",
-            s.table
+            row["scenario"].as_str(),
+            Some(sc.label.as_str()),
+            "oracle row {} is scenario {:?}",
+            i + 1,
+            sc.label
         );
-        assert_eq!(
-            got[i]["rows"], want[i]["rows"],
-            "{}: remapped row state diverged\n  rust:   {}\n  oracle: {}",
-            s.table, got[i]["rows"], want[i]["rows"]
-        );
+        let sc_got = run_ops(&spec, &main_fixture, &mount_fixture, &sc.ops);
+        compare(row, sc_got, &sc.label);
     }
 
     // Sanity: the two physical files were written with the new content — the
-    // five-key physical-prompts.json (renderPhysicalPromptsJson) and the
+    // six-key physical-prompts.json (renderPhysicalPromptsJson) and the
     // fullDescription body.
     let docs_i = TABLES
         .iter()
@@ -292,10 +338,7 @@ fn characters_physical_tier2_matches_oracle() {
             .unwrap_or(false)
     });
     assert!(phys_md, "physical-description.md was not written");
-    assert!(
-        phys_json,
-        "physical-prompts.json (five-key) was not written"
-    );
+    assert!(phys_json, "physical-prompts.json (six-key) was not written");
 
     eprintln!(
         "OK: characters physicalDescription-via-update tier-2 matched oracle (6 tables, 2 DBs)."

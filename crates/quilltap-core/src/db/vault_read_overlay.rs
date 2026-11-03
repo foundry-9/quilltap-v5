@@ -331,7 +331,8 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
     let mut out = obj.clone();
 
     // properties.json → pronouns, aliases, title, firstMessage, talkativeness,
-    // canChooseOutfit.
+    // canChooseOutfit, canDrawDiagrams, diagramStyle (v4 `read-overlay.ts:
+    // 170-180` spreads the two diagram keys after `canChooseOutfit`).
     if let Some(parsed) = parse_vault_properties(props_raw) {
         let pv = serde_json::to_value(parsed).expect("serialize vault properties");
         for key in [
@@ -341,6 +342,8 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
             "firstMessage",
             "talkativeness",
             "canChooseOutfit",
+            "canDrawDiagrams",
+            "diagramStyle",
         ] {
             if let Some(v) = pv.get(key) {
                 out.insert(key.to_string(), v.clone());
@@ -395,6 +398,12 @@ pub fn hydrate_one(character: &Value, maps: &VaultFileMaps) -> Result<Value, Vau
                 patched.insert("mediumPrompt".into(), opt_to_value(pp.medium));
                 patched.insert("longPrompt".into(), opt_to_value(pp.long));
                 patched.insert("completePrompt".into(), opt_to_value(pp.complete));
+                // v4 `patched.humanoid = parsedPrompts.humanoid ?? true` (`b27e5089a`),
+                // set AFTER the tiers on an object that already carries
+                // `createdAt` / `updatedAt` — so the key is APPENDED last. A file
+                // that fails to parse leaves the object without it (v4's
+                // `if (parsedPrompts)`).
+                patched.insert("humanoid".into(), Value::Bool(pp.humanoid.unwrap_or(true)));
             }
         }
         out.insert("physicalDescription".into(), Value::Object(patched));

@@ -40,6 +40,7 @@ use serde_json::Value;
 use super::doc_mount_documents::DocMountDocumentsRepository;
 use super::doc_mount_file_links::DocMountFileLinksRepository;
 use super::DbError;
+use crate::characters::diagrams::{diagram_style_or_default, DiagramStyle};
 use crate::vault_overlay::{build_scenario_file, build_system_prompt_file, sanitize_file_name};
 
 use super::vault_wardrobe_write::{project_array_into_vault_folder, ProjectArrayOptions};
@@ -84,6 +85,12 @@ pub struct PhysicalDescriptionWrite {
     pub long_prompt: Option<String>,
     #[serde(default)]
     pub complete_prompt: Option<String>,
+    /// v4 `PhysicalDescriptionSchema.humanoid` (`b27e5089a`) — absent-or-set
+    /// (`z.boolean().optional()`). `None` is v4's ABSENT key, which the
+    /// managed-fields physical write reads back from the vault (a writer that
+    /// does not name the flag keeps the vault's) and the renderer writes `true`.
+    #[serde(default)]
+    pub humanoid: Option<bool>,
 }
 
 /// One `Prompts/*.md` source — v4 `CharacterSystemPrompt` (the bytes-relevant subset).
@@ -131,6 +138,15 @@ pub struct CharacterVaultWriteInput {
     /// `properties.json`, `character.canChooseOutfit ?? false` on write).
     #[serde(default)]
     pub can_choose_outfit: Option<bool>,
+    /// The "can draw diagrams" flag (vault `properties.json`,
+    /// `character.canDrawDiagrams ?? false` on write — v4 `6588972d5`).
+    #[serde(default)]
+    pub can_draw_diagrams: Option<bool>,
+    /// The diagram style, RAW (vault `properties.json`, rendered through v4's
+    /// lenient `diagramStyleOrDefault` on write — anything but `handDrawn` /
+    /// `clean` writes `handDrawn`).
+    #[serde(default)]
+    pub diagram_style: Option<Value>,
     /// The freeform fact sheet (`metadata.json`). Has NO DB column — a raw
     /// character row simply cannot carry it, so `None` (absent) means "no
     /// opinion", NOT "empty". The write is guarded on `!= null` (see
@@ -196,8 +212,10 @@ fn serialize_js_number<S: Serializer>(value: &f64, s: S) -> Result<S::Ok, S::Err
 }
 
 /// `properties.json` shape — keys in v4's literal order; every key is always
-/// emitted (`null` when absent), never skipped. `canChooseOutfit` is appended last
-/// (v4's write default `?? false`), matching v4's key order.
+/// emitted (`null` when absent), never skipped. `canChooseOutfit`,
+/// `canDrawDiagrams` and `diagramStyle` close the object (v4's write defaults
+/// `?? false` / `?? false` / `diagramStyleOrDefault`), matching v4's key order —
+/// EIGHT keys since `6588972d5`.
 #[derive(Serialize)]
 struct PropertiesJson<'a> {
     pronouns: Option<&'a Pronouns>,
@@ -209,10 +227,16 @@ struct PropertiesJson<'a> {
     talkativeness: f64,
     #[serde(rename = "canChooseOutfit")]
     can_choose_outfit: bool,
+    #[serde(rename = "canDrawDiagrams")]
+    can_draw_diagrams: bool,
+    #[serde(rename = "diagramStyle")]
+    diagram_style: DiagramStyle,
 }
 
-/// `physical-prompts.json` shape — v4 `renderPhysicalPromptsJson`. Five keys,
-/// always emitted (`null` when the tier is unset).
+/// `physical-prompts.json` shape — v4 `renderPhysicalPromptsJson`. Six keys,
+/// always emitted: the five tiers (`null` when unset) and `humanoid`
+/// (`primary?.humanoid ?? true`, `b27e5089a`) — a v5 physical write must never
+/// erase a v4-written `"humanoid": false`.
 #[derive(Serialize)]
 struct PhysicalPromptsJson<'a> {
     #[serde(rename = "headAndShoulders")]
@@ -221,6 +245,7 @@ struct PhysicalPromptsJson<'a> {
     medium: Option<&'a str>,
     long: Option<&'a str>,
     complete: Option<&'a str>,
+    humanoid: bool,
 }
 
 /// Render `properties.json` from an owned bag (v4 `JSON.stringify(next, null, 2)`)
@@ -235,6 +260,8 @@ pub fn render_properties_json(
     first_message: Option<&str>,
     talkativeness: f64,
     can_choose_outfit: bool,
+    can_draw_diagrams: bool,
+    diagram_style: DiagramStyle,
 ) -> String {
     let props = PropertiesJson {
         pronouns,
@@ -243,12 +270,15 @@ pub fn render_properties_json(
         first_message,
         talkativeness,
         can_choose_outfit,
+        can_draw_diagrams,
+        diagram_style,
     };
     serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible")
 }
 
 /// Render `physical-prompts.json` from a physical description (v4
-/// `renderPhysicalPromptsJson`). A `None` description renders all-null.
+/// `renderPhysicalPromptsJson`). A `None` description renders all-null tiers and
+/// `"humanoid": true`.
 pub fn render_physical_prompts_json(physical: Option<&PhysicalDescriptionWrite>) -> String {
     let prompts = PhysicalPromptsJson {
         head_and_shoulders: physical.and_then(|p| p.head_and_shoulders_prompt.as_deref()),
@@ -256,6 +286,7 @@ pub fn render_physical_prompts_json(physical: Option<&PhysicalDescriptionWrite>)
         medium: physical.and_then(|p| p.medium_prompt.as_deref()),
         long: physical.and_then(|p| p.long_prompt.as_deref()),
         complete: physical.and_then(|p| p.complete_prompt.as_deref()),
+        humanoid: physical.and_then(|p| p.humanoid).unwrap_or(true),
     };
     serde_json::to_string_pretty(&prompts)
         .expect("physical-prompts.json serialization is infallible")
@@ -278,7 +309,7 @@ pub fn write_character_vault_managed_fields(
 ) -> Result<WriteResult, DbError> {
     let mut result = WriteResult::default();
 
-    // 1. properties.json (pretty JSON; all six keys always present).
+    // 1. properties.json (pretty JSON; all eight keys always present).
     let props = PropertiesJson {
         pronouns: character.pronouns.as_ref(),
         aliases: &character.aliases,
@@ -286,6 +317,8 @@ pub fn write_character_vault_managed_fields(
         first_message: character.first_message.as_deref(),
         talkativeness: character.talkativeness.unwrap_or(0.5),
         can_choose_outfit: character.can_choose_outfit.unwrap_or(false),
+        can_draw_diagrams: character.can_draw_diagrams.unwrap_or(false),
+        diagram_style: diagram_style_or_default(character.diagram_style.as_ref()),
     };
     let props_json =
         serde_json::to_string_pretty(&props).expect("properties.json serialization is infallible");
@@ -419,11 +452,13 @@ mod tests {
             first_message: input.first_message.as_deref(),
             talkativeness: input.talkativeness.unwrap_or(0.5),
             can_choose_outfit: input.can_choose_outfit.unwrap_or(false),
+            can_draw_diagrams: input.can_draw_diagrams.unwrap_or(false),
+            diagram_style: diagram_style_or_default(input.diagram_style.as_ref()),
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
         assert_eq!(
             json,
-            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}"
+            "{\n  \"pronouns\": {\n    \"subject\": \"she\",\n    \"object\": \"her\",\n    \"possessive\": \"hers\"\n  },\n  \"aliases\": [\n    \"Vi\"\n  ],\n  \"title\": \"The Inventor\",\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}"
         );
     }
 
@@ -437,6 +472,8 @@ mod tests {
             first_message: None,
             talkativeness: 1.0,
             can_choose_outfit: false,
+            can_draw_diagrams: false,
+            diagram_style: DiagramStyle::HandDrawn,
         };
         let json = serde_json::to_string_pretty(&props).unwrap();
         // `canChooseOutfit` follows `talkativeness`, so the line ends with a comma.
@@ -450,7 +487,7 @@ mod tests {
         let json = render_physical_prompts_json(None);
         assert_eq!(
             json,
-            "{\n  \"headAndShoulders\": null,\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}"
+            "{\n  \"headAndShoulders\": null,\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null,\n  \"humanoid\": true\n}"
         );
     }
 
@@ -463,11 +500,23 @@ mod tests {
             long_prompt: None,
             complete_prompt: Some("complete".into()),
             full_description: Some("ignored here".into()),
+            humanoid: None,
         };
         let json = render_physical_prompts_json(Some(&physical));
         assert_eq!(
             json,
-            "{\n  \"headAndShoulders\": \"face\",\n  \"short\": \"short\",\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": \"complete\"\n}"
+            "{\n  \"headAndShoulders\": \"face\",\n  \"short\": \"short\",\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": \"complete\",\n  \"humanoid\": true\n}"
         );
+    }
+
+    #[test]
+    fn physical_prompts_json_keeps_an_explicit_non_humanoid_flag() {
+        // v4 `primary?.humanoid ?? true` — an explicit `false` is written as given.
+        let physical = PhysicalDescriptionWrite {
+            humanoid: Some(false),
+            ..Default::default()
+        };
+        let json = render_physical_prompts_json(Some(&physical));
+        assert!(json.ends_with(",\n  \"humanoid\": false\n}"), "{json}");
     }
 }

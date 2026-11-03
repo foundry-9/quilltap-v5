@@ -10,7 +10,7 @@
     "not a slim column, so the slim _update is skipped -> updatedAt NOT bumped).",
     "",
     "FIXTURE: built by running v4's REAL repos.characters.create(character) with NO",
-    "physicalDescription, so the vault has only the scaffold's default four-key",
+    "physicalDescription, so the vault has only the scaffold's default (at the pin, five-key with humanoid: true)",
     "physical-prompts.json and a blank physical-description.md. The single update op",
     "then sets a non-null physicalDescription, overwriting both files. Both sides",
     "operate on a COPY of this SAME baked fixture; the character id is read back.",
@@ -27,7 +27,13 @@
     "diffs EXACTLY.",
     "",
     "SAFETY: testPepperBase64 is a THROWAWAY 32-byte key (the same one the other",
-    "characters fixtures use). NOT the real Friday pepper; safe to commit."
+    "characters fixtures use). NOT the real Friday pepper; safe to commit.",
+    "",
+    "P4.D349 (v4 b27e5089a) SCENARIOS: each runs from a FRESH copy of the fixture",
+    "and dumps its own row. The physical write keeps the vault's `humanoid` when the",
+    "incoming description omits it (managed-fields.ts:511-523 reads it back), and",
+    "writes an explicit value as given. The fixture is built per run by the pin's",
+    "scaffold, so its physical-prompts.json already carries `humanoid: true`."
   ],
   "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
   "character": {
@@ -41,8 +47,14 @@
     "title": "the scholar",
     "firstMessage": "Well met, traveller.",
     "talkativeness": 0.7,
-    "pronouns": { "subject": "she", "object": "her", "possessive": "hers" },
-    "aliases": ["Eva"],
+    "pronouns": {
+      "subject": "she",
+      "object": "her",
+      "possessive": "hers"
+    },
+    "aliases": [
+      "Eva"
+    ],
     "physicalDescription": null,
     "systemPrompts": [],
     "scenarios": [],
@@ -82,6 +94,104 @@
           "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat"
         }
       }
+    }
+  ],
+  "scenarios": [
+    {
+      "label": "omit over a stored false keeps false",
+      "ops": [
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "grey-eyed scholar",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat",
+              "humanoid": false
+            }
+          }
+        },
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "a grey-eyed glow",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "explicit true over a stored false writes true",
+      "ops": [
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "grey-eyed scholar",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat",
+              "humanoid": false
+            }
+          }
+        },
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "grey-eyed scholar",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat",
+              "humanoid": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "explicit false over the scaffold flag writes false",
+      "ops": [
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "grey-eyed scholar",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat",
+              "humanoid": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "label": "omit over the scaffold flag keeps true",
+      "ops": [
+        {
+          "patch": {
+            "physicalDescription": {
+              "fullDescription": "Tall, with ink-stained fingers and grey eyes.",
+              "headAndShouldersPrompt": "a woman with grey eyes, ink on her cheek",
+              "shortPrompt": "a grey-eyed glow",
+              "mediumPrompt": "a tall scholar with ink-stained fingers",
+              "longPrompt": "a tall woman, grey eyes, ink-stained fingers, worn coat",
+              "completePrompt": "a tall woman with grey eyes, ink-stained fingers, and a worn travelling coat"
+            }
+          }
+        }
+      ]
     }
   ]
 }

@@ -33,9 +33,16 @@ import { canonicalizeRows } from '../lib/tier2.js';
 interface Op {
   patch: Record<string, unknown>;
 }
+interface Scenario {
+  label: string;
+  ops: Op[];
+}
 interface Spec {
   testPepperBase64: string;
   ops: Op[];
+  /** P4.D349: independent op lists, each from a FRESH copy of the fixture —
+   *  one NDJSON row per scenario after the base row. */
+  scenarios?: Scenario[];
 }
 
 async function main(): Promise<void> {
@@ -51,6 +58,25 @@ async function main(): Promise<void> {
     );
   }
 
+  const runs: Array<{ label: string | null; ops: Op[] }> = [
+    { label: null, ops: spec.ops },
+    ...(spec.scenarios ?? []).map((sc) => ({ label: sc.label, ops: sc.ops })),
+  ];
+  // Each run is its own child process (v4's database manager and repositories
+  // are process singletons): `QT_CHARPHYS_RUN=<i>` selects one.
+  const only = process.env.QT_CHARPHYS_RUN;
+  if (only === undefined) {
+    const { execFileSync } = await import('node:child_process');
+    for (let i = 0; i < runs.length; i++) {
+      const out = execFileSync(process.execPath, process.execArgv.concat(process.argv.slice(1)), {
+        env: { ...process.env, QT_CHARPHYS_RUN: String(i) },
+        maxBuffer: 1 << 28,
+      });
+      process.stdout.write(out);
+    }
+    process.exit(0);
+  }
+  const run = runs[Number(only)];
   const scratch = mkdtempSync(join(tmpdir(), 'qt-charphys-oracle-'));
   process.on('exit', () => rmSync(scratch, { recursive: true, force: true }));
   mkdirSync(join(scratch, 'data'), { recursive: true });
@@ -81,7 +107,7 @@ async function main(): Promise<void> {
   if (idRow.length === 0) throw new Error('fixture has no character row');
   const characterId = idRow[0].id;
 
-  for (const op of spec.ops) {
+  for (const op of run.ops) {
     await repos.characters.update(characterId, op.patch as never);
   }
 
@@ -122,6 +148,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     JSON.stringify({
       case: 'characters-physical-tier2',
+      ...(run.label === null ? {} : { scenario: run.label }),
       characters,
       points,
       folders,

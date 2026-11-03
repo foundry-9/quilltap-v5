@@ -1335,6 +1335,7 @@ mod log_line_tests {
                     medium_prompt: None,
                     long_prompt: None,
                     complete_prompt: None,
+                    humanoid: None,
                 },
             );
         let now_w = now.clone();

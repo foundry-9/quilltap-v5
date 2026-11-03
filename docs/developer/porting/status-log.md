@@ -193888,6 +193888,45 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D349 — the three vault keys (`humanoid`, `canDrawDiagrams` / `diagramStyle`, `pronounGuidance`)
+
+Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-keys-8ab640`; worktree `.claude/worktrees/p4d349`). The session started on `main`'s checkout and moved to the new worktree cut from `8ab640259` before the first edit. The writers were NOT pre-started from `main`: the branch was cut from `CATALOG` directly, so no mid-lane rebase happened.
+
+- **§2 probe (an observation, 2026-11-03 12:36 CST):** v4 `main` = `70d2859d8`, 58 commits past the pin `236c04e35`; tree clean; branch `main`. Recorded; the lane continued on the pin.
+- **The pin:** `/tmp/qt-v4-pin-p4d349-236c04e35` at `236c04e35ab23…`, `4.12.0-dev.0`. Root `npm ci --offline` rc 0 (openai 7.45.0, zod 4.6.7, the driver alias 12.11.1, pdfjs-dist 6.4.299, plugin-types 2.9.0). **Pin ruling (human, 2026-11-02):** symlink classes (2) and (3) — the CLI and plugin `node_modules` — are NOT used; `.claude/pin-plugin-sdks.sh` runs instead. The script fails `ENOTCACHED` on its first plugin dir (the `@quilltap/plugin-utils` packument; same as P4.D359's note), so its CLI step never runs. The lane ran ONLY that CLI step by hand, with the same offline floor command (driver 12.11.1 / SQLite 3.53.2 / chacha20). No plugin dir is installed; no family this lane drives loads a provider plugin. A machine restart mid-lane cleared `/tmp`; the pin was rebuilt the same way.
+
+### Commit A — the physical / properties writers, readers, hydration (items 1, 2, 4, 5, 6)
+
+- **Landed:**
+  - `PhysicalPromptsJson` writes six keys (`humanoid` = `primary?.humanoid ?? true`).
+  - `PropertiesJson` / `render_properties_json` write eight keys.
+  - The create bag gains `can_draw_diagrams` / `diagram_style` (the latter RAW, rendered through `diagram_style_or_default`).
+  - The RMW gains the two arms (the `canChooseOutfit` coalescing; v4's lenient style) and the DEBUG `[VaultOverlay] Writing diagram settings to properties.json` `{characterId, canDrawDiagrams, diagramStyle}`.
+  - The backfill renders eight keys.
+  - The scaffold constants carry v4's bytes (eight properties keys; physical `…"complete": null,\n  "humanoid": true` with no `headAndShoulders`), and the typed test mirrors moved with them.
+  - The readers: `canDrawDiagrams` STRICT, `diagramStyle` LENIENT, `humanoid` LENIENT `Option<bool>` (absent serialises as no key).
+  - Hydration: the two keys after `canChooseOutfit`; `physicalDescription.humanoid` appended (`unwrap_or(true)`) only when the file parses.
+  - `characters_read` materialises both defaults; `MANAGED_FIELDS` names both.
+  - Item 6: the physical write reads the vault's flag back when the incoming description omits it (NEW `read_current_physical_prompts` — LENIENT like v4's `readCharacterVaultPhysicalPrompts`: absent → `Document absent from database-backed store` DEBUG and `None`; read failure → `Failed to read vault file` WARN and `None`; parse failure → `None`). It logs `[VaultOverlay] Physical write carries no humanoid flag; keeping the vault's` with the hunk's keys `{characterId, mountPointId, humanoid: humanoid ?? true}` (read from `managed-fields.ts:511-523` at the pin).
+- **Measured, not ported (a standing gap):** v4's `parseJsonVaultFile` WARNs (`Invalid JSON in vault physical-prompts.json; falling back to DB values` / `… failed schema validation …`). v5's parser returns `None` silently everywhere (no v5 site ports those texts). The read-back inherits that silence.
+- **Families (from the pin):**
+  - `vault_json_parsers` 51 rows OK (+14: `ph-humanoid-` 7, `p-diagram-` 4, `p-can-draw-` 3).
+  - `vault_character_write` OK (+2 ops based on op 3's character; the final file carries `humanoid: false`, `canDrawDiagrams: true`, `diagramStyle: handDrawn` from `crayon`).
+  - `characters_physical_tier2` OK (base + 4 scenarios: omit over a stored `false` keeps `false`; explicit `true` over `false`; explicit `false` over the scaffold flag; omit over the scaffold flag keeps `true`). The case now spawns one child process per run (v4's manager is a process singleton).
+  - `characters_scaffold_tier2` OK (its sanity literals moved to the new bytes).
+  - `characters_create_tier2`, `metadata_vault_roundtrip`, `vault_read_overlay`: OK.
+  - `p4d349_log_tests` (2): both lines with their silence legs.
+- **Red-first:** NOT run on the unported tree (the base's source has 0 hits of any of the keys, so every new row's output differs by construction). Recorded as inferred, not measured.
+- **Reds read by row after commit A (none are commit A's):**
+  - `characters_reads`: the LIST DTO lacks `canDrawDiagrams` / `diagramStyle` on all ten `list_*` cases — item 17, this lane, later commit.
+  - `characters_mutations`:
+    - `wardrobe_create` lacks `pronounGuidance: []` — item 3, this lane.
+    - `tag_delete` (v4 answers `Internal server error`) and `character_delete_cascade` (v4 `deletedMemories: 0`): memory-side pin behaviour this base (cut from `main`, without `KEYSTONE`) does not carry — recorded for the union.
+  - `character_archive_tier2`:
+    - `character_detail_enrichment` lacks `diagramStyle` — item 17.
+    - The bundle diffs are the export key positions (R-D).
+    - The memories counts (`archive_sable` `pruneComplete`, `rehydrate_pre_revision_avatar` `memories: 0`) are the keystone's — recorded for the union.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.

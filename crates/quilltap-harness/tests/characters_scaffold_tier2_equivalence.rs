@@ -260,9 +260,10 @@ fn characters_scaffold_tier2_matches_oracle() {
 
     // The three seeded JSON files carry the FIXED default content.
     let docs = rows("documents");
-    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}";
-    let physical_default =
-        "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}";
+    let props_default = "{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": \"\",\n  \"firstMessage\": \"\",\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}";
+    // P4.D349 (v4 `6588972d5` / `b27e5089a`): eight properties keys, and the
+    // physical default gains `humanoid: true` (still no `headAndShoulders`).
+    let physical_default = "{\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null,\n  \"humanoid\": true\n}";
     // metadata.json seeds an empty object — v4 JSON.stringify({}, null, 2) == "{}".
     let metadata_default = "{}";
     assert!(
