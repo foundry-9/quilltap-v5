@@ -194593,6 +194593,116 @@ Every family regenerates through the sweep driver from the pin (`--run-all --for
 
 **Versions:** core 0.0.1382, host 0.0.219. web is untouched in src (tests only, not bumped); harness is frozen.
 
+## P4.D345 — Pascal operator intervention SERVER at `236c04e35` (lane record, 2026-11-03)
+
+**Branch:** `claude/p4.d345-pascal-intervention-server-8dac8f39b`, cut from `SPINE` `8dac8f39b` (P4.D348's Tier-1 commit; its header records `TurnStopReach` as built). The session started on `main` `8976915ea` in the primary checkout. It moved to the worktree `~/source/quilltap-v5/.claude/worktrees/p4d345` before any edit.
+
+**§2 probe (an observation, never a STOP).**
+- v4 moved: `main` was `d4ddeb943` (several dozen commits past the pin) at 2026-11-03 06:46 CST, and `9b5bb27df` (55 past) by the gate.
+- The tree is clean on branch `main`. `bugfix` is unchanged from the ledger.
+
+**Pin.**
+- `/tmp/qt-v4-pin-p4d345-236c04e35` at `236c04e35ab23…`, `package.json` `4.12.0-dev.0`.
+- The root `npm ci --offline` succeeded: zod 4.6.7, openai 7.45.0, @openrouter/sdk 1.5.9, @xterm/headless 6.0.0, `better-sqlite3` (the multiple-ciphers alias) 12.11.1.
+- **Human pin ruling (2026-11-02), recorded:** symlink classes (2) and (3) (the CLI and plugin `node_modules`) were NOT used. `.claude/pin-plugin-sdks.sh` floor-installed them inside the pin: CLI driver 12.11.1 on SQLite 3.53.2 / chacha20; plugin dirs openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1.
+
+**`TurnStopReach`: outcome (b).**
+- `ToolExecutionContext.turn_control` and both trigger-site param structs carried the handle.
+- `RunTriggeredCustomToolsParams` did not, so this lane added that field and two fenced pass-through lines in `trigger_phrase_sites.rs` (`// === P4.D345: TurnStopReach pass-through ===`). That is the only edit in P4.D348's file (H2).
+- The Stop veto is Tier 1, pinned by `hold_tests::stop_vetoes_a_held_run` and `…an_already_stopped_turn_vetoes_after_the_add`. No `HOLD_WITHOUT_STOP_REACH` WARN exists.
+
+### Commits (Tier 1)
+1. `9843317e9` — the grammar: `intervention` (18th key), `intervene` ×2, and the ONE definition-corpus regen.
+2. `87f8b10ba` — the custom-tool schema re-vendored on both copies.
+3. `7e40e3dbe` — the engine: draw / spans / pins / `ReplayInputs` (R-2) / `pose_llm_consult` / the always-drawn unit (R-3).
+4. `16daf1cb0` — the pure intervention module and `pascal_intervention_pure_equivalence`.
+5. `06bbee4ba` — the Workbench `intervention` key (T2).
+6. `eca6cdfcb` — the realtime topic `customToolInterventions` (`RealtimeTopicAppend`).
+7. `f935c7e1f` — the registry and the hold view.
+8. `07bc97345` — the run-service hold, the entrances, the veto and the Stop (items 7–9).
+9. `281b3eb8e` — the four HTTP actions, the route family and the wire-contract guard (item 10).
+10. `37db44956` — the intervention-leaks unit test (item 13).
+11. `08c06cddd` — `tri_state_edges_share_the_decoder` re-measured: the edge's four hand-built verbs, 152 → 156 (found by the gate).
+
+### Red-first and measurements
+- **Definition corpus.** The pre-lane generator, regenerated at the pin, is **byte-identical** to the committed 716 rows. The P4.D345 block adds 31 rows (15 accepted, 16 refused). On SPINE's parser, 31 assertions were red: every new row except those whose sentence happened to match, plus the 18th tripwire.
+- **The corpus after the regen.** 747 rows (10 title / 638 definition, of which 224 accept and 414 reject / 99 gate). md5 `99a010307e9c4602e7786d6cfb5db473`, sha256 `4ab4d8fd8ab5c7523a2d5e4d75a2d6933e7107187a9730d6a33e268898167f14`. The SPA copy is `cmp`-equal, and the fixtures `README.md` provenance block is updated.
+- **New finding (fixed).** v4's `CustomToolParameterSchema` is a plain `z.object`, so an unknown key beside a parameter is STRIPPED. v5 had refused it since P4.6ay. Row `parameter-intervene-unknown-beside`. The SPA twin must agree (P4.D346).
+- **Schema.** Both copies are 66,469 B, md5 `454fa04e7a11caa98becd877212f20e2`. `custom_tool_schema_embed_guard` (all legs) and `public_schemas_vendor_guard` are green with `QT_V4_CHECKOUT=$PIN`. `pascal_edit_custom_tool_equivalence` was re-recorded from the pin and is green.
+- **Execution family (R-3).** 113 `executeCustomTool` rows; 111 gained `draw` / `rollSpan` / `valueSpan`, and 28 carry `llmPromptRendered`. **90 degenerate-range rows moved `bytesConsumed` by +6.** The mutation "draw the unit only when min ≠ max" turns the family red. The header and the oracle's `:891` comment are rewritten.
+- **Byte supply that R-3 forced elsewhere.**
+  - `pascal_simulate_equivalence` now feeds and asserts `runs × 6` bytes on the range form, since v4's `simulateOutcomes` draws through `rollRange`.
+  - The handler family feeds 6 bytes and asserts `consumed ∈ {0, 6}`.
+  - `pascal_bench_wardrobe` feeds 6.
+  - The core unit tests that dealt range runs feed 6.
+- **Route families.**
+  - The custom-tools route, the Workbench route, the handler and the trigger runner were re-recorded from the pin; all are green.
+  - The three consult-bearing families now register v4's `finishReason: 'stop'` on their canned consult. That has been red since SPINE's `eb2d87788` funnel, not this lane's change.
+  - The Workbench preview masks the live crypto `draw.unit`; it is the only nondeterministic key, and is range-checked.
+- **Workbench (H3).** `pascal_workbench_equivalence` was regenerated ONCE at the pin. `intervention` is green, and a new key-order leg pins its position. **`effect` is red by design: 1 key × 10 entries**, and the same on the Workbench-route `library` row. With an `effect` stand-in (reverted), both families pass whole.
+- **T2 correction (§R.4 — the hunk wins).** v4's builder literal puts `intervention` right after `disabled`, not after `triggerCount` as the contract prose said. `effect` IS after `triggerCount`. A note for P4.D343 / P4.D346 is in the shared notes folder.
+- **Realtime.** `realtime_topics_equivalence` re-run from the pin is red by design only on P4.D343's `storytellerRounds` (H4). The topic test now pins the first eight and this topic last. `realtime_publish_sites_guard` is unmoved and green.
+- **Pure family (NEW).** 228 rows: 72 parse, 52 recompute, 27 check, 24 presentation, 22 eligibility, 13 span, 11 definition, 5 pins, 2 veto. Green. Each of the five order-named mutations turns it red: span flags kept after rounding; `exactly` on `<=`; effects compared by `fired` alone; the dice-count check before the hidden roll (the order row `hidden-roll-before-count`); faces clamped to 0. Every replay runs on an EMPTY `FixedBytes`, with `consumed()==0` asserted.
+- **`ROUND_DROPS_MIN_EXCLUSIVE`.** No row named an unreachable value, so it is not recorded. The port is faithful: rounding drops both flags.
+- **Route family (NEW).** 33 scenes: v4's 26 `it`s, widened. Each runs over v4's REAL `route.ts` / `interventions.ts` / registry / recompute / engine, with holds registered through the real `hold()` (v4's own test posture). `{status, body}`, settled decisions, consults, prompts posed and lines are all compared as bytes. Green.
+- **New finding (fixed).** v5 had never ported v4's `Custom tool LLM consult failed` WARN, present at the baseline; the route family found it. It is ported in `resolve_llm_consult`. Every consult family re-run green.
+- **Context name (§R.4).** The order said the handler's context was `tools.run-custom`; v4's `CONTEXT` is `run-custom-handler`, and that is what is ported.
+- **R-7 carriers.** `grep PascalMetaIn crates/quilltap-core/src/services` finds no re-parse. backup / `.qtap` / restore pass the blob, so nothing else moves.
+- **R-11 `resolvedAt`.** Stamped at resolve time with `now_unix_ms()`. Not frozen: no family dumps a dealt `pascalMeta` yet (see the deferral below).
+- **Censuses.**
+  - `dispatch_wrong_type_census` route-identifier count 515 → 519, the four `chat_id` path fields; H11 re-measures.
+  - `web_edge_body_parse_guard` gains 2 `PARSER_WIRING` rows.
+  - `zod_issues_home_guard` is green; three constructors were added in its home.
+  - `query_param_semantics_equivalence`: the custom-tools GET's available list `[]` → `["interventions"]`, plus the new edge legs (not-JSON, non-object, 404, the POST list).
+- **Observation for siblings.** `message_finalizer_tier3` `trigger-phrase-reply` is red at the pin, and P4.D348 attributed it here. Measured NOT this lane's: `bell` is not intervenable, so v4's `mayHoldRun` returns silently. It is P4.D343's family; see the shared note.
+
+### Ruled / recorded divergences
+- **R-M `HOLD_KEEP_ALIVE_NO_STREAM`** (both ways):
+
+  | v4 | v5 |
+  |---|---|
+  | `keepAlive` on `TurnControlEntry`, pinged every 15 s (`KEEP_ALIVE_MS`) as `: keep-alive` on the held SSE response | none: no `keep_alive` slot, no constant, no pinger |
+  | the stream stays warm through proxies | the `ChatSend` dispatch is awaited whole, and the Event channel pings itself (`events.rs` `KEEP_ALIVE_INTERVAL`) |
+
+  The measurement is dogfood row 12. If the human overrules, the work is P4.D348's host work.
+- **`running in the job child`** is ported as a module-local `is_job_child() -> false` twin, pinned NEGATIVE (`the_job_child_reason_is_pinned_negative`).
+- **`intervention: null`** in `pascalMeta` reads as absent; v4 would refuse the row. This is the R-7 class and unreachable.
+- **Tier R** does not move (§L.5).
+
+### DEFERRED (loud)
+- **Tier 2 item 15 — the scripted-resolver tier-3 rows** in the handler / trigger-runner families, NOT landed. The rows are `held-deal-changed-roll`, `held-as-rolled`, `held-deal-nothing-changed`, the three veto callers, `held-stop-vetoes`, and `trigger-held-veto-continues`. Also NOT landed, as part of the same piece:
+  - the Fixtures deliverable: `fixtures/pascal-run-custom-intervention.ts` + `extend-pascal-run-custom-intervention.ts` + the WIDENED `pascal-run-custom-{main,mount}.db` pair (`croupier_hold`, `held_dice`);
+  - the route family "over the widened pair". The route family registers holds directly through the REAL registry with a REAL engine baseline, which is v4's own test posture.
+
+  So **`pascalMeta.intervention`'s bytes through a real `chat_messages` row are not yet compared against v4**. Today they are pinned only by unit tests: the record is the last key, the `dealt` facts are byte-pinned by the pure family, and `changed` comes from `changed_fields`. The hold path end to end (hold → resolve → post) is pinned by core unit tests: as-rolled, Stop, already-stopped, not-held reasons.
+- **Tier 2 item 16** (the dogfood walk-doc rows): the 💸 rows below are the queue input.
+- **Optional SPA corpus vitest on the un-stacked twin:** not run (optional; the corpus spec is P4.D346's, H5).
+
+### HANDOFF
+- H1: n/a (outcome b).
+- H2: the two `trigger_phrase_sites.rs` lines are on this branch (fenced).
+- H3: `effect` red ×10 entries (T2, with the position correction above).
+- H4: the ten-topic list.
+- H5 / H10: the SPA twin + corpus spec header and the SPA schema asset are this branch's bytes; P4.D346 must strip unknown parameter keys like v4.
+- H6–H9, H11, H12: as the order states.
+
+### 💸 dogfood rows
+The order's 14 rows, unchanged; row 4 runs with the Stop reach (outcome b).
+
+### Versions at close
+core 0.0.1392, web 0.0.253, SPA 0.5.909. host, cli and tauri are untouched; harness is frozen at 0.0.1110.
+
+### Gate (2026-11-03)
+- fmt is clean. clippy is clean on both feature sets, with `apps/web/dist` built. `recipe_sweep.py --self-test`: 0 failures.
+- `cargo test --workspace --no-fail-fast` was run with the lane env (`/tmp/p4d345/gate.sh`: 18 oracle exports and `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin). Result: **884 binaries / 5,857 passed / 7 failed / 3 ignored**. Every red is classified:
+  - **Lane-caused, fixed:** `tri_state_edges_share_the_decoder`; green by name after `08c06cddd`.
+  - **H3, by design:** `pascal_workbench_equivalence` and `pascal_workbench_route_equivalence` (`effect` ×10 entries; P4.D343).
+  - **H4, by design:** `realtime_topics_equivalence` (`storytellerRounds`; P4.D343).
+  - **P4.D360, by design at the pin:** `provider_sdk_version_guard`.
+  - **Not this lane's:** `message_finalizer_tier3` `trigger-phrase-reply` (see above; P4.D343's family). `cli_differential` has two `recall-replay` help rows, which are P4.D342's (`recall_replay_help.txt`, as P4.D348's gate also recorded). Tier R otherwise green; this lane touches no CLI file.
+  - SKIP lines: none for this lane's families. Every one of the 18 env-armed families ran.
+- No SPA build / vitest / Playwright, per the order.
+
 ## P4.D343 unit E — declared tool effects + the effect ceiling (v4 `b15fe9404`, pin `236c04e35`)
 
 - **Lane start:** session began on the main checkout (`8976915ea`); moved to `.claude/worktrees/p4d343`, branch `claude/p4.d343-storyteller-server-effects-8dac8f39b`, cut from `SPINE` `8dac8f39b` (confirmed against P4.D348's lane-branch status header). §2 probe 2026-11-03 06:43 CST: v4 `main` `d4ddeb943`, 51 commits past the pin, tree clean (an observation). Pin `/tmp/qt-v4-pin-p4d343-236c04e35` = `236c04e35ab23…`, `4.12.0-dev.0`; root `npm ci --offline` rc 0; **plugin SDKs by `.claude/pin-plugin-sdks.sh` (the human's 2026-11-02 ruling — NOT the order's symlink class 3)**: openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1, CLI driver 12.11.1. Root: openai 7.45.0, openrouter 1.5.9, zod 4.6.7, plugin-types 2.9.0, xterm/headless 6.0.0, better-sqlite3 12.11.1, pdf-parse absent.
