@@ -9,9 +9,12 @@ Emits `CONSOLIDATION_SYSTEM_PROMPT` (v4
 `lib/memory/cheap-llm-tasks/consolidation-tasks.ts`), a template literal with
 NO interpolation. Template escapes are EVALUATED the way JS evaluates the
 literal (`\\``, `\\\\`, `\\$` -> their runtime character); any other escape,
-and any `${` interpolation, aborts the run rather than guessing.
+and any `${` interpolation other than the two importance notes v4 `6fd2d5ffb`
+imports from `extraction/prompts/shared.ts` (evaluated by
+`extract-memory-task-prompts.py --print-blocks`), aborts the run rather than
+guessing.
 """
-import sys
+import json, os, re, subprocess, sys
 
 src = open(sys.argv[1], encoding='utf-8').read()
 
@@ -45,16 +48,48 @@ def js_evaluate_escapes(raw, what):
     return ''.join(out)
 
 
+# Since v4 `6fd2d5ffb` the prompt closes with the two importance notes it
+# imports from `lib/memory/extraction/prompts/shared.ts`. Their text comes
+# from THAT file (resolved beside this one in the same checkout) through the
+# memory-task extractor's own evaluator, so the two prompts can never carry
+# different bytes for one note. Only the names on the `@/lib/memory/
+# extraction/prompts/shared` import line are substituted; any other
+# interpolation aborts.
+SHARED_IMPORT = re.search(
+    r"^import \{ ([A-Z_, ]+) \} from '@/lib/memory/extraction/prompts/shared'$", src, re.M)
+SHARED_NAMES = [n.strip() for n in SHARED_IMPORT.group(1).split(',')] if SHARED_IMPORT else []
+
+
+def shared_notes():
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[1])))))
+    prompts = os.path.join(root, 'lib', 'memory', 'extraction', 'prompts')
+    out = subprocess.run(
+        [sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                      'extract-memory-task-prompts.py'),
+         '--print-blocks', prompts],
+        check=True, capture_output=True, text=True).stdout
+    return json.loads(out)
+
+
 raw = template_after('export const CONSOLIDATION_SYSTEM_PROMPT = ')
 if '${' in raw:
-    raise SystemExit('CONSOLIDATION_SYSTEM_PROMPT interpolates — teach the script')
+    # The notes are runtime text; the prompt's own escapes would have to be
+    # evaluated BEFORE they go in. None exist today — abort rather than guess.
+    if '\\' in raw:
+        raise SystemExit('CONSOLIDATION_SYSTEM_PROMPT has a template escape beside an interpolation — teach the script')
+    blocks = shared_notes()
+    for name in SHARED_NAMES:
+        raw = raw.replace('${' + name + '}', blocks[name])
+    if '${' in raw:
+        raise SystemExit('CONSOLIDATION_SYSTEM_PROMPT interpolates something not imported from shared.ts — teach the script')
 text = js_evaluate_escapes(raw, 'CONSOLIDATION_SYSTEM_PROMPT')
 assert '"####' not in text
 
 header = '''//! GENERATED — the verbatim system prompt of v4
 //! `lib/memory/cheap-llm-tasks/consolidation-tasks.ts`
-//! (`CONSOLIDATION_SYSTEM_PROMPT`, no interpolation; template escapes
-//! evaluated). Extracted mechanically by
+//! (`CONSOLIDATION_SYSTEM_PROMPT`; template escapes evaluated; since v4
+//! `6fd2d5ffb` its two importance-note interpolations substituted from
+//! `extraction/prompts/shared.ts`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-consolidation-prompt.py` so no byte was
 //! transcribed by hand; the tier-1 differential
 //! (`consolidation_tasks_equivalence`) proves the bytes. Regenerate by

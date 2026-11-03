@@ -19,16 +19,25 @@ Emits the SELF / OTHER extraction bodies (`selfBodyForCap` /
 one live interpolation (the candidate cap / `FOLD_EPISODE_CAP`). The constant blocks
 the bodies interpolate (`ORIENTING_CONTEXT_SKIP_BULLET`,
 `AGREEMENTS_INSTRUCTION_BLOCK`, `EVENT_INSTRUCTION_BLOCK`,
-`TAGS_INSTRUCTION_BLOCK`) are substituted here. Template escapes are
+`TAGS_INSTRUCTION_BLOCK`, and since v4 `6fd2d5ffb` the two importance notes
+`IMPORTANCE_WORK_CEILING_NOTE` / `IMPORTANCE_FACT_NOT_TELLING_NOTE`, the first
+itself interpolating `${WORK_IMPORTANCE_CEILING.toFixed(2)}`) are substituted
+here. Template escapes are
 EVALUATED (`\\``, `\\\\`, `\\$` -> their runtime character) the way JS evaluates
 the template literal — v4 `ca363178d`'s TAGS `future` gloss carries the first
 escaped backticks (`\\`moment\\``), and a literal backslash in the output would
 be a byte v4 never sends. Any other escape, and any interpolation left over
 after substitution, aborts the run rather than guessing.
 """
-import re, sys
+import json, re, sys
 
 import os
+# `--print-blocks <prompts dir>` prints the substituted constant blocks as JSON
+# and exits — `extract-consolidation-prompt.py` reads the two importance notes
+# through it, so both generated modules share ONE evaluation of shared.ts.
+PRINT_BLOCKS = sys.argv[1] == '--print-blocks'
+if PRINT_BLOCKS:
+    del sys.argv[1]
 PROMPT_FILES = ('self.ts', 'other.ts', 'shared.ts', 'episode.ts')
 src = '\n'.join(
     open(os.path.join(sys.argv[1], name), encoding='utf-8').read() for name in PROMPT_FILES
@@ -76,8 +85,41 @@ def constant(name):
         raise SystemExit(f'{name} interpolates — teach the script its substitutions')
     return js_evaluate_escapes(raw, name)
 
-# A block absent from the source (AGREEMENTS before v4 `ca363178d`) is simply
-# not substituted; a body that still references it trips the leftover check.
+def numeric_constant(name):
+    """A `const NAME = <number literal>` declaration's value, as written."""
+    m = re.findall(r'\bconst ' + re.escape(name) + r' = ([0-9]+(?:\.[0-9]+)?)\n', src)
+    if len(m) != 1:
+        raise SystemExit(f'numeric constant {name} found {len(m)} times — teach the script')
+    return m[0]
+
+
+def js_to_fixed(literal, digits):
+    """JS `Number.prototype.toFixed(digits)` for a short decimal literal. Only
+    the exact case — the literal already has at most `digits` fraction digits —
+    is taught (padding with zeros is exact); anything that would round aborts
+    rather than guess at JS's rounding."""
+    whole, _, frac = literal.partition('.')
+    if len(frac) > digits:
+        raise SystemExit(f'toFixed({digits}) of {literal} would round — teach the script')
+    return whole + ('.' + frac.ljust(digits, '0') if digits else '')
+
+
+def importance_note(name):
+    """v4 `6fd2d5ffb`'s two rubric notes (`shared.ts`). The ceiling note
+    interpolates `${WORK_IMPORTANCE_CEILING.toFixed(2)}` — the ONE expression
+    form taught here; any other interpolation aborts."""
+    raw = template_after(f'const {name} = ')
+    for expr in re.findall(r'\$\{([^}]*)\}', raw):
+        m = re.fullmatch(r'([A-Z_]+)\.toFixed\((\d)\)', expr)
+        if not m:
+            raise SystemExit(f'{name}: unhandled interpolation ${{{expr}}} — teach the script')
+        raw = raw.replace('${' + expr + '}', js_to_fixed(numeric_constant(m.group(1)), int(m.group(2))))
+    return js_evaluate_escapes(raw, name)
+
+
+# A block absent from the source (AGREEMENTS before v4 `ca363178d`; the two
+# importance notes before `6fd2d5ffb`) is simply not substituted; a body that
+# still references it trips the leftover check.
 BLOCKS = {
     name: constant(name)
     for name in (
@@ -88,6 +130,14 @@ BLOCKS = {
     )
     if f'const {name} = ' in src
 }
+BLOCKS.update({
+    name: importance_note(name)
+    for name in ('IMPORTANCE_WORK_CEILING_NOTE', 'IMPORTANCE_FACT_NOT_TELLING_NOTE')
+    if f'const {name} = ' in src
+})
+if PRINT_BLOCKS:
+    print(json.dumps(BLOCKS))
+    sys.exit(0)
 
 def body(marker, cap, what):
     raw = template_after(marker)

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-02 — feat(memory): the importance rubric in the four memory-writing prompts (P4.D342, v4 `6fd2d5ffb`)
+
+_Versions: core 0.0.1381._
+
+The SELF, OTHER and episode extraction prompts and the consolidation system prompt now carry v4's new importance ladder (0.95 for life-and-bond facts, 0.85 for revelations and personal commitments, 0.45 for work decisions made in passing), the work-ceiling note (work, project and tooling agreements never score above 0.65) and the "score the fact, not the telling" note. The extraction examples are re-scored and gain the two pregnancy examples. Both generated `prompt_text.rs` modules are regenerated from the pin by their extractors, which now resolve the two notes from `extraction/prompts/shared.ts` (incl. the ceiling's `toFixed(2)`); the consolidation extractor reads them through the memory extractor, so both modules share one evaluation. Existing memories are not rescored.
+
 #### 2026-11-03 — test(web): re-measure the hand-built Request census for the intervention edge (P4.D345)
 
 _No crate versions bumped._

@@ -89,16 +89,32 @@ same underlying realization or decision in different words, keep
 the more specific one and drop the other.
 
 IMPORTANCE — calibrate to these anchors
-  0.90  The subject made a major commitment (one the subject spoke
-        themselves) or had a self-revelation that changes how they
-        understand themselves.
+  0.95  A fact that redefines the subject's life or bonds: marriage,
+        vows, pregnancy, birth, death, a change of body, joining or
+        leaving the family.
+  0.85  The subject had a self-revelation that changes how they
+        understand themselves, or made a personal commitment
+        (one the subject spoke themselves) to another person about
+        their relationship.
   0.65  The subject formed a substantive new opinion, plan, or
-        position.
+        position — including a commitment to build, file, fix, or
+        rule on something.
+  0.45  The subject made a work decision, ruling, or task agreement
+        in passing.
   0.40  The subject expressed a fresh preference, reaction, or novel
         gesture in passing.
   0.20  The subject acted in a way consistent with established identity
         but worth a single note.
   < 0.20  Do not extract.
+Work, project, and tooling agreements — building, filing, fixing, or
+ruling on something — never score above 0.65, however firmly they
+were spoken. The top of the scale is for what changes who someone is or
+what they are to each other.
+
+Score the fact, not the telling. A pregnancy, marriage, birth, death,
+change of body, or someone joining or leaving the family is a 0.95 fact
+however it arrives — announced, revealed, confessed, or overheard. The
+0.85 band is for revelations whose content is not itself such a fact.
 
 OUTPUT — first person, past tense, one fact per object.
   content      one sentence stating what the subject did, decided, or
@@ -116,10 +132,19 @@ EXAMPLE — good extraction:
     "content": "I committed to restructuring the summarization pipeline around a shared-base-plus-witness-set design after Charlie agreed it was the highest-leverage fix.",
     "summary": "committed to summarizer refactor",
     "keywords": ["summarizer", "commitment", "architecture"],
-    "importance": 0.85,
+    "importance": 0.65,
     "temporal": "future",
     "scope": "narrow",
     "context": "philosophy"
+  },
+  {
+    "content": "I told Charlie and Amy at breakfast that I am pregnant with Charlie's daughter, and that I have known since August.",
+    "summary": "told charlie and amy i am pregnant",
+    "keywords": ["pregnancy", "daughter", "family"],
+    "importance": 0.95,
+    "temporal": "present",
+    "scope": "wide",
+    "context": "relationships"
   }
 ]
 
@@ -255,18 +280,32 @@ distinct memories about the same event from their own angle — that
 is allowed and expected.
 
 IMPORTANCE — calibrate to these anchors
-  0.90  An explicit new commitment the subject themselves spoke, or a
-        revelation, that changes how the observer relates to the
-        subject. A proposal made TO the subject is not the subject's
+  0.95  A fact that redefines the subject's life or bond to the
+        observer: marriage, vows, pregnancy, birth, death, a change of
+        body, joining or leaving the family.
+  0.85  A revelation, or a personal commitment the subject themselves
+        spoke, that changes how the observer relates to the subject.
+        A proposal made TO the subject is not the subject's
         commitment.
   0.60  A new substantive fact about the subject's background, plans,
-        or skills.
+        or skills — including a commitment to build, file, fix, or
+        rule on something.
   0.55  A proposal, condition, or demand the subject stated, not yet
         answered.
+  0.45  A work decision, ruling, or task agreement made in passing.
   0.40  A new preference, trait, or novel gesture expressed in passing.
   0.20  A specific event occurred with the subject present, no new
         information.
   < 0.20  Do not extract.
+Work, project, and tooling agreements — building, filing, fixing, or
+ruling on something — never score above 0.65, however firmly they
+were spoken. The top of the scale is for what changes who someone is or
+what they are to each other.
+
+Score the fact, not the telling. A pregnancy, marriage, birth, death,
+change of body, or someone joining or leaving the family is a 0.95 fact
+however it arrives — announced, revealed, confessed, or overheard. The
+0.85 band is for revelations whose content is not itself such a fact.
 
 OUTPUT — third person, past tense, names not pronouns (use the actual
 names from the CONTEXT footer below), one fact per object. Every item
@@ -290,7 +329,7 @@ EXAMPLE — good extraction (observer is Friday, subjects 1=Amy 2=Charlie):
     "content": "Amy proposed reframing the cost problem as a four-tier prompt cache layout when Charlie was stuck between two designs.",
     "summary": "proposed four-tier cache layout",
     "keywords": ["cache", "architecture", "proposal"],
-    "importance": 0.85,
+    "importance": 0.55,
     "temporal": "moment",
     "scope": "narrow",
     "context": "philosophy"
@@ -300,7 +339,7 @@ EXAMPLE — good extraction (observer is Friday, subjects 1=Amy 2=Charlie):
     "content": "Charlie agreed to defer the renaming pass until after Amy's cache patch lands.",
     "summary": "deferred rename until after cache patch",
     "keywords": ["rename", "deferred", "agreement"],
-    "importance": 0.65,
+    "importance": 0.45,
     "temporal": "future",
     "scope": "narrow",
     "context": "information"
@@ -313,6 +352,16 @@ EXAMPLE — good extraction (observer is Friday, subjects 1=Amy 2=Charlie):
     "importance": 0.55,
     "temporal": "moment",
     "scope": "narrow",
+    "context": "relationships"
+  },
+  {
+    "subjectIndex": 1,
+    "content": "Amy told Friday at the piano bench that she is nine weeks pregnant with Charlie's child, laying his hand against her stomach.",
+    "summary": "amy nine weeks pregnant with charlies child",
+    "keywords": ["pregnancy", "charlie", "family"],
+    "importance": 0.95,
+    "temporal": "present",
+    "scope": "wide",
     "context": "relationships"
   }
 ]
@@ -398,8 +447,21 @@ For each episode:
   narrativeTime the in-story time phrase, only when the story runs on a
                 fictional timeline ("the third night at sea")
   entities      2–6 proper nouns: places, people, named things
-  importance    0.20–1.00 (0.9 = a day the participants will retell for
-                years; 0.5 = a pleasant but ordinary outing)
+  importance    0.20–1.00 (0.95 = a day that changed the family: a
+                wedding, a birth, a death, a pregnancy revealed;
+                0.85 = a day the participants will retell for years;
+                0.5 = a pleasant but ordinary outing; a working session
+                is 0.45 or less)
+
+Work, project, and tooling agreements — building, filing, fixing, or
+ruling on something — never score above 0.65, however firmly they
+were spoken. The top of the scale is for what changes who someone is or
+what they are to each other.
+
+Score the fact, not the telling. A pregnancy, marriage, birth, death,
+change of body, or someone joining or leaving the family is a 0.95 fact
+however it arrives — announced, revealed, confessed, or overheard. The
+0.85 band is for revelations whose content is not itself such a fact.
 
 An episode records what was said and done, not what was agreed: attribute proposals and conditions to their speaker, and record an agreement only where the agreeing party's own assent appears in the window.
 

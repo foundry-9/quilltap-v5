@@ -1,7 +1,8 @@
 //! GENERATED — the verbatim system prompt of v4
 //! `lib/memory/cheap-llm-tasks/consolidation-tasks.ts`
-//! (`CONSOLIDATION_SYSTEM_PROMPT`, no interpolation; template escapes
-//! evaluated). Extracted mechanically by
+//! (`CONSOLIDATION_SYSTEM_PROMPT`; template escapes evaluated; since v4
+//! `6fd2d5ffb` its two importance-note interpolations substituted from
+//! `extraction/prompts/shared.ts`). Extracted mechanically by
 //! `harness/oracle/scripts/extract-consolidation-prompt.py` so no byte was
 //! transcribed by hand; the tier-1 differential
 //! (`consolidation_tasks_equivalence`) proves the bytes. Regenerate by
@@ -78,7 +79,19 @@ TAGS — each digest's "keywords" must end with exactly one value from each axis
   context   philosophy | relationships | history | banter | mannerisms |
             trivia | information
 
-IMPORTANCE — weigh the bound entry as a whole: 0.90 for a commitment or a
-revelation that changes how the holder relates to the subject; 0.60 for a
-substantive standing fact; 0.40 for a preference or pattern; 0.20 for a
-minor note worth keeping."####;
+IMPORTANCE — weigh the bound entry as a whole: 0.95 for a fact that
+redefines the subject's life or bond to the holder (marriage, vows,
+pregnancy, birth, death, a change of body, joining or leaving the family);
+0.85 for a revelation or personal commitment that changes how the holder
+relates to the subject; 0.60 for a substantive standing fact; 0.45 for
+work decisions, rulings, or task agreements; 0.40 for a preference or
+pattern; 0.20 for a minor note worth keeping.
+Work, project, and tooling agreements — building, filing, fixing, or
+ruling on something — never score above 0.65, however firmly they
+were spoken. The top of the scale is for what changes who someone is or
+what they are to each other.
+
+Score the fact, not the telling. A pregnancy, marriage, birth, death,
+change of body, or someone joining or leaving the family is a 0.95 fact
+however it arrives — announced, revealed, confessed, or overheard. The
+0.85 band is for revelations whose content is not itself such a fact."####;
