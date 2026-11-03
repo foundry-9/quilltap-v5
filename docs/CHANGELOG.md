@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(tools): declared tool effects + the turn's effect ceiling — v4 `b15fe9404` unit E at `236c04e35` (P4.D343)
+
+_Versions: core 0.0.1383._
+
+Every built-in tool now declares what it does to the world (`none`, `read`, `write`, `destroy`; undeclared counts as `write`) in one table, `tools/effects.rs` — v4's 74 rows, four of them computed from the call's input (`state`, `edit_custom_tool`, `doc_open_document`, `run_custom`) with v4's per-ceiling description notes. Custom tools derive `read` or `write` from their effects (`pascal/tool_effect.rs`). A turn may carry an effect ceiling: `build_tools` drops tools above it last (keeping a computed tool with its note), the executor refuses a call above it before any dispatch with v4's `Not run: …` result, and the trigger runner skips a matched custom tool above it. The curated destructive-tool list and its INFO are retired: an autonomous room without destructive permission is now a `write` ceiling, so all five `destroy` tools are withheld, not three. The Workbench library entry gains `effect`; `StreamParams.tool_choice` reaches the wire on the four chat-completions providers that read it; `LogContext` gains `storyteller_round_id` and the `STORYTELLER_BID` log type exists. `build_tools` reads an absent disabled-tool list as empty (v4 `a8214b253`). The `tool-build` oracle is re-aimed at v4's one-options-object `buildTools` (its import had died with `destructive-tools.ts`).
+
 #### 2026-11-03 — SPINE: the turn spine at `236c04e35` — bug 258 whispers, bug 262 one operator-post recorder, every Salon LLM call logged, S1 / S2 / TurnStopReach (P4.D348)
 
 _Versions: core 0.0.1382, host 0.0.219._

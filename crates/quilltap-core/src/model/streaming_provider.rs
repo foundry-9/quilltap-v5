@@ -197,7 +197,20 @@ fn request_input_from_stream_params(params: &StreamParams) -> RequestInput {
         // v4 `tools?: unknown[]` — carried on StreamParams as an opaque JSON
         // array value; `None`/non-array → absent (v4 sends `undefined`).
         tools: params.tools.as_ref().and_then(|v| v.as_array().cloned()),
-        tool_choice: None,
+        // P4.D343 (R-L): v4 `streaming.service.ts:596` — `...(toolChoice &&
+        // tools.length > 0 ? { toolChoice } : {})`: sent only with a non-empty
+        // slate.
+        tool_choice: params
+            .tool_choice
+            .clone()
+            .filter(|_| {
+                params
+                    .tools
+                    .as_ref()
+                    .and_then(|v| v.as_array())
+                    .is_some_and(|a| !a.is_empty())
+            })
+            .map(serde_json::Value::String),
         response_format: None,
         web_search_enabled: params.web_search_enabled,
         profile_parameters: params.profile_parameters.clone(),
@@ -817,7 +830,26 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         }
+    }
+
+    /// P4.D343 (R-L): v4 `streaming.service.ts:596` sends `toolChoice` only
+    /// with a non-empty slate.
+    #[test]
+    fn tool_choice_rides_only_a_non_empty_slate() {
+        let mut p = params("deepseek-chat");
+        p.tool_choice = Some("none".into());
+        assert_eq!(request_input_from_stream_params(&p).tool_choice, None);
+        p.tools = Some(serde_json::json!([]));
+        assert_eq!(request_input_from_stream_params(&p).tool_choice, None);
+        p.tools = Some(serde_json::json!([{"type": "function", "function": {"name": "x"}}]));
+        assert_eq!(
+            request_input_from_stream_params(&p).tool_choice,
+            Some(serde_json::json!("none"))
+        );
+        p.tool_choice = None;
+        assert_eq!(request_input_from_stream_params(&p).tool_choice, None);
     }
 
     /// [`params`] for OpenAI's responses API with a conversation-chaining id set.

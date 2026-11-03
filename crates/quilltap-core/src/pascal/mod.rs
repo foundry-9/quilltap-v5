@@ -18,6 +18,7 @@ pub mod placeholders;
 pub mod roster;
 pub mod run_service;
 pub mod side_effects;
+pub mod tool_effect; // P4.D343
 pub mod tool_gate;
 pub mod tool_gate_keys;
 pub mod tool_vocabulary;

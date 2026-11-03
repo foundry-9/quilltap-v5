@@ -176,6 +176,21 @@ fn validate_input(args: &Value) -> bool {
     true
 }
 
+/// v4 `stateToolEffect` (P4.D343): `operation: "fetch"` reads; `set` and
+/// `delete` write (deleting a key is a write, not a destroy — the value can be
+/// set again). `None` when the input fails `stateToolInputSchema` (the caller
+/// counts it as `write`).
+pub fn state_tool_effect(input: &Value) -> Option<crate::tools::effects::ToolEffect> {
+    use crate::tools::effects::ToolEffect;
+    if !validate_input(input) {
+        return None;
+    }
+    Some(match input.get("operation").and_then(Value::as_str) {
+        Some("fetch") => ToolEffect::Read,
+        _ => ToolEffect::Write,
+    })
+}
+
 /// The failure `operation` v4 derives when validation fails / catch fires:
 /// `input.operation` if `input` is an object with that key, else `'fetch'`.
 fn fallback_operation(args: &Value) -> Value {

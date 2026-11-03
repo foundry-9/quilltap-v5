@@ -860,6 +860,7 @@ async fn brahma_console_tier3_matches_oracle() {
         tools: Vec::new(),
         model_supports_native_tools: true,
         use_native_web_search: false,
+        ..Default::default()
     };
     let mut loop_failures: Vec<String> = Vec::new();
     for lc in &spec.loop_cases {

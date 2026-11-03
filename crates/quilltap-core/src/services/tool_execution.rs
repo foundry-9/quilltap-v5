@@ -319,6 +319,19 @@ pub struct ToolExecutionContext {
     /// `turn_tool_context` AFTER [`create_tool_context`] returns; `None` off a
     /// registered Salon send. P4.D345 consumes it in `tools/run_custom.rs`.
     pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
+    // === P4.D343 (unit E): the turn's effect ceiling ===
+    /// The turn's effect ceiling (v4 `ToolExecutionContext.effectCeiling`):
+    /// the executor refuses a call above it before any dispatch. `None` = no
+    /// ceiling (every ordinary turn outside Storyteller mode and permissive
+    /// autonomous rooms).
+    pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
+    /// Custom tool name → derived effect for this turn's `run_custom` roster
+    /// (v4 `customToolEffects`), so `run_custom` is ranked by the tool it names.
+    pub custom_tool_effects: std::collections::BTreeMap<String, crate::tools::effects::ToolEffect>,
+    /// Plugin tool name → declared effect (v4 `pluginToolEffects`). Always
+    /// empty: v5 has no tool-plugin registry (`PLUGIN_TOOL_EFFECTS_EMPTY`,
+    /// ruling R-2).
+    pub plugin_tool_effects: std::collections::BTreeMap<String, crate::tools::effects::ToolEffect>,
 }
 
 /// Create a tool-execution context (v4 `createToolContext`, :269–292). Mints
@@ -362,6 +375,11 @@ pub fn create_tool_context(
         mount_pool: None,
         // P4.D348 `TurnStopReach`: the orchestrator sets it afterwards.
         turn_control: None,
+        // P4.D343: v4's `createToolContext` sets no ceiling; the orchestrator's
+        // `turn_tool_context` copies the slate's when one is set.
+        effect_ceiling: None,
+        custom_tool_effects: Default::default(),
+        plugin_tool_effects: Default::default(),
     }
 }
 

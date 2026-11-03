@@ -464,6 +464,7 @@ async fn text_tool_loop_tier3_matches_oracle() {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         };
         let formatted_messages: Vec<ThreadedMessage> = c
             .formatted_messages

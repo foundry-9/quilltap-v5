@@ -86,6 +86,46 @@ fn resolve_open_doc_target(
 
 // --- doc_open_document ---
 
+/// v4 `docOpenDocumentToolEffect` (P4.D343): opening an existing file (`uri`
+/// or `path`, truthy) is a read; omitting both creates a new blank document, a
+/// write. `None` when the input fails `docOpenDocumentToolInputSchema` (a
+/// plain `z.object`: `uri` / `path` / `title` / `mount_point` strings, `scope`
+/// one of `document_store | project | general`, `mode` one of `split | focus`,
+/// each optional; unknown keys stripped) — the caller counts it as `write`.
+pub fn doc_open_document_effect(input: &Value) -> Option<crate::tools::effects::ToolEffect> {
+    use crate::tools::effects::ToolEffect;
+    let obj = input.as_object()?;
+    for key in ["uri", "path", "title", "mount_point"] {
+        if let Some(v) = obj.get(key) {
+            if !v.is_string() {
+                return None;
+            }
+        }
+    }
+    if let Some(v) = obj.get("scope") {
+        match v.as_str() {
+            Some("document_store" | "project" | "general") => {}
+            _ => return None,
+        }
+    }
+    if let Some(v) = obj.get("mode") {
+        match v.as_str() {
+            Some("split" | "focus") => {}
+            _ => return None,
+        }
+    }
+    let truthy = |key: &str| {
+        obj.get(key)
+            .and_then(Value::as_str)
+            .is_some_and(|s| !s.is_empty())
+    };
+    Some(if truthy("uri") || truthy("path") {
+        ToolEffect::Read
+    } else {
+        ToolEffect::Write
+    })
+}
+
 pub fn handle_open_document(
     main: &Connection,
     mount: &Connection,

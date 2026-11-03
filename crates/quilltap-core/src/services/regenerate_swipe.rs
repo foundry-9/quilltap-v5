@@ -865,6 +865,7 @@ where
         // A visible regeneration, not cheap-LLM work: v4 sets no
         // `requestTimeoutMs` here (and sets none on any streaming call).
         request_timeout_ms: None,
+        tool_choice: None,
     };
 
     let rx = streaming

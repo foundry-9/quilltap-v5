@@ -396,6 +396,56 @@
         "durationMs": 4321,
         "updatedAt": "2026-03-02T00:00:00.000Z"
       }
+    },
+    {
+      "kind": "create",
+      "comment": "P4.D343 (v4 b15fe9404): a STORYTELLER_BID row \u2014 the bid call's log, with the round's storytellerRoundId set and messageId NULL (a bid never reaches a message). The type is LLMLogTypeEnum's LAST member, after SCENARIO_BUILDER.",
+      "data": {
+        "userId": "7d000000-0000-4000-8000-0000000000d1",
+        "type": "STORYTELLER_BID",
+        "messageId": null,
+        "chatId": "6f000000-0000-4000-8000-0000000000f1",
+        "characterId": null,
+        "autonomousRunId": null,
+        "storytellerRoundId": "3d000000-0000-4000-8000-0000000000d7",
+        "provider": "zai",
+        "modelName": "glm-4.6",
+        "connectionProfileId": "5c000000-0000-4000-8000-0000000000c1",
+        "imageProfileId": null,
+        "request": {
+          "messageCount": 1,
+          "messages": [
+            {
+              "role": "user",
+              "content": "Extract memories.",
+              "contentLength": 17,
+              "hasAttachments": false
+            }
+          ],
+          "maxTokens": 512,
+          "toolCount": 0
+        },
+        "response": {
+          "content": "[]",
+          "contentLength": 2,
+          "finishReason": "stop"
+        },
+        "usage": {
+          "promptTokens": 80,
+          "completionTokens": 2,
+          "totalTokens": 82
+        },
+        "cacheUsage": {
+          "cacheReadInputTokens": 64
+        },
+        "rawProviderUsage": {},
+        "durationMs": 567
+      },
+      "options": {
+        "id": "4e000000-0000-4000-8000-0000000000b7",
+        "createdAt": "2026-02-01T00:00:00.000Z",
+        "updatedAt": "2026-02-01T00:00:00.000Z"
+      }
     }
   ]
 }

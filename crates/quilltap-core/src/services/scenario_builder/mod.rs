@@ -380,6 +380,8 @@ where
                     web_search: Some(web_available),
                     plugin_tool_allowlist: Some(allowlist),
                 },
+                // P4.D343: v4 passes no effect ceiling on this surface.
+                effect_ceiling: None,
             },
         )
         .map_err(|e| e.to_string())?;

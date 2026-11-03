@@ -250,6 +250,7 @@ pub async fn generate_greeting_message<S: StreamingCompletionProvider>(
         stop: Vec::new(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
+        tool_choice: None,
     };
 
     let start = now_unix_ms();

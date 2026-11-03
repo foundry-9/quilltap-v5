@@ -7,8 +7,8 @@
 //!
 //! `checkModelSupportsTools` + `provider.supportsWebSearch` are the injected
 //! registry-seam inputs (mocked in the oracle; `BuildToolsInput` fields here).
-//! The autonomous-room destructive-tool filter (an orchestrator post-step, not
-//! part of buildTools) is replicated on both sides.
+//! The turn's effect ceiling is computed by each side's real resolver and
+//! passed into `build_tools` (P4.D343 below).
 //!
 //! P4.D216 (v4 `d1c06cd9d`): the corpus grows the `docToolsMode` cases (the
 //! read-only five; explicit `full`/`off`), the `extras` bag (`documentsOnlySearch`
@@ -24,26 +24,40 @@
 //! P4.D234 (v4 `39bc98ffc` + `12c336fad`): every workspace slate trades
 //! `list_email` for `list_mail` + `read_mail` + `discard_mail` (34 of 40 cases
 //! move between the `acadcc7cd` and `12c336fad` pins; the six without the
-//! workspace bundle stay byte-identical), `discard_mail` joins the replicated
-//! destructive filter through v4's REAL `DESTRUCTIVE_TOOL_NAMES`, and
-//! `p4d234_destructive_autonomous_mail_only` is the row where it is the ONLY
-//! destructive tool on the slate.
+//! workspace bundle stay byte-identical).
+//!
+//! P4.D343 (v4 `b15fe9404` + `a8214b253` at the pin `236c04e35`): the case is
+//! RE-AIMED — `b15fe9404` deleted the curated destructive list (the case died at
+//! import) and `a8214b253` made `buildTools` take ONE options object (the old
+//! positional call ran garbled). The autonomous-room filter is no longer a
+//! post-step on either side: the turn's EFFECT CEILING (v4's REAL
+//! `resolveTurnEffectCeiling` / v5's `resolve_turn_effect_ceiling`) is passed
+//! INTO `build_tools`, which applies it last, and each row compares
+//! `effectCeiling` plus the two effect maps. The withheld set widens from three
+//! to every `destroy` tool on the slate (`delete_annotation` joins — it is
+//! always on); the old `p4d234_destructive_autonomous_mail_only` row, whose
+//! premise ("discard_mail is the ONE destructive tool") is false at the pin, is
+//! renamed `effect_ceiling_autonomous_withholds_destroy` and pins the measured
+//! set. The `p4d343_storyteller_ceiling_*` rows run a storyteller ceiling of
+//! each level over a full slate (the computed tools' notes included). The
+//! `disabled_tools_undefined` row now builds the slate: `a8214b253` dropped
+//! v4's legacy `disabledTools === undefined` bail (`disabledTools = []`).
 //!
 //! Generate the fixture + oracle (Node 24, from the v4 checkout):
 //! (The worktree path is under `/.claude/`, in v4 jest's
 //! `testPathIgnorePatterns`, so the oracle `.test.ts` + spec are copied to a temp
 //! `cases/`+`fixtures/` sibling pair OUTSIDE `.claude` first — the tsx builder +
 //! cargo run fine from the worktree.)
-//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5=<this worktree>
-//!   TMPO=/tmp/qt-oracle-w41g; mkdir -p $TMPO/cases $TMPO/fixtures
-//!   cp $V5/harness/oracle/cases/tool-build.test.ts $TMPO/cases/
-//!   cp $V5/harness/oracle/fixtures/tool-build.json $TMPO/fixtures/
+//!   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+//!   TMPO=/tmp/qt-oracle-w41g; rm -rf $TMPO; mkdir -p $TMPO/cases $TMPO/fixtures
+//!   cp $V5W/harness/oracle/cases/tool-build.test.ts $TMPO/cases/
+//!   cp $V5W/harness/oracle/fixtures/tool-build.json $TMPO/fixtures/
 //!   cd ~/source/quilltap-server
 //!   QT_FIXTURE_OUT=/tmp/qt-tool-build.db \
-//!     $N/npx tsx $V5/harness/oracle/fixtures/build-tool-build-fixture.ts
+//!     $N/npx tsx $V5W/harness/oracle/fixtures/build-tool-build-fixture.ts
 //!   QT_ORACLE_OUT=/tmp/oracle-tool-build.ndjson \
-//!     $N/npx jest --silent --watchman=false --roots "$PWD" \
-//!       --roots "$TMPO/cases" -- tool-build
+//!     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+//!       --testTimeout=180000 --runTestsByPath "$TMPO/cases/tool-build.test.ts"
 //! Run:
 //!   QT_ORACLE_TOOL_BUILD=/tmp/oracle-tool-build.ndjson \
 //!   QT_FIXTURE_TOOL_BUILD=/tmp/qt-tool-build.db \
@@ -57,6 +71,7 @@ use quilltap_core::pascal::roster::RosterContext;
 use quilltap_core::services::tool_build::{
     self, build_tools, BuildToolsExtras, BuildToolsInput, DocToolsMode, ImageProviderConstraints,
 };
+use quilltap_core::tools::effects::ToolEffect;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -149,6 +164,9 @@ struct CaseW {
     run_destructive_tools_allowed: i64,
     #[serde(default = "default_policy")]
     destructive_tool_policy: String,
+    /// P4.D343: a storyteller turn's ceiling, fed through the resolver.
+    #[serde(default)]
+    storyteller_ceiling: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -181,6 +199,12 @@ struct OracleRow {
     model_supports_native_tools: bool,
     #[serde(rename = "useNativeWebSearch")]
     use_native_web_search: bool,
+    #[serde(rename = "effectCeiling")]
+    effect_ceiling: Option<String>,
+    #[serde(rename = "customToolEffects")]
+    custom_tool_effects: Value,
+    #[serde(rename = "pluginToolEffects")]
+    plugin_tool_effects: Value,
 }
 
 fn spec_path() -> PathBuf {
@@ -230,7 +254,8 @@ fn tool_build_matches_oracle() {
     .expect("open fixture");
 
     let mut failures: Vec<String> = Vec::new();
-    let (mut mail_only_rows, mut allowed_autonomous_rows) = (0, 0);
+    let (mut withheld_rows, mut allowed_autonomous_rows, mut ceiling_rows) = (0, 0, 0);
+    let mut catalog_carved = 0usize;
 
     for c in &spec.cases {
         let disabled_tools: Option<&[String]> = if c.disabled_tools_undefined {
@@ -238,102 +263,115 @@ fn tool_build_matches_oracle() {
         } else {
             Some(&c.disabled_tools)
         };
-        let built = build_tools(
-            &db,
-            &spec.user_id,
-            &BuildToolsInput {
-                provider: &c.provider,
-                use_native_web_search: c.use_native_web_search,
-                allow_tool_use: c.allow_tool_use,
-                allow_web_search: c.allow_web_search,
-                image_profile_id: c.image_profile_id.as_deref(),
-                image_provider_constraints: None::<ImageProviderConstraints>,
-                project_id: c.project_id.as_deref(),
-                request_full_context: c.request_full_context,
-                disabled_tools,
-                disabled_tool_groups: &c.disabled_tool_groups,
-                agent_mode_enabled: c.agent_mode_enabled,
-                is_multi_character: c.is_multi_character,
-                help_tools_enabled: c.help_tools_enabled,
-                can_dress_themselves: c.can_dress_themselves,
-                can_create_outfits: c.can_create_outfits,
-                can_manage_inventory: c.can_manage_inventory != Some(false),
-                doc_tools_mode: c.doc_tools_mode.unwrap_or(if c.document_editing_enabled {
-                    DocToolsMode::Full
-                } else {
-                    DocToolsMode::Off
-                }),
-                extras: c
-                    .extras
-                    .as_ref()
-                    .map(|e| BuildToolsExtras {
-                        plugin_tool_allowlist: e.plugin_tool_allowlist.clone(),
-                        documents_only_search: e.documents_only_search,
-                        web_search: e.web_search,
-                    })
-                    .unwrap_or_default(),
-                ask_carina_enabled: c.ask_carina_enabled,
-                include_workspace_tools: c.include_workspace_tools,
-                exclude_memory_search: c.exclude_memory_search,
-                sql_access: c.sql_access,
-                model_supports_native_tools: c.model_supports_native_tools,
-                provider_supports_web_search: c.provider_supports_web_search,
-                // The tool-build corpus has no Pascal roster, so no run_custom;
-                // a case may still flip the SWITCH (`edit_custom_tool`, P4.D332).
-                custom_tool_context: c.custom_tool_context.then(|| RosterContext {
-                    user_id: spec.user_id.clone(),
-                    chat_id: "chat-tb".to_string(),
-                    ..Default::default()
-                }),
-            },
-        )
-        .expect("build_tools");
-
-        let mut tools = built.tools;
-
-        // Autonomous-room destructive filter (orchestrator post-step). The v4
-        // side replicates the inline block over v4's REAL
-        // `DESTRUCTIVE_TOOL_NAMES`; the v5 side calls the PRODUCTION fn the
-        // orchestrator calls (P4.124 — it had re-composed the two helpers
-        // inline, so the fn's own gate and INFO were never exercised here).
-        let mut filter_lines = Vec::new();
-        if c.chat_type == "autonomous" {
-            let allowed_at_room = c.run_destructive_tools_allowed == 1;
-            let ((), lines) = quilltap_core::test_support::captured_with(|| {
-                tool_build::apply_autonomous_destructive_filter(
-                    &c.name,
-                    &c.destructive_tool_policy,
-                    allowed_at_room,
-                    &mut tools,
-                )
-            });
-            filter_lines = lines
-                .into_iter()
-                .filter(|l| l.contains("Autonomous room: destructive tools filtered"))
-                .collect();
-        }
-        // The mail-only row: `discard_mail` is the ONE destructive tool, so the
-        // INFO fires with `removed=1` (its fields in v4's order).
-        if c.name == "p4d234_destructive_autonomous_mail_only" {
-            assert_eq!(filter_lines.len(), 1, "{}: {filter_lines:?}", c.name);
-            assert!(
-                filter_lines[0].starts_with("INFO ")
-                    && filter_lines[0].ends_with(&format!(
-                        "chatId={} policy={} allowedAtRoom=false removed=1",
-                        c.name, c.destructive_tool_policy
-                    )),
-                "{}",
-                filter_lines[0]
-            );
-            mail_only_rows += 1;
-        } else if c.chat_type == "autonomous"
-            && tool_build::destructive_allowed(
+        // The turn's effect ceiling, through the PRODUCTION resolver the
+        // orchestrator calls (its DEBUG captured for the withheld rows).
+        let storyteller = c
+            .storyteller_ceiling
+            .as_deref()
+            .map(|e| ToolEffect::from_str(e).expect("ceiling"));
+        let (effect_ceiling, resolve_lines) = quilltap_core::test_support::captured_with(|| {
+            tool_build::resolve_turn_effect_ceiling(
+                &c.chat_type,
                 &c.destructive_tool_policy,
                 c.run_destructive_tools_allowed == 1,
+                storyteller,
+                &c.name,
             )
+        });
+        let withheld_line = resolve_lines
+            .iter()
+            .filter(|l| l.contains("destructive tools withheld by effect ceiling"))
+            .count();
+        let (built, build_lines) = quilltap_core::test_support::captured_with(|| {
+            build_tools(
+                &db,
+                &spec.user_id,
+                &BuildToolsInput {
+                    provider: &c.provider,
+                    use_native_web_search: c.use_native_web_search,
+                    allow_tool_use: c.allow_tool_use,
+                    allow_web_search: c.allow_web_search,
+                    image_profile_id: c.image_profile_id.as_deref(),
+                    image_provider_constraints: None::<ImageProviderConstraints>,
+                    project_id: c.project_id.as_deref(),
+                    request_full_context: c.request_full_context,
+                    disabled_tools,
+                    disabled_tool_groups: &c.disabled_tool_groups,
+                    agent_mode_enabled: c.agent_mode_enabled,
+                    is_multi_character: c.is_multi_character,
+                    help_tools_enabled: c.help_tools_enabled,
+                    can_dress_themselves: c.can_dress_themselves,
+                    can_create_outfits: c.can_create_outfits,
+                    can_manage_inventory: c.can_manage_inventory != Some(false),
+                    doc_tools_mode: c.doc_tools_mode.unwrap_or(if c.document_editing_enabled {
+                        DocToolsMode::Full
+                    } else {
+                        DocToolsMode::Off
+                    }),
+                    extras: c
+                        .extras
+                        .as_ref()
+                        .map(|e| BuildToolsExtras {
+                            plugin_tool_allowlist: e.plugin_tool_allowlist.clone(),
+                            documents_only_search: e.documents_only_search,
+                            web_search: e.web_search,
+                        })
+                        .unwrap_or_default(),
+                    ask_carina_enabled: c.ask_carina_enabled,
+                    include_workspace_tools: c.include_workspace_tools,
+                    exclude_memory_search: c.exclude_memory_search,
+                    sql_access: c.sql_access,
+                    model_supports_native_tools: c.model_supports_native_tools,
+                    provider_supports_web_search: c.provider_supports_web_search,
+                    // The tool-build corpus has no Pascal roster, so no run_custom;
+                    // a case may still flip the SWITCH (`edit_custom_tool`, P4.D332).
+                    custom_tool_context: c.custom_tool_context.then(|| RosterContext {
+                        user_id: spec.user_id.clone(),
+                        chat_id: "chat-tb".to_string(),
+                        ..Default::default()
+                    }),
+                    effect_ceiling,
+                },
+            )
+        });
+        let built = built.expect("build_tools");
+        let ceiling_line = build_lines
+            .iter()
+            .filter(|l| l.contains("Effect ceiling applied to tool list"))
+            .count();
+        // The DEBUG fires exactly when a ceiling reached a built slate.
+        let expect_ceiling_line =
+            usize::from(effect_ceiling.is_some() && c.allow_tool_use != Some(false));
+        assert_eq!(
+            ceiling_line, expect_ceiling_line,
+            "{}: {build_lines:?}",
+            c.name
+        );
+        if effect_ceiling.is_some() {
+            ceiling_rows += 1;
+        }
+
+        let tools = built.tools.clone();
+        let names_now: Vec<String> = tool_names(&Value::Array(tools.clone()));
+        if c.name == "effect_ceiling_autonomous_withholds_destroy" {
+            // The measured withheld set at the pin: every `destroy` tool this
+            // slate would carry — `delete_annotation` (Scriptorium, always on)
+            // beside `discard_mail`; no `doc_*` tools ride this row.
+            assert_eq!(withheld_line, 1, "{}: {resolve_lines:?}", c.name);
+            for gone in ["delete_annotation", "discard_mail"] {
+                assert!(
+                    !names_now.contains(&gone.to_string()),
+                    "{}: {gone} kept",
+                    c.name
+                );
+            }
+            withheld_rows += 1;
+        } else if c.chat_type == "autonomous"
+            && c.destructive_tool_policy != "always_refuse"
+            && c.run_destructive_tools_allowed == 1
         {
-            // Silence leg: an allowed room filters nothing and says nothing.
-            assert!(filter_lines.is_empty(), "{}: {filter_lines:?}", c.name);
+            // Silence leg: an allowed room lowers nothing and says nothing.
+            assert_eq!(withheld_line, 0, "{}: {resolve_lines:?}", c.name);
             allowed_autonomous_rows += 1;
         }
 
@@ -342,9 +380,11 @@ fn tool_build_matches_oracle() {
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle row missing for {}", c.name));
 
-        if got_tools != want_row.tools {
+        let (got_tools, want_tools, carved) = carve_catalog_drift(&got_tools, &want_row.tools);
+        catalog_carved += carved;
+        if got_tools != want_tools {
             let g = tool_names(&got_tools);
-            let w = tool_names(&want_row.tools);
+            let w = tool_names(&want_tools);
             failures.push(format!(
                 "case {}: tools mismatch\n  got:  {:?}\n  want: {:?}",
                 c.name, g, w
@@ -355,6 +395,36 @@ fn tool_build_matches_oracle() {
                 "case {}: modelSupportsNativeTools {} != {}",
                 c.name, built.model_supports_native_tools, want_row.model_supports_native_tools
             ));
+        }
+        let got_ceiling = effect_ceiling.map(|e| e.as_str().to_string());
+        if got_ceiling != want_row.effect_ceiling {
+            failures.push(format!(
+                "case {}: effectCeiling {:?} != {:?}",
+                c.name, got_ceiling, want_row.effect_ceiling
+            ));
+        }
+        let entries = |m: &std::collections::BTreeMap<String, ToolEffect>| {
+            Value::Array(
+                m.iter()
+                    .map(|(k, v)| serde_json::json!([k, v.as_str()]))
+                    .collect(),
+            )
+        };
+        for (label, got, want) in [
+            (
+                "customToolEffects",
+                entries(&built.custom_tool_effects),
+                &want_row.custom_tool_effects,
+            ),
+            (
+                "pluginToolEffects",
+                entries(&built.plugin_tool_effects),
+                &want_row.plugin_tool_effects,
+            ),
+        ] {
+            if &got != want {
+                failures.push(format!("case {}: {label} {got} != {want}", c.name));
+            }
         }
         if built.use_native_web_search != want_row.use_native_web_search {
             failures.push(format!(
@@ -368,8 +438,71 @@ fn tool_build_matches_oracle() {
     drop(scratch);
 
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
-    assert_eq!(mail_only_rows, 1, "the P4.124 INFO pin ran");
-    assert!(allowed_autonomous_rows > 0, "the P4.124 silence leg ran");
+    eprintln!(
+        "tool_build_equivalence: {} cases; {catalog_carved} tool definitions carved as CATALOG_DRIFT (P4.D350)",
+        spec.cases.len()
+    );
+    assert_eq!(withheld_rows, 1, "the withheld-set pin ran");
+    assert!(allowed_autonomous_rows > 0, "the silence leg ran");
+    assert!(ceiling_rows >= 8, "the ceiling rows ran ({ceiling_rows})");
+}
+
+/// `CATALOG_DRIFT` (P4.D343, a union-expected carve): the pin's catalog moved
+/// these seven definitions' description / parameter text (`self_inventory`'s
+/// `holdings`, the Inventory `image_description`, the wardrobe list/create/
+/// update, `doc_list_files`), and the ONE regen of `tools/definitions/data.rs`
+/// is P4.D350's `CATALOG`. A carved tool is compared by NAME and position only
+/// (its slot in the slate, its presence under every ceiling) — none of the
+/// seven is a computed-effect tool, so no ceiling note rides them. Both ways:
+/// a carved tool that already matches FAILS (the carve outlived `CATALOG` —
+/// the unifier deletes this fn once `CATALOG` lands).
+const CATALOG_DRIFT: [&str; 7] = [
+    "doc_list_files",
+    "inventory_create",
+    "inventory_update",
+    "self_inventory",
+    "wardrobe_create",
+    "wardrobe_list",
+    "wardrobe_update",
+];
+
+fn carve_catalog_drift(got: &Value, want: &Value) -> (Value, Value, usize) {
+    let name_of = |t: &Value| {
+        t.get("function")
+            .and_then(|f| f.get("name"))
+            .or_else(|| t.get("name"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let (Some(g), Some(w)) = (got.as_array(), want.as_array()) else {
+        return (got.clone(), want.clone(), 0);
+    };
+    let mut carved = 0;
+    let mut g2 = Vec::with_capacity(g.len());
+    let mut w2 = Vec::with_capacity(w.len());
+    for (i, gt) in g.iter().enumerate() {
+        let wt = w.get(i);
+        match (name_of(gt), wt.and_then(name_of)) {
+            (Some(gn), Some(wn)) if gn == wn && CATALOG_DRIFT.contains(&gn.as_str()) => {
+                assert_ne!(
+                    Some(gt),
+                    wt,
+                    "CATALOG_DRIFT carve for `{gn}` is stale: v5's definition now matches the pin — retire the carve"
+                );
+                carved += 1;
+                g2.push(serde_json::json!({ "carved": gn }));
+                w2.push(serde_json::json!({ "carved": wn }));
+            }
+            _ => {
+                g2.push(gt.clone());
+                if let Some(wt) = wt {
+                    w2.push(wt.clone());
+                }
+            }
+        }
+    }
+    w2.extend(w.iter().skip(g.len()).cloned());
+    (Value::Array(g2), Value::Array(w2), carved)
 }
 
 fn tool_names(tools: &Value) -> Vec<String> {

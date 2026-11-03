@@ -20,18 +20,30 @@
  *     (returns undefined → the plugin-config read throws → caught → empty map),
  *     so no real DB is needed (plugin tools deferred, contribute nothing).
  *
- * The autonomous-room destructive-tool filter lives in the orchestrator (after
- * buildTools), not in buildTools itself; this oracle replicates that exact
- * post-filter for the `chatType === 'autonomous'` cases, matching the Rust
- * harness (which runs `tool_build::filter_destructive_tools`).
+ * P4.D343 (v4 `b15fe9404` + `a8214b253` at the pin `236c04e35`): the
+ * re-aim of an IMPORT-DEAD + GARBLED case. `b15fe9404` deleted
+ * `@/lib/tools/destructive-tools` (this file's import died at load), and
+ * `a8214b253` turned `buildTools`' positional list into ONE options object — the
+ * old positional call still compiled under tsx and ran with `options =
+ * connectionProfile` (every case a garbled comparison). The case now passes
+ * `BuildToolsOptions` whole. The autonomous-room destructive filter is no
+ * longer a post-step: the turn's EFFECT CEILING is computed by v4's REAL
+ * `resolveTurnEffectCeiling` (`turn-tools.service.ts`) from the case's
+ * `chatType` / `runDestructiveToolsAllowed` / `destructiveToolPolicy` and its
+ * `storytellerCeiling`, and passed INTO `buildTools`, which applies it last.
+ * Each row also carries `effectCeiling` and the two returned effect maps as
+ * sorted entry arrays.
  *
- * Run from the v4 server checkout under Node 24:
- *   N=~/.nvm/versions/node/v24.13.1/bin
- *   V5=~/source/quilltap-v5
+ * Run from the v4 server checkout under Node 24 (jest ignores `.claude/`, so
+ * the case + spec are mirrored first):
+ *   N=~/.nvm/versions/node/v24.13.1/bin ; V5W=${V5W:-$HOME/source/quilltap-v5}
+ *   TMPO=/tmp/qt-oracle-w41g; rm -rf $TMPO; mkdir -p $TMPO/cases $TMPO/fixtures
+ *   cp $V5W/harness/oracle/cases/tool-build.test.ts $TMPO/cases/
+ *   cp $V5W/harness/oracle/fixtures/tool-build.json $TMPO/fixtures/
  *   cd ~/source/quilltap-server
  *   QT_ORACLE_OUT=/tmp/oracle-tool-build.ndjson \
- *     $N/npx jest --silent --watchman=false \
- *       --roots "$PWD" --roots "$V5/harness/oracle/cases" -- tool-build
+ *     $N/npx jest --silent --watchman=false --roots "$PWD" --roots "$TMPO/cases" \
+ *       --testTimeout=180000 --runTestsByPath "$TMPO/cases/tool-build.test.ts"
  */
 
 import * as fs from 'fs';
@@ -51,30 +63,7 @@ jest.mock('@/lib/tools/pseudo-tool-support', () => ({
 import { buildTools } from '@/lib/services/chat-message/streaming.service';
 import { checkModelSupportsTools } from '@/lib/tools/pseudo-tool-support';
 import { createLLMProvider } from '@/lib/llm';
-import { DESTRUCTIVE_TOOL_NAMES } from '@/lib/tools/destructive-tools';
-import * as searchScriptoriumTools from '@/lib/tools/search-scriptorium-tool';
-
-// P4.D216: `d1c06cd9d` turned `buildTools`' index-13 boolean into the
-// `docToolsMode` string. A pre-`d1c06cd9d` pin (the baseline neutrality leg)
-// still takes the boolean — and `!!'off'` is TRUE there — so the argument is
-// shaped by what the pinned tree exports (the Scenario Builder search variant
-// shipped in the same commit), never by guessing.
-const PIN_HAS_DOC_TOOLS_MODE =
-  'searchScriptoriumScenarioToolDefinition' in (searchScriptoriumTools as Record<string, unknown>);
-
-// P4.D328: `e1872c94f` inserted a 13th positional `canManageInventory` BEFORE
-// `docToolsMode` (`streaming.service.ts:180`). The same probe idiom: a pre-
-// `e1872c94f` pin has no `inventory-tool-flags` module (and no positional), so
-// the argument is inserted only when the pinned tree exports the flag helper.
-const PIN_HAS_INVENTORY_FLAG = (() => {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const flags = require('@/lib/tools/inventory-tool-flags') as Record<string, unknown>;
-    return 'inventoryToolFlags' in flags;
-  } catch {
-    return false;
-  }
-})();
+import { resolveTurnEffectCeiling } from '@/lib/services/chat-message/turn-tools.service';
 
 interface RawCase {
   name: string;
@@ -119,6 +108,9 @@ interface RawCase {
   chatType?: string;
   runDestructiveToolsAllowed?: number;
   destructiveToolPolicy?: string;
+  /** P4.D343: a storyteller turn's ceiling (its bid's tier), fed through
+   * `resolveTurnEffectCeiling` like the orchestrator does. */
+  storytellerCeiling?: 'none' | 'read' | 'write' | 'destroy';
 }
 
 interface Spec {
@@ -126,10 +118,7 @@ interface Spec {
   cases: RawCase[];
 }
 
-function toolName(tool: unknown): string | undefined {
-  const t = tool as { function?: { name?: string }; name?: string };
-  return t.function?.name || t.name;
-}
+const sortedEntries = (m: Map<string, string>) => [...m.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
 
 test('tool-build oracle', async () => {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -162,47 +151,39 @@ test('tool-build oracle', async () => {
     const docToolsMode: 'off' | 'read' | 'full' =
       c.docToolsMode ?? (c.documentEditingEnabled ? 'full' : 'off');
 
-    const built = await buildTools(
-      connectionProfile as never,
-      imageProfileId,
-      null, // imageProfile — null so getImageProviderConstraints is not consulted
-      spec.userId,
-      c.projectId ?? undefined,
-      c.requestFullContext ?? false,
-      disabledTools,
-      c.disabledToolGroups ?? [],
-      c.agentModeEnabled ?? false,
-      c.isMultiCharacter ?? false,
-      c.helpToolsEnabled ?? false,
-      c.canDressThemselves ?? true,
-      c.canCreateOutfits ?? true,
-      ...((PIN_HAS_INVENTORY_FLAG
-        ? [c.canManageInventory === undefined ? true : c.canManageInventory]
-        : []) as never[]),
-      (PIN_HAS_DOC_TOOLS_MODE ? docToolsMode : docToolsMode === 'full') as never,
-      c.askCarinaEnabled ?? false,
-      c.includeWorkspaceTools ?? true,
-      c.excludeMemorySearch ?? false,
-      c.sqlAccess ?? false,
-      // customToolContext — the corpus has no Pascal roster; a case may flip the switch.
-      c.customToolContext ? { userId: spec.userId, chatId: 'chat-tb' } : null,
-      ...((c.extras ? [c.extras] : []) as never[])
+    const effectCeiling = resolveTurnEffectCeiling(
+      { id: c.name, chatType: c.chatType ?? 'chat', runDestructiveToolsAllowed: c.runDestructiveToolsAllowed ?? 0 } as never,
+      { autonomousRoomSettings: { destructiveToolPolicy: c.destructiveToolPolicy ?? 'opt_in_per_room' } } as never,
+      c.storytellerCeiling
     );
 
-    let tools = built.tools as unknown[];
+    const built = await buildTools({
+      connectionProfile: connectionProfile as never,
+      userId: spec.userId,
+      imageProfileId,
+      imageProfile: null, // null so getImageProviderConstraints is not consulted
+      projectId: c.projectId ?? undefined,
+      requestFullContext: c.requestFullContext ?? false,
+      disabledTools,
+      disabledToolGroups: c.disabledToolGroups ?? [],
+      agentModeEnabled: c.agentModeEnabled ?? false,
+      isMultiCharacter: c.isMultiCharacter ?? false,
+      helpToolsEnabled: c.helpToolsEnabled ?? false,
+      canDressThemselves: c.canDressThemselves ?? true,
+      canCreateOutfits: c.canCreateOutfits ?? true,
+      canManageInventory: (c.canManageInventory === undefined ? true : c.canManageInventory) as never,
+      docToolsMode,
+      askCarinaEnabled: c.askCarinaEnabled ?? false,
+      includeWorkspaceTools: c.includeWorkspaceTools ?? true,
+      excludeMemorySearch: c.excludeMemorySearch ?? false,
+      sqlAccess: c.sqlAccess ?? false,
+      // customToolContext — the corpus has no Pascal roster; a case may flip the switch.
+      customToolContext: c.customToolContext ? ({ userId: spec.userId, chatId: 'chat-tb' } as never) : null,
+      ...(c.extras ?? {}),
+      effectCeiling,
+    });
 
-    // Autonomous-room destructive filter (orchestrator post-step).
-    if ((c.chatType ?? 'chat') === 'autonomous') {
-      const policy = c.destructiveToolPolicy ?? 'opt_in_per_room';
-      const allowedAtRoom = (c.runDestructiveToolsAllowed ?? 0) === 1;
-      const destructiveAllowed = policy !== 'always_refuse' && allowedAtRoom;
-      if (!destructiveAllowed) {
-        tools = tools.filter((t) => {
-          const name = toolName(t);
-          return !name || !DESTRUCTIVE_TOOL_NAMES.has(name);
-        });
-      }
-    }
+    const tools = built.tools as unknown[];
 
     lines.push(
       JSON.stringify({
@@ -211,6 +192,9 @@ test('tool-build oracle', async () => {
         tools,
         modelSupportsNativeTools: built.modelSupportsNativeTools,
         useNativeWebSearch: built.useNativeWebSearch,
+        effectCeiling: effectCeiling ?? null,
+        customToolEffects: sortedEntries(built.customToolEffects),
+        pluginToolEffects: sortedEntries(built.pluginToolEffects),
       })
     );
   }

@@ -43,6 +43,8 @@
 //!   base image tool). The corpus/oracle run an empty provider registry, so v4
 //!   returns `null` there too.
 
+use std::collections::BTreeMap;
+
 use serde_json::Value;
 
 use crate::canonicalize::{canonicalize_universal_tools, UniversalTool};
@@ -541,7 +543,8 @@ pub struct BuildToolsInput<'a> {
     pub project_id: Option<&'a str>,
     /// Compression enabled ⇒ request_full_context gate on.
     pub request_full_context: bool,
-    /// `None` ⇒ the legacy skip (return EMPTY tools); `Some(list)` ⇒ build + filter.
+    /// The individually disabled tool ids. `None` reads as v4's default `[]`
+    /// (`a8214b253` retired the legacy "no tools" skip).
     pub disabled_tools: Option<&'a [String]>,
     pub disabled_tool_groups: &'a [String],
     pub agent_mode_enabled: bool,
@@ -579,6 +582,14 @@ pub struct BuildToolsInput<'a> {
     /// narrowing, applied at construction (never a post-filter).
     /// `BuildToolsExtras::default()` is v4's absent bag.
     pub extras: BuildToolsExtras,
+    // === P4.D343 (unit E): the turn's effect ceiling ===
+    /// v4 `BuildToolsOptions.effectCeiling`: the turn's effect ceiling (a
+    /// storyteller turn, an autonomous room without destructive permission). A
+    /// tool whose highest effect is above it is dropped; a computed tool with a
+    /// note for that ceiling stays listed with the note appended. The executor's
+    /// check is the guarantee; this only spares the model offers it can't use.
+    /// Applied LAST, after every other filter.
+    pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
 }
 
 /// v4 `buildTools` return.
@@ -587,6 +598,15 @@ pub struct BuiltTools {
     pub tools: Vec<Value>,
     pub model_supports_native_tools: bool,
     pub use_native_web_search: bool,
+    // === P4.D343 (unit E) ===
+    /// Custom tool name → derived effect, for the roster offered this turn
+    /// (empty when none) — v4 `BuiltTools.customToolEffects`.
+    pub custom_tool_effects: BTreeMap<String, crate::tools::effects::ToolEffect>,
+    /// Plugin / MCP tool name → declared effect — v4
+    /// `BuiltTools.pluginToolEffects`. Always empty: v5 has no tool-plugin
+    /// registry, so v4's `toolRegistry.getToolEffects` and its WARN have no
+    /// counterpart (`PLUGIN_TOOL_EFFECTS_EMPTY`, ruling R-2).
+    pub plugin_tool_effects: BTreeMap<String, crate::tools::effects::ToolEffect>,
 }
 
 /// v4 `buildTools`. Composes the provider gates, the `allowToolUse === false` and
@@ -603,6 +623,8 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
             tools: Vec::new(),
             model_supports_native_tools,
             use_native_web_search,
+            // v4: every early return returns the (still empty) maps.
+            ..Default::default()
         });
     }
 
@@ -615,15 +637,11 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
         .read_main(move |c| crate::db::plugin_config::find_by_user_id(c, &user_id_owned))
         .unwrap_or_default();
 
-    // Legacy fallback: `disabledTools === undefined` ⇒ skip tools for this
-    // message (returns EMPTY, not all).
-    let Some(disabled_tools) = input.disabled_tools else {
-        return Ok(BuiltTools {
-            tools: Vec::new(),
-            model_supports_native_tools,
-            use_native_web_search,
-        });
-    };
+    // v4 `a8214b253` dropped the legacy `disabledTools === undefined` bail: the
+    // options object defaults `disabledTools = []`, so an absent list builds the
+    // slate unfiltered (no production caller passes `None`; measured by the
+    // re-aimed `tool_build_equivalence` row `disabled_tools_undefined`).
+    let disabled_tools: &[String] = input.disabled_tools.unwrap_or(&[]);
 
     // Pascal's custom pseudo-tools. Resolved ONCE per turn, here at the last
     // possible moment — every early return above skips it entirely. A roster that
@@ -654,6 +672,12 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
             .unwrap_or_default(),
         None => Vec::new(),
     };
+    // P4.D343: v4 `customToolEffectMap(customTools)` keyed by `definition.name`.
+    let custom_tool_effects = crate::pascal::tool_effect::custom_tool_effect_map(
+        custom_tools
+            .iter()
+            .map(|t: &DiscoveredCustomTool| (t.definition.name.as_str(), &t.definition)),
+    );
 
     // v4 `streaming.service.ts:309` `...inventoryToolFlags(canManageInventory)`.
     let inventory = inventory_tool_flags(Some(input.can_manage_inventory));
@@ -729,13 +753,79 @@ pub fn build_tools(db: &Db, user_id: &str, input: &BuildToolsInput) -> Result<Bu
     // is the LAST step (matching v4). OPENAI/unknown providers pass through
     // byte-identically (proven by `tool_wire_equivalence`), so the OPENAI-only
     // `tool_build_equivalence` corpus stays green.
-    let tools = format_tools_for_provider(input.provider, &tools);
+    let mut tools = format_tools_for_provider(input.provider, &tools);
+
+    // === P4.D343 (unit E): the effect ceiling, LAST (v4 `streaming.service.ts:
+    // 476-478` — after the disabled filter, on the provider-shaped list, whose
+    // name slot `toolNameOf` reads either way).
+    let plugin_tool_effects = BTreeMap::new();
+    if let Some(ceiling) = input.effect_ceiling {
+        tools = apply_effect_ceiling_to_tools(
+            tools,
+            ceiling,
+            &crate::tools::effects::EffectLookups {
+                custom_tool_effects: custom_tool_effects.clone(),
+                plugin_tool_effects: BTreeMap::new(),
+            },
+        );
+    }
 
     Ok(BuiltTools {
         tools,
         model_supports_native_tools,
         use_native_web_search,
+        custom_tool_effects,
+        plugin_tool_effects,
     })
+}
+
+/// v4's PRIVATE `applyEffectCeilingToTools` (`streaming.service.ts:152-185`,
+/// P4.D343): per tool, `max_effect_of_tool` within the ceiling → kept; else a
+/// computed spec with a note for that ceiling → kept with `\n\n<note>` appended
+/// to `function.description` (or the top-level `description`); else dropped. A
+/// nameless tool is kept. DEBUG `Effect ceiling applied to tool list` with
+/// `dropped` = the dropped names in slate order.
+pub fn apply_effect_ceiling_to_tools(
+    tools: Vec<Value>,
+    ceiling: crate::tools::effects::ToolEffect,
+    lookups: &crate::tools::effects::EffectLookups,
+) -> Vec<Value> {
+    use crate::tools::effects::{is_within_ceiling, max_effect_of_tool, uses_allowed_under};
+    let mut kept: Vec<Value> = Vec::with_capacity(tools.len());
+    let mut dropped: Vec<String> = Vec::new();
+    for mut tool in tools {
+        let Some(name) = tool_name(&tool).map(str::to_string) else {
+            kept.push(tool);
+            continue;
+        };
+        if is_within_ceiling(max_effect_of_tool(&name, lookups), ceiling) {
+            kept.push(tool);
+            continue;
+        }
+        let Some(note) = uses_allowed_under(&name, ceiling) else {
+            dropped.push(name);
+            continue;
+        };
+        // v4: `${description ?? ''}\n\n${note}` on `function` when present
+        // (`toolObj.function` truthy), else on the top level.
+        let slot = match tool.get_mut("function") {
+            Some(f) if f.is_object() => f,
+            _ => &mut tool,
+        };
+        if let Some(obj) = slot.as_object_mut() {
+            let prior = obj.get("description").and_then(Value::as_str).unwrap_or("");
+            let joined = format!("{prior}\n\n{note}");
+            obj.insert("description".to_string(), Value::String(joined));
+        }
+        kept.push(tool);
+    }
+    tracing::debug!(
+        ceiling = ceiling.as_str(),
+        kept = kept.len(),
+        dropped = ?dropped,
+        "Effect ceiling applied to tool list"
+    );
+    kept
 }
 
 /// v4's tool-name extraction: `tool.function?.name || tool.name`.
@@ -747,64 +837,40 @@ fn tool_name(tool: &Value) -> Option<&str> {
 }
 
 // ===========================================================================
-// Destructive-tool filter (v4 lib/tools/destructive-tools.ts + the orchestrator's
-// autonomous-room ceiling). Kept here so the tool_build differential can exercise
-// it as pure logic alongside the slate.
+// The turn's effect ceiling (v4 `turn-tools.service.ts:221-238`, P4.D343).
+// Replaces the curated destructive-tool list (v4 deleted
+// `lib/tools/destructive-tools.ts`): an autonomous room without destructive
+// permission is a `write` ceiling, so every `destroy` tool is withheld.
 // ===========================================================================
 
-/// v4 `DESTRUCTIVE_TOOL_NAMES` — vault/file-mutating tools removed from an
-/// autonomous room's per-turn slate unless the owner pre-authorized them.
-pub const DESTRUCTIVE_TOOL_NAMES: &[&str] = &[
-    "doc_delete_file",
-    "doc_delete_folder",
-    // Post Office — deletes a letter through the same GC chokepoint as doc_delete_file.
-    "discard_mail",
-];
-
-/// Whether destructive tools are allowed this turn (v4's ceiling logic): the
-/// user-level `destructiveToolPolicy` is a CEILING (`'always_refuse'` overrides
-/// any per-room grant), and the per-room `runDestructiveToolsAllowed === 1` flag
-/// must be set. Only consulted for `chatType === 'autonomous'`.
-pub fn destructive_allowed(policy: &str, run_destructive_allowed: bool) -> bool {
-    policy != "always_refuse" && run_destructive_allowed
-}
-
-/// Remove the destructive tools from a slate (v4's autonomous-room filter). A
-/// tool with no name is kept.
-pub fn filter_destructive_tools(tools: &mut Vec<Value>) {
-    tools.retain(|tool| match tool_name(tool) {
-        None => true,
-        Some(name) => !DESTRUCTIVE_TOOL_NAMES.contains(&name),
-    });
-}
-
-/// v4's whole autonomous-room ceiling (`orchestrator.service.ts:1041-1061`):
-/// when destructive tools are NOT allowed, filter them from the per-turn slate
-/// and — when anything was removed — log INFO `Autonomous room: destructive
-/// tools filtered from per-turn list {chatId, policy, allowedAtRoom, removed}`.
-/// The caller has already established `chatType === 'autonomous'`. The INFO was
-/// absent in v5 until P4.D234; `discard_mail` makes it fire on EVERY autonomous
-/// workspace slate, since that tool is always present there.
-pub fn apply_autonomous_destructive_filter(
-    chat_id: &str,
+/// v4 `resolveTurnEffectCeiling(chat, chatSettings, storytellerCeiling)`. A
+/// non-autonomous chat takes the storyteller ceiling as is. An autonomous room
+/// keeps it when the user-level `destructiveToolPolicy` is not
+/// `'always_refuse'` AND the room's `runDestructiveToolsAllowed === 1`;
+/// otherwise DEBUG `Autonomous room: destructive tools withheld by effect
+/// ceiling` and `lower(storyteller, write)`. The caller passes v4's defaults
+/// already applied (`policy ?? 'opt_in_per_room'`, the raw `=== 1`).
+pub fn resolve_turn_effect_ceiling(
+    chat_type: &str,
     policy: &str,
     allowed_at_room: bool,
-    tools: &mut Vec<Value>,
-) {
-    if destructive_allowed(policy, allowed_at_room) {
-        return;
+    storyteller_ceiling: Option<crate::tools::effects::ToolEffect>,
+    chat_id: &str,
+) -> Option<crate::tools::effects::ToolEffect> {
+    use crate::tools::effects::{lower_tool_effect, ToolEffect};
+    if chat_type != "autonomous" {
+        return storyteller_ceiling;
     }
-    let before = tools.len();
-    filter_destructive_tools(tools);
-    if before != tools.len() {
-        tracing::info!(
-            chatId = chat_id,
-            policy = policy,
-            allowedAtRoom = allowed_at_room,
-            removed = before - tools.len(),
-            "Autonomous room: destructive tools filtered from per-turn list"
-        );
+    if policy != "always_refuse" && allowed_at_room {
+        return storyteller_ceiling;
     }
+    tracing::debug!(
+        chatId = chat_id,
+        policy = policy,
+        allowedAtRoom = allowed_at_room,
+        "Autonomous room: destructive tools withheld by effect ceiling"
+    );
+    Some(lower_tool_effect(storyteller_ceiling, ToolEffect::Write))
 }
 
 #[cfg(test)]
@@ -1000,90 +1066,147 @@ mod tests {
         ));
     }
 
+    /// P4.D343: the effect ceiling replaces the curated destructive list. An
+    /// autonomous room without permission is a `write` ceiling, so EVERY
+    /// `destroy` tool goes — the withheld set widens from three to five
+    /// (`delete_annotation`, `doc_delete_blob` join) — and the harmless
+    /// siblings stay.
     #[test]
-    fn destructive_filter() {
-        assert!(destructive_allowed("opt_in_per_room", true));
-        assert!(!destructive_allowed("always_refuse", true));
-        assert!(!destructive_allowed("opt_in_per_room", false));
+    fn write_ceiling_withholds_every_destroy_tool() {
+        use crate::tools::effects::{EffectLookups, ToolEffect};
         let opts = BuildToolsForProviderOptions {
-            include_workspace_tools: false,
+            include_workspace_tools: true,
             doc_tools_mode: DocToolsMode::Full,
             ..Default::default()
         };
-        let mut tools = build_tools_for_provider(&opts);
-        assert!(names(&tools).contains(&"doc_delete_file".to_string()));
-        filter_destructive_tools(&mut tools);
-        assert!(!names(&tools).contains(&"doc_delete_file".to_string()));
-        assert!(!names(&tools).contains(&"doc_delete_folder".to_string()));
-        assert!(names(&tools).contains(&"doc_read_file".to_string()));
-    }
-
-    /// v4 `12c336fad`: `discard_mail` is destructive, so an autonomous room's
-    /// workspace slate loses it while its two harmless siblings stay.
-    #[test]
-    fn destructive_filter_drops_discard_mail_keeps_list_and_read() {
-        let opts = BuildToolsForProviderOptions {
-            include_workspace_tools: true,
-            ..Default::default()
-        };
-        let mut tools = build_tools_for_provider(&opts);
-        let before = names(&tools);
-        for n in ["send_mail", "list_mail", "read_mail", "discard_mail"] {
-            assert!(
-                before.contains(&n.to_string()),
-                "{n} missing from the slate"
-            );
-        }
-        assert!(!before.contains(&"list_email".to_string()));
-        filter_destructive_tools(&mut tools);
-        let after = names(&tools);
-        assert!(!after.contains(&"discard_mail".to_string()));
-        for n in ["send_mail", "list_mail", "read_mail"] {
+        let before = names(&build_tools_for_provider(&opts));
+        let (kept, lines) = crate::test_support::captured_with(|| {
+            apply_effect_ceiling_to_tools(
+                build_tools_for_provider(&opts),
+                ToolEffect::Write,
+                &EffectLookups::default(),
+            )
+        });
+        let after = names(&kept);
+        let withheld: Vec<&str> = before
+            .iter()
+            .filter(|n| !after.contains(n))
+            .map(String::as_str)
+            .collect();
+        // Exactly the `destroy` tools this slate carries (`doc_delete_blob` rides
+        // only the blob tools' gate) — `delete_annotation` newly among them.
+        let destroys: Vec<&str> = before
+            .iter()
+            .map(String::as_str)
+            .filter(|n| {
+                crate::tools::effects::max_effect_of_tool(n, &EffectLookups::default())
+                    == ToolEffect::Destroy
+            })
+            .collect();
+        assert_eq!(withheld, destroys);
+        assert_eq!(
+            withheld,
+            [
+                "delete_annotation",
+                "discard_mail",
+                "doc_delete_file",
+                "doc_delete_folder"
+            ]
+        );
+        for n in ["send_mail", "list_mail", "read_mail", "doc_read_file"] {
             assert!(after.contains(&n.to_string()), "{n} filtered");
         }
-    }
-
-    /// The restored v4 INFO fires with v4's fields when the ceiling removes
-    /// anything, and stays silent when the room allows destructive tools or the
-    /// slate had none to remove.
-    #[test]
-    fn autonomous_filter_logs_what_it_removed() {
-        let workspace = BuildToolsForProviderOptions {
-            include_workspace_tools: true,
-            ..Default::default()
-        };
-        let (_, lines) = crate::test_support::captured_with(|| {
-            let mut tools = build_tools_for_provider(&workspace);
-            apply_autonomous_destructive_filter("chat-1", "opt_in_per_room", false, &mut tools);
-            tools
-        });
         let hits: Vec<&String> = lines
             .iter()
-            .filter(|l| l.contains("destructive tools filtered"))
+            .filter(|l| l.contains("Effect ceiling applied to tool list"))
             .collect();
         assert_eq!(hits.len(), 1, "{lines:?}");
-        assert!(hits[0].starts_with("INFO "), "{}", hits[0]);
-        assert!(
-            hits[0].contains(" chatId=chat-1 policy=opt_in_per_room allowedAtRoom=false removed="),
-            "{}",
-            hits[0]
-        );
+        assert!(hits[0].starts_with("DEBUG "), "{}", hits[0]);
+    }
 
-        // Silence: the room allows destructive tools…
-        let (kept, lines) = crate::test_support::captured_with(|| {
-            let mut tools = build_tools_for_provider(&workspace);
-            apply_autonomous_destructive_filter("chat-1", "opt_in_per_room", true, &mut tools);
-            tools
+    /// `resolve_turn_effect_ceiling`: a non-autonomous chat takes the
+    /// storyteller ceiling; an autonomous room lowers to `write` (with the
+    /// DEBUG) unless the policy allows AND the room is opted in.
+    #[test]
+    fn resolve_turn_effect_ceiling_matrix() {
+        use crate::tools::effects::ToolEffect;
+        let (got, lines) = crate::test_support::captured_with(|| {
+            resolve_turn_effect_ceiling("salon", "always_refuse", false, None, "c")
         });
-        assert!(names(&kept).contains(&"discard_mail".to_string()));
-        assert!(!lines.iter().any(|l| l.contains("destructive tools")));
-        // …or nothing destructive was on the slate.
-        let (_, lines) = crate::test_support::captured_with(|| {
-            let mut tools = vec![serde_json::json!({"function": {"name": "rng"}})];
-            apply_autonomous_destructive_filter("chat-1", "always_refuse", true, &mut tools);
-            tools
+        assert_eq!(got, None);
+        assert!(lines.is_empty(), "{lines:?}");
+        assert_eq!(
+            resolve_turn_effect_ceiling("salon", "x", false, Some(ToolEffect::Read), "c"),
+            Some(ToolEffect::Read)
+        );
+        assert_eq!(
+            resolve_turn_effect_ceiling("autonomous", "opt_in_per_room", true, None, "c"),
+            None
+        );
+        let (got, lines) = crate::test_support::captured_with(|| {
+            resolve_turn_effect_ceiling("autonomous", "opt_in_per_room", false, None, "chat-1")
         });
-        assert!(!lines.iter().any(|l| l.contains("destructive tools")));
+        assert_eq!(got, Some(ToolEffect::Write));
+        let hit = lines
+            .iter()
+            .find(|l| l.contains("destructive tools withheld by effect ceiling"))
+            .expect("the DEBUG");
+        assert!(hit.starts_with("DEBUG "), "{hit}");
+        assert!(
+            hit.contains(" chatId=chat-1 policy=opt_in_per_room allowedAtRoom=false"),
+            "{hit}"
+        );
+        assert_eq!(
+            resolve_turn_effect_ceiling(
+                "autonomous",
+                "always_refuse",
+                true,
+                Some(ToolEffect::Read),
+                "c"
+            ),
+            Some(ToolEffect::Read)
+        );
+        assert_eq!(
+            resolve_turn_effect_ceiling(
+                "autonomous",
+                "always_refuse",
+                true,
+                Some(ToolEffect::Destroy),
+                "c"
+            ),
+            Some(ToolEffect::Write)
+        );
+    }
+
+    /// A computed tool with a note for the ceiling is kept with the note
+    /// appended after a blank line; without a note it is dropped.
+    #[test]
+    fn computed_tool_notes_under_a_ceiling() {
+        use crate::tools::effects::{EffectLookups, ToolEffect};
+        let tools = vec![
+            serde_json::json!({"type": "function", "function": {"name": "state", "description": "S"}}),
+            serde_json::json!({"name": "edit_custom_tool", "description": "E"}),
+            serde_json::json!({"type": "function", "function": {"name": "doc_open_document"}}),
+            serde_json::json!({"type": "function", "function": {"name": "rng", "description": "R"}}),
+            serde_json::json!({"type": "function"}),
+        ];
+        let kept = apply_effect_ceiling_to_tools(
+            tools.clone(),
+            ToolEffect::None,
+            &EffectLookups::default(),
+        );
+        assert_eq!(kept.len(), 3);
+        assert_eq!(
+            kept[0]["description"],
+            "E\n\nThis turn allows only `action: \"schema\"`."
+        );
+        let kept =
+            apply_effect_ceiling_to_tools(tools, ToolEffect::Read, &EffectLookups::default());
+        assert_eq!(kept.len(), 5);
+        assert!(kept[2]["function"]["description"]
+            .as_str()
+            .unwrap()
+            .starts_with("\n\nThis turn allows only opening"));
     }
 
     /// The Brahma surface (`include_workspace_tools: false`) carries none of the

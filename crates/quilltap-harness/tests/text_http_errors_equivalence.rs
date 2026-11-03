@@ -673,6 +673,7 @@ fn stream_params(row: &Row, spec: &CaseSpec) -> StreamParams {
         previous_response_id: None,
         stop: Vec::new(),
         request_timeout_ms: spec.request_timeout_ms,
+        tool_choice: None,
     }
 }
 

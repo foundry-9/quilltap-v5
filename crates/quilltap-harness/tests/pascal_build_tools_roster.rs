@@ -130,6 +130,8 @@ fn base_input<'a>(ctx: Option<RosterContext>) -> BuildToolsInput<'a> {
         model_supports_native_tools: true,
         provider_supports_web_search: false,
         custom_tool_context: ctx,
+        // P4.D343: v4 passes no effect ceiling on this surface.
+        effect_ceiling: None,
     }
 }
 

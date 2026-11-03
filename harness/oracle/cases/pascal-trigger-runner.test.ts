@@ -56,6 +56,8 @@ interface CaseSpec {
   chatSettings: { customTools?: boolean; customToolTriggers?: boolean } | null;
   /** SQL planted on the main copy before the open (the Rust side runs the same). */
   plant?: string[];
+  /** P4.D343 (v4 `b15fe9404` D9): a storyteller turn's effect ceiling. */
+  effectCeiling?: 'none' | 'read' | 'write' | 'destroy';
 }
 
 /** Every `chat_messages` insert aborts: the deal lands, the Pascal post (and
@@ -79,6 +81,8 @@ const PINNED_MESSAGES = new Set([
   // P4.D329: the inventory applier's tail — `announcement` is the runner's
   // no-pending-map shape (`posted now`). No earlier case gestures.
   'Custom tool inventory effects applied',
+  // P4.D343 (T1): the effect-ceiling skip.
+  "Triggered custom tool skipped — above the turn's effect ceiling",
 ]);
 
 const A = { participantId: P7_A, characterId: CHAR_A };
@@ -137,6 +141,17 @@ const CASES: CaseSpec[] = [
   // P4.D329 (17 (j)): a phrase firing a `pick_up` gesture — the runner passes
   // no pending Inventory map, so the change posts its own line ('posted now').
   { name: 'inventory-pick-up-posted-now', speaker: A, content: 'Now pocket the tape.', chatSettings: ON },
+
+  // ---- P4.D343 (v4 `b15fe9404`, `trigger-runner.test.ts` D9): a storyteller
+  // turn's effect ceiling. `spell` writes `state`, `wind` / `stoke` write a
+  // progression; `seer` carries no effects (read). Under `read` a write tool is
+  // skipped (the DEBUG, no run, no post) and a read tool fires; under `write`
+  // both fire; with no ceiling neither line.
+  { name: 'p4d343-ceiling-read-skips-write', speaker: A, content: 'abracadabra', chatSettings: ON, effectCeiling: 'read' },
+  { name: 'p4d343-ceiling-read-runs-read', speaker: A, content: 'Let me consult the oracle.', chatSettings: ON, effectCeiling: 'read' },
+  { name: 'p4d343-ceiling-write-runs-write', speaker: A, content: 'abracadabra', chatSettings: ON, effectCeiling: 'write' },
+  { name: 'p4d343-ceiling-none-skips-both', speaker: A, content: 'Stoke the fire, then wind the clock.', chatSettings: ON, effectCeiling: 'none' },
+  { name: 'p4d343-ceiling-read-mixed', speaker: A, content: 'Consult the oracle, then abracadabra.', chatSettings: ON, effectCeiling: 'read' },
 ];
 
 async function dumpStores(chatId: string): Promise<Record<string, unknown>> {
@@ -255,6 +270,7 @@ async function runCase(
       speaker: c.speaker,
       projectId: PROJECT,
       chatSettings: c.chatSettings,
+      ...(c.effectCeiling ? { effectCeiling: c.effectCeiling } : {}),
     };
     const plant = c.plant ?? null;
     const onPosted: string[] = [];

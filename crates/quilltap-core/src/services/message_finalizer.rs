@@ -1387,6 +1387,9 @@ where
                 chat_settings: trigger_settings,
                 now_ms: crate::clock::now_unix_ms(),
                 turn_control: turn_control.as_ref(),
+                // === P4.D343 (T1): v4 `effectCeiling: storyteller?.effectCeiling`
+                // — no Storyteller turn reaches the finalizer in this build yet.
+                effect_ceiling: None,
             },
             consult.as_deref(),
             &mut on_posted,

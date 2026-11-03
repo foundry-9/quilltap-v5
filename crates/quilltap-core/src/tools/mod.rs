@@ -9,6 +9,7 @@ pub mod definitions;
 pub mod discard_mail;
 pub mod doc_edit;
 pub mod edit_custom_tool;
+pub mod effects; // P4.D343
 pub mod executor;
 pub mod generate_image;
 pub mod help;

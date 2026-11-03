@@ -726,6 +726,7 @@ where
         provider_supports_web_search: sdeps.provider_supports_web_search,
         log_context: LogContext {
             autonomous_run_id: Some(run_id.clone()),
+            storyteller_round_id: None,
         },
     };
     // v4's `handleSendMessage` shell SWALLOWS every error thrown inside its

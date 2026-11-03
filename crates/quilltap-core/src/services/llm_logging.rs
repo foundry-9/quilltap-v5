@@ -46,6 +46,13 @@ pub struct LogContext {
     /// Stamped onto the row's `autonomousRunId`; lets the room budget sum spend by
     /// run id. `None` outside an autonomous turn.
     pub autonomous_run_id: Option<String>,
+    // === P4.D343: the storyteller round (v4 `round-context.ts`) ===
+    /// Stamped onto the row's `storytellerRoundId`: every bid call (type
+    /// `STORYTELLER_BID`) and every speaking turn a round runs is logged with
+    /// its round's id. v4 reads it from an `AsyncLocalStorage`
+    /// (`getStorytellerRoundId()`); v5 threads it explicitly, as
+    /// `autonomous_run_id`. `None` outside a storyteller round.
+    pub storyteller_round_id: Option<String>,
 }
 
 impl LogContext {
@@ -313,9 +320,9 @@ pub async fn log_llm_call(db: &Db, params: LogLlmCallParams, ctx: &LogContext) -
         chat_id: params.chat_id,
         character_id: params.character_id,
         autonomous_run_id: ctx.autonomous_run_id.clone(),
-        // P4.D341 lands the column; the `LogContext` field + the stamp are
-        // P4.D343's (contract K names only the row).
-        storyteller_round_id: None,
+        // P4.D341 lands the column; the stamp is P4.D343's (v4
+        // `llm-logging.service.ts:225`).
+        storyteller_round_id: ctx.storyteller_round_id.clone(),
         provider: params.provider,
         model_name: params.model_name,
         connection_profile_id: params.connection_profile_id,
@@ -436,6 +443,10 @@ pub mod log_type {
     /// through the stream call's own log type
     /// (`primary_stream::log_stream_message_call`).
     pub const SCENARIO_BUILDER: &str = "SCENARIO_BUILDER";
+    /// A storyteller bid call (v4 `b15fe9404` — `LLMLogTypeEnum` gains it LAST,
+    /// after `SCENARIO_BUILDER`). Written by `storyteller::bid_call`'s streamed
+    /// call, with the round's id and `messageId` NULL.
+    pub const STORYTELLER_BID: &str = "STORYTELLER_BID";
     /// UI-only in v4; no emitter.
     pub const TOOL_CONTINUATION: &str = "TOOL_CONTINUATION";
 }

@@ -256,6 +256,8 @@ where
             provider_supports_web_search,
             // The character-less Brahma Console never offers `run_custom`.
             custom_tool_context: None,
+            // P4.D343: v4 passes no effect ceiling on this surface.
+            effect_ceiling: None,
         },
     ) {
         Ok(built) => built,

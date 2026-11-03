@@ -1141,6 +1141,7 @@ async fn primary_stream_tier3_matches_oracle() {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         };
 
     assert_eq!(
@@ -2188,6 +2189,7 @@ async fn openai_chaining_fallback_tier3_matches_oracle() {
         previous_response_id: Some("resp_dead".to_string()),
         stop: Vec::new(),
         request_timeout_ms: None,
+        tool_choice: None,
     };
 
     let wire = WireStreamingProvider::new(

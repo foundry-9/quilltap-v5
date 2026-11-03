@@ -2270,6 +2270,16 @@ impl<F: ToolRunner + Sync> ToolRunner for BuiltInToolRunner<F> {
                     "Tool context is misconfigured (mountPool and operatorSurface are mutually exclusive).",
                 );
             }
+            // === P4.D343 (unit E): the effect ceiling ===
+            // The one place a call's effect is checked (v4
+            // `executeToolCallWithContext`): after the mountPool /
+            // operatorSurface refusal, before any dispatch — built-in or the
+            // fallback (where a plugin tool would go).
+            if let Some(ceiling) = ctx.effect_ceiling {
+                if let Some(refused) = refuse_above_ceiling(tool_call, ctx, ceiling) {
+                    return refused;
+                }
+            }
             match self.dispatch(tool_call, ctx).await {
                 Some(result) => result,
                 // Not handled here → the injected fallback (loud by default).
@@ -2366,6 +2376,54 @@ fn mail_result(formatted: String, path: Option<String>) -> Value {
 
 /// A failure [`ToolResult`] (`result: null`, `error` set) — v4's `result:
 /// result.success ? {…} : null, error: result.success ? undefined : result.error`.
+/// The effect-ceiling check (v4 `tool-executor.ts:343-371`, P4.D343). `Some`
+/// with the refusal result when the call is above `ceiling` — INFO `Tool call
+/// refused: above the turn's effect ceiling` and v4's result object `{
+/// toolName, success: false, result: { formattedText: message }, error:
+/// message }`; `None` (with the DEBUG `Tool call within the turn's effect
+/// ceiling`) when it is within.
+pub(crate) fn refuse_above_ceiling(
+    tool_call: &ToolCall,
+    ctx: &ToolExecutionContext,
+    ceiling: crate::tools::effects::ToolEffect,
+) -> Option<ToolResult> {
+    use crate::tools::effects::{
+        describe_ceiling_refusal, effect_of_tool_call, is_within_ceiling, EffectLookups,
+    };
+    let lookups = EffectLookups {
+        custom_tool_effects: ctx.custom_tool_effects.clone(),
+        plugin_tool_effects: ctx.plugin_tool_effects.clone(),
+    };
+    let effect = effect_of_tool_call(&tool_call.name, &tool_call.arguments, &lookups);
+    if !is_within_ceiling(effect, ceiling) {
+        tracing::info!(
+            context = "tool-executor",
+            toolName = %tool_call.name,
+            chatId = %ctx.chat_id,
+            effect = effect.as_str(),
+            ceiling = ceiling.as_str(),
+            "Tool call refused: above the turn's effect ceiling"
+        );
+        let message = describe_ceiling_refusal(&tool_call.name, effect, ceiling);
+        return Some(ToolResult {
+            tool_name: tool_call.name.clone(),
+            success: false,
+            result: serde_json::json!({ "formattedText": message }),
+            error: Some(message),
+            message: None,
+            metadata: None,
+        });
+    }
+    tracing::debug!(
+        context = "tool-executor",
+        toolName = %tool_call.name,
+        effect = effect.as_str(),
+        ceiling = ceiling.as_str(),
+        "Tool call within the turn's effect ceiling"
+    );
+    None
+}
+
 fn fail(tool_name: &str, error: impl Into<String>) -> ToolResult {
     ToolResult {
         tool_name: tool_name.to_string(),

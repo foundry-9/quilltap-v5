@@ -83,6 +83,12 @@ pub struct RunTriggeredCustomToolsParams {
     pub project_id: Option<String>,
     /// The chat settings already in hand at the call site.
     pub chat_settings: Option<TriggerSettings>,
+    // === P4.D343 (T1): the turn's effect ceiling ===
+    /// The turn's effect ceiling (v4 `effectCeiling`, a storyteller turn's
+    /// bid tier): a matched tool whose derived effect is above it is skipped
+    /// before it runs. Only the REPLY site carries one; the user-message site
+    /// never does.
+    pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
 }
 
 /// Run every tool the message's words fire (v4 `runTriggeredCustomTools`).
@@ -241,6 +247,25 @@ async fn run_triggered(
         let Some(entry) = roster.get(&hit.tool) else {
             continue;
         };
+
+        // === P4.D343 (T1): the effect-ceiling skip, BEFORE the run (v4
+        // `trigger-runner.ts:170-183`).
+        if let Some(ceiling) = params.effect_ceiling {
+            let effect = crate::pascal::tool_effect::custom_tool_effect(&entry.definition);
+            if !crate::tools::effects::is_within_ceiling(effect, ceiling) {
+                tracing::debug!(
+                    target: "quilltap::pascal",
+                    context = CONTEXT,
+                    chatId = chat_id.as_str(),
+                    tool = hit.tool.as_str(),
+                    phrase = hit.phrase.as_str(),
+                    effect = effect.as_str(),
+                    ceiling = ceiling.as_str(),
+                    "Triggered custom tool skipped — above the turn's effect ceiling",
+                );
+                continue;
+            }
+        }
 
         // v4 builds the invoker inside the service only when the definition
         // declares `llm`; here the runner in hand (the spine's) is wrapped per

@@ -81,6 +81,8 @@ pub async fn run_user_message_triggers(
             },
             project_id: params.project_id.map(str::to_string),
             chat_settings: params.chat_settings,
+            // v4: the user-message site carries no ceiling.
+            effect_ceiling: None,
         },
         consult,
         params.now_ms,
@@ -108,6 +110,11 @@ pub struct ReplyTriggerParams<'a> {
     /// The send's turn-control handle (`TurnStopReach`, P4.D348) — as on
     /// [`UserMessageTriggerParams::turn_control`].
     pub turn_control: Option<&'a TurnControlHandle>,
+    // === P4.D343 (T1) ===
+    /// The turn's effect ceiling (v4 `trigger-phrase-sites.ts:81`, fed by the
+    /// finalizer's `storyteller?.effectCeiling`): a storyteller turn's triggered
+    /// tools above its bid tier are skipped.
+    pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
 }
 
 /// A character's reply, from that character's own perspective (v4
@@ -134,6 +141,7 @@ pub async fn run_reply_triggers(
             },
             project_id: params.project_id.map(str::to_string),
             chat_settings: params.chat_settings,
+            effect_ceiling: params.effect_ceiling,
         },
         consult,
         params.now_ms,
@@ -218,6 +226,7 @@ mod tests {
                     chat_settings: on,
                     now_ms: 0,
                     turn_control: None,
+                    effect_ceiling: None,
                 },
                 None,
                 &mut sink,
@@ -312,6 +321,7 @@ mod tests {
             chat_settings: None,
             now_ms: 0,
             turn_control: Some(&handle),
+            effect_ceiling: None,
         };
         assert_eq!(user.turn_control, Some(&handle));
         assert_eq!(reply.turn_control, Some(&handle));

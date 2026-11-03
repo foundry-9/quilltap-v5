@@ -67,6 +67,11 @@ pub struct CustomToolLibraryEntry {
     /// `362426c8f`). Declared after `llm` and before `parameterCount`, which
     /// is v4's own order.
     pub trigger_count: usize,
+    // === P4.D343 (`LibraryEntryKeys`): v4 `workbench.ts:54` — after
+    // `triggerCount` (P4.D345's `intervention` sits between the two at union).
+    /// What the tool does to the world (`custom_tool_effect`): `"read"` unless
+    /// it carries effects, then `"write"`. A storyteller bid ranks it by this.
+    pub effect: &'static str,
     pub parameter_count: usize,
     pub outcome_count: usize,
     pub mount_point_id: String,
@@ -397,6 +402,11 @@ pub fn build_custom_tool_library(
             },
             llm: entry.definition.llm.is_some(),
             trigger_count: entry.definition.triggers.as_ref().map_or(0, Vec::len),
+            // P4.D343: v4 `customToolEffect(def) === 'read' ? 'read' : 'write'`.
+            effect: match crate::pascal::tool_effect::custom_tool_effect(&entry.definition) {
+                crate::tools::effects::ToolEffect::Read => "read",
+                _ => "write",
+            },
             parameter_count: entry
                 .definition
                 .parameters

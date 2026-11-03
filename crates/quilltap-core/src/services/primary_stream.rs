@@ -2176,6 +2176,7 @@ mod tests {
                         previous_response_id: None,
                         stop: Vec::new(),
                         request_timeout_ms: None,
+                        tool_choice: None,
                     },
                     attached_files: Vec::new(),
                     original_message: None,
@@ -2472,6 +2473,7 @@ mod tests {
             previous_response_id: Some("resp_1".into()),
             stop: vec!["END".into()],
             request_timeout_ms: None,
+            tool_choice: None,
         };
 
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -2764,6 +2766,7 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         };
 
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
@@ -2995,6 +2998,7 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         };
         let none = LogContext::none();
         let ctx = |chat_id: &'static str| StreamLogCtx {

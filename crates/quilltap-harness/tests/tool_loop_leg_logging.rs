@@ -73,6 +73,7 @@ fn params() -> StreamParams {
         previous_response_id: None,
         stop: Vec::new(),
         request_timeout_ms: None,
+        tool_choice: None,
     }
 }
 
@@ -225,6 +226,7 @@ async fn native_restream_logs_under_the_understudy_and_charges_the_run() {
             generated_image_paths: &mut images,
             log_context: LogContext {
                 autonomous_run_id: Some(RUN.into()),
+                storyteller_round_id: None,
             },
         },
     )
@@ -329,6 +331,7 @@ async fn text_continuation_logs_under_the_understudy_and_charges_the_run() {
             generated_image_paths: &mut images,
             log_context: LogContext {
                 autonomous_run_id: Some(RUN.into()),
+                storyteller_round_id: None,
             },
         },
     )

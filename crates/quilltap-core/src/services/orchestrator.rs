@@ -681,6 +681,20 @@ pub(crate) struct TurnToolContextArgs<'a> {
     /// The send's turn-control handle (P4.D348 `TurnStopReach`) — copied onto
     /// the context so a tool reaches the operator's Stop.
     pub turn_control: Option<&'a crate::services::turn_control::TurnControlHandle>,
+    // === P4.D343 (unit E) ===
+    /// The slate's effect ceiling + its two effect maps (v4
+    /// `buildTurnToolContext` copies them onto the context only when set).
+    pub effect_slate: Option<&'a TurnEffectSlate>,
+}
+
+/// The turn's effect ceiling and the two effect maps the slate resolved (v4
+/// `TurnToolSlate.effectCeiling` / `customToolEffects` / `pluginToolEffects`,
+/// P4.D343).
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TurnEffectSlate {
+    pub effect_ceiling: Option<crate::tools::effects::ToolEffect>,
+    pub custom_tool_effects: std::collections::BTreeMap<String, crate::tools::effects::ToolEffect>,
+    pub plugin_tool_effects: std::collections::BTreeMap<String, crate::tools::effects::ToolEffect>,
 }
 
 /// Convert the built context's debug memory bags into the [`LoadedMemoriesContext`]
@@ -767,6 +781,15 @@ pub(crate) fn turn_tool_context(args: TurnToolContextArgs<'_>) -> ToolExecutionC
     // P4.D348 `TurnStopReach`: set after `create_tool_context` returns, so its
     // positional signature stays unchanged for its other callers.
     ctx.turn_control = args.turn_control.cloned();
+    // === P4.D343 (unit E): v4 `buildTurnToolContext` — the two maps and the
+    // ceiling ride the context only when the slate set a ceiling.
+    if let Some(slate) = args.effect_slate {
+        if slate.effect_ceiling.is_some() {
+            ctx.effect_ceiling = slate.effect_ceiling;
+            ctx.custom_tool_effects = slate.custom_tool_effects.clone();
+            ctx.plugin_tool_effects = slate.plugin_tool_effects.clone();
+        }
+    }
     ctx
 }
 
@@ -2046,7 +2069,36 @@ where
         .get("allowWebSearch")
         .and_then(Value::as_bool)
         .unwrap_or(false);
-    let (mut tools, model_supports_native_tools, use_native_web_search) = if is_effective_courier {
+    // === P4.D343 (unit E): the turn's effect ceiling, resolved BEFORE the
+    // slate (v4 `resolveTurnEffectCeiling`, `turn-tools.service.ts:221-238`) and
+    // passed INTO `build_tools`, which applies it last. The user-level
+    // `destructiveToolPolicy` is a CEILING (`'always_refuse'` overrides any
+    // per-room grant); the per-room `runDestructiveToolsAllowed === 1` is a raw
+    // integer read, not coerced. No Storyteller turn exists yet in this build,
+    // so the storyteller ceiling is absent.
+    let effect_ceiling = {
+        let policy = chat_settings
+            .as_ref()
+            .map(|s| s.autonomous_destructive_policy.clone())
+            .unwrap_or_else(|| "opt_in_per_room".to_string());
+        let allowed_at_room = chat
+            .get("runDestructiveToolsAllowed")
+            .and_then(Value::as_i64)
+            == Some(1);
+        tool_build::resolve_turn_effect_ceiling(
+            chat.get("chatType").and_then(Value::as_str).unwrap_or(""),
+            &policy,
+            allowed_at_room,
+            None,
+            &chat_id,
+        )
+    };
+    let mut effect_slate = TurnEffectSlate {
+        effect_ceiling,
+        ..Default::default()
+    };
+    let (tools, model_supports_native_tools, use_native_web_search) = if is_effective_courier {
+        // v4: the Courier's early return keeps the ceiling, with empty maps.
         (Vec::new(), false, false)
     } else {
         // v4 `buildTools` → `checkModelSupportsTools(effectiveProfile.provider,
@@ -2150,38 +2202,17 @@ where
                 model_supports_native_tools: model_supports,
                 provider_supports_web_search: input.provider_supports_web_search,
                 custom_tool_context,
+                effect_ceiling,
             },
         )?;
+        effect_slate.custom_tool_effects = built.custom_tool_effects;
+        effect_slate.plugin_tool_effects = built.plugin_tool_effects;
         (
             built.tools,
             built.model_supports_native_tools,
             built.use_native_web_search,
         )
     };
-
-    // 4.6 Private Character Rooms — destructive-tool filter for autonomous rooms
-    // (orchestrator.service.ts:836–861). The user `destructiveToolPolicy` is a
-    // CEILING; the per-room `runDestructiveToolsAllowed === 1` (raw integer read,
-    // not coerced) must be set. The corpus keeps chats non-autonomous → the
-    // branch is reproduced but never fires.
-    if chat.get("chatType").and_then(Value::as_str) == Some("autonomous") {
-        let policy = chat_settings
-            .as_ref()
-            .map(|s| s.autonomous_destructive_policy.clone())
-            .unwrap_or_else(|| "opt_in_per_room".to_string());
-        let allowed_at_room = chat
-            .get("runDestructiveToolsAllowed")
-            .and_then(Value::as_i64)
-            == Some(1);
-        // P4.D234 OUT-OF-MANDATE (a NOBODY file this round; the unifier
-        // preserves): the ceiling + v4's absent `destructive tools filtered` INFO.
-        tool_build::apply_autonomous_destructive_filter(
-            &chat_id,
-            &policy,
-            allowed_at_room,
-            &mut tools,
-        );
-    }
 
     // Resolve the pseudo-tool mode + the actual slate (orchestrator.service.ts:863–899).
     let profile_pseudo_tool_mode = connection_profile
@@ -2197,19 +2228,32 @@ where
     let use_text_block_tools =
         !is_effective_courier && resolved_tool_mode != ResolvedToolMode::Native;
     // === P4.D348 (v4 `a8214b253` `resolveTurnToolSlate`) ===
-    // The Courier returns before this line in v4. `effectCeiling` is ABSENT
-    // until P4.D343's ceiling exists (R-7): v4's value is `undefined` — so the
-    // key is dropped — on every non-autonomous, non-storyteller turn.
+    // The Courier returns before this line in v4. `effectCeiling` (P4.D343,
+    // R-7 / Tier 2 item 42) sits between `resolvedToolMode` and
+    // `toolSettingsChanged`; v4's value is `undefined` — so the key is dropped —
+    // on every turn without a ceiling.
     if !is_effective_courier {
-        tracing::debug!(
-            target: "quilltap::turn_tools",
-            chatId = %chat_id,
-            characterId = %character_id,
-            toolCount = tools.len(),
-            resolvedToolMode = resolved_tool_mode.as_str(),
-            toolSettingsChanged = tool_settings_changed,
-            "[TurnTools] Tool slate resolved",
-        );
+        match effect_slate.effect_ceiling {
+            Some(ceiling) => tracing::debug!(
+                target: "quilltap::turn_tools",
+                chatId = %chat_id,
+                characterId = %character_id,
+                toolCount = tools.len(),
+                resolvedToolMode = resolved_tool_mode.as_str(),
+                effectCeiling = ceiling.as_str(),
+                toolSettingsChanged = tool_settings_changed,
+                "[TurnTools] Tool slate resolved",
+            ),
+            None => tracing::debug!(
+                target: "quilltap::turn_tools",
+                chatId = %chat_id,
+                characterId = %character_id,
+                toolCount = tools.len(),
+                resolvedToolMode = resolved_tool_mode.as_str(),
+                toolSettingsChanged = tool_settings_changed,
+                "[TurnTools] Tool slate resolved",
+            ),
+        }
     }
     // === end P4.D348 ===
     // Under a pseudo-tool surface the native slate is suppressed (`actualTools = []`).
@@ -2991,6 +3035,7 @@ where
         stop: initial_stop_sequences.clone(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
+        tool_choice: None,
     };
 
     let is_paused = chat
@@ -3287,6 +3332,7 @@ where
         project_id: json_str(&chat, "projectId").as_deref(),
         loaded_memories: Some(&turn_loaded_memories),
         turn_control: turn_control_handle.as_ref(),
+        effect_slate: Some(&effect_slate),
     });
     loop_tool_context.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
     loop_tool_context.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
@@ -3356,6 +3402,7 @@ where
             project_id: json_str(&chat, "projectId").as_deref(),
             loaded_memories: Some(&turn_loaded_memories),
             turn_control: turn_control_handle.as_ref(),
+            effect_slate: Some(&effect_slate),
         });
         c.pending_wardrobe_announcements = Some(pending_wardrobe.clone());
         c.pending_wardrobe_history = Some(pending_wardrobe_history.clone());
@@ -5978,6 +6025,7 @@ mod tests {
             project_id,
             loaded_memories: None,
             turn_control: None,
+            effect_slate: None,
         }
     }
 

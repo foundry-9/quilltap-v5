@@ -127,6 +127,23 @@ pub fn validate_edit_custom_tool_input(input: &Value) -> Option<EditCustomToolIn
     })
 }
 
+/// v4 `editCustomToolToolEffect` (P4.D343): `action: "schema"` touches
+/// nothing; a call without `content` validates (a read); a call with `content`
+/// saves (a write). `None` when the input fails the schema (counted as
+/// `write`). v4 tests `input.content === undefined`, so an explicit `null`
+/// `content` is a write.
+pub fn edit_custom_tool_effect(input: &Value) -> Option<crate::tools::effects::ToolEffect> {
+    use crate::tools::effects::ToolEffect;
+    let parsed = validate_edit_custom_tool_input(input)?;
+    Some(if parsed.action == Some(EditCustomToolAction::Schema) {
+        ToolEffect::None
+    } else if parsed.content.is_none() {
+        ToolEffect::Read
+    } else {
+        ToolEffect::Write
+    })
+}
+
 // ===========================================================================
 // Output (v4 `EditCustomToolOutput`) + the model-facing formatter
 // ===========================================================================

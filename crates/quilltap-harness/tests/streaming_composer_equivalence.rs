@@ -270,6 +270,7 @@ fn params(model: &str) -> StreamParams {
         previous_response_id: None,
         stop: Vec::new(),
         request_timeout_ms: None,
+        tool_choice: None,
     }
 }
 

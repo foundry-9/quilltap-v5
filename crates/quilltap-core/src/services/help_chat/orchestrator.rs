@@ -780,6 +780,8 @@ where
             model_supports_native_tools: deps.model_supports_native_tools,
             provider_supports_web_search,
             custom_tool_context: None,
+            // P4.D343: v4 passes no effect ceiling on this surface.
+            effect_ceiling: None,
         },
     )
     .map_err(|e| HelpSendError::new(format!("{e:?}")))?;
@@ -1412,6 +1414,7 @@ async fn stream_turn<STR: StreamingCompletionProvider>(
         previous_response_id: None,
         stop: Vec::new(),
         request_timeout_ms: None,
+        tool_choice: None,
     };
     // A provider that answers with headers and then goes silent would otherwise
     // hold this loop open forever — the SDK's own timeout stops at the headers.

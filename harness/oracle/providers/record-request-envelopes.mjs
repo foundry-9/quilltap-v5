@@ -773,6 +773,24 @@ function casesFor(provider) {
       ],
     });
   }
+  // P4.D343 (v4 `b15fe9404`): the storyteller bid's `toolChoice: 'none'` —
+  // the slate offered (so the cached prefix matches a real turn's) while the
+  // model is asked not to call. Expected: `"tool_choice":"none"` on nanogpt /
+  // deepseek / z-ai / openai-compatible, `"auto"` on openrouter (hard-coded),
+  // NO key on anthropic / openai (responses) / ollama / grok. Plus, on the four
+  // that read it, the empty-slate vector (v4's streaming funnel never sends it
+  // there; at the plugin no `tools` → no key). Stream mode only — a bid is a
+  // streamed call. Google is outside this corpus (`request_builder_google`).
+  if (provider !== 'google') {
+    const bidTools = provider === 'anthropic'
+      ? [{ name: 'search', description: 'Search.', input_schema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }]
+      : [TOOL];
+    add(`storyteller_bid_tool_choice_none_${provider}`, { ...namedParams, tools: bidTools, toolChoice: 'none' }, ['stream']);
+    if (['nanogpt', 'deepseek', 'z-ai', 'openai-compatible'].includes(provider)) {
+      const { tools: _omit, ...noTools } = namedParams;
+      add(`storyteller_bid_tool_choice_none_empty_slate_${provider}`, { ...noTools, tools: [], toolChoice: 'none' }, ['stream']);
+    }
+  }
   return cases;
 }
 

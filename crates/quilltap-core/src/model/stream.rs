@@ -487,8 +487,8 @@ impl std::error::Error for StreamError {}
 /// **Deferred** from v4's `LLMParams` (not set on the primary-stream path, or
 /// carried above the seam, so omitted to keep the boundary minimal):
 /// `strictMaxTokens` (a cheap-LLM-only flag — the streaming path never sets it)
-/// and `toolChoice` / `responseFormat` / `seed` / `user` (the chat path doesn't
-/// set them here). `attachments` ride the MESSAGES, not the params (P4.21,
+/// and `responseFormat` / `seed` / `user` (the chat path doesn't set them
+/// here). `toolChoice` is carried (P4.D343 — the storyteller bid). `attachments` ride the MESSAGES, not the params (P4.21,
 /// matching v4's `messages[].attachments`): the file subsystem stamps the
 /// merged slate onto the last user [`StreamMessage::User`], the request
 /// builders emit each provider's wire parts from it, and the sent/failed
@@ -533,6 +533,14 @@ pub struct StreamParams {
     /// sets one today (the cheap-LLM deadlines all go through the completion
     /// half), and no v4 streaming caller does either.
     pub request_timeout_ms: Option<i64>,
+    // === P4.D343 (R-L): v4 `StreamOptions.toolChoice` ===
+    /// v4 `StreamOptions.toolChoice?: 'auto' | 'none'`: offers the tools (so
+    /// the request's cached prefix matches a real turn's) while asking the model
+    /// not to call any — the storyteller bid. Providers that ignore it may still
+    /// return a call; the caller discards it. `Some("none")` is the only value
+    /// ever sent; it reaches the wire only with a non-empty slate, and only on
+    /// the chat-completions providers that read it.
+    pub tool_choice: Option<String>,
 }
 
 /// The streaming completion boundary — every streamed model call goes through
@@ -760,6 +768,7 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         }
     }
 

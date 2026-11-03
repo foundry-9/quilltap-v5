@@ -31,7 +31,7 @@
     { "name": "destructive_autonomous_allowed", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 1 },
     { "name": "destructive_autonomous_not_permitted", "documentEditingEnabled": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
     { "name": "destructive_non_autonomous_kept", "documentEditingEnabled": true, "chatType": "chat", "runDestructiveToolsAllowed": 0 },
-    { "name": "p4d234_destructive_autonomous_mail_only", "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
+    { "name": "effect_ceiling_autonomous_withholds_destroy", "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0 },
     { "name": "p4d216_doc_tools_read", "docToolsMode": "read" },
     { "name": "p4d216_doc_tools_full_explicit", "docToolsMode": "full" },
     { "name": "p4d216_doc_tools_off_explicit", "docToolsMode": "off" },
@@ -48,6 +48,12 @@
     { "name": "p4d328_inventory_null", "canManageInventory": null, "canDressThemselves": true },
     { "name": "p4d328_inventory_and_dress_off", "canManageInventory": false, "canDressThemselves": false },
     { "name": "p4d332_edit_custom_tool_empty_roster", "customToolContext": true },
-    { "name": "p4d332_edit_custom_tool_disabled", "customToolContext": true, "disabledTools": ["edit_custom_tool"] }
+    { "name": "p4d332_edit_custom_tool_disabled", "customToolContext": true, "disabledTools": ["edit_custom_tool"] },
+    { "name": "p4d343_storyteller_ceiling_none", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "storytellerCeiling": "none" },
+    { "name": "p4d343_storyteller_ceiling_read", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "storytellerCeiling": "read" },
+    { "name": "p4d343_storyteller_ceiling_write", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "storytellerCeiling": "write" },
+    { "name": "p4d343_storyteller_ceiling_destroy", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "storytellerCeiling": "destroy" },
+    { "name": "p4d343_autonomous_storyteller_read", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "chatType": "autonomous", "destructiveToolPolicy": "opt_in_per_room", "runDestructiveToolsAllowed": 0, "storytellerCeiling": "read" },
+    { "name": "p4d343_autonomous_storyteller_destroy_lowered", "documentEditingEnabled": true, "isMultiCharacter": true, "helpToolsEnabled": true, "agentModeEnabled": true, "imageProfileId": "img-1", "projectId": "proj-1", "requestFullContext": true, "allowWebSearch": true, "askCarinaEnabled": true, "customToolContext": true, "chatType": "autonomous", "destructiveToolPolicy": "always_refuse", "runDestructiveToolsAllowed": 1, "storytellerCeiling": "destroy" }
   ]
 }

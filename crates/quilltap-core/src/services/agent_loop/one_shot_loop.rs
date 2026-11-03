@@ -354,6 +354,7 @@ async fn run_stream<STR: StreamingCompletionProvider>(
         stop: Vec::new(),
         // v4 sets no `requestTimeoutMs` on any streaming call (P4.D83).
         request_timeout_ms: None,
+        tool_choice: None,
     };
     // A provider that answers with headers and then goes silent would otherwise
     // hold this loop open forever — the SDK's own timeout stops at the headers.

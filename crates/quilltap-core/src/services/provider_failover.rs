@@ -2076,6 +2076,7 @@ mod tests {
             previous_response_id: None,
             stop: Vec::new(),
             request_timeout_ms: None,
+            tool_choice: None,
         }
     }
 
@@ -2775,6 +2776,7 @@ mod tests {
                 // token accounting.
                 log_context: &crate::services::llm_logging::LogContext {
                     autonomous_run_id: Some("run-7".into()),
+                    storyteller_round_id: None,
                 },
             }),
         )

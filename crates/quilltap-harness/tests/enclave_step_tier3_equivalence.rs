@@ -559,6 +559,7 @@ fn enclave_step_tier3_matches_oracle() {
             message_id: None,
             ctx: LogContext {
                 autonomous_run_id: call.run_id.clone(),
+                storyteller_round_id: None,
             },
         });
         let fold_executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {

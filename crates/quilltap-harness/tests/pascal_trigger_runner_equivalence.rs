@@ -62,7 +62,7 @@ const CHAR_B: &str = "a1000000-0000-4000-8000-00000000000b";
 const CHAR_C: &str = "a1000000-0000-4000-8000-00000000000c";
 
 /// The oracle's `PINNED_MESSAGES`: the runner's lines and the run service's.
-const PINNED_MESSAGES: [&str; 11] = [
+const PINNED_MESSAGES: [&str; 12] = [
     "Trigger-phrase scan failed; no custom tools fired",
     "Trigger-phrase scan skipped — speaking character not found",
     "Trigger-phrase scan skipped — speaking character unreadable",
@@ -75,6 +75,8 @@ const PINNED_MESSAGES: [&str; 11] = [
     "Custom tool dealt",
     // P4.D329: the inventory applier's tail (no earlier case gestures).
     "Custom tool inventory effects applied",
+    // P4.D343 (T1): the effect-ceiling skip.
+    "Triggered custom tool skipped — above the turn's effect ceiling",
 ];
 
 #[derive(serde::Deserialize)]
@@ -150,6 +152,10 @@ fn params_of(row: &Value) -> RunTriggeredCustomToolsParams {
         },
         project_id: opt_str(&p["projectId"]),
         chat_settings: settings,
+        // P4.D343 (T1): v4's `effectCeiling`, absent on the older rows.
+        effect_ceiling: p["effectCeiling"]
+            .as_str()
+            .map(|e| quilltap_core::tools::effects::ToolEffect::from_str(e).expect("ceiling")),
     }
 }
 
@@ -397,6 +403,7 @@ fn consult_none_takes_the_no_invoker_arm() {
             custom_tools: Some(true),
             custom_tool_triggers: Some(true),
         }),
+        effect_ceiling: None,
     };
     let mut sink = |_: &Value| {};
     let posted = rt.block_on(run_triggered_custom_tools(
