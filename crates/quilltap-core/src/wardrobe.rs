@@ -20,6 +20,7 @@
 //!   layer order for a default outfit.
 
 pub mod operator_provenance;
+pub mod pronoun_guidance;
 pub mod rollback;
 pub mod wearable_ref;
 

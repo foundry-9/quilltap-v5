@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(wardrobe): port v4's pronoun presets and pronoun-guidance rules (P4.D349)
+
+_Versions: core 0.0.1382._
+
+Two new pure modules port v4 `eb90d9ed8`. `characters::pronoun_presets` holds `STANDARD_PRONOUNS` (He/Him/His, She/Her/Her, They/Them/Their, It/It/Its in picker order), `STANDARD_PRONOUN_SUBJECTS`, `standard_pronoun_label` and `standard_pronoun_subject_of` (whole-set match after trim and lower-case; a partial match is custom). `wardrobe::pronoun_guidance` holds `normalize_pronoun_guidance` (known subjects only, de-duplicated, in picker order; a single string or a preset label reads as its subject), `has_no_pronoun_guidance`, `fits_pronoun_guidance`, `filter_by_pronoun_guidance` (a custom or unset character gets every item, nothing hidden; `keep_ids` are always kept) and `format_pronoun_guidance`. The new tier-1 family `pronoun_guidance_equivalence` compares 110 rows against v4's real modules (new oracle case `pronoun-guidance.ts`); every row matched on the first run.
+
 #### 2026-11-03 — feat(vault): keep v4's humanoid and diagram keys on every character vault write (P4.D349)
 
 _Versions: core 0.0.1381._

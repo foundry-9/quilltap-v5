@@ -193927,6 +193927,13 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
     - The bundle diffs are the export key positions (R-D).
     - The memories counts (`archive_sable` `pruneComplete`, `rehydrate_pre_revision_avatar` `memories: 0`) are the keystone's — recorded for the union.
 
+### Commit B — the pronoun pure modules (item 18)
+
+- NEW `characters/pronoun_presets.rs` and `wardrobe/pronoun_guidance.rs`, with the contract names of the order (`filter_by_pronoun_guidance` takes `id_of` / `guidance_of` closures and returns `(Vec<&T>, usize)`).
+- NEW oracle `cases/pronoun-guidance.ts` (tsx, pure) + NEW family `pronoun_guidance_equivalence.rs` (`QT_ORACLE_PRONOUN_GUIDANCE`). 110 rows: the presets and labels; 19 `normalize` / `format` inputs (every pure `it` of v4's `pronoun-guidance.test.ts` plus the order's extras — order, label, padded label, dedup, `xe`, `null`, `5`, mixed types, `they/them`, `''`, `/he`, a nested list); `subjectOf` × 10 pronoun sets; `fits` × 5 guidances × 10 sets; `filter` × 10 sets × 3 `keepIds` choices.
+- **First run: 110 / 110 exact — no row needed a fix.** The family did not exist before, so the first run IS the red-first (order item 18).
+- Unit fuzz (Tier 2 item 26): `random_values_never_panic_and_non_standard_input_is_empty`, plus `diagram_style_or_default`'s in commit A.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.
