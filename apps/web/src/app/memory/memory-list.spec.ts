@@ -260,8 +260,13 @@ describe('MemoryList — tiers and digests (P4.D276, v4 d58548051)', () => {
       ['hot', 'Active'],
       ['cold', 'Archived'],
     ]);
-    // v4 labels ONLY the tier select.
-    expect(selects.filter((s) => s.hasAttribute('aria-label'))).toEqual([tier]);
+    // At `01a83539d` v4 labelled ONLY the tier select; `eed72d60c` (the WCAG pass,
+    // at `236c04e35`) names the sort and source selects too (P4.D359's R6).
+    expect(selects.map((s) => s.getAttribute('aria-label'))).toEqual([
+      'Sort memories by',
+      'Filter by source',
+      'Filter by tier',
+    ]);
   });
 
   it('sends source CONSOLIDATED when the digest option is chosen', async () => {
@@ -457,3 +462,64 @@ describe('MemoryList — the Maintenance dialog (P4.D300)', () => {
     expect(document.body.querySelector('qt-maintenance-dialog')).toBeNull();
   });
 });
+
+/** v4 `8cb584eff` (`memory-list.tsx:70, :102, :325-333` at `236c04e35`) — consuming C8. */
+describe('MemoryList — Keystones only (v4 8cb584eff)', () => {
+  function keystoneBox(fixture: ComponentFixture<MemoryList>): HTMLInputElement | null {
+    const label = (Array.from(fixture.nativeElement.querySelectorAll('label')) as HTMLElement[]).find(
+      (l) => l.textContent?.trim() === 'Keystones only',
+    );
+    return (label?.querySelector('input[type="checkbox"]') as HTMLInputElement) ?? null;
+  }
+
+  it('renders the box after the tier select with v4’s title and classes', async () => {
+    const fixture = await render(stubClient([mem({ id: 'a' })]));
+    const box = keystoneBox(fixture)!;
+    expect(box).not.toBeNull();
+    expect(box.className).toBe('qt-checkbox');
+    const label = box.closest('label')!;
+    expect(label.getAttribute('title')).toBe('Show only the standing facts you have set in stone');
+    expect(label.className).toBe('flex items-center gap-2 cursor-pointer qt-text-xs');
+    expect(
+      tierSelectOf(fixture).compareDocumentPosition(label) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('sends keystone: true only while ticked — the key is ABSENT, not false, otherwise', async () => {
+    const seen: DispatchReq[] = [];
+    const fixture = await render(stubClient([mem({ id: 'a' })], (r) => seen.push(r)));
+    expect(seen.filter((r) => r.type === 'memoryList').every((r) => !('keystone' in r))).toBe(true);
+
+    seen.length = 0;
+    const box = keystoneBox(fixture)!;
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    const ticked = seen.filter((r) => r.type === 'memoryList');
+    expect(ticked.length).toBeGreaterThan(0);
+    expect(ticked[0]['keystone']).toBe(true);
+    expect(ticked[0].offset).toBe(0);
+  });
+});
+
+/** P4.D358's R1 / R6 HANDOFFs (v4 `eed72d60c`'s names on the filter row). */
+describe('MemoryList — accessible names (WCAG R1 / R6)', () => {
+  it('names the search, sort and source controls with v4’s bytes', async () => {
+    const fixture = await render(stubClient([mem({ id: 'a' })]));
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('input[aria-label="Search memories"]')).not.toBeNull();
+    expect(root.querySelector('select[aria-label="Sort memories by"]')).not.toBeNull();
+    expect(root.querySelector('select[aria-label="Filter by source"]')).not.toBeNull();
+  });
+
+  it('labels the delete-confirm dialog by its title', async () => {
+    const fixture = await render(stubClient([mem({ id: 'a' })]));
+    fixture.componentInstance['confirmDelete']('a');
+    fixture.detectChanges();
+    const dialog = (fixture.nativeElement as HTMLElement).querySelector('[role="dialog"]')!;
+    const id = dialog.getAttribute('aria-labelledby')!;
+    expect(id).toBeTruthy();
+    expect(document.getElementById(id)?.textContent?.trim()).toBe('Delete memory');
+  });
+});
+

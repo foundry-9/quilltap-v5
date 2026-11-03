@@ -31,6 +31,9 @@ const SEARCH_DEBOUNCE_MS = 300;
 type SourceFilter = 'ALL' | 'AUTO' | 'MANUAL' | 'CONSOLIDATED';
 type TierFilter = 'ALL' | 'hot' | 'cold';
 
+/** Module counter behind {@link MemoryList.deleteTitleId}. */
+let deleteTitleCounter = 0;
+
 /**
  * The per-character Commonplace Book list (v4 `components/memory/memory-list.tsx`):
  * a search box (debounced), sort-by + sort-order + source + tier filters (v4
@@ -82,6 +85,7 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
           <input
             type="text"
             placeholder="Search memories..."
+            aria-label="Search memories"
             class="qt-input text-sm"
             [value]="searchInput()"
             (input)="onSearch($any($event.target).value)"
@@ -89,6 +93,7 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
         </div>
         <select
           class="qt-select w-auto"
+          aria-label="Sort memories by"
           (change)="sortBy.set($any($event.target).value)"
         >
           <option value="createdAt" [selected]="sortBy() === 'createdAt'">Created Date</option>
@@ -105,6 +110,7 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
         </button>
         <select
           class="qt-select w-auto"
+          aria-label="Filter by source"
           (change)="sourceFilter.set($any($event.target).value)"
         >
           <option value="ALL" [selected]="sourceFilter() === 'ALL'">All Sources</option>
@@ -123,6 +129,19 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
           <option value="hot" [selected]="tierFilter() === 'hot'">Active</option>
           <option value="cold" [selected]="tierFilter() === 'cold'">Archived</option>
         </select>
+        <!-- v4 8cb584eff (memory-list.tsx:325-333): keystones only (C8). -->
+        <label
+          class="flex items-center gap-2 cursor-pointer qt-text-xs"
+          title="Show only the standing facts you have set in stone"
+        >
+          <input
+            type="checkbox"
+            class="qt-checkbox"
+            [checked]="keystoneOnly()"
+            (change)="keystoneOnly.set($any($event.target).checked)"
+          />
+          Keystones only
+        </label>
       </div>
 
       @if (memoriesQuery.isPending()) {
@@ -211,9 +230,15 @@ type TierFilter = 'ALL' | 'hot' | 'cold';
 
     @if (pendingDeleteId(); as id) {
       <div class="qt-dialog-overlay" (click)="pendingDeleteId.set(null)">
-        <div class="qt-dialog max-w-md" role="dialog" aria-modal="true" (click)="$event.stopPropagation()">
+        <div
+          class="qt-dialog max-w-md"
+          role="dialog"
+          aria-modal="true"
+          [attr.aria-labelledby]="deleteTitleId"
+          (click)="$event.stopPropagation()"
+        >
           <div class="qt-dialog-header">
-            <h2 class="qt-dialog-title">Delete memory</h2>
+            <h2 [id]="deleteTitleId" class="qt-dialog-title">Delete memory</h2>
           </div>
           <div class="qt-dialog-body">
             <p class="qt-body">Are you sure you want to delete this memory?</p>
@@ -250,6 +275,10 @@ export class MemoryList {
   protected readonly sortOrder = signal<MemorySortOrder>('desc');
   protected readonly sourceFilter = signal<SourceFilter>('ALL');
   protected readonly tierFilter = signal<TierFilter>('ALL');
+  /** The delete-confirm title's id — per instance (workspace tabs keep several lists alive). */
+  protected readonly deleteTitleId = `qt-memory-delete-title-${++deleteTitleCounter}`;
+  /** v4 `8cb584eff` `keystoneOnly` (`:70`). */
+  protected readonly keystoneOnly = signal(false);
   /** v4 `viewedDigest` (`:67`). */
   protected readonly viewedDigest = signal<MemoryDto | null>(null);
 
@@ -275,12 +304,18 @@ export class MemoryList {
     return t === 'ALL' ? undefined : t;
   });
 
+  /** v4 `:102` — `keystone=true` is sent only while the box is ticked (C8). */
+  private readonly keystoneParam = computed<true | undefined>(() =>
+    this.keystoneOnly() ? true : undefined,
+  );
+
   private readonly filters = computed(() => ({
     search: this.search() || undefined,
     sortBy: this.sortBy(),
     sortOrder: this.sortOrder(),
     source: this.sourceParam(),
     tier: this.tierParam(),
+    keystone: this.keystoneParam(),
   }));
 
   protected readonly memoriesQuery = injectInfiniteQuery(() => ({
@@ -296,6 +331,7 @@ export class MemoryList {
         search: this.search() || undefined,
         source: this.sourceParam(),
         ...(this.tierParam() ? { tier: this.tierParam() } : {}),
+        ...(this.keystoneParam() ? { keystone: true } : {}),
       }),
     // v4 `hasMore = newMemories.length === MEMORIES_PER_PAGE`.
     getNextPageParam: (lastPage: MemoryListPage, _all: unknown, lastParam: number) =>

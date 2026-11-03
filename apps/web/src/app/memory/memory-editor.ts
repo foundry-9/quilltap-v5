@@ -104,6 +104,29 @@ import { ToastService } from '../ui/toast.service';
           </p>
         </div>
 
+        <!-- v4 8cb584eff (memory-editor.tsx:222-241): the keystone mark (C8). -->
+        <div>
+          <label class="flex items-start gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              id="keystone"
+              name="keystone"
+              class="qt-checkbox mt-0.5"
+              [checked]="keystone()"
+              (change)="keystone.set($any($event.target).checked)"
+            />
+            <span>
+              <span class="block qt-text-label">Keystone — always remembered</span>
+              <span class="block qt-text-xs"
+                >A standing fact, set in stone until you yourself chip it out. Whenever its subject
+                is in the room, in the character's own circle, or is the character themself, it is
+                recalled in full, and no tidying of the Book will ever fold, digest or shelve it.
+                Five to a subject, at most.</span
+              >
+            </span>
+          </label>
+        </div>
+
         @if (error()) {
           <qt-error-alert [message]="error()!" />
         }
@@ -136,6 +159,8 @@ export class MemoryEditor implements OnInit {
   protected readonly content = signal('');
   protected readonly keywords = signal('');
   protected readonly importance = signal(0.5);
+  /** v4 `8cb584eff` — `keystone: memory?.keystone ?? false` (`:54`). */
+  protected readonly keystone = signal(false);
 
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -160,6 +185,7 @@ export class MemoryEditor implements OnInit {
       this.content.set(m.content ?? '');
       this.keywords.set(keywordsToString(m.keywords ?? []));
       this.importance.set(m.importance ?? 0.5);
+      this.keystone.set(m.keystone ?? false);
     }
   }
 
@@ -175,6 +201,9 @@ export class MemoryEditor implements OnInit {
       summary: this.summary(),
       keywords: keywordsFromString(this.keywords()),
       importance: this.importance(),
+      // v4 `8cb584eff` (`:75`): sent on create AND edit. A keystone refusal (C8's
+      // 400 sentences) arrives through the error path below.
+      keystone: this.keystone(),
     };
     try {
       const m = this.memory();

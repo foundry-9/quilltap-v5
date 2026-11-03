@@ -1652,6 +1652,66 @@ export interface CharacterWardrobeImagesRequest {
 }
 // === end P4.D321 ===
 
+// === P4.D359: SPA riders (C5 the absent-mentions wire; C8 the keystone keys; C6 reads — physicalDescription.humanoid, WardrobeItemDto.pronounGuidance) ===
+// Interfaces only (C16). The existing DTOs are WIDENED here by declaration
+// merging, so the round's other fences never share a line with this one.
+
+/** C8 — the keystone keys (v4 `8cb584eff`; P4.D341 carries the Rust side). */
+export interface MemoryDto {
+  /**
+   * An operator-marked standing fact (v4 `memory-card.tsx:30`). Every Memory
+   * DTO carries it after `consolidatedAt` on a keystone-era server; optional
+   * here because a pre-round server sends none (the P4.D276 optional-key rule).
+   */
+  keystone?: boolean;
+}
+export interface MemoryWriteBag {
+  /** Sent on BOTH create and edit (v4 `memory-editor.tsx:75`). */
+  keystone?: boolean;
+}
+export interface MemoryListRequest {
+  /** `true` lists keystones only; the SPA sends the key ONLY when the box is ticked. */
+  keystone?: boolean;
+}
+
+/** C6 — `physicalDescription.humanoid` (v4 `b27e5089a`; P4.D349's wire). */
+export interface CharacterPhysicalDescription {
+  /** Absent means true; false = no humanoid body for the image pipelines. */
+  humanoid?: boolean;
+}
+
+/** C6 — a wardrobe item's pronoun guidance (v4 `eb90d9ed8`; P4.D349's wire). */
+export type PronounGuidance = 'he' | 'she' | 'they' | 'it';
+export interface WardrobeItemDto {
+  /**
+   * Who the piece is offered to. A CREATED item always answers it (`[]` when
+   * none); a READ item carries it only when non-empty.
+   */
+  pronounGuidance?: PronounGuidance[];
+}
+
+/** C5 — the absent-character name chips (v4 `9a88f862f`; P4.D347's wire). */
+export interface AbsentMentionCard {
+  name: string;
+  aliases: string[];
+  pronouns: string | null;
+  body: string;
+}
+export interface AbsentMention {
+  messageId: string;
+  characterId: string;
+  text: string;
+  card: AbsentMentionCard;
+}
+export interface ChatAbsentMentionsRequest {
+  type: 'chatAbsentMentions';
+  chatId: string;
+}
+export interface ChatAbsentMentionsResult {
+  mentions: AbsentMention[];
+}
+// === end P4.D359 ===
+
 /** Tags CRUD (v4 `/tags`). */
 export interface TagListRequest {
   type: 'tagList';

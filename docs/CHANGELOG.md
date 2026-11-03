@@ -12,6 +12,21 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the memory keystone UI — pill, editor checkbox, Keystones only (v4 8cb584eff)
+
+_Versions: SPA 0.5.914._
+
+The memory keystone UI from v4 `8cb584eff`, built on contract C8; P4.D341 carries the server side.
+- A memory card shows the `Keystone` pill between the importance label and the Archived pill.
+- The editor gains the `Keystone — always remembered` checkbox and its help sentence. It is seeded from the memory and sent as `keystone` on create and edit; a keystone refusal reaches the editor's error alert like any other save error.
+- The list gains a `Keystones only` box after the tier filter. It sends `keystone: true` only while ticked and keys the query on it.
+
+The same commit applies P4.D358's WCAG handoffs on `memory-list.ts`:
+- R6: the search, sort and source controls are named with v4 `eed72d60c`'s bytes.
+- R1: the delete-confirm dialog is labelled by its title, with a per-instance id.
+
+`core-contract.ts` gains the one P4.D359 fence (interfaces only; existing DTOs widened by declaration merging). It holds the C8 keys, the C6 reads (`physicalDescription.humanoid`, `WardrobeItemDto.pronounGuidance`, `PronounGuidance`) and the C5 absent-mention types.
+
 #### 2026-11-03 — fix(spa): the templates card writes the shared chat-settings row from the PUT response (v4 3b8b6f42b)
 
 _Versions: SPA 0.5.913._

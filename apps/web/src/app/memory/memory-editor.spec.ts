@@ -134,8 +134,16 @@ describe('MemoryEditor', () => {
       }),
     );
     const req = (dispatch.mock.calls[0] as unknown as [DispatchReq & { memory: Record<string, unknown> }])[0];
-    // v4's payload key order (`memory-editor.tsx:60-66`), `source` gone.
-    expect(Object.keys(req.memory)).toEqual(['characterId', 'content', 'summary', 'keywords', 'importance']);
+    // v4's payload key order (`memory-editor.tsx:68-76` at `236c04e35`), `source`
+    // gone, `keystone` after `importance` (v4 `8cb584eff`).
+    expect(Object.keys(req.memory)).toEqual([
+      'characterId',
+      'content',
+      'summary',
+      'keywords',
+      'importance',
+      'keystone',
+    ]);
     expect(saved).toBe(true);
   });
 
@@ -190,7 +198,14 @@ describe('MemoryEditor — editing a digest (P4.D276 → P4.D300)', () => {
     const req = dispatch.mock.calls[0][0] as DispatchReq & { memory: Record<string, unknown> };
     expect(req.type).toBe('memoryUpdate');
     expect(req['memoryId']).toBe('dig-1');
-    expect(Object.keys(req.memory)).toEqual(['characterId', 'content', 'summary', 'keywords', 'importance']);
+    expect(Object.keys(req.memory)).toEqual([
+      'characterId',
+      'content',
+      'summary',
+      'keywords',
+      'importance',
+      'keystone',
+    ]);
   });
 });
 
@@ -241,3 +256,85 @@ describe('MemoryEditor — the create toast reads admission\'s action (P4.D300 L
     expect(shown).toEqual(['Memory updated']);
   });
 });
+
+/** v4 `8cb584eff` (`memory-editor.tsx:43-75, :222-241` at `236c04e35`) — consuming C8. */
+describe('MemoryEditor — the keystone checkbox (v4 8cb584eff)', () => {
+  it('renders v4’s labelled checkbox and help sentence after the importance block', () => {
+    const fixture = render(null, async () => ({}));
+    const box = fieldByLabel(fixture, 'keystone');
+    expect(box).not.toBeNull();
+    expect(box.type).toBe('checkbox');
+    expect(box.getAttribute('name')).toBe('keystone');
+    expect(box.className).toBe('qt-checkbox mt-0.5');
+    const label = box.closest('label')!;
+    expect(label.className).toBe('flex items-start gap-2 cursor-pointer');
+    const [title, help] = Array.from(label.querySelectorAll('span > span')) as HTMLElement[];
+    expect(title.className).toBe('block qt-text-label');
+    expect(title.textContent).toBe('Keystone — always remembered');
+    expect(help.className).toBe('block qt-text-xs');
+    expect(help.textContent!.replace(/\s+/g, ' ').trim()).toBe(
+      'A standing fact, set in stone until you yourself chip it out. Whenever its subject is in the room, in the character\'s own circle, or is the character themself, it is recalled in full, and no tidying of the Book will ever fold, digest or shelve it. Five to a subject, at most.',
+    );
+    const importance = fieldByLabel(fixture, 'importance');
+    expect(
+      importance.compareDocumentPosition(box) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('is seeded from the memory (absent → unticked)', async () => {
+    const ticked = render(mem({ keystone: true }), async () => ({}));
+    await settle(ticked);
+    expect(fieldByLabel(ticked, 'keystone').checked).toBe(true);
+    const plain = render(mem({}), async () => ({}));
+    await settle(plain);
+    expect(fieldByLabel(plain, 'keystone').checked).toBe(false);
+  });
+
+  it('sends keystone on create AND on edit', async () => {
+    const create = vi.fn(async (_req: DispatchReq) => ({ memory: mem({ id: 'new' }) }));
+    const fixture = render(null, create);
+    fieldByLabel(fixture, 'summary').value = 'S';
+    fieldByLabel(fixture, 'summary').dispatchEvent(new Event('input'));
+    contentEditor(fixture).setMarkdown('C');
+    const box = fieldByLabel(fixture, 'keystone');
+    box.checked = true;
+    box.dispatchEvent(new Event('change'));
+    await settle(fixture);
+    fixture.componentInstance['submit']();
+    await settle(fixture);
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'memoryCreate', memory: expect.objectContaining({ keystone: true }) }),
+    );
+
+    const edit = vi.fn(async (_req: DispatchReq) => ({ memory: mem({}) }));
+    const editing = render(mem({ id: 'm9', keystone: true }), edit);
+    await settle(editing);
+    const editBox = fieldByLabel(editing, 'keystone');
+    editBox.checked = false;
+    editBox.dispatchEvent(new Event('change'));
+    await settle(editing);
+    editing.componentInstance['submit']();
+    await settle(editing);
+    expect(edit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'memoryUpdate',
+        memoryId: 'm9',
+        memory: expect.objectContaining({ keystone: false }),
+      }),
+    );
+  });
+
+  it('shows the keystone 400 sentence the dispatch answers', async () => {
+    const dispatch = vi.fn(async () => {
+      throw new Error('A character may keep at most 5 keystones about one subject; unmark one first.');
+    });
+    const fixture = render(mem({ keystone: true }), dispatch);
+    await settle(fixture);
+    fixture.componentInstance['submit']();
+    await settle(fixture);
+    expect(fixture.nativeElement.textContent).toContain(
+      'A character may keep at most 5 keystones about one subject; unmark one first.',
+    );
+  });
+});
+

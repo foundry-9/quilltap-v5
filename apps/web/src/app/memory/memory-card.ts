@@ -38,7 +38,7 @@ import {
   imports: [Icon],
   template: `
     <div class="qt-card" [class.opacity-75]="archived()">
-      <!-- Header: summary + importance + archived + source -->
+      <!-- Header: summary + importance + keystone + archived + source -->
       <div class="flex items-start justify-between gap-2 mb-2">
         <div class="flex-1 min-w-0">
           <p class="qt-text-label line-clamp-2">{{ memory().summary }}</p>
@@ -51,6 +51,14 @@ import {
           >
             {{ importanceText() }}
           </span>
+          <!-- v4 8cb584eff (memory-card.tsx:79-86): an operator-marked standing fact. -->
+          @if (memory().keystone) {
+            <span
+              class="text-xs px-2 py-0.5 rounded-full qt-bg-primary/10 qt-text-favorite"
+              title="Keystone: a standing fact, always remembered in full and never tidied away"
+              >Keystone</span
+            >
+          }
           @if (archived()) {
             <span
               class="text-xs px-2 py-0.5 rounded-full qt-bg-muted qt-text-secondary"

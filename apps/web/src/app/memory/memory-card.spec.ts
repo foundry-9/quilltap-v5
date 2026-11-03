@@ -310,3 +310,33 @@ describe('MemoryCard — tiers and digests (P4.D276, v4 d58548051)', () => {
     expect(((fixture.nativeElement as HTMLElement).querySelector('.qt-card') as HTMLElement).classList.contains('opacity-75')).toBe(false);
   });
 });
+
+/** v4 `8cb584eff` (`memory-card.tsx:79-86` at `236c04e35`) — consuming C8. */
+describe('MemoryCard — the Keystone pill (v4 8cb584eff)', () => {
+  function keystonePill(fixture: ComponentFixture<MemoryCard>): HTMLElement | undefined {
+    return (Array.from(fixture.nativeElement.querySelectorAll('span')) as HTMLElement[]).find(
+      (el) => el.textContent?.trim() === 'Keystone',
+    );
+  }
+
+  it('renders the pill with v4’s classes and title only for a keystone', () => {
+    const pill = keystonePill(render(mem({ keystone: true })));
+    expect(pill).toBeDefined();
+    expect(pill!.className).toBe('text-xs px-2 py-0.5 rounded-full qt-bg-primary/10 qt-text-favorite');
+    expect(pill!.getAttribute('title')).toBe(
+      'Keystone: a standing fact, always remembered in full and never tidied away',
+    );
+    expect(keystonePill(render(mem({ keystone: false })))).toBeUndefined();
+    expect(keystonePill(render(mem({})))).toBeUndefined();
+  });
+
+  it('sits after the importance label and before the Archived pill on a cold keystone row', () => {
+    const fixture = render(mem({ keystone: true, tier: 'cold' }));
+    const labels = (Array.from(fixture.nativeElement.querySelectorAll('.flex-shrink-0 > span')) as HTMLElement[]).map(
+      (el) => el.textContent!.trim(),
+    );
+    expect(labels.indexOf('Keystone')).toBe(1);
+    expect(labels.indexOf('Archived')).toBe(2);
+  });
+});
+
