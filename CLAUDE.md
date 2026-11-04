@@ -1153,19 +1153,72 @@ records THERE. Update this summary only when a phase or round completes.
     2. A follow-ups order: the Carina FINDING plus the residues.
     3. The 61-commit catch-up.
   - Details: `phase-4.md`. Round record: `status-log.md`.
-- **Oracle baseline: `322a5488e` (2026-10-20, v4 main — "Fix: custom-tool
-  LLM consult can narrate a verdict the table already reached (bug 257)",
-  `4.11.0-dev.53`), adopted at the `322a5488e` round's unification
-  (2026-10-27).** **Drift state, the drift-check method,
+- **The `236c04e35` 4.11.0 catch-up round (P4.D341 → … ∥ P4.D360, twenty
+  lanes): UNIFIED on main (2026-11-04) — ALL TWENTY LANDED; the oracle
+  baseline MOVES to `236c04e35`; the 62 v4 commits past the pin (4.12.0,
+  the 22nd + 23rd D23 moves, two live-data hazards) stay in the ledger's
+  §3, PIN REQUIRED.**
+  - **Absorbed:**
+    - the keystone memories, D23 moves 17–21, and the importance rubric /
+      inner circle;
+    - Storyteller mode, and declared tool effects with the effect ceiling;
+    - Pascal operator intervention;
+    - the context builder (bugs 259 / 263–265) and the referent ledger;
+    - the turn spine and LLM-call logging for every call (bugs 258 / 262);
+    - vault keys and humanoid / pronoun guidance;
+    - the inventory chokepoints and the catalog regen;
+    - the Novel template, and the composer's punctuation lint and prose mode;
+    - Mermaid / Graphviz diagrams;
+    - mount-index files (bugs 260 / 261), the Log carrier, terminal Kill
+      (bugs 267 / 268), and NanoGPT (bug 269);
+    - the WCAG tokens and dialog semantics;
+    - the floating Brahma console, name chips, and the keystone UI;
+    - `help/` 137 and `docs/v4/` 518.
+  - **The §3 review:** the defect that would have shipped was the
+    Appearance tab seeding its form inside a TanStack query function. With
+    the detail already cached, the form stayed EMPTY, and Save wrote blank
+    prompts and `humanoid: true`; it is now a `linkedSignal`.
+    - Also fixed, red-first:
+      - a second regenerate stayed on the old variant;
+      - storyteller sub-calls lost their round id;
+      - deleted chats kept live terminals;
+      - an explicit `null` storyteller `order` was accepted.
+    - The 16 union sweep reds were triaged, including one unabsorbed v4
+      drift (`0276d10d9`'s scope order).
+    - The "swipe hang" was measured as a 30 s spec budget, not a server
+      defect.
+    - Two human rulings (2026-11-04):
+      - `WARDROBE_VIEWER_ESCAPE_LAYERED`, a deliberate divergence: Escape
+        closes only the picture viewer;
+      - Storyteller "All at once" is disabled until P4.D343 item 41 lands.
+  - **Gate:**
+    - Sweep: 776 ok / 18 / 1 / 6 of 801. Every non-standing red was fixed
+      and is green by name.
+    - Tier R: 424 / 0.
+    - `cargo test --workspace`: 899 binaries / 6,004 / 19 / 3, zero SKIP.
+      Each of the 19 is standing or green by name.
+    - SPA: 633 / 15,561.
+    - Playwright: 501 / 2 / 10. Both reds are order-dependent and green by
+      file.
+  - **Versions:** core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38,
+    SPA 0.5.971.
+  - **Next:**
+    1. The owed dogfood pass.
+    2. A follow-ups smalls round, including P4.D343 item 41 and the review's
+       recorded notes.
+    3. The 4.12.0 catch-up.
+  - Details: `phase-4.md`. Round record: `status-log.md`.
+- **Oracle baseline: `236c04e35` (2026-10-28, v4 main — "dev: started
+  4.12.0 development", `4.12.0-dev.0`; code = the 4.11.0 release), adopted
+  at the `236c04e35` round's unification (2026-11-04).** **Drift state, the drift-check method,
   and the pinned-worktree regen recipe live in
   `docs/developer/porting/drift-ledger.md`** — maintained by `/driftcheck`
   and by `/unify` at baseline moves; the other porting commands run the
   ledger's §2 freshness probe instead of re-deriving drift, and lanes never
   write it. **Never restate the drift count here — read the ledger's §1.**
-  **v4 released 4.11.0 on 2026-10-28 (`release: 4.11.0` = `1ca45c171`, code
-  identical to `7789ebed6`, now merged back INTO main; the `4.11.0` bug
-  branch started at `73b334af3`) and now stamps `4.12.0-dev` — re-probe
-  BOTH branches every time; bugfix is measured by CONTENT.** The
+  **v4 released 4.12.0 during the `236c04e35` round and now stamps
+  `4.13.0-dev` — re-probe BOTH branches (main and bugfix) every time;
+  bugfix is measured by CONTENT.** The
   sweep driver remains the sanctioned per-family regen path — never run two
   sweeps concurrently; it needs Python ≥ 3.12
   (`/opt/homebrew/bin/python3.13`; the system 3.9 cannot parse it); since

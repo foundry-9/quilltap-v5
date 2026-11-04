@@ -197545,3 +197545,192 @@ I re-measured on a fresh lane pin `/tmp/qt-v4-pin-p4d341-236c04e35`. Its CLI dri
 **422 cases, 2 failures.**
 - The three `completion bash|zsh|fish` rows are GREEN with no template change. `crates/quilltap-cli/src/help/completion/{bash,zsh,fish}.template` are byte-identical (`cmp`) to the pin's `packages/quilltap/lib/completion/*.template`.
 - The two reds are `[recall-replay help]` and `[recall-replay no chat]` stdout. Both are P4.D342's (the `recall-replay` help text), as P4.D360's addendum measured.
+
+
+## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {P4.D350 → P4.D349} → {P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356 ∥ P4.D354 → P4.D355 ∥ P4.D357 ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D359 ∥ P4.D360 ∥ P4.D358) — UNIFICATION record (2026-11-04)
+
+**UNIFIED on `main` (fast-forward from `unify/236c04e35`). ALL TWENTY LANES LANDED. The oracle baseline MOVES to `236c04e35`.** v4 kept moving through the round: it released 4.12.0 and started 4.13.0-dev. The ledger's §3 holds the 62 commits past the pin, recorded UNPROCESSED by `/driftcheck` at unify start (`ddda33e2f`). The regen rule is PIN REQUIRED.
+
+### The probe and the pin
+
+- **The probe failed at unify start.** v4 `main` was 52 commits past the ledger's recorded `544c7ab1e`: 4.12.0 was released (`7bdb45873`) and 4.13.0-dev started (`7b4e1b9fa`). `bugfix` had also moved. `/driftcheck` ran first, in parallel with the picks, and committed `ddda33e2f` on main: 131 commits past the baseline, 62 past the pin, two D23 moves (the 22nd and 23rd), and live-data hazards (the FTS reconcile ping-pong, the `brahmaConnectionProfileId` vault key). Per the standing waiver, these are recorded, never a re-pin.
+- **The pin:** `/tmp/qt-v4-pin-236c04e35` (`236c04e35`, `4.12.0-dev.0`).
+  - The root install was `npm ci --offline --ignore-scripts`, with the driver rebuilt by `npm rebuild better-sqlite3` (SQLite 3.53.2 / chacha20).
+  - The plugin and CLI dirs were floor-installed per the human's 2026-11-02 ruling (`.claude/pin-plugin-sdks.sh`). Its `--offline` installs answered `ENOTCACHED`: the npm cache lacks the floor packuments and `@quilltap/plugin-types@2.8.0`. The same failure stopped every lane after P4.D354. The unifier ran a copy with `--prefer-offline`, which fetched public registry metadata for the missing pieces. The versions are the ruled floors (openai 7.23.0, anthropic 0.115.0, genai 1.52.0, openrouter 1.3.28, plugin-utils 2.7.1; CLI driver 12.11.1), installed inside the pin only. **The committed script still says `--offline`, and the cache gap is recorded for the next pin.**
+  - `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin.
+
+### The picks
+
+141 lane commits were cherry-picked onto `unify/236c04e35` in the order's dependency order: D341 → D350 → D349 → D347 → D348 → D343 → D345 → D342 → D351 → D356 → D354 → D355 → D357 → D344 → D346 → D352 → D353 → D359 → D360 → D358. Each stacked commit was picked once (KEYSTONE, CATALOG, CONTEXT, SPINE, FILES, the D353 Tier-1 commit).
+
+- **Mechanical resolutions:**
+  - Version files and locks were accumulated (ours + theirs − base).
+  - CHANGELOG and status-log were unioned.
+- **Source conflicts, each a planned append or a cross-lane collision:**
+  - The realtime topic enum, the topic list, the job topics and the SPA topic map/types: `storytellerRounds` (P4.D343/P4.D344) and `customToolInterventions` (P4.D345/P4.D346). The positional ten-topic asserts were restored on both sides (H4/H5).
+  - `RunTriggeredCustomToolsParams`: `effect_ceiling` (P4.D343) and `turn_control` (P4.D345), both kept, at both trigger sites.
+  - The censuses were summed BY NUMBER on the union: `EXCLUDED_BY_THE_ROUTE_IDENTIFIER_RULE` 515 + 4 + 4 = 523; the hand-built Request census 152 + 1 + 4 = 157.
+  - The backup/restore case lists (P4.D351 Novel template + P4.D355 Log): 11 preview cases, 77 restore-state cases.
+  - `ChatsRepository::delete`: the hand-written `storyteller_rounds` and `terminal_sessions` sweeps (both leaves; v4's FK cascades).
+  - `LibraryEntry`: `intervention` then `effect`.
+  - `_index.css`: `_storyteller.css` then `_intervention.css`, v4's order.
+  - The LLM Inspector: P4.D359's derived Other filter plus P4.D344's storyteller group.
+  - **P4.D358 × P4.D359 across 21 dialogs.**
+    - P4.D358 retired the hand-rolled hosts' own Escape listeners in favour of `qt-modal`'s new document Escape.
+    - P4.D359 had added the floating-layer guard to those same listeners.
+    - Resolved by taking P4.D358's structure and moving the guard INTO `qt-modal`'s listener. That is v4's own shape: `useClickOutside.ts` returns on `isInFloatingLayer` first.
+
+### The HANDOFFs and wires
+
+- **Salon** (`salon-conversation.ts`) — the patches the lanes left anchored but unapplied:
+  - P4.D352 H-2: the prose-mode wiring.
+  - P4.D346 H1: the hold dialog mount. **Without it, a held Pascal run had no exit but Stop.**
+  - P4.D358 H-out-1: the reply announcer.
+  - P4.D359's absent-mentions patch.
+  - A spec case for each.
+- **The floating-layer guard census** (P4.D359) reconciled with the union:
+  - nine rows for deleted handlers dropped;
+  - the 14 new P4.D358 Escape hosts guarded under R-4;
+  - the site regex widened to `doc.` / `window.` / `@HostListener`, which found five unguarded capture or click-outside listeners that v4 guards. All five are now guarded.
+  - `brahma/model-picker.ts` is unguarded again, as v4's is: it lives inside the layer, and the guard kept its dropdown from ever closing. It is exempted by name.
+  - 61 rows.
+- **P4.D358's out-hand-offs:**
+  - H-out-5: the wardrobe item editor R1.
+  - H-out-7: the Inventory dialog's `closeOnEscape`. **Without it, Escape inside Take-up closed the whole dialog.**
+  - H-out-8: the standalone image dialog.
+  - H-out-14: the dialog-roles owners removed; the a11y allowlist emptied, with four controls named with v4's bytes.
+  - H-out-15.
+  - H-in-2 / H3: the held roll's `closeOnEscape`.
+- **P4.D346:**
+  - H2: the "adjusted" badge.
+  - H5: the grammar twin now strips unknown parameter keys as v4's plain `z.object` does.
+  - P4.D344 H1: the Workbench effect badge. `effect` is now required.
+  - `HOLDS_UNKNOWN_VARIANT_EMPTY` is retired. It was a silent swallow that is impossible once the server ships with the SPA.
+- **P4.D350:** `P4D350_PUBLISH_LANDED` flipped.
+- **Server (`dec466393`):**
+  - The catalog glob test is unconditional.
+  - The deprecated upload bridge pair is deleted, with its census (P4.D354/P4.D355 H1).
+  - The `CATALOG_DRIFT` and `SIBLING_DIAGRAM_STYLE` carves are retired.
+  - The card census gains `customToolIntervention`.
+  - The roleplay-template repository INFO lines (P4.D351). `REPO_LEVEL_INFO_LINES` stays: a writer-thread capture limit.
+  - The `escape_regex` twin is retired (P4.D347 F-3).
+  - The H9 final-content union tests (P4.D345).
+  - The item-15 deferral and the unreachable re-ask WARN are recorded by name.
+  - H8: `userId` on `log_find_by_user_id_failure`.
+- **Harness:**
+  - P4.D349's non-humanoid Orrery joins the head-and-shoulders pair. The builder now runs `runV4Migrations`, which fixed a vintage gap. Both backfill oracles were regenerated, with a `not_humanoid` row.
+  - The request envelopes were re-recorded once from the pin: the same 412 lines, reordered only.
+- **e2e (`5c2ad25aa`):**
+  - Every gate in the round is flipped, and P4.D359's five empty beats are written.
+  - Storyteller (K) "All at once" stays skipped BY NAME: P4.D343 item 41 is deferred and the server refuses `order: simultaneous`.
+
+### §3 — the review (seven parallel readers + an obligation collector + the unifier)
+
+**No lane shipped a blocking defect inside its own code.** The blocking items were all union obligations:
+- the unmounted hold dialog;
+- the Inventory dialog's Escape;
+- the stale guard census;
+- the grammar twin's refusal.
+
+All are fixed above.
+
+**THE ONE THAT WOULD HAVE SHIPPED:** the character Appearance tab seeded its physical-description form INSIDE its own `queryFn`, but the edit page caches the same `characterKeys.detail` key with another `queryFn`. Opening the tab within the 5 s `staleTime` never seeded the form:
+- Save was refused;
+- or the operator filled the Name and Save wrote blank prompts and `humanoid: true` over the stored ones.
+
+The pattern predates the round. P4.D359's newly live Humanoid beat exposed it. The form is now a `linkedSignal` over the query's data, pinned by a red-first spec case (`5c2ad25aa`).
+
+- **Should-fixes, fixed (`dec466393`):**
+  - Storyteller-round sub-calls (cheap LLM, Carina, vision) were logged without `storytellerRoundId`. v4's `runWithStorytellerRoundId` stamps every call in a round. Pinned by two red-first row tests.
+  - Delete-all and a `replace` restore deleted chats without ending their live terminals. v4's `chats.repository` delete disposes on every path. Pinned.
+  - The storyteller run accepted an explicit `null` `order` / `keepOrder`, where v4's Zod refuses. Fixed with `double_option` and two corpus rows regenerated at the pin.
+  - The step-6b orphan-sweep failure arm called itself "unreachable in v4"; it now follows v4's fallback line.
+  - Stale comments.
+- **RULED (human, 2026-11-04) — Storyteller "All at once".** The SPA shipped the button (v4 parity); the server answers 422 `not_available: storyteller simultaneous` (P4.D343 item 41 DEFERRED), and the SPA toasted that raw string. Ruling: hide until ported. The control renders DISABLED, never dispatches, and carries a house-register title; v4's enable rule and title are recorded beside it for restoration. Item 41 stays OPEN; the (K) e2e beat stays skipped by name, citing the ruling (`2655348b8`, red-first spec).
+- **RULED (human, 2026-11-04) — `WARDROBE_VIEWER_ESCAPE_LAYERED`, a deliberate divergence.** With the wardrobe item editor's picture viewer open, one Escape closed BOTH the viewer and the editor. v4 does the same at the pin: its `useImageNavigation` (document) and `useEscapeKey` (window, v4 `dff76ebef`) neither stop propagation (`WardrobeItemImageSection.tsx:513`). P4.D359's §J.3 beat asserts viewer-only. Ruling: fix v5. The editor's Escape stands down while its image section's viewer is open (`2655348b8`, red-first spec). The beat is green, 21/21 by file; with the fix reverted, exactly the two viewer beats go red. A v4 GitHub issue is a filing candidate, pending the human's go-ahead.
+- **Recorded OPEN (notes, for the follow-ups round):**
+  - **Logging:**
+    - Brahma-inside-Carina and the one-shot loop log with `LogContext::none()`.
+    - The enclave turn's cheap executor is untagged (v4 stamps `autonomousRunId`).
+    - The `[TurnFairness]` DEBUG + INFO pair is unported.
+    - Three agent loops log an error-after-done as a failure.
+  - **In-chat image generation looks unwired:** `build_turn_tool_runner` never calls `with_image_generation`. Verify whether this predates the round.
+  - **The Storyteller spine's `OrchestratorDeps` assembly** is a hand copy of `run_send`'s. The fold was judged risky: the deps are self-referential borrows.
+  - **Pascal intervention:**
+    - The re-ask settle race (409 vs v4's 200).
+    - A spurious WARN on the Stop-vs-resolve race.
+    - The process-global hold registry, keyed by chat id.
+  - **The upload text backfill blocks boot**; v4 runs it fire-and-forget.
+  - **Restore 22n-quater** reads cells leniently.
+  - **`read_database_blob_text`** gives `mtime` 0 where v4 gives NaN.
+  - **`CHARACTER_BOOLEAN_COLUMNS` lacks `canDrawDiagrams`.**
+  - **R-4 guards beyond v4's** (tooltip, scenario-row, workspace-host, the diagram lightbox, the file preview, the slide-over, the Salon inspector) are recorded as `R4_GUARD_BEYOND_V4`.
+- **v4-shared, filing candidates (draft for the human's go-ahead):**
+  - The SVG sanitizer's `url()` filter misses CSS escapes and `image-set()`.
+  - Mermaid `%%{init}%%` `themeCSS`.
+  - The diagram render queue is unbounded.
+  - The referent ledger can quote a whisper to a non-recipient.
+  - The hold dialog's overlay hides the composer Stop.
+  - P4.D341's R-3 POST race.
+  - A NULL `triggerMessageId` round is unreadable.
+
+### The union reds
+
+- **The sweep (first run: 776 ok / 18 run_failed / 1 refused / 6 non-extractable of 801).** The 16 non-standing reds were triaged and fixed (`8f949fe29`). Each is green BY NAME.
+  - **ONE unabsorbed v4 drift in production:** v4 `0276d10d9` moved the item-images route's scope enum to `InventoryScopeSchema` (character | group | project | general), and Zod's sentence follows the enum's order. No lane ported it.
+  - **The common llm-logs cause: a harness premise.** P4.D348's bug-262 port (every cheap call logs `finishReason`; failed calls write rows) is correct. But the canned providers registered no finish reason, and P4.D348 re-premised only the orchestrator family. Six families now answer `'stop'`.
+  - **Oracle defects, fixed:**
+    - v4's fire-and-forget summary fold and `triggerAfterTurnsHousekeeping` escaped the oracles' stubs.
+    - The message-finalizer `randomBytes` was too short for v4 `839575d89`'s 6-byte draw.
+    - The almanack oracle needed a drain for v4's un-awaited reindex.
+  - **Counts the union moved:**
+    - import-state 79 / 53 / 79 / 79 / 52;
+    - restore `V5_STATS_GAP` retired (the bridge deletion closed the referral);
+    - the memory-pipeline stored-byte count 11 → 4 (P4.D342's rubric bytes);
+    - the orchestrator failover floor wants the primary leg's error row;
+    - the host-zone fixture fill;
+    - the toast guard records v4's floating-layer z-index as `V4_FLOATING_LAYER_TIES_THE_TOAST`.
+  - **A sweep-order artifact:** `extraction_context_degrade`, green alone.
+
+### The e2e triage (first full run: 478 passed / 25 failed / 10 skipped, 30.5 m)
+
+- **ONE real SPA defect, fixed (`822b5570b`).** After a regenerate, `seedTranscriptFromChat()` read `chatQuery.data()`, which is a macrotask behind `invalidateQueries` (the TanStack lag). It reconciled the PRE-swipe chat, so every second re-roll stayed on 2/3. The regeneration now seeds from `queryClient.getQueryData(chatKeys.detail(...))`. Pinned red-first by a unit spec (`expected 'a1b' to be 'a1c'`).
+- **Ten spec premises the union moved, re-aimed:**
+  - P4.D358's `qt-markdown-field` group + textbox share a name (four specs);
+  - the newly mounted reply announcer repeats reply text;
+  - P4.D353's nested disabled Drawing-style fieldset;
+  - the `qt-modal`-owned Escape around the emoji picker, which matches v4's `FloatingDialog`;
+  - the boot danger-scan's failed gatekeeper log row (v4 `eb2d87788`);
+  - the keystone create key (P4.D341);
+  - P4.D355's Kill (SIGHUP then SIGKILL ends the session).
+- **The rest: timing, cascade or suite order, each green by file.** The cascades: roleplay's Novel beat left composition mode on, so smart-typography's Enter typed a newline; its `finally` now clears it. The a11y sweep runs after the destructive `zz-*` specs in a full run, but is green alone.
+- **The "messageSwipe hang" was NOT a server defect.** A diagnosis with debug server logs showed the server finished every swipe in about 3.2 s. Test 2 hit Playwright's 30 s budget because a DRAWN 3-turn chain costs about 29.4 s against the slow mock: two failed non-streaming distills plus the stream, about 9.7 s per turn. Tests 2 and 3 now get `test.slow()`. Test 1's 'preparing' plate poll remains the recorded race (a window of about 20 ms).
+- **The axe re-baseline on the union** (`c96b869ec`): 696 → 521 known rows. 175 colour-contrast rows were cleared and NONE were added.
+
+### The gate
+
+- fmt / clippy (`--workspace --all-targets -D warnings`, plain AND `--features quilltap-core/native-transport`) / release build: clean on the final tree.
+- **The full sweep from the pin:** 776 ok / 18 run_failed / 1 refused (`backup_uuid_remap`, by design) / 6 non-extractable of 801. The 18 are the two standing (`ariel_writers_tier3`, `search_replace` — unchanged) plus the 16 above, fixed and green by name.
+- **`cargo test --workspace --no-fail-fast`** with the harvested env block (1,049 vars, `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **899 binaries / 6,004 passed / 19 failed / 3 ignored, zero SKIP.** The nineteen:
+  - the two standing;
+  - fourteen env-block collisions (shared `QT_FIXTURE_*` names), each green BY NAME through the driver (14/14);
+  - `backup_uuid_remap` and `recall_probe_fixture`, whose oracles the driver does not generate. Both were run by hand from the pin and are green; the committed UUID-remap corpus regenerated byte-identical.
+  - `cli_differential`, which had no `QT_NODE` in the block. With it, it is green: **Tier R 424 cases / 0 failures**.
+- **SPA:** `npm test` (lint + `check-qt-classes` 1,034 + `check-a11y-names` 681 controls, none allowlisted) **633 files / 15,558 passed / 0 failed / 0 skipped**; `npm run build` clean.
+- **Playwright (full suite, fresh build + release bins):** **501 passed / 2 failed / 10 skipped (20.9 m)** on the final tree, all gated beats LIVE except Storyteller (K), skipped by name per the ruling. The two reds are both order-dependent:
+  - `diagrams-flow` (4), the lightbox's scroll restore, is green by file (11/11);
+  - the a11y axe sweep runs after the destructive `zz-*` specs and cannot find "Solo Voyage". It is green alone (2/2, the re-baseline run). Ordering the a11y project before the destructive specs is a recorded follow-up.
+
+  The first full run (before the e2e triage) was 478 / 25 / 10 (30.5 m).
+
+### Process notes
+
+- A gate step was once launched with `&` and so could not notify; it was stopped by exact PID and relaunched as a tracked background job.
+- The plugin-SDK floor install needs a populated npm cache. See the pin note above.
+
+**Versions:** core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38, SPA 0.5.971; tauri 0.0.9 and harness 0.0.1110 unchanged.
+
+**Next:**
+1. The owed dogfood pass (the round's live surfaces — `phase-4.md`).
+2. A follow-ups smalls round: the notes above, plus P4.D343 item 41 (the simultaneous round, which re-enables "All at once").
+3. The 4.12.0 catch-up: 62 commits, two D23 moves (`drift-ledger.md` §1 / §3).

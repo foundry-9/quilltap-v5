@@ -12,6 +12,55 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — unify(236c04e35): the 4.11.0 catch-up round — twenty lanes (P4.D341–P4.D360) on main; the oracle baseline moves to `236c04e35`
+
+_Versions: core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38, SPA 0.5.971; tauri 0.0.9 and harness 0.0.1110 unchanged._
+
+Unification of the `236c04e35` round: 141 lane commits cherry-picked in dependency order, then the unifier's wires and fixes.
+
+**What landed:**
+- the keystone memories and D23 moves 17–21;
+- the importance rubric and the inner circle;
+- Storyteller mode (server and SPA);
+- declared tool effects and the effect ceiling;
+- Pascal operator intervention (server and SPA);
+- the context builder (bugs 259 / 263–265) and the referent ledger;
+- the turn spine, bug 258, turn control (bug 262), and LLM-call logging for every call;
+- vault keys, humanoid, pronoun guidance and diagram keys;
+- the inventory chokepoints and the catalog regen;
+- the Novel template;
+- the composer's punctuation lint and prose mode;
+- Mermaid and Graphviz diagrams;
+- the mount-index files work (bugs 260 / 261);
+- the Log carrier and terminal Kill (bugs 267 / 268);
+- the server smalls (#120 convergence, NanoGPT, bug 269);
+- the WCAG tokens and dialog semantics;
+- the SPA riders: the floating Brahma console, name chips, the keystone UI;
+- `help/` 137 and `docs/v4/` 518.
+
+**Unification wires:**
+- the Salon's prose mode, the Pascal hold dialog, the reply announcer and absent mentions mounted;
+- the floating-layer guard moved into `qt-modal`'s Escape (D358 × D359 across 21 dialogs);
+- storyteller-round sub-calls carry `storytellerRoundId`;
+- delete-all and restore end deleted chats' terminals;
+- an explicit `null` storyteller `order` is refused;
+- the item-images scope sentence follows v4 `0276d10d9`.
+
+**Unification fixes:**
+- the character Appearance tab no longer saves blank fields when its detail query was already cached;
+- a second regenerate no longer stays on the previous variant;
+- with the wardrobe item editor's picture viewer open, Escape closes only the viewer (`WARDROBE_VIEWER_ESCAPE_LAYERED`, a ruled divergence from v4);
+- the Storyteller "All at once" control is disabled until the simultaneous round (P4.D343 item 41) is ported;
+- the axe baseline was re-recorded: 175 contrast rows cleared, none added.
+
+**Gate:**
+- fmt, clippy (both feature sets) and the release build: clean.
+- The sweep from the pin: 776 ok / 18 / 1 refused / 6 non-extractable of 801. The two standing reds remain; every other red was fixed and is green by name.
+- Tier R: 424 cases / 0 failures.
+- `cargo test --workspace`: 899 binaries / 6,004 passed / 19 failed / 3 ignored, zero SKIP. The 19 are the standing reds, env-block collisions and two hand-run oracles, each green by name.
+- SPA: 633 files / 15,561 tests.
+- Playwright: 501 passed / 2 failed / 10 skipped. Both reds are order-dependent and green by file.
+
 #### 2026-11-02 — docs(porting): P4.D358 lane record — LANE COMPLETE
 
 _Docs-only change._
