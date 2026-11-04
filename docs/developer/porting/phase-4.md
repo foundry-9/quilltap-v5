@@ -2536,8 +2536,12 @@ FIFTH in the Carina query loop, both fixed), the always-on
 production bugs on its first run: OpenRouter usage parsed to zeros;
 Google raw's getter-only `functionCalls` key), the phase-B restructure
 (`RequestMessage` deleted, `ProviderKind` as the one dispatch point,
-id-less-tool arms unrepresentable), the ruled failed-cheap-call
-`llm_logs` error row, the P4.14 non-validating stable merge sort (both
+id-less-tool arms unrepresentable), ~~the ruled failed-cheap-call
+`llm_logs` error row~~ (**the divergence RETIRED 2026-11-04:** v4
+`eb2d87788` now logs every Salon LLM call, failures included, and P4.D348's
+port converged on it — `assert_ruled_failed_call_divergence` became
+`assert_failed_call_rows_converged`; UNIFIED in the `236c04e35` round), the
+P4.14 non-validating stable merge sort (both
 injector comparators + the audit-found Post Office `sort_newest_first`),
 and the P4.10 packaging close-out (the Docker image builds, serves the
 real SPA, ships the CLI; `quilltap-web` resolves its dist unaided;
@@ -2585,8 +2589,10 @@ Three parallel lanes, ownership fully disjoint:
   P4.12 folds in whole) and the recorded-body response-parse corpus (the
   #24 carry-out — v4's real plugins run under a network recorder so the
   SDK unwrap is inside the oracle loop). Phase B: the restructure under
-  the completed corpus net + the RULED failed-cheap-call `llm_logs` error
-  row (deliberate divergence). Phase C: Brahma-workaround re-check, the
+  the completed corpus net + ~~the RULED failed-cheap-call `llm_logs` error
+  row (deliberate divergence)~~ (**RETIRED 2026-11-04** — no longer a
+  divergence: v4 `eb2d87788` writes the failed-call row too, and P4.D348
+  converged on it). Phase C: Brahma-workaround re-check, the
   💸 live tool-use proof on the Friday copy, records. Owns `model/**` +
   the tool-loop/brahma/cheap-llm services + the provider oracle/fixture
   tree; bumps core + harness.
@@ -7151,6 +7157,161 @@ the owed Host dogfood pass (AFTER this round, with the six lanes' 💸 rows).
 catch-up when v4 moves.
 
 
+## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {{P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356} ∥ {P4.D350 → P4.D349} ∥ {P4.D354 → P4.D355} ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D357 ∥ P4.D358 ∥ P4.D359 ∥ P4.D360) — UNIFIED 2026-11-04 (ordered 2026-10-29)
+
+**UNIFIED on main (2026-11-04). ALL TWENTY LANES LANDED.** The unify branch
+`unify/236c04e35` cherry-picked them in the §S.1 order, then added the
+unifier's wires and fixes. The oracle baseline MOVES to `236c04e35`. v4 has
+moved 62 commits past the pin, with two D23 moves among them; see
+`drift-ledger.md` §1 / §3. The regen rule is PIN REQUIRED. Round record:
+`status-log.md`. Each order's status header lists what it has Done, what was
+Done at unify, and its exact OPEN remainder.
+- **Landed:** every item in the round's scope (the ORDERED section below),
+  apart from each header's named OPEN rows. The headline pieces:
+  - the 17th–21st D23 moves in one re-dump, with five boot ensures (P4.D341);
+  - the context builder (P4.D347) and the turn spine (P4.D348);
+  - Storyteller mode and declared tool effects (P4.D343 / P4.D344);
+  - Pascal operator intervention (P4.D345 / P4.D346);
+  - the memory rubric and inner circle (P4.D342);
+  - the Novel template (P4.D351 / P4.D352);
+  - the server smalls (P4.D356);
+  - the Inventory chokepoints and `CATALOG` (P4.D350);
+  - the three vault keys (P4.D349);
+  - files and the Log carrier (P4.D354 / P4.D355);
+  - diagrams (P4.D353);
+  - the WCAG pair (P4.D357 / P4.D358);
+  - the SPA riders (P4.D359);
+  - the vendored trees (P4.D360).
+- **The §3 review — what would have shipped, all fixed:**
+  - **SPA mounts:** the Pascal hold dialog was mounted nowhere (P4.D346 H1).
+    The Salon prose-mode wiring (P4.D352 H-2), the reply announcer (P4.D358
+    H-out-1) and the absent-mentions patch (P4.D359) were not applied either.
+  - **Escape on the Inventory dialog:** Escape inside Take-up or an overlay
+    closed the whole dialog and emitted `closed` twice (H-out-7).
+  - **The floating-layer census** described the lane tree, not the union. It
+    has been rebuilt: 61 rows, with a wider site regex.
+  - **The Pascal SPA grammar twin** refused an unknown key beside `parameter`,
+    where v4 strips it.
+  - **The character Appearance tab** seeded its form inside its own
+    `queryFn`. A Save could then write blank prompts and `humanoid: true`
+    over the stored values (E1). It is now a `linkedSignal`.
+  - **Unabsorbed v4 drift:** `0276d10d9`'s `InventoryScopeSchema` enum order
+    had not reached the item-images `SCOPE_ISSUE`. It is fixed in production.
+- **Should-fixes and union wires, all landed:**
+  - storyteller sub-calls carry `storytellerRoundId` (cheap LLM, Carina,
+    vision);
+  - delete-all and `replace` restore dispose live terminals;
+  - an explicit `null` `order` / `keepOrder` is refused;
+  - `log_find_by_user_id_failure` always carries `userId`;
+  - the Workbench effect badge and the adjusted badge;
+  - `qt-modal`'s floating-layer Escape guard;
+  - the capture listeners are guarded, and the Brahma model-picker is
+    unguarded as in v4;
+  - the a11y allowlist is emptied;
+  - the deprecated upload-bridge pair is deleted;
+  - the `CATALOG_DRIFT` / `SIBLING_DIAGRAM_STYLE` carves are retired;
+  - the roleplay-template repository INFO lines landed, and the
+    `escape_regex` twin is retired;
+  - the Orrery fixture landed, with both backfill oracles regenerated at the
+    pin;
+  - `request-envelopes` was re-recorded once;
+  - every gated e2e beat of the round is flipped, except Storyteller (K).
+  - The sweep re-premised six tier-3 families on bug 262's `finishReason`.
+    The P4.13-unit-6 failed-cheap-call divergence is RETIRED: P4.D348
+    converged on v4 `eb2d87788`, and the two P4.13 records (the provider-I/O round sections) are struck.
+- **Escalated:** ⚖ Storyteller **All at once** — see NEXT 2.
+
+**NEXT** (in order):
+1. **The owed dogfood pass for this round** (the union build on a Friday
+   copy). Measure the first boot FIRST: the column ensures, the
+   `storyteller_rounds` table, the `narrationDelimiters` seed rewrite
+   (P4.D341 item 24), and the help reconcile (135 → 137). The 💸 / live
+   surfaces:
+   - Storyteller mode on a real chat: the board, bids, Run in order, Let it
+     lie, the Inspector's Storyteller Rounds filter;
+   - Pascal intervention holds: hold, adjust, as-rolled, Stop, re-ask;
+   - prose mode and the Novel template in the composer, plus one real Novel
+     turn;
+   - diagrams: Mermaid / Graphviz / SVG, the lightbox, Copy PNG, WebKit;
+   - the floating Brahma console;
+   - absent-character name chips;
+   - keystones: the pill, Keystones only, recall placement;
+   - the humanoid / pronoun-guidance vault keys: a v4-written value
+     survives a v5 write, the non-humanoid avatar, `wardrobe_list`'s
+     pronoun filter;
+   - the Log carrier in backup / restore / delete-all;
+   - terminal kill / delete: bugs 267 / 268, the two C5 doors;
+   - the WCAG themes and semantics: the six packs, toasts, the skip link, the
+     announcer, VoiceOver, keyboard-only;
+   - every Salon call in the Inspector (P4.D348).
+
+   Each order's 💸 rows are the queue.
+2. **A follow-ups smalls round.** The open items are in the order headers and
+   in the unifier's findings. Grouped:
+   - ⚖ **The ruling first: Storyteller "All at once"** (P4.D343 item 41).
+     The SPA button is live, and the server answers 422 `not_available:
+     storyteller simultaneous`, which the SPA toasts raw. Beat (K) is
+     skipped by name. Options: hide / disable the button, land item 41, or
+     keep.
+   - **Storyteller / spine server:**
+     - P4.D343's tier-3 rows (32 / 43, 22 / 23) and import refusals (29);
+     - P4.D343's `llm_logs_routes` row and roster row;
+     - the `run_send` → `storyteller_spine` deps fold (S7);
+     - X1's other named sub-call sites (the gatekeeper, the image attempt);
+     - Brahma-in-Carina and `one_shot_loop` logging with `LogContext::none`;
+     - the enclave cheap executor without `autonomousRunId`;
+     - in-chat image generation unwired in production
+       (`with_image_generation` has no caller — verify whether it is
+       pre-existing);
+     - X2 `[TurnFairness]` lines, X3 error-after-done logging, X4's stale
+       comment;
+     - P4.D347 F-2 (`to_sys_char` pronouns) and item 24 (the REST arm).
+   - **Pascal:**
+     - P4.D345 Tier 2 item 15 (the scripted-resolver tier-3 rows and the
+       widened `pascal-run-custom` pair);
+     - P8 (re-ask 409 vs 200), P9 (Stop-vs-resolve WARN), P10 (the
+       process-global hold registry), P17 (the transparency fallback line);
+     - `salon-custom-tools-flow:46`'s heading wait.
+   - **Vault / templates / memory:**
+     - P4.D349's open rows (item 15's flip row, R-6, the tier-1 image rows,
+       the avatar outfit rows, the backfill DEBUG pin, item 24);
+     - V14 `CHARACTER_BOOLEAN_COLUMNS` lacks `canDrawDiagrams`;
+     - V12 (a misplaced doc comment, `chat_settings.rs` ~2477);
+     - P4.D351 item 16 (the other twelve template keys);
+     - C3 (`isProseTemplate` vs a literal `null`);
+     - P4.D352 Tier 2 items 1 / 2 and its H-1 / H-4 byte compares;
+     - P4.D342's two deferrals;
+     - P4.D341 item 24;
+     - P4.D350's non-`CHARACTER` participant finding.
+   - **Files / Log / carriers:**
+     - P4.D354 item 19 and H5 (the extractor order);
+     - K10 (the boot-blocking upload text backfill cadence);
+     - K12 (mtime `0` vs `NaN`);
+     - K6 (the stale `_meta.baseline` in `uuid-remap-corpus.json`);
+     - K7 (22n-quater's lenient cell reads);
+     - the `ariel_writers_tier3` compressed-bytes cell (owner unidentified);
+     - P4.D356 H9 (the image-dialects recorder).
+   - **SPA / a11y:**
+     - the union axe re-baseline (P4.D358 H-out-14's last step);
+     - W10 `R4_GUARD_BEYOND_V4` (13 hosts guarded beyond v4 — ratify or
+       remove);
+     - the SPA Core-whisper card (the standing deferral).
+   - **Carried from the `322a5488e` follow-ups unification:** the P4.165
+     Carina FINDING and the recorded residues (that section's NEXT 3).
+   - **v4 filing candidates** (draft each; the human's go-ahead first):
+     - P4.D341's R-3 draft (`POST /memories` 400-after-write);
+     - the NULL `triggerMessageId` round read-back;
+     - the diagrams sanitizer `url()` bypass (C4), Mermaid `themeCSS` (C5,
+       suspected), the unbounded render queue (C7);
+     - the referent ledger quoting a whisper to a non-recipient (X5);
+     - the hold dialog blocking Stop (E3);
+     - P4.D352's two rendering findings.
+3. **The 4.12.0 catch-up** — the 62 commits past the pin, with two D23
+   moves (`drift-ledger.md` §1 / §3). It includes `8832cfd20`'s driver move,
+   which needs the amalgamation ruling (SQLite3MC 2.4.0 / SQLite 3.53.4),
+   plus `bf7a457f6`, the chokidar drop, and `544c7ab1e`'s Anthropic
+   data-rewrite migration. Run `/driftcheck` first.
+
 ## The `236c04e35` 4.11.0 catch-up round (P4.D341 → {{P4.D347 → P4.D348 → {P4.D343 ∥ P4.D345}} ∥ P4.D342 ∥ P4.D351 ∥ P4.D356} ∥ {P4.D350 → P4.D349} ∥ {P4.D354 → P4.D355} ∥ P4.D344 ∥ P4.D346 ∥ P4.D352 ∥ P4.D353 ∥ P4.D357 ∥ P4.D358 ∥ P4.D359 ∥ P4.D360) — ORDERED 2026-10-29
 
 **ORDERED 2026-10-29 — NEXT item 4 of the `322a5488e` follow-ups smalls
@@ -7247,11 +7408,12 @@ carriers-smalls,wcag-spa,vendor-deps}.md`.
   dogfood pass (UNION build, after this round unifies — the LIVE-DATA
   rule bites); the CLI `memories` family (R-P); every v4 filing candidate.
 
-**NEXT after this round unifies:** the owed dogfood pass (the union build on
+**NEXT after this round unifies:** ~~the owed dogfood pass (the union build on
 a Friday copy — the first boot's eight column ensures + one table + the
 `narrationDelimiters` rewrite measured first), then the `8832cfd20` /
 `bf7a457f6` catch-up with the amalgamation ruling, then the follow-ups
-order.
+order.~~ **Superseded at unification (2026-11-04)** — see the UNIFIED
+section above for the NEXT list.
 
 ## The `322a5488e` follow-ups smalls round (P4.165 ∥ P4.166 ∥ P4.167 ∥ P4.168 ∥ P4.169 ∥ P4.170 ∥ P4.171 ∥ P4.172 ∥ P4.173 ∥ P4.174) — UNIFIED 2026-10-28 (ordered 2026-10-27)
 
