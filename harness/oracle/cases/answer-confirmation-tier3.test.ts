@@ -266,6 +266,17 @@ async function main(): Promise<void> {
     const actual = jest.requireActual('@/lib/background-jobs/processor');
     return { __esModule: true, ...actual, ensureProcessorRunning: () => undefined };
   });
+  // The finalizer's fire-and-forget context-summary check is OUT of this
+  // differential: v5's `message_finalizer` defers the fold (it is the
+  // `context_summary_service_tier3` unit; the orchestrator closes it). Since v4
+  // `eb2d87788` (bug 262 — every cheap call logged, a failed one included) the
+  // un-stubbed fold on the 10-turn recall chat lands a failed SUMMARIZATION row
+  // here (its prompt carries no `[[CASE:…]]` marker), which the Rust side never
+  // makes. No-op it, as `danger-trigger.test.ts` does.
+  jest.doMock('@/lib/chat/context-summary', () => {
+    const actual = jest.requireActual('@/lib/chat/context-summary');
+    return { __esModule: true, ...actual, checkAndGenerateSummaryIfNeeded: async () => undefined };
+  });
 
   const { initializeDatabase, closeDatabase, rawQuery } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(

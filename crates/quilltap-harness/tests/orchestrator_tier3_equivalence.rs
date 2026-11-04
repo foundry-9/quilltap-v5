@@ -610,6 +610,10 @@ const CLOCK_TAIL_LEGS: &[(&str, &str)] = &[("agent_force_final", " Nothing more 
 /// P4.90's `FailoverUnderstudy` profile (OPENAI `gpt-stands-in`).
 const FAILOVER_UNDERSTUDY_PROFILE: &str = "fa110002-0000-4000-8000-000000000f12";
 
+/// P4.90's primary profile (ANTHROPIC `claude-falls-over`), whose thrown leg
+/// logs its own row since v4 `eb2d87788` (P4.D348).
+const FAILOVER_PRIMARY_PROFILE: &str = "fa110001-0000-4000-8000-000000000f11";
+
 /// The placeholder a clock-bearing `historyTailHash` becomes.
 const CLOCK_TAIL_HASH: &str = "<clock-bearing history tail>";
 
@@ -4324,17 +4328,45 @@ fn orchestrator_tier3_matches_oracle() {
                     .unwrap_or(Value::Null);
             resp["content"].as_str().unwrap_or_default().to_string()
         };
-        // (1) P4.90's arm: the primary throws before `done` (no row); the hard-error
-        // failover re-stream and the native re-stream both log under the
-        // UNDERSTUDY's profile, for Friday, sharing the pre-generated messageId.
+        // (1) P4.90's arm: the primary throws before `done` — since v4
+        // `eb2d87788` (P4.D348, every Salon LLM call logged once) that thrown
+        // leg writes its OWN row, under the PRIMARY's profile with v4's error
+        // and no content; the hard-error failover re-stream and the native
+        // re-stream both log under the UNDERSTUDY's profile. All three are
+        // Friday's and share the pre-generated messageId.
         {
-            let rows = leg_rows("failover_then_native_tool_call");
-            let replies: Vec<String> = rows.iter().map(|r| reply_of(r)).collect();
+            let all_rows = leg_rows("failover_then_native_tool_call");
+            let all_replies: Vec<String> = all_rows.iter().map(|r| reply_of(r)).collect();
             assert_eq!(
-                rows.len(),
-                2,
-                "failover_then_native_tool_call: want the failover leg + the native re-stream, got {replies:?}"
+                all_rows.len(),
+                3,
+                "failover_then_native_tool_call: want the primary's thrown leg + the failover leg + the native re-stream, got {all_replies:?}"
             );
+            let (primary, rows): (Vec<&Value>, Vec<&Value>) = all_rows
+                .iter()
+                .copied()
+                .partition(|r| r["connectionProfileId"] == FAILOVER_PRIMARY_PROFILE);
+            assert_eq!(
+                primary.len(),
+                1,
+                "failover_then_native_tool_call: want exactly one row under the primary's profile"
+            );
+            let primary_resp: Value = serde_json::from_str(
+                &decoded_log_cell(&primary[0]["response"]).unwrap_or_default(),
+            )
+            .unwrap_or(Value::Null);
+            assert_eq!(primary[0]["modelName"], "claude-falls-over");
+            assert_eq!(primary_resp["content"], "");
+            assert_eq!(primary_resp["error"], "502 Bad Gateway");
+            assert!(
+                primary[0]["characterId"].is_string(),
+                "the primary's thrown leg lost its characterId"
+            );
+            assert_eq!(
+                primary[0]["messageId"], rows[0]["messageId"],
+                "the primary's thrown leg shares the P4.90 legs' messageId"
+            );
+            let replies: Vec<String> = rows.iter().map(|r| reply_of(r)).collect();
             for r in &rows {
                 assert_eq!(
                     r["connectionProfileId"],

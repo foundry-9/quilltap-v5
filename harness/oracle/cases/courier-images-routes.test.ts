@@ -108,6 +108,7 @@ const FOLD_OTHER_USAGE = { promptTokens: 88, completionTokens: 2, totalTokens: 9
 // the Rust `CannedCompletionProvider` lookup; emitted in the case payload's
 // `canned` field. The trigger promises v4 fire-and-forgets are captured here
 // so the case can await quiescence before dumping tables.
+const CANNED_FINISH_REASON = 'stop';
 const cannedRecorded = new Map<
   string,
   {
@@ -117,6 +118,9 @@ const cannedRecorded = new Map<
     messages: Array<{ role: string; content: string }>;
     response: string;
     usage: { promptTokens: number; completionTokens: number; totalTokens: number };
+    // The mock's `finishReason` — the cheap-LLM rows log it since v4
+    // `eb2d87788` (P4.D348), so the Rust side registers the same one.
+    finishReason: string;
   }
 >();
 const capturedTriggerPromises: Array<Promise<unknown>> = [];
@@ -218,9 +222,10 @@ function applyMocks(spec: Spec): void {
               messages,
               response,
               usage,
+              finishReason: CANNED_FINISH_REASON,
             });
           }
-          return { content: response, finishReason: 'stop', usage };
+          return { content: response, finishReason: CANNED_FINISH_REASON, usage };
         },
       }),
     };

@@ -397,7 +397,10 @@ fn remap_minted(value: &Value) -> String {
 /// and the report bytes themselves (content equality is proven at the envelope
 /// level; the dumps prove row STRUCTURE and placement).
 fn sentinel_content_columns(rows: &mut Value) {
-    const CONTENT_KEYS: [&str; 7] = [
+    // Bug 260 (P4.D354): the report `.md` is now text-extracted on write, so
+    // the link carries the extraction of the LIVE report (host memory, data
+    // directory, version) — content-derived like `sha256` / `size`.
+    const CONTENT_KEYS: [&str; 10] = [
         "sha256",
         "size",
         "sizeBytes",
@@ -405,6 +408,9 @@ fn sentinel_content_columns(rows: &mut Value) {
         "contentLength",
         "data",
         "content",
+        "extractedText",
+        "extractedTextSha256",
+        "plainTextLength",
     ];
     const TS_KEYS: [&str; 6] = [
         "createdAt",
@@ -422,7 +428,16 @@ fn sentinel_content_columns(rows: &mut Value) {
         }
         Value::Object(map) => {
             for (k, v) in map.iter_mut() {
-                if CONTENT_KEYS.contains(&k.as_str()) && !v.is_null() {
+                // The chunk count follows the live report's length, but an
+                // UN-indexed link (0) must still diverge from an indexed one —
+                // v4 indexes the report un-awaited, so the oracle drains first.
+                if k == "chunkCount"
+                    && v.as_f64()
+                        .or_else(|| v.as_str().and_then(|t| t.parse().ok()))
+                        .is_some_and(|n| n > 0.0)
+                {
+                    *v = json!("<indexed>");
+                } else if CONTENT_KEYS.contains(&k.as_str()) && !v.is_null() {
                     *v = json!("<content>");
                 } else if TS_KEYS.contains(&k.as_str()) && !v.is_null() {
                     *v = json!("<ts>");

@@ -500,7 +500,9 @@ fn enclave_step_tier3_matches_oracle() {
     let mut completion = CannedCompletionProvider::new();
     for row in &canned_completions {
         let messages = to_completion_messages(&row.messages);
-        completion = completion.with_response(
+        // The oracle's mock answers `finishReason: 'stop'`, and the cheap row
+        // logs it since v4 `eb2d87788` (P4.D348).
+        completion = completion.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -511,6 +513,7 @@ fn enclave_step_tier3_matches_oracle() {
                 completion_tokens: u.completion_tokens,
                 total_tokens: u.total_tokens,
             }),
+            Some("stop"),
         );
     }
     let embedding = FixedEmbedding;

@@ -251,7 +251,10 @@ struct Spec {
     chat_settings: ChatSettingsW,
     /// The committed `crypto.randomBytes` sequence the assistant-response RNG
     /// auto-detect draws from (both sides). Empty for the no-RNG cases; the fire
-    /// case supplies exactly the bytes its dice/coin draws consume.
+    /// case supplies exactly the bytes its dice/coin draws consume. The trailing
+    /// six are v4's `cryptoUnit` draw for `trigger-phrase-reply`'s degenerate
+    /// `bell` range (always taken since v4 `839575d89`); v5's trigger runner
+    /// draws that from the OS, so this side never reaches them.
     #[serde(default)]
     random_bytes: Vec<u8>,
     calls: Vec<CallW>,

@@ -788,7 +788,9 @@ async fn context_summary_service_tier3_matches_oracle() {
                 fail.clone(),
             );
         } else {
-            completion = completion.with_response(
+            // The oracle's mock answers `finishReason: 'stop'`, and the
+            // cheap row logs it since v4 `eb2d87788` (P4.D348).
+            completion = completion.with_response_finish(
                 &row.provider,
                 &row.model,
                 row.temperature,
@@ -799,6 +801,7 @@ async fn context_summary_service_tier3_matches_oracle() {
                     completion_tokens: row.usage.completion_tokens,
                     total_tokens: row.usage.total_tokens,
                 }),
+                Some("stop"),
             );
         }
     }

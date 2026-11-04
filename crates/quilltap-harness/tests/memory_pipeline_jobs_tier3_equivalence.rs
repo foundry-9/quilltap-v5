@@ -385,7 +385,10 @@ fn normalize_all(dumps: &mut [Value]) {
 /// corpus change that moves the count trips it (re-measure, confirm every
 /// moved row still decodes identically, update the number).
 // P4.174 (C-14): 10 → 11 — `me_unmoderated_route` adds one extraction row, decoded text identical.
-const STORED_BYTE_DIVERGENCES: usize = 11;
+// `236c04e35` unify: 11 → 4 — the round's extraction prompt bytes moved
+// (P4.D342's rubric + inner-circle text), so the encoder's content-dependent
+// split moved with them; every row still decodes identically (asserted above).
+const STORED_BYTE_DIVERGENCES: usize = 4;
 
 /// A dumped cell holding a compressed text BLOB arrives as hex (the shared
 /// dump's convention, both sides). Decode it to the text it stores.
@@ -531,7 +534,9 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
                 content: m.content.clone(),
             })
             .collect();
-        completion = completion.with_response(
+        // The oracle's mock answers `finishReason: 'stop'`, and the cheap row
+        // logs it since v4 `eb2d87788` (P4.D348).
+        completion = completion.with_response_finish(
             &row.provider,
             &row.model,
             row.temperature,
@@ -542,6 +547,7 @@ async fn memory_pipeline_jobs_tier3_matches_oracle() {
                 completion_tokens: row.usage.completion_tokens,
                 total_tokens: row.usage.total_tokens,
             }),
+            Some("stop"),
         );
     }
 

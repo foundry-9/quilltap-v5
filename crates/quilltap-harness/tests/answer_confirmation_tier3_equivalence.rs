@@ -444,7 +444,9 @@ fn answer_confirmation_tier3_matches_oracle() {
                     CompletionResponse {
                         content: row.response,
                         usage: None,
-                        finish_reason: None,
+                        // The oracle's mock answers `finishReason: 'stop'`,
+                        // and the cheap row logs it since v4 `eb2d87788`.
+                        finish_reason: Some("stop".into()),
                         attachment_results: None,
                         cache_usage: None,
                     },

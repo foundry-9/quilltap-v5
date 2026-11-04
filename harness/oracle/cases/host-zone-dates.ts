@@ -125,6 +125,16 @@ if ('customToolTriggers' in data.featureConfig) {
   throw new Error("v4's Almanack fixture now sets customToolTriggers — drop this fill and re-measure");
 }
 data.featureConfig.customToolTriggers = false;
+// P4.D356's `almanack-render.test.ts` fill, applied to this second consumer at
+// the `236c04e35` unification: v4 `839575d89` added
+// `FeatureConfigInfo.customToolIntervention` to the interface,
+// `defaultFeatureConfig()` (`true`), `collectFeatureConfig` (`?? true`) and the
+// renderer, NOT to the fixture helper — and the Rust model types it as a
+// required `bool`. v4's own default `true`. Tripwire when v4's fixture grows it.
+if ('customToolIntervention' in data.featureConfig) {
+  throw new Error("v4's Almanack fixture now sets customToolIntervention — drop this fill and re-measure");
+}
+data.featureConfig.customToolIntervention = true;
 const a = corpus.almanackDates;
 data.generatedAt = a.generatedAt;
 data.migrationState.lastMigrationAt = a.lastMigrationAt;

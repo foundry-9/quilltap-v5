@@ -57,11 +57,14 @@ const ACTIONS: [&str; 5] = [
 /// v4's GET `withActionDispatch` map — `handleList` is the fallback.
 const GET_ACTIONS: [&str; 1] = ["save-targets"];
 const ROUTE: &str = "/api/v1/inventory/[itemId]/images";
-/// v4 `containerQuerySchema`'s scope enum (`character, project, group,
-/// general` — the wardrobe route's ORDER, not `InventoryScopeSchema`'s), so
-/// Zod's sentence is byte-identical to the wardrobe edge's.
+/// v4 `containerQuerySchema`'s scope enum. Since v4 `0276d10d9` ("Refactor:
+/// Inventory chokepoints", absorbed at the `236c04e35` unification) the route
+/// reads `InventoryScopeSchema` (`lib/schemas/inventory.types.ts:286` —
+/// `character, group, project, general`) where it used to inline the wardrobe
+/// route's `character, project, group, general`; Zod's sentence follows the
+/// enum's ORDER, so the two edges' sentences now differ.
 pub(crate) const SCOPE_ISSUE: &str =
-    "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\"";
+    "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\"";
 const LOG_TAG: &str = "[Inventory Images v1]";
 
 fn json_response(status: StatusCode, body: &Value) -> AxumResponse {
@@ -376,12 +379,13 @@ mod tests {
     }
 
     #[test]
-    fn the_scope_sentence_is_the_wardrobe_routes() {
-        // Both v4 routes' `containerQuerySchema` list the scopes in the same
-        // order, so the sentence is one literal on two edges.
+    fn the_scope_sentence_is_inventory_scope_schemas() {
+        // v4 `0276d10d9`: the route's `containerQuerySchema` reads
+        // `InventoryScopeSchema` (`character, group, project, general`), no
+        // longer the wardrobe route's inline order.
         assert_eq!(
             SCOPE_ISSUE,
-            "Invalid option: expected one of \"character\"|\"project\"|\"group\"|\"general\""
+            "Invalid option: expected one of \"character\"|\"group\"|\"project\"|\"general\""
         );
     }
 

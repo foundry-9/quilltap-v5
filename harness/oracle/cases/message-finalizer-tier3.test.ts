@@ -183,6 +183,11 @@ async function main(): Promise<void> {
   // Rust `FixedBytes` replays. Per the crypto-mock gotcha, spread the real module
   // and override ONLY randomBytes (no __esModule / default) so the vault
   // overlay's default `import crypto from 'crypto'` (createHash) still resolves.
+  // The committed sequence's last six bytes feed `trigger-phrase-reply`'s
+  // `bell`: since v4 `839575d89` (operator intervention) `rollRange` ALWAYS
+  // takes the `cryptoUnit` draw, even on its degenerate 0.5..0.5 range. v5's
+  // trigger runner draws from the OS (the degenerate range makes the value
+  // draw-independent), so only this side consumes them.
   const rngByteSource: number[] = spec.randomBytes ?? [];
   let rngCursor = 0;
 

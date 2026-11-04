@@ -673,15 +673,19 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
     // `files/portrait.png`.
     ("restore_log_entries_new_account", "Quilltap Uploads"),
     // [P4.D273] the new archives' `new-account` replays of the same seeded
-    // `files/portrait.png`, and the store-binding archive's DEFERRED project
-    // file — replayed through the bridge into the bound project's store, where
-    // v4's `refreshStats` runs and v5's (the same deferral) does not.
-    ("restore_store_binding_replace", "Project Files: The Voyage"),
+    // `files/portrait.png`.
+    //
+    // RETIRED at the `236c04e35` unification (the tripwire fired): the
+    // store-binding archive's DEFERRED project file (a TEXT file) used to ride
+    // this gap in both modes on `Project Files: The Voyage`. P4.D355 moved the
+    // restore replay onto the `_indexed` bridges (P4.D354, bugs 260 / 261),
+    // whose `index_stored_upload` runs v4's `refresh_now` tail
+    // (`reindexSingleFile` → … → `refreshStats`) whenever text was extracted,
+    // so v5 now refreshes that store's rollup exactly as v4 does and its three
+    // stat columns are back under diff. The image `portrait.png` replays below
+    // extract no text, take v4's `else refreshStats` arm — still the module's
+    // unported column — and stay here.
     ("restore_store_binding_new_account", "Quilltap Uploads"),
-    (
-        "restore_store_binding_new_account",
-        "Project Files: The Voyage",
-    ),
     ("restore_store_row_fails_new_account", "Quilltap Uploads"),
     // [P4.167] the dup-store-id `new-account` twin's replay of the same file.
     ("restore_dup_store_id_new_account", "Quilltap Uploads"),

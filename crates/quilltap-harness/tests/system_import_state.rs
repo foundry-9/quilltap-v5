@@ -2634,15 +2634,25 @@ fn system_import_execute_state_equivalence() {
     // [P4.D327] + the two Inventory-carrier arms (74); neither fires one (48).
     // [P4.167] + the two chat-record-column arms (76); neither fires one (48).
     // [P4.167] + `execute_memory_preserved_numeric_id` (77; three memory WARNs).
+    // [P4.D351] + `execute_novel_template` and `execute_template_refusals`
+    // (79); neither fires one — the template refusals are repository lines,
+    // not import WARNs (silence legs). Re-derived from the `236c04e35` oracle
+    // at unification: 79 cases carry `importWarns` (the lane's own gate never
+    // reached these counters — its run stopped on sibling reds above them).
     assert_eq!(
         IMPORT_WARN_CASES.load(Ordering::SeqCst),
-        77,
+        79,
         "cases comparing the import WARNs"
     );
     assert_eq!(
         IMPORT_WARNS_FIRED.load(Ordering::SeqCst),
         // [P4.167] 48 → 51: the three refused preserved-id memories' WARNs.
-        51,
+        // [P4.D341] 51 → 53: item 20 (`keystone: 'yes'`, `MemorySchema`
+        // refuses it) of `memoryTiersPayload` fires one `Failed to import
+        // memory` on each of `execute_memory_tiers` (8 → 9) and
+        // `execute_memory_tiers_preserve` (6 → 7). Re-derived from the oracle
+        // at unification: the per-case lengths sum to 53.
+        53,
         "v4 import WARN lines fired"
     );
     // [P4.D264] every execute case compares `wardrobeLogs`; six lines fire
@@ -2655,9 +2665,11 @@ fn system_import_execute_state_equivalence() {
     // [P4.D327] 72 → 74 (the Inventory-carrier arms fire none — a silence leg).
     // [P4.167] 74 → 76 (the chat-record-column arms — silence legs) → 77
     // (`execute_memory_preserved_numeric_id` — a silence leg).
+    // [P4.D351] 77 → 79 (`execute_novel_template` /
+    // `execute_template_refusals` — silence legs; 8 lines unchanged).
     assert_eq!(
         WARDROBE_LOG_CASES.load(Ordering::SeqCst),
-        77,
+        79,
         "cases comparing the wardrobe carriers' import lines"
     );
     assert_eq!(
@@ -2678,15 +2690,20 @@ fn system_import_execute_state_equivalence() {
     // [P4.D327] 72 → 74 cases (the Inventory-carrier arms import no memory).
     // [P4.167] 74 → 76 cases (the chat-record-column arms import no memory)
     // → 77 (`execute_memory_preserved_numeric_id` — the string-id memory's line).
+    // [P4.D351] 77 → 79 cases (the two template arms import no memory).
     assert_eq!(
         MEMORY_LOG_CASES.load(Ordering::SeqCst),
-        77,
+        79,
         "cases comparing the `Imported memory` lines"
     );
     assert_eq!(
         MEMORY_LOGS_FIRED.load(Ordering::SeqCst),
         // [P4.167] 47 → 48: the preserved string-id memory's DEBUG.
-        48,
+        // [P4.D341] 48 → 52: items 18 (`keystone: true`) and 19 (`keystone:
+        // null`) of `memoryTiersPayload` import, one DEBUG each on both tiers
+        // arms (8 → 10 each). Re-derived from the `236c04e35` oracle at
+        // unification.
+        52,
         "v4 `Imported memory` lines fired"
     );
     // [P4.155 R-A] …+ the two property-refusal arms (5).

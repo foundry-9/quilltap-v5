@@ -17,6 +17,11 @@
 //! 3. the dialog overlay `.qt-dialog-overlay` is `z-[60]` — the floor the toast
 //!    must clear (a dialog tier raised toward 1000 reddens (2), a toast lowered
 //!    reddens (1)).
+//! 4. ⚖ [`V4_FLOATING_LAYER_TIES_THE_TOAST`] — v4's topmost floating layer
+//!    (`99463fc56`, the Brahma Console + its launcher, P4.D359) sits at
+//!    `--qt-floating-layer-z: 1000`, EQUAL to the toast, by v4's own design at
+//!    the `236c04e35` pin. It is pinned at exactly that value, and (2) admits
+//!    `1000` only in the floating layer's own files.
 //!
 //! Run standalone:
 //!   cargo test -p quilltap-harness --test toast_stacking_guard
@@ -27,6 +32,25 @@ const TOAST_CSS: &str = "apps/web/src/styles/qt-components/_toast.css";
 const SURFACES_CSS: &str = "apps/web/src/styles/qt-components/_surfaces.css";
 const TOAST_Z: u32 = 1000;
 const STARTUP_GATES_Z: u32 = 9999;
+
+/// ## ⚖ V4_FLOATING_LAYER_TIES_THE_TOAST (recorded at the `236c04e35` unification)
+///
+/// v4 `99463fc56` added the topmost floating layer (the always-on Brahma Console
+/// and its launcher, portalled to `document.body`) at
+/// `--qt-floating-layer-z: 1000` (v4 `app/styles/qt-components/_variables.css:293`
+/// at `236c04e35`) — the SAME value as the toast container (`5a8338b30`), not
+/// above it. P4.D359 ported it verbatim. A tie is not a climb past the toast; it
+/// is v4's own stacking, kept.
+///
+/// The value lives in a CSS custom property, which [`z_values`] does not read,
+/// so it is pinned by [`the_floating_layer_ties_the_toast_as_v4s_does`]; the one
+/// place the scanner does see it is `floating-dialog.ts`'s doc comment, which
+/// names it (`z-index: 1000` losing to an un-portalled ancestor's stacking
+/// context). `(file suffix, the one value admitted there)`.
+const V4_FLOATING_LAYER_TIES_THE_TOAST: &[(&str, u32)] = &[("app/ui/floating-dialog.ts", 1000)];
+
+/// The custom property [`V4_FLOATING_LAYER_TIES_THE_TOAST`] pins.
+const VARIABLES_CSS: &str = "apps/web/src/styles/qt-components/_variables.css";
 
 fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -137,6 +161,12 @@ fn no_other_layer_climbs_past_the_toast() {
             if is_toast_css && z == TOAST_Z {
                 continue; // the toast container's own declaration
             }
+            if V4_FLOATING_LAYER_TIES_THE_TOAST
+                .iter()
+                .any(|(suffix, tie)| rel.ends_with(suffix) && z == *tie)
+            {
+                continue; // v4's floating layer, tied with the toast (recorded)
+            }
             if z >= TOAST_Z && z != STARTUP_GATES_Z {
                 offenders.push(format!("{rel}:{line} z={z}"));
             }
@@ -163,6 +193,30 @@ fn the_dialog_overlay_is_the_floor_the_toast_must_clear() {
             .collect::<Vec<_>>(),
         vec![60],
         "{SURFACES_CSS}: .qt-dialog-overlay must stay z-[60] — the toast guard reasons from it"
+    );
+}
+
+#[test]
+fn the_floating_layer_ties_the_toast_as_v4s_does() {
+    let css = read(VARIABLES_CSS);
+    let decls: Vec<&str> = css
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("--qt-floating-layer-z:"))
+        .collect();
+    assert_eq!(
+        decls,
+        vec!["--qt-floating-layer-z: 1000;"],
+        "{VARIABLES_CSS}: the floating layer must stay at v4's `1000` — tied with the toast \
+         (V4_FLOATING_LAYER_TIES_THE_TOAST); raised past it, it would hide a toast"
+    );
+    assert_eq!(
+        V4_FLOATING_LAYER_TIES_THE_TOAST
+            .iter()
+            .map(|(_, z)| *z)
+            .collect::<Vec<_>>(),
+        vec![TOAST_Z],
+        "the recorded tie admits exactly the toast's value, nothing above it"
     );
 }
 

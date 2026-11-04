@@ -409,6 +409,11 @@ async function main(): Promise<void> {
       ...actual,
       triggerSceneStateTracking: async () => undefined,
       triggerConversationRender: async () => undefined,
+      // v4 `a8214b253` (the Salon turn pipeline): the orchestrator now reaches
+      // both triggers through `triggerAfterTurnsHousekeeping`, an IN-MODULE
+      // call the two stubs above cannot intercept — so stub the one export
+      // the orchestrator imports (v5 runs it in the host spine, not the step).
+      triggerAfterTurnsHousekeeping: async () => undefined,
     };
   });
 

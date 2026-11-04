@@ -375,6 +375,14 @@ async function main(): Promise<void> {
     sub.unsubscribe();
     emit('progress_frames', { frames: seen });
 
+    // v4's `storeMountFile` (bug 260's `extractText` + `enqueueEmbedding` on the
+    // Uploads bridge) fires `reindexSingleFile(...).then(...)` UN-awaited, so
+    // the link's `chunkCount` lands after the route returns. Drain it so the
+    // dump records v4's EVENTUAL state (v5 reindexes inside its write).
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      for (let j = 0; j < 20; j++) await new Promise((r) => setImmediate(r));
+    }
     emit('persisted_after_generate', { tables: await dumpPersisted() });
 
     const reportId = (genResp.body as { reportId?: string }).reportId ?? '';

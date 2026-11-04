@@ -690,6 +690,7 @@ fn courier_images_routes_match_oracle() {
             total_tokens: i64,
         }
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct CannedEntry {
             provider: String,
             model: String,
@@ -698,6 +699,10 @@ fn courier_images_routes_match_oracle() {
             response: String,
             #[serde(default)]
             usage: Option<CannedUsage>,
+            /// The v4 mock's `finishReason` — logged on every cheap-LLM row
+            /// since v4 `eb2d87788` (P4.D348); REQUIRED so a re-recorded oracle
+            /// cannot drop it silently.
+            finish_reason: String,
         }
         let canned: Vec<CannedEntry> =
             serde_json::from_value(oracle["resolve_cadence"]["canned"].clone())
@@ -713,7 +718,7 @@ fn courier_images_routes_match_oracle() {
                     content: m.content.clone(),
                 })
                 .collect();
-            completion = completion.with_response(
+            completion = completion.with_response_finish(
                 &entry.provider,
                 &entry.model,
                 entry.temperature,
@@ -724,6 +729,7 @@ fn courier_images_routes_match_oracle() {
                     completion_tokens: u.completion_tokens,
                     total_tokens: u.total_tokens,
                 }),
+                Some(entry.finish_reason.as_str()),
             );
         }
 
