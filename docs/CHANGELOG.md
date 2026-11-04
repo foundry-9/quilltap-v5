@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(spa): the punctuation-lint engine against a corpus recorded from v4's real engine (P4.D352)
+
+_Versions: SPA 0.5.909._
+
+New recorder `harness/oracle/cases/punctuation-lint-engine.mjs` (the `concierge-chat-override.mjs` recipe): it reads v4's `lib/punctuation-lint/engine.ts` + `prose-mode.ts` through `git show` at `236c04e35`, imports them under Node 24 type stripping (no `node_modules`), and records `apps/web/src/app/punctuation-lint/engine.v4.json` — 1,214 rows: both vector corpora (asserted equal to their `expect` at the pin), thirty generated drafts linted with no caret and with the caret at every offset in and out of prose mode, `classifyProse` over each, and `isProseTemplate` over Novel's delimiter set and twelve near misses. The output carries no wall-clock stamp, so a re-run byte-compares. New `engine.oracle.spec.ts` pins the pin, both md5s and the row counts, then diffs every row. A deliberate one-rule mutant (glued → floating) reddens 23 rows.
+
 #### 2026-11-03 — feat(spa): the punctuation-lint engine + prose mode, byte-copied from v4 with both vector corpora (P4.D352)
 
 _Versions: SPA 0.5.908._
