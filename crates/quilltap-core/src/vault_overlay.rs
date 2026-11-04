@@ -471,7 +471,7 @@ impl WardrobeItem {
             is_default: v.get("isDefault").and_then(Value::as_bool).unwrap_or(false),
             replace: v.get("replace").and_then(Value::as_bool).unwrap_or(false),
             // Present on a read item only when non-empty (the parser's spread).
-            pronoun_guidance: v.get("pronounGuidance").map(|g| arr_of(g)),
+            pronoun_guidance: v.get("pronounGuidance").map(arr_of),
             migrated_from_clothing_record_id: opt(v, "migratedFromClothingRecordId"),
             image_file_id: opt(v, "imageFileId"),
             archived_at: opt(v, "archivedAt"),

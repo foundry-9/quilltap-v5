@@ -253,6 +253,7 @@ struct PhysicalPromptsJson<'a> {
 /// `PropertiesJson` shape (literal key order) + the `talkativeness` js-number rule,
 /// so the bytes match the unconditional create-time writer's. `pub` for
 /// [`super::vault_character_update`].
+#[allow(clippy::too_many_arguments)] // one parameter per properties.json key (v4's eight)
 pub fn render_properties_json(
     pronouns: Option<&Pronouns>,
     aliases: &[String],

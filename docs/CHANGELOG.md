@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — chore(lint): P4.D349's two clippy findings
+
+_Versions: core 0.0.1390._
+
+`render_properties_json` takes one parameter per `properties.json` key (eight), so it carries `#[allow(clippy::too_many_arguments)]`. `WardrobeItem::from_read_value` passes `arr_of` directly instead of a redundant closure. No behaviour change.
+
 #### 2026-11-03 — feat(images): draw a non-humanoid character as its whole form, never a body (P4.D349)
 
 _Versions: core 0.0.1389._
