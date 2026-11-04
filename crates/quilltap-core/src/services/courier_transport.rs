@@ -1102,4 +1102,114 @@ mod tests {
         let speakers: Vec<&str> = events.iter().map(|e| e.speaker.as_str()).collect();
         assert_eq!(speakers, ["[Staff: pascal]"]);
     }
+
+    /// P4.D345 H9 (v4 `intervention-leaks.test.ts:246-320`): a held-and-
+    /// adjusted Pascal row — `pascalMeta.intervention` carrying the run as
+    /// first dealt — reaches the Courier's delta with its FINAL content only;
+    /// no dealt value, chip or word of the hold.
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_held_and_adjusted_pascal_row_reaches_the_delta_final_only() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        const CHAT: &str = "c3000000-0000-4000-8000-000000000001";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Courier Room",
+            "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        })
+        .await
+        .unwrap();
+        let body = crate::services::pascal_writer::build_pascal_result_content(
+            "Coin",
+            None,
+            "Bertie rolls 0.4",
+        );
+        crate::services::pascal_writer::post_pascal_result(
+            &db,
+            crate::services::pascal_writer::PostPascalResultParams {
+                chat_id: CHAT.to_string(),
+                content: body.content,
+                opaque_content: body.opaque_content,
+                pascal_meta: json!({
+                    "tool": "coin", "toolTitle": "Coin", "definitionTier": "character",
+                    "definitionMountId": "m1", "params": {}, "rollForm": "range", "raw": 0.4,
+                    "value": 0.4, "state": "info", "outcomeIndex": 0, "invokedBy": "llm",
+                    "intervention": {
+                        "resolvedAt": "2026-05-02T00:00:00.000Z",
+                        "decision": "deal",
+                        "changed": ["outcome"],
+                        "dealt": {
+                            "params": {}, "raw": 0.123456, "value": 12.3456,
+                            "outcomeIndex": 1, "state": "failure",
+                            "message": "DEALT-SECRET-MESSAGE",
+                            "chipLabel": "DEALT-SECRET-CHIP"
+                        },
+                        "reasks": 2
+                    }
+                }),
+                target_participant_ids: None,
+                announcer_character_id: Some("a1000000-0000-4000-8000-00000000000a".into()),
+            },
+        )
+        .await
+        .expect("posted");
+        let chat = db
+            .read_main(|c| Ok(chats_read::find_by_id_or_none(c, CHAT)))
+            .unwrap()
+            .unwrap();
+        let events = db
+            .read_main(|c| {
+                build_courier_delta_events(
+                    c,
+                    CHAT,
+                    &CourierCheckpoint {
+                        last_resolved_message_id: String::new(),
+                        resolved_at: "2000-01-01T00:00:00.000Z".into(),
+                    },
+                    &chat,
+                    &HashMap::new(),
+                    &json!({ "id": "x", "name": "X" }),
+                    "p",
+                    "Operator",
+                )
+            })
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        let text = format!("{events:?}");
+        assert!(
+            text.contains("Bertie rolls 0.4"),
+            "the final content: {text}"
+        );
+        let lower = text.to_lowercase();
+        for word in [
+            "dealt-secret",
+            "0.123456",
+            "intervention",
+            "intervene",
+            "adjusted",
+        ] {
+            assert!(!lower.contains(word), "leak of {word}: {text}");
+        }
+    }
 }

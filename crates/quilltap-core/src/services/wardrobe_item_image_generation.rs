@@ -286,7 +286,7 @@ pub async fn generate_wardrobe_item_image(
             ))
         })
         .unwrap_or_else(|e| {
-            crate::db::chat_settings::log_find_by_user_id_failure(&e);
+            crate::db::chat_settings::log_find_by_user_id_failure(user_id, &e);
             None
         });
     let override_id = args.image_profile_id.map(str::to_string);

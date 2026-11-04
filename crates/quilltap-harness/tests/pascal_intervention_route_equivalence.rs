@@ -191,6 +191,14 @@ const MESSAGES: &[&str] = &[
     "Custom tool holds listed",
     "Custom tool hold previewed",
     "Custom tool hold re-asked",
+    // `UNREACHABLE_REASK_NON_RUN_ERROR`: v4 logs this WARN `{context, chatId,
+    // error}` (`app/api/v1/chats/[id]/custom-tools/interventions.ts:302`) only
+    // for a NON-`CustomToolRunError` throw, then rethrows → 500. v5's re-ask
+    // (`api/custom_tool_interventions.rs`) has no such arm: `recompute` and
+    // `pose_llm_consult` answer only the typed `CustomToolRunError` (→ 400),
+    // the registry reads are infallible, and the invoker's failures fold into
+    // the consult's `ok: false`. Kept in the filter so a v4 row that ever
+    // carries it shows up as a mismatch, never silently.
     "Custom tool hold re-ask failed",
     "Custom tool LLM consult failed",
     "Custom tool table dealt ahead of the consult",

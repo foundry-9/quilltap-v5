@@ -136,8 +136,8 @@ pub fn chat_storyteller_round(db: &Db, chat_id: &str) -> Response {
 fn parse_run(
     round_id: &Value,
     participant_ids: &Value,
-    order: &Option<Value>,
-    keep_order: &Option<Value>,
+    order: &Option<Option<Value>>,
+    keep_order: &Option<Option<Value>>,
 ) -> Option<(String, Vec<String>, StorytellerOrder, bool)> {
     let round_id = round_id.as_str()?.to_string();
     let ids = participant_ids
@@ -145,13 +145,15 @@ fn parse_run(
         .iter()
         .map(|v| v.as_str().map(str::to_string))
         .collect::<Option<Vec<_>>>()?;
+    // `.optional()` (absent → the default) but never `.nullable()`: an
+    // explicit `null` (`Some(None)`) is the ZodError arm.
     let order = match order {
         None => StorytellerOrder::Sequential,
-        Some(v) => StorytellerOrder::from_str(v.as_str()?)?,
+        Some(v) => StorytellerOrder::from_str(v.as_ref()?.as_str()?)?,
     };
     let keep_order = match keep_order {
         None => false,
-        Some(Value::Bool(b)) => *b,
+        Some(Some(Value::Bool(b))) => *b,
         Some(_) => return None,
     };
     Some((round_id, ids, order, keep_order))
@@ -166,8 +168,8 @@ pub async fn chat_storyteller_run(
     chat_id: &str,
     round_id: &Value,
     participant_ids: &Value,
-    order: &Option<Value>,
-    keep_order: &Option<Value>,
+    order: &Option<Option<Value>>,
+    keep_order: &Option<Option<Value>>,
 ) -> Response {
     if !chat_exists(db, chat_id) {
         return Response::error(ErrorKind::NotFound, "Chat not found");
@@ -247,5 +249,71 @@ pub async fn chat_storyteller_lie(db: &Db, chat_id: &str, round_id: &Value) -> R
         Ok(()) => Response::StorytellerLie(json!({ "closed": true })),
         Err(RoundServiceError::Refused(r)) => refused(chat_id, "storyteller-lie", &r),
         Err(RoundServiceError::Db(d)) => Response::error(ErrorKind::Internal, d.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod run_request_tests {
+    use super::*;
+    use crate::api::types::Request;
+
+    fn parsed(body: Value) -> Option<(String, Vec<String>, StorytellerOrder, bool)> {
+        let mut req = json!({
+            "type": "chatStorytellerRun",
+            "chatId": "c1",
+            "roundId": "r1",
+            "participantIds": ["p1"],
+        });
+        for (k, v) in body.as_object().unwrap() {
+            req[k] = v.clone();
+        }
+        match serde_json::from_value::<Request>(req).expect("the transport decodes it") {
+            Request::ChatStorytellerRun {
+                round_id,
+                participant_ids,
+                order,
+                keep_order,
+                ..
+            } => parse_run(&round_id, &participant_ids, &order, &keep_order),
+            other => panic!("not a run request: {other:?}"),
+        }
+    }
+
+    /// v4 `StorytellerRunRequestSchema` makes `order` / `keepOrder`
+    /// `.optional()`, NOT `.nullable()`: an explicit `null` is the ZodError arm
+    /// (400 `Invalid request`), while an ABSENT key takes the default. The
+    /// transport must keep the two apart (`double_option`) so the parse sees
+    /// the `null`.
+    #[test]
+    fn an_explicit_null_order_or_keep_order_refuses_where_absent_defaults() {
+        assert_eq!(
+            parsed(json!({})),
+            Some((
+                "r1".to_string(),
+                vec!["p1".to_string()],
+                StorytellerOrder::Sequential,
+                false
+            ))
+        );
+        assert_eq!(parsed(json!({ "order": null })), None);
+        assert_eq!(parsed(json!({ "keepOrder": null })), None);
+        assert_eq!(
+            parsed(json!({ "order": "sequential", "keepOrder": true })).map(|p| (p.2, p.3)),
+            Some((StorytellerOrder::Sequential, true))
+        );
+        assert_eq!(parsed(json!({ "order": "never" })), None);
+        // An absent key survives a serialise → deserialise round trip as
+        // absent (the CLI's HTTP client re-encodes the Request).
+        let absent: Request = serde_json::from_value(json!({
+            "type": "chatStorytellerRun", "chatId": "c1", "roundId": "r1",
+            "participantIds": ["p1"],
+        }))
+        .unwrap();
+        let wire = serde_json::to_value(&absent).unwrap();
+        assert!(
+            wire.get("order").is_none() && wire.get("keepOrder").is_none(),
+            "{wire}"
+        );
+        assert_eq!(parsed(json!({ "keepOrder": "yes" })), None);
     }
 }

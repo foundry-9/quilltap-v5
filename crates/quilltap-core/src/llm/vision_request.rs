@@ -333,6 +333,11 @@ pub struct VisionRequestInput<'a> {
     pub require_api_key: bool,
     /// The transport shrink's codec (v4 `sharp`).
     pub transcoder: &'a dyn ImageTranscoder,
+    /// The row's `llm_logs` context: a storyteller round's id when the picture
+    /// is read inside a round (v4 `logLLMCall` stamps `getStorytellerRoundId()`
+    /// on every row in the round's scope, `llm-logging.service.ts:227`),
+    /// [`LogContext::none`] elsewhere.
+    pub log_context: &'a LogContext,
 }
 
 /// Why a vision request produced no usable answer without throwing (v4
@@ -695,7 +700,7 @@ async fn record(
             request_hashes: None,
             duration_ms: Some((crate::clock::now_unix_ms() - started_at) as f64),
         },
-        &LogContext::none(),
+        input.log_context,
     )
     .await;
 }

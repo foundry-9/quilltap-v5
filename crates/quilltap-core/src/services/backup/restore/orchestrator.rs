@@ -84,7 +84,7 @@ impl RestoreMode {
 /// v4 `RestoreOptions`' archive half (`lib/backup/types.ts`, new in
 /// `d553f72a`). The rest of v4's options bag (mode, targetUserId) is already
 /// this function's positional parameters.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Clone, Default)]
 pub struct RestoreOptions {
     /// Replace mode only: when true (**the default**), archived-character
     /// `.qtap` bundles (`files` rows of category `ARCHIVE` and their on-disk
@@ -92,6 +92,25 @@ pub struct RestoreOptions {
     /// rehydratable, since the tombstone character rows are replaced like any
     /// others. Pass `Some(false)` to wipe them with everything else.
     pub keep_archived_character_bundles: Option<bool>,
+    /// Replace mode only: the host's live-PTY manager. The pre-restore wipe
+    /// deletes every chat through v4's `repos.chats.delete`, whose hook ends
+    /// that chat's live terminals (`chats.repository.ts:349-360`, `85c002822`
+    /// — "every chat delete path including replace-mode restore"). `None` —
+    /// no terminal subsystem — is v4's empty PTY map.
+    pub terminal_probe:
+        Option<std::sync::Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>>,
+}
+
+impl std::fmt::Debug for RestoreOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RestoreOptions")
+            .field(
+                "keep_archived_character_bundles",
+                &self.keep_archived_character_bundles,
+            )
+            .field("terminal_probe", &self.terminal_probe.is_some())
+            .finish()
+    }
 }
 
 pub async fn restore(
@@ -123,6 +142,7 @@ pub async fn restore(
                     options.keep_archived_character_bundles != Some(false),
                 ),
             },
+            options.terminal_probe.as_deref(),
         )
         .await
         .map_err(|e| e.to_string())?;

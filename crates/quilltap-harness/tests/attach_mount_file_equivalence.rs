@@ -149,6 +149,7 @@ impl ImageDescribeDriver for TestDescribeRunner {
                 user_id: &self.user_id,
                 chat_id,
                 now_ms: NOW_MS,
+                log_context: quilltap_core::services::llm_logging::LogContext::none(),
             };
             file_fallback::generate_image_description(&deps, &file).await
         })

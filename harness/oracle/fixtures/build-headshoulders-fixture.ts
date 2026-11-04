@@ -25,11 +25,17 @@
  *     profile → `isLocal` → the empty-string key), `keyless` (one OPENAI
  *     profile with NO `apiKeyId` → the null-key warn arm), `profileless` (no
  *     profiles at all → the no-profile warn arm),
- *   - ELEVEN characters, one per classification arm of the startup scan and of
+ *   - TWELVE characters, one per classification arm of the startup scan and of
  *     the handler (see the spec's names). `Vaultless Vera`'s vault pointer is
  *     NULLED after her physical description is written, which is the only way
  *     to make a character carry the *shape* of an eligible one and still fail
- *     the enqueuer's first gate.
+ *     the enqueuer's first gate. `Orrery` (P4.D349, v4 `b27e5089a`) is
+ *     otherwise ELIGIBLE — a vault, a real `mediumPrompt` seed, no
+ *     head-and-shoulders prompt — but carries `humanoid: false`, written
+ *     through v4's REAL physical write (the managed-fields renderer puts it in
+ *     `physical-prompts.json`), so the ONLY gate that stops her is
+ *     `isHumanoid`: the scan counts her skipped and the handler returns before
+ *     any provider call, at both sites.
  *
  * ⚠ Two measurements this fixture's first build settled, both recorded
  * rather than designed around:
@@ -55,10 +61,11 @@
  * would throw (→ the "treating as not-yet-run" warn) on a missing table where
  * v5's read would not — the P4.D130 lesson.
  *
- * Regenerate (Node 24, from the v4 checkout) + re-copy the committed .db files:
+ * Regenerate (Node 24, from the v4 checkout or a pinned worktree — drift-ledger §5.1) + re-copy the committed .db files:
  *   N=~/.nvm/versions/node/v24.13.1/bin
  *   V5W=${V5W:-$HOME/source/quilltap-v5}
  *   cd ~/source/quilltap-server
+ *   TZ=UTC QUILLTAP_TIMEZONE=UTC \
  *   QT_FIXTURE_HS_MAIN=$V5W/crates/quilltap-web/tests/fixtures/headshoulders-main.db \
  *   QT_FIXTURE_HS_MOUNT=$V5W/crates/quilltap-web/tests/fixtures/headshoulders-mount.db \
  *     $N/node --import tsx $V5W/harness/oracle/fixtures/build-headshoulders-fixture.ts
@@ -272,6 +279,35 @@ async function main(): Promise<void> {
 
   closeMountIndexSQLiteClient();
   await closeDatabase();
+
+  // The migration-only vintage the committed pair was widened to IN PLACE
+  // (P4.D225's refusal ledger, P4.D288's span through the narrowed runner,
+  // P4.D341's keystone four — 09674fa58 / 29fc81a88) never reached this
+  // builder, so a plain rebuild came out a vintage BEHIND the committed bytes
+  // (no `chats.moderationRefusalCount`, no `memory_extraction_cursors` /
+  // `storyteller_rounds` / `migrations_state`, no memories indexes). Replay
+  // v4's REAL modules here instead of hand-ALTERing (the rebuilt-pair rule).
+  // Run under `TZ=UTC QUILLTAP_TIMEZONE=UTC`, as the span's widen was. The
+  // llm-logs module is left out: this pair has no logs file.
+  const {
+    runV4Migrations,
+    ADD_CHAT_REFUSAL_LEDGER,
+    P4D288_SPAN_MIGRATIONS,
+    KEYSTONE_236_MIGRATIONS,
+  } = await import('../lib/v4-migrations');
+  const migrated = await runV4Migrations({
+    dbPath: mainOut,
+    pepperBase64: spec.testPepperBase64,
+    migrations: [
+      ADD_CHAT_REFUSAL_LEDGER,
+      ...P4D288_SPAN_MIGRATIONS,
+      ...KEYSTONE_236_MIGRATIONS.filter((m) => !m.file.includes('llm-logs')),
+    ],
+    runner: true,
+    allowMissing: true,
+  });
+  process.stderr.write(`headshoulders fixture migrations: ${migrated.join('; ')}\n`);
+
   process.stderr.write(
     `built headshoulders fixture: main=${mainOut} mount=${mountOut} ` +
       `(${spec.users.length} users, ${spec.characters.length} characters)\n`,

@@ -374,6 +374,10 @@ pub struct FallbackDeps<'a, CMP: CompletionProvider> {
     /// uncensored vision fallback may stand in. `None` — a file described
     /// outside any chat — leaves only the global on-duty switch to decide.
     pub chat_id: Option<&'a str>,
+    /// The vision row's `llm_logs` context: the storyteller round's id when
+    /// the picture is described inside a round (v4 `llm-logging.service.ts:227`
+    /// stamps every row in `runWithStorytellerRoundId`'s scope), none elsewhere.
+    pub log_context: crate::services::llm_logging::LogContext,
 }
 
 /// v4 `getImageDescriptionProfile(repos, userId)` (`9ecebf986`): the shared
@@ -537,6 +541,7 @@ async fn describe_image_with_profile<CMP: CompletionProvider>(
             chat_id: deps.chat_id,
             require_api_key: false,
             transcoder: deps.transcoder,
+            log_context: &deps.log_context,
         },
     )
     .await;
@@ -1448,6 +1453,7 @@ mod log_context_tests {
             user_id: "user-1",
             now_ms: 0,
             chat_id: None,
+            log_context: crate::services::llm_logging::LogContext::none(),
         };
         let file = FallbackFile {
             id: "file-1".into(),
@@ -1529,6 +1535,7 @@ mod log_context_tests {
                 user_id: "u1",
                 now_ms: 0,
                 chat_id,
+                log_context: crate::services::llm_logging::LogContext::none(),
             };
             let (got, lines) =
                 captured_with(|| rt.block_on(get_uncensored_image_description_profile(&deps)));

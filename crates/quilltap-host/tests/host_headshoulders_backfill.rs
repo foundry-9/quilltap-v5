@@ -191,7 +191,7 @@ async fn seeded_backfill_job_runs_through_the_production_spine() {
 /// which are never deleted, not about their status.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn boot_runs_the_one_time_backfill_scan_exactly_once() {
-    // The committed pair carries eleven characters, SIX of them eligible,
+    // The committed pair carries twelve characters, SIX of them eligible,
     // plus one already-PENDING backfill job whose character the dedupe skips.
     // Six, not seven, since P4.D283 (v4 `9ecebf986`): the scan's "has a seed"
     // is `pickPhysicalDescription`'s rule, which SKIPS a whitespace-only

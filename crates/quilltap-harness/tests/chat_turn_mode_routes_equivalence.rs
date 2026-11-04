@@ -71,41 +71,13 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 /// The corpus must not shrink silently (the oracle's `CASES`).
-const MIN_ROWS: usize = 47;
+const MIN_ROWS: usize = 49;
 
 /// CARVE `ZOD_DETAILS` — v4's 400 `Validation error` body carries Zod's
 /// `details` issue array; v5 answers the bare `{error}` (the standing
 /// project-wide error-envelope deferral, `salon.rs::chat_update`'s own
 /// note). Only `error` is compared on an error body.
 const ZOD_DETAILS: &str = "ZOD_DETAILS";
-
-/// CARVE `SIBLING_DIAGRAM_STYLE` — v4's PUT echo enriches each participant's
-/// `character` with `diagramStyle` (a sibling lane's key, red in
-/// `salon_reads_equivalence` for the same reason). Stripped from v4's side
-/// ONLY while v5 still lacks it: once v5 emits it the carve panics (retire it).
-const SIBLING_DIAGRAM_STYLE: &str = "SIBLING_DIAGRAM_STYLE";
-
-fn carve_diagram_style(want_chat: &Value, got_chat: &Value) -> Value {
-    let has = |chat: &Value| {
-        chat["participants"].as_array().is_some_and(|ps| {
-            ps.iter()
-                .any(|p| p["character"].get("diagramStyle").is_some())
-        })
-    };
-    assert!(
-        !has(got_chat),
-        "{SIBLING_DIAGRAM_STYLE}: v5's PUT echo now carries `diagramStyle` — retire the carve"
-    );
-    let mut w = want_chat.clone();
-    if let Some(ps) = w["participants"].as_array_mut() {
-        for p in ps {
-            if let Some(c) = p.get_mut("character").and_then(Value::as_object_mut) {
-                c.remove("diagramStyle");
-            }
-        }
-    }
-    w
-}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -365,6 +337,18 @@ fn cases() -> Vec<Case> {
         case(
             "run_keep_order_string",
             Run(json!({"roundId": OPEN_ROUND, "participantIds": [BRAM_P], "keepOrder": "yes"})),
+        )
+        .rounds(vec![open_round()]),
+        // v4's schema: `.optional()`, not `.nullable()` — an explicit `null`
+        // is the ZodError arm (the unify review's should-fix).
+        case(
+            "run_order_null",
+            Run(json!({"roundId": OPEN_ROUND, "participantIds": [BRAM_P], "order": null})),
+        )
+        .rounds(vec![open_round()]),
+        case(
+            "run_keep_order_null",
+            Run(json!({"roundId": OPEN_ROUND, "participantIds": [BRAM_P], "keepOrder": null})),
         )
         .rounds(vec![open_round()]),
         case("run_participant_id_number", Run(json!({"roundId": OPEN_ROUND, "participantIds": [1]})))
@@ -637,6 +621,13 @@ fn opt(body: &Value, key: &str) -> Option<Value> {
     body.get(key).cloned()
 }
 
+/// The transport's three-state decode of an `.optional()` (never
+/// `.nullable()`) key: absent → `None`, `null` → `Some(None)`, a value →
+/// `Some(Some(v))` — `api::types`' `double_option`.
+fn opt_tri(body: &Value, key: &str) -> Option<Option<Value>> {
+    body.get(key).map(|v| (!v.is_null()).then(|| v.clone()))
+}
+
 #[test]
 fn chat_turn_mode_routes_match_oracle() {
     let Ok(oracle_path) = std::env::var("QT_ORACLE_CHAT_TURN_MODE_ROUTES") else {
@@ -712,8 +703,8 @@ fn chat_turn_mode_routes_match_oracle() {
                     c.chat_id,
                     &body_field(body, "roundId"),
                     &body_field(body, "participantIds"),
-                    &opt(body, "order"),
-                    &opt(body, "keepOrder"),
+                    &opt_tri(body, "order"),
+                    &opt_tri(body, "keepOrder"),
                 ))
             }
             Call::Ask(body) => {
@@ -758,7 +749,9 @@ fn chat_turn_mode_routes_match_oracle() {
             }
         } else if matches!(c.call, Call::Put(_)) {
             let g = &got_body["chat"];
-            let w = &carve_diagram_style(&want_body["chat"], g);
+            // (`SIBLING_DIAGRAM_STYLE` retired at the unification: v5's PUT
+            // echo now carries the sibling lane's `diagramStyle`.)
+            let w = &want_body["chat"];
             let (gs, ws) = (bytes(&sorted(g)), bytes(&sorted(w)));
             if gs != ws {
                 fail("body.chat(sorted)", gs, ws);
@@ -809,7 +802,7 @@ fn chat_turn_mode_routes_match_oracle() {
         }
         compared += 1;
     }
-    eprintln!("chat_turn_mode_routes: {compared} rows compared; carves {ZOD_DETAILS}, {SIBLING_DIAGRAM_STYLE}");
+    eprintln!("chat_turn_mode_routes: {compared} rows compared; carves {ZOD_DETAILS}");
     assert!(
         failed.is_empty(),
         "chat_turn_mode_routes FAILED: {failed:#?}"

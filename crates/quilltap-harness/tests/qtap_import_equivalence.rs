@@ -776,7 +776,7 @@ fn qtap_import_tier2_matches_oracle() {
     //
     // The uploads mount is PLANTED, identically to the oracle's plant — fixture
     // scaffolding, not ported code: the shared fixtures are empty and
-    // `write_user_upload_to_mount_store` refuses without a
+    // `write_user_upload_to_mount_store_indexed` refuses without a
     // `userUploadsMountPointId` pointing at a database-backed store.
     {
         let scratch2 = tempfile::Builder::new()

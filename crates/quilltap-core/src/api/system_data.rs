@@ -810,6 +810,7 @@ pub fn delete_data_preview(db: &Db, user_id: &str) -> Response {
 /// data')`.
 pub async fn delete_data(
     db: &Db,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
     user_id: &str,
     confirm: &str,
     keep_archived_character_bundles: Option<bool>,
@@ -822,7 +823,7 @@ pub async fn delete_data(
     let options = crate::services::delete_all::DeleteUserDataOptions {
         keep_archived_character_bundles,
     };
-    match crate::services::delete_all::delete_all_user_data(db, user_id, options).await {
+    match crate::services::delete_all::delete_all_user_data(db, user_id, options, probe).await {
         Ok(summary) => delete_summary_body(&summary),
         Err(e) => {
             tracing::error!(target: "quilltap::system_data", error = %e, "Delete all data failed");

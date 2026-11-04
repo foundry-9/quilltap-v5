@@ -446,6 +446,9 @@ pub struct ProcessFilesDeps<'a, CMP: CompletionProvider> {
     /// rehydration, the Lantern loop), so the chat's Concierge state decides
     /// the uncensored vision fallback. `None` only where there is no chat.
     pub chat_id: Option<&'a str>,
+    /// The describes' `llm_logs` context ([`FallbackDeps::log_context`]): the
+    /// storyteller round's id inside a round, none elsewhere.
+    pub log_context: crate::services::llm_logging::LogContext,
 }
 
 impl<'a, CMP: CompletionProvider> ProcessFilesDeps<'a, CMP> {
@@ -457,6 +460,7 @@ impl<'a, CMP: CompletionProvider> ProcessFilesDeps<'a, CMP> {
             user_id: self.user_id,
             now_ms: self.now_ms,
             chat_id: self.chat_id,
+            log_context: self.log_context.clone(),
         }
     }
 }

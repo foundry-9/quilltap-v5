@@ -255,7 +255,6 @@ fn tool_build_matches_oracle() {
 
     let mut failures: Vec<String> = Vec::new();
     let (mut withheld_rows, mut allowed_autonomous_rows, mut ceiling_rows) = (0, 0, 0);
-    let mut catalog_carved = 0usize;
 
     for c in &spec.cases {
         let disabled_tools: Option<&[String]> = if c.disabled_tools_undefined {
@@ -380,11 +379,9 @@ fn tool_build_matches_oracle() {
             .get(&c.name)
             .unwrap_or_else(|| panic!("oracle row missing for {}", c.name));
 
-        let (got_tools, want_tools, carved) = carve_catalog_drift(&got_tools, &want_row.tools);
-        catalog_carved += carved;
-        if got_tools != want_tools {
+        if got_tools != want_row.tools {
             let g = tool_names(&got_tools);
-            let w = tool_names(&want_tools);
+            let w = tool_names(&want_row.tools);
             failures.push(format!(
                 "case {}: tools mismatch\n  got:  {:?}\n  want: {:?}",
                 c.name, g, w
@@ -438,71 +435,10 @@ fn tool_build_matches_oracle() {
     drop(scratch);
 
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
-    eprintln!(
-        "tool_build_equivalence: {} cases; {catalog_carved} tool definitions carved as CATALOG_DRIFT (P4.D350)",
-        spec.cases.len()
-    );
+    eprintln!("tool_build_equivalence: {} cases", spec.cases.len());
     assert_eq!(withheld_rows, 1, "the withheld-set pin ran");
     assert!(allowed_autonomous_rows > 0, "the silence leg ran");
     assert!(ceiling_rows >= 8, "the ceiling rows ran ({ceiling_rows})");
-}
-
-/// `CATALOG_DRIFT` (P4.D343, a union-expected carve): the pin's catalog moved
-/// these seven definitions' description / parameter text (`self_inventory`'s
-/// `holdings`, the Inventory `image_description`, the wardrobe list/create/
-/// update, `doc_list_files`), and the ONE regen of `tools/definitions/data.rs`
-/// is P4.D350's `CATALOG`. A carved tool is compared by NAME and position only
-/// (its slot in the slate, its presence under every ceiling) — none of the
-/// seven is a computed-effect tool, so no ceiling note rides them. Both ways:
-/// a carved tool that already matches FAILS (the carve outlived `CATALOG` —
-/// the unifier deletes this fn once `CATALOG` lands).
-const CATALOG_DRIFT: [&str; 7] = [
-    "doc_list_files",
-    "inventory_create",
-    "inventory_update",
-    "self_inventory",
-    "wardrobe_create",
-    "wardrobe_list",
-    "wardrobe_update",
-];
-
-fn carve_catalog_drift(got: &Value, want: &Value) -> (Value, Value, usize) {
-    let name_of = |t: &Value| {
-        t.get("function")
-            .and_then(|f| f.get("name"))
-            .or_else(|| t.get("name"))
-            .and_then(Value::as_str)
-            .map(str::to_string)
-    };
-    let (Some(g), Some(w)) = (got.as_array(), want.as_array()) else {
-        return (got.clone(), want.clone(), 0);
-    };
-    let mut carved = 0;
-    let mut g2 = Vec::with_capacity(g.len());
-    let mut w2 = Vec::with_capacity(w.len());
-    for (i, gt) in g.iter().enumerate() {
-        let wt = w.get(i);
-        match (name_of(gt), wt.and_then(name_of)) {
-            (Some(gn), Some(wn)) if gn == wn && CATALOG_DRIFT.contains(&gn.as_str()) => {
-                assert_ne!(
-                    Some(gt),
-                    wt,
-                    "CATALOG_DRIFT carve for `{gn}` is stale: v5's definition now matches the pin — retire the carve"
-                );
-                carved += 1;
-                g2.push(serde_json::json!({ "carved": gn }));
-                w2.push(serde_json::json!({ "carved": wn }));
-            }
-            _ => {
-                g2.push(gt.clone());
-                if let Some(wt) = wt {
-                    w2.push(wt.clone());
-                }
-            }
-        }
-    }
-    w2.extend(w.iter().skip(g.len()).cloned());
-    (Value::Array(g2), Value::Array(w2), carved)
 }
 
 fn tool_names(tools: &Value) -> Vec<String> {

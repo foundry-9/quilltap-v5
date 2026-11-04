@@ -419,6 +419,9 @@ export const CASES: CaseSpec[] = [
   post('run_bad_order', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [BRAM_P], order: 'random' }, { rounds: [openRound()] }),
   post('run_missing_participant_ids', 'storyteller-run', { roundId: OPEN_ROUND }, { rounds: [openRound()] }),
   post('run_keep_order_string', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [BRAM_P], keepOrder: 'yes' }, { rounds: [openRound()] }),
+  // `.optional()`, not `.nullable()`: an explicit null is the ZodError arm.
+  post('run_order_null', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [BRAM_P], order: null }, { rounds: [openRound()] }),
+  post('run_keep_order_null', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [BRAM_P], keepOrder: null }, { rounds: [openRound()] }),
   post('run_participant_id_number', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [1] }, { rounds: [openRound()] }),
   post('run_missing_chat', 'storyteller-run', { roundId: OPEN_ROUND, participantIds: [BRAM_P] }, { chatId: MISSING_CHAT }),
   // ── POST ?action=storyteller-ask — refusal arms only ───────────────────────

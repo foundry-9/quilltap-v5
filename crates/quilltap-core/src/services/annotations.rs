@@ -32,21 +32,11 @@ use std::collections::HashSet;
 /// v4 `DEFAULT_TAG_TOKEN_PATTERN` (`lib/schemas/template.types.ts:26`).
 const DEFAULT_TAG_TOKEN_PATTERN: &str = "[^\\p{Ll}]+";
 
-/// Port of v4 `escapeRegex` (`lib/utils/regex.ts`):
-/// `input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
-fn escape_regex(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    for ch in input.chars() {
-        if matches!(
-            ch,
-            '.' | '*' | '+' | '?' | '^' | '$' | '{' | '}' | '(' | ')' | '|' | '[' | ']' | '\\'
-        ) {
-            out.push('\\');
-        }
-        out.push(ch);
-    }
-    out
-}
+/// v4 `escapeRegex` (`lib/utils/regex.ts`:
+/// `input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`) is the shared
+/// [`crate::jsstr::escape_regexp`] — the same fourteen-character class, byte
+/// for byte (P4.D347 F-3 retired this module's private twin).
+use crate::jsstr::escape_regexp as escape_regex;
 
 /// The render scope of a built pattern (v4 `'inline' | 'line'`).
 #[derive(PartialEq, Eq)]

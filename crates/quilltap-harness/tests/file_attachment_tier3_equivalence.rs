@@ -592,6 +592,7 @@ fn file_attachment_matches_oracle() {
         now_ms: 0,
         // v4 `3b463d6b1` (#76): `loadAndProcessFiles` describes WITH the chat.
         chat_id: Some(&spec.chat_id),
+        log_context: quilltap_core::services::llm_logging::LogContext::none(),
     };
 
     let rt = tokio::runtime::Runtime::new().expect("tokio runtime");
@@ -678,6 +679,7 @@ fn file_attachment_matches_oracle() {
         now_ms: 0,
         // v4's case calls `processFileAttachmentFallback` with no options.
         chat_id: None,
+        log_context: quilltap_core::services::llm_logging::LogContext::none(),
     };
     for (label, profile_key, file_key) in fb_cases {
         let profile = &spec.resp_profiles[*profile_key];
@@ -804,6 +806,7 @@ fn file_attachment_matches_oracle() {
             now_ms: 0,
             // v4 `3b463d6b1` (#76): the adapter's `options.chatId`.
             chat_id: Some(&spec.chat_id),
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         };
         for c in &spec.adapt_cases {
             let messages = build_messages(&c.messages);
@@ -1143,6 +1146,7 @@ fn file_attachment_matches_oracle() {
                 user_id: &spec.user_id,
                 now_ms: 0,
                 chat_id: Some(chat_id),
+                log_context: quilltap_core::services::llm_logging::LogContext::none(),
             };
             let f = &file_by_key[file_key];
             let file = FallbackFile {
@@ -1231,6 +1235,7 @@ fn file_attachment_matches_oracle() {
             user_id: &spec.user_id,
             now_ms: 0,
             chat_id: None,
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         };
         let f = &file_by_key["descImage"];
         let file = FallbackFile {
@@ -1293,6 +1298,7 @@ fn file_attachment_matches_oracle() {
             user_id: &spec.user_id,
             now_ms: 0,
             chat_id: None,
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         };
         let f = &file_by_key["descImage"];
         let file = FallbackFile {

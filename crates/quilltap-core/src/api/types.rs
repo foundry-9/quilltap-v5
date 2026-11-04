@@ -340,10 +340,25 @@ pub enum Request {
         round_id: serde_json::Value,
         #[serde(default)]
         participant_ids: serde_json::Value,
-        #[serde(default)]
-        order: Option<serde_json::Value>,
-        #[serde(default)]
-        keep_order: Option<serde_json::Value>,
+        /// Three-state (absent / `null` / a value): v4's schema makes both
+        /// `.optional()`, NOT `.nullable()`, so an explicit `null` is the
+        /// ZodError arm while an absent key defaults — a plain `Option` would
+        /// fold the `null` into "absent" and answer 200.
+        /// (`skip_serializing_if`: an absent key must stay absent through a
+        /// serialise → deserialise round trip, or the CLI's HTTP client would
+        /// send `null` and be refused.)
+        #[serde(
+            default,
+            deserialize_with = "double_option",
+            skip_serializing_if = "Option::is_none"
+        )]
+        order: Option<Option<serde_json::Value>>,
+        #[serde(
+            default,
+            deserialize_with = "double_option",
+            skip_serializing_if = "Option::is_none"
+        )]
+        keep_order: Option<Option<serde_json::Value>>,
     },
     /// v4 `POST …?action=storyteller-ask` → `{ bid }` (the ANSWERED card).
     #[serde(rename_all = "camelCase")]
@@ -3935,7 +3950,7 @@ pub enum Request {
         /// never collapse into absent (P4.171 C-11, retiring
         /// `RELOAD_NULL_DECODES_ABSENT`). Three-state through the house
         /// decoder, so every edge that decodes a `Request` agrees.
-        #[serde(default, deserialize_with = "crate::db::serde_tristate::double_option")]
+        #[serde(default, deserialize_with = "double_option")]
         reload: Option<Option<serde_json::Value>>,
     },
     /// Reset and re-queue danger classification (v4 `POST …?action=reclassify-danger`).

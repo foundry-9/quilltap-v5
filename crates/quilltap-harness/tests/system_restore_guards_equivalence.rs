@@ -223,6 +223,7 @@ fn restore_route_guards_match_oracle() {
         let resp = rt.block_on(restore_execute(
             &db,
             &host,
+            None,
             body.get("uploadId").unwrap_or(&Value::Null),
             body.get("mode").unwrap_or(&Value::Null),
             body.get("keepArchivedCharacterBundles"),

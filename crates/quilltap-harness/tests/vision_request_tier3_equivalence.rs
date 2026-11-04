@@ -480,6 +480,7 @@ fn vision_request_tier3_matches_oracle() {
                     chat_id: c.get("chatId").and_then(Value::as_str),
                     require_api_key: c["requireApiKey"].as_bool().unwrap_or(false),
                     transcoder,
+                    log_context: &quilltap_core::services::llm_logging::LogContext::none(),
                 },
             ))
         });

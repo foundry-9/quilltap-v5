@@ -41,7 +41,7 @@ pub fn default_logging_settings() -> LlmLoggingSettings {
 
 /// The explicit ambient context replacing v4's `AsyncLocalStorage`. `None` outside
 /// an autonomous turn (every request-path caller).
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct LogContext {
     /// Stamped onto the row's `autonomousRunId`; lets the room budget sum spend by
     /// run id. `None` outside an autonomous turn.
@@ -59,6 +59,20 @@ impl LogContext {
     /// The request-path context (no autonomous run).
     pub fn none() -> Self {
         Self::default()
+    }
+
+    /// Only the storyteller round's id, for the turn's sub-call rows (Carina,
+    /// the vision describes, the cheap-LLM tasks). v4 stamps
+    /// `getStorytellerRoundId()` on EVERY `logLLMCall` inside
+    /// `runWithStorytellerRoundId` (`llm-logging.service.ts:227`,
+    /// `round.service.ts:107`, `:391`); the sub-call sites that used to pass
+    /// [`Self::none`] carry the round now and nothing else, so a non-round
+    /// caller's rows are exactly as before.
+    pub fn storyteller_round_only(&self) -> Self {
+        Self {
+            storyteller_round_id: self.storyteller_round_id.clone(),
+            ..Self::default()
+        }
     }
 }
 

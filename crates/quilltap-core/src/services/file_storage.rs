@@ -1135,8 +1135,8 @@ pub fn store_mount_blob(
     // LINK at a blob-free path can still collide — e.g. a text document there).
     // v4 `store-file.ts:276-279`: the fallback path read (`null` → no chunk
     // delete → the upsert) — P4.142 G2. P4.149 (item 4): the importer reaches
-    // this read (`write_project_file_to_mount_store` /
-    // `write_user_upload_to_mount_store`), and v4's strict import RETHROWS a
+    // this read (`write_project_file_to_mount_store_indexed` /
+    // `write_user_upload_to_mount_store_indexed`), and v4's strict import RETHROWS a
     // failed `queryJoined` — so the strict-aware sibling.
     if let Some(existing) = links
         .find_by_mount_point_and_path_or_none_strict_aware(input.mount_point_id, &final_path)?
@@ -1208,51 +1208,6 @@ pub fn get_user_uploads_store(main: &Connection, mount: &Connection) -> Option<S
     Some(id)
 }
 
-/// **DEPRECATED (P4.D354, bugs 260 / 261) — use
-/// [`write_user_upload_to_mount_store_indexed`].** The pre-`40fab1c54` bridge:
-/// it stores the blob and stops (v4's old `extractText: false`). It stays ONE
-/// round, unchanged, for the two restore sites P4.D355 switches (HANDOFF H1);
-/// `bridge_callers_census` pins that exactly those two still call it. (Marked
-/// in prose, not `#[deprecated]`: the attribute would fail `clippy -D
-/// warnings` at P4.D355's sites, which this lane may not edit.)
-///
-/// v4 `writeUserUploadToMountStore` (`user-uploads-bridge.ts:94`) — land a
-/// project-less upload in the Quilltap Uploads mount under `<subfolder>/`.
-/// `Err` when the mount is unprovisioned (v4's throw). (The argument list
-/// mirrors v4's input bag; kept flat like the image_job_storage precedent.)
-#[allow(clippy::too_many_arguments)]
-pub fn write_user_upload_to_mount_store(
-    main: &Connection,
-    mount: &Connection,
-    codec: &dyn PixelCodec,
-    filename: &str,
-    content: &[u8],
-    content_type: &str,
-    subfolder: &str,
-    description: Option<&str>,
-) -> Result<StoredBlob, DbError> {
-    let Some(mount_point_id) = get_user_uploads_store(main, mount) else {
-        return Err(DbError::Internal(
-            "Quilltap Uploads mount has not been provisioned".to_string(),
-        ));
-    };
-    let safe_name = sanitize_leaf_name(filename);
-    let desired = format!("{subfolder}/{safe_name}");
-    store_mount_blob(
-        mount,
-        codec,
-        &StoreMountBlobInput {
-            mount_point_id: &mount_point_id,
-            relative_path: &desired,
-            data: content,
-            original_mime_type: content_type,
-            original_file_name: &safe_name,
-            description,
-            transcode_images: true,
-        },
-    )
-}
-
 // ============================================================================
 // The project-store bridge (v4 project-store-bridge.ts) + ProjectImageUpload
 // ============================================================================
@@ -1307,17 +1262,63 @@ pub fn get_project_document_store(mount: &Connection, project_id: &str) -> Optio
     crate::db::project_store_naming::pick_primary_project_store(&stores).map(|s| s.id.clone())
 }
 
-/// **DEPRECATED (P4.D354, bugs 260 / 261) — use
-/// [`write_project_file_to_mount_store_indexed`]** (see
-/// [`write_user_upload_to_mount_store`]'s note; the same one-round residue).
-///
-/// v4 `writeProjectFileToMountStore` (`project-store-bridge.ts:127`). `Err`
-/// when the project has no linked database-backed store (v4's throw). (Flat
-/// v4-input-bag argument list, the image_job_storage precedent.)
+/// v4 `writeUserUploadToMountStore` at `40fab1c54` (`user-uploads-bridge.ts:
+/// 107-121`: `extractText: true`, `enqueueEmbedding: true` — bugs 260 / 261).
+/// Contract C1: the blob write — land a project-less upload in the Quilltap
+/// Uploads mount under `<subfolder>/` (v4 `user-uploads-bridge.ts:94`) — then
+/// [`index_stored_upload`]: every chat upload (`.md`, `.txt`, `.json`
+/// included) becomes readable, greppable and searchable. `Err` when the
+/// Uploads mount is unprovisioned (v4's throw). (The pre-`40fab1c54`
+/// blob-only bridge, deprecated by P4.D354, was deleted once P4.D355 moved
+/// the restore onto this one — P4.D354 H1 / P4.D355 H1.)
 #[allow(clippy::too_many_arguments)]
-pub fn write_project_file_to_mount_store(
+pub fn write_user_upload_to_mount_store_indexed(
+    main: &Connection,
     mount: &Connection,
     codec: &dyn PixelCodec,
+    extractor: &dyn DocumentTextExtractor,
+    filename: &str,
+    content: &[u8],
+    content_type: &str,
+    subfolder: &str,
+    description: Option<&str>,
+) -> Result<StoredBlob, DbError> {
+    let Some(mount_point_id) = get_user_uploads_store(main, mount) else {
+        return Err(DbError::Internal(
+            "Quilltap Uploads mount has not been provisioned".to_string(),
+        ));
+    };
+    let safe_name = sanitize_leaf_name(filename);
+    let desired = format!("{subfolder}/{safe_name}");
+    let stored = store_mount_blob(
+        mount,
+        codec,
+        &StoreMountBlobInput {
+            mount_point_id: &mount_point_id,
+            relative_path: &desired,
+            data: content,
+            original_mime_type: content_type,
+            original_file_name: &safe_name,
+            description,
+            transcode_images: true,
+        },
+    )?;
+    index_stored_upload(main, mount, extractor, &stored, content);
+    Ok(stored)
+}
+
+/// v4 `writeProjectFileToMountStore` at `40fab1c54` (`project-store-bridge.ts:
+/// 144-158`: `extractText: true`, `enqueueEmbedding: true`). Contract C1 —
+/// the project twin GAINS `main` (the embedding enqueue writes
+/// `background_jobs`). `Err` when the project has no linked database-backed
+/// store (v4's throw; `writeProjectFileToMountStore`,
+/// `project-store-bridge.ts:127`).
+#[allow(clippy::too_many_arguments)]
+pub fn write_project_file_to_mount_store_indexed(
+    main: &Connection,
+    mount: &Connection,
+    codec: &dyn PixelCodec,
+    extractor: &dyn DocumentTextExtractor,
     project_id: &str,
     filename: &str,
     content: &[u8],
@@ -1338,7 +1339,7 @@ pub fn write_project_file_to_mount_store(
     } else {
         format!("{folder_dir}/{safe_name}")
     };
-    store_mount_blob(
+    let stored = store_mount_blob(
         mount,
         codec,
         &StoreMountBlobInput {
@@ -1350,68 +1351,6 @@ pub fn write_project_file_to_mount_store(
             description,
             transcode_images: true,
         },
-    )
-}
-
-/// v4 `writeUserUploadToMountStore` at `40fab1c54` (`user-uploads-bridge.ts:
-/// 107-121`: `extractText: true`, `enqueueEmbedding: true` — bugs 260 / 261).
-/// Contract C1: the blob write ([`write_user_upload_to_mount_store`]'s body)
-/// then [`index_stored_upload`] — every chat upload (`.md`, `.txt`, `.json`
-/// included) becomes readable, greppable and searchable. `Err` when the
-/// Uploads mount is unprovisioned (v4's throw).
-#[allow(clippy::too_many_arguments)]
-pub fn write_user_upload_to_mount_store_indexed(
-    main: &Connection,
-    mount: &Connection,
-    codec: &dyn PixelCodec,
-    extractor: &dyn DocumentTextExtractor,
-    filename: &str,
-    content: &[u8],
-    content_type: &str,
-    subfolder: &str,
-    description: Option<&str>,
-) -> Result<StoredBlob, DbError> {
-    let stored = write_user_upload_to_mount_store(
-        main,
-        mount,
-        codec,
-        filename,
-        content,
-        content_type,
-        subfolder,
-        description,
-    )?;
-    index_stored_upload(main, mount, extractor, &stored, content);
-    Ok(stored)
-}
-
-/// v4 `writeProjectFileToMountStore` at `40fab1c54` (`project-store-bridge.ts:
-/// 144-158`: `extractText: true`, `enqueueEmbedding: true`). Contract C1 —
-/// the project twin GAINS `main` (the embedding enqueue writes
-/// `background_jobs`). `Err` when the project has no linked database-backed
-/// store (v4's throw).
-#[allow(clippy::too_many_arguments)]
-pub fn write_project_file_to_mount_store_indexed(
-    main: &Connection,
-    mount: &Connection,
-    codec: &dyn PixelCodec,
-    extractor: &dyn DocumentTextExtractor,
-    project_id: &str,
-    filename: &str,
-    content: &[u8],
-    content_type: &str,
-    folder_path: Option<&str>,
-    description: Option<&str>,
-) -> Result<StoredBlob, DbError> {
-    let stored = write_project_file_to_mount_store(
-        mount,
-        codec,
-        project_id,
-        filename,
-        content,
-        content_type,
-        folder_path,
-        description,
     )?;
     index_stored_upload(main, mount, extractor, &stored, content);
     Ok(stored)
@@ -2548,12 +2487,12 @@ mod tests {
 }
 
 /// P4.D354 (bugs 260 / 261, contract C1): the upload-bridge caller census.
-/// Every production call site of the four bridge functions, by file and
-/// function, counted by a source scan. The two DEPRECATED callers are the
-/// restore sites P4.D355 switches (HANDOFF H1); this goes RED when it does —
-/// the signal to delete the deprecated pair (the unifier or the next round).
-/// The `_indexed` bridges' own delegation to the deprecated pair is counted
-/// under `services/file_storage.rs`.
+/// Every production call site of the two bridge functions, by file and
+/// function, counted by a source scan. The deprecated blob-only pair is GONE
+/// (P4.D354 H1 / P4.D355 H1 — the restore calls the `_indexed` bridges now);
+/// a reintroduced `write_user_upload_to_mount_store(` /
+/// `write_project_file_to_mount_store(` call is still scanned for and counted,
+/// so it goes red here.
 #[cfg(test)]
 mod bridge_callers_census {
     use std::collections::BTreeMap;
@@ -2612,7 +2551,7 @@ mod bridge_callers_census {
     }
 
     #[test]
-    fn the_upload_bridge_callers_are_the_nine_sites_two_deprecated() {
+    fn the_upload_bridge_callers_are_the_indexed_pair_only() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut got = BTreeMap::new();
         scan(&root, &root, &mut got);
@@ -2642,19 +2581,8 @@ mod bridge_callers_census {
                 "write_user_upload_to_mount_store_indexed",
                 1,
             ),
-            // The `_indexed` bridges delegate the blob write (one each), plus
-            // the project-image upload (v4 `images-v2.ts`) and the images
-            // `createFile` path — the two callers the planning survey missed.
-            (
-                "services/file_storage.rs",
-                "write_project_file_to_mount_store",
-                1,
-            ),
-            (
-                "services/file_storage.rs",
-                "write_user_upload_to_mount_store",
-                1,
-            ),
+            // The project-image upload (v4 `images-v2.ts`) and the images
+            // `createFile` path.
             (
                 "services/file_storage.rs",
                 "write_project_file_to_mount_store_indexed",
@@ -2675,16 +2603,16 @@ mod bridge_callers_census {
                 "write_user_upload_to_mount_store_indexed",
                 1,
             ),
-            // HANDOFF H1 — P4.D355 switches these two; the census then reads
-            // zero deprecated callers outside the delegation above.
+            // P4.D355 H1: the restore's two sites, switched from the deleted
+            // blob-only pair.
             (
                 "services/backup/restore/orchestrator.rs",
-                "write_project_file_to_mount_store",
+                "write_project_file_to_mount_store_indexed",
                 1,
             ),
             (
                 "services/backup/restore/orchestrator.rs",
-                "write_user_upload_to_mount_store",
+                "write_user_upload_to_mount_store_indexed",
                 1,
             ),
         ]

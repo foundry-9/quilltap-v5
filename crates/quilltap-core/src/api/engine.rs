@@ -1270,13 +1270,16 @@ impl CoreEngine {
             Request::SystemDeleteData {
                 confirm,
                 keep_archived_character_bundles,
-            } => match self.ready_db() {
-                Ok(db) => {
+            } => match self.ready_db_and_terminal_probe() {
+                Ok((db, probe)) => {
                     // dogfood #60 — no job may claim while the tables are being
                     // emptied. See `system_data::PumpPause`.
                     let _pump = super::system_data::PumpPause::new(self.job_pump_control());
                     super::system_data::delete_data(
                         &db,
+                        // P4.D355: a wiped chat's live terminals end (v4's
+                        // `chats.delete` hook).
+                        probe.as_deref(),
                         SINGLE_USER_ID,
                         &confirm,
                         keep_archived_character_bundles,
@@ -1953,9 +1956,16 @@ impl CoreEngine {
                     // across three partitions; nothing may write into the middle
                     // of that. See `system_data::PumpPause`.
                     let _pump = super::system_data::PumpPause::new(self.job_pump_control());
+                    // P4.D355: a `replace` restore's wipe ends each deleted
+                    // chat's live terminals (v4's `chats.delete` hook).
+                    let probe = self
+                        .ready_db_and_terminal_probe()
+                        .ok()
+                        .and_then(|(_, probe)| probe);
                     super::system_backup::restore_execute(
                         &db,
                         host.as_ref(),
+                        probe,
                         &upload_id,
                         &mode,
                         keep_archived_character_bundles.as_ref(),

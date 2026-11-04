@@ -5,6 +5,19 @@
 //! the committed `pascal-run-custom-{main,mount}.db` fixture's trigger room
 //! (`c1…07`, whose project links the Trigger Shelf store).
 //!
+//! ⚠ **DEFERRED — P4.D345 Tier 2 item 15, UNCOMPARED against v4.** This family
+//! does NOT yet diff any of the operator-intervention surfaces:
+//! - `pascalMeta.intervention`'s bytes through a real `chat_messages` row (the
+//!   held-and-dealt record v4 stores on the posted Pascal message);
+//! - the three veto-caller shapes;
+//! - `held-stop-vetoes` (a held run the operator's Stop vetoes).
+//!
+//! Nor is there a differential yet for `caller_knows_it_is_a_game`
+//! (`crates/quilltap-core/src/tools/run_custom.rs:725`) or the hold record's
+//! assembly (`resolvedAt` / `decision` / `changed` / `dealt` / `reasks` /
+//! `staleAnswer` — `crates/quilltap-core/src/pascal/run_service.rs:806-819`).
+//! Those are unit-pinned only; a green run here proves NOTHING about them.
+//!
 //! Per case, on a fresh copy: the room's `chat_messages` system rows in
 //! INSERTION order (`rowid` — two posts in one message may share a
 //! `createdAt` millisecond), with the minted id + `createdAt` positionally
@@ -157,6 +170,9 @@ fn params_of(row: &Value) -> RunTriggeredCustomToolsParams {
             .as_str()
             .map(|e| quilltap_core::tools::effects::ToolEffect::from_str(e).expect("ceiling")),
         // P4.D345: no turn — a held run here waits on the receiver alone.
+        // ⚠ So adding an INTERVENABLE tool to this fixture would HANG the
+        // case, not fail it: the run is held and nothing here ever answers the
+        // hold's receiver (no operator, no Stop). Wire a resolver first.
         turn_control: None,
     }
 }

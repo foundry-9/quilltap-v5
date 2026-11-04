@@ -338,15 +338,30 @@ pub fn clear_format3_entities(
 /// `retireMemories`, before its character deletes; v5's writer cannot await
 /// the mirror, so the announce follows the commit — the cadence difference is
 /// the lane record's R-AF row.)
+///
+/// `probe` is the host's live-PTY manager: v4 deletes each chat through
+/// `repos.chats.delete` (`delete-service.ts:205`), whose hook ends that chat's
+/// live terminals (`chats.repository.ts:349-360`, `85c002822` — "every chat
+/// delete path including replace-mode restore"). The writer collects the ids
+/// it actually deleted; the dispose runs on the caller once the write has
+/// committed, as the other chat-delete sites do
+/// ([`dispose_deleted_chat_terminals`](crate::services::conversation_summary_vault_bridge::dispose_deleted_chat_terminals)).
+/// `None` — no terminal subsystem — is v4's empty PTY map.
 pub async fn delete_user_data(
     db: &Db,
     user_id: &str,
     options: DeleteUserDataOptions,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
 ) -> Result<RetireReport, DbError> {
     let user_id = user_id.to_string();
-    let report = db
-        .write(move |ws| delete_user_data_on_writer(ws, &user_id, options))
+    let (report, deleted_chats) = db
+        .write(move |ws| delete_user_data_on_writer_with_chats(ws, &user_id, options))
         .await?;
+    for chat_id in &deleted_chats {
+        crate::services::conversation_summary_vault_bridge::dispose_deleted_chat_terminals(
+            probe, chat_id,
+        );
+    }
     crate::services::memory_retire::announce_retirement(db, report.announcement.as_ref()).await;
     Ok(report)
 }
@@ -358,7 +373,18 @@ pub fn delete_user_data_on_writer(
     user_id: &str,
     options: DeleteUserDataOptions,
 ) -> Result<RetireReport, DbError> {
+    delete_user_data_on_writer_with_chats(ws, user_id, options).map(|(report, _)| report)
+}
+
+/// [`delete_user_data_on_writer`] that also answers the ids of the chats it
+/// deleted (for the caller's post-commit terminal dispose).
+fn delete_user_data_on_writer_with_chats(
+    ws: &mut WriterSet,
+    user_id: &str,
+    options: DeleteUserDataOptions,
+) -> Result<(RetireReport, Vec<String>), DbError> {
     let keep_archives = options.keep_archives();
+    let mut deleted_chats: Vec<String> = Vec::new();
     let main = ws.main().connection();
     let mount = ws.mount_index().map(|w| w.connection());
     let llm = ws.llm_logs().map(|w| w.connection());
@@ -448,7 +474,9 @@ pub fn delete_user_data_on_writer(
         // flag is already the behavior.
         let repo = ChatsRepository::new(main);
         for id in &chats {
-            repo.delete(id)?;
+            if repo.delete(id)? {
+                deleted_chats.push(id.clone());
+            }
         }
     }
     {
@@ -547,7 +575,7 @@ pub fn delete_user_data_on_writer(
     // 5. The format-3 bulk truncate (v4 :164).
     clear_format3_entities(main, mount, llm);
 
-    Ok(retired)
+    Ok((retired, deleted_chats))
 }
 
 // ── The counts (v4 `deleteAllUserData` :221 / `previewDeleteAllUserData` :303) ─
@@ -627,6 +655,7 @@ pub async fn delete_all_user_data(
     db: &Db,
     user_id: &str,
     options: DeleteUserDataOptions,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
 ) -> Result<DeleteSummary, DbError> {
     let keep_archives = options.keep_archives();
     let uid = user_id.to_string();
@@ -639,7 +668,7 @@ pub async fn delete_all_user_data(
         summary.files -= summary.archive_bundles;
     }
 
-    delete_user_data(db, user_id, options).await?;
+    delete_user_data(db, user_id, options, probe).await?;
 
     let uid = user_id.to_string();
     db.write(move |ws| {
@@ -683,5 +712,91 @@ mod p4d293_truncate_list_tests {
             ]
         );
         assert_eq!(super::V5_EXTRA_MAIN_TABLES, &["conversation_annotations"]);
+    }
+}
+
+#[cfg(test)]
+mod dispose_terminals_tests {
+    //! The unify review's should-fix (P4.D355, v4 `85c002822` — "every chat
+    //! delete path including replace-mode restore"): v4's wipe deletes each chat
+    //! through `repos.chats.delete` (`lib/backup/restore/delete-service.ts:205`),
+    //! whose hook ends the chat's live terminals (`chats.repository.ts:349-360`).
+    //! The "delete all my data" verb and a `replace` restore both come through
+    //! [`super::delete_user_data`], so a live session of a wiped chat is
+    //! disposed there — after the write commits, only for a chat that was
+    //! actually deleted.
+    use crate::db::runtime::{Db, DbPaths};
+    use crate::services::ariel_notifications::TerminalLivenessProbe;
+    use std::sync::Mutex;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+    const CHAT: &str = "c3000000-0000-4000-8000-0000000000d1";
+
+    #[derive(Default)]
+    struct Recorder(Mutex<Vec<String>>);
+    impl TerminalLivenessProbe for Recorder {
+        fn is_live(&self, _: &str) -> bool {
+            true
+        }
+        fn dispose_chat_sessions(&self, chat_id: &str) -> Result<usize, String> {
+            self.0.lock().unwrap().push(chat_id.to_string());
+            Ok(1)
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn the_wipe_disposes_a_deleted_chats_live_terminals() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER).unwrap();
+        let db = Db::open(
+            DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: Some(data.join("quilltap-mount-index.db")),
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let create: crate::db::chats::ChatCreate = serde_json::from_value(serde_json::json!({
+            "userId": crate::api::SINGLE_USER_ID,
+            "title": "Doomed Room",
+            "participants": [],
+        }))
+        .unwrap();
+        let opts = crate::db::chats::CreateOptions {
+            id: CHAT.to_string(),
+            created_at: "2026-05-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-05-01T00:00:00.000Z".to_string(),
+        };
+        db.write(move |w| {
+            crate::db::chats::ChatsRepository::new(w.main().connection()).create(&create, &opts)
+        })
+        .await
+        .unwrap();
+
+        let probe = Recorder::default();
+        super::delete_user_data(
+            &db,
+            crate::api::SINGLE_USER_ID,
+            super::DeleteUserDataOptions::default(),
+            Some(&probe),
+        )
+        .await
+        .unwrap();
+        assert_eq!(*probe.0.lock().unwrap(), vec![CHAT.to_string()]);
+
+        // Nothing left to delete → nothing disposed.
+        let again = Recorder::default();
+        super::delete_user_data(
+            &db,
+            crate::api::SINGLE_USER_ID,
+            super::DeleteUserDataOptions::default(),
+            Some(&again),
+        )
+        .await
+        .unwrap();
+        assert!(again.0.lock().unwrap().is_empty());
     }
 }

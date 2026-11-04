@@ -311,6 +311,12 @@ where
     /// The Salon send's turn-control handle (P4.D335): the consultation's
     /// stream ends quietly at the operator's stop. `None` off the spine.
     pub turn_control: Option<crate::services::turn_control::TurnControlHandle>,
+    /// The send's `llm_logs` context, handed to the consultation's
+    /// [`CarinaQueryDeps::log_context`]: a storyteller round's id inside a
+    /// round (v4 `llm-logging.service.ts:227` stamps every row in the round's
+    /// scope), [`LogContext::none`](crate::services::llm_logging::LogContext::none)
+    /// elsewhere.
+    pub log_context: crate::services::llm_logging::LogContext,
 }
 
 impl<EMB, STR, TR, TD, BRA, P> AskCarinaRunner for TypedAskCarina<EMB, STR, TR, TD, BRA, P>
@@ -346,6 +352,7 @@ where
                 model_supports_native_tools: self.model_supports_native_tools,
                 now_ms: self.now_ms,
                 turn_control: self.turn_control.as_ref(),
+                log_context: self.log_context.clone(),
             };
             let mut query = RealCarinaQuery::new(deps);
             let mut prospero = self.prospero.clone();

@@ -220,6 +220,11 @@ pub async fn chat_custom_tool_intervention_reask_with_invoker(
         return bad_request(refused);
     }
 
+    // v4 wraps this tail in `try … catch` (`interventions.ts:278-304`): a
+    // `CustomToolRunError` → 400, anything else → WARN `Custom tool hold re-ask
+    // failed` + rethrow (500). Every error below is the typed run error, so
+    // that WARN arm has no v5 counterpart (`UNREACHABLE_REASK_NON_RUN_ERROR`,
+    // recorded beside `pascal_intervention_route_equivalence`'s `MESSAGES`).
     let before = match recompute(&pending, &overrides).await {
         Ok(r) => r,
         Err(e) => return bad_request(e.0),

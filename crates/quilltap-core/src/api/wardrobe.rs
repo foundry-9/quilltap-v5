@@ -889,7 +889,7 @@ async fn run_wardrobe_preview_avatar(
             ))
         })
         .unwrap_or_else(|e| {
-            crate::db::chat_settings::log_find_by_user_id_failure(&e);
+            crate::db::chat_settings::log_find_by_user_id_failure(user_id, &e);
             None
         });
     let concierge_policy = crate::services::dangerous_content::resolver::resolve_concierge_settings(

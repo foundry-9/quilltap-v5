@@ -192,14 +192,26 @@ where
         let timestamp_config = self.resolve_timestamp_config(&chat_id);
 
         // The per-call cheap-LLM executor with llm_logs logging (v4's
-        // cheap-LLM logLLMCall context: chatId, no messageId).
-        let executor = CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
-            db: db.clone(),
-            user_id: SINGLE_USER_ID.to_string(),
-            chat_id: Some(chat_id.clone()),
-            message_id: None,
-            ctx: LogContext::none(),
-        });
+        // cheap-LLM logLLMCall context: chatId, no messageId) — stamped with
+        // the round (`round_sub_call_executor`).
+        let executor = round_sub_call_executor(&db, &chat_id, &log_context);
+        // The vision describer the turn (and its Carina / Brahma tool runners)
+        // reach, re-built carrying the round (v4 `llm-logging.service.ts:227`).
+        let image_describe: Option<Arc<dyn quilltap_core::api::chat_media::ImageDescribeDriver>> =
+            round_image_describe(
+                &db,
+                &self.completion,
+                self.image_describe.is_some(),
+                &log_context,
+            )
+            .map(|r| Arc::new(r) as _);
+        let round_tool_runner = || {
+            let runner = self.tool_runner();
+            match &image_describe {
+                Some(d) => runner.with_image_describe(Arc::clone(d)),
+                None => runner,
+            }
+        };
 
         // The REAL seams (the harness-mirrored construction; module header).
         let bc_seams = if dry {
@@ -230,7 +242,7 @@ where
         let brahma = RealBrahmaConsole::new(
             db.clone(),
             Arc::clone(&self.streaming),
-            self.tool_runner(),
+            round_tool_runner(),
             RegistryToolCallDetector::built_in(),
             true,
         );
@@ -238,12 +250,12 @@ where
             db: db.clone(),
             embedding: Arc::clone(&self.embedding),
             streaming: Arc::clone(&self.streaming),
-            tool_runner: self.tool_runner(),
+            tool_runner: round_tool_runner(),
             tool_detector: RegistryToolCallDetector::built_in(),
             brahma: RealBrahmaConsole::new(
                 db.clone(),
                 Arc::clone(&self.streaming),
-                self.tool_runner(),
+                round_tool_runner(),
                 RegistryToolCallDetector::built_in(),
                 true,
             ),
@@ -251,8 +263,11 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: turn_handle.clone(),
+            // The round's id on the consultation's row (v4
+            // `llm-logging.service.ts:227`).
+            log_context: log_context.clone(),
         });
-        let carina_tool_runner = self.tool_runner();
+        let carina_tool_runner = round_tool_runner();
         let carina_detector = RegistryToolCallDetector::built_in();
         let mut carina_query = RealCarinaQuery::new(CarinaQueryDeps {
             db: &db,
@@ -265,6 +280,7 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: turn_handle.as_ref(),
+            log_context: log_context.clone(),
         });
         let mut rng_bytes = OsRandomBytes;
 
@@ -293,7 +309,7 @@ where
             web_search: self.web_search.clone(),
             // The a14a1811-round wire: the in-chat `describe_image` vision tier
             // + the photo-tool bytes store (the §3 review's catch).
-            image_describe: self.image_describe.clone(),
+            image_describe: image_describe.clone(),
             photo_bytes: Some(Arc::clone(&self.file_bytes) as _),
             consult: self.consult.clone(),
             turn_control: turn_handle.clone(),
@@ -886,5 +902,169 @@ where
                 )))
             })
         })
+    }
+}
+
+/// The per-call cheap-LLM executor for one storyteller call (a bid or a
+/// speaking turn), logging into `llm_logs` with v4's cheap-LLM context (chatId,
+/// no messageId) AND the round's [`LogContext`].
+///
+/// v4 runs the whole round inside `runWithStorytellerRoundId`
+/// (`lib/storyteller/round.service.ts:107`, `:391`), and `logLLMCall` stamps
+/// `getStorytellerRoundId()` on EVERY row it writes
+/// (`lib/services/llm-logging.service.ts:227`) — so a cheap-LLM sub-call made
+/// inside a turn (answer confirmation, compression, …) carries the round id
+/// too, not only the primary stream's row. v5 has no `AsyncLocalStorage`; the
+/// round's context is threaded here explicitly.
+pub(crate) fn round_sub_call_executor(
+    db: &Db,
+    chat_id: &str,
+    log_context: &LogContext,
+) -> CheapLlmTaskExecutor {
+    CheapLlmTaskExecutor::with_logging(CheapLlmLogConfig {
+        db: db.clone(),
+        user_id: SINGLE_USER_ID.to_string(),
+        chat_id: Some(chat_id.to_string()),
+        message_id: None,
+        ctx: log_context.clone(),
+    })
+}
+
+/// The vision describer for one storyteller call: the shared runner's shape
+/// (`HostImageDescribeRunner`) carrying the round's [`LogContext`], so a
+/// `describe_image` inside a round logs its `IMAGE_DESCRIPTION` row with the
+/// round's id (v4 `llm-logging.service.ts:227`). `None` when the spine has no
+/// describer wired — the turn keeps v4's no-vision-profile answer then.
+pub(crate) fn round_image_describe<C>(
+    db: &Db,
+    completion: &Arc<C>,
+    wired: bool,
+    log_context: &LogContext,
+) -> Option<HostImageDescribeRunner<C>> {
+    wired.then(|| HostImageDescribeRunner {
+        db: db.clone(),
+        user_id: SINGLE_USER_ID.to_string(),
+        completion: Arc::clone(completion),
+        log_context: log_context.clone(),
+    })
+}
+
+#[cfg(test)]
+mod round_log_context_tests {
+    use super::*;
+    use quilltap_core::cheap_llm::CheapLlmSelection;
+    use quilltap_core::model::completion::{CannedCompletionProvider, CompletionMessage};
+    use quilltap_core::services::cheap_llm_exec::CheapLlmTaskOptions;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    /// A fresh instance (all three partitions), its `llm_logs` carrying the
+    /// boot-ensured `storytellerRoundId` column.
+    fn fresh_db(dir: &std::path::Path) -> Db {
+        quilltap_core::services::provisioning::provision_fresh_instance(dir, PEPPER)
+            .expect("provision");
+        {
+            let w =
+                quilltap_core::db::Writer::open_writable(&dir.join("quilltap-llm-logs.db"), PEPPER)
+                    .unwrap();
+            quilltap_core::test_support::ensure_llm_logs_storyteller_round_id_on(w.connection());
+        }
+        Db::open(
+            quilltap_core::db::runtime::DbPaths {
+                main: dir.join("quilltap.db"),
+                mount_index: Some(dir.join("quilltap-mount-index.db")),
+                llm_logs: Some(dir.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .unwrap()
+    }
+
+    fn round_ids(db: &Db) -> Vec<Option<String>> {
+        db.read_llm_logs(|conn| {
+            let mut stmt = conn.prepare("SELECT storytellerRoundId FROM llm_logs")?;
+            let out = stmt
+                .query_map([], |row| row.get(0))?
+                .collect::<Result<Vec<Option<String>>, _>>()?;
+            Ok(out)
+        })
+        .unwrap()
+    }
+
+    async fn one_cheap_call(exec: &CheapLlmTaskExecutor) {
+        let messages = vec![
+            CompletionMessage::system("summarize this"),
+            CompletionMessage::user("the transcript"),
+        ];
+        let provider = CannedCompletionProvider::new().with_response(
+            "OLLAMA",
+            "llama",
+            Some(0.3),
+            &messages,
+            "a tidy summary",
+            None,
+        );
+        let selection = CheapLlmSelection {
+            provider: "OLLAMA".to_string(),
+            model_name: "llama".to_string(),
+            base_url: None,
+            connection_profile_id: None,
+            is_local: true,
+            profile_parameters: None,
+        };
+        let r = exec
+            .execute(
+                &provider,
+                &selection,
+                messages,
+                |s| s.to_string(),
+                None,
+                None,
+                None,
+                Some("summarize-chat"),
+                CheapLlmTaskOptions::default(),
+            )
+            .await;
+        assert!(r.success, "the canned cheap call answers: {:?}", r.error);
+    }
+
+    /// The review's should-fix: a cheap-LLM sub-call made during a storyteller
+    /// turn is logged WITH the round's id (v4 `llm-logging.service.ts:227`
+    /// stamps `getStorytellerRoundId()` on every row inside the round), and a
+    /// call outside a round stays untagged.
+    #[tokio::test]
+    async fn a_round_sub_call_row_carries_the_round_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+
+        let round = LogContext {
+            storyteller_round_id: Some("round-7".to_string()),
+            ..Default::default()
+        };
+        one_cheap_call(&round_sub_call_executor(&db, "chat-1", &round)).await;
+        assert_eq!(round_ids(&db), vec![Some("round-7".to_string())]);
+
+        one_cheap_call(&round_sub_call_executor(&db, "chat-1", &LogContext::none())).await;
+        let mut ids = round_ids(&db);
+        ids.sort();
+        assert_eq!(ids, vec![None, Some("round-7".to_string())]);
+    }
+
+    /// The round's vision describer carries the round's context into the
+    /// `IMAGE_DESCRIPTION` row (`FallbackDeps::log_context` →
+    /// `VisionRequestInput::log_context` → `record`); none is built when the
+    /// spine wired no describer.
+    #[test]
+    fn the_round_describer_carries_the_round_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = fresh_db(dir.path());
+        let completion = Arc::new(CannedCompletionProvider::new());
+        let round = LogContext {
+            storyteller_round_id: Some("round-7".to_string()),
+            ..Default::default()
+        };
+        let runner = round_image_describe(&db, &completion, true, &round).expect("wired");
+        assert_eq!(runner.log_context, round);
+        assert!(round_image_describe(&db, &completion, false, &round).is_none());
     }
 }

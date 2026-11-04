@@ -1974,6 +1974,7 @@ fn orchestrator_tier3_matches_oracle() {
         model_supports_native_tools: true,
         now_ms: spec.frozen_now_ms as f64,
         turn_control: None,
+        log_context: quilltap_core::services::llm_logging::LogContext::none(),
     });
 
     let mut got_events: Vec<(String, Vec<Value>)> = Vec::new();
@@ -2191,6 +2192,7 @@ fn orchestrator_tier3_matches_oracle() {
             model_supports_native_tools: true,
             now_ms: spec.frozen_now_ms as f64,
             turn_control: Some(&turn_handle),
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         });
         // P4.165: the spine's REAL Prospero-carina-error poster (v4's
         // un-mocked `postProsperoCarinaError`) — a Brahma consult the stop

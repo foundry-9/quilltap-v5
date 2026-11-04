@@ -15,10 +15,15 @@
 //! `details` included) AND the captured `Roleplay template …` log lines — the
 //! two DEBUGs and the route-level INFOs. v4's REPOSITORY-level INFOs (`…
 //! created successfully`, the field-less `… updated successfully` /
-//! `… deleted successfully`) live in `db/roleplay_templates.rs`, a file this
-//! family's lane does not own: they are dropped from v4's side BY NAME
-//! (`REPO_LEVEL_INFO_LINES`) — and since v5's lines are compared whole, a v5
-//! that starts logging them trips the compare (the carve retires then).
+//! `… deleted successfully`) are dropped from v4's side BY NAME
+//! (`REPO_LEVEL_INFO_LINES`, [`is_repo_level_info`]). v5 PORTS them at the
+//! unification (`db/roleplay_templates.rs`, pinned by its
+//! `repository_info_line_tests`), but they are emitted INSIDE the route's
+//! `Db::write` closure — on the writer thread, invisible to this family's
+//! thread-scoped `captured_with`, and under the `db` target `v5_lines` does not
+//! keep. Retiring the carve needs a process-wide capture layer for this binary
+//! (the `memory_housekeeping_handler.rs` template), not an oracle regen —
+//! the carve STAYS until then.
 //!
 //! Generate the oracle (Node 24, from the v4 checkout — see the .test.ts header):
 //!   … QT_ORACLE_OUT=/tmp/oracle-roleplay-templates-routes.ndjson npx jest -- roleplay-templates-routes
@@ -217,8 +222,9 @@ fn blank_minted_builtins(v: &mut Value) {
     }
 }
 
-/// v4's REPOSITORY-level INFO lines (`roleplay-templates.repository.ts`), not
-/// ported here — see the module docs.
+/// v4's REPOSITORY-level INFO lines (`roleplay-templates.repository.ts:351`,
+/// `:392`, `:424`) — ported in `db/roleplay_templates.rs`, but invisible to
+/// this binary's capture (the writer thread) — see the module docs.
 fn is_repo_level_info(line: &str) -> bool {
     line.starts_with("INFO Roleplay template created successfully ")
         || ((line.starts_with("INFO Roleplay template updated successfully templateId=")

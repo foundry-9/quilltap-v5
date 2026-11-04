@@ -1878,6 +1878,7 @@ where
             user_id: &user_id,
             now_ms: input.clock.now_ms,
             chat_id: Some(&chat_id),
+            log_context: input.log_context.storyteller_round_only(),
         };
         crate::services::chat_files::load_and_process_files(
             &process_files_deps,
@@ -2782,6 +2783,7 @@ where
             user_id: &user_id,
             now_ms: input.clock.now_ms,
             chat_id: Some(&chat_id),
+            log_context: input.log_context.storyteller_round_only(),
         },
         connection_profile: &connection_profile,
     };
@@ -3240,6 +3242,9 @@ where
         // v4 `3b463d6b1`: the reroute's attachment re-decide describes FOR
         // this chat (`adaptMessagesForProfile(…, { chatId })`).
         chat_id: Some(&chat_id),
+        // The round's id inside a storyteller round (v4
+        // `llm-logging.service.ts:227`); untagged elsewhere, as before.
+        log_context: input.log_context.storyteller_round_only(),
     };
     let primary = primary_stream::run_primary_stream(
         db,

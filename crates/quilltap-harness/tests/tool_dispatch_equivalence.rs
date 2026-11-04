@@ -277,6 +277,7 @@ async fn tool_dispatch_matches_oracle() {
             model_supports_native_tools: false,
             now_ms: 0.0,
             turn_control: None,
+            log_context: quilltap_core::services::llm_logging::LogContext::none(),
         }),
     );
 

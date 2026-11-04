@@ -5,6 +5,19 @@
 //! posted `chat_messages` system rows are diffed. Rolls are `min === max` (no
 //! draw), so the FixedBytes source is never consumed.
 //!
+//! ⚠ **DEFERRED — P4.D345 Tier 2 item 15, UNCOMPARED against v4.** This family
+//! does NOT yet diff any of the operator-intervention surfaces:
+//! - `pascalMeta.intervention`'s bytes through a real `chat_messages` row (the
+//!   held-and-dealt record v4 stores on the posted Pascal message);
+//! - the three veto-caller shapes;
+//! - `held-stop-vetoes` (a held run the operator's Stop vetoes).
+//!
+//! Nor is there a differential yet for `caller_knows_it_is_a_game`
+//! (`crates/quilltap-core/src/tools/run_custom.rs:725`) or the hold record's
+//! assembly (`resolvedAt` / `decision` / `changed` / `dealt` / `reasks` /
+//! `staleAnswer` — `crates/quilltap-core/src/pascal/run_service.rs:806-819`).
+//! Those are unit-pinned only; a green run here proves NOTHING about them.
+//!
 //! P4.D169: a case may pin the run's ONE clock reading with `nowMs`, which the
 //! jest oracle freezes `Date.now()` to and RECORDS on the row — this side then
 //! reads the instant off the row rather than a constant, so the two cannot be

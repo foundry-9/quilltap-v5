@@ -170,6 +170,9 @@ pub fn restore_preview(host: &dyn BackupHost, upload_id: &Value) -> Response {
 pub async fn restore_execute(
     db: &Db,
     host: &dyn BackupHost,
+    terminal_probe: Option<
+        std::sync::Arc<dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
+    >,
     upload_id: &Value,
     mode: &Value,
     keep_archived_character_bundles: Option<&Value>,
@@ -209,6 +212,7 @@ pub async fn restore_execute(
         super::engine::SINGLE_USER_ID,
         crate::services::backup::restore::orchestrator::RestoreOptions {
             keep_archived_character_bundles,
+            terminal_probe,
         },
     )
     .await;

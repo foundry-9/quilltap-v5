@@ -420,7 +420,7 @@ pub fn build_extraction_context(
     let chat_settings_row = db
         .read_main(move |c| Ok(chat_settings::find_by_user_id_or_none(c, &uid)))
         .unwrap_or_else(|error| {
-            chat_settings::log_find_by_user_id_failure(&error);
+            chat_settings::log_find_by_user_id_failure(user_id, &error);
             None
         });
     let uid = user_id.to_string();

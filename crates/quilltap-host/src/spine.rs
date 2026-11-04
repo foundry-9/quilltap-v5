@@ -931,10 +931,14 @@ where
 ///
 /// ⚠ LIVE means real money: one vision-LLM call per attach of an image with no
 /// cached description and no kept-image markdown.
-struct HostImageDescribeRunner<C> {
-    db: Db,
-    user_id: String,
-    completion: Arc<C>,
+pub(crate) struct HostImageDescribeRunner<C> {
+    pub(crate) db: Db,
+    pub(crate) user_id: String,
+    pub(crate) completion: Arc<C>,
+    /// The `IMAGE_DESCRIPTION` row's context: [`LogContext::none`] for the
+    /// shared runner; a storyteller call builds its own carrying the round's
+    /// id (`storyteller_spine::round_image_describe`).
+    pub(crate) log_context: LogContext,
 }
 
 impl<C> quilltap_core::api::chat_media::ImageDescribeDriver for HostImageDescribeRunner<C>
@@ -961,6 +965,7 @@ where
                 user_id: &self.user_id,
                 now_ms: now_unix_ms(),
                 chat_id,
+                log_context: self.log_context.clone(),
             };
             quilltap_core::services::file_fallback::generate_image_description(&deps, &file).await
         })
@@ -1576,6 +1581,7 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: Some(turn_handle.clone()),
+            log_context: LogContext::none(),
         });
         let carina_tool_runner = self.tool_runner();
         let carina_detector = RegistryToolCallDetector::built_in();
@@ -1590,6 +1596,7 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: Some(&turn_handle),
+            log_context: LogContext::none(),
         });
         let mut rng_bytes = OsRandomBytes;
 
@@ -1785,7 +1792,8 @@ where
                 never_pause_for_user: false,
                 // A whisper's target answers once; the floor then goes back to
                 // the operator (bug 258).
-                // S2: P4.D343 appends `|| storyteller_single_turn`.
+                // S2: P4.D343's `|| storyteller_single_turn` — a storyteller
+                // post runs one turn, never the chain.
                 single_turn: is_whisper || storyteller_single_turn,
                 chain_start_time_ms: now_ms,
                 config: ChainConfig::default(),
@@ -2171,6 +2179,7 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: None,
+            log_context: LogContext::none(),
         });
         let carina_tool_runner = self.tool_runner();
         let carina_detector = RegistryToolCallDetector::built_in();
@@ -2185,6 +2194,7 @@ where
             model_supports_native_tools: true,
             now_ms: now_ms as f64,
             turn_control: None,
+            log_context: LogContext::none(),
         });
         let mut rng_bytes = OsRandomBytes;
 
@@ -3933,6 +3943,7 @@ impl SpineFactory for ProductionSpineFactory {
                 db: db.clone(),
                 user_id: SINGLE_USER_ID.to_string(),
                 completion: turn_describe_completion,
+                log_context: LogContext::none(),
             })),
         });
         let chat_create: Arc<dyn ChatCreateDriver> = Arc::new(ChatCreateSpine {
@@ -4148,6 +4159,7 @@ impl SpineFactory for ProductionSpineFactory {
                 db: db.clone(),
                 user_id: SINGLE_USER_ID.to_string(),
                 completion: describe_completion,
+                log_context: LogContext::none(),
             })),
             chat_create,
             provider_actions: Some(provider_actions),

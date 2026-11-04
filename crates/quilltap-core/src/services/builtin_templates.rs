@@ -116,7 +116,8 @@ pub fn seed_built_in_templates(main: &Connection) -> Result<(), DbError> {
         match repo.find_built_in_id_by_name(&template.name)? {
             None => {
                 let now = clock::now_iso();
-                repo.create(
+                // The raw insert: v4's seed never logs `create`'s INFO line.
+                repo.seed_insert(
                     create,
                     &CreateOptions {
                         id: uuid::Uuid::new_v4().to_string(),

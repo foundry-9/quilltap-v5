@@ -38,9 +38,8 @@ pub struct UserMessageTriggerParams<'a> {
     /// The spine's ONE clock reading for the message.
     pub now_ms: i64,
     /// The send's turn-control handle (`TurnStopReach`, P4.D348): the operator's
-    /// Stop reaches a triggered tool through it. P4.D345 threads it on into
-    /// `RunTriggeredCustomToolsParams`; until then it is carried, populated and
-    /// read by nobody (the contract's defined state).
+    /// Stop reaches a triggered tool through it — threaded on into
+    /// `RunTriggeredCustomToolsParams` (P4.D345).
     pub turn_control: Option<&'a TurnControlHandle>,
 }
 

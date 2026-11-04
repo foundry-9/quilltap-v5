@@ -6,7 +6,8 @@
 //! `enqueueCharacterHeadShouldersBackfill`). Both sides run over a FRESH copy
 //! of the committed `headshoulders-{main,mount}.db` pair per case.
 //!
-//! The fixture's eleven characters put every classification arm in ONE scan, so
+//! The fixture's twelve characters (incl. the non-humanoid `Orrery`, skipped)
+//! put every classification arm in ONE scan, so
 //! the `(scanned, enqueued, skipped)` triple is a real comparand rather than a
 //! tautology: a vault-less character, an already-filled prompt, a
 //! WHITESPACE-only prompt (absent → enqueued), no seed at all, a whitespace-only

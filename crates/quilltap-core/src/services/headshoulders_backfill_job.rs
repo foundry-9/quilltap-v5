@@ -248,7 +248,7 @@ pub async fn handle_headshoulders_backfill<CMP: CompletionProvider>(
             ))
         })
         .unwrap_or_else(|e| {
-            crate::db::chat_settings::log_find_by_user_id_failure(&e);
+            crate::db::chat_settings::log_find_by_user_id_failure(user_id, &e);
             None
         });
     let uid = user_id.to_string();

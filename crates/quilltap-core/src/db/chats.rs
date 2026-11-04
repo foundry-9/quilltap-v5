@@ -1628,7 +1628,7 @@ impl<'c> ChatsRepository<'c> {
             .delete_by_chat_id(id)
         {
             tracing::warn!(
-                chatId = %id,
+                chat_id = %id,
                 error = %e,
                 "[Chats] Failed to delete storyteller rounds for chat"
             );

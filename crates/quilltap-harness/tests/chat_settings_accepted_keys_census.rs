@@ -54,7 +54,11 @@ const CARD_KEYS: &[(&str, &[&str])] = &[
     ),
     (
         "screens/settings/chat/automation-settings.ts",
-        &["autoDetectRng", "customToolTriggers"],
+        &[
+            "autoDetectRng",
+            "customToolTriggers",
+            "customToolIntervention",
+        ],
     ),
     (
         "screens/settings/chat/composer-emoji-settings.ts",

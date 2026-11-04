@@ -182,7 +182,7 @@ pub struct MaintenanceSweepSummary {
     // === end P4.D292 ===
     /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
     /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
-    /// `orphan-transcripts` (P4.D355) / `orphan-thumbnails` / `fold-other-catchup` / `fold-episode-catchup` (v4's
+    /// `orphan-transcripts` (P4.D355 — in v4's vocabulary but unreachable: the sweep is a fallback read) / `orphan-thumbnails` / `fold-other-catchup` / `fold-episode-catchup` (v4's
     /// failure vocabulary).
     pub failures: Vec<String>,
 }
@@ -553,9 +553,12 @@ pub async fn run_scheduled_maintenance(
     // without touching the files, so step 6 can never see them. A live PTY
     // whose row went with its chat is spared."
     //
-    // The `Err` arm is UNREACHABLE in v4 — its sweep's own `safeQuery`
-    // swallows a thrown listing to `{0, 0}` — and follows THIS file's standing
-    // error-shape note above (v5 records such failures in `failures`).
+    // v4's sweep is a FALLBACK `safeQuery` (`terminal-sessions.repository.ts:
+    // 203-275`): a thrown listing / row read logs ERROR `Error sweeping
+    // orphaned terminal transcripts` `{collection, error}` and answers
+    // `{scanned: 0, deleted: 0}` — the step never adds a failure, and v4's
+    // `orphan-transcripts` push (`scheduled-maintenance.ts:268-279`) is
+    // unreachable. Ported as that fallback.
     let is_live = |id: &str| probe.is_some_and(|p| p.is_live(id));
     match sweep_orphaned_transcripts(
         db,
@@ -570,12 +573,17 @@ pub async fn run_scheduled_maintenance(
             summary.orphaned_transcripts_swept = OrphanedTranscriptSweep { scanned, deleted }
         }
         Err(e) => {
-            tracing::warn!(
-                target: "quilltap::maintenance",
+            // v4 `safeQuery`'s fallback arm: `{collection, ...context, error}`.
+            tracing::error!(
+                target: "quilltap::db",
+                collection = "terminal_sessions",
                 error = %e,
-                "Orphaned-transcript sweep failed — continuing",
+                "Error sweeping orphaned terminal transcripts"
             );
-            summary.failures.push("orphan-transcripts".to_string());
+            summary.orphaned_transcripts_swept = OrphanedTranscriptSweep {
+                scanned: 0,
+                deleted: 0,
+            };
         }
     }
 
@@ -1232,11 +1240,13 @@ mod tests {
         );
     }
 
-    /// Tier 3 item 27 — v4's `safeQuery` swallows a thrown listing (ERROR +
-    /// zeros), so v4's step-6b WARN / `orphan-transcripts` are unreachable;
-    /// v5 records the failure (this file's standing error-shape note).
+    /// Tier 3 item 27 — v4's `sweepOrphanedTranscripts` is a FALLBACK
+    /// `safeQuery` (`terminal-sessions.repository.ts:203-275`): a thrown listing
+    /// logs ERROR `Error sweeping orphaned terminal transcripts` `{collection,
+    /// error}` and answers `{scanned: 0, deleted: 0}` — so the step adds no
+    /// `orphan-transcripts` failure and v5 ports exactly that.
     #[test]
-    fn a_failed_listing_is_the_step_6b_failure() {
+    fn a_failed_listing_logs_v4s_fallback_line_and_sweeps_nothing() {
         let (db, _scratch) = test_db();
         let s = store(Err("EACCES".into()));
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -1247,10 +1257,24 @@ mod tests {
         let (summary, lines) = global_capture::capture(|| {
             rt.block_on(run_scheduled_maintenance(&db, NOW, &s, &NoBackend, None))
         });
-        assert!(summary.failures.contains(&"orphan-transcripts".to_string()));
         assert!(
-            lines.iter().any(|l| l
-                == "WARN quilltap::maintenance Orphaned-transcript sweep failed — continuing error=EACCES"),
+            !summary.failures.contains(&"orphan-transcripts".to_string()),
+            "{:?}",
+            summary.failures
+        );
+        assert_eq!(summary.orphaned_transcripts_swept.scanned, 0);
+        assert_eq!(summary.orphaned_transcripts_swept.deleted, 0);
+        assert!(
+            lines.iter().any(|l| l.starts_with("ERROR ")
+                && l.contains("Error sweeping orphaned terminal transcripts")
+                && l.contains("collection=terminal_sessions")
+                && l.contains("error=EACCES")),
+            "{lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Orphaned-transcript sweep failed")),
             "{lines:?}"
         );
     }

@@ -472,7 +472,7 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("badconfirm");
         let ((s, b), retire) = with_retire_record(|| {
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, "nope", None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, "nope", None)))
         });
         check("delete_data_wrong_confirm", s, b, count_all(&db), retire);
     }
@@ -481,7 +481,7 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("delete");
         let ((s, b), retire) = with_retire_record(|| {
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check("delete_data", s, b, count_all(&db), retire);
     }
@@ -490,8 +490,8 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("twice");
         let ((s, b), retire) = with_retire_record(|| {
-            let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            let _ = rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None));
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check("delete_data_twice", s, b, count_all(&db), retire);
     }
@@ -501,7 +501,7 @@ fn system_delete_data_matches_oracle() {
         let db = fresh_db("instset");
         let ((s, b), retire) = with_retire_record(|| {
             let _ = rt.block_on(system_data::job_concurrency_set(&db, 7));
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check(
             "delete_data_keeps_instance_settings",
@@ -524,7 +524,13 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("sweeparch");
         let ((s, b), retire) = with_retire_record(|| {
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(false))))
+            outcome(&rt.block_on(system_data::delete_data(
+                &db,
+                None,
+                USER,
+                CONFIRM,
+                Some(false),
+            )))
         });
         check(
             "delete_data_sweeps_archive_bundles",
@@ -537,7 +543,13 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("keeparch");
         let ((s, b), retire) = with_retire_record(|| {
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, Some(true))))
+            outcome(&rt.block_on(system_data::delete_data(
+                &db,
+                None,
+                USER,
+                CONFIRM,
+                Some(true),
+            )))
         });
         check(
             "delete_data_keeps_archive_bundles_explicitly",
@@ -552,7 +564,7 @@ fn system_delete_data_matches_oracle() {
     {
         let db = fresh_db("previewafter");
         let ((s, b), retire) = with_retire_record(|| {
-            let _ = rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None));
+            let _ = rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None));
             outcome(&system_data::delete_data_preview(&db, USER))
         });
         check(
@@ -571,7 +583,7 @@ fn system_delete_data_matches_oracle() {
         let db = fresh_db("cursors");
         let ((s, b), retire) = with_retire_record(|| {
             plant_cursors(&db);
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check("delete_data_clears_cursors", s, b, count_all(&db), retire);
     }
@@ -583,7 +595,7 @@ fn system_delete_data_matches_oracle() {
         let db = fresh_db("digest");
         let ((s, b), retire) = with_retire_record(|| {
             plant_digest(&db);
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check("delete_data_retires_a_digest", s, b, count_all(&db), retire);
     }
@@ -595,7 +607,7 @@ fn system_delete_data_matches_oracle() {
         let db = fresh_db("history");
         let ((s, b), retire) = with_retire_record(|| {
             plant_outfit_history(&db);
-            outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)))
+            outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)))
         });
         check(
             "delete_data_clears_outfit_history",
@@ -692,7 +704,8 @@ fn delete_all_routes_memory_deletion_through_the_chokepoint() {
     })
     .expect("seed the chokepoint rows");
 
-    let (status, body) = outcome(&rt.block_on(system_data::delete_data(&db, USER, CONFIRM, None)));
+    let (status, body) =
+        outcome(&rt.block_on(system_data::delete_data(&db, None, USER, CONFIRM, None)));
     assert_eq!(status, 200, "delete_data refused: {body}");
 
     let (still_there, related): (i64, String) = db

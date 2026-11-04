@@ -8,13 +8,15 @@
  * copy of the committed `headshoulders-{main,mount}.db` pair per case, and dumps
  * what it wrote.
  *
- * The fixture's eleven characters cover every classification arm in one scan:
+ * The fixture's twelve characters cover every classification arm in one scan:
  * a vault-less character, one whose prompt is already filled, one whose prompt is
  * WHITESPACE-only (treated as absent → enqueued), one with no seed at all, one
  * whose only seed is whitespace (`hasSeed` is NOT trimmed here, so it IS
  * enqueued — the asymmetry with the handler, which trims and then returns
  * silently), an eligible one, and one that already has a PENDING backfill job so
- * the helper's dedupe answers `{isNew:false}` and the scan counts it SKIPPED.
+ * the helper's dedupe answers `{isNew:false}` and the scan counts it SKIPPED, and
+ * `Orrery`, otherwise eligible but `humanoid: false`, which the scan SKIPS (v4
+ * `b27e5089a`, P4.D349).
  *
  * Three cases:
  *   - `fresh_scan` — no flag: the full scan, seven enqueues, the flag written;

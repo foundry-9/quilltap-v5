@@ -195,6 +195,16 @@
         "name": "Standard",
         "mediumPrompt": "stout woman with a grey bun and half-moon spectacles"
       }
+    },
+    {
+      "id": "b3000082-0000-4000-8000-00000000000c",
+      "name": "Orrery",
+      "userId": "e0000082-0000-4000-8000-000000000001",
+      "physicalDescription": {
+        "name": "Standard",
+        "mediumPrompt": "a brass orrery of nested rings and enamelled planets on a walnut plinth",
+        "humanoid": false
+      }
     }
   ],
   "handlerCases": [
@@ -212,6 +222,14 @@
       "name": "prompt_present",
       "character": 3,
       "user": 1
+    },
+    {
+      "name": "not_humanoid",
+      "character": 12,
+      "user": 1,
+      "reply": {
+        "text": "a reply the handler must never ask for: a non-humanoid has no head and shoulders"
+      }
     },
     {
       "name": "prompt_whitespace",

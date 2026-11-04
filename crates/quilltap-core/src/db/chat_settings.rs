@@ -2193,11 +2193,11 @@ fn log_by_user_id_read_failure(user_id: Option<&str>, error: &DbError) {
 /// The same failure line for the callers that check a pool connection out
 /// first (`db.read_main(…)`): v4's `getCollection()` runs INSIDE the
 /// `safeQuery`, so a checkout failure logs that one line too — such a caller
-/// routes its outer `Err` here. ⚠ These callers do not pass the user id, so the
-/// line carries no `userId` key where v4's does (HANDOFF to the unifier,
-/// P4.D356 record: the four call sites live in other lanes' files).
-pub fn log_find_by_user_id_failure(error: &DbError) {
-    log_by_user_id_read_failure(None, error);
+/// routes its outer `Err` here, with the user id it asked for — v4
+/// `chat-settings.repository.ts:189` always logs `{userId}` (HANDOFF H8,
+/// P4.D356, closed at the unification).
+pub fn log_find_by_user_id_failure(user_id: &str, error: &DbError) {
+    log_by_user_id_read_failure(Some(user_id), error);
 }
 
 /// C1 §12 (P4.D255): whether a wardrobe tool's create / update should queue a
@@ -2466,11 +2466,6 @@ pub fn update_for_user(
     update_for_user_returning_id(conn, user_id, assignments, now).map(|(_, created)| created)
 }
 
-/// Reproduce v4's `updateForUser` create-RETURN shape from a [`find_by_user_id`]
-/// re-read: the create branch's `defaultSettings` carries an explicit
-/// `defaultRoleplayTemplateId: null`, so the create return has that key present
-/// (whereas the re-read omits the NULL nullable-optional column). Insert it at its
-/// schema position (before `themePreference`) when absent.
 /// Put back the explicit `null` of each column the update REPAIRED to null
 /// (see [`update_for_user_with_repairs`]) at its schema position — v4's
 /// `_update` answers its merged record, where the repaired field is `null`.
@@ -2551,6 +2546,11 @@ const SHAPE_ORDER: [&str; 40] = [
     "updatedAt",
 ];
 
+/// Reproduce v4's `updateForUser` create-RETURN shape from a [`find_by_user_id`]
+/// re-read: the create branch's `defaultSettings` carries an explicit
+/// `defaultRoleplayTemplateId: null`, so the create return has that key present
+/// (whereas the re-read omits the NULL nullable-optional column). Insert it at its
+/// schema position (before `themePreference`) when absent.
 pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
     let Some(obj) = settings.as_object() else {
         return;
@@ -3790,5 +3790,27 @@ mod tests {
             );
         let create: ChatSettingsCreate = serde_json::from_value(translated.into_owned()).unwrap();
         assert_eq!(create.impersonation_voice_mode, ImpersonationVoiceMode::Ask);
+    }
+}
+
+#[cfg(test)]
+mod find_by_user_id_failure_line_tests {
+    use super::*;
+    use crate::test_support::captured;
+
+    /// HANDOFF H8 (P4.D356): v4 `chat-settings.repository.ts:189` logs the
+    /// failed by-user read WITH `{userId}` — the pool-checkout callers' line
+    /// must carry it too.
+    #[test]
+    fn the_checkout_failure_line_carries_the_user_id() {
+        let lines = captured(|| {
+            log_find_by_user_id_failure("u-42", &DbError::Internal("pool closed".into()))
+        });
+        let line = lines
+            .iter()
+            .find(|l| l.contains("Error finding chat settings by user ID"))
+            .unwrap_or_else(|| panic!("no line: {lines:?}"));
+        assert!(line.contains("userId=u-42"), "{line}");
+        assert!(line.contains("collection=chat_settings"), "{line}");
     }
 }

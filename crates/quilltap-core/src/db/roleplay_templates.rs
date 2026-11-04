@@ -449,7 +449,32 @@ impl<'c> RoleplayTemplatesRepository<'c> {
     /// `toPersistedRow`); JSON columns via `serde_json::to_string`, the bool via
     /// `i64::from`, nullable columns via `Option`. `delimiters` is the JSON text of
     /// an empty array (held empty across the corpus).
+    ///
+    /// v4 `create` (`roleplay-templates.repository.ts:351-356`) logs INFO
+    /// `Roleplay template created successfully` `{templateId, userId, name,
+    /// isBuiltIn}` after the write — at the REPOSITORY, so every v4 caller
+    /// (the route, the `.qtap` import, the restore) logs it. The built-in seed
+    /// does NOT (v4's `_doSeedBuiltInTemplates` inserts through the raw
+    /// collection) — it calls [`Self::seed_insert`].
     pub fn create(&self, data: &RtCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.insert_row(data, opts)?;
+        tracing::info!(
+            templateId = %opts.id,
+            userId = data.user_id.as_deref(),
+            name = %data.name,
+            isBuiltIn = data.is_built_in,
+            "Roleplay template created successfully"
+        );
+        Ok(())
+    }
+
+    /// The built-in seed's insert: [`Self::create`]'s write WITHOUT its INFO
+    /// line (v4's seed writes `collection.insertOne`, never `create`).
+    pub(crate) fn seed_insert(&self, data: &RtCreate, opts: &CreateOptions) -> Result<(), DbError> {
+        self.insert_row(data, opts)
+    }
+
+    fn insert_row(&self, data: &RtCreate, opts: &CreateOptions) -> Result<(), DbError> {
         let tags_json = serde_json::to_string(&data.tags)
             .map_err(|e| DbError::Internal(format!("tags serialize: {e}")))?;
         let rendering_patterns_json = serde_json::to_string(&data.rendering_patterns)
@@ -635,6 +660,10 @@ impl<'c> RoleplayTemplatesRepository<'c> {
 
         let params_refs: Vec<&dyn ToSql> = values.iter().map(|b| b.as_ref()).collect();
         let affected = self.conn.execute(&sql, params_refs.as_slice())?;
+        if affected > 0 {
+            // v4 `roleplay-templates.repository.ts:392` (`if (updated)`).
+            tracing::info!(templateId = %id, "Roleplay template updated successfully");
+        }
         Ok(affected > 0)
     }
 
@@ -644,6 +673,10 @@ impl<'c> RoleplayTemplatesRepository<'c> {
         let affected = self
             .conn
             .execute("DELETE FROM roleplay_templates WHERE id = ?1", params![id])?;
+        if affected > 0 {
+            // v4 `roleplay-templates.repository.ts:424` (`if (result)`).
+            tracing::info!(templateId = %id, "Roleplay template deleted successfully");
+        }
         Ok(affected > 0)
     }
 
@@ -951,5 +984,102 @@ mod narration_codec_tests {
         assert_eq!(enc(Some("\"\"")), "\"\\\"\\\"\"");
         assert_eq!(enc(Some("[\"\",\"]\"]")), "\"[\\\"\\\",\\\"]\\\"]\"");
         assert_eq!(enc(Some("5")), "\"5\"");
+    }
+}
+
+#[cfg(test)]
+mod repository_info_line_tests {
+    //! P4.D351: v4's three REPOSITORY-level INFO lines
+    //! (`roleplay-templates.repository.ts:351`, `:392`, `:424`), pinned on the
+    //! caller's thread (the routes differential runs these fns inside
+    //! `Db::write`, where `captured_with` cannot see them — its module docs).
+    use super::*;
+    use crate::test_support::captured_with;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn create_data(name: &str) -> RtCreate {
+        RtCreate {
+            user_id: Some("user-1".to_string()),
+            name: name.to_string(),
+            description: None,
+            system_prompt: "Be brief.".to_string(),
+            is_built_in: false,
+            tags: Vec::new(),
+            delimiters: Vec::new(),
+            rendering_patterns: Vec::new(),
+            dialogue_detection: None,
+            narration_delimiters: None,
+            unmarked_style: None,
+            markdown_asterisks: true,
+        }
+    }
+
+    fn opts(id: &str) -> CreateOptions {
+        CreateOptions {
+            id: id.to_string(),
+            created_at: "2026-01-01T00:00:00.000Z".to_string(),
+            updated_at: "2026-01-01T00:00:00.000Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn create_update_delete_log_v4s_repository_lines_and_the_seed_does_not() {
+        let dir = tempfile::tempdir().unwrap();
+        crate::services::provisioning::provision_fresh_instance(dir.path(), PEPPER).unwrap();
+        let w =
+            super::super::Writer::open_writable(&dir.path().join("quilltap.db"), PEPPER).unwrap();
+        let repo = RoleplayTemplatesRepository::new(w.connection());
+        let lines_of = |lines: Vec<String>| -> Vec<String> {
+            lines
+                .into_iter()
+                .filter(|l| l.contains("successfully"))
+                .collect()
+        };
+
+        let ((), lines) =
+            captured_with(|| repo.create(&create_data("Mine"), &opts("t-1")).unwrap());
+        let lines = lines_of(lines);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        for needle in [
+            "INFO",
+            "Roleplay template created successfully",
+            "templateId=t-1",
+            "userId=user-1",
+            "name=Mine",
+            "isBuiltIn=false",
+        ] {
+            assert!(lines[0].contains(needle), "{needle}: {lines:?}");
+        }
+
+        let patch = RtUpdate {
+            name: Some("Ours".to_string()),
+            updated_at: "2026-01-02T00:00:00.000Z".to_string(),
+            ..Default::default()
+        };
+        let (updated, lines) = captured_with(|| repo.update("t-1", &patch).unwrap());
+        assert!(updated);
+        let lines = lines_of(lines);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("Roleplay template updated successfully templateId=t-1"));
+        // A miss logs nothing (v4's `if (updated)`).
+        let (_, lines) = captured_with(|| repo.update("t-none", &patch).unwrap());
+        assert!(lines_of(lines).is_empty());
+
+        let (deleted, lines) = captured_with(|| repo.delete("t-1").unwrap());
+        assert!(deleted);
+        let lines = lines_of(lines);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert!(lines[0].contains("Roleplay template deleted successfully templateId=t-1"));
+        let (_, lines) = captured_with(|| repo.delete("t-1").unwrap());
+        assert!(lines_of(lines).is_empty());
+
+        // The seed's insert is silent (v4 inserts through the raw collection).
+        let (_, lines) = captured_with(|| {
+            repo.seed_insert(&create_data("Seeded"), &opts("t-2"))
+                .unwrap()
+        });
+        let lines = lines_of(lines);
+        assert!(lines.is_empty(), "{lines:?}");
     }
 }

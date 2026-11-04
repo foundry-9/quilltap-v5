@@ -204,6 +204,14 @@ where
     /// both in-turn entrances (the finalizer's markup and the `ask_carina`
     /// tool) inherit it with no spine edit.
     pub turn_control: Option<&'a TurnControlHandle>,
+    /// The caller's `llm_logs` context. A consultation inside a storyteller
+    /// round carries the round's id: v4 runs the round inside
+    /// `runWithStorytellerRoundId` (`lib/storyteller/round.service.ts:107`,
+    /// `:391`) and `logLLMCall` stamps `getStorytellerRoundId()` on EVERY row
+    /// (`lib/services/llm-logging.service.ts:227`) — Carina's funnel row
+    /// included. [`LogContext::none`](crate::services::llm_logging::LogContext::none)
+    /// everywhere else.
+    pub log_context: crate::services::llm_logging::LogContext,
 }
 
 // ===========================================================================
@@ -698,6 +706,7 @@ where
         chat_id: &chat_id,
         answerer_id: &answerer_id,
         turn_control: deps.turn_control,
+        log_context: &deps.log_context,
     };
 
     let (mut answer, mut raw_response) = run_stream(
@@ -1333,6 +1342,9 @@ struct StreamCtx<'a> {
     answerer_id: &'a str,
     /// The operator's stop (P4.D335), off [`CarinaQueryDeps::turn_control`].
     turn_control: Option<&'a TurnControlHandle>,
+    /// The funnel row's context, off [`CarinaQueryDeps::log_context`] (the
+    /// storyteller round's id inside a round).
+    log_context: &'a crate::services::llm_logging::LogContext,
 }
 
 /// Accumulate one streamed LLM call into `(answer, rawResponse)` — v4's
@@ -1465,7 +1477,9 @@ async fn log_carina_leg(
             // No `messageId` (v4 passes none) → a NULL cell.
             message_id: "",
             character_id: Some(ctx.answerer_id),
-            log_context: &crate::services::llm_logging::LogContext::none(),
+            // The round's id inside a storyteller round (v4
+            // `llm-logging.service.ts:227`), none elsewhere.
+            log_context: ctx.log_context,
         },
         started_at_ms,
         Some(&ctx.profile),
@@ -1661,6 +1675,7 @@ mod tests {
             "provider": "OPENAI",
             "modelName": "gpt-test",
         });
+        let none_ctx = crate::services::llm_logging::LogContext::none();
         let ctx = |user_id: &'static str| StreamCtx {
             db: &db,
             profile: crate::services::orchestrator::to_effective_profile(&profile_row),
@@ -1676,6 +1691,7 @@ mod tests {
             chat_id: "chat-c",
             answerer_id: "char-answerer",
             turn_control: None,
+            log_context: &none_ctx,
         };
         let messages = vec![StreamMessage::user("What time is it?")];
         let tools = vec![json!({ "type": "function", "function": { "name": "search" } })];
@@ -1751,6 +1767,80 @@ mod tests {
             json!(0),
             "the forced final offers none (v4 `tools.length > 0 ? tools : undefined`)"
         );
+    }
+
+    /// The unify review's should-fix: a Carina consultation inside a
+    /// storyteller round logs its funnel row WITH the round's id (v4
+    /// `llm-logging.service.ts:227` stamps `getStorytellerRoundId()` on every
+    /// `logLLMCall` inside `runWithStorytellerRoundId`); the hard-coded
+    /// `LogContext::none()` dropped it.
+    #[tokio::test]
+    async fn a_carina_row_inside_a_round_carries_the_round_id() {
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        crate::services::provisioning::provision_fresh_instance(&data, PEPPER)
+            .expect("provision an instance with an llm-logs partition");
+        {
+            let w = crate::db::Writer::open_writable(&data.join("quilltap-llm-logs.db"), PEPPER)
+                .unwrap();
+            crate::db::llm_logs_storyteller_round_id_repair::ensure_llm_logs_storyteller_round_id(
+                w.connection(),
+            )
+            .unwrap();
+        }
+        let db = Db::open(
+            crate::db::runtime::DbPaths {
+                main: data.join("quilltap.db"),
+                mount_index: None,
+                llm_logs: Some(data.join("quilltap-llm-logs.db")),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        let streaming = QueuedStream {
+            answers: std::sync::Mutex::new(vec![answer("It is high noon.", 5)].into()),
+        };
+        let profile_row = json!({
+            "id": "cp-oracle",
+            "name": "Oracle seat",
+            "provider": "OPENAI",
+            "modelName": "gpt-test",
+        });
+        let round = crate::services::llm_logging::LogContext {
+            storyteller_round_id: Some("round-9".to_string()),
+            ..Default::default()
+        };
+        let ctx = StreamCtx {
+            db: &db,
+            profile: crate::services::orchestrator::to_effective_profile(&profile_row),
+            provider: "OPENAI",
+            base_url: None,
+            model: "gpt-test",
+            temperature: Some(0.7),
+            max_tokens: None,
+            top_p: None,
+            profile_parameters: None,
+            api_key: "k",
+            user_id: "u1",
+            chat_id: "chat-c",
+            answerer_id: "char-answerer",
+            turn_control: None,
+            log_context: &round,
+        };
+        let messages = vec![StreamMessage::user("What time is it?")];
+        run_stream(&streaming, &ctx, &messages, &[], false).await;
+        let ids: Vec<Option<String>> = db
+            .read_llm_logs(|c| {
+                let mut st = c.prepare("SELECT storytellerRoundId FROM llm_logs")?;
+                let rows = st
+                    .query_map([], |r| r.get(0))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(rows)
+            })
+            .unwrap();
+        assert_eq!(ids, vec![Some("round-9".to_string())]);
     }
 
     /// P4.136: Carina's key read is v4's UNSCOPED fallback `findApiKeyById`
