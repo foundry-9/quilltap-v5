@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D359 lane record — the SPA riders, LANE COMPLETE
+
+_Versions: SPA 0.5.929._
+
+The P4.D359 lane record (status-log.md) and the order's status header: LANE COMPLETE.
+
 #### 2026-11-03 — fix(web): gate the Inventory dialog's own-write refresh skip on P4.D350's publish
 
 _Versions: SPA 0.5.928._

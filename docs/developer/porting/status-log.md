@@ -193888,6 +193888,206 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D359 — the SPA riders of the `236c04e35` round (floating Brahma Console, name chips, keystone UI, vault-key fields) — lane record
+
+_2026-11-03. Branch `claude/p4.d359-spa-riders-8976915ea`. Cut from `main` `8976915ea`, then rebased onto P4.D353's Tier-1 commit `c1da5c4de`, so the name-chips hook stacks on it as the order says. Worktree `.claude/worktrees/p4d359`. Wave 1. Pin `236c04e35`. Own-instance e2e: port 4358, mock 45356. The lane was paused for a machine restart. On resume, /tmp was empty: the pin and the scratch were rebuilt, `git worktree prune` first; no stale server held either port._
+
+### §R.2 probe (an observation, never a stop)
+
+- v4 `main` was at `cbf4805c0`, **57 commits** past the pin, tree CLEAN.
+- The pin `/tmp/qt-v4-pin-p4d359-236c04e35` was verified at `236c04e35`.
+- **The human's pin ruling (2026-11-02)** was honoured. Symlink classes (2) and (3) (CLI and plugin `node_modules`) were NOT used. After the root `npm ci --offline` (green both times, before and after the restart), the lane ran `.claude/pin-plugin-sdks.sh "$PIN"`.
+  - That script answers **ENOTCACHED** on the `@quilltap/plugin-utils` packument. Note: `side-session-notes/…/p4d359-pin-plugin-sdks-enotcached.md`.
+  - This lane's two recorders import only `lib/chat/*`, `lib/wardrobe/*` and `lib/characters/*`, so no plugin or CLI dir is needed and the lane proceeded.
+  - The ENOTCACHED is the order's STOP condition only for the ROOT install, and that install passed.
+
+### Red-first (measured on unported `main` before each unit's first edit)
+
+- **I1 (Inspector):** 15 red (entry 11, panel 4).
+- **About credits:** 2 red.
+- **Templates cache:** 2 red. The auto-lock card case was green on main (verify-only, as ordered).
+- **Keystone UI:** 10 red.
+- **Inventory:** 3 red, plus a TS2305 compile failure (`isInContainer` absent).
+- **Pronoun twins corpus:** TS2307 (the modules absent).
+- **Humanoid:** 3 red.
+- **Floating dialog / Brahma / chips:** compile failures (the modules absent).
+- **The guard census:** 0 / 36 guarded on main.
+
+### Measurements
+
+- **`ChatSettingsCard.save` already seeds** `['chatSettings']` from the PUT row. Only the templates card wrote the hyphenated `['chat-settings']` key. `workspace/core/tab-refetch.ts`'s entry for that key is RETIRED with it.
+- **The template readers** all read `chatSettingsKeys.all` once the card moved.
+- **The Carrying-now rail** is still disabled at the pin. `chat-inventory-data` reloads unconditionally.
+- **The archetype loader** is the instantiate dialog (its new `reloadKey` input). The list-data "own" predicate's home is `inventory-list-data.ts`'s `canManage`.
+- **No `useInventoryDependents` twin** exists in v5, so there was nothing to delete.
+- **The physical-description Name input was unlabelled.** It is now `for` / `id="physical-name"` (R4).
+- **Brahma 404:** a deleted chat reaches the SPA as `CoreDispatchError.kind === 'not-found'`. The clock and plus icons exist in v5's icon set.
+- **Mention markers:**
+  - v5's renderer never interleaves prose between the markers.
+  - `escapeRegex` is byte-equal to v4's.
+  - The em-nested dialogue verdict is equal on both sides.
+- **Pronoun field and `For …` note:** both sit at v4's positions (after Appropriateness; after the row's tags).
+- **The H&S hint pair** sits ABOVE the editor with `mb-2`.
+- **`check-a11y-names`** counts `title` as an accessible name.
+
+### What landed (all Tier 1 and Tier 2 units)
+
+Commits, oldest first (SPA versions bump once per commit via the CHANGELOG helper):
+
+| Commit | What |
+|---|---|
+| `95a20c15c` | I1: `LLM_LOG_TYPES` (v4's 25 in v4's order); `NAMED_FILTER_GROUPS` + the DERIVED `other`; exhaustive badge and label tables (`??` fallbacks) |
+| `b9f70cb99` | About credits at the 4.11.0 vintage (Markdown & Documents, Diagrams, Terminals & Realtime) |
+| `d9bc0ad3a` | Templates card on `['chatSettings']` with `setQueryData`; the hyphenated key retired from tab-refetch |
+| `e4a72338d` | Keystone pill / editor checkbox / `Keystones only`; R6 labels on the list; the delete dialog's `aria-labelledby`; the `core-contract.ts` P4.D359 fence (C5 / C6 / C8 reads) |
+| `e678f2f95` | `isInContainer`; the vantage pool keeps the whole container; `inventory`-topic reloads (list, folders, archetype picker, Carrying-now); `refreshUnlessRealtime`; `reloadAll` on tab activation |
+| `9ee4f1226` | `characters/pronoun-presets.ts` + `wardrobe/pronoun-guidance.ts` (v4 bytes), the tier-1 corpus |
+| `405cb1b73` | Humanoid checkbox, H&S hint pair, `humanoid` in the PUT |
+| `fe17f4491` | Pronoun-guidance filter, the Pronoun-aware switch, the item-editor field, the `For …` note, `pickableItems` into both composers; R1 / R6 on the wardrobe editor |
+| `6174efb55` | `ui/floating-layer.ts` + `ui/floating-dialog.ts` (`qt-floating-dialog`): geometry, drag, resize, Escape, R2 semantics, topmost marker; fenced CSS tokens and blocks |
+| `87f1b6591` | The Brahma Console as a floating panel + header actions; per-surface sessions under two localStorage keys; the launcher in `brahma-entry.ts`; `toggleConsole`; `isDefault` |
+| `946bbce8b` | `isInFloatingLayer` early returns on every document-level dismiss listener (the census's 36 + 7 the census missed) + `floating-layer-guards.spec.ts` |
+| `2dc370db4` | Two spec premises follow `isDefault` and `isInContainer` |
+| `fc84e148d` | Name-chip modules (`name-mentions`, `mention-markers`, `off-scene-kinds`, `absent-mentions.api`), `chatKeys.absentMentions`, the tier-1 corpus; dead `findMentionedCharacterIds` retired |
+| `5274d049f` | `qt-mention-card` + the `mention-chip-host` directive; fenced `.qt-mention-chip` CSS |
+| `7f7b0ddcb` | The hook (stacked on `c1da5c4de`): `qt-message-rendered` in `message-content.ts`'s P4.D359 fence; `[mentions]` at the settled site; the optional `AbsentMentionsSlot` |
+| `2e0689bb3` | The floating dialog and the launcher portal to `document.body` (fixes e2e (a)) |
+| `c35cb8fa3` | `e2e/spa-riders-flow.spec.ts` |
+| `93c3f3bfe` | The own-write skip gated on `P4D350_PUBLISH_LANDED` (see below) |
+
+Design points the reviewer will want:
+
+- **The chips hook is a DOM event plus a directive.** P4.D353's post-pass runs in an `afterRenderEffect`, so `message-content.ts`'s fence only dispatches `qt-message-rendered`. `MentionChipHost` (on `qt-message-content[mentions]`) owns the marker pass and the card.
+- **The row reads mentions through an OPTIONAL `AbsentMentionsSlot`.** Specs without TanStack stay working. The Salon provides the slot (a HANDOFF to P4.D344, below).
+- **The floating layer was portalled.** In place, the modal overlay's stacking context swallowed the launcher's clicks (e2e (a) red, measured). Portalling to `document.body` (the tooltip precedent) retires the provisional `FLOATING_DIALOG_IN_PLACE` divergence.
+- **`refreshUnlessRealtime` is GATED (C16), commit `93c3f3bfe`.**
+  - The skip assumes P4.D350's R-1 publish on an OPERATOR write, which is not in this lane's tree.
+  - Ungated, the sibling `inventory-flow` beats (d) and (e) went red: the toast showed, but the row never appeared.
+  - The skip now sits behind `export const P4D350_PUBLISH_LANDED = false` in `inventory-control-dialog.ts`. The spec drives both arms through the instance field, and a second case pins the gate-closed behaviour.
+  - **The unifier flips it with P4.D350.** If P4.D350's R-1 is overruled, it stays `false` (R-11's one-line flip).
+
+### Recorded divergences
+
+- `MENTION_MARKERS_POST_RENDER`: v5 marks the RENDERED HTML's text nodes after render, where v4 runs a rehype plugin. The corpus pins the twin's verdicts against v4's real plugin, em-nested dialogue included.
+- `MENTION_CARD_SHARED_POPOVER`: one card per host rather than one per chip.
+- `CONSOLE_FIRST_MOUNT_DEFERRED`: the launcher mounts after `brahma-entry.ts`'s `@defer`.
+- Retired: `FLOATING_DIALOG_IN_PLACE` (the portal fix). Not needed: `CONSOLE_404` (the `kind` arm covers it).
+
+### The guard census
+
+- **45 GUARDED rows:** the census's 36 sites, plus 7 sites it missed:
+  - tooltip `onKeyDown`;
+  - outfit-quick-pick `onKeyDown`;
+  - chat-sidebar `onKeyDown`;
+  - image-modal;
+  - image-navigation `handleKeyDown`;
+  - almanack-report-dialog;
+  - scenario-row `onKeyDown`.
+- Plus mention-chip-host's 2.
+- **Four bindings were rerouted through `onDocumentEscape`:** save-image-dialog, model-picker, char-picker-panel, external-prompt-result-dialog.
+- **3 HANDOFF rows** behind gates:
+  - `ui/modal.ts` and `slide-over-panel` (P4.D358, `P4D358_MODAL_ESCAPE_LANDED`);
+  - `salon-conversation`'s `onInspectorKeydown` (P4.D344, `P4D344_INSPECTOR_GUARD_LANDED`).
+- The spec also carries a matcher self-test, a completeness tripwire (a new document listener without a row fails), and 3 behavioural cases.
+- `workspace-host`'s `onClick` is NOT a dismiss listener (it routes tab clicks) and is excluded by name.
+
+### Tier-1 SPA corpora (recorded from the pin through v4's REAL modules)
+
+- `src/testing/fixtures/pronoun-guidance.oracle.ndjson`:
+  - 131 rows (22 normalize, 13 subjectOf, 6 label, 70 fits, 11 filter, 9 format);
+  - sha256 `f0450eab48d73d7a8d5a1767da8403006b929ad1c957b4e3dd9f87b81386b7a9`;
+  - recorder `tooling/record-pronoun-guidance.mts`.
+- `src/testing/fixtures/mention-markers.oracle.ndjson`:
+  - 59 rows (27 matcher, 19 rehype, 7 split, 6 assign);
+  - sha256 `1cad4bd4764e60bc07c688a928787146ed83dfc256171e23c0b2e8f5cfd7536e`;
+  - recorder `tooling/record-mention-markers.mts`.
+- Regen (each recorder's header):
+
+  ```bash
+  cd <pin> && QT_V4_ROOT=$PWD PATH=$HOME/.nvm/versions/node/v24.13.1/bin:$PATH npx tsx <v5>/apps/web/tooling/record-<name>.mts > <v5>/apps/web/src/testing/fixtures/<name>.oracle.ndjson
+  ```
+
+  The fixtures README carries both sections.
+
+### HANDOFFs
+
+- **P4.D344** — `docs/developer/porting/work-orders/handoffs/p4.d359-salon-conversation.patch`:
+  - the `AbsentMentionsSlot` provider;
+  - `private readonly absentMentions = bindAbsentMentions(this.chatId);`;
+  - the feed filter `.filter((m) => !isOffSceneMentionIntroduction(m))`;
+  - one spec case.
+  - Validated: it applies to this branch and `salon-conversation.spec.ts` ran 187 / 187; then reverted.
+  - Also P4.D344's: the I1 `storyteller` group, and the inspector Escape guard (`P4D344_INSPECTOR_GUARD_LANDED`).
+- **P4.D346** — `qt-checkbox` on the Automation rows (`2041bb875`): not applied (`automation-settings.ts` is theirs).
+- **P4.D358:**
+  - the `modal.ts` / `slide-over-panel` floating-layer guards (`P4D358_MODAL_ESCAPE_LANDED`);
+  - the dialog-roles census re-points to `ui/floating-dialog.ts` for the console;
+  - the `owner` drops;
+  - the `qtDialogFocus` one-liner on `wardrobe-item-editor.ts`;
+  - the C9 census records: R1 wardrobe item editor, R2 floating dialog, R4 physical Name, R6 the seven search / sort / filter labels, the memory delete dialog's `aria-labelledby`.
+- **P4.D357:** none (only fenced appends; no existing CSS line moved).
+- **P4.D347:** the dead `findMentionedCharacterIds` SPA twin is retired here; the server arm (C5 `chatAbsentMentions`) is theirs.
+- **P4.D350:** R-11 — flip `P4D350_PUBLISH_LANDED` in BOTH `inventory-control-dialog.ts` and `e2e/spa-riders-flow.spec.ts` when its R-1 publish lands.
+- **P4.D353:** its red `character-detail.spec.ts` "leaves a live character unfieldsetted" reproduces at `c1da5c4de` alone (a throwaway worktree). It is not this lane's. Note: `side-session-notes/…/p4d359-p4d353-character-detail-red.md`.
+- **The unifier (§S.9 flips):**
+  - `P4D341_LANDED`: beat (c), keystone.
+  - `P4D347_SERVER_LANDED`: beat (d), chips; needs P4.D344's patch too.
+  - `P4D349_SERVER_LANDED`: beats (g) and (h), humanoid and pronoun guidance.
+  - `P4D350_PUBLISH_LANDED`: beat (i), and the dialog constant.
+  - `P4D358_MODAL_ESCAPE_LANDED`: beat (a′), plus the guard spec.
+  - ⚠ The gated beats are skip-only placeholders. The contracts they drive are not in this tree, so their bodies are written at the flip, against the landed servers.
+
+### Tier 3 — recorded
+
+- #24: the chat-start composer's Pronoun-aware switch is recorded against v5's deferred Compose mode.
+- #25: `LazyMessageContent`'s `hasMentions` fast-path bypass is NO-PORT (v5 has no fast path).
+- #26: `createPortal` / `floatingLayerProps` / `useId` take Angular shapes (body portal, the `data-qt-floating-layer` attribute, module counters).
+- #27: `useInventoryDependents` and its keys have no v5 twin (measured), so there is nothing to delete.
+- #30: the SPA Core-whisper card stays the standing deferral (P4.D356's H1).
+- The `chat-inventory-data` reload stays unconditional.
+- The template readers are recorded as measured above.
+
+### Gates
+
+- **SPA:** `npm run lint` clean (incl. `check-qt-classes` 989 classes). `npm run build` clean.
+- **Full `npm test` (final tree):** 601 / 602 files, 13,645 passed / 1 failed / 3 skipped. The one red is P4.D353's `character-detail.spec.ts` case (above). `inventory-control-dialog.spec.ts` was 19 / 19 after the gate commit.
+- **e2e `spa-riders-flow`:** 4 passed / 7 skipped.
+  - LIVE and green:
+    - (a) the launcher toggles the floating console over a `qt-modal` without dismissing it;
+    - (b) the workspace tab and the floating console remember two different conversations;
+    - (e) the About page's Diagrams and Terminals & Realtime lines;
+    - (f) the Inspector's derived Other lists an ANSWER_CONFIRMATION row, and IMAGE_GENERATION is badged Image.
+  - (j) skips: the fixture carries no template.
+- **Sibling e2e files, by file, one run at a time** — 10 green on the first pass:
+  - wardrobe-flow 21;
+  - characters-flow 7;
+  - settings-memory-flow 3;
+  - llm-inspector-flow 3;
+  - settings-brahma-console-flow 1;
+  - workspace-brahma-console-flow 5;
+  - composer-mention-flow 4;
+  - smart-typography-flow 5;
+  - workspace-help-ask-flow 4;
+  - salon-interrupt-flow 8 + 1 standing skip.
+- **The two reds:**
+  - `inventory-flow` (d) / (e): this lane's ungated skip. Fixed by `93c3f3bfe`. Re-run by file on a FRESH `npm run build`: **9 / 9**. A first re-run against the stale `dist` (built 15:44, before the 17:37 fix) stayed red — the e2e serves `dist/`, so rebuild before any re-run.
+  - `wardrobe-items-editor-flow`: 3 beats passed. Its one red is the `afterAll` `rmSync` (ENOTEMPTY) racing the SIGTERM'd server's last writes, a teardown race in an untouched block. Re-run by file: **4 / 4**.
+- **`cargo build --workspace`:** clean (no crate touched).
+
+### 💸 Dogfood rows
+
+1. The floating console: open from the launcher, over a modal, Escape closing only the console.
+2. Per-surface sessions surviving a reload; Past conversations; a chat deleted elsewhere falling back.
+3. Name chips on a real Friday reply naming an absent character: hover, focus and pin card.
+4. Keystone pill and `Keystones only` on a real memory.
+5. Humanoid and the H&S hint; pronoun guidance on a real garment with the Pronoun-aware switch.
+6. The Inspector's Other filter over Friday's llm-logs.
+7. An Inventory operator write refreshing once the P4.D350 publish is in.
+
+### Versions at close
+
+SPA 0.5.929 (this record's commit; 0.5.928 at `93c3f3bfe`) (core / host / web / cli / tauri untouched).
+
 ## P4.D353 — diagrams SPA (Mermaid / Graphviz / SVG, the lightbox, Copy PNG) — lane record
 
 _2026-11-03. Branch `claude/p4.d353-diagrams-spa-8976915ea`, cut from `main` `8976915ea` (the rulings commit after the orders' commit `8be738f66`; docs-only between). The session started in the primary checkout on `main`; the lane moved to `.claude/worktrees/p4d353` before the first edit. Wave 1. R-B: **(A)** (port whole — ruled at `8976915ea`)._
