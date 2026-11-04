@@ -125,6 +125,10 @@ const COLLECTIONS: ReadonlyArray<readonly [string, string]> = [
   // ALWAYS present (`uuid-remap.ts:733`); `data/wardrobe-history.json` on
   // every backup (`backup-service.ts:709-710`).
   ['wardrobeHistory', 'wardrobe-history.json'],
+  // [P4.D355] v4 `cc5f2347c`: the Log — the 41st returned key, ALWAYS present
+  // (`uuid-remap.ts:823`); `data/log-entries.json` on every backup
+  // (`backup-service.ts:719`).
+  ['logEntries', 'log-entries.json'],
 ];
 
 /** [P4.D293] Files a pin backup no longer writes but the remap still reads. */
@@ -1225,6 +1229,21 @@ function edgeCases(): Case[] {
             createdAt: '2026-01-01T00:00:00.000Z',
             updatedAt: '2026-03-01T00:00:00.000Z',
           },
+        ],
+      }),
+    },
+    {
+      name: 'log_entries_new_account',
+      note: "P4.D355 (v4 `cc5f2347c`, `uuid-remap.ts:760-764`; jest `uuid-remapper.test.ts` \"remaps a Log line's chat and character with the rows they name, keeping a null character\"): each line's `id`, `chatId` and `characterId` go through the remapper — a carried character's id follows its row, a null character passes through, a character the backup does NOT carry gets whatever the remapper mints (measured); every other key kept in place",
+      targetUserId: t,
+      restorePath: true,
+      data: bag({
+        characters: [{ id: 'char-lorian', name: 'Lorian' }],
+        chats: [{ id: 'chat-a', participants: [], messages: [] }],
+        logEntries: [
+          { id: 'log-1', message: 'Tide tables.', chatId: 'chat-a', characterId: 'char-lorian', createdAt: '2026-07-20T10:00:00.000Z', updatedAt: '2026-07-20T10:00:00.000Z' },
+          { id: 'log-2', message: 'No seat.', chatId: 'chat-a', characterId: null, createdAt: '2026-07-20T11:00:00.000Z', updatedAt: '2026-07-20T11:00:00.000Z' },
+          { id: 'log-3', message: 'A stranger.', chatId: 'chat-gone', characterId: 'char-gone', createdAt: '2026-07-20T09:00:00.000Z', updatedAt: '2026-07-20T09:00:00.000Z' },
         ],
       }),
     },

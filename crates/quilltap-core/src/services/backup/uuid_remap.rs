@@ -486,6 +486,16 @@ pub fn remap_backup_data(
     }
     // === end P4.D317 ===
 
+    // === P4.D355 (v4 `cc5f2347c`, `uuid-remap.ts:760-764` at `236c04e35`) ===
+    // "The Log. Each line names the chat it was written from and the character
+    // who wrote it (nullable, which `remapFields` passes through)." After the
+    // outfit history and before the instance settings — where it lands in the
+    // memo. The `id` IS remapped (a fresh id per line, as every entity's).
+    let log_entries = each(&data.log_entries, |entry| {
+        r.remap_fields(entry, &["id", "chatId", "characterId"])
+    });
+    // === end P4.D355 ===
+
     // Instance settings — only the mount-point keys carry UUIDs we need to
     // remap. Everything else is opaque text (numbers, JSON config blobs).
     let instance_settings = each(&data.instance_settings, |row| {
@@ -560,8 +570,10 @@ pub fn remap_backup_data(
         // P4.D264 (v4 `:629`): the 39th key, ALWAYS present (`[]` when the
         // archive has none).
         wardrobe_wear,
-        // P4.D317 (`:733`) — LAST, always present (`[]` when the backup had none).
+        // P4.D317 (`:733`), always present (`[]` when the backup had none).
         wardrobe_history,
+        // P4.D355 (`:823`) — LAST, always present (`[]` when none).
+        log_entries,
     })
 }
 
@@ -1671,6 +1683,7 @@ mod inventory_tests {
             text_replacement_rules: Vec::new(),
             wardrobe_wear: Vec::new(),
             wardrobe_history: Vec::new(),
+            log_entries: Vec::new(),
         }
     }
 

@@ -23,8 +23,14 @@ def load(zin, root, name):
     return json.loads(zin.read(f"{root}/data/{name}.json"))
 
 
-def derive(dst_name, plan, src=BASE, src_md5=BASE_MD5):
-    """Write `dst_name` from `src`; `plan(zin, root)` returns `{stem: rows}`."""
+def derive(dst_name, plan, src=BASE, src_md5=BASE_MD5, counts=None):
+    """Write `dst_name` from `src`; `plan(zin, root)` returns `{stem: rows}`.
+
+    P4.D355: `counts` (optional) patches `manifest.json`'s `counts` — each key
+    set in place, or APPENDED last when absent — re-rendered as v4's
+    `writeJsonFile` does (two-space indent, no trailing newline). Without it
+    the manifest entry is copied byte for byte, as before.
+    """
     dst = ARCHIVES / dst_name
     before = md5(src)
     assert before == src_md5, f"{src.name} moved: {before}"
@@ -40,6 +46,11 @@ def derive(dst_name, plan, src=BASE, src_md5=BASE_MD5):
                 if stem in rewritten:
                     data = (json.dumps(rewritten[stem], indent=2, ensure_ascii=False) + "\n").encode()
                     written.add(stem)
+                elif rel == "manifest.json" and counts:
+                    m = json.loads(data)
+                    for key, value in counts.items():
+                        m["counts"][key] = value
+                    data = json.dumps(m, indent=2, ensure_ascii=False).encode()
                 out = zipfile.ZipInfo(info.filename, date_time=info.date_time)
                 out.external_attr = info.external_attr
                 out.compress_type = zipfile.ZIP_DEFLATED

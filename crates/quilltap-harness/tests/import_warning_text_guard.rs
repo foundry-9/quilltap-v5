@@ -365,3 +365,28 @@ fn the_inventory_repoint_warning_is_v4s_text() {
     );
 }
 // === end P4.D327 ===
+
+// === P4.D355 (the Log carrier — step 22n-quater) ===
+/// P4.D355 — 22n-quater's two `summary.warnings` literals, VERBATIM in the
+/// production source, each EXACTLY once: v4 `restore.ts:1239` (`cc5f2347c`, pin
+/// `236c04e35`) `Log entries were not restored because the logs database is in
+/// degraded mode` and `:1247` `Failed to restore Log entry: ${message}` (the
+/// tail the `DbError`'s Display — the bare ZodError text, compared byte for
+/// byte by `system_restore_state`).
+#[test]
+fn the_log_restore_warnings_are_v4s_text() {
+    let core = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../quilltap-core/src/services");
+    let source =
+        std::fs::read_to_string(core.join("backup/restore/orchestrator.rs")).expect("read source");
+    for literal in [
+        "\"Log entries were not restored because the logs database is in degraded mode\"",
+        "\"Failed to restore Log entry: {error}\"",
+    ] {
+        assert_eq!(
+            source.matches(literal).count(),
+            1,
+            "backup/restore/orchestrator.rs must carry v4's warning text exactly once: {literal}"
+        );
+    }
+}
+// === end P4.D355 ===

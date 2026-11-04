@@ -2149,6 +2149,83 @@ fn restore_on_writer(
         );
     }
 
+    // ── 22n-quater. The Log — P4.D355, v4 `cc5f2347c` `restore.ts:1231-1256`
+    //    (at `236c04e35`). "Lives in the LLM logs database, so it is skipped
+    //    with the LLM logs when that database is degraded. Lines are written
+    //    once and never edited, so each keeps its id and both timestamps."
+    //    `data` is the REMAPPED bundle in new-account mode. Through the P4.D331
+    //    repository's `create` with v4's `CreateOptions` (id / createdAt /
+    //    updatedAt kept); a refused row (the Zod shape — `message` empty or
+    //    over 4000 code points, a non-UUID id / chatId / characterId) is ONE
+    //    warning, never the step. The DEBUG fires on EVERY restore (`total: 0,
+    //    restored: 0` included).
+    //
+    //    The degraded gate (R-9): v4 checks `isLLMLogsDegraded()` only when
+    //    rows exist; v5's `llm` is `None` for a degraded AND an absent
+    //    partition, and both take the WARN arm here — v4 never has an absent
+    //    logs file, and the WARN is the more informative of the two.
+    {
+        let rows = &data.log_entries;
+        if !rows.is_empty() {
+            match llm {
+                None => {
+                    tracing::warn!(
+                        target: "quilltap::restore",
+                        rowCount = rows.len(),
+                        "Skipping Log restore — logs database is in degraded mode"
+                    );
+                    w.push(
+                        "Log entries were not restored because the logs database is in degraded mode"
+                            .to_string(),
+                    );
+                }
+                Some(llm) => {
+                    let repo = crate::db::log_entries::LogEntriesRepository::new(llm);
+                    for entry in rows {
+                        let options = crate::db::log_entries::LogEntryCreateOptions {
+                            id: os(entry, "id"),
+                            created_at: os(entry, "createdAt"),
+                            updated_at: os(entry, "updatedAt"),
+                        };
+                        let character_id = os(entry, "characterId");
+                        match repo.create(
+                            &s(entry, "message"),
+                            &s(entry, "chatId"),
+                            character_id.as_deref(),
+                            Some(&options),
+                        ) {
+                            Ok(_) => c.log_entries += 1,
+                            Err(error) => {
+                                w.push(format!("Failed to restore Log entry: {error}"));
+                                match options.id.as_deref() {
+                                    // v4 `{ entryId: entry.id, error }` — an
+                                    // `undefined` id is an OMITTED key.
+                                    Some(entry_id) => tracing::warn!(
+                                        target: "quilltap::restore",
+                                        entryId = entry_id,
+                                        error = %error,
+                                        "Failed to restore Log entry"
+                                    ),
+                                    None => tracing::warn!(
+                                        target: "quilltap::restore",
+                                        error = %error,
+                                        "Failed to restore Log entry"
+                                    ),
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        tracing::debug!(
+            target: "quilltap::restore",
+            total = rows.len(),
+            restored = c.log_entries,
+            "Restored Log entries"
+        );
+    }
+
     // ── 22o. Instance settings — LAST, because the mount-point keys point at
     //    the doc_mount_points restored above. Raw upsert by key (`:746`).
     //
@@ -3367,19 +3444,37 @@ fn restore_one_file(
 ) -> Result<(), DbError> {
     let filename = s(file, "originalFilename");
     let mime = s(file, "mimeType");
+    // P4.D355 (HANDOFF H1, consumed — contract C1): the INDEXED bridges, so a
+    // restored native-text upload (`.md` / `.txt` / `.json` …) is extracted,
+    // chunked and enqueued for embedding exactly as v4's `manager.ts:337` path
+    // does since `40fab1c54` (bugs 260 / 261). Every core caller's extractor;
+    // a PDF / DOCX rides P4.D354's `REFUSING_SEAM_LEAVES_PDF_UNEXTRACTED`.
+    let extractor = crate::services::mount_index::converters::default_text_extractor();
     let stored = match os(file, "projectId") {
-        Some(project_id) => crate::services::file_storage::write_project_file_to_mount_store(
+        Some(project_id) => {
+            crate::services::file_storage::write_project_file_to_mount_store_indexed(
+                main,
+                mount,
+                codec,
+                extractor.as_ref(),
+                &project_id,
+                &filename,
+                bytes,
+                &mime,
+                os(file, "folderPath").as_deref().or(Some("/")),
+                None,
+            )?
+        }
+        None => crate::services::file_storage::write_user_upload_to_mount_store_indexed(
+            main,
             mount,
             codec,
-            &project_id,
+            extractor.as_ref(),
             &filename,
             bytes,
             &mime,
-            os(file, "folderPath").as_deref().or(Some("/")),
+            "restored",
             None,
-        )?,
-        None => crate::services::file_storage::write_user_upload_to_mount_store(
-            main, mount, codec, &filename, bytes, &mime, "restored", None,
         )?,
     };
     // Bug 117 (v4 `0b0617fee`): `sha256` joins `mimeType`/`size` in describing the
@@ -4741,6 +4836,9 @@ struct Counters {
     // === P4.D317 ===
     wardrobe_history: usize,
     // === end P4.D317 ===
+    // === P4.D355 ===
+    log_entries: usize,
+    // === end P4.D355 ===
 }
 
 /// P4.D327: 22f-quater's grouping (v4 `restore.ts:983-989`) — the fixes NOT
@@ -4861,6 +4959,8 @@ impl Counters {
             wardrobe_wear: self.wardrobe_wear,
             // P4.D317 (v4 `restore.ts:1422`).
             wardrobe_history: self.wardrobe_history,
+            // P4.D355 (v4 `restore.ts:1489`).
+            log_entries: self.log_entries,
             embedding_reconcile: Some(embedding_reconcile),
             warnings,
         }
@@ -5091,6 +5191,7 @@ mod free_store_name_tests {
             text_replacement_rules: Vec::new(),
             wardrobe_wear: Vec::new(),
             wardrobe_history: Vec::new(),
+            log_entries: Vec::new(),
         }
     }
 

@@ -421,6 +421,24 @@ const PHASE_ORDER_RESIDUAL: &[(&str, &str, &str)] = &[
         "mountIndex",
         "doc_mount_files",
     ),
+    // [P4.D355] The Log archive is `restore-archive.zip` plus one data file:
+    // its `new-account` case replays the same seeded `portrait.png` — the ruled
+    // placement, one more case of the shape.
+    (
+        "restore_log_entries_new_account",
+        "mountIndex",
+        "doc_mount_blobs",
+    ),
+    (
+        "restore_log_entries_new_account",
+        "mountIndex",
+        "doc_mount_file_links",
+    ),
+    (
+        "restore_log_entries_new_account",
+        "mountIndex",
+        "doc_mount_files",
+    ),
     // [P4.D273] the three new archives' `new-account` cases replay the same
     // seeded legacy-disk-key `portrait.png` — the ruled placement again.
     (
@@ -651,6 +669,9 @@ const V5_STATS_GAP: &[(&str, &str)] = &[
         "restore_inventory_tombstone_new_account",
         "Quilltap Uploads",
     ),
+    // [P4.D355] the Log archive's `new-account` replay of the same seeded
+    // `files/portrait.png`.
+    ("restore_log_entries_new_account", "Quilltap Uploads"),
     // [P4.D273] the new archives' `new-account` replays of the same seeded
     // `files/portrait.png`, and the store-binding archive's DEFERRED project
     // file — replayed through the bridge into the bound project's store, where
@@ -1464,6 +1485,11 @@ fn archive_for(name: &str) -> &'static str {
             "restore-archive-inventory.zip"
         }
         "restore_inventory_tombstone_new_account" => "restore-archive-inventory-tombstone.zip",
+        // [P4.D355] `derive-restore-archive-log-entries.py` — step 22n-quater.
+        "restore_log_entries_preserve"
+        | "restore_log_entries_new_account"
+        | "restore_log_entries_replace"
+        | LOG_ENTRIES_DEGRADED_CASE => "restore-archive-log-entries.zip",
         // [P4.D258 Tier 2 item 11] an `embedding: {}` memory beside two sound
         // ones — `derive-restore-archive-empty-embedding.py`.
         EMPTY_EMBEDDING_CASE => "restore-archive-empty-embedding.zip",
@@ -1761,6 +1787,9 @@ fn wear_ledger_ddl(name: &str) -> bool {
 /// (`tolerant_insert`), so its catch is reached by a trigger, not a rename.
 fn plant_sql_in(name: &str) -> &'static [(&'static str, &'static str)] {
     match name {
+        // [P4.D355] two stale Log lines on the target's llm-logs partition —
+        // the oracle's `LOG_ENTRIES_STALE_SQL`, byte for byte.
+        "restore_log_entries_replace" => &[("quilltap-llm-logs.db", LOG_ENTRIES_STALE_SQL)],
         // [P4.D293 L-2] the oracle's `STALE_CURSOR_SQL`, byte for byte.
         "restore_cursors_replace" => &[("quilltap.db", STALE_CURSOR_SQL)],
         // [P4.D264] two STALE ledger rows on the target — the oracle's
@@ -2132,7 +2161,7 @@ fn system_restore_state_equivalence() {
         }
         let got_pre = read_state(&instance);
         compare_baseline(name, &got_pre, &case["preState"], &mut failures);
-        let db = reopen_instance(&instance);
+        let db = reopen_instance_for(name, &instance);
 
         // [P4.143 Tier 2 item 10] Every case starts from an EMPTY process-global
         // buffer (the restore logs on the WRITER thread). Since P4.158 every
@@ -2465,15 +2494,17 @@ fn system_restore_state_equivalence() {
     // tombstone twin). 69 + 1 = 70: P4.167's `new-account` twin of the
     // dup-store-id arm (P4.D273 Tier 2 #17). 70 + 1 = 71: P4.167's
     // wardrobe-folders arm (P4.D284 banked — 22f-bis's `folder`). 71 + 2 = 73:
-    // P4.D351's Novel-template carrier in both modes.
+    // P4.D351's Novel-template carrier in both modes. 73 + 4 = 77: P4.D355's
+    // four Log arms (preserve, new-account, replace over two stale lines,
+    // degraded).
     assert_eq!(
         empty_embedding_seen, 1,
         "{EMPTY_EMBEDDING_CASE} is missing from the oracle — regenerate it"
     );
     assert_eq!(
         seen,
-        73,
-        "expected all seventy-three restore cases in the oracle (ten + the #58 orphan-links arm \
+        77,
+        "expected all seventy-seven restore cases in the oracle (ten + the #58 orphan-links arm \
          + P4.D46's two compact arms + P4.D126's bug-103 legacy-profiles arm \
          + P4.D145's bug-114 duplicate-folders arm + P4.D152's bug-117 arm \
          + P4.D158's two bag-key arms + P4.D208's bug-158 arm \
@@ -2488,7 +2519,7 @@ fn system_restore_state_equivalence() {
          legacy-settings arms in both modes and the legacy-settings own / null arms \
          + P4.D317's five outfit-history arms + P4.D327's three Inventory arms \
          + P4.167's new-account dup-store-id and wardrobe-folders arms \
-         + P4.D351's two Novel-template arms)"
+         + P4.D351's two Novel-template arms + P4.D355's four Log arms)"
     );
     for f in &failures {
         eprintln!("FAILURE {f}");
@@ -2924,6 +2955,43 @@ fn assert_pre_410_archive_restores_no_informs(
 
 /// Reopen an already-provisioned instance (the baseline dump closes it first, so
 /// every provisioning transaction has committed before it is read).
+/// [P4.D355] The degraded-logs case (the oracle's `degradeLlmLogs`): v4 flips
+/// its own `__quilltapLLMLogsDegraded` switch AFTER the baseline; v5 reopens
+/// the instance with its logs partition pointed at a file that is not a
+/// database, so it opens DEGRADED — the instance's own logs file untouched on
+/// both sides (its post-state equals its baseline).
+const LOG_ENTRIES_DEGRADED_CASE: &str = "restore_log_entries_degraded";
+
+/// [P4.D355] The oracle's `LOG_ENTRIES_STALE_SQL`, byte for byte.
+const LOG_ENTRIES_STALE_SQL: &str = "INSERT INTO \"log_entries\" (\"id\", \"message\", \"chatId\", \"characterId\", \"createdAt\", \"updatedAt\") VALUES \
+('d5560000-0000-4000-8000-000000000001', 'A stale line.', 'c9000000-0000-4000-8000-000000000001', NULL, \
+'2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z'), \
+('d5560000-0000-4000-8000-000000000002', 'Another stale line.', 'c9000000-0000-4000-8000-000000000001', NULL, \
+'2026-06-02T00:00:00.000Z', '2026-06-02T00:00:00.000Z');";
+
+fn reopen_instance_for(name: &str, dir: &Path) -> Db {
+    if name != LOG_ENTRIES_DEGRADED_CASE {
+        return reopen_instance(dir);
+    }
+    let unreadable = dir.join("not-a-logs-database.db");
+    std::fs::write(&unreadable, vec![0x5a_u8; 8192]).unwrap();
+    let db = Db::open(
+        DbPaths {
+            main: dir.join("quilltap.db"),
+            mount_index: Some(dir.join("quilltap-mount-index.db")),
+            llm_logs: Some(unreadable),
+        },
+        TEST_PEPPER,
+    )
+    .expect("reopen with a degraded logs partition");
+    assert_eq!(
+        db.partition_state(quilltap_core::db::table_shape::Partition::LlmLogs),
+        quilltap_core::db::runtime::PartitionState::Degraded,
+        "[{name}] the logs partition must open degraded"
+    );
+    db
+}
+
 fn reopen_instance(dir: &Path) -> Db {
     Db::open(
         DbPaths {
@@ -6549,7 +6617,10 @@ fn assert_claimed_store_warns(name: &str, lines: &[String], failures: &mut Vec<S
 /// `Restored outfit history`, P4.D317; at `322a5488e` 83 — 52 warn, 8 info,
 /// 21 debug, 2 error: `4fbdad186`'s 22f-quater `Failed to repoint Inventory
 /// pictures after restore` + `Repointed Inventory pictures after new-account
-/// restore`, P4.D327), recorded
+/// restore`, P4.D327; [P4.D355] 86 at `236c04e35` (54 warn, 8 info, 22 debug,
+/// 2 error) — `cc5f2347c`'s 22n-quater adds `Skipping Log restore — logs
+/// database is in degraded mode`, `Failed to restore Log entry` and `Restored
+/// Log entries`), recorded
 /// by the oracle on every case with every context key. v5 must log the same
 /// lines, in the same order, with the same fields (an Error recorded as its
 /// message; an object / array through the `…Json` file-layer convention).
@@ -6560,6 +6631,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Decoded index-keyed memory embedding",
     "Failed to enqueue reindex after compact restore",
     "Failed to restore LLM log",
+    // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+    "Failed to restore Log entry",
     "Failed to restore character",
     "Failed to restore character plugin data",
     "Failed to restore chat",
@@ -6623,6 +6696,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Restored user-installed theme bundles",
     "Restored wardrobe wear ledger",
     // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
+    // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+    "Restored Log entries",
     "Restored outfit history",
     "Repointed wardrobe item pictures after new-account restore",
     // [P4.D327] … and the INFO when anything was planned (`planned`, `fixed`).
@@ -6630,6 +6705,8 @@ const RESTORE_TS_MESSAGES: &[&str] = &[
     "Seeded connection-profile columns the archive predates",
     "Skipped duplicate folder row during restore",
     "Skipping LLM logs restore — logs database is in degraded mode",
+    // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+    "Skipping Log restore — logs database is in degraded mode",
     "Skipping duplicate text replacement rule on restore",
     "Starting restore operation",
     "Translated pre-4.10 Concierge settings for restore",
@@ -6843,7 +6920,28 @@ fn compare_outfit_history_lines(
             "[{name}] backup:uuid-remap lines differ\n  rust:   {g:?}\n  oracle: {w:?}"
         ));
     }
+    // [P4.D355] The Log repository's `deleteAll` INFO (v4 `log-entries.
+    // repository.ts:164`, the plain `logger` → `quilltap::db`) — fired by a
+    // `replace` restore's wipe with v4's `deletedCount`, on EVERY case: byte
+    // for byte.
+    let g = v5_log_records(
+        &got_lines
+            .iter()
+            .filter(|l| l.split(' ').nth(1) == Some("quilltap::db"))
+            .cloned()
+            .collect::<Vec<_>>(),
+        LOG_REPO_MESSAGES,
+    );
+    let w = v4_log_records(&want, LOG_REPO_MESSAGES);
+    if g != w {
+        failures.push(format!(
+            "[{name}] the Log repository's deleteAll line differs\n  rust:   {g:?}\n  oracle: {w:?}"
+        ));
+    }
 }
+
+/// [P4.D355] The oracle's `LOG_REPO_MESSAGES`.
+const LOG_REPO_MESSAGES: &[&str] = &["Deleted all log entries"];
 
 /// The index of the space that starts the next ` name=` field, if any.
 fn find_field_boundary(s: &str) -> Option<usize> {

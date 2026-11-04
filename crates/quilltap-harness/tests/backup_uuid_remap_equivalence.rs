@@ -68,7 +68,7 @@ use sha2::{Digest, Sha256};
 // P4.D205: 38 + 1 = 39 (`chatInforms`, v4 `e7d77bb60`).
 // P4.D264: 39 + 1 = 40 (`wardrobeWear`, v4 `3ee3b1342`, the LAST key).
 // P4.D293: 40 - 1 = 39 (`vectorIndexMetas`, v4 `af48f6cc2`).
-const COLLECTIONS: [&str; 40] = [
+const COLLECTIONS: [&str; 41] = [
     "characters",
     "chats",
     "tags",
@@ -113,6 +113,8 @@ const COLLECTIONS: [&str; 40] = [
     "wardrobeWear",
     // [P4.D317] v4 `7953da3a0`: the 40th returned key, always present.
     "wardrobeHistory",
+    // [P4.D355] v4 `cc5f2347c`: the 41st returned key, always present.
+    "logEntries",
 ];
 
 fn corpus_path() -> PathBuf {
@@ -183,6 +185,8 @@ fn backup_data(data: &Map<String, Value>) -> BackupData {
         text_replacement_rules: rows(data, "textReplacementRules"),
         wardrobe_wear: rows(data, "wardrobeWear"),
         wardrobe_history: rows(data, "wardrobeHistory"),
+        // [P4.D355] v4 `cc5f2347c`: `id` / `chatId` / `characterId` remapped.
+        log_entries: rows(data, "logEntries"),
     }
 }
 
@@ -232,6 +236,7 @@ fn produced(out: &BackupData, key: &str) -> Vec<Value> {
         "textReplacementRules" => out.text_replacement_rules.clone(),
         "wardrobeWear" => out.wardrobe_wear.clone(),
         "wardrobeHistory" => out.wardrobe_history.clone(),
+        "logEntries" => out.log_entries.clone(),
         other => panic!("unknown collection `{other}`"),
     }
 }

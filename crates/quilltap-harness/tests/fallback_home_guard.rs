@@ -210,6 +210,11 @@ const HOME_MESSAGES: &[&str] = &[
     "Error counting memories without embedding",
     "Error listing distinct memory chatIds",
     // === end the `322a5488e` follow-ups unification ===
+    // === P4.D355 (v4 `cc5f2347c`) — the Log's backup read + whole-table
+    // delete (`log-entries.repository.ts:136-170` at `236c04e35`) ===
+    "Error reading all log entries",
+    "Error deleting all log entries",
+    // === end P4.D355 ===
 ];
 
 const HOME: &str = "db/fallback.rs";

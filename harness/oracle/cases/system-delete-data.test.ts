@@ -396,6 +396,26 @@ function buildCases(): CaseSpec[] {
   ];
 }
 
+const LOG_ENTRY_PLANT: Array<[string, string]> = [
+  ['d5570000-0000-4000-8000-000000000001', '2026-02-01T00:00:00.000Z'],
+  ['d5570000-0000-4000-8000-000000000002', '2026-02-02T00:00:00.000Z'],
+  ['d5570000-0000-4000-8000-000000000003', '2026-02-03T00:00:00.000Z'],
+];
+
+async function plantLogEntries(): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  await getRepositories().logEntries.findAllEntries();
+  const { getRawLLMLogsDatabase } = await import('@/lib/database/backends/sqlite/llm-logs-client');
+  const db = getRawLLMLogsDatabase()!;
+  const insert = db.prepare(
+    'INSERT INTO "log_entries" ("id", "message", "chatId", "characterId", "createdAt", "updatedAt") ' +
+      "VALUES (?, 'A planted line.', 'c1000000-0000-4000-8000-000000000001', NULL, ?, ?)",
+  );
+  for (const [id, at] of LOG_ENTRY_PLANT) insert.run(id, at, at);
+  const n = (db.prepare('SELECT COUNT(*) AS n FROM "log_entries"').get() as { n: number }).n;
+  if (n !== LOG_ENTRY_PLANT.length) throw new Error(`log_entries plant: ${n} rows`);
+}
+
 async function runCase(
   spec: Spec,
   c: CaseSpec,
@@ -416,6 +436,22 @@ async function runCase(
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
 
+  // [P4.D355] At the `236c04e35` pin v4's wipe reads `memories.keystone`
+  // (`retire.ts:147`) and the committed pair predates it (`no such column:
+  // keystone` — every delete case a 500). P4.D341 (the KEYSTONE lane) widens
+  // the committed fixture; until the union carries it, each per-case copy
+  // gets the column through v4's REAL `add-memory-keystone-v1` — a no-op
+  // (`shouldRun()` false) on the widened fixture.
+  {
+    const { addMemoryKeystoneMigration } = await import('@/migrations/scripts/add-memory-keystone-v1');
+    if (await addMemoryKeystoneMigration.shouldRun()) {
+      const r = await addMemoryKeystoneMigration.run();
+      if (!r.success) throw new Error(`keystone migration failed on the copy: ${JSON.stringify(r)}`);
+    }
+    const utils = (await import('@/migrations/lib/database-utils')) as unknown as { closeSQLite: () => void };
+    utils.closeSQLite();
+  }
+
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
@@ -433,6 +469,12 @@ async function runCase(
   // [P4.D327] The two Inventory columns on every per-run copy (the round's
   // shared plant; the committed pair predates both).
   await plantInventoryColumns();
+  // [P4.D355] v4 `cc5f2347c`: three Log lines on EVERY per-run llm-logs copy
+  // (the committed pair predates the Log; v4's `findAllEntries` creates the
+  // table, the raw handle plants the rows — the P4.D331 idiom). "Delete all
+  // my data" now empties the table (`clearFormat3Entities` → `deleteAll`),
+  // which the per-user deletes never reach. Self-checked before the case.
+  await plantLogEntries();
 
   try {
     publishedTopics = [];

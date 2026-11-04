@@ -76,6 +76,9 @@ pub fn preview_restore(zip_path: &Path, temp_root: &Path) -> Result<RestoreSumma
         // P4.D317 (v4 `preview.ts:74`) — the 43rd key, between `wardrobeWear`
         // and `warnings`.
         wardrobe_history: d.wardrobe_history.len(),
+        // P4.D355 (v4 `cc5f2347c`, `preview.ts:75` at `236c04e35`) — the 44th
+        // key, between `wardrobeHistory` and `warnings`.
+        log_entries: d.log_entries.len(),
         embedding_reconcile: None,
         warnings: Vec::new(),
     })

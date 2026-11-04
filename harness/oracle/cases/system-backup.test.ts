@@ -173,6 +173,14 @@ function describeTree(rootPath: string): TreeEntry[] {
 
 interface CaseSpec {
   name: string;
+  /**
+   * [P4.D355] v4 `cc5f2347c`: plant three `log_entries` rows on the per-run
+   * llm-logs COPY (out of `createdAt` order; one `characterId: null`) — the
+   * archive's `data/log-entries.json` reads them oldest first.
+   */
+  plantLogEntries?: boolean;
+  /** [P4.D355] a CORRUPT llm-logs copy: v4 boots the logs DB degraded. */
+  degradeLlmLogs?: boolean;
   /** Seed the user file's bytes into the data dir before running. */
   seedFileBytes: boolean;
   /** [P4.D46] v4 `createBackup(userId, {compact: true})` (`7189a968`). */
@@ -218,6 +226,8 @@ interface CaseSpec {
  */
 const LOGGED = [
   'Compact backup — embeddings and derived tables omitted',
+  // [P4.D355] v4 `cc5f2347c` `backup-service.ts:297` — on EVERY case.
+  'Collected Log entries for backup',
   "[ExtractionCursors] Could not read the cursor table for a bundle; reading per chat",
   "[ExtractionCursors] Could not read a chat's cursors for a bundle; leaving them out",
   'Error finding all entities',
@@ -688,13 +698,46 @@ const CASES: CaseSpec[] = [
   { name: 'backup_absent_history_table', seedFileBytes: true, withoutHistoryTable: true },
   // [P4.D327] the Inventory's carriage (`plantInventory`): the object document,
   // its link, the picture's `linkedTo`, the carried set and the flag ride the
-  // existing data files — no new archive file, no new count, no `log_entries`.
+  // existing data files — no new archive file beyond the Log's, which EVERY
+  // case now stages ([P4.D355], v4 `cc5f2347c`), and no new count.
   { name: 'backup_with_inventory', seedFileBytes: true, plantInventory: true },
   // [P4.D351] `data/roleplay-templates.json` carries the DECODED narration
   // (`"*"`, a pair, `null` — key always present), `unmarkedStyle` (absent on
   // NULL) and `markdownAsterisks`, in schema key order.
   { name: 'backup_novel_template', seedFileBytes: true, plantNovelTemplate: true },
+  // [P4.D355] v4 `cc5f2347c`: the Log rides the archive — `data/log-entries.json`
+  // oldest first, the six schema keys, `counts.logEntries: 3` LAST.
+  { name: 'backup_with_log_entries', seedFileBytes: true, plantLogEntries: true },
+  // [P4.D355] a degraded logs DB: the Log reads `[]` ("Empty while the logs DB
+  // is degraded"), the DEBUG at `rowCount: 0`, the backup still completes.
+  { name: 'backup_log_entries_degraded', seedFileBytes: true, degradeLlmLogs: true },
 ];
+
+/**
+ * [P4.D355] The Log plant: three rows through the raw llm-logs handle (the
+ * P4.D331 idiom), the table lazily created first by v4's own repository
+ * (`findAllEntries` ensures it — the fixture predates the Log). Self-checked.
+ */
+const LOG_ENTRY_PLANT: Array<[string, string, string, string | null, string]> = [
+  ['d5500000-0000-4000-8000-0000000000a2', 'The second line.', 'c1000000-0000-4000-8000-000000000001', null, '2026-02-02T00:00:00.000Z'],
+  ['d5500000-0000-4000-8000-0000000000a1', 'The first line — an em dash.', 'c1000000-0000-4000-8000-000000000001', 'b1000000-0000-4000-8000-000000000001', '2026-02-01T00:00:00.000Z'],
+  ['d5500000-0000-4000-8000-0000000000a3', 'The third line.', 'c1000000-0000-4000-8000-000000000002', 'b1000000-0000-4000-8000-000000000002', '2026-02-03T00:00:00.000Z'],
+];
+
+async function plantLogEntries(): Promise<void> {
+  const { getRepositories } = await import('@/lib/repositories/factory');
+  await getRepositories().logEntries.findAllEntries();
+  const { getRawLLMLogsDatabase } = await import('@/lib/database/backends/sqlite/llm-logs-client');
+  const db = getRawLLMLogsDatabase()!;
+  const insert = db.prepare(
+    'INSERT INTO "log_entries" ("id", "message", "chatId", "characterId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?)',
+  );
+  for (const [id, message, chatId, characterId, at] of LOG_ENTRY_PLANT) {
+    insert.run(id, message, chatId, characterId, at, at);
+  }
+  const n = (db.prepare('SELECT COUNT(*) AS n FROM "log_entries"').get() as { n: number }).n;
+  if (n !== LOG_ENTRY_PLANT.length) throw new Error(`log_entries plant: ${n} rows`);
+}
 
 async function runCase(
   spec: Spec,
@@ -713,6 +756,9 @@ async function runCase(
   copyFileSync(fixtures.main, mainWork);
   copyFileSync(fixtures.mount, mountWork);
   copyFileSync(fixtures.llm, llmWork);
+  // [P4.D355] a file that is not a database: v4's llm-logs client fails its
+  // one open attempt and boots DEGRADED (v5: `PartitionState::Degraded`).
+  if (c.degradeLlmLogs) writeFileSync(llmWork, Buffer.alloc(8192, 0x5a));
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
@@ -749,6 +795,7 @@ async function runCase(
   if (c.plantThrowingCursors) await plantThrowingCursors();
   if (c.plantInventory) await plantInventory();
   if (c.plantNovelTemplate) await plantNovelTemplate(spec.userId);
+  if (c.plantLogEntries) await plantLogEntries();
 
   const extractDir = mkdtempSync(join(scratchRoot, 'ex-'));
   try {
@@ -780,12 +827,25 @@ async function runCase(
     const rootPath = join(extractDir, roots[0].name);
 
     const m = manifest as unknown as Record<string, unknown>;
+    // [P4.D355] v4 `c50cdddc6`'s premise (`terminal-sessions-excluded.test.ts`):
+    // a backup names no `terminal_sessions` file and counts none — on EVERY case.
+    const tree = describeTree(rootPath) as Array<{ path: string }>;
+    if (tree.some((e) => /terminal[-_]sessions/.test(e.path))) {
+      throw new Error(`${c.name}: the archive staged a terminal_sessions file`);
+    }
+    if ('terminalSessions' in ((m.counts ?? {}) as Record<string, unknown>)) {
+      throw new Error(`${c.name}: the manifest counts terminalSessions`);
+    }
     return {
       name: c.name,
       rootFolderPrefix: 'quilltap-backup-',
       manifest: { ...m, createdAt: '<normalized>', appVersion: '<normalized>' },
       tree: describeTree(rootPath),
       logs,
+      // [P4.D355] non-vacuity for the degraded case: v4's own flag.
+      llmLogsDegraded: (
+        await import('@/lib/database/backends/sqlite/llm-logs-client')
+      ).isLLMLogsDegraded(),
     };
   } finally {
     await closeDatabase();

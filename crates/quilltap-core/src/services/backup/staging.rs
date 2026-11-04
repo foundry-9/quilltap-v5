@@ -140,6 +140,10 @@ fn data_files(data: &BackupData, compact: bool) -> Vec<(&'static str, &Vec<Value
         // history (4.11). Optional on the way back in, like the wear ledger."
         // Every archive, compact included (`[]` when empty).
         ("wardrobe-history.json", &data.wardrobe_history),
+        // P4.D355 (v4 `cc5f2347c`, `backup-service.ts:718-719` at `236c04e35`):
+        // "The Log (4.11). Optional on the way back in, like the wear ledger."
+        // Every archive, compact included (`[]` when empty).
+        ("log-entries.json", &data.log_entries),
     ];
     files.into_iter().filter(|(name, _)| !omit(name)).collect()
 }
@@ -424,6 +428,20 @@ mod tests {
             "[\n  {\n    \"a\": 1\n  },\n  {\n    \"b\": [\n      2\n    ]\n  }\n]\n"
         );
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// P4.D355 (v4 `cc5f2347c`, `backup-service.ts:719`): `log-entries.json`
+    /// is the LAST data file, staged on EVERY archive — full and compact —
+    /// even when the Log is empty (`[]`).
+    #[test]
+    fn the_log_file_is_staged_last_on_every_archive() {
+        let data = crate::services::backup::collect::p4d293_tests::every_collection(Vec::new());
+        for compact in [false, true] {
+            let files = data_files(&data, compact);
+            let (name, rows) = files.last().expect("data files");
+            assert_eq!(*name, "log-entries.json", "compact={compact}");
+            assert!(rows.is_empty());
+        }
     }
 
     #[test]

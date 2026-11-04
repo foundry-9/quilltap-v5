@@ -147,6 +147,14 @@ pub struct BackupData {
     // `data/wardrobe-history.json` on EVERY archive.
     pub wardrobe_history: Vec<Value>,
     // === end P4.D317 ===
+    // === P4.D355 (v4 `cc5f2347c`) — `BackupData.logEntries`, LAST (`types.ts:
+    // 436-441` at `236c04e35`): "lines written by `log_create_entry` and custom
+    // tools' `log` effects. Restored after the chats they name; optional, so an
+    // older archive simply has none." Each row in `LogEntrySchema` key order
+    // (`id, message, chatId, characterId, createdAt, updatedAt`), oldest first;
+    // `data/log-entries.json` on EVERY archive.
+    pub log_entries: Vec<Value>,
+    // === end P4.D355 ===
 }
 
 impl BackupData {
@@ -835,6 +843,49 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         })
         .collect();
 
+    // P4.D355 (surfaced by the degraded-logs backup case): v4's `llmLogs.
+    // findAll(10000)` reaches `findByFilter`, whose fallback `safeQuery` LOGS
+    // `Error finding entities by filter` when the degraded guard throws — v5
+    // answered `[]` silently there. A DEGRADED partition now logs v4's line
+    // through its one home (the guard sentence as the error) — HERE, before
+    // the Log's read, where v4's line falls in its order (its `Promise.all`
+    // reads the LLM logs first); an ABSENT one — a v5-only state — stays
+    // silent, as before.
+    if db.partition_state(crate::db::table_shape::Partition::LlmLogs)
+        == crate::db::runtime::PartitionState::Degraded
+    {
+        let _: Vec<Value> = crate::db::fallback::find_by_filter_or_empty("llm_logs", || {
+            Err(DbError::Internal(
+                crate::db::log_entries::llm_logs_guard_sentence(
+                    crate::db::runtime::PartitionState::Degraded,
+                )
+                .unwrap_or_default()
+                .to_string(),
+            ))
+        });
+    }
+    // === P4.D355 (v4 `cc5f2347c`, `backup-service.ts:296-297`) — after the
+    // outfit history, before the mount-index dump: "instance-wide lines in the
+    // LLM logs database (no userId), so the whole table is the user's. Empty
+    // while the logs DB is degraded" — the same `unwrap_or_default` idiom the
+    // `llm_logs` read uses (R-8; v4's `findAllEntries` is a FALLBACK read), and
+    // the DEBUG fires at `rowCount=0` then too.
+    let log_entries: Vec<Value> = db
+        .read_llm_logs(|conn| {
+            Ok(crate::db::log_entries::LogEntriesRepository::new(conn)
+                .find_all_entries()
+                .into_iter()
+                .map(|row| serde_json::to_value(row).unwrap_or(Value::Null))
+                .collect())
+        })
+        .unwrap_or_default();
+    tracing::debug!(
+        target: "quilltap::backup",
+        rowCount = log_entries.len(),
+        "Collected Log entries for backup"
+    );
+    // === end P4.D355 ===
+
     // The llm-logs partition is optional; without it v4's repo simply finds none.
     let llm_logs = db
         .read_llm_logs(|conn| {
@@ -925,6 +976,9 @@ pub fn collect_user_data(db: &Db, user_id: &str) -> Result<BackupData, DbError> 
         // === P4.D317 ===
         wardrobe_history: main_side.wardrobe_history,
         // === end P4.D317 ===
+        // === P4.D355 ===
+        log_entries,
+        // === end P4.D355 ===
     })
 }
 
@@ -1410,14 +1464,97 @@ mod wardrobe_wear_collect_tests {
 // === end P4.D264 ===
 
 #[cfg(test)]
-mod p4d293_tests {
+mod log_entries_collect_tests {
+    //! P4.D355 — v4 `cc5f2347c` `backup-service.ts:296-297`: the whole Log is
+    //! collected oldest first, and the DEBUG `Collected Log entries for backup
+    //! {rowCount}` fires on EVERY backup — `0` when the logs partition is
+    //! absent / degraded (v4: "Empty while the logs DB is degraded").
+    use super::*;
+    use crate::db::runtime::DbPaths;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    fn db_with_llm(llm_setup: Option<&str>) -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let (main, mount, llm) = (
+            dir.path().join("main.db"),
+            dir.path().join("mount.db"),
+            dir.path().join("llm.db"),
+        );
+        crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+        crate::db::Writer::open_writable(&mount, PEPPER).unwrap();
+        if let Some(setup) = llm_setup {
+            let w = crate::db::Writer::open_writable(&llm, PEPPER).unwrap();
+            w.connection().execute_batch(setup).unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: Some(mount),
+                llm_logs: llm_setup.map(|_| llm),
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn the_log_is_collected_oldest_first_in_schema_key_order() {
+        let (_dir, db) = db_with_llm(Some(
+            r#"CREATE TABLE "log_entries" ("id" TEXT PRIMARY KEY, "message" TEXT NOT NULL,
+               "chatId" TEXT NOT NULL, "characterId" TEXT, "createdAt" TEXT NOT NULL,
+               "updatedAt" TEXT NOT NULL);
+               INSERT INTO log_entries VALUES
+                 ('l2', 'second', 'c1', NULL, '2026-03-02T00:00:00.000Z', '2026-03-02T00:00:00.000Z'),
+                 ('l1', 'first', 'c1', 'a', '2026-03-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z');"#,
+        ));
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        let data = data.expect("collect");
+        assert_eq!(
+            serde_json::to_string(&data.log_entries).unwrap(),
+            "[{\"id\":\"l1\",\"message\":\"first\",\"chatId\":\"c1\",\"characterId\":\"a\",\
+             \"createdAt\":\"2026-03-01T00:00:00.000Z\",\"updatedAt\":\"2026-03-01T00:00:00.000Z\"},\
+             {\"id\":\"l2\",\"message\":\"second\",\"chatId\":\"c1\",\"characterId\":null,\
+             \"createdAt\":\"2026-03-02T00:00:00.000Z\",\"updatedAt\":\"2026-03-02T00:00:00.000Z\"}]"
+        );
+        let history = lines
+            .iter()
+            .position(|l| l.contains("Collected outfit history for backup"))
+            .expect("the history DEBUG");
+        let log = lines
+            .iter()
+            .position(|l| l == "DEBUG quilltap::backup Collected Log entries for backup rowCount=2")
+            .unwrap_or_else(|| panic!("{lines:#?}"));
+        assert!(
+            history < log,
+            "the Log DEBUG follows the outfit-history DEBUG"
+        );
+    }
+
+    #[test]
+    fn an_absent_logs_partition_collects_nothing_and_still_logs_zero() {
+        let (_dir, db) = db_with_llm(None);
+        let (data, lines) = crate::test_support::captured_with(|| collect_user_data(&db, "u-1"));
+        assert!(data.expect("collect").log_entries.is_empty());
+        assert!(
+            lines
+                .iter()
+                .any(|l| l == "DEBUG quilltap::backup Collected Log entries for backup rowCount=0"),
+            "{lines:#?}"
+        );
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod p4d293_tests {
     //! P4.D293 — Rust twins of v4's `compact-backup.test.ts` (what the
     //! compact strip clears, at the pin) and of the `textShapeVersion`
     //! read's two table shapes (R-R).
     use super::*;
     use serde_json::json;
 
-    fn every_collection(rows: Vec<Value>) -> BackupData {
+    pub(crate) fn every_collection(rows: Vec<Value>) -> BackupData {
         BackupData {
             characters: rows.clone(),
             chats: rows.clone(),
@@ -1459,6 +1596,7 @@ mod p4d293_tests {
             text_replacement_rules: rows.clone(),
             wardrobe_wear: rows.clone(),
             wardrobe_history: rows.clone(),
+            log_entries: rows.clone(),
         }
     }
 
@@ -1485,6 +1623,8 @@ mod p4d293_tests {
             &data.doc_mount_points,
             &data.wardrobe_wear,
             &data.wardrobe_history,
+            // P4.D355: compact keeps the Log (it is content, not derived).
+            &data.log_entries,
         ] {
             assert_eq!(kept, &rows);
         }

@@ -260,6 +260,19 @@ fn system_export_matches_oracle() {
                 assert_cursor_logs(name, exp, &v5_cursor_lines(&lines), &mut failed);
                 assert_history_logs(name, exp, &lines, &mut failed);
                 assert_find_by_id_logs(name, exp, &lines, &mut failed);
+                // [P4.D355] v4 `cc5f2347c` carries the Log in a BACKUP only —
+                // `.qtap` export / import leave it out at `236c04e35` (both
+                // sides `grep log_entries` = 0). A tripwire on EVERY ndjson
+                // case: no Log record kind on either side's wire, so a future
+                // v4 move flips this loudly (HANDOFF H5).
+                for record in exp_lines.iter().chain(got.iter().flatten()) {
+                    let kind = record["kind"].as_str().unwrap_or("").to_ascii_lowercase();
+                    if kind.contains("logentr") || kind == "log" {
+                        failed.push(format!(
+                            "{name}: a Log record kind on the .qtap wire ({kind}) — v4 moved; port it"
+                        ));
+                    }
+                }
                 match got {
                     Ok(records) => {
                         if let Some(msg) =

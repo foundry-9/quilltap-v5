@@ -64,6 +64,9 @@ const PREVIEW_CASES: PreviewCase[] = [
   { name: 'preview_inventory', archive: 'restore-archive-inventory.zip' },
   // [P4.D351]: the template count over the derived Novel-template archive.
   { name: 'preview_novel_template', archive: 'restore-archive-novel-template.zip' },
+  // [P4.D355] v4 `cc5f2347c` `preview.ts:75`: `logEntries: 4` between
+  // `wardrobeHistory` and `warnings` (`derive-restore-archive-log-entries.py`).
+  { name: 'preview_log_entries', archive: 'restore-archive-log-entries.zip' },
 ];
 
 /**
@@ -164,6 +167,20 @@ const STALE_CURSOR_SQL =
   'PRAGMA foreign_keys = ON;';
 const SINGLE_USER_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
 
+/**
+ * [P4.D355] Two `log_entries` rows planted on the TARGET's llm-logs partition
+ * before the baseline (both sides run this exact text — `system_restore_state.
+ * rs`'s `LOG_ENTRIES_STALE_SQL`): ids the archive does not carry, so a
+ * `replace` restore that kept them would show them in the post-state — v4's
+ * `clearFormat3Entities` → `logEntries.deleteAll()` removes them.
+ */
+const LOG_ENTRIES_STALE_SQL =
+  'INSERT INTO "log_entries" ("id", "message", "chatId", "characterId", "createdAt", "updatedAt") VALUES ' +
+  "('d5560000-0000-4000-8000-000000000001', 'A stale line.', 'c9000000-0000-4000-8000-000000000001', NULL, " +
+  "'2026-06-01T00:00:00.000Z', '2026-06-01T00:00:00.000Z'), " +
+  "('d5560000-0000-4000-8000-000000000002', 'Another stale line.', 'c9000000-0000-4000-8000-000000000001', NULL, " +
+  "'2026-06-02T00:00:00.000Z', '2026-06-02T00:00:00.000Z');";
+
 const RESTORE_CASES: Array<{
   name: string;
   archive: string;
@@ -211,6 +228,12 @@ const RESTORE_CASES: Array<{
    * — nothing written.
    */
   expectRefusal?: boolean;
+  /**
+   * [P4.D355] Put v4's logs DB in DEGRADED mode after the baseline (v4's own
+   * `__quilltapLLMLogsDegraded` switch — the state its client init sets when
+   * the file fails its open; the v5 side reopens with an unreadable logs file).
+   */
+  degradeLlmLogs?: boolean;
 }> = [
   { name: 'restore_replace', archive: 'restore-archive.zip' },
   { name: 'restore_legacy_archive', archive: 'restore-archive-legacy.zip' },
@@ -775,6 +798,32 @@ const RESTORE_CASES: Array<{
   // standalone re-written with its defaults). The tombstone twin archives
   // Riya: her vault is skipped on either mount id (`planned=1 fixed=0`).
   { name: 'restore_inventory_replace', archive: 'restore-archive-inventory.zip' },
+  // ── [P4.D355] (v4 `cc5f2347c`): the Log, step 22n-quater ─────────────────
+  //
+  // `restore-archive-log-entries.zip` (`fixtures/derive-restore-archive-log-
+  // entries.py`): four lines — one by a carried character, one with a null
+  // character, one by a character the archive does not carry (its createdAt
+  // first), and one REFUSED (`message: ""`, the `min(1)` arm). `preserve`
+  // lands the three valid rows under their archive ids (one warning, the
+  // DEBUG `total: 4, restored: 3`); `new-account` re-keys them; `replace`
+  // ALSO wipes two stale target lines first (`deleteAll`); `degraded` skips
+  // the step whole (the WARN + its warning, nothing written).
+  { name: 'restore_log_entries_preserve', archive: 'restore-archive-log-entries.zip' },
+  {
+    name: 'restore_log_entries_new_account',
+    archive: 'restore-archive-log-entries.zip',
+    mode: 'new-account',
+  },
+  {
+    name: 'restore_log_entries_replace',
+    archive: 'restore-archive-log-entries.zip',
+    plantSqlIn: [['llmLogs', LOG_ENTRIES_STALE_SQL]],
+  },
+  {
+    name: 'restore_log_entries_degraded',
+    archive: 'restore-archive-log-entries.zip',
+    degradeLlmLogs: true,
+  },
   {
     name: 'restore_inventory_new_account',
     archive: 'restore-archive-inventory.zip',
@@ -998,7 +1047,10 @@ const REPO_LOG_MESSAGES = new Set([
  * `Failed to restore outfit history` and `Restored outfit history`.
  * [P4.D327] 83 at `322a5488e` (52 warn, 8 info, 21 debug, 2 error) —
  * `4fbdad186`'s 22f-quater adds `Failed to repoint Inventory pictures after
- * restore` and `Repointed Inventory pictures after new-account restore`. EVERY
+ * restore` and `Repointed Inventory pictures after new-account restore`. [P4.D355] 86 at
+ * `236c04e35` (54 warn, 8 info, 22 debug, 2 error) — `cc5f2347c`'s 22n-quater
+ * adds `Skipping Log restore — logs database is in degraded mode`, `Failed to
+ * restore Log entry` and `Restored Log entries`. EVERY
  * restore case records them, at every level, so the census is compared across
  * the whole corpus.
  */
@@ -1007,6 +1059,8 @@ const RESTORE_TS_MESSAGES = [
   "Decoded index-keyed memory embedding",
   "Failed to enqueue reindex after compact restore",
   "Failed to restore LLM log",
+  // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+  "Failed to restore Log entry",
   "Failed to restore character",
   "Failed to restore character plugin data",
   "Failed to restore chat",
@@ -1070,6 +1124,8 @@ const RESTORE_TS_MESSAGES = [
   "Restored user-installed theme bundles",
   "Restored wardrobe wear ledger",
   // [P4.D317] … and the DEBUG every restore logs (`total`, `restored`).
+  // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+  "Restored Log entries",
   "Restored outfit history",
   "Repointed wardrobe item pictures after new-account restore",
   // [P4.D327] … and the INFO when anything was planned (`planned`, `fixed`).
@@ -1077,6 +1133,8 @@ const RESTORE_TS_MESSAGES = [
   "Seeded connection-profile columns the archive predates",
   "Skipped duplicate folder row during restore",
   "Skipping LLM logs restore — logs database is in degraded mode",
+  // [P4.D355] v4 cc5f2347c — 22n-quater (83 → 86)
+  "Skipping Log restore — logs database is in degraded mode",
   "Skipping duplicate text replacement rule on restore",
   "Starting restore operation",
   "Translated pre-4.10 Concierge settings for restore",
@@ -1169,6 +1227,14 @@ const HISTORY_REPO_MESSAGES = [
  * `backup:uuid-remap` — NOT `restore.ts` lines, so not in the census):
  * bug 252's two lines, recorded on every case and compared byte for byte.
  */
+/**
+ * [P4.D355] The Log repository's `deleteAll` INFO (`log-entries.repository.
+ * ts:164`, the plain `logger` — NOT a `restore.ts` line, so not in the
+ * census): it fires inside a `replace` restore's wipe (`clearFormat3Entities`),
+ * recorded on every case and compared byte for byte.
+ */
+const LOG_REPO_MESSAGES = ['Deleted all log entries'];
+
 const UUID_REMAP_MESSAGES = [
   'Chat character-keyed columns unreadable; left as given',
   'Remapped character-keyed chat fields',
@@ -1238,6 +1304,7 @@ async function runRestoreCase(
     wearLedgerDdl?: boolean;
     restoreTwice?: boolean;
     expectRefusal?: boolean;
+    degradeLlmLogs?: boolean;
   },
   archives: string,
   scratchRoot: string,
@@ -1437,6 +1504,10 @@ async function runRestoreCase(
     }
 
     const preState = dumpAll();
+    // [P4.D355] AFTER the baseline (both sides' baselines stay whole).
+    if (c.degradeLlmLogs) {
+      (globalThis as unknown as { __quilltapLLMLogsDegraded?: boolean }).__quilltapLLMLogsDegraded = true;
+    }
 
     const { restore } = await import('@/lib/backup/restore/restore');
     const run = () =>
@@ -1460,6 +1531,7 @@ async function runRestoreCase(
         ...RECONCILE_MESSAGES,
         ...HISTORY_REPO_MESSAGES,
         ...UUID_REMAP_MESSAGES,
+        ...LOG_REPO_MESSAGES,
       ],
       async () => {
         if (c.expectRefusal) {
@@ -1497,6 +1569,7 @@ async function runRestoreCase(
       logs,
     };
   } finally {
+    delete (globalThis as unknown as { __quilltapLLMLogsDegraded?: boolean }).__quilltapLLMLogsDegraded;
     await closeDatabase();
     closeMountIndexSQLiteClient();
     closeLLMLogsSQLiteClient();

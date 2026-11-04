@@ -99,6 +99,11 @@ pub struct RestoreSummary {
     /// break a timeline, never the step); the archive's row count in the
     /// preview (`preview.ts:74`).
     pub wardrobe_history: usize,
+    /// P4.D355 (v4 `cc5f2347c`, `types.ts:637` at `236c04e35`): the Log lines
+    /// written by step 22n-quater — COUNTED ROW BY ROW (a refused line is one
+    /// warning, never the step); the archive's row count in the preview
+    /// (`preview.ts:75`).
+    pub log_entries: usize,
     /// v4 `7189a968`: the post-restore embedding reconcile's outcome (step 25).
     /// Restore ALWAYS sets it; preview never does (the key is optional in v4's
     /// type and absent from `previewRestore`'s summary).

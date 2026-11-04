@@ -3763,3 +3763,42 @@ pub fn log_entries_cleanup_or_zero(
 }
 
 // === end P4.D331 ===
+
+// === P4.D355 — the Log's backup read + whole-table delete (v4 `cc5f2347c`) ===
+
+/// v4 `LogEntriesRepository.findAllEntries`' FALLBACK arm (`log-entries.
+/// repository.ts:136-148` at `236c04e35`, `withRawDb([], …, 'Error reading
+/// all log entries')` — no context object): a thrown query logs ERROR `Error
+/// reading all log entries {collection, error}` and answers `[]`, "so a
+/// backup still completes without the Log". The degraded / absent partition
+/// never reaches here — the caller holds no connection then.
+pub fn log_entries_read_all_or_empty<T>(read: impl FnOnce() -> Result<Vec<T>, DbError>) -> Vec<T> {
+    read().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "log_entries",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error reading all log entries"
+        );
+        Vec::new()
+    })
+}
+
+/// v4 `LogEntriesRepository.deleteAll`'s FALLBACK arm (`:159-170`,
+/// `withRawDb(0, …, 'Error deleting all log entries')`): ERROR `Error deleting
+/// all log entries {collection, error}` and `0`.
+pub fn log_entries_delete_all_or_zero(delete: impl FnOnce() -> Result<usize, DbError>) -> usize {
+    delete().unwrap_or_else(|error| {
+        tracing::error!(
+            target: "quilltap::db",
+            collection = "log_entries",
+            error = %error_text(&error),
+            strictFailures = strict_repository_failures_active().then_some(true),
+            "Error deleting all log entries"
+        );
+        0
+    })
+}
+
+// === end P4.D355 ===

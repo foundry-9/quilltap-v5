@@ -81,6 +81,42 @@ fn fresh_db(tag: &str) -> ScratchDb {
         // [P4.D327] the two Inventory columns (the oracle's `plantInventoryColumns`).
         quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
     }
+    // [P4.D355] the oracle's `plantLogEntries`: the table (v4's lazy create's
+    // twin — its own DDL dump) and three lines, self-checked.
+    {
+        let w = quilltap_core::db::Writer::open_writable(&llm, TEST_PEPPER).unwrap();
+        let c = w.connection();
+        quilltap_core::test_support::ensure_table_from_dump(
+            c,
+            quilltap_core::db::table_shape::Partition::LlmLogs,
+            "log_entries",
+        );
+        for (id, at) in [
+            (
+                "d5570000-0000-4000-8000-000000000001",
+                "2026-02-01T00:00:00.000Z",
+            ),
+            (
+                "d5570000-0000-4000-8000-000000000002",
+                "2026-02-02T00:00:00.000Z",
+            ),
+            (
+                "d5570000-0000-4000-8000-000000000003",
+                "2026-02-03T00:00:00.000Z",
+            ),
+        ] {
+            c.execute(
+                "INSERT INTO \"log_entries\" (\"id\", \"message\", \"chatId\", \"characterId\", \"createdAt\", \"updatedAt\") \
+                 VALUES (?1, 'A planted line.', 'c1000000-0000-4000-8000-000000000001', NULL, ?2, ?2)",
+                [id, at],
+            )
+            .unwrap();
+        }
+        let n: i64 = c
+            .query_row("SELECT COUNT(*) FROM log_entries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 3, "log_entries plant");
+    }
     let db = Db::open(
         DbPaths {
             main,

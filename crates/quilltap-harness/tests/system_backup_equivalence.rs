@@ -194,7 +194,58 @@ fn fresh_scratch(tag: &str) -> Scratch {
     Scratch { root }
 }
 
+/// [P4.D355] the oracle's `LOG_ENTRY_PLANT`, row for row (id, message, chatId,
+/// characterId, createdAt = updatedAt) — out of `createdAt` order.
+const LOG_ENTRY_PLANT: [(&str, &str, &str, Option<&str>, &str); 3] = [
+    (
+        "d5500000-0000-4000-8000-0000000000a2",
+        "The second line.",
+        "c1000000-0000-4000-8000-000000000001",
+        None,
+        "2026-02-02T00:00:00.000Z",
+    ),
+    (
+        "d5500000-0000-4000-8000-0000000000a1",
+        "The first line — an em dash.",
+        "c1000000-0000-4000-8000-000000000001",
+        Some("b1000000-0000-4000-8000-000000000001"),
+        "2026-02-01T00:00:00.000Z",
+    ),
+    (
+        "d5500000-0000-4000-8000-0000000000a3",
+        "The third line.",
+        "c1000000-0000-4000-8000-000000000002",
+        Some("b1000000-0000-4000-8000-000000000002"),
+        "2026-02-03T00:00:00.000Z",
+    ),
+];
+
+/// [P4.D355] The oracle's `plantLogEntries`: three rows on the llm-logs copy;
+/// self-checked.
+fn plant_log_entries(db: &Db) {
+    db.write_blocking(|w| {
+        let c = w.llm_logs().expect("llm-logs writer").connection();
+        for (id, message, chat_id, character_id, at) in LOG_ENTRY_PLANT {
+            c.execute(
+                r#"INSERT INTO "log_entries" ("id", "message", "chatId", "characterId", "createdAt", "updatedAt") VALUES (?1, ?2, ?3, ?4, ?5, ?5)"#,
+                rusqlite::params![id, message, chat_id, character_id, at],
+            )?;
+        }
+        let n: i64 = c.query_row("SELECT COUNT(*) FROM log_entries", [], |r| r.get(0))?;
+        assert_eq!(n, 3, "log_entries plant");
+        Ok(())
+    })
+    .expect("plant log_entries on the llm-logs copy");
+}
+
 fn open_fixture(scratch: &Path, plant_history: bool) -> Db {
+    open_fixture_with(scratch, plant_history, false)
+}
+
+/// [P4.D355] `degrade_llm`: the llm-logs copy is overwritten with bytes that
+/// are not a database — the oracle's `degradeLlmLogs` — so the partition
+/// opens DEGRADED.
+fn open_fixture_with(scratch: &Path, plant_history: bool, degrade_llm: bool) -> Db {
     let main = scratch.join("main.db");
     let mount = scratch.join("mount.db");
     let llm = scratch.join("llm.db");
@@ -217,6 +268,19 @@ fn open_fixture(scratch: &Path, plant_history: bool) -> Db {
         // [P4.D327] the two Inventory columns on EVERY copy (the oracle's
         // `plantInventoryColumns` — the history opt-out does not apply).
         quilltap_core::test_support::ensure_inventory_columns_on(w.connection());
+    }
+    if degrade_llm {
+        std::fs::write(&llm, vec![0x5a_u8; 8192]).unwrap();
+    } else {
+        // [P4.D355] the fixture predates the Log: v4's `findAllEntries` creates
+        // the table lazily on the oracle's copy; v5 boots it structurally — the
+        // twin is the table from v4's own DDL dump.
+        let w = quilltap_core::db::Writer::open_writable(&llm, TEST_PEPPER).unwrap();
+        quilltap_core::test_support::ensure_table_from_dump(
+            w.connection(),
+            quilltap_core::db::table_shape::Partition::LlmLogs,
+            "log_entries",
+        );
     }
     Db::open(
         DbPaths {
@@ -317,7 +381,11 @@ fn plant_throwing_cursors(db: &Db) {
 /// (L-7) and compared by bytes; the rest are the cursor-bundle / repository
 /// read-failure lines whose bytes P4.D288 pins (§R.5) — compared by PRESENCE
 /// (level + message) only.
-const LOGGED_BY_BYTES: &[&str] = &["Compact backup — embeddings and derived tables omitted"];
+const LOGGED_BY_BYTES: &[&str] = &[
+    "Compact backup — embeddings and derived tables omitted",
+    // [P4.D355] v4 `cc5f2347c` `backup-service.ts:297` — on EVERY case.
+    "Collected Log entries for backup",
+];
 const LOGGED_BY_PRESENCE: &[&str] = &[
     "[ExtractionCursors] Could not read the cursor table for a bundle; reading per chat",
     "[ExtractionCursors] Could not read a chat's cursors for a bundle; leaving them out",
@@ -1056,7 +1124,9 @@ fn system_backup_equivalence() {
             || name == "backup_cursor_read_fails"
             || name == "backup_with_wardrobe_history"
             || name == "backup_with_inventory"
-            || name == "backup_novel_template";
+            || name == "backup_novel_template"
+            || name == "backup_with_log_entries"
+            || name == "backup_log_entries_degraded";
         // [P4.D46] `backup_compact` runs the same projection with the compact
         // flag: memory embeddings nulled, the four derived embedding data files
         // ABSENT from the tree (asserted below and by the oracle tree diff),
@@ -1069,7 +1139,27 @@ fn system_backup_equivalence() {
             assert_backup_absent_history_table(case, &scratch.root, &mut failures);
             continue;
         }
-        let db = open_fixture(&scratch.root, true);
+        let db = open_fixture_with(&scratch.root, true, name == "backup_log_entries_degraded");
+        // [P4.D355] non-vacuity: both sides' logs partition is degraded on the
+        // degraded case, and only there.
+        {
+            let v5_degraded = db
+                .partition_state(quilltap_core::db::table_shape::Partition::LlmLogs)
+                == quilltap_core::db::runtime::PartitionState::Degraded;
+            assert_eq!(
+                Value::Bool(v5_degraded),
+                case["llmLogsDegraded"],
+                "[{name}] the logs partition's degraded state"
+            );
+            assert_eq!(
+                v5_degraded,
+                name == "backup_log_entries_degraded",
+                "[{name}]"
+            );
+        }
+        if name == "backup_with_log_entries" {
+            plant_log_entries(&db);
+        }
         if name == "backup_with_informs" {
             plant_informs(&db);
         }
@@ -1221,17 +1311,45 @@ fn system_backup_equivalence() {
             "[{name}] the manifest's wardrobeWear count"
         );
 
-        // [P4.D327] The Log is not carried (vendor survey §E.5.2 — v4's
-        // `createBackup` reads no `log_entries` at the pin): no staged file
-        // names it, on any case. And non-vacuity for the Inventory plant: the
-        // staged files carry the object document, its link, the carried set
-        // and the flag (the tree diff below compares the bytes to v4's).
-        for rel in walk(&staging) {
+        // [P4.D355] The Log IS carried (v4 `cc5f2347c` — RETIRES the P4.D327
+        // "no Log file" walk that stood here, by the pin dump of 2026-11-03:
+        // every case of v4's archive stages `data/log-entries.json`, `[]` when
+        // empty, and `counts.logEntries` is the LAST count). Positive on EVERY
+        // case: the file staged, the count planted, and LAST (byte order —
+        // `serde_json`'s `Map ==` is order-blind); the tree diff below compares
+        // the file's bytes to v4's.
+        {
+            let text = std::fs::read_to_string(staging.join("data/log-entries.json"))
+                .expect("data/log-entries.json staged on every archive");
+            let rows: Vec<Value> = serde_json::from_str(&text).expect("log-entries.json");
+            let want = if name == "backup_with_log_entries" {
+                3
+            } else {
+                0
+            };
+            assert_eq!(rows.len(), want, "[{name}] log-entries.json: {text}");
+            let counts = serde_json::to_string(&manifest["counts"]).unwrap();
             assert!(
-                !rel.contains("log-entries") && !rel.contains("log_entries"),
-                "[{name}] a backup staged a Log file: {rel}"
+                counts.ends_with(&format!(r#""logEntries":{want}}}"#)),
+                "[{name}] counts.logEntries is the LAST count: {counts}"
             );
         }
+        // [P4.D355] v4 `c50cdddc6`'s confirmation (`terminal-sessions-
+        // excluded.test.ts`'s premise; the oracle asserts the same on v4's
+        // archive): no staged path names `terminal_sessions` and no count does.
+        for rel in walk(&staging) {
+            assert!(
+                !rel.contains("terminal_sessions") && !rel.contains("terminal-sessions"),
+                "[{name}] a backup staged a terminal-sessions file: {rel}"
+            );
+        }
+        assert!(
+            manifest["counts"].get("terminalSessions").is_none(),
+            "[{name}] the manifest counts terminalSessions"
+        );
+        // Non-vacuity for the Inventory plant: the staged files carry the
+        // object document, its link, the carried set and the flag (the tree
+        // diff below compares the bytes to v4's).
         if name == "backup_with_inventory" {
             for (file, needle) in [
                 ("data/chats.json", "1e000000-0000-4000-8000-0000000000b1"),

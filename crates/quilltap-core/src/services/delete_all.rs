@@ -5,7 +5,7 @@
 //! [`delete_user_data`] is the seam restore's `replace` mode consumes (P4.9G5);
 //! its signature is pinned by the round's Shared contract §2.
 //!
-//! ## The four deliberate, named divergences
+//! ## The deliberate, named divergences (and notes)
 //!
 //! 1. **Id collection is slim, not overlaid.** v4 gathers its delete lists with
 //!    the overlaid finders (`characters.findByUserId`, `projects.findAll`,
@@ -43,6 +43,12 @@
 //!    `delete-service.ts`' `mainTables` at `f5e953a3f`). See
 //!    [`V5_EXTRA_MAIN_TABLES`] for the reasoning, the vintage evidence and the
 //!    ruling it was made under (dogfood finding #57).
+//! 5. **The Log is wiped through its repository, not the table loop**
+//!    (P4.D355, v4 `cc5f2347c`). v4 keeps `log_entries` out of `mainTables`
+//!    because it lives in the llm-logs file; [`clear_format3_entities`] calls
+//!    `LogEntriesRepository::delete_all` on the llm-logs connection, so BOTH
+//!    the `replace` restore and "delete all my data" empty it — the per-user
+//!    deletes never reach this instance-wide table.
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -290,10 +296,26 @@ const FORMAT3_MOUNT_TABLES: &[&str] = &[
 /// `instance_settings` is deliberately LEFT ALONE (v4's :54 comment): startup
 /// migrations write keys that are not part of a backup, and restore upserts the
 /// backup's rows by key.
-pub fn clear_format3_entities(main: &Connection, mount: Option<&Connection>) {
+///
+/// P4.D355 (v4 `cc5f2347c`, `delete-service.ts:78-81` at `236c04e35`): the Log
+/// is wiped through its repository between the main loop and the mount loop —
+/// "The Log lives in the LLM logs database (no userId). Without this a
+/// replace-mode restore would collide on its preserved primary keys, and
+/// "delete all my data" would leave every line behind." `llm` is `None` while
+/// the logs partition is degraded / absent — nothing (v4's `withRawDb(0)`).
+pub fn clear_format3_entities(
+    main: &Connection,
+    mount: Option<&Connection>,
+    llm: Option<&Connection>,
+) {
     for table in FORMAT3_MAIN_TABLES.iter().chain(V5_EXTRA_MAIN_TABLES) {
         let _ = main.execute(&format!("DELETE FROM \"{table}\""), []);
     }
+    // === P4.D355 ===
+    if let Some(llm) = llm {
+        let _ = crate::db::log_entries::LogEntriesRepository::new(llm).delete_all();
+    }
+    // === end P4.D355 ===
     // v4: `isMountIndexDegraded()` / a null handle → skip the sibling sweep.
     let Some(mount) = mount else { return };
     for table in FORMAT3_MOUNT_TABLES {
@@ -523,7 +545,7 @@ pub fn delete_user_data_on_writer(
     }
 
     // 5. The format-3 bulk truncate (v4 :164).
-    clear_format3_entities(main, mount);
+    clear_format3_entities(main, mount, llm);
 
     Ok(retired)
 }

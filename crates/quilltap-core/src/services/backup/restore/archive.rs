@@ -204,6 +204,9 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
     // P4.D317 (v4 `7953da3a0`, `archive.ts:275-276`): "Outfit history (4.11) —
     // optional, so an older archive just has none." Raw rows, unvalidated.
     let wardrobe_history = opt("data/wardrobe-history.json")?;
+    // P4.D355 (v4 `cc5f2347c`, `archive.ts:278` at `236c04e35`): the Log, read
+    // OPTIONALLY — "optional, so an older archive simply has none".
+    let log_entries = opt("data/log-entries.json")?;
 
     Ok((
         BackupData {
@@ -249,8 +252,10 @@ fn parse_tree(root: &Path) -> Result<(BackupData, Value), String> {
             text_replacement_rules,
             // P4.D264 (`archive.ts:320`).
             wardrobe_wear,
-            // P4.D317 (`archive.ts:325`) — the last key of the parsed `data`.
+            // P4.D317 (`archive.ts:325`).
             wardrobe_history,
+            // P4.D355 (`archive.ts:328`) — the last key of the parsed `data`.
+            log_entries,
         },
         manifest,
     ))

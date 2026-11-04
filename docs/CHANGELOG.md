@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — feat(backup): the Log rides a logical backup; the restore's step 22n-quater; restored uploads extracted through the indexed bridges (P4.D355, v4 cc5f2347c + H1)
+
+_Versions: core 0.0.1381._
+
+Ports v4 `cc5f2347c` at the `236c04e35` pin. `LogEntriesRepository` gains `find_all_entries` (oldest first, a fallback read: `[]` plus `Error reading all log entries` on a thrown query) and `delete_all` (`0` plus `Error deleting all log entries`). The backup collects the Log after the outfit history (DEBUG `Collected Log entries for backup {rowCount}`, `0` on a degraded or absent logs partition), stages `data/log-entries.json` on every archive including compact ones, and counts `manifest.counts.logEntries` last. The restore reads the file optionally, previews its count, and runs step 22n-quater after the outfit history: each line re-created under its own id and timestamps, a refused line one `Failed to restore Log entry: <ZodError>` warning, the degraded-logs WARN plus warning, and the DEBUG `Restored Log entries {total, restored}` on every restore; `RestoreSummary.logEntries` follows `wardrobeHistory`. New-account restores remap each line's `id` / `chatId` / `characterId` (a null character passes through). `clear_format3_entities` takes the llm-logs connection and empties the Log, so both a `replace` restore and "delete all my data" clear it. The backup's degraded llm-logs read now logs v4's `Error finding entities by filter`. The restore's two file-replay sites switch to P4.D354's `_indexed` bridges (HANDOFF H1), so a restored native-text upload is extracted, chunked and enqueued as v4 does; P4.D354's `bridge_callers_census` goes red by design (zero deprecated callers). Harness: the backup, restore-state, preview, uuid-remap, delete-data and export families grown over v4's real code (the P4.D327 "no Log file" walk retired by the pin dump; a derived `restore-archive-log-entries.zip`; the restore census 83 → 86 in both whitelists; a `.qtap` no-Log tripwire); two new fallback homes; the two warning literals pinned.
+
 #### 2026-11-02 — The rest of P4.D354 Tier 1: persistent sync targets, the container browse and CLI defaults, the mount-chunk guard, the PDF reader WARN
 
 _Versions: core 0.0.1381, cli 0.0.36._

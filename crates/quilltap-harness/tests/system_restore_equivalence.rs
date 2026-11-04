@@ -96,6 +96,8 @@ fn archive_for(name: &str) -> &'static str {
         "preview_inventory" => "restore-archive-inventory.zip",
         // [P4.D351]: the template count over the derived Novel-template archive.
         "preview_novel_template" => "restore-archive-novel-template.zip",
+        // [P4.D355] the 44th key (`logEntries: 4`, v4 `preview.ts:75`).
+        "preview_log_entries" => "restore-archive-log-entries.zip",
         other => panic!("unknown oracle case {other}"),
     }
 }
@@ -183,7 +185,8 @@ fn system_restore_equivalence() {
     // P4.D317: + `preview_outfit_history` (the 43rd key over a history-carrying one).
     // [P4.D327]: + `preview_inventory` (no preview key moves).
     // [P4.D351]: + `preview_novel_template` (the template count, 1 → 6).
-    assert_eq!(seen, 10, "expected all ten preview cases in the oracle");
+    // [P4.D355]: + `preview_log_entries` (the 44th key, `logEntries`).
+    assert_eq!(seen, 11, "expected all eleven preview cases in the oracle");
     assert!(
         failures.is_empty(),
         "{} restore difference(s):\n{}",

@@ -100,8 +100,11 @@ pub fn create_manifest(
     n(c, "textReplacementRules", data.text_replacement_rules.len());
     // P4.D264 (v4 `3ee3b1342`, `backup-service.ts:511`).
     n(c, "wardrobeWear", data.wardrobe_wear.len());
-    // P4.D317 (v4 `7953da3a0`, `backup-service.ts:502`): the LAST count.
+    // P4.D317 (v4 `7953da3a0`, `backup-service.ts:502`).
     n(c, "wardrobeHistory", data.wardrobe_history.len());
+    // P4.D355 (v4 `cc5f2347c`, `backup-service.ts:509` at `236c04e35`): the
+    // LAST count.
+    n(c, "logEntries", data.log_entries.len());
 
     let mut m = Map::new();
     m.insert("version".into(), Value::String("1.0".into()));
@@ -114,4 +117,27 @@ pub fn create_manifest(
     }
     m.insert("counts".into(), Value::Object(counts));
     Value::Object(m)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P4.D355 (v4 `cc5f2347c`, `backup-service.ts:509`): `logEntries` is the
+    /// LAST manifest count (byte order — `serde_json`'s `Map ==` is
+    /// order-blind).
+    #[test]
+    fn log_entries_is_the_last_count() {
+        let mut data = crate::services::backup::collect::p4d293_tests::every_collection(Vec::new());
+        data.log_entries = vec![
+            serde_json::json!({"id": "l1"}),
+            serde_json::json!({"id": "l2"}),
+        ];
+        let m = create_manifest("u", &data, "v", "t", HostCounts::default(), false);
+        let counts = serde_json::to_string(&m["counts"]).unwrap();
+        assert!(
+            counts.ends_with(r#""wardrobeHistory":0,"logEntries":2}"#),
+            "{counts}"
+        );
+    }
 }

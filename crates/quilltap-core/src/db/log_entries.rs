@@ -332,6 +332,45 @@ impl<'c> LogEntriesRepository<'c> {
         cleanup_old_entries_on(Ok(self.conn), retention_days, now_ms, tz)
     }
 
+    /// v4 `findAllEntries` (`cc5f2347c`, `log-entries.repository.ts:136-148`
+    /// at `236c04e35`) — "Every entry, oldest first — the backup's read.
+    /// Answers empty while the logs DB is degraded, so a backup still
+    /// completes without the Log." A FALLBACK read: a thrown query is `[]`
+    /// with `Error reading all log entries`; the DEBUG fires only on success.
+    pub fn find_all_entries(&self) -> Vec<LogEntryRow> {
+        super::fallback::log_entries_read_all_or_empty(|| {
+            let mut stmt = self.conn.prepare(&format!(
+                r#"SELECT {LOG_ENTRY_COLUMNS} FROM log_entries ORDER BY "createdAt" ASC"#
+            ))?;
+            let rows = stmt
+                .query_map([], row_from)?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            tracing::debug!(
+                target: "quilltap::db",
+                returned = rows.len(),
+                "All log entries read"
+            );
+            Ok(rows)
+        })
+    }
+
+    /// v4 `deleteAll` (`:159-170`) — "Delete every entry. Used by replace-mode
+    /// restore and "delete all my data", whose per-user deletes never reach
+    /// this instance-wide table. Returns how many went (0 while the logs DB is
+    /// degraded)." A thrown statement is `0` with `Error deleting all log
+    /// entries`.
+    pub fn delete_all(&self) -> usize {
+        super::fallback::log_entries_delete_all_or_zero(|| {
+            let deleted = self.conn.execute("DELETE FROM log_entries", [])?;
+            tracing::info!(
+                target: "quilltap::db",
+                deletedCount = deleted,
+                "Deleted all log entries"
+            );
+            Ok(deleted)
+        })
+    }
+
     /// One entry by id — a test / tooling read (v4 inherits `findById`).
     pub fn find_by_id(&self, id: &str) -> Result<Option<LogEntryRow>, DbError> {
         Ok(self
@@ -474,6 +513,91 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&f).unwrap(),
             r#"{"chatId":"c","to":"t","limit":5}"#
+        );
+    }
+
+    // === P4.D355 — v4 `log-entries-repository.test.ts`'s three `cc5f2347c`
+    // `it`s, by name ===
+
+    fn log_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"CREATE TABLE "log_entries" ("id" TEXT PRIMARY KEY, "message" TEXT NOT NULL,
+               "chatId" TEXT NOT NULL, "characterId" TEXT, "createdAt" TEXT NOT NULL,
+               "updatedAt" TEXT NOT NULL)"#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn plant(conn: &Connection, id: &str, created_at: &str) {
+        conn.execute(
+            "INSERT INTO log_entries VALUES (?1, 'line', 'c', NULL, ?2, ?2)",
+            [id, created_at],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn find_all_entries_reads_every_entry_oldest_first() {
+        let conn = log_conn();
+        plant(&conn, "b", "2026-01-02T00:00:00.000Z");
+        plant(&conn, "c", "2026-01-03T00:00:00.000Z");
+        plant(&conn, "a", "2026-01-01T00:00:00.000Z");
+        let (rows, lines) = crate::test_support::captured_with(|| {
+            LogEntriesRepository::new(&conn).find_all_entries()
+        });
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+        assert_eq!(rows[0].character_id, None);
+        assert_eq!(
+            lines,
+            ["DEBUG quilltap::db All log entries read returned=3"],
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn delete_all_removes_every_entry_and_counts_them() {
+        let conn = log_conn();
+        plant(&conn, "a", "2026-01-01T00:00:00.000Z");
+        plant(&conn, "b", "2026-01-02T00:00:00.000Z");
+        plant(&conn, "c", "2026-01-03T00:00:00.000Z");
+        let repo = LogEntriesRepository::new(&conn);
+        let (n, lines) = crate::test_support::captured_with(|| repo.delete_all());
+        assert_eq!(n, 3);
+        assert_eq!(
+            lines,
+            ["INFO quilltap::db Deleted all log entries deletedCount=3"]
+        );
+        let (n, lines) = crate::test_support::captured_with(|| repo.delete_all());
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            ["INFO quilltap::db Deleted all log entries deletedCount=0"]
+        );
+        assert!(repo.find_all_entries().is_empty());
+    }
+
+    #[test]
+    fn find_all_entries_and_delete_all_fall_back_on_a_thrown_query() {
+        // No table: v4's `withRawDb` fallback arm — `[]` / `0` with the ERROR,
+        // and NO success DEBUG / INFO (the silence leg).
+        let conn = Connection::open_in_memory().unwrap();
+        let repo = LogEntriesRepository::new(&conn);
+        let (rows, lines) = crate::test_support::captured_with(|| repo.find_all_entries());
+        assert!(rows.is_empty());
+        assert_eq!(
+            lines,
+            ["ERROR quilltap::db Error reading all log entries collection=log_entries error=no such table: log_entries"],
+            "{lines:?}"
+        );
+        let (n, lines) = crate::test_support::captured_with(|| repo.delete_all());
+        assert_eq!(n, 0);
+        assert_eq!(
+            lines,
+            ["ERROR quilltap::db Error deleting all log entries collection=log_entries error=no such table: log_entries"],
+            "{lines:?}"
         );
     }
 
