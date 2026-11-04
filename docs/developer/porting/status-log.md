@@ -193929,6 +193929,148 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - **`almanack_tier2_equivalence`**: RED on `customToolIntervention` (the keystone / P4.D345) and on `persisted_after_generate`. In the latter both sides now EXTRACT the diagnostics `.md` (a pre-existing gap converged). What remains is the drifted text plus `chunkCount` 5 vs 0: v4's oracle dumps before its un-awaited reindex lands, while v5's is synchronous. **FINDING for the unifier:** the almanack oracle needs a drain (not this lane's file).
 - **Census + gate.** `doc_mount_fallback_sites_census` gains ONE row, `read_database_blob_text` → `find_by_mount_point_and_path` as `other-repo` (the blob repo's link read; other-repo 19 → 20). Gate: fmt / both clippy passes clean; `cargo test --workspace` 867 `test result: ok`. Its reds are the census (fixed above, then green by name) and pin drift owned by other lanes: `cli_differential`'s three completion templates; the custom-tool / public-schema / `.qtap` schema embed guards; `provider_sdk_version_guard`. All of them read the pin, where v4 moved those files past `322a5488e`. None touches this lane's code.
 
+## P4.D355 — the Log carrier + terminal bugs 267 / 268 (lane `claude/p4.d355-log-carrier-terminal-1976d8`, pin `236c04e35`, 2026-11-04) — LANE RECORD
+
+**Base.** Cut from `FILES` = `1976d88a1` (P4.D354's Tier-1 commit, recorded in its status header on `claude/p4.d354-mount-index-files-8976915ea`). The session started on `main`'s checkout and moved to `.claude/worktrees/p4d355`. There was no pre-start and no rebase. Commits: `3813319fa` (A — the Log carrier + H1) and `3d761652c` (B — the terminal half + C5 / C6 / R-O), plus the docs commit carrying this record.
+
+**§2 probe (observation, §R.2), 2026-11-03 23:37 CST.** v4 `main` is at `013b99b5d` ("dev: started 4.13.0 development"). That is about 70 commits past the pin, including the 4.12.0 release `7bdb45873`. The tree is clean, on branch `main`; `bugfix` is at `5cde81c68`. Recorded only: the pin is unaffected.
+
+**Pin.** `/tmp/qt-v4-pin-p4d355-236c04e35` is at `236c04e35…`, with `package.json` at `4.12.0-dev.0`. The root `npm ci --offline` passed (rc 0): openai 7.45.0, driver 12.11.1, pdfjs-dist 6.4.299, plugin-types 2.9.0, zod 4.6.7.
+
+**Pin ruling (human, 2026-11-02).** Symlink classes (2) and (3) were not used. `.claude/pin-plugin-sdks.sh` failed `ENOTCACHED` on its first plugin dir (`@quilltap/plugin-utils` packument — the same failure P4.D359 saw). This lane's oracles need no plugin dir. They do need `packages/quilltap/node_modules/better-sqlite3-multiple-ciphers`, which the jest cases hard-code. So I ran the script's own CLI half by hand: the same offline floor install, inside the pin. It passed (rc 0): driver 12.11.1, SQLite 3.53.2, cipher chacha20.
+
+**§5.4 dumps BEFORE any v5 change (the pin's real output).**
+- `system-backup.test.ts`, every case:
+  - (a) `data/log-entries.json` is staged as `[]\n` (3 bytes);
+  - (b) the `manifest.counts` tail is `…, wardrobeWear, wardrobeHistory, logEntries`, with `logEntries: 0` last;
+  - (c) `backup_with_inventory` is the same;
+  - no path names terminal sessions.
+- `system-restore.test.ts`:
+  - summary key tail `…, wardrobeHistory, logEntries, embeddingReconcile, warnings`;
+  - preview tail `…, wardrobeHistory, logEntries, warnings`.
+- Saved as `/tmp/p4d355/BEFORE-oracle-system-{backup,restore}.ndjson`.
+
+**Pins retired by those dumps:**
+- (i) `system_backup_equivalence.rs`'s `[P4.D327]` no-Log-file walk is DELETED. It is replaced by the positive assert on every case: the file is staged, its row count is right, and `counts.logEntries` is the LAST key (compared as `to_string` bytes).
+- (ii) `system-backup.test.ts`'s premise comment for `backup_with_inventory` is re-worded.
+- (iii) P4.D327 item 15's regression line and item 25 are RETIRED. The orders themselves are not edited.
+- (iv) P4.D331's status-header note is closed.
+
+**Red-first counts.**
+- `system_backup_equivalence` before the port: 80 differences (every case: the `logEntries` count plus the missing `data/log-entries.json`).
+- The restore census lines were invisible in the oracle until the TS list moved: `Restored Log entries` = 0 before, 74 after.
+
+**Landed, Tier 1:**
+- **Item 1.** `find_all_entries` and `delete_all`, through two new fallback homes, `Error reading all log entries` and `Error deleting all log entries` (`fallback_home_guard` HOME_MESSAGES +2). Unit tests are named after v4's three `it`s, with the fallback silence leg.
+- **Item 2.** collect / manifest / staging (`log-entries.json` is the last data file on full and compact archives; `logEntries` is the last count). Unit tests pin the ascending read, the DEBUG at `rowCount=2` and `0`, and the last-key order.
+- **Item 3.** archive / preview / mod / the counters.
+- **Item 4.** 22n-quater, with v4's three lines on `quilltap::restore`.
+- **Item 5.** The new-account remap, placed in v4's memo slot (after the outfit history, before the instance settings).
+- **Item 6.** `clear_format3_entities(main, mount, llm)`, with the Log arm between the main and mount loops; module-doc note 5.
+- **Item 7.** The census goes 83 → 86 in both whitelists, with doc sentences. The two warning literals are pinned in `import_warning_text_guard`. A re-grep of `restore.ts`'s `+moduleLogger` lines over the span gives exactly 3.
+- **Item 8.** The retirements above.
+- **Item 9.**
+  - `restore-archive-log-entries.zip` is DERIVED by `derive-restore-archive-log-entries.py`. The base md5 is `6b076003bacf8db22c1bf8440fac09d6` and unchanged; the new archive's md5 is `c18c310a7408e001667d1165835de909`.
+  - `restore_archive_derive.derive` gained ONE optional `counts=` manifest patch.
+  - Four cases (preserve / new_account / replace / degraded) plus `preview_log_entries` (`logEntries: 4`). The family's case count went 71 → 75 and the preview count 9 → 10.
+  - The new-account case joined the two existing RULED carves (the placement divergence, and `V5_STATS_GAP`) — the same seeded `portrait.png` replay.
+  - Measured v4:
+    - preserve and replace: `restored=3`, plus one refused row;
+    - replace: `Deleted all log entries {deletedCount=2}` (the two stale lines planted by `LOG_ENTRIES_STALE_SQL` are gone);
+    - degraded: `Skipping Log restore … {rowCount=4}`, plus the warning and `total=4 restored=0`, with nothing written;
+    - an un-carried `characterId` is minted afresh by the remapper.
+  - The refused row's warning bytes are equal on both sides: `Failed to restore Log entry: ` followed by Zod 4's pretty JSON array (`too_small` on `message`, `minimum: 1`).
+  - **The degraded mechanism** (the family had none): v4 flips its own `globalThis.__quilltapLLMLogsDegraded` after the baseline dump; v5 reopens with its logs partition pointed at a non-database file, giving `PartitionState::Degraded` (asserted). Each instance's own logs file is untouched.
+  - `Deleted all log entries` is compared byte for byte on every case (the new `LOG_REPO_MESSAGES`).
+  - `restore_vintage_state` ran as a regression: green, 10/10, with no boot-align change.
+- **Item 10.**
+  - `backup_with_log_entries`: three rows, ascending, `characterId: null` serialised, `counts.logEntries: 3`.
+  - `backup_log_entries_degraded`: a corrupt logs copy on both sides (non-vacuity: v4's `isLLMLogsDegraded()` and v5's `PartitionState`) gives `[]` and the DEBUG at `rowCount=0`.
+  - The `c50cdddc6` regression (no `terminal_sessions` path or count) is checked on every case on both sides.
+  - Surfaced in passing and closed: v4's degraded `llmLogs.findAll` logs `Error finding entities by filter`, which v5 had swallowed silently. It now logs through the home, before the Log DEBUG (v4's order).
+- **Item 11 (H1 consumed).** `restore_one_file` now calls `write_{project_file,user_upload}_to_mount_store_indexed` with `default_text_extractor()`. P4.D354's `bridge_callers_census` (in `file_storage.rs`, P4.D354's file) is RED BY DESIGN: zero deprecated callers. Left for the unifier (P4.D354 R-8). The uploads restore cases show no mount-index divergence, so v4's extraction matches.
+- **Item 12.**
+  - `terminate(id, grace_ms)` via a private `signal(shared, SignalKind)`, with the detached escalation thread.
+  - Three `[PTY]` lines carrying v4's `module=pty-manager` child binding.
+  - `TERMINATE_NON_UNIX_IS_KILLER` is documented on the function.
+  - Host tests named after v4's `pty-termination.test.ts`: escalation (trap HUP; the WARN with `graceMs=300`); no escalation after a HUP exit (silence leg); the unknown-id DEBUG.
+- **Item 13.** `dispose_chat_sessions` (INFO / DEBUG by count, no Ariel flush); `kick_all_for_chat` is DELETED. The three beats it drove were re-aimed:
+  - `terminal_pty.rs` `kick_all_for_chat_removes_and_kills` → `dispose_chat_sessions_terminates_only_the_chats_sessions_and_drops_them`: 2 of 3, the INFO at `count=2`, the 0 + DEBUG arm, and rows still stamped by the exit sequence.
+  - `terminal_pty.rs`'s summary-taken silence: the dispose takes no summary.
+  - `terminal_ariel_e2e.rs`'s race beat is re-aimed at `terminate` (the `?action=kill` call). The exit sequence's flush racing the idle timer posts ONE summary.
+- **Item 14.** Both routes are on `terminate`, plus the `[Terminals API] Killing session` DEBUG (Tier 2 item 20). New web binary `terminal_terminate_routes.rs`: kill → `{ok:true}` at once, alive through SIGHUP, escalated after 3 s with the WARN; DELETE likewise.
+- **Item 15 (C5).**
+  - The defaulted trait method, plus the host override.
+  - **Placement (R-4):** the hook is the ONE helper `dispose_deleted_chat_terminals` in the vault bridge, called after the row delete answers `true` (v4's position).
+  - `chat_delete` and **`chat_delete_dispatch` both take the probe**. Scope note: the order named only the engine arm, but the REST `DELETE /api/v1/chats/{id}` edge (`quilltap-web/src/chats_routes.rs`) calls `chat_delete_dispatch` directly. It now passes the host's terminal manager. No sibling lane touches that file.
+  - Core unit tests are named after v4's `chats-delete-terminals.test.ts`.
+  - An end-to-end web test covers both doors (dispatch `chatDelete` and REST DELETE): INFO `count=1`, the session gone (404), no rows left.
+- **Item 16 (R-O).**
+  - `delete_by_chat_id` plus the fenced block in `ChatsRepository::delete` (WARN `[Chats] Failed to delete terminal sessions for chat` — v5's own line, R-15).
+  - The `chat_delete_equivalence` census gains `terminal_sessions`.
+  - The committed chat-delete fixture HAS NO `terminal_sessions` table (the order's premise was false), so every case creates it in-case on both sides. The v4 side uses v4's REAL `add-terminal-sessions-table` (FK) plus geometry migrations; the v5 side uses the generateDDL shape (no FK). Each plants 2 sessions of CHAT_FULL and 1 of CHAT_SHARED, self-checked.
+  - v4's cascade: `delete_full` leaves only `…003`; `delete_shared_summary` leaves `…001` and `…002`. v5 matches on every delete case.
+- **Item 17 (C6).**
+  - `list_transcripts` keeps the contract NAME with a richer TYPE (R-13): `Result<Option<Vec<TranscriptEntry{name,path,is_file,mtime_ms}>>, String>`. `Ok(None)` is a missing dir. `transcripts_dir_display` is defaulted.
+  - **The round block's C6 copy (`Vec<TranscriptFile>`, ENOENT → `Ok(vec![])`) must be corrected at unification.**
+  - A stat failure folds to `is_file: false` (a silent skip, where v4 WARNs on a non-ENOENT stat — recorded).
+- **Item 18.**
+  - `sweep_orphaned_transcripts`, step 6b, `orphanedTranscriptsSwept` in v4's slot, `orphan-transcripts`.
+  - `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` lives in `queue_service`.
+  - `path.resolve` is lexical (`std::path::absolute`), not `canonicalize`.
+  - **R-6:** `unlink_transcript -> Result<bool, String>`.
+  - **R-7:** the `probe` parameter on `run_scheduled_maintenance`. The host threads `terminal_slot.clone()` into `maintenance_loop`.
+  - The oracle plants four files with `utimesSync` (d4's named transcript, a 48 h orphan, a 5-min orphan, an `init-….bashrc`). v4 measured `{scanned: 3, deleted: 1}` — the `.bashrc` is not scanned.
+  - Its three lines are compared order-insensitively (the listing order is the filesystem's) via the logger splice. The harness drives the host's REAL `FsTranscriptStore`.
+- **Item 19.** No `host_boot_*` test pins the completion-log keys. Only `scheduled_maintenance.rs`'s own unit test does; it gained the `terminalsJson < orphanedTranscriptsSweptJson < orphanedThumbnailsSweptJson` assert.
+
+**Tier 2 landed:**
+- 20 (above).
+- **21 MEASURED REACH:** v4's terminals POST has no chat-type gate (`route.ts` validates `chatId` as a uuid only), so a Brahma or help chat CAN own a session. Both deletes now dispose: `api/brahma.rs::brahma_console_delete` and `api/help_chats.rs::help_chat_delete` gain `probe`. The help path disposes before its INFO (inside v4's `repos.chats.delete`). Two more one-line `engine.rs` arms: `BrahmaConsoleDelete` and `HelpChatDelete` → `ready_db_and_terminal_probe()` (H3 extended).
+- 22: every `[PTY]` line is pinned with a silence leg.
+- 23: `restore_vintage_state` and `system_restore_guards_equivalence` are green.
+- 24: the `.qtap` no-Log tripwire in `system_export_equivalence`, on every ndjson case (fired 0 times).
+
+**Tier 3 recorded:**
+- 25 `TERMINATE_NON_UNIX_IS_KILLER`.
+- 26 the job-child sentence, NO-PORT (in the vault-bridge doc).
+- 27 a listing `Err` → step-6b WARN plus `orphan-transcripts` (v4-unreachable; under the file's standing error-shape note; a unit test with `Err("EACCES")`).
+- 28 / 29 / 30 as ordered.
+
+**Additional fixture / oracle notes:**
+- `system-delete-data.test.ts`: at the pin v4's wipe reads `memories.keystone` and the committed pair predates it. Every delete case is a 500 (`no such column: keystone`) — pre-existing pin drift. Each per-case copy now runs v4's REAL `add-memory-keystone-v1` when `shouldRun()` is true, which is a no-op once P4.D341's widened fixture lands. With that, v4 empties the Log: `llm.log_entries` goes 3 → 0 on every wipe. Three Log lines are planted on every copy, both sides, self-checked.
+- `uuid-remap-corpus.json` was regenerated (the file table +1 and the new case).
+- I wrote, by mistake, the SHARED `/tmp/qt-maint-ops-{main,mount}.db` and `/tmp/oracle-maintenance-ops.ndjson` once, through the sweep recipe's `>` redirect. They hold this lane's pin build (a superset oracle). Every lane output now lives under `/tmp/p4d355/`.
+
+**Regen recipe (each family).**
+- `/tmp/p4d355/bin/regen.sh <family>`. It is `recipe_sweep.py --show <family>`'s regen half, with every `/tmp/<x>` output rewritten to `/tmp/p4d355/<x>` and `cd ~/source/quilltap-server` rewritten to the pin. Families: `system_backup_equivalence`, `system_restore_state` (covers `system_restore_equivalence` too), `backup_uuid_remap_equivalence`, `system_delete_data_equivalence`, `maintenance_ops_tier2_equivalence`, `chat_delete_equivalence`, `system_export_equivalence`, and `ariel_writers_tier3_equivalence` (for the e2e fixture).
+- Env block: `/tmp/p4d355/bin/env.sh`.
+
+**Gate (the tip; the intermediate commit A was not separately gated).**
+- fmt clean; clippy clean on both feature sets.
+- `cargo test --workspace --no-fail-fast`: 874 binaries, 5,793 passed / 10 failed / 3 ignored.
+- **Every red is attributed:**
+  1. `bridge_callers_census` — H1, by design.
+  2. `system_backup_equivalence` — 60 file diffs, the same five files every case (`characters` / `chat-settings` / `chats` / `memories` / `roleplay-templates`: keystone / diagram / Novel-template pin drift). There are no Log-file or log-line diffs.
+  3. `system_restore_state` — the same drift buckets: the `roleplay_templates` BASELINE provisioning, `main.*`, `llm_logs.storytellerRoundId`, and the `canDrawDiagrams` vault keys in `doc_mount_documents`. There are zero `log_entries`, census, warning or summary failures.
+  4. `chat_delete_equivalence` — `reset_state` / `stop_impersonate*` 500s that are present in the PRE-LANE oracle too (`/tmp/p4d355/BEFORE-oracle-chat-delete.ndjson`).
+  5. `system_export_equivalence` — 15 `stream_*` cases, keystone / diagram drift; the tripwire fired 0 times.
+  6–8. The three schema-vendor guards (`qtap-export`, `custom-tool` × 2) — P4.D341 / P4.D360 re-vendors.
+  9. `cli_differential` — completion bash / zsh / fish and `recall-replay` (P4.D356 / P4.D360).
+  10. `ariel_writers_tier3_equivalence` — 1 cell, `chat_messages row 0 content (bytes only)`: the decoded text is equal and the compressed bytes differ. It is outside this lane's code. **FINDING for the unifier** (an owner is not identified).
+- Zero SKIP in this lane's families (each ran by name with its oracle). `log_entries_tier2`, `log_tools` and `terminal_sessions_tier2` ran without their oracle env (they count as skipped; regressions only).
+
+**HANDOFFs:**
+- H1 — consumed. The unifier deletes the deprecated pair and rewrites the census.
+- H2 — P4.D360: `help/ariel.md:15,69-71`, `help/system-backup-restore.md:52,62`, `help/the-log.md:41`. `c50cdddc6`'s code half is ratified with item 10's measurement.
+- H3 — `engine.rs`: THREE one-line arms (ChatDelete, BrahmaConsoleDelete, HelpChatDelete).
+- H4 — P4.D341: `logEntries` is last in `BackupData`, the remapped bag, the preview and `RestoreSummary`.
+- H5 — the `.qtap` Log tripwire.
+
+**💸 dogfood rows:** as in the order's §💸, plus the two extra doors for C5: a REST `DELETE /api/v1/chats/{id}` and a Brahma / help chat with a shell.
+
+**Versions at close:** core 0.0.1382, host 0.0.219, web 0.0.252. harness frozen; cli / tauri / SPA unchanged.
+
 ### P4.D354 — the rest of Tier 1 (2026-11-02): persistent targets, browse / CLI container defaults, the mount-chunk guard, the PDF reader WARN
 
 - **C7.** NEW `services/mount_index/persistent_target.rs`. `SyncRefusalCode::TargetNotPersistent` (`TARGET_NOT_PERSISTENT`, not a conflict → 400; the `is_conflict` doc now reads "the other three").

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): P4.D355 lane record and status header
+
+_Docs-only change._
+
+The lane record (base, pin ruling, §5.4 dumps, item-by-item proofs, every gate red attributed, handoffs) and the order's LANE COMPLETE header.
+
 #### 2026-11-04 — fix(terminal): Kill and DELETE send SIGHUP then SIGKILL; deleting a chat ends its shells and rows; the daily orphan-transcript sweep (P4.D355, v4 85c002822, bugs 267 / 268)
 
 _Versions: core 0.0.1382, host 0.0.219, web 0.0.252._
