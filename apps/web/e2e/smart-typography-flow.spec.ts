@@ -29,7 +29,7 @@ const SMART_TYPOGRAPHY_COLUMN_LANDED = true;
  * paint itself needs no server (the bag absent ⇒ v4's `?? true`) and runs LIVE.
  * A named constant, never a capability probe (`round-plan-takeaways`).
  */
-const P4D356_SERVER_LANDED = false;
+const P4D356_SERVER_LANDED = true;
 const P4D356_GATE_REASON =
   'ACTIVATE-AT-UNIFY: needs P4.D356 punctuationWarnings PUT arm + read fill (wired at unification)';
 

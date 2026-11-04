@@ -45,7 +45,7 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
  * `true`. Against an unported server the card's dispatch is a no-op, so the
  * toast never fires and the style stays `handDrawn`.
  */
-const P4D349_SERVER_LANDED = false;
+const P4D349_SERVER_LANDED = true;
 const GATE_REASON = 'awaits P4.D349’s canDrawDiagrams / diagramStyle character keys and the C6 wire (wired at unification)';
 
 const DG_PORT = 4356;

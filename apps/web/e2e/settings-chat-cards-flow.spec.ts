@@ -51,7 +51,7 @@ const P4D251_SERVER_LANDED = true;
  * whose PUT arm + read-time fill are the SIBLING server lane P4.D356's (C7).
  * Until it lands the key is dropped and a reload reads `?? true` again.
  */
-const P4D356_SERVER_LANDED = false;
+const P4D356_SERVER_LANDED = true;
 const P4D356_GATE_REASON =
   'ACTIVATE-AT-UNIFY: needs P4.D356 punctuationWarnings PUT arm + read fill (wired at unification)';
 

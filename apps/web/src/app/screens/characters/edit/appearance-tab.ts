@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+  linkedSignal,
+  signal,
+} from '@angular/core';
 import { injectQuery, injectQueryClient } from '@tanstack/angular-query-experimental';
 
 import { CoreClient } from '../../../core/core-client';
@@ -67,7 +75,12 @@ function loadPhysicalDescription(pd: CharacterPhysicalDescription | null): Physi
  * `AestheticEditorField.tsx:117`) and load-bearing: the field absorbs exactly
  * one emit, so an editor that mounts ahead of its content would surface the load
  * as an edit and let a plain Save rewrite the stored bytes in normalized form.
- * Each draft is therefore seeded inside its `queryFn`. (v4 pairs its gate with a
+ * The physical draft is therefore DERIVED from the query's data (a
+ * `linkedSignal`), so it is seeded the moment data exists — including data the
+ * edit page's own `characterKeys.detail` query already cached, which never runs
+ * this tab's `queryFn` (the unify-236c04e35 finding: a seed inside the `queryFn`
+ * left the form empty whenever the tab opened within the 5 s `staleTime`, and a
+ * Save then wrote blank prompts). (v4 pairs its gate with a
  * post-load `remountKey` bump; that is redundant once the editor cannot mount
  * empty, and a re-key alongside a value change would double-emit.)
  *
@@ -274,26 +287,26 @@ export class CharacterAppearanceTab {
 
   protected readonly hints = PROMPT_FIELD_HINTS;
 
-  protected readonly physicalForm = signal<PhysicalDescriptionForm>(EMPTY_PHYSICAL_FORM);
   protected readonly savingPhysical = signal(false);
 
   protected readonly guidelinesDraft = signal('');
   protected readonly savingGuidelines = signal(false);
   protected readonly guidelinesError = signal<string | null>(null);
 
-  // Each draft is seeded INSIDE its queryFn, so it is already set the moment the
-  // query leaves the pending state and the template mounts that block's editors
-  // (see the class doc — an editor must never mount ahead of its content). v4
-  // re-seeds on every fetch too (`DescriptionsTab.tsx:65-67` runs on each
-  // `fetchCharacter`), including the post-save refetch.
   protected readonly characterQuery = injectQuery(() => ({
     queryKey: characterKeys.detail(this.characterId()),
-    queryFn: async () => {
-      const character = await fetchCharacter(this.core, this.characterId());
-      this.physicalForm.set(loadPhysicalDescription(character.physicalDescription));
-      return character;
-    },
+    queryFn: () => fetchCharacter(this.core, this.characterId()),
   }));
+
+  // Derived from the query's data, so it is already set the moment the query
+  // leaves the pending state — whichever `queryFn` filled the shared cache — and
+  // the template never mounts an editor ahead of its content (see the class
+  // doc). v4 re-seeds on every fetch too (`DescriptionsTab.tsx:65-67` runs on
+  // each `fetchCharacter`), including the post-save refetch.
+  protected readonly physicalForm = linkedSignal<PhysicalDescriptionForm>(() => {
+    const character = this.characterQuery.data();
+    return character ? loadPhysicalDescription(character.physicalDescription) : EMPTY_PHYSICAL_FORM;
+  });
 
   /**
    * v4 `CharacterEditView.tsx:343-347`: `character?.characterDocumentMountPointId

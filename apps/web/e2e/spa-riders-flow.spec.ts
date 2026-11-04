@@ -28,8 +28,8 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
  * `group_doc_mount_links` materialized from the committed D23 dump (the
  * `inventory-flow.spec.ts` recipe, verbatim) and the shared llm-logs fixture
  * copied in for the Inspector beat. The mock answers with a line that NAMES
- * Aria — absent from nothing here, but the chips beat (gated) seats a
- * different chat.
+ * Bram twice — a workspace character not seated in Solo Voyage (Aria and Cleo
+ * are) — for the chips beat (d).
  *
  * **LIVE beats** need only this branch: (a) the always-on launcher and the
  * floating console over a `qt-modal`; (b) the tab and the floating console on
@@ -41,16 +41,16 @@ import { startMockLlm, type MockLlm } from './support/mock-llm';
  * capability probe; each gated beat calls `test.skip(…)` first.
  */
 // ACTIVATE-AT-UNIFY: P4.D341's keystone column / admission / API (C8).
-const P4D341_LANDED = false;
+const P4D341_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D347's `chatAbsentMentions` arm (C5) — AND P4.D344 applying this lane's
 // `handoffs/p4.d359-salon-conversation.patch` (the Salon's AbsentMentionsSlot).
-const P4D347_SERVER_LANDED = false;
+const P4D347_SERVER_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D349's vault keys (C6 — `humanoid`, `pronounGuidance`).
-const P4D349_SERVER_LANDED = false;
+const P4D349_SERVER_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D350's R-1 location-level `inventory` publish.
-const P4D350_PUBLISH_LANDED = false;
+const P4D350_PUBLISH_LANDED = true;
 // ACTIVATE-AT-UNIFY: P4.D358's `qt-modal` Escape (R-N) carrying this lane's floating-layer guard.
-const P4D358_MODAL_ESCAPE_LANDED = false;
+const P4D358_MODAL_ESCAPE_LANDED = true;
 
 const PORT = 4358;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -60,6 +60,19 @@ const DATA_DIR = resolve(INSTANCE_DIR, 'data');
 const SERVER_LOG = resolve(ARTIFACTS_DIR, 'spa-riders-server.log');
 
 const SOLO_VOYAGE_CHAT_ID = 'c1000000-0000-4000-8000-000000000001';
+// The pair's characters: Aria (seated in Solo Voyage with Cleo), Bram and Dax (seated nowhere there).
+const ARIA_ID = 'a1000000-0000-4000-8000-000000000001';
+const BRAM_ID = 'a1000000-0000-4000-8000-000000000002';
+const DAX_ID = 'a1000000-0000-4000-8000-000000000004';
+/** The mock's reply: names Bram — absent from Solo Voyage — twice; only the first is chipped. */
+const MOCK_REPLY = 'Bram would not approve. Bram never does.';
+/** Beat (c)'s planted ordinary memories of Aria's (ids, summaries; content is the summary + '.'). */
+const KEYSTONE_PLANTS = [
+  ['e3590000-0000-4000-8000-0000000000c1', 'Aria was born aboard the airship Meridian'],
+  ['e3590000-0000-4000-8000-0000000000c2', 'Aria cannot abide the smell of burnt toast'],
+  ['e3590000-0000-4000-8000-0000000000c3', 'Aria keeps her grandmother compass'],
+  ['e3590000-0000-4000-8000-0000000000c4', 'Aria swore never to fly over the Shattered Reach'],
+] as const;
 
 let server: ChildProcess | undefined;
 let mock: MockLlm | undefined;
@@ -97,6 +110,12 @@ test.describe('P4.D359 — the SPA riders', () => {
       ['main', 'projects'],
       ['main', 'groups'],
       ['main', 'chat_settings'],
+      // Beat (c)'s manual memories need a fitted BUILTIN vocabulary and its
+      // embedding ledger; beat (j) needs templates to choose between (the boot
+      // seeds the built-ins once the table exists). The pair predates all three.
+      ['main', 'tfidf_vocabularies'],
+      ['main', 'embedding_status'],
+      ['main', 'roleplay_templates'],
       ['mountIndex', 'group_doc_mount_links'],
     ] as const) {
       const create = freshSchema[partition].find((sql) =>
@@ -142,7 +161,27 @@ test.describe('P4.D359 — the SPA riders', () => {
       );
     }
 
-    mock = await startMockLlm('Aria would not approve.', MOCK_LLM_PORT);
+    // Beat (c): four more ordinary memories of Aria's, which the beat marks as
+    // keystones through the edit route to fill the subject's limit of five.
+    // Planted, not created: on this pair's tiny TF-IDF vocabulary admission
+    // reads short new sentences as the same memory and REINFORCES instead of
+    // inserting (measured: six creates left four rows).
+    for (const [id, fact] of KEYSTONE_PLANTS) {
+      runCliWrite(
+        cli,
+        `INSERT INTO memories (id, characterId, aboutCharacterId, chatId, projectId, content, summary, keywords, tags, ` +
+          `importance, embedding, source, witnessedContext, sourceMessageId, lastAccessedAt, reinforcementCount, ` +
+          `lastReinforcedAt, relatedMemoryIds, reinforcedImportance, createdAt, updatedAt, occurredAt, narrativeTime, ` +
+          `entities, kind, tier, supersededById, consolidatedFrom, consolidatedAt, supersededAt, keystone) ` +
+          `SELECT '${id}', characterId, aboutCharacterId, chatId, projectId, '${fact}.', '${fact}', keywords, tags, ` +
+          `importance, embedding, source, witnessedContext, sourceMessageId, lastAccessedAt, reinforcementCount, ` +
+          `lastReinforcedAt, relatedMemoryIds, reinforcedImportance, createdAt, updatedAt, occurredAt, narrativeTime, ` +
+          `entities, kind, tier, supersededById, consolidatedFrom, consolidatedAt, supersededAt, 0 ` +
+          `FROM memories WHERE id = '0e000000-0000-4000-8000-000000000001';`,
+      );
+    }
+
+    mock = await startMockLlm(MOCK_REPLY, MOCK_LLM_PORT);
     const logFd = openSync(SERVER_LOG, 'w');
     server = spawn(
       web,
@@ -175,6 +214,39 @@ test.describe('P4.D359 — the SPA riders', () => {
     })) as { type?: string };
     if (profile.type === 'error')
       throw new Error(`connectionProfileCreate: ${JSON.stringify(profile)}`);
+    // Beat (c) writes manual memories, which admission refuses without an
+    // embedding (`…could not be embedded`); the pair carries no embedding
+    // profile, so give it the offline BUILTIN one as the default.
+    const embedding = (await dispatch({
+      type: 'embeddingProfileCreate',
+      name: 'P4D359 Builtin',
+      provider: 'BUILTIN',
+      modelName: 'tfidf-bm25-v1',
+      isDefault: true,
+    })) as { type?: string };
+    if (embedding.type === 'error')
+      throw new Error(`embeddingProfileCreate: ${JSON.stringify(embedding)}`);
+    // A BUILTIN profile embeds nothing until its TF-IDF vocabulary is fitted on
+    // the instance's corpus: refit, and wait for the vocabulary to appear.
+    const builtinId = (embedding as { data?: { id?: string } }).data?.id;
+    if (!builtinId) throw new Error(`embeddingProfileCreate: ${JSON.stringify(embedding)}`);
+    // `vocabularyStats` rides the LIST read (v4's GET by id carries none).
+    const builtinOf = async () => {
+      const listed = (await dispatch({ type: 'embeddingProfileList' })) as {
+        data?: { profiles?: Array<{ id: string; vocabularyStats?: unknown }> };
+      };
+      return listed.data?.profiles?.find((p) => p.id === builtinId) ?? listed;
+    };
+    const refit = (await dispatch({ type: 'embeddingProfileRefit', profileId: builtinId })) as {
+      type?: string;
+    };
+    if (refit.type === 'error') throw new Error(`embeddingProfileRefit: ${JSON.stringify(refit)}`);
+    const fitBy = Date.now() + 60_000;
+    while (!((await builtinOf()) as { vocabularyStats?: unknown }).vocabularyStats) {
+      if (Date.now() > fitBy)
+        throw new Error(`the BUILTIN vocabulary was never fitted: ${JSON.stringify(await builtinOf())}`);
+      await new Promise((r) => setTimeout(r, 500));
+    }
     // The Inspector reads logs only while logging is on (the global-setup recipe).
     await dispatch({
       type: 'chatSettingsUpdate',
@@ -381,40 +453,286 @@ test.describe('P4.D359 — the SPA riders', () => {
     await select.selectOption(target!);
     await expect(select).toHaveValue(target!);
     // Another tab and back — the shared ['chatSettings'] row was seeded from the PUT.
-    await page.getByRole('tab', { name: /Chat/ }).first().click();
-    await page
-      .getByRole('tab', { name: /Templates/ })
-      .first()
-      .click();
+    // The settings tabs are `EntityTabs` buttons in `nav.qt-tab-group` (no `tab` role).
+    const tabs = page.locator('nav.qt-tab-group');
+    await tabs.getByRole('button', { name: 'Chat', exact: true }).click();
+    await expect(page.locator('qt-roleplay-templates-card')).toHaveCount(0);
+    await tabs.getByRole('button', { name: 'Templates & Prompts', exact: true }).click();
     await expect(page.locator('qt-roleplay-templates-card select').first()).toHaveValue(target!);
   });
 
   // -------------------------------------------------------------------------
   // GATED
   // -------------------------------------------------------------------------
-  test('(c) a keystone memory: the pill, Keystones only, the sixth refused', async () => {
+  test('(c) a keystone memory: the pill, Keystones only, the sixth refused', async ({ page }) => {
     test.skip(!P4D341_LANDED, 'awaits P4.D341’s keystone column, admission and API (C8)');
+    test.setTimeout(90_000);
+    await page.goto(`/characters/${ARIA_ID}`);
+    await maybeUnlock(page);
+    await page.locator('nav.qt-tab-group').getByRole('button', { name: 'Memories' }).click();
+    const cards = page.locator('qt-memory-card');
+    // The pair bakes two ordinary memories for Aria, so `Keystones only` has
+    // something to leave out.
+    await expect(cards.first()).toBeVisible({ timeout: 15_000 });
+    const before = await cards.count();
+    expect(before, 'Aria’s baked memories').toBeGreaterThan(0);
+
+    // A keystone made through the editor carries the pill.
+    const first = 'Aria keeps the ship’s log in green ink';
+    await addMemory(page, first, 'She has kept it in green ink since her first voyage.', true);
+    const card = cards.filter({ hasText: first });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await expect(card.locator('span', { hasText: /^Keystone$/ })).toBeVisible();
+    // An ordinary memory never does.
+    await expect(cards.filter({ hasNotText: first }).locator('span', { hasText: /^Keystone$/ })).toHaveCount(0);
+
+    // `Keystones only` lists it alone.
+    await page.getByRole('checkbox', { name: 'Keystones only' }).check();
+    await expect(cards).toHaveCount(1, { timeout: 15_000 });
+    await expect(cards.first()).toContainText(first);
+    await page.getByRole('checkbox', { name: 'Keystones only' }).uncheck();
+    await expect(cards).toHaveCount(before + 1, { timeout: 15_000 });
+
+    // Four more about the same subject (Aria herself) fill the limit of five:
+    // the planted ordinary memories, marked through the edit route.
+    for (const [id, fact] of KEYSTONE_PLANTS) {
+      const marked = (await dispatch({
+        type: 'memoryUpdate',
+        memoryId: id,
+        memory: {
+          characterId: ARIA_ID,
+          summary: fact,
+          content: `${fact}.`,
+          keywords: [],
+          importance: 0.5,
+          keystone: true,
+        },
+      })) as { type?: string; data?: { memory?: { keystone?: unknown } } };
+      expect(marked.data?.memory?.keystone, `memoryUpdate ${id}: ${JSON.stringify(marked)}`).toBe(true);
+    }
+    await page.getByRole('checkbox', { name: 'Keystones only' }).check();
+    await expect(cards).toHaveCount(5, { timeout: 15_000 });
+    await page.getByRole('checkbox', { name: 'Keystones only' }).uncheck();
+
+    // …so a sixth is refused with v4's sentence, in the editor, and nothing is written.
+    const sixth = 'Aria takes her tea without sugar';
+    await page.getByRole('button', { name: 'Add Memory', exact: true }).click();
+    const dialog = page.getByRole('dialog');
+    await dialog.getByPlaceholder('Brief summary of this memory').fill(sixth);
+    await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(sixth);
+    await dialog.getByRole('textbox', { name: 'Memory content' }).fill('No sugar, ever.');
+    await dialog.getByRole('checkbox', { name: /Keystone — always remembered/ }).check();
+    await dialog.getByRole('button', { name: 'Create Memory' }).click();
+    await expect(dialog).toContainText(
+      'A character may keep at most 5 keystones about one subject; unmark one first.',
+      { timeout: 15_000 },
+    );
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('checkbox', { name: 'Keystones only' }).check();
+    await expect(cards).toHaveCount(5, { timeout: 15_000 });
+    await expect(cards.filter({ hasText: sixth })).toHaveCount(0);
   });
 
-  test('(d) a reply naming an absent character chips its first mention; the card pins and unpins', async () => {
+  test('(d) a reply naming an absent character chips its first mention; the card pins and unpins', async ({
+    page,
+  }) => {
     test.skip(
       !P4D347_SERVER_LANDED,
       'awaits P4.D347’s chatAbsentMentions arm (C5) and P4.D344 applying handoffs/p4.d359-salon-conversation.patch',
     );
+    test.setTimeout(90_000);
+    // Solo Voyage seats Aria (the model) and Cleo (the operator); Bram is a
+    // workspace character who is not in it. The mock's reply names him twice.
+    await page.goto(`/salon/${SOLO_VOYAGE_CHAT_ID}`);
+    await maybeUnlock(page);
+    const composer = page.locator('.qt-chat-composer-input').first();
+    await expect(composer).toBeVisible({ timeout: 15_000 });
+    await composer.click();
+    await page.keyboard.type('Shall we tell anyone of the plan?');
+    await page.locator('button[aria-label="Send message"]').click();
+
+    const reply = page.locator('.qt-chat-message-content').filter({ hasText: MOCK_REPLY }).last();
+    await expect(reply).toBeVisible({ timeout: 30_000 });
+
+    // ONE chip, on the FIRST mention only, with v4's bytes.
+    const chips = page.locator('.qt-mention-chip');
+    await expect(chips).toHaveCount(1, { timeout: 15_000 });
+    const chip = reply.locator('.qt-mention-chip');
+    await expect(chip).toHaveText('Bram');
+    await expect(chip).toHaveAttribute('role', 'button');
+    await expect(chip).toHaveAttribute('tabindex', '0');
+    await expect(chip).toHaveAttribute('aria-label', 'Bram, not in this conversation');
+    // Nobody seated is chipped.
+    await expect(page.locator('.qt-mention-chip', { hasText: 'Aria' })).toHaveCount(0);
+
+    // Hover → the card.
+    const card = page.locator('qt-mention-card .qt-tooltip');
+    await chip.hover();
+    await expect(card).toBeVisible({ timeout: 5_000 });
+    await expect(card.locator('.qt-tooltip-title')).toHaveText('Bram');
+    await expect(card).toContainText('Not in this conversation · click to pin');
+    await expect(card).not.toHaveAttribute('data-pinned', 'true');
+
+    // Click → pinned: it outlives the pointer leaving.
+    await chip.click();
+    await expect(card).toHaveAttribute('data-pinned', 'true');
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(800);
+    await expect(card).toBeVisible();
+
+    // Escape → unpinned and gone.
+    await page.keyboard.press('Escape');
+    await expect(card).toHaveCount(0);
   });
 
-  test('(g) untick Humanoid → the non-humanoid hint, round-tripped', async () => {
+  test('(g) untick Humanoid → the non-humanoid hint, round-tripped', async ({ page }) => {
     test.skip(!P4D349_SERVER_LANDED, 'awaits P4.D349’s physicalDescription.humanoid writer (C6)');
+    const HS_HUMANOID =
+      'Used for avatar generation — describe only the head, face, hair, expression and neckline; nothing below the shoulders.';
+    const HS_NON_HUMANOID =
+      'Not used for a non-humanoid character — its avatar is drawn from the Medium prompt, whole form in frame.';
+    await page.goto(`/characters/${DAX_ID}/edit`);
+    await maybeUnlock(page);
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+    const box = page.locator('#physical-humanoid');
+    const hint = page.getByTestId('physical-headshoulders-hint');
+    // The form is seeded from the stored description (the pair's is named
+    // `default`); an unseeded form would Save nothing (`Name is required`).
+    await expect(page.locator('#physical-name')).toHaveValue('default', { timeout: 15_000 });
+    await expect(box).toBeChecked();
+    await expect(hint).toHaveText(HS_HUMANOID);
+
+    await box.uncheck();
+    await expect(hint).toHaveText(HS_NON_HUMANOID);
+    const saved = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('"characterUpdate"'),
+    );
+    await page.getByRole('button', { name: 'Save Physical Descriptions' }).click();
+    const reply = (await (await saved).json()) as { type?: string };
+    expect(reply.type, JSON.stringify(reply)).not.toBe('error');
+
+    // The server kept it: the character read carries `humanoid: false`…
+    const read = (await dispatch({ type: 'characterGet', characterId: DAX_ID })) as {
+      data?: { character?: { physicalDescription?: { humanoid?: unknown } } };
+    };
+    expect(read.data?.character?.physicalDescription?.humanoid, JSON.stringify(read)).toBe(false);
+
+    // …and a reload reads it back unticked, with the non-humanoid sentence.
+    await page.reload();
+    await maybeUnlock(page);
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
+    await expect(page.locator('#physical-humanoid')).not.toBeChecked({ timeout: 15_000 });
+    await expect(page.getByTestId('physical-headshoulders-hint')).toHaveText(HS_NON_HUMANOID);
   });
 
-  test('(h) a She/Her/Her garment hides from a he character’s pronoun-aware wardrobe', async () => {
+  test('(h) a She/Her/Her garment hides from a he character’s pronoun-aware wardrobe', async ({
+    page,
+  }) => {
     test.skip(!P4D349_SERVER_LANDED, 'awaits P4.D349’s pronounGuidance writer and reader (C6)');
+    test.setTimeout(90_000);
+    // Bram is he/him/his (the pair stores no pronouns, so give him the standard set).
+    const he = (await dispatch({
+      type: 'characterUpdate',
+      characterId: BRAM_ID,
+      character: { pronouns: { subject: 'he', object: 'him', possessive: 'his' } },
+    })) as { type?: string };
+    expect(he.type, JSON.stringify(he)).not.toBe('error');
+
+    const title = `Ball Gown ${Date.now()}`;
+    await page.goto(`/characters/${BRAM_ID}`);
+    await maybeUnlock(page);
+    await page.locator('.character-view').getByRole('button', { name: 'Wardrobe', exact: true }).click();
+    await page.getByRole('button', { name: 'Open wardrobe for Bram' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.locator('.qt-dialog-title')).toHaveText('Wardrobe', { timeout: 15_000 });
+    const aware = dialog.getByRole('checkbox', { name: /Pronoun-aware/ });
+    await expect(aware).toBeChecked({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: '+ New Item' }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeVisible();
+    await page.locator('#wardrobe-title').fill(title);
+    await page.locator('label').filter({ hasText: 'Accessories' }).locator('input[type="checkbox"]').click();
+    const guidance = page.getByRole('group', { name: 'Pronoun Guidance' });
+    await guidance.getByRole('checkbox', { name: 'She/Her/Her' }).check();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'New Wardrobe Item' })).toBeHidden({ timeout: 15_000 });
+
+    // The server stored the guidance (the list re-read counts it), and the
+    // pronoun-aware list holds the gown back from Bram.
+    const row = dialog.locator('qt-wardrobe-item-row').filter({ hasText: title });
+    await expect(dialog.getByText('(1 hidden)')).toBeVisible({ timeout: 15_000 });
+    await expect(row).toHaveCount(0);
+
+    // Untick → it is offered after all, marked for whom it was cut.
+    await aware.uncheck();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByTestId('wardrobe-pronoun-guidance')).toHaveText('For She/Her/Her');
+    await expect(dialog.getByText('(1 hidden)')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Done' }).click();
   });
 
-  test('(i) an operator Inventory create refreshes a second dialog’s archetype picker', async () => {
+  test('(i) an operator Inventory create refreshes a second dialog’s archetype picker', async ({
+    page,
+    context,
+  }) => {
     test.skip(!P4D350_PUBLISH_LANDED, 'awaits P4.D350’s R-1 location-level inventory publish');
+    test.setTimeout(90_000);
+    const name = `Orrery ${Date.now()}`;
+
+    // Dialog one: Aria's inventory, the archetype picker open (`+ From archetype`).
+    await openInventoryDialog(page);
+    await page.getByRole('button', { name: '+ From archetype' }).click();
+    const picker = page.getByRole('dialog', { name: 'Make an object from an archetype' });
+    await expect(picker).toBeVisible({ timeout: 15_000 });
+    await expect(picker.getByText('Looking for archetypes…')).toHaveCount(0, { timeout: 15_000 });
+    const option = picker.getByRole('option', { name: new RegExp(name) });
+    await expect(option).toHaveCount(0);
+
+    // Dialog two, on a second page: an operator create of an archetype in the same vault.
+    const other = await context.newPage();
+    try {
+      await openInventoryDialog(other);
+      await other.getByRole('button', { name: '+ New Archetype' }).click();
+      await other.locator('#inventory-name').fill(name);
+      await other.getByRole('button', { name: 'Save', exact: true }).click();
+      await expect(other.getByText(`"${name}" is laid on the table`)).toBeVisible({ timeout: 15_000 });
+    } finally {
+      await other.close();
+    }
+
+    // Dialog one's picker re-reads on the server's `inventory` publish — no reload.
+    await expect(option).toBeVisible({ timeout: 15_000 });
   });
 });
+
+/** The memory editor, from the Memories tab: create one, optionally a keystone. */
+async function addMemory(page: Page, summary: string, content: string, keystone: boolean): Promise<void> {
+  await page.getByRole('button', { name: 'Add Memory', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  // Each fill asserted before the next (the characters-flow render-race idiom).
+  await dialog.getByPlaceholder('Brief summary of this memory').fill(summary);
+  await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
+  await dialog.getByRole('textbox', { name: 'Memory content' }).fill(content);
+  await expect(dialog.getByPlaceholder('Brief summary of this memory')).toHaveValue(summary);
+  if (keystone) await dialog.getByRole('checkbox', { name: /Keystone — always remembered/ }).check();
+  await dialog.getByRole('button', { name: 'Create Memory' }).click();
+  await expect(dialog).toBeHidden({ timeout: 15_000 });
+}
+
+/** The Inventory dialog from the rail, on Aria's vault (`inventory-flow.spec.ts`'s helper). */
+async function openInventoryDialog(page: Page): Promise<void> {
+  await page.goto('/salon');
+  await maybeUnlock(page);
+  await page.getByTitle('Inventory', { exact: true }).click();
+  await expect(page.getByRole('dialog').locator('.qt-dialog-title').first()).toHaveText('Inventory', {
+    timeout: 15_000,
+  });
+  await page.locator('#inventory-container-select').selectOption({ label: 'Aria' });
+}
 
 async function dispatch(body: Record<string, unknown>): Promise<unknown> {
   const res = await fetch(`${BASE_URL}/api/dispatch`, {

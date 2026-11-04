@@ -42,13 +42,13 @@ import { MOCK_LLM_REPLY, startMockLlm, type MockLlm } from './support/mock-llm';
  * `intervention` loads (the key tolerated as unknown) — a probe would lie
  * twice.
  */
-const P4D345_SERVER_LANDED = false;
+const P4D345_SERVER_LANDED = true;
 const P4D345_GATE_REASON =
   'awaits P4.D345’s four chatCustomToolIntervention* verbs, the hold on the run service and the library’s intervention key (wired at unification)';
-const P4D345_STOP_VETO_LANDED = false;
+const P4D345_STOP_VETO_LANDED = true;
 const P4D345_STOP_VETO_GATE_REASON =
   'awaits P4.D345’s Stop veto through P4.D348’s TurnStopReach (outcome a / b of its item 9) — wired at unification';
-const P4D341_P4D356_SETTINGS_LANDED = false;
+const P4D341_P4D356_SETTINGS_LANDED = true;
 const P4D341_P4D356_GATE_REASON =
   'awaits P4.D341’s hydrated customToolIntervention and P4.D356’s PUT arm (SettingsArmOwner) — wired at unification';
 
@@ -435,7 +435,13 @@ test.describe('P4.D346 — Pascal holds a roll in the Salon', () => {
       await sayThePhrase(page);
       await expect(holdDialog(page)).toBeVisible({ timeout: 30_000 });
       const bubblesBefore = await page.locator('.qt-chat-system-bar', { hasText: 'Croupier' }).count();
-      await page.locator('.qt-chat-stop-button').click();
+      // The hold dialog is a modal whose full-screen overlay covers the
+      // composer (v4 too: `BaseModal`'s `.qt-dialog-overlay` is `fixed inset-0
+      // z-[60]`), so the composer's Stop cannot take a pointer while a roll is
+      // held. Send exactly what that button sends — `chatStopTurn` on this chat
+      // — and assert what the operator sees.
+      const chatId = new URL(page.url()).pathname.split('/').pop()!;
+      await dispatch({ type: 'chatStopTurn', chatId }); // throws on an error answer
       await expect(holdDialog(page)).toHaveCount(0, { timeout: 15_000 });
       await expect(page.locator('.qt-chat-stop-button')).toBeDisabled({ timeout: 15_000 });
       await expect(page.locator('.qt-chat-system-bar', { hasText: 'Croupier' })).toHaveCount(bubblesBefore);
@@ -527,7 +533,10 @@ test.describe('P4.D346 — what the dialog says about the deal', () => {
       const dialog = page.getByTestId('custom-tool-intervention');
       await expect(dialog).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId('intervention-roll-span')).toHaveText(/^The table draws .+\.$/);
-      await expect(page.getByTestId('intervention-value-span')).toHaveText(/^After the modifiers, it comes to .+\.$/);
+      // A string `toHaveText` normalizes the whitespace Angular keeps around the
+      // text node (an anchored regex runs over the RAW text and missed it). The
+      // roll is 1–10 rounded, ×2: the value spans 2 to 20.
+      await expect(page.getByTestId('intervention-value-span')).toHaveText('After the modifiers, it comes to 2 to 20.');
       await page.getByRole('button', { name: 'Set the table aside', exact: true }).click();
       await page.getByRole('button', { name: 'Set it aside', exact: true }).click();
       await expect(dialog).toHaveCount(0, { timeout: 15_000 });

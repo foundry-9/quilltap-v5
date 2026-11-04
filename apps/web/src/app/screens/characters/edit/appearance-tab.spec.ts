@@ -7,6 +7,7 @@ import { CoreClient } from '../../../core/core-client';
 import { CoreDispatchError } from '../../../core/core-contract';
 import { RichEditor } from '../../../editor/rich-editor';
 import { ToastService } from '../../../ui/toast.service';
+import { characterKeys } from '../characters.api';
 import { CharacterAppearanceTab } from './appearance-tab';
 
 function toasts(): { type: string; message: string }[] {
@@ -107,6 +108,32 @@ describe('CharacterAppearanceTab (edit) — the seven markdown fields', () => {
     expect(editorFor(fixture, 'Long prompt').getMarkdown()).toBe(PHYSICAL.longPrompt);
     expect(editorFor(fixture, 'Complete prompt').getMarkdown()).toBe(PHYSICAL.completePrompt);
     expect(editorFor(fixture, 'Full description').getMarkdown()).toBe(PHYSICAL.fullDescription);
+  });
+
+  it('seeds from a detail query another component already cached (no own fetch inside staleTime)', async () => {
+    // The unify-236c04e35 finding: the edit page caches `characterKeys.detail`
+    // with its OWN queryFn; opening this tab inside the 5 s staleTime reused it
+    // and the form stayed empty (a Save then wrote blank prompts).
+    const seen: Req[] = [];
+    const client = new QueryClient({ defaultOptions: { queries: { staleTime: 5_000 } } });
+    client.setQueryData(characterKeys.detail('c1'), {
+      id: 'c1',
+      characterDocumentMountPointId: 'mp1',
+      physicalDescription: { ...PHYSICAL },
+    });
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      imports: [CharacterAppearanceTab],
+      providers: [provideTanStackQuery(client), { provide: CoreClient, useValue: stubClient(seen) }],
+    });
+    const fixture = TestBed.createComponent(CharacterAppearanceTab);
+    fixture.componentRef.setInput('characterId', 'c1');
+    fixture.detectChanges();
+    await settle(fixture);
+    expect(seen.filter((r) => r.type === 'characterGet')).toEqual([]);
+    const name = fixture.nativeElement.querySelector('#physical-name') as HTMLInputElement;
+    expect(name.value).toBe(PHYSICAL.name);
+    expect(editorFor(fixture, 'Medium prompt').getMarkdown()).toBe(PHYSICAL.mediumPrompt);
   });
 
   it('carries an edited prompt into the characterUpdate payload, leaving the rest untouched', async () => {

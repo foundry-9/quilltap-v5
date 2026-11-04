@@ -56,7 +56,7 @@ import {
  *
  * **UNGATED beats (G)–(J)** hold on main's server today.
  */
-const P4D343_SERVER_LANDED = false;
+const P4D343_SERVER_LANDED = true;
 const GATE_REASON =
   'awaits P4.D343’s chatStorytellerRound / -Run / -Ask / -Lie variants, the turnMode sibling and the storytellerRound / storytellerBid / roundOpen frames (wired at unification)';
 
@@ -207,6 +207,10 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     if (existsSync(MOUNT_FIXTURE)) {
       copyFileSync(MOUNT_FIXTURE, resolve(ST_DATA_DIR, 'quilltap-mount-index.db'));
     }
+    // Beat (F2) reads the bids' LLM logs: the engine writes them only when the
+    // llm-logs partition exists (the global-setup recipe — copy the committed
+    // empty one) and logging is on (switched on after unlock, below).
+    copyFileSync(resolve(FIXTURES_DIR, 'salon-llm-logs.db'), resolve(ST_DATA_DIR, 'quilltap-llm-logs.db'));
     writeFileSync(resolve(ST_DATA_DIR, 'quilltap.dbkey'), makeDbKeyFile(TEST_PEPPER, E2E_PASSPHRASE));
     for (const table of [...USER_TABLES, 'connection_profiles', 'api_keys', 'chat_settings', 'memories', 'image_profiles']) {
       runCliWrite(cli, `UPDATE ${table} SET userId = '${SINGLE_USER_ID}' WHERE userId = '${FIXTURE_USER}';`);
@@ -243,6 +247,11 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     await waitForHealth();
 
     await dispatchRaw({ type: 'unlock', passphrase: E2E_PASSPHRASE });
+    const logging = await dispatchRaw({
+      type: 'chatSettingsUpdate',
+      settings: { llmLoggingSettings: { enabled: true, verboseMode: false, retentionDays: 30 } },
+    });
+    expect(logging.type, `llmLoggingSettings: ${JSON.stringify(logging)}`).not.toBe('error');
     const chats = ((await dispatchRaw({ type: 'listChats' })).data as unknown as { id: string; title: string }[]) ?? [];
     groupChatId = chats.find((c) => c.title === 'Group Expedition')?.id ?? '';
     expect(groupChatId, 'Group Expedition on the pair').toBeTruthy();
@@ -363,10 +372,22 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     await page.getByLabel(`Let ${names[0]} go ahead`).check();
     await page.getByLabel(`Let ${names[1]} go ahead`).check();
     await board.getByRole('button', { name: 'Run in order' }).click();
-    await expect(page.locator('.qt-chat-message', { hasText: TURN_REPLY })).toHaveCount(2, { timeout: 60_000 });
-    await expect(page.locator('.qt-storyteller-summary')).toHaveText(`Last round: ${names.join(', ')}`, {
-      timeout: 30_000,
-    });
+    const replies = page.locator('.qt-chat-message', { hasText: TURN_REPLY });
+    await expect(replies).toHaveCount(2, { timeout: 60_000 });
+    // Untouched (not dragged), the cards run in the ROOM's rotation — drawn by
+    // the server (`keepOrder: false`, storyteller_rounds.rs `rotation_order`),
+    // not the board's order — so "run order" is the order the two replies
+    // were posted in, and the summary must name exactly that.
+    // (The author sits in the row's header, a sibling of the bubble.)
+    const ran = await page
+      .locator('.qt-chat-message-row', { has: page.locator('.qt-chat-message', { hasText: TURN_REPLY }) })
+      .locator('.qt-chat-message-author')
+      .allTextContents();
+    expect([...ran].map((n) => n.trim()).sort()).toEqual([...names].sort());
+    await expect(page.locator('.qt-storyteller-summary')).toHaveText(
+      `Last round: ${ran.map((n) => n.trim()).join(', ')}`,
+      { timeout: 30_000 },
+    );
   });
 
   test('(C) a fresh post, then Let it lie', async ({ page }) => {
@@ -416,12 +437,20 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     const panel = page.locator('.qt-slide-over-panel');
     await panel.getByLabel('Filter log entries').selectOption('storyteller');
     const bids = panel.locator('.qt-inspector-entry', { hasText: 'Bid' });
+    // The panel slides in and reads the logs asynchronously: wait for the
+    // second bid row before counting (an immediate count read the empty panel).
+    await expect(bids.nth(1)).toBeVisible({ timeout: 15_000 });
     expect(await bids.count()).toBeGreaterThanOrEqual(2);
     await expect(bids.first().getByText(/^round [0-9a-f-]{6}$/)).toBeVisible();
   });
 
   test('(K) All at once — two bubbles, then the summary with (all at once)', async ({ page }) => {
     test.skip(!P4D343_SERVER_LANDED, GATE_REASON);
+    // Skipped BY NAME, not by gate: P4.D343 item 41 is DEFERRED (`order:
+    // simultaneous` is Tier 2) — the server refuses it before any frame
+    // (`storyteller_spine.rs`, 422 `not_available: storyteller simultaneous`;
+    // measured at the 236c04e35 unification: the SPA toasts that raw string).
+    test.skip(true, 'P4.D343 item 41 DEFERRED — the server refuses order: simultaneous');
     test.setTimeout(120_000);
     await openChat(page, groupChatId);
     await send(page, 'Everyone at once, then.');

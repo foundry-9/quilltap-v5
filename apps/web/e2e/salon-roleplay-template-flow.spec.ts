@@ -55,10 +55,10 @@ const TEMPLATE_NAME = 'P4.30 Percent Narration';
  *   HANDOFF H-2 — both are in the union.
  * - `P4D341_LANDED` — the seeded built-in Novel row (P4.D341 `KEYSTONE`).
  */
-const P4D351_SERVER_LANDED = false;
+const P4D351_SERVER_LANDED = true;
 const P4D351_GATE_REASON =
   'ACTIVATE-AT-UNIFY: needs P4.D351 Novel template routes + P4.D344 H-2 (wired at unification)';
-const P4D341_LANDED = false;
+const P4D341_LANDED = true;
 const P4D341_GATE_REASON =
   'ACTIVATE-AT-UNIFY: needs P4.D341 seeded Novel built-in (wired at unification)';
 
@@ -227,8 +227,11 @@ test.describe('P4.30 — roleplay-template rendering', () => {
 
     await dialog.getByRole('radio', { name: 'None — plain prose' }).check();
     await expect(dialog.getByLabel('Style unmarked text')).toBeChecked();
-    // The unmarked flourishes: Italic.
-    await dialog.getByRole('checkbox', { name: 'Italic' }).first().check();
+    // The unmarked flourishes: Italic. Every flourish box is matched EXACTLY:
+    // a substring match also takes the `Markdown reads asterisks as bold and
+    // italic…` box, which sits between the unmarked flourishes and the
+    // delimiters' and shifted every `nth` below onto the wrong delimiter.
+    await dialog.getByRole('checkbox', { name: 'Italic', exact: true }).first().check();
     await dialog.getByRole('checkbox', { name: /Markdown reads asterisks/ }).uncheck();
 
     const addDelimiter = dialog.getByRole('button', { name: '+ Add Delimiter' });
@@ -253,8 +256,8 @@ test.describe('P4.30 — roleplay-template rendering', () => {
     await dialog.getByLabel('Style (CSS class)', { exact: true }).nth(2).fill('qt-roleplay-plain');
     await dialog.getByLabel('Delimiter', { exact: true }).nth(1).fill('*');
     await dialog.getByRole('checkbox', { name: 'Conceal the marks when rendered' }).nth(1).check();
-    await dialog.getByRole('checkbox', { name: 'Bold' }).nth(2).check();
-    await dialog.getByRole('checkbox', { name: 'Italic' }).nth(2).check();
+    await dialog.getByRole('checkbox', { name: 'Bold', exact: true }).nth(2).check();
+    await dialog.getByRole('checkbox', { name: 'Italic', exact: true }).nth(2).check();
     // OOC: a `((` / `))` pair.
     await addDelimiter.click();
     await dialog.getByLabel('Name', { exact: true }).nth(2).fill('Out of Character');
