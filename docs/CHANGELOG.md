@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(model): fit_image_shape — v4's NanoGPT image-shape fit, tier-1 against the real fitImageShape (P4.D356, bug 269)
+
+_Versions: core 0.0.1381._
+
+NEW `model/nanogpt_image_sizes.rs` ports v4 `4b0d1cb04`'s pure `fitImageShape`: a requested size or aspect ratio is fitted onto a NanoGPT model's catalog entry — the nearest listed concrete size by log aspect distance (area tie-break, earlier entry on a tie), or the nearest resolution tier by long edge plus the nearest listed aspect ratio; with no catalog or no shape it passes through as asked. The three v4 patterns are hand-rolled for JS fidelity (ASCII `\d`, the JS `\s` set, a non-unicode `/i` that never folds the Kelvin sign onto `k`). `is_non_square` and `is_shape_failure` (the retry predicates) land beside it. The new tier-1 family `nanogpt_image_sizes_equivalence` compares 1,501 rows exactly against v4's real export: its ten vectors, a 12 × 15 × 8 grid, the whitespace and overflow edges, and the log-distance witness rows.
+
 #### 2026-11-03 — docs(porting): P4.D351 lane record and status header — the Novel template server lane complete
 
 _Docs-only change._
