@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — test(harness): the chat-settings PUT allow-list census over the SPA's callers (P4.D356)
+
+_Versions: unchanged (harness-only)._
+
+The new `chat_settings_accepted_keys_census` pins `ACCEPTED_KEYS` against v4's `route.ts` in order (34 keys). It checks every v5 SPA caller of the chat-settings PUT: the 22 `ChatSettingsCard` subclasses' `this.save` keys, scanned and pinned, and the 9 direct `chatSettingsUpdate` dispatchers. All 30 keys they send are accepted, and none sends `defaultTimestampConfig`, `timezone` or the identity keys. A new dispatcher fails the census until it is registered. No SPA file changes.
+
 #### 2026-11-04 — fix(chat-settings): a refused settings row is repaired on read and written back, not dropped (P4.D356, #120)
 
 _Versions: core 0.0.1385._
