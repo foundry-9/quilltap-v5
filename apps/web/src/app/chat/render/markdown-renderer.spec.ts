@@ -35,6 +35,14 @@ function fixtureByName(name: string): RenderFixture {
  * render: each custom set is captured from v4 alongside a `-reset` twin over the
  * same input with no options, so the pair proves the values were honoured rather
  * than merely tolerated.
+ *
+ * The `template-novel-*` vectors (P4.D352, v4 `778b97b2b` at 236c04e35) render
+ * under the options of v4's own seeded `NOVEL_TEMPLATE` (imported by the
+ * capture, never hand-derived): nested inline rules, the unmarked class, the
+ * `strip` / `literal` pre-parse, the line rule shedding unmarked spans, the
+ * nesting depth cap, and `quotes-on-novel-dialogue` (curling proceeds under a
+ * curly-tolerant wrap). The re-capture at that pin moved exactly one of the
+ * 67 earlier rows (`escapes-in-brackets`, v4's own nesting) and no `math-*` row.
  */
 describe('renderMarkdownToHtml — v4 parity fixtures', () => {
   for (const fixture of fixtures) {
@@ -45,7 +53,12 @@ describe('renderMarkdownToHtml — v4 parity fixtures', () => {
 
   it('covers both template arms (the corpus is not silently truncated)', () => {
     const withOptions = fixtures.filter((f) => f.options !== undefined);
-    expect(withOptions.length).toBeGreaterThanOrEqual(11);
+    // Literal counts (P4.D352): a truncated corpus must not pass vacuously.
+    expect(fixtures).toHaveLength(107);
+    expect(withOptions).toHaveLength(67);
+    expect(fixtures.filter((f) => f.name.startsWith('template-novel-'))).toHaveLength(38);
+    expect(fixtures.some((f) => f.name === 'template-novel-unmarked-narration-italic')).toBe(true);
+    expect(fixtures.some((f) => f.name === 'quotes-on-novel-dialogue')).toBe(true);
     expect(withOptions.some((f) => (f.options?.renderingPatterns?.length ?? 0) > 0)).toBe(true);
     expect(withOptions.some((f) => f.options?.renderingPatterns?.length === 0)).toBe(true);
     expect(withOptions.some((f) => f.options?.dialogueDetection != null)).toBe(true);

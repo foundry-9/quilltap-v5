@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(spa): the Novel renderer rows re-captured from v4's real renderer at 236c04e35 (P4.D352)
+
+_Versions: SPA 0.5.914._
+
+`tooling/capture-markdown-fixtures.mts` imports v4's own `NOVEL_TEMPLATE` (`lib/chat/novel-template.ts`) next to the renderer and records 40 new rows from the `236c04e35` pin: one sample message exercising every Novel arm, fifteen per-arm vectors with their `-reset` twins, a line rule shedding the unmarked spans, a nesting-depth cap under five inline rules, a `*` inside OOC inside dialogue (captured as v4 renders it — a stray backslash), and `quotes-on-novel-dialogue`. The scope type widens to five. 67 → 107 rows; the 67 earlier rows are byte-stable against the re-capture. `markdown-renderer.spec.ts` pins the row counts; `roleplay-rendering.spec.ts` transcribes v4's `novel-template.test.ts` shared-core and post-processing cases, plus the walk invariants. Against main's renderer the new rows red 22 times; dropping the open-tag stack reds 17.
+
 #### 2026-11-03 — feat(spa): the Novel renderer — five-scope narrowing, nested inline rules, the unmarked class, strip/literal pre-parse, the curly exemption (P4.D352)
 
 _Versions: SPA 0.5.913._

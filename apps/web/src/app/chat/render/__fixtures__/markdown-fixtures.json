@@ -501,5 +501,1105 @@
       }
     },
     "html": "<p>«Bonjour» and <span class=\"qt-chat-dialogue\">“hello”</span>.</p>"
+  },
+  {
+    "name": "template-novel-sample",
+    "input": "The rain had followed her all the way from the station. She paused at the door.\n\n\"You came,\" Theo said. “I wasn't sure you would.”\n\n\"Neither was I.\" She hung up her coat. \"Your note said it was *urgent*.\n\n\"And I meant it.\" A **loud** claim, and `a*b` stays code. ((brb, dinner))\n\n* * *\n\n- He wondered whether she had seen the letter.\n\n> *So he had read it.*",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">The rain had followed her all the way from the station. She paused at the door.</span></p>\n<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"You came,\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> Theo said. </span><span class=\"qt-chat-dialogue\">“I wasn't sure you would.”</span></p>\n<p><span class=\"qt-chat-dialogue\">\"Neither was I.\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> She hung up her coat. </span><span class=\"qt-chat-dialogue\">\"Your note said it was <span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">urgent</span>.</span></p>\n<p><span class=\"qt-chat-dialogue\">\"And I meant it.\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> A loud claim, and `a*b` stays code. </span><span class=\"qt-chat-ooc\">((brb, dinner))</span></p>\n<p><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\"> </span><span class=\"qt-roleplay-plain qt-rp-italic\"> *</span></p>\n<ul>\n<li><span class=\"qt-roleplay-plain qt-rp-italic\">He wondered whether she had seen the letter.</span></li>\n</ul>\n<blockquote><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">\n<p><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">So he had read it.</span></p>\n</span></blockquote>"
+  },
+  {
+    "name": "template-novel-sample-reset",
+    "input": "The rain had followed her all the way from the station. She paused at the door.\n\n\"You came,\" Theo said. “I wasn't sure you would.”\n\n\"Neither was I.\" She hung up her coat. \"Your note said it was *urgent*.\n\n\"And I meant it.\" A **loud** claim, and `a*b` stays code. ((brb, dinner))\n\n* * *\n\n- He wondered whether she had seen the letter.\n\n> *So he had read it.*",
+    "options": {},
+    "html": "<p>The rain had followed her all the way from the station. She paused at the door.</p>\n<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"You came,\"</span> Theo said. <span class=\"qt-chat-dialogue\">“I wasn't sure you would.”</span></p>\n<p><span class=\"qt-chat-dialogue\">\"Neither was I.\"</span> She hung up her coat. \"Your note said it was <em>urgent</em>.</p>\n<p><span class=\"qt-chat-dialogue\">\"And I meant it.\"</span> A <strong>loud</strong> claim, and <code>a*b\\</code> stays code. <span class=\"qt-chat-ooc\">((brb, dinner))</span></p>\n<hr>\n<ul>\n<li>He wondered whether she had seen the letter.</li>\n</ul>\n<blockquote>\n<p><em>So he had read it.</em></p>\n</blockquote>"
+  },
+  {
+    "name": "template-novel-dialogue-straight",
+    "input": "\"You're late,\" he said, not looking up.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"You're late,\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> he said, not looking up.</span></p>"
+  },
+  {
+    "name": "template-novel-dialogue-straight-reset",
+    "input": "\"You're late,\" he said, not looking up.",
+    "options": {},
+    "html": "<p><span class=\"qt-chat-dialogue\">\"You're late,\"</span> he said, not looking up.</p>"
+  },
+  {
+    "name": "template-novel-dialogue-curly",
+    "input": "“Well met, traveller,” she said.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">“Well met, traveller,”</span><span class=\"qt-roleplay-plain qt-rp-italic\"> she said.</span></p>"
+  },
+  {
+    "name": "template-novel-dialogue-curly-reset",
+    "input": "“Well met, traveller,” she said.",
+    "options": {},
+    "html": "<p><span class=\"qt-chat-dialogue\">“Well met, traveller,”</span> she said.</p>"
+  },
+  {
+    "name": "template-novel-dialogue-mixed",
+    "input": "“Hello,\" she said.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">“Hello,\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> she said.</span></p>"
+  },
+  {
+    "name": "template-novel-dialogue-mixed-reset",
+    "input": "“Hello,\" she said.",
+    "options": {},
+    "html": "<p><span class=\"qt-chat-dialogue\">“Hello,\"</span> she said.</p>"
+  },
+  {
+    "name": "template-novel-dialogue-unclosed-paragraph",
+    "input": "\"I went home that night.\n\n\"Then I slept until noon.\"",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"I went home that night.</span></p>\n<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"Then I slept until noon.\"</span></p>"
+  },
+  {
+    "name": "template-novel-dialogue-unclosed-paragraph-reset",
+    "input": "\"I went home that night.\n\n\"Then I slept until noon.\"",
+    "options": {},
+    "html": "<p>\"I went home that night.</p>\n<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"Then I slept until noon.\"</span></p>"
+  },
+  {
+    "name": "template-novel-emphasis-inside-dialogue",
+    "input": "\"I said *stop*!\" she cried.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-chat-dialogue\">\"I said <span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">stop</span>!\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> she cried.</span></p>"
+  },
+  {
+    "name": "template-novel-emphasis-inside-dialogue-reset",
+    "input": "\"I said *stop*!\" she cried.",
+    "options": {},
+    "html": "<p>\"I said <em>stop</em>!\" she cried.</p>"
+  },
+  {
+    "name": "template-novel-double-asterisks-stripped",
+    "input": "A **loud** claim, and ***both*** at once.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">A loud claim, and both at once.</span></p>"
+  },
+  {
+    "name": "template-novel-double-asterisks-stripped-reset",
+    "input": "A **loud** claim, and ***both*** at once.",
+    "options": {},
+    "html": "<p>A <strong>loud</strong> claim, and <em><strong>both</strong></em> at once.</p>"
+  },
+  {
+    "name": "template-novel-single-asterisk-literal",
+    "input": "It was *urgent*, she said.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">It was </span><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">urgent</span><span class=\"qt-roleplay-plain qt-rp-italic\">, she said.</span></p>"
+  },
+  {
+    "name": "template-novel-single-asterisk-literal-reset",
+    "input": "It was *urgent*, she said.",
+    "options": {},
+    "html": "<p>It was <em>urgent</em>, she said.</p>"
+  },
+  {
+    "name": "template-novel-scene-break-kept",
+    "input": "Before the break.\n\n* * *\n\nAfter the break.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">Before the break.</span></p>\n<hr>\n<p><span class=\"qt-roleplay-plain qt-rp-italic\">After the break.</span></p>"
+  },
+  {
+    "name": "template-novel-scene-break-kept-reset",
+    "input": "Before the break.\n\n* * *\n\nAfter the break.",
+    "options": {},
+    "html": "<p>Before the break.</p>\n<hr>\n<p>After the break.</p>"
+  },
+  {
+    "name": "template-novel-bullet-kept",
+    "input": "* an item *with* stress\n* another item",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<ul>\n<li><span class=\"qt-roleplay-plain qt-rp-italic\">an item </span><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">with</span><span class=\"qt-roleplay-plain qt-rp-italic\"> stress</span></li>\n<li><span class=\"qt-roleplay-plain qt-rp-italic\">another item</span></li>\n</ul>"
+  },
+  {
+    "name": "template-novel-bullet-kept-reset",
+    "input": "* an item *with* stress\n* another item",
+    "options": {},
+    "html": "<ul>\n<li>an item <em>with</em> stress</li>\n<li>another item</li>\n</ul>"
+  },
+  {
+    "name": "template-novel-inline-code-untouched",
+    "input": "Use `a*b` here, and *this*.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">Use </span><code>a*b</code><span class=\"qt-roleplay-plain qt-rp-italic\"> here, and </span><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">this</span><span class=\"qt-roleplay-plain qt-rp-italic\">.</span></p>"
+  },
+  {
+    "name": "template-novel-inline-code-untouched-reset",
+    "input": "Use `a*b` here, and *this*.",
+    "options": {},
+    "html": "<p>Use <code>a*b\\</code> here, and <em>this</em>.</p>"
+  },
+  {
+    "name": "template-novel-math-untouched",
+    "input": "Inline $$a*b$$ math and *this*.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">Inline </span><span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><mi>a</mi><mo>∗</mo><mi>b</mi></mrow><annotation encoding=\"application/x-tex\">a*b</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.4653em;\"></span><span class=\"mord mathnormal\">a</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span><span class=\"mbin\">∗</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.6944em;\"></span><span class=\"mord mathnormal\">b</span></span></span></span><span class=\"qt-roleplay-plain qt-rp-italic\"> math and </span><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">this</span><span class=\"qt-roleplay-plain qt-rp-italic\">.</span></p>"
+  },
+  {
+    "name": "template-novel-math-untouched-reset",
+    "input": "Inline $$a*b$$ math and *this*.",
+    "options": {},
+    "html": "<p>Inline <span class=\"katex\"><span class=\"katex-mathml\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><semantics><mrow><mi>a</mi><mo>∗</mo><mi>b</mi></mrow><annotation encoding=\"application/x-tex\">a*b</annotation></semantics></math></span><span class=\"katex-html\" aria-hidden=\"true\"><span class=\"base\"><span class=\"strut\" style=\"height:0.4653em;\"></span><span class=\"mord mathnormal\">a</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span><span class=\"mbin\">∗</span><span class=\"mspace\" style=\"margin-right:0.2222em;\"></span></span><span class=\"base\"><span class=\"strut\" style=\"height:0.6944em;\"></span><span class=\"mord mathnormal\">b</span></span></span></span> math and <em>this</em>.</p>"
+  },
+  {
+    "name": "template-novel-ooc",
+    "input": "She waited. ((brb, dinner))",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">She waited. </span><span class=\"qt-chat-ooc\">((brb, dinner))</span></p>"
+  },
+  {
+    "name": "template-novel-ooc-reset",
+    "input": "She waited. ((brb, dinner))",
+    "options": {},
+    "html": "<p>She waited. <span class=\"qt-chat-ooc\">((brb, dinner))</span></p>"
+  },
+  {
+    "name": "template-novel-unmarked-narration-italic",
+    "input": "She set the cup down. \"You came,\" she said.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-italic\">She set the cup down. </span><span class=\"qt-chat-dialogue\">\"You came,\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> she said.</span></p>"
+  },
+  {
+    "name": "template-novel-unmarked-narration-italic-reset",
+    "input": "She set the cup down. \"You came,\" she said.",
+    "options": {},
+    "html": "<p>She set the cup down. <span class=\"qt-chat-dialogue\">\"You came,\"</span> she said.</p>"
+  },
+  {
+    "name": "template-novel-unmarked-in-li-and-blockquote",
+    "input": "- She ran.\n- \"Wait!\" he cried.\n\n> She paused at the door.\n\n## The *letter*",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<ul>\n<li><span class=\"qt-roleplay-plain qt-rp-italic\">She ran.</span></li>\n<li><span class=\"qt-chat-dialogue\">\"Wait!\"</span><span class=\"qt-roleplay-plain qt-rp-italic\"> he cried.</span></li>\n</ul>\n<blockquote><span class=\"qt-roleplay-plain qt-rp-italic\">\n</span><p><span class=\"qt-roleplay-plain qt-rp-italic\">She paused at the door.</span></p><span class=\"qt-roleplay-plain qt-rp-italic\">\n</span></blockquote>\n<h2><span class=\"qt-roleplay-plain qt-rp-italic\">The </span><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">letter</span></h2>"
+  },
+  {
+    "name": "template-novel-unmarked-in-li-and-blockquote-reset",
+    "input": "- She ran.\n- \"Wait!\" he cried.\n\n> She paused at the door.\n\n## The *letter*",
+    "options": {},
+    "html": "<ul>\n<li>She ran.</li>\n<li><span class=\"qt-chat-dialogue\">\"Wait!\"</span> he cried.</li>\n</ul>\n<blockquote>\n<p>She paused at the door.</p>\n</blockquote>\n<h2>The <em>letter</em></h2>"
+  },
+  {
+    "name": "template-novel-wrap-block-hidden-under-unmarked",
+    "input": "*Damn.*",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p><span class=\"qt-roleplay-plain qt-rp-bold qt-rp-italic\">Damn.</span></p>"
+  },
+  {
+    "name": "template-novel-wrap-block-hidden-under-unmarked-reset",
+    "input": "*Damn.*",
+    "options": {},
+    "html": "<p><em>Damn.</em></p>"
+  },
+  {
+    "name": "template-novel-line-rule-strips-unmarked",
+    "input": "// an aside\n\nShe ran.",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        },
+        {
+          "pattern": "^// (?<rpBody>.+)$",
+          "className": "qt-chat-ooc",
+          "flags": "m",
+          "scope": "line",
+          "hideDelimiters": true
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p class=\"qt-chat-ooc\">an aside</p>\n<p><span class=\"qt-roleplay-plain qt-rp-italic\">She ran.</span></p>"
+  },
+  {
+    "name": "template-novel-line-rule-strips-unmarked-reset",
+    "input": "// an aside\n\nShe ran.",
+    "options": {},
+    "html": "<p><span class=\"qt-chat-ooc\">// an aside</span></p>\n<p>She ran.</p>"
+  },
+  {
+    "name": "template-novel-nesting-depth-cap",
+    "input": "\"a ((b @@c %%d ^^e^^ d%% c@@ b)) a\"",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        },
+        {
+          "pattern": "@@[^@]+@@",
+          "className": "qt-chat-emote"
+        },
+        {
+          "pattern": "%%[^%]+%%",
+          "className": "qt-chat-aside"
+        },
+        {
+          "pattern": "\\^\\^[^^]+\\^\\^",
+          "className": "qt-chat-whisper"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"a <span class=\"qt-chat-ooc\">((b <span class=\"qt-chat-emote\">@@c <span class=\"qt-chat-aside\">%%d ^^e^^ d%%</span> c@@</span> b))</span> a\"</span></p>"
+  },
+  {
+    "name": "template-novel-nesting-depth-cap-reset",
+    "input": "\"a ((b @@c %%d ^^e^^ d%% c@@ b)) a\"",
+    "options": {},
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"a <span class=\"qt-chat-ooc\">((b @@c %%d ^^e^^ d%% c@@ b))</span> a\"</span></p>"
+  },
+  {
+    "name": "template-novel-emphasis-in-ooc-in-dialogue",
+    "input": "\"a ((b *c* b)) a\"",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      }
+    },
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"a ((b \\</span><em>c\\</em><span class=\"qt-roleplay-plain qt-rp-italic\"> b)) a\"</span></p>"
+  },
+  {
+    "name": "template-novel-emphasis-in-ooc-in-dialogue-reset",
+    "input": "\"a ((b *c* b)) a\"",
+    "options": {},
+    "html": "<p class=\"qt-chat-dialogue\">\"a ((b <em>c</em> b)) a\"</p>"
+  },
+  {
+    "name": "quotes-on-novel-dialogue",
+    "input": "\"You came,\" she said. \"I wasn't sure.\"",
+    "options": {
+      "renderingPatterns": [
+        {
+          "pattern": "\\*{2,}",
+          "className": "",
+          "scope": "strip"
+        },
+        {
+          "pattern": "\\*",
+          "className": "",
+          "scope": "literal"
+        },
+        {
+          "pattern": "[\"\\u201c](?<rpBody>[^\"\\u201d]+)(?:[\"\\u201d]|$)",
+          "className": "qt-chat-dialogue"
+        },
+        {
+          "pattern": "(?<!\\*)\\*(?<rpBody>[^\\*]+)\\*(?!\\*)",
+          "className": "qt-roleplay-plain qt-rp-bold qt-rp-italic",
+          "hideDelimiters": true
+        },
+        {
+          "pattern": "\\(\\((?<rpBody>[^\\)\\)]+)\\)\\)",
+          "className": "qt-chat-ooc"
+        },
+        {
+          "pattern": "[\\s\\S]",
+          "className": "qt-roleplay-plain qt-rp-italic",
+          "scope": "unmarked"
+        }
+      ],
+      "dialogueDetection": {
+        "openingChars": [
+          "\"",
+          "“"
+        ],
+        "closingChars": [
+          "\"",
+          "”"
+        ],
+        "className": "qt-chat-dialogue"
+      },
+      "displayQuotes": true
+    },
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">“You came,”</span><span class=\"qt-roleplay-plain qt-rp-italic\"> she said. </span><span class=\"qt-chat-dialogue\">“I wasn’t sure.”</span></p>"
+  },
+  {
+    "name": "quotes-on-novel-dialogue-reset",
+    "input": "\"You came,\" she said. \"I wasn't sure.\"",
+    "options": {},
+    "html": "<p class=\"qt-chat-dialogue\"><span class=\"qt-chat-dialogue\">\"You came,\"</span> she said. <span class=\"qt-chat-dialogue\">\"I wasn't sure.\"</span></p>"
   }
 ]

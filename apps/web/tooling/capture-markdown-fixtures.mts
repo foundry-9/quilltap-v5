@@ -34,8 +34,20 @@
  * rehype-katex were added at v4 b8b12695; the single-dollar promotion
  * (`math-single-*`, `math-bare-token-*`) landed at v4 5915b04e — regenerate
  * this file from a v4 worktree at 7e6d13e5 or later.
+ *
+ * Last captured (P4.D352) from a pin worktree at `236c04e35` after the pin's
+ * own `npm ci --offline`: the pin's ROOT `katex` is 0.19.1 (v5 still pins
+ * 0.18.4), but `rehype-katex`'s nested `katex` is 0.16.47 as before, and every
+ * `math-*` row came back byte-stable — ruling R-7 needed no bump. The
+ * `template-novel-*` rows take their options from v4's own
+ * `lib/chat/novel-template.ts` `NOVEL_TEMPLATE` — the object v4's seeder
+ * inserts, never a hand-derived copy (its `renderingPatterns` JSON md5 at the
+ * pin: `NOVEL_PATTERNS_MD5` below, logged on every run). The pre-existing rows
+ * moved by exactly one at that pin: `escapes-in-brackets`, whose `*softly*` v4's
+ * `778b97b2b` nesting now styles inside the `[…]` narration span.
  */
 
+import { createHash } from 'node:crypto';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -52,6 +64,27 @@ const { renderMarkdownToHtml } = (await import(
   renderMarkdownToHtml: (content: string, options?: RenderOptions) => Promise<string>;
 };
 
+// v4's built-in Novel template, loaded from the same tree (v4 `778b97b2b`).
+const { NOVEL_TEMPLATE } = (await import(
+  pathToFileURL(resolve(V4_ROOT, 'lib/chat/novel-template.ts')).href
+)) as {
+  NOVEL_TEMPLATE: {
+    renderingPatterns: NonNullable<RenderOptions['renderingPatterns']>;
+    dialogueDetection: NonNullable<RenderOptions['dialogueDetection']>;
+  };
+};
+
+/** md5 of the Novel patterns as JSON — the H-1 byte-compare handle. */
+const NOVEL_PATTERNS_MD5 = createHash('md5')
+  .update(JSON.stringify(NOVEL_TEMPLATE.renderingPatterns))
+  .digest('hex');
+
+/** Every `template-novel-*` row renders with exactly what v4 seeds. */
+const NOVEL: RenderOptions = {
+  renderingPatterns: NOVEL_TEMPLATE.renderingPatterns,
+  dialogueDetection: NOVEL_TEMPLATE.dialogueDetection,
+};
+
 /**
  * The render options a corpus entry may pin. Mirrors v4's
  * `MarkdownRenderOptions` — the two template-driven inputs P4.30 threads from
@@ -66,7 +99,7 @@ interface RenderOptions {
     pattern: string;
     className: string;
     flags?: string;
-    scope?: 'inline' | 'line';
+    scope?: 'inline' | 'line' | 'unmarked' | 'literal' | 'strip';
     hideDelimiters?: boolean;
   }[];
   dialogueDetection?: {
@@ -99,6 +132,70 @@ const CUSTOM_DIALOGUE: RenderOptions['dialogueDetection'] = {
   openingChars: ['«'],
   closingChars: ['»'],
   className: 'qt-chat-custom-dialogue',
+};
+
+/** One message exercising every Novel arm at once. */
+const NOVEL_SAMPLE = [
+  'The rain had followed her all the way from the station. She paused at the door.',
+  '',
+  '"You came," Theo said. “I wasn\'t sure you would.”',
+  '',
+  '"Neither was I." She hung up her coat. "Your note said it was *urgent*.',
+  '',
+  '"And I meant it." A **loud** claim, and `a*b` stays code. ((brb, dinner))',
+  '',
+  '* * *',
+  '',
+  '- He wondered whether she had seen the letter.',
+  '',
+  '> *So he had read it.*',
+].join('\n');
+
+/** Novel rows, each paired with a `-reset` twin over the same input and no options. */
+const NOVEL_ROWS: { name: string; input: string; options?: RenderOptions }[] = [
+  ['template-novel-sample', NOVEL_SAMPLE],
+  ['template-novel-dialogue-straight', '"You\'re late," he said, not looking up.'],
+  ['template-novel-dialogue-curly', '“Well met, traveller,” she said.'],
+  ['template-novel-dialogue-mixed', '“Hello," she said.'],
+  ['template-novel-dialogue-unclosed-paragraph', '"I went home that night.\n\n"Then I slept until noon."'],
+  ['template-novel-emphasis-inside-dialogue', '"I said *stop*!" she cried.'],
+  ['template-novel-double-asterisks-stripped', 'A **loud** claim, and ***both*** at once.'],
+  ['template-novel-single-asterisk-literal', 'It was *urgent*, she said.'],
+  ['template-novel-scene-break-kept', 'Before the break.\n\n* * *\n\nAfter the break.'],
+  ['template-novel-bullet-kept', '* an item *with* stress\n* another item'],
+  ['template-novel-inline-code-untouched', 'Use `a*b` here, and *this*.'],
+  ['template-novel-math-untouched', 'Inline $$a*b$$ math and *this*.'],
+  ['template-novel-ooc', 'She waited. ((brb, dinner))'],
+  ['template-novel-unmarked-narration-italic', 'She set the cup down. "You came," she said.'],
+  ['template-novel-unmarked-in-li-and-blockquote', '- She ran.\n- "Wait!" he cried.\n\n> She paused at the door.\n\n## The *letter*'],
+  ['template-novel-wrap-block-hidden-under-unmarked', '*Damn.*'],
+].flatMap(([name, input]) => [
+  { name, input, options: NOVEL },
+  { name: `${name}-reset`, input, options: {} },
+]);
+
+/** Novel's patterns plus one hidden-prefix LINE rule (`stripUnmarkedSpans`). */
+const NOVEL_PLUS_LINE: RenderOptions = {
+  renderingPatterns: [
+    ...NOVEL_TEMPLATE.renderingPatterns,
+    { pattern: '^// (?<rpBody>.+)$', className: 'qt-chat-ooc', flags: 'm', scope: 'line', hideDelimiters: true },
+  ],
+  dialogueDetection: NOVEL_TEMPLATE.dialogueDetection,
+};
+
+/**
+ * Novel's patterns plus three more inline wraps, so five rules can nest in one
+ * another and the depth cap (`MAX_INLINE_NESTING = 3`) is reached: dialogue ›
+ * OOC › `@@` › `%%` is the deepest styled chain, and `^^` inside it stays plain.
+ */
+const NOVEL_PLUS_THREE: RenderOptions = {
+  renderingPatterns: [
+    ...NOVEL_TEMPLATE.renderingPatterns,
+    { pattern: '@@[^@]+@@', className: 'qt-chat-emote' },
+    { pattern: '%%[^%]+%%', className: 'qt-chat-aside' },
+    { pattern: '\\^\\^[^^]+\\^\\^', className: 'qt-chat-whisper' },
+  ],
+  dialogueDetection: NOVEL_TEMPLATE.dialogueDetection,
 };
 
 const CORPUS: { name: string; input: string; options?: RenderOptions }[] = [
@@ -351,6 +448,37 @@ const CORPUS: { name: string; input: string; options?: RenderOptions }[] = [
     input: '«Bonjour» and "hello".',
     options: { displayQuotes: true, dialogueDetection: CUSTOM_DIALOGUE },
   },
+  // --- P4.D352: the Novel template (v4 778b97b2b) ----------------------------
+  ...NOVEL_ROWS,
+  {
+    name: 'template-novel-line-rule-strips-unmarked',
+    input: '// an aside\n\nShe ran.',
+    options: NOVEL_PLUS_LINE,
+  },
+  { name: 'template-novel-line-rule-strips-unmarked-reset', input: '// an aside\n\nShe ran.', options: {} },
+  {
+    name: 'template-novel-nesting-depth-cap',
+    input: '"a ((b @@c %%d ^^e^^ d%% c@@ b)) a"',
+    options: NOVEL_PLUS_THREE,
+  },
+  { name: 'template-novel-nesting-depth-cap-reset', input: '"a ((b @@c %%d ^^e^^ d%% c@@ b)) a"', options: {} },
+  {
+    // Captured as v4 renders it: a `*` inside TWO shown-delimiter wraps
+    // (dialogue › OOC) is escaped by each wrap's interior pass, so the second
+    // backslash survives as text and Markdown makes the run an `<em>`.
+    name: 'template-novel-emphasis-in-ooc-in-dialogue',
+    input: '"a ((b *c* b)) a"',
+    options: NOVEL,
+  },
+  { name: 'template-novel-emphasis-in-ooc-in-dialogue-reset', input: '"a ((b *c* b)) a"', options: {} },
+  {
+    // `mentionsGlyph`: Novel's dialogue wrap names the curly forms, so curling
+    // proceeds under it — and its pattern still matches the curled quotes.
+    name: 'quotes-on-novel-dialogue',
+    input: '"You came," she said. "I wasn\'t sure."',
+    options: { ...NOVEL, displayQuotes: true },
+  },
+  { name: 'quotes-on-novel-dialogue-reset', input: '"You came," she said. "I wasn\'t sure."', options: {} },
 ];
 
 async function main() {
@@ -371,6 +499,7 @@ async function main() {
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, JSON.stringify(out, null, 2) + '\n', 'utf8');
   console.log(`Wrote ${out.length} fixtures to ${target}`);
+  console.log(`Novel renderingPatterns md5 ${NOVEL_PATTERNS_MD5}`);
 }
 
 void main();
