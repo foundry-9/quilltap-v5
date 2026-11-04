@@ -306,10 +306,17 @@ export interface SmartTypographySettings {
   dashes?: boolean;
   /** `...` → ellipsis, as you type. */
   ellipsis?: boolean;
+  // === P4.D352: punctuation warnings (C7) ===
+  /** Paint a warning over punctuation that looks wrong while typing. */
+  punctuationWarnings?: boolean;
+  // === end P4.D352 ===
 }
 
 export const DEFAULT_SMART_TYPOGRAPHY_SETTINGS: SmartTypographySettings = {
   displayQuotes: false,
   dashes: true,
   ellipsis: true,
+  // === P4.D352: punctuation warnings (C7) ===
+  punctuationWarnings: true,
+  // === end P4.D352 ===
 };

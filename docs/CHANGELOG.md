@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the punctuation-warnings toggle and its live settings signal (P4.D352)
+
+_Versions: SPA 0.5.911._
+
+The Smart Typography card gains v4's fourth toggle, "Warn about punctuation that looks wrong" (v4 `1dd0a0c01`, `SmartTypographySettings.tsx:172-190`), with v4's sentence. It reads `punctuationWarnings ?? true` (contract C7 — the server key is P4.D356's) and PUTs the whole four-key bag on any change. `SmartTypographySettings` (the root service) gains a third signal, `punctuationWarnings`, and `readPunctuationWarnings` (v4 `PunctuationLintPlugin.tsx:347`). The `SmartTypographySettings` interface and its default gain the key inside a P4.D352 fence.
+
 #### 2026-11-03 — feat(spa): the composer punctuation-lint adapter as ProseMirror decorations + the rich editor's punctuationLint input (P4.D352)
 
 _Versions: SPA 0.5.910._

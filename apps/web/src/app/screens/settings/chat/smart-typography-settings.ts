@@ -12,7 +12,8 @@ import {
  * The Smart Typography card (v4 `components/settings/chat-settings/
  * SmartTypographySettings.tsx`, Layer 1.6).
  *
- * Presents the feature as the two groups it actually is, because the difference
+ * Presents the feature as the two groups it actually is (plus, since v4
+ * `1dd0a0c01`, the composer's punctuation warnings — type time, but read-only), because the difference
  * between them IS the feature: quotes are a display opinion applied at render
  * time and nothing is written down, while dashes and ellipsis are content and
  * become real characters as you type.
@@ -123,6 +124,31 @@ import {
             (keydown)="onTryItKeyDown($event)"
           ></textarea>
         </div>
+
+        <!-- Punctuation warnings — type time, but read-only (v4 1dd0a0c01) -->
+        <label class="qt-settings-toggle-row">
+          <input
+            type="checkbox"
+            class="qt-checkbox mt-1"
+            [checked]="punctuationWarnings()"
+            [disabled]="saving()"
+            (change)="onUpdate({ punctuationWarnings: $any($event.target).checked })"
+          />
+          <div class="flex-1">
+            <div class="qt-settings-section-heading">Warn about punctuation that looks wrong</div>
+            <div class="qt-text-small mt-1">
+              While you type in the Salon composer, marks that will probably confuse the
+              formatting are tinted and underlined: a
+              <span class="qt-code-inline">&quot;</span> opened inside dialogue that is already
+              open (quote someone with single quotes there), a closing quote with nothing to
+              close, a quote stranded between spaces or jammed between words, dialogue that never
+              closes, and an <span class="qt-code-inline">*</span>,
+              <span class="qt-code-inline">((</span> or <span class="qt-code-inline">))</span>
+              with no partner. Hover a mark to see why. Nothing is ever corrected for you, and
+              nothing you are still in the middle of typing is flagged.
+            </div>
+          </div>
+        </label>
       </div>
     }
   `,
@@ -147,6 +173,14 @@ export class SmartTypographySettings extends ChatSettingsCard {
   /** v4 `current.ellipsis ?? true`. */
   protected readonly ellipsis = computed(
     () => this.bag().ellipsis ?? DEFAULT_SMART_TYPOGRAPHY_SETTINGS.ellipsis ?? true,
+  );
+
+  /** v4 `current.punctuationWarnings ?? true` (`1dd0a0c01`). */
+  protected readonly punctuationWarnings = computed(
+    () =>
+      this.bag().punctuationWarnings ??
+      DEFAULT_SMART_TYPOGRAPHY_SETTINGS.punctuationWarnings ??
+      true,
   );
 
   /** v4's trailing sentence, appended only while both rules are off. */

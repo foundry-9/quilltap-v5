@@ -21,15 +21,19 @@ import type { SmartTypographyOptions } from './engine';
  *    `useQuery` and keeps the result in a ref, so the registered command handler
  *    never needs re-registering when the settings change.
  *
- * v5 has the same two consumers and reads the row once, here. The Angular shape
+ * A third reader arrived with v4 `1dd0a0c01`: `PunctuationLintPlugin.tsx:347`
+ * reads `punctuationWarnings ?? true` from the same bag, for the composer's
+ * punctuation warnings — `punctuationWarnings` below (P4.D352).
+ *
+ * v5 has the same consumers and reads the row once, here. The Angular shape
  * differs from v4's `useQuery`-per-consumer: an Angular component doing that
  * would open a query per mounted message row AND would hard-require a
  * `QueryClient` in every spec that renders a message. This is one root
  * singleton, one cache subscription, two signals.
  *
- * **Absent a `QueryClient` the service is inert** and both signals keep their
+ * **Absent a `QueryClient` the service is inert** and the signals keep their
  * defaults — which are v4's own defaults for an unset bag (`displayQuotes`
- * false, `dashes`/`ellipsis` true), and which keep `qt-message-content` and
+ * false, `dashes`/`ellipsis`/`punctuationWarnings` true), and which keep `qt-message-content` and
  * `qt-rich-editor` mountable with no query layer at all.
  *
  * @module smart-typography/settings
@@ -49,6 +53,9 @@ export class SmartTypographySettings {
 
   /** Part B: the type-time rules. v4's default for each: `true`. */
   readonly typing = signal<SmartTypographyOptions>(readTypingOptions(this.seed));
+
+  /** The composer's punctuation warnings (v4 `1dd0a0c01`). v4's default: `true`. */
+  readonly punctuationWarnings = signal(readPunctuationWarnings(this.seed));
 
   constructor() {
     const client = this.queryClient;
@@ -78,6 +85,8 @@ export class SmartTypographySettings {
         if (next.dashes !== current.dashes || next.ellipsis !== current.ellipsis) {
           this.typing.set(next);
         }
+        const warnings = readPunctuationWarnings(row);
+        if (warnings !== this.punctuationWarnings()) this.punctuationWarnings.set(warnings);
       });
     };
 
@@ -107,6 +116,7 @@ interface StoredBag {
   displayQuotes?: boolean;
   dashes?: boolean;
   ellipsis?: boolean;
+  punctuationWarnings?: boolean;
 }
 
 function bagOf(row: ChatSettingsDto | undefined | null): StoredBag | undefined | null {
@@ -122,4 +132,9 @@ export function readDisplayQuotes(row: ChatSettingsDto | undefined | null): bool
 export function readTypingOptions(row: ChatSettingsDto | undefined | null): SmartTypographyOptions {
   const bag = bagOf(row);
   return { dashes: bag?.dashes ?? true, ellipsis: bag?.ellipsis ?? true };
+}
+
+/** v4 `PunctuationLintPlugin.tsx:347` — `punctuationWarnings ?? true`. */
+export function readPunctuationWarnings(row: ChatSettingsDto | undefined | null): boolean {
+  return bagOf(row)?.punctuationWarnings ?? true;
 }

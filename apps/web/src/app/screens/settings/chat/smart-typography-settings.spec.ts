@@ -31,7 +31,7 @@ function press(fixture: ComponentFixture<unknown>, key: string): KeyboardEvent {
   return event;
 }
 
-describe('SmartTypographySettings — the three toggles', () => {
+describe('SmartTypographySettings — the four toggles', () => {
   it('shows v4 defaults when the bag is absent (quotes off, both rules on)', async () => {
     const fixture = await mountCard(SmartTypographySettings, cardStub(settingsRow()));
     const [quotes, dashes, ellipsis] = checkboxes(fixture);
@@ -63,7 +63,14 @@ describe('SmartTypographySettings — the three toggles', () => {
     // The PUT carries all three keys: v4's merge-then-PUT, so flipping one
     // rule cannot silently drop the setting the other card half owns.
     expect(stub.updates).toEqual([
-      { smartTypographySettings: { displayQuotes: true, dashes: false, ellipsis: true } },
+      {
+        smartTypographySettings: {
+          displayQuotes: true,
+          dashes: false,
+          ellipsis: true,
+          punctuationWarnings: true,
+        },
+      },
     ]);
   });
 
@@ -72,7 +79,71 @@ describe('SmartTypographySettings — the three toggles', () => {
     const fixture = await mountCard(SmartTypographySettings, stub);
     await toggle(fixture, checkboxes(fixture)[0], true);
     expect(stub.updates).toEqual([
-      { smartTypographySettings: { displayQuotes: true, dashes: true, ellipsis: false } },
+      {
+        smartTypographySettings: {
+          displayQuotes: true,
+          dashes: true,
+          ellipsis: false,
+          punctuationWarnings: true,
+        },
+      },
+    ]);
+  });
+
+  it('renders four toggles — the punctuation warnings row LAST, default ON (P4.D352)', async () => {
+    const fixture = await mountCard(SmartTypographySettings, cardStub(settingsRow()));
+    const boxes = checkboxes(fixture);
+    expect(boxes).toHaveLength(4);
+    expect(boxes[3].checked).toBe(true);
+    const row = boxes[3].closest('label')!;
+    expect(row.querySelector('.qt-settings-section-heading')!.textContent!.trim()).toBe(
+      'Warn about punctuation that looks wrong',
+    );
+    // v4 SmartTypographySettings.tsx:176-188, byte for byte once whitespace is
+    // collapsed the way the browser lays it out.
+    const body = row.querySelector('.qt-text-small')!.textContent!.replace(/\s+/g, ' ').trim();
+    expect(body).toBe(
+      'While you type in the Salon composer, marks that will probably confuse the formatting are ' +
+        'tinted and underlined: a " opened inside dialogue that is already open (quote someone ' +
+        'with single quotes there), a closing quote with nothing to close, a quote stranded ' +
+        'between spaces or jammed between words, dialogue that never closes, and an *, (( or )) ' +
+        'with no partner. Hover a mark to see why. Nothing is ever corrected for you, and ' +
+        'nothing you are still in the middle of typing is flagged.',
+    );
+    expect([...row.querySelectorAll('.qt-code-inline')].map((el) => el.textContent)).toEqual([
+      '"',
+      '*',
+      '((',
+      '))',
+    ]);
+  });
+
+  it('reads an absent key as ON and a stored false as off', async () => {
+    const off = await mountCard(
+      SmartTypographySettings,
+      cardStub(settingsRow({ smartTypographySettings: { punctuationWarnings: false } })),
+    );
+    expect(checkboxes(off)[3].checked).toBe(false);
+    const absent = await mountCard(
+      SmartTypographySettings,
+      cardStub(settingsRow({ smartTypographySettings: { displayQuotes: true } })),
+    );
+    expect(checkboxes(absent)[3].checked).toBe(true);
+  });
+
+  it('turning it off PUTs the whole four-key bag', async () => {
+    const stub = cardStub(settingsRow({ smartTypographySettings: { displayQuotes: true } }));
+    const fixture = await mountCard(SmartTypographySettings, stub);
+    await toggle(fixture, checkboxes(fixture)[3], false);
+    expect(stub.updates).toEqual([
+      {
+        smartTypographySettings: {
+          displayQuotes: true,
+          dashes: true,
+          ellipsis: true,
+          punctuationWarnings: false,
+        },
+      },
     ]);
   });
 

@@ -8,7 +8,12 @@ import type { ChatSettingsDto } from '../core/core-contract';
 import { MessageContent } from '../chat/message-content';
 import { clearRenderCache } from '../chat/render/render-cache';
 import { chatSettingsKeys } from '../screens/settings/chat/chat-settings.api';
-import { SmartTypographySettings, readDisplayQuotes, readTypingOptions } from './settings';
+import {
+  SmartTypographySettings,
+  readDisplayQuotes,
+  readPunctuationWarnings,
+  readTypingOptions,
+} from './settings';
 
 /**
  * The one seam: `qt-message-content` reads `smartTypographySettings.displayQuotes`
@@ -244,6 +249,56 @@ describe('SmartTypographySettings — the typing half', () => {
       settingsRow({ smartTypographySettings: { dashes: false } }),
     );
     expect(service.typing()).toEqual({ dashes: false, ellipsis: true });
+  });
+});
+
+describe('readPunctuationWarnings (P4.D352 — v4 PunctuationLintPlugin.tsx:347 `?? true`)', () => {
+  it('defaults to ON through every missing level', () => {
+    expect(readPunctuationWarnings(undefined)).toBe(true);
+    expect(readPunctuationWarnings(null)).toBe(true);
+    expect(readPunctuationWarnings(settingsRow())).toBe(true);
+    expect(readPunctuationWarnings(settingsRow({ smartTypographySettings: null }))).toBe(true);
+    // A three-key bag from a server that predates the key reads ON.
+    expect(
+      readPunctuationWarnings(
+        settingsRow({ smartTypographySettings: { displayQuotes: false, dashes: true, ellipsis: true } }),
+      ),
+    ).toBe(true);
+  });
+
+  it('reads the stored value when present', () => {
+    expect(
+      readPunctuationWarnings(settingsRow({ smartTypographySettings: { punctuationWarnings: false } })),
+    ).toBe(false);
+  });
+});
+
+describe('SmartTypographySettings — the punctuation-warnings signal (P4.D352)', () => {
+  it('seeds ON with no query layer at all', () => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({ providers: [] });
+    expect(TestBed.inject(SmartTypographySettings).punctuationWarnings()).toBe(true);
+  });
+
+  it('follows the saved bag both ways', async () => {
+    TestBed.resetTestingModule();
+    const client = new QueryClient();
+    client.setQueryData(chatSettingsKeys.all, settingsRow());
+    TestBed.configureTestingModule({
+      providers: [
+        provideTanStackQuery(client),
+        { provide: CoreClient, useValue: coreStub(settingsRow()) },
+      ],
+    });
+    const service = TestBed.inject(SmartTypographySettings);
+    expect(service.punctuationWarnings()).toBe(true);
+    client.setQueryData(
+      chatSettingsKeys.all,
+      settingsRow({ smartTypographySettings: { punctuationWarnings: false } }),
+    );
+    expect(service.punctuationWarnings()).toBe(false);
+    client.setQueryData(chatSettingsKeys.all, settingsRow({ smartTypographySettings: {} }));
+    expect(service.punctuationWarnings()).toBe(true);
   });
 });
 
