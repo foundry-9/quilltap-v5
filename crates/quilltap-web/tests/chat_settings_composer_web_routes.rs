@@ -128,9 +128,10 @@ async fn composer_settings_web_edges() {
     let s = &body["data"];
     assert_eq!(s["composerEmoji"], json!(true));
     assert_eq!(s["composerUnicode"], json!(true));
+    // P4.D356 (v4 `1dd0a0c01`): the read materializes the fourth key.
     assert_eq!(
         s["smartTypographySettings"],
-        json!({"displayQuotes": false, "dashes": true, "ellipsis": true})
+        json!({"displayQuotes": false, "dashes": true, "ellipsis": true, "punctuationWarnings": true})
     );
 
     // --- PUT: single-key payloads, exactly as the SPA saves `composerSpellcheck` ---
@@ -159,7 +160,7 @@ async fn composer_settings_web_edges() {
     assert_eq!(status, 200, "smartTypographySettings PUT");
     assert_eq!(
         body["data"]["smartTypographySettings"],
-        json!({"displayQuotes": true, "dashes": true, "ellipsis": true}),
+        json!({"displayQuotes": true, "dashes": true, "ellipsis": true, "punctuationWarnings": true}),
         "partial bag echo"
     );
 
@@ -174,7 +175,7 @@ async fn composer_settings_web_edges() {
     assert_eq!(s["composerUnicode"], json!(true), "untouched key");
     assert_eq!(
         s["smartTypographySettings"],
-        json!({"displayQuotes": true, "dashes": true, "ellipsis": true}),
+        json!({"displayQuotes": true, "dashes": true, "ellipsis": true, "punctuationWarnings": true}),
         "smartTypographySettings must persist"
     );
 
@@ -216,7 +217,69 @@ async fn composer_settings_web_edges() {
     assert_eq!(body["data"]["composerUnicode"], json!(true));
     assert_eq!(
         body["data"]["smartTypographySettings"],
-        json!({"displayQuotes": true, "dashes": true, "ellipsis": true})
+        json!({"displayQuotes": true, "dashes": true, "ellipsis": true, "punctuationWarnings": true})
+    );
+
+    // --- P4.D356 (v4 `3b8b6f42b`): the allow-list over the HTTP transport —
+    // an unknown top-level key refuses the whole PUT with v4's sentence ---
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "foo": 1, "composerEmoji": true }
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "an unknown settings key");
+    assert_eq!(
+        body["data"]["message"],
+        json!("Invalid settings: unknown key foo")
+    );
+    let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    assert_eq!(
+        body["data"]["composerEmoji"],
+        json!(false),
+        "the refused PUT wrote nothing"
+    );
+
+    // --- the `coreWhisper` arm over the wire: a partial bag stored whole ---
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "coreWhisper": { "enabled": false } }
+        }),
+    )
+    .await;
+    assert_eq!(status, 200, "coreWhisper PUT");
+    let (_, body2) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;
+    for b in [&body["data"], &body2["data"]] {
+        assert_eq!(
+            serde_json::to_string(&b["coreWhisper"]).unwrap(),
+            r#"{"enabled":false,"interval":12,"silenceThreshold":3,"packetTokenBudget":4096,"fireOnContextTransition":true}"#,
+            "the echo and the read-back carry the parsed five-key bag"
+        );
+    }
+    // …and a refused bag: `null` is a 400 with the Zod envelope (the raw-bag
+    // dispatch carries the explicit null), nothing written.
+    let (status, body) = dispatch(
+        &client,
+        &addr,
+        json!({
+            "type": "chatSettingsUpdate",
+            "settings": { "coreWhisper": null }
+        }),
+    )
+    .await;
+    assert_eq!(status, 400, "an explicit null coreWhisper");
+    assert!(
+        body["data"]["message"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("Invalid input: expected object, received null"),
+        "{body}"
     );
 }
 
@@ -357,19 +420,20 @@ async fn impersonation_voice_mode_web_edges() {
         assert_eq!(body["data"]["message"], json!(MODE_SENTENCE), "{bad}");
     }
 
-    // --- the RETIRED key is ignored: 200, the row unchanged ---
+    // --- the RETIRED key is REFUSED as unknown (P4.D356 — v4 `3b8b6f42b`'s
+    //     34-key allow-list; it was ignored in silence before): 400, nothing
+    //     written ---
     let (status, body) = dispatch(
         &client,
         &addr,
         json!({ "type": "chatSettingsUpdate", "settings": { OLD_COL: true } }),
     )
     .await;
+    assert_eq!(status, 400, "a body carrying the retired key is refused");
     assert_eq!(
-        status, 200,
-        "a body carrying the retired key is ignored, not refused"
+        body["data"]["message"],
+        json!(format!("Invalid settings: unknown key {OLD_COL}"))
     );
-    assert_eq!(body["data"][MODE_COL], json!("always"), "nothing written");
-    assert!(body["data"].get(OLD_COL).is_none());
 
     // --- and the rejected PUTs left the stored value untouched ---
     let (_, body) = dispatch(&client, &addr, json!({ "type": "chatSettings" })).await;

@@ -391,8 +391,8 @@ fn smart_typography_default_true() -> bool {
     true
 }
 
-/// `SmartTypographySettingsSchema` (settings.types.ts, v4 4.8.2 `2d31810f`).
-/// Three plain booleans, all with Zod defaults — `displayQuotes` false (a
+/// `SmartTypographySettingsSchema` (settings.types.ts, v4 4.8.2 `2d31810f`;
+/// the fourth key v4 `1dd0a0c01`). Four plain booleans, all with Zod defaults — `displayQuotes` false (a
 /// render-time curl of quotes; stored bytes never change), `dashes` and
 /// `ellipsis` true (type-time content edits). Field order is the Zod
 /// declaration order, which is what `JSON.stringify(zodParsed)` emits.
@@ -405,6 +405,11 @@ pub struct SmartTypographySettings {
     pub dashes: bool,
     #[serde(default = "smart_typography_default_true")]
     pub ellipsis: bool,
+    /// v4 `1dd0a0c01`: the composer's punctuation-warning lint switch, the
+    /// FOURTH key (`z.boolean().default(true)`). A stored THREE-key bag (every
+    /// pre-round row, and the DDL default) reads with it filled `true`.
+    #[serde(default = "smart_typography_default_true")]
+    pub punctuation_warnings: bool,
 }
 
 /// v4's `SmartTypographySettingsSchema.default({displayQuotes:false, dashes:true,
@@ -416,6 +421,7 @@ impl Default for SmartTypographySettings {
             display_quotes: false,
             dashes: true,
             ellipsis: true,
+            punctuation_warnings: true,
         }
     }
 }
@@ -522,6 +528,64 @@ fn read_wardrobe_image_settings_cell(cell: Option<String>) -> Option<serde_json:
     }
     let typed: WardrobeImageSettings = serde_json::from_value(parsed).unwrap_or_default();
     Some(serde_json::to_value(typed).unwrap_or(serde_json::Value::Null))
+}
+
+/// The `smartTypographySettings` cell as v4's `ChatSettingsSchema.parse` reads
+/// it (P4.D356, v4 `1dd0a0c01`): NULL / empty / unparseable / JSON `null` → the
+/// schema's whole-bag default (FOUR keys —
+/// [`SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON`](super::chat_settings_composer_repair::SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON));
+/// a stored object whose keys the schema accepts → re-emitted through the
+/// typed struct (per-key defaults filled, unknown keys stripped, declaration
+/// order). A cell the schema REFUSES (a non-object, a non-boolean key) is
+/// answered as stored here and reported by [`smart_typography_issues`] — the
+/// whole-row read then repairs it to the default (v4's `hydrateTolerantly`).
+fn read_smart_typography_cell(cell: Option<String>) -> serde_json::Value {
+    let default = || {
+        serde_json::from_str(
+            super::chat_settings_composer_repair::SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON,
+        )
+        .unwrap_or(serde_json::Value::Null)
+    };
+    let Some(parsed) = cell
+        .filter(|t| !t.is_empty())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .filter(|v| !v.is_null())
+    else {
+        return default();
+    };
+    if !smart_typography_issues(&parsed).is_empty() {
+        return parsed;
+    }
+    let typed: SmartTypographySettings = serde_json::from_value(parsed).unwrap_or_default();
+    serde_json::to_value(typed).unwrap_or_else(|_| default())
+}
+
+/// The `SmartTypographySettingsSchema` issues a READ value raises, path-prefixed
+/// `smartTypographySettings` (the whole-row parse's paths): a non-object is the
+/// one `invalid_type`; each present non-boolean key one `invalid_type`, in
+/// declaration order.
+pub(crate) fn smart_typography_issues(
+    v: &serde_json::Value,
+) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::ZodIssue;
+    use serde_json::Value;
+    let path = |k: Option<&str>| {
+        let mut p = vec![Value::String("smartTypographySettings".into())];
+        if let Some(k) = k {
+            p.push(Value::String(k.into()));
+        }
+        p
+    };
+    let Some(o) = v.as_object() else {
+        return vec![ZodIssue::invalid_type("object", path(None), Some(v))];
+    };
+    ["displayQuotes", "dashes", "ellipsis", "punctuationWarnings"]
+        .iter()
+        .filter_map(|k| match o.get(*k) {
+            None | Some(Value::Bool(_)) => None,
+            other => Some(ZodIssue::invalid_type("boolean", path(Some(k)), other)),
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -1491,21 +1555,9 @@ fn find_one_where(
             _ => Value::Null,
         }
     }
-    // A JSON-object column whose absence is REACHABLE (a column v4 added by
-    // migration, which v5's boot ensure may not have reached yet): a NULL /
-    // empty / unparseable cell falls back to the Zod schema's own default bag,
-    // reproducing v4's `undefined` → `.default({...})`.
-    fn parse_json_or_default(cell: Option<String>, default_json: &str) -> Value {
-        match cell {
-            Some(text) if !text.is_empty() => {
-                serde_json::from_str(&text).unwrap_or_else(|_| default_of(default_json))
-            }
-            _ => default_of(default_json),
-        }
-    }
-    fn default_of(default_json: &str) -> Value {
-        serde_json::from_str(default_json).unwrap_or(Value::Null)
-    }
+    // (P4.D356: the one JSON column whose absence fell back to a schema bag —
+    // `smartTypographySettings` — now reads through
+    // `read_smart_typography_cell`, which parses rather than passes through.)
     // A `.nullable().optional()` string/UUID column: `Some` → present string,
     // `None` (SQL NULL) → the key is OMITTED (v4 drops the `undefined`).
     fn put_opt(obj: &mut Map<String, Value>, key: &str, v: Option<String>) {
@@ -1754,12 +1806,15 @@ fn find_one_where(
                 // column (or a NULL cell) is `undefined` to v4, and
                 // `SmartTypographySettingsSchema.default({...})` materializes
                 // the whole bag — so it must not surface as JSON `null`.
+                //
+                // v4 `1dd0a0c01` (P4.D356): the READ materializes the fourth key.
+                // v4's `ChatSettingsSchema.parse` fills `punctuationWarnings:
+                // true` on a stored THREE-key bag (every pre-round row, and the
+                // DDL default, which stays three keys — R-6), so the bag is
+                // re-emitted through the typed struct in declaration order.
                 obj.insert(
                     "smartTypographySettings".into(),
-                    parse_json_or_default(
-                        r.get::<_, Option<String>>(32)?,
-                        super::chat_settings_composer_repair::SMART_TYPOGRAPHY_DEFAULT_JSON,
-                    ),
+                    read_smart_typography_cell(r.get::<_, Option<String>>(32)?),
                 );
                 obj.insert(
                     "storyBackgroundsSettings".into(),
@@ -2547,7 +2602,6 @@ mod tests {
             "coreWhisper",
             "thinkingDisplay",
             "answerConfirmationSettings",
-            "smartTypographySettings",
             "storyBackgroundsSettings",
             "autoLockSettings",
         ];
@@ -2578,6 +2632,13 @@ mod tests {
                     format!("{{\"enabled\":false,\"autoSwitchAfterRefusals\":{}}}", 7 + row_ix).into(),
                 ),
                 ("timezone".into(), format!("Zone/{user}").into()),
+                // P4.D356 (v4 `1dd0a0c01`): parsed, not raw — a stored
+                // three-key bag in a scrambled order reads in declaration
+                // order with the fourth key filled.
+                (
+                    "smartTypographySettings".into(),
+                    format!("{{\"ellipsis\":false,\"displayQuotes\":{}}}", row_ix == 0).into(),
+                ),
                 ("createdAt".into(), format!("created-{user}").into()),
                 ("updatedAt".into(), format!("updated-{user}").into()),
             ];
@@ -2627,6 +2688,13 @@ mod tests {
             );
             assert_eq!(row["conciergeSettings"]["enabled"], false);
             assert_eq!(row["timezone"], format!("Zone/{user}"));
+            assert_eq!(
+                serde_json::to_string(&row["smartTypographySettings"]).unwrap(),
+                format!(
+                    "{{\"displayQuotes\":{},\"dashes\":true,\"ellipsis\":false,\"punctuationWarnings\":true}}",
+                    row_ix == 0
+                )
+            );
             assert_eq!(row["createdAt"], format!("created-{user}"), "index canary");
             assert_eq!(row["updatedAt"], format!("updated-{user}"), "index canary");
             for name in raw_bags {
@@ -2830,9 +2898,11 @@ mod tests {
         let row = find_by_user_id(&conn, "u1").unwrap().expect("row");
         assert_eq!(row["composerEmoji"], serde_json::Value::Bool(true));
         assert_eq!(row["composerUnicode"], serde_json::Value::Bool(true));
+        // P4.D356 (v4 `1dd0a0c01`): the absent column reads as the SCHEMA
+        // default — four keys (the DDL constant stays three, R-6).
         assert_eq!(
             row["smartTypographySettings"],
-            serde_json::json!({"displayQuotes": false, "dashes": true, "ellipsis": true})
+            serde_json::json!({"displayQuotes": false, "dashes": true, "ellipsis": true, "punctuationWarnings": true})
         );
         // P4.D251: this table also predates the voice column, so the same
         // tolerance runs for `impersonationVoiceMode` — v4's Zod default is

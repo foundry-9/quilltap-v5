@@ -111,6 +111,10 @@ interface CaseSpec {
    *  unknown key, missing defaults, or a value the schema refuses. The Rust
    *  harness plants identically. */
   plantCheapLlmSettings?: { value: string | null };
+  /** P4.D356: run the chat-settings GET first and send ITS body as this PUT's
+   *  body (a client echoing a row back). The recorded `req.body` is the echoed
+   *  body, so the Rust side replays it verbatim. */
+  echoGet?: boolean;
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -239,7 +243,18 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         c.corruptApiKey,
       ]);
     }
-    const req = mockRequest(c.url, c.method, c.body);
+    let sentBody: unknown = c.body;
+    if (c.echoGet) {
+      const mod = await import('@/app/api/v1/settings/chat/route');
+      const got = (await mod.GET(mockRequest(c.url, 'GET') as never)) as never as {
+        json: () => Promise<unknown>;
+      };
+      // Through JSON, as a real client's echo travels: the in-process GET body
+      // can carry a key whose value is `undefined` (`timezone`), which no wire
+      // can send.
+      sentBody = JSON.parse(JSON.stringify(await got.json()));
+    }
+    const req = mockRequest(c.url, c.method, sentBody);
     let response: { status: number; json: () => Promise<unknown> };
     const params = { params: Promise.resolve({ id: c.paramId ?? '' }) };
     if (c.route === 'settingsChat') {
@@ -309,7 +324,7 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         user: c.user,
         url: c.url,
         paramId: c.paramId ?? null,
-        body: c.body ?? null,
+        body: sentBody ?? null,
         after: c.after ?? null,
         seedDataRetention: c.seedDataRetention ?? null,
         seedTaboo: c.seedTaboo ?? null,
@@ -1212,6 +1227,414 @@ describe('settings-routes oracle', () => {
       method: 'PUT',
       url: 'http://x/api/v1/settings/chat',
       body: { customTools: false, customToolTriggers: true },
+      after: 'settingsChat',
+    },
+    // ---- P4.D356 (v4 `3b8b6f42b`): the 34-key `ACCEPTED_KEYS` allow-list ----
+    // `findUnknownKeys(body)` runs AFTER the retired-Concierge check and BEFORE
+    // any arm: an unknown top-level key is a 400 `Invalid settings: unknown
+    // key[s] <k, …>` (body order) and NOTHING is written (each row refetches).
+    {
+      // One unknown key beside a valid one — refused whole; `customTools` NOT written.
+      name: 's_put_unknown_one',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { notASetting: true, customTools: true },
+      after: 'settingsChat',
+    },
+    {
+      // Two — the plural sentence, body order.
+      name: 's_put_unknown_two',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { a: 1, b: 2 },
+      after: 'settingsChat',
+    },
+    {
+      // The retired check runs FIRST — its sentence wins.
+      name: 's_put_unknown_with_retired',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { dangerousContentSettings: {}, foo: 1 },
+      after: 'settingsChat',
+    },
+    {
+      // A client echoing a whole GET row back: the GET runs first and its body is the PUT body (`echoGet`), so the keys v4 never accepts are named in the row's own order.
+      name: 's_put_get_row_echo',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: {},
+      after: 'settingsChat',
+      echoGet: true,
+    },
+    {
+      // A schema field the PUT never accepted.
+      name: 's_put_timestamp_config',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { defaultTimestampConfig: { mode: 'NONE' } },
+      after: 'settingsChat',
+    },
+    {
+      // Likewise `timezone`.
+      name: 's_put_timezone',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { timezone: 'UTC' },
+      after: 'settingsChat',
+    },
+    {
+      // An ARRAY body: `typeof [] === 'object'`, so `Object.keys` names its indices (R-13 — measured, not guessed).
+      name: 's_put_array_body',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: [1, 2] as unknown as Record<string, unknown>,
+      after: 'settingsChat',
+    },
+    {
+      // The silence leg: every key accepted — written, 200.
+      name: 's_put_known_keys_only',
+      family: 'unknown_keys',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customTools: true, composerEmoji: false },
+      after: 'settingsChat',
+    },
+    // ---- P4.D356 (v4 `3b8b6f42b`): the `coreWhisper` arm ----
+    // `CoreWhisperSettingsSchema.parse(coreWhisper)` after `wardrobeImageSettings`:
+    // a partial bag fills the defaults (five keys, declaration order), unknown
+    // inner keys are stripped, a refusal is the whole ZodError text — 400 when
+    // it carries "Invalid", 500 for a bare range refusal (R-10).
+    {
+      // v4's own vector: the full bag with enabled false.
+      name: 's_put_core_whisper_off',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { enabled: false, interval: 12, silenceThreshold: 3, packetTokenBudget: 4096, fireOnContextTransition: true } },
+      after: 'settingsChat',
+    },
+    {
+      // A partial bag — the four absent keys materialize.
+      name: 's_put_core_whisper_partial',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { enabled: false } },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_empty',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: {} },
+      after: 'settingsChat',
+    },
+    {
+      // Below `.min(3)` — `too_small`, no 'Invalid' → 500; nothing written.
+      name: 's_put_core_whisper_interval_low',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 1 } },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_interval_high',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 51 } },
+      after: 'settingsChat',
+    },
+    {
+      // `.int()` on a fraction — the bytes measured here.
+      name: 's_put_core_whisper_fractional',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 3.5 } },
+      after: 'settingsChat',
+    },
+    {
+      // `.positive()` — exclusive.
+      name: 's_put_core_whisper_budget_zero',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { packetTokenBudget: 0 } },
+      after: 'settingsChat',
+    },
+    {
+      // Past the safe-integer range.
+      name: 's_put_core_whisper_budget_huge',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { packetTokenBudget: 1e20 } },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_string_interval',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: '5' } },
+      after: 'settingsChat',
+    },
+    {
+      // `typeof null !== 'undefined'` — the arm runs and the object gate refuses.
+      name: 's_put_core_whisper_null',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: null },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_non_object',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: 5 },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_array',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: [] },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_core_whisper_bad_bool',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { enabled: 'yes' } },
+      after: 'settingsChat',
+    },
+    {
+      // Two issues, declaration order.
+      name: 's_put_core_whisper_two_bad',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 1, silenceThreshold: 99 } },
+      after: 'settingsChat',
+    },
+    {
+      // Three issue kinds at once.
+      name: 's_put_core_whisper_mixed_bad',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { fireOnContextTransition: 0, interval: 2.5, enabled: null } },
+      after: 'settingsChat',
+    },
+    {
+      // An unknown INNER key is stripped (non-strict object).
+      name: 's_put_core_whisper_extra_key',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { enabled: true, foo: 1 } },
+      after: 'settingsChat',
+    },
+    {
+      // The inclusive bounds accepted.
+      name: 's_put_core_whisper_bounds',
+      family: 'core_whisper',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 50, silenceThreshold: 1, packetTokenBudget: 1 } },
+      after: 'settingsChat',
+    },
+    {
+      // The CREATE branch (user B has no row).
+      name: 's_put_core_whisper_create',
+      family: 'core_whisper',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { coreWhisper: { interval: 7 } },
+      after: 'settingsChat',
+    },
+    // ---- P4.D356 (v4 `839575d89`, `SettingsArmOwner`): the
+    // `customToolIntervention` arm, after `customToolTriggers` ----
+    {
+      // The GET default over user A's row: `customToolIntervention: true` (the keystone's read).
+      name: 's_get_intervention_default',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+    },
+    {
+      name: 's_put_intervention_false',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: false },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_intervention_true_again',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: true },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_intervention_string',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: 'no' },
+      after: 'settingsChat',
+    },
+    {
+      name: 's_put_intervention_null',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: null },
+      after: 'settingsChat',
+    },
+    {
+      // ORDER: the intervention arm runs before `agentModeSettings` — its sentence wins.
+      name: 's_put_intervention_order',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: 'x', agentModeSettings: 5 },
+      after: 'settingsChat',
+    },
+    {
+      // ORDER: after `customToolTriggers` — the triggers sentence wins.
+      name: 's_put_intervention_after_triggers',
+      family: 'custom_tool_intervention',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolTriggers: 'x', customToolIntervention: 'y' },
+      after: 'settingsChat',
+    },
+    {
+      // The CREATE branch.
+      name: 's_put_intervention_create',
+      family: 'custom_tool_intervention',
+      user: 'B',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { customToolIntervention: false },
+      after: 'settingsChat',
+    },
+    // ---- P4.D356 (v4 `1dd0a0c01`): the fourth smart-typography key ----
+    {
+      // `punctuationWarnings` alone — the four-key bag with it false.
+      name: 's_put_punct_false',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: { punctuationWarnings: false } },
+      after: 'settingsChat',
+    },
+    {
+      // One Zod issue — 400.
+      name: 's_put_punct_string',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: { punctuationWarnings: 'no' } },
+      after: 'settingsChat',
+    },
+    {
+      // All four, out of order — stored in declaration order.
+      name: 's_put_punct_all_four',
+      family: 'composer_settings',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { smartTypographySettings: { punctuationWarnings: true, ellipsis: false, dashes: false, displayQuotes: true } },
       after: 'settingsChat',
     },
     // ---- P4.47 (A): the three sibling Zod-collapse arms ----

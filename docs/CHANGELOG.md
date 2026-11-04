@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — feat(settings): the chat-settings PUT refuses unknown keys, saves coreWhisper and customToolIntervention, and reads punctuationWarnings (P4.D356)
+
+_Versions: core 0.0.1383, web 0.0.252._
+
+v4 `3b8b6f42b`, `839575d89` (the PUT arm) and `1dd0a0c01` (the server key). The chat-settings PUT checks the body against v4's 34-key `ACCEPTED_KEYS`, after the retired-Concierge check and before any field. Any other top-level key refuses the whole PUT: a 400 `Invalid settings: unknown key[s] <k, …>` in body order, with v4's WARN. That covers `id`, `userId`, `defaultTimestampConfig`, `timezone` and the timestamps, so echoing a GET row back now fails; an array body names its indices. The `coreWhisper` arm parses through a twin of `CoreWhisperSettingsSchema`, with the defaults filled, inner keys stripped, v4's Zod issue bytes, and the 500 for a bare range refusal; it logs v4's DEBUG. The `customToolIntervention` arm sits after `customToolTriggers` and uses v4's sentence. `smartTypographySettings` gains its fourth key, `punctuationWarnings` (default true): the PUT parses it, and every read fills it into a stored three-key bag (a second, four-key schema constant; the DDL default stays three keys). Both transports reach the one handler (an engine-dispatch unit test and new web-edge rows). The retired `impersonationVoiceRewrite` key, which used to be ignored silently, is now refused as unknown, as in v4. The settings-routes oracle gains the `unknown_keys`, `core_whisper` and `custom_tool_intervention` families and three typography rows. Its `cheap_llm_read` rows stay red until the #120 commit.
+
 #### 2026-11-04 — fix(model): NanoGPT image requests fitted to the model's catalog, with one square retry (P4.D356, bug 269)
 
 _Versions: core 0.0.1382._

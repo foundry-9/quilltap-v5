@@ -48,6 +48,16 @@ use super::DbError;
 pub const SMART_TYPOGRAPHY_DEFAULT_JSON: &str =
     r#"{"displayQuotes":false,"dashes":true,"ellipsis":true}"#;
 
+/// The SCHEMA / repository default of `smartTypographySettings` — FOUR keys
+/// since v4 `1dd0a0c01` added `punctuationWarnings: z.boolean().default(true)`
+/// (`settings.types.ts:686-687`, the `ChatSettingsSchema` object default, the
+/// repository's `defaultChatSettings`). P4.D356 R-6: the split is deliberate —
+/// [`SMART_TYPOGRAPHY_DEFAULT_JSON`] is the MIGRATION's / DDL's bytes and stays
+/// three keys (v4's DDL default did not move; moving it would be a unilateral
+/// schema change), while every READ materializes the fourth key from this one.
+pub const SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON: &str =
+    r#"{"displayQuotes":false,"dashes":true,"ellipsis":true,"punctuationWarnings":true}"#;
+
 /// The three columns in v4's migration order, each with the column type +
 /// DEFAULT clause its migration writes verbatim. The third entry embeds
 /// [`SMART_TYPOGRAPHY_DEFAULT_JSON`]; `the_ddl_default_matches_the_json_const`
@@ -104,6 +114,18 @@ fn column_names(conn: &Connection, table: &str) -> Result<Vec<String>, DbError> 
 
 #[cfg(test)]
 mod tests {
+
+    /// P4.D356 R-6: the four-key SCHEMA default is the typed struct's own
+    /// default, serialized — one source; the DDL constant stays three keys.
+    #[test]
+    fn the_schema_default_is_the_typed_default() {
+        assert_eq!(
+            super::SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON,
+            serde_json::to_string(&crate::db::chat_settings::SmartTypographySettings::default())
+                .unwrap()
+        );
+        assert!(!super::SMART_TYPOGRAPHY_DEFAULT_JSON.contains("punctuationWarnings"));
+    }
     use super::*;
 
     /// The pre-4.8.2 shape: a `chat_settings` table with none of the three.

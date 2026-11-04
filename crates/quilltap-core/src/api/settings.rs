@@ -368,6 +368,25 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
         ));
     }
 
+    // v4 `3b8b6f42b` (route.ts:429-433): AFTER the retired check, BEFORE the
+    // destructure — any top-level key outside the 34-key allow-list refuses
+    // the whole PUT and nothing is written. Both transports reach this ONE
+    // handler (`engine.rs` `Request::ChatSettingsUpdate` — `/api/dispatch` and
+    // Tauri's `invoke`); there is no separate REST settings route.
+    let unknown = find_unknown_keys(bag);
+    if !unknown.is_empty() {
+        tracing::warn!(
+            user_id = %user_id,
+            unknown_json = %serde_json::to_string(&unknown).unwrap_or_default(),
+            "[Settings v1] Rejected a PUT carrying unknown settings keys"
+        );
+        return bad_request(format!(
+            "Invalid settings: unknown key{} {}",
+            if unknown.len() == 1 { "" } else { "s" },
+            unknown.join(", ")
+        ));
+    }
+
     let assignments = match build_settings_assignments(db, user_id, bag) {
         Ok(a) => a,
         // v4's catch splits the status on the MESSAGE (`route.ts:391`:
@@ -401,6 +420,72 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
     match written {
         Ok((id, created)) => read_settings_response(db, id, created),
         Err(e) => internal(e),
+    }
+}
+
+/// v4 `ACCEPTED_KEYS` (`3b8b6f42b`, `settings/chat/route.ts:41-53`) — every
+/// top-level key a PUT may carry, in v4's order. v4's why, carried: "Anything
+/// else is refused with a 400 rather than silently dropped: a field the client
+/// thinks it saved but the route never wrote (Core whisper's toggles, for one)
+/// reads back unchanged and looks like a UI that won't take the click."
+///
+/// NOT in the list (each a 400 at the pin): `defaultTimestampConfig`,
+/// `timezone`, `id`, `userId`, `createdAt`, `updatedAt` — so a client echoing a
+/// GET row back is refused — and the three retired Concierge keys, which the
+/// retired check answers FIRST with its own sentence. The
+/// `chat_settings_accepted_keys_census` guard pins this list against v4's
+/// `route.ts` and every v5 SPA caller against it.
+pub const ACCEPTED_KEYS: [&str; 34] = [
+    "avatarDisplayMode",
+    "avatarDisplayStyle",
+    "tagStyles",
+    "cheapLLMSettings",
+    "imageDescriptionProfileId",
+    "themePreference",
+    "defaultRoleplayTemplateId",
+    "sidebarWidth",
+    "tokenDisplaySettings",
+    "memoryCascadePreferences",
+    "llmLoggingSettings",
+    "autoDetectRng",
+    "customTools",
+    "customToolTriggers",
+    "customToolIntervention",
+    "agentModeSettings",
+    "storyBackgroundsSettings",
+    "contextCompressionSettings",
+    "conciergeSettings",
+    "autoLockSettings",
+    "compositionModeDefault",
+    "composerSpellcheck",
+    "composerEmoji",
+    "composerUnicode",
+    "composerSlashCommands",
+    "impersonationVoiceMode",
+    "textReplacementsEnabled",
+    "autonomousRoomSettings",
+    "thinkingDisplay",
+    "autoScrollOnResponseComplete",
+    "answerConfirmationSettings",
+    "smartTypographySettings",
+    "wardrobeImageSettings",
+    "coreWhisper",
+];
+
+/// v4 `findUnknownKeys(body)` (`route.ts:55-58`): `!body || typeof body !==
+/// 'object'` → none; else `Object.keys(body).filter(k => !ACCEPTED_KEYS.has(k))`
+/// — the body's own key order (`preserve_order`). An ARRAY is an object to
+/// `typeof`, and `Object.keys([a, b])` is `['0', '1']`: an array body names
+/// its indices (measured — the `s_put_array_body` row, R-13).
+fn find_unknown_keys(body: &Value) -> Vec<String> {
+    match body {
+        Value::Object(o) => o
+            .keys()
+            .filter(|k| !ACCEPTED_KEYS.contains(&k.as_str()))
+            .cloned()
+            .collect(),
+        Value::Array(a) => (0..a.len()).map(|i| i.to_string()).collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -687,9 +772,10 @@ fn zod_opt_uuid(
     }
 }
 
-/// v4 `SmartTypographySettingsSchema.parse` over a PUT bag. Three
+/// v4 `SmartTypographySettingsSchema.parse` over a PUT bag. Four
 /// `z.boolean()` keys with defaults (`displayQuotes` false, `dashes` true,
-/// `ellipsis` true), so a PARTIAL bag materializes the absent keys; unknown
+/// `ellipsis` true, `punctuationWarnings` true — v4 `1dd0a0c01`), so a PARTIAL
+/// bag materializes the absent keys; unknown
 /// keys are stripped; the output is in schema declaration order.
 ///
 /// A non-object input yields the single top-level `invalid_type` issue and the
@@ -704,6 +790,9 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
     let display_quotes = zod_bool(o, "displayQuotes", false, &[], &mut issues);
     let dashes = zod_bool(o, "dashes", true, &[], &mut issues);
     let ellipsis = zod_bool(o, "ellipsis", true, &[], &mut issues);
+    // v4 `1dd0a0c01`: the FOURTH key, `punctuationWarnings:
+    // z.boolean().default(true)` (settings.types.ts:686-687).
+    let punctuation_warnings = zod_bool(o, "punctuationWarnings", true, &[], &mut issues);
 
     if !issues.is_empty() {
         return Err(zod_error_message(&issues));
@@ -713,6 +802,7 @@ fn zod_smart_typography_settings(v: &Value) -> Result<chat_settings::SettingsCol
         display_quotes,
         dashes,
         ellipsis,
+        punctuation_warnings,
     };
     let text = serde_json::to_string(&parsed)
         .map_err(|_| "Invalid smart typography settings".to_string())?;
@@ -752,6 +842,112 @@ fn zod_wardrobe_image_settings(v: &Value) -> Result<chat_settings::WardrobeImage
         image_profile_id,
         generate_from_tools,
     })
+}
+
+/// A `z.number().int()` key with optional `.min` / `.max` / `.positive()` and a
+/// `.default(d)` — v4 `CoreWhisperSettingsSchema`'s three numeric keys. Absent →
+/// `d`; a non-number → one `invalid_type` (`expected number`) and no further
+/// check; a number runs `.int()` first (a fraction is `invalid_type`
+/// `expected int`, a value past the safe-integer range the int bound) — a
+/// failure there ABORTS the rest — then the range checks, each collected (a
+/// bag with two bad keys reports both). The value rides as v4's `Number`.
+#[allow(clippy::too_many_arguments)]
+fn zod_int_key(
+    o: &Map<String, Value>,
+    key: &'static str,
+    default: i64,
+    min: Option<i64>,
+    max: Option<i64>,
+    positive: bool,
+    issues: &mut Vec<ZodIssue>,
+) -> Value {
+    let Some(v) = o.get(key) else {
+        return json!(default);
+    };
+    let Some(n) = v.as_f64() else {
+        issues.push(ZodIssue::invalid_type(
+            "number",
+            zod_path(&[], key),
+            Some(v),
+        ));
+        return json!(default);
+    };
+    const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
+    // A failed `.int()` ABORTS the remaining checks (measured: `interval: 2.5`
+    // reports the int issue alone, never the `>=3` beside it).
+    let int_issue = if n.fract() != 0.0 {
+        Some(ZodIssue::invalid_int_type(zod_path(&[], key), Some(v)))
+    } else if n > MAX_SAFE {
+        Some(ZodIssue::too_big_int(zod_path(&[], key)))
+    } else if n < -MAX_SAFE {
+        Some(ZodIssue::too_small_int(zod_path(&[], key)))
+    } else {
+        None
+    };
+    if let Some(issue) = int_issue {
+        issues.push(issue);
+        return json!(default);
+    }
+    if let Some(m) = min {
+        if n < m as f64 {
+            issues.push(ZodIssue::too_small_number(json!(m), zod_path(&[], key)));
+        }
+    }
+    if let Some(m) = max {
+        if n > m as f64 {
+            issues.push(ZodIssue::too_big_number(json!(m), zod_path(&[], key)));
+        }
+    }
+    if positive && n <= 0.0 {
+        issues.push(ZodIssue::TooSmall {
+            origin: "number",
+            code: "too_small",
+            minimum: json!(0),
+            inclusive: false,
+            path: zod_path(&[], key),
+            message: "Too small: expected number to be >0".to_string(),
+        });
+    }
+    crate::db::js_number_to_json(n)
+}
+
+/// v4 `CoreWhisperSettingsSchema.parse` over a PUT bag (`3b8b6f42b`, the arm
+/// at `route.ts:231-234`; the schema `settings.types.ts:616-627`, unchanged in
+/// the span — a plain, non-strict `z.object`): `enabled` (bool, default
+/// `true`), `interval` (int 3..=50, default 12), `silenceThreshold` (int
+/// 1..=20, default 3), `packetTokenBudget` (positive int, default 4096),
+/// `fireOnContextTransition` (bool, default `true`). A partial bag fills the
+/// absent defaults, unknown keys are stripped, the output (and issue order) is
+/// declaration order; a non-object is the single top-level `invalid_type`. The
+/// `Err` string is the whole `ZodError.message` — the route's
+/// `includes("Invalid")` split then answers 400, or 500 for a bare range
+/// refusal (R-10: v4's own behaviour, not "fixed" on either side).
+fn zod_core_whisper_settings(v: &Value) -> Result<String, String> {
+    let o = zod_object_or_issue(v, &[])?;
+    let mut issues: Vec<ZodIssue> = Vec::new();
+    let mut out = Map::new();
+    let enabled = zod_bool(o, "enabled", true, &[], &mut issues);
+    out.insert("enabled".into(), json!(enabled));
+    let interval = zod_int_key(o, "interval", 12, Some(3), Some(50), false, &mut issues);
+    out.insert("interval".into(), interval);
+    let silence = zod_int_key(
+        o,
+        "silenceThreshold",
+        3,
+        Some(1),
+        Some(20),
+        false,
+        &mut issues,
+    );
+    out.insert("silenceThreshold".into(), silence);
+    let budget = zod_int_key(o, "packetTokenBudget", 4096, None, None, true, &mut issues);
+    out.insert("packetTokenBudget".into(), budget);
+    let fire = zod_bool(o, "fireOnContextTransition", true, &[], &mut issues);
+    out.insert("fireOnContextTransition".into(), json!(fire));
+    if !issues.is_empty() {
+        return Err(zod_error_message(&issues));
+    }
+    serde_json::to_string(&Value::Object(out)).map_err(|_| "Invalid core whisper settings".into())
 }
 
 /// v4 `AnswerConfirmationSettingsSchema.parse` over a PUT sub-bag (a route-level
@@ -955,6 +1151,15 @@ fn build_settings_assignments(
             bool_field(v, "Invalid customToolTriggers value (must be boolean)")?,
         ));
     }
+    // P4.D356 (v4 `839575d89`, route.ts:210-214, `SettingsArmOwner`): after
+    // `customToolTriggers`, before `agentModeSettings` — v4's parameter order.
+    // `typeof null === 'object'`, so an explicit null is refused too.
+    if let Some(v) = obj.get("customToolIntervention") {
+        out.push((
+            "customToolIntervention",
+            bool_field(v, "Invalid customToolIntervention value (must be boolean)")?,
+        ));
+    }
     if let Some(v) = obj.get("agentModeSettings") {
         out.push((
             "agentModeSettings",
@@ -987,6 +1192,19 @@ fn build_settings_assignments(
             "wardrobeImageSettings",
             chat_settings::SettingsColVal::Text(text),
         ));
+    }
+    // P4.D356 (v4 `3b8b6f42b`, route.ts:231-234): after `wardrobeImageSettings`,
+    // before `contextCompressionSettings`. `typeof coreWhisper !== 'undefined'`
+    // — a present `null` runs the arm and the object gate refuses it. Before
+    // this the route never wrote the column, so Core whisper's toggles read
+    // back unchanged (bug the allow-list above now also guards against).
+    if let Some(v) = obj.get("coreWhisper") {
+        let text = zod_core_whisper_settings(v)?;
+        tracing::debug!(
+            core_whisper_json = %text,
+            "[Settings v1] Core whisper settings updated"
+        );
+        out.push(("coreWhisper", chat_settings::SettingsColVal::Text(text)));
     }
     if let Some(v) = obj.get("contextCompressionSettings") {
         if let Some(o) = v.as_object() {
@@ -3399,13 +3617,222 @@ mod tests {
         );
     }
 
-    /// P4.D251 (v4 `07b8f0209`, §R.4(c)): the RETIRED `impersonationVoiceRewrite`
-    /// key is no longer read by v4's PUT at all, so a body carrying it is
-    /// IGNORED — 200, the row unchanged, and NO line at any level (it is not
-    /// one of the retired-Concierge keys the WARN+400 arm above refuses). The
-    /// capture asserts SILENCE, not merely the status.
+    /// A main DB carrying v4's fresh `chat_settings` DDL (the D23 re-dump), so
+    /// a PUT / GET can seed v4's default row.
+    fn settings_db(dir: &tempfile::TempDir, rt: &tokio::runtime::Runtime) -> Db {
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let fresh: serde_json::Value =
+            serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                .unwrap();
+        let ddl = fresh["main"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find_map(|s| {
+                s.as_str()
+                    .filter(|s| s.starts_with("CREATE TABLE \"chat_settings\""))
+            })
+            .unwrap()
+            .to_string();
+        rt.block_on(db.write(move |w| {
+            w.main()
+                .connection()
+                .execute_batch(&ddl)
+                .map_err(Into::into)
+        }))
+        .unwrap();
+        db
+    }
+
+    fn current_thread() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    /// P4.D356 (v4 `3b8b6f42b`): the unknown-key refusal — v4's WARN (`userId`,
+    /// `unknown`) and the 400, before any arm; a body of accepted keys is
+    /// SILENT on the line. Plus the array-body edge (indices, measured).
     #[test]
-    fn a_retired_voice_key_put_is_ignored_in_silence() {
+    fn an_unknown_key_put_warns_and_answers_400() {
+        use crate::test_support::captured_with;
+        let dir = tempfile::tempdir().unwrap();
+        let rt = current_thread();
+        let db = settings_db(&dir, &rt);
+        let body = serde_json::json!({ "notASetting": 1, "customTools": true, "zeta": null });
+        let (resp, lines) = captured_with(|| rt.block_on(chat_settings_update(&db, "u1", &body)));
+        match resp {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::BadRequest);
+                assert_eq!(
+                    e.message,
+                    "Invalid settings: unknown keys notASetting, zeta"
+                );
+            }
+            other => panic!("expected the 400, got {other:?}"),
+        }
+        let warn = lines
+            .iter()
+            .find(|l| l.contains("[Settings v1] Rejected a PUT carrying unknown settings keys"))
+            .unwrap_or_else(|| panic!("the WARN: {lines:#?}"));
+        assert!(warn.starts_with("WARN"), "{warn}");
+        assert!(
+            warn.contains("user_id=u1") && warn.contains("unknown_json=[\"notASetting\",\"zeta\"]"),
+            "{warn}"
+        );
+        // The silence leg: accepted keys only.
+        let (resp, lines) = captured_with(|| {
+            rt.block_on(chat_settings_update(
+                &db,
+                "u1",
+                &serde_json::json!({ "customTools": true }),
+            ))
+        });
+        assert!(matches!(resp, Response::ChatSettings(_)), "{resp:?}");
+        assert!(
+            lines.iter().all(|l| !l.contains("unknown settings keys")),
+            "{lines:#?}"
+        );
+        // An ARRAY body names its indices (`Object.keys([1, 2])`).
+        match rt.block_on(chat_settings_update(&db, "u1", &serde_json::json!([1, 2]))) {
+            Response::Error(e) => assert_eq!(e.message, "Invalid settings: unknown keys 0, 1"),
+            other => panic!("expected the 400, got {other:?}"),
+        }
+        assert_eq!(ACCEPTED_KEYS.len(), 34);
+    }
+
+    /// P4.D356 (v4 `3b8b6f42b`): the Core whisper arm's DEBUG carries the
+    /// PARSED five-key bag; a PUT without the key is silent on it.
+    #[test]
+    fn the_core_whisper_arm_logs_the_parsed_bag() {
+        use crate::test_support::captured_with;
+        let dir = tempfile::tempdir().unwrap();
+        let rt = current_thread();
+        let db = settings_db(&dir, &rt);
+        let body = serde_json::json!({ "coreWhisper": { "enabled": false, "junk": 1 } });
+        let (resp, lines) = captured_with(|| rt.block_on(chat_settings_update(&db, "u1", &body)));
+        let row = match resp {
+            Response::ChatSettings(v) => v,
+            other => panic!("expected 200, got {other:?}"),
+        };
+        let text = r#"{"enabled":false,"interval":12,"silenceThreshold":3,"packetTokenBudget":4096,"fireOnContextTransition":true}"#;
+        assert_eq!(serde_json::to_string(&row["coreWhisper"]).unwrap(), text);
+        let debug = lines
+            .iter()
+            .find(|l| l.contains("[Settings v1] Core whisper settings updated"))
+            .unwrap_or_else(|| panic!("the DEBUG: {lines:#?}"));
+        assert!(debug.starts_with("DEBUG"), "{debug}");
+        assert!(
+            debug.contains(&format!("core_whisper_json={text}")),
+            "{debug}"
+        );
+        let (_, lines) = captured_with(|| {
+            rt.block_on(chat_settings_update(
+                &db,
+                "u1",
+                &serde_json::json!({ "composerEmoji": false }),
+            ))
+        });
+        assert!(
+            lines.iter().all(|l| !l.contains("Core whisper")),
+            "{lines:#?}"
+        );
+    }
+
+    /// P4.D356 "both transports": the allow-list and the `coreWhisper` arm are
+    /// reached through `CoreEngine::dispatch(Request::ChatSettingsUpdate)` —
+    /// the ONE handler `/api/dispatch` (web) and `invoke` (Tauri) both call
+    /// (the web edge has its own wire row in `chat_settings_composer_web_routes`).
+    #[tokio::test]
+    async fn the_engine_dispatch_reaches_the_allow_list_and_the_core_whisper_arm() {
+        use crate::api::{CoreConfig, CoreEngine, InstanceDirectory, QuilltapCore};
+        struct NoInstances;
+        impl InstanceDirectory for NoInstances {
+            fn list(&self) -> Result<crate::api::types::InstancesDto, String> {
+                Ok(crate::api::types::InstancesDto {
+                    instances: vec![],
+                    default_instance: None,
+                })
+            }
+        }
+        const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+        let base = tempfile::tempdir().unwrap();
+        let data = base.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        {
+            let db = Db::open_main(data.join("quilltap.db"), PEPPER).unwrap();
+            let fresh: serde_json::Value =
+                serde_json::from_str(include_str!("../services/provisioning/fresh_schema.json"))
+                    .unwrap();
+            let ddl = fresh["main"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find_map(|s| {
+                    s.as_str()
+                        .filter(|s| s.starts_with("CREATE TABLE \"chat_settings\""))
+                })
+                .unwrap()
+                .to_string();
+            db.write(move |w| {
+                w.main()
+                    .connection()
+                    .execute_batch(&ddl)
+                    .map_err(Into::into)
+            })
+            .await
+            .unwrap();
+        }
+        let engine = CoreEngine::boot(
+            CoreConfig {
+                base_dir: base.path().to_path_buf(),
+                version: "test".to_string(),
+                env_pepper: Some(PEPPER.to_string()),
+                display_zone: crate::host_zone::TimeZone::UTC,
+            },
+            Box::new(crate::api::engine::NoopAssembler),
+            std::sync::Arc::new(NoInstances),
+        )
+        .unwrap();
+        match engine
+            .dispatch(crate::api::types::Request::ChatSettingsUpdate {
+                settings: serde_json::json!({ "foo": 1 }),
+            })
+            .await
+        {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::BadRequest);
+                assert_eq!(e.message, "Invalid settings: unknown key foo");
+            }
+            other => panic!("expected the 400, got {other:?}"),
+        }
+        match engine
+            .dispatch(crate::api::types::Request::ChatSettingsUpdate {
+                settings: serde_json::json!({ "coreWhisper": { "interval": 9 } }),
+            })
+            .await
+        {
+            Response::ChatSettings(v) => {
+                assert_eq!(v["coreWhisper"]["interval"], 9);
+                assert_eq!(v["coreWhisper"]["enabled"], true);
+            }
+            other => panic!("expected 200, got {other:?}"),
+        }
+    }
+
+    /// P4.D251 (v4 `07b8f0209`, §R.4(c)) — FLIPPED by P4.D356 (v4 `3b8b6f42b`):
+    /// the RETIRED `impersonationVoiceRewrite` key is not one v4's PUT reads,
+    /// and since the 34-key allow-list a body carrying it is REFUSED — the
+    /// unknown-key WARN and the 400 `Invalid settings: unknown key
+    /// impersonationVoiceRewrite`, the row unchanged (it was ignored in silence
+    /// before; the retired-Concierge arm is still not the one that answers).
+    #[test]
+    fn a_retired_voice_key_put_is_refused_as_unknown() {
         use crate::test_support::captured_with;
         let dir = tempfile::tempdir().unwrap();
         let db = Db::open_main(
@@ -3455,24 +3882,29 @@ mod tests {
 
         let body = serde_json::json!({ "impersonationVoiceRewrite": true });
         let (resp, lines) = captured_with(|| rt.block_on(chat_settings_update(&db, "u1", &body)));
-        let after = match resp {
+        match resp {
+            Response::Error(e) => {
+                assert_eq!(e.kind, ErrorKind::BadRequest);
+                assert_eq!(
+                    e.message,
+                    "Invalid settings: unknown key impersonationVoiceRewrite"
+                );
+            }
+            other => panic!("expected the unknown-key 400, got {other:?}"),
+        }
+        assert_eq!(lines.len(), 1, "exactly the one WARN: {lines:#?}");
+        assert!(lines[0].starts_with("WARN"), "{lines:#?}");
+        assert!(
+            lines[0].contains("[Settings v1] Rejected a PUT carrying unknown settings keys")
+                && lines[0].contains("user_id=u1")
+                && lines[0].contains("unknown_json=[\"impersonationVoiceRewrite\"]"),
+            "{lines:#?}"
+        );
+        let after = match rt.block_on(chat_settings_get(&db, "u1")) {
             Response::ChatSettings(v) => v,
-            other => panic!("expected 200 with the echo, got {other:?}"),
+            other => panic!("expected the read row, got {other:?}"),
         };
-        assert!(
-            lines.is_empty(),
-            "the retired key must be ignored in silence: {lines:#?}"
-        );
-        assert!(
-            after.get("impersonationVoiceRewrite").is_none(),
-            "never emitted"
-        );
-        // Only the write clock moved (v4's `updateForUser` always stamps it).
-        let strip = |mut v: serde_json::Value| {
-            v.as_object_mut().unwrap().remove("updatedAt");
-            v
-        };
-        assert_eq!(strip(after), strip(before), "the row is unchanged");
+        assert_eq!(after, before, "the row is unchanged");
 
         // …and the NEW key's refusal sentence, for the three shapes the wire
         // family also pins: an explicit null, the old boolean type, a stranger.

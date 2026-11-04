@@ -341,6 +341,9 @@ fn settings_routes_match_v4() {
     let mut custom_tool_triggers_cases = 0;
     let mut composer_slash_commands_cases = 0;
     let mut cheap_llm_read_cases = 0;
+    let mut unknown_keys_cases = 0;
+    let mut core_whisper_cases = 0;
+    let mut custom_tool_intervention_cases = 0;
     let mut settings_zod_cases = 0;
     let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
@@ -666,6 +669,12 @@ fn settings_routes_match_v4() {
         if row["family"].as_str() == Some("cheap_llm_read") {
             cheap_llm_read_cases += 1;
         }
+        match row["family"].as_str() {
+            Some("unknown_keys") => unknown_keys_cases += 1,
+            Some("core_whisper") => core_whisper_cases += 1,
+            Some("custom_tool_intervention") => custom_tool_intervention_cases += 1,
+            _ => {}
+        }
         if row["family"].as_str() == Some("settings_zod") {
             settings_zod_cases += 1;
         }
@@ -741,6 +750,28 @@ fn settings_routes_match_v4() {
     assert!(
         composer_slash_commands_cases >= 5,
         "expected >= 5 composer_slash_commands cases, got {composer_slash_commands_cases} — regenerate the oracle"
+    );
+    // P4.D356 (v4 `3b8b6f42b`): the 34-key allow-list — one / two unknown
+    // keys, the retired sentence winning, a whole GET row echoed back,
+    // `defaultTimestampConfig` / `timezone`, an ARRAY body (indices), and the
+    // all-accepted silence leg. Each refused row refetches (nothing written).
+    assert!(
+        unknown_keys_cases >= 6,
+        "expected >= 6 unknown_keys cases, got {unknown_keys_cases} — regenerate the oracle"
+    );
+    // P4.D356 (v4 `3b8b6f42b`): `CoreWhisperSettingsSchema.parse` — the full /
+    // partial / empty bags, the `.int()` / range / `.positive()` / safe-int
+    // refusals (500 for a bare range refusal, R-10), the object gate, the
+    // stripped inner key, the bounds and the create branch.
+    assert!(
+        core_whisper_cases >= 8,
+        "expected >= 8 core_whisper cases, got {core_whisper_cases} — regenerate the oracle"
+    );
+    // P4.D356 (v4 `839575d89`, `SettingsArmOwner`): the GET default, the two
+    // writes, the two refusals, the two ORDER rows and the create branch.
+    assert!(
+        custom_tool_intervention_cases >= 5,
+        "expected >= 5 custom_tool_intervention cases, got {custom_tool_intervention_cases} — regenerate the oracle"
     );
     // P4.169 (F-1): the planted `cheapLLMSettings` reads.
     assert!(
