@@ -194070,6 +194070,71 @@ Lane record (wave A, from `CATALOG` `8ab640259`; branch `claude/p4.d349-vault-ke
   - The tier-1 rows `image-gen-leaves` (+1) / `appearance-sanitize-gate` (+1) the order named. No family drives `craftImagePrompt`'s placeholder block or `resolveAppearance`'s character line directly (`image-gen-leaves` covers `parsePlaceholders` only); both blocks are pinned by lib unit tests against v4's source bytes instead.
   - The avatar's outfit rows (two slots on / nothing on): `inventory-image-description`'s avatar rows run with no equipped slots. The arm is ported, not differentially proven.
 
+### The gate (2026-11-03)
+
+- `cargo fmt --all --check` clean. `cargo clippy --workspace --all-targets -- -D warnings` clean, and with `--features quilltap-core/native-transport` clean. Two findings were fixed in `dee846ad7`; `apps/web/dist` was cloned from main's.
+- `cargo test --workspace --no-fail-fast` (`CARGO_INCREMENTAL=0`, the tier-1 / tier-2 env vars of the families below set, log `/tmp/p4d349/workspace-gate.log`): **872 binaries / 5,775 passed / 5 failed / 3 ignored**.
+  - The five failures are guards that read the LIVE checkout (the gate ran without `QT_V4_CHECKOUT`).
+  - Re-run against the pin: `builtin_prompt_templates_guard`, `zod_version_guard` and `provider_sdk_version_guard` are GREEN.
+  - `custom_tool_schema_embed_guard`, `public_schemas_vendor_guard` and `qtap_schema_embed_guard` stay red: the order's expected vendored-schema reds (P4.D345 / P4.D360 / P4.D341).
+- **Zero SKIP for this lane's families, checked by name with `--nocapture`:** `pronoun_guidance` (110 rows), `vault_json_parsers` (51), `vault_wardrobe_item_file` (37), `vault_wardrobe_emit` (114 items / 9 cases), `system_prompt` (98 rows), `small_utils` (12 figure rows), `physical_description` (165 rows), `vault_character_write`, `characters_physical_tier2`. The tier-2 / tier-3 families were each run from the pin through the sweep driver (per commit above).
+- `cargo test -p quilltap-core --lib`: 4,013 / 0.
+- **R-D, the export families — recorded red, green on the union:**
+  - `system_export_equivalence`: 15 cases; the diffs carry this lane's `canDrawDiagrams` / `diagramStyle` / `humanoid` at the END of the `character` records (the keystone's `schema-key-order.json` places them; R-A), beside the keystone's storyteller / template columns.
+  - `system_backup_equivalence`: 70 differences, all sibling-owned (keystone, storyteller, log entries, template carriers).
+  - `system_restore_state`: 624 failures. Every one naming this lane's keys also names a sibling's column — none is this lane's alone.
+  - Fixed in `b648c7ae2`: the two `PRESERVE_BACKFILL` literals, which were this lane's (626 → 624).
+  - `qtap_import_equivalence` is GREEN here (commit C).
+- **R-10:** `wardrobe_tools_equivalence` is green on this branch (on `CATALOG`); it is red on any tree without both `CATALOG` and this lane, through the nine pronoun-corpus ops.
+- **Versions at close:** core **0.0.1390**; web 0.0.251, host 0.0.217, cli 0.0.35, tauri 0.0.9 unchanged. No web SOURCE moved (the `wardrobe_routes_equivalence` corpus moved, in harness fixtures only), so web was not bumped. harness frozen; sqlite3mc-sys untouched.
+
+### Lane close — HANDOFFs, deferrals, LIVE-DATA statement
+
+- **HANDOFFs:**
+
+  | To | Item | State |
+  |---|---|---|
+  | P4.D350 | the two fenced hunks in `tools/self_inventory.rs` (`// === P4.D349: humanoid ===` in `to_sys_char`'s `PhysicalDescription` literal; `// === P4.D349: can_draw_diagrams ===` in its `Character` literal) | both present; nothing else in the file touched |
+  | P4.D341 | `schema-key-order.json` (`character`: `canDrawDiagrams`, `diagramStyle` after `canChooseOutfit`; `wardrobe_item`: `pronounGuidance` after `replace`) + the vendored schema | never dumped here (R-A); the R-D reds above |
+  | P4.D353 | contract C6 | landed (commits F + G); set `P4D349_SERVER_LANDED` on the union |
+  | P4.D359 | the SPA halves (the wire as C6 + the tool keys) | the server keys landed |
+  | P4.D360 | `help/` + `docs/v4/` | untouched here |
+  | the unifier | the items below | OPEN |
+
+  The unifier's items:
+  1. The export families on the union.
+  2. The ledger §1 LIVE-DATA statement below.
+  3. The FOUR exhaustive-literal fences: `self_inventory.rs` ×2, plus `announcer/character_voiced.rs` and `announcer/in_scene_voiced.rs` (the order said those two used `..Default::default()` — measured exhaustive).
+  4. Re-run on the union the families RED on this base only for P4.D341's re-widened pairs or its `llm_logs.storytellerRoundId` column: the subprompt trio, `outfit_llm_choose_tier3`, `characters_mutations`' `tag_delete` / `character_delete_cascade`, `wardrobe_routes`' equip / rollback cases, `character_archive_tier2`'s memory rows, `wardrobe_item_image_generation_tier3`, `image_generation_tier3`, `story_background_job_tier3`, `avatar_job_tier3`.
+  5. The `build-headshoulders-fixture.ts` Orrery widen on the union pair.
+  6. Tier 2 item 24 (the avatar-job / story-background / identity-compiler builder widens) — their families are red here for the keystone column.
+
+- **OPEN under the order (named, not landed):**
+  - item 15's flip DIFFERENTIAL row on a seated character;
+  - R-6's both-sides throwing plant (the WARN is unit-pinned);
+  - the tier-1 `image-gen-leaves` / `appearance-sanitize-gate` rows (both formatter blocks unit-pinned instead);
+  - the avatar's outfit rows (no equipped-slot driver in the tier-1 case);
+  - the job-side backfill DEBUG capture pin;
+  - item 24;
+  - the headshoulders builder widen.
+- **Recorded NO-PORTs (item 28):**
+  - `diagramEngineFor` / `hasDiagramFence` (client, P4.D353); the three SPA halves (P4.D359).
+  - `help/` + `docs/v4/` + the vendored schema (P4.D360 / P4.D341); `CORE_VAULT_FILE_SUMMARIES` (P4.D350).
+  - `IDENTITY_STACK_BUILDER_VERSION` NOT bumped, as in v4: a non-humanoid's existing stacks pick up the note on the flip's fan-out or the next recompile.
+  - The fan-out's realtime publish is the existing `seams.publish_chat`.
+  - v4's `scene-state-tracking.ts:212-216` handler hunk is NO-COUNTERPART (R-8 — no v5 producer of `SceneStateInput`; the `update_scene_state` twin stays unexercised by any family, a named deferral).
+- **Measured, not in the order (a follow-up row):** `db/store_name_reconcile.rs`'s `CHARACTER_BOOLEAN_COLUMNS` lacks `canDrawDiagrams`, which the pin's `CharacterSchema` declares a boolean (a fresh instance's column). Not this lane's file; not changed.
+- **LIVE-DATA statement (verbatim, for the ledger's §1):** "After P4.D349 a v5 physical write keeps `humanoid` (an explicit value as given; an omitted flag → the vault's current value); a v5 properties write (full, RMW, backfill, scaffold) carries `canDrawDiagrams` and `diagramStyle`; a v5 wardrobe projection carries `pronounGuidance`; the P4.82 head-and-shoulders backfill skips a non-humanoid. The three erasure hazards of the ledger's §1 RETIRE on the union build. Until then the §1 rule stands: no v5 write to a character v4 edited past `6588972d5` / `b27e5089a` / `eb90d9ed8` (reads stay safe)."
+- **💸 dogfood rows** (survey §11 rows 1–6, 10):
+  - **Row 1:** a Friday character whose `physical-prompts.json` v4 wrote with `"humanoid": false` keeps it through an unrelated PUT, a Descriptions save and an Optimizer regen (the `keeping the vault's` DEBUG).
+  - **Row 2 💸:** the non-humanoid avatar (`its whole form in frame.` / `Only one subject in the image.`), the worn wardrobe picture (`Bearing …`), a Lantern background with a mixed cast (`[not humanoid]` + the `Form:` line in the LLM log).
+  - **Row 3:** a non-humanoid's turn carries `You have no humanoid body…`; flipping the box recompiles the seated chats without a restart.
+  - **Row 4:** the backfill skips it at boot.
+  - **Row 5:** a v4-written `canDrawDiagrams: true, diagramStyle: 'clean'` survives a v5 rename and shows on the Almanack / detail / list wires; a drawing character's prompt carries `[FORMATTING: DIAGRAMS]` directly after the math note.
+  - **Row 6:** a v4-filed `pronounGuidance: [she, they]` item survives a v5 description edit. `wardrobe_list` from a he/him character hides it with the note, `pronoun_aware: false` shows it, the worn item is never hidden, and the green room's valet 💸 offers only fitting items.
+  - **Row 10:** the Friday copy's first boot runs NO ensure; only the next physical / properties / wardrobe WRITE changes bytes, and only by adding keys.
+- **Cleanup:** the lane's `target/` deleted at close; the pin worktree removed; `/tmp/p4d349` removed. Nothing pushed.
+
 ## P4.D350 — the Inventory chokepoints refactor + the picture cue + `self_inventory`'s core files and holdings + the round's ONE catalog regen (`CATALOG`) (lane `claude/p4.d350-inventory-chokepoints-897691`, pin `236c04e35`, 2026-11-02) — LANE RECORD
 
 **Where it ran.** The session started on `main` `8976915ea` (the rulings commit, past the orders' commit `8be738f66`; docs only between) in the shared checkout and moved at once into the spaceless worktree `~/source/quilltap-v5/.claude/worktrees/p4d350` on `claude/p4.d350-inventory-chokepoints-897691`, cut from `8976915ea`. `target/` cloned from main (`cp -cR`). Wave 0, cut from `main`; this lane PRODUCES `CATALOG`.
