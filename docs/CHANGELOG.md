@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): the P4.D356 lane record; the settings builder's spec carries settingsIdA2
+
+_Versions: unchanged (docs + oracle builder)._
+
+This appends P4.D356's lane record to `status-log.md` and marks the order LANE COMPLETE. `build-settings-fixture.ts`, which rewrites `settings.json` from its own `SPEC`, now carries the `settingsIdA2` key the `settings_repair` rows use, so a builder run no longer drops it. The builder's output is byte-identical to the committed file.
+
 #### 2026-11-04 — test(harness): the chat-settings PUT allow-list census over the SPA's callers (P4.D356)
 
 _Versions: unchanged (harness-only)._

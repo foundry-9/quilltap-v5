@@ -37,6 +37,10 @@ const SPEC = {
   userA: USER_A,
   userB: USER_B,
   settingsIdA: '5e200000-0000-4000-8000-000000000001',
+  // P4.D356 (#120): the literal id the `settings_repair` rows give their
+  // SECOND `chat_settings` row (planted in-case through a TEMP copy — no row
+  // here), so both sides compare it literally rather than as a minted id.
+  settingsIdA2: '5e200000-0000-4000-8000-000000000002',
   roleplayTemplateId: '5e500000-0000-4000-8000-000000000001',
   apiKeys: {
     openai: '5e300000-0000-4000-8000-000000000001',

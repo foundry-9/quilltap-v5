@@ -194511,6 +194511,194 @@ The workspace gate covered 876 binaries: 5,777 passed / 19 failed / 3 ignored.
 
 **Versions:** core 0.0.1380, host 0.0.218, cli 0.0.36 (web src untouched; harness frozen).
 
+## P4.D356 — the server smalls: the chat-settings PUT, the #120 convergence, NanoGPT bug 269, Tier R (lane `claude/p4.d356-server-smalls-chat-settings-put-120-nanogpt-c2c28c031`, pin `236c04e35`, 2026-11-04) — LANE RECORD
+
+**Base:** `KEYSTONE` = `c2c28c031` (P4.D341, confirmed against `claude/p4.d341-keystone-d23-17-21-8976915ea`'s status header). The session started on `main` at `8976915ea`. The lane was cut DIRECTLY from `c2c28c031` into `.claude/worktrees/p4d356`, as the starting session instructed, so there was no pre-start and no rebase: R-4's sanctioned mid-lane rebase never ran, and the NanoGPT families ran once, on the final base.
+
+**The pin:**
+- `/tmp/qt-v4-pin-p4d356-236c04e35`, `rev-parse` `236c04e35ab23ccc604fd188e5b73d0141066697`, `package.json` `"version": "4.12.0-dev.0",`.
+- The root `npm ci --offline`: rc 0. Under the pin: openai 7.45.0, @openrouter/sdk 1.5.9, zod 4.6.7, `better-sqlite3` (the cipher alias) 12.11.1, @xterm/headless 6.0.0.
+
+**Pin ruling (human, 2026-11-02, relayed by the starting session):** symlink classes (2) and (3) (the CLI and plugin `node_modules`) were NOT used; live v4 had re-installed both past the pin. `.claude/pin-plugin-sdks.sh "$PIN"` was run after the root `npm ci --offline`. It failed rc 1 on its first plugin dir with `ENOTCACHED` for the `@quilltap/plugin-utils` packument, the same wall P4.D359 hit (side note `p4d359-pin-plugin-sdks-enotcached.md`). What the lane did instead, without symlinks:
+- **The CLI:** the script's own CLI half was run by hand (the same `npm install --offline --no-save --no-package-lock` at the floors). It succeeded: driver 12.11.1, SQLite 3.53.2, cipher `chacha20`.
+- **The plugin dirs:** left with NO `node_modules`. Their imports fall through to the pin's root, where `@quilltap/plugin-utils` is 2.7.1, the floor. Both NanoGPT oracles mock the SDK.
+
+Recorded in the side note `p4d356-pin.md`.
+
+**§2 probe (an observation under the pin rule):** v4 moved to `013b99b5d` ("dev: started 4.13.0 development", 61 commits past the pin), observed 2026-11-03 23:37 CST. v4's tree was clean, on branch `main`.
+
+### Commits
+
+| # | sha | unit |
+|---|---|---|
+| 1 | `59eb9f947` | `fit_image_shape` — NEW `model/nanogpt_image_sizes.rs` + tier-1 family (1,501 rows) |
+| 2 | `91da96062` | the NanoGPT provider: `CatalogEntry.aspect_ratio`, `catalog_entry_for` (home: `model/nanogpt_catalog.rs`), the fit, the flat `aspect_ratio`, the ONE square retry, the posted-shape log fields, `build_nanogpt_shaped`, the tier-3 provider family (23 cases), `nanogpt_lora_wire_log` grown |
+| 3 | `64afc9a74` | `ACCEPTED_KEYS` + the 400 + `coreWhisper` + `customToolIntervention` + `punctuationWarnings`, the web-edge rows, the engine-dispatch test, three settings-routes families |
+| 4 | `6c1965f28` | Tier R: the `FORCE_COLOR` row (test-only) |
+| 5 | `0015f1ce9` | the Almanack trio + `help.rs`'s key; `almanack-render` variant 13 |
+| 6 | `7d2a875fe` | the #120 convergence (+ the oracle re-aim, the `settings_repair` family, the tier-2 write-back + carve) |
+| 7 | `99c15b938` | the SPA caller census |
+
+Plus the record commit. (Commits 3 and 4 swapped against the order's spine. The Tier R row went in after the PUT commit because both touched the CHANGELOG head. Both build.)
+
+### Red-first (item 1) and the mutation witnesses
+
+- **`nanogpt_image_sizes_equivalence`:** compile-red on the base (no twin). Mutations, each red:
+  - (M1) `ratioDistance` as `|a − b|` → 27 / 1501 rows, led by the three `logdist-*` witnesses (on the ten vectors the linear form is equivalent, so the grid's witness rows are what catch it);
+  - (M2) the area tie-break inverted → 93 rows incl. `v9`;
+  - (M3) `adjusted: true` on the listed-size arm → 52 rows incl. `v5`.
+- **`nanogpt_image_provider_equivalence`:**
+  - (M4) the retry predicate's `503` arm removed → 12 differences (every 503 retry row);
+  - (M5) the retry firing on a square → 3 differences (`warm-already-square-503` makes a second call).
+- **`settings_routes_equivalence`** on the KEYSTONE base against the pin oracle: RED at `s_get_cheap_llm_bad_strategy` (v5 minted `<newid>`, v4 answered `settingsIdA`), then on the new families. Mutations:
+  - (M6) `ORDER BY "updatedAt" ASC` → `s_get_two_rows_both_refused` mismatch;
+  - (M7) the write-back skipped → `s_put_after_refused_cheap_llm`'s cells differ.
+- **`repository_zod_messages`:** RED by construction once re-aimed (v5 dropped the row with two ERRORs where v4 repairs it with one WARN).
+- **`chat_settings_tier2`:** RED on the four-key typography cell and the `updateForUser` ops before the port.
+- **`almanack_render`:** RED (variant 13 / the new line); `help_tools` RED (the `chat` row's new key).
+- **Vacuous-corpus growth:** none needed. Every family named RED was red.
+
+### The RUNTIME-BREAK (item 8(a)) — before / after
+
+- **Before the re-aim**, at the pin, `repository-zod-messages.ts`' `findOne`-only mock gave 7 rows × `{"level":"error","message":"Error finding chat settings by user ID","context":{"collection":"chat_settings","userId":"a1000000-…01","error":"collection.find is not a function"}}`, and `grep -c 'Error finding chat settings by user ID'` was 7.
+- **After** (the mock serves `find`), `settings-mode-maybe`'s lines are `[{"level":"warn","message":"Chat settings row held refused values; read them as defaults","context":{"chatSettingsId":"c5000000-…a1","userId":"a1000000-…01","refusedFields":["impersonationVoiceMode"]}}]` with `foundMode: "off"`. `grep -c 'held refused values'` is 4 and `grep -c 'Error finding chat settings by user ID'` is 0.
+
+### The #120 measurement table (item 8(b), at the pin, before the Rust)
+
+- **All nine `cheap_llm_read` rows** answer 200 with `id = settingsIdA` (no `<newid>` anywhere). The order expected only three to move. The three refused-cell rows (`bad_strategy`, `bad_uuid`, `non_object`) answer the default bag in schema order; `json_null` and `unparseable` keep their pre-fix (hydrate-default) bodies.
+- **The voice-mode `'maybe'` plant:** 200, `impersonationVoiceMode: 'off'`, ONE WARN `refusedFields: ["impersonationVoiceMode"]`. A PUT writes the `'off'` cell back.
+- **The wardrobe refusal** (`{"imageProfileId":"nope",…}`): repaired to the seed's two-key default.
+- **v4's vector 4** (`imageDescriptionProfileId: 'nope'`, `sidebarWidth: 9999`): GET answers `imageDescriptionProfileId: null` (PRESENT) and `sidebarWidth: 256`. The PUT's write-back stores `null` and `256`, and the PUT ECHO carries the explicit `null` (v4's `_update` returns its merged record).
+- **Two rows:** the newest VALID row wins, which is the older row when the newer is refused. Both refused → the newest is repaired. A PUT updates the newest and leaves the older untouched.
+
+### The R-8 enumeration (CORRECTED — the order's premise was false)
+
+Measured with a scratch tsx at the pin (`updateForUser('u', {})`'s captured create bag against `Object.keys(ChatSettingsSchema.shape)`):
+- `defaultChatSettings` carries 34 keys. NOT in it: `imageDescriptionProfileId`, `sidebarWidth`, `timezone`.
+- `shape[k].safeParse(null).success` is true for `imageDescriptionProfileId` and `timezone` (the null arm), and FALSE for `sidebarWidth`.
+- So **the `delete` arm IS reachable for `sidebarWidth`**, and the re-parse of `undefined` answers `256` (`.default(256).optional()` — measured `safeParse(undefined).data === 256`).
+
+Ported as v4's three arms (`repair_cell`): the seed default, `null`, and the delete arm (→ 256, write-back 256). A field outside every arm logs v4's `could not be repaired` ERROR and drops the row — never silent. The two ERROR lines are pinned NEGATIVE in `the_repair_arms_and_their_cells`: v5's typed reads cannot produce an identity refusal, and a seed default never refuses.
+
+**FINDING F-a (not fixed, out of scope):** v5's read omits `sidebarWidth` on a NULL cell. That is the old "the outer optional keeps an absent key absent" comment, which the same measurement falsifies (`safeParse(undefined)` → `256`). It is pre-existing and unreachable on any v4-written row (create always writes the column). Recorded for the follow-ups round.
+
+### Zod bytes measured (the `core_whisper` rows)
+
+- **The `.int()` issue on a fraction:** `{"expected":"int","format":"safeint","code":"invalid_type",…,"message":"Invalid input: expected int, received number"}` (`ZodIssue::invalid_int_type`). A failed `.int()` ABORTS the remaining checks: `interval: 2.5` reports the int issue alone, not the `>=3`.
+- **Past the safe integer** (`1e20`): `too_big` with `origin: "int"` and the safe-integer note (`too_big_int`).
+- **`.positive()`:** `{"origin":"number","code":"too_small","minimum":0,"inclusive":false,…,"message":"Too small: expected number to be >0"}`.
+- **`too_big_number`:** already existed.
+- **R-10:** a bare range refusal answers **500** (no "Invalid") on both sides.
+
+### The array-body edge (R-13)
+
+`[1, 2]` → 400 `Invalid settings: unknown keys 0, 1` (measured); ported as `Value::Array` → its indices. A `null` body cannot be measured: the oracle's `mockRequest` maps it to `{}`. In v4 a real `null` would 500 on the destructure. Left as is.
+
+### The echo row's in-process `undefined`
+
+The first `s_put_get_row_echo` recording named `timezone`. The in-process GET body carried `timezone: undefined`, which no wire can send. The oracle now round-trips the echoed body through JSON, and the regenerated row names `id, userId, defaultTimestampConfig, createdAt, updatedAt`.
+
+### Catalog-cache measurement (§E / §G)
+
+- **The `Cached the detailed NanoGPT image catalog` DEBUG** was ABSENT in v5. It now fires inside `remember_detailed_catalog`, so it fires once per fill on BOTH the listing and the cold-fetch path (Tier 2 item 19 landed in commit 2).
+- **A listing body that is not JSON, or JSON `null`,** no longer stamps the cache. v4's `response.json()` / `payload.data` throw first; the WARN carries the bare `.message`.
+- **Which v5 builders read `params.aspect_ratio`:** GROK, GOOGLE (two sites) and OPENROUTER. NanoGPT reads it only through the fit.
+
+**Recorded edges (NO-PORT):** a malformed catalog whose `resolutions` is a string (v4's `.includes` is substring and `.map` throws); duplicate catalog ids (v4's `Map` keeps the last value, v5's `find` the first). Neither is reachable from NanoGPT's listing shape.
+
+### Divergences
+
+- ⚖ **`PARTIAL_SET_ON_UNREFUSED_COLUMNS` (R-1), carved by name in `chat_settings_tier2` on THREE cells, both ways.** The order expected one; the scrambled cheap bag plus the two legacy wardrobe cells the P4.D255 read plants left on rows A and C. v4's whole-row `$set` re-serializes each; v5 leaves them.
+- **R-10:** the 500-on-range, recorded.
+- **R-2 (the retry's spend):** v4-identical.
+
+### NEGATIVE pins
+
+- The two repair ERROR lines.
+- The retry's silence on a non-shape 400, a square, a 500 and a status-less throw (provider family rows).
+- The `Fitted` DEBUG's silence when unadjusted.
+
+### Reader census (Tier 2 item 18)
+
+64 call sites of `find_by_user_id` / `find_by_user_id_or_none` across 52 files outside the module (the order counted 61; the list is in the lane's side notes). None changes; what they SEE does: a repaired row instead of `None`.
+
+The one measurement: `cheap_llm_fallback.rs:101` reads `cheapLLMSettings.allowCheapFallback`. Pre-fix, a refused row was `None` → `false`; post-fix the repaired default bag carries `false` → `false`. **No observable move.**
+
+### Tier R (item 13 + 17)
+
+`cli_differential` once against the pin: **423 cases, 2 failures, both `recall-replay` help text.** That is P4.D342's (the inner-circle tuning keys, an expected union red per the keystone record). The five `--count` rows and the new `db count under FORCE_COLOR` row are green.
+
+Pre-fix witness: v4's `40cc6ffda^` (= `66f8c4d41`, NOT the order's `85c002822`, which is post-fix) prints `console.log(row.count)`. Under `FORCE_COLOR=1`, Node renders a number as `033 [ 3 3 m 7 033 [ 3 9 m \n` (`od -c`) and `String(7)` as plain `7`.
+
+### Corrections to the order, measured
+
+- R-8's premise (the `delete` arm is unreachable) is false; see above.
+- The pre-fix Tier R witness is `66f8c4d41`, not `85c002822`.
+- The `sidebarWidth` schema has no `.int()`.
+- At the pin, the thrown-read line is `Error finding chat settings by user ID {collection, userId, error}`, not the retired inner line. So C2's line MOVED: `find_by_user_id_or_none` and P4.D296's `extraction_context_degrade` were re-pinned.
+- The retired-key silence (`a_retired_voice_key_put_is_ignored_in_silence`, the web-edge `impersonation_voice_mode_web_edges` arm) FLIPPED to the unknown-key 400.
+
+### HANDOFFs
+
+| HANDOFF | To | What lands, measurably |
+|---|---|---|
+| H1 the SPA Core whisper CARD (`templates-tab.ts:11`'s standing deferral) + `3b8b6f42b`'s two cache writes (`auto-lock-settings-card.ts:161-170`, `roleplay-templates-card.ts:309-312`) + the pre-existing `['chatSettings']` / `['chat-settings']` query-key split (`roleplay-templates-card.ts:312` invalidates `['chat-settings']`; every other card uses `['chatSettings']`) | P4.D359 | the API accepts `coreWhisper` on both transports (engine-dispatch test + web edge); no v5 card posts it |
+| H2 `SettingsArmOwner` | P4.D345 / P4.D346 | the `customToolIntervention` arm answers v4's sentence (8 rows); `help_settings` carries the key between `customToolTriggers` and `llmLoggingSettings`; the Almanack renders `Hold Intervenable Rolls for the Operator` |
+| H3 the wire key `punctuationWarnings` | P4.D352 | GET always carries it fourth; a partial PUT materializes four keys; a refused bag resets whole |
+| H4 `settings-routes` regenerated LAST on the union | the unifier | this lane adds the `unknown_keys` / `core_whisper` / `custom_tool_intervention` / `settings_repair` families, `plantRaw` / `dumpCells` / `echoGet`, and `settingsIdA2` in `settings.json` (read by `cheap-llm-fallback.test.ts` too, which ignores the new key) |
+| H5 `help/image-generation-profiles.md` (+2), bug 269's `docs/` files, the four commits' `README.md` / CHANGELOG / stamp hunks, the plugin 1.2.11 stamps | P4.D360 | the NO-PORT record |
+| H6 `provider_sdk_version_guard` `INSTALLED_ROOT_*` RED against the pin | P4.D360 | EXPECTED |
+| H7 union-expected reds on this branch | the unifier | see the gate table |
+| H8 `log_find_by_user_id_failure(error)` has four pool-checkout callers in other lanes' files (`api/wardrobe.rs:892`, `services/wardrobe_item_image_generation.rs:289`, `services/headshoulders_backfill_job.rs:236`, `services/extraction/context.rs:423`) that pass no user id, so their line lacks v4's `userId` key | the unifier / a follow-up | thread `user_id` through; the line is otherwise v4's |
+| H9 the committed `image-dialects` corpus cannot be re-recorded at the pin as is: `record-image-fixtures.mjs` captures the FIRST fetch as the generate, and at the pin NanoGPT's first fetch is the cold catalog GET | the next re-record | teach the recorder the catalog GET; `image_dialects_equivalence` stays green on the committed corpus |
+
+### 💸 Dogfood rows
+
+1. Over HTTP dispatch AND Tauri: `PUT /settings/chat {"coreWhisper":{"enabled":false}}` → it reads back `enabled:false` with the four defaults.
+2. `{"foo":1}` → `Invalid settings: unknown key foo`; two keys → `unknown keys a, b`; a whole GET row echoed back → the 400 naming the identity keys.
+3. Plant `cheapLLMSettings = 5` on the Friday copy:
+   - ONE row, and the GET answers the existing id with the default bag + the WARN;
+   - a save writes the repair back (`sqlite3` the cell), the WARN stops, and a second GET is silent.
+4. **#120 duplicates on a pre-fix copy: COUNT them first.** Then the DEBUG fires once per read and the newest valid row is answered.
+5. The GET of a pre-round row carries `punctuationWarnings: true`.
+6. 💸 A NanoGPT portrait avatar on a tier model (`qwen-image-3-uncensored`-class) posts `size: 1k, aspect_ratio: 2:3` and arrives.
+7. 💸 A non-square turned down → the square retry WARN and a square picture.
+8. A cold process (no model listing yet) → the catalog GET appears in the log before the first generate.
+9. `quilltap db --count chats` under `FORCE_COLOR=1` prints a bare number.
+10. `help_settings` `chat` answers `customToolIntervention: true`; the Almanack line reads `Yes`, then `No` after the PUT.
+
+### Regen recipes (lane-authored)
+
+- **`nanogpt_image_sizes_equivalence`:** the header recipe (tsx, `QT_ORACLE_NANOGPT_IMAGE_SIZES`), from the pin.
+- **`nanogpt_image_provider_equivalence`:** the header recipe (a jest mirror, `QT_ORACLE_OUT` → `QT_ORACLE_NANOGPT_IMAGE_PROVIDER`), from the pin.
+- **`settings_routes`, `repository_zod_messages`, `chat_settings_tier2`, `almanack_render`, `almanack_tier2`, `help_tools`:** their header recipes, each run by hand from the pin with every output under `/tmp/p4d356/`.
+
+### Gate (final tree, `99c15b938`)
+
+- **fmt:** clean.
+- **clippy:** clean on `--workspace --all-targets` and with `--features quilltap-core/native-transport`. `apps/web` got `npm ci` + `npm run build` for the dist only. SPA tests and Playwright are not owed: no `apps/web` source changed; the census only READS it.
+- **`cargo test --workspace --no-fail-fast`** (env block in the record's recipe; every oracle under `/tmp/p4d356/`; `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin): **879 binaries / 5,809 passed / 4 failed / 3 ignored.** None of the four is this lane's:
+
+| red | cause | owner |
+|---|---|---|
+| `cli_differential` (2 of 423 cases) | `recall-replay` help: the inner-circle tuning keys | P4.D342 |
+| `almanack_tier2_equivalence` (`persisted_after_generate`) | v4 now CONVERTS the saved report `.md` on write (`conversionStatus: converted`, extracted text); v5 skips. The new intervention line is present in v4's report | P4.D354 (FILES) |
+| `custom_tool_schema_embed_guard` | `qtap-custom-tool.schema.json` 63,595 → 66,469 bytes at the pin | P4.D345 |
+| `public_schemas_vendor_guard` | the same file, the SPA copy | P4.D345 |
+
+- **Zero SKIP for this lane's families** (each checked by name with `--nocapture`): `nanogpt_image_sizes`, `nanogpt_image_provider`, `settings_routes`, `repository_zod_messages`, `chat_settings_tier2`, `almanack_render`, `help_tools`, `chat_settings_accepted_keys_census`, `image_dialects` (UNMOVED, green), `nanogpt_lora_wire_log` (8/8).
+- **`extraction_context_degrade`** (re-pinned here) SKIPs in the gate for lack of its fixture. It was run separately on a pin-built processor fixture: green.
+- **`provider_sdk_version_guard`:** green with one SKIP leg.
+- **UNMOVED families through the sweep driver from the pin:**
+  - `settings_wire_actions`: 7/0.
+  - `image_generation_tier3_equivalence`: RED on `bug148_quality_max_reaches_the_provider`. v4's `llm_logs` dump carries `storytellerRoundId`; v5's row does not. It is an OPENAI case that never reaches the NanoGPT path, so the red belongs to the keystone's / Storyteller's `llm_logs` plumbing (P4.D341 / P4.D343), not this lane: a union-expected red.
+  - The `settings_wire_actions` sweep exposed that `build-settings-fixture.ts` REWRITES `settings.json` from its own `SPEC`. That is also how this lane's first `settingsIdA2` edit was silently dropped. The key now lives in the builder's `SPEC`; the builder's output is byte-identical to the committed file, and no fixture row changed.
+  - `recipe_sweep.py --self-test`: 0.
+
+### Versions at close
+
+core 0.0.1385, web 0.0.252. Host, cli, tauri and SPA are unchanged; the harness is frozen at 0.0.1110.
+
 ## P4.D351 — the Novel template server: annotations, the prompt hint, the routes, the four carriers (lane record)
 
 **Branch:** `claude/p4.d351-novel-template-server-c2c28c031` (worktree `.claude/worktrees/p4d351`), cut from **`KEYSTONE` `c2c28c031`**, confirmed against the keystone's lane-branch status header (`claude/p4.d341-keystone-d23-17-21-8976915ea`, docs commit `b00f7a020`). The session started in main's checkout (`/Volumes/External 1/…/quilltap-v5`, branch `main`); the lane worktree was created directly on `KEYSTONE`. No pre-start from `main` was needed.
