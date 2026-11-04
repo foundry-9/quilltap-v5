@@ -1126,6 +1126,11 @@ pub fn render_almanack_markdown(data: &AlmanackReportData, zone: &TimeZone) -> S
         "- **Auto-Run on Trigger Phrases**: {}",
         yes_no(fc.custom_tool_triggers)
     ));
+    // P4.D356 (v4 `839575d89`, render.ts:729).
+    push!(format!(
+        "- **Hold Intervenable Rolls for the Operator**: {}",
+        yes_no(fc.custom_tool_intervention)
+    ));
     push!(
         "- *(the inventory of definitions lives in the Scriptorium section — they are documents, not settings)*",
         "",

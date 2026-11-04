@@ -528,6 +528,8 @@ pub struct FeatureConfigInfo {
     pub custom_tools: bool,
     /// P4.D304 (v4 4.11 `362426c8f`, types.ts:277).
     pub custom_tool_triggers: bool,
+    /// P4.D356 (v4 `839575d89`, types.ts:279): the operator-intervention hold.
+    pub custom_tool_intervention: bool,
     pub avatar_display: AvatarDisplayConfig,
     pub core_whisper: CoreWhisperConfig,
     pub thinking_display: ThinkingDisplayConfig,

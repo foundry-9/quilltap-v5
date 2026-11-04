@@ -80,6 +80,16 @@ function fixture(): AlmanackReportData {
     );
   }
   d.featureConfig.customToolTriggers = false;
+  // P4.D356 (v4 `839575d89`): `FeatureConfigInfo.customToolIntervention` — the
+  // same gap shape: added to the interface, `defaultFeatureConfig()` (`true`),
+  // `collectFeatureConfig` (`?? true`) and the renderer, NOT to the fixture
+  // helper. The recorder fills v4's default `true`; variant 13 takes `No`.
+  if ('customToolIntervention' in d.featureConfig) {
+    throw new Error(
+      "v4's Almanack fixture now sets customToolIntervention — drop the P4.D356 fill and re-measure",
+    );
+  }
+  d.featureConfig.customToolIntervention = true;
   return d;
 }
 
@@ -490,6 +500,16 @@ function variants(): Variant[] {
       build: () => {
         const d = clone(fixture());
         d.featureConfig.customToolTriggers = true;
+        return d;
+      },
+    },
+    // 13. P4.D356 (v4 `839575d89`): the "Hold Intervenable Rolls for the
+    //     Operator" line's `No` arm — every other variant renders `Yes`.
+    {
+      name: 'custom_tool_intervention_off',
+      build: () => {
+        const d = clone(fixture());
+        d.featureConfig.customToolIntervention = false;
         return d;
       },
     },

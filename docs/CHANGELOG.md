@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — feat(almanack): the Almanack and help_settings report the operator-intervention hold (P4.D356, v4 `839575d89`)
+
+_Versions: core 0.0.1384._
+
+The `SettingsArmOwner` read half of v4 `839575d89`. The Almanack's feature config carries `customToolIntervention`: its phase-3 reader reads it with `?? true` and the default config sets `true`. The Pascal's Workbench block renders `- **Hold Intervenable Rolls for the Operator**: Yes/No` right after the trigger-phrase line. `help_settings` reports the key between `customToolTriggers` and `llmLoggingSettings`. `almanack-render` gains variant 13 (the `No` arm), with v4's fixture gap filled by v4's default and guarded by a tripwire. `almanack_render_equivalence` (13/13) and `help_tools_equivalence` were regenerated from the pin and are green.
+
 #### 2026-11-04 — test(cli): Tier R pins `db --count` under FORCE_COLOR (P4.D356, v4 `40cc6ffda`)
 
 _Versions: unchanged (test-only)._

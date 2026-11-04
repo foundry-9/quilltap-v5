@@ -20,7 +20,7 @@ use serde_json::Value;
 /// Every variant the oracle case emits. A missing name is a truncated oracle,
 /// not a pass (the P4.D19 census lesson): the assertion below is on the SET,
 /// not merely on each line that happens to be present.
-const EXPECTED_CASES: [&str; 12] = [
+const EXPECTED_CASES: [&str; 13] = [
     "base",
     "all_empty",
     "scriptorium_unavailable",
@@ -40,6 +40,8 @@ const EXPECTED_CASES: [&str; 12] = [
     "wardrobe_images_designated",
     // P4.D304 (v4 `362426c8f`): the "Auto-Run on Trigger Phrases" `Yes` arm.
     "custom_tool_triggers_on",
+    // P4.D356 (v4 `839575d89`): the intervention-hold line's `No` arm.
+    "custom_tool_intervention_off",
 ];
 
 /// The v4 commit the committed recipe pins. A stale NDJSON regenerated against
