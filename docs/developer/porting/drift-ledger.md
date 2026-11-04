@@ -32,32 +32,30 @@ probe verifies against._
   retired to §6; **`b15fe9404` stays in §3, PARTIAL** (P4.D343 item 41, the
   `simultaneous` order, and item 29, the `.qtap` import refusals). The
   previous baseline was `322a5488e` (2026-10-27 → 2026-11-04).
-- **Checked:** 2026-11-04, by `/driftcheck` (`ddda33e2f`) run as this
-  round's `/unify` started, on v5 main (`8976915ea`). **The baseline move
-  did NOT re-probe v4; that state stands.** The §2 probe had FAILED on
-  fifty-two new `main` commits past the recorded `544c7ab1e` (51
-  first-parent; `29ba4d3f8` … `7b4e1b9fa`, `4.12.0-dev.10` →
-  `4.13.0-dev.0`) and a moved `bugfix` / `release`. Fetched first (tags
-  too); local equals `origin` on all three branches.
-  - **v4 RELEASED 4.12.0** (`7bdb45873`, tag `4.12.0`, 2026-11-03) and
-    started `4.13.0-dev`. By CONTENT, `git diff 70d2859d8 7bdb45873` is the
-    4 stamp files (+5 / −5), so **4.12.0's code = `70d2859d8`'s tree**;
-    `7bdb45873..main` adds only the `4.13.0-dev.0` stamps and the CHANGELOG
-    split (`docs/CHANGELOG_V4.md`). The topology repeats 4.11.0's: the
-    release squash's sole parent is `1ca45c171`, and `merge: 4.12.0 back
-    into main` (`b37769882`) makes it an ancestor of `main`.
-  - `gh issue list -R foundry-9/quilltap-server --label bug --state all`
-    returns #120, #121 and #133–#137, all CLOSED. #121 and #133–#137 are
-    "Original to v4" — **NO CONVERGENCE** in the 52 (#120 was this port's,
-    absorbed by P4.D356).
-  - Earlier checks (2026-10-29 twice; 2026-10-28 four times; 2026-10-27
-    three times; 2026-10-26 and before) are recorded in the §6 bullets and
-    this file's git history. Their §3 rows are retired, held (`b15fe9404`),
-    or among the 62 below.
-- **v4 `main` HEAD at check: `7b4e1b9fa`** ("docs: CHANGELOG update for new
-  version", 2026-11-03, `4.13.0-dev.0`) — **SIXTY-TWO commits past the
-  baseline, all UNPROCESSED in §3**: the 10 of 2026-10-29 plus the 52 of
-  2026-11-04. (Against the old baseline `322a5488e` it was 131.)
+- **Checked:** 2026-11-04 (afternoon), by `/driftcheck` on v5 main
+  (`79e95fe99`), after the `236c04e35` round's unification. Fetched first
+  (tags too); local equals `origin` on `main` and `bugfix`. The §2 probe
+  FAILED on **eleven new `main` commits** past the recorded `7b4e1b9fa`
+  (`9d6f155c5` … `624d0d25c`, `4.13.0-dev.0` → `dev.8`) and a moved
+  `bugfix` / `release`.
+  - **v4 RELEASED 4.12.1** (`6121f59b9`, tag `4.12.1`, 2026-11-04 10:35):
+    a bugfix-branch release whose sole parent is `7bdb45873` (4.12.0).
+    Its content is `bugfix`'s `182282af4` (window-first dated search +
+    the honest empty search), `97f5c849f` (CI heap) and two docs commits;
+    `merge: 4.12.1 back into main` (`afec0af10`) brings it onto `main`.
+    Measured by CONTENT: `git diff 6121f59b9 main` over 4.12.1's `lib/` /
+    `app/` files is ONE file — `lib/tools/native-tool-prompt.ts`, which
+    `96156566b` refactored on `main` — so the merge kept 4.12.1 whole.
+  - `gh issue list -R foundry-9/quilltap-server --label bug --state all`:
+    unchanged since the morning check (#120, #121, #133–#137, all CLOSED);
+    none of the 11 cites an issue. **NO CONVERGENCE.**
+  - The morning check of 2026-11-04 (`ddda33e2f`) recorded the 62 below;
+    earlier checks live in the §6 bullets and this file's git history.
+- **v4 `main` HEAD at check: `624d0d25c`** ("ci: restore the 8 GB heap
+  for the coverage run", 2026-11-04 11:00, `4.13.0-dev.8`) — **SEVENTY-THREE
+  commits past the baseline, all UNPROCESSED in §3**: the 10 of 2026-10-29,
+  the 52 of 2026-11-04 (morning) and the 11 of 2026-11-04 (afternoon).
+  (Against the old baseline `322a5488e` it was 142.)
   - **The 10 of 2026-10-29** (`8832cfd20` … `544c7ab1e`, `4.12.0-dev.1` →
     `dev.9`):
     - *Dependency move:* `8832cfd20`, the driver to
@@ -120,6 +118,45 @@ probe verifies against._
       `856ed4f2b` (+ an About line), `8f83041aa`, `9b5bb27df`, `cbf4805c0`,
       and the four release commits `7bdb45873` / `b37769882` / `013b99b5d` /
       `7b4e1b9fa`.
+  - **The 11 of 2026-11-04 afternoon** (`9d6f155c5` … `624d0d25c`), by
+    class (§3, from the hunks). **No migration, no D23 move** in any of
+    them — the new character `kind` lives in the vault's `properties.json`
+    (v4's spec moved it off the DB column first proposed):
+    - *PORT-NEW — the character-kind programme* (v4's spec
+      `character-kind-and-roleplay-defaults.md`, phases 1–6):
+      `b09ca46bb`, `kind` (`roleplay` default / `assistant`) through ONE
+      reader `lib/characters/kind.ts` + a chokepoint grep-test, the vault
+      read / patch / full-sync / scaffold, the PUT + GET wire, the
+      `.qtap` schema, the Aurora "Kind of character" card; `96156566b`,
+      Agent Mode's flavour (`in-character` vs `research`) and the native
+      tool-rules preamble (`roleplay` "Using tools" vs `assistant`
+      MANDATORY) from the responding character's kind — roleplay turns are
+      NEVER offered `submit_final_response`; Brahma / Help chat / one-shot
+      pin `research` + `assistant`; `3ae4cf582`, the four generators
+      (Wizard, Summon From Lore, External Prompt, Optimizer) add
+      `generatorDirectionFor(kind)` + the Optimizer's flattening drift
+      signal, and the Wizard's system-prompt field gets a 2500-token
+      budget.
+    - *PORT — prompt text and seeding on ported surfaces:* `d0201575a`,
+      default-system-prompts 1.1.32 (`MODERN_GENERAL` RETIRED →
+      `MODERN_ROLEPLAY`, NEW `MODERN_ASSISTANT`, a stakes passage in every
+      companion / romantic / platonic prompt) + the seed PRUNES built-in
+      rows the registry no longer ships (a NEW INFO / DEBUG pair);
+      `c69a08882`, `INFORM_BLOCK_HEADER` reworded (feelings and resolve;
+      outranks "your usual temperament") + a NEW
+      `GROUP_SCENE_DISCIPLINE` bullet; `7ff5fda89`, one more stakes bullet
+      + default-system-prompts 1.1.33.
+    - *PORT — 4.12.1, window-first dated search* (`6121f59b9` /
+      `afec0af10`): `memories.findIdsInEventWindow` (SQL over
+      `COALESCE(occurredAt, createdAt)`), the index's `includeIds`, the
+      recall gather's window pass (`via: 'window'`) in both the vector and
+      text strategies, the tool path's ≤ 14-day window relaxing the
+      relevance floor (`TOOL_WINDOW_FLOOR_MAX_DAYS`), NEW
+      `lib/scriptorium/chat-window.ts`, unsummarized in-window chats in the
+      retrospective mini-recap, the search tool's window census + honest
+      empty text, three tool-description strings and the rule-6 sentence
+      in both the native and simple-JSON tool prompts.
+    - *NO-PORT? (docs / CI):* `9d6f155c5`, `763dfaceb`, `624d0d25c`.
   - **Surfaces the `236c04e35` round just LANDED that these commits move
     again** — v4 drift, not v5 bugs, when the next catch-up's pins trip:
     Storyteller (`604a082c4` DELETES the `tagSseChunk` seat-tagging P4.D343
@@ -136,37 +173,35 @@ probe verifies against._
     P4.D342's extraction prompts); vault keys (`c539c82e0`'s
     `brahmaConnectionProfileId` beside P4.D349's `humanoid` / pronoun /
     diagram keys). The Log carrier (P4.D355) is untouched.
-- **v4 `bugfix` tip at check:** `17cb0e819` ("Merge tag 'rel/4.12.0' into
-  bugfix", 2026-11-04 07:22 −0600; parents `5cde81c68` "bugfix: started
-  4.12.0 bug branch" [`4.12.1-bugfix.0`, parent `73b334af3`] +
-  `b37769882`). It landed DURING the check. Its tree is `release` + the
-  bugfix stamps (3 files +4 / −4), and `git diff 70d2859d8 17cb0e819 -- lib
-  app packages plugins migrations` is EMPTY: NO unabsorbed content. The
-  merge makes `main`'s history an ancestor of `bugfix` for the first time;
-  the content rule still governs. The §2 probe's bugfix base is
-  `17cb0e819`. **`release` tip:** `7bdb45873` (`release: 4.12.0`, code =
-  `70d2859d8`). Re-probe ALL THREE branches every time.
-- **Checkout at check:** branch **`bugfix`** (⚠ WRONG BRANCH) at
-  `17cb0e819`, tree **DIRTY — docs only**: STAGED `docs/CHANGELOG.md`
-  (−612) + `docs/CHANGELOG_V4.md` (+614), the same 4.x history split
-  `main`'s `7b4e1b9fa` made. This is infra-only dirt; it cannot poison a
-  regen, and it is recorded so the next probe does not re-alarm. The human
-  switched the checkout from `main` (CLEAN at `7b4e1b9fa`) mid-check. Its
-  code is 4.12.0's, so a regen from it runs SIXTY-TWO commits past the
-  baseline: poisoned by DRIFT and by BRANCH. The live root `node_modules`
-  carries `openai` 7.47.0 / `@openrouter/sdk` 1.5.34 / `mermaid` 12.3.0 /
-  TypeScript 6.0.3 / the v13 driver, with SVAR gone.
-- **Verdict: DRIFT PENDING — 62 commits past the baseline, all UNPROCESSED
-  (§3)**, plus the held PARTIAL row `b15fe9404`: THREE migrations past the
-  baseline's own (TWO D23 moves — the 22nd `isEstablishedFact`, the 23rd
-  `maxImagesPerRequest` — and the FTS rebuild), plus `544c7ab1e`'s
-  data-rewrite migration; two ported-wire moves (the Salon's `kind`-tagged
-  frames, the image transport budget); the SQLite3MC 2.4.0 driver move (a
-  ruling owed); six v4-originated issue fixes (#121, #133–#137), NO
-  convergence; one new vault key; ~28 NO-PORT? candidates (7 of the 10,
-  21 of the 52).
+- **v4 `bugfix` tip at check:** `997657639` ("Merge tag '4.12.1' into
+  bugfix", 2026-11-04; parents `e74035270` "bugfix: started 4.12.1 bug
+  branch" + `6121f59b9`). Since the morning's `17cb0e819` it carried
+  `2bca31c11` (merge `main` → bugfix: the 4.13.0-dev stamps), `538b7f078` /
+  `749800d46` (docs), `182282af4` (the window-first search) and
+  `97f5c849f` (CI heap), all released as 4.12.1. By CONTENT,
+  `git diff 6121f59b9 bugfix` is the bugfix stamps only (3 files +4 / −4),
+  and 4.12.1 is merged into `main` (above): **NO unabsorbed bugfix
+  content.** The §2 probe's bugfix base is `997657639`. **`release`
+  tip:** `6121f59b9` (`release: 4.12.1`). Re-probe ALL THREE branches every
+  time.
+- **Checkout at check:** branch **`main`** at `624d0d25c`, tree **CLEAN**
+  (the morning's wrong-branch posture and staged CHANGELOG dirt are gone).
+  Its code is 4.13.0-dev.8, SEVENTY-THREE commits past the baseline, so a
+  regen from it is poisoned by DRIFT. The live root `node_modules` still
+  carries the 13.0.3 driver / `openai` 7.47.0 / `@openrouter/sdk` 1.5.34 /
+  `mermaid` 12.3.0 (unchanged by the 11).
+- **Verdict: DRIFT PENDING — 73 commits past the baseline, all UNPROCESSED
+  (§3)**, plus the held PARTIAL row `b15fe9404`. The morning's facts stand
+  (three migrations past the baseline's own — the 22nd / 23rd D23 moves and
+  the FTS rebuild — plus `544c7ab1e`'s data-rewrite migration; the Salon's
+  `kind`-tagged frames; the image transport budget; the SQLite3MC 2.4.0
+  ruling owed; ~28 NO-PORT? candidates). The 11 add NO migration and NO D23
+  move: one PORT-NEW programme (character kind, three commits), three PORT
+  prompt / seeding moves, the 4.12.1 window-first search (PORT on the recall
+  pipeline and the search tool), and three NO-PORT? docs / CI rows. No
+  convergence.
 - **Regen rule: PIN REQUIRED at `236c04e35`** (§5.1). Never regen from the
-  live checkout: it is on `bugfix`, sixty-two commits past the baseline.
+  live checkout: it is seventy-three commits past the baseline.
   - The pin's root takes its own `npm ci --offline --ignore-scripts`, then
     `npm rebuild better-sqlite3` (SQLite 3.53.2 / chacha20 — the pin's
     lockfile wants the 12.11.1 driver; the live tree has 13.0.3).
@@ -498,6 +533,17 @@ passes the commit.
 | `b37769882` | 2026-11-03 | merge: 4.12.0 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `70d2859d8` + `7bdb45873`; first-parent diff = the release stamps). Same topology as 4.11.0's `9e01ebd25`. | **v5 intersection:** none. | UNPROCESSED |
 | `013b99b5d` | 2026-11-03 | dev: started 4.13.0 development | **NO-PORT? — version stamps, VERIFIED** (`4.13.0-dev.0`). | **v5 intersection:** none. | UNPROCESSED |
 | `7b4e1b9fa` | 2026-11-03 | docs: CHANGELOG update for new version | **NO-PORT? — docs only, VERIFIED** (`docs/CHANGELOG.md` −614 → NEW `docs/CHANGELOG_V4.md` +614; the 4.x history split out). | **v5 intersection:** the `docs/v4/` mirror if it carries the CHANGELOG. | UNPROCESSED |
+| `9d6f155c5` | 2026-11-04 | docs: design spec for character kind and roleplay defaults | **NO-PORT? — docs only, VERIFIED** (2 files +235 / −1: NEW `docs/developer/features/character-kind-and-roleplay-defaults.md`, CHANGELOG). The spec of record for `b09ca46bb` … `7ff5fda89`; later commits amend it. | **v5 intersection:** the `docs/v4/` mirror (the catch-up's help / docs lane re-vendors the spec at its final shape). | UNPROCESSED |
+| `b09ca46bb` | 2026-11-04 | feat: character kind (roleplay or assistant) | **PORT-NEW (character kind, phase 1) — NO migration, NO D23 move** (classified 2026-11-04 from the hunks; 31 files +518 / −31; `4.13.0-dev.2`). NEW `lib/characters/kind.ts` (client-safe): `CHARACTER_KINDS = ['roleplay','assistant']`, `DEFAULT_CHARACTER_KIND = 'roleplay'`, `characterKindOrDefault` (anything unrecognized → `roleplay`), `resolveCharacterKind`, `isAssistantCharacter`; a NEW grep-test `kind-chokepoint.test.ts` refuses hand comparisons against a kind literal elsewhere. **Vault (`properties.json`):** `CharacterVaultPropertiesSchema.kind` = `z.preprocess(characterKindOrDefault, z.enum(...).optional().default('roleplay'))` (lenient like `diagramStyle`, so an old vault never fails the strict parse); `MANAGED_FIELDS` gains `kind`; `readCharacterVaultManagedFields` snapshots it; `writeCharacterVaultManagedFields` writes `kind: characterKindOrDefault(character.kind)` LAST after `diagramStyle`; `applyDocumentStoreWriteOverlay`'s `propsKeys` gains `kind` (same seed / `'kind' in patch` rule) + a NEW DEBUG `[VaultOverlay] Writing character kind to properties.json { characterId, kind }`; `hydrateOne` carries it; the scaffold's `PROPERTIES_JSON` gains `kind: 'roleplay'` after `diagramStyle`. **Schema:** `CharacterSchema.kind` `z.enum(...).default('roleplay')` after `diagramStyle`. **API:** the PUT's `updateCharacterSchema.kind` `z.enum(CHARACTER_KINDS).optional()`; the character list GET emits `kind: resolveCharacterKind(character)` after `diagramStyle`. **`.qtap` schema:** `kind` (enum, description) after `diagramStyle`. **SPA:** NEW `components/characters/CharacterKindPicker.tsx` (a radiogroup named via `useId`), `app/aurora/shared/save-character-kind.ts`, a "Kind of character" card on the Details tab of BOTH the view and edit pages (saves on change). **Help:** `character-editing.md` +13 / −2. `docs/developer/DDL.md`'s `properties.json` row. Nothing reads the kind for behaviour yet. | **v5 intersection — PORT-NEW on the ported vault:** `db/character_vault.rs` / `vault_read_overlay.rs` / `vault_character_write.rs` / `vault_character_update.rs` / `vault_overlay.rs` (the `properties.json` key order — `kind` after `diagramStyle` in every writer — and the lenient parse, exactly as P4.D349 carried `canDrawDiagrams` / `diagramStyle`), `services/provisioning` + the scaffold, `db/characters*.rs` + `api/characters.rs` (the PUT enum arm and the list GET key), `generators/qtap-export.schema.json` + the `.qtap` carriers (P4.D272 / P4.D294 family — export / import / backup round-trip the vault file whole), the overlay tier-2 corpora (the `diagramStyle` rows are the template). A v5 analog of the chokepoint grep-test belongs beside the census guards. **SPA:** the Aurora view + edit Details tabs (the P4.6-series character vertical) — a radiogroup per workspace tab (v4's `useId` reason: side-by-side tabs). `help/character-editing.md` re-vendors. | UNPROCESSED |
+| `763dfaceb` | 2026-11-04 | docs: add feature spec for better searches | **NO-PORT? — docs only, VERIFIED** (1 file +315: `docs/developer/features/search-window-first-and-honest-empty.md`; the same spec `bugfix`'s `749800d46` added and 4.12.1 moved to `complete/`). | **v5 intersection:** the `docs/v4/` mirror (take 4.12.1's `complete/` copy). | UNPROCESSED |
+| `96156566b` | 2026-11-04 | feat: Agent Mode and tool rules follow the character's kind | **PORT (Agent Mode + the native tool-rules preamble, on ported surfaces)** (classified 2026-11-04 from the hunks; 26 files +452 / −118; `dev.4`). `kind.ts` gains `AgentModeFlavor` (`research` / `in-character`), `ToolRulesVariant` (`assistant` / `roleplay`), `KindPolicy` + `kindPolicy` / `characterKindPolicy` (roleplay → in-character + roleplay; assistant → research + assistant). **`agent-mode-resolver.service.ts`:** `ResolvedAgentMode.flavor = characterKindPolicy(character).agentFlavor` (the cascade still decides `enabled`); `buildAgentModeInstructions(maxTurns, flavor)` — `in-character` returns a NEW `## Acting in the scene` block (verbatim text in the hunk, `**${maxTurns} tool steps**`); `buildForceFinalMessage(flavor)` — `in-character` returns a NEW no-tools sentence. **`native-tool-loop.service.ts`:** `submitOffered = agentMode.enabled && flavor === 'research'` gates the `submit_final_response` detection AND the force-final promotion; the force-final log gains `flavor`. **`orchestrator.service.ts`:** the slate's `agentModeEnabled` → `offerSubmitFinalResponse` (research only) — so a roleplay character's slate NEVER carries `submit_final_response`; the Agent-Mode INFO gains `flavor`. **`turn-tools.service.ts`:** `buildNativeToolSystemInstructions(characterKindPolicy(character).toolRules)`. **`native-tool-prompt.ts`:** the six rules become ONE exported `NATIVE_TOOL_RULES` constant under two `PREAMBLES` — `assistant` keeps `## Tool Execution Rules (MANDATORY — overrides all other behavioral patterns)`, `roleplay` is `## Using tools` + "A tool call is something you do; making one does not change who you are or how you speak." `buildNativeToolInstructions(variant, hasTools)`. **Pinned `research` + `assistant`:** Brahma console, Help chat, one-shot loop (bytes unchanged there). `turn-extras.ts`'s `agentMode` gains `flavor`. Text-block and simple-JSON instructions unchanged. Help `agent-mode.md` +26 / −6. | **v5 intersection — PORT:** `services/agent_mode.rs` (the resolver + both builders; the INFO line's new key), `tools/native_tool_prompt.rs` (both preambles; 4.12.1's rule-6 sentence lands in the shared constant too — take `main`'s file, not 4.12.1's), the native tool loop (P4.13/P4.14-era loops; `submit_final_response` detection + force-final promotion), the turn tool slate (`tool_build.rs`'s `agent_mode_enabled` arm → research-only — the `tool_build_equivalence` family's slates for a roleplay character LOSE `submit_final_response`), turn extras token counts, the Brahma / Help chat / one-shot callers (pass `research` / `assistant` explicitly). ⚠ Every default character is `roleplay`, so on v4 HEAD **every existing Agent-Mode chat changes behaviour** — the tier-3 orchestrator corpora with Agent Mode on will move at the next pin. Help `agent-mode.md` re-vendors. | UNPROCESSED |
+| `d0201575a` | 2026-11-04 | feat: roleplay and assistant sample prompts; story prompts match the stakes | **PORT (built-in prompt templates: re-vendor + a NEW prune on seed)** (classified 2026-11-04 from the hunks; 35 files +395 / −46; `dev.5`). `plugins/dist/qtap-plugin-default-system-prompts` 1.1.31 → **1.1.32**: `MODERN_GENERAL.md` RENAMED → `MODERN_ROLEPLAY.md` (+ group-scene rules, the flattening and mediator failure modes), NEW `MODERN_ASSISTANT.md` (61 lines), a "match the stakes" passage in every COMPANION / ROMANTIC / PLATONIC prompt (DeepSeek's "keep the story small" governors removed); manifest descriptions updated (`promptCount` still 21 — stale). **`prompt-templates.repository.ts`:** after a registry seed that returned ≥ 1 prompt, NEW `pruneRetiredBuiltIns(shippedNames)` — `find({ isBuiltIn: true })`, `deleteOne` each row whose `name` is not shipped, INFO `Retired built-in prompt template removed { templateId, name }` per row, then DEBUG `Built-in prompt templates pruned { builtInCount, shippedCount, removed }`; user copies (not built-in) untouched. Help `prompts.md`. | **v5 intersection — PORT:** `services/builtin_prompt_templates.json` (v5's vendored copy of the plugin's prompts — still carries `MODERN_GENERAL`) + `builtin_prompt_templates.rs`'s every-boot seed (P4.D241 / P4.D244 lineage) gains the prune with v4's two lines and its "only after a non-empty seed" guard; the seed tier-2 family (the prune DELETES a row on an existing instance — 💸 the first v5 boot of a Friday copy that still holds `MODERN_GENERAL` removes it, as v4's boot already did on live Friday). `help/prompts.md` re-vendors. Rides with `7ff5fda89` (1.1.33). | UNPROCESSED |
+| `3ae4cf582` | 2026-11-04 | feat: prompt generators follow the character's kind | **PORT (the four generators' prompt text by kind) + a token-budget fix** (classified 2026-11-04 from the hunks; 23 files +408 / −64; `dev.6`). `kind.ts`'s `KindPolicy` gains `generatorDirection` (`stakes` / `task`). **`character-field-semantics.ts`:** NEW `STAKES_AND_REACTION_DIRECTION`, `ASSISTANT_TASK_DIRECTION`, `generatorDirectionFor(kind)`, `FLATTENING_DRIFT_SIGNAL`, `kindDriftSignalFor(kind)` (roleplay only). **Generators:** Summon From Lore's `SYSTEM_PROMPTS_PROMPT` adds `generatorDirectionFor(DEFAULT_CHARACTER_KIND)` (new characters are roleplay; never guessed); the Wizard's default-system-prompt meta-prompt becomes `buildSystemPromptFieldPrompt(kind)` (reads the stored kind) and its system-prompt field gets a **2500-token budget** (was the shared 1000 cap — a reasoning model truncated); External Prompt's `META_SYSTEM_PROMPT` → `buildMetaSystemPrompt(kind)` + a DEBUG `External prompt meta-prompt built for the character's kind { characterId, kind }`; the Optimizer's `getAnalysisPrompt(kind)` (a flattening look-for + the drift signal), `getSystemPromptSuggestionPrompt(…, kind)` and `getNewSystemPromptsSuggestionPrompt(analysis, kind)`. Help: four generator pages. | **v5 intersection — PORT on the `p4.9k` generators:** `generators/field_semantics.rs` (the new constants verbatim), `wizard.rs` / `wizard_prompts.rs` (the meta-prompt builder + the 2500 budget), `ai_import.rs`, `external_prompt.rs` (+ the DEBUG line), `optimizer.rs` (three signatures). Their tier-1 prompt-text families move at the next pin. Help re-vendors. | UNPROCESSED |
+| `c69a08882` | 2026-11-04 | feat: group scenes need not agree; informs carry feelings | **PORT (two model-visible strings)** (classified 2026-11-04 from the hunks; 15 files +80 / −17; `dev.7`). `INFORM_BLOCK_HEADER` REWORDED to "Things now true in this story and in you, as of this moment — what has happened, what you know, and how you feel or what you have resolved. Where any of it conflicts with an older memory, your records, or your usual temperament, this is the current truth:"; `GROUP_SCENE_DISCIPLINE` gains a NEW bullet before its last ("The cast does not have to agree. …"). Help `inform.md`, `chat-multi-character.md`; `salon-inform.md` amendment. | **v5 intersection — PORT:** `services/inform_block.rs`'s header (P4.D254's vouching header — the inform-block tier-2 / capture families and the standing-inform corpora carry the old bytes) and `services/message_context.rs`'s `GROUP_SCENE_DISCIPLINE` (the context-builder families, P4.D347). Help re-vendors. | UNPROCESSED |
+| `7ff5fda89` | 2026-11-04 | fix: story characters no longer invent where the user is | **PORT (prompt text)** (classified 2026-11-04 from the hunks; 34 files +108 / −12; `dev.8`). `STAKES_AND_REACTION_DIRECTION` gains one bullet (`{{user}}` off-screen); default-system-prompts **1.1.33** — one line in every story prompt, two in `MODERN_ROLEPLAY` ("the invented absence"). No code path beyond the string. | **v5 intersection — PORT:** `generators/field_semantics.rs` and `builtin_prompt_templates.json` (with `3ae4cf582` / `d0201575a`). | UNPROCESSED |
+| `6121f59b9` | 2026-11-04 | release: 4.12.1 | **PORT (window-first dated search + the honest empty search) + version stamps** (classified 2026-11-04 from the hunks; 37 files +2,332 / −693, of which the CHANGELOG split is ~1,236; tag `4.12.1`; sole parent `7bdb45873`; its content = `bugfix`'s `182282af4` + `97f5c849f` + docs). **Memories:** NEW `memories.findIdsInEventWindow(characterId, {from,to}, {hotOnly})` — raw SQL `COALESCE(occurredAt, createdAt)` between the bounds (lexical ISO), `+ HOT_TIER_SQL` when hot-only, DEBUG `Found memories in event window`, `safeQuery` fallback `[]` with `Error finding memories in event window`. **Index:** `MemoryIndexSearchOptions.includeIds`. **Recall gather:** with `query.window`, a window pass scoring only the period's ids (`via: 'window'`, a better score replaces), in BOTH the vector and the text strategy (text: newest-first `findByIds`, `limit × 3`, score may be 0); `probes.length > 0` guard on the text max; trace keys `window` / `windowAdded`; DEBUG `[Memory] Window-first gather`. `HitSource` gains `'window'`. **Score:** NEW `TOOL_WINDOW_FLOOR_MAX_DAYS = 14`, `isNarrowToolWindow`; on the TOOL path (no recall context) an in-window row passes the floor when the window is ≤ 14 days (`floorRelaxed: true` in the trace). **Assemble:** the retrospective mini-recap lists unsummarized in-window chats (`relativePath: null`, `score: 0`, trace `unsummarized`). NEW `lib/scriptorium/chat-window.ts` (`chatSpanOf` = `[createdAt, lastMessageAt ?? updatedAt ?? createdAt]`, `chatOverlapsWindow`, `findChatsInWindow` + WARN / DEBUG lines). `conversation-search.ts`: `chatIds` restriction + `minScore ?? 0.3` (was `||` — a `0` now sticks). **Search tool:** `search-scriptorium-handler.ts` +221 (window-first conversation search, the window census, the honest-empty text), `formatSearchScriptoriumResults(results, { query, windowCensus })`, the executor passes `chatId` and logs `windowCensus`; three tool-description strings (`query`, `since`, `sources`). **Rule 6** reworded in `native-tool-prompt.ts` and `simple-json-prompt.ts`. Help `episodic-memory.md`, `memory-recall-relevance.md`. "No data or export format has changed." | **v5 intersection — PORT on the memory-refactor recall pipeline (P4.D291) and the search tool:** `db/memories_read.rs` (the new window query), the TF-IDF / vector index search (`includeIds`), `services/recall/gather.rs` / score / assemble (the `[Recall]` record's trace keys — P4.D291's record), the chat-window module (NEW), conversation search (`minScore ??` — a JS-falsy divergence to carry), `tools/search.rs` + `tools/executor.rs` (the handler, the census, the formatter), the tool-definition strings (`tool_build_equivalence` / the derived-parameter snapshots), `tools/native_tool_prompt.rs` + the simple-JSON prompt (rule 6). The recall tier-2 / tier-3 families with a window move at the next pin. Help re-vendors. **CI hunk** (`ci.yml`) NO-PORT. | UNPROCESSED |
+| `afec0af10` | 2026-11-04 | merge: 4.12.1 back into main | **NO-PORT? — merge, VERIFIED BY CONTENT** (parents `7ff5fda89` + `6121f59b9`; brings 4.12.1's content onto `main`; `git diff 6121f59b9 main` over 4.12.1's `lib/` / `app/` files = only `native-tool-prompt.ts`, `96156566b`'s refactor). Same topology as 4.12.0's `b37769882`. | **v5 intersection:** none of its own — the content is `6121f59b9`'s row. | UNPROCESSED |
+| `624d0d25c` | 2026-11-04 | ci: restore the 8 GB heap for the coverage run | **NO-PORT? — CI / stamps, VERIFIED** (2 files +5 / −1: `package.json` script, CHANGELOG). | **v5 intersection:** none. | UNPROCESSED |
 
 ## §4 How a full drift check runs (the `/driftcheck` procedure)
 

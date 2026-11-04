@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): driftcheck — 11 more v4 commits past `236c04e35` (character kind, 4.12.1 window-first search); 73 pending
+
+_Docs-only change._
+
+`/driftcheck` after the `236c04e35` unification. v4 `main` moved 11 commits to `624d0d25c` (`4.13.0-dev.8`) and released 4.12.1 from `bugfix` (`6121f59b9`, merged back as `afec0af10`). The drift ledger's §1 is rewritten (main `624d0d25c`, bugfix `997657639`, release `6121f59b9`; checkout on `main`, clean) and §3 gains 11 UNPROCESSED rows: the character-kind programme (`b09ca46bb` PORT-NEW; `96156566b` Agent Mode flavour and tool-rules preamble; `3ae4cf582` generators), prompt-text and seed moves (`d0201575a` default-system-prompts 1.1.32 with the retired-built-in prune, `c69a08882` inform header and group-scene bullet, `7ff5fda89` 1.1.33), the 4.12.1 window-first dated search on the recall pipeline and search tool, and three docs/CI rows. No migration, no D23 move, no convergence. Bugfix carries no unabsorbed content. Verdict: DRIFT PENDING, 73 commits; regen rule unchanged (pin required at `236c04e35`).
+
 #### 2026-11-04 — unify(236c04e35): the 4.11.0 catch-up round — twenty lanes (P4.D341–P4.D360) on main; the oracle baseline moves to `236c04e35`
 
 _Versions: core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38, SPA 0.5.971; tauri 0.0.9 and harness 0.0.1110 unchanged._
