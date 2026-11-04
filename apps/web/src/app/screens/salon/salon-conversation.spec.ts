@@ -4746,6 +4746,53 @@ describe('SalonConversation — the "Try uncensored" handlers', () => {
     expect((fixture.componentInstance as unknown as Inst).conciergeRetry()).toBeDefined();
   });
 
+  it('a re-roll of a line that already has variants lands on the one it just made (v4 bug (b))', async () => {
+    // The regeneration's `refetch` awaits `invalidateQueries`, but injectQuery's
+    // `data()` is a macrotask behind the cache after that resolves — so a seed
+    // from `data()` reconciles the PRE-swipe chat, the selection finds no new
+    // variant, and the reconcile's id-carry leaves the operator on the line they
+    // just replaced (the `236c04e35` unification's 2/3-for-3/3 e2e red).
+    const { client, current } = mutableClient(new Subject<ScopedEvent>());
+    const variant = (id: string, swipeIndex: number, content: string): MessageDto =>
+      message({
+        id,
+        role: 'ASSISTANT',
+        participantId: 'p1',
+        content,
+        swipeGroupId: 'g1',
+        swipeIndex,
+        createdAt: '2024-01-01T00:00:02.000Z',
+      });
+    const [opener] = current.chat.messages;
+    current.chat = {
+      ...current.chat,
+      messages: [opener, variant('a1', 0, 'The first telling.'), variant('a1b', 1, 'The second telling.')],
+    };
+    client.dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'messageSwipe') {
+        current.chat = {
+          ...current.chat,
+          messages: [...current.chat.messages, variant('a1c', 2, 'The third telling.')],
+        };
+        return { message: { id: 'a1c', content: 'The third telling.' } };
+      }
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    }) as unknown as CoreClient['dispatchData'];
+    const fixture = await render(client);
+    type Host = { displayMessages(): MessageDto[]; onRegenerate(m: MessageDto): void };
+    const inst = fixture.componentInstance as unknown as Host;
+    const line = () => inst.displayMessages().find((m) => m.swipeGroupId === 'g1');
+    expect(line()?.id).toBe('a1b');
+
+    inst.onRegenerate(line()!);
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(line()?.id).toBe('a1c');
+    expect(line()?.content).toBe('The third telling.');
+  });
+
   it('the line retry streams §S.3’s messageRetryUncensored through the regeneration controller', async () => {
     const { client } = mutableClient(new Subject<ScopedEvent>());
     const fixture = await render(client);

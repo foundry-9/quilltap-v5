@@ -388,7 +388,10 @@ test.describe('P4.D336 — raise a hand / stop', () => {
     await expect(infos.filter({ hasText: 'Auto-responses are paused' })).toHaveCount(0);
     // The partial bubble persists after the refetch; the full reply does not.
     await expect(stopButton(page)).toBeDisabled({ timeout: 15_000 });
-    await expect(page.getByText('Barometer falling')).toHaveCount(1);
+    // Scoped to the transcript: the Salon's reply announcer (v4 `ReplyAnnouncer`,
+    // mounted at the `236c04e35` unification) repeats the landed reply in its
+    // `sr-only` live region, which is a second text match on the page.
+    await expect(page.locator('.qt-chat-messages-list').getByText('Barometer falling')).toHaveCount(1);
     await expect(page.getByText(STOP_REPLY)).toHaveCount(0);
     // …and on the server: exactly one row, partial.
     expect(await persistedCount(groupChatId, 'Barometer falling')).toBe(1);

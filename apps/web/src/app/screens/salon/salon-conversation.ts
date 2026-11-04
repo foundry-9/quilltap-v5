@@ -4703,8 +4703,8 @@ export class SalonConversation {
    * transcript half may not be: a hinted read can have applied a higher version
    * while this request was out, and re-applying older rows would undo it.
    */
-  private seedTranscriptFromChat(): void {
-    const chat = this.chatQuery.data();
+  private seedTranscriptFromChat(fresh?: ChatDetail): void {
+    const chat = fresh ?? this.chatQuery.data();
     if (!chat) return;
     const chatId = this.chatId();
     // A tab pointed at another conversation starts from nothing: its version,
@@ -5058,8 +5058,18 @@ export class SalonConversation {
         // reconcile's id-carry on the line just replaced: v4 bug (b) reproduced
         // by timing (the unification review's finding). Seed synchronously
         // here; the effect's later pass is a no-op on unchanged rows and
-        // carries the selection made below by id.
-        untracked(() => this.seedTranscriptFromChat());
+        // carries the selection made below by id. And seed from the query
+        // CACHE, not `chatQuery.data()`: right after `invalidateQueries`
+        // resolves, the signal is still a macrotask behind (TanStack's
+        // notifyManager batches through `setTimeout(0)`), so seeding from it
+        // reconciled the PRE-swipe chat and the selection again found nothing
+        // — every second re-roll stayed on 2/3 (the `236c04e35` unification's
+        // e2e red).
+        untracked(() =>
+          this.seedTranscriptFromChat(
+            this.queryClient.getQueryData<ChatDetail>(chatKeys.detail(this.chatId())),
+          ),
+        );
       },
       (newSwipeId) => {
         const next = selectSwipeVariant(this.transcriptSwipeStates(), newSwipeId);

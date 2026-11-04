@@ -189,6 +189,24 @@ export const GUARDED: readonly GuardRow[] = [
 ];
 
 /**
+ * `R4_GUARD_BEYOND_V4` — a RULED divergence (the round's R-4: guard EVERY
+ * document-level dismiss site). v4 at `236c04e35` guards only through
+ * `useClickOutside` / `BaseModal`; these sites carry the guard where v4's own
+ * listener does not, so an Escape or click inside the Brahma Console leaves the
+ * surface beneath open where v4 would close it (observable chiefly on the
+ * scenario-row kebab): `ui/tooltip.ts` (v4 `Tooltip.tsx:164-172`),
+ * `screens/scenarios/shared/scenario-row.ts` (`ScenarioRow.tsx:55-77`),
+ * `workspace/chrome/workspace-host.ts` (`WorkspaceLinkInterceptor`),
+ * `chat/sidebar/chat-sidebar.ts`, `images/image-navigation.ts`,
+ * `images/image-modal.ts`, `almanack/almanack-report-dialog.ts`,
+ * `ui/alert-modal.service.ts`, `chat/absent-mentions/mention-chip-host.ts`,
+ * `chat/diagrams/diagram-lightbox.ts` (`DiagramLightbox.tsx`),
+ * `screens/files/file-preview-modal.ts` (`FilePreviewActions.tsx`),
+ * `ui/slide-over-panel.ts` (`SlideOverPanel.tsx:41-50`) and the Salon's
+ * inspector shortcut. Recorded at the `236c04e35` unification; revisit if the
+ * human rules R-4 back to v4's exact set.
+ */
+/**
  * Document-level listeners that are NOT dismissals of a surface the console
  * could sit over — each by name, with the reason.
  */

@@ -282,7 +282,7 @@ test.describe('P4.9K3 — the AI Wizard modal (New Character + Edit)', () => {
       await expect(page.getByText(GENERATED_TEXT)).toBeVisible();
 
       await page.getByRole('button', { name: 'Apply to Character' }).click();
-      await expect(page.locator('[aria-label="Identity"]')).toContainText(GENERATED_TEXT);
+      await expect(page.getByRole('textbox', { name: 'Identity', exact: true })).toContainText(GENERATED_TEXT);
     } finally {
       await mock.close();
     }

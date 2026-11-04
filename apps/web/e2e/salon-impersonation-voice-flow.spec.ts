@@ -324,7 +324,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       // NOTHING posted, and the dialog opened on the draft.
       await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
       await expect(page.locator('.qt-dialog-title')).toHaveText(`In ${name}'s own words`);
-      await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
+      await expect(dialog(page).locator('.qt-rich-editor-content[aria-label="Your draft"]')).toContainText(DRAFT, {
         timeout: 15_000,
       });
       // Nothing posted while the dialog is up: the newest bubble is not the draft
@@ -335,7 +335,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await expect(composer(page)).toContainText(DRAFT);
 
       // The mock's restatement arrives as the proposal.
-      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+      await expect(dialog(page).locator(`.qt-rich-editor-content[aria-label="What ${name} will say"]`)).toContainText(
         REHEARSED,
         { timeout: 20_000 },
       );
@@ -352,7 +352,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       await composer(page).click();
       await page.keyboard.press('Enter');
       await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+      await expect(dialog(page).locator(`.qt-rich-editor-content[aria-label="What ${name} will say"]`)).toContainText(
         REHEARSED,
         { timeout: 20_000 },
       );
@@ -374,7 +374,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       const SECOND = 'And have the charts brought up.';
       await typeAndEnter(page, SECOND);
       await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+      await expect(dialog(page).locator(`.qt-rich-editor-content[aria-label="What ${name} will say"]`)).toContainText(
         REHEARSED,
         { timeout: 20_000 },
       );
@@ -429,7 +429,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
       // The dialog opens on the draft, in its DRAFT state: Send as written is
       // the primary door, Restate sits beside it, and there is no proposal.
       await expect(dialog(page)).toBeVisible({ timeout: 15_000 });
-      await expect(dialog(page).locator('[aria-label="Your draft"]')).toContainText(DRAFT, {
+      await expect(dialog(page).locator('.qt-rich-editor-content[aria-label="Your draft"]')).toContainText(DRAFT, {
         timeout: 15_000,
       });
       const asWritten = dialog(page).getByRole('button', { name: 'Send as written' });
@@ -438,7 +438,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
         dialog(page).getByRole('button', { name: 'Restate in their voice' }),
       ).toBeVisible();
       await expect(dialog(page).getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
-      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toHaveCount(0);
+      await expect(dialog(page).locator(`.qt-rich-editor-content[aria-label="What ${name} will say"]`)).toHaveCount(0);
       await expect(dialog(page)).toContainText(
         `Sending as written posts your words under ${name}'s name exactly as typed`,
       );
@@ -449,7 +449,7 @@ test.describe('P4.D181 — In Their Own Words, the full round trip', () => {
 
       // Restate is the ONE call, and it brings the proposal.
       await dialog(page).getByRole('button', { name: 'Restate in their voice' }).click();
-      await expect(dialog(page).locator(`[aria-label="What ${name} will say"]`)).toContainText(
+      await expect(dialog(page).locator(`.qt-rich-editor-content[aria-label="What ${name} will say"]`)).toContainText(
         REHEARSED,
         { timeout: 20_000 },
       );

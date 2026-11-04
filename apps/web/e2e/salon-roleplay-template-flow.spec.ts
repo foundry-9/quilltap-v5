@@ -333,6 +333,15 @@ test.describe('P4.30 — roleplay-template rendering', () => {
       await modeToggle.click();
       await expect(modeToggle).toHaveAttribute('aria-pressed', 'false');
     } finally {
+      // Composition mode is a per-chat SERVER flag (`documentEditingMode`): a
+      // beat that dies with it on leaves Enter inserting newlines in the shared
+      // Group Expedition for every later spec (the `236c04e35` full run's
+      // smart-typography red). Put it back before anything else.
+      const toggle = page.getByRole('button', { name: 'Toggle composition mode' });
+      if ((await toggle.count()) && (await toggle.getAttribute('aria-pressed')) === 'true') {
+        await toggle.click();
+        await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      }
       await page.goto('/settings?tab=templates');
       const card = page.locator('div.qt-card', { hasText: NOVEL_TEMPLATE_NAME });
       if (await card.count()) {

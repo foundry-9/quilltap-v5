@@ -118,7 +118,7 @@ test.describe('P4.83 — Import from Template', () => {
     // v4 `handleTemplateImport`: the modal closes and the content lands in the
     // System Prompt field (no suggested name on this host — v4 ignores it).
     await expect(modal).toHaveCount(0);
-    await expect(page.locator('[aria-label="System Prompt"]')).toContainText('{{char}}', {
+    await expect(page.getByRole('textbox', { name: 'System Prompt', exact: true })).toContainText('{{char}}', {
       timeout: 15_000,
     });
   });

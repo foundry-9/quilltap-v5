@@ -575,13 +575,15 @@ test.describe('P4.D300 — the Maintenance card, dialog and ledger of v4 Phase G
         await dialog.getByRole('button', { name: 'Create Memory' }).click();
         const res = await created;
         expect(res.status()).toBe(200);
-        // No `source` in the bag (v4 `c2795733f`).
+        // No `source` in the bag (v4 `c2795733f`); `keystone` last (v4
+        // `memory-editor.tsx:68-75` at `236c04e35`, P4.D341).
         expect(Object.keys((res.request().postDataJSON() as { memory: object }).memory)).toEqual([
           'characterId',
           'content',
           'summary',
           'keywords',
           'importance',
+          'keystone',
         ]);
         await expect(dialog).toBeHidden({ timeout: 10_000 });
         return ((await res.json()) as { data?: { action?: string } }).data?.action;

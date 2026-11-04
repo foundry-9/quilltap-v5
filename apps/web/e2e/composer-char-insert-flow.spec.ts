@@ -182,7 +182,12 @@ test.describe('Composer character insertion (P4.D75)', () => {
     await expect(dialog.locator('.qt-emoji-picker-group-header').first()).toHaveText(
       'Recently used',
     );
-    await page.keyboard.press('Escape');
+    // Dismiss the picker by an outside press, not Escape: since P4.D358 the
+    // announcement dialog owns a document Escape (v4's FloatingDialog closes on
+    // an Escape pressed inside it, picker or not — `FloatingDialog.tsx:179-183`),
+    // so an Escape here would close the whole dialog, not just the picker.
+    await dialog.getByRole('heading', { name: 'Insert Announcement' }).click();
+    await expect(dialog.locator('.qt-emoji-picker')).toHaveCount(0);
 
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('dialog')).toHaveCount(0);

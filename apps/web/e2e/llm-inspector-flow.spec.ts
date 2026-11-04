@@ -58,14 +58,20 @@ test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
     await toolbar.click();
     await expect(panel).toHaveAttribute('data-open', 'true');
 
-    // 2. All three entries render, oldest-first (the panel reverses the DESC
-    //    rows), with their badges.
+    // 2. All four entries render, oldest-first (the panel reverses the DESC
+    //    rows), with their badges: the three seeded rows, then the boot danger
+    //    scan's classification of this chat. The shared server's mock LLM is not
+    //    up when the host's run-at-startup scan fires, so the gatekeeper's send
+    //    fails — and since v4 `eb2d87788` (P4.D348) a failed classification send
+    //    writes its own DANGER_CLASSIFICATION row (`gatekeeper.service.ts:434-451`).
     const entries = panel.locator('.qt-inspector-entry');
-    await expect(entries).toHaveCount(3);
-    await expect(panel).toContainText('3 entries');
+    await expect(entries).toHaveCount(4, { timeout: 15_000 });
+    await expect(panel).toContainText('4 entries');
     await expect(entries.nth(0)).toContainText('Chat');
     await expect(entries.nth(1)).toContainText('Title');
     await expect(entries.nth(2)).toContainText('Memory');
+    await expect(entries.nth(3)).toContainText('Safety');
+    await expect(entries.nth(3)).toContainText('gpt-4o-mini');
     // The collapsed row's token summary + one-decimal duration.
     await expect(entries.nth(0)).toContainText('8 → 4');
     await expect(entries.nth(0)).toContainText('1.2s');
@@ -92,7 +98,7 @@ test.describe('P4.6as — the LLM Inspector (LIVE)', () => {
     await expect(panel).toContainText('1 entry');
     await expect(entries.nth(0)).toContainText('Memory');
     await panel.getByLabel('Filter log entries').selectOption('all');
-    await expect(entries).toHaveCount(3);
+    await expect(entries).toHaveCount(4);
 
     // 6. Cmd+Shift+L closes.
     await page.keyboard.press('Meta+Shift+L');

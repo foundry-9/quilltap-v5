@@ -115,18 +115,43 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     // `is_live = false` probe minted one ~30ms after every spawn).
     await expect(closedChips).toHaveCount(closedBaseline);
 
-    // Kill from the pane (two-click confirm). The pane closes; the SIGTERM is
-    // v4 parity — this interactive shell ignores it, so the session STAYS
-    // live server-side and no closed chip lands.
+    // Close the pane WITHOUT killing: the session stays live and stays BOUND to
+    // the chat, so Open terminal re-attaches it directly — the same shell, its
+    // scrollback intact.
+    await pane.getByRole('button', { name: 'Close terminal pane' }).click();
+    await expect(pane).toHaveCount(0);
+    await page.getByRole('button', { name: 'Open terminal' }).click();
+    await expect(pane).toBeVisible({ timeout: 15_000 });
+    await expect(pane.locator('.xterm')).toContainText('quilltap', { timeout: 15_000 });
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(closedChips).toHaveCount(closedBaseline);
+
+    // A second live session the chat is NOT bound to (the REST spawn the
+    // pop-out beat below uses) — what the picker will offer.
+    const chatId = new URL(page.url()).pathname.split('/').pop()!;
+    const spawned = await page.request.post('/api/v1/terminals', {
+      data: { chatId, label: 'Picker Target', cols: 80, rows: 24 },
+    });
+    expect(spawned.ok(), 'spawn a second real PTY').toBe(true);
+
+    // Kill the bound one from the pane (two-click confirm). The pane closes, and
+    // since v4 `85c002822` (bug 268, P4.D355) Kill sends SIGHUP-then-SIGKILL, so
+    // the shell ENDS — its exit stamps the row and posts Ariel's session-closed
+    // announcement. (Until the `236c04e35` round Kill was a SIGTERM the shell
+    // ignored, and this walk re-attached the killed session.) Reload for the
+    // chip (deterministic: the announcement write races any refetch).
     const killBtn = pane.getByRole('button', { name: 'Kill terminal and close pane' });
     await killBtn.click(); // arms the confirm
     await killBtn.click(); // confirms the kill
     await expect(pane).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Open terminal' })).toBeVisible();
+    await page.reload();
+    await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
+    await expect(closedChips).toHaveCount(closedBaseline + 1, { timeout: 15_000 });
 
-    // Re-open: the surviving live session greets us with the session picker —
-    // only possible over the real probe (the stub retired the row in the DB,
-    // so the picker never saw a live session).
+    // Re-open: nothing bound, one live session → the picker — only possible over
+    // the real probe (the stub retired the row in the DB, so the picker never
+    // saw a live session).
     await page.getByRole('button', { name: 'Open terminal' }).click();
     const picker = page.getByRole('dialog');
     await expect(picker).toBeVisible({ timeout: 15_000 });
@@ -134,21 +159,17 @@ test.describe('P4.6u — the Salon terminal pane (open → spawn → echo → ki
     await expect(pane).toBeVisible({ timeout: 15_000 });
     await expect(pane.locator('.xterm')).toBeVisible({ timeout: 15_000 });
 
-    // End the shell for REAL: type `exit` → the exit sequence stamps the row
-    // and posts Ariel's session-closed announcement; the expanded embed
-    // dispatches `quilltap:terminal-exited` and the pane cleans itself up.
+    // End the shell from inside: type `exit` → the exit sequence stamps the row
+    // and posts Ariel's session-closed announcement; the pane cleans itself up.
     await pane.locator('.xterm').click();
     await page.keyboard.type('exit');
     await page.keyboard.press('Enter');
     await expect(pane).toHaveCount(0, { timeout: 15_000 });
 
-    // Reload for the closed chip (deterministic: the announcement write races
-    // the exit-triggered refetch) — exactly ONE new "terminal closed" chip
-    // landed, for the real exit. The reload lands back on the chat page (the
-    // server stays unlocked).
+    // Reload for the closed chip — exactly one more, for the real exit.
     await page.reload();
     await expect(page.locator('.qt-chat-messages-list')).toBeVisible({ timeout: 15_000 });
-    await expect(closedChips).toHaveCount(closedBaseline + 1, { timeout: 15_000 });
+    await expect(closedChips).toHaveCount(closedBaseline + 2, { timeout: 15_000 });
 
     // Back to normal: the composer's Open-terminal button is available again.
     await expect(page.getByRole('button', { name: 'Open terminal' })).toBeVisible();

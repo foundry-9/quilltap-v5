@@ -149,8 +149,10 @@ test.describe('P4.D64 — the archive tombstone, read-only', () => {
     await expect(page.getByRole('link', { name: 'Edit Character' })).toHaveCount(0);
     await expect(page.getByText('Convert to NPC')).toHaveCount(0);
 
-    // Every tab still renders — inside a disabled fieldset.
-    const fieldset = page.locator('fieldset[disabled]');
+    // Every tab still renders — inside a disabled fieldset. (Scoped to the one
+    // holding the tabs: P4.D353's Aurora card nests its own disabled "Drawing
+    // style" fieldset inside it.)
+    const fieldset = page.locator('fieldset[disabled]:has(qt-character-details-tab)');
     await expect(fieldset).toBeVisible();
     await expect(fieldset.locator('qt-character-details-tab')).toBeVisible();
   });
