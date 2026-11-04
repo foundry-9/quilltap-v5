@@ -82,7 +82,14 @@ export class RichEditor {
    * / Ctrl elsewhere — v4's exact `isMac ? metaKey&&!ctrlKey : ctrlKey&&!metaKey`.
    */
   readonly submitOnModEnter = input(false);
-  readonly ariaLabel = input('Editor');
+  /**
+   * The editable area's accessible name. Every host passes its own; the
+   * default is v4's (`MarkdownLexicalEditor.tsx:91` — `ariaLabel ?? 'Markdown
+   * editor'`, `68340008b`; P4.D352 / WCAG R6, converged from v5's `'Editor'`).
+   * v4's `role="group"` from the same commit sits on the markdown FIELD's frame
+   * (`editor/markdown-field.ts`), not here.
+   */
+  readonly ariaLabel = input('Markdown editor');
   /**
    * Browser spellcheck on the contenteditable (v4 binds the same flag on its
    * Lexical editor, `LexicalComposerWrapper.tsx:107`, from

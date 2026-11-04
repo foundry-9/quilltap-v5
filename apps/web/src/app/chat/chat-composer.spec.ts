@@ -1306,6 +1306,17 @@ describe('ChatComposer — the punctuation lint + prose mode wire (P4.D352)', ()
     TestBed.resetTestingModule();
   });
 
+  it('names the source-mode textarea v4’s way — Message (Markdown source) (WCAG R6)', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    fixture.componentRef.setInput('compositionMode', true);
+    await settle(fixture);
+    (fixture.componentInstance as unknown as { onToggleSource(): void }).onToggleSource();
+    await settle(fixture);
+    const ta = (fixture.nativeElement as HTMLElement).querySelector('textarea.qt-source-mode-textarea');
+    expect(ta?.getAttribute('aria-label')).toBe('Message (Markdown source)');
+  });
+
   it('hands the editor {enabled: true, proseMode: false} by default', async () => {
     vi.stubGlobal('fetch', vi.fn());
     const fixture = render();

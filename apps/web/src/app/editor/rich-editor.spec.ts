@@ -499,6 +499,13 @@ describe('RichEditor — the slashCommands input', () => {
     expect(fixture.componentInstance.submitted()).toBe(1);
   });
 
+  it("names the editable area v4's way by default — 'Markdown editor' (P4.D352, WCAG R6)", () => {
+    TestBed.configureTestingModule({ imports: [RichEditor] });
+    const fixture = TestBed.createComponent(RichEditor);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.ariaLabel()).toBe('Markdown editor');
+  });
+
   it('defaults to null — every other host stays inert', () => {
     TestBed.configureTestingModule({ imports: [RichEditor] });
     const fixture = TestBed.createComponent(RichEditor);

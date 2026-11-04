@@ -497,7 +497,7 @@ export interface PendingToolResultChip extends RngPendingResult {
             class="qt-chat-composer-input qt-source-mode-textarea"
             [value]="sourceText()"
             [disabled]="composerLocked() || !hasActiveCharacters()"
-            aria-label="Message (markdown source)"
+            aria-label="Message (Markdown source)"
             spellcheck="false"
             style="line-height: 1.5"
             (input)="onSourceInput($any($event.target).value)"

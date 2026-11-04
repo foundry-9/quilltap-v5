@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — fix(spa): the composer source textarea and the rich editor's default name, v4's way (P4.D352, WCAG R6)
+
+_Versions: SPA 0.5.917._
+
+Applies P4.D358's hand-off hunks (v4 `68340008b` / `eed72d60c`, WCAG R6) to two files this lane owns. The composer's source-mode textarea is now named `Message (Markdown source)`. `qt-rich-editor`'s default `ariaLabel` is now v4's `Markdown editor`, replacing `Editor`. Every host passes its own label, so only bare uses see the default. v4's `role="group"` from the same commit belongs on the markdown field's frame (`editor/markdown-field.ts`, P4.D358's file), so it is not applied here. The smart-typography try-it box already carried `Try smart typography`.
+
 #### 2026-11-03 — feat(spa): the punctuation-lint decoration tokens and class rules (P4.D352)
 
 _Versions: SPA 0.5.916._
