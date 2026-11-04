@@ -115,6 +115,15 @@ interface CaseSpec {
    *  body (a client echoing a row back). The recorded `req.body` is the echoed
    *  body, so the Rust side replays it verbatim. */
   echoGet?: boolean;
+  /** P4.D356 (#120): raw SQL statements run on the case's work copy before
+   *  the case (in order, one connection — a TEMP table survives between
+   *  them). Each `?` binds the next param. The Rust harness runs the same
+   *  statements. */
+  plantRaw?: Array<{ sql: string; params?: unknown[] }>;
+  /** P4.D356 (#120): after the case (and its `after` read), dump these
+   *  `chat_settings` columns for every row, `ORDER BY id` — the write-back of
+   *  a repaired row proven at the CELL level. */
+  dumpCells?: string[];
   /** P4.D85: a v4 arm with NO v5 counterpart by design — v5 carries no
    *  `?action=` surface for connection profiles (the verbs ARE the action
    *  selection and no REST edge exists), so v4's two action-gate 400s and the
@@ -237,6 +246,12 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         c.plantCheapLlmSettings.value,
       ]);
     }
+    if (c.plantRaw) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      for (const st of c.plantRaw) {
+        await rawQuery(st.sql, st.params ?? []);
+      }
+    }
     if (c.corruptApiKey !== undefined) {
       const { rawQuery } = await import('@/lib/database/manager');
       await rawQuery("UPDATE api_keys SET key_value = x'00000000' WHERE id = ?", [
@@ -333,6 +348,8 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         plantVoiceMode: c.plantVoiceMode ?? null,
         plantWardrobeImageSettings: c.plantWardrobeImageSettings ?? null,
         plantCheapLlmSettings: c.plantCheapLlmSettings ?? null,
+        plantRaw: c.plantRaw ?? null,
+        dumpCells: c.dumpCells ?? null,
         recorded: c.recorded ?? false,
       },
       status,
@@ -390,6 +407,11 @@ async function runCase(spec: Spec, c: CaseSpec, scratch: string, fixtureMain: st
         json: () => Promise<unknown>;
       };
       out.after = await r.json();
+    }
+    if (c.dumpCells) {
+      const { rawQuery } = await import('@/lib/database/manager');
+      const cols = ['id', ...c.dumpCells].map((n) => `"${n}"`).join(', ');
+      out.cells = await rawQuery(`SELECT ${cols} FROM chat_settings ORDER BY id`, []);
     }
     return out;
   } finally {
@@ -1602,6 +1624,224 @@ describe('settings-routes oracle', () => {
       url: 'http://x/api/v1/settings/chat',
       body: { customToolIntervention: false },
       after: 'settingsChat',
+    },
+    // ---- P4.D356 (v4 `7789ebed6`, #120 — this port's F-1 filing,
+    // CONVERGED): a stored row the schema refuses is REPAIRED in memory
+    // (each refused TOP-LEVEL field read as its default — `hydrateTolerantly`)
+    // instead of dropped, the by-user read takes the NEWEST valid row (`ORDER
+    // BY "updatedAt" DESC`), and the next PUT writes the repair back. Rows
+    // that need the cells dump them (`dumpCells`) — the write-back at the
+    // CELL level. `settingsIdA2` is the second row's literal id. ----
+    {
+      // A refused cheap-LLM bag: the GET answers the SAME id with the default bag; the refetch again — no mint.
+      name: 's_get_repaired_twice',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantCheapLlmSettings: { value: '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}' },
+      dumpCells: ['cheapLLMSettings'],
+    },
+    {
+      // A PUT of an unrelated key over the refused row: the echo carries the repaired bag AND the write; the stored cell is now the default (written back).
+      name: 's_put_after_refused_cheap_llm',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false },
+      after: 'settingsChat',
+      plantCheapLlmSettings: { value: '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}' },
+      dumpCells: ['cheapLLMSettings', 'composerEmoji'],
+    },
+    {
+      // Two rows, the older refused and the newer valid — the newer id.
+      name: 's_get_two_rows_newest_valid',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'CREATE TEMP TABLE p4d356_row AS SELECT * FROM chat_settings WHERE id = ?', params: ['5e200000-0000-4000-8000-000000000001'] },
+        { sql: 'UPDATE p4d356_row SET id = ?, "updatedAt" = ?, "cheapLLMSettings" = ?', params: ['5e200000-0000-4000-8000-000000000002', '2099-01-01T00:00:00.000Z', '{"strategy":"LOCAL_FIRST","fallbackToLocal":false,"embeddingProvider":"LOCAL","allowCheapFallback":true}'] },
+        { sql: 'INSERT INTO chat_settings SELECT * FROM p4d356_row', params: [] },
+        { sql: 'DROP TABLE p4d356_row', params: [] },
+        { sql: 'UPDATE chat_settings SET "cheapLLMSettings" = ? WHERE id = ?', params: ['{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}', '5e200000-0000-4000-8000-000000000001'] },
+      ],
+      dumpCells: ['cheapLLMSettings'],
+    },
+    {
+      // Two rows, the NEWER refused and the older valid — the first VALID row wins over the newest (the older id).
+      name: 's_get_two_rows_older_valid',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'CREATE TEMP TABLE p4d356_row AS SELECT * FROM chat_settings WHERE id = ?', params: ['5e200000-0000-4000-8000-000000000001'] },
+        { sql: 'UPDATE p4d356_row SET id = ?, "updatedAt" = ?, "cheapLLMSettings" = ?', params: ['5e200000-0000-4000-8000-000000000002', '2099-01-01T00:00:00.000Z', '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}'] },
+        { sql: 'INSERT INTO chat_settings SELECT * FROM p4d356_row', params: [] },
+        { sql: 'DROP TABLE p4d356_row', params: [] },
+      ],
+    },
+    {
+      // Both rows refused — the newest is repaired.
+      name: 's_get_two_rows_both_refused',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'CREATE TEMP TABLE p4d356_row AS SELECT * FROM chat_settings WHERE id = ?', params: ['5e200000-0000-4000-8000-000000000001'] },
+        { sql: 'UPDATE p4d356_row SET id = ?, "updatedAt" = ?, "cheapLLMSettings" = ?', params: ['5e200000-0000-4000-8000-000000000002', '2099-01-01T00:00:00.000Z', '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}'] },
+        { sql: 'INSERT INTO chat_settings SELECT * FROM p4d356_row', params: [] },
+        { sql: 'DROP TABLE p4d356_row', params: [] },
+        { sql: 'UPDATE chat_settings SET "cheapLLMSettings" = ? WHERE id = ?', params: ['{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}', '5e200000-0000-4000-8000-000000000001'] },
+      ],
+    },
+    {
+      // Two valid rows — the PUT updates the NEWEST (v4 `updateForUser` → `findByUserId`), the older untouched.
+      name: 's_put_two_rows_updates_newest',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false },
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'CREATE TEMP TABLE p4d356_row AS SELECT * FROM chat_settings WHERE id = ?', params: ['5e200000-0000-4000-8000-000000000001'] },
+        { sql: 'UPDATE p4d356_row SET id = ?, "updatedAt" = ?, "cheapLLMSettings" = ?', params: ['5e200000-0000-4000-8000-000000000002', '2099-01-01T00:00:00.000Z', '{"strategy":"LOCAL_FIRST","fallbackToLocal":false,"embeddingProvider":"LOCAL","allowCheapFallback":true}'] },
+        { sql: 'INSERT INTO chat_settings SELECT * FROM p4d356_row', params: [] },
+        { sql: 'DROP TABLE p4d356_row', params: [] },
+      ],
+      dumpCells: ['cheapLLMSettings', 'composerEmoji'],
+    },
+    {
+      // v4's vector 4: a non-UUID `imageDescriptionProfileId` and an out-of-range `sidebarWidth` — read as null / the schema's answer.
+      name: 's_get_image_profile_nope_sidebar_9999',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "imageDescriptionProfileId" = ?, "sidebarWidth" = ?', params: ['nope', 9999] },
+      ],
+    },
+    {
+      // The same plant, then a PUT: both repaired cells written back.
+      name: 's_put_image_profile_nope_write_back',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false },
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "imageDescriptionProfileId" = ?, "sidebarWidth" = ?', params: ['nope', 9999] },
+      ],
+      dumpCells: ['imageDescriptionProfileId', 'sidebarWidth', 'composerEmoji'],
+    },
+    {
+      // `sidebarWidth` below `.min(256)`.
+      name: 's_get_sidebar_low',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "sidebarWidth" = ?', params: [100] },
+      ],
+    },
+    {
+      // A stored voice mode outside the enum — repaired to `'off'` (it dropped the row before).
+      name: 's_get_voice_mode_maybe',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantVoiceMode: 'maybe',
+    },
+    {
+      // The same, then a PUT of an unrelated key — the stored cell becomes `'off'`.
+      name: 's_put_voice_mode_after_maybe',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'PUT',
+      url: 'http://x/api/v1/settings/chat',
+      body: { composerEmoji: false },
+      after: 'settingsChat',
+      plantVoiceMode: 'maybe',
+      dumpCells: ['impersonationVoiceMode', 'composerEmoji'],
+    },
+    {
+      // A stored typography bag with a non-boolean key — the WHOLE bag reset (the top-level grain, R-11).
+      name: 's_get_typography_refused',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "smartTypographySettings" = ?', params: ['{"dashes":"yes","ellipsis":false}'] },
+      ],
+    },
+    {
+      // A stored typography cell that is not an object.
+      name: 's_get_typography_non_object',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "smartTypographySettings" = ?', params: ['5'] },
+      ],
+    },
+    {
+      // A stored wardrobe-image bag the schema refuses — repaired.
+      name: 's_get_wardrobe_refused',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantWardrobeImageSettings: { value: '{"imageProfileId":"nope","generateFromTools":true}' },
+    },
+    {
+      // Three refused fields at once — the WARN names them in schema order.
+      name: 's_get_three_refused_fields',
+      family: 'settings_repair',
+      user: 'A',
+      route: 'settingsChat',
+      method: 'GET',
+      url: 'http://x/api/v1/settings/chat',
+      after: 'settingsChat',
+      plantCheapLlmSettings: { value: '{"strategy":"BOGUS","fallbackToLocal":true,"embeddingProvider":"OPENAI","allowCheapFallback":false}' },
+      plantVoiceMode: 'maybe',
+      plantRaw: [
+        { sql: 'UPDATE chat_settings SET "sidebarWidth" = ?', params: [9999] },
+      ],
     },
     // ---- P4.D356 (v4 `1dd0a0c01`): the fourth smart-typography key ----
     {

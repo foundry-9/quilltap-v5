@@ -1516,11 +1516,17 @@ impl<'c> ChatSettingsRepository<'c> {
 /// deferred; the
 /// `help_settings` tool ([`crate::tools::help`]) is its first consumer, and the
 /// read-differential drives v4's REAL `findByUserId` for a full-object diff.
+///
+/// **#120 (v4 `7789ebed6`, this port's F-1 filing — CONVERGED, P4.D356):** the
+/// read takes EVERY row for the user NEWEST first (`ORDER BY "updatedAt"
+/// DESC`), answers the first row the schema accepts, and only when none does,
+/// the first one [`hydrate_tolerantly`] can REPAIR — so a refused row is never
+/// mistaken for "no settings" (which minted a fresh row on every load).
 pub fn find_by_user_id(
     conn: &Connection,
     user_id: &str,
 ) -> Result<Option<serde_json::Value>, DbError> {
-    find_one_where(conn, "userId", user_id)
+    Ok(find_one_repaired(conn, "userId", user_id)?.map(|r| r.value))
 }
 
 /// The settings row with this `id`, through the same validating read as
@@ -1532,16 +1538,242 @@ pub(crate) fn find_by_id(
     conn: &Connection,
     id: &str,
 ) -> Result<Option<serde_json::Value>, DbError> {
-    find_one_where(conn, "id", id)
+    Ok(find_one_repaired(conn, "id", id)?.map(|r| r.value))
 }
 
-/// The one validating row read behind [`find_by_user_id`] and [`find_by_id`];
-/// `key_col` is a literal column name, never caller input.
-fn find_one_where(
+/// A settings row as the read answers it, plus the cells its repair changed —
+/// `(column, the value to write back)` for every refused field — so the next
+/// update can write the repair back (v4's `_update` `$set`s the repaired,
+/// re-validated row). `repaired` is empty for a row the schema accepted.
+#[derive(Debug, Clone)]
+pub struct RepairedRow {
+    pub value: serde_json::Value,
+    pub repaired: Vec<(&'static str, SettingsColVal)>,
+}
+
+/// One stored row as hydrated, with the `ChatSettingsSchema` issues v5's read
+/// raises over it, in schema (shape) order.
+struct HydratedRow {
+    value: serde_json::Value,
+    issues: Vec<crate::api::zod_issues::ZodIssue>,
+}
+
+/// v4 `findByUserId` / `findById` at the pin (#120): the rows for `key`
+/// (newest first for the by-user read), the first VALID one, else the first
+/// one [`hydrate_tolerantly`] repairs, else `None`.
+fn find_one_repaired(
     conn: &Connection,
     key_col: &'static str,
     key: &str,
-) -> Result<Option<serde_json::Value>, DbError> {
+) -> Result<Option<RepairedRow>, DbError> {
+    let rows = read_rows(conn, key_col, key)?;
+    if key_col == "userId" && rows.len() > 1 {
+        tracing::debug!(
+            target: "quilltap::db",
+            userId = %key,
+            rowCount = rows.len(),
+            "Multiple chat settings rows for user; reading newest valid"
+        );
+    }
+    if let Some(valid) = rows.iter().find(|r| r.issues.is_empty()) {
+        return Ok(Some(RepairedRow {
+            value: valid.value.clone(),
+            repaired: Vec::new(),
+        }));
+    }
+    Ok(rows.into_iter().find_map(hydrate_tolerantly))
+}
+
+/// The `ChatSettingsSchema` issues of the user's NEWEST stored row, BEFORE
+/// any repair (`None` when the user has no row) — the refusal set
+/// [`hydrate_tolerantly`] acts on, whose Zod bytes no log line carries any
+/// more (#120 retired `Data validation failed` from this read). The
+/// `repository_zod_messages` family compares them with v4's
+/// `ChatSettingsSchema.safeParse` message.
+pub fn stored_row_issues(
+    conn: &Connection,
+    user_id: &str,
+) -> Result<Option<Vec<crate::api::zod_issues::ZodIssue>>, DbError> {
+    Ok(read_rows(conn, "userId", user_id)?
+        .into_iter()
+        .next()
+        .map(|r| r.issues))
+}
+
+/// v4 `IDENTITY_FIELDS` — fields a stored row cannot be repaired without.
+const IDENTITY_FIELDS: [&str; 4] = ["id", "userId", "createdAt", "updatedAt"];
+
+/// v4 `hydrateTolerantly(row)` (`chat-settings.repository.ts:201-246`, #120):
+/// repair each refused TOP-LEVEL field (`issue.path[0]`, distinct, in issue
+/// order — R-11: a nested refusal resets the WHOLE field) instead of
+/// discarding the row. v4's three arms, measured at the pin:
+///
+/// - a field `defaultChatSettings` carries → its default (the seed cell, C3);
+/// - else a field whose schema accepts `null` (`imageDescriptionProfileId`,
+///   `timezone`) → `null` ("Null clears a nullable field on write-back");
+/// - else `delete` — reachable for `sidebarWidth` alone (P4.D356 measured
+///   v4's `defaultChatSettings` WITHOUT it; the order's R-8 premise that the
+///   arm is unreachable was false), whose re-parse of `undefined` answers the
+///   schema's `256`.
+///
+/// Logs v4's WARN on a repair (on EVERY read until a write lands), and its two
+/// ERROR arms — an identity field refused, a repair that still refuses — which
+/// v5's typed reads cannot reach (a NULL `id` errors the query itself, and
+/// every default cell is accepted by construction); they stay ported so a
+/// future validating column reaches them.
+fn hydrate_tolerantly(row: HydratedRow) -> Option<RepairedRow> {
+    use serde_json::Value;
+    let HydratedRow { mut value, issues } = row;
+    if issues.is_empty() {
+        return Some(RepairedRow {
+            value,
+            repaired: Vec::new(),
+        });
+    }
+    let field_of = |i: &crate::api::zod_issues::ZodIssue| -> String {
+        match i.path().first() {
+            Some(Value::String(s)) => s.clone(),
+            Some(other) => other.to_string(),
+            None => String::new(),
+        }
+    };
+    let mut refused: Vec<String> = Vec::new();
+    for issue in &issues {
+        let f = field_of(issue);
+        if !refused.contains(&f) {
+            refused.push(f);
+        }
+    }
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let refused_json = serde_json::to_string(&refused).unwrap_or_default();
+    if refused
+        .iter()
+        .any(|f| f.is_empty() || IDENTITY_FIELDS.contains(&f.as_str()))
+    {
+        tracing::error!(
+            target: "quilltap::db",
+            chatSettingsId = %id,
+            refusedFields = %refused_json,
+            "Chat settings row refused on an identity field; cannot repair"
+        );
+        return None;
+    }
+    let mut repaired: Vec<(&'static str, SettingsColVal)> = Vec::new();
+    for field in &refused {
+        match repair_cell(field) {
+            Ok(Some((column, read, cell))) => {
+                if let Some(obj) = value.as_object_mut() {
+                    obj.insert(column.to_string(), read);
+                }
+                repaired.push((column, cell));
+            }
+            other => {
+                // A field outside every arm v5 can produce — never silent.
+                let error = match other {
+                    Err(e) => e.to_string(),
+                    _ => format!("no repair for {field}"),
+                };
+                tracing::error!(
+                    target: "quilltap::db",
+                    chatSettingsId = %id,
+                    refusedFields = %refused_json,
+                    error = %error,
+                    "Chat settings row could not be repaired"
+                );
+                return None;
+            }
+        }
+    }
+    let user_id = value
+        .get("userId")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    tracing::warn!(
+        target: "quilltap::db",
+        chatSettingsId = %id,
+        userId = %user_id,
+        refusedFields = %refused_json,
+        "Chat settings row held refused values; read them as defaults"
+    );
+    Some(RepairedRow { value, repaired })
+}
+
+/// One refused field's repair: the column, the value the READ answers, and the
+/// cell the next update writes back. Covers every column v5's read can refuse
+/// (`ChatSettingsSchema`'s checks v5 ports — R-3's scope: the four bags /
+/// enums it validated before #120 plus `imageDescriptionProfileId` and
+/// `sidebarWidth`). The defaults come from the seed ([`default_settings_columns`],
+/// the ONE default source — v4's `defaultChatSettings`), hydrated through the
+/// column's own reader.
+#[allow(clippy::type_complexity)]
+fn repair_cell(
+    field: &str,
+) -> Result<Option<(&'static str, serde_json::Value, SettingsColVal)>, DbError> {
+    use serde_json::Value;
+    let seed = |col: &str| -> Result<SettingsColVal, DbError> {
+        default_settings_columns()?
+            .into_iter()
+            .find(|(c, _)| c == col)
+            .map(|(_, v)| v)
+            .ok_or_else(|| DbError::Internal(format!("chat_settings seed lacks {col}")))
+    };
+    let text = |v: &SettingsColVal| match v {
+        SettingsColVal::Text(t) => Some(t.clone()),
+        _ => None,
+    };
+    Ok(Some(match field {
+        "cheapLLMSettings" => {
+            let cell = seed("cheapLLMSettings")?;
+            let read = read_cheap_llm_settings_cell(text(&cell)).0;
+            ("cheapLLMSettings", read, cell)
+        }
+        "impersonationVoiceMode" => {
+            let cell = seed("impersonationVoiceMode")?;
+            let read = Value::String(text(&cell).unwrap_or_else(|| "off".into()));
+            ("impersonationVoiceMode", read, cell)
+        }
+        "smartTypographySettings" => {
+            let cell = seed("smartTypographySettings")?;
+            let read = read_smart_typography_cell(text(&cell));
+            ("smartTypographySettings", read, cell)
+        }
+        "wardrobeImageSettings" => {
+            let cell = seed("wardrobeImageSettings")?;
+            let read = read_wardrobe_image_settings_cell(text(&cell)).unwrap_or(Value::Null);
+            ("wardrobeImageSettings", read, cell)
+        }
+        // Not in v4's `defaultChatSettings`; the schema accepts `null`.
+        "imageDescriptionProfileId" => (
+            "imageDescriptionProfileId",
+            Value::Null,
+            SettingsColVal::Null,
+        ),
+        // Not in `defaultChatSettings` and refuses `null`: v4 DELETES the key,
+        // and the re-parse of `undefined` answers `.default(256)` (measured).
+        "sidebarWidth" => (
+            "sidebarWidth",
+            serde_json::json!(256),
+            SettingsColVal::Int(256),
+        ),
+        _ => return Ok(None),
+    }))
+}
+
+/// The one row read behind [`find_by_user_id`] and [`find_by_id`]: every row
+/// for `key`, hydrated, each with its schema issues. `key_col` is a literal
+/// column name, never caller input. The by-user read is v4's `find({userId},
+/// {sort: {updatedAt: -1}})` — `translateSort`'s `ORDER BY "updatedAt" DESC`,
+/// no tiebreak (#120: an un-ordered `LIMIT 1` kept answering the oldest row).
+fn read_rows(
+    conn: &Connection,
+    key_col: &'static str,
+    key: &str,
+) -> Result<Vec<HydratedRow>, DbError> {
     use serde_json::{Map, Value};
 
     // A JSON-object column: parse the stored text (schema-ordered, so key order
@@ -1615,325 +1847,357 @@ fn find_one_where(
             "updatedAt",
         ],
     )?;
-    // `cheapLLMSettings`'s refusals, carried out of the row closure; they sort
-    // FIRST in the whole-row validate (the column precedes the voice mode and
-    // `wardrobeImageSettings` in `ChatSettingsSchema`'s shape).
-    let mut cheap_llm_issues = Vec::new();
-    let row = conn
-        .query_row(
-            &format!("SELECT {cols} FROM chat_settings WHERE {key_col} = ?1 LIMIT 1"),
-            params![key],
-            |r| {
-                // Build in schema field order (the ChatSettingsSchema declaration
-                // order), matching v4's post-parse `JSON.stringify` key order.
-                let mut obj = Map::new();
-                obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
-                obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
-                obj.insert(
-                    "avatarDisplayMode".into(),
-                    Value::String(r.get::<_, String>(2)?),
-                );
-                obj.insert(
-                    "avatarDisplayStyle".into(),
-                    Value::String(r.get::<_, String>(3)?),
-                );
-                obj.insert(
-                    "tagStyles".into(),
-                    parse_json(r.get::<_, Option<String>>(4)?),
-                );
-                let (cheap, issues) = read_cheap_llm_settings_cell(r.get::<_, Option<String>>(5)?);
-                obj.insert("cheapLLMSettings".into(), cheap);
-                cheap_llm_issues = issues;
-                put_opt(
-                    &mut obj,
-                    "imageDescriptionProfileId",
-                    r.get::<_, Option<String>>(6)?,
-                );
-                put_opt(
-                    &mut obj,
-                    "defaultRoleplayTemplateId",
-                    r.get::<_, Option<String>>(7)?,
-                );
-                obj.insert(
-                    "themePreference".into(),
-                    parse_json(r.get::<_, Option<String>>(8)?),
-                );
-                // `.default(256).optional()` — the OUTER optional means an
-                // absent key stays absent (the default never fires on
-                // undefined), so a NULL/missing cell OMITS the key. A fresh
-                // create always writes the column; NULL only arises on a
-                // migration-vintage instance missing the column entirely.
-                if let Some(w) = r.get::<_, Option<f64>>(9)? {
-                    obj.insert("sidebarWidth".into(), super::js_number_to_json(w));
-                }
-                obj.insert(
-                    "defaultTimestampConfig".into(),
-                    parse_json(r.get::<_, Option<String>>(10)?),
-                );
-                obj.insert(
-                    "memoryCascadePreferences".into(),
-                    parse_json(r.get::<_, Option<String>>(11)?),
-                );
-                obj.insert(
-                    "autonomousRoomSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(12)?),
-                );
-                obj.insert(
-                    "tokenDisplaySettings".into(),
-                    parse_json(r.get::<_, Option<String>>(13)?),
-                );
-                obj.insert(
-                    "contextCompressionSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(14)?),
-                );
-                obj.insert(
-                    "llmLoggingSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(15)?),
-                );
-                obj.insert(
-                    "autoDetectRng".into(),
-                    Value::Bool(r.get::<_, i64>(16)? == 1),
-                );
-                // NULL here means the COLUMN IS ABSENT (the tolerant list above
-                // substitutes NULL for a column the table lacks), not a stored
-                // NULL — v4's ALTER carries `DEFAULT 1`, so no v4-written row
-                // holds one. v4 reads `SELECT *` and parses through Zod, so an
-                // absent column arrives as `undefined` and `customTools:
-                // z.boolean().default(true)` supplies `true`. Reproduce that:
-                // absent → `true`. This is the read half of unit 10's accepted
-                // consequence — v5 provisions the column, but a pre-4.8.0 v4
-                // instance lacks it (v5 does not port the migration runner), and
-                // such an instance must still OPEN.
-                obj.insert(
-                    "customTools".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(17)?.is_none_or(|v| v == 1)),
-                );
-                // P4.D304 (v4 4.11 `362426c8f`): the FIRST default-FALSE
-                // tolerant boolean. NULL here means the COLUMN IS ABSENT (a
-                // pre-ensure instance, or a differential fixture opened
-                // without a boot), and v4's `SELECT *` + `customToolTriggers:
-                // z.boolean().default(false)` turns that `undefined` into
-                // `false` — so absent → `false` (`.is_some_and`). NEVER copy
-                // the `.is_none_or` of `customTools` / `composerUnicode`
-                // here: it would read an absent column as `true` and switch
-                // trigger phrases ON across every pre-ensure instance.
-                obj.insert(
-                    "customToolTriggers".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(18)?.is_some_and(|v| v == 1)),
-                );
-                // P4.D341 (v4 `839575d89`, C-3): `customToolIntervention` —
-                // `z.boolean().default(true)`, so an ABSENT column (a
-                // pre-ensure instance, a fixture opened without a boot; the
-                // tolerant list substitutes NULL) reads `true` — the
-                // `customTools` / `composerUnicode` `.is_none_or` class, NOT
-                // the triggers' `.is_some_and` above. Every read after it
-                // shifted by 1 (schema position, cid 19).
-                obj.insert(
-                    "customToolIntervention".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(19)?.is_none_or(|v| v == 1)),
-                );
-                obj.insert(
-                    "compositionModeDefault".into(),
-                    Value::Bool(r.get::<_, i64>(20)? == 1),
-                );
-                obj.insert(
-                    "composerSpellcheck".into(),
-                    Value::Bool(r.get::<_, i64>(21)? == 1),
-                );
-                // P4.D73, same shape as `customTools` above: v5 adopts the
-                // three 4.8.2 columns without porting v4's migration runner,
-                // so a pre-4.8.2 instance genuinely lacks them until the boot
-                // ensure runs (and a differential fixture opened directly
-                // never boots at all). v4 reads `SELECT *` and lets
-                // `z.boolean().default(true)` fill the `undefined`, so absent
-                // must surface as `true` and the row must still READ.
-                obj.insert(
-                    "composerEmoji".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
-                );
-                obj.insert(
-                    "composerUnicode".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
-                );
-                // P4.D304 (v4 4.11 `4877fc2da`): the `composerUnicode` shape —
-                // `z.boolean().default(true)` fills an absent column, so
-                // absent → `true`.
-                obj.insert(
-                    "composerSlashCommands".into(),
-                    Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
-                );
-                // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
-                // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
-                // and `ImpersonationVoiceModeEnum.default('off')` fills the
-                // `undefined` a NULL (or absent — a pre-ensure instance)
-                // column becomes, so both surface as `'off'` (measured at the
-                // pin). A stored string OUTSIDE the enum is NOT defaulted:
-                // v4's `validate` throws and the fallback read drops the
-                // whole row — checked once the row is built (below), so the
-                // raw cell is carried through here.
-                obj.insert(
-                    "impersonationVoiceMode".into(),
-                    Value::String(
-                        r.get::<_, Option<String>>(25)?
-                            .unwrap_or_else(|| "off".to_string()),
-                    ),
-                );
-                obj.insert(
-                    "textReplacementsEnabled".into(),
-                    Value::Bool(r.get::<_, i64>(26)? == 1),
-                );
-                obj.insert(
-                    "autoScrollOnResponseComplete".into(),
-                    Value::Bool(r.get::<_, i64>(27)? == 1),
-                );
-                obj.insert(
-                    "agentModeSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(28)?),
-                );
-                obj.insert(
-                    "coreWhisper".into(),
-                    parse_json(r.get::<_, Option<String>>(29)?),
-                );
-                obj.insert(
-                    "thinkingDisplay".into(),
-                    parse_json(r.get::<_, Option<String>>(30)?),
-                );
-                obj.insert(
-                    "answerConfirmationSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(31)?),
-                );
-                // The JSON-column twin of the two booleans above: an absent
-                // column (or a NULL cell) is `undefined` to v4, and
-                // `SmartTypographySettingsSchema.default({...})` materializes
-                // the whole bag — so it must not surface as JSON `null`.
-                //
-                // v4 `1dd0a0c01` (P4.D356): the READ materializes the fourth key.
-                // v4's `ChatSettingsSchema.parse` fills `punctuationWarnings:
-                // true` on a stored THREE-key bag (every pre-round row, and the
-                // DDL default, which stays three keys — R-6), so the bag is
-                // re-emitted through the typed struct in declaration order.
-                obj.insert(
-                    "smartTypographySettings".into(),
-                    read_smart_typography_cell(r.get::<_, Option<String>>(32)?),
-                );
-                obj.insert(
-                    "storyBackgroundsSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(33)?),
-                );
-                // P4.D255: `wardrobeImageSettings` (index 33 — every later
-                // positional read shifted by one). A NULL cell is v4's
-                // `undefined`: the key is OMITTED; a stored object is parsed
-                // with the schema's defaults (judged below with the voice mode).
-                if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(34)?)
-                {
-                    obj.insert("wardrobeImageSettings".into(), v);
-                }
-                // v4 `3b463d6b1` (#76): `conciergeSettings` in
-                // `dangerousContentSettings`' old slot, read through the
-                // schema as v4's hydrate + parse does: a NULL / empty /
-                // absent cell (a migrated row the backfill has not reached,
-                // an instance from before the column) is the `.default()`
-                // literal; a stored object — the migration's, the DDL
-                // literal's, or a PUT's — is re-emitted in schema order with
-                // the defaults filled and unknown keys stripped. The two
-                // retired columns are not read at all, so their stale values
-                // on a migrated row never reach the payload (v4's schema
-                // strips them).
-                obj.insert(
-                    "conciergeSettings".into(),
-                    read_concierge_settings_cell(r.get::<_, Option<String>>(35)?),
-                );
-                obj.insert(
-                    "autoLockSettings".into(),
-                    parse_json(r.get::<_, Option<String>>(36)?),
-                );
-                put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(37)?);
-                obj.insert("createdAt".into(), Value::String(r.get::<_, String>(38)?));
-                obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(39)?));
-                Ok(Value::Object(obj))
-            },
-        )
-        .map(Some)
-        .or_else(|e| match e {
-            rusqlite::Error::QueryReturnedNoRows => Ok(None),
-            other => Err(other),
-        })?;
-    // v4 `findOneByFilter` → `validate` (`ChatSettingsSchema.parse`) on the
-    // hydrated row. A stored `cheapLLMSettings` bag the schema refuses (a bad
-    // enum, a non-UUID id, a non-object — P4.169, measured at the
-    // `322a5488e` pin) drops the row the same way. Otherwise the column v5
-    // can store a value v4's schema refuses is
-    // the voice mode (every other enum/JSON column is parsed at the write, and
-    // the booleans/numbers read through fixed coercions): a stored string
-    // outside `off` / `ask` / `always` makes v4 log `Data validation failed`
-    // (the ZodError's `invalid_value` issue) and then, through the fallback
-    // `safeQuery`, `Error finding entity by filter` with the same bytes, and
-    // answer `null` — the row is DROPPED, not defaulted (measured at the
-    // `07b8f0209` pin, P4.D251). v5 does the same here; the GET then runs
-    // v4's "no row" arm, and [`update_for_user`] checks existence through
-    // this same validating read, so — as in v4 — it CREATES a second row
-    // and answers it (F-1, ruled CONVERGE 2026-10-28: while the refused row
-    // sorts first, every load mints another, exactly as v4 does).
-    if let Some(row) = row {
-        // Schema order: the voice mode, then `wardrobeImageSettings` (P4.D255
-        // — the second column a stored value v4's schema refuses can reach:
-        // a hand-planted bag; the PUT arm parses before it writes).
-        let mut issues = cheap_llm_issues;
-        if let Some(mode) = row.get("impersonationVoiceMode").and_then(Value::as_str) {
-            if ImpersonationVoiceMode::parse(mode).is_none() {
-                issues.push(crate::api::zod_issues::ZodIssue::invalid_value(
-                    &ImpersonationVoiceMode::VALUES,
-                    vec![Value::String("impersonationVoiceMode".into())],
-                ));
-            }
-        }
-        if let Some(bag) = row.get("wardrobeImageSettings") {
-            issues.extend(wardrobe_image_settings_issues(bag));
-        }
-        if !issues.is_empty() {
-            let error = crate::api::zod_issues::zod_error_message(&issues);
-            tracing::error!(
-                target: "quilltap::db",
-                collection = "chat_settings",
-                error = %error,
-                "Data validation failed"
+    let order = if key_col == "userId" {
+        " ORDER BY \"updatedAt\" DESC"
+    } else {
+        ""
+    };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {cols} FROM chat_settings WHERE {key_col} = ?1{order}"
+    ))?;
+    let rows = stmt
+        .query_map(params![key], |r| {
+            // Build in schema field order (the ChatSettingsSchema declaration
+            // order), matching v4's post-parse `JSON.stringify` key order.
+            let mut obj = Map::new();
+            obj.insert("id".into(), Value::String(r.get::<_, String>(0)?));
+            obj.insert("userId".into(), Value::String(r.get::<_, String>(1)?));
+            obj.insert(
+                "avatarDisplayMode".into(),
+                Value::String(r.get::<_, String>(2)?),
             );
-            return Ok(crate::db::fallback::find_one_by_filter_or_none(
-                "chat_settings",
-                || Err(DbError::Internal(error.clone())),
-            ));
-        }
-        return Ok(Some(row));
-    }
-    Ok(row)
+            obj.insert(
+                "avatarDisplayStyle".into(),
+                Value::String(r.get::<_, String>(3)?),
+            );
+            obj.insert(
+                "tagStyles".into(),
+                parse_json(r.get::<_, Option<String>>(4)?),
+            );
+            // `cheapLLMSettings`'s refusals are computed by its reader;
+            // carried out of the closure with the row.
+            let (cheap, cheap_llm_issues) =
+                read_cheap_llm_settings_cell(r.get::<_, Option<String>>(5)?);
+            obj.insert("cheapLLMSettings".into(), cheap);
+            put_opt(
+                &mut obj,
+                "imageDescriptionProfileId",
+                r.get::<_, Option<String>>(6)?,
+            );
+            put_opt(
+                &mut obj,
+                "defaultRoleplayTemplateId",
+                r.get::<_, Option<String>>(7)?,
+            );
+            obj.insert(
+                "themePreference".into(),
+                parse_json(r.get::<_, Option<String>>(8)?),
+            );
+            // `.default(256).optional()` — the OUTER optional means an
+            // absent key stays absent (the default never fires on
+            // undefined), so a NULL/missing cell OMITS the key. A fresh
+            // create always writes the column; NULL only arises on a
+            // migration-vintage instance missing the column entirely.
+            if let Some(w) = r.get::<_, Option<f64>>(9)? {
+                obj.insert("sidebarWidth".into(), super::js_number_to_json(w));
+            }
+            obj.insert(
+                "defaultTimestampConfig".into(),
+                parse_json(r.get::<_, Option<String>>(10)?),
+            );
+            obj.insert(
+                "memoryCascadePreferences".into(),
+                parse_json(r.get::<_, Option<String>>(11)?),
+            );
+            obj.insert(
+                "autonomousRoomSettings".into(),
+                parse_json(r.get::<_, Option<String>>(12)?),
+            );
+            obj.insert(
+                "tokenDisplaySettings".into(),
+                parse_json(r.get::<_, Option<String>>(13)?),
+            );
+            obj.insert(
+                "contextCompressionSettings".into(),
+                parse_json(r.get::<_, Option<String>>(14)?),
+            );
+            obj.insert(
+                "llmLoggingSettings".into(),
+                parse_json(r.get::<_, Option<String>>(15)?),
+            );
+            obj.insert(
+                "autoDetectRng".into(),
+                Value::Bool(r.get::<_, i64>(16)? == 1),
+            );
+            // NULL here means the COLUMN IS ABSENT (the tolerant list above
+            // substitutes NULL for a column the table lacks), not a stored
+            // NULL — v4's ALTER carries `DEFAULT 1`, so no v4-written row
+            // holds one. v4 reads `SELECT *` and parses through Zod, so an
+            // absent column arrives as `undefined` and `customTools:
+            // z.boolean().default(true)` supplies `true`. Reproduce that:
+            // absent → `true`. This is the read half of unit 10's accepted
+            // consequence — v5 provisions the column, but a pre-4.8.0 v4
+            // instance lacks it (v5 does not port the migration runner), and
+            // such an instance must still OPEN.
+            obj.insert(
+                "customTools".into(),
+                Value::Bool(r.get::<_, Option<i64>>(17)?.is_none_or(|v| v == 1)),
+            );
+            // P4.D304 (v4 4.11 `362426c8f`): the FIRST default-FALSE
+            // tolerant boolean. NULL here means the COLUMN IS ABSENT (a
+            // pre-ensure instance, or a differential fixture opened
+            // without a boot), and v4's `SELECT *` + `customToolTriggers:
+            // z.boolean().default(false)` turns that `undefined` into
+            // `false` — so absent → `false` (`.is_some_and`). NEVER copy
+            // the `.is_none_or` of `customTools` / `composerUnicode`
+            // here: it would read an absent column as `true` and switch
+            // trigger phrases ON across every pre-ensure instance.
+            obj.insert(
+                "customToolTriggers".into(),
+                Value::Bool(r.get::<_, Option<i64>>(18)?.is_some_and(|v| v == 1)),
+            );
+            // P4.D341 (v4 `839575d89`, C-3): `customToolIntervention` —
+            // `z.boolean().default(true)`, so an ABSENT column (a
+            // pre-ensure instance, a fixture opened without a boot; the
+            // tolerant list substitutes NULL) reads `true` — the
+            // `customTools` / `composerUnicode` `.is_none_or` class, NOT
+            // the triggers' `.is_some_and` above. Every read after it
+            // shifted by 1 (schema position, cid 19).
+            obj.insert(
+                "customToolIntervention".into(),
+                Value::Bool(r.get::<_, Option<i64>>(19)?.is_none_or(|v| v == 1)),
+            );
+            obj.insert(
+                "compositionModeDefault".into(),
+                Value::Bool(r.get::<_, i64>(20)? == 1),
+            );
+            obj.insert(
+                "composerSpellcheck".into(),
+                Value::Bool(r.get::<_, i64>(21)? == 1),
+            );
+            // P4.D73, same shape as `customTools` above: v5 adopts the
+            // three 4.8.2 columns without porting v4's migration runner,
+            // so a pre-4.8.2 instance genuinely lacks them until the boot
+            // ensure runs (and a differential fixture opened directly
+            // never boots at all). v4 reads `SELECT *` and lets
+            // `z.boolean().default(true)` fill the `undefined`, so absent
+            // must surface as `true` and the row must still READ.
+            obj.insert(
+                "composerEmoji".into(),
+                Value::Bool(r.get::<_, Option<i64>>(22)?.is_none_or(|v| v == 1)),
+            );
+            obj.insert(
+                "composerUnicode".into(),
+                Value::Bool(r.get::<_, Option<i64>>(23)?.is_none_or(|v| v == 1)),
+            );
+            // P4.D304 (v4 4.11 `4877fc2da`): the `composerUnicode` shape —
+            // `z.boolean().default(true)` fills an absent column, so
+            // absent → `true`.
+            obj.insert(
+                "composerSlashCommands".into(),
+                Value::Bool(r.get::<_, Option<i64>>(24)?.is_none_or(|v| v == 1)),
+            );
+            // P4.D251 (v4 `07b8f0209`): the voice MODE, a TEXT enum where
+            // its P4.D179 predecessor was a boolean. v4 reads `SELECT *`
+            // and `ImpersonationVoiceModeEnum.default('off')` fills the
+            // `undefined` a NULL (or absent — a pre-ensure instance)
+            // column becomes, so both surface as `'off'` (measured at the
+            // pin). A stored string OUTSIDE the enum is NOT defaulted:
+            // v4's `validate` throws and the fallback read drops the
+            // whole row — checked once the row is built (below), so the
+            // raw cell is carried through here.
+            obj.insert(
+                "impersonationVoiceMode".into(),
+                Value::String(
+                    r.get::<_, Option<String>>(25)?
+                        .unwrap_or_else(|| "off".to_string()),
+                ),
+            );
+            obj.insert(
+                "textReplacementsEnabled".into(),
+                Value::Bool(r.get::<_, i64>(26)? == 1),
+            );
+            obj.insert(
+                "autoScrollOnResponseComplete".into(),
+                Value::Bool(r.get::<_, i64>(27)? == 1),
+            );
+            obj.insert(
+                "agentModeSettings".into(),
+                parse_json(r.get::<_, Option<String>>(28)?),
+            );
+            obj.insert(
+                "coreWhisper".into(),
+                parse_json(r.get::<_, Option<String>>(29)?),
+            );
+            obj.insert(
+                "thinkingDisplay".into(),
+                parse_json(r.get::<_, Option<String>>(30)?),
+            );
+            obj.insert(
+                "answerConfirmationSettings".into(),
+                parse_json(r.get::<_, Option<String>>(31)?),
+            );
+            // The JSON-column twin of the two booleans above: an absent
+            // column (or a NULL cell) is `undefined` to v4, and
+            // `SmartTypographySettingsSchema.default({...})` materializes
+            // the whole bag — so it must not surface as JSON `null`.
+            //
+            // v4 `1dd0a0c01` (P4.D356): the READ materializes the fourth key.
+            // v4's `ChatSettingsSchema.parse` fills `punctuationWarnings:
+            // true` on a stored THREE-key bag (every pre-round row, and the
+            // DDL default, which stays three keys — R-6), so the bag is
+            // re-emitted through the typed struct in declaration order.
+            obj.insert(
+                "smartTypographySettings".into(),
+                read_smart_typography_cell(r.get::<_, Option<String>>(32)?),
+            );
+            obj.insert(
+                "storyBackgroundsSettings".into(),
+                parse_json(r.get::<_, Option<String>>(33)?),
+            );
+            // P4.D255: `wardrobeImageSettings` (index 33 — every later
+            // positional read shifted by one). A NULL cell is v4's
+            // `undefined`: the key is OMITTED; a stored object is parsed
+            // with the schema's defaults (judged below with the voice mode).
+            if let Some(v) = read_wardrobe_image_settings_cell(r.get::<_, Option<String>>(34)?) {
+                obj.insert("wardrobeImageSettings".into(), v);
+            }
+            // v4 `3b463d6b1` (#76): `conciergeSettings` in
+            // `dangerousContentSettings`' old slot, read through the
+            // schema as v4's hydrate + parse does: a NULL / empty /
+            // absent cell (a migrated row the backfill has not reached,
+            // an instance from before the column) is the `.default()`
+            // literal; a stored object — the migration's, the DDL
+            // literal's, or a PUT's — is re-emitted in schema order with
+            // the defaults filled and unknown keys stripped. The two
+            // retired columns are not read at all, so their stale values
+            // on a migrated row never reach the payload (v4's schema
+            // strips them).
+            obj.insert(
+                "conciergeSettings".into(),
+                read_concierge_settings_cell(r.get::<_, Option<String>>(35)?),
+            );
+            obj.insert(
+                "autoLockSettings".into(),
+                parse_json(r.get::<_, Option<String>>(36)?),
+            );
+            put_opt(&mut obj, "timezone", r.get::<_, Option<String>>(37)?);
+            obj.insert("createdAt".into(), Value::String(r.get::<_, String>(38)?));
+            obj.insert("updatedAt".into(), Value::String(r.get::<_, String>(39)?));
+            Ok((Value::Object(obj), cheap_llm_issues))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(value, cheap_llm_issues)| {
+            let issues = row_issues(&value, cheap_llm_issues);
+            HydratedRow { value, issues }
+        })
+        .collect())
 }
 
-/// Contract C2 (the `322a5488e` follow-ups round, P4.169): v4's
-/// `chatSettings.findByUserId` as its callers see it — `safeQuery(() =>
-/// this.findOneByFilter({userId}), 'Error finding chat settings by user ID',
-/// {userId}, null)` (`chat-settings.repository.ts:39-46`). The INNER
-/// `findOneByFilter` is itself a fallback `safeQuery` (`base.repository.ts:
-/// 303-314`, `getCollection()` inside it), so a FAILED read logs only ITS
-/// line — `Error finding entity by filter {collection: chat_settings, error}`
-/// — and answers `null`; the outer line fires only inside the strict scope,
-/// which no C2 caller runs in. (The §3 review of the `322a5488e` follow-ups
-/// unification caught the first cut logging the OUTER line, which v4 never
-/// emits here.) The ONE home for the shape — before it, three call sites
-/// carried inline copies and two read silently (`.ok().flatten()`).
+/// `ChatSettingsSchema`'s issues over a hydrated row, in SHAPE order (the
+/// row's own key order is the shape's): the columns v5 validates on read —
+/// `cheapLLMSettings` (its reader's issues, passed in), `imageDescriptionProfileId`
+/// (`UUIDSchema.nullable().optional()`), `sidebarWidth` (`z.number().min(256)
+/// .max(512)` — no `.int()`), `impersonationVoiceMode` (the enum),
+/// `smartTypographySettings` and `wardrobeImageSettings` (their bags). Every
+/// other column reads through fixed coercions or raw (R-3 — the census in the
+/// lane record).
+fn row_issues(
+    row: &serde_json::Value,
+    cheap_llm_issues: Vec<crate::api::zod_issues::ZodIssue>,
+) -> Vec<crate::api::zod_issues::ZodIssue> {
+    use crate::api::zod_issues::{zod_uuid_ok, ZodIssue};
+    use serde_json::Value;
+    let Some(obj) = row.as_object() else {
+        return Vec::new();
+    };
+    let mut cheap_llm_issues = Some(cheap_llm_issues);
+    let mut issues = Vec::new();
+    for (key, v) in obj {
+        let path = || vec![Value::String(key.clone())];
+        match key.as_str() {
+            "cheapLLMSettings" => issues.extend(cheap_llm_issues.take().unwrap_or_default()),
+            "imageDescriptionProfileId" => {
+                if let Value::String(s) = v {
+                    if !zod_uuid_ok(s) {
+                        issues.push(ZodIssue::invalid_uuid(path()));
+                    }
+                }
+            }
+            "sidebarWidth" => {
+                if let Some(n) = v.as_f64() {
+                    if n < 256.0 {
+                        issues.push(ZodIssue::too_small_number(serde_json::json!(256), path()));
+                    }
+                    if n > 512.0 {
+                        issues.push(ZodIssue::too_big_number(serde_json::json!(512), path()));
+                    }
+                }
+            }
+            "impersonationVoiceMode" => {
+                if let Some(mode) = v.as_str() {
+                    if ImpersonationVoiceMode::parse(mode).is_none() {
+                        issues.push(ZodIssue::invalid_value(
+                            &ImpersonationVoiceMode::VALUES,
+                            path(),
+                        ));
+                    }
+                }
+            }
+            "smartTypographySettings" => issues.extend(smart_typography_issues(v)),
+            "wardrobeImageSettings" => issues.extend(wardrobe_image_settings_issues(v)),
+            _ => {}
+        }
+    }
+    issues
+}
+
+/// Contract C2 (the `322a5488e` follow-ups round, P4.169), re-measured at the
+/// `236c04e35` pin (#120, P4.D356): v4's `chatSettings.findByUserId` as its
+/// callers see it. It no longer calls `findOneByFilter`: the read is its own
+/// `safeQuery(…, 'Error finding chat settings by user ID', {userId}, null)`,
+/// so a FAILED read logs exactly that ERROR — `{collection, userId, error}`,
+/// measured through the RUNTIME-BREAK the re-aimed `repository-zod-messages`
+/// oracle recorded — and answers `null` (the retired inner line `Error finding
+/// entity by filter` no longer fires). A REFUSED row is not a failure any
+/// more: it is repaired (WARN) and answered.
 pub fn find_by_user_id_or_none(conn: &Connection, user_id: &str) -> Option<serde_json::Value> {
-    crate::db::fallback::find_one_by_filter_or_none("chat_settings", || {
-        find_by_user_id(conn, user_id)
-    })
+    find_by_user_id_repaired_or_none(conn, user_id).map(|r| r.value)
+}
+
+/// [`find_by_user_id_or_none`] with the repair's cells, for the update path
+/// (v4 `updateForUser` → `findByUserId`).
+pub fn find_by_user_id_repaired_or_none(conn: &Connection, user_id: &str) -> Option<RepairedRow> {
+    match find_one_repaired(conn, "userId", user_id) {
+        Ok(found) => found,
+        Err(error) => {
+            log_by_user_id_read_failure(Some(user_id), &error);
+            None
+        }
+    }
+}
+
+/// v4's `safeQuery` line for a failed by-user read.
+fn log_by_user_id_read_failure(user_id: Option<&str>, error: &DbError) {
+    tracing::error!(
+        target: "quilltap::db",
+        collection = "chat_settings",
+        userId = user_id,
+        error = %crate::db::fallback::error_text(error),
+        "Error finding chat settings by user ID"
+    );
 }
 
 /// The same failure line for the callers that check a pool connection out
-/// first (`db.read_main(…)`): v4's `getCollection()` runs INSIDE the inner
-/// `findOneByFilter` `safeQuery`, so a checkout failure logs that one line
-/// too — such a caller routes its outer `Err` here.
+/// first (`db.read_main(…)`): v4's `getCollection()` runs INSIDE the
+/// `safeQuery`, so a checkout failure logs that one line too — such a caller
+/// routes its outer `Err` here. ⚠ These callers do not pass the user id, so the
+/// line carries no `userId` key where v4's does (HANDOFF to the unifier,
+/// P4.D356 record: the four call sites live in other lanes' files).
 pub fn log_find_by_user_id_failure(error: &DbError) {
-    let _ = crate::db::fallback::find_one_by_filter_or_none::<()>("chat_settings", || {
-        Err(DbError::Internal(crate::db::fallback::error_text(error)))
-    });
+    log_by_user_id_read_failure(None, error);
 }
 
 /// C1 §12 (P4.D255): whether a wardrobe tool's create / update should queue a
@@ -2073,12 +2337,11 @@ fn default_settings_columns() -> Result<Vec<(String, SettingsColVal)>, DbError> 
 /// `updatedAt` == `now` (v4's create-branch `createdAt == updatedAt`).
 ///
 /// "Exists" means what v4's `const existing = await this.findByUserId(userId)`
-/// means: the VALIDATING read, through its fallback. A row the schema refuses
-/// (a hand-planted or legacy `cheapLLMSettings` / voice mode / wardrobe bag)
-/// reads as absent, so the create branch mints a SECOND row for the user and
-/// the response is that row (F-1, ruled CONVERGE 2026-10-28; before it, a raw
-/// `SELECT id` found the refused row, updated it, and the re-read dropped it
-/// again — a 500 on every load).
+/// means: the TOLERANT read (#120, v4 `7789ebed6` — this port's F-1 filing,
+/// converged at P4.D356). A row the schema refuses is REPAIRED, not absent,
+/// so the update branch runs on it and writes the repair back; only a FAILED
+/// read (v4's `safeQuery` `null`) takes the create branch. Before #120 a
+/// refused row read as absent and every load minted another row.
 ///
 /// Runs on the writer connection (both the existence check and the write in one
 /// closure). Returns the written row's id and `true` when it created a new row
@@ -2093,19 +2356,56 @@ pub fn update_for_user_returning_id(
     assignments: &[(&str, SettingsColVal)],
     now: &str,
 ) -> Result<(String, bool), DbError> {
-    let existing_id: Option<String> = find_by_user_id_or_none(conn, user_id).and_then(|row| {
-        row.get("id")
-            .and_then(serde_json::Value::as_str)
-            .map(String::from)
-    });
+    update_for_user_with_repairs(conn, user_id, assignments, now)
+        .map(|(id, created, _)| (id, created))
+}
+
+/// [`update_for_user_returning_id`] plus the columns the update path REPAIRED
+/// to `null` (#120's nullable arm — `imageDescriptionProfileId`, `timezone`)
+/// and no assignment overrode. v4's `_update` returns its merged record, in
+/// which such a field is an explicit `null`; a re-read omits the NULL cell, so
+/// the PUT's response puts the key back ([`patch_repaired_nulls`]).
+pub fn update_for_user_with_repairs(
+    conn: &Connection,
+    user_id: &str,
+    assignments: &[(&str, SettingsColVal)],
+    now: &str,
+) -> Result<(String, bool, Vec<&'static str>), DbError> {
+    let existing_id: Option<String> =
+        find_by_user_id_repaired_or_none(conn, user_id).and_then(|row| {
+            row.value
+                .get("id")
+                .and_then(serde_json::Value::as_str)
+                .map(String::from)
+        });
 
     if let Some(id) = existing_id {
-        // Update branch: partial SET of the assignments + updatedAt.
+        // v4 `this.update(existing.id, data)` → `_update`, which re-reads the
+        // row by id — `findById`, the TOLERANT read (#120), so a refused row
+        // logs the repair WARN a second time — and `$set`s `{...existing,
+        // ...data}` re-validated. That `$set` is the WRITE-BACK of the repair.
+        // ⚖ R-1 `PARTIAL_SET_ON_UNREFUSED_COLUMNS`: v5 sets the assignments ∪
+        // the REPAIRED cells (an assignment wins over a repair of the same
+        // column — `...data` spreads last) + `updatedAt`, not every column.
+        let repaired = find_one_repaired(conn, "id", &id)?
+            .map(|r| r.repaired)
+            .unwrap_or_default();
         let mut set_clauses: Vec<String> = Vec::new();
         let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
         for (col, val) in assignments {
             set_clauses.push(format!("{col} = ?{}", binds.len() + 1));
             binds.push(Box::new(val.clone()));
+        }
+        let mut repaired_nulls: Vec<&'static str> = Vec::new();
+        for (col, val) in repaired {
+            if assignments.iter().any(|(c, _)| *c == col) {
+                continue;
+            }
+            if matches!(val, SettingsColVal::Null) {
+                repaired_nulls.push(col);
+            }
+            set_clauses.push(format!("\"{col}\" = ?{}", binds.len() + 1));
+            binds.push(Box::new(val));
         }
         set_clauses.push(format!("updatedAt = ?{}", binds.len() + 1));
         binds.push(Box::new(now.to_string()));
@@ -2118,7 +2418,7 @@ pub fn update_for_user_returning_id(
         );
         let refs: Vec<&dyn ToSql> = binds.iter().map(|b| b.as_ref()).collect();
         conn.execute(&sql, refs.as_slice())?;
-        return Ok((id, false));
+        return Ok((id, false, repaired_nulls));
     }
 
     // Create branch: full default row, assignments override, minted id + now/now.
@@ -2152,7 +2452,7 @@ pub fn update_for_user_returning_id(
         .zip(binds.iter().map(|b| b.as_ref()))
         .collect();
     crate::db::tolerant_insert(conn, "chat_settings", &pairs)?;
-    Ok((id, true))
+    Ok((id, true, Vec::new()))
 }
 
 /// [`update_for_user_returning_id`] for the callers that only need to know
@@ -2171,6 +2471,86 @@ pub fn update_for_user(
 /// `defaultRoleplayTemplateId: null`, so the create return has that key present
 /// (whereas the re-read omits the NULL nullable-optional column). Insert it at its
 /// schema position (before `themePreference`) when absent.
+/// Put back the explicit `null` of each column the update REPAIRED to null
+/// (see [`update_for_user_with_repairs`]) at its schema position — v4's
+/// `_update` answers its merged record, where the repaired field is `null`.
+pub fn patch_repaired_nulls(settings: &mut serde_json::Value, columns: &[&str]) {
+    let Some(obj) = settings.as_object() else {
+        return;
+    };
+    let missing: Vec<&str> = columns
+        .iter()
+        .copied()
+        .filter(|c| !obj.contains_key(*c))
+        .collect();
+    if missing.is_empty() {
+        return;
+    }
+    let pos = |k: &str| SHAPE_ORDER.iter().position(|s| *s == k);
+    let mut rebuilt = serde_json::Map::new();
+    let mut pending = missing.clone();
+    for (k, v) in obj.iter() {
+        let at = pos(k);
+        pending.retain(|m| {
+            let insert = matches!((pos(m), at), (Some(p), Some(a)) if p < a);
+            if insert {
+                rebuilt.insert((*m).to_string(), serde_json::Value::Null);
+            }
+            !insert
+        });
+        rebuilt.insert(k.clone(), v.clone());
+    }
+    for m in pending {
+        rebuilt.insert(m.to_string(), serde_json::Value::Null);
+    }
+    *settings = serde_json::Value::Object(rebuilt);
+}
+
+/// `ChatSettingsSchema`'s shape order — the read's key order (measured at the
+/// `236c04e35` pin: `Object.keys(ChatSettingsSchema.shape)`).
+const SHAPE_ORDER: [&str; 40] = [
+    "id",
+    "userId",
+    "avatarDisplayMode",
+    "avatarDisplayStyle",
+    "tagStyles",
+    "cheapLLMSettings",
+    "imageDescriptionProfileId",
+    "defaultRoleplayTemplateId",
+    "themePreference",
+    "sidebarWidth",
+    "defaultTimestampConfig",
+    "memoryCascadePreferences",
+    "autonomousRoomSettings",
+    "tokenDisplaySettings",
+    "contextCompressionSettings",
+    "llmLoggingSettings",
+    "autoDetectRng",
+    "customTools",
+    "customToolTriggers",
+    "customToolIntervention",
+    "compositionModeDefault",
+    "composerSpellcheck",
+    "composerEmoji",
+    "composerUnicode",
+    "composerSlashCommands",
+    "impersonationVoiceMode",
+    "textReplacementsEnabled",
+    "autoScrollOnResponseComplete",
+    "agentModeSettings",
+    "coreWhisper",
+    "thinkingDisplay",
+    "answerConfirmationSettings",
+    "smartTypographySettings",
+    "storyBackgroundsSettings",
+    "wardrobeImageSettings",
+    "conciergeSettings",
+    "autoLockSettings",
+    "timezone",
+    "createdAt",
+    "updatedAt",
+];
+
 pub fn patch_create_return_shape(settings: &mut serde_json::Value) {
     let Some(obj) = settings.as_object() else {
         return;
@@ -2408,64 +2788,202 @@ mod tests {
             .to_string()
     }
 
-    /// F-1 (ruled CONVERGE 2026-10-28): a user whose FIRST settings row holds a
-    /// `cheapLLMSettings` bag the schema refuses has no settings as far as
-    /// v4's `updateForUser` can tell — its `findByUserId` drops the row, so
-    /// the create branch mints a SECOND row and answers it (v4's `findOne` is
-    /// an un-ordered `LIMIT 1`, so the refused row keeps sorting first and
-    /// every call mints another). Before the ruling v5's raw `SELECT id`
-    /// found the refused row, updated it, and the GET's re-read dropped it —
-    /// a 500 on every load.
+    /// #120 (v4 `7789ebed6` — this port's F-1 filing, CONVERGED by P4.D356):
+    /// INVERTED from `update_for_user_mints_a_new_row_past_a_refused_first_row`.
+    /// A row holding a `cheapLLMSettings` bag the schema refuses is REPAIRED on
+    /// read (the default bag, one WARN per read naming the field), and
+    /// `update_for_user` UPDATES it (same id, `created == false`) and writes
+    /// the repaired cell back — after which the row reads silently.
     #[test]
-    fn update_for_user_mints_a_new_row_past_a_refused_first_row() {
+    fn update_for_user_repairs_and_writes_back_a_refused_row() {
+        use crate::test_support::captured_with;
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
         let (first, created) =
             update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:00.000Z").unwrap();
         assert!(created);
+        let seed_cheap: String = conn
+            .query_row("SELECT cheapLLMSettings FROM chat_settings", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
         conn.execute(
             "UPDATE chat_settings SET cheapLLMSettings = \
              '{\"strategy\":\"USER_DEFINED\",\"userDefinedProfileId\":\"not-a-uuid\"}'",
             [],
         )
         .unwrap();
-        assert!(find_by_user_id(&conn, "u1").unwrap().is_none());
 
-        let (second, created) =
-            update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:01.000Z").unwrap();
-        assert!(
-            created,
-            "the refused row reads as absent: the create branch"
-        );
-        assert_ne!(second, first);
-        let row = find_by_id(&conn, &second)
-            .unwrap()
-            .expect("the minted row reads");
-        assert_eq!(row["userId"], "u1");
+        // The read answers the SAME row, repaired, with v4's WARN.
+        let (row, lines) = captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        let row = row.expect("a refused row is repaired, not dropped");
+        assert_eq!(row["id"], first.as_str());
         assert_eq!(row["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with(
+                "WARN quilltap::db Chat settings row held refused values; read them as defaults"
+            ) && lines[0].contains(&format!("chatSettingsId={first}"))
+                && lines[0].contains("userId=u1")
+                && lines[0].contains("refusedFields=[\"cheapLLMSettings\"]"),
+            "{lines:#?}"
+        );
 
-        // The refused row still sorts first, so the next call mints again.
+        // The update branch, the same id, the repair written back.
+        let (second, created) = update_for_user_returning_id(
+            &conn,
+            "u1",
+            &[("composerEmoji", SettingsColVal::Int(0))],
+            "2026-10-28T00:00:01.000Z",
+        )
+        .unwrap();
+        assert!(!created, "the refused row is UPDATED, never minted past");
+        assert_eq!(second, first);
+        let (cheap, emoji, rows): (String, i64, i64) = conn
+            .query_row(
+                "SELECT cheapLLMSettings, composerEmoji, \
+                 (SELECT COUNT(*) FROM chat_settings) FROM chat_settings",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(cheap, seed_cheap, "the stored cell is the seed's default");
+        assert_eq!(emoji, 0);
+        assert_eq!(rows, 1);
+
+        // Repaired on disk: the next read is silent, and a second update
+        // changes nothing but the clock.
+        let (_, lines) = captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        assert!(lines.is_empty(), "{lines:#?}");
         let (third, created) =
             update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:02.000Z").unwrap();
-        assert!(created);
-        assert!(third != first && third != second);
-        let rows: i64 = conn
+        assert_eq!((third.as_str(), created), (first.as_str(), false));
+    }
+
+    /// #120: two rows for a user — the by-user read takes the NEWEST
+    /// (`updatedAt DESC`), the first VALID one wins, the DEBUG names the row
+    /// count, and a valid answer logs no WARN.
+    #[test]
+    fn find_by_user_id_prefers_the_newest_valid_row() {
+        use crate::test_support::captured_with;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
+        let (older, _) =
+            update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:00.000Z").unwrap();
+        // A second, NEWER row (a #120 duplicate), copied from the first.
+        conn.execute_batch(
+            "CREATE TEMP TABLE t AS SELECT * FROM chat_settings; \
+             UPDATE t SET id = 'newer', updatedAt = '2099-01-01T00:00:00.000Z'; \
+             INSERT INTO chat_settings SELECT * FROM t; DROP TABLE t;",
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_settings SET impersonationVoiceMode = 'maybe' WHERE id = ?1",
+            [&older],
+        )
+        .unwrap();
+        let (row, lines) = captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        assert_eq!(row.unwrap()["id"], "newer");
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with(
+                "DEBUG quilltap::db Multiple chat settings rows for user; reading newest valid"
+            ) && lines[0].contains("userId=u1")
+                && lines[0].contains("rowCount=2"),
+            "{lines:#?}"
+        );
+        // The NEWER refused, the older valid: the first VALID row wins.
+        conn.execute(
+            "UPDATE chat_settings SET impersonationVoiceMode = 'off'",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE chat_settings SET impersonationVoiceMode = 'maybe' WHERE id = 'newer'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            find_by_user_id(&conn, "u1").unwrap().unwrap()["id"],
+            older.as_str()
+        );
+        // Both refused: the NEWEST is repaired.
+        conn.execute(
+            "UPDATE chat_settings SET impersonationVoiceMode = 'maybe'",
+            [],
+        )
+        .unwrap();
+        let (row, lines) = captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        let row = row.unwrap();
+        assert_eq!(
+            (row["id"].as_str(), row["impersonationVoiceMode"].as_str()),
+            (Some("newer"), Some("off"))
+        );
+        assert!(
+            lines.iter().any(|l| l.contains("held refused values")),
+            "{lines:#?}"
+        );
+    }
+
+    /// v4's three repair arms (R-8, measured at the pin): a DEFAULTED field
+    /// (the seed), a NULLABLE field outside the defaults (`null`, present), and
+    /// the `delete` arm (`sidebarWidth`, whose re-parse answers `256`). The two
+    /// ERROR arms are pinned NEGATIVE: v5's typed reads cannot reach an
+    /// identity refusal, and a seed default never refuses.
+    #[test]
+    fn the_repair_arms_and_their_cells() {
+        use crate::test_support::captured_with;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(&fresh_chat_settings_ddl()).unwrap();
+        update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:00.000Z").unwrap();
+        conn.execute(
+            "UPDATE chat_settings SET imageDescriptionProfileId = 'nope', sidebarWidth = 9999, \
+             smartTypographySettings = '{\"dashes\":\"yes\"}'",
+            [],
+        )
+        .unwrap();
+        let (row, lines) = captured_with(|| find_by_user_id(&conn, "u1").unwrap());
+        let row = row.unwrap();
+        assert_eq!(row["imageDescriptionProfileId"], serde_json::Value::Null);
+        assert!(row
+            .as_object()
+            .unwrap()
+            .contains_key("imageDescriptionProfileId"));
+        assert_eq!(row["sidebarWidth"], 256);
+        assert_eq!(
+            serde_json::to_string(&row["smartTypographySettings"]).unwrap(),
+            super::super::chat_settings_composer_repair::SMART_TYPOGRAPHY_SCHEMA_DEFAULT_JSON
+        );
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].contains(
+                "refusedFields=[\"imageDescriptionProfileId\",\"sidebarWidth\",\"smartTypographySettings\"]"
+            ),
+            "{lines:#?}"
+        );
+        assert!(
+            lines
+                .iter()
+                .all(|l| !l.contains("cannot repair") && !l.contains("could not be repaired")),
+            "{lines:#?}"
+        );
+        update_for_user_returning_id(&conn, "u1", &[], "2026-10-28T00:00:01.000Z").unwrap();
+        let (idp, width): (Option<String>, i64) = conn
             .query_row(
-                "SELECT COUNT(*) FROM chat_settings WHERE userId = 'u1'",
+                "SELECT imageDescriptionProfileId, sidebarWidth FROM chat_settings",
                 [],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(rows, 3);
-        // The refused row itself is never touched.
-        let stamp: String = conn
-            .query_row(
-                "SELECT updatedAt FROM chat_settings WHERE id = ?1",
-                [&first],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(stamp, "2026-10-28T00:00:00.000Z");
+        assert_eq!(
+            (idp, width),
+            (None, 256),
+            "both repaired cells written back"
+        );
+        assert!(
+            repair_cell("tagStyles").unwrap().is_none(),
+            "no arm for an unvalidated field"
+        );
     }
 
     /// P4.D304 (v4 4.11 `362426c8f`): `customToolTriggers` is the FIRST
@@ -2619,7 +3137,7 @@ mod tests {
                     )
                     .into(),
                 ),
-                ("imageDescriptionProfileId".into(), format!("idp-{user}").into()),
+                ("imageDescriptionProfileId".into(), format!("7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f6{}", &user[1..]).into()),
                 ("defaultRoleplayTemplateId".into(), format!("rtp-{user}").into()),
                 ("sidebarWidth".into(), rusqlite::types::Value::Integer(300 + row_ix as i64)),
                 ("impersonationVoiceMode".into(), "always".to_string().into()),
@@ -2677,7 +3195,11 @@ mod tests {
                 row["cheapLLMSettings"]["embeddingProvider"],
                 ["LOCAL", "SAME_PROVIDER"][row_ix]
             );
-            assert_eq!(row["imageDescriptionProfileId"], format!("idp-{user}"));
+            // A UUID: a non-UUID string is a refusal the read now REPAIRS (#120).
+            assert_eq!(
+                row["imageDescriptionProfileId"],
+                format!("7d8c4a4e-5b1d-4f3a-9a2e-1c2b3d4e5f6{}", &user[1..])
+            );
             assert_eq!(row["defaultRoleplayTemplateId"], format!("rtp-{user}"));
             assert_eq!(row["sidebarWidth"], 300 + row_ix as i64);
             assert_eq!(row["impersonationVoiceMode"], "always");
@@ -3019,13 +3541,13 @@ mod tests {
 
     /// P4.D251 (v4 `07b8f0209`): a NULL `impersonationVoiceMode` cell reads
     /// `'off'` (v4's `.default('off')` over its NULL→`undefined`
-    /// deserializer — measured at the pin), and a stored value OUTSIDE the
-    /// enum is NOT defaulted: the row is DROPPED with v4's two ERROR lines,
-    /// `Data validation failed` then `Error finding entity by filter`, each
-    /// carrying the ZodError's `invalid_value` bytes (measured: v4's
-    /// `findByUserId` answers `null` on a stored `'maybe'`).
+    /// deserializer — measured at the pin). #120 (v4 `7789ebed6`, P4.D356)
+    /// FLIPPED the other half: a stored value OUTSIDE the enum is REPAIRED to
+    /// `'off'` with ONE WARN naming the field — it used to drop the row with
+    /// `Data validation failed` + `Error finding entity by filter`, which no
+    /// longer fire (the `repository_zod_messages` oracle measures v4's line).
     #[test]
-    fn find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row() {
+    fn find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_is_repaired() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             "CREATE TABLE chat_settings (\
@@ -3077,13 +3599,14 @@ mod tests {
         .unwrap();
         let (got, lines) =
             crate::test_support::captured_with(|| find_by_user_id(&conn, "u1").unwrap());
-        assert!(got.is_none(), "v4 drops the row it cannot validate");
-        let zod = "[\n  {\n    \"code\": \"invalid_value\",\n    \"values\": [\n      \"off\",\n      \"ask\",\n      \"always\"\n    ],\n    \"path\": [\n      \"impersonationVoiceMode\"\n    ],\n    \"message\": \"Invalid option: expected one of \\\"off\\\"|\\\"ask\\\"|\\\"always\\\"\"\n  }\n]";
+        let got = got.expect("v4 repairs the row it cannot validate");
+        assert_eq!(got["impersonationVoiceMode"], "off");
         assert_eq!(
             lines,
             vec![
-                format!("ERROR quilltap::db Data validation failed collection=chat_settings error={zod}"),
-                format!("ERROR quilltap::db Error finding entity by filter collection=chat_settings error={zod}"),
+                "WARN quilltap::db Chat settings row held refused values; read them as defaults \
+                  chatSettingsId=s1 userId=u1 refusedFields=[\"impersonationVoiceMode\"]"
+                    .to_string()
             ],
             "{lines:#?}"
         );
@@ -3099,17 +3622,12 @@ mod tests {
         .unwrap();
         let (got, lines) =
             crate::test_support::captured_with(|| find_by_user_id(&conn, "u1").unwrap());
-        assert!(got.is_none(), "v4 drops the row it cannot validate");
-        assert_eq!(lines.len(), 2, "{lines:#?}");
-        let cheap_at = lines[0]
-            .find("\"cheapLLMSettings\"")
-            .expect("the cheap issue");
-        let voice_at = lines[0]
-            .find("\"impersonationVoiceMode\"")
-            .expect("the voice issue");
-        assert!(cheap_at < voice_at, "{lines:#?}");
+        let got = got.expect("v4 repairs the row");
+        assert_eq!(got["cheapLLMSettings"]["strategy"], "PROVIDER_CHEAPEST");
+        // The refused fields in SHAPE order: the cheap bag precedes the mode.
+        assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
-            lines[0].contains("Invalid option: expected one of \\\"USER_DEFINED\\\"|\\\"PROVIDER_CHEAPEST\\\"|\\\"LOCAL_FIRST\\\""),
+            lines[0].ends_with("refusedFields=[\"cheapLLMSettings\",\"impersonationVoiceMode\"]"),
             "{lines:#?}"
         );
     }
@@ -3129,17 +3647,18 @@ mod tests {
         assert_eq!(lines.len(), 1, "{lines:#?}");
         assert!(
             lines[0].starts_with(
-                "ERROR quilltap::db Error finding entity by filter \
-                 collection=chat_settings error="
+                "ERROR quilltap::db Error finding chat settings by user ID \
+                 collection=chat_settings userId=u1 error="
             ),
             "{lines:#?}"
         );
     }
 
-    /// Contract C2: the fallback home logs v4's INNER `findOneByFilter`
-    /// ERROR whole — `collection`, then the driver's BARE sentence (no
-    /// `sqlite error:` prefix) — and answers `None`; the outer `Error finding
-    /// chat settings by user ID` is never logged outside the strict scope.
+    /// Contract C2, re-measured at the `236c04e35` pin (#120, P4.D356): v4's
+    /// `findByUserId` is its OWN `safeQuery` now — a failed read logs `Error
+    /// finding chat settings by user ID {collection, userId, error}` (the
+    /// driver's BARE sentence) and answers `None`; the retired inner `Error
+    /// finding entity by filter` no longer fires.
     #[test]
     fn find_by_user_id_or_none_logs_v4s_line_and_answers_none() {
         let conn = Connection::open_in_memory().unwrap();
@@ -3148,8 +3667,8 @@ mod tests {
         assert!(row.is_none());
         assert_eq!(
             lines,
-            vec!["ERROR quilltap::db Error finding entity by filter \
-                 collection=chat_settings error=no such table: chat_settings"
+            vec!["ERROR quilltap::db Error finding chat settings by user ID \
+                 collection=chat_settings userId=u1 error=no such table: chat_settings"
                 .to_string()]
         );
     }
@@ -3225,15 +3744,19 @@ mod tests {
             );
             assert!(lines.is_empty(), "{cell:?}: {lines:#?}");
         }
+        // #120 (P4.D356): a bag the schema refuses is REPAIRED to the seed's
+        // default (one WARN) — it dropped the row before.
         let (row, lines) = read(Some(r#"{"generateFromTools":"yes"}"#));
-        assert!(row.is_none(), "v4 drops the row it cannot validate");
-        assert_eq!(lines.len(), 2, "{lines:#?}");
-        assert!(lines[0].starts_with(
-            "ERROR quilltap::db Data validation failed collection=chat_settings error=["
-        ));
-        assert!(lines[1].starts_with(
-            "ERROR quilltap::db Error finding entity by filter collection=chat_settings error=["
-        ));
+        assert_eq!(
+            row.expect("repaired")["wardrobeImageSettings"],
+            serde_json::json!({"imageProfileId": null, "generateFromTools": false})
+        );
+        assert_eq!(lines.len(), 1, "{lines:#?}");
+        assert!(
+            lines[0].starts_with("WARN quilltap::db Chat settings row held refused values")
+                && lines[0].ends_with("refusedFields=[\"wardrobeImageSettings\"]"),
+            "{lines:#?}"
+        );
         assert!(!wardrobe_tool_images_enabled(&conn, "u1"));
     }
 

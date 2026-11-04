@@ -80,7 +80,14 @@ fn known_ids(spec: &Value) -> HashSet<String> {
             ids.insert(s.to_string());
         }
     };
-    for k in ["userA", "userB", "settingsIdA", "roleplayTemplateId"] {
+    // P4.D356: `settingsIdA2` — the literal id of the #120 rows' second row.
+    for k in [
+        "userA",
+        "userB",
+        "settingsIdA",
+        "settingsIdA2",
+        "roleplayTemplateId",
+    ] {
         push(&spec[k]);
     }
     // P4.D85: `tags` joins the baked-id groups so the tag ids in an enriched
@@ -344,6 +351,7 @@ fn settings_routes_match_v4() {
     let mut unknown_keys_cases = 0;
     let mut core_whisper_cases = 0;
     let mut custom_tool_intervention_cases = 0;
+    let mut settings_repair_cases = 0;
     let mut settings_zod_cases = 0;
     let mut concierge_settings_cases = 0;
     let mut connection_profile_cases = 0;
@@ -549,6 +557,25 @@ fn settings_routes_match_v4() {
             assert!(n >= 1, "[{name}] the cheap-LLM plant must land on a row");
         }
 
+        // P4.D356 (#120): the raw statements (a second row through a TEMP
+        // copy, out-of-range / non-UUID cells) — one writer connection, in
+        // order, exactly as the oracle runs them.
+        if let Some(stmts) = req.get("plantRaw").and_then(Value::as_array).cloned() {
+            rt.block_on(db.write(move |w| {
+                let conn = w.main().connection();
+                for st in &stmts {
+                    let sql = st["sql"].as_str().unwrap();
+                    let params: Vec<rusqlite::types::Value> = st["params"]
+                        .as_array()
+                        .map(|a| a.iter().map(sql_value).collect())
+                        .unwrap_or_default();
+                    conn.execute(sql, rusqlite::params_from_iter(params))?;
+                }
+                Ok(())
+            }))
+            .expect("plantRaw");
+        }
+
         // P4.139: the corrupt-key plant (the oracle applies the same UPDATE on
         // its work copy) — a BLOB `key_value` both sides' marshals refuse.
         if let Some(key_id) = req["corruptApiKey"].as_str().map(str::to_string) {
@@ -585,17 +612,55 @@ fn settings_routes_match_v4() {
             };
             response_to_body(r).0
         });
+        // P4.D356 (#120): the cell dump — the repair written back, at the CELL.
+        let got_cells = req.get("dumpCells").and_then(Value::as_array).map(|cols| {
+            let cols: Vec<String> = cols
+                .iter()
+                .map(|c| c.as_str().unwrap().to_string())
+                .collect();
+            rt.block_on(db.write(move |w| {
+                let conn = w.main().connection();
+                let list = std::iter::once("id".to_string())
+                    .chain(cols.iter().cloned())
+                    .map(|c| format!("\"{c}\""))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let mut stmt =
+                    conn.prepare(&format!("SELECT {list} FROM chat_settings ORDER BY id"))?;
+                let names: Vec<String> = std::iter::once("id".to_string())
+                    .chain(cols.iter().cloned())
+                    .collect();
+                let rows = stmt
+                    .query_map([], |r| {
+                        let mut o = serde_json::Map::new();
+                        for (i, n) in names.iter().enumerate() {
+                            o.insert(n.clone(), json_cell(r.get_ref(i)?));
+                        }
+                        Ok(Value::Object(o))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(Value::Array(rows))
+            }))
+            .expect("dumpCells")
+        });
         drop(db);
+        if let Some(got_cells) = got_cells {
+            assert_eq!(
+                serde_json::to_string(&row["cells"]).unwrap(),
+                serde_json::to_string(&got_cells).unwrap(),
+                "[{name}] the stored cells differ"
+            );
+        }
 
         let mut oracle_body = row["body"].clone();
         normalize(&mut got_body, &known, &uuid_re, &ts_re);
         normalize(&mut oracle_body, &known, &uuid_re, &ts_re);
 
         // A stored `cheapLLMSettings` the schema refuses (the
-        // `s_get_cheap_llm_bad_*` / `_non_object` rows) drops the row on both
-        // sides; the GET's create arm then mints and answers a SECOND row —
-        // F-1, ruled CONVERGE 2026-10-28 (it was the carve
-        // `REFUSED_CHEAP_LLM_ROW_GET`, v5 answering 500). Compared whole below.
+        // `s_get_cheap_llm_bad_*` / `_non_object` rows) is REPAIRED on both
+        // sides since #120 (v4 `7789ebed6`, P4.D356): the GET answers the
+        // EXISTING `settingsIdA` with the default bag — it minted a second row
+        // under F-1 before. Compared whole below.
         if !is_ack {
             assert_eq!(
                 oracle_body, got_body,
@@ -673,6 +738,7 @@ fn settings_routes_match_v4() {
             Some("unknown_keys") => unknown_keys_cases += 1,
             Some("core_whisper") => core_whisper_cases += 1,
             Some("custom_tool_intervention") => custom_tool_intervention_cases += 1,
+            Some("settings_repair") => settings_repair_cases += 1,
             _ => {}
         }
         if row["family"].as_str() == Some("settings_zod") {
@@ -773,6 +839,15 @@ fn settings_routes_match_v4() {
         custom_tool_intervention_cases >= 5,
         "expected >= 5 custom_tool_intervention cases, got {custom_tool_intervention_cases} — regenerate the oracle"
     );
+    // P4.D356 (v4 `7789ebed6`, #120 — CONVERGED): the repair on read, the
+    // newest-valid selection over two rows, the write-back (`dumpCells`), the
+    // three repair arms (`imageDescriptionProfileId` → null, `sidebarWidth`'s
+    // delete arm → 256, the defaulted bags) and the voice / typography /
+    // wardrobe refusals.
+    assert!(
+        settings_repair_cases >= 6,
+        "expected >= 6 settings_repair cases, got {settings_repair_cases} — regenerate the oracle"
+    );
     // P4.169 (F-1): the planted `cheapLLMSettings` reads.
     assert!(
         cheap_llm_read_cases >= 9,
@@ -820,4 +895,32 @@ fn settings_routes_match_v4() {
         "expected exactly 3 recorded-only v4 arms, got {recorded_cases} — regenerate the oracle"
     );
     eprintln!("settings-routes differential: {n} cases matched");
+}
+
+/// A JSON plant parameter as the SQLite value the oracle's driver binds.
+fn sql_value(v: &Value) -> rusqlite::types::Value {
+    match v {
+        Value::Null => rusqlite::types::Value::Null,
+        Value::Bool(b) => rusqlite::types::Value::Integer(i64::from(*b)),
+        Value::Number(n) => match n.as_i64() {
+            Some(i) => rusqlite::types::Value::Integer(i),
+            None => rusqlite::types::Value::Real(n.as_f64().unwrap()),
+        },
+        Value::String(s) => rusqlite::types::Value::Text(s.clone()),
+        other => rusqlite::types::Value::Text(other.to_string()),
+    }
+}
+
+/// A stored cell as the oracle's `rawQuery` hands it back (better-sqlite3's
+/// JS values: TEXT a string, INTEGER / REAL a number, NULL `null`).
+fn json_cell(v: rusqlite::types::ValueRef<'_>) -> Value {
+    use rusqlite::types::ValueRef;
+    match v {
+        ValueRef::Null => Value::Null,
+        ValueRef::Integer(i) => serde_json::json!(i),
+        ValueRef::Real(f) if f.fract() == 0.0 && f.abs() < 9.0e15 => serde_json::json!(f as i64),
+        ValueRef::Real(f) => serde_json::json!(f),
+        ValueRef::Text(t) => Value::String(String::from_utf8_lossy(t).into_owned()),
+        ValueRef::Blob(b) => Value::String(format!("<blob {}>", b.len())),
+    }
 }

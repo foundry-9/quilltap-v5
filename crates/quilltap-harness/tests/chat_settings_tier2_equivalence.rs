@@ -82,6 +82,14 @@ enum Op {
         #[serde(rename = "userId")]
         user_id: String,
     },
+    /// P4.D356 (#120): v4 `updateForUser(userId, data)` ↔
+    /// `update_for_user_returning_id` (scalar keys → their column cells).
+    #[serde(rename = "updateForUser")]
+    UpdateForUser {
+        #[serde(rename = "userId")]
+        user_id: String,
+        data: serde_json::Map<String, Value>,
+    },
 }
 
 /// The full create input — every persisted column, nested objects deserialized
@@ -264,6 +272,7 @@ fn chat_settings_tier2_matches_oracle() {
     // Run the SAME op sequence through the Rust port.
     let writer = Writer::open_writable(&work, &spec.test_pepper_base64)
         .unwrap_or_else(|e| panic!("open fixture copy: {e}"));
+    let mut for_user_ids: Vec<String> = Vec::new();
     let mut reads: Vec<Option<String>> = Vec::new();
     {
         let repo = writer.chat_settings();
@@ -374,6 +383,34 @@ fn chat_settings_tier2_matches_oracle() {
                         .execute(&sql, rusqlite::params_from_iter(binds))
                         .expect("sql plant");
                 }
+                Op::UpdateForUser { user_id, data } => {
+                    use quilltap_core::db::chat_settings::SettingsColVal;
+                    let cols: Vec<(String, SettingsColVal)> = data
+                        .iter()
+                        .map(|(k, v)| {
+                            let cell = match v {
+                                Value::Bool(b) => SettingsColVal::Int(i64::from(*b)),
+                                Value::Number(n) => SettingsColVal::Int(n.as_i64().unwrap()),
+                                Value::String(s) => SettingsColVal::Text(s.clone()),
+                                Value::Null => SettingsColVal::Null,
+                                other => SettingsColVal::Text(other.to_string()),
+                            };
+                            (k.clone(), cell)
+                        })
+                        .collect();
+                    let assignments: Vec<(&str, SettingsColVal)> =
+                        cols.iter().map(|(k, v)| (k.as_str(), v.clone())).collect();
+                    let (id, created) =
+                        quilltap_core::db::chat_settings::update_for_user_returning_id(
+                            writer.connection(),
+                            &user_id,
+                            &assignments,
+                            "2026-11-04T00:00:00.000Z",
+                        )
+                        .expect("update_for_user");
+                    assert!(!created, "#120: the existing (repaired) row is UPDATED");
+                    for_user_ids.push(id);
+                }
                 Op::Read { user_id } => {
                     let row = quilltap_core::db::chat_settings::find_by_user_id(
                         writer.connection(),
@@ -395,6 +432,78 @@ fn chat_settings_tier2_matches_oracle() {
     // Structural diff: table + columns + rows must match (ignore the oracle's
     // "case" label). assert_eq on serde_json::Value is order-independent for
     // object keys and exact for the row arrays (both sides sorted by id).
+    // ⚖ P4.D356 R-1 `PARTIAL_SET_ON_UNREFUSED_COLUMNS` — carved by NAME, cell
+    // by cell, both ways: v4's `_update` `$set`s the WHOLE re-validated row,
+    // so every LEGACY cell a schema parse would rewrite (a scrambled key
+    // order, a stray key, a missing default) comes back canonical on any
+    // `updateForUser`; v5 writes only the assignments ∪ the repaired cells, so
+    // a schema-VALID legacy cell is left exactly as stored. The table is every
+    // such cell the two `updateForUser` ops reach — the scrambled cheap bag the
+    // `update_after_raw_nonschema_order` op plants, and the two legacy
+    // wardrobe bags the P4.D255 read plants left on rows A and C. A v4
+    // convergence to a partial `$set` (or a v5 move to the whole-row write)
+    // trips it.
+    const PARTIAL_SET_ON_UNREFUSED_COLUMNS: [(&str, &str, &str, &str); 3] = [
+        (
+            "c3000000-0000-4000-8000-000000000003",
+            "cheapLLMSettings",
+            r#"{"embeddingProvider":"LOCAL","fallbackToLocal":false,"strategy":"LOCAL_FIRST"}"#,
+            r#"{"strategy":"LOCAL_FIRST","fallbackToLocal":false,"embeddingProvider":"LOCAL","allowCheapFallback":false}"#,
+        ),
+        (
+            "c3000000-0000-4000-8000-000000000003",
+            "wardrobeImageSettings",
+            "{}",
+            r#"{"imageProfileId":null,"generateFromTools":false}"#,
+        ),
+        (
+            "a1000000-0000-4000-8000-000000000001",
+            "wardrobeImageSettings",
+            r#"{"generateFromTools":true,"imageProfileId":"d4000000-0000-4000-8000-000000000004","stray":1}"#,
+            r#"{"imageProfileId":"d4000000-0000-4000-8000-000000000004","generateFromTools":true}"#,
+        ),
+    ];
+    let mut got = got;
+    let mut oracle = oracle;
+    let cell = |dump: &Value, id: &str, col: &str| -> String {
+        dump["rows"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|r| r["id"] == id))
+            .and_then(|r| r[col].as_str())
+            .unwrap_or_else(|| panic!("the carve cell {id}.{col} is missing"))
+            .to_string()
+    };
+    for (id, col, v5_cell, v4_cell) in PARTIAL_SET_ON_UNREFUSED_COLUMNS {
+        assert_eq!(
+            cell(&got, id, col),
+            v5_cell,
+            "PARTIAL_SET_ON_UNREFUSED_COLUMNS {id}.{col}: v5 leaves the legacy cell"
+        );
+        assert_eq!(
+            cell(&oracle, id, col),
+            v4_cell,
+            "PARTIAL_SET_ON_UNREFUSED_COLUMNS {id}.{col}: v4 re-serializes the whole row (re-measure if this moves)"
+        );
+    }
+    for dump in [&mut got, &mut oracle] {
+        if let Some(rows) = dump["rows"].as_array_mut() {
+            for r in rows.iter_mut() {
+                for (id, col, _, _) in PARTIAL_SET_ON_UNREFUSED_COLUMNS {
+                    if r["id"] == id {
+                        r[col] = Value::String("<PARTIAL_SET_ON_UNREFUSED_COLUMNS>".into());
+                    }
+                }
+                // `updateForUser` stamps v4's `new Date()` (the op passes no
+                // `updatedAt`): masked on the rows those ops wrote.
+                if r["id"]
+                    .as_str()
+                    .is_some_and(|id| for_user_ids.iter().any(|w| w == id))
+                {
+                    r["updatedAt"] = Value::String("<updateForUser now>".into());
+                }
+            }
+        }
+    }
     assert_eq!(got["table"], oracle["table"], "table name");
     assert_eq!(got["columns"], oracle["columns"], "column set / order");
     assert_eq!(
@@ -413,8 +522,22 @@ fn chat_settings_tier2_matches_oracle() {
         .collect();
     assert!(!oracle_reads.is_empty(), "the oracle's read leg is EMPTY");
     assert_eq!(reads.len(), oracle_reads.len(), "read op count");
+    // The `updateForUser` rows' `updatedAt` is v4's clock (masked as in the
+    // dump above), key order kept.
+    let mask = |text: &Option<String>| -> Option<String> {
+        text.as_ref().map(|t| {
+            let mut v: Value = serde_json::from_str(t).unwrap();
+            if v["id"]
+                .as_str()
+                .is_some_and(|id| for_user_ids.iter().any(|w| w == id))
+            {
+                v["updatedAt"] = Value::String("<updateForUser now>".into());
+            }
+            serde_json::to_string(&v).unwrap()
+        })
+    };
     for (i, (mine, theirs)) in reads.iter().zip(&oracle_reads).enumerate() {
-        assert_eq!(mine, theirs, "read #{i} diverged");
+        assert_eq!(mask(mine), mask(theirs), "read #{i} diverged");
     }
 
     let n = got["rows"].as_array().map(|a| a.len()).unwrap_or(0);

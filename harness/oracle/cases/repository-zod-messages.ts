@@ -623,20 +623,30 @@ const logged: Array<{ level: string; message: string; context: unknown }> = [];
   }
 }
 
-async function v4SettingsLines(row: Row): Promise<unknown[]> {
+// P4.D356 (v4 `7789ebed6`, #120): `findByUserId` now reads EVERY row for the
+// user — `collection.find(filter, { sort: { updatedAt: -1 } })` — and repairs a
+// refused one (`hydrateTolerantly`) instead of dropping it; `findById` still
+// uses `findOne`. Against a mock exposing only `findOne`, the pin's
+// `findByUserId` THREW inside its `safeQuery` (`collection.find is not a
+// function`) and answered `null` with `Error finding chat settings by user ID`
+// on every row — a RUNTIME-BREAK the import census could not see (P4.D356 item
+// 8(a); the before/after NDJSON is in the lane record). The mock now serves
+// both, and the row records the mode v4 ANSWERS (`foundMode`; `null` = no row).
+async function v4SettingsLines(row: Row): Promise<{ lines: unknown[]; foundMode: unknown }> {
   logged.length = 0;
   const repo = new ChatSettingsRepository();
   (repo as unknown as { getCollection: () => Promise<unknown> }).getCollection = async () => ({
     findOne: async () => materialize(row),
+    find: async (_filter: unknown, _opts?: unknown) => [materialize(row)],
   });
-  await repo.findByUserId(row.userId as string);
-  return logged.splice(0);
+  const found = (await repo.findByUserId(row.userId as string)) as Record<string, unknown> | null;
+  return { lines: logged.splice(0), foundMode: found ? (found.impersonationVoiceMode ?? null) : null };
 }
 
 async function main(): Promise<void> {
   for (const [id, schema, row] of rows) {
     const r = SCHEMAS[schema].safeParse(materialize(row));
-    const lines = schema === 'chatSettings' ? { lines: await v4SettingsLines(row) } : {};
+    const lines = schema === 'chatSettings' ? await v4SettingsLines(row) : {};
     if (r.success) {
       const parsed = schema === 'memory' || schema === 'chatInform' ? { parsed: parsedJson(r.data) } : {};
       process.stdout.write(JSON.stringify({ id, schema, row, ok: true, ...lines, ...parsed }) + '\n');

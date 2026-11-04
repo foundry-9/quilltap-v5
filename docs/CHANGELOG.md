@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — fix(chat-settings): a refused settings row is repaired on read and written back, not dropped (P4.D356, #120)
+
+_Versions: core 0.0.1385._
+
+This converges on v4 `7789ebed6`, v4's fix for this port's F-1 filing (#120). The by-user read takes every row for the user, newest first (`ORDER BY "updatedAt" DESC`). It answers the first row the schema accepts; if none does, it repairs one rather than dropping it. The repair works per top-level field, with v4's three arms: a field `defaultChatSettings` carries resets to the seed's default; `imageDescriptionProfileId` and `timezone` become `null`; and a refused `sidebarWidth` is deleted, so its re-parse reads `256`. It logs v4's WARN `Chat settings row held refused values; read them as defaults` on every read until a write lands, and the DEBUG `Multiple chat settings rows for user; reading newest valid` when a user has several rows. `Data validation failed` and `Error finding entity by filter` retire from this read, and a thrown read now logs `Error finding chat settings by user ID`. `update_for_user` updates the repaired row instead of minting another, and writes the repaired cells back. Before, every load of a refused row minted a new row. The read also validates `sidebarWidth` (256–512) and `imageDescriptionProfileId` (UUID), and a refused `smartTypographySettings` resets the whole bag. A PUT echo keeps a field repaired to `null` as an explicit `null`, as v4 does. The divergence is ruled `PARTIAL_SET_ON_UNREFUSED_COLUMNS` (R-1): v4 rewrites the whole re-validated row on update, while v5 writes the assignments plus the repaired cells; it is carved by name on three cells in `chat_settings_tier2`. Oracles: `repository-zod-messages`' mock now serves `find` (at the pin v4's `findByUserId` threw against it on every row), `settings-routes` gains the `settings_repair` family with second-row plants and cell dumps, and `chat-settings-tier2` gains the `updateForUser` write-back and carve ops. Every inverted unit test was re-pinned on v4's measured output.
+
 #### 2026-11-04 — feat(almanack): the Almanack and help_settings report the operator-intervention hold (P4.D356, v4 `839575d89`)
 
 _Versions: core 0.0.1384._

@@ -22,18 +22,21 @@
 //! a stored `impersonationVoiceMode` and drive v5's REAL
 //! `quilltap_core::db::chat_settings::find_by_user_id` over a `chat_settings`
 //! table built from the D23 dump (`fresh_schema.json`), the mode planted by a
-//! raw UPDATE as the core unit test does. v5's `message` is the `error=` tail
-//! of the captured `Data validation failed` ERROR, and BOTH captured lines are
-//! compared against v4's OWN two (P4.157 R-C — v4's real
+//! raw UPDATE as the core unit test does. v5's `message` is the newest row's
+//! pre-repair issue set (`chat_settings::stored_row_issues`) rendered, and
+//! the captured lines are compared against v4's OWN (v4's real
 //! `ChatSettingsRepository.findByUserId` over the row, through a
-//! `Logger.prototype` spy: `Data validation failed` then the fallback
-//! `safeQuery`'s `Error finding entity by filter`, level + message + context
-//! in v4's key order); an accepted row must read back with zero lines on
-//! both sides. This makes the Zod literal in
-//! `chat_settings.rs`'s unit test
-//! (`find_by_user_id_voice_mode_null_reads_off_and_an_unknown_value_drops_the_row`)
-//! oracle-backed: reorder `ImpersonationVoiceMode::VALUES` or change
-//! `ZodIssue::invalid_value`'s message and both go red together. A BLOB in the
+//! `Logger.prototype` spy — level + message + context in v4's key order).
+//! **#120 (v4 `7789ebed6`, P4.D356):** a refused mode is now REPAIRED — v4
+//! logs ONE WARN `Chat settings row held refused values; read them as
+//! defaults {chatSettingsId, userId, refusedFields}` and answers the row with
+//! `'off'` (`foundMode`, compared with the mode v5 answers); the P4.157 R-C
+//! pair (`Data validation failed` + `Error finding entity by filter`) retired.
+//! The oracle's `getCollection` mock grew `find` for it: at the pin, against a
+//! `findOne`-only mock, v4's `findByUserId` THREW (`collection.find is not a
+//! function`) and logged `Error finding chat settings by user ID` on every
+//! row — the RUNTIME-BREAK the lane record shows before / after. An accepted
+//! row reads back with zero lines on both sides. A BLOB in the
 //! mode column is NOT a row (R-D: writer-unreachable on both sides; v5's check
 //! is `as_str()`-gated, so it would pass v5 and fail v4).
 //!
@@ -82,12 +85,12 @@ fn chat_settings_ddl() -> String {
 }
 
 /// v5's REAL `find_by_user_id` over the row, the mode planted raw. Answers
-/// `(message, issues, lines)` — the captured lines whole; `(None, None, [])`
-/// when the row reads back with no line.
+/// `(message, issues, lines, answered mode)` — the captured lines whole; the
+/// message / issues `None` for a row the schema accepts.
 fn v5_chat_settings(
     id: &str,
     row: &Map<String, Value>,
-) -> (Option<String>, Option<String>, Vec<String>) {
+) -> (Option<String>, Option<String>, Vec<String>, String) {
     let conn = rusqlite::Connection::open_in_memory().unwrap();
     conn.execute_batch(&chat_settings_ddl()).unwrap();
     let user_id = row["userId"].as_str().unwrap();
@@ -127,23 +130,24 @@ fn v5_chat_settings(
     let (got, lines) = quilltap_core::test_support::captured_with(|| {
         quilltap_core::db::chat_settings::find_by_user_id(&conn, user_id).unwrap()
     });
-    if let Some(read) = got {
-        let want_mode = planted.unwrap_or("off");
-        assert_eq!(
-            read["impersonationVoiceMode"],
-            Value::String(want_mode.into()),
-            "{id}: the accepted row's mode"
-        );
-        return (None, None, lines);
-    }
-    let first = "ERROR quilltap::db Data validation failed collection=chat_settings error=";
-    let message = lines
-        .first()
-        .and_then(|l| l.strip_prefix(first))
-        .unwrap_or_else(|| panic!("{id}: first line {lines:#?}"))
+    // #120 (P4.D356): the read ANSWERS every row now — accepted as stored, or
+    // repaired (a refused mode reads `'off'`) — so the mode it answers is the
+    // comparand beside v4's `foundMode`.
+    let read = got.unwrap_or_else(|| panic!("{id}: v5's read must answer the row"));
+    let found = read["impersonationVoiceMode"]
+        .as_str()
+        .unwrap_or("")
         .to_string();
-    let issues = serde_json::from_str::<Value>(&message).unwrap().to_string();
-    (Some(message), Some(issues), lines)
+    // The pre-repair issue set — the Zod bytes no log line carries any more.
+    let issues = quilltap_core::db::chat_settings::stored_row_issues(&conn, user_id)
+        .unwrap()
+        .unwrap_or_default();
+    if issues.is_empty() {
+        return (None, None, lines, found);
+    }
+    let message = zod_error_message(&issues);
+    let compact = serde_json::to_string(&issues).unwrap();
+    (Some(message), Some(compact), lines, found)
 }
 
 /// v4's recorded logger call (`{level, message, context}`, P4.157 R-C) as the
@@ -273,7 +277,7 @@ fn repository_zod_messages_match_oracle() {
         (false, false, false, false);
     let mut chat_messages = 0usize;
     let (mut settings_messages, mut settings_ok) = (0usize, 0usize);
-    let mut settings_two_line_rows = 0usize;
+    let mut settings_one_warn_rows = 0usize;
     let (mut memory_rows, mut inform_rows, mut parsed_rows) = (0usize, 0usize, 0usize);
     let (mut prompt_template_rows, mut folder_rows, mut tag_rows) = (0usize, 0usize, 0usize);
     let mut file_rows = 0usize;
@@ -332,10 +336,13 @@ fn repository_zod_messages_match_oracle() {
                 } else {
                     settings_ok += 1;
                 }
-                let (m, i, lines) = v5_chat_settings(id, &row);
-                // P4.157 R-C: BOTH lines against v4's own (recorded through
-                // its real `ChatSettingsRepository.findByUserId`) — the second
-                // used to be checked only against v5's first.
+                let (m, i, lines, found) = v5_chat_settings(id, &row);
+                // #120 (v4 `7789ebed6`, P4.D356): v4's lines — recorded
+                // through its real `ChatSettingsRepository.findByUserId` (the
+                // mock now serves `find`) — are ONE WARN on a refused mode
+                // (the row repaired, its `refusedFields` named) and none on an
+                // accepted one; v5's captured lines must equal them. Before
+                // #120 they were P4.157 R-C's two ERRORs and a dropped row.
                 let want_lines: Vec<String> = want["lines"]
                     .as_array()
                     .unwrap_or_else(|| panic!("{id}: the oracle row carries no `lines`"))
@@ -343,7 +350,15 @@ fn repository_zod_messages_match_oracle() {
                     .map(render_v4_line)
                     .collect();
                 if want_message.is_some() {
-                    settings_two_line_rows += usize::from(want_lines.len() == 2);
+                    settings_one_warn_rows +=
+                        usize::from(want_lines.len() == 1 && want_lines[0].starts_with("WARN "));
+                }
+                if want["foundMode"].as_str() != Some(found.as_str()) {
+                    failures.push(format!(
+                        "{id}: the ANSWERED mode differs: v4 {} / v5 {found:?}",
+                        want["foundMode"]
+                    ));
+                    continue;
                 }
                 if lines != want_lines {
                     failures.push(format!(
@@ -455,8 +470,8 @@ fn repository_zod_messages_match_oracle() {
          accepted (absent → 'off', 'ask', 'always') — P4.151 A1"
     );
     assert_eq!(
-        settings_two_line_rows, 4,
-        "v4 logged its two ERROR lines on each refused chatSettings row (P4.157 R-C)"
+        settings_one_warn_rows, 4,
+        "v4 logged ONE repair WARN on each refused chatSettings row (#120, P4.D356)"
     );
     assert!(
         failures.is_empty(),

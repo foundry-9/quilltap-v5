@@ -48,14 +48,15 @@ import { tmpdir } from 'node:os';
 import { canonicalizeRows } from '../lib/tier2.js';
 
 interface Op {
-  kind: 'create' | 'update' | 'delete' | 'sql' | 'read';
+  kind: 'create' | 'update' | 'delete' | 'sql' | 'read' | 'updateForUser';
   id?: string;
   data?: Record<string, unknown>;
   options?: { id: string; createdAt: string; updatedAt: string };
   /** P4.D255: a raw plant (`sql`) and its bind params, identical on both sides. */
   sql?: string;
   params?: unknown[];
-  /** P4.D255: the user whose row a `read` op hydrates through `findByUserId`. */
+  /** P4.D255: the user whose row a `read` op hydrates through `findByUserId`
+   *  (P4.D356: and whose row an `updateForUser` op upserts). */
   userId?: string;
 }
 
@@ -111,6 +112,10 @@ async function main(): Promise<void> {
       await repo.update(op.id as string, op.data as never);
     } else if (op.kind === 'sql') {
       await rawQuery(op.sql as string, op.params ?? []);
+    } else if (op.kind === 'updateForUser') {
+      // P4.D356 (#120): the upsert chokepoint — over a refused row it now
+      // UPDATES (writing the repair back) where it used to mint a second row.
+      await repo.updateForUser(op.userId as string, op.data as never);
     } else if (op.kind === 'read') {
       const row = await repo.findByUserId(op.userId as string);
       reads.push(row === null ? null : JSON.stringify(row));

@@ -553,6 +553,63 @@
     {
       "kind": "read",
       "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "update",
+      "comment": "P4.D356 (v4 `1dd0a0c01`): a PARTIAL smartTypographySettings carrying only the FOURTH key — the merged row's parse stores all four, `punctuationWarnings: false`.",
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "data": {
+        "smartTypographySettings": {
+          "punctuationWarnings": false
+        },
+        "updatedAt": "2026-11-04T00:00:00.000Z"
+      }
+    },
+    {
+      "kind": "sql",
+      "comment": "P4.D356 (#120): plant a cheapLLMSettings the schema REFUSES on row A.",
+      "sql": "UPDATE chat_settings SET cheapLLMSettings = ? WHERE id = ?",
+      "params": [
+        "{\"strategy\":\"BOGUS\"}",
+        "a1000000-0000-4000-8000-000000000001"
+      ]
+    },
+    {
+      "kind": "read",
+      "comment": "#120: the refused row READS repaired (the default bag), not dropped.",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "updateForUser",
+      "name": "update_after_raw_refusal",
+      "comment": "#120 (v4 `7789ebed6`): `updateForUser` over the refused row UPDATES it (no second row) and writes the repaired cell back — the dump shows ONE row for the user, the cheapLLMSettings cell the default, composerEmoji 0.",
+      "userId": "00000000-0000-4000-8000-0000000000aa",
+      "data": {
+        "composerEmoji": false
+      }
+    },
+    {
+      "kind": "read",
+      "comment": "#120: repaired on disk — the read answers the stored row.",
+      "userId": "00000000-0000-4000-8000-0000000000aa"
+    },
+    {
+      "kind": "sql",
+      "comment": "P4.D356 R-1 carve: a schema-VALID cheapLLMSettings in a SCRAMBLED key order (a legacy cell) on the surviving bb row.",
+      "sql": "UPDATE chat_settings SET cheapLLMSettings = ? WHERE id = ?",
+      "params": [
+        "{\"embeddingProvider\":\"LOCAL\",\"fallbackToLocal\":false,\"strategy\":\"LOCAL_FIRST\"}",
+        "c3000000-0000-4000-8000-000000000003"
+      ]
+    },
+    {
+      "kind": "updateForUser",
+      "name": "update_after_raw_nonschema_order",
+      "comment": "⚖ R-1 `PARTIAL_SET_ON_UNREFUSED_COLUMNS`: an unrelated key — v4 `$set`s the WHOLE re-validated row (the legacy cell re-serialized in schema order, its defaults filled); v5 sets only the assignments ∪ the repaired cells (the legacy cell left as stored). Carved by name on this row's cell, both ways asserted.",
+      "userId": "00000000-0000-4000-8000-0000000000bb",
+      "data": {
+        "composerEmoji": true
+      }
     }
   ]
 }

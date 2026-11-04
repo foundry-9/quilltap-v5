@@ -409,7 +409,7 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
     let uid = user_id.to_string();
     let written = db
         .write(move |w| {
-            chat_settings::update_for_user_returning_id(
+            chat_settings::update_for_user_with_repairs(
                 w.main().connection(),
                 &uid,
                 &assignments,
@@ -418,7 +418,15 @@ pub async fn chat_settings_update(db: &Db, user_id: &str, bag: &Value) -> Respon
         })
         .await;
     match written {
-        Ok((id, created)) => read_settings_response(db, id, created),
+        Ok((id, created, repaired_nulls)) => {
+            let mut resp = read_settings_response(db, id, created);
+            // #120 (P4.D356): v4 answers `_update`'s merged record, where a
+            // field the write-back repaired to null is an explicit `null`.
+            if let Response::ChatSettings(v) = &mut resp {
+                chat_settings::patch_repaired_nulls(v, &repaired_nulls);
+            }
+            resp
+        }
         Err(e) => internal(e),
     }
 }
