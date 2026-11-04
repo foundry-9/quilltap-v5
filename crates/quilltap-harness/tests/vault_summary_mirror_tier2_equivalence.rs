@@ -272,7 +272,7 @@ fn vault_summary_mirror_tier2_matches_oracle() {
             write_conversation_summary_to_vaults(&db, &input).await;
         }
         for d in &spec.deletes {
-            delete_conversation_with_vault_sweep(&db, &d.chat_id, d.sync_vaults)
+            delete_conversation_with_vault_sweep(&db, &d.chat_id, d.sync_vaults, None)
                 .await
                 .unwrap_or_else(|e| panic!("delete {}: {e}", d.chat_id));
         }

@@ -463,15 +463,28 @@ pub async fn brahma_console_set_model(
 
 /// v4 `handleDelete` (`[id]/route.ts:132`): delete the chat. Body
 /// `{ message: 'Brahma Console chat deleted successfully' }`.
-pub async fn brahma_console_delete(db: &Db, user_id: &str, chat_id: &str) -> Response {
+/// P4.D355 (Tier 2 item 21): v4 deletes through `ChatsRepository.delete`,
+/// which ends the chat's live terminals — v4's spawn route has no chat-type
+/// gate, so this chat CAN own one; `probe` reaches the shared hook.
+pub async fn brahma_console_delete(
+    db: &Db,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
+    user_id: &str,
+    chat_id: &str,
+) -> Response {
     if let Err(r) = verify_brahma_chat(db, chat_id, user_id) {
         return r;
     }
     let cid = chat_id.to_string();
     match db.write(move |ws| ws.main().chats().delete(&cid)).await {
-        Ok(true) => Response::BrahmaConsole(
-            json!({ "message": "Brahma Console chat deleted successfully" }),
-        ),
+        Ok(true) => {
+            crate::services::conversation_summary_vault_bridge::dispose_deleted_chat_terminals(
+                probe, chat_id,
+            );
+            Response::BrahmaConsole(
+                json!({ "message": "Brahma Console chat deleted successfully" }),
+            )
+        }
         Ok(false) => internal("Failed to delete Brahma Console chat"),
         Err(e) => internal(e),
     }

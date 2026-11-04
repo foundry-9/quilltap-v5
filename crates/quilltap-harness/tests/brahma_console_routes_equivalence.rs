@@ -364,7 +364,7 @@ fn brahma_console_routes_match_oracle() {
     }
     {
         let (db, _scratch) = fresh_db(&spec, "delete");
-        let r = rt.block_on(brahma::brahma_console_delete(&db, USER_A, CHAT_C));
+        let r = rt.block_on(brahma::brahma_console_delete(&db, None, USER_A, CHAT_C));
         check("delete", &r, false);
     }
 

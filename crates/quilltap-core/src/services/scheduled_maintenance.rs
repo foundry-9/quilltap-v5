@@ -65,17 +65,65 @@ use crate::services::queue_service::{
 /// through this seam. Returns `true` when a file was actually removed (v4
 /// counts only successful unlinks — an already-gone transcript is success but
 /// NOT counted).
+///
+/// P4.D355 (R-6): the unlink answers v4's THREE outcomes — `Ok(true)` removed,
+/// `Ok(false)` already gone (ENOENT — success, silent, not counted),
+/// `Err(text)` any other failure (the orphan sweep's WARN carries the text;
+/// `cleanup_closed_sessions` counts `Ok(true)` only, as before).
+///
+/// P4.D355 (contract C6, R-13): [`TranscriptStore::list_transcripts`] — the
+/// orphan sweep's directory listing. The contract NAME is kept; the TYPE is
+/// richer than the planner's `Vec<(session_id, path, mtime_ms)>` sketch because
+/// core owns v4's loop (the `.log` filter, the id slice) and needs the
+/// missing-directory arm: `Ok(None)` = the directory does not exist (v4's
+/// ENOENT arm), `Ok(Some(entries))` = EVERY directory entry with its `stat`
+/// folded in, `Err(text)` = a non-ENOENT listing failure.
 pub trait TranscriptStore: Send + Sync {
-    fn unlink_transcript(&self, session_id: &str, transcript_path: Option<&str>) -> bool;
+    fn unlink_transcript(
+        &self,
+        session_id: &str,
+        transcript_path: Option<&str>,
+    ) -> Result<bool, String>;
+
+    /// Every entry of `<logsDir>/terminals/` (v4 `fs.readdir` + the per-entry
+    /// `fs.stat`), in listing order. Defaulted: no directory.
+    fn list_transcripts(&self) -> Result<Option<Vec<TranscriptEntry>>, String> {
+        Ok(None)
+    }
+
+    /// The listed directory as v4's `transcriptsDir` field renders it.
+    fn transcripts_dir_display(&self) -> String {
+        String::new()
+    }
+}
+
+/// One `<logsDir>/terminals/` entry (contract C6).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TranscriptEntry {
+    /// The entry's file name (`<id>.log`, `init-<id>.bashrc`, …).
+    pub name: String,
+    /// `path.join(transcriptsDir, name)`.
+    pub path: std::path::PathBuf,
+    /// `stat.isFile()` — `false` when the stat itself failed (recorded: v4
+    /// stats inside its per-entry try, so a non-ENOENT stat failure there is
+    /// the WARN; here the listing folds it into a silent skip).
+    pub is_file: bool,
+    /// `stat.mtimeMs`.
+    pub mtime_ms: i64,
 }
 
 /// The no-fs default (tests / embedders without a logs dir): nothing is ever
-/// removed, so `transcripts` counts 0 while rows still reap.
+/// removed, so `transcripts` counts 0 while rows still reap; no directory to
+/// sweep.
 pub struct NoTranscriptStore;
 
 impl TranscriptStore for NoTranscriptStore {
-    fn unlink_transcript(&self, _session_id: &str, _transcript_path: Option<&str>) -> bool {
-        false
+    fn unlink_transcript(
+        &self,
+        _session_id: &str,
+        _transcript_path: Option<&str>,
+    ) -> Result<bool, String> {
+        Ok(false)
     }
 }
 
@@ -115,6 +163,11 @@ pub struct MaintenanceSweepSummary {
     /// Terminal-session rows reaped / transcript files removed.
     pub terminal_rows: usize,
     pub terminal_transcripts: usize,
+    /// P4.D355 (v4 `85c002822`, `scheduled-maintenance.ts:92` at `236c04e35`):
+    /// `orphanedTranscriptsSwept` — step 6b's `{ scanned, deleted }`. v4's slot
+    /// is between `terminals` and `orphanedThumbnailsSwept`; the completion
+    /// log carries it there (the struct order is not the wire).
+    pub orphaned_transcripts_swept: OrphanedTranscriptSweep,
     /// v4 `foldOtherCatchup`: the fold-grain OTHER idle catch-up sweep's
     /// `{ enqueued, deferred }`.
     pub fold_other_catchup: crate::services::extraction::fold_catchup::FoldCatchupSweepSummary,
@@ -129,9 +182,16 @@ pub struct MaintenanceSweepSummary {
     // === end P4.D292 ===
     /// Sweeps that threw (and were swallowed so the rest could run): `jobs` /
     /// `assets` / `caches` / `orphan-store-children` / `orphans` / `terminals` /
-    /// `orphan-thumbnails` / `fold-other-catchup` / `fold-episode-catchup` (v4's
+    /// `orphan-transcripts` (P4.D355) / `orphan-thumbnails` / `fold-other-catchup` / `fold-episode-catchup` (v4's
     /// failure vocabulary).
     pub failures: Vec<String>,
+}
+
+/// P4.D355 — v4 `MaintenanceSweepSummary.orphanedTranscriptsSwept`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct OrphanedTranscriptSweep {
+    pub scanned: usize,
+    pub deleted: usize,
 }
 
 // === P4.D292: the step-10 summary shape ===
@@ -194,22 +254,132 @@ pub async fn cleanup_closed_sessions(
             continue;
         }
         rows += 1;
-        if transcripts.unlink_transcript(&session.id, session.transcript_path.as_deref()) {
+        if transcripts.unlink_transcript(&session.id, session.transcript_path.as_deref())
+            == Ok(true)
+        {
             removed += 1;
         }
     }
     Ok((rows, removed))
 }
 
+/// P4.D355 — v4 `TerminalSessionsRepository.sweepOrphanedTranscripts`
+/// (`85c002822`, `terminal-sessions.repository.ts:186-275` at `236c04e35`),
+/// v4's loop verbatim (R-5 — CORE code over the C6 seam): "Remove transcript
+/// files in `<logsDir>/terminals/` that no row names. … Only `<id>.log` files
+/// are considered — the shell-init artifacts beside them (`init-<id>.bashrc`,
+/// `zdotdir-<id>/`) are cleaned on PTY exit. A file is spared when a row names
+/// it (by id or stored `transcriptPath`), when `isLive(id)` says the PTY is
+/// still running (a chat deleted under a live terminal leaves the PTY writing
+/// with no row), or when it was modified within `graceMs` (the transcript is
+/// opened before the row is created)."
+///
+/// A missing directory answers `(0, 0)` WITHOUT reading the rows (v4's test
+/// pins it). `path.resolve` is a LEXICAL absolutize here
+/// ([`std::path::absolute`]), never `canonicalize` (which follows symlinks and
+/// fails on a missing file). Answers `(scanned, deleted)`.
+pub async fn sweep_orphaned_transcripts(
+    db: &Db,
+    transcripts: &dyn TranscriptStore,
+    is_live: &(dyn Fn(&str) -> bool + Sync),
+    grace_ms: i64,
+    now_ms: i64,
+) -> Result<(usize, usize), String> {
+    let Some(entries) = transcripts.list_transcripts()? else {
+        tracing::debug!(
+            target: "quilltap::maintenance",
+            transcriptsDir = %transcripts.transcripts_dir_display(),
+            "No terminal transcript directory; nothing to sweep"
+        );
+        return Ok((0, 0));
+    };
+    let rows = db
+        .read_main(terminal_sessions::find_all)
+        .map_err(|e| e.to_string())?;
+    let resolve = |p: &std::path::Path| std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf());
+    let named_ids: std::collections::HashSet<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+    let named_paths: std::collections::HashSet<std::path::PathBuf> = rows
+        .iter()
+        .filter_map(|r| r.transcript_path.as_deref().filter(|p| !p.is_empty()))
+        .map(|p| resolve(std::path::Path::new(p)))
+        .collect();
+    let cutoff_ms = now_ms - grace_ms;
+
+    let mut scanned = 0usize;
+    let mut deleted = 0usize;
+    for entry in &entries {
+        if !entry.name.ends_with(".log") {
+            continue;
+        }
+        scanned += 1;
+        let session_id = &entry.name[..entry.name.len() - ".log".len()];
+        if named_ids.contains(session_id) || named_paths.contains(&resolve(&entry.path)) {
+            continue;
+        }
+        if is_live(session_id) {
+            tracing::debug!(
+                target: "quilltap::maintenance",
+                sessionId = %session_id,
+                "Sparing transcript of a live PTY with no row"
+            );
+            continue;
+        }
+        if !entry.is_file {
+            continue;
+        }
+        if entry.mtime_ms > cutoff_ms {
+            tracing::debug!(
+                target: "quilltap::maintenance",
+                sessionId = %session_id,
+                "Sparing recently written orphan transcript"
+            );
+            continue;
+        }
+        let file_path = entry.path.to_string_lossy();
+        match transcripts.unlink_transcript(session_id, Some(&file_path)) {
+            Ok(true) => {
+                deleted += 1;
+                tracing::debug!(
+                    target: "quilltap::maintenance",
+                    sessionId = %session_id,
+                    filePath = %file_path,
+                    "Removed orphaned terminal transcript"
+                );
+            }
+            // ENOENT — the file vanished between the listing and the unlink:
+            // silent, not counted.
+            Ok(false) => {}
+            Err(error) => tracing::warn!(
+                target: "quilltap::maintenance",
+                sessionId = %session_id,
+                filePath = %file_path,
+                error = %error,
+                "Failed to remove orphaned terminal transcript"
+            ),
+        }
+    }
+    tracing::info!(
+        target: "quilltap::maintenance",
+        scanned = scanned,
+        deleted = deleted,
+        "Swept orphaned terminal transcripts"
+    );
+    Ok((scanned, deleted))
+}
+
 /// One maintenance pass (v4 `runScheduledMaintenance`). `now_ms` anchors every
 /// retention cutoff AND the recorded `lastMaintenanceSweepAt` stamp (v4 uses
 /// the wall clock at each site; the single anchor is deterministic and
 /// semantically identical — "when the pass ran").
+///
+/// P4.D355 (R-7): `probe` is the host's live-PTY manager — step 6b's `isLive`
+/// (v4 `ptyManager.get(id) !== undefined`); `None` is v4's empty map.
 pub async fn run_scheduled_maintenance(
     db: &Db,
     now_ms: i64,
     transcripts: &dyn TranscriptStore,
     backend: &dyn crate::services::file_storage::StorageBackend,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
 ) -> MaintenanceSweepSummary {
     // v4 `scheduled-maintenance.ts:182`. The pair of bookend lines is what makes
     // a pass legible in `combined.log`: without the opener an operator cannot
@@ -234,6 +404,7 @@ pub async fn run_scheduled_maintenance(
         orphaned_thumbnails_swept: Default::default(),
         terminal_rows: 0,
         terminal_transcripts: 0,
+        orphaned_transcripts_swept: OrphanedTranscriptSweep::default(), // P4.D355
         fold_other_catchup: Default::default(),
         fold_episode_catchup: Default::default(),
         builtin_refit: BuiltinRefitSweep::default(), // P4.D292
@@ -374,6 +545,37 @@ pub async fn run_scheduled_maintenance(
                 "Terminal-session cleanup failed — continuing",
             );
             summary.failures.push("terminals".to_string());
+        }
+    }
+
+    // 6b. P4.D355 (v4 `85c002822`, `scheduled-maintenance.ts:268-279`):
+    // "Transcripts no row names. Chat deletes cascade `terminal_sessions` away
+    // without touching the files, so step 6 can never see them. A live PTY
+    // whose row went with its chat is spared."
+    //
+    // The `Err` arm is UNREACHABLE in v4 — its sweep's own `safeQuery`
+    // swallows a thrown listing to `{0, 0}` — and follows THIS file's standing
+    // error-shape note above (v5 records such failures in `failures`).
+    let is_live = |id: &str| probe.is_some_and(|p| p.is_live(id));
+    match sweep_orphaned_transcripts(
+        db,
+        transcripts,
+        &is_live,
+        queue_service::ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS,
+        now_ms,
+    )
+    .await
+    {
+        Ok((scanned, deleted)) => {
+            summary.orphaned_transcripts_swept = OrphanedTranscriptSweep { scanned, deleted }
+        }
+        Err(e) => {
+            tracing::warn!(
+                target: "quilltap::maintenance",
+                error = %e,
+                "Orphaned-transcript sweep failed — continuing",
+            );
+            summary.failures.push("orphan-transcripts".to_string());
         }
     }
 
@@ -541,6 +743,11 @@ pub async fn run_scheduled_maintenance(
             "rows": summary.terminal_rows,
             "transcripts": summary.terminal_transcripts,
         })),
+        // P4.D355: v4's slot, between `terminals` and `orphanedThumbnailsSwept`.
+        orphanedTranscriptsSweptJson = %json(serde_json::json!({
+            "scanned": summary.orphaned_transcripts_swept.scanned,
+            "deleted": summary.orphaned_transcripts_swept.deleted,
+        })),
         orphanedThumbnailsSweptJson = %json(serde_json::json!({
             "scanned": summary.orphaned_thumbnails_swept.scanned,
             "deleted": summary.orphaned_thumbnails_swept.deleted,
@@ -585,9 +792,9 @@ mod tests {
         calls: AtomicUsize,
     }
     impl TranscriptStore for RecordingStore {
-        fn unlink_transcript(&self, session_id: &str, _path: Option<&str>) -> bool {
+        fn unlink_transcript(&self, session_id: &str, _path: Option<&str>) -> Result<bool, String> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            session_id != self.missing_id
+            Ok(session_id != self.missing_id)
         }
     }
 
@@ -619,8 +826,8 @@ mod tests {
 
     struct NoTranscripts;
     impl TranscriptStore for NoTranscripts {
-        fn unlink_transcript(&self, _id: &str, _p: Option<&str>) -> bool {
-            false
+        fn unlink_transcript(&self, _id: &str, _p: Option<&str>) -> Result<bool, String> {
+            Ok(false)
         }
     }
 
@@ -644,6 +851,7 @@ mod tests {
                 1_900_000_000_000,
                 &NoTranscripts,
                 &NoBackend,
+                None,
             ))
         });
 
@@ -685,6 +893,25 @@ mod tests {
             "{done:?}"
         );
         assert!(done.contains("foldOtherCatchupJson="), "{done:?}");
+        // === P4.D355: step 6b's key in v4's slot ===
+        let terminals_at = done.find("terminalsJson=").expect("terminalsJson");
+        let orphans_at = done
+            .find(r#"orphanedTranscriptsSweptJson={"scanned":0,"deleted":0}"#)
+            .expect("orphanedTranscriptsSweptJson");
+        let thumbs_at = done
+            .find("orphanedThumbnailsSweptJson=")
+            .expect("orphanedThumbnailsSweptJson");
+        assert!(
+            terminals_at < orphans_at && orphans_at < thumbs_at,
+            "{done:?}"
+        );
+        // No transcript directory → the DEBUG, and no failure word.
+        assert!(
+            has("No terminal transcript directory; nothing to sweep"),
+            "{lines:?}"
+        );
+        assert!(!summary.failures.contains(&"orphan-transcripts".to_string()));
+        // === end P4.D355 ===
         assert!(done.contains("failuresJson="), "{done:?}");
         assert!(!done.contains("assets_files_deleted"), "{done:?}");
         // === P4.D292: step 10's key, after the fold catch-ups, before failures ===
@@ -817,6 +1044,7 @@ mod tests {
             now_ms,
             &NoTranscriptStore,
             &backend,
+            None,
         ));
 
         // jobs + assets + caches failed (missing chats/background_jobs tables);
@@ -839,5 +1067,191 @@ mod tests {
             .read_main(crate::db::instance_settings::get_last_maintenance_sweep_at)
             .unwrap();
         assert_eq!(stamp, Some(now_ms));
+    }
+
+    // === P4.D355 — v4 `terminal-transcript-orphan-sweep.test.ts` (`85c002822`)
+    // by name, over a `TranscriptStore` double ===
+
+    struct DirStore {
+        listing: Result<Option<Vec<TranscriptEntry>>, String>,
+        /// Names whose unlink answers ENOENT (`Ok(false)`) / another error.
+        vanished: Vec<String>,
+        failing: Vec<String>,
+        unlinked: std::sync::Mutex<Vec<String>>,
+    }
+    impl TranscriptStore for DirStore {
+        fn unlink_transcript(&self, _id: &str, path: Option<&str>) -> Result<bool, String> {
+            let path = path.unwrap().to_string();
+            if self.vanished.iter().any(|v| path.ends_with(v.as_str())) {
+                return Ok(false);
+            }
+            if self.failing.iter().any(|v| path.ends_with(v.as_str())) {
+                return Err("EACCES: permission denied".to_string());
+            }
+            self.unlinked.lock().unwrap().push(path);
+            Ok(true)
+        }
+        fn list_transcripts(&self) -> Result<Option<Vec<TranscriptEntry>>, String> {
+            self.listing.clone()
+        }
+        fn transcripts_dir_display(&self) -> String {
+            "/logs/terminals".to_string()
+        }
+    }
+
+    const NOW: i64 = 1_900_000_000_000;
+
+    fn entry(name: &str, age_ms: i64, is_file: bool) -> TranscriptEntry {
+        TranscriptEntry {
+            name: name.to_string(),
+            path: std::path::PathBuf::from(format!("/logs/terminals/{name}")),
+            is_file,
+            mtime_ms: NOW - age_ms,
+        }
+    }
+
+    fn store(listing: Result<Option<Vec<TranscriptEntry>>, String>) -> DirStore {
+        DirStore {
+            listing,
+            vanished: Vec::new(),
+            failing: Vec::new(),
+            unlinked: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+
+    fn sweep(
+        db: &Db,
+        store: &DirStore,
+        live: &[&str],
+    ) -> (Result<(usize, usize), String>, Vec<String>) {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        global_capture::install();
+        let live: Vec<String> = live.iter().map(|s| s.to_string()).collect();
+        let is_live = move |id: &str| live.iter().any(|l| l == id);
+        global_capture::capture(|| {
+            rt.block_on(sweep_orphaned_transcripts(
+                db,
+                store,
+                &is_live,
+                queue_service::ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS,
+                NOW,
+            ))
+        })
+    }
+
+    const HOUR: i64 = 60 * 60 * 1000;
+
+    #[test]
+    fn removes_only_old_unnamed_non_live_log_files() {
+        let (db, _scratch) = test_db();
+        seed_session(&db, "kept", None, None);
+        seed_session(
+            &db,
+            "named-by-path",
+            None,
+            Some("/logs/terminals/custom-name.log"),
+        );
+        let s = store(Ok(Some(vec![
+            entry("kept.log", 48 * HOUR, true),
+            entry("custom-name.log", 48 * HOUR, true),
+            entry("deleted-chat-session.log", 48 * HOUR, true),
+            entry("live-no-row.log", 48 * HOUR, true),
+            entry("spawning.log", 5 * 60 * 1000, true),
+            entry("init-deleted-chat-session.bashrc", 48 * HOUR, true),
+        ])));
+        let (out, lines) = sweep(&db, &s, &["live-no-row"]);
+        assert_eq!(out, Ok((5, 1)));
+        assert_eq!(
+            *s.unlinked.lock().unwrap(),
+            ["/logs/terminals/deleted-chat-session.log"]
+        );
+        let mine: Vec<&String> = lines
+            .iter()
+            .filter(|l| l.contains("quilltap::maintenance"))
+            .collect();
+        assert_eq!(
+            mine,
+            [
+                "DEBUG quilltap::maintenance Removed orphaned terminal transcript sessionId=deleted-chat-session \
+                 filePath=/logs/terminals/deleted-chat-session.log",
+                "DEBUG quilltap::maintenance Sparing transcript of a live PTY with no row sessionId=live-no-row",
+                "DEBUG quilltap::maintenance Sparing recently written orphan transcript sessionId=spawning",
+                "INFO quilltap::maintenance Swept orphaned terminal transcripts scanned=5 deleted=1",
+            ],
+            "{lines:?}"
+        );
+    }
+
+    #[test]
+    fn answers_zeros_without_reading_rows_when_the_directory_is_missing() {
+        // No `terminal_sessions` table at all: a rows read would FAIL, so a
+        // `(0, 0)` proves the rows were never read (v4: no `findAll` call).
+        let dir = tempfile::tempdir().unwrap();
+        let db = Db::open_main(
+            dir.path().join("main.db"),
+            "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=",
+        )
+        .unwrap();
+        let (out, lines) = sweep(&db, &store(Ok(None)), &[]);
+        assert_eq!(out, Ok((0, 0)));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|l| l.contains("quilltap::maintenance"))
+                .collect::<Vec<_>>(),
+            [
+                "DEBUG quilltap::maintenance No terminal transcript directory; nothing to sweep \
+              transcriptsDir=/logs/terminals"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_file_vanishing_between_listing_and_unlink_is_silent_and_uncounted() {
+        let (db, _scratch) = test_db();
+        let mut s = store(Ok(Some(vec![
+            entry("gone.log", 48 * HOUR, true),
+            entry("locked.log", 48 * HOUR, true),
+        ])));
+        s.vanished = vec!["gone.log".into()];
+        s.failing = vec!["locked.log".into()];
+        let (out, lines) = sweep(&db, &s, &[]);
+        assert_eq!(out, Ok((2, 0)));
+        assert!(
+            !lines.iter().any(|l| l.contains("sessionId=gone ")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.iter().any(|l| l
+                == "WARN quilltap::maintenance Failed to remove orphaned terminal transcript \
+                    sessionId=locked filePath=/logs/terminals/locked.log error=EACCES: permission denied"),
+            "{lines:?}"
+        );
+    }
+
+    /// Tier 3 item 27 — v4's `safeQuery` swallows a thrown listing (ERROR +
+    /// zeros), so v4's step-6b WARN / `orphan-transcripts` are unreachable;
+    /// v5 records the failure (this file's standing error-shape note).
+    #[test]
+    fn a_failed_listing_is_the_step_6b_failure() {
+        let (db, _scratch) = test_db();
+        let s = store(Err("EACCES".into()));
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        global_capture::install();
+        let (summary, lines) = global_capture::capture(|| {
+            rt.block_on(run_scheduled_maintenance(&db, NOW, &s, &NoBackend, None))
+        });
+        assert!(summary.failures.contains(&"orphan-transcripts".to_string()));
+        assert!(
+            lines.iter().any(|l| l
+                == "WARN quilltap::maintenance Orphaned-transcript sweep failed — continuing error=EACCES"),
+            "{lines:?}"
+        );
     }
 }

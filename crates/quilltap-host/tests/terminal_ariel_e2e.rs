@@ -8,8 +8,11 @@
 //! composition — reader thread → screen model → idle timer → summary → post →
 //! broadcast — lands the row and the frame end to end, with the RENDERED text
 //! (bug 255): the echoed command and its output as their own lines, no escape
-//! bytes. A second beat drives `kick_all_for_chat` against a pending timer
-//! flush — the per-session flush chain posts the summary ONCE (P4.D337 R-8).
+//! bytes. A second beat drives `terminate` (the `?action=kill` route's call)
+//! against a pending timer flush — the exit sequence's flush and the timer's
+//! share the per-session flush chain, which posts the summary ONCE (P4.D337
+//! R-8; re-aimed by P4.D355 from the retired `kick_all_for_chat`, whose own
+//! flush v4 `85c002822` deleted).
 //!
 //! Needs the differential's fixture (skips when unset):
 //!   QT_FIXTURE_ARIEL_MAIN=/tmp/qt-ariel-main.db \
@@ -148,10 +151,14 @@ async fn ariel_flush_posts_row_and_broadcasts_chat_update() {
     let _ = mgr.write(&meta.id, "exit\n");
 }
 
-/// P4.D337 R-8: a kick racing a pending timer flush posts ONE summary — the
-/// second flush waits for the first and finds nothing pending.
+/// P4.D337 R-8, re-aimed by P4.D355: a `terminate` racing a pending timer
+/// flush posts ONE summary — the SIGHUP ends the shell, its exit sequence
+/// flushes (`session-closed`) while the idle timer's flush is due, and the
+/// second waits for the first and finds nothing pending. (v4 `85c002822`
+/// removed the dispose path's own flush; the exit sequence is the flush a
+/// killed session still runs.)
 #[tokio::test(flavor = "multi_thread")]
-async fn a_kick_racing_a_timer_flush_posts_one_summary() {
+async fn a_terminate_racing_a_timer_flush_posts_one_summary() {
     let Ok(main_fixture) = std::env::var("QT_FIXTURE_ARIEL_MAIN") else {
         eprintln!("SKIP: set QT_FIXTURE_ARIEL_MAIN to the Ariel fixture .db (see header).");
         return;
@@ -208,9 +215,21 @@ async fn a_kick_racing_a_timer_flush_posts_one_summary() {
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    // Let the idle window nearly lapse, then kick: the two flushes overlap.
+    // Let the idle window nearly lapse, then terminate: the exit sequence's
+    // flush and the timer's overlap.
     tokio::time::sleep(Duration::from_millis(380)).await;
-    mgr.kick_all_for_chat(&spec.chat.id).await;
+    mgr.terminate(&meta.id, quilltap_host::terminal::TERMINATE_KILL_GRACE_MS);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    while mgr
+        .session_meta(&meta.id)
+        .is_none_or(|m| m.exited_at.is_none())
+    {
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "SIGHUP never ended the shell"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     tokio::time::sleep(Duration::from_millis(800)).await;
 
     let dump = db

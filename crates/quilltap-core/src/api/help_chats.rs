@@ -638,13 +638,24 @@ pub async fn help_chat_update_context(db: &Db, chat_id: &str, page_url: &Value) 
 /// v4 `handleDelete` (`[id]/route.ts:169-187`): verify; `chats.delete` false →
 /// `serverError('Failed to delete help chat')`; → `{ message: 'Help chat deleted
 /// successfully' }`.
-pub async fn help_chat_delete(db: &Db, chat_id: &str) -> Response {
+/// P4.D355 (Tier 2 item 21): v4 deletes through `ChatsRepository.delete`,
+/// which ends the chat's live terminals — v4's spawn route has no chat-type
+/// gate, so this chat CAN own one; `probe` reaches the shared hook.
+pub async fn help_chat_delete(
+    db: &Db,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
+    chat_id: &str,
+) -> Response {
     if let Err(r) = verify_help_chat(db, chat_id) {
         return r;
     }
     let cid = chat_id.to_string();
     match db.write(move |ws| ws.main().chats().delete(&cid)).await {
         Ok(true) => {
+            // Inside v4's `repos.chats.delete`, so BEFORE the route's INFO.
+            crate::services::conversation_summary_vault_bridge::dispose_deleted_chat_terminals(
+                probe, chat_id,
+            );
             tracing::info!(target: "quilltap::help", chat_id = %chat_id, "Help chat deleted");
             Response::HelpChat(json!({ "message": "Help chat deleted successfully" }))
         }
@@ -752,7 +763,7 @@ mod log_context_tests {
         assert!(matches!(created, Response::HelpChat(_)), "{created:?}");
         let _ = help_chat_rename(&db, H2, &json!("Renamed")).await;
         let _ = help_chat_update_context(&db, H2, &json!("/files")).await;
-        let _ = help_chat_delete(&db, H3).await;
+        let _ = help_chat_delete(&db, None, H3).await;
 
         let lines = logs.lock().unwrap().clone();
         for needle in [

@@ -957,6 +957,8 @@ impl EngineAssembler for HostAssembler {
                 transcripts_dir: self.base_dir.join("logs").join("terminals"),
             },
             crate::files_store::LocalStorageBackend::new(self.base_dir.join("files")),
+            // P4.D355: this assembly's manager, published on the slot above.
+            self.terminal_slot.lock().unwrap().clone(),
         ));
         // === P4.D292: the refit debounce driver (R-Q) ===
         self.rt
@@ -2821,12 +2823,64 @@ pub struct FsTranscriptStore {
 }
 
 impl TranscriptStore for FsTranscriptStore {
-    fn unlink_transcript(&self, session_id: &str, transcript_path: Option<&str>) -> bool {
+    /// P4.D355 (R-6): v4's three outcomes — removed / ENOENT (`Ok(false)`,
+    /// silent) / another error (`Err`, its text).
+    fn unlink_transcript(
+        &self,
+        session_id: &str,
+        transcript_path: Option<&str>,
+    ) -> Result<bool, String> {
         let path = transcript_path
             .filter(|p| !p.is_empty())
             .map(PathBuf::from)
             .unwrap_or_else(|| self.transcripts_dir.join(format!("{session_id}.log")));
-        std::fs::remove_file(&path).is_ok()
+        match std::fs::remove_file(&path) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// P4.D355 (contract C6): v4's `fs.readdir(transcriptsDir)` (ENOENT →
+    /// `None`) with each entry's `fs.stat` folded in (a failed stat reads as
+    /// not-a-file).
+    fn list_transcripts(
+        &self,
+    ) -> Result<Option<Vec<quilltap_core::services::scheduled_maintenance::TranscriptEntry>>, String>
+    {
+        let dir = match std::fs::read_dir(&self.transcripts_dir) {
+            Ok(dir) => dir,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.to_string()),
+        };
+        let mut out = Vec::new();
+        for entry in dir {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            let (is_file, mtime_ms) = match std::fs::metadata(&path) {
+                Ok(m) => (
+                    m.is_file(),
+                    m.modified()
+                        .ok()
+                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                        .map_or(0, |d| d.as_millis() as i64),
+                ),
+                Err(_) => (false, 0),
+            };
+            out.push(
+                quilltap_core::services::scheduled_maintenance::TranscriptEntry {
+                    name: entry.file_name().to_string_lossy().into_owned(),
+                    path,
+                    is_file,
+                    mtime_ms,
+                },
+            );
+        }
+        Ok(Some(out))
+    }
+
+    fn transcripts_dir_display(&self) -> String {
+        self.transcripts_dir.to_string_lossy().into_owned()
     }
 }
 
@@ -2840,7 +2894,12 @@ async fn maintenance_loop(
     interval_ms: u64,
     transcripts: FsTranscriptStore,
     backend: crate::files_store::LocalStorageBackend,
+    // P4.D355 (R-7): the assembly's live-PTY manager — step 6b's `isLive`.
+    terminals: Option<Arc<TerminalManager>>,
 ) {
+    let probe = terminals
+        .as_deref()
+        .map(|m| m as &dyn quilltap_core::services::ariel_notifications::TerminalLivenessProbe);
     if !sleep_or_stop(&mut stop, grace_ms).await {
         return;
     }
@@ -2849,13 +2908,13 @@ async fn maintenance_loop(
         .read_main(quilltap_core::db::instance_settings::get_last_maintenance_sweep_at)
         .unwrap_or(None); // read failure → run anyway (v4 warns + runs)
     if should_run_startup_tick(now, last) {
-        let _ = run_scheduled_maintenance(&db, now, &transcripts, &backend).await;
+        let _ = run_scheduled_maintenance(&db, now, &transcripts, &backend, probe).await;
     }
     loop {
         if !sleep_or_stop(&mut stop, interval_ms).await {
             break;
         }
-        let _ = run_scheduled_maintenance(&db, now_unix_ms(), &transcripts, &backend).await;
+        let _ = run_scheduled_maintenance(&db, now_unix_ms(), &transcripts, &backend, probe).await;
     }
 }
 

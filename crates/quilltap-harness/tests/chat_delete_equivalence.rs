@@ -109,6 +109,14 @@ const CHAT_STATE: &str = "c2000000-0000-4000-8000-000000000004";
 const CHAT_IMP: &str = "c2000000-0000-4000-8000-000000000005";
 const MISSING_ID: &str = "99999999-9999-4999-8999-999999999999";
 
+/// P4.D355: the `terminal_sessions` plant — two of CHAT_FULL, one stranger
+/// (the oracle's `TERMINAL_SESSION_PLANT`).
+const TERMINAL_SESSION_PLANT: [(&str, &str); 3] = [
+    ("d5500000-0000-4000-8000-000000000001", CHAT_FULL),
+    ("d5500000-0000-4000-8000-000000000002", CHAT_FULL),
+    ("d5500000-0000-4000-8000-000000000003", CHAT_SHARED),
+];
+
 const P_IMP_CLIO: &str = "e2000000-0000-4000-8000-000000000042";
 const P_UNKNOWN: &str = "e2000000-0000-4000-8000-0000000000de";
 const CONN_PROFILE: &str = "93000000-0000-4000-8000-000000000001";
@@ -160,6 +168,33 @@ fn fresh_db(spec: &Spec, tag: &str) -> (Db, tempfile::TempDir) {
     {
         let w = quilltap_core::db::Writer::open_writable(&main, &spec.test_pepper_base64).unwrap();
         quilltap_core::test_support::ensure_p4d171_columns(w.connection());
+        // P4.D355 (round ruling R-O): the committed fixture predates
+        // `terminal_sessions`. v5's side is the generateDDL shape v5
+        // provisions (`fresh_schema.json` — NO foreign key), so the oracle's
+        // FK cascade is matched only by `ChatsRepository::delete`'s explicit
+        // DELETE. The same three rows the oracle plants; self-checked.
+        w.connection()
+            .execute_batch(
+                r#"CREATE TABLE "terminal_sessions" (
+                  "id" TEXT PRIMARY KEY NOT NULL, "chatId" TEXT NOT NULL, "label" TEXT,
+                  "shell" TEXT NOT NULL, "cwd" TEXT NOT NULL, "startedAt" TEXT NOT NULL,
+                  "exitedAt" TEXT, "exitCode" REAL, "transcriptPath" TEXT, "cols" REAL,
+                  "rows" REAL, "createdAt" TEXT NOT NULL, "updatedAt" TEXT NOT NULL)"#,
+            )
+            .unwrap();
+        for (id, chat_id) in TERMINAL_SESSION_PLANT {
+            w.connection()
+                .execute(
+                    r#"INSERT INTO "terminal_sessions" ("id", "chatId", "shell", "cwd", "startedAt", "createdAt", "updatedAt") VALUES (?1, ?2, '/bin/sh', '/tmp', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"#,
+                    [id, chat_id],
+                )
+                .unwrap();
+        }
+        let n: i64 = w
+            .connection()
+            .query_row("SELECT COUNT(*) FROM terminal_sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(n, 3, "terminal_sessions plant");
     }
     let db = Db::open(
         DbPaths {
@@ -374,7 +409,9 @@ fn drive(
     body: Option<&Value>,
 ) -> (u16, Value) {
     match classify_delete_action(raw_action) {
-        Ok(action) => status_body(&rt.block_on(chat_delete_dispatch(db, chat_id, action, body))),
+        Ok(action) => {
+            status_body(&rt.block_on(chat_delete_dispatch(db, None, chat_id, action, body)))
+        }
         Err(RefusedDeleteAction { action }) => (
             400,
             json!({
@@ -840,6 +877,7 @@ fn chat_delete_log_lines() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             CHAT_FULL,
             DeleteAction::Delete,
             Some(&json!({})),
@@ -893,6 +931,7 @@ fn chat_delete_log_lines() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             MISSING_ID,
             DeleteAction::Delete,
             Some(&json!({})),
@@ -913,6 +952,7 @@ fn chat_delete_log_lines() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             CHAT_BROKEN,
             DeleteAction::Delete,
             Some(&json!({})),
@@ -989,6 +1029,7 @@ fn stop_impersonate_log_line() {
     let (response, lines) = quilltap_core::test_support::captured_with(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             CHAT_IMP,
             DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO })),
@@ -1019,6 +1060,7 @@ fn stop_impersonate_log_line() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             MISSING_ID,
             DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO })),
@@ -1034,6 +1076,7 @@ fn stop_impersonate_log_line() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             CHAT_IMP,
             DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_UNKNOWN })),
@@ -1051,6 +1094,7 @@ fn stop_impersonate_log_line() {
     let lines = quilltap_core::test_support::captured(|| {
         rt.block_on(chat_delete_dispatch(
             &db,
+            None,
             CHAT_IMP,
             DeleteAction::StopImpersonate,
             Some(&json!({ "participantId": P_IMP_CLIO, "newConnectionProfileId": MISSING_ID })),

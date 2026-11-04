@@ -63,6 +63,21 @@ pub enum ArielFlushReason {
 pub trait TerminalLivenessProbe: Send + Sync {
     /// Is there a live PTY session with this id?
     fn is_live(&self, session_id: &str) -> bool;
+
+    /// P4.D355 (contract C5; v4 `85c002822` `ptyManager.disposeChatSessions(
+    /// chatId)`, `pty-manager.ts:660-687` at `236c04e35`): "Terminate every
+    /// live session belonging to a chat that has been deleted, and drop them
+    /// from the map (their sockets are closed by onExit, so nothing would
+    /// unsubscribe them)." Answers how many were terminated. DEFAULTED to
+    /// `Ok(0)` so no other implementor moves (an unwired assembly is v4's
+    /// empty map — "In the job child the PTY map is empty"). The `Result` is
+    /// R-2's: v4's caller wraps the call in a try/catch whose WARN `Failed to
+    /// terminate terminal sessions for deleted chat` must have a LIVE home —
+    /// an implementor that can fail answers `Err(text)`; the host's manager
+    /// never does.
+    fn dispose_chat_sessions(&self, _chat_id: &str) -> Result<usize, String> {
+        Ok(0)
+    }
 }
 
 impl ArielFlushReason {

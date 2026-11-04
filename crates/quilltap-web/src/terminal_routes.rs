@@ -261,11 +261,20 @@ pub async fn terminal_post(
         Err(r) => return *r,
     };
     match action {
-        // v4 kill/signal both deliver through ptyManager.kill; the P4.1c
-        // manager's kill is SIGTERM (its documented signal — see the module
-        // note there on interactive shells).
+        // P4.D355 (v4 `85c002822`, `route.ts:76-100` at `236c04e35`): "End a
+        // session: SIGHUP, then SIGKILL if it is still running (see
+        // `terminate`)." Bug 268 — an interactive bash ignores SIGTERM.
         Some("kill") | Some("signal") => {
-            manager.kill(&id);
+            // v4's `[Terminals API] Killing session` DEBUG (a P4.2-era absence
+            // closed in passing — Tier 2 item 20), with the route's
+            // `terminals-api` child binding.
+            tracing::debug!(
+                target: "quilltap::terminal",
+                module = "terminals-api",
+                sessionId = %id,
+                "[Terminals API] Killing session"
+            );
+            manager.terminate(&id, quilltap_host::terminal::TERMINATE_KILL_GRACE_MS);
             ok_json(StatusCode::OK, json!({ "ok": true }))
         }
         Some("write") => {
@@ -300,8 +309,9 @@ pub async fn terminal_delete(
         return error_json(StatusCode::NOT_FOUND, "Terminal session not found");
     }
     // v4: kill (the exit sequence posts the close announcement + persists the
-    // exit state), then delete the row.
-    manager.kill(&id);
+    // exit state), then delete the row. P4.D355 (v4 `85c002822`, `route.ts:
+    // 192`): through `terminate` — SIGHUP, then SIGKILL after the grace.
+    manager.terminate(&id, quilltap_host::terminal::TERMINATE_KILL_GRACE_MS);
     let sid = id.clone();
     let deleted = db
         .write(move |writers| {

@@ -148,8 +148,16 @@ pub async fn chat_delete(
         Ok((db, _)) => db,
         Err(r) => return *r,
     };
+    // P4.D355 (C5): the host's terminal manager, so a deleted chat's live
+    // shells are ended (v4 `85c002822` — `ChatsRepository.delete` disposes on
+    // EVERY delete, this REST edge's included); `None` without a host terminal
+    // subsystem.
+    let terminals = state.host().and_then(|h| h.terminal_manager());
     let resp = quilltap_core::api::chat_delete::chat_delete_dispatch(
         &db,
+        terminals
+            .as_deref()
+            .map(|m| m as &dyn quilltap_core::services::ariel_notifications::TerminalLivenessProbe),
         &chat_id,
         action,
         json_body.as_ref(),

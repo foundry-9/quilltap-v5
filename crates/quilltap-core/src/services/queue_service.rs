@@ -1737,6 +1737,13 @@ pub const STALE_CHAT_RETENTION_DAYS: i64 = 30;
 /// v4 `CLOSED_TERMINAL_RETENTION_DAYS`.
 pub const CLOSED_TERMINAL_RETENTION_DAYS: i64 = 30;
 
+/// P4.D355 — v4 `ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS` (`85c002822`,
+/// `retention-constants.ts:67-72` at `236c04e35`): "A transcript in
+/// `logs/terminals/` that no `terminal_sessions` row names is swept once it
+/// has gone this long unwritten. The grace covers the spawn window: the PTY
+/// manager opens the transcript before it inserts the row."
+pub const ORPHAN_TERMINAL_TRANSCRIPT_GRACE_MS: i64 = 60 * 60 * 1000;
+
 /// v4 `DAY_MS`.
 pub const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 

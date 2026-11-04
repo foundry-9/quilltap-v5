@@ -375,6 +375,7 @@ async fn the_data_tick_step_ten_matches_v4() {
                 quilltap_core::clock::now_unix_ms(),
                 &quilltap_core::services::scheduled_maintenance::NoTranscriptStore,
                 &backend,
+                None,
             ),
         )
         .await;

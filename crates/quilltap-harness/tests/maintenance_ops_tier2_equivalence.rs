@@ -34,7 +34,7 @@
 
 use quilltap_core::clock::now_unix_ms;
 use quilltap_core::db::runtime::{Db, DbPaths};
-use quilltap_core::services::scheduled_maintenance::{run_scheduled_maintenance, TranscriptStore};
+use quilltap_core::services::scheduled_maintenance::run_scheduled_maintenance;
 use quilltap_host::files_store::LocalStorageBackend;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -61,20 +61,43 @@ fn oracle_line(text: &str, kind: &str) -> Value {
     panic!("oracle ndjson missing kind {kind}");
 }
 
-/// The host's fs transcript store, mirrored locally (the harness does not
-/// depend on quilltap-host): unlink the explicit path, else the default
-/// `<dir>/<id>.log`; only a real removal counts.
-struct FsStore {
-    dir: std::path::PathBuf,
-}
-impl TranscriptStore for FsStore {
-    fn unlink_transcript(&self, session_id: &str, transcript_path: Option<&str>) -> bool {
-        let path = transcript_path
-            .filter(|p| !p.is_empty())
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| self.dir.join(format!("{session_id}.log")));
-        std::fs::remove_file(&path).is_ok()
+/// P4.D355: step 6b's six lines (v4 `terminal-sessions.repository.ts:
+/// 203-275`), as the oracle's spliced sink keeps them.
+const SWEEP_LINES: &[&str] = &[
+    "No terminal transcript directory; nothing to sweep",
+    "Sparing transcript of a live PTY with no row",
+    "Sparing recently written orphan transcript",
+    "Removed orphaned terminal transcript",
+    "Failed to remove orphaned terminal transcript",
+    "Swept orphaned terminal transcripts",
+];
+
+/// A captured `LEVEL target message k=v …` line → the oracle's `{level,
+/// message, fields}` shape (numbers as numbers, `filePath` / `transcriptsDir`
+/// reduced to their basenames — each side's scratch dir differs).
+fn sweep_line(line: &str) -> Option<Value> {
+    let message = SWEEP_LINES.iter().find(|m| line.contains(*m))?;
+    let level = line.split(' ').next()?.to_lowercase();
+    let rest = &line[line.find(message)? + message.len()..];
+    let mut fields = serde_json::Map::new();
+    for pair in rest.split_whitespace() {
+        let (k, v) = pair.split_once('=')?;
+        let v = if k == "filePath" || k == "transcriptsDir" {
+            json!(v.rsplit('/').next().unwrap_or(v))
+        } else if let Ok(n) = v.parse::<i64>() {
+            json!(n)
+        } else {
+            json!(v)
+        };
+        fields.insert(k.to_string(), v);
     }
+    Some(json!({ "level": level, "message": message, "fields": fields }))
+}
+
+/// Order-insensitive (the listing order is the filesystem's, not the code's).
+fn sorted(mut v: Vec<Value>) -> Vec<Value> {
+    v.sort_by_key(|x| x.to_string());
+    v
 }
 
 #[test]
@@ -147,9 +170,34 @@ fn maintenance_ops_match_oracle() {
         .enable_all()
         .build()
         .unwrap();
-    let store = FsStore {
-        dir: transcripts_dir.clone(),
+    // The HOST's real store (P4.D355 — contract C6's implementor), not a
+    // local mirror.
+    let store = quilltap_host::host::FsTranscriptStore {
+        transcripts_dir: transcripts_dir.clone(),
     };
+    // P4.D355 (v4 `85c002822`, bug 267): step 6b's corpus, the oracle's
+    // `orphanCorpus` byte for byte — mtimes set the same distance into the
+    // past (`File::set_modified`; no `filetime` dependency, R-14).
+    let now = std::time::SystemTime::now();
+    let orphan_corpus: [(&str, u64); 4] = [
+        ("a0000000-0000-4000-8000-0000000000d4.log", 48 * 3600 * 1000),
+        ("b0000000-0000-4000-8000-0000000000e1.log", 48 * 3600 * 1000),
+        ("b0000000-0000-4000-8000-0000000000e2.log", 5 * 60 * 1000),
+        (
+            "init-b0000000-0000-4000-8000-0000000000e1.bashrc",
+            48 * 3600 * 1000,
+        ),
+    ];
+    for (name, age_ms) in orphan_corpus {
+        let p = transcripts_dir.join(name);
+        std::fs::write(&p, format!("transcript {name}\n")).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(now - std::time::Duration::from_millis(age_ms))
+            .unwrap();
+    }
 
     // Bug 43: the orphan-thumbnail sweep corpus, on disk under `<files>/_thumbnails/`
     // (the local backend base). Mirrors the oracle case: a LIVE entry (its fileId
@@ -175,12 +223,17 @@ fn maintenance_ops_match_oracle() {
     std::fs::write(thumbs_dir.join("bad-name.webp"), "garbage").unwrap();
     let backend = LocalStorageBackend::new(files_dir.clone());
 
-    let summary = rt.block_on(run_scheduled_maintenance(
-        &db,
-        now_unix_ms(),
-        &store,
-        &backend,
-    ));
+    // `None`: v4's oracle runs with an empty PTY map.
+    quilltap_core::test_support::global_capture::install();
+    let (summary, lines) = quilltap_core::test_support::global_capture::capture(|| {
+        rt.block_on(run_scheduled_maintenance(
+            &db,
+            now_unix_ms(),
+            &store,
+            &backend,
+            None,
+        ))
+    });
 
     // 1) Summary equality (v4 camelCase shape).
     let got_summary = json!({
@@ -217,6 +270,13 @@ fn maintenance_ops_match_oracle() {
             "unparseable": summary.orphaned_thumbnails_swept.unparseable,
         },
         "terminals": { "rows": summary.terminal_rows, "transcripts": summary.terminal_transcripts },
+        // P4.D355 (v4 `85c002822`): step 6b — measured at the pin `{scanned:
+        // 3, deleted: 1}` (d4's file named by id, the 48 h orphan, the 5-min
+        // one; the `.bashrc` is never scanned).
+        "orphanedTranscriptsSwept": {
+            "scanned": summary.orphaned_transcripts_swept.scanned,
+            "deleted": summary.orphaned_transcripts_swept.deleted,
+        },
         // P4.D270 (v4 `d58548051`): sweep 8, the fold-grain OTHER idle
         // catch-up. Measured at the pin: the fixture's chats are outside the
         // 2 h – 30 d window, so v4 enqueues nothing (`{0, 0}`).
@@ -313,6 +373,31 @@ fn maintenance_ops_match_oracle() {
         json!({ "defaultGone": !default_transcript.exists(), "explicitGone": !explicit.exists() }),
         json!({ "defaultGone": want_tr["defaultGone"], "explicitGone": want_tr["explicitGone"] }),
         "transcript outcomes diverged"
+    );
+    // P4.D355: which step-6b files remain, and its log lines.
+    let remaining: Vec<&str> = orphan_corpus
+        .iter()
+        .map(|(n, _)| *n)
+        .filter(|n| transcripts_dir.join(n).exists())
+        .collect();
+    assert_eq!(
+        json!(remaining),
+        want_tr["remaining"],
+        "step-6b files diverged"
+    );
+    let got_lines: Vec<Value> = lines.iter().filter_map(|l| sweep_line(l)).collect();
+    let want_lines = oracle_line(&oracle_text, "sweep_logs")["lines"]
+        .as_array()
+        .expect("sweep_logs")
+        .clone();
+    assert!(
+        !want_lines.is_empty(),
+        "the oracle captured no step-6b line (a vacuous pass)"
+    );
+    assert_eq!(
+        sorted(got_lines),
+        sorted(want_lines),
+        "step-6b log lines diverged"
     );
 
     drop(db);

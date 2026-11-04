@@ -3512,8 +3512,8 @@ impl CoreEngine {
                 Err(r) => r,
             },
             // === P4.80: the chat DELETE (dogfood finding #117) ===
-            Request::ChatDelete { chat_id } => match self.ready_db() {
-                Ok(db) => super::chat_delete::chat_delete(&db, &chat_id).await,
+            Request::ChatDelete { chat_id } => match self.ready_db_and_terminal_probe() {
+                Ok((db, probe)) => super::chat_delete::chat_delete(&db, probe.as_deref(), &chat_id).await,
                 Err(r) => r,
             },
             // === end P4.80 ===
@@ -6434,8 +6434,8 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::BrahmaConsoleDelete { chat_id } => match self.ready_db() {
-                Ok(db) => super::brahma::brahma_console_delete(&db, SINGLE_USER_ID, &chat_id).await,
+            Request::BrahmaConsoleDelete { chat_id } => match self.ready_db_and_terminal_probe() {
+                Ok((db, probe)) => super::brahma::brahma_console_delete(&db, probe.as_deref(), SINGLE_USER_ID, &chat_id).await,
                 Err(r) => r,
             },
             Request::BrahmaConsoleMessages { chat_id } => match self.ready_db() {
@@ -6529,8 +6529,8 @@ impl CoreEngine {
                 }
                 Err(r) => r,
             },
-            Request::HelpChatDelete { chat_id } => match self.ready_db() {
-                Ok(db) => super::help_chats::help_chat_delete(&db, &chat_id).await,
+            Request::HelpChatDelete { chat_id } => match self.ready_db_and_terminal_probe() {
+                Ok((db, probe)) => super::help_chats::help_chat_delete(&db, probe.as_deref(), &chat_id).await,
                 Err(r) => r,
             },
             Request::HelpChatMessages { chat_id } => match self.ready_db() {

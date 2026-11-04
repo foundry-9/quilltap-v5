@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — fix(terminal): Kill and DELETE send SIGHUP then SIGKILL; deleting a chat ends its shells and rows; the daily orphan-transcript sweep (P4.D355, v4 85c002822, bugs 267 / 268)
+
+_Versions: core 0.0.1382, host 0.0.219, web 0.0.252._
+
+Ports v4 `85c002822` at the `236c04e35` pin. `TerminalManager::terminate(id, grace_ms)` sends SIGHUP (an interactive bash ignores SIGTERM) and, on a detached thread, SIGKILL after `TERMINATE_KILL_GRACE_MS` (3 s) if the session has not exited, with v4's `[PTY]` lines; both `POST /terminals/{id}?action=kill` and `DELETE /terminals/{id}` use it, and the kill route logs `[Terminals API] Killing session`. The unused async `kick_all_for_chat` is replaced by the synchronous `dispose_chat_sessions` (terminate and drop each of the chat's sessions, no Ariel flush). Contract C5: `TerminalLivenessProbe::dispose_chat_sessions` (defaulted `Ok(0)`) is called after a chat row is deleted, from the chat cascade, the REST chat delete, the Brahma Console delete and the help-chat delete, with v4's `Failed to terminate terminal sessions for deleted chat` WARN on an error. Round ruling R-O: `ChatsRepository::delete` deletes the chat's `terminal_sessions` rows, the cascade v4's migration FK provides and v5's generateDDL table lacks (`delete_by_chat_id`). Contract C6: `TranscriptStore::list_transcripts` (host `FsTranscriptStore`) feeds the new daily-maintenance step 6b, `sweep_orphaned_transcripts`, which removes `<id>.log` transcripts no row names after a one-hour grace, sparing live sessions; the summary gains `orphanedTranscriptsSwept {scanned, deleted}` and the failure word `orphan-transcripts`. `unlink_transcript` now reports removed / already-gone / error. Harness: `chat_delete_equivalence` plants sessions through v4's real migration (FK) against v5's generateDDL table; `maintenance_ops_tier2_equivalence` plants v4's orphan corpus with mtimes and compares the sweep's lines; host and web tests mirror v4's termination, dispose and orphan-sweep tests.
+
 #### 2026-11-04 — feat(backup): the Log rides a logical backup; the restore's step 22n-quater; restored uploads extracted through the indexed bridges (P4.D355, v4 cc5f2347c + H1)
 
 _Versions: core 0.0.1381._

@@ -347,6 +347,34 @@ impl<'c> TerminalSessionsRepository<'c> {
             .execute("DELETE FROM terminal_sessions WHERE id = ?1", params![id])?;
         Ok(affected > 0)
     }
+
+    /// P4.D355 (round ruling R-O) — v4 `deleteByChatId` (`terminal-sessions.
+    /// repository.ts:277-300` at `236c04e35`): "Delete all sessions for a chat
+    /// (cascade cleanup)." One statement where v4 loops `findByChatId` +
+    /// `delete` (the same rows go); answers the changed count. The caller is
+    /// `ChatsRepository::delete`, where this IS the FK cascade v4's migrated
+    /// table carries and v5's generateDDL-provisioned one does not.
+    pub fn delete_by_chat_id(&self, chat_id: &str) -> Result<usize, DbError> {
+        Ok(self.conn.execute(
+            "DELETE FROM terminal_sessions WHERE chatId = ?1",
+            params![chat_id],
+        )?)
+    }
+}
+
+/// P4.D355 — v4's base `findAll()` over `terminal_sessions` (the orphan
+/// transcript sweep's `rows = await this.findAll()`, `terminal-sessions.
+/// repository.ts:222`): every row, in the backend's default (rowid) order —
+/// the sweep only builds two sets from it, so the order is not observable.
+pub fn find_all(conn: &Connection) -> Result<Vec<TerminalSessionRow>, DbError> {
+    let sql = format!("SELECT {SELECT_COLS} FROM terminal_sessions");
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], row_from)?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
 }
 
 /// The exit-stamp update the PTY manager's `onExit` handler and the terminal

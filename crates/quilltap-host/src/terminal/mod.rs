@@ -93,6 +93,11 @@ pub const ARIEL_FLUSH_IDLE: Duration = Duration::from_millis(30_000);
 /// is at least this old.
 pub const ARIEL_FLUSH_MAX_AGE: Duration = Duration::from_millis(120_000);
 
+/// v4 `TERMINATE_KILL_GRACE_MS` (`85c002822`, `pty-manager.ts:39-41` at
+/// `236c04e35`): "`terminate` sends SIGHUP (an interactive bash ignores
+/// SIGTERM), then SIGKILL if the process is still running after this long."
+pub const TERMINATE_KILL_GRACE_MS: u64 = 3_000;
+
 /// Constructor parameters (directories passed in — the path resolution lives in
 /// lane d's `paths` module; this module never reads it).
 #[derive(Clone)]
@@ -202,8 +207,7 @@ struct SessionShared {
     notify: Notify,
     /// v4's per-session `arielFlush` promise chain: held across a pending
     /// flush's summary + post, so flushes post in order and a caller that must
-    /// wait for the in-flight one (`kick_all_for_chat`, the exit sequence)
-    /// does.
+    /// wait for the in-flight one (the exit sequence) does.
     ariel_flush: tokio::sync::Mutex<()>,
     exited: AtomicBool,
     /// Child pid for signal delivery (unix `SIGTERM`).
@@ -705,25 +709,70 @@ impl TerminalManager {
         .await;
     }
 
-    /// v4 `kill(id)` — send `SIGTERM` (the only signal v4 callers use). Unknown
-    /// sessions and signal failures are logged-and-ignored in v4; here they are
-    /// silent no-ops (host logging is P4.2+).
+    /// v4 `kill(id)` — send `SIGTERM`. Unknown sessions and signal failures
+    /// are logged-and-ignored in v4; here they are silent no-ops. Since
+    /// `85c002822` no route calls it (both use [`Self::terminate`]).
     pub fn kill(&self, id: &str) {
         let Some(shared) = self.get_session(id) else {
             return;
         };
-        #[cfg(unix)]
-        {
-            if let Some(pid) = shared.pid {
-                // SAFETY: plain kill(2) with a caught return value.
-                let rc = unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
-                if rc == 0 {
-                    return;
-                }
+        let _ = signal(&shared, SignalKind::Term);
+    }
+
+    /// v4 `terminate(id, graceMs = TERMINATE_KILL_GRACE_MS)` (`85c002822`,
+    /// `pty-manager.ts:629-658` at `236c04e35`): "End a session the way
+    /// closing a terminal window does: SIGHUP, which an interactive shell
+    /// honours and passes on to its jobs (it ignores SIGTERM), then SIGKILL if
+    /// the process has not exited after `graceMs`. The session's own onExit
+    /// handler does the rest (transcript close, exit state, Ariel's
+    /// announcement)." Rust has no default arguments — every caller passes
+    /// [`TERMINATE_KILL_GRACE_MS`].
+    ///
+    /// The escalation is a DETACHED `std::thread` (R-3 — v4's
+    /// `setTimeout(...).unref()`; no runtime handle needed, so an axum handler
+    /// and the chat delete can both call this). It holds the
+    /// `Arc<SessionShared>` it captured, so a session DROPPED from the map by
+    /// [`Self::dispose_chat_sessions`] still escalates (v4: "Escalation still
+    /// reaches a dropped session that ignored SIGHUP").
+    ///
+    /// `TERMINATE_NON_UNIX_IS_KILLER` (Tier 3, recorded): where the pid is
+    /// unknown or off unix there is no SIGHUP to send, so the first signal
+    /// falls through to the portable-pty killer — a hard kill at once, no
+    /// grace; the caller's contract ("the session ends") holds.
+    pub fn terminate(&self, id: &str, grace_ms: u64) {
+        let Some(shared) = self.get_session(id) else {
+            tracing::debug!(
+                target: "quilltap::terminal",
+                module = "pty-manager",
+                sessionId = %id,
+                "[PTY] Terminate requested for unknown session"
+            );
+            return;
+        };
+        let _ = signal(&shared, SignalKind::Hup);
+        let session_id = id.to_string();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(grace_ms));
+            if shared.meta.lock().expect("meta lock").exited_at.is_some() {
+                return;
             }
-        }
-        // Windows / signal-failure fallback: the portable-pty killer.
-        let _ = shared.killer.lock().expect("killer lock").kill();
+            tracing::warn!(
+                target: "quilltap::terminal",
+                module = "pty-manager",
+                sessionId = %session_id,
+                graceMs = grace_ms,
+                "[PTY] Session ignored SIGHUP; sending SIGKILL"
+            );
+            if let Err(error) = signal(&shared, SignalKind::Kill) {
+                tracing::warn!(
+                    target: "quilltap::terminal",
+                    module = "pty-manager",
+                    sessionId = %session_id,
+                    error = %error,
+                    "[PTY] Failed to send SIGKILL"
+                );
+            }
+        });
     }
 
     /// v4 `subscribe(id, ws)` — refuse unknown or exited sessions; otherwise
@@ -807,12 +856,16 @@ impl TerminalManager {
         }
     }
 
-    /// v4 `kickAllForChat(chatId)` — drain each session's pending Ariel buffer
-    /// synchronously with the kick (not whenever the OS reaps the process),
-    /// send SIGTERM, and drop the map entries. The exit sequence still runs
-    /// from the reader thread when the process dies (the DB exit stamp + close
-    /// announcement land there, exactly as v4's `onExit` closure does).
-    pub async fn kick_all_for_chat(&self, chat_id: &str) {
+    /// v4 `disposeChatSessions(chatId)` (`85c002822`, `pty-manager.ts:660-687`
+    /// at `236c04e35`) — REPLACES `kickAllForChat` (its Ariel flush, SIGTERM
+    /// and `[PTY] Kicked all sessions for chat` INFO are v4-DELETED). "Terminate
+    /// every live session belonging to a chat that has been deleted, and drop
+    /// them from the map (their sockets are closed by onExit, so nothing would
+    /// unsubscribe them). Called by `ChatsRepository.delete` after the row is
+    /// gone, so the exit handlers' announcements and exit-state writes find no
+    /// chat and no row, and skip. The transcripts are left for the maintenance
+    /// tick's orphan sweep." SYNC, NO Ariel flush. Answers the count.
+    pub fn dispose_chat_sessions(&self, chat_id: &str) -> usize {
         let ids: Vec<String> = {
             let sessions = self.sessions.lock().expect("sessions lock");
             sessions
@@ -821,14 +874,27 @@ impl TerminalManager {
                 .map(|(id, _)| id.clone())
                 .collect()
         };
-
-        for id in ids {
-            if let Some(shared) = self.get_session(&id) {
-                flush_ariel(&self.db, &shared, ArielFlushReason::SessionClosed).await;
-            }
-            self.kill(&id);
-            self.sessions.lock().expect("sessions lock").remove(&id);
+        for id in &ids {
+            self.terminate(id, TERMINATE_KILL_GRACE_MS);
+            self.sessions.lock().expect("sessions lock").remove(id);
         }
+        if !ids.is_empty() {
+            tracing::info!(
+                target: "quilltap::terminal",
+                module = "pty-manager",
+                chatId = %chat_id,
+                count = ids.len(),
+                "[PTY] Terminated sessions of deleted chat"
+            );
+        } else {
+            tracing::debug!(
+                target: "quilltap::terminal",
+                module = "pty-manager",
+                chatId = %chat_id,
+                "[PTY] No live sessions for deleted chat"
+            );
+        }
+        ids.len()
     }
 
     /// The reconcile pass for a chat (v4 `reconcileTerminalSessionsForChat`),
@@ -845,6 +911,49 @@ impl TerminalLivenessProbe for TerminalManager {
     fn is_live(&self, session_id: &str) -> bool {
         self.contains(session_id)
     }
+
+    /// Contract C5 — the chat delete's disposer. The manager never fails.
+    fn dispose_chat_sessions(&self, chat_id: &str) -> Result<usize, String> {
+        Ok(TerminalManager::dispose_chat_sessions(self, chat_id))
+    }
+}
+
+/// The three signals the manager sends.
+#[derive(Clone, Copy)]
+enum SignalKind {
+    Term,
+    Hup,
+    Kill,
+}
+
+/// Deliver `kind` to the session's child: unix `kill(2)` when the pid is
+/// known (`0` = done); otherwise — or when `kill(2)` fails — the portable-pty
+/// killer (a hard kill). `Err` only when that killer fails.
+fn signal(shared: &Arc<SessionShared>, kind: SignalKind) -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = shared.pid {
+            let sig = match kind {
+                SignalKind::Term => libc::SIGTERM,
+                SignalKind::Hup => libc::SIGHUP,
+                SignalKind::Kill => libc::SIGKILL,
+            };
+            // SAFETY: plain kill(2) with a caught return value.
+            let rc = unsafe { libc::kill(pid as libc::pid_t, sig) };
+            if rc == 0 {
+                return Ok(());
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = kind;
+    // Windows / no-pid / signal-failure fallback: the portable-pty killer.
+    shared
+        .killer
+        .lock()
+        .expect("killer lock")
+        .kill()
+        .map_err(|e| e.to_string())
 }
 
 fn default_shell() -> String {

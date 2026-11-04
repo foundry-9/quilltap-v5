@@ -35,6 +35,7 @@ import {
   writeFileSync,
   existsSync,
   rmSync,
+  utimesSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 
@@ -70,7 +71,9 @@ async function main(): Promise<void> {
   process.env.SQLITE_MOUNT_INDEX_PATH = workMount;
   process.env.QUILLTAP_DATA_DIR = scratch;
   delete process.env.SQLITE_WAL_MODE;
-  process.env.LOG_LEVEL = 'error';
+  // P4.D355: `debug`, so step 6b's six lines reach the spliced sink below
+  // (only those six are kept; nothing is written to stdout by the logger).
+  process.env.LOG_LEVEL = 'debug';
 
   // The transcript files: the default-path one (t-old-default) and the pinned
   // explicit-path one (t-old-explicit). t-old-nofile gets NO file (ENOENT).
@@ -83,6 +86,26 @@ async function main(): Promise<void> {
   writeFileSync(defaultTranscript, 'old default-path transcript\n');
   if (existsSync(spec.explicitTranscriptPath)) rmSync(spec.explicitTranscriptPath);
   writeFileSync(spec.explicitTranscriptPath, 'old explicit-path transcript\n');
+
+  // P4.D355 (v4 `85c002822`, bug 267): step 6b's orphan-transcript corpus,
+  // mirroring v4's own `terminal-transcript-orphan-sweep.test.ts`. Step 6 runs
+  // first (its reaped rows' files are gone by 6b), so: the SURVIVING row d4's
+  // transcript (named by id → scanned, spared silently), an ORPHAN 48 h
+  // unwritten (deleted), an orphan written 5 min ago (spared by the 1 h
+  // grace), and a shell-init artifact (not a `.log` → not even scanned).
+  const nowMs = Date.now();
+  const orphanCorpus: Array<[string, number]> = [
+    ['a0000000-0000-4000-8000-0000000000d4.log', 48 * 3600 * 1000],
+    ['b0000000-0000-4000-8000-0000000000e1.log', 48 * 3600 * 1000],
+    ['b0000000-0000-4000-8000-0000000000e2.log', 5 * 60 * 1000],
+    ['init-b0000000-0000-4000-8000-0000000000e1.bashrc', 48 * 3600 * 1000],
+  ];
+  for (const [name, ageMs] of orphanCorpus) {
+    const p = join(transcriptsDir, name);
+    writeFileSync(p, `transcript ${name}\n`);
+    const t = new Date(nowMs - ageMs);
+    utimesSync(p, t, t);
+  }
 
   // Bug 43: the orphan-thumbnail sweep corpus, on disk under
   // `<QUILLTAP_DATA_DIR>/files/_thumbnails/` (the local backend's base). A LIVE
@@ -108,6 +131,36 @@ async function main(): Promise<void> {
     '@/lib/background-jobs/scheduled-maintenance'
   );
   const { getLastMaintenanceSweepAt } = await import('@/lib/instance-settings');
+
+  // P4.D355: splice a sink into the singleton logger's shared transports
+  // (children included) and keep step 6b's six lines — `{level, message,
+  // fields}` with the child bindings dropped and `filePath` / `transcriptsDir`
+  // reduced to their basenames (each side's scratch dir differs).
+  const SWEEP_LINES = new Set([
+    'No terminal transcript directory; nothing to sweep',
+    'Sparing transcript of a live PTY with no row',
+    'Sparing recently written orphan transcript',
+    'Removed orphaned terminal transcript',
+    'Failed to remove orphaned terminal transcript',
+    'Swept orphaned terminal transcripts',
+  ]);
+  const sweepLogs: Array<Record<string, unknown>> = [];
+  const { logger } = await import('@/lib/logger');
+  const internal = logger as unknown as { transports: Array<{ write: (d: unknown) => void }> };
+  internal.transports.splice(0, internal.transports.length, {
+    write: (d: unknown) => {
+      const data = d as { level: string; message: string; context?: Record<string, unknown> };
+      if (!SWEEP_LINES.has(data.message)) return;
+      const { service: _s, module: _m, environment: _e, ...fields } = (data.context ?? {}) as Record<
+        string,
+        unknown
+      >;
+      for (const k of ['filePath', 'transcriptsDir']) {
+        if (typeof fields[k] === 'string') fields[k] = (fields[k] as string).split('/').pop();
+      }
+      sweepLogs.push(JSON.parse(JSON.stringify({ level: data.level, message: data.message, fields })));
+    },
+  });
 
   await initializeDatabase();
 
@@ -145,8 +198,11 @@ async function main(): Promise<void> {
       kind: 'transcripts',
       defaultGone: !existsSync(defaultTranscript),
       explicitGone: !existsSync(spec.explicitTranscriptPath),
+      // P4.D355: the step-6b corpus — which files remain.
+      remaining: orphanCorpus.map(([name]) => name).filter((n) => existsSync(join(transcriptsDir, n))),
     }) + '\n',
   );
+  process.stdout.write(JSON.stringify({ kind: 'sweep_logs', lines: sweepLogs }) + '\n');
 
   await closeMountIndexSQLiteClient();
   await closeDatabase();

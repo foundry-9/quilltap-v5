@@ -1634,6 +1634,25 @@ impl<'c> ChatsRepository<'c> {
             );
         }
         // === end P4.D343 ===
+        // === P4.D355 (round ruling R-O; v4 `85c002822`'s premise) ===
+        // On v4 the FK does this — `add-terminal-sessions-table` declares
+        // `FOREIGN KEY ("chatId") REFERENCES "chats" ("id") ON DELETE CASCADE`
+        // (`docs/developer/DDL.md:887-903` at `236c04e35`). **On v5 this call
+        // IS the cascade**: `fresh_schema.json` renders `terminal_sessions` with
+        // no foreign key. Without it a deleted chat leaks every session row, and
+        // the orphan-transcript sweep's premise ("a transcript no row names")
+        // never arises. Best-effort with v5's own warn (R-15 — v4's FK has no
+        // failure arm, so this line is NOT a v4 line), like the two above.
+        if let Err(e) = super::terminal_sessions::TerminalSessionsRepository::new(self.conn)
+            .delete_by_chat_id(id)
+        {
+            tracing::warn!(
+                chat_id = %id,
+                error = %e,
+                "[Chats] Failed to delete terminal sessions for chat"
+            );
+        }
+        // === end P4.D355 ===
         Ok(true)
     }
 
@@ -2580,5 +2599,70 @@ mod storyteller_column_tests {
             .unwrap();
         assert_eq!(row["storytellerInviteFilter"], false);
         assert_eq!(row["turnMode"], "storyteller");
+    }
+}
+
+#[cfg(test)]
+mod terminal_sessions_cascade_tests {
+    //! P4.D355 (round ruling R-O): `delete` IS the `terminal_sessions` cascade
+    //! on v5 — v4's migration-created table carries `ON DELETE CASCADE`, v5's
+    //! generateDDL-provisioned one no FK. The tier-2 proof against v4's FK is
+    //! `chat_delete_equivalence`; this pins the statement and v5's own WARN
+    //! (R-15 — not a v4 line).
+    use super::*;
+
+    fn tables(conn: &Connection, with_sessions: bool) {
+        conn.execute_batch(
+            "CREATE TABLE chats (id TEXT PRIMARY KEY);
+             CREATE TABLE chat_messages (id TEXT, chatId TEXT);
+             CREATE TABLE conversation_annotations (id TEXT, chatId TEXT);
+             CREATE TABLE chat_informs (id TEXT, chatId TEXT);
+             INSERT INTO chats VALUES ('c1'), ('c2');",
+        )
+        .unwrap();
+        if with_sessions {
+            conn.execute_batch(
+                "CREATE TABLE terminal_sessions (id TEXT PRIMARY KEY, chatId TEXT);
+                 INSERT INTO terminal_sessions VALUES ('s1', 'c1'), ('s2', 'c1'), ('s3', 'c2');",
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn a_deleted_chat_takes_its_terminal_session_rows_and_leaves_the_others() {
+        let conn = Connection::open_in_memory().unwrap();
+        tables(&conn, true);
+        let (deleted, lines) =
+            crate::test_support::captured_with(|| ChatsRepository::new(&conn).delete("c1"));
+        assert!(deleted.unwrap());
+        let left: Vec<String> = conn
+            .prepare("SELECT id FROM terminal_sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(left, ["s3"]);
+        assert!(
+            !lines.iter().any(|l| l.contains("terminal sessions")),
+            "the silence leg: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn a_failed_session_sweep_warns_and_the_delete_still_succeeds() {
+        let conn = Connection::open_in_memory().unwrap();
+        tables(&conn, false);
+        let (deleted, lines) =
+            crate::test_support::captured_with(|| ChatsRepository::new(&conn).delete("c1"));
+        assert!(deleted.unwrap());
+        assert!(
+            lines.iter().any(|l| l.starts_with("WARN ")
+                && l.contains("[Chats] Failed to delete terminal sessions for chat")
+                && l.contains("chat_id=c1")
+                && l.contains("no such table: terminal_sessions")),
+            "{lines:?}"
+        );
     }
 }

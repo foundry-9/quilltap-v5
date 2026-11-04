@@ -464,7 +464,7 @@ fn help_chats_routes_match_oracle() {
         ("delete_salon_404", SALON),
     ] {
         let db = fresh_db(&spec, name);
-        let r = rt.block_on(help_chats::help_chat_delete(&db, chat));
+        let r = rt.block_on(help_chats::help_chat_delete(&db, None, chat));
         check(name, &r, false, None);
     }
 

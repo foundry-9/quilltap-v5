@@ -444,12 +444,27 @@ async fn ariel_max_age_flush_fires_under_steady_drip() {
     let _ = mgr.write(&meta.id, "\u{3}exit\n");
 }
 
+/// P4.D355 (v4 `85c002822`, `pty-termination.test.ts` — "disposeChatSessions
+/// terminates only the chat's sessions and drops them from the map"; "returns
+/// 0 for a chat with none"). Re-aimed from the retired `kick_all_for_chat`
+/// beat: two sessions of the chat, one of another → `2`, the chat's gone from
+/// the map, the stranger alive; the INFO at `count=2`; a chat with none → `0`
+/// + the DEBUG. The reaped children still stamp their rows through the exit
+/// sequence (this fixture's rows survive — no chat delete runs here).
 #[tokio::test(flavor = "multi_thread")]
-async fn kick_all_for_chat_removes_and_kills() {
+async fn dispose_chat_sessions_terminates_only_the_chats_sessions_and_drops_them() {
+    global_lines();
     let inst = test_instance();
     let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
-    let meta1 = spawn_or_skip!(mgr, sh_opts());
-    let meta2 = spawn_or_skip!(
+    let chat = "c0000001-0000-4000-8000-0000000000d1";
+    let opts = || SpawnOptions {
+        chat_id: chat.to_string(),
+        shell: Some("/bin/sh".to_string()),
+        ..Default::default()
+    };
+    let meta1 = spawn_or_skip!(mgr, opts());
+    let meta2 = spawn_or_skip!(mgr, opts());
+    let other = spawn_or_skip!(
         mgr,
         SpawnOptions {
             chat_id: "other-chat".to_string(),
@@ -457,28 +472,154 @@ async fn kick_all_for_chat_removes_and_kills() {
             ..Default::default()
         }
     );
-
-    // SIGTERM-killable stand-in for the interactive shell (see the kill test).
-    assert!(mgr.write(&meta1.id, "exec sleep 1000\n"));
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    mgr.kick_all_for_chat(CHAT_ID).await;
-    assert!(!mgr.contains(&meta1.id), "kicked session left the map");
-    assert!(mgr.contains(&meta2.id), "other chat untouched");
+    assert_eq!(mgr.dispose_chat_sessions(chat), 2);
+    assert!(
+        !mgr.contains(&meta1.id) && !mgr.contains(&meta2.id),
+        "dropped from the map"
+    );
+    assert!(mgr.list().iter().all(|m| m.chat_id != chat));
+    assert!(
+        mgr.contains(&other.id),
+        "the other chat's session untouched"
+    );
+    let info: Vec<String> = global_lines()
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.contains(&format!("chatId={chat}")))
+        .cloned()
+        .collect();
+    assert_eq!(
+        info,
+        [format!(
+            "INFO quilltap::terminal [PTY] Terminated sessions of deleted chat module=pty-manager \
+             chatId={chat} count=2"
+        )]
+    );
+    for id in [&meta1.id, &meta2.id] {
+        assert!(
+            wait_until(
+                || read_row(&inst.db, id)
+                    .map(|r| r.exited_at.is_some())
+                    .unwrap_or(false),
+                Duration::from_secs(10),
+            )
+            .await,
+            "a disposed session (SIGHUP ends the interactive sh) still stamps its row"
+        );
+    }
 
-    // The reaped child still stamps its row via the exit sequence.
+    let none = "c0000001-0000-4000-8000-0000000000d2";
+    assert_eq!(mgr.dispose_chat_sessions(none), 0);
+    let debug: Vec<String> = global_lines()
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.contains(&format!("chatId={none}")))
+        .cloned()
+        .collect();
+    assert_eq!(
+        debug,
+        [format!(
+            "DEBUG quilltap::terminal [PTY] No live sessions for deleted chat module=pty-manager chatId={none}"
+        )]
+    );
+    let _ = mgr.write(&other.id, "exit\n");
+}
+
+/// P4.D355 (v4 `85c002822`, `pty-termination.test.ts` — "terminate sends
+/// SIGHUP, then SIGKILL after the grace"). A process that IGNORES SIGHUP
+/// survives the first signal; after the grace the WARN fires (on the
+/// escalation THREAD — the process-wide capture) and SIGKILL ends it.
+#[tokio::test(flavor = "multi_thread")]
+async fn terminate_escalates_to_sigkill_when_sighup_is_ignored() {
+    global_lines();
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let meta = spawn_or_skip!(mgr, sh_opts());
+    // The ignored disposition survives `exec`, so the session's own pid
+    // becomes a `sleep` that ignores SIGHUP.
+    assert!(mgr.write(&meta.id, "exec sh -c 'trap \"\" HUP; exec sleep 30'\n"));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    mgr.terminate(&meta.id, 300);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    assert!(
+        mgr.session_meta(&meta.id)
+            .expect("in map")
+            .exited_at
+            .is_none(),
+        "alive after SIGHUP"
+    );
+    let mgr2 = Arc::clone(&mgr);
+    let id = meta.id.clone();
     assert!(
         wait_until(
-            || read_row(&inst.db, &meta1.id)
-                .map(|r| r.exited_at.is_some())
-                .unwrap_or(false),
-            Duration::from_secs(10),
+            move || mgr2
+                .session_meta(&id)
+                .is_some_and(|m| m.exited_at.is_some()),
+            Duration::from_secs(5)
         )
         .await,
-        "kicked session's exit sequence still stamped the row"
+        "SIGKILL after the grace ends it"
     );
+    assert_eq!(
+        lines_with("[PTY] Session ignored SIGHUP", &meta.id),
+        [format!(
+            "WARN quilltap::terminal [PTY] Session ignored SIGHUP; sending SIGKILL module=pty-manager \
+             sessionId={} graceMs=300",
+            meta.id
+        )]
+    );
+    assert!(lines_with("[PTY] Failed to send SIGKILL", &meta.id).is_empty());
+}
 
-    let _ = mgr.write(&meta2.id, "exit\n");
+/// P4.D355 (v4 `pty-termination.test.ts` — "does not escalate once the
+/// session has exited"): a process that honours SIGHUP exits at once, and no
+/// WARN follows the grace (the silence leg).
+#[tokio::test(flavor = "multi_thread")]
+async fn terminate_does_not_escalate_once_the_session_has_exited() {
+    global_lines();
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let meta = spawn_or_skip!(mgr, sh_opts());
+    assert!(mgr.write(&meta.id, "exec sleep 30\n"));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    mgr.terminate(&meta.id, 1000);
+    let mgr2 = Arc::clone(&mgr);
+    let id = meta.id.clone();
+    assert!(
+        wait_until(
+            move || mgr2
+                .session_meta(&id)
+                .is_some_and(|m| m.exited_at.is_some()),
+            Duration::from_millis(900)
+        )
+        .await,
+        "SIGHUP alone ends it, inside the grace"
+    );
+    tokio::time::sleep(Duration::from_millis(1500)).await;
+    assert!(lines_with("[PTY] Session ignored SIGHUP", &meta.id).is_empty());
+}
+
+/// P4.D355 (v4 `pty-termination.test.ts` — "ignores an unknown id"): the
+/// DEBUG, no panic, no thread.
+#[tokio::test(flavor = "multi_thread")]
+async fn terminate_logs_and_ignores_an_unknown_session() {
+    global_lines();
+    let inst = test_instance();
+    let mgr = manager_with(&inst, Duration::from_secs(30), Duration::from_secs(120));
+    let id = "0e000000-0000-4000-8000-0000000000e9";
+    mgr.terminate(id, 10);
+    assert_eq!(
+        lines_with("[PTY] Terminate requested for unknown session", id),
+        [format!(
+            "DEBUG quilltap::terminal [PTY] Terminate requested for unknown session module=pty-manager sessionId={id}"
+        )]
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -773,8 +914,9 @@ async fn the_summary_taken_line_and_its_silence() {
     );
     assert!(taken[0].starts_with(&prefix), "{}", taken[0]);
 
-    // Silence: nothing pending → the kick's flush takes no summary.
-    mgr.kick_all_for_chat("log-chat").await;
+    // P4.D355: the dispose that replaced v4's `kickAllForChat` FLUSHES
+    // NOTHING (v4 `85c002822` deleted the flush) — no summary taken by it.
+    mgr.dispose_chat_sessions("log-chat");
     tokio::time::sleep(Duration::from_millis(200)).await;
     assert_eq!(lines_with("[PTY] Ariel summary taken", &meta.id).len(), 1);
 }

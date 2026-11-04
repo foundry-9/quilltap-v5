@@ -29,7 +29,15 @@ use super::types::{ErrorKind, Response};
 use super::zod_issues::{key, zod_uuid_ok, ZodIssue};
 
 /// v4 `handleDelete` with no `?action=` (`delete.ts:48-63`).
-pub async fn chat_delete(db: &Db, chat_id: &str) -> Response {
+///
+/// P4.D355 (contract C5): `probe` is the host's live-PTY manager, handed to
+/// the cascade so a deleted chat's live terminals are ended (v4 `85c002822`);
+/// `None` where no terminal subsystem is wired.
+pub async fn chat_delete(
+    db: &Db,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
+    chat_id: &str,
+) -> Response {
     // v4 reads the row first and answers `notFound('Chat')` — i.e. the literal
     // `Chat not found` — before it touches the cascade.
     let id_owned = chat_id.to_string();
@@ -42,7 +50,7 @@ pub async fn chat_delete(db: &Db, chat_id: &str) -> Response {
         }
     }
 
-    match delete_conversation_with_vault_sweep(db, chat_id, true).await {
+    match delete_conversation_with_vault_sweep(db, chat_id, true, probe).await {
         // v4's `repos.chats.delete` returning `false` means the row vanished
         // between the read and the delete. v4 ignores the boolean and answers
         // `{success: true}` regardless — the row is gone either way, which is
@@ -192,6 +200,9 @@ fn parse_stop_impersonate(body: &Value) -> Result<(String, Option<String>), Valu
 /// lesson: a transport-only composite is a composite no oracle measures).
 pub async fn chat_delete_dispatch(
     db: &Db,
+    // P4.D355 (C5): the live-PTY manager the delete leg disposes a deleted
+    // chat's terminals through — the REST edge's twin of the engine arm's.
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
     chat_id: &str,
     // Classified by [`classify_delete_action`]; a refused action never gets
     // here (the transport answers v4's envelope first).
@@ -238,6 +249,6 @@ pub async fn chat_delete_dispatch(
                 Err(issues) => Response::validation_error(issues),
             }
         }
-        DeleteAction::Delete => chat_delete(db, chat_id).await,
+        DeleteAction::Delete => chat_delete(db, probe, chat_id).await,
     }
 }

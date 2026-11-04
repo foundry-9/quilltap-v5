@@ -442,15 +442,51 @@ pub async fn remove_conversation_summaries_from_vaults(
     }
 }
 
+/// P4.D355 (contract C5) — v4 `ChatsRepository.delete`'s terminal hook
+/// (`chats.repository.ts:349-360` at `236c04e35`), the ONE home for every v5
+/// twin of that delete (this module's cascade, the Brahma Console's and the
+/// help chats' deletes): call only after the row is gone; v4's catch arm is
+/// the WARN. `None` — no terminal subsystem — does nothing.
+pub fn dispose_deleted_chat_terminals(
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
+    chat_id: &str,
+) {
+    if let Some(probe) = probe {
+        if let Err(error) = probe.dispose_chat_sessions(chat_id) {
+            tracing::warn!(
+                target: "quilltap::db",
+                chatId = %chat_id,
+                error = %error,
+                "Failed to terminate terminal sessions for deleted chat"
+            );
+        }
+    }
+}
+
 /// v4 `ChatsRepository.delete(id, { syncVaults })`: capture participants BEFORE
 /// the row is gone, delete the chat row + its messages, then (when `sync_vaults`)
 /// sweep the conversation's summary file out of each participant vault. Returns
 /// whether the chat row was deleted. This closes the last Phase-2 deferral (the
 /// `chats.delete` participant-vault sweep).
+///
+/// P4.D355 (contract C5; v4 `85c002822`, `chats.repository.ts:349-360` at
+/// `236c04e35`): once the row is gone, the chat's live terminals are ended
+/// through `probe` — "End the chat's live terminals. The FK cascade has
+/// removed their `terminal_sessions` rows, so a shell left running would keep
+/// writing a transcript nothing names." v4's hook sits INSIDE `ChatsRepository
+/// .delete`; v5's `db/chats.rs::delete` runs on the writer thread with no probe
+/// in reach, so it lands HERE, this function being v4's `delete(id,
+/// {syncVaults})` twin (R-4) — right after the row delete answers `true` and
+/// before the messages delete, v4's position. No row deleted → no call (v4's
+/// `if (!result) return false` precedes the hook). `None` is v4's job child
+/// ("In the job child the PTY map is empty" — NO-PORT: v5 has no forked child,
+/// the `CHILD_BUFFER_VISIBILITY` class) and every caller with no terminal
+/// subsystem.
 pub async fn delete_conversation_with_vault_sweep(
     db: &Db,
     chat_id: &str,
     sync_vaults: bool,
+    probe: Option<&dyn crate::services::ariel_notifications::TerminalLivenessProbe>,
 ) -> Result<bool, DbError> {
     // Capture participants first (read fails closed — no participants → no cleanup).
     let mut participant_character_ids: Vec<String> = Vec::new();
@@ -481,6 +517,10 @@ pub async fn delete_conversation_with_vault_sweep(
     if !deleted {
         return Ok(false);
     }
+
+    // === P4.D355 (C5) — v4 `chats.repository.ts:349-360` ===
+    dispose_deleted_chat_terminals(probe, chat_id);
+    // === end P4.D355 ===
 
     // Delete the chat's messages (best-effort — v4 warns and continues). The
     // warn was DROPPED in the original port and restored by P4.80, which gave
@@ -601,5 +641,110 @@ mod tests {
             "systemKind": "custom-tool-result",
             "customAnnouncer": { "kind": "character", "characterId": "a1" }
         })));
+    }
+}
+
+#[cfg(test)]
+mod dispose_terminals_tests {
+    //! P4.D355 (contract C5) — v4 `chats-delete-terminals.test.ts` (`85c002822`)
+    //! by name: the disposer runs after the row is gone; NOT when no row was
+    //! deleted; the delete still succeeds when the disposer throws (the WARN).
+    use super::*;
+    use crate::db::runtime::DbPaths;
+    use crate::services::ariel_notifications::TerminalLivenessProbe;
+    use std::sync::Mutex;
+
+    const PEPPER: &str = "dGVzdHBlcHBlcnRlc3RwZXBwZXJ0ZXN0cGVwcGVyMDE=";
+
+    struct Stub {
+        answer: Result<usize, String>,
+        calls: Mutex<Vec<String>>,
+    }
+    impl TerminalLivenessProbe for Stub {
+        fn is_live(&self, _: &str) -> bool {
+            false
+        }
+        fn dispose_chat_sessions(&self, chat_id: &str) -> Result<usize, String> {
+            self.calls.lock().unwrap().push(chat_id.to_string());
+            self.answer.clone()
+        }
+    }
+
+    fn db() -> (tempfile::TempDir, Db) {
+        let dir = tempfile::tempdir().unwrap();
+        let main = dir.path().join("main.db");
+        {
+            let w = crate::db::Writer::open_writable(&main, PEPPER).unwrap();
+            w.connection()
+                .execute_batch(
+                    "CREATE TABLE chats (id TEXT PRIMARY KEY);
+                     CREATE TABLE chat_messages (id TEXT, chatId TEXT);
+                     CREATE TABLE conversation_annotations (id TEXT, chatId TEXT);
+                     CREATE TABLE chat_informs (id TEXT, chatId TEXT);
+                     CREATE TABLE terminal_sessions (id TEXT, chatId TEXT);
+                     INSERT INTO chats VALUES ('c1');",
+                )
+                .unwrap();
+        }
+        let db = Db::open(
+            DbPaths {
+                main,
+                mount_index: None,
+                llm_logs: None,
+            },
+            PEPPER,
+        )
+        .unwrap();
+        (dir, db)
+    }
+
+    fn stub(answer: Result<usize, String>) -> Stub {
+        Stub {
+            answer,
+            calls: Mutex::new(Vec::new()),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn terminates_the_chats_terminal_sessions_after_the_row_is_gone() {
+        let (_dir, db) = db();
+        let probe = stub(Ok(2));
+        let (out, lines) = crate::test_support::global_capture::capture_async(
+            delete_conversation_with_vault_sweep(&db, "c1", false, Some(&probe)),
+        )
+        .await;
+        assert!(out.unwrap());
+        assert_eq!(*probe.calls.lock().unwrap(), ["c1"]);
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("Failed to terminate terminal sessions")),
+            "the silence leg: {lines:?}"
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn leaves_terminals_alone_when_no_chat_was_deleted() {
+        let (_dir, db) = db();
+        let probe = stub(Ok(0));
+        let out = delete_conversation_with_vault_sweep(&db, "missing", false, Some(&probe)).await;
+        assert!(!out.unwrap());
+        assert!(probe.calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn still_deletes_the_chat_when_terminating_the_terminals_throws() {
+        let (_dir, db) = db();
+        let probe = stub(Err("boom".to_string()));
+        let (out, lines) = crate::test_support::global_capture::capture_async(
+            delete_conversation_with_vault_sweep(&db, "c1", false, Some(&probe)),
+        )
+        .await;
+        assert!(out.unwrap());
+        assert!(
+            lines.iter().any(|l| l
+                == "WARN quilltap::db Failed to terminate terminal sessions for deleted chat chatId=c1 error=boom"),
+            "{lines:?}"
+        );
     }
 }

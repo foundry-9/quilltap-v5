@@ -169,6 +169,13 @@ async function respond(r: unknown): Promise<{ status: number; body: unknown }> {
 
 const CHAT_ROUTE = '@/app/api/v1/chats/[id]/route';
 
+/** P4.D355: the `terminal_sessions` plant — two of CHAT_FULL, one stranger. */
+const TERMINAL_SESSION_PLANT: Array<[string, string]> = [
+  ['d5500000-0000-4000-8000-000000000001', CHAT_FULL],
+  ['d5500000-0000-4000-8000-000000000002', CHAT_FULL],
+  ['d5500000-0000-4000-8000-000000000003', CHAT_SHARED],
+];
+
 /**
  * The whole-DB census, executed from the SAME SQL both sides read. Run over the
  * raw encrypted handles rather than the repositories, so a row a repository
@@ -261,6 +268,41 @@ async function runCase(
   process.env.SQLITE_PATH = mainWork;
   process.env.SQLITE_MOUNT_INDEX_PATH = mountWork;
   process.env.SQLITE_LLM_LOGS_PATH = llmWork;
+
+  // P4.D355 (round ruling R-O): the committed fixture predates
+  // `terminal_sessions`, so EVERY case creates it on its per-case copy through
+  // v4's REAL migrations (`add-terminal-sessions-table` declares `FOREIGN KEY
+  // ("chatId") REFERENCES "chats" ("id") ON DELETE CASCADE` — the cascade v5's
+  // explicit DELETE stands in for) and plants two sessions of CHAT_FULL plus
+  // one of CHAT_SHARED. Self-checked: three rows before the route runs.
+  {
+    const utils = (await import('@/migrations/lib/database-utils')) as unknown as {
+      getSQLiteDatabase: () => {
+        prepare: (s: string) => { run: (...a: unknown[]) => unknown; get: () => { n: number } };
+      };
+      closeSQLite: () => void;
+    };
+    const { addTerminalSessionsTableMigration } = await import(
+      '@/migrations/scripts/add-terminal-sessions-table'
+    );
+    const { addTerminalSessionGeometryMigration } = await import(
+      '@/migrations/scripts/add-terminal-session-geometry-v1'
+    );
+    for (const m of [addTerminalSessionsTableMigration, addTerminalSessionGeometryMigration]) {
+      if (!(await m.shouldRun())) throw new Error(`${m.id} would not run on the fixture copy`);
+      const r = await m.run();
+      if (!r.success) throw new Error(`${m.id} failed: ${JSON.stringify(r)}`);
+    }
+    const raw = utils.getSQLiteDatabase();
+    const insert = raw.prepare(
+      'INSERT INTO "terminal_sessions" ("id", "chatId", "shell", "cwd", "startedAt", "createdAt", "updatedAt") ' +
+        "VALUES (?, ?, '/bin/sh', '/tmp', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')",
+    );
+    for (const [id, chatId] of TERMINAL_SESSION_PLANT) insert.run(id, chatId);
+    const n = raw.prepare('SELECT COUNT(*) AS n FROM "terminal_sessions"').get().n;
+    if (n !== TERMINAL_SESSION_PLANT.length) throw new Error(`terminal_sessions plant: ${n} rows`);
+    utils.closeSQLite();
+  }
 
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
   const { closeMountIndexSQLiteClient } = await import(
