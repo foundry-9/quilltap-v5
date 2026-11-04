@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — docs(porting): P4.D352 lane record and status header — LANE COMPLETE
+
+_Docs-only change._
+
+Appends the P4.D352 lane record to `status-log.md`: the §2 probe observation, the pin and the plugin-SDK ENOTCACHED ruling outcome, every red-first count, the three corpora's provenance and regen recipes, the recorded adapter divergence and the Tier 3 record, the two v5 gaps retired, two v4 filing candidates (not filed), the Playwright results incl. the gate-true flip, the HANDOFF table (H-1 … H-5, with H-2 as an applicable patch), the dogfood rows and the versions. Marks the order LANE COMPLETE.
+
 #### 2026-11-03 — test(e2e): the punctuation-warning and Novel-template beats, the server-dependent ones gated (P4.D352)
 
 _Versions: SPA 0.5.918._

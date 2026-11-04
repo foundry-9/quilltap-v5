@@ -193888,6 +193888,155 @@ The human ruled the escalated F-1 item (the `322a5488e` follow-ups unification) 
   - The red-first core unit `update_for_user_mints_a_new_row_past_a_refused_first_row` pins the per-call mint (three rows after two calls, the refused row untouched).
 - **Versions:** core 0.0.1379.
 
+## P4.D352 — the composer SPA: punctuation lint, prose mode, the Novel template's SPA half (lane `claude/p4.d352-composer-spa-897691`, pin `236c04e35`, 2026-11-03/04) — LANE RECORD
+
+**Where the session started / moved:** started on `main` at `8976915ea` (the rulings commit, the orders' tip) in the main checkout; the lane worked in `.claude/worktrees/p4d352` on `claude/p4.d352-composer-spa-897691`, cut from `8976915ea` (wave 1 per the launch brief; stacking role none). Nothing pushed; `main` untouched.
+
+### The §2 probe (an observation, §R.2) and the pin
+
+- **v4 moved:** at 2026-11-03 23:38 CST `git log 236c04e35..main` lists v4 through `013b99b5d` ("dev: started 4.13.0 development") — 4.12.0 released (`7bdb45873`) and merged back (`b37769882`), including the Playwright removal, the npm dependency update and the 4.12 refactor series (#131–#143); the `bugfix` branch is at `5cde81c68` ("bugfix: started 4.12.0 bug branch"). **Tree clean**; branch `main`. Recorded only — the lane ports `236c04e35`.
+- **Pin** `/tmp/qt-v4-pin-p4d352-236c04e35`: `rev-parse` = `236c04e35ab23ccc604fd188e5b73d0141066697`, `package.json` `4.12.0-dev.0`. Root `npm ci --offline --no-audit --no-fund` **rc 0 in 7 s** (the R-0 cache gap was already closed by the human's one online `npm ci` before lane start); verified `openai` 7.45.0, `better-sqlite3` 12.11.1, `katex` 0.19.1 at the ROOT and 0.16.47 nested under `rehype-katex` 7.0.1, `zod` 4.6.7.
+- **Pin ruling (human, 2026-11-02):** symlink classes (2) and (3) (the CLI and plugin `node_modules`) NOT used — live v4 re-installed both past the pin. After the root `npm ci --offline`, `.claude/pin-plugin-sdks.sh "$PIN"` was run as ruled: **rc 1, `ENOTCACHED`** on its first dir (`@quilltap/plugin-utils` packument — the same wall P4.D359 recorded). This lane needs neither the plugin nor the CLI dirs (the recorder needs no `node_modules`; the renderer capture imports only `lib/` through the ROOT `node_modules`), so it proceeded with the root install alone.
+- The import-dead check: `git ls-tree 236c04e35 -- lib/services/markdown-renderer.service.ts lib/chat/novel-template.ts lib/punctuation-lint/engine.ts lib/punctuation-lint/prose-mode.ts` — all four present at the pin.
+
+### Units (commit order; SPA 0.5.907 → 0.5.917)
+
+1. `3696ee596` — the engine + prose mode, byte-copied (`engine.ts` md5 `67b5ffa3…` / `prose-mode.ts` md5 `029100cf…` at the pin; only the header re-pointed — `diff` against the pin shows the three header hunks and nothing else; NOT reformatted to the SPA's semicolon style because nothing in `npm run lint` enforces one and a byte copy is the stronger claim). Both vector files `cp`'d (md5 `746a4c8d5075e7e6b0f14caa936952ba`, `5d5849b3eb1a262538efc2b8ce05b683` — equal to the order's). `engine.spec.ts` (v4's 7 `it`s + `cases.length === 35`, the prose tables 10 + 8, the no-imports source check over both files) + `prose-mode.spec.ts` (v4's 4). **Red-first:** the directory did not exist on `main`. 67 tests green on the first run; no vector row red.
+2. `ea4db3014` — `harness/oracle/cases/punctuation-lint-engine.mjs` (**this is "P4.D352's tsx leaf recorder" §S.2 names** — a Node-24-type-stripping `.mjs`, no tsx needed) → `engine.v4.json`, **1,214 rows** (1,163 `lint` / 38 `classify` / 13 `prose`): both vector corpora (asserted equal to `expect` at the pin — 0 mismatches), 30 generated drafts × (caret none + every offset) × prose on/off, `classifyProse` over each, `isProseTemplate` over Novel's set + 12 near misses. `_source` = `{checkout, pin: 236c04e35, files, engineMd5, proseModeMd5}` — **deviation from the order: no `recordedAt`** (a wall-clock stamp would break the unifier's §S.2 byte-compare; the output is deterministic — a second run `cmp`s equal). **Mutant:** `glued-quote` → `floating-quote` in `lintQuotes` → **23 of 1,215 red**; reverted.
+3. `3cc1f3b3f` — `editor/punctuation-lint-plugin.ts` (ruling R-2, the RECORDED adapter divergence) + `rich-editor.ts`'s `punctuationLint` input (null = inert; an `effect` dispatches the `refresh` meta on a change; the plugin is LAST in `buildPlugins()`). **Fidelity choice recorded:** the order suggested dropping v4's per-text-node segment table because ProseMirror positions map 1:1; the adapter KEEPS v4's `domPoint` rule (a range whose start or end falls in masked inline code or on a non-text inline node is dropped), so it paints exactly the issues v4 paints. **Measured in the view (jsdom DOM; ProseMirror's own decoration merge, identical in Chromium):** two inline decorations over the same run are MERGED into ONE `<span>` carrying every class (`class="qt-punctuation-no-dialogue qt-composer-narration qt-punctuation-warning"`) and the LAST-added `title` (the warning's) — no nesting. So the class rules' declaration order (ascending priority) is what resolves overlaps — R-2's merged-attributes case. Spec: v4's 12 cases + title / log-once / null-inert / refresh. **Red-first:** `rich-editor.spec.ts`'s new case failed to compile (NG8002 — no such input).
+4. `74d68587d` — `readPunctuationWarnings` + the service's third signal + the card's fourth toggle (v4's heading and paragraph; `onUpdate` unchanged, now a four-key bag) + the fenced `chat-settings.types.ts` key. **Red-first:** `smart-typography-settings.spec.ts` 5 red (`checkboxes().length` was **3**; two whole-bag PUT cases now four-key); `settings.spec.ts` compile-red (`readPunctuationWarnings` absent).
+5. `eb8a09917` — the composer's `proseMode` / `markdownAsterisks` inputs, the memoised `punctuationLint` computed, the toolbar's Bold withhold. **Red-first:** toolbar 1 red, composer 3 red. **Measured state until H-2:** the lint paints with prose mode OFF and Bold always shows in the Salon (the composer's inputs default `false` / `true`).
+6. `23cca9cf0` — the renderer (ruling R-3). **Red-first on `main`:** `roleplay-rendering.spec.ts` (new) — the five-scope narrowing case **1 red**; `typography.spec.ts` — the Novel-dialogue and `\u`-escape rows **2 red** (the one-curly-form row green, as designed). After the port, the existing 67 fixtures: **66 green, 1 red** (`escapes-in-brackets`) — root-caused against v4 BEFORE any re-capture: running the UNMODIFIED capture from the pin moved exactly that row (v4 at the pin also nests `*softly*` inside the `[…]` narration span — `778b97b2b`'s nesting reaching the DEFAULT patterns) and no other, so the commit carries the pin's re-captured 67 (66 byte-stable).
+7. `d786a936a` — the capture widened: `NOVEL_TEMPLATE` imported from the pin's `lib/chat/novel-template.ts`, 40 rows added (sample + 15 arms with `-reset` twins + line-rule strip + depth cap + `emphasis-in-ooc-in-dialogue` + `quotes-on-novel-dialogue` pair): **67 → 107; the 67 byte-stable** against the step-6 commit; every `math-*` row stable (R-7: no katex move). **Novel `renderingPatterns` JSON md5 `e297b28f41310f17176ed100887c37f1`** (H-1). Order of events: item 6 landed against the 67 first; the Novel rows were then captured and were green against the port on arrival. **Against `main`'s renderer** (the three source files swapped back temporarily): **22 red** (21 Novel rows + `escapes-in-brackets`). **Mutant** (the open-tag stack dropped): **17 red**. `markdown-renderer.spec.ts` pins 107 rows / 67 option-bearing / 38 `template-novel-*`. Tier 2 item 4 rode here: `roleplay-rendering.spec.ts` transcribes v4's `novel-template.test.ts` shared-core + post-pass cases (the patterns read from the captured fixture, never hand-derived) + the walk invariants (zero-length skip, children-only-when-styled, the depth cap).
+8. `276a63ad3` — the template editor + the C7 fence (R-11: BOTH — `UnmarkedStyle` added in a `// === P4.D352 ===` fence after `RoleplayTemplateUpdateBag`; the six existing types widened in place, each line marked `// P4.D352 (C7)`). `STYLE_OPTIONS` / `FONT_OPTIONS` moved to `template-form.ts` (one source; `Plain` first). NEW `template-add-ons-editor.ts` (module-counter ids — the SPA has no `UniqueId` service; measured). **Red-first:** `template-form.spec.ts` compile-red (no `none` mode, no flags, no `unmarkedFromForm`); at runtime `narrationToForm(null)` would have answered `{mode: 'single', open: '*', close: '*'}`; the modal had **2** `narrationMode` radios; the editor had no `Plain` option.
+9. `46ccc1707` — the fenced CSS: EIGHT tokens (v4 `_variables.css:103-112`, bytes equal) after `--qt-status-danger-border`; FOUR class rules before the `Lexical rich text node styles` banner (the surrounding rules sit un-nested in the layer block — matched). `--color-warning` **resolves** (`styles.css:197`). `check-qt-classes`: 961 → 965 classes defined, every guarded reference resolves; `qt-roleplay-plain` unflagged (it appears only as a datalist value / in rendered HTML).
+11. `4f07e0b6e` — the H-3 hunks in this lane's two composer files (see the HANDOFF table).
+10. `7ac1060bd` — the Playwright beats (see below).
+
+### Recorded divergences / NO-PORTs (Tier 3)
+
+1. v4's shared-`Highlight` `contributions` registry — no counterpart (a `DecorationSet` is per view). 2. `[punctuation-lint] CSS Custom Highlight API unavailable; warnings disabled` — not ported. 3. The root-`title` hover via `caretPositionFromPoint` — replaced by each warning span's own `title`; specific-before-general order moot per element. 4. `LexicalComposerWrapper.tsx:181-183`'s mount position — order-independent; recorded in `buildPlugins()`. 5. `MessageContent.tsx`'s React-side nesting — no v5 counterpart (every surface renders through the server-renderer port). 6. The eslint `no-restricted-imports` fence — the SPA has NO eslint config (`npm run lint` is `check-qt-classes` only; measured), so it is the spec's raw-source no-import assertion. 7. `qt-roleplay-plain` ships NO CSS (R-6) — a comment beside `STYLE_OPTIONS` says so. 8. `packages/theme-storybook` — NO-PORT (standing). 9. The server halves (P4.D341 / P4.D351 / P4.D356) — the gate constants are the record (see the Playwright flip below).
+- **Also recorded:** the `mounted` debug line re-fires when `qt-rich-editor` rebuilds its state for an external `value` (`replaceContent` makes fresh plugins) — v4 logs it on its effect's re-run only; cosmetic, debug-level.
+- **Not ported (ruling R-4, standing deferral):** the `Draft formatting instructions` button — Tier 2 item 3 not taken.
+
+### v5 gaps RETIRED (ruling R-3)
+
+- `narrowRenderingPatterns` coerced every non-`line` scope to `inline` (true of v4 at `322a5488e`, false at the pin) — Novel's `[\s\S]` unmarked pattern would have become an inline rule claiming every character. Now the five scopes pass through; an unknown one still coerces.
+- `isQuoteSensitiveRoleplayConfig` lacked v4's `mentionsGlyph` exemption — `displayQuotes` would have been suppressed for every Novel chat. Now curling proceeds under a curly-tolerant wrap (`quotes-on-novel-dialogue` proves it against v4's bytes).
+- **Ownership-row correction (R-9):** there is no `chat/render/markdown-postprocess.ts` in v5; the post-pass helpers stay in `markdown-renderer.ts`.
+
+### Findings (recorded; v4 filing candidates — NOT filed, confirm with the human first)
+
+- **v4 `778b97b2b`'s nesting reaches the DEFAULT patterns:** with no template, `[she said *softly* …]` now renders a `qt-chat-narration` span nested inside a `qt-chat-narration` span (the `escapes-in-brackets` row). v5 follows v4.
+- **A `*` inside two shown-delimiter wraps is escaped twice:** `"a ((b *c* b)) a"` under Novel renders a stray `\` and a Markdown `<em>`, and the OOC span is never applied (`template-novel-emphasis-in-ooc-in-dialogue`, captured as v4 renders it). v5 follows v4.
+- The order's e2e gesture "type the closing `"` → the span is gone" contradicts the engine (that closer reads as closing the nested quote and is flagged too); the beat uses v4's own adapter-test fix (single quotes).
+
+### Playwright (by file, one run at a time machine-wide; logged in the shared PLAYWRIGHT-RUNS note)
+
+- Server: the lane's own DEBUG bins (`cargo build --workspace` in the cloned target; the cloned `target/release/quilltap-web` and `quilltap` were deleted first), the shared global-setup server on 4319 / mock 45301. **No own-instance file: Tier 2 item 1 not landed — ports 4355 / 45353 UNUSED.**
+- Constants `false`: `smart-typography-flow` **7 passed / 1 skipped**; `settings-chat-cards-flow` **5 passed / 1 skipped**; `salon-roleplay-template-flow` **2 passed / 2 skipped** — every ungated beat green, incl. the two new live lint beats.
+- Constants flipped `true` once against this branch's server (gated beats only, `--grep`), then restored `false`: `the toggle off paints nothing` — the warning still painted (`Expected 0, Received 1`: the key is not stored); `the punctuation toggle persists across reload` — reload reads checked (the key dropped, `?? true`); the Novel-shaped beat — every editor gesture worked, the create was refused and the modal showed **`Narration delimiters are required`** verbatim (Tier 3 item 9's record); the built-in Novel beat — no `Novel` card (no seed). Each fails at its gate premise and nowhere else.
+- **Chromium measurement** (a scratch spec, deleted): `/tmp/p4d352/after.png` — the inner `"` of `"Hello, "world` wears `background-color: color(srgb 0.874 0.5704 0.046 / 0.35)` + `underline wavy`, `title` = v4's `nested-double-quote` sentence; the DOM is `<p>"Hello, <span title="…" class="qt-punctuation-warning">"</span>world</p>`. `/tmp/p4d352/before.png` — the same composer with the four rules deleted from the live stylesheet (main's state: the classes resolve to nothing; background `rgba(0, 0, 0, 0)`). **`after-prose.png` NOT taken:** prose mode cannot be reached in the Salon until H-2 is applied (no stub was made in P4.D344's file); the gated Novel beat covers the preview at unification.
+
+### The gate
+
+- `npm run lint`: rc 0 — `check-qt-classes --self-test` 5/5; 965 classes defined, every guarded reference resolves (no new host class; `qt-roleplay-plain` unflagged).
+- The named spec files first: **22 files / 1,767 tests green**.
+- The whole SPA suite (`npm test`): **575 files / 14,525 tests, 0 failed** (planning count 568 / 13,121; the growth includes `engine.v4.json`'s 1,215-case oracle).
+- `npm run build`: clean.
+- `cargo build --workspace` (once, after `apps/web/dist` was built; `CARGO_INCREMENTAL=0`): **rc 0**. No crate touched → no fmt / clippy / `cargo test --workspace` owed (order).
+- The freshness tells: `engine.v4.json._source.pin === '236c04e35'` and its `engineMd5` = the Preamble's (pinned in `engine.oracle.spec.ts`); the vector md5s equal the Preamble's (shasum above); `markdown-fixtures.json` carries the `template-novel-*` rows and the 67 earlier rows byte-stable (diff recorded above).
+
+### The three corpora — regen recipes
+
+- `apps/web/src/app/punctuation-lint/engine.v4.json` (1,214 rows): `export PATH=~/.nvm/versions/node/v24.13.1/bin:$PATH; QT_V4_PIN=236c04e35 node ~/source/quilltap-v5/harness/oracle/cases/punctuation-lint-engine.mjs > ~/source/quilltap-v5/apps/web/src/app/punctuation-lint/engine.v4.json` — reads v4 through `git show` (no pin worktree, no `node_modules`); deterministic.
+- `apps/web/src/app/punctuation-lint/fixtures/{punctuation,prose}-vectors.json`: `cp` from `$PIN/lib/punctuation-lint/fixtures/` (md5s above).
+- `apps/web/src/app/chat/render/__fixtures__/markdown-fixtures.json` (107 rows): from a pin worktree at `236c04e35` after ITS OWN `npm ci --offline` (never the live root symlink): `cd "$PIN" && QT_V4_ROOT=$PWD ./node_modules/.bin/tsx ~/source/quilltap-v5/apps/web/tooling/capture-markdown-fixtures.mts` (writes the file in place; logs the Novel patterns' md5).
+- Fixtures changed: only these SPA corpora; no DB pair, no cargo-harness oracle — nothing else is invalidated.
+
+### HANDOFF table
+
+| id | to | what |
+|---|---|---|
+| H-1 | the unifier | byte-compare the Novel `renderingPatterns` / `dialogueDetection` the capture recorded from the pin's `NOVEL_TEMPLATE` (in every `template-novel-*` row's `options`; patterns JSON md5 `e297b28f41310f17176ed100887c37f1`) with `builtin_templates.json`'s Novel row (P4.D341). |
+| H-2 | P4.D344 (`salon-conversation.ts`) | the patch `p4d352-H2-salon-conversation.patch` in the shared notes folder (`git apply --check` clean on `main` `8976915ea` AND on `claude/p4.d344-storyteller-spa-897691`): the import `isProseTemplate` after the `roleplay-rendering` import; two signals `roleplayProseMode = signal(false)` / `roleplayMarkdownAsterisks = signal(true)` beside `roleplayNarrationDelimiters` (`:1279`) + readonly views `composerProseMode` / `composerMarkdownAsterisks` beside `:1283`; the `reset` closure (`:1072-1078`) sets them `false` / `true`; the success arm after `:1095` sets `isProseTemplate(template)` / `template.markdownAsterisks ?? true`; two bindings after `:518` — `[proseMode]="composerProseMode()"`, `[markdownAsterisks]="composerMarkdownAsterisks()"`. Plus ONE `salon-conversation.spec.ts` case (P4.D344 authors): a fetched template with `narrationDelimiters: null` + a `"` wrap flips the composer's `proseMode`; the reset arm flips it back; `markdownAsterisks: false` reaches the composer. Until applied: prose mode OFF, Bold always shown (measured). |
+| H-3 | ← P4.D358 | applied here: `chat-composer.ts` source textarea `Message (Markdown source)` (R6); `rich-editor.ts` default `ariaLabel` `'Editor'` → `'Markdown editor'` (R6; no spec pinned the old default — `markdown-field.spec.ts:254` pins markdown-field's OWN default, P4.D358's file); **`role="group"` NOT applied** — v4 `68340008b` puts it on `MarkdownLexicalEditor`'s frame = v5 `editor/markdown-field.ts` (P4.D358's), not the editable area; `smart-typography-settings.ts` `aria-label="Try smart typography"` — already present (nothing to do); R1 on `template-form-modal.ts` / `template-preview-modal.ts` — both are `qt-modal` hosts (`role="dialog" aria-modal="true"` in the primitive): NOTHING TO DO; R4 `for`/`id` pairs (per-instance module-counter ids) on the modal's Name, Description, narration Delimiter / Open / Close, the unmarked Style, and per delimiter Kind, Name, Button Label, Style (CSS class), Line marker, Brackets:, Token pattern (regex, Unicode); R6 `aria-label`s `Delimiter` / `Opening delimiter` / `Closing delimiter` / `Closing bracket` (v4 `eed72d60c` bytes); the new add-ons editor's Underline / Border / Font selects (R4). P4.D358's census allowlist can be emptied against these files. |
+| H-4 | P4.D360 / the unifier (§S.5 (21)) | the SPA sentences to byte-compare against `help/chat-settings-composer.md` / `roleplay-templates.md` / `roleplay-templates-settings.md`: the toggle heading `Warn about punctuation that looks wrong` + its paragraph; the narration help `How narration and action text is marked in this template's formatting — or, as in a proper novel, not marked at all.`; the `Unmarked Text` help; the asterisks label; the two wrap labels `Straight quotes also match curly ones (" and “…” alike)` / `May run unclosed to the end of a paragraph (speech carried over several)`. |
+| H-5 | P4.D353 | `renderMarkdownToHtml` output now carries `<span class="qt-roleplay-plain …">` unmarked spans on direct text in `p` / `li` / `blockquote` / `h1`–`h6` (only under a template with an `unmarked` pattern), and nested `<span>`s inside claimed spans; `<pre><code>` and KaTeX are untouched as before. Signature and `render-cache.ts` key unchanged. |
+
+### 💸 rows for the dogfood pass (union build)
+
+A real Novel chat turn (model-visible `NOVEL_SYSTEM_PROMPT` — the only spend); in the composer under Novel: a nested `"` lights up and the hover explains, an unclosed `((` lights only after the caret leaves the paragraph, a draft with no dialogue tints every narrated run, the narration / OOC previews paint, the toggle OFF removes the warnings but keeps the preview, Bold absent from the toolbar; Settings → Chat → Smart Typography: the new toggle persists across reload, and with `displayQuotes` ON a Novel chat still curls; the template editor: copy Novel as new → `None — plain prose`, `Style unmarked text` ticked with `qt-roleplay-plain` + Italic, the asterisks box unticked, the Dialogue delimiter's two boxes ticked; save → the stored patterns equal the built-in's.
+
+### Tier status
+
+Tier 1 items 1–11 LANDED. Tier 2: item 4 LANDED (with item 7); item 1 (the own-instance file on 4355 / 45353) NOT landed — ports UNUSED; item 2 (the preview modal's narration row) NOT landed — OPEN; item 3 NOT taken (R-4 standing deferral). Tier 3 recorded above.
+
+### Versions at close
+
+SPA `0.5.918` (from 0.5.907, +11 code commits). No crate bumped; `quilltap-harness` untouched (the recorder is a `.mjs`, not a crate source); `Cargo.lock` unchanged.
+
+### HANDOFF H-2 — the patch (apply with `git apply -p1`; paths relative to the repo root; made against `main` `8976915ea`, also clean on `claude/p4.d344-storyteller-spa-897691`)
+
+```diff
+--- a/apps/web/src/app/screens/salon/salon-conversation.ts
++++ b/apps/web/src/app/screens/salon/salon-conversation.ts
+@@ -121,6 +121,7 @@
+   type DialogueDetection,
+   type RenderingPattern,
+ } from '../../chat/render/roleplay-rendering';
++import { isProseTemplate } from '../../punctuation-lint/prose-mode';
+ import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
+ import type {
+   ImpersonationVoiceMode,
+@@ -516,6 +517,8 @@
+         [compositionMode]="compositionMode()"
+         [templateDelimiters]="templateDelimiters()"
+         [narrationDelimiters]="narrationDelimiters()"
++        [proseMode]="composerProseMode()"
++        [markdownAsterisks]="composerMarkdownAsterisks()"
+         [mentionPriorityCharacterIds]="mentionCastCharacterIds()"
+         [slashDefaultCharacterId]="slashDefaultCharacterId()"
+         [textReplacementRules]="textReplacementRules()"
+@@ -1075,6 +1078,8 @@
+         this.roleplayDialogueDetection.set(undefined);
+         this.roleplayDelimiters.set([]);
+         this.roleplayNarrationDelimiters.set(null);
++        this.roleplayProseMode.set(false);
++        this.roleplayMarkdownAsterisks.set(true);
+       };
+       if (!templateId) {
+         reset();
+@@ -1093,6 +1098,10 @@
+             this.roleplayDialogueDetection.set(template.dialogueDetection);
+             this.roleplayDelimiters.set(template.delimiters ?? []);
+             this.roleplayNarrationDelimiters.set(template.narrationDelimiters ?? null);
++            // v4 `2b2b190b6` SalonView: prose mode from the fetched template;
++            // v4 `778b97b2b` FormattingToolbar reads `markdownAsterisks` off it.
++            this.roleplayProseMode.set(isProseTemplate(template));
++            this.roleplayMarkdownAsterisks.set(template.markdownAsterisks ?? true);
+           } catch {
+             reset();
+           }
+@@ -1277,10 +1286,16 @@
+   );
+   private readonly roleplayDelimiters = signal<TemplateDelimiter[]>([]);
+   private readonly roleplayNarrationDelimiters = signal<NarrationDelimiters | null>(null);
++  /** P4.D352 H-2: `isProseTemplate(template)` — the composer's prose mode. */
++  private readonly roleplayProseMode = signal(false);
++  /** P4.D352 H-2: the template's `markdownAsterisks ?? true` — the toolbar's Bold withhold. */
++  private readonly roleplayMarkdownAsterisks = signal(true);
+   protected readonly renderingPatterns = this.roleplayRenderingPatterns.asReadonly();
+   protected readonly dialogueDetection = this.roleplayDialogueDetection.asReadonly();
+   protected readonly templateDelimiters = this.roleplayDelimiters.asReadonly();
+   protected readonly narrationDelimiters = this.roleplayNarrationDelimiters.asReadonly();
++  protected readonly composerProseMode = this.roleplayProseMode.asReadonly();
++  protected readonly composerMarkdownAsterisks = this.roleplayMarkdownAsterisks.asReadonly();
+ 
+   /**
+    * v4's effect keys on `chat?.roleplayTemplateId` — a PRIMITIVE, so it re-runs
+```
+
 ## P4.D346 — lane record (2026-11-02/03): Pascal operator intervention, the SPA half — LANE COMPLETE
 
 Branch `claude/p4.d346-pascal-intervention-spa-8976915ea`, cut from `main` `8976915ea` (the orders' commit). The session started on the main checkout and moved into the order's worktree `.claude/worktrees/p4d346`. Authored BLIND (R-1); nothing stacks on this lane.
