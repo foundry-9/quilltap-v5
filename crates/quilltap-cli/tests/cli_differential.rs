@@ -2478,6 +2478,18 @@ fn cli_differential() {
         CaseOpts::default(),
     );
     ctx.case_with("db count", &d(&["--count", "widgets"]), CaseOpts::default());
+    // v4 `40cc6ffda`: `console.log(String(row.count))` — Node's `console.log`
+    // colours a bare NUMBER through `util.inspect` under `FORCE_COLOR`
+    // (`\x1b[33m<n>\x1b[39m` pre-fix), never a string. v5 prints the bare JSON
+    // number, so both sides answer the plain digits (P4.D356 Tier R).
+    ctx.case_with(
+        "db count under FORCE_COLOR",
+        &d(&["--count", "widgets"]),
+        CaseOpts {
+            envs: vec![("FORCE_COLOR", "1".into())],
+            ..Default::default()
+        },
+    );
     ctx.case_with(
         "db count json",
         &d(&["--count", "widgets", "--json"]),

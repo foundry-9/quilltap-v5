@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — test(cli): Tier R pins `db --count` under FORCE_COLOR (P4.D356, v4 `40cc6ffda`)
+
+_Versions: unchanged (test-only)._
+
+v4 `40cc6ffda` changed `quilltap db --count` to print `String(row.count)`, because Node's `console.log` colours a bare number under `FORCE_COLOR`. v5 already printed a bare JSON number. The new `cli_differential` row runs `db --count widgets` with `FORCE_COLOR=1` on both sides, and both print the plain digits. The Tier R run from the `236c04e35` pin gave 423 cases with 2 failures, both the `recall-replay` help text that P4.D342 owns.
+
 #### 2026-11-04 — feat(settings): the chat-settings PUT refuses unknown keys, saves coreWhisper and customToolIntervention, and reads punctuationWarnings (P4.D356)
 
 _Versions: core 0.0.1383, web 0.0.252._
