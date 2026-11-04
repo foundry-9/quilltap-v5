@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the composer punctuation-lint adapter as ProseMirror decorations + the rich editor's punctuationLint input (P4.D352)
+
+_Versions: SPA 0.5.910._
+
+New `editor/punctuation-lint-plugin.ts`: v4's `PunctuationLintPlugin` (Lexical, CSS Custom Highlight API) re-authored as a ProseMirror `Decoration.inline` plugin — a recorded adapter divergence (ruling R-2). It flattens the document into the engine's blocks (inline code masked, a code block a `null` barrier, a line break `\n`, other inline leaves `￼`), finds the caret, and maps the engine's offsets back through v4's per-text-node segment rule, so ranges v4 drops are dropped here too. Warnings carry their rule's sentence as the span's `title`; prose mode adds the narration / OOC preview. Decorations go in ascending v4 priority; ProseMirror merges same-range decorations into one span carrying every class, with the warning's title. Logs v4's `mounted` and `N warning(s)` debug lines (the count only when it changes). `qt-rich-editor` gains a `punctuationLint` input (null = inert) and repaints when it changes. Specs: v4's 12 adapter cases plus the title, log, null-input and refresh cases; two `rich-editor.spec.ts` cases.
+
 #### 2026-11-03 — test(spa): the punctuation-lint engine against a corpus recorded from v4's real engine (P4.D352)
 
 _Versions: SPA 0.5.909._

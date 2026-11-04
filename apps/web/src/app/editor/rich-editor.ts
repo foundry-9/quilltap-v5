@@ -34,6 +34,12 @@ import {
 import { dialectSchema, parseMarkdown, serializeMarkdown } from './markdown-dialect';
 import type { MentionCharacterSource } from './mentions/mention-source';
 import { mentionTypeaheadPlugin } from './mentions/mention-typeahead-plugin';
+import {
+  PUNCTUATION_LINT_REFRESH,
+  punctuationLintKey,
+  punctuationLintPlugin,
+  type PunctuationLintInputs,
+} from './punctuation-lint-plugin';
 import type { SlashCommandHost } from './slash/slash-command-host';
 import { slashCommandPlugin } from './slash/slash-command-plugin';
 import { smartTypographyPlugin } from './smart-typography-plugin';
@@ -100,6 +106,14 @@ export class RichEditor {
    * gated independently: `{dashes: false, ellipsis: true}` is a legal state.
    */
   readonly smartTypography = input<SmartTypographyOptions | null>(null);
+  /**
+   * The composer's punctuation warnings + prose-mode preview (v4
+   * `PunctuationLintPlugin`, `chat_settings.smartTypographySettings.
+   * punctuationWarnings` and the template's `isProseTemplate`). Read on every
+   * repaint; `null` — the default — makes the plugin inert, which is what every
+   * host that is not a composer wants. A change repaints with no keystroke.
+   */
+  readonly punctuationLint = input<PunctuationLintInputs | null>(null);
   /**
    * The `:` emoji typeahead (v4 `CharTypeaheadPlugin` + `chat_settings.
    * composerEmoji`). Read live on every keystroke, so a settings change takes
@@ -187,6 +201,15 @@ export class RichEditor {
     effect(() => {
       this.placeholder();
       this.view?.setProps({});
+    });
+
+    // The punctuation lint reads its input inside the plugin, but a decoration
+    // set is only recomputed on a transaction — so a flipped toggle or a template
+    // change must repaint with no keystroke (v4's effect re-runs on its inputs).
+    effect(() => {
+      this.punctuationLint();
+      const view = this.view;
+      if (view) view.dispatch(view.state.tr.setMeta(punctuationLintKey, PUNCTUATION_LINT_REFRESH));
     });
 
     this.destroyRef.onDestroy(() => this.view?.destroy());
@@ -398,6 +421,10 @@ export class RichEditor {
       keymap(dialectListNavigationKeymap(dialectSchema)),
       keymap(baseKeymap),
       this.placeholderPlugin(),
+      // Read-only: paints warnings, never edits — v4 mounts it last
+      // (`LexicalComposerWrapper.tsx:181-183`), and a decorations-only plugin is
+      // order-independent in ProseMirror too. Inert while the input is null.
+      punctuationLintPlugin(() => this.punctuationLint()),
     ];
   }
 

@@ -506,3 +506,50 @@ describe('RichEditor — the slashCommands input', () => {
     expect(fixture.componentInstance.slashCommands()).toBeNull();
   });
 });
+
+describe('RichEditor — the punctuationLint input (P4.D352)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  @Component({
+    imports: [RichEditor],
+    template: `<qt-rich-editor [value]="value()" [punctuationLint]="lint()" />`,
+  })
+  class LintHost {
+    readonly editor = viewChild.required(RichEditor);
+    readonly value = signal('"He told me "go away" and left."');
+    readonly lint = signal<{ enabled: boolean; proseMode: boolean } | null>(null);
+  }
+
+  async function mount(): Promise<ComponentFixture<LintHost>> {
+    TestBed.configureTestingModule({ imports: [LintHost] });
+    const fixture = TestBed.createComponent(LintHost);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture;
+  }
+
+  const painted = (fixture: ComponentFixture<LintHost>) =>
+    [...(fixture.nativeElement as HTMLElement).querySelectorAll('span.qt-punctuation-warning')].map(
+      (el) => el.textContent,
+    );
+
+  it('defaults to null — inert in every host that is not a composer', async () => {
+    const fixture = await mount();
+    expect(painted(fixture)).toEqual([]);
+  });
+
+  it('reaches the plugin, and a flip repaints with no keystroke', async () => {
+    const fixture = await mount();
+    fixture.componentInstance.lint.set({ enabled: true, proseMode: false });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(painted(fixture)).toEqual(['"', '"']);
+    fixture.componentInstance.lint.set({ enabled: false, proseMode: false });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(painted(fixture)).toEqual([]);
+  });
+});
