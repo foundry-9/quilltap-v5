@@ -12,6 +12,14 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the punctuation-lint engine + prose mode, byte-copied from v4 with both vector corpora (P4.D352)
+
+_Versions: SPA 0.5.908._
+
+Ports v4's composer punctuation-lint engine (`lib/punctuation-lint/engine.ts`, v4 `1dd0a0c01` + `2b2b190b6` at `236c04e35`) and its prose-mode predicate (`prose-mode.ts`) into `apps/web/src/app/punctuation-lint/` as byte copies; only the module header is re-pointed. Both v4 vector corpora are copied byte-for-byte (md5 `746a4c8d…`, `5d5849b3…`). New `engine.spec.ts` (v4's `engine.test.ts` case for case, the corpus count pinned at 35, the prose tables at 10 + 8, and a source check that the two files import nothing — the twin of v4's ESLint fence) and `prose-mode.spec.ts` (v4's four `isProseTemplate` cases). Nothing consumes the engine yet.
+
+## November 2026
+
 #### 2026-11-02 — test(spa): Tier 2 intervention beats, the summarizeWhen table, and the P4.D346 lane record
 
 _Versions: SPA 0.5.918._
