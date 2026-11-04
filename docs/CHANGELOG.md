@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(e2e): the punctuation-warning and Novel-template beats, the server-dependent ones gated (P4.D352)
+
+_Versions: SPA 0.5.918._
+
+Playwright beats for the composer lint and the Novel template, on the shared-server specs. Two run live in `smart-typography-flow.spec.ts` with no server change: a quote opened inside open dialogue lights up with v4's hover sentence and clears when the inner quote becomes single quotes, and nothing is flagged while it is still being typed. Four more are gated behind ACTIVATE-AT-UNIFY constants: `P4D356_SERVER_LANDED` (the toggle-off beat and the reload persistence beat in `settings-chat-cards-flow.spec.ts`), `P4D351_SERVER_LANDED` (a Novel-shaped template built through the editor, rendering the operator's bubble and withholding Bold), and `P4D341_LANDED` (the built-in Novel listed and copyable). With the constants `false` every ungated beat passes. Flipped locally to `true` against this branch's server, each gated beat fails at its premise and nowhere else: the key is not stored, it is dropped on reload, the create is refused with `Narration delimiters are required`, and there is no seeded Novel.
+
 #### 2026-11-03 — fix(spa): the composer source textarea and the rich editor's default name, v4's way (P4.D352, WCAG R6)
 
 _Versions: SPA 0.5.917._

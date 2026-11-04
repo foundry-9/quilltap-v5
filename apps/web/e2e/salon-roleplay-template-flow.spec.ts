@@ -40,6 +40,30 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
  */
 
 const TEMPLATE_NAME = 'P4.30 Percent Narration';
+
+/**
+ * ACTIVATE-AT-UNIFY (P4.D352, ruling R-5): the Novel beats need the server half
+ * of v4 `778b97b2b` — the sibling lanes' work, wired at unification (C7).
+ * Named constants, never capability probes: an unknown template key is not an
+ * "unknown variant", it is dropped or refused (`round-plan-takeaways`).
+ *
+ * - `P4D351_SERVER_LANDED` — the template POST / PUT accepting
+ *   `narrationDelimiters: null`, `unmarkedStyle`, `markdownAsterisks` and the
+ *   two `wrap` flags, and regenerating the five-scope patterns (P4.D351, on
+ *   P4.D341's columns). The composer half of the beat (prose mode, the Bold
+ *   withhold) also needs P4.D344 to apply this lane's `salon-conversation.ts`
+ *   HANDOFF H-2 — both are in the union.
+ * - `P4D341_LANDED` — the seeded built-in Novel row (P4.D341 `KEYSTONE`).
+ */
+const P4D351_SERVER_LANDED = false;
+const P4D351_GATE_REASON =
+  'ACTIVATE-AT-UNIFY: needs P4.D351 Novel template routes + P4.D344 H-2 (wired at unification)';
+const P4D341_LANDED = false;
+const P4D341_GATE_REASON =
+  'ACTIVATE-AT-UNIFY: needs P4.D341 seeded Novel built-in (wired at unification)';
+
+const NOVEL_TEMPLATE_NAME = 'P4.D352 Novel-shaped';
+const NOVEL_LINE = 'She set the cup down. "You came," she said. *Finally.* **Loud.** ((aside))';
 const isMac = process.platform === 'darwin';
 const MARKER = 'A test line with %percent narration% inside it.';
 
@@ -170,6 +194,171 @@ test.describe('P4.30 — roleplay-template rendering', () => {
 
     // --- 6. Clean up so later specs find the instance as it was --------------
     await deletePercentTemplate(page);
+  });
+
+  /**
+   * P4.D352 — a Novel-shaped template built through the editor (v4 `778b97b2b`):
+   * unmarked narration set in italics, quoted dialogue upright, a single `*` as
+   * concealed bold-italic emphasis, `**` dropped, `((asides))` out of character
+   * — on the operator's own bubble (the identical render path a model reply
+   * takes, this file's header rule). The composer previews prose and withholds
+   * Bold while the template is on the chat.
+   */
+  test('a Novel-shaped template renders the operator’s own bubble as a novel prints it, and the toolbar withholds Bold', async ({
+    page,
+  }) => {
+    test.skip(!P4D351_SERVER_LANDED, P4D351_GATE_REASON);
+    test.setTimeout(240_000);
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+
+    // --- 1. Build the template through the modal --------------------------
+    await page.goto('/settings?tab=templates');
+    await expect(page.getByRole('heading', { name: 'My Templates' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await page.getByRole('button', { name: 'Create Template', exact: true }).first().click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByPlaceholder('My Custom RP Style').fill(NOVEL_TEMPLATE_NAME);
+    await dialog.locator('.qt-rich-editor-content').first().click();
+    await page.keyboard.type('Write it as a novel prints it.');
+
+    await dialog.getByRole('radio', { name: 'None — plain prose' }).check();
+    await expect(dialog.getByLabel('Style unmarked text')).toBeChecked();
+    // The unmarked flourishes: Italic.
+    await dialog.getByRole('checkbox', { name: 'Italic' }).first().check();
+    await dialog.getByRole('checkbox', { name: /Markdown reads asterisks/ }).uncheck();
+
+    const addDelimiter = dialog.getByRole('button', { name: '+ Add Delimiter' });
+    // Dialogue: a `"` wrap, curly-tolerant and open-ended.
+    await addDelimiter.click();
+    await dialog.getByLabel('Name', { exact: true }).nth(0).fill('Dialogue');
+    await dialog.getByLabel('Button Label', { exact: true }).nth(0).fill('Dia');
+    await dialog.getByLabel('Style (CSS class)', { exact: true }).nth(1).fill('qt-chat-dialogue');
+    await dialog.getByLabel('Delimiter', { exact: true }).nth(0).fill('"');
+    await dialog
+      .getByRole('checkbox', { name: /Straight quotes also match curly ones/ })
+      .nth(0)
+      .check();
+    await dialog
+      .getByRole('checkbox', { name: /May run unclosed/ })
+      .nth(0)
+      .check();
+    // Emphasis: a `*` wrap, concealed, bold + italic.
+    await addDelimiter.click();
+    await dialog.getByLabel('Name', { exact: true }).nth(1).fill('Emphasis');
+    await dialog.getByLabel('Button Label', { exact: true }).nth(1).fill('Emph');
+    await dialog.getByLabel('Style (CSS class)', { exact: true }).nth(2).fill('qt-roleplay-plain');
+    await dialog.getByLabel('Delimiter', { exact: true }).nth(1).fill('*');
+    await dialog.getByRole('checkbox', { name: 'Conceal the marks when rendered' }).nth(1).check();
+    await dialog.getByRole('checkbox', { name: 'Bold' }).nth(2).check();
+    await dialog.getByRole('checkbox', { name: 'Italic' }).nth(2).check();
+    // OOC: a `((` / `))` pair.
+    await addDelimiter.click();
+    await dialog.getByLabel('Name', { exact: true }).nth(2).fill('Out of Character');
+    await dialog.getByLabel('Button Label', { exact: true }).nth(2).fill('OOC');
+    await dialog.getByLabel('Style (CSS class)', { exact: true }).nth(3).fill('qt-chat-ooc');
+    await dialog.getByRole('radio', { name: 'Pair' }).nth(2).check();
+    await dialog.getByLabel('Opening delimiter').fill('((');
+    await dialog.getByLabel('Closing delimiter').fill('))');
+
+    await dialog.getByRole('button', { name: 'Create Template', exact: true }).click();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+
+    try {
+      // --- 2. Hang it on the chat, compose under it --------------------------
+      await page.goto('/salon');
+      await openChat(page, 'Group Expedition');
+      await openSidebarSection(page, 'Chat');
+      await templatePicker(page).selectOption({ label: NOVEL_TEMPLATE_NAME });
+
+      const modeToggle = page.getByRole('button', { name: 'Toggle composition mode' });
+      await modeToggle.click();
+      await expect(modeToggle).toHaveAttribute('aria-pressed', 'true');
+      const toolbar = page.locator('.qt-chat-composer .qt-formatting-toolbar');
+      await expect(toolbar).toBeVisible();
+      // `markdownAsterisks: false` — `**` means nothing here, so no Bold.
+      await expect(toolbar.locator('button.qt-formatting-button-bold')).toHaveCount(0, {
+        timeout: 20_000,
+      });
+
+      // Prose mode: narration previews, and with no quote typed the draft is
+      // tinted for having no dialogue at all.
+      const composer = page.locator('.qt-chat-composer-input .qt-rich-editor-content');
+      await composer.click();
+      await page.keyboard.type('She waited by the door.');
+      await expect(composer.locator('span.qt-composer-narration')).toHaveCount(1);
+      await expect(composer.locator('span.qt-punctuation-no-dialogue')).toHaveCount(1);
+      await page.keyboard.press(isMac ? 'Meta+a' : 'Control+a');
+      await page.keyboard.press('Backspace');
+
+      // --- 3. Send the Novel line through the source textarea ----------------
+      await toolbar.locator('.qt-formatting-button-source').click();
+      const source = page.locator('.qt-chat-composer .qt-source-mode-textarea');
+      await expect(source).toBeVisible();
+      await source.fill(NOVEL_LINE);
+      await page.getByRole('button', { name: 'Send message' }).click();
+
+      const bubble = page
+        .locator('.qt-chat-message-content')
+        .filter({ hasText: 'She set the cup down' })
+        .last();
+      await expect(bubble).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByText(MOCK_LLM_REPLY).first()).toBeVisible({ timeout: 60_000 });
+
+      const narration = bubble.locator('span.qt-roleplay-plain.qt-rp-italic').first();
+      await expect(narration).toContainText('She set the cup down.');
+      const dialogue = bubble.locator('span.qt-chat-dialogue');
+      await expect(dialogue.first()).toContainText('You came,');
+      await expect(dialogue.first()).not.toHaveClass(/qt-rp-italic/);
+      const emphasis = bubble.locator('span.qt-roleplay-plain.qt-rp-bold.qt-rp-italic');
+      await expect(emphasis).toHaveText('Finally.');
+      await expect(bubble).not.toContainText('*Finally');
+      await expect(bubble).toContainText('Loud.');
+      await expect(bubble).not.toContainText('**');
+      await expect(bubble.locator('strong')).toHaveCount(0);
+      await expect(bubble.locator('span.qt-chat-ooc')).toContainText('aside');
+
+      // --- 4. Remove the template: Bold comes back --------------------------
+      await openSidebarSection(page, 'Chat');
+      await templatePicker(page).selectOption({ label: 'No Template' });
+      await expect(toolbar.locator('button.qt-formatting-button-bold')).toHaveCount(1, {
+        timeout: 20_000,
+      });
+      await modeToggle.click();
+      await expect(modeToggle).toHaveAttribute('aria-pressed', 'false');
+    } finally {
+      await page.goto('/settings?tab=templates');
+      const card = page.locator('div.qt-card', { hasText: NOVEL_TEMPLATE_NAME });
+      if (await card.count()) {
+        await card.getByRole('button', { name: 'Delete', exact: true }).click();
+        await card.getByRole('button', { name: 'Confirm', exact: true }).click();
+        await expect(card).toHaveCount(0, { timeout: 15_000 });
+      }
+    }
+  });
+
+  test('the built-in Novel template is listed and can be copied (P4.D352)', async ({ page }) => {
+    test.skip(!P4D341_LANDED, P4D341_GATE_REASON);
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=templates');
+    const card = page
+      .locator('div.qt-card', { hasText: 'Novel' })
+      .filter({ has: page.getByRole('button', { name: 'Copy as New' }) });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.getByRole('button', { name: 'Copy as New' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByPlaceholder('My Custom RP Style')).toHaveValue('Novel (Copy)');
+    await expect(dialog.getByRole('radio', { name: 'None — plain prose' })).toBeChecked();
+    await expect(dialog.getByLabel('Style unmarked text')).toBeChecked();
+    await expect(
+      dialog.getByRole('checkbox', { name: /Markdown reads asterisks/ }),
+    ).not.toBeChecked();
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
   });
 
   /**

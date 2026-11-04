@@ -21,6 +21,22 @@ import { startMockLlm, MOCK_LLM_REPLY, type MockLlm } from './support/mock-llm';
 /** ACTIVATE-AT-UNIFY: flip to `true` once P4.D73's settings column is in. */
 const SMART_TYPOGRAPHY_COLUMN_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D352, ruling R-5): the punctuation-warnings toggle is a
+ * SAVED setting — `smartTypographySettings.punctuationWarnings`, whose PUT arm
+ * and read-time fill are the SIBLING server lane P4.D356's (contract C7). Until
+ * it lands the key is not stored, so the toggle-off beat cannot be walked; the
+ * paint itself needs no server (the bag absent ⇒ v4's `?? true`) and runs LIVE.
+ * A named constant, never a capability probe (`round-plan-takeaways`).
+ */
+const P4D356_SERVER_LANDED = false;
+const P4D356_GATE_REASON =
+  'ACTIVATE-AT-UNIFY: needs P4.D356 punctuationWarnings PUT arm + read fill (wired at unification)';
+
+/** v4 `PUNCTUATION_RULE_MESSAGES['nested-double-quote']` (`engine.ts:94-107`). */
+const NESTED_QUOTE_MESSAGE =
+  'A double quote inside dialogue that is already open. Quoting someone inside speech? Use single quotes.';
+
 const EN_DASH = '–';
 const EM_DASH = '—';
 const ELLIPSIS = '…';
@@ -185,6 +201,106 @@ test.describe('Smart typography (P4.D74)', () => {
     await tryIt.fill('Well..');
     await tryIt.press('.');
     await expect(tryIt).toHaveValue(`Well${ELLIPSIS}`);
+  });
+
+  // --- P4.D352: the composer's punctuation warnings (v4 1dd0a0c01) ----------
+
+  test('a quote opened inside open dialogue lights up, and the hover explains it', async ({
+    page,
+  }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const editor = composerEditor(page);
+    await editor.click();
+    await page.keyboard.type('"Hello, "world');
+
+    // The inner `"` (offset 8) is painted — a decoration span over the one
+    // character, carrying the rule's sentence as its title.
+    const warning = editor.locator('span.qt-punctuation-warning');
+    await expect(warning).toHaveCount(1);
+    await expect(warning).toHaveText('"');
+    await expect(warning).toHaveAttribute('title', NESTED_QUOTE_MESSAGE);
+
+    // The fix v4's own adapter test uses: quote inside speech with single
+    // quotes. (Typing a closing `"` would NOT clear it — the engine reads that
+    // `"` as closing the nested quote, and flags it too.)
+    await clearComposer(page);
+    await composerEditor(page).click();
+    await page.keyboard.type('"Hello, \'world\'"');
+    await expect(composerEditor(page).locator('span.qt-punctuation-warning')).toHaveCount(0);
+
+    await clearComposer(page);
+  });
+
+  test('nothing you are still typing is flagged', async ({ page }) => {
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await openChat(page, 'Group Expedition');
+
+    const editor = composerEditor(page);
+    await editor.click();
+    // An opening quote with the caret right after it, then a letter: the
+    // opener is "still being typed", and the unclosed dialogue has the caret
+    // later in its paragraph — neither lights up.
+    await page.keyboard.type('She said "');
+    await expect(editor.locator('span.qt-punctuation-warning')).toHaveCount(0);
+    await page.keyboard.type('h');
+    await expect(editor.locator('span.qt-punctuation-warning')).toHaveCount(0);
+
+    await clearComposer(page);
+  });
+
+  test('the toggle off paints nothing', async ({ page }) => {
+    test.skip(!P4D356_SERVER_LANDED, P4D356_GATE_REASON);
+
+    await page.goto('/settings?tab=chat');
+    const header = page.getByRole('button', { name: /Smart Typography/ }).first();
+    const passphrase = page.locator('#qt-passphrase');
+    await expect(passphrase.or(header).first()).toBeVisible({ timeout: 15_000 });
+    if (await passphrase.count()) {
+      await passphrase.fill(E2E_PASSPHRASE);
+      await page.getByRole('button', { name: 'Unlock' }).click();
+    }
+    if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+    const toggle = page.locator('qt-smart-typography-settings input[type="checkbox"]').nth(3);
+    await expect(toggle).toBeChecked();
+    const off = page.waitForResponse(
+      (r) =>
+        r.url().includes('/api/dispatch') &&
+        (r.request().postData() ?? '').includes('punctuationWarnings'),
+    );
+    await toggle.uncheck();
+    expect((await off).ok()).toBe(true);
+
+    try {
+      await page.goto('/salon');
+      await maybeUnlock(page);
+      await openChat(page, 'Group Expedition');
+      const editor = composerEditor(page);
+      await editor.click();
+      await page.keyboard.type('"Hello, "world');
+      await expect(editor).toContainText('"Hello, "world');
+      await expect(editor.locator('span.qt-punctuation-warning')).toHaveCount(0);
+      await clearComposer(page);
+    } finally {
+      // Restore ON through the same dispatch wire the card uses.
+      const reset = await page.request.post('/api/dispatch', {
+        data: {
+          type: 'chatSettingsUpdate',
+          settings: {
+            smartTypographySettings: {
+              displayQuotes: false,
+              dashes: true,
+              ellipsis: true,
+              punctuationWarnings: true,
+            },
+          },
+        },
+      });
+      expect(reset.ok()).toBe(true);
+    }
   });
 
   test('displayQuotes curls the rendering and leaves the stored bytes alone', async ({ page }) => {

@@ -45,6 +45,16 @@ let stateBackendReady = false;
  */
 const P4D251_SERVER_LANDED = true;
 
+/**
+ * ACTIVATE-AT-UNIFY (P4.D352, ruling R-5): the Smart Typography card's fourth
+ * toggle writes `smartTypographySettings.punctuationWarnings` (v4 `1dd0a0c01`),
+ * whose PUT arm + read-time fill are the SIBLING server lane P4.D356's (C7).
+ * Until it lands the key is dropped and a reload reads `?? true` again.
+ */
+const P4D356_SERVER_LANDED = false;
+const P4D356_GATE_REASON =
+  'ACTIVATE-AT-UNIFY: needs P4.D356 punctuationWarnings PUT arm + read fill (wired at unification)';
+
 test.beforeAll(async () => {
   try {
     const ctx = await pwRequest.newContext();
@@ -142,6 +152,36 @@ test.describe('P4.6an — the Chat-tab settings cards', () => {
     // Put it back, so the beat is re-runnable against the shared instance.
     const restored = waitForSave(page, 'autoScrollOnResponseComplete');
     await after.uncheck();
+    await restored;
+  });
+
+  test('the punctuation toggle persists across reload (P4.D352)', async ({ page }) => {
+    test.skip(!P4D356_SERVER_LANDED, P4D356_GATE_REASON);
+
+    await page.goto('/salon');
+    await maybeUnlock(page);
+    await page.goto('/settings?tab=chat');
+    const header = page.getByRole('button', { name: /Smart Typography/ }).first();
+    await expect(header).toBeVisible({ timeout: 15_000 });
+    if ((await header.getAttribute('aria-expanded')) !== 'true') await header.click();
+
+    const box = page.locator('qt-smart-typography-settings input[type="checkbox"]').nth(3);
+    // v4's default when unset is true.
+    await expect(box).toBeChecked({ timeout: 15_000 });
+    const saved = waitForSave(page, 'punctuationWarnings');
+    await box.uncheck();
+    await saved;
+
+    await page.reload();
+    const header2 = page.getByRole('button', { name: /Smart Typography/ }).first();
+    await expect(header2).toBeVisible({ timeout: 15_000 });
+    if ((await header2.getAttribute('aria-expanded')) !== 'true') await header2.click();
+    const after = page.locator('qt-smart-typography-settings input[type="checkbox"]').nth(3);
+    await expect(after).not.toBeChecked({ timeout: 15_000 });
+
+    // Put it back, so the beat is re-runnable against the shared instance.
+    const restored = waitForSave(page, 'punctuationWarnings');
+    await after.check();
     await restored;
   });
 
