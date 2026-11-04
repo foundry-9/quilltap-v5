@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — fix(model): NanoGPT image requests fitted to the model's catalog, with one square retry (P4.D356, bug 269)
+
+_Versions: core 0.0.1382._
+
+v4 `4b0d1cb04` at the provider. Before posting, the NanoGPT image provider reads the model's entry from the detailed catalog, fetching `/image-models?detailed=true` first when the cache is cold (a failed fetch logs `Could not refresh the NanoGPT image catalog; posting the size as asked` and posts the size as asked). The request is fitted with `fit_image_shape`: the posted `size` is the model's own spelling, and a tier model gets a flat `aspect_ratio` key placed before `seed`. A non-square request turned down with a 503, or with a 400 about size / resolution / aspect / dimension / output, is retried once as a square, with v4's WARN. The `Posting NanoGPT image request` and `NanoGPT image request failed` lines now log the posted size and `aspect_ratio`. The catalog entry carries `aspect_ratio`; the `Cached the detailed NanoGPT image catalog` DEBUG fires on every cache fill; and a listing body that is not JSON, or is JSON `null`, no longer stamps the cache, as in v4. The pure builders are unchanged (pinned equal on the unfitted shape). The new tier-3 family `nanogpt_image_provider_equivalence` runs 23 cases against v4's real provider, comparing posted bodies, catalog fetches, outcomes and log lines. `nanogpt_lora_wire_log` gains three value pins.
+
 #### 2026-11-03 — feat(model): fit_image_shape — v4's NanoGPT image-shape fit, tier-1 against the real fitImageShape (P4.D356, bug 269)
 
 _Versions: core 0.0.1381._

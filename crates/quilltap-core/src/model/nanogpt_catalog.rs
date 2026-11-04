@@ -35,6 +35,11 @@ pub struct CatalogEntry {
     pub tags: Vec<String>,
     pub max_images: Option<f64>,
     pub resolutions: Option<Vec<String>>,
+    /// `supported_parameters.aspect_ratio` (`4b0d1cb04`, bug 269) — the ratios a
+    /// TIER model (`1k` / `2k`) takes beside its tier, read the same way as
+    /// `resolutions` (non-string items dropped: no JS read of a non-string
+    /// item can match a size or ratio pattern).
+    pub aspect_ratio: Option<Vec<String>>,
     /// `capabilities.image_generation` — read as a STRICT `=== true` everywhere
     /// v4 reads it, so a missing or non-boolean flag is not a generator.
     pub image_generation: bool,
@@ -62,25 +67,139 @@ fn is_fresh(state: &Option<CatalogState>) -> bool {
 
 /// Parse and cache one `/image-models?detailed=true` body — v4's
 /// `fetchDetailedCatalog` tail (`detailedCatalog = new Map(...)`;
-/// `detailedCatalogFetchedAt = Date.now()`).
+/// `detailedCatalogFetchedAt = Date.now()`; the DEBUG `Cached the detailed
+/// NanoGPT image catalog`).
 ///
 /// v4 caches `payload.data` when it is an array and the EMPTY array otherwise,
 /// so a malformed payload still stamps a fresh (empty) cache rather than
 /// leaving a stale one in place. Reproduced exactly: the schema then falls back
 /// to `FALLBACK_SIZES`, which is the honest answer.
-pub fn remember_detailed_catalog(body: &str) {
-    let payload: Value = serde_json::from_str(body).unwrap_or(Value::Null);
-    let entries: Vec<CatalogEntry> = payload
+///
+/// **What v4 does NOT cache (P4.D356):** `await response.json()` THROWS on a
+/// body that is not JSON (V8's `SyntaxError`), and `payload.data` THROWS on a
+/// JSON `null` (`Cannot read properties of null (reading 'data')`) — both
+/// before the cache is touched. `Err(<the error's .message>)` here (v4's WARN
+/// logs `error.message`, no class prefix), the cache unmoved;
+/// [`catalog_entry_for`] logs it as the refresh WARN, the listing path drops
+/// it (its own parse answers the listing).
+pub fn remember_detailed_catalog(body: &str) -> Result<(), String> {
+    let payload: Value = match serde_json::from_str(body) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(crate::jsstr::v8_json_parse_message(body).unwrap_or_else(|| e.to_string()))
+        }
+    };
+    if payload.is_null() {
+        return Err("Cannot read properties of null (reading 'data')".to_string());
+    }
+    let raw: &[Value] = payload
         .get("data")
         .and_then(Value::as_array)
-        .map(|arr| arr.iter().filter_map(parse_entry).collect())
-        .unwrap_or_default();
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let entries: Vec<CatalogEntry> = raw.iter().filter_map(parse_entry).collect();
+    // v4 counts the RAW listing (`entries.length`) and `e.tags?.includes('lora')`
+    // — an Array's strict `includes`, or a String's substring `includes`.
+    let lora_tagged = raw
+        .iter()
+        .filter(|e| match e.get("tags") {
+            Some(Value::Array(a)) => a.iter().any(|t| t.as_str() == Some("lora")),
+            Some(Value::String(s)) => s.contains("lora"),
+            _ => false,
+        })
+        .count();
+    let count = raw.len();
     let mut guard = CATALOG.lock().unwrap_or_else(|e| e.into_inner());
     *guard = Some(CatalogState {
         entries,
         fetched_at: now_unix_ms(),
     });
+    drop(guard);
+    tracing::debug!(
+        context = "NanoGPTImageProvider.fetchDetailedCatalog",
+        count,
+        lora_tagged,
+        "Cached the detailed NanoGPT image catalog"
+    );
+    Ok(())
 }
+
+/// v4 `catalogEntryFor(model, apiKey)` (`image-provider.ts:361-375`,
+/// `4b0d1cb04`) — the catalog entry for a model, refreshing a COLD cache with
+/// this call's key first. v4's why: "The job child never lists models, so its
+/// cache starts cold; a failed fetch is not fatal — the request then goes out
+/// as asked." (v5 has no job child, but its cache is warmed ONLY by the
+/// model-listing path, so a process that never listed models is just as cold —
+/// measured, P4.D356.)
+///
+/// The fetch is v4's `fetchDetailedCatalog`: GET `/image-models?detailed=true`
+/// with the bearer key (the listing request, [`build_models_request`] — the
+/// transport adds the User-Agent). A transport throw, a non-2xx (`NanoGPT
+/// image-model listing failed: HTTP <status>` — v4's thrown text) or an
+/// unreadable body logs v4's WARN and answers `None`, so the request is
+/// posted as asked.
+///
+/// [`build_models_request`]: crate::model::image_dialects::build_models_request
+pub async fn catalog_entry_for<T: crate::model::wire::WireTransport>(
+    transport: &T,
+    model: &str,
+    api_key: &str,
+) -> Option<CatalogEntry> {
+    let cold = {
+        let guard = CATALOG.lock().unwrap_or_else(|e| e.into_inner());
+        !is_fresh(&guard)
+    };
+    if cold {
+        let refreshed: Result<(), String> = async {
+            let request =
+                crate::model::image_dialects::build_models_request("NANOGPT", api_key, None)
+                    .map_err(|e| e.message)?;
+            let resp = transport
+                .send(&request.method, &request.url, &request.headers, "")
+                .await?;
+            if !resp.ok() {
+                return Err(format!(
+                    "NanoGPT image-model listing failed: HTTP {}",
+                    resp.status
+                ));
+            }
+            remember_detailed_catalog(&resp.body)
+        }
+        .await;
+        if let Err(error) = refreshed {
+            tracing::warn!(
+                context = "NanoGPTImageProvider.catalogEntryFor",
+                model,
+                error = %error,
+                "Could not refresh the NanoGPT image catalog; posting the size as asked"
+            );
+            return None;
+        }
+    }
+    catalog_entry(Some(model))
+}
+
+/// The size catalog [`fit_image_shape`](crate::model::nanogpt_image_sizes::fit_image_shape)
+/// reads — v4's `entry?.supported_parameters`.
+pub fn size_catalog_of(
+    entry: &CatalogEntry,
+) -> crate::model::nanogpt_image_sizes::NanoGptSizeCatalog {
+    crate::model::nanogpt_image_sizes::NanoGptSizeCatalog {
+        resolutions: entry.resolutions.clone(),
+        aspect_ratio: entry.aspect_ratio.clone(),
+    }
+}
+
+/// Test-only: empty the process-global cache, so a test can start COLD. Every
+/// test that reads or warms the cache holds [`CATALOG_TEST_LOCK`] (P4.D356
+/// R-9 — v4's own test orders its blocks for the same reason: "Runs first,
+/// while the module's catalog cache is still cold").
+pub fn reset_catalog_for_tests() {
+    *CATALOG.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
+/// Serializes the tests that read or warm the process-global cache.
+pub static CATALOG_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 /// One listing row. A row without a string `id` cannot be keyed and is dropped
 /// — v4's `new Map(entries.map(e => [e.id, e]))` would key it on `undefined`
@@ -109,6 +228,16 @@ fn parse_entry(v: &Value) -> Option<CatalogEntry> {
         resolutions: v
             .get("supported_parameters")
             .and_then(|p| p.get("resolutions"))
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            }),
+        aspect_ratio: v
+            .get("supported_parameters")
+            .and_then(|p| p.get("aspect_ratio"))
             .and_then(Value::as_array)
             .map(|a| {
                 a.iter()
@@ -430,6 +559,7 @@ mod tests {
     /// is exactly why these assertions exist.
     #[test]
     fn the_live_catalog_drives_augmentation_and_the_warm_schema() {
+        let _lock = CATALOG_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let body = r#"{"data":[
             {"id":"someone/new-lora-model","tags":["lora","fast"],
              "capabilities":{"image_generation":true},
@@ -443,7 +573,7 @@ mod tests {
             {"id":"flux-lora","tags":["lora"],
              "capabilities":{"image_generation":true}}
         ]}"#;
-        remember_detailed_catalog(body);
+        remember_detailed_catalog(body).expect("a JSON listing caches");
 
         // Only the first row augments: the second is not a generator, the third
         // is untagged, the fourth is already covered BY PREFIX
@@ -509,10 +639,28 @@ mod tests {
             .iter()
             .all(|f| f["key"] != "n"));
 
-        // A malformed payload stamps a fresh EMPTY cache rather than leaving
-        // this one in place — v4's `Array.isArray(payload.data) ? … : []`.
-        remember_detailed_catalog("not json at all");
+        // A payload whose `data` is not an array stamps a fresh EMPTY cache
+        // rather than leaving this one in place — v4's
+        // `Array.isArray(payload.data) ? … : []`.
+        remember_detailed_catalog(r#"{"data":"nope"}"#).expect("JSON caches");
         assert_eq!(augmenting_lora_model_ids(&[]), Vec::<String>::new());
+
+        // A body that is not JSON, or a JSON `null`, THROWS in v4 before the
+        // cache is touched (`response.json()` / `payload.data`) — P4.D356.
+        remember_detailed_catalog(body).expect("re-warm");
+        assert_eq!(
+            remember_detailed_catalog("not json at all"),
+            Err("Unexpected token 'o', \"not json at all\" is not valid JSON".to_string())
+        );
+        assert_eq!(
+            remember_detailed_catalog("null"),
+            Err("Cannot read properties of null (reading 'data')".to_string())
+        );
+        assert!(
+            catalog_entry(Some("someone/new-lora-model")).is_some(),
+            "a refused body must leave the warm cache in place"
+        );
+        reset_catalog_for_tests();
     }
 
     #[test]

@@ -47,6 +47,9 @@ use serde_json::{Map, Value};
 use crate::db::js_number_to_json;
 use crate::jsstr;
 use crate::model::image::{GeneratedImageData, ImageGenError, ImageGenParams, ImageGenResponse};
+use crate::model::nanogpt_image_sizes::{
+    fit_image_shape, is_non_square, is_shape_failure, FittedImageShape,
+};
 use crate::model::nanogpt_loras::{apply_loras, apply_passthrough_parameters};
 use crate::model::openai_image_models::{
     arbitrary_size_rules, check_arbitrary_size, find_image_model, is_gpt_image_model,
@@ -76,6 +79,12 @@ fn str_of(v: &Value, key: &str) -> Option<String> {
 }
 
 /// The provider's default image model (v4 `params.model ?? '<default>'`).
+/// A string key of a composed body, as v4 reads `requestParams.size` /
+/// `extraBody.aspect_ratio` back for its log lines and its retry predicate.
+fn body_str(body: &Value, key: &str) -> Option<String> {
+    body.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
 fn model_or_default<'a>(params: &'a ImageGenParams, default: &'a str) -> &'a str {
     if params.model.is_empty() {
         default
@@ -106,6 +115,19 @@ pub fn build_image_request_with_extras(
     provider: &str,
     params: &ImageGenParams,
 ) -> Result<(BuiltRequest, Option<NanoGptWireExtras>), ImageGenError> {
+    build_image_request_shaped(provider, params, None)
+}
+
+/// [`build_image_request_with_extras`] with NanoGPT's FITTED shape (bug 269,
+/// `4b0d1cb04`) — the one caller is [`RealImageProvider::generate_image`],
+/// which fetches the model's catalog entry first. `None` (every other caller,
+/// every dialect / route family) is the catalog-free shape: the size as asked
+/// and no `aspect_ratio` — byte-identical to the pre-fix builder (R-12).
+fn build_image_request_shaped(
+    provider: &str,
+    params: &ImageGenParams,
+    nanogpt_shape: Option<&FittedImageShape>,
+) -> Result<(BuiltRequest, Option<NanoGptWireExtras>), ImageGenError> {
     let mut nanogpt_extras: Option<NanoGptWireExtras> = None;
     let (url, body) = match provider {
         "OPENAI" => build_openai(params),
@@ -114,7 +136,10 @@ pub fn build_image_request_with_extras(
         "GOOGLE" => build_google(params),
         "OPENROUTER" => build_openrouter(params),
         "NANOGPT" => {
-            let (url, body, extras) = build_nanogpt(params);
+            let (url, body, extras) = match nanogpt_shape {
+                Some(shape) => build_nanogpt_shaped(params, shape),
+                None => build_nanogpt(params),
+            };
             nanogpt_extras = Some(extras);
             (url, body)
         }
@@ -794,6 +819,31 @@ fn parse_zai(resp: &WireResponse) -> Result<ImageGenResponse, ImageGenError> {
 /// without validating or normalizing, so none of the OpenAI path's
 /// size-coercion applies. `seed` rides only when the caller set it.
 fn build_nanogpt(params: &ImageGenParams) -> (String, Value, NanoGptWireExtras) {
+    build_nanogpt_shaped(params, &unfitted_shape(params))
+}
+
+/// The shape a request with no catalog posts — v4's `fitImageShape`
+/// pass-through (`{ size, aspectRatio: undefined, adjusted: false }`).
+fn unfitted_shape(params: &ImageGenParams) -> FittedImageShape {
+    FittedImageShape {
+        size: params.size.clone(),
+        aspect_ratio: None,
+        adjusted: false,
+    }
+}
+
+/// [`build_nanogpt`] over a FITTED shape (`4b0d1cb04`, bug 269): the fitted
+/// `size` (`if (shape.size) requestParams.size = shape.size` — a JS truthy
+/// test, so an empty size is omitted) and the flat `aspect_ratio` key, set
+/// BEFORE `seed` (`if (shape.aspectRatio) extraBody.aspect_ratio = …`) — so the
+/// wire order is `model, prompt, n, response_format, size?, aspect_ratio?,
+/// seed?, guidance_scale?, num_inference_steps?, negative_prompt?,
+/// <passthrough>, <loras>`. Pinned equal to the pure builder on the unfitted
+/// shape (R-12).
+pub fn build_nanogpt_shaped(
+    params: &ImageGenParams,
+    shape: &FittedImageShape,
+) -> (String, Value, NanoGptWireExtras) {
     // `params.model ?? 'hidream'` — hidream is NanoGPT's own server-side
     // default, made explicit.
     let model = model_or_default(params, "hidream");
@@ -802,8 +852,11 @@ fn build_nanogpt(params: &ImageGenParams) -> (String, Value, NanoGptWireExtras) 
     body.insert("prompt".into(), Value::String(params.prompt.clone()));
     body.insert("n".into(), js_number_to_json(params.n.unwrap_or(1.0)));
     body.insert("response_format".into(), Value::String("b64_json".into()));
-    if let Some(size) = params.size.as_deref().filter(|s| !s.is_empty()) {
+    if let Some(size) = shape.size.as_deref().filter(|s| !s.is_empty()) {
         body.insert("size".into(), Value::String(size.to_string()));
+    }
+    if let Some(ar) = shape.aspect_ratio.as_deref().filter(|s| !s.is_empty()) {
+        body.insert("aspect_ratio".into(), Value::String(ar.to_string()));
     }
     // v4 `84f33ce94`: NanoGPT's model-specific generation controls ride the
     // request body as FLAT keys alongside the OpenAI-compatible fields — the
@@ -2063,21 +2116,57 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         params: &ImageGenParams,
     ) -> Result<ImageGenResponse, ImageGenError> {
         Self::require_api_key(provider, api_key)?;
-        let (mut request, nanogpt_extras) = build_image_request_with_extras(provider, params)?;
+        // v4 logs `params.model ?? 'hidream'` — the model it POSTS — on every
+        // NanoGPT line (`image-provider.ts:121`); an absent model reads `hidream`.
+        let posted_model = model_or_default(params, "hidream");
+        // `4b0d1cb04` (bug 269): fit the requested shape onto what this model
+        // lists — "the host's portrait and landscape sizes are provider-wide,
+        // and a size the model does not list is a hard 400". The catalog read
+        // runs FIRST, before the body is composed (v4's order: the refresh
+        // WARN / cache DEBUG, then the fit DEBUG, then `applyLoras`' lines).
+        let (size_catalog, nanogpt_shape) = if provider == "NANOGPT" {
+            let size_catalog = crate::model::nanogpt_catalog::catalog_entry_for(
+                &self.transport,
+                posted_model,
+                api_key,
+            )
+            .await
+            .map(|entry| crate::model::nanogpt_catalog::size_catalog_of(&entry));
+            let shape = fit_image_shape(
+                size_catalog.as_ref(),
+                params.size.as_deref(),
+                params.aspect_ratio.as_deref(),
+            );
+            if shape.adjusted {
+                tracing::debug!(
+                    context = "NanoGPTImageProvider.generateImage",
+                    model = %posted_model,
+                    requested_size = ?params.size,
+                    requested_aspect_ratio = ?params.aspect_ratio,
+                    size = ?shape.size,
+                    aspect_ratio = ?shape.aspect_ratio,
+                    "Fitted the requested image shape to the model"
+                );
+            }
+            (size_catalog, Some(shape))
+        } else {
+            (None, None)
+        };
+        let (mut request, nanogpt_extras) =
+            build_image_request_shaped(provider, params, nanogpt_shape.as_ref())?;
         request.headers.push(Self::auth_header(provider, api_key));
         // v4 `84f33ce94`, at the provider: "Named rather than counted: when the
         // dogfood run checks whether the flat keys survived NanoGPT's legacy
         // route, this line is the record of exactly what was posted. A response
         // identical to the no-LoRA one, with these keys present in the log, is
-        // the signature of a silently-dropped key."
-        // v4 logs `params.model ?? 'hidream'` — the model it POSTS — on both
-        // lines (`image-provider.ts:121`); an absent model reads `hidream`.
-        let posted_model = model_or_default(params, "hidream");
+        // the signature of a silently-dropped key." Since `4b0d1cb04` it logs
+        // the POSTED (fitted) `size` and the fitted `aspectRatio` (R-14).
         if let Some(extras) = &nanogpt_extras {
             tracing::debug!(
                 context = "NanoGPTImageProvider.generateImage",
                 model = %posted_model,
-                size = ?params.size,
+                size = ?body_str(&request.body, "size"),
+                aspect_ratio = ?nanogpt_shape.as_ref().and_then(|s| s.aspect_ratio.clone()),
                 n = params.n.unwrap_or(1.0),
                 lora_dialect = ?extras.applied.dialect.map(|d| d.as_str()),
                 lora_keys = ?extras.applied.keys,
@@ -2086,53 +2175,55 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
                 "Posting NanoGPT image request"
             );
         }
-        // The Google dialect is selected by model on the parse side too.
-        let body = request.body_string();
-        let sent = match self
-            .transport
-            .send(&request.method, &request.url, &request.headers, &body)
-            .await
-        {
-            // v4 generates through `new OpenAI(...)` + `client.images.generate`
-            // for OPENAI / GROK / Z_AI / NANOGPT, and the SDK THROWS an
-            // `APIError` on any non-2xx — carrying the API's own message — long
-            // before reaching the `data` check. Their `Invalid response from …
-            // Images API` sentence is reserved for a 2xx with a malformed body.
-            // v5 fetches the wire itself, so the status gate has to be here.
-            // Dogfood finding #104: without it a Grok 400 (`{"error":
-            // "Generated image rejected by content moderation."}`) collapsed
-            // into the generic sentence and the operator lost the reason.
-            //
-            // GOOGLE and OPENROUTER are the raw-`fetch` pair in v4 (they check
-            // `response.ok` themselves and throw their own sentences), which
-            // `parse_image_response` reproduces — so they must NOT come through
-            // here. NanoGPT is raw-fetch only for its MODEL LISTING; its
-            // generation is the SDK, which is why it belongs on this list.
-            // `sdk_and_raw_fetch_providers_keep_their_own_non_2xx_sentences`
-            // pins the split in both directions.
-            Ok(resp)
-                if !resp.ok() && matches!(provider, "OPENAI" | "GROK" | "Z_AI" | "NANOGPT") =>
+        let mut sent = self.send_gated(provider, params, &request).await;
+        // `4b0d1cb04` (bug 269), v4's why: "A non-square request the model
+        // turns down on its shape — a size it does not list, or a ratio
+        // upstream cannot serve right now (Qwen Image 3 answered every
+        // non-square ratio with an uncharged 503 while 1:1 worked) — gets one
+        // more try as a plain square. A square picture beats no picture; the
+        // caller measures what comes back." ONE retry; its own failure is
+        // final. ⚖ R-2: the retry can double a PAID generation — v4's choice.
+        if let (Err(error), Some(_)) = (&sent, &nanogpt_extras) {
+            let posted_size = body_str(&request.body, "size");
+            let posted_ratio = body_str(&request.body, "aspect_ratio");
+            let status = error.refusal.as_ref().and_then(|r| r.status);
+            if is_non_square(posted_size.as_deref(), posted_ratio.as_deref())
+                && is_shape_failure(status, &error.message)
             {
-                // P4.D225 (v4 `8bd080267`): each SDK plugin wraps
-                // `client.images.generate` and maps a content refusal to the
-                // typed error before rethrowing; everything else unchanged.
-                let default_model = match provider {
-                    "OPENAI" => "dall-e-3",
-                    "GROK" => "grok-imagine-image",
-                    "Z_AI" => "glm-image",
-                    _ => "hidream",
-                };
-                Err(map_sdk_image_moderation(
-                    provider,
-                    model_or_default(params, default_model),
-                    openai_sdk_error(&resp),
-                    &resp,
-                ))
+                let square = fit_image_shape(size_catalog.as_ref(), Some("1024x1024"), None);
+                tracing::warn!(
+                    context = "NanoGPTImageProvider.generateImage",
+                    model = %posted_model,
+                    size = ?posted_size,
+                    aspect_ratio = ?posted_ratio,
+                    square_size = ?square.size,
+                    square_aspect_ratio = ?square.aspect_ratio,
+                    error = %error.message,
+                    "NanoGPT turned down a non-square image; retrying once as a square"
+                );
+                if let Value::Object(body) = &mut request.body {
+                    // In place, as v4 mutates `requestParams`: an existing key
+                    // keeps its slot; `delete` keeps the others' order.
+                    match &square.size {
+                        Some(size) => {
+                            body.insert("size".into(), Value::String(size.clone()));
+                        }
+                        None => {
+                            body.shift_remove("size");
+                        }
+                    }
+                    match &square.aspect_ratio {
+                        Some(ratio) => {
+                            body.insert("aspect_ratio".into(), Value::String(ratio.clone()));
+                        }
+                        None => {
+                            body.shift_remove("aspect_ratio");
+                        }
+                    }
+                }
+                sent = self.send_gated(provider, params, &request).await;
             }
-            Ok(resp) => Ok(resp),
-            // The SDK/transport throw (network) surfaces verbatim.
-            Err(message) => Err(ImageGenError::new(message)),
-        };
+        }
         // `648d5c8aa` (bug 111): the failure path needs this more than the
         // success path does. NanoGPT answers a rejected adapter, an unreachable
         // weights repo, a bad resolution and a filtered prompt with the SAME
@@ -2144,11 +2235,12 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
         //
         // Key NAMES only: `lora_keys` never carries a value, which is what keeps
         // `hf_api_token` out of the log while still recording that it was sent.
-        // The error is rethrown UNCHANGED.
+        // The error is rethrown UNCHANGED. Since `4b0d1cb04` the line carries the
+        // LAST posted `size` / `aspect_ratio` (after a square retry, the square).
         //
         // v4 wraps only `client.images.generate`, so this covers the transport
-        // throw and the non-2xx gate above — NOT the `Invalid response from
-        // NanoGPT Images API` sentence, which v4 raises AFTER its try/catch:
+        // throw and the non-2xx gate — NOT the `Invalid response from NanoGPT
+        // Images API` sentence, which v4 raises AFTER its try/catch:
         // `parse_image_response` therefore runs below, outside this match (the
         // P4.D138 follow-up review caught the parse inside it — a malformed 2xx
         // logged a "request failed" v4 never logs; `nanogpt_malformed_2xx_
@@ -2160,7 +2252,8 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
                     tracing::error!(
                         context = "NanoGPTImageProvider.generateImage",
                         model = %posted_model,
-                        size = ?params.size,
+                        size = ?body_str(&request.body, "size"),
+                        aspect_ratio = ?body_str(&request.body, "aspect_ratio"),
                         // v4 logs `requestParams.n`, i.e. the RESOLVED count.
                         n = params.n.unwrap_or(1.0),
                         lora_dialect = ?extras.applied.dialect.map(|d| d.as_str()),
@@ -2189,6 +2282,61 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageProvider for RealImageProvider<T
 }
 
 impl<T: WireTransport, B: ImageBytesFetch> RealImageProvider<T, B> {
+    /// One send through the provider's SDK status gate. v4 generates through
+    /// `new OpenAI(...)` + `client.images.generate` for OPENAI / GROK / Z_AI /
+    /// NANOGPT, and the SDK THROWS an `APIError` on any non-2xx — carrying the
+    /// API's own message — long before reaching the `data` check. Their
+    /// `Invalid response from … Images API` sentence is reserved for a 2xx with
+    /// a malformed body. v5 fetches the wire itself, so the status gate has to
+    /// be here. Dogfood finding #104: without it a Grok 400 (`{"error":
+    /// "Generated image rejected by content moderation."}`) collapsed into the
+    /// generic sentence and the operator lost the reason.
+    ///
+    /// GOOGLE and OPENROUTER are the raw-`fetch` pair in v4 (they check
+    /// `response.ok` themselves and throw their own sentences), which
+    /// `parse_image_response` reproduces — so they must NOT come through here.
+    /// NanoGPT is raw-fetch only for its MODEL LISTING; its generation is the
+    /// SDK, which is why it belongs on this list.
+    /// `sdk_and_raw_fetch_providers_keep_their_own_non_2xx_sentences` pins the
+    /// split in both directions. NanoGPT's square retry (bug 269) sends its
+    /// second body through the same gate.
+    async fn send_gated(
+        &self,
+        provider: &str,
+        params: &ImageGenParams,
+        request: &BuiltRequest,
+    ) -> Result<WireResponse, ImageGenError> {
+        let body = request.body_string();
+        match self
+            .transport
+            .send(&request.method, &request.url, &request.headers, &body)
+            .await
+        {
+            Ok(resp)
+                if !resp.ok() && matches!(provider, "OPENAI" | "GROK" | "Z_AI" | "NANOGPT") =>
+            {
+                // P4.D225 (v4 `8bd080267`): each SDK plugin wraps
+                // `client.images.generate` and maps a content refusal to the
+                // typed error before rethrowing; everything else unchanged.
+                let default_model = match provider {
+                    "OPENAI" => "dall-e-3",
+                    "GROK" => "grok-imagine-image",
+                    "Z_AI" => "glm-image",
+                    _ => "hidream",
+                };
+                Err(map_sdk_image_moderation(
+                    provider,
+                    model_or_default(params, default_model),
+                    openai_sdk_error(&resp),
+                    &resp,
+                ))
+            }
+            Ok(resp) => Ok(resp),
+            // The SDK/transport throw (network) surfaces verbatim.
+            Err(message) => Err(ImageGenError::new(message)),
+        }
+    }
+
     /// v4's per-image loop inside the Z.AI and NanoGPT providers'
     /// `generateImage`: keep the base64 when it is already there; otherwise
     /// download the URL and encode the bytes; reject an entry that carries
@@ -2312,8 +2460,12 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageModelDiscovery for RealImageProv
             // v5 keeps `parse_models_page` sans-IO, so the same write lands
             // here, on the same body, before the parse. Only NanoGPT's listing
             // is `?detailed=true`; no other provider has a catalog to remember.
+            //
+            // A body v4's `response.json()` / `payload.data` would THROW on
+            // leaves the cache unmoved (P4.D356); the listing's own parse
+            // below answers the listing, as before.
             if provider == "NANOGPT" && resp.ok() {
-                crate::model::nanogpt_catalog::remember_detailed_catalog(&resp.body);
+                let _ = crate::model::nanogpt_catalog::remember_detailed_catalog(&resp.body);
             }
             let page = parse_models_page(provider, &resp)?;
             collected.extend(page.ids);
@@ -2330,6 +2482,39 @@ impl<T: WireTransport, B: ImageBytesFetch> ImageModelDiscovery for RealImageProv
 
 #[cfg(test)]
 mod tests {
+
+    /// R-12 (P4.D356): the fitted builder over the UNFITTED shape is the pure
+    /// builder, byte for byte — every dialect / route family drives the pure
+    /// one, so the fit must add nothing when there is nothing to fit.
+    #[test]
+    fn build_nanogpt_shaped_on_the_unfitted_shape_is_the_pure_builder() {
+        for size in [None, Some(""), Some("1024x1024"), Some("832x1248")] {
+            let p = ImageGenParams {
+                prompt: "a cat".into(),
+                model: "flux-lora".into(),
+                size: size.map(str::to_string),
+                aspect_ratio: Some("2:3".into()),
+                seed: Some(7.0),
+                negative_prompt: Some("blur".into()),
+                profile_parameters: Some(serde_json::json!({"num_inference_steps": 20})),
+                ..Default::default()
+            };
+            let unfitted = FittedImageShape {
+                size: p.size.clone(),
+                aspect_ratio: None,
+                adjusted: false,
+            };
+            let (u1, b1, _) = build_nanogpt(&p);
+            let (u2, b2, _) = build_nanogpt_shaped(&p, &unfitted);
+            assert_eq!(u1, u2);
+            assert_eq!(
+                serde_json::to_string(&b1).unwrap(),
+                serde_json::to_string(&b2).unwrap()
+            );
+            // The asked `aspect_ratio` never rides an unfitted body.
+            assert!(b1.get("aspect_ratio").is_none());
+        }
+    }
     use super::*;
     use crate::model::image::ImageGenParams;
     use crate::model::wire::CannedWireTransport;
