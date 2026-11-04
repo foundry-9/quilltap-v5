@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { CoreClient } from '../../../core/core-client';
 import type { RoleplayTemplateDto } from '../../../core/core-contract';
 import { RoleplayTemplatesCard } from './roleplay-templates-card';
+import { TemplateFormModal } from './template-form-modal';
 
 function tmpl(over: Partial<RoleplayTemplateDto>): RoleplayTemplateDto {
   return {
@@ -83,6 +84,70 @@ describe('RoleplayTemplatesCard', () => {
     expect(labels).toContain('Copy as New');
     expect(labels).not.toContain('Edit');
     expect(labels).not.toContain('Delete');
+  });
+
+  it('lists the three built-ins incl. Novel, and Copy as New seeds the form from Novel (P4.D352)', async () => {
+    // The Novel bag: v4 `lib/chat/novel-template.ts:26-52` + `:94-119` at
+    // 236c04e35 (`renderingPatterns: []` here — the card never reads them).
+    const novel = tmpl({
+      id: 'n',
+      name: 'Novel',
+      isBuiltIn: true,
+      userId: null,
+      narrationDelimiters: null,
+      unmarkedStyle: {
+        style: 'qt-roleplay-plain',
+        addOns: { bold: false, italic: true, reverse: false, underline: 'none', border: 'none', font: '' },
+      },
+      markdownAsterisks: false,
+      delimiters: [
+        {
+          kind: 'wrap',
+          name: 'Dialogue',
+          buttonName: 'Dia',
+          delimiters: '"',
+          style: 'qt-chat-dialogue',
+          matchCurlyQuotes: true,
+          closeOptional: true,
+        },
+      ],
+    });
+    const fixture = await render(
+      stubClient([
+        tmpl({ id: 'a', name: 'Standard', isBuiltIn: true, userId: null }),
+        tmpl({ id: 'b', name: 'Quilltap RP', isBuiltIn: true, userId: null }),
+        novel,
+      ]),
+    );
+    const cards = Array.from(fixture.nativeElement.querySelectorAll('.qt-card')).filter((el) =>
+      Array.from((el as HTMLElement).querySelectorAll('button')).some(
+        (b) => b.textContent?.trim() === 'Copy as New',
+      ),
+    ) as HTMLElement[];
+    expect(cards).toHaveLength(3);
+    const copy = Array.from(cards[2].querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Copy as New',
+    ) as HTMLButtonElement;
+    copy.click();
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    const modal = fixture.debugElement.query((d) => d.componentInstance instanceof TemplateFormModal);
+    const root = modal.nativeElement as HTMLElement;
+    const checkedRadio = root.querySelector<HTMLInputElement>('input[name="narrationMode"]:checked')!;
+    expect(checkedRadio.closest('label')!.textContent!.trim()).toBe('None — plain prose');
+    const boxText = (t: string) =>
+      (Array.from(root.querySelectorAll('label'))
+        .find((l) => (l.textContent ?? '').replace(/\s+/g, ' ').trim().startsWith(t))!
+        .querySelector('input[type="checkbox"]') as HTMLInputElement).checked;
+    expect(boxText('Style unmarked text')).toBe(true);
+    expect(boxText('Markdown reads asterisks')).toBe(false);
+    expect(boxText('Straight quotes also match curly ones')).toBe(true);
+    expect(boxText('May run unclosed')).toBe(true);
+    expect(root.querySelector<HTMLInputElement>('input[placeholder="My Custom RP Style"]')!.value).toBe(
+      'Novel (Copy)',
+    );
   });
 
   it('renders My Templates with Edit + Delete for user templates', async () => {

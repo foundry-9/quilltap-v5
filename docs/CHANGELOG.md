@@ -12,6 +12,23 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the Novel template in the template editor — None narration, Unmarked Text, the asterisks switch, the two wrap flags, the shared flourishes editor (P4.D352)
+
+_Versions: SPA 0.5.915._
+
+The template editor gains the SPA half of v4 `778b97b2b` (Novel template), at `236c04e35`. Changes:
+
+- A third narration radio, "None — plain prose", stored as `null`; choosing it turns the unmarked style on.
+- A new "Unmarked Text" section: a style class with the shared datalist, plus flourishes.
+- The Markdown-asterisks switch.
+- Each `wrap` delimiter gets two checkboxes, `matchCurlyQuotes` and `closeOptional`; each key is emitted only when ticked.
+- The style list now leads with "Plain (no chip — dress it with flourishes)". `qt-roleplay-plain` ships no CSS, by design.
+- New `qt-template-add-ons-editor` (v4 `AddOnsEditor`), shared by every delimiter and by unmarked text.
+- `template-form.ts` carries v4's form round-trips (`null` narration, `unmarkedFromForm`, `markdownAsterisks ?? true`), the Save predicate (`:868`) and the save payload (`:288-291`). The modal now builds its body and its validity from these helpers.
+- Labels pair with their controls through per-instance ids, and v4's `aria-label`s are applied (v4 `eed72d60c`, WCAG R4 / R6).
+
+`core-contract.ts` widens the C7 types in place (`narrationDelimiters | null`, `unmarkedStyle`, `markdownAsterisks`, the two `wrap` flags) and adds `UnmarkedStyle` in a P4.D352 fence. The server half is P4.D351's.
+
 #### 2026-11-03 — test(spa): the Novel renderer rows re-captured from v4's real renderer at 236c04e35 (P4.D352)
 
 _Versions: SPA 0.5.914._

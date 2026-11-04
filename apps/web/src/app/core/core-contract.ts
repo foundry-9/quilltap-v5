@@ -5552,6 +5552,10 @@ export type TemplateDelimiter =
       addOns?: TemplateDelimiterAddOns;
       /** `open…close` around an inline span — a string or an `[open, close]` pair. */
       delimiters: string | [string, string];
+      /** wrap only; present only when set — straight quotes also match curly ones. */ // P4.D352 (C7)
+      matchCurlyQuotes?: true; // P4.D352 (C7)
+      /** wrap only; present only when set — may run unclosed to the paragraph end. */ // P4.D352 (C7)
+      closeOptional?: true; // P4.D352 (C7)
     }
   | {
       kind: 'linePrefix';
@@ -5590,7 +5594,11 @@ export interface DialogueDetection {
   className: string;
 }
 
-/** The narration delimiter: a single string, or an `[open, close]` pair. */
+/**
+ * The narration delimiter: a single string, or an `[open, close]` pair. A
+ * template whose narration is unmarked prose carries `null` instead (the
+ * DTO / bag fields below widen to `| null` — v4 `778b97b2b`).
+ */
 export type NarrationDelimiters = string | [string, string];
 
 /** One roleplay template (v4 `RoleplayTemplateDto`; `userId: null` = built-in). */
@@ -5607,7 +5615,12 @@ export interface RoleplayTemplateDto {
   renderingPatterns: RenderingPattern[];
   /** Omitted on route reads when null; the create/update echoes carry `null`. */
   dialogueDetection?: DialogueDetection | null;
-  narrationDelimiters: NarrationDelimiters;
+  /** `null` = unmarked prose; the DECODED value on every read. */ // P4.D352 (C7)
+  narrationDelimiters: NarrationDelimiters | null; // P4.D352 (C7)
+  /** Omitted on route reads when SQL NULL; the create/update echoes carry `null` — the `description` asymmetry. */ // P4.D352 (C7)
+  unmarkedStyle?: UnmarkedStyle | null; // P4.D352 (C7)
+  /** Always present on reads (`INTEGER DEFAULT 1`); optional so an older server's read still type-checks. */ // P4.D352 (C7)
+  markdownAsterisks?: boolean; // P4.D352 (C7)
   createdAt: string;
   updatedAt: string;
 }
@@ -5617,7 +5630,9 @@ export interface RoleplayTemplateCreateBag {
   name: string;
   description?: string | null;
   systemPrompt: string;
-  narrationDelimiters: NarrationDelimiters;
+  narrationDelimiters: NarrationDelimiters | null; // P4.D352 (C7)
+  unmarkedStyle?: UnmarkedStyle | null; // P4.D352 (C7)
+  markdownAsterisks?: boolean; // P4.D352 (C7)
   delimiters?: TemplateDelimiter[];
   renderingPatterns?: RenderingPattern[];
   dialogueDetection?: DialogueDetection | null;
@@ -5632,8 +5647,23 @@ export interface RoleplayTemplateUpdateBag {
   delimiters?: TemplateDelimiter[];
   renderingPatterns?: RenderingPattern[];
   dialogueDetection?: DialogueDetection | null;
-  narrationDelimiters?: NarrationDelimiters;
+  narrationDelimiters?: NarrationDelimiters | null; // P4.D352 (C7)
+  unmarkedStyle?: UnmarkedStyle | null; // P4.D352 (C7)
+  markdownAsterisks?: boolean; // P4.D352 (C7)
 }
+
+// === P4.D352: the Novel template wire (C7) ===
+/**
+ * How a template dresses the text no delimiter claims (v4 `UnmarkedStyle`,
+ * `778b97b2b`): a CSS class (`qt-roleplay-plain` by default — the chip-less
+ * base) plus optional flourishes. `null` on the template = unmarked text is
+ * left plain. Built by P4.D351's routes; the Novel built-in carries italic.
+ */
+export interface UnmarkedStyle {
+  style: string;
+  addOns?: TemplateDelimiterAddOns;
+}
+// === end P4.D352 ===
 
 export interface RoleplayTemplateListRequest {
   type: 'roleplayTemplateList';

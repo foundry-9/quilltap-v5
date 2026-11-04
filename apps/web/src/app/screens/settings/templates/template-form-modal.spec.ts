@@ -130,3 +130,118 @@ describe('TemplateFormModal — the LLM-prompt markdown field', () => {
     expect((create!['template'] as Record<string, unknown>)['systemPrompt']).toBe('Be brief.');
   });
 });
+
+// --- P4.D352: the Novel template's SPA half (v4 778b97b2b at 236c04e35) ------
+
+function radios(fixture: ComponentFixture<unknown>): HTMLInputElement[] {
+  return Array.from(
+    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLInputElement>(
+      'input[type="radio"][name="narrationMode"]',
+    ),
+  );
+}
+
+function checkboxByText(fixture: ComponentFixture<unknown>, text: string): HTMLInputElement {
+  const label = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('label')).find(
+    (l) => (l.textContent ?? '').replace(/\s+/g, ' ').trim().startsWith(text),
+  );
+  if (!label) throw new Error(`no label starting "${text}"`);
+  return label.querySelector('input[type="checkbox"]') as HTMLInputElement;
+}
+
+describe('TemplateFormModal — unmarked prose (P4.D352)', () => {
+  it('offers a third narration radio, None — plain prose, which turns the Unmarked Text style on', async () => {
+    const fixture = await render([], null);
+    const root = fixture.nativeElement as HTMLElement;
+    expect(radios(fixture)).toHaveLength(3);
+    expect(root.textContent).toContain(
+      'How narration and action text is marked in this template’s formatting — or, as in a proper novel, not marked at all.'.replace('’', "'"),
+    );
+    expect(root.querySelector('input[list="qt-style-options-unmarked"]')).toBeNull();
+
+    const none = radios(fixture)[2];
+    expect(none.closest('label')!.textContent!.trim()).toBe('None — plain prose');
+    none.click();
+    await settle(fixture);
+
+    expect(root.textContent).toContain('Narration carries no marks; style it under Unmarked Text below.');
+    expect(root.querySelector('input[placeholder="*"]')).toBeNull();
+    expect(checkboxByText(fixture, 'Style unmarked text').checked).toBe(true);
+    const style = root.querySelector<HTMLInputElement>('input[list="qt-style-options-unmarked"]')!;
+    expect(style.value).toBe('qt-roleplay-plain');
+    // R4: the style field's visible label is paired by id.
+    expect(root.querySelector(`label[for="${style.id}"]`)!.textContent!.trim()).toBe(
+      'Style (CSS class)',
+    );
+    expect(root.querySelectorAll('#qt-style-options-unmarked option')[0].textContent).toBe(
+      'Plain (no chip — dress it with flourishes)',
+    );
+  });
+
+  it('saves narrationDelimiters: null, the unmarked style with italic, and the asterisks flag', async () => {
+    const seen: Req[] = [];
+    const fixture = await render(seen, null);
+    setInput(fixture, 'input[placeholder="My Custom RP Style"]', 'Prose');
+    promptEditor(fixture).setMarkdown('Write prose.');
+    await settle(fixture);
+    radios(fixture)[2].click();
+    await settle(fixture);
+    // Italic in the unmarked flourishes, asterisks off.
+    const italic = checkboxByText(fixture, 'Italic');
+    italic.click();
+    await settle(fixture);
+    checkboxByText(fixture, 'Markdown reads asterisks').click();
+    await settle(fixture);
+    clickButtonWithText(fixture, 'Create Template');
+    await settle(fixture);
+
+    const create = seen.find((r) => r.type === 'roleplayTemplateCreate');
+    const body = create!['template'] as Record<string, unknown>;
+    expect(body['narrationDelimiters']).toBeNull();
+    expect(body['unmarkedStyle']).toEqual({
+      style: 'qt-roleplay-plain',
+      addOns: { bold: false, italic: true, reverse: false, underline: 'none', border: 'none', font: '' },
+    });
+    expect(body['markdownAsterisks']).toBe(false);
+  });
+
+  it('seeds every control from a Novel-shaped template', async () => {
+    const fixture = await render(
+      [],
+      tmpl({
+        narrationDelimiters: null,
+        unmarkedStyle: {
+          style: 'qt-roleplay-plain',
+          addOns: { bold: false, italic: true, reverse: false, underline: 'none', border: 'none', font: '' },
+        },
+        markdownAsterisks: false,
+        delimiters: [
+          {
+            kind: 'wrap',
+            name: 'Dialogue',
+            buttonName: 'Dia',
+            delimiters: '"',
+            style: 'qt-chat-dialogue',
+            matchCurlyQuotes: true,
+            closeOptional: true,
+          },
+        ],
+      }),
+    );
+    expect(radios(fixture)[2].checked).toBe(true);
+    expect(checkboxByText(fixture, 'Style unmarked text').checked).toBe(true);
+    expect(checkboxByText(fixture, 'Markdown reads asterisks').checked).toBe(false);
+    expect(checkboxByText(fixture, 'Straight quotes also match curly ones').checked).toBe(true);
+    expect(checkboxByText(fixture, 'May run unclosed to the end of a paragraph').checked).toBe(true);
+    // The unmarked flourishes come first in the form; their Italic is ticked.
+    expect(checkboxByText(fixture, 'Italic').checked).toBe(true);
+  });
+
+  it('allows Save in none mode with empty narration inputs (v4 :868)', async () => {
+    const fixture = await render([], tmpl({ narrationDelimiters: null }));
+    const save = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Save Changes',
+    ) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+  });
+});

@@ -17,14 +17,22 @@ import { FormActions } from '../../../ui/form-actions';
 import { Modal } from '../../../ui/modal';
 import { PROMPT_FIELD_HINTS } from '../../../ui/prompt-field-hints';
 import { PromptFieldLabel } from '../../../ui/prompt-field-label';
+import { TemplateAddOnsEditor } from './template-add-ons-editor';
 import { TemplateDelimiterEditor } from './template-delimiter-editor';
 import {
+  EMPTY_ADD_ONS,
+  STYLE_OPTIONS,
   emptyTemplateForm,
-  formEntriesToDelimiters,
+  formToTemplateBody,
   isTemplateFormValid,
   templateToForm,
   type DelimiterFormEntry,
+  type FullAddOns,
+  type TemplateFormData,
 } from './template-form';
+
+/** Per-instance id seed for the label ↔ control pairs (v4 uses `useId()`). */
+let templateFormModalCounter = 0;
 import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api';
 
 /**
@@ -42,6 +50,13 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
  * deferral (the `generateFormattingPromptHint` transcription is out of scope),
  * so nothing is projected into the label row's actions slot here — v4 puts
  * that button there.
+ *
+ * P4.D352 (v4 `778b97b2b` at 236c04e35): a third narration choice, `None —
+ * plain prose` (stored as `null`), which also turns on the new `Unmarked Text`
+ * section (a style class + flourishes for whatever no delimiter claims) and
+ * the Markdown-asterisks switch. The save body and the Save predicate come
+ * from `template-form.ts` (v4's `:288-291` payload and `:868` predicate); the
+ * labels pair with their controls through per-instance ids (v4 `eed72d60c`).
  */
 @Component({
   selector: 'qt-template-form-modal',
@@ -53,6 +68,7 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
     TemplateDelimiterEditor,
     MarkdownField,
     PromptFieldLabel,
+    TemplateAddOnsEditor,
   ],
   template: `
     <qt-modal [title]="title()" maxWidth="3xl" (close)="close.emit()">
@@ -62,12 +78,13 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
 
       <div class="space-y-4">
         <div>
-          <label class="block qt-text-label mb-1">
+          <label class="block qt-text-label mb-1" [for]="id + '-name'">
             Name <span class="qt-text-destructive">*</span>
           </label>
           <input
             type="text"
             class="qt-input"
+            [id]="id + '-name'"
             maxlength="100"
             placeholder="My Custom RP Style"
             [value]="name()"
@@ -77,10 +94,11 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
         </div>
 
         <div>
-          <label class="block qt-text-label mb-1">Description</label>
+          <label class="block qt-text-label mb-1" [for]="id + '-description'">Description</label>
           <input
             type="text"
             class="qt-input"
+            [id]="id + '-description'"
             maxlength="500"
             placeholder="A brief description of what this template does"
             [value]="description()"
@@ -110,7 +128,8 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
             Narration Delimiters <span class="qt-text-destructive">*</span>
           </label>
           <p class="qt-text-xs qt-text-muted mb-2">
-            How narration and action text is marked in this template's formatting.
+            How narration and action text is marked in this template's formatting &mdash; or, as
+            in a proper novel, not marked at all.
           </p>
           <div class="flex items-center gap-4 mb-2">
             <label class="flex items-center gap-1 qt-text-xs">
@@ -131,47 +150,115 @@ import { createRoleplayTemplate, updateRoleplayTemplate } from './templates.api'
               />
               Different open &amp; close
             </label>
+            <label class="flex items-center gap-1 qt-text-xs">
+              <input
+                type="radio"
+                name="narrationMode"
+                [checked]="narrationMode() === 'none'"
+                (change)="setNarrationMode('none')"
+              />
+              None &mdash; plain prose
+            </label>
           </div>
-          @if (narrationMode() === 'pair') {
+          @if (narrationMode() === 'none') {
+            <span class="qt-text-xs qt-text-secondary">
+              Narration carries no marks; style it under <em>Unmarked Text</em> below.
+            </span>
+          } @else if (narrationMode() === 'pair') {
             <div class="flex items-center gap-3">
-              <label class="qt-text-xs">
-                Open:
-                <input
-                  type="text"
-                  class="qt-input font-mono w-20 ml-1"
-                  maxlength="10"
-                  placeholder="["
-                  [value]="narrationOpen()"
-                  (input)="narrationOpen.set($any($event.target).value)"
-                />
-              </label>
-              <label class="qt-text-xs">
-                Close:
-                <input
-                  type="text"
-                  class="qt-input font-mono w-20 ml-1"
-                  maxlength="10"
-                  placeholder="]"
-                  [value]="narrationClose()"
-                  (input)="narrationClose.set($any($event.target).value)"
-                />
-              </label>
+              <label class="qt-text-xs" [for]="id + '-narration-open'">Open:</label>
+              <input
+                type="text"
+                class="qt-input font-mono w-20"
+                maxlength="10"
+                placeholder="["
+                [id]="id + '-narration-open'"
+                [value]="narrationOpen()"
+                (input)="narrationOpen.set($any($event.target).value)"
+              />
+              <label class="qt-text-xs" [for]="id + '-narration-close'">Close:</label>
+              <input
+                type="text"
+                class="qt-input font-mono w-20"
+                maxlength="10"
+                placeholder="]"
+                [id]="id + '-narration-close'"
+                [value]="narrationClose()"
+                (input)="narrationClose.set($any($event.target).value)"
+              />
             </div>
             <p class="qt-text-xs qt-text-muted mt-1">e.g. <code>[narration]</code></p>
           } @else {
-            <label class="qt-text-xs">
-              Delimiter:
+            <div class="flex items-center gap-2">
+              <label class="qt-text-xs" [for]="id + '-narration-delimiter'">Delimiter:</label>
               <input
                 type="text"
-                class="qt-input font-mono w-20 ml-1 text-center"
+                class="qt-input font-mono w-20 text-center"
                 maxlength="10"
                 placeholder="*"
+                [id]="id + '-narration-delimiter'"
                 [value]="narrationOpen()"
                 (input)="setNarrationSingle($any($event.target).value)"
               />
-            </label>
+            </div>
             <p class="qt-text-xs qt-text-muted mt-1">e.g. <code>*narration*</code></p>
           }
+        </div>
+
+        <!-- Unmarked text + Markdown asterisks (v4 778b97b2b, index.tsx:541-600) -->
+        <div class="p-3 rounded-lg qt-border qt-bg-surface">
+          <label class="block qt-text-label mb-1">Unmarked Text</label>
+          <p class="qt-text-xs qt-text-muted mb-2">
+            Whatever no delimiter lays claim to. Give it a style of its own and it is dressed
+            accordingly &mdash; italic narration, say, for a template whose narration wears no
+            marks.
+          </p>
+          <label class="flex items-center gap-2 cursor-pointer mb-2">
+            <input
+              type="checkbox"
+              class="qt-checkbox"
+              [checked]="unmarkedEnabled()"
+              (change)="unmarkedEnabled.set($any($event.target).checked)"
+            />
+            <span class="qt-text-xs">Style unmarked text</span>
+          </label>
+          @if (unmarkedEnabled()) {
+            <div class="p-3 rounded-lg qt-border space-y-2">
+              <div>
+                <label class="qt-text-xs" [for]="id + '-unmarked-style'">Style (CSS class)</label>
+                <input
+                  type="text"
+                  list="qt-style-options-unmarked"
+                  placeholder="qt-roleplay-plain"
+                  maxlength="50"
+                  class="qt-input w-full text-sm font-mono"
+                  [id]="id + '-unmarked-style'"
+                  [value]="unmarkedStyle()"
+                  (input)="unmarkedStyle.set($any($event.target).value)"
+                />
+                <datalist id="qt-style-options-unmarked">
+                  @for (opt of styleOptions; track opt.value) {
+                    <option [value]="opt.value">{{ opt.label }}</option>
+                  }
+                </datalist>
+              </div>
+              <qt-template-add-ons-editor [(addOns)]="unmarkedAddOns" />
+            </div>
+          }
+          <label class="flex items-start gap-2 cursor-pointer mt-3">
+            <input
+              type="checkbox"
+              class="qt-checkbox mt-0.5"
+              [checked]="markdownAsterisks()"
+              (change)="markdownAsterisks.set($any($event.target).checked)"
+            />
+            <span class="qt-text-xs"
+              >Markdown reads asterisks as bold and italic. Untick it to hand a single
+              <code class="font-mono">*</code> to your own delimiters (an emphasis mark, perhaps);
+              doubled <code class="font-mono">**</code> then mean nothing at all and are quietly
+              dropped.</span
+            >
+          </label>
         </div>
 
         <qt-template-delimiter-editor [(entries)]="delimiters" />
@@ -213,10 +300,17 @@ export class TemplateFormModal implements OnInit {
   protected readonly name = signal('');
   protected readonly description = signal('');
   protected readonly systemPrompt = signal('');
-  protected readonly narrationMode = signal<'single' | 'pair'>('single');
+  protected readonly narrationMode = signal<'single' | 'pair' | 'none'>('single');
   protected readonly narrationOpen = signal('*');
   protected readonly narrationClose = signal('*');
   protected readonly delimiters = signal<DelimiterFormEntry[]>([]);
+  protected readonly unmarkedEnabled = signal(false);
+  protected readonly unmarkedStyle = signal('qt-roleplay-plain');
+  protected readonly unmarkedAddOns = signal<FullAddOns>({ ...EMPTY_ADD_ONS });
+  protected readonly markdownAsterisks = signal(true);
+
+  protected readonly id = `qt-template-form-${++templateFormModalCounter}`;
+  protected readonly styleOptions = STYLE_OPTIONS;
 
   protected readonly saving = signal(false);
   protected readonly error = signal<string | null>(null);
@@ -236,19 +330,24 @@ export class TemplateFormModal implements OnInit {
     this.editingId() ? 'Save Changes' : 'Create Template',
   );
 
-  protected readonly isValid = computed(() =>
-    isTemplateFormValid({
-      name: this.name(),
-      description: this.description(),
-      systemPrompt: this.systemPrompt(),
-      narration: {
-        mode: this.narrationMode(),
-        open: this.narrationOpen(),
-        close: this.narrationClose(),
-      },
-      delimiters: this.delimiters(),
-    }),
-  );
+  /** The signals as one form value — what the helpers in `template-form.ts` read. */
+  private readonly formData = computed<TemplateFormData>(() => ({
+    name: this.name(),
+    description: this.description(),
+    systemPrompt: this.systemPrompt(),
+    narration: {
+      mode: this.narrationMode(),
+      open: this.narrationOpen(),
+      close: this.narrationClose(),
+    },
+    delimiters: this.delimiters(),
+    unmarkedEnabled: this.unmarkedEnabled(),
+    unmarkedStyle: this.unmarkedStyle(),
+    unmarkedAddOns: this.unmarkedAddOns(),
+    markdownAsterisks: this.markdownAsterisks(),
+  }));
+
+  protected readonly isValid = computed(() => isTemplateFormValid(this.formData()));
 
   ngOnInit(): void {
     const t = this.template();
@@ -260,13 +359,21 @@ export class TemplateFormModal implements OnInit {
     this.narrationOpen.set(form.narration.open);
     this.narrationClose.set(form.narration.close);
     this.delimiters.set(form.delimiters);
+    this.unmarkedEnabled.set(form.unmarkedEnabled);
+    this.unmarkedStyle.set(form.unmarkedStyle);
+    this.unmarkedAddOns.set(form.unmarkedAddOns);
+    this.markdownAsterisks.set(form.markdownAsterisks);
   }
 
-  protected setNarrationMode(mode: 'single' | 'pair'): void {
+  protected setNarrationMode(mode: 'single' | 'pair' | 'none'): void {
     this.narrationMode.set(mode);
     // v4: switching to single forces close = open.
     if (mode === 'single') {
       this.narrationClose.set(this.narrationOpen());
+    }
+    // v4 `:470-480`: "Unmarked narration wants a look of its own."
+    if (mode === 'none') {
+      this.unmarkedEnabled.set(true);
     }
   }
 
@@ -282,16 +389,7 @@ export class TemplateFormModal implements OnInit {
     }
     this.saving.set(true);
     this.error.set(null);
-    const body = {
-      name: this.name().trim(),
-      description: this.description().trim() || null,
-      systemPrompt: this.systemPrompt(),
-      narrationDelimiters:
-        this.narrationMode() === 'pair'
-          ? ([this.narrationOpen(), this.narrationClose()] as [string, string])
-          : this.narrationOpen(),
-      delimiters: formEntriesToDelimiters(this.delimiters()),
-    };
+    const body = formToTemplateBody(this.formData());
     try {
       const id = this.editingId();
       if (id) {
