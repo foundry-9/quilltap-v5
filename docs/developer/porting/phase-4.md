@@ -7222,8 +7222,19 @@ Done at unify, and its exact OPEN remainder.
 - **Escalated:** ⚖ Storyteller **All at once** — see NEXT 2.
 
 **NEXT** (in order):
-1. **The owed dogfood pass for this round** (the union build on a Friday
-   copy). Measure the first boot FIRST: the column ensures, the
+
+⚖ **Human ruling (2026-11-04): the dogfood pass WAITS until the port has
+caught up with v4.** No known backup of Friday from an earlier v4 state
+exists, and live v4 has already migrated Friday well past the pin (4.12.0,
+the 22nd and 23rd D23 moves, the two live-data hazards in the drift ledger's
+§1). A Friday copy taken now is a v4-HEAD instance that this baseline cannot
+honestly open. So the order is now: NEXT 3 (the 4.12.0 catch-up, plus any
+later catch-ups) first, with NEXT 2 (the follow-ups smalls) before it or as
+part of it; NEXT 1 runs once v5's baseline reaches the v4 state the Friday
+copy is at, and it then covers every round owed since.
+
+1. **The owed dogfood pass for this round** — DEFERRED by the ruling above
+   (the union build on a Friday copy). Measure the first boot FIRST: the column ensures, the
    `storyteller_rounds` table, the `narrationDelimiters` seed rewrite
    (P4.D341 item 24), and the help reconcile (135 → 137). The 💸 / live
    surfaces:

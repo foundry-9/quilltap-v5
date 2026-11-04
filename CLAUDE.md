@@ -1202,11 +1202,13 @@ records THERE. Update this summary only when a phase or round completes.
       file.
   - **Versions:** core 0.0.1427, host 0.0.223, web 0.0.256, cli 0.0.38,
     SPA 0.5.971.
-  - **Next:**
-    1. The owed dogfood pass.
-    2. A follow-ups smalls round, including P4.D343 item 41 and the review's
+  - **Next** (reordered by the human, 2026-11-04 — the dogfood pass waits
+    until v5 catches up with v4, since live v4 has already migrated Friday
+    past the pin and no earlier backup exists):
+    1. A follow-ups smalls round, including P4.D343 item 41 and the review's
        recorded notes.
-    3. The 4.12.0 catch-up.
+    2. The 4.12.0 catch-up, and any later catch-ups.
+    3. The owed dogfood pass, covering every round owed since.
   - Details: `phase-4.md`. Round record: `status-log.md`.
 - **Oracle baseline: `236c04e35` (2026-10-28, v4 main — "dev: started
   4.12.0 development", `4.12.0-dev.0`; code = the 4.11.0 release), adopted

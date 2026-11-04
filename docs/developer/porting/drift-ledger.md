@@ -171,16 +171,16 @@ probe verifies against._
     `npm rebuild better-sqlite3` (SQLite 3.53.2 / chacha20 — the pin's
     lockfile wants the 12.11.1 driver; the live tree has 13.0.3).
   - The pin's plugin + CLI dirs take the floor install
-    (`.claude/pin-plugin-sdks.sh <PIN>`, the 2026-11-02 rulings), never live
-    symlinks. ⚠ **Its `--offline` installs answer `ENOTCACHED`:** the npm
-    cache lacks the floor packuments and `@quilltap/plugin-types@2.8.0`. It
-    stopped every lane after P4.D354. The unifier ran a copy of the script
-    with `--prefer-offline`, which fetched the missing public metadata and
-    installed the ruled floors inside the pin only (`openai` 7.23.0,
-    anthropic 0.115.0, genai 1.52.0, `@openrouter/sdk` 1.3.28,
-    plugin-utils 2.7.1; the CLI driver 12.11.1).
-    **The committed script still says `--offline`**: populate the cache or
-    use the `--prefer-offline` copy at the next pin.
+    (`.claude/pin-plugin-sdks.sh <PIN> <COMMIT>`, the 2026-11-02 rulings),
+    never live symlinks. The script refuses a pin not at `<COMMIT>`. Its
+    `--offline` installs answered `ENOTCACHED` for every lane after P4.D354
+    (the npm cache lacked the floor packuments and
+    `@quilltap/plugin-types@2.8.0`); since 2026-11-04 the script retries a
+    cache miss once with `--prefer-offline`, which fetches only the missing
+    public metadata and still installs the exact floors inside the pin
+    (`openai` 7.23.0, anthropic 0.115.0, genai 1.52.0, `@openrouter/sdk`
+    1.3.28, plugin-utils 2.7.1; the CLI driver 12.11.1). When the pin moves,
+    re-check the printed floors against `provider_sdk_version_guard`.
   - `QT_V4_CHECKOUT` = `QT_V4_ROOT` = the pin.
 
 ### ⚠ LIVE-DATA — what stands at this baseline
