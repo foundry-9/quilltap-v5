@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): thread prose mode and the Bold withhold through the composer and toolbar (P4.D352)
+
+_Versions: SPA 0.5.912._
+
+`qt-chat-composer` gains `proseMode` (default `false`) and `markdownAsterisks` (default `true`) inputs, and hands the rich editor ONE memoised `punctuationLint` object built from the settings service's `punctuationWarnings` signal and `proseMode`. `qt-formatting-toolbar` gains `markdownAsterisks` and withholds Bold when it is `false` (v4 `FormattingToolbar.tsx:486-489`, `778b97b2b`). The Salon does not yet pass either input: the `salon-conversation.ts` hunk is a hand-off to P4.D344, so until the union the lint paints with prose mode off and Bold always shows.
+
 #### 2026-11-03 — feat(spa): the punctuation-warnings toggle and its live settings signal (P4.D352)
 
 _Versions: SPA 0.5.911._

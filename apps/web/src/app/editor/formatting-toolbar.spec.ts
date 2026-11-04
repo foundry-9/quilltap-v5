@@ -117,3 +117,40 @@ describe('FormattingToolbar — the emoji and symbol pickers', () => {
     expect(button('Insert a symbol').disabled).toBe(true);
   });
 });
+
+/**
+ * v4 `778b97b2b`: a template that takes asterisks away from Markdown
+ * (`markdownAsterisks: false`, Novel) withholds Bold — `**` means nothing there
+ * (`FormattingToolbar.tsx:486-489`). Absent → shown.
+ */
+describe('FormattingToolbar — the markdownAsterisks input (P4.D352)', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  function markdownButtons(f: ComponentFixture<FormattingToolbar>): HTMLButtonElement[] {
+    return [
+      ...(f.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+        '.qt-formatting-toolbar-section:first-child > button[class*="qt-formatting-button-"]',
+      ),
+    ].filter((b) => !/outdent|indent|code-block/.test(b.className));
+  }
+
+  it('shows Bold by default (v4: absent → shown)', () => {
+    TestBed.configureTestingModule({ imports: [FormattingToolbar] });
+    const f = TestBed.createComponent(FormattingToolbar);
+    f.detectChanges();
+    const buttons = markdownButtons(f);
+    expect(buttons).toHaveLength(11);
+    expect(buttons[0].getAttribute('title')).toBe('Bold');
+  });
+
+  it('withholds Bold — and only Bold — when the template says false', () => {
+    TestBed.configureTestingModule({ imports: [FormattingToolbar] });
+    const f = TestBed.createComponent(FormattingToolbar);
+    f.componentRef.setInput('markdownAsterisks', false);
+    f.detectChanges();
+    const buttons = markdownButtons(f);
+    expect(buttons).toHaveLength(10);
+    expect(buttons[0].textContent!.trim()).toBe('I');
+    expect(buttons.some((b) => b.getAttribute('title') === 'Bold')).toBe(false);
+  });
+});

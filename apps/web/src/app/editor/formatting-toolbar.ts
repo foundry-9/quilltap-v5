@@ -97,7 +97,7 @@ const MARKDOWN_BUTTONS: ButtonConfig[] = [
   template: `
     <div class="qt-formatting-toolbar">
       <div class="qt-formatting-toolbar-section">
-        @for (btn of buttons; track btn.type) {
+        @for (btn of buttons(); track btn.type) {
           <button
             type="button"
             class="qt-formatting-button qt-formatting-button-{{ btn.type }}"
@@ -257,6 +257,12 @@ export class FormattingToolbar {
   readonly delimiters = input<readonly TemplateDelimiter[]>([]);
   /** The template's narration characters — the synthesized "Nar" button (v4). */
   readonly narrationDelimiters = input<NarrationDelimiters | null>(null);
+  /**
+   * v4 `FormattingToolbar.tsx:41-43` (`778b97b2b`): `false` ⇒ `**` means
+   * nothing in this template (it hands asterisks to its own delimiters — Novel),
+   * so Bold is withheld. Absent ⇒ shown.
+   */
+  readonly markdownAsterisks = input(true);
 
   readonly action = output<FormatAction>();
   readonly toggleSource = output<void>();
@@ -286,7 +292,13 @@ export class FormattingToolbar {
     this.unicodePickerOpen.update((open) => !open);
   }
 
-  protected readonly buttons = MARKDOWN_BUTTONS;
+  /**
+   * v4 `:486-489`: `MARKDOWN_FORMATS.filter((format) => !(format.type ===
+   * 'bold' && template?.markdownAsterisks === false))`.
+   */
+  protected readonly buttons = computed(() =>
+    this.markdownAsterisks() ? MARKDOWN_BUTTONS : MARKDOWN_BUTTONS.filter((b) => b.type !== 'bold'),
+  );
 
   /** v4's `allDelimiters` (`FormattingToolbar.tsx:415-417`). */
   protected readonly shownDelimiters = computed(() =>

@@ -33,6 +33,7 @@ import {
   type FormatAction,
 } from '../editor/formatting-toolbar';
 import { applySourceFormat } from '../editor/source-transforms';
+import type { PunctuationLintInputs } from '../editor/punctuation-lint-plugin';
 import { RichEditor } from '../editor/rich-editor';
 import { SmartTypographySettings } from '../smart-typography/settings';
 import type { CompiledRules } from '../editor/text-replacement';
@@ -292,6 +293,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           [showSourceToggle]="true"
           [delimiters]="templateDelimiters()"
           [narrationDelimiters]="narrationDelimiters()"
+          [markdownAsterisks]="markdownAsterisks()"
           (action)="onFormatAction($event)"
           (applyDelimiter)="onApplyDelimiter($event)"
           (insertChar)="onInsertChar($event)"
@@ -512,6 +514,7 @@ export interface PendingToolResultChip extends RngPendingResult {
           [submitOnModEnter]="compositionMode()"
           [textReplacementRules]="effectiveTextReplacementRules()"
           [smartTypography]="smartTypography()"
+          [punctuationLint]="punctuationLint()"
           [spellcheck]="composerSpellcheck()"
           [composerEmoji]="charInsert.emoji()"
           [composerUnicode]="charInsert.unicode()"
@@ -584,6 +587,20 @@ export class ChatComposer implements OnInit {
    * without a rebuild. The two rules are gated independently.
    */
   protected readonly smartTypography = inject(SmartTypographySettings).typing;
+  /**
+   * The punctuation-warnings toggle (v4 `PunctuationLintPlugin.tsx:347`, which
+   * reads `chat_settings` itself for the same reason as the typing rules).
+   */
+  private readonly punctuationSettings = inject(SmartTypographySettings).punctuationWarnings;
+  /**
+   * What the editor's punctuation lint paints with — ONE memoised object, so
+   * the editor's repaint effect fires only when a value actually moves (a fresh
+   * literal in the template would re-trigger it on every change-detection pass).
+   */
+  protected readonly punctuationLint = computed<PunctuationLintInputs>(() => ({
+    enabled: this.punctuationSettings(),
+    proseMode: this.proseMode(),
+  }));
   private readonly toasts = inject(ToastService);
   /**
    * The `:` / `\` typeahead toggles. Read HERE rather than taken as inputs,
@@ -690,6 +707,19 @@ export class ChatComposer implements OnInit {
    */
   readonly templateDelimiters = input<readonly TemplateDelimiter[]>([]);
   readonly narrationDelimiters = input<NarrationDelimiters | null>(null);
+  /**
+   * The chat's template leaves narration unmarked and quotes its dialogue
+   * (`isProseTemplate`, v4 `2b2b190b6`); the Salon computes it from the fetched
+   * template. Turns on the lint's no-dialogue warning and the narration / OOC
+   * preview.
+   */
+  readonly proseMode = input(false);
+  /**
+   * v4 `FormattingToolbar.tsx:42` (`778b97b2b`): `false` ⇒ `**` means nothing
+   * in this template, so Bold is withheld. The Salon threads it from the same
+   * template fetch.
+   */
+  readonly markdownAsterisks = input(true);
   /**
    * Character ids the `@` typeahead lists first — this chat's cast (v4
    * `ChatComposer.tsx`'s `mentionPriorityCharacterIds`, P4.D224 §S.2).

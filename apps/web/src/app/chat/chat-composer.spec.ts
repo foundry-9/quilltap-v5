@@ -8,6 +8,7 @@ import { coreStreamStub } from '../core/core-client.testing';
 import { RichEditor } from '../editor/rich-editor';
 import { compileRules } from '../editor/text-replacement';
 import { ChatComposer, type ComposerSend, type PendingToolResultChip } from './chat-composer';
+import { SmartTypographySettings } from '../smart-typography/settings';
 import { ToastService } from '../ui/toast.service';
 
 // Draft persistence keys off chatId in localStorage; keep every test isolated.
@@ -1296,5 +1297,44 @@ describe('ChatComposer — raise a hand / stop (v4 2b5e8ee24 + b8362beb5)', () =
     }
     expect(hand(f).classList.contains('qt-chat-interrupt-button')).toBe(true);
     expect(stopBtn(f).classList.contains('qt-chat-stop-button')).toBe(true);
+  });
+});
+
+describe('ChatComposer — the punctuation lint + prose mode wire (P4.D352)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+  });
+
+  it('hands the editor {enabled: true, proseMode: false} by default', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    await settle(fixture);
+    expect(richEditor(fixture).punctuationLint()).toEqual({ enabled: true, proseMode: false });
+  });
+
+  it('passes proseMode through, and follows the warnings setting', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    await settle(fixture);
+    fixture.componentRef.setInput('proseMode', true);
+    fixture.detectChanges();
+    expect(richEditor(fixture).punctuationLint()).toEqual({ enabled: true, proseMode: true });
+    TestBed.inject(SmartTypographySettings).punctuationWarnings.set(false);
+    fixture.detectChanges();
+    expect(richEditor(fixture).punctuationLint()).toEqual({ enabled: false, proseMode: true });
+  });
+
+  it('hands the toolbar markdownAsterisks (Bold withheld under false)', async () => {
+    vi.stubGlobal('fetch', vi.fn());
+    const fixture = render();
+    fixture.componentRef.setInput('compositionMode', true);
+    await settle(fixture);
+    const bold = () =>
+      (fixture.nativeElement as HTMLElement).querySelector('button.qt-formatting-button-bold');
+    expect(bold()).not.toBeNull();
+    fixture.componentRef.setInput('markdownAsterisks', false);
+    fixture.detectChanges();
+    expect(bold()).toBeNull();
   });
 });
