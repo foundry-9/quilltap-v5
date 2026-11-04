@@ -99,6 +99,17 @@
   --qt-status-danger-fg: var(--color-destructive-foreground);
   --qt-status-danger-border: var(--color-destructive);
 
+  /* ==== P4.D352: composer punctuation lint + prose mode (v4 _variables.css:103-112 at 236c04e35) ==== */
+  --qt-punctuation-warning-bg: color-mix(in srgb, var(--color-warning) 35%, transparent);
+  --qt-punctuation-warning-underline: var(--color-warning);
+  --qt-punctuation-no-dialogue-bg: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  --qt-punctuation-no-dialogue-underline: var(--color-warning);
+  --qt-composer-narration-fg: color-mix(in srgb, var(--color-foreground) 65%, var(--color-primary));
+  --qt-composer-narration-bg: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  --qt-composer-ooc-fg: var(--qt-rp-ooc-color);
+  --qt-composer-ooc-bg: var(--qt-rp-ooc-bg);
+  /* ==== /P4.D352 ==== */
+
   /* ==========================================================================
      ALERT TOKENS
      ========================================================================== */

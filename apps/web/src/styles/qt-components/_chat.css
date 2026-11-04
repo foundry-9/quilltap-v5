@@ -1043,6 +1043,33 @@
     white-space: nowrap;
   }
 
+  /* ==== P4.D352: punctuation-lint decorations (v4 _chat.css:1047-1075 ::highlight() rules as class rules) ==== */
+  /* The composer's ProseMirror decorations (editor/punctuation-lint-plugin.ts).
+     v4 paints these four with the CSS Custom Highlight API; v5 paints spans,
+     and ProseMirror MERGES same-range decorations into one span carrying every
+     class — so the rules are declared in ASCENDING v4 priority (narration, ooc,
+     no-dialogue, warning) and the later rule wins the cascade, standing in for
+     Highlight.priority. Same tokens as v4's rules. */
+  .qt-composer-narration {
+    color: var(--qt-composer-narration-fg);
+    background-color: var(--qt-composer-narration-bg);
+  }
+  .qt-composer-ooc {
+    color: var(--qt-composer-ooc-fg);
+    background-color: var(--qt-composer-ooc-bg);
+  }
+  .qt-punctuation-no-dialogue {
+    background-color: var(--qt-punctuation-no-dialogue-bg);
+    text-decoration: underline dotted var(--qt-punctuation-no-dialogue-underline);
+    text-decoration-thickness: 2px;
+  }
+  .qt-punctuation-warning {
+    background-color: var(--qt-punctuation-warning-bg);
+    text-decoration: underline wavy var(--qt-punctuation-warning-underline);
+    text-decoration-thickness: 2px;
+  }
+  /* ==== /P4.D352 ==== */
+
   /**
    * Lexical rich text node styles
    */

@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the punctuation-lint decoration tokens and class rules (P4.D352)
+
+_Versions: SPA 0.5.916._
+
+`_variables.css` gains v4's eight `--qt-punctuation-*` / `--qt-composer-*` tokens (v4 `_variables.css:103-112` at `236c04e35`) in one fenced block after `--qt-status-danger-border`. `_chat.css` gains the four decoration rules — v4's `::highlight()` rules re-declared as class rules with the same tokens, in ascending v4 priority, so the cascade resolves the merged span the way `Highlight.priority` does. They sit in one fenced block before the `Lexical rich text node styles` banner. No existing line moves.
+
 #### 2026-11-03 — feat(spa): the Novel template in the template editor — None narration, Unmarked Text, the asterisks switch, the two wrap flags, the shared flourishes editor (P4.D352)
 
 _Versions: SPA 0.5.915._
