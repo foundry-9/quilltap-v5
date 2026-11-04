@@ -112,7 +112,7 @@
   {
     "name": "escapes-in-brackets",
     "input": "[she said *softly* with _weight_]",
-    "html": "<p><span class=\"qt-chat-narration\">[she said *softly* with _weight_]</span></p>"
+    "html": "<p><span class=\"qt-chat-narration\">[she said <span class=\"qt-chat-narration\">*softly*</span> with _weight_]</span></p>"
   },
   {
     "name": "math-inline-paren",

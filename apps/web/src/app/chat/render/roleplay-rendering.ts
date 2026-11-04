@@ -1,6 +1,8 @@
 /**
  * Shared roleplay-rendering core — a faithful TS port of v4
- * `lib/chat/roleplay-rendering.ts` (HEAD a7b1398d). Framework-agnostic pure
+ * `lib/chat/roleplay-rendering.ts` (HEAD a7b1398d; the Novel template's
+ * nesting, unmarked scope and `strip` / `literal` pre-parse from `778b97b2b`
+ * at 236c04e35, P4.D352). Framework-agnostic pure
  * string work; the SPA markdown renderer composes it exactly as v4's server
  * renderer does, so the two stay byte-for-byte aligned (proven by the captured
  * fixtures in `markdown-renderer.spec.ts`).
@@ -18,9 +20,17 @@ export interface RenderingPattern {
   pattern: string;
   className: string;
   flags?: string;
-  scope?: 'inline' | 'line';
+  /**
+   * `inline` / `line` style matches; `unmarked` styles the text no inline rule
+   * claims; `literal` / `strip` act before parsing, in
+   * {@link escapeMarkdownInBrackets} (v4 `RenderingPatternSchema`, `778b97b2b`).
+   */
+  scope?: 'inline' | 'line' | 'unmarked' | 'literal' | 'strip';
   hideDelimiters?: boolean;
 }
+
+/** The five scopes v4's `RenderingPatternSchema` knows. */
+const KNOWN_SCOPES: ReadonlySet<string> = new Set(['inline', 'line', 'unmarked', 'literal', 'strip']);
 
 /** Paragraph-level dialogue detection config (v4 `DialogueDetection`). */
 export interface DialogueDetection {
@@ -32,8 +42,8 @@ export interface DialogueDetection {
 /**
  * A rendering pattern as it arrives on the wire. `core-contract.ts` types
  * `scope` as a bare `string` where v4's `RenderingPatternSchema` constrains it
- * to `'inline' | 'line'`; the contract file is frozen, so the narrowing happens
- * here, at the one boundary where a fetched template enters the renderer.
+ * to five values; the contract file is frozen, so the narrowing happens here,
+ * at the one boundary where a fetched template enters the renderer.
  */
 export interface WireRenderingPattern {
   pattern: string;
@@ -44,10 +54,15 @@ export interface WireRenderingPattern {
 }
 
 /**
- * Narrow a fetched template's patterns to the renderer's type. Anything that is
- * not exactly `'line'` becomes `'inline'` — which is precisely what
- * {@link compileRenderingPatterns} (and v4's, verbatim) does with the value
- * anyway, so this only moves v4's own coercion one step earlier.
+ * Narrow a fetched template's patterns to the renderer's type. The five scopes
+ * v4 knows pass through; an absent or unknown one becomes `'inline'` — which is
+ * what {@link compileRenderingPatterns} (and v4's, verbatim) does with anything
+ * else.
+ *
+ * (Until P4.D352 this coerced every non-`'line'` scope to `'inline'`. That was
+ * v4's own compile at `322a5488e` and stopped being so at `778b97b2b`: a Novel
+ * template's `[\s\S]` unmarked pattern became an inline rule claiming every
+ * character, and its `literal` / `strip` patterns became inline rules too.)
  */
 export function narrowRenderingPatterns(
   patterns: readonly WireRenderingPattern[],
@@ -56,7 +71,10 @@ export function narrowRenderingPatterns(
     pattern: p.pattern,
     className: p.className,
     ...(p.flags === undefined ? {} : { flags: p.flags }),
-    scope: p.scope === 'line' ? ('line' as const) : ('inline' as const),
+    scope:
+      p.scope !== undefined && KNOWN_SCOPES.has(p.scope)
+        ? (p.scope as NonNullable<RenderingPattern['scope']>)
+        : ('inline' as const),
     ...(p.hideDelimiters === undefined ? {} : { hideDelimiters: p.hideDelimiters }),
   }));
 }
@@ -97,48 +115,121 @@ export const DEFAULT_DIALOGUE_DETECTION: DialogueDetection = {
   className: 'qt-chat-dialogue',
 };
 
-/** A neutral run of text, optionally tagged with a CSS class. */
+/**
+ * A neutral run of text, optionally tagged with a CSS class. A styled segment
+ * may carry `children` — the other inline rules applied inside it (emphasis
+ * inside dialogue) — in which case adapters render those instead of `text`.
+ */
 export interface Segment {
   text: string;
   className?: string;
+  children?: Segment[];
 }
 
 /** A compiled rendering rule. */
 export interface CompiledRule {
   regex: RegExp;
   className: string;
-  scope: 'inline' | 'line';
+  /**
+   * `unmarked` rules match nothing: their class styles the text no inline rule
+   * claims (see {@link unmarkedClassFor}). The pre-parse `literal`/`strip`
+   * scopes never become rules — they act in {@link escapeMarkdownInBrackets}.
+   */
+  scope: 'inline' | 'line' | 'unmarked';
   hideDelimiters: boolean;
 }
 
 /**
  * Compile stored patterns into rules. Compiled WITHOUT the global flag (the
- * tokenizer walks manually), matching v4 exactly.
+ * tokenizer walks manually), matching v4 exactly. `scope` falls back to
+ * `inline` for legacy patterns that predate the field.
  */
 export function compileRenderingPatterns(patterns: RenderingPattern[]): CompiledRule[] {
-  return patterns.map((p) => ({
-    regex: new RegExp(p.pattern, (p.flags || '').replace('g', '')),
-    className: p.className,
-    scope: p.scope === 'line' ? 'line' : 'inline',
-    hideDelimiters: p.hideDelimiters ?? false,
-  }));
+  return patterns
+    .filter((p) => p.scope !== 'literal' && p.scope !== 'strip')
+    .map((p) => ({
+      regex: new RegExp(p.pattern, (p.flags || '').replace('g', '')),
+      className: p.className,
+      scope: p.scope === 'line' ? 'line' : p.scope === 'unmarked' ? 'unmarked' : 'inline',
+      hideDelimiters: p.hideDelimiters ?? false,
+    }));
+}
+
+/**
+ * The class a template gives to text no inline rule claims, or `undefined`.
+ * Adapters pass it to {@link tokenizeInline} only for text that sits directly in
+ * an unclaimed block — never inside a span or a block a line/wrap rule owns.
+ */
+export function unmarkedClassFor(rules: CompiledRule[]): string | undefined {
+  return rules.find((r) => r.scope === 'unmarked')?.className || undefined;
+}
+
+/** How deep inline rules nest inside one another (dialogue › emphasis › …). */
+const MAX_INLINE_NESTING = 3;
+
+export interface TokenizeOptions {
+  /**
+   * Class for the runs no rule claims (see {@link unmarkedClassFor}). Omitted
+   * ⇒ those runs stay plain. Never applied inside a matched span.
+   */
+  unmarkedClassName?: string;
 }
 
 /**
  * Walk `text` once, finding the earliest match among the INLINE rules, and emit
- * neutral segments. Line-scoped rules are ignored here.
+ * neutral segments. Unmatched runs become plain `{ text }` segments (or carry
+ * the unmarked class); matched runs become `{ text, className }`. Line-scoped
+ * rules are ignored here.
+ *
+ * Matching the earliest span and advancing past it (rather than running each
+ * pattern's `replace` independently) is what prevents a later pattern from
+ * matching text already claimed by an earlier one — e.g. dialogue `"…"` matching
+ * the quoted `class="…"` attribute of a span an earlier pattern inserted.
  */
-export function tokenizeInline(text: string, rules: CompiledRule[]): Segment[] {
-  const inlineRules = rules.filter((r) => r.scope === 'inline');
+export function tokenizeInline(
+  text: string,
+  rules: CompiledRule[],
+  options: TokenizeOptions = {},
+): Segment[] {
+  return tokenizeWith(
+    text,
+    rules.filter((r) => r.scope === 'inline'),
+    options.unmarkedClassName,
+    0,
+  );
+}
+
+/**
+ * The walk itself. After a rule claims a span, the OTHER inline rules are run
+ * over the span's displayed text, so `"I said *stop*"` styles the emphasis
+ * inside the dialogue; the claiming rule is left out so it can't re-match its
+ * own text. Nested results ride on `children` only when something inside was
+ * actually styled.
+ */
+function tokenizeWith(
+  text: string,
+  inlineRules: CompiledRule[],
+  unmarkedClassName: string | undefined,
+  depth: number,
+): Segment[] {
   const segments: Segment[] = [];
   let remaining = text;
+  const plain = (t: string): Segment =>
+    unmarkedClassName ? { text: t, className: unmarkedClassName } : { text: t };
 
   while (remaining.length > 0) {
-    let earliest: { index: number; advance: number; className: string; text: string } | null = null;
+    // `advance` is always the FULL match length (delimiters consumed); `text` is
+    // what we display — the inner `rpBody` group when the rule hides delimiters,
+    // else the full match.
+    let earliest: { index: number; advance: number; rule: CompiledRule; text: string } | null =
+      null;
 
     for (const rule of inlineRules) {
       const match = remaining.match(rule.regex);
       if (match && match.index !== undefined) {
+        // A zero-length match (an open-ended pattern at the very end) claims
+        // nothing and would loop forever; ignore it.
+        if (match[0].length === 0) continue;
         if (!earliest || match.index < earliest.index) {
           const display =
             rule.hideDelimiters && match.groups?.['rpBody'] !== undefined
@@ -147,7 +238,7 @@ export function tokenizeInline(text: string, rules: CompiledRule[]): Segment[] {
           earliest = {
             index: match.index,
             advance: match[0].length,
-            className: rule.className,
+            rule,
             text: display,
           };
         }
@@ -156,12 +247,20 @@ export function tokenizeInline(text: string, rules: CompiledRule[]): Segment[] {
 
     if (earliest) {
       if (earliest.index > 0) {
-        segments.push({ text: remaining.substring(0, earliest.index) });
+        segments.push(plain(remaining.substring(0, earliest.index)));
       }
-      segments.push({ text: earliest.text, className: earliest.className });
+      const claimed: Segment = { text: earliest.text, className: earliest.rule.className };
+      if (depth < MAX_INLINE_NESTING) {
+        const claimant = earliest.rule;
+        const others = inlineRules.filter((r) => r !== claimant);
+        const inner =
+          others.length > 0 ? tokenizeWith(earliest.text, others, undefined, depth + 1) : [];
+        if (inner.some((seg) => seg.className)) claimed.children = inner;
+      }
+      segments.push(claimed);
       remaining = remaining.substring(earliest.index + earliest.advance);
     } else {
-      segments.push({ text: remaining });
+      segments.push(plain(remaining));
       break;
     }
   }
@@ -249,11 +348,15 @@ export function isDialogueParagraph(text: string, detection: DialogueDetection):
   return detection.openingChars.includes(firstChar) && detection.closingChars.includes(lastChar);
 }
 
-/** Serialize segments to an HTML string; matched runs get `<span class="…">`. */
+/**
+ * Serialize segments to an HTML string; matched runs get `<span class="…">`,
+ * and a segment with `children` renders those instead of its `text`.
+ */
 export function segmentsToHtml(segments: Segment[]): string {
   let out = '';
   for (const seg of segments) {
-    out += seg.className ? `<span class="${seg.className}">${seg.text}</span>` : seg.text;
+    const body = seg.children ? segmentsToHtml(seg.children) : seg.text;
+    out += seg.className ? `<span class="${seg.className}">${body}</span>` : body;
   }
   return out;
 }
@@ -288,9 +391,15 @@ function escapeRpBodyInterior(part: string, pattern: RenderingPattern): string {
 /**
  * Escape markdown syntax characters inside roleplay delimiters so the markdown
  * parser doesn't break a span before it can be styled. Verbatim port of v4.
+ *
+ * Since `778b97b2b` it also runs a template's pre-parse patterns: `strip`
+ * matches are removed FIRST and `literal` matches are backslash-escaped LAST
+ * (see the two calls below).
  */
 export function escapeMarkdownInBrackets(content: string, patterns: RenderingPattern[]): string {
-  const inlinePatterns = patterns.filter((p) => p.scope !== 'line');
+  const stripPatterns = patterns.filter((p) => p.scope === 'strip');
+  const literalPatterns = patterns.filter((p) => p.scope === 'literal');
+  const inlinePatterns = patterns.filter((p) => !p.scope || p.scope === 'inline');
 
   const escapableRpBody = inlinePatterns.filter((p) => hasRpBodyGroup(p) && !p.hideDelimiters);
 
@@ -302,6 +411,8 @@ export function escapeMarkdownInBrackets(content: string, patterns: RenderingPat
   );
 
   if (
+    stripPatterns.length === 0 &&
+    literalPatterns.length === 0 &&
     escapableRpBody.length === 0 &&
     !hasBracketNarration &&
     !hasBraceMonologue &&
@@ -318,7 +429,9 @@ export function escapeMarkdownInBrackets(content: string, patterns: RenderingPat
       return part;
     }
 
-    let result = part;
+    // Strip first: a doubled `**` must vanish before the wrap-interior escape
+    // below can turn it into `\\*\\*`, which nothing would then strip.
+    let result = applyPreParse(part, stripPatterns, () => '');
 
     for (const pattern of escapableRpBody) {
       result = escapeRpBodyInterior(result, pattern);
@@ -345,8 +458,64 @@ export function escapeMarkdownInBrackets(content: string, patterns: RenderingPat
       });
     }
 
+    // Literal last: whatever the steps above left unescaped is made plain text
+    // for the template's own delimiters to claim.
+    result = applyPreParse(result, literalPatterns, (m) => m.replace(MARKDOWN_PUNCT, '\\$1'));
+
     return result;
   });
 
   return processedParts.join('');
+}
+
+/** Every ASCII punctuation character Markdown lets a backslash escape. */
+const MARKDOWN_PUNCT = /([!-/:-@[-`{-~])/g;
+
+/** A Markdown thematic break (`***`, `* * *`, `---`): a scene break, left alone. */
+const THEMATIC_BREAK = /^ {0,3}([*_-])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/** A list bullet at line start (`* item`), whose marker is Markdown's own. */
+const LEADING_BULLET = /^([ \t]*[*+-][ \t]+)/;
+
+/** Inline code and `$$…$$` math, whose contents must never be rewritten. */
+const PROTECTED_INLINE = /(`[^`\n]*`|\$\$[\s\S]*?\$\$)/g;
+
+/**
+ * Apply the pre-parse `strip` / `literal` patterns to a fenced-code-free part:
+ * each match is replaced by `replace(match)`, except inside inline code or
+ * math, on a thematic-break line, in a leading list bullet, or where the match
+ * is already backslash-escaped.
+ */
+function applyPreParse(
+  part: string,
+  patterns: RenderingPattern[],
+  replace: (match: string) => string,
+): string {
+  if (patterns.length === 0) return part;
+  const regexes: RegExp[] = [];
+  for (const p of patterns) {
+    try {
+      regexes.push(new RegExp(`(?<!\\\\)(?:${p.pattern})`, `${(p.flags || '').replace('g', '')}g`));
+    } catch {
+      // A malformed stored pattern must never break rendering.
+    }
+  }
+  if (regexes.length === 0) return part;
+
+  return part
+    .split(PROTECTED_INLINE)
+    .map((chunk, i) => {
+      if (i % 2 === 1) return chunk; // inline code / math
+      return chunk
+        .split('\n')
+        .map((line) => {
+          if (THEMATIC_BREAK.test(line)) return line;
+          const bullet = line.match(LEADING_BULLET)?.[1] ?? '';
+          let body = line.slice(bullet.length);
+          for (const re of regexes) body = body.replace(re, replace);
+          return bullet + body;
+        })
+        .join('\n');
+    })
+    .join('');
 }

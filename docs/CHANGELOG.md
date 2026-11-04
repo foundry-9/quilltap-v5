@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — feat(spa): the Novel renderer — five-scope narrowing, nested inline rules, the unmarked class, strip/literal pre-parse, the curly exemption (P4.D352)
+
+_Versions: SPA 0.5.913._
+
+Ports the renderer half of v4 `778b97b2b` (Novel template) into the SPA's TS port of v4's server renderer, at `236c04e35`. `roleplay-rendering.ts`: `RenderingPattern.scope` gains `unmarked` / `literal` / `strip`; `narrowRenderingPatterns` passes the five known scopes through. Before, it coerced every non-`line` scope to `inline`, which turned a Novel template's unmarked and pre-parse patterns into inline rules — a v5 defect, retired. The port adds nested tokenizing with `children` (three levels deep), `unmarkedClassFor`, the zero-length-match skip, recursive `segmentsToHtml`, and the `strip` / `literal` pre-parse in `escapeMarkdownInBrackets`. `markdown-renderer.ts`: the unmarked class goes on text sitting directly in `p` / `li` / `blockquote` / `h1`–`h6` through an open-tag stack, and a block a line rule claims sheds those spans. `typography.ts`: v4's `mentionsGlyph` exemption, so a curly-tolerant quote wrap no longer suppresses curled quotes — also a v5 defect, retired. The 67 fixtures were re-captured from the pin: 66 are byte-stable (every `math-*` row included); `escapes-in-brackets` moves, because v4's nesting now styles `*softly*` inside `[…]`.
+
 #### 2026-11-03 — feat(spa): thread prose mode and the Bold withhold through the composer and toolbar (P4.D352)
 
 _Versions: SPA 0.5.912._

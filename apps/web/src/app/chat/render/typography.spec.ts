@@ -124,6 +124,35 @@ describe('isQuoteSensitiveRoleplayConfig', () => {
     ).toBe(false);
   });
 
+  // P4.D352 (v4 778b97b2b, `typography.ts:89-96` + `:130-141`): a wrap compiled
+  // with `matchCurlyQuotes` names the curly forms alongside the straight one.
+  it("says NO for Novel's dialogue wrap — it names the curly forms", () => {
+    expect(
+      isQuoteSensitiveRoleplayConfig(
+        [{ pattern: '["“](?<rpBody>[^"”]+)(?:["”]|$)', className: 'qt-chat-dialogue' }],
+        DEFAULT_DIALOGUE_DETECTION,
+      ),
+    ).toBe(false);
+  });
+
+  it('says NO when the curly forms are named as \\u escapes', () => {
+    expect(
+      isQuoteSensitiveRoleplayConfig(
+        [{ pattern: '["\\u201c](?<rpBody>[^"\\u201d]+)(?:["\\u201d]|$)', className: 'qt-chat-dialogue' }],
+        DEFAULT_DIALOGUE_DETECTION,
+      ),
+    ).toBe(false);
+  });
+
+  it('says YES when only ONE curly form is named', () => {
+    expect(
+      isQuoteSensitiveRoleplayConfig(
+        [{ pattern: '["“](?<rpBody>[^"]+)"', className: 'qt-chat-dialogue' }],
+        DEFAULT_DIALOGUE_DETECTION,
+      ),
+    ).toBe(true);
+  });
+
   it('says NO for a detection that names no quote at all (guillemets)', () => {
     expect(
       isQuoteSensitiveRoleplayConfig(DEFAULT_RENDERING_PATTERNS, {
