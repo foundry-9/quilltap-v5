@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 
 import { DialogFocus } from './dialog-focus';
+import { isInFloatingLayer } from './floating-layer';
 import { Icon } from './icon';
 
 /**
@@ -129,7 +130,11 @@ export class SlideOverPanel {
     // Escape closes (v4 :53-65). The listener is DOCUMENT-level and attached only
     // while open — v4 `stopPropagation`s so an outer Escape handler (the Salon's
     // terminal-focus exit) does not also fire on the same key.
+    // The topmost floating layer (the Brahma Console) is not this panel's —
+    // v4 `useClickOutside.ts`'s `isInFloatingLayer` return (`99463fc56`;
+    // P4.D359's HANDOFF row, applied at union).
     const onDocumentKeydown = (event: KeyboardEvent): void => {
+      if (isInFloatingLayer(event.target)) return;
       if (event.key === 'Escape') {
         event.stopPropagation();
         this.close.emit();

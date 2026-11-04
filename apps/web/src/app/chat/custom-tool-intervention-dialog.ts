@@ -60,11 +60,7 @@ import { describeSpan } from './intervention-spans';
  * (`InterventionOverrides`) sent to the preview verb, debounced, and the
  * server's recompute is what is shown — and what is finally dealt. Fields the
  * author hid are not rendered at all (the server would refuse them).
- *
- * v5-only (`HOLDS_UNKNOWN_VARIANT_EMPTY`, P4.D346 R-6): an engine that predates
- * the hold verbs refuses the list as an unknown request variant; that reads as
- * "no holds" with no toast — v4's own `holds ?? []` for an older server — so
- * the Salon is untouched until the server lands.
+
  */
 
 const PREVIEW_DEBOUNCE_MS = 300;
@@ -230,6 +226,7 @@ export class InterventionNumberField {
       [title]="'Pascal holds: ' + dealt().title"
       maxWidth="2xl"
       [closeOnBackdrop]="false"
+      [closeOnEscape]="false"
       (close)="noop()"
     >
       <div class="qt-intervention space-y-4" data-testid="custom-tool-intervention">
@@ -930,11 +927,6 @@ export class HeldRun {
 // The host: the chat's held runs, oldest first
 // ---------------------------------------------------------------------------
 
-/** True for the engine's refusal of a request variant it does not know (an older server). */
-function isUnknownVariant(err: unknown): boolean {
-  return err instanceof Error && /unknown variant/i.test(err.message);
-}
-
 @Component({
   selector: 'qt-custom-tool-intervention-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -958,14 +950,7 @@ export class CustomToolInterventionDialog {
   private readonly holdsQuery = injectQuery(() => ({
     queryKey: customToolsKeys.interventions(this.chatId()),
     queryFn: async (): Promise<{ holds: InterventionHoldView[] }> => {
-      try {
-        return await fetchInterventions(this.core, this.chatId());
-      } catch (err) {
-        // HOLDS_UNKNOWN_VARIANT_EMPTY (R-6): an engine without the hold verbs
-        // holds nothing; v4 reads an absent list as `[]` and toasts nothing.
-        if (isUnknownVariant(err)) return { holds: [] };
-        throw err;
-      }
+      return await fetchInterventions(this.core, this.chatId());
     },
     refetchInterval: this.realtime.refetchInterval(FALLBACK_POLL_MS),
   }));

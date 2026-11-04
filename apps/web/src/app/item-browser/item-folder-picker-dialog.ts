@@ -28,10 +28,10 @@ interface PickerRow {
  * tree, the folder creator, the note and any extra choice (the wardrobe's
  * components fieldset, projected); **Move** / **Copy** emits the folder.
  *
- * **Recorded mechanism divergence** (the wardrobe picker's): v4's `BaseModal`
- * portal + `closeOnEscape` are local here — a document Escape listener gated
- * by `working`, and a raised overlay (`z-[70]`) so the picker covers the
- * dialog it opens from. Mounted only while open (the caller's `@if` is v4's
+ * **Recorded mechanism divergence:** v4's `BaseModal` portal is local here — a
+ * raised overlay (`z-[70]`) so the picker covers the dialog it opens from. Its
+ * Escape is `qt-modal`'s own, gated by `[closeOnEscape]="!working()"` (v4
+ * `closeOnEscape`, P4.D358 R-N). Mounted only while open (the caller's `@if` is v4's
  * `isOpen`).
  */
 @Component({

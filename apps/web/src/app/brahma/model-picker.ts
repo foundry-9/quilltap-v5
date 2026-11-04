@@ -22,7 +22,6 @@ import {
 
 import { Icon } from '../ui/icon';
 import type { BrahmaConnectionProfile } from './brahma-console.service';
-import { isInFloatingLayer } from '../ui/floating-layer';
 
 @Component({
   selector: 'qt-brahma-model-picker',
@@ -30,7 +29,7 @@ import { isInFloatingLayer } from '../ui/floating-layer';
   imports: [Icon],
   host: {
     '(document:mousedown)': 'onDocumentMousedown($event)',
-    '(document:keydown.escape)': 'onDocumentEscape($event)',
+    '(document:keydown.escape)': 'onDocumentEscape()',
   },
   template: `
     <div class="relative">
@@ -110,14 +109,17 @@ export class ModelPicker {
     this.open.set(false);
   }
 
-  /** The document Escape — but never one pressed in the topmost floating layer. */
-  protected onDocumentEscape(event: Event): void {
-    if (isInFloatingLayer(event.target)) return;
+  /**
+   * The document Escape. UNGUARDED, as v4's `ModelPicker.tsx:29-42` is: the
+   * picker lives INSIDE the topmost floating layer (the Brahma Console), so an
+   * `isInFloatingLayer` return would keep its dropdown open on every Escape or
+   * click elsewhere in the console.
+   */
+  protected onDocumentEscape(): void {
     this.close();
   }
 
   protected onDocumentMousedown(event: MouseEvent): void {
-    if (isInFloatingLayer(event.target)) return;
     if (!this.open()) return;
     if (!this.rootEl.nativeElement.contains(event.target as Node)) {
       this.open.set(false);

@@ -47,6 +47,7 @@ import {
 } from './help-wire';
 import { HelpService } from './help.service';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 type HelpTab = 'guide' | 'ask';
 
@@ -274,6 +275,7 @@ export class HelpDialog {
 
   /** Escape closes Help (P4.D358 R-9: Help stays a modal this round, so C9 R1 — ungated while open). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (this.isOpen()) this.close();
   }

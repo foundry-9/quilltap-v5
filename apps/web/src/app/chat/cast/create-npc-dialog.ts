@@ -16,6 +16,7 @@ import { uploadCharacterPhoto } from '../../screens/characters/characters.api';
 import { Icon } from '../../ui/icon';
 import { ToastService } from '../../ui/toast.service';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * Create Ad-hoc NPC (v4 `components/chat/CreateNPCDialog.tsx`, 482 LOC), nested
@@ -249,6 +250,7 @@ export class CreateNpcDialog {
 
   /** v4 `CreateNPCDialog.tsx:91-103` — a document Escape closes unless a create is in flight. */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (!this.creating()) this.close.emit();
   }

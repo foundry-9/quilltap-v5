@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 export type MemoryCascadeAction = 'DELETE_MEMORIES' | 'KEEP_MEMORIES' | 'REGENERATE_MEMORIES';
 
@@ -94,6 +95,7 @@ export class MemoryCascadeDialog {
 
   /** v4 `useEscapeKey(onClose, isOpen)` — always, while rendered (`dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.cancel.emit();
   }

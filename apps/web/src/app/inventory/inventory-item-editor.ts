@@ -111,9 +111,9 @@ export function svgByteLength(svg: string): number {
  * sends `{ folder, …touched non-inherited fields }` then clears the overrides
  * the operator re-ticked (`inventoryClearOverride`).
  *
- * **Recorded mechanism divergences.** v4's `BaseModal` portal + Escape are
- * local here (`qt-modal` in place at `z-[70]`, a document Escape listener gated
- * by saving and by the picture viewer — the wardrobe picker's idiom). The
+ * **Recorded mechanism divergences.** v4's `BaseModal` portal is local here
+ * (`qt-modal` in place at `z-[70]`); its Escape is `qt-modal`'s own, gated by
+ * `[closeOnEscape]="!saving() && !viewing()"` (P4.D358 R-N). The
  * General read for a project / group kit is a one-shot `inventoryList`, where
  * v4 keeps a TanStack read.
  */

@@ -30,6 +30,7 @@ import {
 } from './scenario-browser.logic';
 import { fetchScenariosEverywhere, injectScenarioRefBody, scenarioKeys } from './scenario.api';
 import type { ScenarioSelection } from './scenario.types';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** One listed result: a scenario on its owner's shelf. */
 interface BrowserRow {
@@ -361,6 +362,7 @@ export class ScenarioBrowserDialog {
     // owns its Escape, so its qt-modal binds [closeOnEscape]="false" (P4.D358).
     if (typeof window !== 'undefined') {
       const onEscape = (event: KeyboardEvent) => {
+        if (isInFloatingLayer(event.target)) return;
         if (event.key !== 'Escape') return;
         event.stopPropagation();
         event.preventDefault();

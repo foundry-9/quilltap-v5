@@ -23,6 +23,7 @@ import {
   getPreviewType,
 } from './file-model';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 const MAX_TEXT_SIZE = 1024 * 1024; // 1MB max for text preview (v4 MAX_TEXT_SIZE).
 
@@ -326,6 +327,7 @@ export class FilePreviewModal {
 
   @HostListener('document:keydown', ['$event'])
   protected onKeydown(event: KeyboardEvent): void {
+    if (isInFloatingLayer(event.target)) return;
     switch (event.key) {
       case 'Escape':
         this.close.emit();

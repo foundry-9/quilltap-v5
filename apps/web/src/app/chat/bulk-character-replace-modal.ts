@@ -14,6 +14,7 @@ import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { bulkReattribute, type RoleFilter } from './chat-admin.api';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The sentinel v4 uses for "the messages nobody is attributed to" — the
@@ -195,6 +196,7 @@ export class BulkCharacterReplaceModal {
 
   /** v4 `useClickOutside`'s `onEscape: () => { if (!isSubmitting) onClose() }` (`BulkCharacterReplaceModal.tsx:98-100`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (!this.submitting()) this.close.emit();
   }

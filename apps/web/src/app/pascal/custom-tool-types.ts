@@ -1828,7 +1828,10 @@ function parseParameter(input: unknown): Res<CustomToolParameter> {
     intervene = r.value;
   }
 
-  issues.push(...unrecognizedKeys(input, ['type', 'default', 'description', 'min', 'max', 'intervene']));
+  // v4's `CustomToolParameterSchema` is a plain `z.object` (NOT `.strict()`,
+  // `lib/pascal/custom-tool.types.ts:235-255` at the pin): an unknown key
+  // beside the six is STRIPPED, never refused (corpus row
+  // `parameter-intervene-unknown-beside`).
 
   if (ty.value === undefined || defaultValue === undefined) return { value: undefined, issues };
   if (aborted(issues)) return { value: undefined, issues };

@@ -66,9 +66,10 @@ interface PickerRow {
  * per open". The header control (the vantage select) is projected through
  * `[qtPickerHeader]` and rendered FIRST.
  *
- * **Recorded mechanism divergences.** v4's `BaseModal` closes on Escape; `qt-modal`
- * does not, so a document Escape listener closes the PICKER (and only the
- * picker — the Workbench under it stays put). v4 renders `Open the Wardrobe`
+ * Escape closes the picker through `qt-modal`'s own document listener (v4
+ * `BaseModal` `closeOnEscape`, default true — converged P4.D358 R-N).
+ *
+ * **Recorded mechanism divergence.** v4 renders `Open the Wardrobe`
  * only inside the wardrobe-dialog provider; v5's `WardrobeDialogService` is
  * root-provided, so the button always renders — the same output as v4's app
  * (P4.D320 R-8). The pool is read by {@link WardrobeVantageItemsLoader} (R-2).

@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * Confirmation prompt shown when switching a bundle with components back to a
@@ -61,6 +62,7 @@ export class WardrobeModeChangePrompt {
 
   /** v4 `useEscapeKey(onCancel, true)` (`dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.cancel.emit();
   }

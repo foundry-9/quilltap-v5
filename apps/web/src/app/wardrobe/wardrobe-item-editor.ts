@@ -50,6 +50,8 @@ import { WardrobeItemImageSection } from './item-editor/wardrobe-item-image-sect
 import { WardrobeFolderField } from './item-editor/wardrobe-folder-field';
 import { WardrobePronounGuidanceField } from './item-editor/wardrobe-pronoun-guidance-field';
 import { ToastService } from '../ui/toast.service';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 type EditorMode = 'single' | 'bundle';
 
@@ -64,9 +66,6 @@ function charCountClass(current: number, max: number): string {
   if (current > max * 0.9) return 'qt-text-warning';
   return 'qt-text-secondary';
 }
-
-/** Module counter behind {@link WardrobeItemEditor.titleId}. */
-let editorTitleCounter = 0;
 
 /**
  * The tier-routed wardrobe item editor — a port of v4
@@ -104,7 +103,9 @@ let editorTitleCounter = 0;
     WardrobeItemImageSection,
     WardrobeFolderField,
     WardrobePronounGuidanceField,
+    DialogFocus,
   ],
+  host: { '(document:keydown.escape)': 'onEscape($event)' },
   template: `
     <!-- Overlay — z values sit above the qt-dialog-overlay (z-[60]) so this
          editor always stacks on top when summoned from another dialog. -->
@@ -119,14 +120,15 @@ let editorTitleCounter = 0;
       class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-[80] pointer-events-auto"
       style="width: min(var(--qt-page-max-width), calc(100vw - 2rem))"
     >
-      <!-- WCAG R1 (v4 dff76ebef, wardrobe-item-editor.tsx:484-492). The focus
-           directive (P4.D358's qtDialogFocus) is a unifier HANDOFF. -->
+      <!-- WCAG R1 (v4 dff76ebef, wardrobe-item-editor.tsx:484-492, with
+           useDialogFocus at :194 — qtDialogFocus). -->
       <div
         class="qt-dialog qt-dialog-wide max-h-[90vh] overflow-y-auto flex flex-col"
         role="dialog"
         aria-modal="true"
         [attr.aria-labelledby]="titleId"
         tabindex="-1"
+        qtDialogFocus
       >
         <div
           class="qt-dialog-header sticky top-0 flex-shrink-0 qt-bg-default border-b qt-border-default"
@@ -575,7 +577,18 @@ export class WardrobeItemEditor {
   });
 
   /** The title's id — per instance (v4 `useId`). */
-  protected readonly titleId = `qt-wardrobe-item-editor-title-${++editorTitleCounter}`;
+  protected readonly titleId = mintDialogId();
+
+  /**
+   * v4 `useEscapeKey(onClose, !showKeepResetPrompt)` (`:196`): Escape closes
+   * the editor unless the keep/reset prompt is up (the prompt owns that one).
+   * Never an Escape pressed in the topmost floating layer (R-4).
+   */
+  protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
+    if (this.showKeepResetPrompt()) return;
+    this.closed.emit();
+  }
 
   // Form state (v4 useFormState, :70-76).
   protected readonly title = signal('');

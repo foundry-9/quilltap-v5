@@ -453,6 +453,57 @@ describe('WardrobeItemEditor (v4 wardrobe-item-editor.tsx)', () => {
     expect(c.componentItemIds()).toEqual([]);
   });
 
+  it('R1 whole: a focused, titled modal; Escape closes — not while the keep/reset prompt is up, nor from the floating layer (v4 :194-196, :484-492)', async () => {
+    const { fixture, component } = await render({ initialMode: 'bundle' }, (req) =>
+      (req.type as string) === 'characterWardrobeList'
+        ? { wardrobeItems: [item({ id: 'dress', types: ['top', 'bottom'] })] }
+        : { wardrobeItems: [] },
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    try {
+      const dialog = host.querySelector('[role="dialog"]') as HTMLElement;
+      expect(dialog.getAttribute('aria-modal')).toBe('true');
+      expect(dialog.getAttribute('tabindex')).toBe('-1');
+      const title = document.getElementById(dialog.getAttribute('aria-labelledby')!);
+      expect(title?.textContent?.trim()).toBe('New Wardrobe Item');
+      // useDialogFocus: focus moves into the dialog one frame later.
+      await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+      expect(dialog.contains(document.activeElement)).toBe(true);
+
+      let closes = 0;
+      component.closed.subscribe(() => closes++);
+      const escape = (target: EventTarget = document) =>
+        target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const c = component as unknown as {
+        componentItemIds: { set(v: string[]): void };
+        handleModeChange: (m: string) => void;
+        showKeepResetPrompt: { set(v: boolean): void };
+      };
+      c.componentItemIds.set(['dress']);
+      c.handleModeChange('single');
+      fixture.detectChanges();
+      escape();
+      expect(closes).toBe(0);
+      c.showKeepResetPrompt.set(false);
+      fixture.detectChanges();
+
+      const layer = document.createElement('div');
+      layer.setAttribute('data-qt-floating-layer', '');
+      const inner = document.createElement('button');
+      layer.appendChild(inner);
+      document.body.appendChild(layer);
+      escape(inner);
+      layer.remove();
+      expect(closes).toBe(0);
+
+      escape();
+      expect(closes).toBe(1);
+    } finally {
+      host.remove();
+    }
+  });
+
   it('Keep locks in the EFFECTIVE types, designated slots included (v4 9ecebf986 :323-329)', async () => {
     const { component } = await render(
       { item: item({ id: 'kit', types: ['top', 'hair'], componentItemIds: ['shirt'] }) },

@@ -12,6 +12,7 @@ import {
 
 import { Avatar } from '../ui/avatar';
 import { Icon } from '../ui/icon';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** One character the user can speak as (v4 `ControlledCharacter`). */
 export interface ControlledCharacter {
@@ -119,6 +120,7 @@ export class SpeakerSelector {
 
   @HostListener('document:click', ['$event'])
   protected onDocumentClick(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if (this.isOpen() && !this.host.nativeElement.contains(event.target as Node)) {
       this.isOpen.set(false);
     }

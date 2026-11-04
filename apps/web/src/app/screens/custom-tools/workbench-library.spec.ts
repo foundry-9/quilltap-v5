@@ -28,6 +28,7 @@ function tool(over: Partial<api.GatedLibraryEntry> = {}): api.GatedLibraryEntry 
     llm: false,
     triggerCount: 0,
     intervention: false,
+    effect: 'read',
     parameterCount: 0,
     outcomeCount: 2,
     mountPointId: 'm1',
@@ -278,6 +279,38 @@ describe('WorkbenchLibrary (v4 WorkbenchLibrary.tsx)', () => {
     expect(oracle).toBeGreaterThanOrEqual(0);
     expect(phrases).toBeGreaterThan(oracle);
     expect(params).toBeGreaterThan(phrases);
+  });
+
+  // v4 `b15fe9404` (`WorkbenchLibrary.tsx:254-263` at `236c04e35`): the effect badge.
+  it('badges a write tool as a warning and a read tool as info, with v4’s titles', async () => {
+    const badgeOf = async (effect: 'read' | 'write') => {
+      const fixture = await render(stubClient([tool({ effect })]));
+      return Array.from(fixture.nativeElement.querySelectorAll('.qt-badge') as NodeListOf<HTMLElement>).find(
+        (el) => el.textContent?.trim() === effect,
+      );
+    };
+    const write = await badgeOf('write');
+    expect(write?.className).toBe('qt-badge qt-badge-warning');
+    expect(write?.getAttribute('title')).toBe(
+      'Has side effects (state, wardrobe, inventory or the log): a write. Storyteller turns need an Act bid to run it.',
+    );
+    const read = await badgeOf('read');
+    expect(read?.className).toBe('qt-badge qt-badge-info');
+    expect(read?.getAttribute('title')).toBe(
+      'No side effects \u2014 rolling and announcing only: a read. A Lookup bid may run it.',
+    );
+  });
+
+  it('places the effect badge after the phrase badge and before the parameter count', async () => {
+    const fixture = await render(stubClient([tool({ triggerCount: 1, effect: 'write', parameterCount: 2 })]));
+    const labels = Array.from(fixture.nativeElement.querySelectorAll('.qt-badge') as NodeListOf<HTMLElement>).map(
+      (el) => el.textContent?.trim() ?? '',
+    );
+    const phrase = labels.indexOf('\u2726 1 phrase');
+    const effect = labels.indexOf('write');
+    expect(phrase).toBeGreaterThanOrEqual(0);
+    expect(effect).toBe(phrase + 1);
+    expect(labels[effect + 1]).toBe('2 params');
   });
 
   it('hides the phrase badge at zero, and for a server that omits the key (`undefined > 0`)', async () => {

@@ -55,6 +55,8 @@ import { QuickHideService } from '../../quick-hide/quick-hide.service';
 import { HIDE_SALON_IMAGES_KEY } from '../../quick-hide/quick-hide.storage';
 import { ChatSidebar } from '../../chat/sidebar/chat-sidebar';
 import { RunToolModal } from '../../chat/tools/run-tool-modal';
+import { CustomToolInterventionDialog } from '../../chat/custom-tool-intervention-dialog';
+import { ReplyAnnouncer } from '../../chat/reply-announcer';
 import { By } from '@angular/platform-browser';
 import { ToastService } from '../../ui/toast.service';
 import { chatKeys } from '../../chat/chat-keys';
@@ -748,6 +750,39 @@ describe('SalonConversation (read path)', () => {
       fixture.detectChanges();
     }
     expect(fixture.nativeElement.textContent).toContain('The Commonplace Book');
+  });
+
+  it('the feed hides a Host spoken-of introduction and keeps a left-behind notice (v4 9a88f862f)', async () => {
+    const chat: ChatDetail = {
+      ...chatDetail(),
+      messages: [
+        message({ id: 'm0', role: 'USER', participantId: 'pu', content: 'Good morning.', createdAt: '2024-01-01T00:00:01.000Z' }),
+        message({
+          id: 'intro',
+          role: 'ASSISTANT',
+          systemSender: 'host',
+          systemKind: 'off-scene-characters',
+          participantId: null,
+          content: 'Abigail is spoken of, though not present.',
+          createdAt: '2024-01-01T00:00:02.000Z',
+        }),
+        message({
+          id: 'left',
+          role: 'ASSISTANT',
+          systemSender: 'host',
+          systemKind: 'off-scene-characters',
+          participantId: null,
+          content: 'The Host observes that Abigail stayed behind.',
+          createdAt: '2024-01-01T00:00:03.000Z',
+        }),
+      ],
+    };
+    const fixture = await render(stubClient(chat, new Subject<ScopedEvent>()));
+    // Two Host off-scene rows in the transcript; ONE card in the feed — the
+    // left-behind notice (a Host card shows its kind; its body stays folded).
+    const text = fixture.nativeElement.textContent as string;
+    expect(text.match(/off scene characters/g)).toHaveLength(1);
+    expect(text).not.toContain('Abigail is spoken of, though not present.');
   });
 
   it('does not set the story-background var when the chat has no background (finding #9)', async () => {
@@ -2474,6 +2509,94 @@ describe('SalonConversation — the roleplay template reaches the rendered rows 
 
     expect(seen).toEqual(['tpl-1']);
     expect(emotes(fixture)).toBe(1);
+  });
+});
+
+/**
+ * P4.D352 H-2 — the composer's prose mode and Bold withhold from the fetched
+ * template (v4 `2b2b190b6` SalonView: `isProseTemplate(template)`; v4
+ * `778b97b2b`: `markdownAsterisks`). Asserted on the composer's INPUTS, so the
+ * binding itself is what passes.
+ */
+describe('SalonConversation — the template reaches the composer (P4.D352)', () => {
+  /** Novel's shape: unmarked narration (a literal `null`) and `"`-wrapped dialogue. */
+  const NOVEL = {
+    id: 'tpl-novel',
+    userId: null,
+    name: 'Novel',
+    systemPrompt: '',
+    isBuiltIn: true,
+    tags: [],
+    delimiters: [{ kind: 'wrap', delimiters: '"' }],
+    narrationDelimiters: null,
+    markdownAsterisks: false,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
+
+  it('a Novel template turns prose mode on and withholds Bold; the reset arm turns it back off', async () => {
+    const live = { chat: { ...chatDetail(), roleplayTemplateId: 'tpl-novel' } as ChatDetail };
+    const events$ = new Subject<ScopedEvent>();
+    const dispatch = vi.fn(async (req: CoreRequest): Promise<CoreResponse> => {
+      if (req.type === 'chatGet') return { type: 'chat', data: { chat: live.chat } };
+      if (req.type === 'chatSettings') {
+        return { type: 'chatSettings', data: { avatarDisplayMode: 'ALWAYS', avatarDisplayStyle: 'CIRCULAR' } };
+      }
+      return { type: 'ack', data: {} };
+    });
+    const dispatchData = vi.fn(async (req: CoreRequest) => {
+      if (req.type === 'roleplayTemplateGet') return NOVEL as unknown as Record<string, unknown>;
+      return { backgroundUrl: null, fileId: null, filename: null, sha256: null, linkSummary: null };
+    });
+    const client: Partial<CoreClient> = {
+      events$: events$.asObservable(),
+      connection: signal<ConnectionState>('idle'),
+      resyncCounter: signal(0),
+      dispatch,
+      dispatchData: dispatchData as unknown as CoreClient['dispatchData'],
+      dispatchExpect: (async (req: CoreRequest, expected: string) => {
+        const resp = await dispatch(req);
+        if (resp.type !== expected) throw new Error(`unexpected ${resp.type}`);
+        return resp;
+      }) as CoreClient['dispatchExpect'],
+    };
+    const fixture = await render(client);
+    const composer = () =>
+      fixture.debugElement.query(By.directive(ChatComposer)).componentInstance as ChatComposer;
+    expect(composer().proseMode()).toBe(true);
+    expect(composer().markdownAsterisks()).toBe(false);
+
+    // The template is cleared from the sidebar: the no-id reset arm.
+    live.chat = { ...live.chat, roleplayTemplateId: null };
+    await TestBed.inject(QueryClient).invalidateQueries({ queryKey: ['chat', 'chat-1'] });
+    for (let i = 0; i < 6; i++) {
+      await new Promise((r) => setTimeout(r, 0));
+      fixture.detectChanges();
+    }
+    expect(composer().proseMode()).toBe(false);
+    expect(composer().markdownAsterisks()).toBe(true);
+  });
+});
+
+/**
+ * Union mounts (P4.D346 H1, P4.D358 H-out-1): the held-roll dialog and the
+ * reply announcer live in the Salon.
+ */
+describe('SalonConversation — the union mounts', () => {
+  it('mounts the custom-tool intervention dialog for this chat', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const dialog = fixture.debugElement.query(By.directive(CustomToolInterventionDialog));
+    expect(dialog).not.toBeNull();
+    expect((dialog.componentInstance as CustomToolInterventionDialog).chatId()).toBe('chat-1');
+  });
+
+  it('mounts the reply announcer over the rendered feed', async () => {
+    const fixture = await render(stubClient(chatDetail(), new Subject<ScopedEvent>()));
+    const announcer = fixture.debugElement.query(By.directive(ReplyAnnouncer));
+    expect(announcer).not.toBeNull();
+    const live = (announcer.nativeElement as HTMLElement).querySelector('[role="status"]');
+    expect(live?.getAttribute('aria-live')).toBe('polite');
+    expect((announcer.componentInstance as ReplyAnnouncer).messages().length).toBeGreaterThan(0);
   });
 });
 

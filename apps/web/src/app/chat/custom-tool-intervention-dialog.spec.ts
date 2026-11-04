@@ -1,11 +1,13 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { QueryClient, provideTanStackQuery } from '@tanstack/angular-query-experimental';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CoreClient } from '../core/core-client';
 import { coreStreamStub } from '../core/core-client.testing';
-import { CoreDispatchError, type ScopedEvent } from '../core/core-contract';
+import { type ScopedEvent } from '../core/core-contract';
 import { RealtimeService } from '../core/realtime.service';
+import { Modal } from '../ui/modal';
 import { ToastService } from '../ui/toast.service';
 import type {
   InterventionHoldView,
@@ -460,6 +462,20 @@ describe('CustomToolInterventionDialog — several holds, and reopening', () => 
 });
 
 describe('CustomToolInterventionDialog — answering without dealing', () => {
+  it('Escape does not dismiss a held roll (v4 :280 closeOnEscape={false})', async () => {
+    const w = world();
+    w.holds = [holdView('a')];
+    const fixture = await renderDialog(w);
+    await until(fixture, () => expect(byTestId(fixture, 'custom-tool-intervention')).not.toBeNull());
+    // The one owner of a document Escape here is qt-modal's — and it is off.
+    const modal = fixture.debugElement.query(By.directive(Modal)).componentInstance as Modal;
+    expect((modal as unknown as { closeOnEscape(): boolean }).closeOnEscape()).toBe(false);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle(fixture);
+    expect(byTestId(fixture, 'custom-tool-intervention')).not.toBeNull();
+    expect(callsTo(w, 'chatCustomToolInterventionResolve')).toEqual([]);
+  });
+
   it('"As rolled" posts an as-rolled decision', async () => {
     const w = world();
     w.holds = [holdView('a')];
@@ -571,18 +587,6 @@ describe('CustomToolInterventionDialog — v5 transport and degradation', () => 
     w.stream.frames.next({ v: 1, topic: 'customToolInterventions', id: 'chat-2', at: 1 } as unknown as ScopedEvent);
     await settle(fixture);
     expect(callsTo(w, 'chatCustomToolInterventionsList').length).toBe(before);
-  });
-
-  it('an unknown-variant refusal reads as no holds and raises no toast', async () => {
-    const w = world();
-    w.listError = new CoreDispatchError({
-      kind: 'invalid',
-      message: 'unknown variant `chatCustomToolInterventionsList`, expected one of `chatCustomToolsList`',
-    } as never);
-    const fixture = await renderDialog(w);
-    await until(fixture, () => expect(callsTo(w, 'chatCustomToolInterventionsList')).toHaveLength(1));
-    expect(byTestId(fixture, 'custom-tool-intervention')).toBeNull();
-    expect(w.errors).toEqual([]);
   });
 
   it('a failed resolve toasts "Pascal could not settle that roll" and still moves on', async () => {

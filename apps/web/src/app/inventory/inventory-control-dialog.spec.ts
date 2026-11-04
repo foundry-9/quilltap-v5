@@ -381,8 +381,9 @@ describe('InventoryControlDialogInner', () => {
       (fixture.componentInstance as unknown as { actions: { refresh(): Promise<void> } }).actions.refresh();
     const kinds = ['inventoryList', 'inventoryFolders', 'chatInventoryGet'];
     const count = () => kinds.map((k) => seen.filter((r) => r['type'] === k).length);
-    // The skip arm assumes P4.D350's publish; drive it with the gate open.
-    (fixture.componentInstance as unknown as { ownWritesPublished: boolean }).ownWritesPublished = true;
+    // P4.D350's R-1 location-level publish is on the union, so the gate is
+    // open by default — this case drives the shipped value, no override.
+    expect(P4D350_PUBLISH_LANDED).toBe(true);
 
     realtime.connected.set(true);
     const up = count();
@@ -395,20 +396,6 @@ describe('InventoryControlDialogInner', () => {
     await refresh();
     await settle(fixture);
     expect(count()).toEqual(down.map((n) => n + 1));
-  });
-
-  it('until P4.D350’s publish lands, the dialog’s own write refreshes everything even while the socket is up', async () => {
-    expect(P4D350_PUBLISH_LANDED).toBe(false);
-    const { fixture, seen } = await inner({ chatId: 'chat-1', initial: { scope: 'character', id: 'c-viv' } });
-    const refresh = () =>
-      (fixture.componentInstance as unknown as { actions: { refresh(): Promise<void> } }).actions.refresh();
-    const kinds = ['inventoryList', 'inventoryFolders', 'chatInventoryGet'];
-    const count = () => kinds.map((k) => seen.filter((r) => r['type'] === k).length);
-    TestBed.inject(RealtimeService).connected.set(true);
-    const up = count();
-    await refresh();
-    await settle(fixture);
-    expect(count()).toEqual(up.map((n) => n + 1));
   });
 
   it('as a tab: the bare qt-inventory-tab chrome, no Escape close; the panel: no select, a plain column', async () => {

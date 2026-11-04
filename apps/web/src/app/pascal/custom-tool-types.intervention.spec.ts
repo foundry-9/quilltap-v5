@@ -258,15 +258,6 @@ const MEASURED: Measured[] = [
   },
 ];
 
-/**
- * A parameter carrying an unknown key: v4's `CustomToolParameterSchema` is a
- * plain `z.object` and STRIPS it (measured: `param-unknown-key` above parses).
- * The v5 twin has refused unknown parameter keys since before this round —
- * a PRE-EXISTING divergence outside this lane's hunks, recorded in the P4.D346
- * lane record for a follow-up, and skipped from the byte compare here.
- */
-const PREEXISTING_PARAMETER_STRIP_DIVERGENCE = new Set(['param-unknown-key']);
-
 const verdict = (input: unknown) => {
   const r = safeParse(input);
   return {
@@ -278,16 +269,17 @@ const verdict = (input: unknown) => {
 
 describe('the intervention block, measured through v4 at 236c04e35', () => {
   for (const row of MEASURED) {
-    if (PREEXISTING_PARAMETER_STRIP_DIVERGENCE.has(row.id)) continue;
     it(row.id, () => {
       expect(verdict(row.input)).toEqual({ success: row.success, out: row.out, unknown: row.unknown });
     });
   }
 
-  it('records the one pre-existing divergence it skips', () => {
+  // `param-unknown-key` (above) is compared with the rest: the twin STRIPS an
+  // unknown parameter key as v4's plain `z.object` does (converged at union).
+  it('strips an unknown parameter key, as v4 does', () => {
     const r = safeParse({ ...BASE, parameters: { bonus: { type: 'number', default: 0, intervene: false, bogus: 1 } } });
-    expect(r.success).toBe(false);
-    expect(r.success ? '' : formatDefinitionIssues(r.issues)).toBe('parameters.bonus: Unrecognized key: "bogus"');
+    expect(r.success).toBe(true);
+    expect(r.success ? r.data.parameters?.['bonus'] : null).toEqual({ type: 'number', default: 0, intervene: false });
   });
 });
 

@@ -172,6 +172,55 @@ describe('MessageRow — Pascal roll outcome (P4.6ba)', () => {
     expect(fixture.nativeElement.querySelector('.qt-chat-message-header')).toBeNull();
   });
 
+  // v4 `839575d89` (`AnnouncementChip.tsx:71,84-89`): the "adjusted" hand.
+  it('wears the adjusted hand with its tooltip on a Pascal row the operator changed, and not otherwise', () => {
+    const adjusted = (changed: string[]) =>
+      pascalMsg({
+        pascalMeta: {
+          tool: 'pick_lock',
+          toolTitle: 'Pick Lock',
+          definitionTier: 'global',
+          definitionMountId: 'm1',
+          params: {},
+          rollForm: 'range',
+          raw: 12,
+          value: 12,
+          state: 'success',
+          outcomeIndex: 0,
+          invokedBy: 'user',
+          intervention: {
+            resolvedAt: '2026-05-02T00:00:00.000Z',
+            decision: 'deal',
+            changed,
+            dealt: {
+              params: {},
+              raw: 3,
+              value: 3,
+              outcomeIndex: 1,
+              state: 'failure',
+              message: 'dealt',
+              visibility: 'public',
+              announcer: 'pascal',
+            },
+          },
+        } as unknown as MessageDto['pascalMeta'],
+      });
+    const fixture = render(adjusted(['roll']));
+    const bar = fixture.nativeElement.querySelector('.qt-chat-system-bar') as HTMLElement;
+    const badge = bar.querySelector('.qt-intervention-badge') as HTMLElement;
+    expect(badge).not.toBeNull();
+    expect(badge.getAttribute('title')).toBe('Adjusted before it was dealt: roll 3 → 12');
+    expect(badge.querySelector('qt-icon')?.getAttribute('name')).toBe('hand-raised');
+    expect(badge.querySelector('.sr-only')?.textContent?.trim()).toBe('Adjusted before it was dealt: roll 3 → 12');
+    // Between the kind label and the time, as v4 places it.
+    expect(badge.previousElementSibling?.classList.contains('qt-chat-system-bar-kind')).toBe(true);
+    TestBed.resetTestingModule();
+    // Never adjusted (nothing changed), and a plain roll: no hand.
+    expect(render(adjusted([])).nativeElement.querySelector('.qt-intervention-badge')).toBeNull();
+    TestBed.resetTestingModule();
+    expect(render(pascalMsg()).nativeElement.querySelector('.qt-intervention-badge')).toBeNull();
+  });
+
   it('falls back to the declaration name for a legacy row with no toolTitle', () => {
     const fixture = render(
       pascalMsg({

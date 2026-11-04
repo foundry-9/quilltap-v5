@@ -5,6 +5,7 @@ import { CoreClient } from '../../core/core-client';
 import type { CustomToolDestinations, DestinationStore } from '../../core/core-contract';
 import * as api from './workbench.api';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * DestinationPicker — "Where shall Pascal keep this contrivance?" (v4
@@ -248,6 +249,7 @@ export class DestinationPicker {
 
   /** v4 `useEscapeKey(onCancel)` (`dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.cancel.emit();
   }

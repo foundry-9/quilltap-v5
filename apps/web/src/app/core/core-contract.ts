@@ -7952,15 +7952,15 @@ export interface CustomToolLibraryEntry {
   // === P4.D344: declared tool effects (W1; v4 `b15fe9404`) ===
   /**
    * The tool's declared effect: `write` touches state, wardrobe, inventory or
-   * the log; `read` only rolls and announces. Key order `LibraryEntryKeys`:
-   * `intervention` (P4.D345 / P4.D346) sits between `triggerCount` and this.
+   * the log; `read` only rolls and announces (v4 `customToolEffect`). Always
+   * sent (server `pascal/workbench.rs` `CustomToolLibraryEntry::effect`).
    *
-   * The server always sends it once P4.D343 lands; OPTIONAL here because main's
-   * server omits it today and the library fixtures in P4.D346's
-   * `workbench-library.spec.ts` (not this lane's file) carry no `effect` key —
-   * the unifier may tighten it to required on the union (P4.D344 record).
+   * Key order is v4's RUNTIME literal (`lib/pascal/workbench.ts:201-219` at
+   * `236c04e35`), not its interface: `intervention` comes right after
+   * `disabled` (`:201`), and `effect` right after `triggerCount` (`:211-212`),
+   * before `parameterCount`.
    */
-  effect?: 'read' | 'write';
+  effect: 'read' | 'write';
   // === end P4.D344 ===
   parameterCount: number;
   outcomeCount: number;

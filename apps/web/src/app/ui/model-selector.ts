@@ -11,6 +11,7 @@ import {
 } from '@angular/core';
 
 import { Icon } from './icon';
+import { isInFloatingLayer } from './floating-layer';
 
 /**
  * The model combobox (v4 `components/settings/model-selector.tsx`). A plain
@@ -127,6 +128,7 @@ export class ModelSelector {
 
   @HostListener('document:click', ['$event'])
   protected onDocumentClick(ev: MouseEvent): void {
+    if (isInFloatingLayer(ev.target)) return;
     if (this.open() && !this.host.nativeElement.contains(ev.target as Node)) {
       this.open.set(false);
     }

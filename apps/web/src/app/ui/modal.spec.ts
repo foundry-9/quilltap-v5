@@ -2,6 +2,7 @@ import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { describe, expect, it } from 'vitest';
 
+import { FLOATING_LAYER_ATTR } from './floating-layer';
 import { Modal } from './modal';
 
 /**
@@ -145,6 +146,20 @@ describe('Modal dialog semantics + Escape (P4.D358, v4 BaseModal at 236c04e35)',
     const { host } = renderEsc();
     escape(document, true);
     expect(host.closes).toBe(0);
+    document.body.innerHTML = '';
+  });
+
+  it('ignores an Escape pressed inside the topmost floating layer (v4 useClickOutside, 99463fc56)', () => {
+    const { host } = renderEsc();
+    const layer = document.createElement('div');
+    layer.setAttribute(FLOATING_LAYER_ATTR, '');
+    const inner = document.createElement('button');
+    layer.appendChild(inner);
+    document.body.appendChild(layer);
+    escape(inner);
+    expect(host.closes).toBe(0);
+    escape();
+    expect(host.closes).toBe(1);
     document.body.innerHTML = '';
   });
 

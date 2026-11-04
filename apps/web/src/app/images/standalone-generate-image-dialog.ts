@@ -55,7 +55,7 @@ interface EntityOption {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [Modal, ImageProfilePicker],
   template: `
-    <qt-modal title="Generate Image" maxWidth="3xl" (close)="close.emit()">
+    <qt-modal title="Generate Image" maxWidth="3xl" [closeOnEscape]="!generating()" (close)="close.emit()">
       <div class="space-y-4">
         <!-- Image profile picker (v4 :153-162) -->
         <div class="mb-4">
@@ -115,6 +115,7 @@ interface EntityOption {
                 >
                   <div class="p-2 border-b qt-border-default">
                     <input
+                      aria-label="Search characters"
                       type="text"
                       placeholder="Search..."
                       [value]="searchTerm()"

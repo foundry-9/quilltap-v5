@@ -33,6 +33,13 @@ import { ToastService } from '../../ui/toast.service';
 export const TRIGGER_BADGE_TITLE =
   'Listens for trigger phrases — said in a chat with the setting on, they run this tool';
 
+/** v4's titles on the effect badge (`WorkbenchLibrary.tsx:254-263`, `b15fe9404`). */
+export const EFFECT_BADGE_TITLE = {
+  write:
+    'Has side effects (state, wardrobe, inventory or the log): a write. Storyteller turns need an Act bid to run it.',
+  read: 'No side effects — rolling and announcing only: a read. A Lookup bid may run it.',
+} as const;
+
 /** The advisory a colliding name carries. Carried verbatim from v4 `:36-39`. */
 export const TIER_ADVISORY =
   'Nearest tier wins: character → participant → group → project → global. ' +
@@ -315,6 +322,12 @@ interface OverCapStore {
               >✦ {{ tool.triggerCount }} phrase{{ tool.triggerCount === 1 ? '' : 's' }}</span
             >
           }
+          <!-- v4 \`b15fe9404\` (\`WorkbenchLibrary.tsx:254-263\`): the declared effect. -->
+          <span
+            [class]="tool.effect === 'write' ? 'qt-badge qt-badge-warning' : 'qt-badge qt-badge-info'"
+            [title]="tool.effect === 'write' ? EFFECT_BADGE_TITLE.write : EFFECT_BADGE_TITLE.read"
+            >{{ tool.effect }}</span
+          >
           @if (tool.parameterCount > 0) {
             <span class="qt-badge qt-badge-outline"
               >{{ tool.parameterCount }} param{{ tool.parameterCount === 1 ? '' : 's' }}</span
@@ -366,6 +379,7 @@ export class WorkbenchLibrary {
   protected readonly MAX_ROSTER_SIZE = MAX_ROSTER_SIZE;
   protected readonly TIER_ADVISORY = TIER_ADVISORY;
   protected readonly TRIGGER_BADGE_TITLE = TRIGGER_BADGE_TITLE;
+  protected readonly EFFECT_BADGE_TITLE = EFFECT_BADGE_TITLE;
   /** The `gated` badge's tooltip — one sentence per clause (v4 `:218-226`). */
   protected gateTitle(gate: api.LibraryGateMode): string {
     return gate === 'available'

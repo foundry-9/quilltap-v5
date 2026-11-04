@@ -42,12 +42,13 @@ import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * Gate (C16): P4.D350's R-1 — the server's location-level `inventory` publish
- * on every Inventory write, the operator's own included. Until it is in the
- * tree, an operator write publishes nothing, so skipping the dialog's own
- * refresh while the socket is up would leave the list stale (measured: the
- * `inventory-flow` beats (d) / (e) red). The unifier flips this with P4.D350.
+ * on every Inventory write, the operator's own included
+ * (`quilltap-core/src/inventory/location.rs` `publish_realtime(Inventory)`).
+ * Without it, skipping the dialog's own refresh while the socket is up would
+ * leave the list stale (measured: the `inventory-flow` beats (d) / (e) red).
+ * FLIPPED at the `236c04e35` union, where P4.D350 landed.
  */
-export const P4D350_PUBLISH_LANDED = false;
+export const P4D350_PUBLISH_LANDED = true;
 
 /** Two containers name the same tier (by their encoded value — the select's own key). */
 function sameContainer(a: InventoryContainer | null, b: InventoryContainer | null): boolean {
@@ -108,7 +109,8 @@ const byName = (a: { name: string }, b: { name: string }): number => a.name.loca
         <ng-container [ngTemplateOutlet]="overlays" />
       </div>
     } @else {
-      <qt-modal title="Inventory" maxWidth="4xl" [closeOnBackdrop]="!overlayOpen() && !confirming()" (close)="closed.emit()">
+      <!-- Escape has ONE owner: the host's own onEscape (v4 closeOnEscape = !overlayOpen && !confirming, :385), so qt-modal's is off. -->
+      <qt-modal title="Inventory" maxWidth="4xl" [closeOnBackdrop]="!overlayOpen() && !confirming()" [closeOnEscape]="false" (close)="closed.emit()">
         <ng-container [ngTemplateOutlet]="body" />
         <div qt-modal-footer class="flex items-center justify-end gap-2 w-full">
           <button type="button" (click)="closed.emit()" class="qt-button-secondary qt-button-sm">Done</button>

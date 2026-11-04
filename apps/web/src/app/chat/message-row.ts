@@ -32,6 +32,7 @@ import {
   getAnnouncementImportance,
   getAnnouncementOutcomeState,
   getAnnouncementSenderName,
+  getInterventionSummary,
   getSystemKindDisplayLabel,
 } from './system-message-labels';
 import { ThinkingBlock } from './thinking-block';
@@ -160,6 +161,14 @@ export interface ImageClickEvent {
             }
             @if (staffKind()) {
               <span class="qt-chat-system-bar-kind">{{ staffKind() }}</span>
+            }
+            <!-- The "adjusted" hand on a Pascal roll the operator changed while
+                 it was held (v4 839575d89, AnnouncementChip.tsx:84-89). -->
+            @if (interventionSummary(); as adjusted) {
+              <span class="qt-intervention-badge" [title]="adjusted">
+                <qt-icon name="hand-raised" class="w-3 h-3" />
+                <span class="sr-only">{{ adjusted }}</span>
+              </span>
             }
             <!-- The whisper audience, when this Staff row (a Carina reference
                  answer, a Suparṇā letter) is targeted rather than public — v4
@@ -667,6 +676,8 @@ export class MessageRow {
   );
   /** The kind chip — for a roll, the tool title (`toolTitle ?? tool`). */
   protected readonly staffKind = computed(() => getSystemKindDisplayLabel(this.message()));
+  /** The "adjusted" badge's tooltip (v4 `getInterventionSummary`); null when never adjusted. */
+  protected readonly interventionSummary = computed(() => getInterventionSummary(this.message()));
 
   /**
    * Whose hand this row's diagrams are drawn in (v4 `MessageRow.tsx:210-212`,

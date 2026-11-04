@@ -58,6 +58,7 @@ import { WardrobeInstructionsSection } from './wardrobe-instructions-section';
 import { ToastService } from '../ui/toast.service';
 import { onTabActivated } from '../workspace/workspace-contract';
 import { isInFloatingLayer } from '../ui/floating-layer';
+import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
 
 interface CharacterSummary {
   id: string;
@@ -131,6 +132,7 @@ type RightTab = 'live' | 'builder' | 'history';
   imports: [
     NgTemplateOutlet,
     AvatarGenerationPane,
+    DialogFocus,
     OutfitComposer,
     OutfitHistoryTab,
     WardrobeBrowser,
@@ -159,10 +161,13 @@ type RightTab = 'live' | 'builder' | 'history';
           style="max-width: 56rem"
           role="dialog"
           aria-modal="true"
+          [attr.aria-labelledby]="titleId"
+          tabindex="-1"
+          qtDialogFocus
           (click)="$event.stopPropagation()"
         >
           <div class="qt-dialog-header flex items-center justify-between gap-4">
-            <h2 class="qt-dialog-title">Wardrobe</h2>
+            <h2 class="qt-dialog-title" [id]="titleId">Wardrobe</h2>
             <button
               type="button"
               class="qt-button-ghost qt-button-sm"
@@ -477,6 +482,8 @@ type RightTab = 'live' | 'builder' | 'history';
   `,
 })
 export class WardrobeControlDialogInner {
+  /** v4 `BaseModal title="Wardrobe"` names the dialog by its title (`useId()`; R1). */
+  protected readonly titleId = mintDialogId();
   private readonly core = inject(CoreClient);
   private readonly toasts = inject(ToastService);
 

@@ -5,9 +5,6 @@
  * `dff76ebef`'s dialog shape. It reads SOURCE, so any lane's later edit that
  * drops a dialog's semantics fails `npm test`.
  *
- * Rows with an `owner` are a sibling lane's HANDOFF this round and are skipped
- * with the owner's name until the unifier deletes the field (§S.4).
- *
  * Measured red-first on unported `main`: every role-less row failed (and every
  * row whose role sat without a linked name).
  */
@@ -64,12 +61,6 @@ describe('dialog-roles census (v4 dff76ebef dialog shape)', () => {
   });
 
   for (const row of DIALOG_ROLES) {
-    if (row.owner) {
-      it.skip(`${row.v5} — HANDOFF to ${row.owner} (skipped until the unifier drops the owner)`, () => {
-        expect(satisfied(row)).toBe(true);
-      });
-      continue;
-    }
     it(`${row.v5} — role="${row.role}" named by ${row.name} (v4 ${row.v4})`, () => {
       expect(satisfied(row)).toBe(true);
     });

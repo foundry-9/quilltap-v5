@@ -12,6 +12,7 @@ import { apiUrl } from '../../core/api-url';
 import { CoreClient } from '../../core/core-client';
 import type { FileEntry } from '../../core/core-contract';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * Pick an avatar from the stored image files (tier 2 of P4.9c; v4
@@ -111,6 +112,7 @@ export class AvatarPicker {
 
   /** v4 `useEscapeKey(handleClose, isOpen && !showUploadDialog)` (`avatar-selector.tsx`); v5's picker has no nested upload dialog, so ungated. */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.cancelled.emit();
   }

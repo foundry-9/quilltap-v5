@@ -109,8 +109,8 @@ export class Modal {
     // `useClickOutside.ts` returns on `isInFloatingLayer(event.target)` first
     // (`99463fc56`; P4.D359's guard, carried onto P4.D358's listener at union).
     const onDocumentKeydown = (event: KeyboardEvent): void => {
-      if (event.key !== 'Escape' || !this.closeOnEscape() || event.defaultPrevented) return;
       if (isInFloatingLayer(event.target)) return;
+      if (event.key !== 'Escape' || !this.closeOnEscape() || event.defaultPrevented) return;
       this.close.emit();
     };
     document.addEventListener('keydown', onDocumentKeydown);

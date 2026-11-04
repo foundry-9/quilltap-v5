@@ -12,6 +12,7 @@ import {
 import type { MemoryDto } from '../core/core-contract';
 import { MemoryCard } from './memory-card';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * The digest viewer (v4 `components/memory/memory-list.tsx:370-389` at
@@ -69,6 +70,7 @@ export class MemoryDigestViewer {
 
   /** v4 `useEscapeKey(closeDigest, viewedDigest !== null)` — always, while rendered (`dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.close.emit();
   }

@@ -16,6 +16,7 @@ import { Icon } from '../ui/icon';
 import { ToastService } from '../ui/toast.service';
 import { reattributeMessage } from './chat-admin.api';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * Re-attribute Message (v4 `components/chat/ReattributeMessageDialog.tsx`,
@@ -151,6 +152,7 @@ export class ReattributeMessageDialog {
 
   /** v4 `onEscape: () => { if (!isSubmitting) onClose() }` (`ReattributeMessageDialog.tsx:66`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (!this.submitting()) this.close.emit();
   }

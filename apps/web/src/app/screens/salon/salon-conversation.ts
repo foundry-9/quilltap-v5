@@ -87,6 +87,8 @@ import { ChatToolSettingsModal } from '../../chat/tools/chat-tool-settings-modal
 import { AllLLMPauseModal, type AllLLMPauseParticipant } from '../../chat/all-llm-pause-modal';
 import { getNextPauseThreshold } from '../../chat/all-llm-pause';
 import { RunToolModal } from '../../chat/tools/run-tool-modal';
+import { CustomToolInterventionDialog } from '../../chat/custom-tool-intervention-dialog';
+import { ReplyAnnouncer } from '../../chat/reply-announcer';
 // === P4.D344: Storyteller mode ===
 import { StorytellerBoard, type StorytellerRunRequest } from '../../chat/storyteller-board';
 import { turnModeOf, withBid } from '../../chat/storyteller-board.pure';
@@ -104,6 +106,7 @@ import {
 } from '../../chat/chat-cast.api';
 import type { ConnectionProfileOption } from '../../chat/sidebar/participant-card';
 import { Modal } from '../../ui/modal';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 import { type SwipeState } from '../../chat/chat-view-model';
 import { fetchChatTranscript } from '../../chat/chat-transcript.api';
 import {
@@ -126,6 +129,7 @@ import {
   type DialogueDetection,
   type RenderingPattern,
 } from '../../chat/render/roleplay-rendering';
+import { isProseTemplate } from '../../punctuation-lint/prose-mode';
 import { fetchRoleplayTemplate } from '../settings/templates/templates.api';
 import type {
   ImpersonationVoiceMode,
@@ -202,6 +206,11 @@ import {
   WORKSPACE_BACKDROP_REGISTRY,
   WORKSPACE_TAB_ID,
 } from '../../workspace/workspace-contract';
+import {
+  AbsentMentionsSlot,
+  bindAbsentMentions,
+} from '../../chat/absent-mentions/absent-mentions.api';
+import { isOffSceneMentionIntroduction } from '../../chat/absent-mentions/off-scene-kinds';
 
 /**
  * v4 `setImpersonatingParticipantIds(data.impersonatingParticipantIds || [])`
@@ -294,6 +303,8 @@ interface CascadePrompt {
   host: { class: 'block h-full' },
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
+    // P4.D359 (v4 9a88f862f): the name chips' one read per chat, handed to the rows.
+    AbsentMentionsSlot,
     TerminalModeController,
     DocumentModeController,
     DocumentApi,
@@ -344,6 +355,8 @@ interface CascadePrompt {
     ChatToolSettingsModal,
     AllLLMPauseModal,
     RunToolModal,
+    CustomToolInterventionDialog,
+    ReplyAnnouncer,
     SearchReplaceModal,
     ReattributeMessageDialog,
     SelectLlmProfileDialog,
@@ -354,9 +367,11 @@ interface CascadePrompt {
   template: `
     <div class="qt-chat-layout" [style.--story-background-url]="visibleBackgroundVar()">
       <div class="qt-chat-main">
-        <!-- === P4.D358 (owner P4.D344): the page heading (v4 SalonView.tsx:1582) === -->
+        <!-- The page heading (v4 SalonView.tsx:1582; P4.D358). -->
         <h1 class="sr-only">{{ chat()?.title || 'The Salon' }}</h1>
-        <!-- === P4.D358 (owner P4.D344): <qt-reply-announcer> mounts here once chat/reply-announcer.ts lands === -->
+        <!-- P4.D358 H-out-1, mounted at union: v4 SalonView.tsx:1583 hands the
+             announcer its rendered feed (renderMessages ≈ displayMessages). -->
+        <qt-reply-announcer [messages]="displayMessages()" [nameFor]="announcerNameFor" />
         @if (chatQuery.isPending()) {
           <qt-loading-state message="Loading chat..." />
         } @else if (chatQuery.isError() || !chat()) {
@@ -529,7 +544,6 @@ interface CascadePrompt {
       }
       <!-- === end P4.D344 === -->
 
-      <!-- === P4.D352 (owner P4.D344): prose-mode bindings === -->
       <qt-chat-composer
         [busy]="busy()"
         [handRaised]="handRaised()"
@@ -546,6 +560,8 @@ interface CascadePrompt {
         [compositionMode]="compositionMode()"
         [templateDelimiters]="templateDelimiters()"
         [narrationDelimiters]="narrationDelimiters()"
+        [proseMode]="composerProseMode()"
+        [markdownAsterisks]="composerMarkdownAsterisks()"
         [mentionPriorityCharacterIds]="mentionCastCharacterIds()"
         [slashDefaultCharacterId]="slashDefaultCharacterId()"
         [textReplacementRules]="textReplacementRules()"
@@ -799,7 +815,10 @@ interface CascadePrompt {
       />
     }
 
-    <!-- === P4.D346 (owner P4.D344): the custom-tool intervention hold dialog mounts here === -->
+    <!-- P4.D346 H1, mounted at union: the custom-tool intervention hold dialog. -->
+    @if (chat(); as c) {
+      <qt-custom-tool-intervention-dialog [chatId]="c.id" />
+    }
     @if (showRunTool() && chat(); as c) {
       <qt-run-tool-modal
         [chatId]="c.id"
@@ -962,6 +981,8 @@ export class SalonConversation {
   protected readonly chatId = computed(
     () => this.chatIdInput() ?? this.routeParams?.().get('id') ?? null,
   );
+  /** The absent-character name chips' one read per chat (v4 `useAbsentMentions`). */
+  private readonly absentMentions = bindAbsentMentions(this.chatId);
 
   /** The terminal pane is showing when a session is bound and mode isn't normal (v4). */
   protected readonly terminalActive = computed(
@@ -1097,7 +1118,6 @@ export class SalonConversation {
     // arm. The three reset arms (no id / non-ok / throw) are deliberately the
     // same reset, which is what lets a chat whose template was deleted keep
     // rendering with the defaults rather than showing an error.
-    // === P4.D352 (owner P4.D344): composerProseMode ===
     effect(() => {
       const templateId = this.roleplayTemplateId();
       const seq = ++this.templateFetchSeq;
@@ -1107,6 +1127,8 @@ export class SalonConversation {
         this.roleplayDialogueDetection.set(undefined);
         this.roleplayDelimiters.set([]);
         this.roleplayNarrationDelimiters.set(null);
+        this.roleplayProseMode.set(false);
+        this.roleplayMarkdownAsterisks.set(true);
       };
       if (!templateId) {
         reset();
@@ -1125,6 +1147,10 @@ export class SalonConversation {
             this.roleplayDialogueDetection.set(template.dialogueDetection);
             this.roleplayDelimiters.set(template.delimiters ?? []);
             this.roleplayNarrationDelimiters.set(template.narrationDelimiters ?? null);
+            // v4 `2b2b190b6` SalonView: prose mode from the fetched template;
+            // v4 `778b97b2b` FormattingToolbar reads `markdownAsterisks` off it.
+            this.roleplayProseMode.set(isProseTemplate(template));
+            this.roleplayMarkdownAsterisks.set(template.markdownAsterisks ?? true);
           } catch {
             reset();
           }
@@ -1197,7 +1223,10 @@ export class SalonConversation {
      * the test is `e.key === 'L'` UPPERCASE: Shift is held, so the browser
      * reports the capital.
      */
+    // A shortcut typed inside the topmost floating layer (the Brahma Console)
+    // is the console's (P4.D359's HANDOFF row, applied at union).
     const onInspectorKeydown = (event: KeyboardEvent): void => {
+      if (isInFloatingLayer(event.target)) return;
       if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === 'L') {
         event.preventDefault();
         this.toggleInspector();
@@ -1309,10 +1338,16 @@ export class SalonConversation {
   );
   private readonly roleplayDelimiters = signal<TemplateDelimiter[]>([]);
   private readonly roleplayNarrationDelimiters = signal<NarrationDelimiters | null>(null);
+  /** P4.D352 H-2: `isProseTemplate(template)` — the composer's prose mode. */
+  private readonly roleplayProseMode = signal(false);
+  /** P4.D352 H-2: the template's `markdownAsterisks ?? true` — the toolbar's Bold withhold. */
+  private readonly roleplayMarkdownAsterisks = signal(true);
   protected readonly renderingPatterns = this.roleplayRenderingPatterns.asReadonly();
   protected readonly dialogueDetection = this.roleplayDialogueDetection.asReadonly();
   protected readonly templateDelimiters = this.roleplayDelimiters.asReadonly();
   protected readonly narrationDelimiters = this.roleplayNarrationDelimiters.asReadonly();
+  protected readonly composerProseMode = this.roleplayProseMode.asReadonly();
+  protected readonly composerMarkdownAsterisks = this.roleplayMarkdownAsterisks.asReadonly();
 
   /**
    * v4's effect keys on `chat?.roleplayTemplateId` — a PRIMITIVE, so it re-runs
@@ -2296,6 +2331,10 @@ export class SalonConversation {
    * twice impossible: reconciliation retires the bubble in the same pass that
    * folds in the row it stood for (dogfood finding #106).
    */
+  /** The announcer's speaker name for a participant id (v4 `SalonView.tsx:1341-1344`). */
+  protected readonly announcerNameFor = (pid: string | null | undefined): string | undefined =>
+    pid ? this.chat()?.participants.find((p) => p.id === pid)?.character?.name : undefined;
+
   protected readonly displayMessages = computed<MessageDto[]>(() => {
     const states = this.effectiveSwipeStates();
     const showAll = this.showAllWhispers();
@@ -2309,9 +2348,11 @@ export class SalonConversation {
         return m;
       })
       .filter((m) =>
-        // === P4.D359 (owner P4.D344): isOffSceneMentionIntroduction filter ===
         isMessageVisibleToOperator(m, { showAllWhispers: showAll, userParticipantIds: userIds }),
-      );
+      )
+      // v4 `9a88f862f` (`SalonView.tsx:409`): the Host's old "spoken of" cards
+      // leave the FEED — the name chips replace them; they stay in the transcript.
+      .filter((m) => !isOffSceneMentionIntroduction(m));
   });
 
   /**

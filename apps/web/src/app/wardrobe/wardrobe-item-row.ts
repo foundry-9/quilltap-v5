@@ -21,6 +21,7 @@ import { wardrobeOriginLabel } from './wardrobe-container';
 import { formatPronounGuidance } from './pronoun-guidance';
 import { formatWearLine, wearOf } from './wear-display';
 import { WardrobeItemThumbnail } from './wardrobe-item-thumbnail';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /**
  * One line in the dialog's wardrobe list (v4
@@ -595,6 +596,7 @@ export class WardrobeItemRow {
       if (!this.kebabOpen() && !this.slotPickerOpen()) return;
       const mousedown = (event: MouseEvent): void => this.onDocumentMousedown(event);
       const keydown = (event: KeyboardEvent): void => {
+        if (isInFloatingLayer(event.target)) return;
         if (event.key === 'Escape') this.onEscape(event);
       };
       doc.addEventListener('mousedown', mousedown);
@@ -612,6 +614,7 @@ export class WardrobeItemRow {
    * popover closes the popover. Closes the pre-existing v5 gap (Escape-only).
    */
   protected onDocumentMousedown(event: MouseEvent): void {
+    if (isInFloatingLayer(event.target)) return;
     const target = event.target as Node | null;
     if (this.kebabOpen() && !(target && this.kebabRef()?.nativeElement.contains(target))) {
       this.kebabOpen.set(false);

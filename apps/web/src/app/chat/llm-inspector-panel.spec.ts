@@ -160,12 +160,13 @@ describe('LLMInspectorPanel — the filter (v4 :11-29, :57-62, :94-104)', () => 
 
   it('other is DERIVED — every log type no named group claims, in the enum’s order (v4 `eb2d87788`)', () => {
     // v4 `:30-37`: `other: LLMLogTypeEnum.options.filter(type => !CLAIMED_TYPES.has(type))`.
-    // STORYTELLER_BID is claimed by P4.D344's `storyteller` group on the union
-    // (contract I1); before that group lands it falls to `other`, so it is
-    // set aside here and the remaining nine are v4's derived `other` at the pin.
+    // STORYTELLER_BID is claimed by P4.D344's `storyteller` group (contract I1,
+    // landed at union), so it is ABSENT from `other`: these nine are v4's
+    // derived `other` at the pin.
     const fixture = render({ logs: LLM_LOG_TYPES.map((t) => log({ id: t, type: t })).reverse() });
     setFilter(fixture, 'other');
-    const shown = entryIds(fixture).filter((t) => t !== 'STORYTELLER_BID');
+    const shown = entryIds(fixture);
+    expect(shown).not.toContain('STORYTELLER_BID');
     expect(shown).toEqual([
       'CHARACTER_WIZARD',
       'AI_IMPORT',

@@ -33,6 +33,7 @@ import {
   type Size,
   type View,
 } from './lightbox-geometry';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * The PNG pipeline the Copy PNG button drives. A token only so a spec can
@@ -361,6 +362,7 @@ export class DiagramLightbox {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if (isInFloatingLayer(e.target)) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopImmediatePropagation();

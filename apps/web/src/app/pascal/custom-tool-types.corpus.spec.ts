@@ -7,7 +7,10 @@
  * sentence it renders is user-visible payload the server also produces, so the
  * browser and the server must phrase the same file's rejection identically.
  *
- * This replays the COMMITTED oracle corpus — 710 rows (10 title + 601
+ * This replays the COMMITTED oracle corpus — 747 rows (10 title + 638
+ * definition + 99 gate) at the `236c04e35` union: P4.D345's one regen of the
+ * intervention grammar over 716 rows (710 + six from the sweep's pin re-copy).
+ * Before that, 710 rows (10 title + 601
  * definition + 99 gate), the unifier's ONE union regen at the `322a5488e`
  * unification over the merged generator (P4.D333's 537 rows byte-identical,
  * plus 173 sibling rows: the inventory / aggregate / log / edit-tool grammar,

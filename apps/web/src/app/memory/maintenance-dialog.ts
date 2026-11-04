@@ -27,6 +27,7 @@ import { ToastService } from '../ui/toast.service';
 import { MaintenanceReportView, MaintenanceReportsTable, PHASE_LABELS } from './maintenance-report';
 import { fetchCharacterMemoryCounts, memoryKeys, runMaintenance } from './memory.api';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 const ALL = '__all__';
 
@@ -219,6 +220,7 @@ export class MaintenanceDialog {
 
   /** v4 `useEscapeKey(onClose, true)` (`maintenance-dialog.tsx`, `dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.close.emit();
   }

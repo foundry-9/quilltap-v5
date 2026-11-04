@@ -27,6 +27,7 @@ import { ProviderModelBadge } from '../sidebar/provider-model-badge';
 import { CreateNpcDialog } from './create-npc-dialog';
 import { ToastService } from '../../ui/toast.service';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * v4's sentinel for "the human types for this character" in the Controlled-By
@@ -388,6 +389,7 @@ export class AddCharacterDialog {
 
   /** v4 `onEscape: () => { if (!isAdding && !isCreateNPCOpen) onClose() }` (`AddCharacterDialog.tsx:176`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (!this.adding() && !this.createNpcOpen()) this.close.emit();
   }

@@ -23,6 +23,7 @@ import { ToastService } from '../ui/toast.service';
 import { chatActivityAt } from './chat-activity';
 import { mergeConversation, readOutfitSummary } from './chat-admin.api';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 `presentCharacters` (`MergeConversationModal.tsx:63-74`). */
 export function presentCharacters(chat: EnrichedChatSummary): { id: string; name: string }[] {
@@ -247,6 +248,7 @@ export class MergeConversationModal {
 
   /** v4 `useEscapeKey(handleClose, isOpen)` (`MergeConversationModal.tsx:215`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.onClose();
   }

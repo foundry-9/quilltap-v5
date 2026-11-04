@@ -25,6 +25,7 @@ import {
   type TimeIncrement,
 } from './schema';
 import { DialogFocus, mintDialogId } from '../ui/dialog-focus';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** The entry being edited, with its id. Null = creating a fresh one. */
 export interface ProgressionEdit {
@@ -531,6 +532,7 @@ export class ProgressionEditorModal implements OnInit {
 
   /** v4 `useEscapeKey(onClose, !saving)` (`dff76ebef`). */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     if (!this.saving()) this.close.emit();
   }

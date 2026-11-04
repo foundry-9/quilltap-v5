@@ -123,6 +123,7 @@ interface EntityOption {
               <div class="relative mt-2" #dropdownRef>
                 <div class="flex items-center gap-2">
                   <input
+                    aria-label="Search characters"
                     type="text"
                     [value]="searchTerm()"
                     (input)="onSearchInput($any($event.target).value)"

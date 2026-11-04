@@ -10,10 +10,6 @@
  * `label` = `aria-label` (v4 names a title-less image viewer / the search
  * panel that way).
  *
- * `owner`: a SIBLING lane owns the file this round and applies the row as a
- * HANDOFF; the spec skips it with the owner's name until the unifier removes
- * the field (§S.4 — the same emptying as `scripts/a11y-names-allowlist.json`).
- *
  * Every `qt-modal` host inherits the `ui/modal.ts` row (76 hosts at P4.D358).
  */
 export interface DialogRoleRow {
@@ -25,7 +21,6 @@ export interface DialogRoleRow {
   readonly name: 'labelledby' | 'label';
   /** C9 R2's NON-modal floating surface: `aria-modal="false"` (default: modal). */
   readonly nonModal?: true;
-  readonly owner?: 'P4.D359' | 'P4.D346';
 }
 
 export const DIALOG_ROLES: ReadonlyArray<DialogRoleRow> = [
@@ -60,8 +55,10 @@ export const DIALOG_ROLES: ReadonlyArray<DialogRoleRow> = [
   { v5: 'almanack/almanack-report-dialog.ts', v4: 'components/tools/capabilities-report-dialog.tsx', role: 'dialog', name: 'labelledby' },
   { v5: 'screens/files/file-preview-modal.ts', v4: 'components/files/FilePreview/FilePreviewModal.tsx', role: 'dialog', name: 'labelledby' },
   { v5: 'screens/photos/photos-page.ts', v4: 'app/photos/PhotosView.tsx', role: 'dialog', name: 'labelledby' },
-  // Sibling-owned this round (HANDOFFs H-out-4 / -5 / -6): skipped until applied.
-  { v5: 'memory/memory-list.ts', v4: 'components/memory/memory-list.tsx', role: 'dialog', name: 'labelledby', owner: 'P4.D359' },
-  { v5: 'wardrobe/wardrobe-item-editor.ts', v4: 'components/wardrobe/wardrobe-item-editor/WardrobeItemEditor.tsx', role: 'dialog', name: 'labelledby', owner: 'P4.D359' },
-  { v5: 'brahma/brahma-console-dialog.ts', v4: 'components/ui/FloatingDialog.tsx', role: 'dialog', name: 'labelledby', nonModal: true, owner: 'P4.D359' },
+  // The P4.D359-owned rows (HANDOFFs H-out-4 / -5 / -6), applied at union.
+  { v5: 'memory/memory-list.ts', v4: 'components/memory/memory-list.tsx', role: 'dialog', name: 'labelledby' },
+  { v5: 'wardrobe/wardrobe-item-editor.ts', v4: 'components/wardrobe/wardrobe-item-editor.tsx', role: 'dialog', name: 'labelledby' },
+  // The Brahma Console's semantics live on the primitive it renders
+  // (`brahma-console-dialog.ts` → `<qt-floating-dialog>`), as v4's do.
+  { v5: 'ui/floating-dialog.ts', v4: 'components/ui/FloatingDialog.tsx', role: 'dialog', name: 'labelledby', nonModal: true },
 ];

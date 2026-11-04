@@ -31,6 +31,7 @@ import { Icon } from '../ui/icon';
       <textarea
         #input
         class="qt-help-composer-input"
+        aria-label="Message"
         rows="1"
         style="min-height: 38px; max-height: 120px"
         [value]="content()"

@@ -65,9 +65,8 @@ interface PickerRow {
  * Show archived reset per open (`linkedSignal` over `open`). The header control
  * (the vantage select) is projected through `[qtPickerHeader]`.
  *
- * **Recorded mechanism divergence** (the wardrobe picker's): v4's `BaseModal`
- * closes on Escape; `qt-modal` does not, so a document Escape listener closes
- * the PICKER only.
+ * Escape closes the picker through `qt-modal`'s own document listener (v4
+ * `BaseModal` `closeOnEscape`, default true — converged P4.D358 R-N).
  */
 @Component({
   selector: 'qt-inventory-reference-picker',

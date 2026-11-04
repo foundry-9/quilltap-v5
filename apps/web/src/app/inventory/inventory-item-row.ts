@@ -14,6 +14,7 @@ import {
 import type { KitState, ResolvedInventoryItem } from '../core/core-contract';
 import { inventoryOriginLabel } from './inventory-container';
 import { InventoryGlyph } from './inventory-glyph';
+import { isInFloatingLayer } from '../ui/floating-layer';
 
 /** v4 `InventoryRowActions` — what a row's ⋮ menu reaches. */
 export interface InventoryRowActions {
@@ -329,10 +330,12 @@ export class InventoryItemRow {
       const win = doc.defaultView;
       const close = (): void => this.placement.set(null);
       const mousedown = (event: MouseEvent): void => {
+        if (isInFloatingLayer(event.target)) return;
         const host = this.menuHost()?.nativeElement;
         if (!(event.target instanceof Node && host?.contains(event.target))) close();
       };
       const keydown = (event: KeyboardEvent): void => {
+        if (isInFloatingLayer(event.target)) return;
         if (event.key !== 'Escape') return;
         event.stopPropagation();
         event.preventDefault();

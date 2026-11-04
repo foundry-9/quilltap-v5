@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, input, output, signal } from '@angular/core';
 import { DialogFocus, mintDialogId } from '../../ui/dialog-focus';
+import { isInFloatingLayer } from '../../ui/floating-layer';
 
 /**
  * The Whisper dialog (v4 `components/chat/WhisperDialog.tsx`): a private line to
@@ -95,6 +96,7 @@ export class WhisperDialog {
 
   /** v4 `useEscapeKey(onClose, isOpen)` (`WhisperDialog.tsx:38`) — document-level, beside the textarea's own. */
   protected onEscape(event: Event): void {
+    if (isInFloatingLayer(event.target)) return;
     if ((event as KeyboardEvent).defaultPrevented) return;
     this.close.emit();
   }

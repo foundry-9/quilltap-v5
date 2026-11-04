@@ -154,6 +154,22 @@ describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateIm
     expect(emitted[0].prompt).toBe('a cat');
   });
 
+  it('Escape closes — but not while generating (v4 :133 `useEscapeKey(onClose, isOpen && !isGenerating)`)', async () => {
+    const fixture = await render(stubClient({}));
+    let closed = 0;
+    fixture.componentInstance.close.subscribe(() => closed++);
+    const escape = () =>
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    (fixture.componentInstance as unknown as { generating: { set(v: boolean): void } }).generating.set(true);
+    fixture.detectChanges();
+    escape();
+    expect(closed).toBe(0);
+    (fixture.componentInstance as unknown as { generating: { set(v: boolean): void } }).generating.set(false);
+    fixture.detectChanges();
+    escape();
+    expect(closed).toBe(1);
+  });
+
   it('clears the prompt and closes on success (v4 :103,:110)', async () => {
     const fixture = await render(stubClient({ generate: { success: true, data: [image()] } }));
     let closed = 0;
