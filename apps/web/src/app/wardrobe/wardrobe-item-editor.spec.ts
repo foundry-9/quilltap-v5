@@ -880,6 +880,61 @@ describe('the editor’s Picture section (v4 7c8572869)', () => {
     (section.componentInstance as { imageChanged: { emit(): void } }).imageChanged.emit();
     expect(out).toHaveLength(1);
   });
+
+  /**
+   * WARDROBE_VIEWER_ESCAPE_LAYERED (ruled divergence, human ruling
+   * 2026-11-04): v4 closes BOTH layers on one Escape — its viewer's
+   * `useImageNavigation` (document) and the editor's `useEscapeKey` (window)
+   * neither stop propagation (`WardrobeItemImageSection.tsx:513`). v5 layers
+   * them: the first Escape closes only the viewer, the second the editor.
+   */
+  it('Escape with the picture viewer open closes only the viewer; a second Escape closes the editor (WARDROBE_VIEWER_ESCAPE_LAYERED)', async () => {
+    const pictures = {
+      current: 'file-1',
+      images: [
+        {
+          fileId: 'file-1',
+          url: '/api/v1/files/file-1',
+          thumbnailUrl: '/api/v1/files/file-1?action=thumbnail',
+          source: 'UPLOADED',
+          createdAt: '2026-10-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const { fixture, component } = await render({ item: item({ id: 'w1' }) }, (req) =>
+      (req.type as string) === 'wardrobeItemImagesList' ? pictures : answer(req),
+    );
+    const host = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(host);
+    const viewer = (): Element | null =>
+      document.body.querySelector('qt-full-screen-image-viewer [role="dialog"]');
+    try {
+      await settle(fixture, 8);
+      let closes = 0;
+      component.closed.subscribe(() => closes++);
+      const open = host.querySelector<HTMLButtonElement>(
+        'button[aria-label="View the current picture full size"]',
+      );
+      expect(open).not.toBeNull();
+      open!.click();
+      await settle(fixture);
+      expect(viewer()).not.toBeNull();
+
+      const escape = (): boolean =>
+        document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      escape();
+      await settle(fixture);
+      expect(viewer()).toBeNull();
+      expect(closes).toBe(0);
+
+      escape();
+      await settle(fixture);
+      expect(closes).toBe(1);
+    } finally {
+      host.remove();
+      document.body.style.overflow = '';
+    }
+  });
 });
 
 /**

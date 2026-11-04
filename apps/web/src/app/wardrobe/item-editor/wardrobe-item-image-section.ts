@@ -9,6 +9,7 @@ import {
   output,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { injectQuery } from '@tanstack/angular-query-experimental';
 
@@ -367,6 +368,12 @@ export class WardrobeItemImageActive {
     const index = this.viewingIndex();
     return index !== null ? (this.images()[index] ?? null) : null;
   });
+  /**
+   * Whether the full-screen viewer is up — read by the item editor, whose
+   * Escape stands down while it is (WARDROBE_VIEWER_ESCAPE_LAYERED, a ruled
+   * divergence; see `WardrobeItemEditor.onEscape`).
+   */
+  readonly viewerOpen = computed(() => this.viewing() !== null);
   /** v4 `:518-523` — `Current picture · 1 of 2`; no count for a lone picture. */
   protected readonly viewerNote = computed(() => {
     const viewing = this.viewing();
@@ -605,4 +612,8 @@ export class WardrobeItemImageSection {
   readonly container = input<WardrobeContainer | null>(null);
   /** After the current picture changes, so the lists can refresh. */
   readonly imageChanged = output<void>();
+
+  private readonly active = viewChild(WardrobeItemImageActive);
+  /** The live half's viewer is up (false in create mode — no viewer exists). */
+  readonly viewerOpen = computed(() => this.active()?.viewerOpen() ?? false);
 }

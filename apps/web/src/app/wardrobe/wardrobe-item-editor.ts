@@ -587,6 +587,16 @@ export class WardrobeItemEditor {
   protected onEscape(event: Event): void {
     if (isInFloatingLayer(event.target)) return;
     if (this.showKeepResetPrompt()) return;
+    // WARDROBE_VIEWER_ESCAPE_LAYERED — a RULED DIVERGENCE (human ruling,
+    // 2026-11-04). In v4 one Escape closes BOTH the Picture section's
+    // full-screen viewer and this editor: the viewer's `useImageNavigation`
+    // (a document listener) and the editor's `useEscapeKey` (a window
+    // listener) neither stop propagation (`WardrobeItemImageSection.tsx:513`).
+    // v5 layers them, as the wardrobe dialog's `overlayOpen` gate does: while
+    // the viewer is up this listener stands down and the viewer closes
+    // itself; the next Escape closes the editor. (This host listener is
+    // registered before the viewer's, so it reads the viewer still open.)
+    if (this.imageSection()?.viewerOpen()) return;
     this.closed.emit();
   }
 
@@ -633,6 +643,8 @@ export class WardrobeItemEditor {
   protected readonly saving = signal(false);
 
   private readonly titleInput = viewChild<ElementRef<HTMLInputElement>>('titleInput');
+  /** The Picture section — its viewer, while up, owns Escape (WARDROBE_VIEWER_ESCAPE_LAYERED). */
+  private readonly imageSection = viewChild(WardrobeItemImageSection);
   private seededFor: WardrobeItemDto | null | undefined = undefined;
   private candidatesLoadedFor: string | null = null;
 

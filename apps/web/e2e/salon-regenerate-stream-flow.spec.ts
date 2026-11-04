@@ -191,6 +191,8 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
 
   test('the composer and the action bar are shut for the duration', async ({ page }) => {
     test.skip(!P4D207_SERVER_LANDED, 'awaits P4.D207: the streamed swipe');
+    // A drawn 3-turn chain against the slow mock runs ~9.7 s/turn (~29.4 s measured) — past the 30 s default.
+    test.slow();
     await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');
@@ -221,6 +223,8 @@ test.describe('P4.D206 — a regeneration narrates itself', () => {
 
   test('the status strip carries the stage while the re-roll runs', async ({ page }) => {
     test.skip(!P4D207_SERVER_LANDED, 'awaits P4.D207: the four status beats');
+    // A drawn 3-turn chain against the slow mock runs ~9.7 s/turn (~29.4 s measured) — past the 30 s default.
+    test.slow();
     await page.goto('/salon');
     await maybeUnlock(page);
     await openChat(page, 'Group Expedition');

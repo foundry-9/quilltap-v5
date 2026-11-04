@@ -449,8 +449,13 @@ test.describe('P4.D344 — Storyteller mode (the SPA half)', () => {
     // Skipped BY NAME, not by gate: P4.D343 item 41 is DEFERRED (`order:
     // simultaneous` is Tier 2) — the server refuses it before any frame
     // (`storyteller_spine.rs`, 422 `not_available: storyteller simultaneous`;
-    // measured at the 236c04e35 unification: the SPA toasts that raw string).
-    test.skip(true, 'P4.D343 item 41 DEFERRED — the server refuses order: simultaneous');
+    // measured at the 236c04e35 unification: the SPA toasted that raw string).
+    // By the human ruling of 2026-11-04 the SPA now renders the control
+    // DISABLED until the round is ported, so this beat cannot click it.
+    test.skip(
+      true,
+      'P4.D343 item 41 DEFERRED (OPEN) — "All at once" is rendered disabled until ported (human ruling 2026-11-04)',
+    );
     test.setTimeout(120_000);
     await openChat(page, groupChatId);
     await send(page, 'Everyone at once, then.');
