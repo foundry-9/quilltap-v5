@@ -6072,7 +6072,8 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "properties.json",
-            Some("{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false\n}"),
+            // P4.D349: the backfill writes v4's eight properties keys.
+            Some("{\n  \"pronouns\": null,\n  \"aliases\": [],\n  \"title\": null,\n  \"firstMessage\": null,\n  \"talkativeness\": 0.5,\n  \"canChooseOutfit\": false,\n  \"canDrawDiagrams\": false,\n  \"diagramStyle\": \"handDrawn\"\n}"),
         ),
         (
             "characters",
@@ -6121,7 +6122,8 @@ const PRESERVE_BACKFILL: &[(&str, &[BackfillEntry])] = &[(
             "a1000000-0000-4000-8000-000000000001",
             "aff3114e-ed90-4d5b-99c1-ef3fa20203fc",
             "physical-prompts.json",
-            Some("{\n  \"headAndShoulders\": null,\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null\n}"),
+            // P4.D349: and the physical file's sixth key, `humanoid: true`.
+            Some("{\n  \"headAndShoulders\": null,\n  \"short\": null,\n  \"medium\": null,\n  \"long\": null,\n  \"complete\": null,\n  \"humanoid\": true\n}"),
         ),
         (
             "projects",

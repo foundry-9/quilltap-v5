@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-03 — test(restore): the preserve-arm backfill writes v4's eight / six vault keys (P4.D349)
+
+_No crate versions bumped._
+
+`system_restore_state`'s two `PRESERVE_BACKFILL` expectations move to the bytes the restore backfill now writes: `properties.json` with `canDrawDiagrams` / `diagramStyle`, and `physical-prompts.json` with `humanoid: true`. Measured from the pin; both rows green. The family's other reds are sibling lanes' columns and the export key positions, green on the union.
+
 #### 2026-11-03 — chore(lint): P4.D349's two clippy findings
 
 _Versions: core 0.0.1390._
