@@ -6,14 +6,17 @@ name = "quilltap-sqlite3mc-sys"
 # (~3–4 min). Keeping it fixed is the whole point of this crate: the per-commit
 # version bumps live on quilltap-core / quilltap-harness, not here. Only bump
 # when the vendored amalgamation source or the build flags actually change.
-version = "0.1.0"
+# 0.2.0 — 2026-11: SQLite3MC 2.4.0 from v4's driver 13.0.3, defines.gypi
+# parity; P4.D365.
+version = "0.2.0"
 edition = "2021"
 publish = false
 build = "build.rs"
 
 # Link-only crate: it has no Rust API. `build.rs` compiles the
-# SQLite3MultipleCiphers amalgamation (sqleet/ChaCha20 default, version 2.3.5,
-# vendored under `vendor/`) and emits the link directives so libsqlite3-sys binds
+# SQLite3MultipleCiphers amalgamation (sqleet/ChaCha20 default, version 2.4.0 on
+# SQLite 3.53.4 — the bytes and `defines.gypi` of v4's driver
+# better-sqlite3-multiple-ciphers 13.0.3, vendored under `vendor/`) and emits the link directives so libsqlite3-sys binds
 # the cipher-correct `sqlite3`. Deliberately NO `links` key: libsqlite3-sys
 # already claims `links = "sqlite3"`, and we only need the raw link-search /
 # link-lib flags propagated to dependents (which happens for any build script in

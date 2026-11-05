@@ -80,15 +80,12 @@ struct CaseOpts<'a> {
     normalize_durations: bool,
 }
 
-/// `STAT4_NOT_COMPILED` (P4.D259; the harness family's table of the same
-/// name): v4's `better-sqlite3-multiple-ciphers` is built with
-/// `SQLITE_ENABLE_STAT4`, this workspace's SQLite3MC is not, so v4's
-/// `ANALYZE` writes a `sqlite_stat4` table v5's does not and every `size
-/// after` differs by those pages. Measured on this fixture: main 76.0 vs
-/// 72.0 KB, llm-logs 20.0 vs 16.0 KB, mount-points 112.0 vs 100.0 KB. While
-/// the build lacks STAT4 (checked live, `PRAGMA compile_options`) the
-/// `db optimize` cases collapse the after-size; a build that gains it
-/// compares sizes raw again, and `the stat4 size pin` below trips.
+/// `STAT4_NOT_COMPILED` (P4.D259) RETIRED by measurement (P4.D365, 2026-11):
+/// v4's driver is built with `SQLITE_ENABLE_STAT4`, and since the sys crate
+/// vendors that driver's amalgamation with its `defines.gypi` this workspace's
+/// build is too — so v4's and v5's `ANALYZE` both write `sqlite_stat4` and the
+/// `db optimize` after-sizes compare RAW (the normaliser that collapsed them is
+/// gone). `the stat4 build pin` below asserts the build still has STAT4.
 fn build_has_stat4() -> bool {
     let dir = tempfile::tempdir().unwrap();
     let w = Writer::open_writable(&dir.path().join("probe.db"), PEPPER).unwrap();
@@ -99,29 +96,6 @@ fn build_has_stat4() -> bool {
         .map(|r| r.unwrap())
         .collect();
     opts.iter().any(|o| o == "ENABLE_STAT4")
-}
-
-/// The after-size spans `STAT4_NOT_COMPILED` moves: the `  size after:  …`
-/// line (size and delta) and the JSON `"sizeAfter": <n>`.
-fn normalize_stat4_sizes(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for line in text.split_inclusive('\n') {
-        let nl = if line.ends_with('\n') { "\n" } else { "" };
-        let body = line.strip_suffix('\n').unwrap_or(line);
-        if body.starts_with("  size after:  ") {
-            out.push_str(&format!("  size after:  <STAT4>{nl}"));
-            continue;
-        }
-        let trimmed = body.trim_start();
-        if trimmed.starts_with("\"sizeAfter\": ") {
-            let indent = &body[..body.len() - trimmed.len()];
-            let comma = if body.ends_with(',') { "," } else { "" };
-            out.push_str(&format!("{indent}\"sizeAfter\": <STAT4>{comma}{nl}"));
-            continue;
-        }
-        out.push_str(line);
-    }
-    out
 }
 
 struct RunOut {
@@ -754,9 +728,6 @@ impl Ctx {
             }
             if opts.normalize_durations {
                 text = normalize_durations(&text);
-                if !build_has_stat4() {
-                    text = normalize_stat4_sizes(&text);
-                }
             }
             text.into_bytes()
         };
@@ -3408,34 +3379,13 @@ fn cli_differential() {
             ..Default::default()
         };
         ctx.case_with("db optimize all", &d(&["optimize"]), dur());
-        // The stat4 size pin (`STAT4_NOT_COMPILED`, both ways): with the
-        // build lacking STAT4, v4's raw after-size must EXCEED v5's on every
-        // database — the divergence the normalization hides is still real.
-        if !build_has_stat4() {
-            let opts = CaseOpts::default();
-            let args = d(&["optimize", "--json"]);
-            ctx.reset_live(&opts);
-            let a = ctx.run_v4(&args, &opts);
-            ctx.reset_live(&opts);
-            let b = ctx.run_v5(&args, &opts);
-            let after = |out: &[u8]| -> Vec<u64> {
-                let text = String::from_utf8_lossy(out);
-                let json = &text[text.find("{\n  \"results\"").expect("the --json object")..];
-                let v: serde_json::Value = serde_json::from_str(json).unwrap();
-                v["results"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .map(|r| r["sizeAfter"].as_u64().unwrap())
-                    .collect()
-            };
-            let (v4_after, v5_after) = (after(&a.stdout), after(&b.stdout));
-            assert_eq!(v4_after.len(), 3);
-            assert!(
-                v4_after.iter().zip(&v5_after).all(|(x, y)| x > y),
-                "STAT4_NOT_COMPILED no longer explains the sizes: v4 {v4_after:?} v5 {v5_after:?}"
-            );
-        }
+        // The stat4 build pin (P4.D365): `STAT4_NOT_COMPILED` retired — the
+        // build has STAT4 as v4's driver does, so every `db optimize` row
+        // above and below compares its sizes RAW.
+        assert!(
+            build_has_stat4(),
+            "the linked SQLite lost SQLITE_ENABLE_STAT4 (v4's defines.gypi sets it)"
+        );
         ctx.case_with("db optimize all explicit", &d(&["optimize", "all"]), dur());
         ctx.case_with("db optimize llm-logs", &d(&["optimize", "llm-logs"]), dur());
         ctx.case_with(

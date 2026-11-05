@@ -56,6 +56,22 @@ amalgamation** via `build.rs`/`cc`, links rusqlite against it
 a copy of Friday read-only: **cipher = chacha20, 37 tables, 33 characters,
 20 320 memories.** The real DB layer adopts this same amalgamation build.
 
+**Update (2026-11, P4.D365):** v4 `8832cfd20` moved its driver to
+`better-sqlite3-multiple-ciphers` 13 (13.0.3 at v4 `624d0d25c`: **SQLite3
+Multiple Ciphers 2.4.0 on SQLite 3.53.4**), and by the human's ruling R-A v5
+followed. Measured during that bump: the 2.3.5 vendor above was **utelle's
+option-free release amalgamation**, not the driver's bytes — the 12.11.1
+driver's LF-normalised `.h` was identical, but its `.c` differed in exactly the
+parser the driver generates with `-DSQLITE_ENABLE_UPDATE_DELETE_LIMIT`. The
+`quilltap-sqlite3mc-sys` crate (0.2.0) now vendors the driver's own
+`deps/sqlite3/sqlite3.{c,h}` and `deps/defines.gypi` byte-exact, and its
+`build.rs` reads the defines from that file (any define held back is named in
+its `HELD` table). The cipher is unchanged — sqleet / ChaCha20-Poly1305, no
+`cipher=` pragma — proven by the `sqlite_build_parity_equivalence` tier-1
+family against v4's real driver (cross-opens both ways) and by
+`committed_fixture_cipher_guard` (every committed 2.3.5-written fixture opens
+on 2.4.0). The real-instance open on 2.4.0 waits for the owed dogfood pass.
+
 ### Opening a database (must match v4 byte-for-byte)
 
 `lib/database/meta.ts` (v4) keys the DB like this:

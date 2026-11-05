@@ -45,7 +45,7 @@
 //! "impersonationVoiceMode" = 'off'` — a row already `'always'` or `'ask'`
 //! (written by v4 after its migration, or by the SPA) is left alone even when
 //! the stale old column beside it says `1`. Then the old column is dropped
-//! (`ALTER TABLE … DROP COLUMN`, SQLite ≥ 3.35; v5 links 3.53.2 — pinned by a
+//! (`ALTER TABLE … DROP COLUMN`, SQLite ≥ 3.35; v5 links 3.53.4 — pinned by a
 //! test below; no index or trigger names the column, so a plain DROP is
 //! enough, as v4's migration header says).
 //!
@@ -428,7 +428,7 @@ mod tests {
         );
     }
 
-    /// `ALTER TABLE … DROP COLUMN` needs SQLite ≥ 3.35.0; v5 links 3.53.2.
+    /// `ALTER TABLE … DROP COLUMN` needs SQLite ≥ 3.35.0; v5 links 3.53.4.
     #[test]
     fn the_linked_sqlite_supports_drop_column() {
         assert!(
