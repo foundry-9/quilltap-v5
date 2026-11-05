@@ -194,10 +194,6 @@
       "itemId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
     },
     {
-      "name": "dest_list",
-      "kind": "transferDestinations"
-    },
-    {
       "name": "tr_copy_char_to_general",
       "kind": "transferApply",
       "body": {

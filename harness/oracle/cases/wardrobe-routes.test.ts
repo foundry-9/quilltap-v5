@@ -328,12 +328,6 @@ async function runKind(c: CaseEntry): Promise<{ status: number; body: unknown }>
         }),
       );
     }
-    case 'transferDestinations': {
-      const mod = (await import('@/app/api/v1/wardrobe/transfers/route')) as {
-        GET: (...a: unknown[]) => Promise<unknown>;
-      };
-      return respond(await mod.GET(mockRequest(`${B}/wardrobe/transfers`)));
-    }
     case 'transferApply': {
       const mod = (await import('@/app/api/v1/wardrobe/transfers/route')) as {
         POST: (...a: unknown[]) => Promise<unknown>;

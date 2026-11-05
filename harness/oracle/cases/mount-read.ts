@@ -1,9 +1,13 @@
 /**
  * P4.6v mount READ + LIST ORACLE: drives v4's REAL `readMountFile`
- * (`lib/mount-index/read-file.ts`) and the files-list route body
- * (`docMountFiles.findByMountPointId` + `docMountFolders.findByMountPointId` +
- * `listFilesystemFolders`) over a per-side COPY of the committed mounts fixture,
- * emitting `{status|err, body}` so the Rust services diff byte-for-byte.
+ * (`lib/mount-index/read-file.ts`) and the REAL files `GET`
+ * (`app/api/v1/mount-points/[id]/files/route.ts`, at the pin `624d0d25c`:
+ * `repos.docMountFileLinks.listForBrowser` + `docMountFolders` +
+ * `listFilesystemFolders`; P4.D361 re-aimed this off a hand-rebuilt body) over
+ * a per-side COPY of the committed mounts fixture, emitting `{status|err,
+ * body}` so the Rust services diff byte-for-byte. The route's 200 body is
+ * emitted as-is; its 404 is projected to `{ err: 'MOUNT_NOT_FOUND' }` and any
+ * other status to `{ err: 'HTTP_<status>', body }`.
  *
  * The fs/obsidian mounts store the sentinel basePath `__MOUNTS_FS_TREE__`; this
  * oracle copies the committed `mounts-fs-tree/` to a temp dir and rewrites those
@@ -26,6 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { mkdtempSync, rmSync, mkdirSync, copyFileSync, cpSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createRequire } from 'node:module';
 
 interface Spec {
   testPepperBase64: string;
@@ -71,8 +76,40 @@ async function main(): Promise<void> {
   delete process.env.SQLITE_WAL_MODE;
   process.env.LOG_LEVEL = 'error';
 
+  // The wrapped route's middleware awaits `startupState` and
+  // `getServerSession()`. v4 runs as CommonJS under tsx, so swap the cached
+  // module exports (before the route — or anything importing them — loads),
+  // then SELF-CHECK that the override took.
+  const v4Require = createRequire(process.cwd() + '/');
+  const swapExports = (specifier: string, patch: (real: Record<string, unknown>) => Record<string, unknown>): void => {
+    const real = v4Require(specifier) as Record<string, unknown>;
+    const entry = v4Require.cache[v4Require.resolve(specifier)];
+    if (!entry) throw new Error(`mount-read oracle: ${specifier} is not in require.cache`);
+    entry.exports = { ...real, ...patch(real) };
+  };
+  swapExports('@/lib/auth/session', () => ({
+    getServerSession: async () => ({ user: { id: spec.userId } }),
+  }));
+  swapExports('@/lib/startup/startup-state', (real) => {
+    const actual = real.startupState as object;
+    return {
+      startupState: Object.assign(Object.create(actual), {
+        isReady: () => true,
+        waitForReady: async () => true,
+        isPepperResolved: () => true,
+        getPepperState: () => 'resolved',
+        getPhase: () => 'ready',
+        isLockedMode: () => false,
+      }),
+    };
+  });
+  const checkedSession = (await (v4Require('@/lib/auth/session') as { getServerSession: () => Promise<{ user: { id: string } }> }).getServerSession());
+  if (checkedSession?.user?.id !== spec.userId) throw new Error('mount-read oracle: the session stub did not take');
+  if (!(v4Require('@/lib/startup/startup-state') as { startupState: { isReady: () => boolean } }).startupState.isReady()) {
+    throw new Error('mount-read oracle: the startupState stub did not take');
+  }
+
   const { initializeDatabase, closeDatabase } = await import('@/lib/database/manager');
-  const { getRepositories } = await import('@/lib/repositories/factory');
   const { getRawMountIndexDatabase, closeMountIndexSQLiteClient } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
@@ -86,8 +123,7 @@ async function main(): Promise<void> {
     .run(treeWork, MP_FS, MP_OBS);
 
   const { readMountFile } = await import('@/lib/mount-index/read-file');
-  const { listFilesystemFolders } = await import('@/lib/mount-index/scanner');
-  const repos = getRepositories();
+  const { GET: filesGet } = await import('@/app/api/v1/mount-points/[id]/files/route');
 
   const rows: Row[] = [];
 
@@ -104,24 +140,16 @@ async function main(): Promise<void> {
   };
 
   const listCase = async (id: string, mp: string) => {
-    const mountPoint = await repos.docMountPoints.findById(mp);
-    if (!mountPoint) {
-      rows.push({ kind: 'list', id, out: { err: 'MOUNT_NOT_FOUND' } });
-      return;
-    }
-    const [files, folderRows] = await Promise.all([
-      repos.docMountFiles.findByMountPointId(mp),
-      repos.docMountFolders.findByMountPointId(mp),
-    ]);
-    const folderSet = new Set<string>();
-    for (const row of folderRows) {
-      if (typeof row.path === 'string' && row.path.length > 0) folderSet.add(row.path);
-    }
-    if (mountPoint.mountType !== 'database' && mountPoint.basePath) {
-      const fsFolders = await listFilesystemFolders(mountPoint.basePath, mountPoint.excludePatterns ?? []);
-      for (const f of fsFolders) folderSet.add(f);
-    }
-    rows.push({ kind: 'list', id, out: { files, folders: Array.from(folderSet) } });
+    const url = `http://localhost/api/v1/mount-points/${mp}/files`;
+    const response = await filesGet(
+      { method: 'GET', url, headers: new Headers(), nextUrl: new URL(url) } as never,
+      { params: Promise.resolve({ id: mp }) } as never,
+    );
+    const status: number = response.status;
+    const body = await response.json();
+    const out =
+      status === 200 ? body : status === 404 ? { err: 'MOUNT_NOT_FOUND' } : { err: `HTTP_${status}`, body };
+    rows.push({ kind: 'list', id, out });
   };
 
   // ── read cases ──

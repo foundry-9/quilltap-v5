@@ -14,8 +14,7 @@
  *     missing id), the tier factories (project wardrobe list, General
  *     wardrobe list/create, project inventory create, project scenarios list);
  *   - C3 creates (project, character);
- *   - C.11 the transfers GET (its catch arm), and over a vault-less plant
- *     (the users branch: the vault-less filter, naming, `localeCompare`);
+ *   - (C.11's transfers GET rows retired at `624d0d25c`: v4 `a0ed5ecad` removed the GET);
  *   - the §3 follow-up: the character prompt / scenario DELETEs, whose
  *     `findById` sits inside the handler's own try (its 500, not the 503);
  *   - `guard` — the guard sentence `requireMountIndexDb()` throws (the C4 job
@@ -50,11 +49,7 @@ const KAPPA = 'a3000000-0000-4000-8000-000000000003';
 const MISSING_PROJECT = 'a3000000-0000-4000-8000-0000000000ff';
 const GAMMA = 'a2000000-0000-4000-8000-000000000001';
 const ARIA = 'a1000000-0000-4000-8000-000000000001';
-const BRAM = 'a1000000-0000-4000-8000-000000000002';
 const CLEO = 'a1000000-0000-4000-8000-000000000003';
-const DIANA = 'a1000000-0000-4000-8000-000000000004';
-const EDDA = 'a1000000-0000-4000-8000-000000000005';
-const OTHER_USER = 'e1000000-0000-4000-8000-0000000000ff';
 /** Ids no character carries — the degraded `findById` throws before either
  *  is looked up. */
 const PROMPT = 'a4000000-0000-4000-8000-000000000001';
@@ -323,12 +318,6 @@ async function main(): Promise<void> {
   const H = 'http://localhost/api/v1';
   const p = (id: string) => ({ params: Promise.resolve({ id }) });
   const VAULTLESS = `UPDATE characters SET characterDocumentMountPointId = NULL WHERE id = '${CLEO}'`;
-  const TRANSFERS_VAULTLESS = [
-    `UPDATE characters SET characterDocumentMountPointId = NULL WHERE id IN ('${BRAM}', '${CLEO}', '${DIANA}', '${EDDA}');`,
-    `UPDATE characters SET name = 'diana' WHERE id = '${DIANA}';`,
-    `UPDATE characters SET name = '' WHERE id = '${EDDA}';`,
-    `UPDATE characters SET userId = '${OTHER_USER}' WHERE id = '${BRAM}';`,
-  ].join('\n');
   // 156.a — one recorded outfit for Aria in Chat A: v4's table DDL
   // (`chat-wardrobe-history-ddl.ts`, byte-for-byte) and one row whose slots
   // name an item the degraded pool cannot hold.
@@ -633,22 +622,6 @@ async function main(): Promise<void> {
         (await loadRoute('@/app/api/v1/characters/route')).POST(
           mockRequest('POST', `${H}/characters`, { name: 'Fen' }),
         ),
-    },
-    // --- C.11 ---
-    {
-      name: 'transfers_destinations',
-      call: async () =>
-        (await loadRoute('@/app/api/v1/wardrobe/transfers/route')).GET(mockRequest('GET', `${H}/wardrobe/transfers`)),
-    },
-    // The degraded GET's USERS branch: three vault-less characters of the
-    // user (one lower-cased — `localeCompare`, not code-unit order — and one
-    // with an empty name — the `'Unnamed user'` fallback) plus a vault-less
-    // character of ANOTHER user (filtered out by `findByUserId`).
-    {
-      name: 'transfers_destinations_vaultless',
-      plant: TRANSFERS_VAULTLESS,
-      call: async () =>
-        (await loadRoute('@/app/api/v1/wardrobe/transfers/route')).GET(mockRequest('GET', `${H}/wardrobe/transfers`)),
     },
   ];
 

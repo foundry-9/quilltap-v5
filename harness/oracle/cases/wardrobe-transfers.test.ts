@@ -200,29 +200,11 @@ async function runScenario(
   const { closeMountIndexSQLiteClient, getRawMountIndexDatabase } = await import(
     '@/lib/database/backends/sqlite/mount-index-client'
   );
-  const { GET, POST } = await import('@/app/api/v1/wardrobe/transfers/route');
+  // v4 `a0ed5ecad`: the route exports ONLY `POST` at the pin (the `GET`
+  // destinations roster is gone, with its `__destinations` row).
+  const { POST } = await import('@/app/api/v1/wardrobe/transfers/route');
 
   await initializeDatabase();
-
-  // The synthetic __destinations row (P4.D112 tier-2 item 4): one GET so the
-  // destination roster is pinned unchanged at the pin. No table dump — GET
-  // writes nothing.
-  if (scenario.name === '__destinations') {
-    try {
-      const response = await GET({
-        method: 'GET',
-        url: 'http://localhost/api/v1/wardrobe/transfers',
-        headers: new Headers(),
-      } as never);
-      const status: number = response.status;
-      const body = await response.json();
-      return { name: scenario.name, ok: status >= 200 && status < 300, status, body };
-    } finally {
-      await closeDatabase();
-      closeMountIndexSQLiteClient();
-      rmSync(work, { recursive: true, force: true });
-    }
-  }
 
   try {
     // Key-presence-faithful body: sourceCharacterId / source / components ride
@@ -337,11 +319,7 @@ async function main(): Promise<void> {
   process.env.LOG_LEVEL = 'error';
 
   const outLines: string[] = [];
-  const allScenarios: Scenario[] = [
-    ...spec.scenarios,
-    // The GET destinations unchanged-check rides as a synthetic row.
-    { name: '__destinations', action: '', itemId: '', destination: { scope: '' }, expect: 'ok' },
-  ];
+  const allScenarios: Scenario[] = [...spec.scenarios];
   for (const scenario of allScenarios) {
     const payload = await runScenario(spec, scenario, scratch, mainFixture, mountFixture);
     outLines.push(JSON.stringify(payload));

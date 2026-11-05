@@ -175,24 +175,25 @@ async function main(): Promise<void> {
     jest.requireActual('@/lib/doc-edit/reindex-file'),
   );
 
-  // …but `triggerReindexIfNeeded` — the TOOL-level fire-and-forget trigger — stays
-  // seamed. It is a SEPARATE, still-standing v5 deferral (`tools/doc_edit/shared.rs`
-  // header: "the port omits them"), and unlike `writeDatabaseDocument`'s awaited
-  // chunk pass it is NOT awaited by anything: `triggerReindexIfNeeded` kicks off
-  // `reindexSingleFile(...).then(reindexLinkGroupSiblings).then(enqueue+refreshStats)`
-  // and returns, so its writes race the dump. Leaving it live would (a) make the
-  // FILESYSTEM branch mint mount-index link + chunk rows v5 never writes — the
-  // deferral's measured blast radius, see the P4.32 lane record — and (b) make every
-  // family timing-dependent. Seaming just this one export keeps the mock exactly as
-  // wide as the deferral, instead of also silencing v4's own chunk-on-write.
-  jest.doMock('@/lib/tools/handlers/doc-edit/shared', () => {
-    const actual = jest.requireActual('@/lib/tools/handlers/doc-edit/shared');
-    return {
-      __esModule: true,
-      ...actual,
-      triggerReindexIfNeeded: async () => undefined,
-    };
-  });
+  // …but the tool-level document chain stays seamed. v4 `a3d53eae1` moved the
+  // doc-tool reindex into the document core: every write goes through
+  // `writeDocument` -> `afterDocumentWrite` (`lib/documents/core/write.ts`),
+  // which fires `reindexSingleFile(...).then(reindexLinkGroupSiblings)
+  // .then(enqueue+refreshStats)` UN-AWAITED (the old `triggerReindexIfNeeded`
+  // export of `doc-edit/shared` is gone, so the previous seam was inert and
+  // 15 real calls reached the chain in the P4.D361 probe). The core imports
+  // `reindexSingleFile` from the `@/lib/doc-edit` BARREL, so a never-settling
+  // `reindexSingleFile` there stops the whole chain (no link-group siblings,
+  // no embedding enqueue, no `refreshStats`) while `database-store`'s AWAITED
+  // chunk pass (a direct `doc-edit/reindex-file` import) stays real. Its
+  // writes would otherwise race the dump and make the FILESYSTEM branch mint
+  // mount-index rows v5 never writes. (P4.D380 replaces this with awaiting the
+  // chain, R-2 (A).)
+  jest.doMock('@/lib/doc-edit', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/doc-edit'),
+    reindexSingleFile: () => new Promise<never>(() => {}),
+  }));
   jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
     __esModule: true,
     enqueueEmbeddingJobsForMountPoint: () => undefined,

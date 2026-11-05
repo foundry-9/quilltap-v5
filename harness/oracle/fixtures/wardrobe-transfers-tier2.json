@@ -70,8 +70,7 @@
   "-- the read-back pin (unresolvedComponentIds, literal both sides); and the",
   "parse tri-states (source: null, components: null, neither-source + both",
   "refines joined). The legacy collision scenario's sentence moves to v4's",
-  "title-carrying form. The oracle also emits a __destinations GET row (the",
-  "enumerate_destinations unchanged-check)."
+  "title-carrying form."
  ],
  "testPepperBase64": "ZpjI5jcj5CYsyBA6zPH90G4frQEbv2WsAhERvEKrjJk=",
  "userId": "a0000000-0000-4000-8000-000000000001",

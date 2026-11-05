@@ -6,8 +6,8 @@
 //! sides (an explicit `null` in the spec is sent; an absent key is omitted) and
 //! goes through the same parse layer the route uses — so the `source` /
 //! `components` tri-states, both refine sentences, and the joined-issues 400
-//! envelope all diff for real. A final `__destinations` row pins the GET roster
-//! (exact — everything in it is fixture-baked).
+//! envelope all diff for real. (The `__destinations` GET-roster row retired at
+//! `624d0d25c`: v4 `a0ed5ecad` removed the transfers `GET`.)
 //!
 //! Both sides start from the SAME baked two-DB fixture (a users row; a source
 //! character with one wardrobe item AND the four-item composite family in its
@@ -78,7 +78,7 @@ use std::path::{Path, PathBuf};
 use quilltap_core::api::wardrobe::parse_transfer_request;
 use quilltap_core::db::Writer;
 use quilltap_core::services::wardrobe_transfers::{
-    action_str, enumerate_destinations, transfer_wardrobe_item, TransferError,
+    action_str, transfer_wardrobe_item, TransferError,
 };
 use regex::Regex;
 use serde::Deserialize;
@@ -699,8 +699,8 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         .collect();
     assert_eq!(
         oracle_by_name.len(),
-        spec.scenarios.len() + 1,
-        "oracle scenario count != corpus + the __destinations row"
+        spec.scenarios.len(),
+        "oracle scenario count != corpus"
     );
 
     // The committed spec's raw text — a minted id must not collide with ANY
@@ -940,37 +940,8 @@ fn wardrobe_transfers_tier2_matches_oracle() {
         }
     }
 
-    // The __destinations unchanged-check (P4.D112 tier-2 item 4): the GET
-    // roster over the untouched fixture must match v4's byte-for-byte —
-    // everything in it is fixture-baked, so the compare is EXACT.
-    {
-        let want = oracle_by_name
-            .get("__destinations")
-            .expect("oracle missing the __destinations row");
-        let scratch = tempfile::Builder::new()
-            .prefix("qt-wtr-rust-dest-")
-            .tempdir()
-            .expect("tempdir");
-        let main_work = scratch.path().join("main.db");
-        let mount_work = scratch.path().join("mount.db");
-        std::fs::copy(&main_fixture, &main_work).unwrap();
-        std::fs::copy(&mount_fixture, &mount_work).unwrap();
-        let main = Writer::open_writable(&main_work, &spec.test_pepper_base64).unwrap();
-        let mount = Writer::open_writable(&mount_work, &spec.test_pepper_base64).unwrap();
-        let got = enumerate_destinations(main.connection(), mount.connection(), &spec.user_id)
-            .expect("enumerate_destinations");
-        assert_eq!(
-            &got,
-            want.get("body").expect("oracle __destinations body"),
-            "__destinations: the GET roster diverged"
-        );
-        drop(main);
-        drop(mount);
-        drop(scratch);
-    }
-
     eprintln!(
-        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios + __destinations, 10 tables each).",
+        "OK: wardrobe-transfers tier-2 matched oracle ({} scenarios, 10 tables each).",
         spec.scenarios.len()
     );
 }

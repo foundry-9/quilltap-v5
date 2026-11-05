@@ -165,14 +165,25 @@ async function main(): Promise<void> {
   jest.doMock('@/lib/doc-edit/reindex-file', () =>
     jest.requireActual('@/lib/doc-edit/reindex-file'),
   );
-  jest.doMock('@/lib/tools/handlers/doc-edit/shared', () => {
-    const actual = jest.requireActual('@/lib/tools/handlers/doc-edit/shared');
-    return {
-      __esModule: true,
-      ...actual,
-      triggerReindexIfNeeded: async () => undefined,
-    };
-  });
+  // …but the tool-level document chain stays seamed. v4 `a3d53eae1` moved the
+  // doc-tool reindex into the document core: every write goes through
+  // `writeDocument` -> `afterDocumentWrite` (`lib/documents/core/write.ts`),
+  // which fires `reindexSingleFile(...).then(reindexLinkGroupSiblings)
+  // .then(enqueue+refreshStats)` UN-AWAITED (the old `triggerReindexIfNeeded`
+  // export of `doc-edit/shared` is gone, so the previous seam was inert and
+  // 15 real calls reached the chain in the P4.D361 probe). The core imports
+  // `reindexSingleFile` from the `@/lib/doc-edit` BARREL, so a never-settling
+  // `reindexSingleFile` there stops the whole chain (no link-group siblings,
+  // no embedding enqueue, no `refreshStats`) while `database-store`'s AWAITED
+  // chunk pass (a direct `doc-edit/reindex-file` import) stays real. Its
+  // writes would otherwise race the dump and make the FILESYSTEM branch mint
+  // mount-index rows v5 never writes. (P4.D380 replaces this with awaiting the
+  // chain, R-2 (A).)
+  jest.doMock('@/lib/doc-edit', () => ({
+    __esModule: true,
+    ...jest.requireActual('@/lib/doc-edit'),
+    reindexSingleFile: () => new Promise<never>(() => {}),
+  }));
   jest.doMock('@/lib/mount-index/embedding-scheduler', () => ({
     __esModule: true,
     enqueueEmbeddingJobsForMountPoint: () => undefined,

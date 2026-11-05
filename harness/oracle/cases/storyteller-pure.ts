@@ -10,7 +10,6 @@
  *   chooseInvitees                         (lib/storyteller/invite.ts)
  *   describeDisposition, buildBidSection,
  *   buildPlanSection                       (lib/storyteller/prompts.ts)
- *   tagSseChunk                            (lib/storyteller/sse-tag.ts)
  *   buildBidOffer                          (lib/storyteller/bid-call.ts)
  *
  * Inputs live in the committed `harness/oracle/fixtures/storyteller-pure.json`;
@@ -34,7 +33,6 @@ import { computeBidTier } from '@/lib/storyteller/tiers';
 import { cardFromOutcome } from '@/lib/storyteller/cards';
 import { biddableSeats, chooseInvitees, inviteProbability } from '@/lib/storyteller/invite';
 import { buildBidSection, buildPlanSection, describeDisposition } from '@/lib/storyteller/prompts';
-import { tagSseChunk } from '@/lib/storyteller/sse-tag';
 import { buildBidOffer } from '@/lib/storyteller/bid-call';
 
 type Pairs = [string, string][];
@@ -115,16 +113,6 @@ for (const [tier, tools] of spec.allowances as [string, string[]][]) {
   const lines = section.split('\n');
   out({ kind: 'allowance', id: `allow-${tier}-${tools.length}`, tier, tools, out: lines[lines.length - 1] });
 }
-
-// --- tagSseChunk ---------------------------------------------------------------
-(spec.sse as string[]).forEach((chunk, i) =>
-  out({
-    kind: 'sse',
-    id: `sse-${i}`,
-    chunk,
-    out: new TextDecoder().decode(tagSseChunk(new TextEncoder().encode(chunk), 'p-tag')),
-  })
-);
 
 // --- buildBidOffer -------------------------------------------------------------
 for (const s of spec.slates as { id: string; tools: unknown[]; customToolEffects: Pairs; pluginToolEffects: Pairs; silent: boolean }[]) {

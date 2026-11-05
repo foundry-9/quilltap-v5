@@ -1,5 +1,5 @@
 {
-  "_comment": "P4.D343 storyteller_pure_equivalence corpus: inputs for v4's REAL lib/storyteller/{bid-parse,tiers,cards,invite,prompts,sse-tag,bid-call(buildBidOffer)}.ts at the pin 236c04e35. Both sides read this file.",
+  "_comment": "P4.D343 storyteller_pure_equivalence corpus: inputs for v4's REAL lib/storyteller/{bid-parse,tiers,cards,invite,prompts,bid-call(buildBidOffer)}.ts at the pin 236c04e35. Both sides read this file.",
   "replies": [
     "BID: speak\nTIER: lookup\nTOOLS: doc_read_file, run_custom:peek\nPLAN: I check the ledger, then tell them.",
     "```\n**plan** - I say hello\n   and wave.\n*bid*: Speak\ntier = SIMPLE\ntools: none\n```",
@@ -741,15 +741,6 @@
         "state"
       ]
     ]
-  ],
-  "sse": [
-    "data: {\"content\":\"hi\"}\n\n",
-    "data: {\"content\":\"a\"}\n\ndata: {\"status\":\"x\",\"participantId\":\"other\"}\n\n",
-    "data: not json\n\n",
-    "data: [1,2,3]\n\n",
-    "data: {\"participantId\":null,\"concurrent\":false,\"z\":1}\n\n",
-    ": comment\ndata: {\"done\":true}\n\n",
-    "data: null\n\n"
   ],
   "slates": [
     {

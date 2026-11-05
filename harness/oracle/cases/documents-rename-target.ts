@@ -1,6 +1,8 @@
 /**
  * P4.6w pure tier-1 oracle: `computeRenameTarget` (the Document Mode rename
- * math). Drives v4's REAL `lib/documents/operator-doc-actions.ts` over a fixed
+ * math). Drives v4's REAL `computeRenameTarget`
+ * (`lib/documents/core/move.ts`, moved there from
+ * `lib/documents/operator-doc-actions.ts` by v4 `a3d53eae1`) over a fixed
  * corpus of (currentFilePath, newTitle) pairs and emits the exact
  * `RenameTarget` result as NDJSON. The Rust side
  * (`documents_rename_target_equivalence`) rebuilds the same JSON shape from its
@@ -13,7 +15,7 @@
  *     > /tmp/oracle-documents-rename-target.ndjson
  */
 
-import { computeRenameTarget } from '@/lib/documents/operator-doc-actions';
+import { computeRenameTarget } from '@/lib/documents/core';
 
 // [id, currentFilePath, newTitle]
 const cases: Array<[string, string, string]> = [

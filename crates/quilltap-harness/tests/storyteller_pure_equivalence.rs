@@ -1,6 +1,6 @@
 //! Tier-1 differential (P4.D343): Storyteller mode's pure modules —
 //! `quilltap_core::storyteller::{bid_parse, tiers, cards, invite, prompts,
-//! sse_tag, bid_call}` vs v4's REAL `lib/storyteller/*.ts` at the pin
+//! bid_call}` vs v4's REAL `lib/storyteller/*.ts` at the pin
 //! `236c04e35` (v4 `b15fe9404`).
 //!
 //! Covers `parseBidReply` over 50 replies (v4 `bids.test.ts`'s five, fenced /
@@ -11,8 +11,9 @@
 //! `biddableSeats` + `chooseInvitees` with a SCRIPTED random sequence (the
 //! draw count compared), `describeDisposition` at the boundaries, every byte
 //! of `buildBidSection` / `buildPlanSection` (both forms; `spokenSince` 0–3;
-//! `toolsNamed` on / off) and the four tier allowances, `tagSseChunk` over
-//! multi-frame chunks (v5: `tag_frame` per `data:` line), and `buildBidOffer`.
+//! `toolsNamed` on / off) and the four tier allowances, and `buildBidOffer`.
+//! The `sse` rows retired at `624d0d25c` (v4 `604a082c4` deleted
+//! `tagSseChunk`); the frame union is `stream_frames_equivalence` (P4.D366).
 //! The custom-tool list sorts by `localeCompare` (ICU4X en-US); the read-tool
 //! list by code unit.
 //!
@@ -40,7 +41,6 @@ use quilltap_core::storyteller::invite::{
 use quilltap_core::storyteller::prompts::{
     build_bid_section, build_plan_section, describe_disposition,
 };
-use quilltap_core::storyteller::sse_tag::tag_frame;
 use quilltap_core::storyteller::tiers::compute_bid_tier;
 use quilltap_core::storyteller::types::{
     ParsedBid, StorytellerBid, StorytellerBidCallOutcome, StorytellerBidOffer, StorytellerTier,
@@ -259,27 +259,6 @@ fn storyteller_pure_matches_v4() {
                 );
                 json!(section.rsplit('\n').next().unwrap())
             }
-            "sse" => {
-                // v4 `tagSseChunk` re-encodes every `data: <json>` line whose
-                // JSON is a non-array object; v5 tags the frame VALUE
-                // (`tag_frame`). Lines are split on `\n` (no other terminator
-                // in the corpus).
-                let chunk = row["chunk"].as_str().unwrap();
-                let tagged: Vec<String> = chunk
-                    .split('\n')
-                    .map(|l| match l.strip_prefix("data: ") {
-                        Some(j) => match serde_json::from_str::<Value>(j) {
-                            Ok(v @ Value::Object(_)) => format!(
-                                "data: {}",
-                                serde_json::to_string(&tag_frame(v, "p-tag")).unwrap()
-                            ),
-                            _ => l.to_string(),
-                        },
-                        None => l.to_string(),
-                    })
-                    .collect();
-                json!(tagged.join("\n"))
-            }
             "offer" => {
                 let s = spec["slates"]
                     .as_array()
@@ -314,6 +293,13 @@ fn storyteller_pure_matches_v4() {
     assert!(
         kinds.get("parse").copied().unwrap_or(0) >= 40,
         "stale oracle"
+    );
+    // A partial NDJSON (the process dying mid-file) must not pass on the
+    // `parse` floor alone: every corpus slate emits one `offer` row.
+    assert_eq!(
+        kinds.get("offer").copied().unwrap_or(0),
+        spec["slates"].as_array().unwrap().len(),
+        "stale oracle: offer rows"
     );
     assert!(
         failures.is_empty(),

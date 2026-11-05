@@ -18,6 +18,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 _Docs-only change._
 
 The `624d0d25c` vendor survey quoted the forbidden spelling inside a `git grep` command, which reddened `spelling_guard` on main and in every lane cut from it. The pattern is now split across two quoted halves.
+#### 2026-11-04 — REAIM: the IMPORT-DEAD / MOCK-INERT / STALE oracle re-aims at 624d0d25c — 9 C1 rows, 18 families load, 11 rows retired
+
+_No crate versions bumped._
+
+Oracle-side only (`harness/oracle/**` plus four Rust test files; zero `crates/*/src`). Rows: (1) `file-attachment-tier3` section E now drives `applyImageTransportBudget` / `collectAttachmentMimeTypes` from `image-transport-budget` (v4 `29c1e2690` deleted the adapter module); (2) `item-mutations-tier2` calls `createItemFolder` / `renameItemFolder` / `deleteItemFolder` over `WARDROBE_FOLDER_KIND` and captures `[ItemFolders]` (`600c2906f`); (3) `inventory-keystone-tier2` the same over `INVENTORY_FOLDER_KIND`, with a loud self-check instead of a silent `TypeError` row (`134961572`); (4) `item-folders` gets a local `normalizeInventoryFolderName` wrapper; (5) `documents-rename-target` imports `computeRenameTarget` from the document core (`a3d53eae1`); (6) `storyteller-pure` drops the `sse` rows (`604a082c4`) and the Rust test gains an `offer` floor; (7) the four transfers-`GET` rows are removed on both sides (`a0ed5ecad`); (8) the eight `doc-*` / roster cases now seam `@/lib/doc-edit` `reindexSingleFile` (never-settling), the old seam being inert (15 real chain calls measured); (9) `mount-read` drives v4's real files `GET` under tsx with self-checked session / startup stubs. Removed ids: `sse-0`..`sse-6`, `__destinations`, `dest_list`, `transfers_destinations`, `transfers_destinations_vaultless`. Drift reds the re-aims expose stay red for their owners.
+
 #### 2026-11-04 — docs(porting): setupphase — the `624d0d25c` 4.12.x catch-up round, 28 work orders (P4.D361–P4.D388) + nine surveys
 
 _Docs-only change._

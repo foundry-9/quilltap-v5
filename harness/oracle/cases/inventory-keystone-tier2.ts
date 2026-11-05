@@ -137,6 +137,20 @@ async function runChild(index: number): Promise<void> {
   const dependents = await import('@/lib/inventory/dependents');
   const equippedSet = await import('@/lib/inventory/equipped-set');
   const mutations = await import('@/lib/inventory/item-mutations');
+  // v4 `134961572` deleted `createInventoryFolder` / `renameInventoryFolder` /
+  // `deleteInventoryFolder`; v4's routes now call the generic folder ops with
+  // `INVENTORY_FOLDER_KIND`.
+  const folderLocation = await import('@/lib/mount-index/item-folder-location');
+  // A deleted export is `undefined` under tsx-CJS and would otherwise surface
+  // as a `TypeError` caught into an ordinary-looking op row: fail loud instead.
+  for (const [name, v] of [
+    ['mutations.INVENTORY_FOLDER_KIND', (mutations as Record<string, unknown>).INVENTORY_FOLDER_KIND],
+    ['folderLocation.createItemFolder', folderLocation.createItemFolder],
+    ['folderLocation.renameItemFolder', folderLocation.renameItemFolder],
+    ['folderLocation.deleteItemFolder', folderLocation.deleteItemFolder],
+  ] as const) {
+    if (v === undefined) throw new Error(`inventory-keystone oracle: ${name} is not exported at this v4 pin`);
+  }
   const images = await import('@/lib/inventory/item-images');
   const transfers = await import('@/lib/inventory/transfers');
   const equip = await import('@/lib/inventory/equip');
@@ -263,13 +277,13 @@ async function runChild(index: number): Promise<void> {
         result = await mutations.copyInventoryItemsToFolder(repos, await loc(op.at), op.itemIds, op.folder);
         break;
       case 'createFolder':
-        result = await mutations.createInventoryFolder(await loc(op.at), op.path);
+        result = await folderLocation.createItemFolder(mutations.INVENTORY_FOLDER_KIND, await loc(op.at), op.path);
         break;
       case 'renameFolder':
-        result = await mutations.renameInventoryFolder(await loc(op.at), op.path, op.newName);
+        result = await folderLocation.renameItemFolder(mutations.INVENTORY_FOLDER_KIND, await loc(op.at), op.path, op.newName);
         break;
       case 'deleteFolder':
-        result = await mutations.deleteInventoryFolder(await loc(op.at), op.path);
+        result = await folderLocation.deleteItemFolder(mutations.INVENTORY_FOLDER_KIND, await loc(op.at), op.path);
         break;
       case 'listImages': {
         const home = await images.resolveInventoryItemHome(repos, userId, op.at.scope, op.at.id ?? null, op.itemId);

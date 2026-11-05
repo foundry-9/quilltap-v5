@@ -437,11 +437,15 @@ async function main(): Promise<void> {
 
   // ---- (E) adaptMessagesForProfile / collectAttachmentMimeTypes -------------
   //
-  // v4 `lib/chat/message-attachment-adapter.ts` (`a1d88aa3a`, bug 106). Placed
-  // between (B) and (C) on BOTH sides so the describer cache each section leaves
-  // behind is in the same state when the next one runs.
+  // v4 `lib/chat/image-transport-budget.ts` `applyImageTransportBudget` (the
+  // adapter module `message-attachment-adapter.ts`, `a1d88aa3a` bug 106, was
+  // deleted by `29c1e2690` "one image transport budget"; every v4 caller now
+  // passes no `policy`, so the default is used here too and only `.messages`
+  // of the `{ messages, report }` return is compared). Placed between (B) and
+  // (C) on BOTH sides so the describer cache each section leaves behind is in
+  // the same state when the next one runs.
   {
-    const adapter = await import('@/lib/chat/message-attachment-adapter');
+    const budget = await import('@/lib/chat/image-transport-budget');
 
     const buildAttachment = (entry: { file?: string; raw?: Record<string, unknown> }): unknown => {
       if (entry.raw) return entry.raw;
@@ -483,15 +487,17 @@ async function main(): Promise<void> {
     for (const c of spec.adaptCases) {
       const messages = buildMessages(c.messages);
       const profile = spec.respProfiles[c.profile];
-      const result = await adapter.adaptMessagesForProfile(
+      const { messages: result } = await budget.applyImageTransportBudget(
         messages as never,
         profile as never,
-        repos,
-        spec.userId,
-        { chatId: spec.chatId },
-        // v4 `3b463d6b1` (#76): the describe options — the chat decides the
-        // uncensored vision fallback.
-        { chatId: spec.chatId },
+        {
+          repos,
+          userId: spec.userId,
+          logContext: { chatId: spec.chatId },
+          // v4 `3b463d6b1` (#76): the describe options — the chat decides the
+          // uncensored vision fallback.
+          describeOptions: { chatId: spec.chatId },
+        } as never,
       );
       lines.push(
         JSON.stringify({
@@ -515,7 +521,7 @@ async function main(): Promise<void> {
           kind: 'case',
           family: 'adapt',
           label: c.label,
-          result: adapter.collectAttachmentMimeTypes(messages as never),
+          result: budget.collectAttachmentMimeTypes(messages as never),
         }),
       );
     }

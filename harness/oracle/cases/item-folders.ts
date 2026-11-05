@@ -65,7 +65,6 @@ import {
   isInventoryItemDocumentPath,
   isSafeInventoryFolderPath,
   isValidInventoryFolderPath,
-  normalizeInventoryFolderName,
   normalizeInventoryFolderPathOrRoot,
   resolveInventoryFolder,
 } from '@/lib/inventory/folders';
@@ -75,7 +74,13 @@ import { InventoryFolderPathSchema } from '@/lib/schemas/inventory.types';
 // replacement; at `236c04e35` callers use the generic helpers with
 // `INVENTORY_FOLDER_RULES` directly. These local wrappers are byte-for-byte
 // what the deleted ones did (`folders.ts` at `322a5488e`), so the rows keep
-// their names and bytes.
+// their names and bytes. `normalizeInventoryFolderName` is the same move:
+// v4 `134961572` deleted it (its body was `normalizeItemFolderName(
+// INVENTORY_FOLDER_RULES, input, pathError)` with the module-private
+// `pathError = (m) => new InventoryFolderPathError(m)`), over exports still
+// at `624d0d25c`.
+const normalizeInventoryFolderName = (input: string | null | undefined): string =>
+  normalizeItemFolderName(INVENTORY_FOLDER_RULES, input, (m: string) => new InventoryFolderPathError(m));
 const normalizeInventoryFolderPath = (input: string | null | undefined): string =>
   normalizeItemFolderPath(INVENTORY_FOLDER_RULES, input, (m: string) => new InventoryFolderPathError(m));
 const inventoryFolderStorePath = (folder: string): string => itemFolderStorePath(INVENTORY_FOLDER_RULES, folder);

@@ -91,16 +91,13 @@ const UNCLAIMED_ROWS: &[&str] = &["character_delete", "chat_merge_vaultless"];
 /// broken-vault-safe `readCharacterVaultPropertiesForWrite` makes two reads
 /// before its write throws, where v5 refuses the write before any read (same
 /// 500) — and so does every other neutral-500 row (the General / character
-/// tier creates read their folders before the first write throws); the
-/// transfers GET's batched list overlays make one read per overlay file per
-/// entity batch, where v5's degraded arm reads nothing (same 200).
+/// tier creates read their folders before the first write throws). (The
+/// transfers GET rows retired at `624d0d25c`: v4 `a0ed5ecad` removed the GET.)
 const READS_BEFORE_THROW_UNCLAIMED: &[&str] = &[
     "character_update",
     "general_wardrobe_create",
     "character_wardrobe_create",
     "character_inventory_create",
-    "transfers_destinations",
-    "transfers_destinations_vaultless",
 ];
 
 /// Every carve names a row the oracle emits — a typo (or a renamed row) must
@@ -136,8 +133,8 @@ fn rows() -> Option<Vec<Value>> {
         .filter(|l| !l.trim().is_empty())
         .map(|l| serde_json::from_str(l).expect("row"))
         .collect();
-    // 33 route rows + 2 guard rows: a truncated regen must not pass vacuously.
-    assert_eq!(rows.len(), 35, "oracle row count");
+    // 31 route rows + 2 guard rows: a truncated regen must not pass vacuously.
+    assert_eq!(rows.len(), 33, "oracle row count");
     Some(rows)
 }
 
@@ -539,10 +536,6 @@ async fn drive(row: &Value, pepper: &str, user_id: &str) -> (Response, Vec<Strin
                 ),
             )
         }
-        "transfers_destinations" | "transfers_destinations_vaultless" => (
-            "GET /api/v1/wardrobe/transfers".to_string(),
-            wardrobe::wardrobe_transfer_destinations(&db, user_id),
-        ),
         other => panic!("no v5 driver for row {other}"),
     };
     if let Response::Error(e) = &r {

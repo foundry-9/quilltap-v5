@@ -48,8 +48,7 @@ use quilltap_core::api::chat_outfits::{
 use quilltap_core::api::types::{ErrorKind, Response, WardrobeContainerScope};
 use quilltap_core::api::wardrobe::{
     wardrobe_create, wardrobe_delete, wardrobe_item_get, wardrobe_list, wardrobe_preview_avatar,
-    wardrobe_transfer_apply, wardrobe_transfer_destinations, wardrobe_update,
-    AvatarPreviewRenderer, ErasedAvatarPreview,
+    wardrobe_transfer_apply, wardrobe_update, AvatarPreviewRenderer, ErasedAvatarPreview,
 };
 use quilltap_core::api::wardrobe_wear_history::{
     wardrobe_item_wear_history, wardrobe_item_wear_history_as,
@@ -788,7 +787,6 @@ async fn wardrobe_routes_equivalence() {
             }
             "wardrobeUpdate" => wardrobe_update(&db, case.item_id.as_deref().unwrap(), body).await,
             "wardrobeDelete" => wardrobe_delete(&db, case.item_id.as_deref().unwrap()).await,
-            "transferDestinations" => wardrobe_transfer_destinations(&db, user),
             "transferApply" => wardrobe_transfer_apply(&db, user, body, NOW).await,
             "outfitGet" => chat_outfit_get(&db, case.chat_id.as_deref().unwrap()),
             "equip" => chat_equip(&db, user, case.chat_id.as_deref().unwrap(), body).await,

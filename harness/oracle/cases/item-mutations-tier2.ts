@@ -2,15 +2,16 @@
  * Oracle case — v4's wardrobe ITEM + FOLDER MUTATIONS (P4.D279 keystone C1
  * §11): the REAL `createItem` / `updateItem` / `setItemArchived` /
  * `moveItemsToFolder` / `componentLookupFor` / `validateComponentRefs`
- * (`lib/wardrobe/item-mutations.ts`) and `createWardrobeFolder` /
- * `renameWardrobeFolder` / `deleteWardrobeFolder`
- * (`lib/wardrobe/folder-mutations.ts`), each over a REAL
+ * (`lib/wardrobe/item-mutations.ts`) and `createItemFolder` /
+ * `renameItemFolder` / `deleteItemFolder` over `WARDROBE_FOLDER_KIND`
+ * (`lib/mount-index/item-folder-location.ts`; v4 `600c2906f` deleted
+ * `lib/wardrobe/folder-mutations.ts`), each over a REAL
  * `resolveWardrobeLocation(...)`.
  *
  * Copies the baked fixtures (build-item-mutations-fixture.ts), then drives the
  * corpus `ops`. After EVERY op it records `{ op, result | error, items:
  * location.readItems(true), folders: location.listFolders(), logs }` where
- * `logs` are the `[ItemMutations]` / `[FolderMutations]` DEBUG lines the op
+ * `logs` are the `[ItemMutations]` / `[FolderMutations]` / `[ItemFolders]` DEBUG lines the op
  * emitted (message + fields, every value stringified: strings as given,
  * booleans/numbers via String(), null as "null", arrays as JSON). v4's lines
  * are captured by splicing a sink into the singleton logger's transports. The
@@ -63,7 +64,9 @@ interface LogLine {
   fields: Record<string, string>;
 }
 
-const CAPTURED_PREFIXES = ['[ItemMutations]', '[FolderMutations]'];
+// `[ItemFolders]`: the pin's generic `logFolderOp` (v4 `600c2906f`) replaced
+// `[FolderMutations]`; both prefixes stay so v5's unchanged lines stay compared.
+const CAPTURED_PREFIXES = ['[ItemMutations]', '[FolderMutations]', '[ItemFolders]'];
 
 function stringify(v: unknown): string {
   if (v === null || v === undefined) return 'null';
@@ -141,9 +144,10 @@ async function main(): Promise<void> {
     setItemArchived,
     moveItemsToFolder,
     validateComponentRefs,
+    WARDROBE_FOLDER_KIND,
   } = await import('@/lib/wardrobe/item-mutations');
-  const { createWardrobeFolder, renameWardrobeFolder, deleteWardrobeFolder } = await import(
-    '@/lib/wardrobe/folder-mutations'
+  const { createItemFolder, renameItemFolder, deleteItemFolder } = await import(
+    '@/lib/mount-index/item-folder-location'
   );
   const { DocMountFileLinksRepository } = await import(
     '@/lib/database/repositories/doc-mount-file-links.repository'
@@ -231,17 +235,17 @@ async function main(): Promise<void> {
           break;
         }
         case 'createFolder': {
-          const folder = await createWardrobeFolder(location, op.path ?? '');
+          const folder = await createItemFolder(WARDROBE_FOLDER_KIND, location, op.path ?? '');
           result = { kind: 'ok', folder };
           break;
         }
         case 'renameFolder': {
-          const folder = await renameWardrobeFolder(location, op.path ?? '', op.name ?? '');
+          const folder = await renameItemFolder(WARDROBE_FOLDER_KIND, location, op.path ?? '', op.name ?? '');
           result = { kind: 'ok', folder };
           break;
         }
         case 'deleteFolder': {
-          const { movedItems, movedFolders } = await deleteWardrobeFolder(location, op.path ?? '');
+          const { movedItems, movedFolders } = await deleteItemFolder(WARDROBE_FOLDER_KIND, location, op.path ?? '');
           result = { kind: 'ok', movedItems, movedFolders };
           break;
         }
