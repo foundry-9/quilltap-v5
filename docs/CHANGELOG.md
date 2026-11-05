@@ -12,6 +12,12 @@ Archived months: [July 2026 (days 16–end)](changelog/2026-07b.md), [July 2026 
 
 ## November 2026
 
+#### 2026-11-04 — docs(porting): P4.D382 lane record — vendored trees, NO-PORT ratification record, help guards
+
+_Docs-only change._
+
+Lane record for P4.D382: the 32 NO-PORT blocks with re-run censuses and proposed statuses, the Lexical 0.53 measurement (`eb90eb466` ratified, no byte moved), the mermaid 12.3 facts and the handoff tables (help md5s, the twelve About lines for P4.D388, the ChaCha20 wording for the unifier). One finding: `spelling_guard` is red on `main` from one line of the planner's survey.
+
 #### 2026-11-04 — vendor(docs): the `docs/v4/` mirror to `624d0d25c`, 518 → 537 files (P4.D382)
 
 _Docs-only change._
