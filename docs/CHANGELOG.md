@@ -1031,6 +1031,12 @@ _No crate versions bumped._
 
 `help/` re-vendored whole from v4 `624d0d25c`: `deus-ex-machina.md` added and thirty-four pages overwritten, byte-exact. The two guard literals move 137 → 138 (`help_tree_embed_guard`, `host_help_docs_boot`, whose message now names the pin) after measuring red at the old count. The help tree, section-size and ensure oracles were regenerated from the pin and are green. Tests and docs only; the help tree is a build input, so no crate bump.
 
+#### 2026-11-04 — feat(spa): P4.D383 — WCAG 2.2 template edits, roving-focus tab strip, a11y-names aria-hidden exemption (v4 624d0d25c)
+
+_Versions: SPA 0.5.973._
+
+P4.D383 items 9–11. Character card and header toggles get v4 `94f041764`'s accessible names (`Favorite <name>`, `Carina answers (@-queries) for <name>`, `You play <name>`; unparameterized on the header), `aria-pressed`, a 24px favorite target, and an `aria-hidden` glyph; the card drops v5's extra `leading-none`. The collapsed chat sidebar's avatars read `<name>[ <position>], expand sidebar`. Progressions, subprompts, the system-prompt list card and the memory-cascade options use `hover:qt-bg-surface-hover` with v4's class strings. The Brahma model picker and the image dialog's character dropdown use the opaque `qt-bg-popover`. The workspace tab strip ports v4's roving focus: an inner `button.qt-tab-select` carries `role="tab"`, `aria-selected`, a roving `tabindex` and `aria-keyshortcuts="Delete"`; arrows, Home and End move and select; Delete closes. The close cross sits beside it, `aria-hidden` and out of the tab order. `data-tab-id` and `.qt-tab` stay on the outer element. `check-a11y-names.mjs` exempts an `aria-hidden="true"` icon button. New specs: `tab-strip.spec.ts` (v4's five vectors plus the two v5 hooks), `character-header.spec.ts`, `page-toolbar-left-empty.spec.ts` (the `:empty` premise holds).
+
 #### 2026-11-04 — docs(porting): P4.D383 — record the `CSS` stacking commit `3ed560020` in the order's status header
 
 _Docs-only change._

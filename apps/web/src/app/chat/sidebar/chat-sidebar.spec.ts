@@ -289,6 +289,23 @@ describe('ChatSidebar', () => {
     expect(fixture.componentInstance.paused).toEqual([true]);
   });
 
+  it('names each strip avatar with its turn position, v4’s “, expand sidebar” wording (v4 94f041764, ChatSidebar.tsx:731)', async () => {
+    const fixture = await render();
+    fixture.componentInstance.participants.set([
+      participant('user', 'You', { controlledBy: 'user' }),
+      participant('alice', 'Alice', { isActive: false, status: 'absent' }),
+      participant('bob', 'Bob'),
+    ]);
+    fixture.detectChanges();
+    const labels = Array.from(
+      sidebarEl(fixture).querySelectorAll('.qt-chat-sidebar-collapsed-avatar'),
+    ).map((a) => a.getAttribute('aria-label'));
+    // With a position: `<name> <position>`; an inactive seat has none.
+    expect(labels).toContain('Bob 1, expand sidebar');
+    expect(labels).toContain('Alice [absent], expand sidebar');
+    expect(labels.every((l) => !l?.includes('click to expand'))).toBe(true);
+  });
+
   // --- P4.D344: the turn-mode control replaces the expanded Pause button ------
 
   it('the expanded drawer carries the Turn mode radiogroup and no Pause button; the strip keeps its own (P4.D344)', async () => {

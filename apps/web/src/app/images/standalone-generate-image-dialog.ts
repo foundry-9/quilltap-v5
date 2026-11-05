@@ -111,7 +111,7 @@ interface EntityOption {
 
               @if (dropdownOpen()) {
                 <div
-                  class="absolute top-full left-0 right-0 mt-1 bg-background border qt-border-default rounded-lg qt-shadow-lg max-h-64 overflow-hidden flex flex-col z-10"
+                  class="absolute top-full left-0 right-0 mt-1 qt-bg-popover border qt-border-default rounded-lg qt-shadow-lg max-h-64 overflow-hidden flex flex-col z-10"
                 >
                   <div class="p-2 border-b qt-border-default">
                     <input

@@ -84,11 +84,13 @@ import { processTemplate, resolveUserToken } from '../templates';
         <div class="flex items-center gap-1 ml-2 flex-shrink-0">
           <button
             type="button"
-            class="text-2xl qt-text-favorite transition-transform hover:scale-110 leading-none"
+            class="text-2xl qt-text-favorite transition-transform hover:scale-110 inline-flex items-center justify-center min-w-6 min-h-6"
             [title]="character().isFavorite ? 'Remove from favorites' : 'Add to favorites'"
+            [attr.aria-label]="'Favorite ' + character().name"
+            [attr.aria-pressed]="!!character().isFavorite"
             (click)="favorite.emit()"
           >
-            {{ character().isFavorite ? '⭐' : '☆' }}
+            <span aria-hidden="true">{{ character().isFavorite ? '⭐' : '☆' }}</span>
           </button>
           <button
             type="button"
@@ -101,6 +103,8 @@ import { processTemplate, resolveUserToken } from '../templates';
                 ? 'Disable Carina answers (@-queries)'
                 : 'Enable Carina answers (@-queries)'
             "
+            [attr.aria-label]="'Carina answers (@-queries) for ' + character().name"
+            [attr.aria-pressed]="!!character().canBeCarina"
             (click)="toggleCarina.emit()"
           >
             <qt-icon name="monitor" class="w-6 h-6" />
@@ -116,6 +120,8 @@ import { processTemplate, resolveUserToken } from '../templates';
                 ? 'Switch to LLM control'
                 : 'Switch to user control'
             "
+            [attr.aria-label]="'You play ' + character().name"
+            [attr.aria-pressed]="character().controlledBy === 'user'"
             (click)="toggleControlledBy.emit()"
           >
             <qt-icon name="user" class="w-6 h-6" />

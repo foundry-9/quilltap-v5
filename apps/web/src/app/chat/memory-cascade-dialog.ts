@@ -44,7 +44,7 @@ export interface MemoryCascadeChoice {
 
         <div class="space-y-2 mb-4">
           @for (opt of options; track opt.value) {
-            <label class="flex items-start gap-2 cursor-pointer">
+            <label class="flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:qt-bg-surface-hover transition-colors">
               <input
                 type="radio"
                 name="memoryAction"
@@ -61,7 +61,7 @@ export interface MemoryCascadeChoice {
           }
         </div>
 
-        <label class="flex items-center gap-2 cursor-pointer mb-4">
+        <label class="flex items-center gap-2 cursor-pointer mb-6 p-2 rounded-lg hover:qt-bg-surface-hover transition-colors">
           <input
             type="checkbox"
             class="qt-checkbox"

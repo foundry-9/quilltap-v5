@@ -98,6 +98,20 @@ function lastToast(): string | undefined {
 }
 
 describe('StandaloneGenerateImageDialog (v4 components/chat/StandaloneGenerateImageDialog.tsx)', () => {
+  it('paints the Other Characters dropdown on the opaque popover surface (v4 29ba4d3f8, GenerateImageDialog.tsx / EntitySearchDropdown.tsx)', async () => {
+    const fixture = await render(stubClient({}), [withCharacter('c1', 'Lorian', 'llm')]);
+    const opener = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('button'),
+    ).find((b) => b.textContent?.trim() === 'Other Characters...') as HTMLButtonElement;
+    opener.click();
+    fixture.detectChanges();
+    const panel = (fixture.nativeElement as HTMLElement).querySelector(
+      '[aria-label="Search characters"]',
+    )!.closest('.absolute') as HTMLElement;
+    expect(panel.classList.contains('qt-bg-popover')).toBe(true);
+    expect(panel.classList.contains('bg-background')).toBe(false);
+  });
+
   it('sends prompt + chatId + count (v4 :83-87)', async () => {
     const rec: Recorder = { calls: [] };
     const fixture = await render(stubClient({ recorder: rec }));

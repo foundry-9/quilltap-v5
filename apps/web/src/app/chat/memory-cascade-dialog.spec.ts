@@ -116,3 +116,18 @@ describe('MemoryCascadeDialog — WCAG semantics (P4.D358)', () => {
     expect(fixture.componentInstance.choices).toEqual([]);
   });
 });
+
+describe('MemoryCascadeDialog — the option rows (v4 94f041764, MemoryCascadeDialog.tsx:77-129)', () => {
+  it('carries v4’s label class strings, the hover fill a defined utility', async () => {
+    const fixture = await render();
+    const labels = Array.from(
+      (fixture.nativeElement as HTMLElement).querySelectorAll('label'),
+    ).map((l) => l.className);
+    expect(labels).toEqual([
+      'flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:qt-bg-surface-hover transition-colors',
+      'flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:qt-bg-surface-hover transition-colors',
+      'flex items-start gap-3 cursor-pointer p-2 rounded-lg hover:qt-bg-surface-hover transition-colors',
+      'flex items-center gap-2 cursor-pointer mb-6 p-2 rounded-lg hover:qt-bg-surface-hover transition-colors',
+    ]);
+  });
+});

@@ -49,7 +49,7 @@ import type { BrahmaConnectionProfile } from './brahma-console.service';
 
       @if (open() && profiles().length > 0) {
         <div
-          class="absolute right-0 mt-1 z-50 min-w-[220px] max-h-[280px] overflow-y-auto rounded qt-bg-surface qt-border-default border shadow-lg py-1"
+          class="absolute right-0 mt-1 z-50 min-w-[220px] max-h-[280px] overflow-y-auto rounded qt-bg-popover qt-border-default border shadow-lg py-1"
           role="listbox"
         >
           @for (profile of profiles(); track profile.id) {

@@ -1,8 +1,11 @@
 /**
- * A pane's tab bar (port of v4 `TabStrip.tsx`, baseline `b8b12695`): clickable
- * tabs with an active highlight, a close affordance, and HTML5 drag to reorder
+ * A pane's tab bar (port of v4 `TabStrip.tsx`, baseline `b8b12695`; the
+ * roving-focus tabs of `94f041764` at `624d0d25c`, P4.D383): clickable tabs
+ * with an active highlight, a close affordance, and HTML5 drag to reorder
  * within the strip or move a tab into this pane from the other one. Split/join
- * via the centre drop-zone lives in the host.
+ * via the centre drop-zone lives in the host. v5 keeps `data-tab-id` and the
+ * `qt-tab` classes on the OUTER element (R12) — the e2e selectors and the
+ * active-tab scroll read them there; the inner button carries the tab role.
  *
  * @module workspace/chrome/tab-strip
  */
@@ -37,9 +40,8 @@ import type { PaneId, PaneState, WorkspaceTab } from '../workspace-contract';
         @if (tab) {
           @let isActive = id === paneState().activeTabId;
           <div
-            role="tab"
+            role="presentation"
             [attr.data-tab-id]="id"
-            [attr.aria-selected]="isActive"
             draggable="true"
             class="qt-tab"
             [class.qt-tab-active]="isActive"
@@ -50,18 +52,37 @@ import type { PaneId, PaneState, WorkspaceTab } from '../workspace-contract';
             (dragover)="onTabDragOver($event)"
             (drop)="onTabDrop($event, $index)"
           >
-            @if (tab.icon) {
-              <qt-icon [name]="asIcon(tab.icon)" class="qt-tab-icon w-4 h-4" />
-            }
-            <span class="qt-tab-label">{{ tab.title }}</span>
+            <!--
+              The tab itself is a real button, so it is reachable and operable
+              by keyboard; the close button sits beside it rather than inside
+              it (an interactive control may not nest another). A tablist may
+              own only tabs, so the close cross is a pointer convenience:
+              hidden from assistive tech and out of the Tab order, with Delete
+              on the focused tab as its keyboard equivalent.
+            -->
+            <button
+              type="button"
+              role="tab"
+              [attr.aria-selected]="isActive"
+              [attr.tabindex]="isActive ? 0 : -1"
+              aria-keyshortcuts="Delete"
+              class="qt-tab-select"
+              (keydown)="onTabKeyDown($event, id)"
+            >
+              @if (tab.icon) {
+                <qt-icon [name]="asIcon(tab.icon)" class="qt-tab-icon w-4 h-4" />
+              }
+              <span class="qt-tab-label">{{ tab.title }}</span>
+            </button>
             <button
               type="button"
               class="qt-tab-close"
-              [attr.aria-label]="'Close ' + tab.title"
+              tabindex="-1"
+              aria-hidden="true"
               (click)="onCloseClick($event, id)"
               (pointerdown)="$event.stopPropagation()"
             >
-              <qt-icon name="close" class="qt-tab-close-icon w-3 h-3" [title]="'Close ' + tab.title" />
+              <qt-icon name="close" class="qt-tab-close-icon w-3 h-3" />
             </button>
           </div>
         }
@@ -99,6 +120,37 @@ export class TabStrip {
         }
       });
     });
+  }
+
+  /**
+   * Roving focus across the strip's tabs (WAI-ARIA tabs pattern): only the
+   * active tab is a Tab stop; arrows / Home / End move focus and select.
+   * (v4 `TabStrip.tsx` `handleTabKeyDown`, `94f041764`.) `order` is read
+   * before anything is emitted, so a select that re-renders the strip
+   * cannot shift the index the focus move uses.
+   */
+  protected onTabKeyDown(e: KeyboardEvent, id: string): void {
+    const tabs = this.tabs();
+    const order = this.paneState().order.filter((tid) => tabs[tid]);
+    const index = order.indexOf(id);
+    if (index < 0) return;
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = (index + 1) % order.length;
+    else if (e.key === 'ArrowLeft') next = (index - 1 + order.length) % order.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = order.length - 1;
+    else if (e.key === 'Delete') {
+      e.preventDefault();
+      this.close.emit(order[index]);
+      return;
+    }
+    if (next === null) return;
+    e.preventDefault();
+    this.select.emit(order[next]);
+    const buttons = (this.host.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
+      '[role="tab"]',
+    );
+    buttons[next]?.focus();
   }
 
   protected asIcon(name: string): IconName {

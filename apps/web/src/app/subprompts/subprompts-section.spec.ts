@@ -154,6 +154,13 @@ describe('SubpromptsSection — the three states', () => {
     expect(text(fixture)).not.toContain('Loading subprompts...');
   });
 
+  it('a listed record lights on hover with the defined surface-hover utility (v4 94f041764, SubpromptsSection.tsx:68)', async () => {
+    const fixture = await render(stub([record()]));
+    expect(
+      ((fixture.nativeElement as HTMLElement).querySelector('.qt-card') as HTMLElement).className,
+    ).toBe('qt-card hover:qt-bg-surface-hover transition');
+  });
+
   it('a listed record shows its title, its path, and the content preview', async () => {
     const fixture = await render(stub([record()]));
     expect(text(fixture)).toContain('Be terse');

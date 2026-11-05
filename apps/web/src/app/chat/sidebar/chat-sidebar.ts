@@ -674,7 +674,7 @@ export class ChatSidebar implements OnInit {
       title: `${name}${statusLabel}${isCurrentTurn ? ' (current turn)' : ''}${
         entry?.position ? ` (#${entry.position})` : ''
       }`,
-      ariaLabel: `${name}${statusLabel} - click to expand sidebar`,
+      ariaLabel: `${name}${statusLabel}${entry?.position ? ` ${entry.position}` : ''}, expand sidebar`,
     };
   }
 

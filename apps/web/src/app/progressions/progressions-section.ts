@@ -138,7 +138,7 @@ interface Row {
       } @else {
         <div class="space-y-3">
           @for (row of rows(); track row.id) {
-            <div class="qt-card hover:bg-accent/50 transition">
+            <div class="qt-card hover:qt-bg-surface-hover transition">
               <div class="flex justify-between items-start">
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-1 flex-wrap">

@@ -41,6 +41,15 @@ function text(fixture: ComponentFixture<ModelPicker>): string {
 describe('ModelPicker (v4 ModelPicker.tsx)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
+  it('paints the open list on the opaque popover surface (v4 29ba4d3f8, ModelPicker.tsx:70)', async () => {
+    const fixture = await render(PROFILES);
+    button(fixture).click();
+    fixture.detectChanges();
+    const listbox = fixture.nativeElement.querySelector('[role="listbox"]') as HTMLElement;
+    expect(listbox.classList.contains('qt-bg-popover')).toBe(true);
+    expect(listbox.classList.contains('qt-bg-surface')).toBe(false);
+  });
+
   it('is closed by default and shows "Choose a model" with no active profile', async () => {
     const fixture = await render(PROFILES);
     expect(text(fixture)).toContain('Choose a model');
